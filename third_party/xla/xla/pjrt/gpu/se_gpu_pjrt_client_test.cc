@@ -591,7 +591,8 @@ TEST(StreamExecutorGpuClientTest, DistributeInit) {
               /*node_id=*/i, num_nodes, /*allowed_devices=*/std::nullopt,
               /*platform_name=*/std::nullopt,
               /*should_stage_host_to_device_transfers=*/true, kv_get, kv_put));
-      EXPECT_EQ(client->platform_name(), "gpu");
+      EXPECT_TRUE(client->platform_name() == "cuda" ||
+                  client->platform_name() == "rocm");
       EXPECT_EQ(client->addressable_device_count(), 2);
       EXPECT_EQ(client->device_count(), 4);
     });

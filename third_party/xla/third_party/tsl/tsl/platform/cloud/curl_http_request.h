@@ -228,7 +228,8 @@ class CurlHttpRequest : public HttpRequest {
   // Limit the size of an http response that is copied into an error message.
   const size_t response_to_error_limit_ = 500;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CurlHttpRequest);
+  CurlHttpRequest(const CurlHttpRequest&) = delete;
+  void operator=(const CurlHttpRequest&) = delete;
 };
 
 /// \brief A proxy to the libcurl C interface as a dependency injection measure.

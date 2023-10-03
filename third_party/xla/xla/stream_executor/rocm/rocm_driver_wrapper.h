@@ -93,7 +93,7 @@ namespace wrap {
   __macro(hipEventSynchronize)                      \
   __macro(hipFree)                                  \
   __macro(hipFuncSetCacheConfig)                    \
-  __macro(hipFuncSetAttribute)                      \
+  __macro(hipFuncGetAttribute)                      \
   __macro(hipGetDevice)                             \
   __macro(hipGetDeviceCount)                        \
   __macro(hipGetDeviceProperties)                   \

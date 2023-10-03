@@ -498,4 +498,17 @@ std::pair<float, float> SplitF64ToF32(double x) {
   return std::make_pair(hi, lo);
 }
 
+void PackInt4(absl::Span<const char> input, absl::Span<char> output) {
+  CHECK_EQ(output.size(), CeilOfRatio(input.size(), size_t{2}));
+  for (size_t i = 0; i < input.size(); ++i) {
+    // Mask out the high-order 4 bits in case they have extraneous data.
+    char val = input[i] & 0xf;
+    if (i % 2 == 0) {
+      output[i / 2] = val << 4;
+    } else {
+      output[i / 2] |= val;
+    }
+  }
+}
+
 }  // namespace xla

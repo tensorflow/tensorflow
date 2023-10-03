@@ -20,7 +20,29 @@
 set -e
 set -x
 
+<<<<<<< HEAD:tensorflow/tools/tf_sig_build_dockerfiles/setup.packages.rocm.cs7.sh
 yum clean all
 yum update -y
 PKG_LIST=$(sed -e '/^\s*#.*$/d' -e '/^\s*$/d' "$1" | sort -u)
 yum --enablerepo=extras install -y $PKG_LIST
+=======
+on:
+  workflow_dispatch:  # Allow manual triggers
+  schedule:
+    - cron: 0 4 * * *  # 4am UTC is 9pm PDT and 8pm PST
+name: Set nightly branch to master HEAD
+
+permissions: {}
+
+jobs:
+  master-to-nightly:
+    if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: zofrex/mirror-branch@a8809f0b42f9dfe9b2c5c2162a46327c23d15266 # v1.0.3
+      name: Set nightly branch to master HEAD
+      with:
+        target-branch: 'nightly'
+>>>>>>> upstream/master:.github/workflows/update-nightly.yml

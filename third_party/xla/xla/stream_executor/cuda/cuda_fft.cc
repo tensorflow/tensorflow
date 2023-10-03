@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/cuda/cuda_activation.h"
-#include "xla/stream_executor/cuda/cuda_gpu_executor.h"
+#include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_helpers.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_stream.h"

@@ -41,6 +41,8 @@ TfLiteRegistration* Register_LIST_GET_ITEM();
 
 TfLiteRegistration* Register_LIST_LENGTH();
 
+TfLiteRegistration* Register_LIST_ELEMENT_SHAPE();
+
 }  // namespace ops
 }  // namespace variants
 }  // namespace tflite

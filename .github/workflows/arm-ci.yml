@@ -26,6 +26,9 @@ on:
       - master
       - r2.**
 
+permissions:
+  contents: read
+
 jobs:
   build:
     # Don't do this in forks, and if labeled, only for 'kokoro:force-run'

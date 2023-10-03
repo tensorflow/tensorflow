@@ -24,6 +24,9 @@ on:
   schedule:
     - cron: '0 8 * * *'
 
+permissions:
+  contents: read
+
 jobs:
   build:
     if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks

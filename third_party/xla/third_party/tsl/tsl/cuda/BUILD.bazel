@@ -123,6 +123,7 @@ cc_library(
             ":cuda",
             "//tsl/platform:dso_loader",
             "//tsl/platform:env",
+            "@com_google_absl//absl/container:flat_hash_set",
             "@local_config_cuda//cuda:cuda_headers",
         ],
         "//conditions:default": [],
@@ -148,6 +149,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cudnn_version",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@local_config_cuda//cuda:cudnn_header",
         "//tsl/platform:dso_loader",
         "//tsl/platform:env",
@@ -280,6 +282,32 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
+        "//tsl/platform:dso_loader",
+        "//tsl/platform:env",
+    ]),
+)
+
+cuda_stub(
+    name = "nccl",
+    srcs = ["nccl.symbols"],
+)
+
+cc_library(
+    name = "nccl_stub",
+    srcs = if_cuda_is_configured([
+        "nccl_stub.cc",
+        "nccl.tramp.S",
+    ]),
+    linkopts = if_cuda_is_configured(cuda_rpath_flags("nvidia/nccl/lib")),
+    local_defines = [
+        "IMPLIB_EXPORT_SHIMS=1",
+    ],
+    textual_hdrs = ["nccl.inc"],
+    visibility = ["//visibility:public"],
+    deps = if_cuda_is_configured([
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_nccl//:nccl_headers",
         "//tsl/platform:dso_loader",
         "//tsl/platform:env",
     ]),

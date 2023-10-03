@@ -201,7 +201,7 @@ with TensorFlow's remote cache. TensorFlow's official nightly builds push to a
 publicly accessible cache, which you can combine with a local bazel cache:
 
 ```
-TFCI_BAZEL_COMMON_ARGS=( --disk_cache=$TFCI_OUT_DIR/cache --config=sigbuild_remote_cache )
+TFCI_BAZEL_COMMON_ARGS=( --disk_cache=$TFCI_OUT_DIR/cache --config=tf_public_cache )
 ```
 
 This will place a bazel cache in `$TFCI_OUT_DIR/cache`, which by default
@@ -223,14 +223,14 @@ TFCI_BAZEL_COMMON_ARGS=( --disk_cache=/root/bazelcache )
 
 Keep these additional details in mind when using the cache:
 
--   The official nightly builds use `--config=sigbuild_remote_cache_push` to
+-   The official nightly builds use `--config=tf_public_cache_push` to
     push the results of `wheel.sh` to a remote cache. Our CI must use Bazel's
     `--google_default_credentials` flag to pull upload credentials from the
     virtual machine, but the flag raises an error if no credentials are
     available.
--   It's safe to use `--config=sigbuild_remote_cache_push` (the default config)
+-   It's safe to use `--config=tf_public_cache_push` (the default config)
     as a normal developer because you don't have upload permission, but you
-    should switch it to `sigbuild_remote_cache` if you're a Google developer.
+    should switch it to `tf_public_cache` if you're a Google developer.
     There is no cache for `pycpp.sh`, because the official jobs use Remote Build
     Execution instead.
 

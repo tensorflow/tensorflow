@@ -772,7 +772,8 @@ class RandomAccessFile {
 #endif
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RandomAccessFile);
+  RandomAccessFile(const RandomAccessFile&) = delete;
+  void operator=(const RandomAccessFile&) = delete;
 };
 
 /// \brief A file abstraction for sequential writing.
@@ -845,7 +846,8 @@ class WritableFile {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(WritableFile);
+  WritableFile(const WritableFile&) = delete;
+  void operator=(const WritableFile&) = delete;
 };
 
 /// \brief A readonly memmapped file abstraction.

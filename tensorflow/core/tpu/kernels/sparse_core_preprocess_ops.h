@@ -67,14 +67,6 @@ class GetMinibatchesInCsrWithPhysicalReplicaOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  protected:
-  virtual void GetMaxIdsAndUniques(OpKernelContext* ctx,
-                                   const std::string& program_key,
-                                   const std::string& table_name,
-                                   int64_t num_samples_per_sparse_core,
-                                   int64_t feature_width,
-                                   int64_t* max_ids_per_partition,
-                                   int64_t* max_unique_ids_per_partition) {}
-
   int sample_count_ = 1;
   int feature_width_ = 1;
   int64_t num_sc_per_chip_;
@@ -101,13 +93,6 @@ class GetMinibatchSplitsWithPhysicalReplicaOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  protected:
-  virtual void GetMaxIdsAndUniques(OpKernelContext* ctx,
-                                   const std::string& program_key,
-                                   const std::string& table_name,
-                                   int64_t num_samples_per_sparse_core,
-                                   int64_t feature_width,
-                                   int64_t* max_ids_per_partition,
-                                   int64_t* max_unique_ids_per_partition) {}
   virtual void CalculateHeadroom(int32 this_max_ids, int32 this_max_uniques,
                                  tstring program_key,
                                  int64_t max_ids_per_partition,

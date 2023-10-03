@@ -18,15 +18,19 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/strings/string_view.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
 namespace xla {
@@ -73,9 +77,19 @@ using TritonIrEmitter = std::function<Status(
 StatusOr<TritonWrapperResult> TritonWrapper(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
     const HloComputation* hlo_computation, absl::string_view fusion_kind,
-    const se::CudaComputeCapability& cc, const GpuDeviceInfo& device_info,
+    const se::CudaComputeCapability& cc,
+    const se::DeviceDescription& device_info,
     const AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
     TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context);
+
+// Creates the initial Triton module for the given fusion. Visible for testing,
+// use TritonWrapper instead.
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
+    const TritonFusionAnalysis& analysis, absl::string_view fn_name,
+    const HloComputation* hlo_computation,
+    const se::DeviceDescription& device_info,
+    const AutotuneResult::TritonGemmKey& config, TritonIrEmitter ir_emitter,
+    mlir::MLIRContext& mlir_context);
 
 }  // namespace gpu
 }  // namespace xla

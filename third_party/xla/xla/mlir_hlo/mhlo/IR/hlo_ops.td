@@ -2085,7 +2085,7 @@ def MHLO_BroadcastOp : MHLO_ShapedInterfaceOp<"broadcast",
 }
 
 def MHLO_BroadcastInDimOp : MHLO_Op<"broadcast_in_dim",
-      [Pure, SameOperandsAndResultElementType]> {
+      [Pure, HLO_CompatibleOperandsAndResultElementType]> {
   let summary = "BroadcastInDim operation";
   let description = [{
     Expands the dimensions and/or rank of an input tensor by duplicating the
@@ -2718,7 +2718,7 @@ def MHLO_MapOp: MHLO_ShapedInterfaceOp<"map",
 }
 
 def MHLO_ReshapeOp: MHLO_Op<"reshape",
-      [Pure, SameOperandsAndResultElementType]> {
+      [Pure, HLO_CompatibleOperandsAndResultElementType]> {
   let summary = "Reshape operation";
   let description = [{
     Performs reshape of `operand` tensor to a `result` tensor.
@@ -3114,7 +3114,7 @@ def MHLO_TraceOp: MHLO_Op<"trace", []> {
 }
 
 def MHLO_TransposeOp: MHLO_ShapedInterfaceOp<"transpose",
-      [Pure, SameOperandsAndResultElementType,
+      [Pure, HLO_CompatibleOperandsAndResultElementType,
       DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Transpose operation";
   let description = [{

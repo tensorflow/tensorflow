@@ -21,7 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "xla/literal.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/tpu/noncopyable_buffer.h"
 #include "xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "xla/stream_executor/tpu/tpu_transfer_manager_interface.h"

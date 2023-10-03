@@ -106,7 +106,6 @@ limitations under the License.
 #include "xla/mlir/runtime/transforms/compilation_pipeline_cpu.h"
 #include "xla/mlir/runtime/transforms/compiler.h"
 #include "xla/mlir/runtime/transforms/jit_compiler.h"
-#include "xla/mlir/tools/mlir_replay/public/compiler_trace_instrumentation.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -223,7 +222,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -427,14 +426,6 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
                  << status.message();
     }
     runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(passes, copts);
-
-    if (DumpingEnabledForHloModule(module) &&
-        module.config().debug_options().xla_dump_hlo_snapshots()) {
-      passes->addInstrumentation(
-          std::make_unique<mlir::interpreter::MlirCompilerTraceInstrumentation>(
-              module.config().debug_options().xla_dump_to(), module.unique_id(),
-              module.name()));
-    }
   };
   opts.compiler.calling_convention = runtime::ResultsToOutsCallingConvention(
       FlattenTuplesAndBufferizeTypeConverter());
@@ -1148,13 +1139,6 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
         [](mlir::Pass* pass, mlir::Operation* op) { return true; },
         /*printModuleScope=*/true, /*printAfterOnlyOnChange=*/true,
         /*printAfterOnlyOnFailure=*/false, llvm::errs(), printing_flags);
-  }
-
-  if (DumpingEnabledForHloModule(*module)) {
-    pm.addInstrumentation(
-        std::make_unique<mlir::interpreter::MlirCompilerTraceInstrumentation>(
-            module->config().debug_options().xla_dump_to(), module->unique_id(),
-            module->name()));
   }
 
   xla::runtime::PassManager xla_pm(&pm);

@@ -70,19 +70,19 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_KERNEL_H_
 
 #include <array>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <string>
 #include <tuple>
 #include <type_traits>
-#include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel_cache_config.h"
 #include "xla/stream_executor/platform/port.h"
-#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 

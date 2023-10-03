@@ -33,6 +33,19 @@ config_setting(
     },
 )
 
+# copybara:uncomment_begin(google-only)
+# config_setting(
+#     name = "tflite_gpu_angle",
+#     flag_values = {
+#         "//tools/cpp:cc_target_os": "linux-google",
+#         "//third_party/angle:use_angle": "True",
+#     },
+#     values = {
+#         "cpu": "k8",
+#     },
+# )
+# copybara:uncomment_end
+
 cc_library(
     name = "gl_delegate",
     srcs = ["gl_delegate.cc"],

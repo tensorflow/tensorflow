@@ -272,6 +272,11 @@ class DebugOptions:
   xla_dump_hlo_as_long_text: bool
   xla_dump_disable_metadata: bool
   xla_dump_hlo_pipeline_re: str
+  xla_gpu_enable_async_all_reduce: bool
+  xla_gpu_enable_async_all_gather: bool
+  xla_gpu_enable_async_collective_permute: bool
+  xla_gpu_enable_async_all_to_all: bool
+  xla_gpu_enable_async_reduce_scatter: bool
 
 class CompiledMemoryStats:
   generated_code_size_in_bytes: int
@@ -470,7 +475,8 @@ def get_gpu_client(
     distributed_client: Optional[DistributedRuntimeClient] = ...,
     node_id: int = ...,
     allowed_devices: Optional[Any] = ...,
-    platform_name: Optional[str] = ...) -> Client:...
+    platform_name: Optional[str] = ...,
+    mock:Optional[bool]=...) -> Client:...
 def get_mock_gpu_client(
     asynchronous: bool = ...,
     allocator_config: GpuAllocatorConfig = ...,

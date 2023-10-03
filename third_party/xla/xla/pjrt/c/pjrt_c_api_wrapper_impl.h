@@ -302,6 +302,7 @@ PJRT_Error* PJRT_Buffer_Memory(PJRT_Buffer_Memory_Args* args);
 PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args);
 PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args);
 PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args);
+PJRT_Error* PJRT_Buffer_CopyToMemory(PJRT_Buffer_CopyToMemory_Args* args);
 PJRT_Error* PJRT_Buffer_ToHostBuffer(PJRT_Buffer_ToHostBuffer_Args* args);
 PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
 PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args);
@@ -556,6 +557,8 @@ constexpr PJRT_Api CreatePjrtApi(
       pjrt::PJRT_Executable_OutputElementTypes,
       /*PJRT_Executable_OutputDimensions=*/
       pjrt::PJRT_Executable_OutputDimensions,
+      /*PJRT_Buffer_CopyToMemory=*/
+      pjrt::PJRT_Buffer_CopyToMemory,
   };
 }
 

@@ -171,11 +171,13 @@ class GpuRuntimeExecutable {
   // Keep a cache of fft plans for all FFT operations in the program.
   FftPlans fft_plans_;
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM  // Keep matmul execution plans.
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  // Keep matmul execution plans (only if cuBLASLt is available).
   MatmulPlans cublas_lt_matmul_plans_;
   // Keep captured and instantiated GPU graphs instances.
   GraphInstances graph_instances_;
   CapturedFunctionExecutionCounts captured_function_counts_;
+  OrdinalToFallback ordinal_to_fallback_;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   // Keep an executable state for all registered runtime modules.

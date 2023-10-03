@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -184,36 +185,38 @@ bool IsShardingMoreSpecific(const HloSharding& lhs, const HloSharding& rhs) {
   }
 }
 
-bool MergeSharding(const HloSharding& old, HloSharding* to_merge,
+bool MergeSharding(const HloSharding& to_merge, HloSharding* dst,
                    bool may_combine_partial_sharding) {
-  if (old.IsTuple()) {
-    CHECK(to_merge->IsTuple());
+  if (to_merge.IsTuple()) {
+    CHECK(dst->IsTuple());
     bool changed = false;
-    for (int64_t i = 0; i < old.tuple_elements().size(); ++i) {
+    for (int64_t i = 0; i < to_merge.tuple_elements().size(); ++i) {
       changed |=
-          MergeSharding(old.tuple_elements()[i], &to_merge->tuple_elements()[i],
+          MergeSharding(to_merge.tuple_elements()[i], &dst->tuple_elements()[i],
                         may_combine_partial_sharding);
     }
     return changed;
   }
-  if (!may_combine_partial_sharding || !old.HasPartialReplication() ||
-      !to_merge->HasPartialReplication() ||
-      old.tile_assignment().num_elements() !=
-          to_merge->tile_assignment().num_elements()) {
-    return IsShardingMoreSpecific(*to_merge, old);
+  if (!may_combine_partial_sharding || !to_merge.HasPartialReplication() ||
+      !dst->HasPartialReplication() ||
+      to_merge.tile_assignment().num_elements() !=
+          dst->tile_assignment().num_elements()) {
+    return IsShardingMoreSpecific(*dst, to_merge);
   }
 
   if (MergeShardingIfCompatible(
-          old,
-          /*minimum_tiles=*/std::max(old.NumTiles(), to_merge->NumTiles()) + 1,
-          to_merge)) {
+          to_merge,
+          /*minimum_tiles=*/std::max(to_merge.NumTiles(), dst->NumTiles()) + 1,
+          dst)) {
     return true;
   }
-  return IsShardingMoreSpecific(*to_merge, old);
+  return IsShardingMoreSpecific(*dst, to_merge);
 }
 
 bool MergeShardingIfCompatible(const HloSharding& to_merge,
                                int64_t minimum_tiles, HloSharding* dst) {
+  CHECK(!to_merge.IsTuple() && !to_merge.IsManual() && !dst->IsTuple() &&
+        !dst->IsManual());
   if (to_merge.IsTileMaximal()) {
     return false;
   }
@@ -374,6 +377,26 @@ std::optional<int64_t> SelectDominantDevice(
     *top_count = count;
   }
   return count > 0 ? std::optional<int64_t>(device) : std::optional<int64_t>();
+}
+
+HloSharding FindCommonSharding(absl::Span<const HloSharding> shardings) {
+  CHECK(!shardings.empty());
+  bool all_compatible = true;
+  HloSharding common_sharding = shardings[0];
+  for (int i = 1; i != shardings.size(); ++i) {
+    if (!MergeShardingIfCompatible(shardings[i], common_sharding.NumTiles(),
+                                   &common_sharding)) {
+      all_compatible = false;
+      break;
+    }
+  }
+  if (all_compatible) {
+    return common_sharding;
+  }
+  // TODO(tongfei): instead of return the first sharding in case not all
+  // shardings are compatible, we should find a sharding that's compatible with
+  // the most number of shardings instead.
+  return shardings[0];
 }
 
 void AssignComputationDevice(HloComputation* computation, int64_t device) {
@@ -1465,7 +1488,9 @@ std::optional<HloSharding> ScatterUpdateShardingFromOutputParallelDimensions(
     auto operand_aligned_update_parallel_dims = AlignSmallContainers(
         update_parallel_dims, index_aligned_operand_parallel_dims,
         operand_parallel_dims_sorted);
-    const Shape scatter_shape = scatter.shape();
+    const Shape scatter_shape = scatter.shape().IsTuple()
+                                    ? scatter.shape().tuple_shapes()[0]
+                                    : scatter.shape();
     CHECK_EQ(update_parallel_dims.size(),
              index_aligned_operand_parallel_dims.size());
     std::vector<int64_t> update_tile_assignment(

@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/hash.h"
@@ -4862,6 +4862,7 @@ bool MIOpenSupport::DeriveOutputBatchDescriptor(
   return true;
 }
 
+<<<<<<< HEAD
 template <typename T>
 bool MIOpenSupport::DoFusedConvolutionBiasActivationImpl(
     Stream* stream,
@@ -5367,6 +5368,8 @@ bool UseNhwcLayoutForRocm() {
 #endif
 }
 
+=======
+>>>>>>> upstream/master
 }  // namespace gpu
 
 void initialize_miopen() {

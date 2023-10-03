@@ -15,19 +15,25 @@ limitations under the License.
 
 #include "xla/service/gpu/gpu_target_config.h"
 
+#include "xla/stream_executor/stream_executor.h"
+
 namespace xla {
 namespace gpu {
 
+GpuTargetConfig::GpuTargetConfig(stream_executor::StreamExecutor* s)
+    : gpu_device_info(s->GetDeviceDescription().ToGpuProto()),
+      platform_name(s->platform()->Name()) {}
+
 GpuTargetConfig::GpuTargetConfig(
     const stream_executor::GpuTargetConfigProto& proto)
-    : gpu_device_info(proto.gpu_device_info()),
+    : gpu_device_info({proto.gpu_device_info()}),
       platform_name(proto.platform_name()),
       dnn_version_info(proto.dnn_version_info()),
       device_description_str(proto.device_description_str()) {}
 
 stream_executor::GpuTargetConfigProto GpuTargetConfig::ToProto() const {
   stream_executor::GpuTargetConfigProto proto;
-  *proto.mutable_gpu_device_info() = gpu_device_info.ToProto();
+  *proto.mutable_gpu_device_info() = gpu_device_info.ToGpuProto();
   proto.set_platform_name(platform_name);
   *proto.mutable_dnn_version_info() = dnn_version_info.ToProto();
   proto.set_device_description_str(device_description_str);

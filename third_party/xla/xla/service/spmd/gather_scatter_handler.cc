@@ -1498,8 +1498,16 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
         return operand.sharding() == operands[0].sharding() &&
                operand.base_shape() == operands[0].base_shape();
       })) {
-    return FailedPrecondition(
-        "All scatter operands must have the same sharding.");
+    std::vector<HloSharding> shardings;
+    absl::c_transform(operands, std::back_inserter(shardings),
+                      [](const PartitionedHlo& instruction) {
+                        return instruction.sharding();
+                      });
+    HloSharding common_sharding =
+        hlo_sharding_util::FindCommonSharding(shardings);
+    absl::c_for_each(operands, [&](PartitionedHlo& operand) {
+      operand = operand.Reshard(common_sharding);
+    });
   }
   absl::c_transform(
       scatter->scatter_updates(), std::back_inserter(updates),
@@ -1508,8 +1516,16 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
         return update.sharding() == updates[0].sharding() &&
                update.base_shape() == updates[0].base_shape();
       })) {
-    return FailedPrecondition(
-        "All scatter outputs must have the same sharding.");
+    std::vector<HloSharding> shardings;
+    absl::c_transform(updates, std::back_inserter(shardings),
+                      [](const PartitionedHlo& instruction) {
+                        return instruction.sharding();
+                      });
+    HloSharding common_sharding =
+        hlo_sharding_util::FindCommonSharding(shardings);
+    absl::c_for_each(operands, [&](PartitionedHlo& operand) {
+      operand = operand.Reshard(common_sharding);
+    });
   }
   CHECK_EQ(operands.size(), updates.size());
   CHECK_EQ(operands.size() * 2,

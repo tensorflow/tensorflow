@@ -119,7 +119,7 @@ class LazyKernel {
         static absl::once_flag logged_once;
         absl::call_once(logged_once, [&]() {
           LOG(WARNING)
-              << compiled_ptx_or.status().ToString()
+              << compiled_ptx_or.status()
               << "\nRelying on driver to perform ptx compilation. "
               << "\nSetting XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda "
               << " or modifying $PATH can be used to set the location of ptxas."

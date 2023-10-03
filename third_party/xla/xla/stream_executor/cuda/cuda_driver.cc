@@ -606,13 +606,16 @@ static std::string_view StreamCaptureModeToString(
     case CU_GRAPH_EXEC_UPDATE_ERROR_NOT_SUPPORTED:
       result->result = GraphExecUpdateResult::kNotSupported;
       break;
+#if CUDA_VERSION >= 12000
     case CU_GRAPH_EXEC_UPDATE_ERROR_UNSUPPORTED_FUNCTION_CHANGE:
       result->result = GraphExecUpdateResult::kUnsupportedFunctionChange;
       break;
-
     case CU_GRAPH_EXEC_UPDATE_ERROR_ATTRIBUTES_CHANGED:
       result->result = GraphExecUpdateResult::kAttributesChanged;
       break;
+#endif  // CUDA_VERSION >= 12000
+    default:
+      return tsl::errors::Internal("Unknown graph update result");
   }
 
   RETURN_IF_CUDA_RES_ERROR(err_code, "Failed to update CUDA graph");
@@ -639,6 +642,7 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
       return GraphNodeType::kGraph;
     case CU_GRAPH_NODE_TYPE_EMPTY:
       return GraphNodeType::kEmpty;
+#if CUDA_VERSION >= 12000
     case CU_GRAPH_NODE_TYPE_WAIT_EVENT:
       return GraphNodeType::kWaitEvent;
     case CU_GRAPH_NODE_TYPE_EVENT_RECORD:
@@ -653,6 +657,9 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
       return GraphNodeType::kMemFree;
     case CU_GRAPH_NODE_TYPE_BATCH_MEM_OP:
       return GraphNodeType::kBatchMemOp;
+#endif  // CUDA_VERSION >= 12000
+    default:
+      return tsl::errors::Internal("Unknown graph node type");
   }
 
   return tsl::Status(absl::StatusCode::kInternal,
@@ -662,7 +669,7 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
 /* static */ tsl::Status GpuDriver::DestroyGraphExec(CUgraphExec exec) {
   VLOG(2) << "Destroying CUDA executable graph " << exec;
   RETURN_IF_CUDA_RES_ERROR(cuGraphExecDestroy(exec),
-                           "Failed to destroy CUDA graph");
+                           "Failed to destroy CUDA executable graph");
   return ::tsl::OkStatus();
 }
 

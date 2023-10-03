@@ -2304,7 +2304,8 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
       // Apply Bessel's correction on the variance.
       int total_input_size = bn_train_input_type_tensor.getNumElements();
       int total_scale_size = scale_type_tensor.getNumElements();
-      int sample_size = total_input_size / total_scale_size;
+      int sample_size =
+          total_scale_size > 0 ? total_input_size / total_scale_size : 0;
       int sample_size_minus_one = std::max(1, sample_size - 1);
       double factor = static_cast<double>(sample_size) /
                       static_cast<double>(sample_size_minus_one);

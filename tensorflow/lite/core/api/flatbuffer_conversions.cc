@@ -878,7 +878,41 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseStablehloRngBitGenerator(op, error_reporter, allocator,
                                            builtin_data);
     }
-
+    case BuiltinOperator_STABLEHLO_GATHER: {
+      return ParseStablehloGather(op, error_reporter, allocator, builtin_data);
+    }
+    case BuiltinOperator_REDUCE_WINDOW: {
+      auto params = safe_allocator.Allocate<TfLiteReduceWindowParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* reduce_params =
+              op->builtin_options_2_as_ReduceWindowOptions()) {
+        switch (reduce_params->reduce_function()) {
+          case ReduceWindowFunction_ADD:
+            params->reduce_function = TfLiteReduceWindowFunctionAdd;
+            break;
+          case ReduceWindowFunction_MUL:
+            params->reduce_function = TfLiteReduceWindowFunctionMul;
+            break;
+          case ReduceWindowFunction_MINIMUM:
+            params->reduce_function = TfLiteReduceWindowFunctionMin;
+            break;
+          case ReduceWindowFunction_MAXIMUM:
+            params->reduce_function = TfLiteReduceWindowFunctionMax;
+            break;
+          case ReduceWindowFunction_ALL:
+            params->reduce_function = TfLiteReduceWindowFunctionAll;
+            break;
+          case ReduceWindowFunction_ANY:
+            params->reduce_function = TfLiteReduceWindowFunctionAny;
+            break;
+          case ReduceWindowFunction_UNSUPPORTED:
+          default:
+            return kTfLiteError;
+        }
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
     // TODO: skip param parsing for now since ops below don't have kernels
     case BuiltinOperator_STABLEHLO_SLICE:
     case BuiltinOperator_STABLEHLO_BROADCAST_IN_DIM:
@@ -918,7 +952,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_STABLEHLO_REDUCE_WINDOW:
     case BuiltinOperator_STABLEHLO_SORT:
     case BuiltinOperator_STABLEHLO_WHILE:
-    case BuiltinOperator_STABLEHLO_GATHER:
     case BuiltinOperator_STABLEHLO_TRANSPOSE:
 
     // Below are the ops with no builtin_data structure.
@@ -2131,6 +2164,62 @@ TfLiteStatus ParseStablehloRngBitGenerator(const Operator* op,
       op->builtin_options_2_as_StablehloRngBitGeneratorOptions();
   if (schema_params != nullptr) {
     params->algorithm = ConvertRngAlgorithm(schema_params->algorithm());
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
+  }
+
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseStablehloGather(const Operator* op,
+                                  ErrorReporter* error_reporter,
+                                  BuiltinDataAllocator* allocator,
+                                  void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  std::unique_ptr<TfLiteStablehloGatherParams,
+                  SafeBuiltinDataAllocator::BuiltinDataDeleter>
+      params = safe_allocator.Allocate<TfLiteStablehloGatherParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const StablehloGatherOptions* schema_params =
+      op->builtin_options_2_as_StablehloGatherOptions();
+
+  if (schema_params != nullptr) {
+    TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+        /*max_size_of_buffer=*/schema_params->offset_dims()->size() *
+            sizeof(int64_t),
+        /*flat_vector=*/schema_params->offset_dims(),
+        /*buffer=*/params->offset_dims, /*error_reporter=*/error_reporter,
+        /*op_name=*/"stablehlo_gather"));
+    params->num_offset_dims = schema_params->offset_dims()->size();
+
+    TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+        schema_params->collapsed_slice_dims()->size() * sizeof(int64_t),
+        schema_params->collapsed_slice_dims(), params->collapsed_slice_dims,
+        error_reporter, "stablehlo_gather"));
+    params->num_collapsed_slice_dims =
+        schema_params->collapsed_slice_dims()->size();
+
+    TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+        schema_params->start_index_map()->size() * sizeof(int64_t),
+        schema_params->start_index_map(), params->start_index_map,
+        error_reporter, "stablehlo_gather"));
+    params->num_start_index_map = schema_params->start_index_map()->size();
+
+    params->index_vector_dim = schema_params->index_vector_dim();
+
+    TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray<int64_t>(
+        schema_params->slice_sizes()->size() * sizeof(int64_t),
+        schema_params->slice_sizes(), params->slice_sizes, error_reporter,
+        "stablehlo_gather"));
+    params->num_slice_sizes = schema_params->slice_sizes()->size();
+
+    params->indices_are_sorted = schema_params->indices_are_sorted();
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we

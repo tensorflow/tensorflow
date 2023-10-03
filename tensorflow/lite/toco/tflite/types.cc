@@ -111,7 +111,6 @@ void CopyBuffer(const ::tflite::Buffer& buffer, Array* array) {
       return ::tflite::TensorType_COMPLEX64;
     default:
       // FLOAT32 is filled for unknown data types.
-      // TODO(ycling): Implement type inference in TF Lite interpreter.
       return ::tflite::TensorType_FLOAT32;
   }
 }

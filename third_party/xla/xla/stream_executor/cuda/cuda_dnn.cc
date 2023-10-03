@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_activation.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_driver.h"
-#include "xla/stream_executor/cuda/cuda_gpu_executor.h"
+#include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_stream.h"
 #include "xla/stream_executor/dnn.h"
@@ -49,8 +49,8 @@ limitations under the License.
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/cuda/cudnn_version.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -6732,6 +6732,16 @@ class CudnnExecutionPlanRunner<void(Args...)>
     if (!data_ptrs_vec.empty() && data_ptrs_vec.back() == nullptr &&
         !has_activation_output_) {
       data_ptrs_vec.pop_back();
+    }
+
+    if (sizeof...(Args) == 7 || sizeof...(Args) == 11) {
+      // is fused attention fwd and bwd
+      // remove empty buffers from the list
+      data_ptrs_vec.erase(
+          std::remove(data_ptrs_vec.begin(), data_ptrs_vec.end(), nullptr),
+          data_ptrs_vec.end());
+      // ensure the size is equal after removing useless pointers
+      CHECK(data_ptrs_vec.size() == data_uids_vec.size());
     }
 
     if (should_add_scalars) {

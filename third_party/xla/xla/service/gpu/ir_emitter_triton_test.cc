@@ -25,19 +25,23 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/autotuning.pb.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/gpu_device_info.h"
+#include "xla/service/gpu/gemm_rewriter_triton.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
 #include "xla/xla.pb.h"
@@ -48,7 +52,6 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/tensor_float_32_utils.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -56,49 +59,6 @@ namespace gpu {
 namespace {
 
 namespace m = ::xla::match;
-
-class TritonGemmNoTF32Test : public GpuCodegenTest {
- public:
-  void SetUp() override {
-    tf32_state_ = tsl::tensor_float_32_execution_enabled();
-    tsl::enable_tensor_float_32_execution(false);
-  }
-  void TearDown() override {
-    tsl::enable_tensor_float_32_execution(tf32_state_);
-  }
-
- private:
-  bool tf32_state_;
-};
-
-TEST_F(TritonGemmNoTF32Test, DoNotUseTensorCoresForF32) {
-  const std::string kHloText = R"(
-HloModule t, is_scheduled=true
-
-triton_gemm_r {
-  parameter_0 = s8[80,15]{1,0} parameter(0)
-  convert.3 = f32[80,15]{1,0} convert(parameter_0)
-  parameter_1 = f32[16,15]{1,0} parameter(1)
-  ROOT r.1 = f32[80,16]{1,0} dot(convert.3, parameter_1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={1}
-}
-
-ENTRY e {
-  p1 = f32[16,15]{1,0} parameter(1)
-  p0 = s8[80,15]{1,0} parameter(0)
-  ROOT triton_gemm_r = f32[80,16]{1,0} fusion(p0, p1), kind=kCustom,
-    calls=triton_gemm_r,
-    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":2}}
-})";
-  CHECK(!tsl::tensor_float_32_execution_enabled());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
-                          ParseAndReturnVerifiedModule(kHloText));
-
-  CompileAndOptionallyVerifyPtx(std::move(verified_module),
-                                R"(
-CHECK-NOT: mma
-)");
-}
 
 class TritonGemmTest : public GpuCodegenTest {
  public:
@@ -108,7 +68,169 @@ class TritonGemmTest : public GpuCodegenTest {
         ->GetDeviceDescription()
         .cuda_compute_capability();
   }
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_cublas_fallback(false);
+    return debug_options;
+  }
 };
+
+class TritonFilecheckTest : public TritonGemmTest {
+ public:
+  StatusOr<bool> CreateTritonIrAndFileCheck(
+      absl::string_view hlo_text, const AutotuneResult::TritonGemmKey& config,
+      TritonIrEmitter emitter, absl::string_view triton_fusion_name,
+      absl::string_view filecheck_pattern);
+};
+
+StatusOr<bool> TritonFilecheckTest::CreateTritonIrAndFileCheck(
+    absl::string_view hlo_text, const AutotuneResult::TritonGemmKey& config,
+    TritonIrEmitter emitter, absl::string_view triton_fusion_name,
+    absl::string_view filecheck_pattern) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> verified_module,
+                      ParseAndReturnVerifiedModule(hlo_text));
+
+  auto* computation =
+      verified_module->GetComputationWithName(triton_fusion_name);
+  TF_ASSIGN_OR_RETURN(auto analysis,
+                      TritonFusionAnalysis::Execute(*computation));
+
+  mlir::MLIRContext context;
+  TF_ASSIGN_OR_RETURN(
+      auto module, CreateTritonModule(analysis, "triton_fn", computation,
+                                      TestGpuDeviceInfo::RTXA6000DeviceInfo(),
+                                      config, emitter, context));
+  mlir::PassManager pm(&context);
+  pm.addPass(mlir::createCanonicalizerPass());
+  TF_RET_CHECK(pm.run(module.get()).succeeded());
+
+  std::string out;
+  llvm::raw_string_ostream os(out);
+  module->print(os);
+  return RunFileCheck(out, filecheck_pattern);
+}
+
+TEST_F(TritonFilecheckTest, TestGemm) {
+  const std::string kHloText = R"(
+HloModule t, is_scheduled=true
+
+triton_gemm_r {
+  parameter_0 = s8[80,115]{1,0} parameter(0)
+  convert.3 = f32[80,115]{1,0} convert(parameter_0)
+  parameter_1 = f32[137,115]{1,0} parameter(1)
+  ROOT r.1 = f32[80,137]{1,0} dot(convert.3, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p1 = f32[137,115]{1,0} parameter(1)
+  p0 = s8[80,115]{1,0} parameter(0)
+  ROOT triton_gemm_r = f32[80,137]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=triton_gemm_r,
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,"split_k":1,"num_stages":1,"num_warps":2}}
+})";
+  AutotuneResult::TritonGemmKey config;
+  config.set_split_k(1);
+  config.set_block_m(16);
+  config.set_block_k(32);
+  config.set_block_n(64);
+
+  ASSERT_THAT(CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul,
+                                         "triton_gemm_r", R"(
+CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<i8> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
+CHECK-DAG:  %[[ZERO_KN:.*]] = arith.constant dense<0.000000e+00> : tensor<32x64xf32>
+CHECK-DAG:  %[[ZERO_MK:.*]] = arith.constant dense<0.000000e+00> : tensor<16x32xf32>
+CHECK-DAG:  %[[ZERO_MN:.*]] = arith.constant dense<0.000000e+00> : tensor<16x64xf32>
+CHECK-DAG:  %[[SIZE_K:.*]] = arith.constant 115 : i32
+CHECK-DAG:  %[[SIZE_M:.*]] = arith.constant 137 : i64
+CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : i64
+CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : i32
+CHECK-DAG:  %[[C80:.*]] = arith.constant 80 : i64
+CHECK-DAG:  %[[TILE_SIZE_K:.*]] = arith.constant 32 : i32
+CHECK-DAG:  %[[TILE_SIZE_N:.*]] = arith.constant 64 : i32
+CHECK-DAG:  %[[TILE_SIZE_M:.*]] = arith.constant 16 : i32
+CHECK-DAG:  %[[NUM_TILES_M:.*]] = arith.constant 5 : i32
+CHECK-DAG:  %[[GROUP_M:.*]] = arith.constant 8 : i32
+CHECK-DAG:  %[[WIDTH:.*]] = arith.constant 24 : i32
+CHECK:      %[[PID_NC:.*]] = tt.get_program_id x
+CHECK:      %[[PID_K:.*]] = tt.get_program_id z
+CHECK:      %[[GROUP_ID:.*]] = arith.divsi %[[PID_NC]], %[[WIDTH]]
+CHECK:      %[[FIRST_PID_M:.*]] = arith.muli %[[GROUP_ID]], %[[GROUP_M]]
+CHECK:      %[[MAX_M:.*]] = arith.subi %[[NUM_TILES_M]], %[[FIRST_PID_M]]
+CHECK:      %[[CMP:.*]] = arith.cmpi slt, %[[MAX_M]], %[[GROUP_M]]
+CHECK:      %[[GROUP_SIZE:.*]] = arith.select %[[CMP]], %[[MAX_M]], %[[GROUP_M]]
+CHECK:      %[[PID_M:.*]] = arith.remsi %[[PID_NC]], %[[GROUP_SIZE]]
+CHECK:      %[[TILE_INDEX_M:.*]] = arith.addi %[[FIRST_PID_M]], %[[PID_M]] : i32
+CHECK:      %[[TILE_OFFSET_M:.*]] = arith.muli %[[TILE_INDEX_M]], %[[TILE_SIZE_M]]
+CHECK:      %[[TMP:.*]] = arith.remsi %[[PID_NC]], %[[WIDTH]] : i32
+CHECK:      %[[TILE_INDEX_N:.*]] = arith.divsi %[[TMP]], %[[GROUP_SIZE]] : i32
+CHECK:      %[[TILE_OFFSET_N:.*]] = arith.muli %[[TILE_INDEX_N]], %[[TILE_SIZE_N]]
+CHECK:      %[[TILE_OFFSET_K:.*]] = arith.muli %[[PID_K]], %[[TILE_SIZE_K]]
+CHECK:      %[[LHS_PTR:.*]] = tt.make_tensor_ptr %[[LHS]]
+CHECK:      %[[LHS_TILE_PTR:.*]] = tt.advance %[[LHS_PTR]], [%[[TILE_OFFSET_M]], %[[TILE_OFFSET_K]]]
+CHECK:      %[[RHS_PTR:.*]] = tt.make_tensor_ptr %[[RHS]]
+CHECK:      %[[RHS_TILE_PTR:.*]] = tt.advance %[[RHS_PTR]], [%[[TILE_OFFSET_K]], %[[TILE_OFFSET_N]]]
+CHECK:        %[[FOR:.*]]:3 = scf.for %[[BLOCK_K:.*]] = %[[C0]] to %[[SIZE_K]] step %[[TILE_SIZE_K]]
+CHECK-SAME:       iter_args(%[[LHS_ITER_PTR:.*]] = %[[LHS_TILE_PTR]], %[[RHS_ITER_PTR:.*]] = %[[RHS_TILE_PTR]], %[[ACC:.*]] = %[[ZERO_MN]])
+CHECK:        %[[LHS_TILE:.*]] = tt.load %[[LHS_ITER_PTR]] {boundaryCheck = array<i32: 1>
+CHECK:        %[[LHS_ITER_PTR_NEXT:.*]] = tt.advance %[[LHS_ITER_PTR]], [%[[C0]], %[[TILE_SIZE_K]]]
+CHECK:        %[[RHS_TILE:.*]] = tt.load %[[RHS_ITER_PTR]] {boundaryCheck = array<i32: 0, 1>
+CHECK:        %[[RHS_ITER_PTR_NEXT:.*]] = tt.advance %[[RHS_ITER_PTR]], [%[[TILE_SIZE_K]], %[[C0]]]
+CHECK:        %[[CONVERTED:.*]] = arith.sitofp %[[LHS_TILE]] : tensor<16x32xi8> to tensor<16x32xf32>
+CHECK:        %[[TILE_K_LIMIT:.*]] = arith.subi %[[SIZE_K]], %[[BLOCK_K]] : i32
+CHECK:        %[[K_OFFSET:.*]] = arith.muli %[[PID_K]], %[[TILE_SIZE_K]] : i32
+CHECK:        %[[K_OFFSET_SPLAT_K:.*]] = tt.splat %[[K_OFFSET]] : (i32) -> tensor<32xi32>
+CHECK:        %[[K_TILE_IOTA:.*]] = tt.make_range {end = 32 : i32, start = 0 : i32} : tensor<32xi32>
+CHECK:        %[[K_OFFSETS:.*]] = arith.addi %[[K_OFFSET_SPLAT_K]], %[[K_TILE_IOTA]] : tensor<32xi32>
+CHECK:        %[[K_OFFSETS_1K:.*]] = tt.expand_dims %[[K_OFFSETS]] {axis = 0 : i32} : (tensor<32xi32>) -> tensor<1x32xi32>
+CHECK:        %[[TILE_K_LIMIT_1K:.*]] = tt.splat %[[TILE_K_LIMIT]] : (i32) -> tensor<1x32xi32>
+CHECK:        %[[LHS_INBOUNDS_1K:.*]] = arith.cmpi slt, %[[K_OFFSETS_1K]], %[[TILE_K_LIMIT_1K]] : tensor<1x32xi32>
+CHECK:        %[[LHS_INBOUNDS_MK:.*]] = tt.broadcast %[[LHS_INBOUNDS_1K]] : (tensor<1x32xi1>) -> tensor<16x32xi1>
+CHECK:        %[[LHS_MASKED:.*]] = arith.select %[[LHS_INBOUNDS_MK]], %[[CONVERTED]], %[[ZERO_MK]]
+CHECK:        %[[K_OFFSETS_K1:.*]] = tt.expand_dims %[[K_OFFSETS]] {axis = 1 : i32} : (tensor<32xi32>) -> tensor<32x1xi32>
+CHECK:        %[[TILE_K_LIMIT_K1:.*]] = tt.splat %[[TILE_K_LIMIT]] : (i32) -> tensor<32x1xi32>
+CHECK:        %[[RHS_INBOUNDS_K1:.*]] = arith.cmpi slt, %[[K_OFFSETS_K1]], %[[TILE_K_LIMIT_K1]] : tensor<32x1xi32>
+CHECK:        %[[RHS_INBOUNDS_KN:.*]] = tt.broadcast %[[RHS_INBOUNDS_K1]] : (tensor<32x1xi1>) -> tensor<32x64xi1>
+CHECK:        %[[RHS_MASKED:.*]] = arith.select %[[RHS_INBOUNDS_KN]], %[[RHS_TILE]], %[[ZERO_KN]] : tensor<32x64xi1>, tensor<32x64xf32>
+CHECK:        %[[ACC_NEXT:.*]] = tt.dot %[[LHS_MASKED]], %[[RHS_MASKED]], %[[ACC]]
+CHECK:        scf.yield %[[LHS_ITER_PTR_NEXT]], %[[RHS_ITER_PTR_NEXT]], %[[ACC_NEXT]] : !tt.ptr<tensor<16x32xi8>>, !tt.ptr<tensor<32x64xf32>>, tensor<16x64xf32>
+CHECK:      }
+CHECK:      %[[OUT_PTR:.*]] = tt.make_tensor_ptr %[[OUT]], [%[[C80]], %[[SIZE_M]]], [%[[SIZE_M]], %[[C1]]], [%[[C0]], %[[C0]]] {order = array<i32: 1, 0>} : <tensor<16x64xf32>>
+CHECK:      %[[OUT_OFFSET:.*]] = tt.advance %[[OUT_PTR]], [%[[TILE_OFFSET_M]], %[[TILE_OFFSET_N]]] : <tensor<16x64xf32>>
+CHECK:      tt.store %[[OUT_OFFSET]], %[[FOR]]#2 {boundaryCheck = array<i32: 1>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<16x64xf32>>, tensor<16x64xf32>
+CHECK:      tt.return
+CHECK:    }
+)"),
+              tsl::testing::IsOkAndHolds(true));
+}
+
+TEST_F(TritonGemmTest, DoNotUseTensorCoresWithNonDefaultPrecision) {
+  const std::string kHloText = R"(
+triton_gemm_r {
+  parameter_0 = s8[80,15]{1,0} parameter(0)
+  convert.3 = f32[80,15]{1,0} convert(parameter_0)
+  parameter_1 = f32[16,15]{1,0} parameter(1)
+  ROOT r.1 = f32[80,16]{1,0} dot(convert.3, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1},
+    operand_precision={HIGH, HIGH}
+}
+
+ENTRY e {
+  p1 = f32[16,15]{1,0} parameter(1)
+  p0 = s8[80,15]{1,0} parameter(0)
+  ROOT triton_gemm_r = f32[80,16]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=triton_gemm_r,
+    backend_config={kind: "__triton_gemm", triton_gemm_config:
+      {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":2}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
+                          ParseAndReturnVerifiedModule(kHloText));
+
+  CompileAndOptionallyVerifyPtx(std::move(verified_module),
+                                R"(
+CHECK-NOT: mma
+)");
+}
 
 TEST_F(TritonGemmTest, DebugOptionsArePropagated) {
   const std::string kHloText = R"(
@@ -141,8 +263,6 @@ ENTRY e {
 
 TEST_F(TritonGemmTest, UseTensorCoresForF32OnAmpere) {
   const std::string kHloText = R"(
-HloModule t, is_scheduled=true
-
 triton_gemm_r {
   parameter_0 = s8[80,15]{1,0} parameter(0)
   convert.3 = f32[80,15]{1,0} convert(parameter_0)
@@ -156,9 +276,9 @@ ENTRY e {
   p0 = s8[80,15]{1,0} parameter(0)
   ROOT triton_gemm_r = f32[80,16]{1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_gemm_r,
-    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":2}}
+    backend_config={kind: "__triton_gemm", triton_gemm_config:
+      {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":2}}
 })";
-  CHECK(tsl::tensor_float_32_execution_enabled());
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
                           ParseAndReturnVerifiedModule(kHloText));
 
@@ -199,7 +319,8 @@ ENTRY entry {
       hlo_module->entry_computation()
           ->root_instruction()
           ->fused_instructions_computation();
-  const GpuDeviceInfo dev_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  const se::DeviceDescription dev_info =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
@@ -232,7 +353,7 @@ ENTRY entry {
                                               /*minor=*/0},
                     dev_info, config, &llvm_module, &EmitMatMul, mlir_context));
   // Use optin shared memory which is > shared_memory_per_block.
-  EXPECT_GT(result.shmem_bytes, dev_info.shared_memory_per_block);
+  EXPECT_GT(result.shmem_bytes, dev_info.shared_memory_per_block());
 }
 
 TEST_F(TritonGemmTest, WorksWhenKIsDivisibleByBlockKButNotByBlockKTimesSplitK) {
@@ -655,7 +776,8 @@ ENTRY entry {
       hlo_module->entry_computation()
           ->root_instruction()
           ->fused_instructions_computation();
-  const GpuDeviceInfo dev_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  const se::DeviceDescription dev_info =
+      TestGpuDeviceInfo::RTXA6000DeviceInfo();
   llvm::LLVMContext llvm_ctx;
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
@@ -743,6 +865,37 @@ ENTRY e {
                     // multiple times and assign block sizes on success.
                     R"(
 ; CHECK: f16[77,99,111]{2,1,0} transpose
+; CHECK: block_m
+)");
+}
+
+TEST_F(TritonGemmTest, SingleElementTileIsHandled) {
+  MatchOptimizedHlo(R"(
+t {
+  p0 = f32[2,7,3]{2,1,0} parameter(0)
+  p1 = s32[2,1]{1,0} parameter(1)
+  c = s32[] constant(1)
+  br0 = s32[2,1]{1,0} broadcast(c), dimensions={}
+  cmp = pred[2,1]{1,0} compare(p1, br0), direction=LT
+  bc0 = pred[2]{0} bitcast(cmp)
+  br1 = pred[2,1,3,3]{3,2,0,1} broadcast(bc0), dimensions={0}
+  cvt = f32[2,1,3,3]{3,2,0,1} convert(br1)
+  bc1 = f32[2,3,3]{2,1,0} bitcast(cvt)
+  ROOT d = f32[2,7,3]{2,1,0} dot(p0, bc1),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p0 = f32[2,7,3]{2,1,0} parameter(0)
+  p1 = s32[2,1]{1,0} parameter(1)
+  ROOT r = f32[2,7,3]{2,1,0} fusion(p0, p1), kind=kCustom,
+    calls=t, backend_config={"kind":"__triton_gemm"}
+})",
+                    // This partially optimized HLO will go through the
+                    // autotuner which will run the fusion through the emitter
+                    // multiple times and assign block sizes on success.
+                    R"(
 ; CHECK: block_m
 )");
 }
@@ -1550,10 +1703,11 @@ TEST_F(CompareTest, UsingOptinSharedMemoryOnAmpereProducesSameResult) {
           se::CudaComputeCapability::AMPERE)) {
     GTEST_SKIP() << "This test is for Ampere+ GPUs.";
   }
-  const GpuDeviceInfo dev_info =
-      GetGpuDeviceInfo(backend().default_stream_executor());
+  const se::DeviceDescription dev_info =
+      backend().default_stream_executor()->GetDeviceDescription();
   constexpr int kBytesOfSharedMemoryTested = 64 * 1024;
-  EXPECT_GE(dev_info.shared_memory_per_block_optin, kBytesOfSharedMemoryTested);
+  EXPECT_GE(dev_info.shared_memory_per_block_optin(),
+            kBytesOfSharedMemoryTested);
 
   const std::string kHloTextOptinShmem = R"(
 HloModule t
@@ -1599,7 +1753,7 @@ ENTRY e {
   // has the optin one should be able to execute the test.
   EXPECT_EQ(result.shmem_bytes, kBytesOfSharedMemoryTested);
   // Make sure the written config indeed has to use optin shared memory.
-  EXPECT_GT(result.shmem_bytes, dev_info.shared_memory_per_block);
+  EXPECT_GT(result.shmem_bytes, dev_info.shared_memory_per_block());
 
   const std::string kHloTextLowShmem = R"(
 HloModule t
@@ -2515,6 +2669,121 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextTest,
                                       ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4},
                                       /*run_hlo_passes=*/false));
+}
+
+class TritonGemmContractionDims : public TritonGemmTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = TritonGemmTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_ensure_minor_dot_contraction_dims(true);
+    debug_options.set_xla_gpu_triton_gemm_any(true);
+
+    return debug_options;
+  }
+};
+
+TEST_F(TritonGemmContractionDims, TritonDotForceContractionDims_1_0) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+  parameter.0 = bf16[16,40]{1,0} parameter(0)
+  parameter.1 = bf16[40,32]{1,0} parameter(1)
+  ROOT dot.31472 = bf16[16,32]{1,0} dot(parameter.0, parameter.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+
+  EXPECT_THAT(module->entry_computation()
+                  ->root_instruction()
+                  ->fused_instructions_computation()
+                  ->root_instruction(),
+              GmockMatch(m::Dot(m::Op().WithShape(BF16, {16, 40}, {1, 0}),
+                                m::Op().WithShape(BF16, {40, 32}, {0, 1}))
+                             .WithShape(BF16, {16, 32}, {1, 0})));
+}
+
+TEST_F(TritonGemmContractionDims, TritonDotForceContractionDims_1_2_1_2) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+  parameter_0 = bf16[32,4,36]{2,1,0} parameter(0)
+  parameter_1 = bf16[40,4,36]{2,1,0} parameter(1)
+  ROOT dot.16450 = bf16[4,32,40]{2,1,0} dot(parameter_0, parameter_1), lhs_batch_dims={1}, lhs_contracting_dims={2}, rhs_batch_dims={1}, rhs_contracting_dims={2}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+
+  EXPECT_THAT(module->entry_computation()
+                  ->root_instruction()
+                  ->fused_instructions_computation()
+                  ->root_instruction(),
+              GmockMatch(m::Dot(m::Op().WithShape(BF16, {32, 4, 36}, {2, 0, 1}),
+                                m::Op().WithShape(BF16, {40, 4, 36}, {2, 0, 1}))
+                             .WithShape(BF16, {4, 32, 40}, {2, 1, 0})));
+}
+
+TEST_F(TritonGemmContractionDims, TritonDotForceContractionDims_1_2_0_1) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+  parameter_1 = bf16[16,16,48]{2,1,0} parameter(1)
+  parameter_2 = bf16[16,48,32]{2,1,0} parameter(0)
+  ROOT dot.16125 = bf16[16,16,32]{2,1,0} dot(parameter_1, parameter_2), lhs_batch_dims={1}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+
+  EXPECT_THAT(
+      module->entry_computation()
+          ->root_instruction()
+          ->fused_instructions_computation()
+          ->root_instruction(),
+      GmockMatch(m::Dot(m::Op().WithShape(BF16, {16, 16, 48}, {2, 0, 1}),
+                        m::Op().WithShape(BF16, {16, 48, 32}, {1, 2, 0}))
+                     .WithShape(BF16, {16, 16, 32}, {2, 1, 0})));
+}
+
+TEST_F(TritonGemmContractionDims, TritonDotForceContractionDims_1_1) {
+  if (!GetCudaComputeCapability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
+    GTEST_SKIP() << "No BF16 before Ampere.";
+  }
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+  parameter_0 = bf16[16,32]{1,0} parameter(0)
+  parameter_1 = bf16[40,32]{0,1} parameter(1)
+  ROOT dot.15148 = bf16[16,40]{1,0} dot(parameter_0, parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(kHloText));
+  EXPECT_THAT(module->entry_computation()
+                  ->root_instruction()
+                  ->fused_instructions_computation()
+                  ->root_instruction(),
+              GmockMatch(m::Dot(m::Op().WithShape(BF16, {16, 32}, {1, 0}),
+                                m::Op().WithShape(BF16, {40, 32}, {1, 0}))
+                             .WithShape(BF16, {16, 40}, {1, 0})));
 }
 
 }  // namespace

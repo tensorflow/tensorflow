@@ -20,6 +20,9 @@ name: Update RBE Configs
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   rbe:
     name: Update RBE Configs

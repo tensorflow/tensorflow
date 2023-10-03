@@ -55,7 +55,8 @@ class OAuthClient {
  private:
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;
   Env* env_;
-  TF_DISALLOW_COPY_AND_ASSIGN(OAuthClient);
+  OAuthClient(const OAuthClient&) = delete;
+  void operator=(const OAuthClient&) = delete;
 };
 
 }  // namespace tsl

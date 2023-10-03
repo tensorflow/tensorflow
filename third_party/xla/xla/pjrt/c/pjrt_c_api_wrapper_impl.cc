@@ -1616,7 +1616,19 @@ PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args) {
       std::unique_ptr<xla::PjRtBuffer> dst_buffer,
       args->buffer->buffer->CopyToDevice(args->dst_device->device));
   args->dst_buffer =
-      new PJRT_Buffer{std::move(dst_buffer), args->buffer->client};
+      new PJRT_Buffer{std::move(dst_buffer), args->dst_device->client};
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_CopyToMemory(PJRT_Buffer_CopyToMemory_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_CopyToMemory_Args",
+      PJRT_Buffer_CopyToMemory_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtBuffer> dst_buffer,
+      args->buffer->buffer->CopyToMemorySpace(args->dst_memory->memory_space));
+  args->dst_buffer =
+      new PJRT_Buffer{std::move(dst_buffer), args->dst_memory->client};
   return nullptr;
 }
 

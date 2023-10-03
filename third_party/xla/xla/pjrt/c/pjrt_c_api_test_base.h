@@ -13,8 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include <gtest/gtest.h>
+#include "absl/types/span.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/shape.h"
 
 #ifndef XLA_PJRT_C_PJRT_C_API_TEST_BASE_H_
 #define XLA_PJRT_C_PJRT_C_API_TEST_BASE_H_
@@ -30,6 +38,20 @@ class PjrtCApiTestBase : public ::testing::Test {
   const PJRT_Api* api_;
   PJRT_Client* client_;
   void destroy_client(PJRT_Client* client);
+
+  absl::Span<PJRT_Device*> GetClientAddressableDevices() const;
+
+  PJRT_Client_BufferFromHostBuffer_Args CreateBufferFromHostBufferArgs(
+      const std::vector<float>& data, const xla::Shape& shape,
+      xla::PjRtClient::HostBufferSemantics host_buffer_semantics,
+      PJRT_Device* device = nullptr);
+
+  std::pair<std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter>,
+            xla::PjRtFuture<absl::Status>>
+  create_buffer(PJRT_Device* device = nullptr);
+
+  std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> ToUniquePtr(
+      PJRT_Error* error);
 
  private:
   PjrtCApiTestBase(const PjrtCApiTestBase&) = delete;

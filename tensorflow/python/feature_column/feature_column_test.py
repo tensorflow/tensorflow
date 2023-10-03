@@ -4924,16 +4924,19 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
       )
 
       def _initializer(shape, dtype, partition_info=None):
+        self.assertEqual(dtypes.float32, dtype)
         if partition_variables:
+          assert partition_info is not None
           self.assertEqual([vocabulary_size, embedding_dimension],
                            partition_info.full_shape)
           self.assertAllEqual((2, embedding_dimension), shape)
+          return array_ops.slice(
+              embedding_values, partition_info.var_offset, shape
+          )
         else:
           self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
           self.assertIsNone(partition_info)
-
-        self.assertEqual(dtypes.float32, dtype)
-        return embedding_values
+          return embedding_values
 
       # Expected lookup result, using combiner='mean'.
       expected_lookups = (
@@ -4976,7 +4979,12 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
       for v in global_vars:
         self.assertIsInstance(v, variables_lib.Variable)
       with _initialized_session():
-        self.assertAllEqual(embedding_values, global_vars[0])
+        if partition_variables:
+          self.assertAllEqual(
+              embedding_values, array_ops.concat(global_vars, axis=0)
+          )
+        else:
+          self.assertAllEqual(embedding_values, global_vars[0])
         self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
 
       if use_safe_embedding_lookup:
@@ -5783,16 +5791,19 @@ class SharedEmbeddingColumnTest(test.TestCase, parameterized.TestCase):
       )
 
       def _initializer(shape, dtype, partition_info=None):
+        self.assertEqual(dtypes.float32, dtype)
         if partition_variables:
+          assert partition_info is not None
           self.assertEqual([vocabulary_size, embedding_dimension],
                            partition_info.full_shape)
           self.assertAllEqual((2, embedding_dimension), shape)
+          return array_ops.slice(
+              embedding_values, partition_info.var_offset, shape
+          )
         else:
           self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
           self.assertIsNone(partition_info)
-
-        self.assertEqual(dtypes.float32, dtype)
-        return embedding_values
+          return embedding_values
 
       # Expected lookup result, using combiner='mean'.
       expected_lookups_a = (
@@ -5842,10 +5853,11 @@ class SharedEmbeddingColumnTest(test.TestCase, parameterized.TestCase):
         self.assertCountEqual(('vars/embedding_weights/part_0:0',
                                'vars/embedding_weights/part_1:0'),
                               tuple([v.name for v in global_vars]))
+        embedding_var = array_ops.concat(global_vars, axis=0)
       else:
         self.assertCountEqual(('vars/embedding_weights:0',),
                               tuple([v.name for v in global_vars]))
-      embedding_var = global_vars[0]
+        embedding_var = global_vars[0]
 
       self.evaluate(variables_lib.global_variables_initializer())
       self.evaluate(lookup_ops.tables_initializer())

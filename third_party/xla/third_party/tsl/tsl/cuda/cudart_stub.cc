@@ -16,6 +16,9 @@ limitations under the License.
 // This file wraps cuda runtime calls with dso loader so that we don't need to
 // have explicit linking to libcuda.
 
+#include <string_view>
+
+#include "absl/container/flat_hash_set.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tsl/platform/dso_loader.h"
 #include "tsl/platform/env.h"
@@ -47,11 +50,23 @@ const char *kSymbols[] = {
 
 constexpr size_t kNumSymbols = sizeof(kSymbols) / sizeof(const char *);
 
+absl::flat_hash_set<std::string_view> const &ErrorStringSymbols() {
+  static auto *syms = new absl::flat_hash_set<std::string_view>{
+      "cudaGetErrorName",
+      "cudaGetErrorString",
+  };
+  return *syms;
+}
+
 }  // namespace
 
 extern "C" {
 
-static cudaError_t CudartGetSymbolNotFoundError() {
+static const char *ReturnStringError() {
+  return "Error loading CUDA libraries. GPU will not be used.";
+}
+
+static cudaError_t GetSymbolNotFoundError() {
   return cudaErrorSharedObjectSymbolNotFound;
 }
 
@@ -62,7 +77,12 @@ void _cudart_tramp_resolve(int i) {
   CHECK_LT(i, kNumSymbols);
   void *p = LoadSymbol(kSymbols[i]);
   if (!p) {
-    p = reinterpret_cast<void *>(&CudartGetSymbolNotFoundError);
+    const auto &error_string_symbols = ErrorStringSymbols();
+    if (error_string_symbols.find(kSymbols[i]) != error_string_symbols.end()) {
+      p = reinterpret_cast<void *>(&ReturnStringError);
+    } else {
+      p = reinterpret_cast<void *>(&GetSymbolNotFoundError);
+    }
   }
   _cudart_tramp_table[i] = p;
 }

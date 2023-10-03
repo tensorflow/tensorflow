@@ -48,6 +48,9 @@ class HloModuleImporter {
   Status Import(const xla::HloModuleProto& module);
 
  private:
+  void ImportFrontendAttributes(const xla::HloModule& hlo_module,
+                                mlir::ModuleOp module);
+
   bool import_all_computation_;
   mlir::SymbolTable symbol_table_;
   mlir::Builder builder_;

@@ -19,7 +19,6 @@ limitations under the License.
 #include <complex>
 #include <cstdint>
 
-#include "xla/stream_executor/dnn.pb.h"
 #include "tsl/platform/float8.h"
 #include "tsl/protobuf/dnn.pb.h"
 

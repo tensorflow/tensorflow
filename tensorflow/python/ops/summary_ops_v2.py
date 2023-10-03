@@ -25,6 +25,8 @@ import threading
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.dtensor.python import api as dtensor_api
+from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import profiler as _profiler
 from tensorflow.python.framework import constant_op
@@ -45,21 +47,8 @@ from tensorflow.python.trackable import resource
 from tensorflow.python.training import training_util
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_contextlib
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
-
-# TODO(b/282205877): Eliminate this LazyLoader.
-# DTensor doesn't depend on summary_ops_v2.py, but it imports tensorflow.python,
-# which imports summary_ops_v2.py, creating a cyclic import without a cyclic
-# BUILD dependency. The import cycle creates errors in some unit tests, but not
-# always.
-dtensor_api = LazyLoader(
-    "api", globals(), "tensorflow.dtensor.python.api"
-)
-layout_lib = LazyLoader(
-    "layout", globals(), "tensorflow.dtensor.python.layout"
-)
 
 # Name for graph collection of summary writer init ops, which is only exposed
 # as a legacy API for tf.contrib.summary in TF 1.x.

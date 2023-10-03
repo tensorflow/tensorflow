@@ -98,7 +98,8 @@ class ClockCycleProfiler {
   double worst_clock_cycle_{0.0};
   bool valid_{true};
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ClockCycleProfiler);
+  ClockCycleProfiler(const ClockCycleProfiler&) = delete;
+  void operator=(const ClockCycleProfiler&) = delete;
 };
 
 }  // namespace tsl

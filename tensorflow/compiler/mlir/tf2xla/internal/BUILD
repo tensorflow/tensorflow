@@ -4,6 +4,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
+        "//tensorflow/compiler/mlir/tensorflow/transforms:__pkg__",
         "//tensorflow/compiler/mlir/tf2xla/api/v1:__subpackages__",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:__subpackages__",
     ],
@@ -106,6 +107,28 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "legalize_tf_mlir_test",
+    srcs = ["legalize_tf_mlir_test.cc"],
+    deps = [
+        ":legalize_tf_mlir",
+        ":test_matchers",
+        "//tensorflow/compiler/jit",
+        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/lib/monitoring:cell_reader",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:Pass",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_xla//xla:shape_util",
+    ],
+)
+
 cc_library(
     name = "legalize_tf_to_hlo",
     srcs = ["legalize_tf_to_hlo.cc"],
@@ -127,28 +150,6 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:shape_util",
         "@local_xla//xla/client:compile_only_client",
-    ],
-)
-
-tf_cc_test(
-    name = "legalize_tf_mlir_test",
-    srcs = ["legalize_tf_mlir_test.cc"],
-    deps = [
-        ":legalize_tf_mlir",
-        ":test_matchers",
-        "//tensorflow/compiler/jit",
-        "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla:xla_helpers",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/lib/monitoring:cell_reader",
-        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
-        "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
-        "@com_google_googletest//:gtest",
-        "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_xla//xla:shape_util",
     ],
 )
 
@@ -175,5 +176,30 @@ tf_cc_test(
         "@local_xla//xla:shape_util",
         "@local_xla//xla/client:client_library",
         "@local_xla//xla/stream_executor",
+    ],
+)
+
+cc_library(
+    name = "clustering_bridge_passes",
+    srcs = ["clustering_bridge_passes.cc"],
+    hdrs = ["clustering_bridge_passes.h"],
+    deps = [
+        "//tensorflow/compiler/jit:flags_headers",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+tf_cc_test(
+    name = "clustering_bridge_passes_test",
+    srcs = ["clustering_bridge_passes_test.cc"],
+    deps = [
+        ":clustering_bridge_passes",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:Pass",
     ],
 )

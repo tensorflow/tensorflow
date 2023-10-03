@@ -70,6 +70,10 @@ class FallbackState {
     return pflr_;
   }
 
+  const FunctionLibraryDefinition &func_lib_def() const {
+    return func_lib_def_;
+  }
+
  private:
   SessionOptions session_options_;
   StaticDeviceMgr device_manager_;

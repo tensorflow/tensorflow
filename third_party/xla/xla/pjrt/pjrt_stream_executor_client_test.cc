@@ -22,13 +22,22 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "absl/functional/any_invocable.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/client/client_library.h"
 #include "xla/client/xla_builder.h"
+#include "xla/literal.h"
+#include "xla/literal_comparison.h"
+#include "xla/literal_util.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/service/platform_util.h"
 #include "xla/shape_util.h"
 #include "xla/test.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
+#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
 
 namespace xla {
 namespace {
@@ -112,6 +121,44 @@ TEST(PjRtStreamExecutorClientTest, DonateSameBufferTwice) {
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
               ::testing::HasSubstr("f(donate(a), donate(a))"));
+}
+
+TEST(PjRtStreamExecutorClientTest, DonateWithControlDependency) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetClient());
+  auto literal = LiteralUtil::CreateR2({{1, 2, 3}, {4, 5, 6}});
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
+
+  auto avr = tsl::MakeUnconstructedAsyncValueRef<absl::Status>();
+  PjRtFuture<absl::Status> future(avr);
+  auto blocked_buffer =
+      std::move(*(buffer->DonateWithControlDependency(future)));
+  EXPECT_TRUE(buffer->IsDeleted());
+
+  buffer.reset();
+  absl::Mutex mu;
+  auto result_literal = std::make_shared<Literal>(
+      ShapeUtil::DeviceShapeToHostShape(blocked_buffer->on_device_shape()));
+  bool got_literal = false;
+  blocked_buffer->ToLiteral(result_literal.get(), [&](absl::Status s) {
+    absl::MutexLock l(&mu);
+    TF_ASSERT_OK(s);
+    got_literal = true;
+  });
+  blocked_buffer.reset();
+
+  EXPECT_FALSE(got_literal);
+
+  avr.emplace(tsl::OkStatus());
+  EXPECT_TRUE(future.IsReady());
+
+  {
+    absl::MutexLock l(&mu);
+    mu.Await(absl::Condition(&got_literal));
+  }
+
+  TF_ASSERT_OK(literal_comparison::Equal(literal, *result_literal));
 }
 
 }  // namespace

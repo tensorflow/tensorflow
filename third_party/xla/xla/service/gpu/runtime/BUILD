@@ -40,6 +40,21 @@ cc_library(
     ],
 )
 
+cuda_library(
+    name = "sleep_kernel_cuda",
+    srcs = if_cuda_is_configured(
+        [
+            "sleep_kernel.cu.cc",
+        ],
+    ),
+    hdrs = if_cuda_is_configured(["sleep_kernel.h"]),
+    compatible_with = [],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@local_config_cuda//cuda:cuda_headers",
+    ],
+)
+
 cc_library(
     name = "collectives",
     srcs = ["collectives.cc"],
@@ -56,11 +71,19 @@ cc_library(
         "//xla/service/gpu:gpu_executable_run_options",
         "//xla/service/gpu:nccl_collective_thunks",
         "//xla/service/gpu:thunk",
-        "//xla/stream_executor:event",
-        "//xla/stream_executor:executor_cache",
+        "//xla/stream_executor",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-    ],
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ] + if_cuda_is_configured([
+        ":sleep_kernel_cuda",
+        "@local_config_cuda//cuda:cuda_headers",
+        "//xla/stream_executor/gpu:gpu_types_header",
+        "//xla/stream_executor/gpu:gpu_stream_header",
+    ]),
 )
 
 cc_library(
@@ -395,6 +418,7 @@ cc_library(
         ":gemm",
         ":kernel_launch",
         ":support",
+        "//xla:statusor",
         "//xla/runtime:custom_call",
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
@@ -404,8 +428,10 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_graph",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/profiler/lib:profiler_lock",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
@@ -503,7 +529,7 @@ cc_library(
         "//xla/runtime:state",
         "//xla/service:executable",
         "//xla/service/gpu:matmul_utils",
-        "//xla/stream_executor:scratch_allocator",
+        "//xla/stream_executor",
         "//xla/stream_executor/cuda:cublas_lt_header",
         "@local_tsl//tsl/platform:status",
     ] + if_rocm_is_configured([
@@ -574,7 +600,7 @@ cc_library(
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
         "//xla/service:executable",
-        "//xla/stream_executor:event",
+        "//xla/stream_executor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

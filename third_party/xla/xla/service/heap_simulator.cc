@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
 #include "xla/map_util.h"
-#include "xla/service/memory_space_assignment/memory_space_assignment_repacking.h"
+#include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/status.h"
 #include "xla/util.h"
 
@@ -757,7 +757,7 @@ bool BufferIntervalTree::Remove(int64_t start, int64_t end,
     //      /
     //    left
     if (root_ == to_delete) {
-      // Deleting root is simply reseting root;
+      // Deleting root is simply resetting root;
       root_ = to_delete->left;
       return true;
     }
@@ -1493,7 +1493,7 @@ Status GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
 
 namespace {
 
-// An iterator for iterating through permuations of slice times.
+// An iterator for iterating through permutations of slice times.
 class SliceTimePermutationIterator {
  public:
   explicit SliceTimePermutationIterator(int64_t latest_slice_time)
@@ -1890,7 +1890,7 @@ ChooseBestHeapAlgorithm<BufferType>::Finish() {
 
 template class GlobalDecreasingSizeBestFitHeap<HloValue>;
 template class GlobalDecreasingSizeBestFitHeap<
-    MemorySpaceAssignmentRepacker::AllocationBlock>;
+    memory_space_assignment::MemorySpaceAssignmentRepacker::AllocationBlock>;
 template class ChooseBestHeapAlgorithm<HloValue>;
 
 }  // namespace xla

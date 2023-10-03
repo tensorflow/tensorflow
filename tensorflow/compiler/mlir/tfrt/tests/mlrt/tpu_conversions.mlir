@@ -11,7 +11,7 @@ func.func @batch_function(%arg0: tensor<i32>) -> (tensor<i32>) {
   // CHECK-NEXT: [[rendezvous_key_base:%.*]] = tf_mlrt_tpu.compile_and_execute([[batch_result]])
   // CHECK-NEXT: return [[rendezvous_key_base]]
   %0 = "tf.BatchFunction"(%arg0, %arg0) {device = "/device:CPU:0", allowed_batch_sizes = [64], batch_timeout_micros = 1 : i64, batching_queue = "", container = "", f = @callee, max_batch_size = 256 : i64, num_batch_threads = 2 : i64, operandSegmentSizes = array<i32: 1, 1>, shared_name = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-  %1 = "tf.TPUCompileMlirAndExecute"(%0) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 1, 0>, producer_name = "producer_name"} : (tensor<i32>) -> tensor<i32>
+  %1 = "tf.TPUCompileMlirAndExecute"(%0) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 1, 0>, num_operands_per_execute = 1 : ui32, producer_name = "producer_name"} : (tensor<i32>) -> tensor<i32>
   func.return %1 : tensor<i32>
 }
 
@@ -24,7 +24,7 @@ func.func @executeop_input(%arg0: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
   // CHECK: [[rendezvous_key_base:%.*]], [[result_future:%.*]] = tf_mlrt_tpu.compile_and_execute([[cast]])
   // CHECK: tf_mlrt.await [[result_future]]
   %0 = "tf.Cast"(%arg0) {__op_key = 0: i32, device = "/device:CPU:0"} : (tensor<i32>) -> tensor<f32>
-  %1, %2 = "tf.TPUCompileMlirAndExecute"(%0) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 1, 0>, producer_name = "producer_name"} : (tensor<f32>) -> (tensor<i32>, tensor<i32>)
+  %1, %2 = "tf.TPUCompileMlirAndExecute"(%0) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 1, 0>, num_operands_per_execute = 1 : ui32, producer_name = "producer_name"} : (tensor<f32>) -> (tensor<i32>, tensor<i32>)
   func.return %1, %2 : tensor<i32>, tensor<i32>
 }
 
@@ -36,7 +36,7 @@ func.func @executeop_side_effecting_input(%arg0: tensor<!tf_type.resource<tensor
   // CHECK: [[var:%.*]] = tf_mlrt.executeop.device([[device]]){{.*}}op: \22ResourceGather\22
   // CHECK: [[rendezvous_key_base:%.*]] = tf_mlrt_tpu.compile_and_execute([[var]])
   %0 = "tf.ResourceGather"(%arg0, %indices) {__op_key = 0: i32, device = "/device:CPU:0"} : (tensor<!tf_type.resource<tensor<4xf32>>>, tensor<i32>) -> tensor<f32>
-  %1 = "tf.TPUCompileMlirAndExecute"(%0) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 1, 0>, producer_name = "producer_name"} : (tensor<f32>) -> tensor<i32>
+  %1 = "tf.TPUCompileMlirAndExecute"(%0) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 1, 0>, num_operands_per_execute = 1 : ui32, producer_name = "producer_name"} : (tensor<f32>) -> tensor<i32>
   func.return %1 : tensor<i32>
 }
 
@@ -48,7 +48,7 @@ func.func @executeop_input_same_execute_op(%arg0: tensor<i32>, %arg1: tensor<2xf
   // CHECK: [[split:%.*]]:2 = tf_mlrt.executeop.device([[device]])
   // CHECK: tf_mlrt_tpu.compile_and_execute([[split]]#0, [[split]]#1)
   %0, %1 = "tf.Split"(%arg0, %arg1) {__op_key = 0: i32, device = "/device:CPU:0"} : (tensor<i32>, tensor<2xf32>) -> (tensor<f32>, tensor<f32>)
-  %2 = "tf.TPUCompileMlirAndExecute"(%0, %1) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 2, 0>, producer_name = "producer_name"} : (tensor<f32>, tensor<f32>) -> tensor<i32>
+  %2 = "tf.TPUCompileMlirAndExecute"(%0, %1) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 2, 0>, num_operands_per_execute = 2 : ui32, producer_name = "producer_name"} : (tensor<f32>, tensor<f32>) -> tensor<i32>
   func.return %2 : tensor<i32>
 }
 
@@ -65,7 +65,7 @@ func.func @executeop_dag(%arg0: tensor<i32>) -> (tensor<i32>) {
   // CHECK-NEXT: tf_mlrt_tpu.compile_and_execute
   %0 = "tf.Cast"(%arg0) {__op_key = 0: i32, device = "/device:CPU:0"} : (tensor<i32>) -> tensor<f32>
   %1 = "tf.Relu"(%0) {__op_key = 1: i32, device = "/device:CPU:0"} : (tensor<f32>) -> (tensor<f32>)
-  %2 = "tf.TPUCompileMlirAndExecute"(%1, %0) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 2, 0>, producer_name = "producer_name"} : (tensor<f32>, tensor<f32>) -> tensor<i32>
+  %2 = "tf.TPUCompileMlirAndExecute"(%1, %0) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 2, 0>, num_operands_per_execute = 1 : ui32, producer_name = "producer_name"} : (tensor<f32>, tensor<f32>) -> tensor<i32>
   func.return %2 : tensor<i32>
 }
 
@@ -79,7 +79,7 @@ func.func @test_fuse_dynamic_dimension_ops(%arg0: tensor<*xi32>, %arg1: tensor<*
   // CHECK-SAME: constant_operand_indices = array<i32: 2>
   // CHECK-SAME: num_operands = 4
   // CHECK-SAME: operands_with_static_shape = array<i32: 0, 1, 3>
-  %rendezvous_key_base, %results = "tf.TPUCompileMlirAndExecute"(%arg0, %2, %0, %1, %arg5, %arg6, %arg7) {operands_with_static_shape = [0 : i32, 1 : i32, 3 : i32], metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 4, 3>, producer_name = "producer_name"} : (tensor<*xi32>, tensor<?xi64>, tensor<*xi32>, tensor<?xi64>, tensor<?xi64>, tensor<?xi64>, tensor<?xi64>) -> (tensor<3x!tf_type.string>, tensor<*xi32>)
+  %rendezvous_key_base, %results = "tf.TPUCompileMlirAndExecute"(%arg0, %2, %0, %1, %arg5, %arg6, %arg7) {operands_with_static_shape = [0 : i32, 1 : i32, 3 : i32], metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 4, 3>, num_operands_per_execute = 3 : ui32, producer_name = "producer_name"} : (tensor<*xi32>, tensor<?xi64>, tensor<*xi32>, tensor<?xi64>, tensor<?xi64>, tensor<?xi64>, tensor<?xi64>) -> (tensor<3x!tf_type.string>, tensor<*xi32>)
   func.return %results : tensor<*xi32>
 }
 
@@ -98,7 +98,7 @@ func.func @executeop_input(%arg0: tensor<i32>) -> (tensor<i32>) {
   // CHECK: tf_mlrt.executeop
   %0 = "tf.Cast"(%arg0) {__op_key = 0: i32, device = "/device:CPU:0"} : (tensor<i32>) -> tensor<f32>
   // CHECK: [[rendezvous_key_base:%.*]], [[result:%.*]] = tf_mlrt_tpu.compile_and_execute
-  %1, %2 = "tf.TPUCompileMlirAndExecute"(%0) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 1, 0>, producer_name = "producer_name"} : (tensor<f32>) -> (tensor<i32>, tensor<i32>)
+  %1, %2 = "tf.TPUCompileMlirAndExecute"(%0) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 1, 0>, num_operands_per_execute = 1 : ui32, producer_name = "producer_name"} : (tensor<f32>) -> (tensor<i32>, tensor<i32>)
   %3 = "tf.StringFormat"(%2) {__op_key = 1: i32, device = "/job:localhost/replica:0/task:0/device:CPU:0", placeholder = "{}", strtemplate = "%s", summarize = 3 : i64, template = "Outside compiled {}"} : (tensor<i32>) -> tensor<!tf_type.string>
   "tf.PrintV2"(%3) {__op_key = 2: i32, device = "/job:localhost/replica:0/task:0/device:CPU:0", end = "\0A", output_stream = "stderr"} : (tensor<!tf_type.string>) -> ()
   // CHECK: [[handle:%.*]] = mlrt.async([[result]])
@@ -127,7 +127,7 @@ func.func @preserve_constant_args(%arg0: tensor<i32>, %arg1: tensor<*x!tf_type.r
   %0 = "tf.Cast"(%arg0) {__op_key = 3: i32, device = "/device:CPU:0"} : (tensor<i32>) -> tensor<f32>
   // CHECK: tf_mlrt_tpu.compile_and_execute({{%.*}}, [[cast]]
   // CHECK-SAME: constant_operand_indices = array<i32: 1, 3, 4>
-  %1, %2 = "tf.TPUCompileMlirAndExecute"(%0, %v1, %0, %v2, %v0, %arg0) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 6, 0>, producer_name = "producer_name"} : (tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)
+  %1, %2 = "tf.TPUCompileMlirAndExecute"(%0, %v1, %0, %v2, %v0, %arg0) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 6, 0>, num_operands_per_execute = 6 : ui32, producer_name = "producer_name"} : (tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>)
   func.return %2 : tensor<i32>
 }
 
@@ -141,7 +141,7 @@ func.func @executeop_input_async() -> (tensor<i32>, tensor<i32>) {
   // CHECK: [[rendezvous_key_base:%.*]], [[result_future:%.*]] = tf_mlrt_tpu.compile_and_execute([[recv]])
   // CHECK: tf_mlrt.await [[result_future]]
   %0 = "tf.Recv"() {__op_key = 0: i32, device = "/device:CPU:0", tensor_name = "tensor", send_device = "/device:CPU:0", send_device_incarnation = 0, recv_device = "/device:CPU:0"} : () -> tensor<f32>
-  %1, %2 = "tf.TPUCompileMlirAndExecute"(%0) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 1, 0>, producer_name = "producer_name"} : (tensor<f32>) -> (tensor<i32>, tensor<i32>)
+  %1, %2 = "tf.TPUCompileMlirAndExecute"(%0) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 1, 0>, num_operands_per_execute = 1 : ui32, producer_name = "producer_name"} : (tensor<f32>) -> (tensor<i32>, tensor<i32>)
   func.return %1, %2 : tensor<i32>, tensor<i32>
 }
 
@@ -153,7 +153,7 @@ func.func @executeop_input_async() -> (tensor<i32>, tensor<i32>) {
 func.func @main(%input0: tensor<i32>, %input1: tensor<i32>, %input2: tensor<!tf_type.variant<tensor<*xf32>>> ) -> tensor<i32> {
   %0 = "tf.Cast"(%input0) {__op_key = 0: i32, device = "/device:CPU:0"} : (tensor<i32>) -> tensor<f32>
   // CHECK: tf_mlrt_tpu.compile_and_execute
-  %1, %2 = "tf.TPUCompileMlirAndExecute"(%0) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 1, 0>, producer_name = "producer_name"} : (tensor<f32>) -> (tensor<i32>, tensor<i32>)
+  %1, %2 = "tf.TPUCompileMlirAndExecute"(%0) {metadata = "metadata", mlir_module = "mlir_module", operandSegmentSizes = array<i32: 1, 0>, num_operands_per_execute = 1 : ui32, producer_name = "producer_name"} : (tensor<f32>) -> (tensor<i32>, tensor<i32>)
   %max_iter = "tf.Const"() {__op_key = 1, value = dense<2> : tensor<i32>} : () -> tensor<i32>
   // CHECK: tf_mlrt.map_fn
   %result = "tf_mlrt.tf_map_fn"(%max_iter, %input2, %2) { operandSegmentSizes = array<i32: 1, 1, 1>, body_fn = @NopMapFnBody, num_tensor_list_or_flow_in = 1 : i32} : (tensor<i32>, tensor<!tf_type.variant<tensor<*xf32>>>, tensor<i32>) -> tensor<i32>

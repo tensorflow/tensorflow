@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -55,7 +56,6 @@ limitations under the License.
 #include "xla/service/gpu/buffer_comparator.h"
 #include "xla/service/gpu/gemm_rewriter.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/instruction_fusion.h"
@@ -80,6 +80,13 @@ limitations under the License.
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/util/proto/proto_utils.h"
+
+// Log levels used in this file:
+// VLOG(1): Overview
+// VLOG(2): Autotuning progress
+// VLOG(3): Autotuning progress - more frequent
+// VLOG(4): Print all fusions
+// VLOG(5): Profiling information for every tiling
 
 namespace xla {
 namespace gpu {
@@ -118,7 +125,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
       return OkStatus();
     }
 
-    VLOG(2) << "Processing " << hlo->ToString();
+    VLOG(4) << "Processing " << hlo->ToString();
     if (!backend_config.has_triton_gemm_config()) {
       TF_ASSIGN_OR_RETURN(
           AutotuneResult autotune_result,
@@ -131,16 +138,30 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
                 }
                 return InternalError("Expect autotune result cache hit.");
               }));
-      VLOG(2) << "Result: " << autotune_result.ShortDebugString();
+      VLOG(4) << "Result: " << autotune_result.ShortDebugString();
 
-      TF_RET_CHECK(autotune_result.has_triton());
-      *backend_config.mutable_triton_gemm_config() = autotune_result.triton();
-      TF_RETURN_IF_ERROR(hlo->set_backend_config(backend_config));
+      if (autotune_result.has_triton()) {
+        *backend_config.mutable_triton_gemm_config() = autotune_result.triton();
+        TF_RETURN_IF_ERROR(hlo->set_backend_config(backend_config));
+      } else {
+        // Falling back to cuBLAS: Converting the fusion to a Call, so that it
+        // can be inlined back again.
+        HloComputation* const computation = hlo->parent();
+        HloInstruction* const call = computation->AddInstruction(
+            HloInstruction::CreateCall(hlo->shape(), hlo->operands(),
+                                       hlo->fused_instructions_computation()));
+        TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, call));
+        hlo = call;
+      }
     }
-    const AutotuneResult::TritonGemmKey& tiling =
-        backend_config.triton_gemm_config();
-    if (tiling.split_k() > 1) {
-      TF_RETURN_IF_ERROR(MakeDotSplitKBatch(hlo, tiling));
+
+    // This cannot be the "else" branch of the previous "if".
+    if (backend_config.has_triton_gemm_config()) {
+      const AutotuneResult::TritonGemmKey& tiling =
+          backend_config.triton_gemm_config();
+      if (tiling.split_k() > 1) {
+        TF_RETURN_IF_ERROR(MakeDotSplitKBatch(hlo, tiling));
+      }
     }
 
     MarkAsChanged();
@@ -313,12 +334,12 @@ std::vector<AutotuneResult::TritonGemmKey> GetFixedMatmulAutotuneConfigs(
   return configs;
 }
 
-int GetLogEveryN() { return VLOG_IS_ON(2) ? 100 : 1000; }
+int GetLogEveryN() { return VLOG_IS_ON(3) ? 100 : 1000; }
 
 StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
     const AutotuneResult::TritonGemmKey& key,
-    const GpuDeviceInfo& gpu_device_info, const HloFusionInstruction* fusion,
-    DebugOptions debug_opts) {
+    const se::DeviceDescription& gpu_device_info,
+    const HloFusionInstruction* fusion, DebugOptions debug_opts) {
   std::unique_ptr<HloModule> new_module =
       AutotunerUtil::ExtractInstructionIntoNewModule(*fusion);
   // Reduce memory usage during compilation by disabling GPU runtime.
@@ -368,10 +389,15 @@ StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
   new_module->config().set_debug_options(debug_opts);
 
   GemmRewriter rewriter(config.GetCudaComputeCapability());
-  GpuInstructionFusion fusion_pass(/*may_duplicate=*/false,
-                                   GetGpuDeviceInfo(config.GetExecutor()));
+  GpuInstructionFusion fusion_pass(
+      /*may_duplicate=*/false, config.GetExecutor()->GetDeviceDescription());
   TF_RETURN_IF_ERROR(rewriter.Run(new_module.get()).status());
   TF_RETURN_IF_ERROR(fusion_pass.Run(new_module.get()).status());
+  // TODO(tdanyluk): Consider running GemmAlgorithmPicker here for better cuBLAS
+  // performance. It is probably not needed on Ampere and later because cuBLAS
+  // ignores the algorithm parameter for those targets. If we run
+  // GemmAlgorithmPicker, we probably should not run this in parallel with other
+  // compilations.
   return new_module;
 }
 
@@ -389,7 +415,8 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
     return executable_sets;
   }
 
-  GpuDeviceInfo gpu_device_info = GetGpuDeviceInfo(config.GetExecutor());
+  const se::DeviceDescription& gpu_device_info =
+      config.GetExecutor()->GetDeviceDescription();
 
   const int log_every_n = GetLogEveryN();
   int64_t config_count = 0;
@@ -596,7 +623,6 @@ StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
     }
     cublas_duration = output.duration;
   }
-  VLOG(3) << "Running with cuBLAS took: " << cublas_duration;
 
   const int log_every_n = GetLogEveryN();
   int64_t executable_count =
@@ -606,7 +632,7 @@ StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
   VLOG(2) << "Running " << executable_count << " configs for " << fusion->name()
           << ".";
   for (const ExecutableCandidate& candidate : executable_set.candidates) {
-    VLOG(3) << "Trying triton tiling: " << candidate.config.ShortDebugString();
+    VLOG(5) << "Trying triton tiling: " << candidate.config.ShortDebugString();
 
     AutotuneResult res;
     *res.mutable_triton() = candidate.config;
@@ -621,11 +647,11 @@ StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
     }
 
     if (!profiling_output) {
-      VLOG(3) << "Skipping this tiling.";
+      VLOG(5) << "Skipping this tiling.";
       continue;
     }
 
-    VLOG(3) << "Running the kernel took: " << profiling_output->duration;
+    VLOG(5) << "Running the kernel took: " << profiling_output->duration;
     if (profiling_output->duration >= absl::Seconds(1)) {
       LOG(WARNING) << "Slow kernel for " << fusion->name()
                    << " took: " << profiling_output->duration
@@ -668,10 +694,28 @@ StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
   VLOG(2) << "Done running.";
 
   TF_ASSIGN_OR_RETURN(
-      AutotuneResult best,
+      AutotuneResult best_triton,
       PickBestResult(results, root.ToString(), root.GetModule()->config()));
 
-  return best;
+  if (debug_opts.xla_gpu_cublas_fallback()) {
+    const absl::Duration best_triton_duration =
+        tsl::proto_utils::FromDurationProto(best_triton.run_time());
+    VLOG(2) << fusion->name() << ": time with cuBLAS: " << cublas_duration
+            << ", best time with Triton: " << best_triton_duration;
+    if (cublas_duration < best_triton_duration) {
+      VLOG(2) << "Falling back to cuBLAS for " << fusion->name();
+
+      AutotuneResult cublas;
+      *cublas.mutable_run_time() =
+          tsl::proto_utils::ToDurationProto(cublas_duration);
+      // We will ignore this value anyway.
+      cublas.mutable_gemm()->set_algorithm(CUBLAS_GEMM_DEFAULT);
+
+      return cublas;
+    }
+  }
+
+  return best_triton;
 }
 
 Status DumpAutotunedFusions(const AutotuneConfig& config,
@@ -682,8 +726,8 @@ Status DumpAutotunedFusions(const AutotuneConfig& config,
                       util.ExtractModule([&](const DebugOptions& debug_opts) {
                         return TritonGemmAutotuneExtractor(
                             result.triton(),
-                            GetGpuDeviceInfo(config.GetExecutor()), fusion,
-                            debug_opts);
+                            config.GetExecutor()->GetDeviceDescription(),
+                            fusion, debug_opts);
                       }));
   module->set_name(std::string(fusion->name()));
   // Using the original module for its debug info and name in the first

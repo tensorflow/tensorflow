@@ -47,7 +47,7 @@ class GpuDummyCompiler : public GpuCompiler {
   GpuDummyCompiler() : GpuCompiler(kDummyTestId, kDummyTriple, kDummyLayout) {}
 
   Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, GpuVersion gpu_version,
+      HloModule* hlo_module, se::GpuComputeCapability gpu_version,
       se::dnn::VersionInfo dnn_version,
       se::DeviceMemoryAllocator* device_allocator) {
     return OkStatus();
@@ -61,6 +61,7 @@ class GpuDummyCompiler : public GpuCompiler {
     return OkStatus();
   }
 
+<<<<<<< HEAD
   GpuVersion GetGpuVersion(se::StreamExecutor*) override {
 #if GOOGLE_CUDA
     return se::CudaComputeCapability{0, 0};
@@ -69,10 +70,12 @@ class GpuDummyCompiler : public GpuCompiler {
 #endif      
   }
 
+=======
+>>>>>>> upstream/master
   StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
-      GpuVersion gpu_version, bool relocatable, const HloModule* debug_module,
-      const CompileOptions& options) override {
+      se::GpuComputeCapability gpu_version, bool relocatable,
+      const HloModule* debug_module, const CompileOptions& options) override {
     std::vector<uint8_t> compiled_results;
     return std::pair<std::string, std::vector<uint8_t>>(
         "", std::move(compiled_results));

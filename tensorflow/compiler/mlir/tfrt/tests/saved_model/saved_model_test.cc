@@ -19,6 +19,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/strings/match.h"
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
@@ -188,6 +190,39 @@ TEST(SavedModelTest, ConvertTfMlirToBefExportingXlaReduceWindow) {
                 .GetFunctionLibraryDefinition()
                 ->num_functions(),
             2);
+}
+
+TEST(SavedModelTest, AddXlaFunctionsOutputFunctionNames) {
+  std::string saved_model_mlir_path = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/compiler/mlir/tfrt/tests/saved_model/testdata/"
+      "xla_launch_xla_reduce_window.mlir");
+
+  mlir::DialectRegistry registry;
+  mlir::RegisterAllTensorFlowDialects(registry);
+  mlir::MLIRContext context(registry);
+  auto module =
+      mlir::parseSourceFile<mlir::ModuleOp>(saved_model_mlir_path, &context);
+  ASSERT_TRUE(module);
+
+  tfrt::BefBuffer bef_buffer;
+  auto runtime =
+      tensorflow::tfrt_stub::Runtime::Create(/*num_inter_op_threads=*/1);
+  tfrt_stub::GraphExecutionOptions options(runtime.get());
+  options.compile_options.device_target = TfrtDeviceInfraTarget::kGpu;
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<tfrt_stub::FallbackState> fallback_state,
+      tfrt_stub::FallbackState::Create(SessionOptions(), FunctionDefLibrary()));
+
+  tfrt::ResourceContext resource_context;
+  tfrt_stub::ModelRuntimeContext model_context(
+      &options, options.compile_options.saved_model_dir, &resource_context);
+
+  std::vector<std::string> function_names;
+  TF_ASSERT_OK(ConvertTfMlirToBef(options.compile_options, module.get(),
+                                  &bef_buffer, model_context,
+                                  fallback_state.get(), &function_names));
+  EXPECT_THAT(function_names, ::testing::SizeIs(2));
 }
 
 // TODO(b/162442824): Add a SavedModel test that covers the error pass.

@@ -136,8 +136,10 @@ StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
       Compiler::CompileOptions{&allocator_, /*thread_pool=*/nullptr,
                                /*layout_canonicalization_callback=*/{},
                                /*is_autotuning_compilation=*/true});
-  if (out.status().code() == absl::StatusCode::kResourceExhausted) {
+  if (out.status().code() == absl::StatusCode::kResourceExhausted ||
+      out.status().code() == absl::StatusCode::kCancelled) {
     // Being out of shared memory budget is an expected failure.
+    // Cancelling upon register spilling is also an expected failure.
     return std::unique_ptr<Executable>();
   }
   return out;

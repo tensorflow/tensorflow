@@ -23,7 +23,7 @@
 // CHECK:         store i8 %[[VAL_16]], ptr %[[VAL_17:.*]], align 1
 // CHECK:         br label %[[VAL_7]]
 
-HloModule xla_computation_f.8
+HloModule xla_computation_f.8, is_scheduled=true
 
 // Since the conversion to MLIR goes through completely different code paths
 // depending on whether an op is fused or not, this separately tests pred
