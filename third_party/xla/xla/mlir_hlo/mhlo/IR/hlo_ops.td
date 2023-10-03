@@ -2085,7 +2085,7 @@ def MHLO_BroadcastOp : MHLO_ShapedInterfaceOp<"broadcast",
 }
 
 def MHLO_BroadcastInDimOp : MHLO_Op<"broadcast_in_dim",
-      [Pure, SameOperandsAndResultElementType]> {
+      [Pure, HLO_CompatibleOperandsAndResultElementType]> {
   let summary = "BroadcastInDim operation";
   let description = [{
     Expands the dimensions and/or rank of an input tensor by duplicating the
