@@ -51,14 +51,16 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
-#include "tsl/cuda/cudnn_version.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 #include "tsl/util/env_var.h"
 
 // clang-format off
+#include "third_party/gpus/cuda/include/library_types.h"
 #include "third_party/gpus/cudnn/cudnn.h"
+#include "third_party/gpus/cudnn/cudnn_version.h"
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
@@ -180,6 +182,20 @@ class CudnnHandle {
   std::unique_ptr<absl::MutexLock> lock_;
   cudnnHandle_t handle_;  // Not owned.
 };
+
+// Major version is neither forward or backward compatible and therefore major
+// versions needs to match between source and library.
+//
+// Minor version is backward-compatible and therefore minor version of library
+// needs to be same or higher.
+//
+// Patch releases are always forward and backward compatible and therefore
+// need not match.
+bool IsSourceCompatibleWithCudnnLibrary(dnn::VersionInfo source_version,
+                                        dnn::VersionInfo loaded_version) {
+  return loaded_version.major_version() == source_version.major_version() &&
+         loaded_version.minor_version() >= source_version.minor_version();
+}
 
 }  // namespace
 
@@ -333,11 +349,11 @@ cudnnRNNAlgo_t ToCudnnRNNAlgo(std::optional<dnn::AlgorithmDesc> algorithm) {
   }
 }
 
-tsl::Status GetLoadedCudnnVersion(CudnnVersion* version) {
-  TF_ASSIGN_OR_RETURN(version->major_version, GetCudnnProperty(MAJOR_VERSION));
-  TF_ASSIGN_OR_RETURN(version->minor_version, GetCudnnProperty(MINOR_VERSION));
-  TF_ASSIGN_OR_RETURN(version->patch_level, GetCudnnProperty(PATCH_LEVEL));
-  return ::tsl::OkStatus();
+tsl::StatusOr<dnn::VersionInfo> GetLoadedCudnnVersion() {
+  TF_ASSIGN_OR_RETURN(int major, GetCudnnProperty(MAJOR_VERSION));
+  TF_ASSIGN_OR_RETURN(int minor, GetCudnnProperty(MINOR_VERSION));
+  TF_ASSIGN_OR_RETURN(int patch_level, GetCudnnProperty(PATCH_LEVEL));
+  return dnn::VersionInfo(major, minor, patch_level);
 }
 
 enum class PreloadCudnnType { ConvFwd, ConvBwdFilter, ConvBwdData, Rnn };
@@ -415,10 +431,10 @@ tsl::Status CudnnSupport::Init() {
   cudnnHandle_t cudnn_handle = nullptr;
   const auto status = cudnnCreate(&cudnn_handle);
   if (status == CUDNN_STATUS_SUCCESS) {
-    CudnnVersion source_version(CUDNN_MAJOR, CUDNN_MINOR, CUDNN_PATCHLEVEL);
+    dnn::VersionInfo source_version(CUDNN_MAJOR, CUDNN_MINOR, CUDNN_PATCHLEVEL);
 
-    CudnnVersion loaded_version;
-    TF_RETURN_IF_ERROR(GetLoadedCudnnVersion(&loaded_version));
+    TF_ASSIGN_OR_RETURN(dnn::VersionInfo loaded_version,
+                        GetLoadedCudnnVersion());
     if (!IsSourceCompatibleWithCudnnLibrary(source_version, loaded_version)) {
       const std::string error = absl::StrCat(
           "Loaded runtime CuDNN library: ", loaded_version.ToString(),
@@ -469,10 +485,7 @@ void CudnnSupport::NotifyStreamDestroyed(Stream* stream) /* override */ {
 }
 
 tsl::StatusOr<stream_executor::dnn::VersionInfo> CudnnSupport::GetVersion() {
-  CudnnVersion version;
-  TF_RETURN_IF_ERROR(GetLoadedCudnnVersion(&version));
-  return stream_executor::dnn::VersionInfo(
-      version.major_version, version.minor_version, version.patch_level);
+  return GetLoadedCudnnVersion();
 }
 
 namespace {

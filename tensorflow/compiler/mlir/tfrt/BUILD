@@ -705,6 +705,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tf2xla/api/v1:tf_dialect_to_executor",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
