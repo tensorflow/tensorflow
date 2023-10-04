@@ -89,7 +89,8 @@ class EventInterface {
   virtual ~EventInterface() = default;
 
  private:
-  SE_DISALLOW_COPY_AND_ASSIGN(EventInterface);
+  EventInterface(const EventInterface&) = delete;
+  void operator=(const EventInterface&) = delete;
 };
 
 //===----------------------------------------------------------------------===//
@@ -118,7 +119,8 @@ class KernelInterface {
   virtual KernelCacheConfig GetPreferredCacheConfig() const = 0;
 
  private:
-  SE_DISALLOW_COPY_AND_ASSIGN(KernelInterface);
+  KernelInterface(const KernelInterface&) = delete;
+  void operator=(const KernelInterface&) = delete;
 };
 
 //===----------------------------------------------------------------------===//
@@ -164,7 +166,8 @@ class CommandBufferInterface {
   virtual CommandBuffer::Mode mode() const = 0;
 
  private:
-  SE_DISALLOW_COPY_AND_ASSIGN(CommandBufferInterface);
+  CommandBufferInterface(const CommandBufferInterface&) = delete;
+  void operator=(const CommandBufferInterface&) = delete;
 };
 
 //===----------------------------------------------------------------------===//
@@ -206,7 +209,8 @@ class StreamInterface {
   virtual void** GpuStreamMemberHack() { return nullptr; }
 
  private:
-  SE_DISALLOW_COPY_AND_ASSIGN(StreamInterface);
+  StreamInterface(const StreamInterface&) = delete;
+  void operator=(const StreamInterface&) = delete;
 };
 
 //===----------------------------------------------------------------------===//
@@ -439,7 +443,8 @@ class StreamExecutorInterface {
   virtual Stream* FindAllocatedStream(void* /*gpu_stream*/) { return nullptr; }
 
  private:
-  SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutorInterface);
+  StreamExecutorInterface(const StreamExecutorInterface&) = delete;
+  void operator=(const StreamExecutorInterface&) = delete;
 };
 
 }  // namespace internal

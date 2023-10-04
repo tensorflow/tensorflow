@@ -94,7 +94,8 @@ class CudaPlatform : public Platform {
   // manager.
   int limit_numa_node_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(CudaPlatform);
+  CudaPlatform(const CudaPlatform&) = delete;
+  void operator=(const CudaPlatform&) = delete;
 };
 
 }  // namespace gpu

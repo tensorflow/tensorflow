@@ -1019,7 +1019,8 @@ class CudnnPoolingDescriptor {
  private:
   PoolingDescriptor handle_;  // Owned.
 
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnPoolingDescriptor);
+  CudnnPoolingDescriptor(const CudnnPoolingDescriptor&) = delete;
+  void operator=(const CudnnPoolingDescriptor&) = delete;
 };
 
 // Turns a NormalizeDescriptor structure into a cudnn LRN descriptor handle.
@@ -1057,7 +1058,8 @@ class CudnnNormalizeDescriptor {
  private:
   LrnDescriptor handle_;  // Owned.
 
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnNormalizeDescriptor);
+  CudnnNormalizeDescriptor(const CudnnNormalizeDescriptor&) = delete;
+  void operator=(const CudnnNormalizeDescriptor&) = delete;
 };
 
 // Turns a ActivationDescriptor structure into a cudnn activation
@@ -1254,7 +1256,8 @@ class CudnnDropoutDescriptor {
 
  private:
   DropoutDescriptor handle_;  // Owned.
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnDropoutDescriptor);
+  CudnnDropoutDescriptor(const CudnnDropoutDescriptor&) = delete;
+  void operator=(const CudnnDropoutDescriptor&) = delete;
 };
 
 class CudnnRnnParamsDescriptor {
@@ -1286,7 +1289,8 @@ class CudnnRnnParamsDescriptor {
   int64_t params_size_in_bytes_;
   ParamsRegions weights_;
   ParamsRegions biases_;
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnRnnParamsDescriptor);
+  CudnnRnnParamsDescriptor(const CudnnRnnParamsDescriptor&) = delete;
+  void operator=(const CudnnRnnParamsDescriptor&) = delete;
 };
 
 }  // namespace
@@ -1488,7 +1492,8 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
   dnn::AlgorithmConfig algorithm_config_;
   CudnnDropoutDescriptor dropout_desc_;
   CudnnRnnParamsDescriptor params_desc_;
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnRnnDescriptor);
+  CudnnRnnDescriptor(const CudnnRnnDescriptor&) = delete;
+  void operator=(const CudnnRnnDescriptor&) = delete;
 };
 
 #if CUDNN_VERSION >= 7603
@@ -1508,7 +1513,8 @@ class CudnnCtcLossDescriptor {
  private:
   CtcLossDescriptor handle_;  // Owned
 
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnCtcLossDescriptor);
+  CudnnCtcLossDescriptor(const CudnnCtcLossDescriptor&) = delete;
+  void operator=(const CudnnCtcLossDescriptor&) = delete;
 };
 #else
 // dummy class
@@ -1783,7 +1789,9 @@ class CudnnRnnSequenceTensorDescriptor
   TensorDescriptor handle_;
   RNNDataDescriptor rnn_data_handle_;
   std::vector<cudnnTensorDescriptor_t> handles_;  // Copies of handle_.
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnRnnSequenceTensorDescriptor);
+  CudnnRnnSequenceTensorDescriptor(const CudnnRnnSequenceTensorDescriptor&) =
+      delete;
+  void operator=(const CudnnRnnSequenceTensorDescriptor&) = delete;
 };
 
 class CudnnRnnStateTensorDescriptor : public dnn::RnnStateTensorDescriptor {
@@ -1814,7 +1822,8 @@ class CudnnRnnStateTensorDescriptor : public dnn::RnnStateTensorDescriptor {
   int num_layers_;
   int batch_size_;
   int data_size_;
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnRnnStateTensorDescriptor);
+  CudnnRnnStateTensorDescriptor(const CudnnRnnStateTensorDescriptor&) = delete;
+  void operator=(const CudnnRnnStateTensorDescriptor&) = delete;
 };
 
 namespace {

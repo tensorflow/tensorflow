@@ -387,7 +387,8 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   absl::flat_hash_map<void*, Stream*> alive_gpu_streams_
       ABSL_GUARDED_BY(alive_gpu_streams_mu_);
 
-  SE_DISALLOW_COPY_AND_ASSIGN(GpuExecutor);
+  GpuExecutor(const GpuExecutor&) = delete;
+  void operator=(const GpuExecutor&) = delete;
 };
 
 inline GpuExecutor* ExtractGpuExecutor(StreamExecutor* stream_exec) {

@@ -89,7 +89,8 @@ class Diagnostician {
 
   static std::string GetDevNodePath(int dev_node_ordinal);
 
-  SE_DISALLOW_COPY_AND_ASSIGN(Diagnostician);
+  Diagnostician(const Diagnostician&) = delete;
+  void operator=(const Diagnostician&) = delete;
 };
 
 }  // namespace gpu

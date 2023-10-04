@@ -268,7 +268,8 @@ class CuptiErrorManager : public xla::profiler::CuptiInterface {
   // Prevent recursive undo if an UndoFunction fails.
   bool undo_disabled_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CuptiErrorManager);
+  CuptiErrorManager(const CuptiErrorManager&) = delete;
+  void operator=(const CuptiErrorManager&) = delete;
 };
 
 }  // namespace profiler

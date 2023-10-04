@@ -1492,7 +1492,8 @@ class Stream {
     }
   }
 
-  SE_DISALLOW_COPY_AND_ASSIGN(Stream);
+  Stream(const Stream &) = delete;
+  void operator=(const Stream &) = delete;
 };
 
 ////////////
