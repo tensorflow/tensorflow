@@ -1706,7 +1706,6 @@ target computation.
 'metadata' is a serialized TPUCompileMetadataProto describing the shapes and
 types of the inputs to the computation, as well as a mapping onto the TPU pod
 topology.
-'num_operands_per_execute' is the number of operands that each partition(execution on one tpu core) takes.
 'producer_name' is a string describing the name of the framework that add support for running this portion of the model on TPUs.
   }];
 
@@ -1716,7 +1715,6 @@ topology.
     OptionalAttr<I32ArrayAttr>:$operands_with_static_shape,
     DefaultValuedStrAttr<StrAttr, "">:$mlir_module,
     StrAttr:$metadata,
-    UI32Attr:$num_operands_per_execute,
     StrAttr:$producer_name
   );
 
