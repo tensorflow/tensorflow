@@ -312,6 +312,22 @@ foreach p = [[TF_EqualOp, MHLO_ComparisonDirectionValue<"EQ">],
              [TF_NotEqualOp, MHLO_ComparisonDirectionValue<"NE">]] in {
   def : Pat<(MHLO_CompareOp $l, $r, p[1], IsMhloTFCompareType:$type),
             (p[0] $l, $r, ConstBoolAttrTrue)>;
+  def : Pat<(MHLO_CompareOp (MHLO_BroadcastInDimOp:$output
+                              $bcast_operand,
+                              $broadcast_dimensions),
+                            $r,
+                            p[1],
+                            IsMhloTFCompareType:$type),
+            (p[0] $bcast_operand, $r, ConstBoolAttrTrue),
+            [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
+  def : Pat<(MHLO_CompareOp $l,
+                            (MHLO_BroadcastInDimOp:$output
+                              $bcast_operand,
+                              $broadcast_dimensions),
+                            p[1],
+                            IsMhloTFCompareType:$type),
+            (p[0] $l, $bcast_operand, ConstBoolAttrTrue),
+            [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
 }
 
 foreach p = [[TF_GreaterEqualOp, CHLO_ComparisonDirectionValue<"GE">],
