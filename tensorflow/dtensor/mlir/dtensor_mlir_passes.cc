@@ -348,9 +348,6 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
     // library.
     pm->addPass(CreateFunctionRenamingPass());
 
-    // Expands the DTensor call ops across devices within a "multi-device" main.
-    pm->addPass(CreateDTensorMultiDeviceExpansionPass());
-
     // As DTensor SPMD expansion handles sharded inputs for model
     // parallelism, we set input/output sharding to maximal sharding
     // for inputs/outputs of the TPU computation.
@@ -392,6 +389,8 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
     // and transfer program key using send/recv operations.
     pm->addPass(CreateDTensorMoveCompilationToHost());
     pm->addPass(mlir::createSymbolDCEPass());
+    // Expands the DTensor call ops across devices within a "multi-device" main.
+    pm->addPass(CreateDTensorMultiDeviceExpansionPass());
   }
 
   pm->addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
@@ -401,6 +400,8 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
   pm->addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm->addPass(mlir::CreateBreakUpIslandsPass());
+  pm->addNestedPass<mlir::func::FuncOp>(
+      mlir::TFDevice::CreateParallelExecuteToIslandsPass());
   pm->addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateLaunchToDeviceAttributePass());
   // Add additional BreakUpIslandPass as LaunchToDeviceAttribute pass may have
