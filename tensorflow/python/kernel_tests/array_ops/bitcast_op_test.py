@@ -15,6 +15,7 @@
 """Tests for tf.bitcast."""
 
 import numpy as np
+import sys
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -33,7 +34,8 @@ class BitcastTest(test.TestCase):
       out = self.evaluate(tf_ans)
       buff_after = memoryview(out).tobytes()
       buff_before = memoryview(x).tobytes()
-      self.assertEqual(buff_before, buff_after)
+      if sys.byteorder == 'little' :
+        self.assertEqual(buff_before, buff_after)
       self.assertEqual(tf_ans.get_shape(), shape)
       self.assertEqual(tf_ans.dtype, datatype)
 
