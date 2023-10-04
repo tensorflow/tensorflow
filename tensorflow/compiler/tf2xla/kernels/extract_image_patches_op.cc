@@ -178,7 +178,8 @@ class ExtractImagePatchesOp : public XlaOpKernel {
   Padding padding_;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ExtractImagePatchesOp);
+  ExtractImagePatchesOp(const ExtractImagePatchesOp&) = delete;
+  void operator=(const ExtractImagePatchesOp&) = delete;
 };
 
 // We don't support integers for the convolution for GPU used in the

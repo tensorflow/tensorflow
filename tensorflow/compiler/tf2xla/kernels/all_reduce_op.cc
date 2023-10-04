@@ -85,7 +85,8 @@ class CollectiveReduceV2Op : public XlaOpKernel {
   string final_op_name_;
   string communication_hint_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CollectiveReduceV2Op);
+  CollectiveReduceV2Op(const CollectiveReduceV2Op&) = delete;
+  void operator=(const CollectiveReduceV2Op&) = delete;
 };
 
 class CollectiveAssignGroupV2Op : public XlaOpKernel {

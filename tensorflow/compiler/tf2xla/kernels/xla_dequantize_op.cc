@@ -51,7 +51,8 @@ class XlaDequantizeOp : public XlaOpKernel {
   float max_range_;
   bool transpose_output_;
   string mode_;
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaDequantizeOp);
+  XlaDequantizeOp(const XlaDequantizeOp&) = delete;
+  void operator=(const XlaDequantizeOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaDequantize"), XlaDequantizeOp);
