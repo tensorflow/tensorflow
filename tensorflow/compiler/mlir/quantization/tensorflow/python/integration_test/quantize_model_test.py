@@ -5900,6 +5900,18 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
       # should be the same.
       self.assertAllEqual(output_value, dump_file_numpy)
 
+      # Verify if quant_unit.pb file was created correctly.
+      quant_unit_file_path = os.path.join(log_dir_path, folder, 'quant_unit.pb')
+
+      quant_unit = (
+          quant_opts_pb2.UnitWiseQuantizationSpec.QuantizationUnit.FromString(
+              open(quant_unit_file_path, 'rb').read()
+          )
+      )
+
+      self.assertEqual(quant_unit.node_name, 'Conv2D')
+      self.assertRegex(quant_unit.func_name, r'^__inference_conv_\d+')
+
   @parameterized.named_parameters(
       {
           'testcase_name': 'none',
@@ -6012,6 +6024,17 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
     # should be the same.
     self.assertAllEqual(quantized_output_value, quantized_dump_file_numpy)
     self.assertAllEqual(unquantized_output_value, unquantized_dump_file_numpy)
+
+    # Verify if quant_unit.pb file was created correctly.
+    quant_unit_file_path = os.path.join(log_dir_path, folder, 'quant_unit.pb')
+    quant_unit = (
+        quant_opts_pb2.UnitWiseQuantizationSpec.QuantizationUnit.FromString(
+            open(quant_unit_file_path, 'rb').read()
+        )
+    )
+
+    self.assertEqual(quant_unit.node_name, 'Conv2D')
+    self.assertRegex(quant_unit.func_name, r'^__inference_conv_\d+')
 
 
 @test_util.run_all_in_graph_and_eager_modes
