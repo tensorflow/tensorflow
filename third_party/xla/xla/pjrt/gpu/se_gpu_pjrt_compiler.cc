@@ -32,7 +32,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/client/local_client.h"
 #include "xla/pjrt/mlir_to_hlo.h"
-#include "xla/pjrt/stream_executor_unloaded_executable.h"
+#include "xla/pjrt/stream_executor_executable.h"
 #include "xla/pjrt/utils.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/executable.pb.h"
@@ -139,7 +139,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> AotCompile(
       std::vector<std::unique_ptr<AotCompilationResult>> aot_results,
       gpu_compiler.CompileAheadOfTime(std::move(unique_module_group),
                                       aot_options));
-  return std::make_unique<StreamExecutorUnloadedExecutable>(
+  return std::make_unique<StreamExecutorExecutable>(
       std::move(input_options), std::move(aot_results), num_replicas,
       num_partitions, name);
 }

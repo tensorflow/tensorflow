@@ -377,8 +377,8 @@ cc_library(
 )
 
 tf_proto_library(
-    name = "stream_executor_unloaded_executable_proto",
-    srcs = ["stream_executor_unloaded_executable.proto"],
+    name = "stream_executor_executable_proto",
+    srcs = ["stream_executor_executable.proto"],
     cc_api_version = 2,
     protodeps = [
         ":compile_options_proto",
@@ -388,13 +388,13 @@ tf_proto_library(
 )
 
 cc_library(
-    name = "stream_executor_unloaded_executable",
-    srcs = ["stream_executor_unloaded_executable.cc"],
-    hdrs = ["stream_executor_unloaded_executable.h"],
+    name = "stream_executor_executable",
+    srcs = ["stream_executor_executable.cc"],
+    hdrs = ["stream_executor_executable.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_executable",
-        ":stream_executor_unloaded_executable_proto_cc",
+        ":stream_executor_executable_proto_cc",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
