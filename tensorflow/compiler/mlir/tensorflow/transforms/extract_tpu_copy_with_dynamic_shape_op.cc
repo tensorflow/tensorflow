@@ -20,7 +20,9 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
@@ -53,12 +55,20 @@ Operation* GetOpOfValue(Value value) {
 // Check if the TPUCopyWithDynamicShapeOp is valid.
 // 1. The op should be wrapped inside a launch op.
 // 2. The wrapped launch op should be placed on CPU.
-bool IsOpValid(Operation* op) {
+LogicalResult CheckOpIsValid(Operation* op) {
   auto launch_op = llvm::dyn_cast<tf_device::LaunchOp>(op->getParentOp());
-  if (!launch_op) return false;
+  if (!launch_op) {
+    op->emitError() << "TPUCopyWithDynamicShapeOp is not in a launch";
+  }
   std::string device_str = launch_op.getDeviceAttr().getValue().str();
-  return device_str == tensorflow::GetDeviceAliasForHostOfLogicalCore(0) ||
-         device_str == "/job:localhost/replica:0/task:0/device:CPU:0";
+  if (device_str != tensorflow::GetDeviceAliasForHostOfLogicalCore(0) &&
+      device_str != "/job:localhost/replica:0/task:0/device:CPU:0") {
+    op->emitError()
+        << "TPUCopyWithDynamicShapeOp's device is not a recognized host 0: "
+        << device_str;
+    return failure();
+  }
+  return success();
 }
 
 // Check if we can move TPUCopyWithDynamicShapeOp out of a launch. This is the
@@ -167,14 +177,16 @@ void UpdateReturnOpResultWithLaunchOpResult(tf_device::LaunchOp* launch_op) {
 
 void ExtractTPUCopyWithDynamicShapeOpPass::runOnOperation() {
   llvm::SmallVector<Operation*, 4> tpu_copy_with_dynamic_shape_ops;
-  getOperation().walk([&](Operation* op) {
+  auto walk_result = getOperation().walk([&](Operation* op) {
     if (isa<TF::TPUCopyWithDynamicShapeOp>(op)) {
-      if (!IsOpValid(op)) return signalPassFailure();
+      if (failed(CheckOpIsValid(op))) return WalkResult::interrupt();
       if (CanMove(op)) {
         tpu_copy_with_dynamic_shape_ops.push_back(op);
       }
     }
+    return WalkResult::advance();
   });
+  if (walk_result.wasInterrupted()) return signalPassFailure();
 
   for (Operation* op : tpu_copy_with_dynamic_shape_ops) {
     OpBuilder builder(op);
