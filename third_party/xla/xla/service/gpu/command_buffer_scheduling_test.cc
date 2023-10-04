@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -33,7 +34,7 @@ class CommandBufferSchedulingTest : public HloTestBase {};
 
 TEST_F(CommandBufferSchedulingTest, SingleFusion) {
   const char* hlo = R"(
-      HloModule TestModule
+      HloModule TestModule, is_scheduled=true
 
       %fused_computation (param_0: s32[], param_1: s32[]) -> s32[] {
         %p0 = s32[] parameter(0)
@@ -58,12 +59,16 @@ TEST_F(CommandBufferSchedulingTest, SingleFusion) {
 // CHECK:   %a = s32[] parameter(0)
 // CHECK:   %b = s32[] parameter(1)
 // CHECK:   ROOT %call = s32[] call(%a, %b), to_apply=%command_buffer
-// CHECK: })");
+// CHECK: })",
+                            [](HloModule* module) {
+                              EXPECT_TRUE(module->has_schedule());
+                              TF_CHECK_OK(module->schedule().Verify());
+                            });
 }
 
 TEST_F(CommandBufferSchedulingTest, CollectCommandBufferSequence) {
   const char* hlo = R"(
-      HloModule TestModule
+      HloModule TestModule, is_scheduled=true
 
       %fused_computation(param_0: s32[], param_1: s32[]) -> s32[] {
         %p0 = s32[] parameter(0)

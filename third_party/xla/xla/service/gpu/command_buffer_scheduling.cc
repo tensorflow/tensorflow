@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/statusor.h"
+#include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
@@ -118,6 +119,9 @@ CommandBufferScheduling::CollectCommandBufferSequences(
 StatusOr<bool> CommandBufferScheduling::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  if (!module->has_schedule()) {
+    return InternalError("module is not scheduled");
+  }
   HloComputation* entry = module->entry_computation();
   std::vector<HloInstruction*> instructions = entry->MakeInstructionPostOrder();
 
@@ -159,6 +163,7 @@ StatusOr<bool> CommandBufferScheduling::Run(
     TF_RETURN_IF_ERROR(entry->ReplaceInstruction(fusion, call_command_buffer));
   }
 
+  TF_RETURN_IF_ERROR(module->schedule().Update());
   return true;
 }
 

@@ -2524,6 +2524,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla:statusor",
+        "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_pass",
         "@com_google_absl//absl/algorithm:container",
@@ -2543,6 +2544,7 @@ xla_cc_test(
         "//xla/tests:hlo_test_base",
         "//xla/tests:verified_hlo_module",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
