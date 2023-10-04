@@ -18,11 +18,13 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/client/xla_builder.h"
+#include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api_cpu_internal.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -30,6 +32,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tests/literal_test_util.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -117,6 +120,33 @@ TEST(PjRtCApiClientTest, EmptyExecutableFingerprint) {
                           client->ExecutableFingerprint(*executable));
 
   EXPECT_FALSE(fingerprint.has_value());
+}
+
+TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  ASSERT_GT(client->addressable_devices().size(), 1);
+  std::vector<int32_t> data(4, 0);
+  auto* data_ptr = data.data();
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->CreateViewOfDeviceBuffer(
+          data_ptr, shape, client->addressable_devices()[0],
+          /*on_delete_callback=*/[data = std::move(data)]() mutable {}));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> result,
+      buffer->CopyToDevice(client->addressable_devices()[1]));
+  buffer.reset();
+  ASSERT_TRUE(result);
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
+
+  std::vector<int32_t> expected(4, 0);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                     *literal));
 }
 
 }  // namespace

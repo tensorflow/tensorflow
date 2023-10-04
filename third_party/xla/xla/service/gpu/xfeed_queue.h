@@ -82,7 +82,7 @@ class XfeedQueue {
     before_get_next_dest_callbacks_.push_back(std::move(callback));
   }
 
-  virtual ~XfeedQueue() {}
+  virtual ~XfeedQueue() = default;
 
  protected:
   virtual void DequeueHook() ABSL_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {}

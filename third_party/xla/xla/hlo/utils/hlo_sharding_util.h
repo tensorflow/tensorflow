@@ -326,6 +326,16 @@ absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughOperandDims(
     const Shape& operand_shape, const HloSharding& operand_sharding,
     const HloInstruction& hlo, absl::Span<const int64_t> slice_sizes);
 
+absl::InlinedVector<int64_t, 1> GetGatherOperandPassthroughOutputDims(
+    const Shape& output_shape, const Shape& operand_shape,
+    const HloSharding& operand_sharding, const HloInstruction& hlo,
+    absl::Span<const int64_t> slice_sizes);
+
+absl::InlinedVector<int64_t, 1> GetScatterOperandPassthroughUpdateDims(
+    const Shape& update_shape, const Shape& operand_shape,
+    const HloSharding& operand_sharding, const HloInstruction& hlo,
+    absl::Span<const int64_t> slice_sizes);
+
 // Returns the index pass-through dimensions for gather/scatter indices.
 absl::InlinedVector<int64_t, 1> GetGatherScatterIndexPassthroughIndexDims(
     const int64_t indices_rank, const int64_t index_vector_dim);
@@ -381,12 +391,25 @@ GroupedSharding GroupShardingOnAllDimsExcept(
     const HloSharding& sharding, absl::Span<const int64_t> non_group_dims,
     bool subgroup_manual = false);
 
-// Creates a GroupedSharding by trying to group on partially replicated
-// dimensions, otherwise replicate it.
-GroupedSharding GroupShardingOnReplicatedDim(const HloSharding& sharding,
-                                             const int64_t num_groups,
-                                             const int64_t num_tiles,
-                                             const int64_t data_rank);
+// Creates a GroupedSharding by trying to do the following in sequence:
+//
+// 1. Group on partially replicated dimensions, which preserves the existing
+// tiled sharding in the group.
+// 2. If option 1 doesn't have enough dimensions, try borrowing dimensions from
+// replicable_dims in order, until it has enough dimensions. This partly
+// preserves the existing tiled sharding in the group. (e.g. if we need 4
+// groups, while our sharding is {[4,8,2]<=[64] last_tile_dim_replicate}, and if
+// we borrow 2 dimensions from the first dimension(i.e. the 4-way partition),
+// combined with the partially replicated 2, we will be able to group the
+// sharding into 4 groups, and we have grouped sub-sharding [2,8]<=[16] instead.
+// 3. Otherwise replicate the whole thing.
+//
+// This does not guarantee the consistency of the ordering of the tile
+// assignment, and should be used with AlignGroup where its tile assignment
+// doesn't matter and will always align to some other tile assignment.
+GroupedSharding GroupShardingOnReplicatedDim(
+    const HloSharding& sharding, int64_t num_groups, int64_t num_tiles,
+    int64_t data_rank, absl::Span<const int64_t> replicable_dims = {});
 
 // Get group sharding for replicated sharding.
 GroupedSharding GetGroupedReplicatedSharding(const int64_t num_groups,

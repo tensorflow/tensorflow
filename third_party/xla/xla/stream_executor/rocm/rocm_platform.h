@@ -95,7 +95,8 @@ class ROCmPlatform : public Platform {
   // manager.
   int limit_numa_node_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ROCmPlatform);
+  ROCmPlatform(const ROCmPlatform&) = delete;
+  void operator=(const ROCmPlatform&) = delete;
 };
 
 }  // namespace gpu

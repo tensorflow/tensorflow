@@ -271,7 +271,8 @@ class NcclManager {
 
   Status status_ TF_GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(NcclManager);
+  NcclManager(const NcclManager&) = delete;
+  void operator=(const NcclManager&) = delete;
 };
 
 }  // namespace tensorflow

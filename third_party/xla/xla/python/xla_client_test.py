@@ -86,7 +86,8 @@ def TestFactory(xla_backend,
                 cloud_tpu=False,
                 tfrt_tpu=False,
                 pjrt_c_api=False,
-                pathways=False):
+                pathways=False,
+                pathways_ifrt=False):
   tests = []
 
   int_dtypes = [np.int32, np.int64, np.uint32, np.uint64]
@@ -586,6 +587,7 @@ def TestFactory(xla_backend,
               "BlockHostUntilReady() called on deleted or donated buffer")):
         buffer.block_until_ready()
 
+    @unittest.skipIf(pathways_ifrt, "not implemented")
     def testOnDeviceSizeInBytes(self):
       if not isinstance(self.backend, xla_client.Client):
         self.skipTest("TPU Driver doesn't support OnDeviceSizeInBytes.")
@@ -663,6 +665,7 @@ def TestFactory(xla_backend,
         arr = np.asarray(arr)
         self.assertEqual(dtype, type(arr[0]))
 
+    @unittest.skipIf(pathways_ifrt, "not implemented")
     def testUnsafeBufferPointer(self):
       if not isinstance(self.backend, xla_client.Client):
         self.skipTest("TPU Driver doesn't support UnsafeBufferPointer().")
@@ -2142,6 +2145,7 @@ def TestFactory(xla_backend,
         if local_hardware_id is not None:
           self.assertGreaterEqual(local_hardware_id, 0)
 
+    @unittest.skipIf(pathways_ifrt, "not implemented")
     def testLocalDeviceFromLocalHardwareId(self):
       for device in self.backend.local_devices():
         if device.local_hardware_id is not None:

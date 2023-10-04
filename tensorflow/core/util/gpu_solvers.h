@@ -589,7 +589,8 @@ class GpuSolver {
 
   std::vector<TensorReference> scratch_tensor_refs_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GpuSolver);
+  GpuSolver(const GpuSolver&) = delete;
+  void operator=(const GpuSolver&) = delete;
 };
 
 // Helper class to allocate scratch memory and keep track of debug info.

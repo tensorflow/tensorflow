@@ -441,7 +441,8 @@ class GcsFileSystem : public FileSystem {
   // Additional header material to be transmitted with all GCS requests
   std::unique_ptr<std::pair<const string, const string>> additional_header_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GcsFileSystem);
+  GcsFileSystem(const GcsFileSystem&) = delete;
+  void operator=(const GcsFileSystem&) = delete;
 };
 
 /// Google Cloud Storage implementation of a file system with retry on failures.

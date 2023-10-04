@@ -351,7 +351,8 @@ class FunctionCallFrame : public CallFrameInterface {
   };
   gtl::InlinedVector<Retval, 4> rets_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FunctionCallFrame);
+  FunctionCallFrame(const FunctionCallFrame&) = delete;
+  void operator=(const FunctionCallFrame&) = delete;
 };
 
 // Map of function names to StackTracesMaps.

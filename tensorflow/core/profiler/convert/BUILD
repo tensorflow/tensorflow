@@ -80,6 +80,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/utils:math_utils",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
     ],
 )
 

@@ -124,4 +124,15 @@ string SliceDebugString(const TensorShape& shape, const int64_t flat) {
 // TODO(penporn): Remove this function from util.cc
 bool IsMKLEnabled() { return IsMklEnabled(); }
 
+bool IsBF16SupportedByOneDNNOnThisCPU() {
+#ifdef INTEL_MKL
+  if (port::TestCPUFeature(port::CPUFeature::AVX512F)) {
+    return true;
+  } else {
+    return false;
+  }
+#endif  // INTEL_MKL
+  return false;
+}
+
 }  // namespace tensorflow

@@ -716,6 +716,12 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
 // range that is available in F32s (out of a total of 11 exponent bits in F64s).
 std::pair<float, float> SplitF64ToF32(double x);
 
+// Takes a sequence of unpacked int4 values, such that every byte stores one
+// int4 value, and packs them so every byte stores two int4 values. 'input'
+// should have num_elements bytes; 'output' should have (num_elements+1)/2
+// bytes.
+void PackInt4(absl::Span<const char> input, absl::Span<char> output);
+
 class HloInstruction;
 class HloModule;
 

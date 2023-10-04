@@ -97,6 +97,7 @@ cc_library(
     deps = [
         "//xla:literal",
         "//xla:shape_util",
+        "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
@@ -116,10 +117,14 @@ xla_cc_test(
     srcs = ["hlo_utils_test.cc"],
     deps = [
         ":hlo_utils",
+        "//xla:literal",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:test",
+        "//xla:types",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:protobuf",
         "@local_tsl//tsl/platform:test_main",
     ],

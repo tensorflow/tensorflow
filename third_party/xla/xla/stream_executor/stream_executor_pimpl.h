@@ -626,7 +626,8 @@ class StreamExecutor {
 
   StreamExecutorMemoryAllocator allocator_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutor);
+  StreamExecutor(const StreamExecutor&) = delete;
+  void operator=(const StreamExecutor&) = delete;
 };
 
 // A wrapper around ModuleHandle that uses RAII to manage its lifetime.
@@ -661,7 +662,8 @@ class ScopedModuleHandle {
   StreamExecutor* executor_;
   ModuleHandle module_handle_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedModuleHandle);
+  ScopedModuleHandle(const ScopedModuleHandle&) = delete;
+  void operator=(const ScopedModuleHandle&) = delete;
 };
 
 ////////////

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -38,6 +39,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/quantization_unit_loc.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
@@ -141,6 +143,11 @@ class AddDumpTensorOp : public OpRewritePattern<TF::PartitionedCallOp> {
 
     rewriter.setInsertionPointAfterValue(result);
 
+    std::optional<QuantizationUnitLoc::QuantizationUnit> quant_unit =
+        FindQuantizationUnitFromLoc(call_op->getLoc());
+
+    if (!quant_unit.has_value()) return failure();
+
     auto folder_name =
         tensorflow::io::JoinPath(log_dir_path_, f_attr.getValue());
     // In Whole model, we first need to set file_name as
@@ -162,6 +169,10 @@ class AddDumpTensorOp : public OpRewritePattern<TF::PartitionedCallOp> {
         // The op is disabled by default. Otherwise, values will be saved
         // during calibration.
         rewriter.getNamedAttr("enabled", rewriter.getBoolAttr(false)),
+        rewriter.getNamedAttr("func_name",
+                              rewriter.getStringAttr(quant_unit->func_name())),
+        rewriter.getNamedAttr("node_name",
+                              rewriter.getStringAttr(quant_unit->node_name())),
     };
 
     rewriter.create<TF::DumpTensorOp>(call_op->getLoc(), TypeRange{}, result,
@@ -193,6 +204,10 @@ class AddDumpTensorOp : public OpRewritePattern<TF::PartitionedCallOp> {
           rewriter.getNamedAttr("file_name", rewriter.getStringAttr(
                                                  "unquantized_tensor_data.pb")),
           rewriter.getNamedAttr("enabled", rewriter.getBoolAttr(false)),
+          rewriter.getNamedAttr(
+              "func_name", rewriter.getStringAttr(quant_unit->func_name())),
+          rewriter.getNamedAttr(
+              "node_name", rewriter.getStringAttr(quant_unit->node_name())),
       };
 
       rewriter.create<TF::DumpTensorOp>(call_op->getLoc(), TypeRange{},

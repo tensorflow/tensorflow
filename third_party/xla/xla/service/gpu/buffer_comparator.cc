@@ -1052,7 +1052,7 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
     static absl::once_flag ptxas_not_found_logged;
     absl::call_once(ptxas_not_found_logged, [&]() {
       LOG(WARNING)
-          << compiled_ptx_or.status().ToString()
+          << compiled_ptx_or.status()
           << "\nRelying on driver to perform ptx compilation. "
           << "\nSetting XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda "
           << " or modifying $PATH can be used to set the location of ptxas"

@@ -79,14 +79,8 @@ bool mlir::IsStablehloOp(const tflite::OperatorCodeT& op_code) {
 std::string mlir::GetMlirOpNameFromOpCode(
     const tflite::OperatorCodeT& op_code) {
   auto builtin_code = tflite::GetBuiltinCode(&op_code);
-  if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
-    return std::string("tfl.custom");
-  }
   if (builtin_code == tflite::BuiltinOperator_IF) {
     return std::string("tf.If");
-  }
-  if (builtin_code == tflite::BuiltinOperator_WHILE) {
-    return std::string("tfl.while");
   }
 
   llvm::StringRef op_name(tflite::EnumNameBuiltinOperator(builtin_code));

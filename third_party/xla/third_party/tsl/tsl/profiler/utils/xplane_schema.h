@@ -214,6 +214,7 @@ enum StatType {
   kKpiValue,
   kElementId,
   kParentId,
+  kCoreType,
   // XPlane semantics related.
   kProducerType,
   kConsumerType,

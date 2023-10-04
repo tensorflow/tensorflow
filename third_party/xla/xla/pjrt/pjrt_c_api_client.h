@@ -268,10 +268,7 @@ class PjRtCApiClient : public PjRtClient {
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateViewOfDeviceBuffer(
       void* device_ptr, const Shape& shape, PjRtDevice* device,
       std::function<void()> on_delete_callback,
-      std::optional<std::intptr_t> stream) override {
-    return Unimplemented(
-        "PJRT C API does not support CreateViewOfDeviceBuffer");
-  }
+      std::optional<std::intptr_t> stream) override;
 
   StatusOr<std::uintptr_t> UnsafeBufferPointer(PjRtBuffer* buffer) override;
 

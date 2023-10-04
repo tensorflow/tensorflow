@@ -2589,7 +2589,8 @@ class DnnSupport {
     return ::tsl::OkStatus();
   }
 
-  SE_DISALLOW_COPY_AND_ASSIGN(DnnSupport);
+  DnnSupport(const DnnSupport&) = delete;
+  void operator=(const DnnSupport&) = delete;
 };
 
 }  // namespace dnn

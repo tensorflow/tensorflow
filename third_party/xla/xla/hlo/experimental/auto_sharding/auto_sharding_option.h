@@ -261,7 +261,10 @@ struct AutoShardingOption {
     std::vector<int64_t> mesh_dims_greater_than_one_indices =
         spmd::VectorGreaterThanOneElementIndices(device_mesh_shape);
 
-    if (mesh_dims_greater_than_one_indices.size() > 3) {
+    // TODO(pratikf) The device mesh shape handling in this function currently
+    // does not work when try_multiple_mesh_shapes is true. Fix it.
+    if (mesh_dims_greater_than_one_indices.size() > 3 ||
+        (device_mesh_shape.size() > 3 && try_multiple_mesh_shapes)) {
       return absl::OutOfRangeError(absl::StrCat(
           "Not supported: only device_mesh_shapes with 3 or less "
           "dimensions larger than 1 are supported. Instead we have ",
@@ -282,6 +285,7 @@ struct AutoShardingOption {
                        "more than two shardable dims: device_mesh_shape=",
                        absl::StrJoin(device_mesh_shape, ",")));
     }
+
     if (device_mesh_alpha.empty()) {
       // Generates simple device_mesh_alpha based on the size of
       // device_mesh_shape.
@@ -310,22 +314,24 @@ struct AutoShardingOption {
           "please leave them empty and default values will be used."));
     }
 
-    std::vector<int64_t> compressed_device_mesh_shape;
-    std::vector<double> compressed_device_mesh_alpha;
-    std::vector<double> compressed_device_mesh_beta;
-    int non_zero_counter = 0;
-    for (size_t i = 0; i < device_mesh_shape.size(); ++i) {
-      if (non_zero_counter < mesh_dims_greater_than_one_indices.size() &&
-          i == mesh_dims_greater_than_one_indices[non_zero_counter]) {
-        non_zero_counter++;
-        compressed_device_mesh_shape.push_back(device_mesh_shape[i]);
-        compressed_device_mesh_alpha.push_back(device_mesh_alpha[i]);
-        compressed_device_mesh_beta.push_back(device_mesh_beta[i]);
+    if (!try_multiple_mesh_shapes) {
+      std::vector<int64_t> compressed_device_mesh_shape;
+      std::vector<double> compressed_device_mesh_alpha;
+      std::vector<double> compressed_device_mesh_beta;
+      int non_zero_counter = 0;
+      for (size_t i = 0; i < device_mesh_shape.size(); ++i) {
+        if (non_zero_counter < mesh_dims_greater_than_one_indices.size() &&
+            i == mesh_dims_greater_than_one_indices[non_zero_counter]) {
+          non_zero_counter++;
+          compressed_device_mesh_shape.push_back(device_mesh_shape[i]);
+          compressed_device_mesh_alpha.push_back(device_mesh_alpha[i]);
+          compressed_device_mesh_beta.push_back(device_mesh_beta[i]);
+        }
       }
+      this->device_mesh_shape = compressed_device_mesh_shape;
+      this->device_mesh_alpha = compressed_device_mesh_alpha;
+      this->device_mesh_beta = compressed_device_mesh_beta;
     }
-    this->device_mesh_shape = compressed_device_mesh_shape;
-    this->device_mesh_alpha = compressed_device_mesh_alpha;
-    this->device_mesh_beta = compressed_device_mesh_beta;
 
     // If device_mesh_shape has only one value, append 1 to it
     if (device_mesh_shape.size() == 1) {

@@ -144,7 +144,8 @@ class CastOpBase : public OpKernel {
   CastFunctorType work_ = nullptr;
   Status Unimplemented();
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CastOpBase);
+  CastOpBase(const CastOpBase&) = delete;
+  void operator=(const CastOpBase&) = delete;
 };
 
 // CPU implementation of Cast

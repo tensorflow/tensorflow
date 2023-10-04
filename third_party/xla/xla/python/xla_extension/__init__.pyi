@@ -277,6 +277,8 @@ class DebugOptions:
   xla_gpu_enable_async_collective_permute: bool
   xla_gpu_enable_async_all_to_all: bool
   xla_gpu_enable_async_reduce_scatter: bool
+  xla_detailed_logging: bool
+  xla_enable_dumping: bool
 
 class CompiledMemoryStats:
   generated_code_size_in_bytes: int

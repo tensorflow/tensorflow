@@ -60,7 +60,8 @@ class XlaInterpreterPlatform : public Platform {
   // Cache of created StreamExecutors.
   ExecutorCache executor_cache_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(XlaInterpreterPlatform);
+  XlaInterpreterPlatform(const XlaInterpreterPlatform&) = delete;
+  void operator=(const XlaInterpreterPlatform&) = delete;
 };
 
 }  // namespace interpreter

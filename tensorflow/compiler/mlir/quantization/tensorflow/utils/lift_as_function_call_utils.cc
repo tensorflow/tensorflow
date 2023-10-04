@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <queue>
 #include <stack>
 #include <string>
@@ -35,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/quantization_unit_loc.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
@@ -294,6 +296,16 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
   }
 
   auto cloning_ops = FindOpsFromArgumentsToResults(arguments, results);
+  // Set the location of call op to QuantizationUnitLoc if found.
+  Location call_op_loc = location;
+  for (Operation *op : cloning_ops) {
+    std::optional<QuantizationUnitLoc::QuantizationUnit> unit =
+        FindQuantizationUnitFromLoc(op->getLoc());
+    if (unit.has_value()) {
+      call_op_loc = QuantizationUnitLoc(builder.getContext(), unit.value());
+    }
+  }
+
   if (failed(SetAttributeMap(context, attributes, cloning_ops))) {
     current_func.emitError() << "Some attributes couldn't be found.";
   }
@@ -312,7 +324,7 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
       InsertToSymbolTable(module, wrap_func, func_name.str());
   builder.setInsertionPointAfter(result_op);
   ValueRange new_results =
-      createFunctionCallOp(builder, location, call_op_type,
+      createFunctionCallOp(builder, call_op_loc, call_op_type,
                            new_func_name.getValue(), result_types, arguments);
   return llvm::SmallVector<Value, 4>(new_results.begin(), new_results.end());
 }

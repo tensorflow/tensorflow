@@ -524,7 +524,8 @@ class DeviceDescriptionBuilder {
  private:
   DeviceDescription device_description_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(DeviceDescriptionBuilder);
+  DeviceDescriptionBuilder(const DeviceDescriptionBuilder &) = delete;
+  void operator=(const DeviceDescriptionBuilder &) = delete;
 };
 
 }  // namespace internal

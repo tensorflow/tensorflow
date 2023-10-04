@@ -30,7 +30,7 @@ namespace gpu {
 // Generic loop fusion.
 class LoopFusion : public KernelFusionEmitterBase {
  public:
-  LoopFusion(HloFusionAnalysis& analysis) : analysis_(analysis) {}
+  explicit LoopFusion(HloFusionAnalysis& analysis) : analysis_(analysis) {}
   StatusOr<LaunchDimensions> launch_dimensions(
       IrEmitterContext& ir_emitter_context, int kernel_index) const override;
 

@@ -336,7 +336,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   // destructor and does not wait for the rpc completion.
   void DeregisterPartitions();
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ReffedClientGraph);
+  ReffedClientGraph(const ReffedClientGraph&) = delete;
+  void operator=(const ReffedClientGraph&) = delete;
 };
 
 Status MasterSession::ReffedClientGraph::RegisterPartitions(
@@ -610,7 +611,8 @@ class RunManyGraphs {
     status_group_.Update(s);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RunManyGraphs);
+  RunManyGraphs(const RunManyGraphs&) = delete;
+  void operator=(const RunManyGraphs&) = delete;
 };
 
 Status AddSendFromClientRequest(const RunStepRequestWrapper& client_req,
@@ -919,7 +921,8 @@ class CleanupBroadcastHelper {
   // Callback to be called when all operations complete.
   StatusCallback done_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CleanupBroadcastHelper);
+  CleanupBroadcastHelper(const CleanupBroadcastHelper&) = delete;
+  void operator=(const CleanupBroadcastHelper&) = delete;
 };
 
 }  // namespace

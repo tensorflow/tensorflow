@@ -184,7 +184,8 @@ class HttpRequest {
   virtual void SetTimeouts(uint32 connection, uint32 inactivity,
                            uint32 total) = 0;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(HttpRequest);
+  HttpRequest(const HttpRequest&) = delete;
+  void operator=(const HttpRequest&) = delete;
 };
 
 }  // namespace tsl

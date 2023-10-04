@@ -87,7 +87,8 @@ class DeviceMemAllocator : public tsl::SubAllocator {
   const tsl::PlatformDeviceId device_id_;
   const bool use_unified_memory_ = false;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DeviceMemAllocator);
+  DeviceMemAllocator(const DeviceMemAllocator&) = delete;
+  void operator=(const DeviceMemAllocator&) = delete;
 };
 
 }  // namespace stream_executor

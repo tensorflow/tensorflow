@@ -293,7 +293,8 @@ class SharedBatchScheduler
   // Threads that process batches obtained from the queues.
   std::vector<std::unique_ptr<PeriodicFunction>> batch_threads_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SharedBatchScheduler);
+  SharedBatchScheduler(const SharedBatchScheduler&) = delete;
+  void operator=(const SharedBatchScheduler&) = delete;
 };
 
 //////////
@@ -524,7 +525,8 @@ class Queue {
   // 'empty_notification_->Notify()'.
   Notification* empty_notification_ TF_GUARDED_BY(mu_) = nullptr;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Queue);
+  Queue(const Queue&) = delete;
+  void operator=(const Queue&) = delete;
 };
 
 // A RAII-style object that points to a Queue and implements
@@ -550,7 +552,8 @@ class QueueHandle : public BatchScheduler<TaskType> {
   // least until this class's destructor closes it.
   Queue<TaskType>* queue_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(QueueHandle);
+  QueueHandle(const QueueHandle&) = delete;
+  void operator=(const QueueHandle&) = delete;
 };
 
 }  // namespace internal

@@ -301,7 +301,8 @@ class CallFrameBase : public CallFrameInterface {
  private:
   DataTypeSlice ret_types_;
   std::vector<std::optional<Tensor>> retvals_;
-  TF_DISALLOW_COPY_AND_ASSIGN(CallFrameBase);
+  CallFrameBase(const CallFrameBase&) = delete;
+  void operator=(const CallFrameBase&) = delete;
 };
 
 class OwnedArgsCallFrame : public CallFrameBase {

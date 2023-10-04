@@ -20,10 +20,10 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/copy_insertion.h"
+#include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/gpu/alias_passthrough_params.h"
 #include "xla/service/gpu/copy_fusion.h"
 #include "xla/service/gpu/gpu_sanitize_constant_names.h"
-#include "xla/service/gpu/gpu_shape_verifier.h"
 #include "xla/service/gpu/horizontal_loop_fusion.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_dce.h"
@@ -48,7 +48,7 @@ HloPassPipeline PrepareHloModuleForIrEmittingPipeline(
   // the parameter.
   HloPassPipeline pipeline("GPU-ir-emit-prepare");
   std::unique_ptr<TargetVerifierMetadata> verifier_metadata =
-      std::make_unique<GpuVerifierMetadata>(
+      std::make_unique<CpuGpuVerifierMetadata>(
           HloVerifierOpts{}
               .MakeLayoutSensitive()
               .WithInstructionCanChangeLayout(

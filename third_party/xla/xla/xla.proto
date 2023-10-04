@@ -350,10 +350,14 @@ message DebugOptions {
   // reached.
   int32 xla_multiheap_size_constraint_per_heap = 142;
 
-  // Enable detailed logging into vlog and xla dumping. If this is disabled, no
-  // compilation summary will be printed in the end of computation and no hlo
-  // modules will be dumped.
-  bool xla_detailed_logging_and_dumping = 143;
+  reserved 143;  // Was xla_detailed_logging_and_dumping
+
+  // Enable detailed logging into vlog. If this is disabled, no
+  // compilation summary will be printed in the end of computation.
+  bool xla_detailed_logging = 252;
+
+  // Enable HLO dumping. If this is disabled, no HLO modules will be dumped.
+  bool xla_enable_dumping = 253;
 
   // Overrides normal multi-threaded compilation setting to use this many
   // threads. Setting to 0 (the default value) means no enforcement.
@@ -633,7 +637,7 @@ message DebugOptions {
   // Maximum number of buffers to print when debugging buffer assignment.
   int64 xla_debug_buffer_assignment_show_max = 251;
 
-  // Next id: 252
+  // Next id: 254
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

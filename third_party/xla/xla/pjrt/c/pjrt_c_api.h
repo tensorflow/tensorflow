@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 32
+#define PJRT_API_MINOR 33
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -717,6 +717,43 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_BufferFromHostBuffer_Args, buffer);
 // Asynchronously copies a buffer stored on host to device memory.
 typedef PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     PJRT_Client_BufferFromHostBuffer_Args* args);
+
+struct PJRT_Client_CreateViewOfDeviceBuffer_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Client* client;
+  // A pointer to a non-owned device buffer. A PJRT_Buffer that is a non-owned
+  // view of this device buffer will be created.
+  void* device_buffer_ptr;
+  const int64_t* dims;
+  size_t num_dims;
+  PJRT_Buffer_Type element_type;
+  PJRT_Buffer_MemoryLayout* layout;
+  // The device that `device_buffer_ptr` is on.
+  PJRT_Device* device;
+  // A callback to be performed when the PJRT_Buffer is done with the on-device
+  // buffer. This callback is optional and can be a nullptr.
+  void (*on_delete_callback)(void* device_buffer_ptr, void* user_arg);
+  // `on_delete_callback_arg` will be passed to `on_delete_callback` as
+  // `user_arg` argument.
+  void* on_delete_callback_arg;
+  // A platform-specific stream handle that should contain the work or events
+  // needed to materialize the on-device buffer. It is optional and can be
+  // casted from a nullptr. PJRT_Client_CreateViewOfDeviceBuffer_Args will
+  // append an event to `stream` that indicates when the returned buffer is
+  // ready to use. This is intended to support dlpack on GPU and is not expected
+  // to be supported on all hardware platforms.
+  intptr_t stream;
+  PJRT_Buffer* buffer;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_CreateViewOfDeviceBuffer_Args, buffer);
+
+// Creates a PJRT buffer that is a non-owned view of an on-device buffer
+// (typically allocated by another library). The buffer may be mutated,
+// for example, if the buffer is donated to an Execute operation. This method is
+// not required on all hardware platforms.
+typedef PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(
+    PJRT_Client_CreateViewOfDeviceBuffer_Args* args);
 
 // -------------------------- Device Descriptions ------------------------------
 
@@ -2050,10 +2087,12 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_OutputDimensions);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyToMemory);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateViewOfDeviceBuffer);
 } PJRT_Api;
 
 const size_t PJRT_Api_STRUCT_SIZE =
-    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Buffer_CopyToMemory);
+    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_CreateViewOfDeviceBuffer);
 
 #undef _PJRT_API_STRUCT_FIELD
 
