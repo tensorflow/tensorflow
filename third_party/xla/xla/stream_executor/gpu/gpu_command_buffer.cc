@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
@@ -65,8 +66,9 @@ static int64_t NotifyExecDestroyed() {
 // GpuCommandBuffer implementation
 //===----------------------------------------------------------------------===//
 
-GpuCommandBuffer::GpuCommandBuffer(GpuExecutor* parent, GpuGraphHandle graph)
-    : parent_(parent), graph_(graph), exec_(nullptr) {}
+GpuCommandBuffer::GpuCommandBuffer(CommandBuffer::Mode mode,
+                                   GpuExecutor* parent, GpuGraphHandle graph)
+    : mode_(mode), parent_(parent), graph_(graph), exec_(nullptr) {}
 
 GpuCommandBuffer::~GpuCommandBuffer() {
   if (exec_ != nullptr) {
@@ -119,10 +121,10 @@ tsl::Status GpuCommandBuffer::Trace(
 }
 
 tsl::Status GpuCommandBuffer::CheckNotFinalized() {
-  if (exec_ == nullptr) return tsl::OkStatus();
-
-  return absl::InternalError(
-      "Command buffer can't be updated after it was finalized");
+  if (finalized_)
+    return absl::InternalError(
+        "Command buffer can't be updated after it was finalized");
+  return tsl::OkStatus();
 }
 
 tsl::Status GpuCommandBuffer::Launch(const ThreadDim& threads,
@@ -161,16 +163,23 @@ tsl::Status GpuCommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
 tsl::Status GpuCommandBuffer::Finalize() {
   TF_RETURN_IF_ERROR(CheckNotFinalized());
 
-  GpuDriver::GraphInstantiateFlags flags;
+  if (mode_ == CommandBuffer::Mode::kPrimary) {
+    GpuDriver::GraphInstantiateFlags flags;
 
-  uint64_t start_nanos = tsl::Env::Default()->NowNanos();
-  TF_RETURN_IF_ERROR(GpuDriver::GraphInstantiate(&exec_, graph_, flags));
-  uint64_t end_nanos = tsl::Env::Default()->NowNanos();
+    uint64_t start_nanos = tsl::Env::Default()->NowNanos();
+    TF_RETURN_IF_ERROR(GpuDriver::GraphInstantiate(&exec_, graph_, flags));
+    uint64_t end_nanos = tsl::Env::Default()->NowNanos();
 
-  VLOG(5) << "Instantiated executable graph #" << NotifyExecCreated() << " in "
-          << (end_nanos - start_nanos) / 1000
-          << " μs (alive executable graphs: " << AliveExecs() << ")";
+    VLOG(5) << "Instantiated executable graph #" << NotifyExecCreated()
+            << " in " << (end_nanos - start_nanos) / 1000
+            << " μs (alive executable graphs: " << AliveExecs() << ")";
 
+  } else {
+    VLOG(5) << "Finalize nested command buffer without instantiating "
+               "executable graph";
+  }
+
+  finalized_ = true;
   return tsl::OkStatus();
 }
 

@@ -160,6 +160,9 @@ class CommandBufferInterface {
   // finalized no commands can be added to it.
   virtual tsl::Status Finalize() = 0;
 
+  // Returns command buffer execution mode.
+  virtual CommandBuffer::Mode mode() const = 0;
+
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(CommandBufferInterface);
 };
@@ -401,7 +404,7 @@ class StreamExecutorInterface {
   virtual std::unique_ptr<StreamInterface> GetStreamImplementation() = 0;
 
   virtual tsl::StatusOr<std::unique_ptr<CommandBufferInterface>>
-  GetCommandBufferImplementation() {
+  GetCommandBufferImplementation(CommandBuffer::Mode mode) {
     return absl::UnimplementedError("Command buffers are not implemented");
   }
 
