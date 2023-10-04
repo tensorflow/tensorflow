@@ -305,7 +305,7 @@ message QuantizationOptions {
   bool experimental_enable_tpu_model_support = 12;
 
   // Produces legacy weight-only graph where the qconst op(containing quantized
-  // values) is followed by a dequantization op.
+  // values) is followed by a dequantization op. This flag will be deprecated.
   bool enable_legacy_weight_only = 13;
 
   // If set to true, it forces calibration in graph model instead of eager mode
