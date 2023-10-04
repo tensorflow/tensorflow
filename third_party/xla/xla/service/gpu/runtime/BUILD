@@ -1,14 +1,16 @@
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "cuda_default_copts")
 load("//xla:xla.bzl", "xla_cc_test")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm_is_configured",
+    "if_rocm_is_configured", "rocm_default_copts", "if_rocm"
 )
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
+
+load("@local_tsl//tsl:tsl.bzl", "if_cuda_or_rocm")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -40,19 +42,22 @@ cc_library(
     ],
 )
 
-cuda_library(
-    name = "sleep_kernel_cuda",
-    srcs = if_cuda_is_configured(
+cc_library(
+    name = "sleep_kernel_gpu",
+    srcs = if_cuda_or_rocm(
         [
             "sleep_kernel.cu.cc",
         ],
     ),
-    hdrs = if_cuda_is_configured(["sleep_kernel.h"]),
+    copts = rocm_default_copts() + cuda_default_copts(),
+    hdrs = if_cuda_or_rocm(["sleep_kernel.h"]),
     compatible_with = [],
     visibility = ["//visibility:public"],
-    deps = [
+    deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-    ],
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 cc_library(
@@ -78,12 +83,17 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-    ] + if_cuda_is_configured([
-        ":sleep_kernel_cuda",
-        "@local_config_cuda//cuda:cuda_headers",
+    ] + if_cuda_or_rocm([
+        ":sleep_kernel_gpu",
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
-    ]),
+        ])
+    + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+        
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ])
 )
 
 cc_library(

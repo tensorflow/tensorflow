@@ -310,6 +310,14 @@ tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
       args.number_of_shared_bytes(), hipstream, nullptr, (void**)&config);
 }
 
+tsl::Status GpuExecutor::Submit(Stream* stream,
+                                const CommandBuffer& command_buffer) {
+  auto exec = GpuCommandBuffer::Cast(&command_buffer)->executable();
+  VLOG(3) << "Launch command buffer execuable graph " << exec
+          << " on a stream: " << stream->DebugStreamPointers();
+  return GpuDriver::GraphLaunch(exec, AsGpuStreamValue(stream));
+}
+
 int GpuExecutor::CalculateOccupancy(const DeviceDescription& device_description,
                                     uint64_t registers_per_thread,
                                     uint64_t shared_memory_per_block,
