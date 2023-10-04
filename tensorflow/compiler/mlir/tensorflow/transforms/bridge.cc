@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/tf_dialect_to_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_dialect_to_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/clustering_bridge_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/inference/inference_passes.h"
@@ -214,20 +215,20 @@ tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool fallback_enabled) {
       << "TPU V1 Compat Bridge called stack trace is "
       << "(NOTE: this is not an error; rather the stack trace for debugging) : "
       << tensorflow::CurrentStackTrace();
-  Status status = RunTFXLABridge(module, [](OpPassManager &pm) {
-    CreateTPUBridgePipelineV1(pm);
-    // Add set of passes to lower back to graph (from tf_executor).
-    TF::AddGraphExportLoweringPasses(pm);
-  });
+  Status bridge_status = RunTFXLABridge(
+      module, [](OpPassManager &pm) { CreateTPUBridgePipelineV1(pm); });
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      "tpu", "v1", fallback_enabled, status.ok() ? "success" : "failure");
-  if (!status.ok()) {
+      "tpu", "v1", fallback_enabled,
+      bridge_status.ok() ? "success" : "failure");
+  if (!bridge_status.ok()) {
     tsl::error_logging::Log(kBridgeComponent,
                             "TFXLA_PHASE_ONE_MLIR_TPU_V1_COMPAT_BRIDGE",
-                            status.ToString())
+                            bridge_status.ToString())
         .IgnoreError();
+    return bridge_status;
   }
-  return status;
+
+  return tensorflow::tf2xla::v1::ExportFromTensorflowDialectToExecutor(module);
 }
 
 }  // namespace TFTPU
