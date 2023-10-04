@@ -78,6 +78,8 @@
     * New C API function `TfLiteExtensionApisVersion` added to
       `tensorflow/lite/c/c_api.h`.
 
+    * Add int8 and int16x8 support for RSQRT operator
+
 * Android NDK r25 is supported.
 
 ### Bug Fixes and Other Changes
