@@ -933,6 +933,16 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(
       ctx, ctx->allocate_output("splits", TensorShape({}), &splits_tensor));
   splits_tensor->flat<int64>()(0) = after_merge_splits;
+
+  Tensor* max_ids_tensor;
+  OP_REQUIRES_OK(
+      ctx, ctx->allocate_output("max_ids", TensorShape({}), &max_ids_tensor));
+  max_ids_tensor->flat<int32>()(0) = this_max_ids;
+
+  Tensor* max_uniques_tensor;
+  OP_REQUIRES_OK(ctx, ctx->allocate_output("max_uniques", TensorShape({}),
+                                           &max_uniques_tensor));
+  max_uniques_tensor->flat<int32>()(0) = this_max_uniques;
 }
 
 #ifdef LIBTPU_ON_GCE

@@ -1158,7 +1158,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow/transforms:bridge",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -1166,6 +1165,7 @@ cc_library(
         "//tensorflow/core/common_runtime:device_set",
         "@com_google_absl//absl/base",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
     ],
     alwayslink = 1,
 )

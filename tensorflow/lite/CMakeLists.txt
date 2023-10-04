@@ -98,6 +98,8 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
   # 2b96f3662bd776e277f86997659e61046b56c315/tensorflow/lite/tools/make/\
   # Makefile#L157
   set(_TFLITE_ENABLE_MMAP OFF)
+  #Should this also be true if TFLITE_ENABLE_MMAP=OFF even if windows is not the system name?
+  add_compile_options(-DTFLITE_MMAP_DISABLED)
 endif()
 # Simplifies inclusion of non-test sources and headers from a directory.
 # SOURCE_DIR: Directory to search for files.
