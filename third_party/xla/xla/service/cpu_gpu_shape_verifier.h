@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_CPU_CPU_SHAPE_VERIFIER_H_
-#define XLA_SERVICE_CPU_CPU_SHAPE_VERIFIER_H_
+#ifndef XLA_SERVICE_CPU_GPU_SHAPE_VERIFIER_H_
+#define XLA_SERVICE_CPU_GPU_SHAPE_VERIFIER_H_
 
 #include <memory>
 #include <utility>
@@ -23,26 +23,26 @@ limitations under the License.
 
 namespace xla {
 
-// Verifies that HLO Shapes are supported by the XLA-CPU compiler.
-class CpuShapeVerifier : public ShapeVerifier {
+// Verifies that HLO Shapes are supported by the XLA-CPU and XLA-GPU compilers.
+class CpuGpuShapeVerifier : public ShapeVerifier {
  public:
-  explicit CpuShapeVerifier(const HloVerifierOpts& opts)
+  explicit CpuGpuShapeVerifier(const HloVerifierOpts& opts)
       : ShapeVerifier(opts) {}
 
   Status Preprocess(HloInstruction* hlo) override;
 };
 
-// A verifier metadata class that uses the CpuShapeVerifier.
-class CpuVerifierMetadata : public TargetVerifierMetadata {
+// A verifier metadata class that uses the CpuGpuShapeVerifier.
+class CpuGpuVerifierMetadata : public TargetVerifierMetadata {
  public:
-  explicit CpuVerifierMetadata(HloVerifierOpts&& opts)
+  explicit CpuGpuVerifierMetadata(HloVerifierOpts&& opts)
       : TargetVerifierMetadata(std::move(opts)) {}
 
   std::unique_ptr<ShapeVerifier> GetVerifier() const override {
-    return std::make_unique<CpuShapeVerifier>(GetVerifierOpts());
+    return std::make_unique<CpuGpuShapeVerifier>(GetVerifierOpts());
   }
 };
 
 }  // namespace xla
 
-#endif  // XLA_SERVICE_CPU_CPU_SHAPE_VERIFIER_H_
+#endif  // XLA_SERVICE_CPU_GPU_SHAPE_VERIFIER_H_

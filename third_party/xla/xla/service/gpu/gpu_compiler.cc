@@ -75,6 +75,7 @@ limitations under the License.
 #include "xla/service/convolution_4d_expander.h"
 #include "xla/service/convolution_pred_expander.h"
 #include "xla/service/copy_insertion.h"
+#include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/dot_decomposer.h"
 #include "xla/service/dot_merger.h"
 #include "xla/service/dump.h"
@@ -114,7 +115,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_reduce_scatter_creator.h"
 #include "xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "xla/service/gpu/gpu_scatter_expander.h"
-#include "xla/service/gpu/gpu_shape_verifier.h"
 #include "xla/service/gpu/hlo_fusion_stats.h"
 #include "xla/service/gpu/horizontal_loop_fusion.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -274,7 +274,7 @@ namespace {
 void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
                     bool debug_only = false) {
   std::unique_ptr<TargetVerifierMetadata> verifier_metadata =
-      std::make_unique<GpuVerifierMetadata>(std::move(opts));
+      std::make_unique<CpuGpuVerifierMetadata>(std::move(opts));
   if (debug_only) {
     pipeline->AddInvariantCheckerDebug<HloVerifier>(
         std::move(verifier_metadata), "hlo verifier (debug)");

@@ -4743,6 +4743,35 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "cpu_gpu_shape_verifier",
+    srcs = ["cpu_gpu_shape_verifier.cc"],
+    hdrs = ["cpu_gpu_shape_verifier.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":hlo_verifier",
+        "//xla:shape_util",
+        "//xla:status",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+xla_cc_test(
+    name = "cpu_gpu_shape_verifier_test",
+    srcs = ["cpu_gpu_shape_verifier_test.cc"],
+    deps = [
+        ":cpu_gpu_shape_verifier",
+        ":hlo_parser",
+        ":hlo_verifier",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "hlo_rematerialization",
     srcs = ["hlo_rematerialization.cc"],
     hdrs = ["hlo_rematerialization.h"],

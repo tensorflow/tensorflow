@@ -2505,7 +2505,6 @@ cc_library(
     deps = [
         ":fusion_merger",
         ":gpu_hlo_cost_analysis",
-        ":gpu_shape_verifier",
         ":horizontal_input_fusion",
         ":horizontal_loop_fusion",
         ":instruction_fusion",
@@ -2513,6 +2512,7 @@ cc_library(
         ":priority_fusion",
         ":variadic_op_splitter",
         "//xla:xla_proto_cc",
+        "//xla/service:cpu_gpu_shape_verifier",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:hlo_cse",
         "//xla/service:hlo_dce",
@@ -2533,11 +2533,11 @@ cc_library(
         ":alias_passthrough_params",
         ":copy_fusion",
         ":gpu_sanitize_constant_names",
-        ":gpu_shape_verifier",
         ":horizontal_loop_fusion",
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/service:copy_insertion",
+        "//xla/service:cpu_gpu_shape_verifier",
         "//xla/service:hlo_dataflow_analysis",
         "//xla/service:hlo_dce",
         "//xla/service:hlo_pass_pipeline",
@@ -2602,7 +2602,6 @@ cc_library(
         ":gpu_all_gather_optimizer",
         ":gpu_sanitize_constant_names",
         ":gpu_scatter_expander",
-        ":gpu_shape_verifier",
         ":gpu_target_config",
         ":hlo_fusion_stats",
         ":horizontal_input_fusion",
@@ -2673,6 +2672,7 @@ cc_library(
         "//xla/service:conditional_canonicalizer",
         "//xla/service:conditional_simplifier",
         "//xla/service:convert_async_collectives_to_sync",
+        "//xla/service:cpu_gpu_shape_verifier",
         "//xla/service:convert_mover",
         "//xla/service:convolution_4d_expander",
         "//xla/service:convolution_pred_expander",
@@ -3074,16 +3074,6 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:notification",
-    ],
-)
-
-cc_library(
-    name = "gpu_shape_verifier",
-    srcs = ["gpu_shape_verifier.cc"],
-    hdrs = ["gpu_shape_verifier.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//xla/service:hlo_verifier",
     ],
 )
 

@@ -18,9 +18,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/gpu/fusion_merger.h"
 #include "xla/service/gpu/gpu_hlo_cost_analysis.h"
-#include "xla/service/gpu/gpu_shape_verifier.h"
 #include "xla/service/gpu/horizontal_input_fusion.h"
 #include "xla/service/gpu/horizontal_loop_fusion.h"
 #include "xla/service/gpu/instruction_fusion.h"
@@ -49,7 +49,7 @@ HloPassPipeline FusionPipeline(
   // to avoid exceeding the parameter space.
   fusion.AddPass<VariadicOpSplitter>();
   fusion.AddInvariantCheckerDebug<HloVerifier>(
-      std::make_unique<GpuVerifierMetadata>(
+      std::make_unique<CpuGpuVerifierMetadata>(
           HloVerifierOpts()
               .MakeLayoutSensitive()
               .WithInstructionCanChangeLayout(
