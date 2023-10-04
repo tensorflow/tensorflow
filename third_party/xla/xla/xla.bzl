@@ -1,26 +1,23 @@
 """Wrapper around proto libraries used inside the XLA codebase."""
 
 load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
+load(
     "@local_tsl//tsl:tsl.bzl",
     "if_tsl_link_protobuf",
     "tsl_copts",
     _tsl_clean_dep = "clean_dep",
 )
 load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm_is_configured",
-)
-load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "tf_exec_properties",
 )
-
-def register_extension_info(**kwargs):
-    pass
+load(
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 def clean_dep(target):
     """Returns string to 'target' in @{org_tensorflow,xla} repository.
@@ -130,8 +127,3 @@ def auto_sharding_deps():
 
 def auto_sharding_solver_deps():
     return ["//xla/hlo/experimental/auto_sharding:auto_sharding_solver_impl"]
-
-register_extension_info(
-    extension = xla_cc_test,
-    label_regex_for_dep = "{extension_name}",
-)
