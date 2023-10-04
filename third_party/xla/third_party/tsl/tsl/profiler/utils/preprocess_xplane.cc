@@ -138,7 +138,9 @@ CreateMutatorFactories() {
           /*unique_stats=*/true,
           XContextStatsAccessor<uint64_t, StatType::kDeviceOrdinal>,
           XContextStatsAccessor<uint64_t, StatType::kQueueId>,
-          XContextStatsAccessor<uint64_t, StatType::kRunId>>::CreateFactory());
+          XContextStatsAccessor<uint64_t, StatType::kRunId>,
+          XContextStatsAccessorWithDefault<uint64_t, StatType::kCoreType,
+                                           0ULL>>::CreateFactory());
 
   mutator_factories.push_back(TpuModuleLineMutatorFactory::CreateFactory());
   return mutator_factories;
