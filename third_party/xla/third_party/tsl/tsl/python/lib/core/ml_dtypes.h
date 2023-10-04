@@ -33,8 +33,13 @@ struct NumpyDtypes {
   int uint4;
 };
 
+// RegisterTypes imports the ml_dtypes module. It should be called before using
+// the functions below, and it fails (by returning false) if there was an error
+// importing that module. If the build system guarantees that the module exists,
+// the call can be omitted, since it is implied by the functions below.
 bool RegisterTypes();
 
+// Implicitly calls RegisterTypes on first use.
 const NumpyDtypes& GetNumpyDtypes();
 
 inline int GetBfloat16TypeNum() { return GetNumpyDtypes().bfloat16; }
