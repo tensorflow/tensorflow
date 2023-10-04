@@ -195,9 +195,9 @@ class MIOpenHandle {
  public:
   // Takes ownership of the executor context and the lock to access MIOpen
   // using handle.
-  MIOpenHandle(gpu::ScopedActivateExecutorContext context,
-               std::unique_ptr<absl::MutexLock> lock, miopenHandle_t handle)
-      : context_(std::move(context)), lock_(std::move(lock)), handle_(handle) {}
+  MIOpenHandle(GpuExecutor* executor, std::unique_ptr<absl::MutexLock> lock,
+               miopenHandle_t handle)
+      : context_(executor), lock_(std::move(lock)), handle_(handle) {}
 
   // Returns MIOpen handle. To be passed directly to MIOpen APIs, don't keep
   // a copy.
@@ -690,11 +690,10 @@ class MIOpenAccess {
   MIOpenHandle GetHandle(GpuExecutor* executor, Stream* stream) {
     auto lock = std::make_unique<absl::MutexLock>(&mutex_);
     mutex_.AssertHeld();
-    gpu::ScopedActivateExecutorContext context(executor);
     hipStream_t hip_stream = stream ? AsGpuStreamValue(stream) : nullptr;
     auto status = wrap::miopenSetStream(handle_, hip_stream);
     CHECK_EQ(status, miopenStatusSuccess) << "Failed to set MIOpen stream.";
-    return MIOpenHandle(std::move(context), std::move(lock), handle_);
+    return MIOpenHandle(executor, std::move(lock), handle_);
   }
 
  private:

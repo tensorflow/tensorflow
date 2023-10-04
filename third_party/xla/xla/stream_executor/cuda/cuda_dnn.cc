@@ -166,11 +166,10 @@ std::string CudnnStatusToString(cudnnStatus_t status) {
 // See CudnnAccess::GetHandle() for details.
 class CudnnHandle {
  public:
-  // Takes ownership of the executor context and the lock to access cuDNN
-  // using handle.
-  CudnnHandle(gpu::ScopedActivateExecutorContext context,
-              std::unique_ptr<absl::MutexLock> lock, cudnnHandle_t handle)
-      : context_(std::move(context)), lock_(std::move(lock)), handle_(handle) {}
+  // Takes ownership of the lock to access cuDNN using handle.
+  CudnnHandle(GpuExecutor* executor, std::unique_ptr<absl::MutexLock> lock,
+              cudnnHandle_t handle)
+      : context_(executor), lock_(std::move(lock)), handle_(handle) {}
 
   // Returns cuDNN handle. To be passed directly to cuDNN APIs, don't keep
   // a copy.
@@ -218,14 +217,13 @@ class CudnnAccess {
   CudnnHandle GetHandle(GpuExecutor* executor, Stream* stream) {
     auto lock = std::make_unique<absl::MutexLock>(&mutex_);
     mutex_.AssertHeld();
-    gpu::ScopedActivateExecutorContext context(executor);
     CUstream cu_stream = stream ? AsGpuStreamValue(stream) : cudaStreamLegacy;
     if (!current_stream_ || cu_stream != *current_stream_) {
       current_stream_ = cu_stream;
       const auto status = cudnnSetStream(handle_, cu_stream);
       CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Failed to set cuDNN stream.";
     }
-    return CudnnHandle(std::move(context), std::move(lock), handle_);
+    return CudnnHandle(executor, std::move(lock), handle_);
   }
 
   void NotifyStreamDestroyed(Stream* stream) {
