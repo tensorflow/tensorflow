@@ -147,6 +147,8 @@ REGISTER_OP("GetMinibatchSplitsWithPhysicalReplica")
       c->set_output(
           4, c->MakeShape(
                  {num_physical_replica * kMaxDivisions * num_sc_per_chip + 1}));
+      c->set_output(5, c->Scalar());
+      c->set_output(6, c->Scalar());
       return OkStatus();
     });
 
