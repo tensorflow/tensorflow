@@ -146,31 +146,23 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> AotCompile(
 #endif
 }  // namespace
 
+// TODO(b/285385306): Enable compilation on provided `topology`.
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 StreamExecutorGpuCompiler::Compile(CompileOptions options,
                                    const XlaComputation& computation,
                                    const PjRtTopologyDescription& topology,
                                    PjRtClient* client) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (client == nullptr && gpu_target_config_ != std::nullopt) {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     return AotCompile(options, computation, *gpu_target_config_);
+#endif
+    return absl::InternalError(
+        "GPU AOT compilation requires the target to be built with CUDA or "
+        "ROCm.");
   }
+  // TODO(b/296466237): Remove client dependency.
   TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
-
-  PjRtStreamExecutorClient* se_client =
-      tensorflow::down_cast<PjRtStreamExecutorClient*>(client);
-#if GOOGLE_CUDA
-  auto gpu_compiler = gpu::NVPTXCompiler();
-#elif TENSORFLOW_USE_ROCM
-  auto gpu_compiler = gpu::AMDGPUCompiler();
-#endif
-  gpu::GpuTargetConfig gpu_target_config = gpu_compiler.GetGpuTargetConfig(
-      se_client->client()->backend().default_stream_executor());
-  return AotCompile(options, computation, gpu_target_config);
-#endif
-  return absl::InternalError(
-      "GPU AOT compilation requires the target to be built with CUDA or "
-      "ROCm.");
+  return client->Compile(computation, options);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
@@ -178,17 +170,22 @@ StreamExecutorGpuCompiler::Compile(CompileOptions options,
                                    mlir::ModuleOp module,
                                    const PjRtTopologyDescription& topology,
                                    PjRtClient* client) {
+  if (client == nullptr && gpu_target_config_ != std::nullopt) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  XlaComputation xla_computation;
-  TF_RETURN_IF_ERROR(MlirToXlaComputation(
-      module, xla_computation,
-      /*use_tuple_args=*/options.parameter_is_tupled_arguments,
-      /*return_tuple=*/false));
-  return Compile(options, xla_computation, topology, client);
+    XlaComputation xla_computation;
+    TF_RETURN_IF_ERROR(MlirToXlaComputation(
+        module, xla_computation,
+        /*use_tuple_args=*/options.parameter_is_tupled_arguments,
+        /*return_tuple=*/false));
+    return AotCompile(options, xla_computation, *gpu_target_config_);
 #endif
-  return absl::InternalError(
-      "GPU AOT compilation requires the target to be built with CUDA or "
-      "ROCm.");
+    return absl::InternalError(
+        "GPU AOT compilation requires the target to be built with CUDA or "
+        "ROCm.");
+  }
+  // TODO(b/296466237): Remove client dependency.
+  TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
+  return client->Compile(module, options);
 }
 
 REGISTER_MODULE_INITIALIZER(pjrt_register_se_gpu_compiler, {
