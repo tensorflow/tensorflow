@@ -80,7 +80,7 @@ index 82fc097..b6cef69 100644
 +		  if (DGifGetLine(GifFile,sp->RasterBits,ImageSize)==GIF_ERROR) {
 +                      DGifDecreaseImageCounter(GifFile);
 +                      return GIF_ERROR;
-+                  }
++                 }
  	      }
  
                if (GifFile->ExtensionBlocks) {
