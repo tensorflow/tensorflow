@@ -802,24 +802,41 @@ class ConvertNonTrivialConvOp
   };
 
  private:
-  bool IsSamePadding(mhlo::ConvolutionOp conv_op, int num_spatial_dims,
+  bool IsSamePadding(mhlo::ConvolutionOp conv_op, size_t num_spatial_dims,
                      ArrayRef<int64_t> strides) const {
-    for (auto i : llvm::seq<int>(0, num_spatial_dims)) {
-      int stride_dim = i + 1;
-      int stride = strides[stride_dim];
-      int output_dim =
-          conv_op.getDimensionNumbers().getOutputSpatialDimensions().data()[i];
-      int input_dim =
-          conv_op.getDimensionNumbers().getInputSpatialDimensions().data()[i];
-      int output_size =
-          conv_op.getType().cast<ShapedType>().getDimSize(output_dim);
-      int input_size =
-          conv_op.getLhs().getType().cast<ShapedType>().getDimSize(input_dim);
-      if (input_size != (output_size + stride - 1) / stride) {
+    auto dnums = conv_op.getDimensionNumbers();
+    SmallVector<int64_t, 4> padding(
+        conv_op.getPadding().value().getValues<int64_t>().begin(),
+        conv_op.getPadding().value().getValues<int64_t>().end());
+    // The newly added spatial dimension requires zero left and right padding.
+    ArrayRef<int64_t> input_spatial_dims = dnums.getInputSpatialDimensions();
+    ArrayRef<int64_t> output_spatial_dims = dnums.getOutputSpatialDimensions();
+    for (size_t i = 0; i < num_spatial_dims; ++i) {
+      // In some cases the total padding is odd, so we have 1 leftover, which is
+      // why below we check pad_delta > 1.
+      int64_t pad_delta = std::abs(padding[2 * i] - padding[2 * i + 1]);
+      if (pad_delta > 1) {
+        return false;
+      }
+      int64_t stride = strides[i + 1];
+      int64_t input_size =
+          conv_op.getLhs().getType().cast<ShapedType>().getDimSize(
+              input_spatial_dims[i]);
+      int64_t output_size = conv_op.getType().cast<ShapedType>().getDimSize(
+          output_spatial_dims[i]);
+      // The reason for the below check is as follows:
+      // When computing the output, we have the following relation between
+      // o - output dim size, i - input dim size, s - stride, P - total pads
+      // o = (i-k+1) + (s-1)(i-1) + P
+      // Where the first term is the kernel applications on the input,
+      // the second term is the additional applications from the stride
+      // and P is a term that captures the total padding. After expanding we get
+      // o = si + k - s + 2 + P
+      // Here JAX sets P to cancel k-s+2, leading to the expression below
+      if (output_size != input_size * stride) {
         return false;
       }
     }
-
     return true;
   }
 
@@ -872,6 +889,12 @@ class ConvertNonTrivialConvOp
     if (num_spatial_dims != 2)
       return rewriter.notifyMatchFailure(conv_op,
                                          "doesn't support more than 2D");
+
+    if (llvm::any_of(conv_op.getPadding().value().getValues<int64_t>(),
+                     [](int64_t v) { return v < 0; })) {
+      return rewriter.notifyMatchFailure(conv_op,
+                                         "doesn't support negative pads");
+    }
 
     // Checks kernel dimensions.
     if (!isKernelFormatHWIO(dnums) && !isKernelFormatHWOI(dnums))

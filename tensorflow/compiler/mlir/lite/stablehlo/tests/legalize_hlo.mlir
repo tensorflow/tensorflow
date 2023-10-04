@@ -2743,6 +2743,34 @@ func.func @convert_conv2d_resize_perferred(%arg0: tensor<1x56x1248x16xf32>, %arg
   func.return %0 : tensor<1x111x1248x16xf32>
 }
 
+// CHECK-LABEL:   func @convert_conv2d_back_prop_input_same_pad(
+// CHECK-SAME:                         %[[VAL_0:.*]]: tensor<1x256x256x2xf32>,
+// CHECK-SAME:                         %[[VAL_1:.*]]: tensor<4x4x2x2xf32>) -> tensor<1x512x512x2xf32> {
+// CHECK:           %[[VAL_3:.*]] = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK:           %[[VAL_4:.*]] = "tf.ReverseV2"(%[[VAL_1]], %[[VAL_3]]) : (tensor<4x4x2x2xf32>, tensor<2xi64>) -> tensor<4x4x2x2xf32>
+// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<[1, 512, 512, 2]> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK:           %[[VAL_5:.*]] = "tf.Conv2DBackpropInput"(%[[VAL_2]], %[[VAL_4]], %[[VAL_0]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 2, 2, 1], use_cudnn_on_gpu = true} : (tensor<4xi32>, tensor<4x4x2x2xf32>, tensor<1x256x256x2xf32>) -> tensor<1x512x512x2xf32>
+// CHECK:           return %[[VAL_5]] : tensor<1x512x512x2xf32>
+// CHECK:         }
+func.func @convert_conv2d_back_prop_input_same_pad(%arg0: tensor<1x256x256x2xf32>, %arg1: tensor<4x4x2x2xf32>) -> tensor<1x512x512x2xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[0, 1, o, i]->[b, 0, 1, f]>, feature_group_count = 1 : i64, lhs_dilation = dense<2> : tensor<2xi64>, padding = dense<[[2, 2], [2, 2]]> : tensor<2x2xi64>,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>], rhs_dilation = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>
+  } : (tensor<1x256x256x2xf32>, tensor<4x4x2x2xf32>) -> tensor<1x512x512x2xf32>
+  func.return %0 : tensor<1x512x512x2xf32>
+}
+
+// CHECK-LABEL:   func @convert_conv2d_back_prop_input_negative_pad(
+// CHECK-NOT:       "tf.Conv2DBackpropInput"
+func.func @convert_conv2d_back_prop_input_negative_pad(%arg0: tensor<1x256x256x2xf32>, %arg1: tensor<4x4x2x2xf32>) -> tensor<1x504x504x2xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[0, 1, o, i]->[b, 0, 1, f]>, feature_group_count = 1 : i64, lhs_dilation = dense<2> : tensor<2xi64>, padding = dense<[[-2, -2], [-2, -2]]> : tensor<2x2xi64>,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>], rhs_dilation = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>
+  } : (tensor<1x256x256x2xf32>, tensor<4x4x2x2xf32>) -> tensor<1x504x504x2xf32>
+  func.return %0 : tensor<1x504x504x2xf32>
+}
+
+
 // CHECK-LABEL:   func @convert_conv2d_back_prop_input(
 // CHECK-SAME:                         %[[VAL_0:.*]]: tensor<8x4x4x32xf32>,
 // CHECK-SAME:                         %[[VAL_1:.*]]: tensor<3x3x64x32xf32>) -> tensor<8x8x8x64xf32> {
