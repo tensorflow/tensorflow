@@ -2349,7 +2349,9 @@ def TF_GetMinibatchSplitsWithPhysicalReplicaOp : TF_Op<"GetMinibatchSplitsWithPh
     TF_Int32Tensor:$sorted_col_ids,
     TF_Float32Tensor:$sorted_gains,
     TF_Int64Tensor:$splits,
-    TF_Int32Tensor:$id_counts
+    TF_Int32Tensor:$id_counts,
+    TF_Int32Tensor:$max_ids,
+    TF_Int32Tensor:$max_uniques
   );
 }
 
