@@ -1,5 +1,5 @@
 diff --git a/dgif_lib.c b/dgif_lib.c
-index 82fc097..b6cef69 100644
+index 82fc097..c6700a9 100644
 --- a/dgif_lib.c
 +++ b/dgif_lib.c
 @@ -810,7 +810,8 @@ DGifSetupDecompress(GifFileType *GifFile)
@@ -77,10 +77,10 @@ index 82fc097..b6cef69 100644
  	      else {
 -		  if (DGifGetLine(GifFile,sp->RasterBits,ImageSize)==GIF_ERROR)
 -		      return (GIF_ERROR);
-+		  if (DGifGetLine(GifFile,sp->RasterBits,ImageSize)==GIF_ERROR) {
++                  if (DGifGetLine(GifFile,sp->RasterBits,ImageSize)==GIF_ERROR) {
 +                      DGifDecreaseImageCounter(GifFile);
 +                      return GIF_ERROR;
-+                 }
++                  }
  	      }
  
                if (GifFile->ExtensionBlocks) {
