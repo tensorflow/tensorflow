@@ -133,6 +133,9 @@ bool IsOpSupported(mlir::Operation* op) {
           llvm::dyn_cast_or_null<TF::TensorListElementShapeOp>(op)) {
     element_type = GetSingularVariantBaseType(op->getOperand(0));
   }
+  if (auto length = llvm::dyn_cast_or_null<TF::TensorListLengthOp>(op)) {
+    element_type = GetSingularVariantBaseType(op->getOperand(0));
+  }
 
   if (!element_type.has_value()) return false;
   // TODO(b/288302706) add support for all types handled in the
