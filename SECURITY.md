@@ -16,58 +16,6 @@ use a term commonly used by machine learning practitioners) are expressed as
 programs that TensorFlow executes. TensorFlow programs are encoded as
 computation
 [**graphs**](https://developers.google.com/machine-learning/glossary/#graph).
-
-The model's parameters are often stored separately in **checkpoints**.
-
-At runtime, TensorFlow executes the computation graph using the parameters
-provided. Note that the behavior of the computation graph may change depending
-on the parameters provided. **TensorFlow itself is not a sandbox**. When
-executing the computation graph, TensorFlow may read and write files, send and
-receive data over the network, and even spawn additional processes. All these
-tasks are performed with the permission of the TensorFlow process. Allowing for
-this flexibility makes for a powerful machine learning platform, but it has
-security implications.
-
-The computation graph may also accept **inputs**. Those inputs are the
-data you supply to TensorFlow to train a model, or to use a model to run
-inference on the data.
-
-**TensorFlow's models are programs, and need to be treated as such from a security
-perspective.**
-
-## Execution models of TensorFlow code
-
-The TensorFlow library has a wide API which can be used in multiple scenarios.
-The security requirements are also different depending on the usage.
-
-The API usage with the least security concerns is doing iterative exploration
-via the Python interpreter or small Python scripts. Here, only some parts of the
-API are exercised and eager execution is the default, meaning that each
-operation executes immediately. This mode is useful for testing, including
-fuzzing. For direct access to the C++ kernels, users of TensorFlow can directly
-call `tf.raw_ops.xxx` APIs. This gives control over all the parameters that
-would be sent to the kernel. Passing invalid combinations of parameters can
-allow insecure behavior (see definition of a vulnerability in a section below).
-However, these won’t always translate to actual vulnerabilities in TensorFlow.
-This would be similar to directly dereferencing a null pointer in a C++ program:
-not a vulnerability by itself but a coding error.
-
-The next 2 modes of using the TensorFlow API have the most security
-implications. These relate to the actual building and use of machine learning
-models. Both during training and inference, the TensorFlow runtime will build
-and execute computation graphs from (usually Python) code written by a
-practitioner (using compilation techniques to turn eager code into graph mode).
-In both of these scenarios, a vulnerability can be exploited to cause
-significant damage, hence the goal of the security team is to eliminate these
-vulnerabilities or otherwise reduce their impact. This is essential, given that
-both training and inference can run on accelerators (e.g. GPU, TPU) or in a
-distributed manner.
-
-Finally, the last mode of executing TensorFlow library code is as part of
-additional tooling. For example, TensorFlow provides a `saved_model_cli` tool
-which can be used to scan a `SavedModel` (the serialization format used by
-TensorFlow for models) and describe it. These tools are usually run by a single
-developer, on a single host, so the impact of a vulnerability in them is
 somewhat reduced.
 
 ## Running untrusted models
