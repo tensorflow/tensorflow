@@ -8,7 +8,7 @@ TensorFlow and how to report them.
 This document applies to other repositories in the TensorFlow organization,
 covering security practices for the entirety of the TensorFlow ecosystem.
 
-## TensorFlow's models are programs
+## TensorFlow models are programs
 
 TensorFlow
 [**models**](https://developers.google.com/machine-learning/glossary/#model) (to
