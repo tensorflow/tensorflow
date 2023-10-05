@@ -390,7 +390,7 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
 #define REGISTER_KERNEL(T)                                                 \
   REGISTER_KERNEL_BUILDER(                                                 \
       Name("AdjustContrastv2").Device(DEVICE_CPU).TypeConstraint<T>("T"),  \
-      AdjustContrastOpv2<CPUDevice, T>);
+      AdjustContrastOpv2<CPUDevice, T>)
 
 REGISTER_KERNEL(float);
 REGISTER_KERNEL(Eigen::half);
