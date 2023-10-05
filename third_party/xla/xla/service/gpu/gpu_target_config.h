@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_TARGET_CONFIG_H_
 #define XLA_SERVICE_GPU_GPU_TARGET_CONFIG_H_
 
-#include "xla/service/gpu/gpu_device_info.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
 
@@ -26,10 +26,11 @@ namespace gpu {
 struct GpuTargetConfig {
   GpuTargetConfig() = default;
   explicit GpuTargetConfig(const stream_executor::GpuTargetConfigProto& proto);
+  explicit GpuTargetConfig(stream_executor::StreamExecutor* s);
 
   stream_executor::GpuTargetConfigProto ToProto() const;
 
-  GpuDeviceInfo gpu_device_info;
+  stream_executor::DeviceDescription gpu_device_info;
   std::string platform_name;
   stream_executor::dnn::VersionInfo dnn_version_info;
   std::string device_description_str;

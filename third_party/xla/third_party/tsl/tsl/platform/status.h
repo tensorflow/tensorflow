@@ -179,10 +179,10 @@ class StatusGroup {
 
 typedef std::function<void(const Status&)> StatusCallback;
 
-extern tsl::string* TfCheckOpHelperOutOfLine(const ::tsl::Status& v,
-                                             const char* msg);
+extern ::tsl::string* TfCheckOpHelperOutOfLine(const ::tsl::Status& v,
+                                               const char* msg);
 
-inline tsl::string* TfCheckOpHelper(::tsl::Status v, const char* msg) {
+inline ::tsl::string* TfCheckOpHelper(::tsl::Status v, const char* msg) {
   if (v.ok()) return nullptr;
   return TfCheckOpHelperOutOfLine(v, msg);
 }

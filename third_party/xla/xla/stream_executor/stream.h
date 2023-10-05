@@ -626,17 +626,6 @@ class Stream {
                            const int sqrt_depth_reduction,
                            DeviceMemory<float> *output_data);
 
-  // Space to depth is the inverse of depth to space. Space to depth takes each
-  // non-overlapping M by M patch (in the X and Y dimensions) with depth D of
-  // the input, and transforms it to a 1 by 1 patch with depth D*M². If the
-  // input has size (MX, MY, D), the output has size (X, Y, D*M²). The number of
-  // data elements is not changed.
-  Stream &ThenSpaceToDepth(const dnn::BatchDescriptor &input_dimensions,
-                           const DeviceMemory<float> &input_data,
-                           const dnn::DepthToSpaceLayout &space_to_depth_layout,
-                           const int sqrt_depth_increase,
-                           DeviceMemory<float> *output_data);
-
   Stream &ThenElementwiseOperate(
       dnn::ElementwiseOperation operation,
       absl::Span<const dnn::BatchDescriptor> input_dimensions,

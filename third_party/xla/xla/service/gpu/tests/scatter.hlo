@@ -151,7 +151,7 @@
 // CHECK:         store atomic i32 %[[VAL_111]], ptr %[[VAL_107]] unordered, align 4
 // CHECK:         br label %[[VAL_99]]
 
-HloModule TensorFlowScatterV1
+HloModule TensorFlowScatterV1, is_scheduled=true
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
   lhs = s32[] parameter(0)
@@ -174,7 +174,7 @@ ENTRY main {
 // -----
 
 
-HloModule ScatterIntoScalar
+HloModule ScatterIntoScalar, is_scheduled=true
 
 update_s32 {
   lhs = s32[] parameter(0)
@@ -197,7 +197,7 @@ ENTRY main {
 // -----
 
 
-HloModule TensorFlowScatter_Mul
+HloModule TensorFlowScatter_Mul, is_scheduled=true
 
 mul_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
   lhs = s32[] parameter(0)
@@ -220,7 +220,7 @@ ENTRY main {
 // -----
 
 
-HloModule ScalarUpdate
+HloModule ScalarUpdate, is_scheduled=true
 
 update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
   lhs = s32[] parameter(0)

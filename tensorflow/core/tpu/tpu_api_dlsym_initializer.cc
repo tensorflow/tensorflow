@@ -16,6 +16,7 @@ limitations under the License.
 #include <dirent.h>
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <link.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -76,10 +77,12 @@ absl::Status InitializeTpuLibrary(void* library_handle) {
 // Gets the path of current module. It is usually tensorflow_framework.so.
 const char* GetCurrentModulePath() {
   Dl_info DlInfo;
-  if (!dladdr((void*)GetCurrentModulePath, &DlInfo)) {
+  struct link_map* linkmap = nullptr;
+  if (!dladdr1((void*)GetCurrentModulePath, &DlInfo,
+               reinterpret_cast<void**>(&linkmap), RTLD_DL_LINKMAP)) {
     return nullptr;
   }
-  return DlInfo.dli_fname;
+  return linkmap->l_name;
 }
 
 absl::Status FindAndLoadTpuLibrary() {
@@ -91,8 +94,8 @@ absl::Status FindAndLoadTpuLibrary() {
     LOG(INFO) << "Opening library: " << so_name;
     void* tf_lib = dlopen(so_name, RTLD_NOW | RTLD_GLOBAL);
     if (tf_lib == nullptr) {
-      return absl::InternalError(
-          absl::StrCat("Failed to open libtensorflow ", dlerror()));
+      LOG(WARNING) << "Failed to open library " << dlerror()
+                   << ". This may be expected if Tensorflow API is not used";
     }
   }
 

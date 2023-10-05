@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
-#include "xla/service/memory_space_assignment/memory_space_assignment_repacking.h"
+#include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/shape.h"
 #include "xla/statusor.h"
 

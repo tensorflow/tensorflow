@@ -53,12 +53,6 @@ tf_<library>_header_dir: ...
 tf_<library>_library_dir: ...
 """
 
-# You can use the following command to regenerate the base64 version of this
-# script:
-# cat third_party/tensorflow/third_party/gpus/find_cuda_config.oss.py |
-#   pigz -z | base64 -w0 >
-#   third_party/tensorflow/third_party/gpus/find_cuda_config.py.gz.base64.oss
-
 import io
 import os
 import glob

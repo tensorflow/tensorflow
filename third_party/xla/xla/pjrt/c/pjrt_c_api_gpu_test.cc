@@ -50,9 +50,15 @@ limitations under the License.
 namespace pjrt {
 namespace {
 
+#ifdef TENSORFLOW_USE_ROCM
 const bool kUnused = (RegisterPjRtCApiTestFactory([]() { return GetPjrtApi(); },
-                                                  /*platform_name=*/"gpu"),
+                                                  /*platform_name=*/"rocm"),
                       true);
+#else   // TENSORFLOW_USE_ROCM
+const bool kUnused = (RegisterPjRtCApiTestFactory([]() { return GetPjrtApi(); },
+                                                  /*platform_name=*/"cuda"),
+                      true);
+#endif  // TENSORFLOW_USE_ROCM
 
 class PjrtCApiGpuTest : public PjrtCApiTestBase {
  public:

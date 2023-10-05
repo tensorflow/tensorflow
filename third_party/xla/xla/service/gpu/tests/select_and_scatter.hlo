@@ -101,7 +101,7 @@
 // CHECK:         store i8 %[[VAL_63]], ptr %[[VAL_64:.*]], align 1
 // CHECK:         ret void
 
-HloModule SelectAndScatter
+HloModule SelectAndScatter, is_scheduled=true
 
 %ge_F32 (lhs.5: f32[], rhs.6: f32[]) -> pred[] {
   %lhs.5 = f32[] parameter(0)

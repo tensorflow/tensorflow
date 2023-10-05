@@ -187,8 +187,6 @@ Tutorials](https://www.tensorflow.org/tutorials/distribute/)
 Note that we provide a default version of `tf.distribute.Strategy` that is
 used when no other strategy is in scope, that provides the same API with
 reasonable default behavior.
-
-API docstring: tensorflow.distribute
 """
 # pylint: enable=line-too-long
 

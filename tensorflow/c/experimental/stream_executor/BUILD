@@ -46,7 +46,6 @@ cc_library(
         "//tensorflow/core/platform:strcat",
         "@com_google_absl//absl/functional:any_invocable",
         "@local_xla//xla/stream_executor",
-        "@local_xla//xla/stream_executor:multi_platform_manager",
         "@local_xla//xla/stream_executor:platform",
     ],
 )
@@ -80,8 +79,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "@local_xla//xla/stream_executor",
-        "@local_xla//xla/stream_executor:multi_platform_manager",
-        "@local_xla//xla/stream_executor:stream_executor_pimpl",
     ],
 )
 

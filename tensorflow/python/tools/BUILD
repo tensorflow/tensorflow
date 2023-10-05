@@ -121,6 +121,12 @@ py_strict_library(
     ],
 )
 
+py_strict_binary(
+    name = "tf_import_time",
+    srcs = ["tf_import_time.py"],
+    deps = ["//tensorflow:tensorflow_py"],
+)
+
 py_strict_test(
     name = "freeze_graph_test",
     size = "small",

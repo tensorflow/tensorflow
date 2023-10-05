@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -259,31 +258,32 @@ std::optional<TransposeDescription> FindConsistentTransposeHero(
 StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
     FusionBackendConfig backend_config,
     std::vector<const HloInstruction*> hlo_roots, FusionBoundaryFn boundary_fn,
-    const GpuDeviceInfo* device_info) {
+    const se::DeviceDescription* device_info) {
   std::vector<const HloInstruction*> heroes;
   heroes.reserve(hlo_roots.size());
   for (auto* root : hlo_roots) {
     heroes.push_back(&FindNonTrivialHero(*root));
   }
 
-  std::vector<const HloInstruction*> fusion_parameter_inputs;
-  FindFusionParameters(hlo_roots, boundary_fn,
-                       [&](const HloInstruction& parameter) {
-                         fusion_parameter_inputs.push_back(&parameter);
-                       });
+  std::vector<const HloInstruction*> fusion_arguments;
+  FindFusionArguments(hlo_roots, boundary_fn,
+                      [&](const HloInstruction& argument) {
+                        fusion_arguments.push_back(&argument);
+                      });
 
   std::optional<TransposeDescription> tiled_transpose_hero =
       FindConsistentTransposeHero(hlo_roots, heroes);
 
-  return HloFusionAnalysis(
-      std::move(backend_config), std::move(hlo_roots), std::move(boundary_fn),
-      std::move(fusion_parameter_inputs), std::move(heroes), device_info,
-      tiled_transpose_hero);
+  return HloFusionAnalysis(std::move(backend_config), std::move(hlo_roots),
+                           std::move(boundary_fn), std::move(fusion_arguments),
+                           std::move(heroes), device_info,
+                           tiled_transpose_hero);
 }
 
 // static
 StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
-    const HloFusionInstruction* fusion, const GpuDeviceInfo* device_info) {
+    const HloFusionInstruction* fusion,
+    const se::DeviceDescription* device_info) {
   CHECK(device_info != nullptr);
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       fusion->backend_config<FusionBackendConfig>());
@@ -455,7 +455,7 @@ const LaunchDimensionsConfig* HloFusionAnalysis::GetLoopFusionConfig() {
   // Call 'small' fusions that use less threads than the GPU has.
   int64_t num_elements = ShapeUtil::ElementsIn(GetElementShape());
   int64_t n_threads_max =
-      device_info_->threads_per_core_limit * device_info_->core_count;
+      device_info_->threads_per_core_limit() * device_info_->core_count();
   if (num_elements >= n_threads_max &&
       !MayPreventVectorization(fusion_roots_, fusion_boundary_fn_)) {
     unroll_factor = ComputeMaxUnrollFactor(num_elements);
@@ -514,7 +514,7 @@ const Shape& HloFusionAnalysis::GetElementShape() const {
 
 int HloFusionAnalysis::SmallestInputDtypeBits() const {
   int bits = std::numeric_limits<int>::max();
-  for (const HloInstruction* operand : fusion_parameter_inputs_) {
+  for (const HloInstruction* operand : fusion_arguments_) {
     bits = std::min(bits,
                     primitive_util::BitWidth(operand->shape().element_type()));
   }
@@ -543,8 +543,8 @@ int64_t HloFusionAnalysis::MaxBeneficialColumnReductionUnrollBasedOnBlockSize()
   int64_t num_threads = num_blocks * 1024;
   // Number of SMs we can saturate with this work.
   int num_cores =
-      CeilOfRatio<int64_t>(num_threads, device_info_->threads_per_core_limit);
-  return static_cast<int>(CeilOfRatio(num_cores, device_info_->core_count));
+      CeilOfRatio<int64_t>(num_threads, device_info_->threads_per_core_limit());
+  return static_cast<int>(CeilOfRatio(num_cores, device_info_->core_count()));
 }
 
 // Divides `num_reduces` reduces into groups. Different groups will be executed
@@ -698,9 +698,9 @@ bool HloFusionAnalysis::IsUnrollingColumnReductionBeneficial(
         return TraversalResult::kVisitOperands;
       });
 
-  for (auto* param : fusion_parameter_inputs_) {
-    if (!reachable_through_non_elementwise.contains(param) &&
-        ShapeUtil::SameDimensions(input_shape, param->shape())) {
+  for (auto* argument : fusion_arguments_) {
+    if (!reachable_through_non_elementwise.contains(argument) &&
+        ShapeUtil::SameDimensions(input_shape, argument->shape())) {
       ++can_be_vectorized;
     }
   }
@@ -711,8 +711,8 @@ bool HloFusionAnalysis::IsUnrollingColumnReductionBeneficial(
   // unrolled even with such an assumption,  and the accesses to those inputs
   // turn out to be vectorizable, the compiler will still vectorize them.
   int64_t num_elements = ShapeUtil::ElementsIn(input_shape);
-  cannot_be_vectorized += absl::c_count_if(
-      fusion_parameter_inputs_, [&](const HloInstruction* parameter) {
+  cannot_be_vectorized +=
+      absl::c_count_if(fusion_arguments_, [&](const HloInstruction* parameter) {
         return ShapeUtil::ElementsIn(parameter->shape()) > num_elements;
       });
   if (can_be_vectorized < cannot_be_vectorized) {
@@ -743,8 +743,8 @@ bool HloFusionAnalysis::CanVectorizeReduction(
     return false;
   }
 
-  const auto* cuda_cc =
-      std::get_if<se::CudaComputeCapability>(&device_info_->compute_capability);
+  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
+      &device_info_->gpu_compute_capability());
   if (cuda_cc == nullptr) return false;
   if (cuda_cc->IsAtLeast(se::CudaComputeCapability::VOLTA)) return true;
   if (cuda_cc->IsAtLeast(se::CudaComputeCapability::PASCAL_)) {
@@ -762,7 +762,7 @@ int HloFusionAnalysis::CalculateVirtualThreadScalingFactorForReduction(
   if (reduction_dimensions.is_row_reduction && dimx <= 128) {
     int rows_per_warp = RowReductionGetRowsPerWarp(dimx);
     const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-        &device_info_->compute_capability);
+        &device_info_->gpu_compute_capability());
     if (cuda_cc != nullptr &&
         cuda_cc->IsAtLeast(se::CudaComputeCapability::AMPERE)) {
       return rows_per_warp * 3;
@@ -811,7 +811,7 @@ ReductionCodegenInfo HloFusionAnalysis::ComputeReductionCodegenInfo(
   auto instr_index_groups = GroupDisjointReductions();
   int64_t shmem_usage = ReductionProjectedShmemUsageBytes(reduction_dimensions,
                                                           instr_index_groups);
-  const int64_t shmem_budget = device_info_->shared_memory_per_block;
+  const int64_t shmem_budget = device_info_->shared_memory_per_block();
   bool reduction_is_race_free = ReductionIsRaceFree(
       hero_reduction->GetModule()->config(), reduction_dimensions);
   bool vectorize =

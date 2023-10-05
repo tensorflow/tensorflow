@@ -386,7 +386,7 @@ Status mlir::CustomOptionsToAttributes(
 
 // TODO(zichuanwei@): Populate Builtin_options_2 manual for now, should automate
 // these in the future
-void mlir::BuiltinOptions2ToAttributes(
+void BuiltinOptions2ToAttributesManual(
     tflite::BuiltinOptions2Union op_union, mlir::Builder builder,
     llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes) {
   if (const auto* op = op_union.AsStablehloConcatenateOptions()) {
@@ -633,6 +633,23 @@ void mlir::BuiltinOptions2ToAttributes(
                                 op->permutation, builder)));
     }
 
+    return;
+  }
+  if (const auto* op = op_union.AsStablehloRngBitGeneratorOptions()) {
+    mlir::stablehlo::RngAlgorithm algorithm;
+    switch (op->algorithm) {
+      case tflite::RngAlgorithm_THREEFRY:
+        algorithm = mlir::stablehlo::RngAlgorithm::THREE_FRY;
+        break;
+      case tflite::RngAlgorithm_PHILOX:
+        algorithm = mlir::stablehlo::RngAlgorithm::PHILOX;
+        break;
+      case tflite::RngAlgorithm_DEFAULT:
+        algorithm = mlir::stablehlo::RngAlgorithm::DEFAULT;
+    }
+    auto attr =
+        mlir::stablehlo::RngAlgorithmAttr::get(builder.getContext(), algorithm);
+    attributes.emplace_back(builder.getNamedAttr("rng_algorithm", attr));
     return;
   }
 }

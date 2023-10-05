@@ -267,6 +267,15 @@ TEST_F(HloShardingTest, EmptySingleTuple) {
   EXPECT_TRUE(sharding.ExtractSingleSharding());
 }
 
+// Tests that empty tuple is not a shard group.
+TEST_F(HloShardingTest, EmptySingleTupleIsNotShardGroup) {
+  HloSharding sharding = HloSharding::SingleTuple(ShapeUtil::MakeTupleShape({}),
+                                                  HloSharding::AssignDevice(0));
+  EXPECT_FALSE(sharding.IsShardGroup());
+  EXPECT_FALSE(sharding.IsShardAs());
+  EXPECT_FALSE(sharding.IsShardLike());
+}
+
 TEST_F(HloShardingTest, NestedTuple) {
   // nested_tuple_shape = (f32[], (f32[3]), f32[4, 6])
   Shape nested_tuple_shape = ShapeUtil::MakeTupleShape({

@@ -28,6 +28,9 @@ on:
     branches:
       - master
 
+permissions:
+  contents: read
+
 jobs:
   docker:
     if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks

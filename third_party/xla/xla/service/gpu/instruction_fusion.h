@@ -29,17 +29,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/fusion_node_indexing_evaluation.h"
 #include "xla/service/fusion_queue.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
 
 class GpuInstructionFusion : public InstructionFusion {
  public:
-  explicit GpuInstructionFusion(bool may_duplicate, const GpuDeviceInfo& d)
+  explicit GpuInstructionFusion(bool may_duplicate,
+                                const se::DeviceDescription& d)
       : InstructionFusion(GpuInstructionFusion::IsExpensive, may_duplicate),
         device_info_(d) {}
 
@@ -76,7 +77,7 @@ class GpuInstructionFusion : public InstructionFusion {
   absl::flat_hash_map<const HloInstruction*, FusionNodeIndexingEvaluation>
       fusion_node_evaluations_;
 
-  const GpuDeviceInfo device_info_;
+  se::DeviceDescription device_info_;
 };
 
 }  // namespace gpu

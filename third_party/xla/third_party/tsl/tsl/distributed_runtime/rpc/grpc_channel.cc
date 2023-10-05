@@ -343,7 +343,8 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
   const string job_id_;
   const std::map<int, string> host_ports_;
   const ChannelCreationFunction channel_func_;
-  TF_DISALLOW_COPY_AND_ASSIGN(SparseGrpcChannelCache);
+  SparseGrpcChannelCache(const SparseGrpcChannelCache&) = delete;
+  void operator=(const SparseGrpcChannelCache&) = delete;
 };
 
 }  // namespace

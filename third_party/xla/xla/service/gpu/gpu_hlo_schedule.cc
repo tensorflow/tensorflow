@@ -678,7 +678,7 @@ HloInstructionSequence PostProcessSchedule(
 // Compute the device memory limit to be used by passes like scheduler and
 // HLO rematerialization.
 int64_t GetSchedulerMemoryLimit(const HloModule* module,
-                                const GpuDeviceInfo& gpu_device_info,
+                                const se::DeviceDescription& gpu_device_info,
                                 int pointer_size) {
   // There is a "base" value which is either specified in HloModuleConfig (this
   // value should take into account the fact that we need to leave some memory
@@ -691,7 +691,7 @@ int64_t GetSchedulerMemoryLimit(const HloModule* module,
   const int64_t base_limit =
       module->config().device_memory_size() != 0
           ? module->config().device_memory_size()
-          : gpu_device_info.device_memory_size * 80 / 100;
+          : gpu_device_info.device_memory_size() * 80 / 100;
 
   // Find the total size of inputs and outputs.
   int64_t total_io_size = 0;

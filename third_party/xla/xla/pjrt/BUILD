@@ -87,9 +87,9 @@ cc_library(
         "//xla/runtime:async_runtime",
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
+        "//xla/stream_executor",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
-        "//xla/stream_executor:event",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
     ],
@@ -124,7 +124,6 @@ cc_library(
         "//xla:util",
         "//xla/client:local_client",
         "//xla/stream_executor",
-        "//xla/stream_executor:event",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
@@ -377,6 +376,17 @@ cc_library(
     ],
 )
 
+tf_proto_library(
+    name = "stream_executor_unloaded_executable_proto",
+    srcs = ["stream_executor_unloaded_executable.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        ":compile_options_proto",
+        "//xla:xla_proto",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "stream_executor_unloaded_executable",
     srcs = ["stream_executor_unloaded_executable.cc"],
@@ -384,10 +394,12 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_executable",
+        ":stream_executor_unloaded_executable_proto_cc",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "//xla/service:compiler",
         "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -430,14 +442,14 @@ cc_library(
         "//xla/service:transfer_manager",
         "//xla/service/gpu:gpu_executable_run_options",
         "//xla/stream_executor",
-        "//xla/stream_executor:event",
         "//xla/stream_executor/host:host_platform_id",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -448,6 +460,7 @@ cc_library(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:fingerprint",
+        "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:platform_port",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
@@ -461,7 +474,11 @@ xla_cc_test(
     srcs = ["pjrt_stream_executor_client_test.cc"],
     deps = [
         ":pjrt_client",
+        ":pjrt_future",
         ":pjrt_stream_executor_client",
+        "//xla:literal",
+        "//xla:literal_comparison",
+        "//xla:literal_util",
         "//xla:shape_util",
         "//xla:test",
         "//xla:xla_data_proto_cc",
@@ -470,7 +487,12 @@ xla_cc_test(
         "//xla/service:cpu_plugin",
         "//xla/service:platform_util",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+        "@tf_runtime//:async_value",
     ],
 )
 

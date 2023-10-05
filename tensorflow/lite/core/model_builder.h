@@ -158,28 +158,33 @@ class FlatBufferModel {
 #if FLATBUFFERS_LITTLEENDIAN == 0
   /// Byte swap a constant buffer in place.
   static void ByteSwapBuffer(int8_t tensor_type, size_t buffer_size,
-                             uint8_t* buffer);
+                             uint8_t* buffer, bool from_big_endian = true);
 
   /// Byte swap the buffers field of a TFLite Model instance in place.
-  static void ByteSwapTFLiteModel(const tflite::Model* tfl_model);
+  static void ByteSwapTFLiteModel(const tflite::Model* tfl_model,
+                                  bool from_big_endian = true);
 
   /// Byte swap the buffers field of a TFLite ModelT instance in place.
-  static void ByteSwapTFLiteModelT(tflite::ModelT* tfl_modelt);
+  static void ByteSwapTFLiteModelT(tflite::ModelT* tfl_modelt,
+                                   bool from_big_endian = true);
 
   /// Convert the TFLite buffers field between LE and BE format in a
   /// FlatBufferModel which is not empty and return the converted instance.
   static std::unique_ptr<FlatBufferModel> ByteConvertModel(
       std::unique_ptr<FlatBufferModel> model,
-      ErrorReporter* error_reporter = DefaultErrorReporter());
+      ErrorReporter* error_reporter = DefaultErrorReporter(),
+      bool from_big_endian = false);
 
   /// Byte Swap the TFLite buffers field in a FlatBufferModel and return the
   /// swapped instance.
   static std::unique_ptr<FlatBufferModel> ByteSwapFlatBufferModel(
       std::unique_ptr<FlatBufferModel> model,
-      ErrorReporter* error_reporter = DefaultErrorReporter());
+      ErrorReporter* error_reporter = DefaultErrorReporter(),
+      bool from_big_endian = false);
 
   /// Byte Swap the serialized String of a TFLite model in place.
-  static void ByteSwapSerializedModel(std::string* serialized_model);
+  static void ByteSwapSerializedModel(std::string* serialized_model,
+                                      bool from_big_endian = true);
 #endif
 
   // Releases memory or unmaps mmaped memory.

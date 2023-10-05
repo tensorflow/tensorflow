@@ -143,7 +143,8 @@ class AlphaNum {
   AlphaNum(char c);  // NOLINT(runtime/explicit)
 
   // NOLINTEND(google-explicit-constructor)
-  TF_DISALLOW_COPY_AND_ASSIGN(AlphaNum);
+  AlphaNum(const AlphaNum &) = delete;
+  void operator=(const AlphaNum &) = delete;
 };
 
 // ----------------------------------------------------------------------

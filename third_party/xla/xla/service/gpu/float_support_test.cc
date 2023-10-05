@@ -38,6 +38,7 @@ class FloatSupportTestWithTriton : public HloTestBase {
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_any(true);
+    debug_options.set_xla_gpu_cublas_fallback(false);
     return debug_options;
   }
 };

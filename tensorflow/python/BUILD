@@ -436,6 +436,7 @@ py_strict_library(
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/summary:summary_py",
+        "//tensorflow/python/tpu:tpu_noestimator",
         "//tensorflow/python/training",
         "//tensorflow/python/training:quantize_training",
         "//tensorflow/python/user_ops:ops",
@@ -940,7 +941,7 @@ filegroup(
         "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
         "@local_tsl//tsl/python/lib/core:ml_dtypes_lib",  # bfloat16, float8_e4m3fn, float8_e5m2
         "@local_tsl//tsl/python/lib/core:numpy",  # checkpoint_reader
-        "@local_xla//xla/stream_executor:stream_executor_pimpl",  # stat_summarizer
+        "@local_xla//xla/stream_executor",  # stat_summarizer
     ] + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
         "@local_xla//xla:status_macros",  # tfcompile

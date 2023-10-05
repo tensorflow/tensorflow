@@ -498,7 +498,7 @@ void BatchDimMapForward(const std::vector<HloInstruction*>& instructions,
             ins->dot_dimension_numbers().lhs_batch_dimensions();
         const auto& rhs_batch_dims =
             ins->dot_dimension_numbers().rhs_batch_dimensions();
-        std::vector<int64_t> lhs_space_dims, rhs_space_dims;
+        tsl::protobuf::RepeatedField<int64_t> lhs_space_dims, rhs_space_dims;
         std::tie(lhs_space_dims, rhs_space_dims) =
             GetSpaceDims(lhs->shape(), rhs->shape(), dot_dnums);
         // This part assumes that the dot has been through the dot decomposer,
@@ -759,7 +759,7 @@ void BatchDimMapBackward(const std::vector<HloInstruction*>& instructions,
             ins->dot_dimension_numbers().lhs_batch_dimensions();
         const auto& rhs_batch_dims =
             ins->dot_dimension_numbers().rhs_batch_dimensions();
-        std::vector<int64_t> lhs_space_dims, rhs_space_dims;
+        tsl::protobuf::RepeatedField<int64_t> lhs_space_dims, rhs_space_dims;
         std::tie(lhs_space_dims, rhs_space_dims) =
             GetSpaceDims(lhs->shape(), rhs->shape(), dot_dnums);
 
@@ -1250,7 +1250,11 @@ absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
     return std::vector<int64_t>(tensor_shape_rank, -1);
   }
   // Check the compatibility of tensor_shape_rank and spec
-  CHECK_EQ(tensor_shape_rank, spec.TiledDataRank());
+  if (tensor_shape_rank != spec.TiledDataRank()) {
+    return absl::InvalidArgumentError(
+        "Tensor shape rank should be equal to the tiled data rank of the input "
+        "spec.");
+  }
 
   auto check_mesh =
       [&](const Array<int64_t>& mesh) -> std::optional<std::vector<int64_t>> {
@@ -1621,8 +1625,8 @@ std::vector<int64_t> GetDimensionMapping(
   return mapping;
 }
 
-bool IsDivisible(int64_t denominator, int64_t numerator) {
-  return (denominator % numerator == 0);
+bool IsDivisible(int64_t numerator, int64_t denominator) {
+  return (numerator % denominator == 0);
 }
 
 std::vector<std::vector<int64_t>> GetReplicaGroupsAlongOneDimension(

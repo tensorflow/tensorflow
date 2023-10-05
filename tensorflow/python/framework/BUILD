@@ -409,6 +409,7 @@ py_strict_library(
     srcs = ["constant_op.py"],
     srcs_version = "PY3",
     visibility = visibility + [
+        "//smartass:__subpackages__",
         "//tensorflow:internal",
         "//third_party/py/tf_slim:__subpackages__",
     ],

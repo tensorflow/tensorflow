@@ -57,7 +57,7 @@ struct AutoShardingSolverRequest {
   std::optional<double> max_departures;
   bool crash_at_infinity_costs_check = false;
   bool compute_iis = true;
-  double saltiplier = 0.0001;  // Modifies each objective term by at most 0.01%
+  double saltiplier = 0.001;  // Modifies each objective term by at most 0.1%
 };
 
 struct AutoShardingSolverResult {

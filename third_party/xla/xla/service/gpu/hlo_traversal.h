@@ -70,8 +70,7 @@ const HloInstruction* HloFindIf(
     const std::function<bool(const HloInstruction& node)>& visit);
 
 // Visit the producers of all parameters that are needed by the fusion.
-// TODO(jreiffers): Rename this to FindFusionArguments.
-void FindFusionParameters(
+void FindFusionArguments(
     absl::Span<const HloInstruction* const> roots,
     const FusionBoundaryFn& boundary,
     const std::function<void(const HloInstruction& producer)>& visit);

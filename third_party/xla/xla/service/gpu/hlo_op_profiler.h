@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/hlo_op_profile.pb.h"
 #include "xla/service/hlo_runner.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -45,7 +45,7 @@ class HloOpProfiler {
 
  private:
   HloRunner& runner_;
-  const GpuDeviceInfo dev_info_;
+  const se::DeviceDescription& dev_info_;
   absl::Duration min_duration_;
 };
 

@@ -37,6 +37,7 @@ StatusOr<void*> GetCusolverDsoHandle();
 StatusOr<void*> GetCusparseDsoHandle();
 StatusOr<void*> GetCuptiDsoHandle();
 StatusOr<void*> GetCudnnDsoHandle();
+StatusOr<void*> GetNcclDsoHandle();
 StatusOr<void*> GetNvInferDsoHandle();
 StatusOr<void*> GetNvInferPluginDsoHandle();
 

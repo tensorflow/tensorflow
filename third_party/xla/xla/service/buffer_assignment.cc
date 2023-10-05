@@ -839,16 +839,15 @@ std::vector<std::pair<int64_t, const HloValue*>> TopKPeakBuffers(
   return topk_descending;
 }
 
-std::string BufferAssignment::ToVerboseString() const {
-  // TODO(loreno): make this tunable via flag.
-  const size_t kMaxBuffersToShow = 15;
+std::string BufferAssignment::ToVerboseString(
+    size_t max_buffers_to_show) const {
   std::string output =
       absl::StrCat("BufferAssignment OOM Debugging.\n", stats_.ToString());
 
   std::vector<std::pair<int64_t, const HloValue*>> peak_buffers =
-      TopKPeakBuffers(kMaxBuffersToShow, allocations_);
+      TopKPeakBuffers(max_buffers_to_show, allocations_);
   std::vector<std::string> buf_strs;
-  for (size_t i = 0; i < std::min(kMaxBuffersToShow, peak_buffers.size());
+  for (size_t i = 0; i < std::min(max_buffers_to_show, peak_buffers.size());
        ++i) {
     const HloValue* value = peak_buffers[i].second;
     const HloInstruction* instr = value->instruction();

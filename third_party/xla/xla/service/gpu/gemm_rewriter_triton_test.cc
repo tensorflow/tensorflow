@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
-#include "xla/service/gpu/gpu_types.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/pattern_matcher_gmock.h"
 #include "xla/shape_util.h"
@@ -73,7 +72,7 @@ class GemmRewriterTritonTest : public HloTestBase {
       : HloTestBase(/*verifier_layout_sensitive=*/true,
                     /*allow_mixed_precision_in_hlo_verifier=*/false) {}
 
-  GpuVersion gpu_version_{
+  se::GpuComputeCapability gpu_version_{
       se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0}};
 };
 
@@ -98,6 +97,20 @@ ENTRY e {
   EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
+}
+
+TEST_F(GemmRewriterTritonTest, UnsupportedTransposeIsNotFused) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = f16[1,512,8,1024]{3,1,0,2} parameter(0)
+  c = f16[1,512,8,1024]{3,2,1,0} copy(p0)
+  b = f16[4096,1024]{1,0} bitcast(c)
+  p1 = f16[128,1024]{1,0} parameter(1)
+  ROOT d = f16[4096,128]{1,0} dot(b, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+})")
+                    .value();
+  EXPECT_FALSE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
 }
 
 TEST_F(GemmRewriterTritonTest, BitcastChain) {
@@ -1709,6 +1722,40 @@ ENTRY e {
             HloInstruction::FusionKind::kCustom);
   EXPECT_LE(module->entry_computation()->root_instruction()->operand_count(),
             TritonFusionAnalysis::kMaxParameterPerScope * 2);
+}
+
+TEST_F(GemmRewriterTritonLevel2Test,
+       OperationsAddingMoreParametersGetMultipleTries) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+e {
+  p0 = f32[2,2] parameter(0)
+  c0 = f32[] constant(12345)
+  b0 = f32[2,2] broadcast(c0), dimensions={}
+  m0 = f32[2,2] multiply(p0, b0)
+  c1 = f32[] constant(34567)
+  b1 = f32[2,2] broadcast(c1), dimensions={}
+  a0 = f32[2,2] add(m0, b1)
+  b3 = f32[2,2,2] broadcast(a0), dimensions={0,1}
+  p2 = f32[2,2,2] parameter(2)
+  m2 = f32[2,2,2] multiply(p2, b3)
+  p1 = f32[2]{0} parameter(1)
+  c2 = f32[] constant(5678)
+  b2 = f32[2] broadcast(c2), dimensions={}
+  a1 = f32[2]{0} add(p1, b2)
+  b4 = f32[2,2,2] broadcast(a1), dimensions={2}
+  m1 = f32[2,2,2] multiply(m2, b4)
+  b = f32[4,2] bitcast(m1)
+  p3 = f16[2,2] parameter(3)
+  p3c = f32[2,2] convert(p3)
+  ROOT r = f32[4,2] dot(b, p3c),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+
+  EXPECT_TRUE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch((m::Fusion(m::Parameter(), m::Parameter(),
+                                    m::Parameter(), m::Parameter()))));
 }
 
 TEST_F(GemmRewriterTritonLevel2Test, FusionLevelIsLimitedOnVolta) {

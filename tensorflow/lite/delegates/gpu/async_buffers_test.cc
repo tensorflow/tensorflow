@@ -51,13 +51,13 @@ TEST(AsyncBufferTest, DuplicateTest) {
   EXPECT_OK(gl::EglEnvironment::NewEglEnvironment(&env));
   AsyncBuffer async_buffer1 = AsyncBuffer(*tie, ahwb);
   GLuint buffer1, buffer2;
-  EXPECT_OK(async_buffer1.GetOpenGlBufferReadView(buffer1));
+  EXPECT_OK(async_buffer1.GetOpenGlBuffer(buffer1));
   EXPECT_GE(buffer1, 0);
-  EXPECT_OK(async_buffer1.GetOpenGlBufferReadView(buffer2));
+  EXPECT_OK(async_buffer1.GetOpenGlBuffer(buffer2));
   // Check that each instance of AsyncBuffer class has only one id
   EXPECT_EQ(buffer1, buffer2);
   AsyncBuffer async_buffer2 = AsyncBuffer(*tie, ahwb);
-  EXPECT_OK(async_buffer2.GetOpenGlBufferReadView(buffer2));
+  EXPECT_OK(async_buffer2.GetOpenGlBuffer(buffer2));
   // Check that each different instance will produce unique id
   EXPECT_NE(buffer1, buffer2);
 }

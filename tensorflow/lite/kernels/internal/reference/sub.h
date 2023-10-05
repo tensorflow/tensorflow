@@ -36,7 +36,7 @@ struct SubImpl {
   static void BroadcastInput1(const ArithmeticParams& params,
                               const T* input1_data, const T* input2_data,
                               T* output_data, size_t size, F binary_func) {
-    for (int c = 0; c < size; ++c) {
+    for (size_t c = 0; c < size; ++c) {
       output_data[c] = binary_func(input1_data[0], input2_data[c], params);
     }
   }
@@ -45,7 +45,7 @@ struct SubImpl {
   static void BroadcastInput2(const ArithmeticParams& params,
                               const T* input1_data, const T* input2_data,
                               T* output_data, size_t size, F binary_func) {
-    for (int c = 0; c < size; ++c) {
+    for (size_t c = 0; c < size; ++c) {
       output_data[c] = binary_func(input1_data[c], input2_data[0], params);
     }
   }
@@ -54,7 +54,7 @@ struct SubImpl {
   static void ElementWise(const ArithmeticParams& params, const T* input1_data,
                           const T* input2_data, T* output_data, size_t size,
                           F binary_func) {
-    for (int c = 0; c < size; ++c) {
+    for (size_t c = 0; c < size; ++c) {
       output_data[c] = binary_func(input1_data[c], input2_data[c], params);
     }
   }
@@ -146,7 +146,7 @@ inline void BroadcastSubRecursiveDimensions(
     size_t* compressed_input1_stride, size_t* compressed_input2_stride,
     size_t* compressed_output_shape, F binary_func) {
   if (dimension > 0) {
-    for (int c = 0; c < compressed_output_shape[dimension]; ++c) {
+    for (size_t c = 0; c < compressed_output_shape[dimension]; ++c) {
       size_t input1_offset_c = *input1_offset_p;
       size_t input2_offset_c = *input2_offset_p;
       BroadcastSubRecursiveDimensions(

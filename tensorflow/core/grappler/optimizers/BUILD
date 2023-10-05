@@ -1191,7 +1191,7 @@ cc_library(
         ["//tensorflow/core/platform:tensor_float_32_hdr_lib"],
     ) + if_rocm_is_configured([
         "//tensorflow/core/platform:stream_executor",
-        "@local_xla//xla/stream_executor:dnn_proto_cc",
+        "@local_tsl//tsl/protobuf:dnn_proto_cc",
         "@local_xla//xla/stream_executor/rocm:miopen_plugin"
     ]),
 )

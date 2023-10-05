@@ -7461,6 +7461,55 @@ ENTRY entry {
                     op::Shape("f32[2,5]")));
 }
 
+TEST_P(SpmdPartitioningTest, VariadicScatter) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+add (lhs.0: f32[], lhs.1: f32[], rhs.0: f32[], rhs.1: f32[]) -> (f32[], f32[]) {
+  lhs.0 = f32[] parameter(0)
+  lhs.1 = f32[] parameter(1)
+  rhs.0 = f32[] parameter(2)
+  rhs.1 = f32[] parameter(3)
+  sum.0 = f32[] add(lhs.0, rhs.0)
+  sum.1 = f32[] add(lhs.1, rhs.1)
+  ROOT tuple = tuple(sum.0, sum.1)
+}
+
+ENTRY entry {
+  %input.0 = f32[2,9] parameter(0), sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+  %input.1 = f32[2,9] parameter(1), sharding={devices=[1,2,2]0,2,1,3 last_tile_dim_replicate}
+  %indices = s32[3] parameter(2), sharding={replicated}
+  %updates.0 = f32[3,9] parameter(3), sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+  %updates.1 = f32[3,9] parameter(4), sharding={devices=[1,4]0,1,2,3}
+  ROOT %scatter = (f32[2,9],f32[2,9]) scatter(%input.0, %input.1, %indices, %updates.0, %updates.1),
+      to_apply=add,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1, sharding={devices=[1,4]0,1,2,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  auto scatter = op::Scatter(op::Shape("f32[1,9]"), op::Shape("f32[1,9]"),
+                             op::Shape("s32[3]"), op::Shape("f32[3,9]"),
+                             op::Shape("f32[3,9]"));
+  EXPECT_THAT(
+      root,
+      AllOf(op::Tuple(op::DynamicSlice(
+                          op::Pad(op::AllReduce(op::DynamicUpdateSlice(
+                                      _, op::GetTupleElement(scatter), _, _)),
+                                  _),
+                          _, _),
+                      op::DynamicSlice(
+                          op::Pad(op::AllReduce(op::DynamicUpdateSlice(
+                                      _, op::GetTupleElement(scatter), _, _)),
+                                  _),
+                          _, _)),
+            op::Shape("(f32[2,3],f32[2,3])")));
+}
+
 TEST_P(SpmdPartitioningTest, PassthroughScatter) {
   absl::string_view hlo_string = R"(
 HloModule module

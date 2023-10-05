@@ -76,7 +76,7 @@
 // CHECK:         store half %[[VAL_36]], ptr %[[VAL_58]], align 2
 // CHECK:         br label %[[VAL_9]]
 
-HloModule input_fusion_with_a_tuple_of_slices
+HloModule input_fusion_with_a_tuple_of_slices, is_scheduled=true
 
 fused_computation {
   arg.1 = f16[1024]{0} parameter(0)

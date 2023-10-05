@@ -767,6 +767,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     "tf._SomeOtherOp"(%shape_32, %shape_64) : (tensor<?xi32>, tensor<?xi64>) -> ()
     func.return
   }
+  
+  // CHECK-LABEL: refine_pop_back_results_from_operands
+  func.func @refine_pop_back_results_from_operands(%arg0: tensor<!tf_type.variant<tensor<2xi32>>>, %arg1: tensor<1xi32>) -> (tensor<!tf_type.variant>, tensor<*xi32>)  {
+    %0, %1 = "tf.TensorListPopBack"(%arg0, %arg1) : (tensor<!tf_type.variant<tensor<2xi32>>>, tensor<1xi32>) -> (tensor<!tf_type.variant>, tensor<*xi32>)
+    // CHECK: %output_handle, %tensor = "tf.TensorListPopBack"(%arg0, %arg1) : (tensor<!tf_type.variant<tensor<2xi32>>>, tensor<1xi32>) -> (tensor<!tf_type.variant<tensor<2xi32>>>, tensor<2xi32>)
+    // CHECK: return %output_handle, %tensor : tensor<!tf_type.variant<tensor<2xi32>>>, tensor<2xi32>
+    func.return %0, %1 : tensor<!tf_type.variant>, tensor<*xi32>
+  }
 
   // CHECK-LABEL: do_not_unrefine_fully_defined_subtypes
   func.func @do_not_unrefine_fully_defined_subtypes() {

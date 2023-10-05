@@ -429,7 +429,7 @@ void TransposePlan::ExecuteTyped(const char* a, char* b,
         handle_inner_block_elems(std::integral_constant<int, 16>{});
         break;
       default:
-        LOG(FATAL) << "Invalid inner_block_size " << inner_block_elems_;
+        LOG(FATAL) << "Invalid inner_block_elems_ " << inner_block_elems_;
     }
   }
 }
@@ -1083,6 +1083,7 @@ void TransposePlan::Initialize() {
     b_stride1_size = std::min(b_stride1_size, b_dims_.back());
   }
 
+  constexpr int kMaxOuterBlockElems = 16;
   if (inner_kernel_is_memcpy_) {
     inner_block_elems_ = -1;
     outer_block_elems_a_ = -1;
@@ -1092,23 +1093,14 @@ void TransposePlan::Initialize() {
     // vectorized kernel for this element size?
     int min_inner_block_elems;
     int max_inner_block_elems;
-#ifdef XLA_HAS_VEC128
     switch (elem_size_in_bytes_) {
       case 1:
-        min_inner_block_elems = 4;
-        max_inner_block_elems = sizeof(Vec128) / sizeof(uint8_t);
-        break;
       case 2:
-        min_inner_block_elems = 4;
-        max_inner_block_elems = kMaxInnerBlockSizeBytes / sizeof(uint16_t);
-        break;
       case 4:
-        min_inner_block_elems = sizeof(Vec128) / sizeof(uint32_t);
-        max_inner_block_elems = kMaxInnerBlockSizeBytes / sizeof(uint32_t);
-        break;
       case 8:
-        min_inner_block_elems = sizeof(Vec128) / sizeof(uint64_t);
-        max_inner_block_elems = kMaxInnerBlockSizeBytes / sizeof(uint64_t);
+        min_inner_block_elems = 1;
+        max_inner_block_elems = std::min<int>(
+            kMaxOuterBlockElems, kMaxInnerBlockSizeBytes / elem_size_in_bytes_);
         break;
       case 16:
         min_inner_block_elems = 1;
@@ -1117,20 +1109,6 @@ void TransposePlan::Initialize() {
       default:
         LOG(FATAL) << "Unreachable: element size " << elem_size_in_bytes_;
     }
-#else
-    switch (elem_size_in_bytes_) {
-      case 1:
-      case 2:
-      case 4:
-      case 8:
-      case 16:
-        min_inner_block_elems = 1;
-        max_inner_block_elems = kMaxInnerBlockSizeBytes / elem_size_in_bytes_;
-        break;
-      default:
-        LOG(FATAL) << "Unreachable: element size " << elem_size_in_bytes_;
-    }
-#endif
     inner_block_elems_ = max_inner_block_elems;
     while (inner_block_elems_ > std::min(a_stride1_size, b_stride1_size)) {
       inner_block_elems_ /= 2;
@@ -1140,7 +1118,6 @@ void TransposePlan::Initialize() {
       // path.
       inner_block_elems_ = 1;
     }
-    constexpr int kMaxOuterBlockElems = 16;
     outer_block_elems_a_ = FloorOfRatio<int64_t>(
         std::min<int64_t>(kMaxOuterBlockElems, a_stride1_size),
         inner_block_elems_);

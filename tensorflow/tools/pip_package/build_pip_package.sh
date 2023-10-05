@@ -83,10 +83,15 @@ function copy_xla_aot_runtime_sources() {
     if [ ! -z "$candidate_file" ]; then
       file=$candidate_file
     fi
-    dn=$(dirname $file)
+
+    # For XLA/TSL, we need to remove the prefix "../local_{xla|tsl}/".
+    dst_file=$file
+    dst_file=${dst_file#"../local_xla/"}
+    dst_file=${dst_file#"../local_tsl/"}
+
     if test -f "$file"; then
-      mkdir -p "${dst_dir}/${dn}"
-      cp $file "${dst_dir}/${file}"
+      mkdir -p "${dst_dir}/$(dirname $dst_file)"
+      cp $file "${dst_dir}/${dst_file}"
     else
       echo "Missing xla source file: ${file}" 1>&2
     fi
@@ -280,8 +285,8 @@ function prepare_src() {
     cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/local_tsl/tsl/ ${TMPDIR}/tensorflow
     cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.exe.runfiles/local_xla/xla/ ${TMPDIR}/tensorflow/compiler
   else
-    cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/local_tsl/tsl/ ${TMPDIR}/tensorflow
-    cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/local_xla/xla/ ${TMPDIR}/tensorflow/compiler
+    cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/local_tsl/tsl ${TMPDIR}/tensorflow
+    cp -RLn bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/local_xla/xla ${TMPDIR}/tensorflow/compiler
   fi
   # Fix the proto stubs
   if is_macos; then

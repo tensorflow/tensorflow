@@ -19,8 +19,8 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -119,13 +119,13 @@ struct LaunchDimensionsConfig {
 
 // Returns -1 if the shape doesn't allow the row vectorization code path.
 // If supported, return the number of threads to use in that case.
-int64_t ThreadsPerBlockRowVectorized(const Shape& shape,
-                                     const GpuDeviceInfo& gpu_device_info,
-                                     LaunchDimensionsConfig dim_config);
+int64_t ThreadsPerBlockRowVectorized(
+    const Shape& shape, const se::DeviceDescription& gpu_device_info,
+    LaunchDimensionsConfig dim_config);
 
 // Calculates the launch dimensions used to invoke `hlo`.
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(
-    const Shape& shape, const GpuDeviceInfo& gpu_device_info,
+    const Shape& shape, const se::DeviceDescription& gpu_device_info,
     LaunchDimensionsConfig dim_config = {});
 
 }  // namespace gpu

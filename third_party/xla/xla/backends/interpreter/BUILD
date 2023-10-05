@@ -97,7 +97,6 @@ cc_library(
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
         "//xla/stream_executor",
-        "//xla/stream_executor:event",
         "@local_tsl//tsl/platform:statusor",
     ],
 )
@@ -144,8 +143,6 @@ cc_library(
         ":executor",
         ":platform_id",
         "//xla/stream_executor",
-        "//xla/stream_executor:executor_cache",
-        "//xla/stream_executor:stream_executor_pimpl",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/strings:str_format",
         "@local_tsl//tsl/platform:status",

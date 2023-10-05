@@ -88,8 +88,7 @@ void AddQuantizeQatPasses(
       mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
 
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(
-      quantization_options.op_set(),
-      quantization_options.enable_two_input_tensors()));
+      quantization_options));
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
       quantization_options.quantization_method().preset_method(),
       quantization_options.op_set()));
@@ -177,8 +176,7 @@ void AddQuantizePtqPreCalibrationPasses(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(
-      quantization_options.op_set(),
-      quantization_options.enable_two_input_tensors()));
+      quantization_options));
   // TODO: b/295140328 - Add debugger support for weight only
   if (quantization_options.has_debugger_options()) {
     pm.addPass(mlir::quant::CreateAddDumpTensorOpPass(

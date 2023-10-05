@@ -34,7 +34,8 @@ limitations under the License.
     bool is_native_tls() const { return true; }                    \
                                                                    \
    private:                                                        \
-    SE_DISALLOW_COPY_AND_ASSIGN(ThreadLocal_##_var_);              \
+    ThreadLocal_##_var_(const ThreadLocal_##_var_ &) = delete;     \
+    void operator=(const ThreadLocal_##_var_ &) = delete;          \
   } _var_;                                                         \
   }
 

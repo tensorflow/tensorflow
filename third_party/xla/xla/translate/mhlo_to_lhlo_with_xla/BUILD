@@ -116,7 +116,7 @@ xla_cc_binary(
         "//xla/mlir_hlo:all_passes",
         "//xla/mlir_hlo:hlo_dialect_registration",
         "//xla/service:gpu_plugin",
-        "//xla/stream_executor:stream_executor_impl",
+        "//xla/stream_executor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",

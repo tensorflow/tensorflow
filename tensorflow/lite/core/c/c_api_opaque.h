@@ -31,7 +31,11 @@ extern "C" {
 /// These APIs are accessors for TFLite Opaque Types.  These APIs are primarily
 /// intended to be used by delegates and custom OP implementations.
 ///
-/// WARNING: This is an experimental API and subject to change.
+/// This API is part of the TensorFlow Lite Extension APIs.
+/// We reserve the right to make changes to this API in future releases,
+/// potentially including non-backwards-compatible changes, on a different
+/// schedule than for the other TensorFlow Lite APIs. See
+/// https://www.tensorflow.org/guide/versions#separate_version_number_for_tensorflow_lite_extension_apis.
 
 /** \addtogroup c_api_opaque tensorflow/lite/c/c_api_opaque.h
  *  @{
@@ -91,6 +95,26 @@ TFL_CAPI_EXPORT extern void* TfLiteOpaqueTensorData(
 /// Returns the 'opaque_tensor's allocation type.
 TFL_CAPI_EXPORT extern TfLiteAllocationType TfLiteOpaqueTensorGetAllocationType(
     const TfLiteOpaqueTensor* opaque_tensor);
+
+/// Returns a tensor data allocation strategy.
+TFL_CAPI_EXPORT extern TfLiteAllocationStrategy
+TfLiteOpaqueTensorGetAllocationStrategy(const TfLiteOpaqueTensor* t);
+
+/// Returns how stable a tensor data buffer address is across runs.
+TFL_CAPI_EXPORT extern TfLiteRunStability
+TfLiteOpaqueTensorGetBufferAddressStability(const TfLiteOpaqueTensor* t);
+
+/// Returns how stable a tensor data values are across runs.
+TFL_CAPI_EXPORT extern TfLiteRunStability TfLiteOpaqueTensorGetDataStability(
+    const TfLiteOpaqueTensor* t);
+
+/// Returns the operation step when the data of a tensor is populated.
+TFL_CAPI_EXPORT extern TfLiteRunStep TfLiteOpaqueTensorGetDataKnownStep(
+    const TfLiteOpaqueTensor* t);
+
+/// Returns the operation step when the shape of a tensor is computed.
+TFL_CAPI_EXPORT extern TfLiteRunStep TfLiteOpaqueTensorGetShapeKnownStep(
+    const TfLiteOpaqueTensor* t);
 
 /// Returns the (null-terminated) name of the tensor.
 TFL_CAPI_EXPORT extern const char* TfLiteOpaqueTensorName(
@@ -372,7 +396,6 @@ TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
     TfLiteOpaqueNode** node,
     TfLiteRegistrationExternal** registration_external);
 
-/// WARNING: This is an experimental API and subject to change.
 /// Entry point for C API ReplaceNodeSubsetsWithDelegateKernels
 ///
 /// Replaces the specified `nodes_to_replace` that are associated with the

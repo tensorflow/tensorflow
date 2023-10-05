@@ -53,7 +53,6 @@ limitations under the License.
 #include "xla/permutation_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
-#include "xla/service/gpu/gpu_types.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -166,8 +165,8 @@ bool IsDistributiveOverAddition(const HloInstruction& hlo) {
   return false;
 }
 
-FusionDecision RequireTritonFusibleConvert(const HloInstruction* input,
-                                           GpuVersion gpu_version) {
+FusionDecision RequireTritonFusibleConvert(
+    const HloInstruction* input, se::GpuComputeCapability gpu_version) {
   // TODO(b/266862494): Can pick up almost any
   // convert, but if it's reducing the data volume it should rather be fused
   // to the output of the producer kernel. However not all operations support
@@ -438,7 +437,7 @@ class FusionContext {
       const HloInstruction& hlo, bool as_input,
       absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
           old_to_new_mapping,
-      GpuVersion gpu_version) const;
+      se::GpuComputeCapability gpu_version) const;
   // Add dimension orders from `updates` to `dim_orders_` and update the
   // splittable dimension ratio if all of them are compatible.
   bool MergeUpdates(const DimOrderUpdates& updates);
@@ -446,7 +445,7 @@ class FusionContext {
   // If an input is not fusible stop there and make a parameter of the new
   // fusion, otherwise put it onto stack and check its own inputs first.
   void TryToFuseWithInputsRecursively(
-      HloInstruction& root, GpuVersion gpu_version,
+      HloInstruction& root, se::GpuComputeCapability gpu_version,
       absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
           old_to_new_mapping,
       std::vector<HloInstruction*>& fusion_inputs,
@@ -554,54 +553,48 @@ FusionDecision FusionContext::RequireSupportedDimOrder(
     const DimensionOrder& order, int64_t& split_dim_major_part) const {
   VLOG(8) << order.ToString();
   const Fragments& tensor_dim_fragments = order.TensorFragmentsOrder();
-  auto non_major_fragment_is_sliced = [&](int fragment, int distance_to_end) {
-    return distance_to_end > 1 && tensor_dim_fragments[fragment].is_sliced();
-  };
   for (const auto& [dim_index, dim_fragments] : order.DimFragmentsOrders()) {
-    int split_counter = -1;
+    CHECK(!dim_fragments.empty());
+    for (int i = 0; i < dim_fragments.size() - 1; ++i) {
+      if (tensor_dim_fragments[dim_fragments[i]].is_sliced()) {
+        return "Sliced non-major-most fragment.";
+      }
+    }
+    int group_counter = 0;
+    int last_seen_group_last_fragment_index = -1;
     auto fragment_it = dim_fragments.cbegin();
-    // TODO(b/300892934): simplify the logic.
     while (true) {
       if (fragment_it == dim_fragments.cend()) {
         break;
       }
-      if (non_major_fragment_is_sliced(*fragment_it,
-                                       dim_fragments.cend() - fragment_it)) {
-        return "Sliced non-major-most fragment.";
-      }
       int64_t grouped_size = tensor_dim_fragments[*fragment_it].full_size();
-      // Gather contiguous fragments.
+      // Gather contiguous fragments: they have consecutive indices.
       while ((fragment_it + 1) != dim_fragments.cend() &&
              *(fragment_it + 1) == *fragment_it + 1) {
         ++fragment_it;
-        if (non_major_fragment_is_sliced(*fragment_it,
-                                         dim_fragments.cend() - fragment_it)) {
-          return "Sliced non-major-most fragment.";
-        }
         grouped_size *= tensor_dim_fragments[*fragment_it].full_size();
       }
-
+      // Ignore 1-sized groups of fragments.
       if (grouped_size == 1) {
         ++fragment_it;
         continue;
       }
 
-      if (fragment_it != dim_fragments.cbegin() &&
-          *fragment_it < *(fragment_it - 1)) {
+      if (last_seen_group_last_fragment_index > *fragment_it) {
         return "Transpose within a dimension.";
       }
 
-      ++split_counter;
-      if (split_counter > 0) {
+      ++group_counter;
+      if (group_counter > 1) {
         if (dim_index == SplittableDimensionIndex() &&
             IsSupportedSplittableDimensionMajorPartSize(grouped_size)) {
-          if (split_counter == 1) {
+          if (group_counter == 2) {
             if (split_dim_major_part != 0 &&
                 split_dim_major_part != grouped_size) {
               return "Conflicting splits of splittable dimension";
             }
             split_dim_major_part = grouped_size;
-          } else if (split_counter > 1) {
+          } else if (group_counter > 2) {
             return "2nd split of a splittable dimension.";
           }
         } else {
@@ -609,6 +602,7 @@ FusionDecision FusionContext::RequireSupportedDimOrder(
         }
       }
 
+      last_seen_group_last_fragment_index = *fragment_it;
       ++fragment_it;
     }
   }
@@ -1081,7 +1075,7 @@ DimOrderUpdatesOrError FusionContext::AnalyzeForFusion(
     const HloInstruction& hlo, bool as_input,
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
         old_to_new_mapping,
-    const GpuVersion gpu_version) const {
+    const se::GpuComputeCapability gpu_version) const {
   int fusion_level =
       hlo.GetModule()->config().debug_options().xla_gpu_triton_fusion_level();
   if (!std::get<se::CudaComputeCapability>(gpu_version)
@@ -1229,7 +1223,7 @@ bool FusionContext::MergeUpdates(const DimOrderUpdates& updates) {
 }
 
 void FusionContext::TryToFuseWithInputsRecursively(
-    HloInstruction& root, const GpuVersion gpu_version,
+    HloInstruction& root, const se::GpuComputeCapability gpu_version,
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
         old_to_new_mapping,
     std::vector<HloInstruction*>& fusion_inputs,
@@ -1244,14 +1238,21 @@ void FusionContext::TryToFuseWithInputsRecursively(
   absl::flat_hash_set<const HloInstruction*> enqueued;
   std::queue<HloInstruction*> to_visit;
   to_visit.push(&root);
-  while (!to_visit.empty()) {
+  int num_requeued = 0;
+  while (to_visit.size() > num_requeued) {
     HloInstruction* hlo = to_visit.front();
     to_visit.pop();
-    // Limit the total number of fusion parameters.
+    // Watch the total number of fusion parameters.
     if (inputs.size() >= TritonFusionAnalysis::kMaxParameterPerScope &&
         NumAddedParameters(*hlo) > 0) {
+      // Re-queue: the number of parameters may go down when other instructions
+      // are processed.
+      to_visit.push(hlo);
+      // Prevent infinite loops.
+      ++num_requeued;
       continue;
     }
+    num_requeued = 0;
     const DimOrderUpdatesOrError result = AnalyzeForFusion(
         *hlo, /*as_input=*/true, old_to_new_mapping, gpu_version);
     if (!std::holds_alternative<DimOrderUpdates>(result) ||
@@ -1298,7 +1299,7 @@ void FusionContext::TryToFuseWithInputsRecursively(
 // call to this fusion. fusion_output_ptr (if not nullptr) gets assigned the
 // original instruction that has to be replaced by the call to the fusion.
 StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
-                                 const GpuVersion gpu_version,
+                                 const se::GpuComputeCapability gpu_version,
                                  HloComputation::Builder& builder,
                                  std::vector<HloInstruction*>& fusion_inputs,
                                  HloInstruction** fusion_output_ptr) {
@@ -1388,7 +1389,7 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
 // operations that can target the triton GEMM emitter.
 class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit GemmRewriterTritonVisitor(const GpuVersion gpu_version)
+  explicit GemmRewriterTritonVisitor(const se::GpuComputeCapability gpu_version)
       : gpu_version_(gpu_version) {}
   // Checks that a dot() should be targeting the triton GEMM emitter;
   // if so - fuses all its compatible inputs and outputs as a new computation
@@ -1442,11 +1443,11 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  GpuVersion gpu_version_;
+  se::GpuComputeCapability gpu_version_;
 };
 
 StatusOr<bool> RunOnComputation(HloComputation* computation,
-                                GpuVersion gpu_version) {
+                                se::GpuComputeCapability gpu_version) {
   GemmRewriterTritonVisitor visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
@@ -1757,7 +1758,8 @@ Status FusionContext::PropagateDimensionOrdersToParameters(
 }  // anonymous namespace
 
 // Data types that are supported by the Triton emitters.
-bool IsTritonSupportedDataType(PrimitiveType type, GpuVersion gpu_version) {
+bool IsTritonSupportedDataType(PrimitiveType type,
+                               se::GpuComputeCapability gpu_version) {
   auto cuda_compute_capability =
       std::get<se::CudaComputeCapability>(gpu_version);
   switch (type) {
@@ -1970,7 +1972,7 @@ const DimIterationSpec* TritonFusionAnalysis::IterSpec(
 }
 
 FusionDecision CanTritonHandleGEMM(const HloInstruction& dot,
-                                   const GpuVersion gpu_version) {
+                                   const se::GpuComputeCapability gpu_version) {
   if (dot.opcode() != HloOpcode::kDot ||
       absl::c_any_of(dot.precision_config().operand_precision(),
                      [](int x) { return x != PrecisionConfig::DEFAULT; })) {
@@ -2024,7 +2026,8 @@ FusionDecision CanTritonHandleGEMM(const HloInstruction& dot,
   return FusionDecision{};
 }
 
-bool ShouldTritonHandleGEMM(HloInstruction& dot, const GpuVersion gpu_version) {
+bool ShouldTritonHandleGEMM(HloInstruction& dot,
+                            const se::GpuComputeCapability gpu_version) {
   std::vector<HloInstruction*> fusion_inputs;
   HloComputation::Builder builder("disposable");
   return FuseDot(dot, gpu_version, builder, fusion_inputs,
