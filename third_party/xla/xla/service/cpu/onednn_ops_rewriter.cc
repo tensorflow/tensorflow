@@ -29,6 +29,11 @@ namespace cpu {
 namespace {
 namespace m = match;
 
+auto ConvertPattern(HloInstruction** instr) {
+  return m::Convert(m::Op(instr).WithElementType(PrimitiveType::BF16))
+      .WithElementType(PrimitiveType::F32);
+}
+
 HloInstruction* FindLayerNormScale(HloInstruction* instr) {
   HloInstruction* scale = nullptr;
   auto scalePattern = m::Multiply().WithBinaryOperandsAnyOrder(
@@ -205,8 +210,14 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
                           *actual);
             })));
 
-    if (Match(slicesource2, empirical_expectations) && prod_l == prod_c &&
-        prod_c == prod_r && prod_l == prod_s) {
+    HloInstruction *src1, *src2;
+    if (Match(slicesource2, empirical_expectations) &&
+        // Float32 pattern check
+        ((prod_l == prod_c && prod_c == prod_r && prod_l == prod_s) ||
+         // Bfloat16 pattern check
+         (prod_l == prod_c && prod_c == prod_r &&
+          Match(prod_l, ConvertPattern(&src1)) &&
+          Match(prod_s, ConvertPattern(&src2)) && src1 == src2))) {
       HloInstruction* ln_call =
           instr->AddInstruction(HloInstruction::CreateCustomCall(
               prod_shape, {prod_r, scale, shift}, "__onednn$layernorm"));
