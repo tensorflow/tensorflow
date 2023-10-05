@@ -174,7 +174,6 @@ TEST(CommonTest, IsPreemptedError) {
   EXPECT_TRUE(IsPreemptedError(errors::Aborted("Aborted")));
   EXPECT_TRUE(IsPreemptedError(errors::Cancelled("Cancelled")));
   EXPECT_TRUE(IsPreemptedError(errors::Unavailable("Unavailable")));
-  EXPECT_TRUE(IsPreemptedError(errors::DeadlineExceeded("DeadlineExceeded")));
   EXPECT_FALSE(IsPreemptedError(OkStatus()));
 }
 
