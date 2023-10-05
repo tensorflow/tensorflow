@@ -141,6 +141,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
                                                    dtype=dtypes.int32)).run()
 
   @parameterized.parameters(dtypes.int4, dtypes.uint4)
+  @test_util.disable_xla("b/183567451: XLA doesn't yet support int4")
   def testInt4(self, dtype):
     with context.eager_mode():
       v = resource_variable_ops.ResourceVariable(1, dtype=dtype)
