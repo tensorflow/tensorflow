@@ -13,7 +13,7 @@ covering security practices for the entirety of the TensorFlow ecosystem.
 TensorFlow
 [**models**](https://developers.google.com/machine-learning/glossary/#model) (to
 use a term commonly used by machine learning practitioners) are expressed as
-programs that TensorFlow executes. TensorFlow's programs are encoded as
+programs that TensorFlow executes. TensorFlow programs are encoded as
 computation
 [**graphs**](https://developers.google.com/machine-learning/glossary/#graph).
 
