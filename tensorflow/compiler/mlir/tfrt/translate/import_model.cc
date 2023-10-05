@@ -324,7 +324,6 @@ std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
   pipeline_options->enable_while_parallel_iterations =
       options.enable_while_parallel_iterations;
   pipeline_options->cost_threshold = options.cost_threshold;
-  pipeline_options->upper_cost_threshold = options.upper_cost_threshold;
   pipeline_options->merge_inter_dependent_streams =
       options.merge_inter_dependent_streams;
 
