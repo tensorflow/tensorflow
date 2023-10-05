@@ -1157,11 +1157,11 @@ func.func @op_real(%arg0: tensor<complex<f32>>) -> tensor<f32> {
 // CHECK-LABEL: "op_recv"
 func.func @op_recv(%arg0: !mhlo.token) -> (tensor<f32>, !mhlo.token) {
   //      CHECK: "stablehlo.recv"(%arg0) {
-  // CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>,
+  // CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 0, type = 3>,
   // CHECK-SAME:   is_host_transfer = true
   // CHECK-SAME: } : (!stablehlo.token) -> (tensor<f32>, !stablehlo.token)
   %0:2 = "mhlo.recv"(%arg0) {
-    channel_handle = #mhlo.channel_handle<handle = 0, type = 0>,
+    channel_handle = #mhlo.channel_handle<handle = 0, type = 3>,
     is_host_transfer = true
   } : (!mhlo.token) -> (tensor<f32>, !mhlo.token)
   func.return %0#0, %0#1 : tensor<f32>, !mhlo.token
@@ -1402,11 +1402,11 @@ func.func @op_select(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) 
 // CHECK-LABEL: "op_send"
 func.func @op_send(%arg0: tensor<f32>, %arg1: !mhlo.token) -> !mhlo.token {
   //      CHECK: "stablehlo.send"(%arg0, %arg1) {
-  // CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>,
+  // CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 0, type = 2>,
   // CHECK-SAME:   is_host_transfer = true
   // CHECK-SAME: } : (tensor<f32>, !stablehlo.token) -> !stablehlo.token
   %0 = "mhlo.send"(%arg0, %arg1) {
-    channel_handle = #mhlo.channel_handle<handle = 0, type = 0>,
+    channel_handle = #mhlo.channel_handle<handle = 0, type = 2>,
     is_host_transfer = true
   } : (tensor<f32>, !mhlo.token) -> !mhlo.token
   func.return %0 : !mhlo.token
@@ -1818,9 +1818,9 @@ func.func @type_quantization(%arg0: tensor<!quant.uniform<i8:f32, 34.0:16>>, %ar
 }
 
 // CHECK-LABEL: "type_sparsity"
-func.func @type_sparsity(%arg0: tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<16xf32> {
-  // CHECK: "stablehlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<16xf32>
-  %0 = "mhlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<16xf32>
+func.func @type_sparsity(%arg0: tensor<16xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<16xf32> {
+  // CHECK: "stablehlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<16xf32>
+  %0 = "mhlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ map = (d0) -> (d0 : compressed) }>>) -> tensor<16xf32>
   func.return %0 : tensor<16xf32>
 }
 

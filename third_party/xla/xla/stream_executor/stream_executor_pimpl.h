@@ -392,6 +392,9 @@ class StreamExecutor {
                      const BlockDim& block_dims, const KernelBase& kernel,
                      const KernelArgsArrayBase& args);
 
+  // Submits command buffer for execution to the underlying platform driver.
+  tsl::Status Submit(Stream* stream, const CommandBuffer& command_buffer);
+
   // Gets-or-creates (creates with memoization) a FftSupport datatype that can
   // be used to execute FFT routines on the current platform.
   //
@@ -623,7 +626,8 @@ class StreamExecutor {
 
   StreamExecutorMemoryAllocator allocator_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutor);
+  StreamExecutor(const StreamExecutor&) = delete;
+  void operator=(const StreamExecutor&) = delete;
 };
 
 // A wrapper around ModuleHandle that uses RAII to manage its lifetime.
@@ -658,7 +662,8 @@ class ScopedModuleHandle {
   StreamExecutor* executor_;
   ModuleHandle module_handle_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedModuleHandle);
+  ScopedModuleHandle(const ScopedModuleHandle&) = delete;
+  void operator=(const ScopedModuleHandle&) = delete;
 };
 
 ////////////

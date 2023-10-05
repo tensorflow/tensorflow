@@ -141,6 +141,8 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"ASBSQueue::Schedule", kASBSQueueSchedule},
       // TFRT related.
       {"TfrtModelRun", kTfrtModelRun},
+      // Serving related.
+      {"ServingModelRun", kServingModelRun},
       // GPU related.
       {"KernelLaunch", kKernelLaunch},
       {"KernelExecute", kKernelExecute},
@@ -221,6 +223,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"kpi_value", kKpiValue},
       {"element_id", kElementId},
       {"parent_id", kParentId},
+      {"core_type", kCoreType},
       // XPlane semantics related.
       {"_pt", kProducerType},
       {"_ct", kConsumerType},

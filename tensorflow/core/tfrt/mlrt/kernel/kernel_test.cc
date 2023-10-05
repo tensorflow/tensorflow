@@ -424,7 +424,8 @@ class TestAsyncIdentityKernel : public AsyncOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(TestAsyncIdentityKernel);
+  TestAsyncIdentityKernel(const TestAsyncIdentityKernel&) = delete;
+  void operator=(const TestAsyncIdentityKernel&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TestAsyncIdentity").Device(DEVICE_CPU),

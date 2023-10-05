@@ -98,7 +98,6 @@ cc_library(
 cc_library(
     name = "rocm_gpu_executor",
     srcs = if_rocm_is_configured(["rocm_gpu_executor.cc"]),
-    hdrs = if_rocm_is_configured(["rocm_gpu_executor.h"]),
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
         ":rocm_diagnostics",
@@ -108,13 +107,12 @@ cc_library(
         ":rocm_platform_id",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/strings",
-        "//xla/stream_executor:event",
+        "//xla/stream_executor",
         "//xla/stream_executor:plugin_registry",
-        "//xla/stream_executor:stream_executor_internal",
-        "//xla/stream_executor:stream_executor_pimpl_header",
         "//xla/stream_executor/gpu:gpu_activation_header",
         "//xla/stream_executor/gpu:gpu_event",
         "//xla/stream_executor/gpu:gpu_kernel_header",
+        "//xla/stream_executor/gpu:gpu_command_buffer",
         "//xla/stream_executor/gpu:gpu_stream",
         "//xla/stream_executor/gpu:gpu_timer",
         "//xla/stream_executor/platform",
@@ -122,18 +120,6 @@ cc_library(
         "@local_tsl//tsl/platform:env",
     ]),
     alwayslink = True,
-)
-
-cc_library(
-    name = "rocm_gpu_executor_header",
-    textual_hdrs = if_rocm_is_configured(["rocm_gpu_executor.h"]),
-    visibility = ["//visibility:public"],
-    deps = if_rocm_is_configured([
-        ":rocm_kernel",
-        "//xla/stream_executor:event",
-        "//xla/stream_executor/gpu:gpu_executor_header",
-        "//xla/stream_executor/platform",
-    ]),
 )
 
 cc_library(
@@ -158,9 +144,6 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "//xla/stream_executor",  # buildcleaner: keep
-        "//xla/stream_executor:executor_cache",
-        "//xla/stream_executor:multi_platform_manager",
-        "//xla/stream_executor:stream_executor_pimpl_header",
         "//xla/stream_executor/platform",
     ]),
     alwayslink = True,  # Registers itself with the MultiPlatformManager.
@@ -221,10 +204,8 @@ cc_library(
         ":rocm_platform_id",
         "@eigen_archive//:eigen3",
         "//xla/stream_executor",
-        "//xla/stream_executor:event",
         "//xla/stream_executor:host_or_device_scalar",
         "//xla/stream_executor:plugin_registry",
-        "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor/gpu:gpu_activation",
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
@@ -263,10 +244,9 @@ cc_library(
     deps = if_rocm_is_configured([
         ":hipfft_if_static",
         ":rocm_platform_id",
-        "//xla/stream_executor:event",
+        "//xla/stream_executor",
         "//xla/stream_executor:fft",
         "//xla/stream_executor:plugin_registry",
-        "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor/gpu:gpu_activation",
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla/stream_executor/gpu:gpu_executor_header",
@@ -313,12 +293,9 @@ cc_library(
         ":rocm_gpu_executor",
         ":rocm_platform_id",
         "@eigen_archive//:eigen3",
+        "//xla/stream_executor",
         "//xla/stream_executor:dnn",
-        "//xla/stream_executor:event",
         "//xla/stream_executor:plugin_registry",
-        "//xla/stream_executor:scratch_allocator",
-        "//xla/stream_executor:stream_executor_pimpl_header",
-        "//xla/stream_executor:temporary_device_memory",
         "//xla/stream_executor/gpu:gpu_activation_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
         "//xla/stream_executor/gpu:gpu_timer_header",
@@ -480,7 +457,7 @@ cc_library(
         "//xla:status",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
-        "//xla/stream_executor:scratch_allocator",
+        "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla:util",
     ]) + if_static([

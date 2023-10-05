@@ -1188,7 +1188,8 @@ class CopyRemover {
   };
 
   CopyRemover(const HloModule& module, const HloAliasAnalysis& alias_analysis,
-              HloOrdering* ordering, bool check_live_range_ordering)
+              HloOrdering* ordering, bool check_live_range_ordering,
+              const absl::flat_hash_set<absl::string_view>& execution_threads)
       : dataflow_(alias_analysis.dataflow_analysis()), ordering_(ordering) {
     // Construct a list for each HLO buffer in the alias analysis. Maintain a
     // map from HloValue to the respective list element representing that
@@ -1203,6 +1204,14 @@ class CopyRemover {
         continue;
       }
       if (check_live_range_ordering) {
+        // Skip checking if execution thread is not included.
+        auto should_skip_value = [&execution_threads](const HloValue* value) {
+          return value->defining_instruction()->parent() != nullptr &&
+                 !HloInstruction::IsThreadIncluded(value->defining_instruction()
+                                                       ->parent()
+                                                       ->execution_thread(),
+                                                   execution_threads);
+        };
         // Verify values contained in the buffer are strictly ordered. This
         // should always be the case after adding copies to eliminate
         // interference. Specifically, the addition of the control flow edges
@@ -1213,8 +1222,11 @@ class CopyRemover {
             // Token values have no representation and cannot interfere.
             continue;
           }
+          if (should_skip_value(value_a)) {
+            continue;
+          }
           for (const HloValue* value_b : buffer.values()) {
-            if (value_a != value_b) {
+            if (!should_skip_value(value_b) && value_a != value_b) {
               DCHECK(ordering_->LiveRangeStrictlyBefore(
                          *value_a, *value_b, dataflow_,
                          /*use_is_always_before_def_in_same_instr=*/true) ||
@@ -2111,7 +2123,7 @@ Status CopyInsertion::RemoveUnnecessaryCopies(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, can_share_buffer_));
   CopyRemover copy_remover(*module, *alias_analysis, ordering.get(),
-                           check_live_range_ordering);
+                           check_live_range_ordering, execution_threads);
   if (VLOG_IS_ON(3)) {
     LOG(INFO) << "Removing unnecessary copies in " << module->name();
     LOG(INFO) << "Buffer values, in dependency order: ";

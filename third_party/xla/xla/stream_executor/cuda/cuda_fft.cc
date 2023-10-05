@@ -21,18 +21,18 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/cuda/cuda_activation.h"
-#include "xla/stream_executor/cuda/cuda_gpu_executor.h"
 #include "xla/stream_executor/cuda/cuda_helpers.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_stream.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 
 namespace stream_executor {

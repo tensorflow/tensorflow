@@ -62,7 +62,8 @@ class PercentileSampler {
 
   PercentileSampler() = default;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PercentileSampler);
+  PercentileSampler(const PercentileSampler&) = delete;
+  void operator=(const PercentileSampler&) = delete;
 };
 
 template <int NumLabels>
@@ -134,7 +135,8 @@ class PercentileSamplerCell {
   size_t total_samples_ TF_GUARDED_BY(mu_);
   long double accumulator_ TF_GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PercentileSamplerCell);
+  PercentileSamplerCell(const PercentileSamplerCell&) = delete;
+  void operator=(const PercentileSamplerCell&) = delete;
 };
 
 // A stateful class for updating a cumulative percentile sampled metric.
@@ -242,7 +244,8 @@ class PercentileSampler {
   // Registration handle with the CollectionRegistry.
   std::unique_ptr<CollectionRegistry::RegistrationHandle> registration_handle_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PercentileSampler);
+  PercentileSampler(const PercentileSampler&) = delete;
+  void operator=(const PercentileSampler&) = delete;
 };
 
 template <int NumLabels>

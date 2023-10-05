@@ -33,13 +33,9 @@ struct NumpyDtypes {
   int uint4;
 };
 
-const NumpyDtypes& GetNumpyDtypes();
+bool RegisterTypes();
 
-// Deprecated: no longer required, but is currently heavily used.
-inline bool RegisterTypes() {
-  GetNumpyDtypes();
-  return true;
-}
+const NumpyDtypes& GetNumpyDtypes();
 
 inline int GetBfloat16TypeNum() { return GetNumpyDtypes().bfloat16; }
 

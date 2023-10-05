@@ -15,21 +15,23 @@ limitations under the License.
 
 #include <memory>
 #include <queue>
-#include <vector>
 
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/split_into_island_per_op_pass.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -60,22 +62,63 @@ bool OpInBlock(Operation* op, Block* block) {
   return false;
 }
 
-// Checks if there is a precedecessor TPUCOmpileMlir op of `preprocess_op` in
-// `func_op`.  Assumes both ops are wrapped in a tf_device.launch.
-bool HasTPUCompilePredecessor(func::FuncOp func_op, Operation* preprocess_op) {
-  bool has_tpu_compile_predecessor = false;
-  func_op.walk([&](TF::_TPUCompileMlirOp compile_op) {
-    if (compile_op->getParentOp()->getBlock() ==
-            preprocess_op->getParentOp()->getBlock() &&
-        compile_op->getParentOp()->isBeforeInBlock(
-            preprocess_op->getParentOp())) {
-      has_tpu_compile_predecessor = true;
+// Find a TPUCompileMlirOp that's after the given `preprocess_op`, under `func`.
+// Assumes the TPUCompileMlirOp is wrapped in a tf_device.launch.
+Operation* FindCompileSuccessor(Operation* func_op, Operation* preprocess_op) {
+  bool in_launch = isa<tf_device::LaunchOp>(preprocess_op->getParentOp());
+  Operation* preprocess_or_launch =
+      in_launch ? preprocess_op->getParentOp() : preprocess_op;
+
+  Operation* tpu_compile_successor = nullptr;
+  func_op->walk([&](TF::_TPUCompileMlirOp compile_op) {
+    if (compile_op->getParentOp() == nullptr ||
+        !isa<tf_device::LaunchOp>(compile_op->getParentOp()))
+      return WalkResult::advance();
+    Operation* compile_launch_op = compile_op->getParentOp();
+
+    if (compile_launch_op->getBlock() == preprocess_or_launch->getBlock() &&
+        preprocess_or_launch->isBeforeInBlock(compile_launch_op)) {
+      tpu_compile_successor = compile_op;
       return WalkResult::interrupt();
     }
     return WalkResult::advance();
   });
+  return tpu_compile_successor;
+}
 
-  return has_tpu_compile_predecessor;
+// Find a TPUCompileMlirOp that's before the given `preprocess_op`, under
+// `func`. Assumes the TPUCompileMlirOp is wrapped in a tf_device.launch,
+// possibly itself wrapped in a tf_device.replicate.
+Operation* FindCompilePredecessor(Operation* func_op,
+                                  Operation* preprocess_op) {
+  bool in_launch = isa<tf_device::LaunchOp>(preprocess_op->getParentOp());
+  Operation* preprocess_or_launch =
+      in_launch ? preprocess_op->getParentOp() : preprocess_op;
+
+  Operation* tpu_compile_predecessor = nullptr;
+  func_op->walk([&](TF::_TPUCompileMlirOp compile_op) {
+    if (compile_op->getParentOp() == nullptr ||
+        !isa<tf_device::LaunchOp>(compile_op->getParentOp()))
+      return WalkResult::advance();
+    Operation* compile_launch_op = compile_op->getParentOp();
+    if (compile_launch_op->getBlock() == preprocess_or_launch->getBlock() &&
+        compile_launch_op->isBeforeInBlock(preprocess_or_launch)) {
+      tpu_compile_predecessor = compile_op;
+      return WalkResult::interrupt();
+    }
+    // The launch op might be underneath a replicate op. If the preprocess_op is
+    // in the same block as said replicate, that's OK, too.
+    if (auto replicate_op = llvm::dyn_cast_or_null<tf_device::ReplicateOp>(
+            compile_launch_op->getParentOp())) {
+      if (replicate_op->getBlock() == preprocess_or_launch->getBlock() &&
+          replicate_op->isBeforeInBlock(preprocess_or_launch)) {
+        tpu_compile_predecessor = compile_op;
+        return WalkResult::interrupt();
+      }
+    }
+    return WalkResult::advance();
+  });
+  return tpu_compile_predecessor;
 }
 
 // Get all of the successor ops of `root_op` in the same block.
@@ -233,11 +276,12 @@ void CreateReducedLaunchOp(OpBuilder* builder, Block* old_block,
 // ops before `preprocess_op`.  This actually creates a new launch op after
 // _TPUCompileMlir and moves `preprocess_op` and its successors that are input
 // to TPUExecute to it.
-LogicalResult MovePreprocessingOps(OpBuilder* builder, func::FuncOp func_op,
-                                   Operation* preprocess_op) {
+LogicalResult MovePreprocessingOpInLaunch(OpBuilder* builder,
+                                          func::FuncOp func_op,
+                                          Operation* preprocess_op) {
   // If this is already a TPUCompile predecessor, no need to move the
   // preprocessing ops.
-  if (HasTPUCompilePredecessor(func_op, preprocess_op)) return success();
+  if (FindCompilePredecessor(func_op, preprocess_op)) return success();
 
   auto original_launch_op =
       llvm::dyn_cast<tf_device::LaunchOp>(preprocess_op->getParentOp());
@@ -252,19 +296,8 @@ LogicalResult MovePreprocessingOps(OpBuilder* builder, func::FuncOp func_op,
   }
 
   // Find the TPUCompile successor.
-  Operation* tpu_compile_successor = nullptr;
-  func_op.walk([&](TF::_TPUCompileMlirOp compile_op) {
-    if (compile_op->getParentOp() == nullptr ||
-        !isa<tf_device::LaunchOp>(compile_op->getParentOp()))
-      return WalkResult::advance();
-    if (compile_op->getParentOp()->getBlock() ==
-            original_launch_op->getBlock() &&
-        original_launch_op->isBeforeInBlock(compile_op->getParentOp())) {
-      tpu_compile_successor = compile_op;
-      return WalkResult::interrupt();
-    }
-    return WalkResult::advance();
-  });
+  Operation* tpu_compile_successor =
+      FindCompileSuccessor(func_op, preprocess_op);
 
   // Return early if can't find TPUCompile successor.
   if (tpu_compile_successor == nullptr) return success();
@@ -287,35 +320,64 @@ LogicalResult MovePreprocessingOps(OpBuilder* builder, func::FuncOp func_op,
   return success();
 }
 
+LogicalResult MoveStandalonePreprocessingOp(OpBuilder* builder,
+                                            func::FuncOp func_op,
+                                            Operation* preprocess_op) {
+  if (FindCompilePredecessor(func_op, preprocess_op)) return success();
+
+  // Find the TPUCompile successor we want to move upwards. We're moving the
+  // compile, not the preprocess_op, since it's easier to move (because it
+  // doesn't typically have any dependencies)
+  Operation* tpu_compile_successor =
+      FindCompileSuccessor(func_op, preprocess_op);
+  if (tpu_compile_successor == nullptr) return success();
+
+  Operation* compile_launch_op = tpu_compile_successor->getParentOp();
+
+  // If the launch isn't in the same block as the preprocess op, abort.
+  if (compile_launch_op->getBlock() != preprocess_op->getBlock())
+    return success();
+
+  // Move the compile op launch right before our op.
+  compile_launch_op->moveBefore(preprocess_op);
+
+  return success();
+}
+
 // Rewrites the program_key input of `preprocess_op` to use the output of
 // _TPUCompileMlir.
 void RewritePreprocessInputs(OpBuilder* builder, func::FuncOp func_op,
                              Operation* preprocess_op) {
-  if (preprocess_op->getParentOp() == nullptr ||
-      !isa<tf_device::LaunchOp>(preprocess_op->getParentOp()))
-    return;
+  if (preprocess_op->getParentOp() == nullptr) return;
 
   // Find predecessor TPUCompile Op and rewrite the program key.
-  func_op.walk([&](TF::_TPUCompileMlirOp compile_op) {
-    if (compile_op->getParentOp() == nullptr ||
-        !isa<tf_device::LaunchOp>(compile_op->getParentOp()))
+  Operation* tpu_compile_predecessor =
+      FindCompilePredecessor(func_op, preprocess_op);
+  if (tpu_compile_predecessor == nullptr) return;
+
+  for (OpOperand& operand : tpu_compile_predecessor->getResult(1).getUses()) {
+    if (llvm::isa<tf_device::ReturnOp>(operand.getOwner()) &&
+        tpu_compile_predecessor->getParentOp()
+            ->getBlock()
+            ->findAncestorOpInBlock(*preprocess_op)) {
+      preprocess_op->setOperand(
+          0, tpu_compile_predecessor->getParentOp()->getResult(
+                 operand.getOperandNumber()));
+    }
+  }
+}
+
+LogicalResult VerifyAllProgramKeyOperandsReplaced(Operation* module) {
+  WalkResult result = module->walk([&](Operation* op) {
+    if (!op->hasAttr(kMiniBatchSplitsAttr) && !op->hasAttr(kMiniBatchCsrAttr))
       return WalkResult::advance();
-    if (compile_op->getParentOp()->getBlock() ==
-            preprocess_op->getParentOp()->getBlock() &&
-        compile_op->getParentOp()->isBeforeInBlock(
-            preprocess_op->getParentOp())) {
-      // Find the corresponding result of the _TPUCompileMlirOp in launch return
-      // op.
-      for (OpOperand& operand : compile_op->getResult(1).getUses()) {
-        if (llvm::isa<tf_device::ReturnOp>(operand.getOwner())) {
-          preprocess_op->setOperand(0, compile_op->getParentOp()->getResult(
-                                           operand.getOperandNumber()));
-        }
-      }
+    Operation* defining = op->getOperand(0).getDefiningOp();
+    if (llvm::dyn_cast_or_null<TF::ConstOp>(defining)) {
       return WalkResult::interrupt();
     }
     return WalkResult::advance();
   });
+  return result.wasInterrupted() ? failure() : success();
 }
 
 void EmbeddingProgramKeyPass::runOnOperation() {
@@ -325,18 +387,20 @@ void EmbeddingProgramKeyPass::runOnOperation() {
   // Handle ops with mini_batch_splits attribute first since all preprocessing
   // ops may need to be moved.
   getOperation().walk([&](Operation* op) {
-    if (op->hasAttr(kMiniBatchSplitsAttr) &&
-        isa<tf_device::LaunchOp>(op->getParentOp())) {
-      preprocess_ops.push_back(op);
-    }
+    if (op->hasAttr(kMiniBatchSplitsAttr)) preprocess_ops.push_back(op);
   });
 
   OpBuilder builder(&getContext());
 
-  for (Operation* preprocess_op : preprocess_ops) {
-    if (failed(MovePreprocessingOps(&builder, getOperation(), preprocess_op)))
-      return signalPassFailure();
-    RewritePreprocessInputs(&builder, getOperation(), preprocess_op);
+  for (Operation* op : preprocess_ops) {
+    if (isa<tf_device::LaunchOp>(op->getParentOp())) {
+      if (failed(MovePreprocessingOpInLaunch(&builder, getOperation(), op)))
+        return signalPassFailure();
+    } else {
+      if (failed(MoveStandalonePreprocessingOp(&builder, getOperation(), op)))
+        return signalPassFailure();
+    }
+    RewritePreprocessInputs(&builder, getOperation(), op);
   }
 
   // Handle ops with mini_batch_in_csr attribute.
@@ -349,6 +413,10 @@ void EmbeddingProgramKeyPass::runOnOperation() {
 
   for (Operation* preprocess_op : preprocess_ops) {
     RewritePreprocessInputs(&builder, getOperation(), preprocess_op);
+  }
+
+  if (failed(VerifyAllProgramKeyOperandsReplaced(getOperation()))) {
+    signalPassFailure();
   }
 }
 

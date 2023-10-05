@@ -70,7 +70,7 @@ TEST(LegalizeMlirTest, FailsLegalizesModule) {
     }
   })";
   CellReader<int64_t> count(
-      "/tensorflow/core/tf2xla/v0/mlir_failed_xla_legalize_tf_pass_count");
+      "/tensorflow/core/tf2xla/v1/mlir_failed_xla_legalize_tf_pass_count");
 
   std::vector<tensorflow::TensorShape> arg_shapes;
   XlaCompilationResult compilation_result;

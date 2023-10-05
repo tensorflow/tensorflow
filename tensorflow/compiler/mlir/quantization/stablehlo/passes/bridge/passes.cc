@@ -21,7 +21,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 
-namespace mlir::stablehlo {
+namespace mlir::quant::stablehlo {
 
 void AddQuantizationLoweringPasses(mlir::OpPassManager& pm) {
   // These passes are grouped together and must run in this specific order.
@@ -35,4 +35,4 @@ void AddQuantizationLoweringPasses(mlir::OpPassManager& pm) {
   pm.addNestedPass<mlir::func::FuncOp>(CreateVerifyQuantLegalizationPass());
 }
 
-}  // namespace mlir::stablehlo
+}  // namespace mlir::quant::stablehlo

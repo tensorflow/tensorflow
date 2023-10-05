@@ -1018,7 +1018,14 @@ Status TensorHandle::CopyToDevice(const EagerContext& ctx,
   }
   tensorflow::DeviceContext* dst_device_context = nullptr;
   if (!dst_cpu) {
-    if (dstd_info->use_pjrt_tensor_buffer) {
+    // PJRT will soon pack int4 tensors when transferring them to device (once
+    // XLA int4 support is implemented), but TF currently represents int4 as
+    // unpacked, so do not use PJRT for int4 tensors.
+    // TODO(b/226482736): Either pack int4, or support unpacked int4 tensors in
+    // PJRT. Also update beginning of comment from future to present tense once
+    // PJRT packs int4 tensors.
+    if (dstd_info->use_pjrt_tensor_buffer && DataType() != DT_INT4 &&
+        DataType() != DT_UINT4) {
       dst_device_context = dstd_info->pjrt_context;
     } else {
       dst_device_context = dstd_info->default_context;

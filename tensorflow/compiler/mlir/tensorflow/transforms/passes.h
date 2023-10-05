@@ -259,10 +259,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateConstantOpDeviceAssignmentPass();
 
 // Populates the supplied passmanager with the passes required to export
 // to TensorFlow Graph.
-void AddGraphExportLoweringPassesV2(OpPassManager& pm);
-
-// Populates the supplied passmanager with the passes required to export
-// to TensorFlow Graph.
 // ***This is the legacy graph export pipeline, prefer
 // AddGraphExportLoweringPassesV2***.
 void AddGraphExportLoweringPasses(OpPassManager& pm);

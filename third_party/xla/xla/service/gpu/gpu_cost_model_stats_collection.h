@@ -21,11 +21,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -35,7 +35,7 @@ namespace gpu {
 class GpuCostModelStatsCollection : public HloModulePass {
  public:
   explicit GpuCostModelStatsCollection(
-      const GpuDeviceInfo& d,
+      const se::DeviceDescription& d,
       const GpuHloCostAnalysis::Options& cost_analysis_options)
       : device_info_(d), cost_analysis_(cost_analysis_options, &device_info_) {}
 
@@ -49,7 +49,7 @@ class GpuCostModelStatsCollection : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  const GpuDeviceInfo device_info_;
+  se::DeviceDescription device_info_;
   GpuHloCostAnalysis cost_analysis_;
 };
 

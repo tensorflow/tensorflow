@@ -142,7 +142,6 @@ def flex_portable_tensorflow_deps():
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
         "@gemmlowp",
         "@icu//:common",
         "//third_party/icu/data:conversion_data",

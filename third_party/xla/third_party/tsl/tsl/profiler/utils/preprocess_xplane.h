@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_TSL_PROFILER_UTILS_PREPROCESS_XPLANE_H_
 
 #include <cstdint>
-#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <tuple>
@@ -26,7 +25,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/algorithm/container.h"
+#include "absl/hash/hash.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
@@ -50,7 +49,7 @@ class XplaneEventMutator {
  public:
   virtual ~XplaneEventMutator() = default;
 
-  // Mutate event by event specifiedd by the event_metadata.
+  // Mutate event by event specified by the event_metadata.
   virtual void Mutate(XEventBuilder* builder) = 0;
   // Mutate line by line if event_metadata() return nullptr.
   virtual void MutateEventsInLine(XLineBuilder* line) = 0;
@@ -143,6 +142,31 @@ class XContextStatsAccessor {
   std::optional<StatValueType> GetStat(XEventBuilder* event_builder) {
     auto* stat = event_builder->GetStat(*stats_metadata_);
     if (stat == nullptr) return std::nullopt;
+    if constexpr (std::is_integral_v<StatValueType>) {
+      return event_builder->IntOrUintValue(*stat);
+    } else {
+      return event_builder->StrOrRefValue(*stat);
+    }
+  }
+
+ private:
+  XStatMetadata* stats_metadata_ = nullptr;
+};
+
+template <typename StatValueType, StatType kStatId, StatValueType kDefaultValue>
+class XContextStatsAccessorWithDefault {
+ public:
+  using value_type = StatValueType;
+
+  bool Initialize(XPlaneBuilder* xplane) {
+    stats_metadata_ = xplane->GetStatMetadata(GetStatTypeStr(kStatId));
+    return true;  // Always return true, even stat_metadata doesn't exist.
+  }
+
+  std::optional<StatValueType> GetStat(XEventBuilder* event_builder) {
+    if (stats_metadata_ == nullptr) return kDefaultValue;
+    auto* stat = event_builder->GetStat(*stats_metadata_);
+    if (stat == nullptr) return kDefaultValue;
     if constexpr (std::is_integral_v<StatValueType>) {
       return event_builder->IntOrUintValue(*stat);
     } else {
@@ -363,11 +387,15 @@ class TpuModuleLineMutatorFactory : public XplaneEventMutatorFactory {
         XContextStatsAccessor<uint64_t, StatType::kQueueId>
             queue_id_stats_accessor;
         XContextStatsAccessor<uint64_t, StatType::kRunId> run_id_stats_accessor;
+        XContextStatsAccessorWithDefault<uint64_t, StatType::kCoreType, 0ULL>
+            core_type_stats_accessor;
         queue_id_stats_accessor.Initialize(xplane);
         run_id_stats_accessor.Initialize(xplane);
+        core_type_stats_accessor.Initialize(xplane);
         mutators.emplace_back(std::make_unique<TpuModuleLineMutator>(
             *device_ordinal, context_type_metadata, context_id_metadata,
-            queue_id_stats_accessor, run_id_stats_accessor));
+            queue_id_stats_accessor, run_id_stats_accessor,
+            core_type_stats_accessor));
       }
     }
     return mutators;
@@ -383,13 +411,16 @@ class TpuModuleLineMutatorFactory : public XplaneEventMutatorFactory {
         XStatMetadata* context_id_metadata,
         XContextStatsAccessor<uint64_t, StatType::kQueueId>
             queue_id_stats_accessor,
-        XContextStatsAccessor<uint64_t, StatType::kRunId> run_id_stats_accessor)
+        XContextStatsAccessor<uint64_t, StatType::kRunId> run_id_stats_accessor,
+        XContextStatsAccessorWithDefault<uint64_t, StatType::kCoreType, 0ULL>
+            core_type_stats_accessor)
         : XplaneEventMutator(nullptr),
           device_ordinal_(device_ordinal),
           context_type_metadata_(context_type_metadata),
           context_id_metadata_(context_id_metadata),
           queue_id_stats_accessor_(queue_id_stats_accessor),
-          run_id_stats_accessor_(run_id_stats_accessor) {}
+          run_id_stats_accessor_(run_id_stats_accessor),
+          core_type_stats_accessor_(core_type_stats_accessor) {}
 
     void Mutate(XEventBuilder* event_builder) override {
       CHECK(false);  // Crash OK
@@ -400,14 +431,16 @@ class TpuModuleLineMutatorFactory : public XplaneEventMutatorFactory {
       line->ForEachEvent([&](XEventBuilder event) {
         auto run_id = run_id_stats_accessor_.GetStat(&event);
         auto queue_id = queue_id_stats_accessor_.GetStat(&event);
+        auto core_type = core_type_stats_accessor_.GetStat(&event);
         if (!run_id || !queue_id) return;
         // The order of tuple <device_ordinal, queue_id, run_id> need to be
         // consistent with other kTpuLaunch types.
         std::vector<std::variant<absl::string_view, uint64_t>> required_stats;
-        required_stats.reserve(3);
+        required_stats.reserve(4);
         required_stats.emplace_back(device_ordinal_);
         required_stats.emplace_back(*queue_id);
         required_stats.emplace_back(*run_id);
+        required_stats.emplace_back(static_cast<uint64_t>(*core_type));
         int64_t context_id = absl::HashOf(required_stats);
         event.SetOrAddStatValue(*context_type_metadata_,
                                 static_cast<int64_t>(ContextType::kTpuLaunch));
@@ -422,6 +455,8 @@ class TpuModuleLineMutatorFactory : public XplaneEventMutatorFactory {
     XContextStatsAccessor<uint64_t, StatType::kQueueId>
         queue_id_stats_accessor_;
     XContextStatsAccessor<uint64_t, StatType::kRunId> run_id_stats_accessor_;
+    XContextStatsAccessorWithDefault<uint64_t, StatType::kCoreType, 0ULL>
+        core_type_stats_accessor_;
   };
 };
 

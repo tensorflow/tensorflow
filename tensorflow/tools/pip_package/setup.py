@@ -89,7 +89,7 @@ REQUIRED_PACKAGES = [
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
     'libclang >= 13.0.0',
-    'ml_dtypes >= 0.2.0',
+    'ml_dtypes ~= 0.2.0',
     'numpy >= 1.23.5',
     'opt_einsum >= 2.3.2',
     'packaging',
@@ -261,13 +261,20 @@ class InstallHeaders(Command):
     # symlink within the directory hierarchy.
     # NOTE(keveman): Figure out how to customize bdist_wheel package so
     # we can do the symlink.
-    external_header_locations = [
-        'tensorflow/include/external/eigen_archive/',
-        'tensorflow/include/external/com_google_absl/',
-    ]
+    # pylint: disable=line-too-long
+    external_header_locations = {
+        '/tensorflow/include/external/eigen_archive': '',
+        '/tensorflow/include/external/com_google_absl': '',
+        '/tensorflow/include/external/ml_dtypes': '/ml_dtypes',
+        '/tensorflow/include/tensorflow/compiler/xla': '/tensorflow/include/xla',
+        '/tensorflow/include/tensorflow/tsl': '/tensorflow/include/tsl',
+    }
+    # pylint: enable=line-too-long
+
     for location in external_header_locations:
       if location in install_dir:
-        extra_dir = install_dir.replace(location, '')
+        extra_dir = install_dir.replace(location,
+                                        external_header_locations[location])
         if not os.path.exists(extra_dir):
           self.mkpath(extra_dir)
         self.copy_file(header, extra_dir)
@@ -309,6 +316,10 @@ matches = []
 for path in so_lib_paths:
   matches.extend(['../' + x for x in find_files('*', path) if '.py' not in x])
 
+# If building a tpu package, bundle libtpu.so as part of the wheel
+if '_tpu' in project_name:
+  matches.append('tensorflow/lib/libtpu.so')
+
 if os.name == 'nt':
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.pyd'
 else:
@@ -339,7 +350,8 @@ headers = (
     list(find_files('*', 'third_party/gpus')) +
     list(find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
     list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +
-    list(find_files('*', 'tensorflow/include/external/eigen_archive')))
+    list(find_files('*', 'tensorflow/include/external/eigen_archive')) +
+    list(find_files('*.h', 'tensorflow/include/external/ml_dtypes')))
 
 # Quite a lot of setup() options are different if this is a collaborator package
 # build. We explicitly list the differences here, then unpack the dict as

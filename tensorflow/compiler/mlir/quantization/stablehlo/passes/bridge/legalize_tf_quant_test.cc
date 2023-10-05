@@ -16,22 +16,53 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/hlo.pb.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/legalize_tf.h"
+#include "xla/client/client_library.h"
+#include "xla/shape.h"
+#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/platform.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/statusor.h"
 
-namespace tensorflow {
-namespace tf2xla {
-namespace v2 {
+namespace mlir::quant::stablehlo {
+namespace {
 
-TEST(LegalizeTFQuantTest, LegalizesModuleWithTFUniformQuantization) {
-  constexpr char legalization[] = R"mlir(
+class LegalizeTFQuantTest : public ::testing::Test {
+ protected:
+  void TestBridgeLowering(llvm::StringRef mlir_module_string,
+                          llvm::ArrayRef<tensorflow::TensorShape> arg_shapes) {
+    tensorflow::tpu::MlirToHloArgs mlir_to_hlo_args;
+    mlir_to_hlo_args.rollout_state =
+        tensorflow::ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
+    mlir_to_hlo_args.mlir_module = mlir_module_string;
+    tensorflow::se::Platform* platform =
+        tensorflow::se::MultiPlatformManager::PlatformWithName("Host").value();
+    auto client =
+        xla::ClientLibrary::GetOrCreateCompileOnlyClient(platform).value();
+    tensorflow::tpu::TPUCompileMetadataProto metadata_proto;
+    bool use_tuple_args = true;
+    std::vector<tensorflow::tpu::ShardingAndIndex> arg_core_mapping;
+    std::vector<std::vector<xla::Shape>> per_core_arg_shapes;
+    std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes;
+
+    TF_EXPECT_OK(tensorflow::tf2xla::v2::LegalizeMlirToHlo(
+                     mlir_to_hlo_args, metadata_proto, use_tuple_args,
+                     /*device_type=*/"XLA_TPU_JIT", custom_legalization_passes,
+                     /*shape_determination_fns=*/{}, arg_shapes,
+                     &arg_core_mapping, &per_core_arg_shapes, client)
+                     .status());
+  }
+};
+
+TEST_F(LegalizeTFQuantTest, LegalizesModuleWithTFUniformQuantization) {
+  constexpr char mlir_module_string[] = R"mlir(
   module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
     func.func @main(%arg0 : tensor<1xf32>) -> tensor<1xf32> {
       %scales = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
@@ -48,47 +79,12 @@ TEST(LegalizeTFQuantTest, LegalizesModuleWithTFUniformQuantization) {
   })mlir";
 
   std::vector<tensorflow::TensorShape> arg_shapes = {{1}};
-  XlaCompilationResult compilation_result;
 
-  TF_ASSERT_OK(CompileSerializedMlirToXlaHlo(
-                   legalization, arg_shapes, /*device_type=*/"XLA_TPU_JIT",
-                   /*use_tuple_args=*/true, /*enable_op_fallback=*/true,
-                   /*shape_determination_fns=*/{}, &compilation_result)
-                   .status());
-
-  const xla::HloModuleProto& hlo_module =
-      compilation_result.computation->proto();
-  for (const xla::HloComputationProto computation : hlo_module.computations()) {
-    for (const xla::HloInstructionProto instruction :
-         computation.instructions()) {
-      TF_ASSERT_OK_AND_ASSIGN(xla::HloOpcode opcode,
-                              xla::StringToHloOpcode(instruction.opcode()));
-      switch (opcode) {
-        case xla::HloOpcode::kConstant:
-        case xla::HloOpcode::kDivide:
-        case xla::HloOpcode::kAdd:
-        case xla::HloOpcode::kFloor:
-        case xla::HloOpcode::kConvert:
-        case xla::HloOpcode::kMaximum:
-        case xla::HloOpcode::kMinimum:
-        case xla::HloOpcode::kSubtract:
-        case xla::HloOpcode::kParameter:
-        case xla::HloOpcode::kTuple:
-        case xla::HloOpcode::kGetTupleElement:
-        case xla::HloOpcode::kBroadcast:
-        case xla::HloOpcode::kClamp:
-        case xla::HloOpcode::kRoundNearestEven:
-          break;
-        default:
-          ADD_FAILURE() << "Failed to compile TF uniform quantized ops "
-                        << "(unexpected opcode: " << opcode << ")";
-      }
-    }
-  }
+  TestBridgeLowering(mlir_module_string, arg_shapes);
 }
 
-TEST(LegalizeTFQuantTest, LegalizesModuleWithDequantize) {
-  constexpr char legalization[] = R"mlir(
+TEST_F(LegalizeTFQuantTest, LegalizesModuleWithDequantize) {
+  constexpr char mlir_module_string[] = R"mlir(
   module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
     func.func @main(%arg0: tensor<1x!tf_type.qint8>) -> tensor<1xf32> {
       %min_range = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
@@ -97,19 +93,13 @@ TEST(LegalizeTFQuantTest, LegalizesModuleWithDequantize) {
       func.return %0 : tensor<1xf32>
     }
   })mlir";
-
   std::vector<tensorflow::TensorShape> arg_shapes = {{1}};
-  XlaCompilationResult compilation_result;
 
-  TF_EXPECT_OK(CompileSerializedMlirToXlaHlo(
-                   legalization, arg_shapes, /*device_type=*/"XLA_CPU_JIT",
-                   /*use_tuple_args=*/true, /*enable_op_fallback=*/true,
-                   /*shape_determination_fns=*/{}, &compilation_result)
-                   .status());
+  TestBridgeLowering(mlir_module_string, arg_shapes);
 }
 
-TEST(LegalizeTFQuantTest, LegalizesModuleWithClipByValue) {
-  constexpr char legalization[] = R"mlir(
+TEST_F(LegalizeTFQuantTest, LegalizesModuleWithClipByValue) {
+  constexpr char mlir_module_string[] = R"mlir(
   module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
     func.func @main(%arg0 : tensor<2x2xf32>) -> tensor<2x2xf32> {
       %max = "tf.Const"() { value = dense<12.0> : tensor<f32> } : () -> tensor<f32>
@@ -137,17 +127,10 @@ TEST(LegalizeTFQuantTest, LegalizesModuleWithClipByValue) {
       func.return %2 : tensor<2x2xf32>
     }
   })mlir";
-
   std::vector<tensorflow::TensorShape> arg_shapes = {{2, 2}};
-  XlaCompilationResult compilation_result;
 
-  TF_EXPECT_OK(CompileSerializedMlirToXlaHlo(
-                   legalization, arg_shapes, /*device_type=*/"XLA_TPU_JIT",
-                   /*use_tuple_args=*/true, /*enable_op_fallback=*/true,
-                   /*shape_determination_fns=*/{}, &compilation_result)
-                   .status());
+  TestBridgeLowering(mlir_module_string, arg_shapes);
 }
 
-}  // namespace v2
-}  // namespace tf2xla
-}  // namespace tensorflow
+}  // namespace
+}  // namespace mlir::quant::stablehlo

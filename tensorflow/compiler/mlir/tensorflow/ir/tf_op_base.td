@@ -253,7 +253,16 @@ def TF_RecvSideEffect : MemoryEffects<[MemWrite<TF_RecvResource>]>;
 def TF_XlaHostComputeSideEffect : MemoryEffects<[MemWrite<TF_XlaHostComputeResource>]>;
 
 def TF_WriteTrainingPredictions : MemoryEffects<[MemWrite<TF_WriteTrainingPredictionsResource>]>;
-def TF_RandomGeneratorSideEffect : MemoryEffects<[MemWrite<TF_RandomGeneratorResource>]>;
+
+// The state among all RNG ops is shared in a single global variable. When an
+// RNG op runs, it uses the global variable to produce a random number, then
+// updates the global variable. This would be nondeterministic if the RNG ops
+// ran in a nondeterministic order, but XLA scheduler is deterministic so the
+// order is always determinstic. However, we cannot mark such ops as Pure as
+// that may lead to incorrect optimization, e.g. two instances of the same op
+// with the same constant input may end up returning
+// the same value, even though they should have not.
+def TF_RandomGeneratorSideEffect : MemoryEffects<[MemRead<TF_RandomGeneratorResource>]>;
 
 // Special effect for keeping `CollectiveReduce` ops in order.
 def TF_CollectiveReduceOrderingEffect : MemoryEffects<[MemWrite<TF_CollectiveReduceOrderingResource>]>;
@@ -501,6 +510,7 @@ def TF_FpOrI32OrI64Tensor : TensorOf<[TF_Float, TF_I32OrI64]>;
 def TF_IntOrFpTensor : TensorOf<[TF_Int, TF_Float]>;
 def TF_SintOrFpTensor : TensorOf<[TF_SInt, TF_Float]>;
 def TF_FpOrComplexTensor : TensorOf<[TF_Float, TF_Complex]>;
+def TF_BoolOrFpTensor: TensorOf<[TF_Bool, TF_Float]>;
 
 def TF_Number : AnyTypeOf<
   [TF_Int, TF_Float, TF_Quantized, TF_Complex], "number">;

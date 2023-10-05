@@ -20,11 +20,13 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/rename_entrypoint_to_main.h"
@@ -92,7 +94,7 @@ void AddTFToStablehloPasses(mlir::PassManager& pm) {
   // Legalizes TF UniformQuantized types into MHLO. Part of the official
   // TF/XLA bridge component.
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::stablehlo::CreateConvertTFQuantOpsToMHLOPass());
+      mlir::quant::stablehlo::CreateConvertTFQuantOpsToMHLOPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
   // TF -> StableHLO legalization.
@@ -122,6 +124,9 @@ absl::Status PreprocessAndFreezeGraph(
   mlir::TF::CreateTFStandardPipeline(pm_before_freezing_variables,
                                      standard_pipeline_options);
 
+  // The AddQuantizationUnitLocPass should be added before any other passes.
+  pm_before_freezing_variables.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreateAddQuantizationUnitLocPass());
   pm_before_freezing_variables.addNestedPass<mlir::func::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
 

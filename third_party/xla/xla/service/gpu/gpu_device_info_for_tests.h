@@ -16,15 +16,17 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_DEVICE_INFO_FOR_TESTS_H_
 #define XLA_SERVICE_GPU_GPU_DEVICE_INFO_FOR_TESTS_H_
 
-#include "xla/service/gpu/gpu_device_info.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
 
 class TestGpuDeviceInfo {
  public:
-  static GpuDeviceInfo RTXA6000DeviceInfo();
-  static GpuDeviceInfo AMDMI210DeviceInfo();
+  static stream_executor::DeviceDescription RTXA6000DeviceInfo(
+      stream_executor::GpuComputeCapability cc =
+          stream_executor::CudaComputeCapability(8, 9));
+  static stream_executor::DeviceDescription AMDMI210DeviceInfo();
 };
 
 }  // namespace gpu

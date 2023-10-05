@@ -12,8 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include <unistd.h>
+
+#include <memory>
 
 #include "absl/base/casts.h"
 #include "absl/functional/any_invocable.h"
@@ -22,25 +23,28 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
+#include "xla/stream_executor/gpu/gpu_command_buffer.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_event.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
+#include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/kernel_cache_config.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocm_diagnostics.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 
 #ifdef PLATFORMS_GPUS_ROCM_DYNAMIC_LIBROCM_DYNAMIC_LIBROCM_H_
 #error \
@@ -178,7 +182,7 @@ tsl::Status GpuExecutor::Init(int device_ordinal,
 //                 would return /usr/bin.
 static string GetBinaryDir(bool strip_exe) {
   char exe_path[PATH_MAX] = {0};
-  PCHECK(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1) != -1);
+  CHECK_NE(readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1), -1);
   // Make sure it's null-terminated:
   exe_path[sizeof(exe_path) - 1] = 0;
 
@@ -196,19 +200,19 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
                                    KernelBase* kernel) {
   GpuKernel* rocm_kernel = AsGpuKernel(kernel);
   hipModule_t module = nullptr;
-  const string* kernelname;
+  const string* kernel_name;
 
   const OnDiskKernelLoaderSpec* on_disk_spec = nullptr;
-  bool has_cubin = spec.has_cuda_cubin_on_disk();
-  if (has_cubin) {
-    on_disk_spec = &spec.cuda_cubin_on_disk();
-  }
+
+  VLOG(3) << "GetKernel on kernel " << kernel << " : " << kernel->name();
+
+  if (spec.has_cuda_cubin_on_disk()) on_disk_spec = &spec.cuda_cubin_on_disk();
 
   if (on_disk_spec != nullptr) {
     return tsl::errors::Internal(
         "Loading ROCM kernel from disk is not supported");
   } else if (spec.has_cuda_cubin_in_memory()) {
-    kernelname = &spec.cuda_cubin_in_memory().kernelname();
+    kernel_name = &spec.cuda_cubin_in_memory().kernel_name();
 
     const char* hsaco = spec.cuda_cubin_in_memory().bytes();
     absl::MutexLock lock{&in_memory_modules_mu_};
@@ -222,9 +226,9 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
     return tsl::errors::Internal("No method of loading ROCM kernel provided");
   }
 
-  VLOG(2) << "getting function " << *kernelname << " from module " << module;
+  VLOG(2) << "getting function " << *kernel_name << " from module " << module;
   TF_RETURN_IF_ERROR(GpuDriver::GetModuleFunction(
-      context_, module, kernelname->c_str(), rocm_kernel->gpu_function_ptr()));
+      context_, module, kernel_name->c_str(), rocm_kernel->gpu_function_ptr()));
 
   // We have to trust the kernel loader spec arity because there doesn't appear
   // to be a way to reflect on the number of expected arguments w/the ROCM API.
@@ -233,26 +237,30 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   KernelMetadata kernel_metadata;
   TF_RETURN_IF_ERROR(GetKernelMetadata(rocm_kernel, &kernel_metadata));
   kernel->set_metadata(kernel_metadata);
-  kernel->set_name(*kernelname);
+  kernel->set_name(*kernel_name);
   return tsl::OkStatus();
 }
 
 tsl::Status GpuExecutor::GetKernelMetadata(GpuKernel* rocm_kernel,
                                            KernelMetadata* kernel_metadata) {
   int value = 0;
-  // TODO(ROCm) implement this feature in HIP
+  TF_RETURN_IF_ERROR(GpuDriver::FuncGetAttribute(
+      HIP_FUNC_ATTRIBUTE_NUM_REGS, *rocm_kernel->gpu_function_ptr(), &value));
   kernel_metadata->set_registers_per_thread(value);
 
-  // TODO(ROCm) implement this feature in HIP
+  TF_RETURN_IF_ERROR(
+      GpuDriver::FuncGetAttribute(HIP_FUNC_ATTRIBUTE_SHARED_SIZE_BYTES,
+                                  *rocm_kernel->gpu_function_ptr(), &value));
   kernel_metadata->set_shared_memory_bytes(value);
-  return tsl::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
                                 const BlockDim& block_dims,
                                 const KernelBase& kernel,
                                 const KernelArgsArrayBase& args) {
-  CHECK_EQ(kernel.Arity(), args.number_of_arguments());
+  CHECK_EQ(kernel.Arity() + (args.number_of_shared_bytes() > 0),
+           args.number_of_arguments());
   GpuStreamHandle hipstream = AsGpuStreamValue(stream);
   const GpuKernel* rocm_kernel = AsGpuKernel(&kernel);
   hipFunction_t hipfunc = rocm_kernel->AsGpuFunctionHandle();
@@ -713,6 +721,14 @@ GpuExecutor::CreateKernelImplementation() {
 std::unique_ptr<internal::StreamInterface>
 GpuExecutor::GetStreamImplementation() {
   return std::unique_ptr<internal::StreamInterface>(new GpuStream(this));
+}
+
+tsl::StatusOr<std::unique_ptr<internal::CommandBufferInterface>>
+GpuExecutor::GetCommandBufferImplementation() {
+  VLOG(2) << "Create ROCm command buffer (ROCm graph)";
+  GpuGraphHandle graph = nullptr;
+  TF_RETURN_IF_ERROR(GpuDriver::CreateGraph(&graph));
+  return std::make_unique<GpuCommandBuffer>(this, graph);
 }
 
 void* GpuExecutor::GpuContextHack() { return context_; }

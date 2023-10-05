@@ -35,6 +35,15 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_c_api_gpu_extension_hdrs",
+    hdrs = ["pjrt_c_api_gpu_extension.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
     name = "pjrt_c_api_wrapper_impl",
     srcs = ["pjrt_c_api_wrapper_impl.cc"],
     hdrs = ["pjrt_c_api_wrapper_impl.h"],
@@ -134,6 +143,7 @@ cc_library(
     hdrs = ["pjrt_c_api_gpu_internal.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":pjrt_c_api_gpu_extension_hdrs",
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_wrapper_impl",
@@ -141,6 +151,8 @@ cc_library(
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
+        "//xla/python:inspect_sharding",  # To register "InspectSharding" custom partitioning handler.
+        "//xla/service:custom_call_target_registry",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
@@ -191,8 +203,13 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pjrt_c_api_hdrs",
-        ":pjrt_c_api_wrapper_impl",
+        ":pjrt_c_api_helpers",
+        "//xla:shape_util",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_future",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -203,16 +220,23 @@ xla_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":pjrt_c_api_gpu",
+        ":pjrt_c_api_gpu_extension_hdrs",
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_helpers",
         ":pjrt_c_api_test_base",
         ":pjrt_c_api_test_common",
         ":pjrt_c_api_wrapper_impl",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
         "//xla:status",
         "//xla:statusor",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
+        "//xla/pjrt:pjrt_future",
+        "//xla/service:custom_call_target_registry",
         "//xla/service:gpu_plugin",
+        "//xla/tests:literal_test_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

@@ -23,7 +23,14 @@ namespace tsl {
 namespace profiler {
 namespace internal {
 
-std::atomic<int> g_annotation_enabled(0);
+#ifdef _WIN32
+#define DECL_DLL_EXPORT __declspec(dllexport)
+#else
+#define DECL_DLL_EXPORT
+#endif
+// DLL imported variables cannot be initialized on Windows. This file is
+// included only on DLL exports.
+DECL_DLL_EXPORT std::atomic<int> g_annotation_enabled(0);
 
 // g_annotation_enabled implementation must be lock-free for faster execution of
 // the ScopedAnnotation API. This can be commented (if compilation is failing)

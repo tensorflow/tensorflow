@@ -65,7 +65,8 @@ class MatrixSolveOp : public XlaOpKernel {
  private:
   bool adjoint_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixSolveOp);
+  MatrixSolveOp(const MatrixSolveOp&) = delete;
+  void operator=(const MatrixSolveOp&) = delete;
 };
 
 // TODO(b/111271662): Support integer and complex types.

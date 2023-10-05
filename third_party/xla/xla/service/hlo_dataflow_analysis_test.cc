@@ -1183,6 +1183,35 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
   }
 }
 
+TEST_P(HloDataflowAnalysisTest, TupleShapedAsyncOp) {
+  std::string hlo_str = R"(
+  HloModule module
+
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    async-start = ((f32[2,3]), (f32[2,3], f32[2,3]), u32[]) custom-call-start(p0), custom_call_target="foo"
+    async-update = ((f32[2,3]), (f32[2,3], f32[2,3]), u32[]) custom-call-update(async-start), custom_call_target="foo"
+    ROOT async-done = (f32[2,3], f32[2,3]) custom-call-done(async-update), custom_call_target="foo"
+  }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      module_, ParseAndReturnVerifiedModule(hlo_str, GetModuleConfigForTest()));
+
+  bool ssa_form = GetParam();
+  const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
+
+  const HloInstruction* async_start =
+      FindInstruction(module_.get(), "async-start");
+  const HloInstruction* async_update =
+      FindInstruction(module_.get(), "async-update");
+  const HloInstruction* async_done =
+      FindInstruction(module_.get(), "async-done");
+
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_start, /*index=*/{1}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_update, /*index=*/{1}));
+  EXPECT_TRUE(analysis.ValueIsDefinedAt(async_done));
+}
+
 TEST_P(HloDataflowAnalysisTest, SendAndSendDone) {
   // Test that a Send forwards its operand to the output tuple at {0}.
   auto builder = HloComputation::Builder(TestName());

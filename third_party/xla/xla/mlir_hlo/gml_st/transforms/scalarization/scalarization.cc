@@ -505,10 +505,13 @@ LogicalResult scalarizeLinalgOp(LinalgOp linalgOp, PatternRewriter &rewriter) {
   if (isa<linalg::FillOp>(linalgOp)) {
     if (llvm::all_of(linalgOp->getUses(), [&](OpOperand &use) {
           Operation *user = use.getOwner();
-          return isa<DestinationStyleOpInterface>(user) &&
-                 llvm::is_contained(cast<DestinationStyleOpInterface>(user)
-                                        .getDpsInitOperands(),
-                                    &use);
+          if (auto dpsOp = dyn_cast<DestinationStyleOpInterface>(user)) {
+            SmallVector<OpOperand *> opOperands = llvm::to_vector(
+                llvm::map_range(dpsOp.getDpsInitsMutable(),
+                                [](OpOperand &o) { return &o; }));
+            return llvm::is_contained(opOperands, &use);
+          }
+          return false;
         }))
       return failure();
   }

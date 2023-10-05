@@ -223,6 +223,8 @@ PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
     PJRT_Client_DefaultDeviceAssignment_Args* args);
 PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     PJRT_Client_BufferFromHostBuffer_Args* args);
+PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(
+    PJRT_Client_CreateViewOfDeviceBuffer_Args* args);
 
 PJRT_Error* PJRT_DeviceDescription_Id(PJRT_DeviceDescription_Id_Args* args);
 PJRT_Error* PJRT_DeviceDescription_ProcessIndex(
@@ -302,6 +304,7 @@ PJRT_Error* PJRT_Buffer_Memory(PJRT_Buffer_Memory_Args* args);
 PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args);
 PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args);
 PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args);
+PJRT_Error* PJRT_Buffer_CopyToMemory(PJRT_Buffer_CopyToMemory_Args* args);
 PJRT_Error* PJRT_Buffer_ToHostBuffer(PJRT_Buffer_ToHostBuffer_Args* args);
 PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
 PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args);
@@ -399,10 +402,11 @@ PJRT_Error* PJRT_Plugin_Initialize_NoOp(PJRT_Plugin_Initialize_Args* args);
 constexpr PJRT_Api CreatePjrtApi(
     PJRT_Client_Create* create_fn,
     PJRT_TopologyDescription_Create* topology_create_fn,
-    PJRT_Plugin_Initialize* plugin_initialize_fn) {
+    PJRT_Plugin_Initialize* plugin_initialize_fn,
+    void* extension_start = nullptr) {
   return PJRT_Api{
       /*struct_size=*/PJRT_Api_STRUCT_SIZE,
-      /*priv=*/nullptr,
+      /*extension_start=*/extension_start,
 
       /*pjrt_api_version=*/
       PJRT_Api_Version{/*struct_size=*/PJRT_Api_Version_STRUCT_SIZE,
@@ -555,6 +559,10 @@ constexpr PJRT_Api CreatePjrtApi(
       pjrt::PJRT_Executable_OutputElementTypes,
       /*PJRT_Executable_OutputDimensions=*/
       pjrt::PJRT_Executable_OutputDimensions,
+      /*PJRT_Buffer_CopyToMemory=*/
+      pjrt::PJRT_Buffer_CopyToMemory,
+      /*PJRT_Client_CreateViewOfDeviceBuffer=*/
+      pjrt::PJRT_Client_CreateViewOfDeviceBuffer,
   };
 }
 

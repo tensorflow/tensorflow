@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -81,7 +82,7 @@ class XfeedQueue {
     before_get_next_dest_callbacks_.push_back(std::move(callback));
   }
 
-  virtual ~XfeedQueue() {}
+  virtual ~XfeedQueue() = default;
 
  protected:
   virtual void DequeueHook() ABSL_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {}

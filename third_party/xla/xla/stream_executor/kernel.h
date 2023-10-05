@@ -70,19 +70,19 @@ limitations under the License.
 #define XLA_STREAM_EXECUTOR_KERNEL_H_
 
 #include <array>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <string>
 #include <tuple>
 #include <type_traits>
-#include <vector>
 
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/kernel_cache_config.h"
 #include "xla/stream_executor/platform/port.h"
-#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 
@@ -196,7 +196,8 @@ class KernelBase {
 
   KernelMetadata metadata_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(KernelBase);
+  KernelBase(const KernelBase &) = delete;
+  void operator=(const KernelBase &) = delete;
 };
 
 // Whether T is a DeviceMemory-family pointer.
@@ -610,7 +611,8 @@ class TypedKernel : public KernelBase {
     args->add_shared_bytes(arg.size());
   }
 
-  SE_DISALLOW_COPY_AND_ASSIGN(TypedKernel);
+  TypedKernel(const TypedKernel &) = delete;
+  void operator=(const TypedKernel &) = delete;
 };
 
 // Template metaprogramming helper type that helps us produce better error

@@ -147,6 +147,10 @@ StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
 bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
                              absl::Span<const ReplicaGroup> second);
 
+// Returns true if the two replica group are Equal.
+bool ReplicaGroupsEqual(absl::Span<const ReplicaGroup> first,
+                        absl::Span<const ReplicaGroup> second);
+
 // A custom call target that can be used to create a nop that can legally
 // replace a collective op.
 inline constexpr absl::string_view kNopCustomCallTarget = "AllocateBuffer";

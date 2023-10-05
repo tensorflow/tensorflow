@@ -1101,15 +1101,15 @@ tf_cuda_library(
         "@local_tsl//tsl/platform",
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:dnn",
-        "@local_xla//xla/stream_executor:event",
         "@local_xla//xla/stream_executor:multi_platform_manager",
-        "@local_xla//xla/stream_executor:scratch_allocator",
         "@local_xla//xla/stream_executor/cuda:cuda_activation_header",
         "@local_xla//xla/stream_executor/cuda:cuda_platform_id",
         "@local_xla//xla/stream_executor/host:host_platform_id",
         "@local_xla//xla/stream_executor/platform:dso_loader",
         "@local_xla//xla/stream_executor/rocm:rocm_platform_id",
-    ],
+    ] + if_rocm_is_configured([
+        "@local_xla//xla/stream_executor/rocm:miopen_plugin",
+    ]),
 )
 
 # Like stream_executor library, but compiles without --config=cuda
@@ -1124,9 +1124,7 @@ cc_library(
     deps = [
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:dnn",
-        "@local_xla//xla/stream_executor:event",
         "@local_xla//xla/stream_executor:multi_platform_manager",
-        "@local_xla//xla/stream_executor:scratch_allocator",
         "@local_xla//xla/stream_executor/cuda:cuda_platform_id",
         "@local_xla//xla/stream_executor/host:host_platform",
         "@local_xla//xla/stream_executor/host:host_platform_id",

@@ -584,6 +584,9 @@ message HloModuleProto {
   // Stack frames index.
   StackFrameIndexProto stack_frame_index = 17;
 
+  // Frontend attributes to pass to the XLA backend.
+  xla.FrontendAttributes frontend_attributes = 19;
+
   reserved 9;
   reserved "dynamic_parameter_binding";
 }

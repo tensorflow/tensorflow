@@ -17,16 +17,24 @@ limitations under the License.
 #define XLA_PJRT_GPU_SE_GPU_PJRT_COMPILER_H_
 
 #include <memory>
+#include <optional>
 
+#include "absl/status/status.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/service/compiler.h"
+#include "xla/service/gpu/gpu_target_config.h"
 
 namespace xla {
 // Implements the interfaces that are needed for the registered compiler.
-// TODO(b/285385306): current implementation purely relies on the `client`
-// Compile() functions and ignores the `topology` parameter.
 class StreamExecutorGpuCompiler : public PjRtCompiler {
  public:
+  // If `gpu_target_config` is nullopt, the compiler has to compile with device,
+  // i.e. calling of `Compile` should depend on the passed-in client's runtime
+  // device information.
+  explicit StreamExecutorGpuCompiler(const std::optional<gpu::GpuTargetConfig>
+                                         gpu_target_config = std::nullopt)
+      : gpu_target_config_(gpu_target_config) {}
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, const XlaComputation& computation,
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
@@ -34,6 +42,11 @@ class StreamExecutorGpuCompiler : public PjRtCompiler {
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, mlir::ModuleOp module,
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
+
+ private:
+  // GpuTargetConfig is used by GPU compiler for ahead-of-time (AOT) compilation
+  // without device.
+  std::optional<gpu::GpuTargetConfig> gpu_target_config_;
 };
 }  // namespace xla
 #endif  // XLA_PJRT_GPU_SE_GPU_PJRT_COMPILER_H_

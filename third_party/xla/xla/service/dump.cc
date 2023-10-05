@@ -85,7 +85,7 @@ struct CanonicalDebugOptions {
     }
 
     // Disable dumping if specified by the user.
-    if (!opts.xla_detailed_logging_and_dumping()) {
+    if (!opts.xla_enable_dumping()) {
       dump_to = "";
     }
 

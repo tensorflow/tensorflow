@@ -98,21 +98,18 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     IncrementTfMlirBridgeSecondPhaseCounter(
         MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeSuccess);
     return *compilation_result;
-  }
-
-  bool filtered_graph = false;
-  if (mlir_bridge_status.status() == CompileToHloGraphAnalysisFailedError()) {
+  } else if (mlir_bridge_status.status() ==
+             CompileToHloGraphAnalysisFailedError()) {
     VLOG(1) << "Filtered out MLIR computation to XLA HLO using MLIR tf2xla "
-               "bridge. Falling back to old (non-MLIR) bridge.";
-    filtered_graph = true;
+               "bridge. Falling back to Combined Bridge.";
   } else {
+    VLOG(1) << "Failed to compile MLIR computation to XLA HLO using "
+               "MLIR Bridge. Falling back to Combined Bridge.";
+    tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V2_PHASE2_MLIR_BRIDGE",
+                            mlir_bridge_status.status().ToString())
+        .IgnoreError();
     IncrementTfMlirBridgeSecondPhaseCounter(
         MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeFailure);
-
-    VLOG(1) << "Failed to compile MLIR computation to XLA HLO using MLIR "
-               "tf2xla bridge. Falling back to old (non-MLIR) bridge. MLIR "
-               "bridge compilation status: "
-            << mlir_bridge_status.status();
   }
 
   auto combined_bridge_status = internal::LegalizeTfToHlo(
@@ -127,67 +124,13 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     return *compilation_result;
   }
 
-  VLOG(1)
-      << "Failed to compile MLIR computation to XLA HLO using "
-         "Combined MLIR and XlaBuilder Bridge. Falling back to Graph Bridge.";
+  VLOG(1) << "Failed to compile MLIR computation to XLA HLO using "
+             "Combined MLIR and XlaBuilder Bridge. Could not generate HLO.";
   tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V2_COMBINED_BRIDGE",
                           combined_bridge_status.status().ToString())
       .IgnoreError();
 
-  Status old_bridge_status = tf2xla::v1::CompileTensorflowGraphToHlo(
-      computation, metadata, use_tuple_args, shape_determination_fns,
-      arg_shapes, arg_core_mapping, per_core_arg_shapes, client,
-      compilation_result.get());
-
-  // Record filter/failure stats only if the old bridge succeeds. This removes
-  // noise from invalid inputs.
-  if (!old_bridge_status.ok()) {
-    // If the old bridge failed for this input as well. Mark the input as
-    // invalid. This might be incorrect in case of old bridge bugs but that
-    // should be rare.
-    if (filtered_graph) {
-      IncrementTfMlirBridgeSecondPhaseCounter(
-          MlirBridgeSecondPhaseMetric ::kOldBridgeMlirFilteredFailure);
-    } else {
-      IncrementTfMlirBridgeSecondPhaseCounter(
-          MlirBridgeSecondPhaseMetric ::kOldBridgeWithFallbackModeFailure);
-    }
-    if (!old_bridge_status.ok()) {
-      tsl::error_logging::Log(kBridgeComponent, "TFXLA_API_V2_OLD_BRIDGE",
-                              mlir_bridge_status.status().ToString())
-          .IgnoreError();
-    }
-    return old_bridge_status;
-  }
-
-  if (VLOG_IS_ON(2)) {
-    TF_ASSIGN_OR_RETURN(
-        auto hlo_module_config,
-        xla::HloModule::CreateModuleConfigFromProto(
-            compilation_result->computation->proto(), xla::DebugOptions()));
-
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<xla::HloModule> hlo_module,
-        xla::HloModule::CreateFromProto(
-            compilation_result->computation->proto(), hlo_module_config));
-
-    std::string all_computations;
-    for (auto computation : hlo_module->computations()) {
-      all_computations += computation->ToString() + "\n\n";
-    }
-
-    tensorflow::DumpRawStringToFile("legalize_tf_fallback_hlo",
-                                    all_computations);
-  }
-
-  if (filtered_graph) {
-    IncrementTfMlirBridgeSecondPhaseCounter(
-        MlirBridgeSecondPhaseMetric ::kOldBridgeMlirFilteredSuccess);
-  } else {
-    IncrementTfMlirBridgeSecondPhaseCounter(
-        MlirBridgeSecondPhaseMetric ::kOldBridgeWithFallbackModeSuccess);
-  }
-  return *compilation_result;
+  return combined_bridge_status.status();
 }
 
 };  // namespace v2

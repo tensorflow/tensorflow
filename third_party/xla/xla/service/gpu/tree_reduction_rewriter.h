@@ -19,9 +19,9 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/gpu_types.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -76,7 +76,7 @@ namespace gpu {
 //
 class GpuTreeReductionRewriter : public HloModulePass {
  public:
-  explicit GpuTreeReductionRewriter(GpuVersion gpu_version)
+  explicit GpuTreeReductionRewriter(se::GpuComputeCapability gpu_version)
       : gpu_version_(gpu_version) {}
 
   ~GpuTreeReductionRewriter() override = default;
@@ -90,7 +90,7 @@ class GpuTreeReductionRewriter : public HloModulePass {
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  GpuVersion gpu_version_;
+  se::GpuComputeCapability gpu_version_;
 };
 
 }  // end namespace gpu

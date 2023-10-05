@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_module.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -147,6 +148,21 @@ TEST_F(HloModuleTest, CloneTest) {
        ++origin, ++copied) {
     EXPECT_EQ(absl::StrCat((*origin)->name(), ".copy"), (*copied)->name());
   }
+}
+
+TEST_F(HloModuleTest, CloneFrontendAttributes) {
+  auto module = CreateNewVerifiedModule();
+  FrontendAttributes frontend_attributes;
+  frontend_attributes.mutable_map()->emplace("attribute1", "attribute1_value");
+  module->set_frontend_attributes(frontend_attributes);
+  std::unique_ptr<HloModule> clone = module->Clone();
+  bool areEqual = std::equal(
+      frontend_attributes.map().begin(), frontend_attributes.map().end(),
+      clone->frontend_attributes().map().begin(),
+      [](const auto& kv1, const auto& kv2) {
+        return kv1.first == kv2.first && kv1.second == kv2.second;
+      });
+  EXPECT_TRUE(areEqual);
 }
 
 TEST_F(HloModuleTest, CloneHasFusion) {

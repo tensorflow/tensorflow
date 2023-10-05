@@ -80,6 +80,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tsl/platform/fingerprint.h"
+#include "tsl/platform/statusor.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_copy_node.h"
@@ -1063,11 +1064,13 @@ bool IntArgsAndRetvalsOnDevice(EagerOperation* op,
 
 using BoolTensorInputs = std::vector<std::pair<std::string, bool>>;
 
-// Removes boolean tensor inputs from the EagerOperation and returns them.
-// Currently this is only useful to invoke when small_constants_optimizer is
-// enabled because the runtime will have equivalent FunctionDefs of the original
-// tf.function without the boolean tensor input.
-StatusOr<BoolTensorInputs> RemoveBoolInputs(EagerOperation* op) {
+// Identifies boolean tensor inputs from the EagerOperation and returns them. If
+// delete_inputs is set to true then it will also delete them from the
+// function's input signature. Currently this is only useful to invoke when
+// small_constants_optimizer is enabled because the runtime will have equivalent
+// FunctionDefs of the original tf.function without the boolean tensor input.
+StatusOr<BoolTensorInputs> GetBoolInputs(EagerOperation* op,
+                                         bool delete_inputs) {
   BoolTensorInputs result;
   if (!op->is_function()) return result;
   // Extract tensor inputs.
@@ -1108,6 +1111,7 @@ StatusOr<BoolTensorInputs> RemoveBoolInputs(EagerOperation* op) {
     result.emplace_back(input_arg.name(), input_value);
   }
 
+  if (!delete_inputs) return result;
   // If we were able to identify all boolean inputs, update the op's inputs.
   op->Clear();
   for (auto* input : stripped_inputs) {
@@ -1327,7 +1331,8 @@ Status GetOrCreateKernelAndDevice(
   // Update the EagerOperation with information about the boolean input tensors
   // when small constant optimization is enabled.
   if (IsSmallConstantOptimizationEnabled(*op)) {
-    TF_ASSIGN_OR_RETURN(BoolTensorInputs bool_inputs, RemoveBoolInputs(op));
+    TF_ASSIGN_OR_RETURN(BoolTensorInputs bool_inputs,
+                        GetBoolInputs(op, /*delete_inputs=*/false));
     string folded_name = op->Name();
     for (const auto& [input_name, input_value] : bool_inputs) {
       folded_name = small_constants_optimizer::FoldedFunctionName(

@@ -31,11 +31,11 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/stacktrace.h"
 #include "tsl/platform/static_threadlocal.h"
@@ -425,11 +425,11 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   return context->context();
 }
 
-/* static */ tsl::Status GpuDriver::FuncGetAttribute(hipFuncAttribute attribute,
-                                                     hipFunction_t func,
-                                                     int* attribute_value) {
-  RETURN_IF_ROCM_ERROR(hipFuncSetAttribute(func, attribute, *attribute_value),
-                       "Failed to query kernel attribute: ", attribute);
+/* static */ tsl::Status GpuDriver::FuncGetAttribute(
+    hipFunction_attribute attribute, hipFunction_t func, int* attribute_value) {
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipFuncGetAttribute(attribute_value, attribute, func),
+      "Failed to query kernel attribute: ", attribute);
   return tsl::OkStatus();
 }
 

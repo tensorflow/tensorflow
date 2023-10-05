@@ -29,16 +29,16 @@ limitations under the License.
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/buffer_sharing.h"
 #include "xla/service/gpu/executable.pb.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/gpu_target_config.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/llvm_compiler.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -97,18 +97,6 @@ class GpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
   XlaRuntimeGpuExecutableProto xla_runtime_gpu_executable_;
 };
 
-struct GpuTargetConfig {
-  GpuTargetConfig() = default;
-  explicit GpuTargetConfig(const stream_executor::GpuTargetConfigProto& proto);
-
-  se::GpuTargetConfigProto ToProto() const;
-
-  GpuDeviceInfo gpu_device_info;
-  std::string platform_name;
-  se::dnn::VersionInfo dnn_version_info;
-  std::string device_description_str;
-};
-
 // The GPU compiler generates efficient GPU executables.
 class GpuCompiler : public LLVMCompiler {
  public:
@@ -134,13 +122,10 @@ class GpuCompiler : public LLVMCompiler {
   StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
       HloModule* hlo_module, se::StreamExecutor* stream_exec) override;
 
-  virtual GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) = 0;
-  GpuTargetConfig GetGpuTargetConfig(se::StreamExecutor* stream_exec) {
-    GpuTargetConfig gpu_target_config;
-    gpu_target_config.gpu_device_info = GetGpuDeviceInfo(stream_exec);
-    gpu_target_config.platform_name = stream_exec->platform()->Name();
+  se::GpuComputeCapability GetGpuVersion(se::StreamExecutor* stream_exec);
 
-    return gpu_target_config;
+  GpuTargetConfig GetGpuTargetConfig(se::StreamExecutor* stream_exec) {
+    return GpuTargetConfig(stream_exec);
   }
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
@@ -153,9 +138,9 @@ class GpuCompiler : public LLVMCompiler {
 
   StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileToTargetBinary(
       const HloModuleConfig& module_config,
-      std::unique_ptr<llvm::Module> llvm_module, GpuVersion gpu_version,
-      se::StreamExecutor* stream_exec, const CompileOptions& options,
-      const HloModule* debug_module);
+      std::unique_ptr<llvm::Module> llvm_module,
+      se::GpuComputeCapability gpu_version, se::StreamExecutor* stream_exec,
+      const CompileOptions& options, const HloModule* debug_module);
 
   se::Platform::Id PlatformId() const override { return platform_id_; }
 
@@ -170,6 +155,9 @@ class GpuCompiler : public LLVMCompiler {
 
   StatusOr<std::unique_ptr<AotCompilationResult>> Export(
       Executable* executable) const override;
+
+  Status RunPostSchedulingPipelines(HloModule* module,
+                                    int64_t scheduler_mem_limit) const;
 
  protected:
   // During compilation with device, stream_exec != null and autotune_results
@@ -193,11 +181,17 @@ class GpuCompiler : public LLVMCompiler {
     return false;
   }
 
-  // Add autotuning passes for convolution, gemm and triton.
-  virtual Status AddAutotuningPasses(HloPassPipeline* pipeline,
-                                     HloModule* hlo_module,
-                                     AutotuneConfig& autotune_config,
-                                     tsl::thread::ThreadPool* thread_pool) {
+  // Add autotuning passes for convolution and gemm (except triton).
+  virtual Status AddConvAndGemmAutotuningPasses(
+      HloPassPipeline* pipeline, HloModule* hlo_module,
+      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
+    return OkStatus();
+  }
+
+  // Add autotuning passes for triton gemm.
+  virtual Status AddTritonGemmAutotuningPasses(
+      HloPassPipeline* pipeline, HloModule* hlo_module,
+      AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool) {
     return OkStatus();
   }
 
@@ -232,11 +226,11 @@ class GpuCompiler : public LLVMCompiler {
                            const AutotuneResults* autotune_results);
 
   virtual Status OptimizeHloConvolutionCanonicalization(
-      HloModule* hlo_module, GpuVersion gpu_version,
+      HloModule* hlo_module, se::GpuComputeCapability gpu_version,
       se::dnn::VersionInfo dnn_version,
       se::DeviceMemoryAllocator* device_allocator) = 0;
 
-  virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() {
+  virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const {
     return &FusionCanShareBufferHint;
   }
 
@@ -244,8 +238,9 @@ class GpuCompiler : public LLVMCompiler {
   // that accommodates both HLO and MLIR.
   virtual StatusOr<std::pair<std::string, std::vector<uint8_t>>>
   CompileTargetBinary(const HloModuleConfig& module_config,
-                      llvm::Module* llvm_module, GpuVersion gpu_version,
-                      bool relocatable, const HloModule* debug_module,
+                      llvm::Module* llvm_module,
+                      se::GpuComputeCapability gpu_version, bool relocatable,
+                      const HloModule* debug_module,
                       const CompileOptions& options) = 0;
 
   Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);

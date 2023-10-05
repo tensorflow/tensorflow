@@ -147,7 +147,9 @@ class FirstComeFirstServedTaskRunner : public TaskRunner {
   ThreadSafeBuffer<GetElementResult> buffer_;
   std::unique_ptr<Thread> prefetch_thread_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FirstComeFirstServedTaskRunner);
+  FirstComeFirstServedTaskRunner(const FirstComeFirstServedTaskRunner&) =
+      delete;
+  void operator=(const FirstComeFirstServedTaskRunner&) = delete;
 };
 
 // A task runner which prefetches elements on a first-come first-served basis
@@ -191,7 +193,8 @@ class CachingTaskRunner : public TaskRunner {
   FirstComeFirstServedTaskRunner fcfs_task_runner_;
   CrossTrainerCache<GetElementResult> cache_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CachingTaskRunner);
+  CachingTaskRunner(const CachingTaskRunner&) = delete;
+  void operator=(const CachingTaskRunner&) = delete;
 };
 
 // An element produced by a task.

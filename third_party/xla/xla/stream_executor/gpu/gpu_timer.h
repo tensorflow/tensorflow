@@ -66,7 +66,8 @@ class GpuTimer {
   GpuStream* stream_;
   bool is_stopped_ = false;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(GpuTimer);
+  GpuTimer(const GpuTimer&) = delete;
+  void operator=(const GpuTimer&) = delete;
 };
 
 }  // namespace gpu

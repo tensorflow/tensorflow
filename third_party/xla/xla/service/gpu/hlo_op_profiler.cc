@@ -32,13 +32,13 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/hlo_op_profile.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/test_utils.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -192,7 +192,7 @@ StatusOr<absl::Duration> HloOpProfiler::MeasureOpChainDuration(
 
 HloOpProfiler::HloOpProfiler(HloRunner& runner)
     : runner_(runner),
-      dev_info_(GetGpuDeviceInfo(runner.backend().stream_executors()[0])),
+      dev_info_(runner.backend().stream_executors()[0]->GetDeviceDescription()),
       // Twice the runtime of a copy (chain_length = 0) kernel.
       min_duration_(2 * MeasureOpChainDuration(HloOpcode::kNegate, F32, 0)
                             .value_or(absl::ZeroDuration())) {
@@ -234,7 +234,7 @@ StatusOr<HloInstructionProfile> HloOpProfiler::MeasureClockCyclesPerOp(
       (double_duration - duration) * 2.0 / chain_length;
 
   const float clocks_per_nanosecond =
-      dev_info_.clock_rate_ghz * 2;  // 2 for FMA
+      dev_info_.clock_rate_ghz() * 2;  // 2 for FMA
   const int64_t n_clocks =
       absl::ToInt64Nanoseconds(time_per_op) * clocks_per_nanosecond;
   VLOG(3) << time_per_op << " = " << n_clocks << " clock cycles";

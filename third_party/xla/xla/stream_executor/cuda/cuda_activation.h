@@ -17,7 +17,7 @@ limitations under the License.
 // It reaches into the CUDA implementation to activate an underlying CUDA
 // context.
 //
-// Having this file separate from cuda/cuda_gpu_executor.h means that dependent
+// Having this file separate from cuda/cuda_executor.h means that dependent
 // code does not also have to depend on cuda.h.
 
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_ACTIVATION_H_

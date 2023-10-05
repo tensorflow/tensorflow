@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_CLIENT_H_
 #define XLA_PJRT_PJRT_CLIENT_H_
 
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -25,20 +27,29 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "xla/client/xla_computation.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_future.h"
+#include "xla/service/computation_placer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
@@ -74,8 +85,7 @@ class PjRtMemorySpace {
   // The devices that this memory space is attached to.
   virtual absl::Span<PjRtDevice* const> devices() const = 0;
 
-  // The ID of this memory space. IDs are unique among memory spaces of this
-  // type.
+  // The ID of this memory space. IDs are globally unique across all hosts.
   virtual int id() const = 0;
 
   // A platform-dependent string that uniquely identifies the kind of the
@@ -172,10 +182,16 @@ class PjRtDevice {
   }
 
   // Returns all memory spaces attached to this device.
+  // The memory spaces are in no particular order.
   virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const = 0;
 
   // Returns the default memory space attached to this device.
   virtual StatusOr<PjRtMemorySpace*> default_memory_space() const = 0;
+
+  virtual absl::StatusOr<PjRtMemorySpace*> memory_space_by_kind(
+      absl::string_view memory_space_kind) const {
+    return Unimplemented("memory_space_by_kind not implemented");
+  }
 
   // Returns a platform-specific stream handle that should be used to track when
   // an externally-managed buffer is ready to use on this device. This is
@@ -486,6 +502,7 @@ class PjRtClient {
       int local_hardware_id) const = 0;
 
   // Return all memory spaces owned by the client.
+  // The memory spaces are in no particular order.
   virtual absl::Span<PjRtMemorySpace* const> memory_spaces() const = 0;
 
   // Return an ID that identifies the platform (CPU/GPU/TPU).

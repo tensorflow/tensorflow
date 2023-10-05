@@ -58,7 +58,7 @@ cc_library(
         "//xla:types",
         "//xla/service:gpu_plugin",
         "//xla/service/gpu:gpu_executable",
-        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor",
         "//xla/tests:filecheck",
         "//xla/tests:llvm_irgen_test_base",
         "//xla/tests:verified_hlo_module",
@@ -109,6 +109,22 @@ xla_cc_test(
 )
 
 xla_cc_test(
+    name = "gpu_all_gather_optimizer_test",
+    srcs = ["gpu_all_gather_optimizer_test.cc"],
+    deps = [
+        "//xla:statusor",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
+        "//xla/service/gpu:gpu_all_gather_optimizer",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:test",
+    ],
+)
+
+xla_cc_test(
     name = "gpu_spmd_e2e_compile_test",
     size = "small",
     srcs = ["gpu_spmd_e2e_compile_test.cc"],
@@ -124,11 +140,9 @@ xla_cc_test(
 
 xla_cc_test(
     name = "gemm_rewrite_test",
-    srcs = if_cuda_is_configured(["gemm_rewrite_test.cc"]),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    tags = tf_cuda_tests_tags() + [
-        "no_rocm",
-    ],
+    srcs = if_cuda_is_configured(["gemm_rewrite_test.cc"]) + if_rocm_is_configured(["gemm_rewrite_test.cc"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
         "//xla:statusor",
@@ -147,6 +161,8 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test_main",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
 
@@ -725,12 +741,12 @@ xla_cc_binary(
         "//xla/service/gpu:compile_module_to_llvm_ir",
         "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:gpu_device_info_for_tests",
+        "//xla/service/gpu:gpu_hlo_schedule",
         "//xla/service/gpu:target_constants",
         "//xla/service/gpu/llvm_gpu_backend",
+        "//xla/stream_executor",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:device_description_proto_cc_impl",
         "//xla/stream_executor:dnn",
-        "//xla/stream_executor:stream_executor_impl",
         "//xla/stream_executor/host:host_platform",
         "//xla/tests:test_utils",
         "//xla/tools:hlo_module_loader",
@@ -848,7 +864,6 @@ xla_cc_test(
         "//xla/stream_executor/gpu:asm_compiler",
         "//xla/service/gpu:gpu_asm_opts_util",
         "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_headers",
         "//xla/service/gpu:stream_executor_util",
         "//xla/stream_executor:device_memory",
     ]),
@@ -892,9 +907,9 @@ xla_cc_test(
         "//xla/client:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/service/gpu:cublas_cudnn",
+        "//xla/stream_executor",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:dnn",
-        "//xla/stream_executor:stream_executor_pimpl",
         "//xla/tests:client_library_test_base",
         "//xla/tests:hlo_test_base",
         "//xla/tests:literal_test_util",

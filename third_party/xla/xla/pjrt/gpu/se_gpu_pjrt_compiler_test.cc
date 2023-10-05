@@ -24,6 +24,8 @@ limitations under the License.
 #include "xla/client/xla_computation.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/tests/literal_test_util.h"
 #include "tsl/platform/status_matchers.h"
@@ -55,20 +57,9 @@ absl::StatusOr<xla::XlaComputation> GetXlaComputation(
   return XlaComputation(hlo_module->ToProto());
 }
 
-TEST(StreamExecutorGpuCompilerTest, NoClientXla) {
-  StreamExecutorGpuCompiler compiler;
-  StreamExecutorGpuTopologyDescription topology(GpuId(), GpuName(),
-                                                "Fake_device", {0, 1});
-
-  TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
-  EXPECT_THAT(compiler.Compile(xla::CompileOptions(), computation, topology,
-                               /*client=*/nullptr),
-              StatusIs(absl::StatusCode::kUnimplemented));
-}
-
 TEST(StreamExecutorGpuCompilerTest, TopologyNotSameXla) {
   StreamExecutorGpuCompiler compiler;
-  StreamExecutorGpuTopologyDescription topology(GpuId(), GpuName(),
+  StreamExecutorGpuTopologyDescription topology(CudaId(), CudaName(),
                                                 "Fake_device", {0, 1});
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -116,7 +107,7 @@ TEST(StreamExecutorGpuCompilerTest, NoClientMlir) {
   auto mlir_module =
       mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
 
-  StreamExecutorGpuTopologyDescription topology(GpuId(), GpuName(),
+  StreamExecutorGpuTopologyDescription topology(CudaId(), CudaName(),
                                                 "Fake_device", {0, 1});
 
   EXPECT_THAT(
@@ -134,7 +125,7 @@ TEST(StreamExecutorGpuCompilerTest, TopologyNotSameMlir) {
   auto mlir_module =
       mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
 
-  StreamExecutorGpuTopologyDescription topology(GpuId(), GpuName(),
+  StreamExecutorGpuTopologyDescription topology(CudaId(), CudaName(),
                                                 "Fake_device", {0, 1});
 
   TF_ASSERT_OK_AND_ASSIGN(

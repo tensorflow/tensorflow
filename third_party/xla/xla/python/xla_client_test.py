@@ -86,7 +86,8 @@ def TestFactory(xla_backend,
                 cloud_tpu=False,
                 tfrt_tpu=False,
                 pjrt_c_api=False,
-                pathways=False):
+                pathways=False,
+                pathways_ifrt=False):
   tests = []
 
   int_dtypes = [np.int32, np.int64, np.uint32, np.uint64]
@@ -586,6 +587,7 @@ def TestFactory(xla_backend,
               "BlockHostUntilReady() called on deleted or donated buffer")):
         buffer.block_until_ready()
 
+    @unittest.skipIf(pathways_ifrt, "not implemented")
     def testOnDeviceSizeInBytes(self):
       if not isinstance(self.backend, xla_client.Client):
         self.skipTest("TPU Driver doesn't support OnDeviceSizeInBytes.")
@@ -663,6 +665,7 @@ def TestFactory(xla_backend,
         arr = np.asarray(arr)
         self.assertEqual(dtype, type(arr[0]))
 
+    @unittest.skipIf(pathways_ifrt, "not implemented")
     def testUnsafeBufferPointer(self):
       if not isinstance(self.backend, xla_client.Client):
         self.skipTest("TPU Driver doesn't support UnsafeBufferPointer().")
@@ -2142,6 +2145,7 @@ def TestFactory(xla_backend,
         if local_hardware_id is not None:
           self.assertGreaterEqual(local_hardware_id, 0)
 
+    @unittest.skipIf(pathways_ifrt, "not implemented")
     def testLocalDeviceFromLocalHardwareId(self):
       for device in self.backend.local_devices():
         if device.local_hardware_id is not None:
@@ -2155,7 +2159,7 @@ def TestFactory(xla_backend,
         stats = device.memory_stats()
         if (
             self.backend.platform != "tpu" or not tfrt_tpu
-        ) and self.backend.platform != "gpu":
+        ) and self.backend.platform not in ("gpu", "cuda", "rocm"):
           self.assertIsNone(stats)
         else:
           self.assertIsNotNone(stats)
@@ -2285,13 +2289,16 @@ def TestFactory(xla_backend,
     def setUp(self):
       super(DLPackTest, self).setUp()
       self.backend = xla_backend()
-      if self.backend.platform not in ("cpu", "gpu"):
+      if self.backend.platform not in ("cpu", "gpu", "cuda", "rocm"):
         self.skipTest("DLPack requires CPU or GPU")
       self.cpu_backend = (
           self.backend
           if self.backend.platform == "cpu" else xla_client.make_cpu_client())
       self.gpu_backend = (
-          self.backend if self.backend.platform == "gpu" else None)
+          self.backend
+          if self.backend.platform in ("gpu", "cuda", "rocm")
+          else None
+      )
 
     def tearDown(self):
       super().tearDown()
@@ -2337,7 +2344,9 @@ def TestFactory(xla_backend,
           buffer, take_ownership=True)
 
       def ConsumeDLPackTensor():
-        _ = xla_client._xla.dlpack_managed_tensor_to_buffer(dlt, self.backend)
+        _ = xla_client._xla.dlpack_managed_tensor_to_buffer(
+            dlt, self.cpu_backend, self.gpu_backend
+        )
 
       ConsumeDLPackTensor()
       self.assertRaisesRegex(
@@ -2364,8 +2373,10 @@ def TestFactory(xla_backend,
       d2 = xla_client._xla.buffer_to_dlpack_managed_tensor(
           buffer, take_ownership=False)
 
-      y = xla_client._xla.dlpack_managed_tensor_to_buffer(d1, self.backend)
-      z = xla_client._xla.dlpack_managed_tensor_to_buffer(d2, self.backend)
+      y = xla_client._xla.dlpack_managed_tensor_to_buffer(
+          d1, self.cpu_backend, self.gpu_backend)
+      z = xla_client._xla.dlpack_managed_tensor_to_buffer(
+          d2, self.cpu_backend, self.gpu_backend)
       del d1, d2
       np.testing.assert_array_equal(x, np.asarray(buffer))
       np.testing.assert_array_equal(x, np.asarray(y))
@@ -2514,7 +2525,7 @@ def TestFactory(xla_backend,
       logging.info("platform_version:\n%s", version)
       if self.backend.platform == "cpu":
         self.assertEqual(version, "<unknown>")
-      elif self.backend.platform == "gpu":
+      elif self.backend.platform in ("gpu", "cuda", "rocm"):
         # Following is false if not built with --config=cuda
         if version != "<unknown>":
           self.assertTrue(

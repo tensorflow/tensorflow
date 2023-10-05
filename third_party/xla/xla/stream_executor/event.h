@@ -80,7 +80,8 @@ class Event {
   // the object. Owned.
   std::unique_ptr<internal::EventInterface> implementation_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(Event);
+  Event(const Event&) = delete;
+  void operator=(const Event&) = delete;
 };
 
 }  // namespace stream_executor

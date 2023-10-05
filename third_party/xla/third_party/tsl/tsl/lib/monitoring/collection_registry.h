@@ -94,7 +94,8 @@ class CollectionRegistry {
  private:
   CollectionRegistry() {}
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CollectionRegistry);
+  CollectionRegistry(const CollectionRegistry&) = delete;
+  void operator=(const CollectionRegistry&) = delete;
 };
 
 }  // namespace monitoring
@@ -273,7 +274,8 @@ class CollectionRegistry {
   };
   std::map<StringPiece, CollectionInfo> registry_ TF_GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CollectionRegistry);
+  CollectionRegistry(const CollectionRegistry&) = delete;
+  void operator=(const CollectionRegistry&) = delete;
 };
 
 ////
@@ -397,7 +399,8 @@ class Collector {
   std::unique_ptr<CollectedMetrics> collected_metrics_ TF_GUARDED_BY(mu_);
   const uint64 collection_time_millis_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Collector);
+  Collector(const Collector&) = delete;
+  void operator=(const Collector&) = delete;
 };
 
 // Write the timestamps for the point based on the MetricKind.

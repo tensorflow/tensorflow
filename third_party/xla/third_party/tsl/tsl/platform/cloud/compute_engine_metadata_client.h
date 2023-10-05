@@ -58,7 +58,8 @@ class ComputeEngineMetadataClient {
   std::shared_ptr<HttpRequest::Factory> http_request_factory_;
   const RetryConfig retry_config_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ComputeEngineMetadataClient);
+  ComputeEngineMetadataClient(const ComputeEngineMetadataClient&) = delete;
+  void operator=(const ComputeEngineMetadataClient&) = delete;
 };
 
 }  // namespace tsl

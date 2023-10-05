@@ -40,7 +40,7 @@ namespace gpu {
 class FusionInstructionMerger {
  public:
   explicit FusionInstructionMerger(
-      HloComputation* computation, const GpuDeviceInfo& gpu_device_info,
+      HloComputation* computation, const se::DeviceDescription& gpu_device_info,
       HloCostAnalysis::ShapeSizeFunction shape_size_function)
       : computation_(computation),
         shape_size_function_(shape_size_function),
@@ -64,7 +64,7 @@ class FusionInstructionMerger {
   // HLO cost analysis of the computation so that it may be not needed at all.
   std::optional<GpuHloCostAnalysis> cost_analysis_;
   FusionInfoCache fusion_info_cache_;
-  const GpuDeviceInfo& gpu_device_info_;
+  const se::DeviceDescription& gpu_device_info_;
   bool changed_ = false;
   bool dump_fusion_visualization_ = false;
 

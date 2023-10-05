@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include <gmock/gmock.h>
@@ -70,6 +71,12 @@ TEST(MemoryKindTest, MemorySafety) {
 
   memory_kind_str.reset();
   EXPECT_THAT(memory_kind.memory_kind(), Optional(absl::string_view("abc")));
+}
+
+TEST(MemoryKindTest, EqualityForUnspecifiedAndNullopt) {
+  MemoryKind memory_kind1;
+  MemoryKind memory_kind2(std::nullopt);
+  EXPECT_EQ(memory_kind1, memory_kind2);
 }
 
 }  // namespace

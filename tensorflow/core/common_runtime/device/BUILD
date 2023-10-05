@@ -20,10 +20,7 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//tensorflow:internal",
-        "//tensorflow_models:__subpackages__",
-    ],
+    default_visibility = ["//tensorflow:internal"],
     # features = ["-parse_headers"],
     features = ["-layering_check"],
     licenses = ["notice"],

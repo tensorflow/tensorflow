@@ -190,6 +190,12 @@ class Service : public ServiceInterface {
       const ExecutionOptions* execution_options,
       const AotCompilationOptions* aot_options = nullptr);
 
+  // Convenience function which checks whether the given client_shape
+  // (presumably passed by the client to set the result layout) is valid for the
+  // given computation result shape.
+  static Status ValidateResultShape(const Shape& client_shape,
+                                    const Shape& result_shape);
+
  private:
   // A private overload for Service itself, used by other methods within this
   // class.
@@ -272,12 +278,6 @@ class Service : public ServiceInterface {
       absl::Span<const std::vector<std::vector<const ShapedBuffer*>>> arguments,
       Backend* backend, absl::Span<const DeviceHandle> device_handles,
       absl::Span<const std::string> result_tags, ExecutionProfile* profile);
-
-  // Convenience function which checks whether the given client_shape
-  // (presumably passed by the client to set the result layout) is valid for the
-  // given computation result shape.
-  Status ValidateResultShape(const Shape& client_shape,
-                             const Shape& result_shape) const;
 
   // Returns the stream executors assigned to the replicas represented by the
   // given device handle. Each device_handle is a virtual replicated device that

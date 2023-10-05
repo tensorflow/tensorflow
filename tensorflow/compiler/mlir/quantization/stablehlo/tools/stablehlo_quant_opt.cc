@@ -34,7 +34,7 @@ int main(int argc, char **argv) {
 
   mlir::registerAllPasses();
   mlir::registerTensorFlowPasses();
-  mlir::stablehlo::registerBridgePasses();
+  mlir::quant::stablehlo::registerBridgePasses();
 
   mlir::DialectRegistry registry;
   registry.insert<mlir::scf::SCFDialect, mlir::TF::TensorFlowDialect,

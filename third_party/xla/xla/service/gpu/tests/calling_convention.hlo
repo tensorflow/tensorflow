@@ -10,12 +10,12 @@
 // CHECK-NOT: @buffer_for_dynamic
 // CHECK-NOT: @buffer_for_static
 
-HloModule SliceToDynamic
+HloModule SliceToDynamic, is_scheduled=true
 
 ENTRY main {
   %param = s32[2,2,2]{2,0,1} parameter(0)
-  %static = s32[] constant(2)
   %dynamic = s32[] constant(1)
+  %static = s32[] constant(2)
   ROOT %custom-call = s32[2,<=2, 2]{2,0,1} custom-call(s32[2,2,2]{2,0,1} %param,
                                                   s32[] %static,
                                                   s32[] %dynamic,

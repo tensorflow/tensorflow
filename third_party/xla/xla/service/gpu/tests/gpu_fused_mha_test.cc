@@ -39,7 +39,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/test_helpers.h"
 #include "xla/tests/client_library_test_base.h"
 #include "xla/tests/hlo_test_base.h"
@@ -161,7 +161,7 @@ class MultiHeadedAttentionTest : public GpuCodegenTest {
 
 class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
  protected:
-  const std::string GetModuleFMHABMM_BMM_vanilla_HloString_F16() {
+  std::string GetModuleFMHABMM_BMM_vanilla_HloString_F16() {
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_.10, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0})->f16[16,16,256,64]{3,2,1,0}}
 
@@ -176,7 +176,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
     return hlo_text;
   }
 
-  const std::string GetModuleFMHABMM_BMM_vanilla_HloString_BF16() {
+  std::string GetModuleFMHABMM_BMM_vanilla_HloString_BF16() {
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_.10, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,256,64]{3,2,1,0}}
 
@@ -223,7 +223,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
     return hlo_text;
   }
 
-  const std::string
+  std::string
   GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_HloString_BF16() {  // NOLINT
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_.10, entry_computation_layout={(bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0})->bf16[16,16,64,256]{3,2,1,0}}
@@ -239,7 +239,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
     return hlo_text;
   }
 
-  const std::string
+  std::string
   GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_HloString_F16() {  // NOLINT
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_.10, entry_computation_layout={(f16[16,256,16,64]{3,2,1,0},f16[16,256,16,64]{3,2,1,0},f16[16,256,16,64]{3,2,1,0})->f16[16,16,64,256]{3,2,1,0}}
@@ -405,7 +405,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
     return hlo_text;
   }
 
-  const std::string
+  std::string
   GetModuleFMHABMM_BMM2_non_contracting_dim_stride_not_1_HloString_F16() {  // NOLINT
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_.10, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{2,3,1,0})->f16[16,16,256,64]{3,2,1,0}}
@@ -729,8 +729,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
 class MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM
     : public MultiHeadedAttentionTest {
  protected:
-  const std::string
-  GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_F16() {
+  std::string GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_F16() {
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},pred[16,16,256,256]{3,2,1,0})->f16[16,16,256,64]{3,2,1,0}}
 
@@ -987,8 +986,7 @@ class MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM
     return hlo_text;
   }
 
-  const std::string
-  GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_BF16() {
+  std::string GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_BF16() {
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},pred[16,16,256,256]{3,2,1,0})->bf16[16,16,256,64]{3,2,1,0}}
 
@@ -1043,7 +1041,7 @@ class MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM
     return hlo_text;
   }
 
-  const std::string
+  std::string
   GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_BF16_smaller() {  // NOLINT
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,6,40,64]{3,2,1,0},bf16[2,6,64,40]{3,2,1,0},bf16[2,6,40,64]{3,2,1,0},pred[2,6,40,40]{3,2,1,0})->bf16[2,6,40,64]{3,2,1,0}}
@@ -1099,7 +1097,7 @@ class MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM
     return hlo_text;
   }
 
-  const std::string
+  std::string
   GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_F16_smaller() {  // NOLINT
     const std::string hlo_text = R"(
   HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,40,64]{3,2,1,0},f16[2,6,64,40]{3,2,1,0},f16[2,6,40,64]{3,2,1,0},pred[2,6,40,40]{3,2,1,0})->f16[2,6,40,64]{3,2,1,0}}
@@ -1155,7 +1153,7 @@ class MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM
     return hlo_text;
   }
 
-  const std::string
+  std::string
   GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_HloString_F16() {  // NOLINT
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},pred[16,16,256,256]{3,2,1,0})->f16[16,16,64,256]{3,2,1,0}}
@@ -1211,7 +1209,7 @@ class MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM
     return hlo_text;
   }
 
-  const std::string
+  std::string
   GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_HloString_BF16() {  // NOLINT
     const std::string hlo_text = R"(
   HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},pred[16,16,256,256]{3,2,1,0})->bf16[16,16,64,256]{3,2,1,0}}
@@ -1503,7 +1501,7 @@ class MultiHeadedAttentionBMMScaleMaskSoftmaxBMM
     return hlo_text;
   }
 
-  const std::string
+  std::string
   GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal_HloString_F16() {  // NOLINT
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},pred[16,16,256,256]{3,2,1,0})->f16[16,16,64,256]{3,2,1,0}}
@@ -1556,7 +1554,7 @@ class MultiHeadedAttentionBMMScaleMaskSoftmaxBMM
     return hlo_text;
   }
 
-  const std::string
+  std::string
   GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal_HloString_BF16() {  // NOLINT
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},pred[16,16,256,256]{3,2,1,0})->bf16[16,16,64,256]{3,2,1,0}}
@@ -1676,7 +1674,7 @@ class MultiHeadedAttentionBMMScaleMaskSoftmaxBMM
 class MultiHeadedAttentionBMMSoftmaxBMM : public MultiHeadedAttentionTest {
   // Bmm1 - Softmax - Bmm2
  protected:
-  const std::string GetModuleFMHABMM1_Softmax_BMM2_HloString_F16() {
+  std::string GetModuleFMHABMM1_Softmax_BMM2_HloString_F16() {
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0})->f16[16,16,256,64]{3,2,1,0}}
 
@@ -1721,7 +1719,7 @@ class MultiHeadedAttentionBMMSoftmaxBMM : public MultiHeadedAttentionTest {
     return hlo_text;
   }
 
-  const std::string GetModuleFMHABMM1_Softmax_BMM2_HloString_BF16() {
+  std::string GetModuleFMHABMM1_Softmax_BMM2_HloString_BF16() {
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,256,64]{3,2,1,0}}
 
@@ -1801,7 +1799,7 @@ class MultiHeadedAttentionBMMScaleBiasSoftmaxBMM
     : public MultiHeadedAttentionTest {
  protected:
   // Bmm1 - Scale - Bias - Softmax - Bmm2
-  const std::string GetModuleFMHABMM1_Scale_Bias_Softmax_BMM2_HloString_F16() {
+  std::string GetModuleFMHABMM1_Scale_Bias_Softmax_BMM2_HloString_F16() {
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0})->f16[16,16,256,64]{3,2,1,0}}
 

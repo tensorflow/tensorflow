@@ -259,7 +259,8 @@ Status LinkWithBitcodeVector(
   return OkStatus();
 }
 
-Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
+Status NVPTXTargetModuleLinker(llvm::Module* module,
+                               se::GpuComputeCapability gpu_version,
                                const DebugOptions& debug_options,
                                const std::string& device_bitcode_path) {
   // Link the input module with libdevice, to pull in implementations of some
@@ -295,8 +296,9 @@ std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
                           debug_options, ptx_ver);
 }
 
-using TargetModuleLinker = std::function<Status(
-    llvm::Module*, GpuVersion, const DebugOptions&, const std::string&)>;
+using TargetModuleLinker =
+    std::function<Status(llvm::Module*, se::GpuComputeCapability,
+                         const DebugOptions&, const std::string&)>;
 
 void DumpModule(const std::string output_filename, const llvm::Module* module) {
   std::error_code ec;
@@ -347,13 +349,11 @@ auto DumpCallbackForModule(std::string module_identifier,
   };
 }
 
-Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
-                             const DebugOptions& debug_options,
-                             const std::string& device_bitcode_path,
-                             TargetModuleLinker module_linker,
-                             llvm::Triple default_target_triple,
-                             llvm::TargetMachine* target_machine,
-                             int inline_threshold) {
+Status LinkAndOptimizeModule(
+    llvm::Module* module, se::GpuComputeCapability gpu_version,
+    const DebugOptions& debug_options, const std::string& device_bitcode_path,
+    TargetModuleLinker module_linker, llvm::Triple default_target_triple,
+    llvm::TargetMachine* target_machine, int inline_threshold) {
   TF_RETURN_IF_ERROR(
       module_linker(module, gpu_version, debug_options, device_bitcode_path));
 
@@ -550,7 +550,7 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
 }
 
 StatusOr<std::string> CompileToPtx(
-    llvm::Module* module, GpuVersion gpu_version,
+    llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options,
     std::function<void(llvm::TargetMachine*)> configure_target) {
   static absl::once_flag backend_init_flag;
@@ -816,7 +816,8 @@ Status LinkROCDLIfNecessary(llvm::Module* module, std::string gcn_arch_name,
                                GetROCDLPaths(gcn_arch_name, rocdl_dir_path));
 }
 
-Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
+Status AMDGPUTargetModuleLinker(llvm::Module* module,
+                                se::GpuComputeCapability gpu_version,
                                 const DebugOptions& debug_options,
                                 const std::string& device_bitcode_dir_path) {
   // Link the input module with ROCDL.
@@ -889,7 +890,7 @@ std::pair<std::string, std::string> GetFeatureStrFromGCNArchName(
 }
 
 std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
-    llvm::Triple target_triple, GpuVersion gpu_version,
+    llvm::Triple target_triple, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options) {
   auto compute_capability =
       std::get_if<se::RocmComputeCapability>(&gpu_version);
@@ -923,7 +924,7 @@ void AMDGPUBackendInit(const DebugOptions& debug_options) {
 
 namespace amdgpu {
 StatusOr<std::vector<uint8_t>> CompileToHsaco(
-    llvm::Module* module, GpuVersion gpu_version,
+    llvm::Module* module, se::GpuComputeCapability gpu_version,
     const DebugOptions& debug_options, const std::string& rocdl_dir_path,
     const std::string& module_config_cache_key) {
   static absl::once_flag backend_init_flag;

@@ -72,7 +72,9 @@ static StatusOr<std::unique_ptr<xla::LocalExecutable>> BuildExecutable(
   build_options.set_result_layout(result.xla_output_shape);
   build_options.set_device_allocator(options.device_allocator.get());
   build_options.set_alias_passthrough_params(options.alias_passthrough_params);
-  build_options.mutable_debug_options()->set_xla_detailed_logging_and_dumping(
+  build_options.mutable_debug_options()->set_xla_detailed_logging(
+      options.detailed_logging);
+  build_options.mutable_debug_options()->set_xla_enable_dumping(
       options.detailed_logging);
   // If the embed_ir_in_executable is set, hlo_proto will be dumped in
   // executable. The hlo_proto contains HLO modules and buffer assignment.

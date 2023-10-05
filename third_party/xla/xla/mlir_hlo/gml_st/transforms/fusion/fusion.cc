@@ -510,8 +510,8 @@ SmallVector<Value> getRootOpInitOperands(PatternRewriter& rewriter,
 
   SmallVector<Value> initOperands;
 
-  for (auto* operand : dstStyleOp.getDpsInitOperands()) {
-    initOperands.push_back(getTiedSourceOp(rewriter, operand, fusionCluster));
+  for (OpOperand& operand : dstStyleOp.getDpsInitsMutable()) {
+    initOperands.push_back(getTiedSourceOp(rewriter, &operand, fusionCluster));
   }
 
   return initOperands;
@@ -621,7 +621,7 @@ FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
 
   // If tiling created an `scf.for` loop nest, we fuse.
   if (!tilingResult->loops.empty()) {
-    scf::ForOp innerLoop = tilingResult->loops.back();
+    scf::ForOp innerLoop = cast<scf::ForOp>(tilingResult->loops.back());
     fuseGreedily(rewriter, innerLoop.getBody(), fuseFilterFn);
   }
   return tilingResult;

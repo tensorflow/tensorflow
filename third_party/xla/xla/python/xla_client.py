@@ -21,6 +21,7 @@ import gzip
 import inspect
 import logging
 import os
+import threading
 from typing import Any, List, Mapping, Optional, Sequence, Tuple, Union
 
 from . import xla_extension as _xla
@@ -44,7 +45,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 195
+_version = 201
 
 # Version number for MLIR:Python components.
 mlir_api_version = 54
@@ -56,10 +57,13 @@ xla_platform_names = {
 
 logger = logging.getLogger(__name__)
 
-_NameValueMapping = Mapping[str, Union[str, int, List[int], float]]
+_NameValueMapping = Mapping[str, Union[str, int, List[int], float, bool]]
 
 
 def make_cpu_client() -> ...:
+  register_custom_call_handler(
+      'cpu', _xla.register_custom_call_target
+  )
   return _xla.get_tfrt_cpu_client(asynchronous=True)
 
 
@@ -91,17 +95,12 @@ def make_gpu_client(
   if memory_fraction:
     config.memory_fraction = float(memory_fraction)
   config.preallocate = preallocate not in ('0', 'false', 'False')
-
-  if mock:
-    return _xla.get_mock_gpu_client(
-        asynchronous=True,
-        allocator_config=config,
-        distributed_client=distributed_client,
-        node_id=node_id,
-        num_nodes=num_nodes,
-        platform_name=platform_name,
-        allowed_devices=allowed_devices,
-    )
+  register_custom_call_handler(
+      'CUDA', _xla.register_custom_call_target
+  )
+  register_custom_call_handler(
+      'ROCM', _xla.register_custom_call_target
+  )
 
   return _xla.get_gpu_client(
       asynchronous=True,
@@ -110,7 +109,9 @@ def make_gpu_client(
       node_id=node_id,
       num_nodes=num_nodes,
       platform_name=platform_name,
-      allowed_devices=allowed_devices)
+      allowed_devices=allowed_devices,
+      mock=mock,
+  )
 
 
 def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None):
@@ -137,8 +138,8 @@ def pjrt_plugin_loaded(plugin_name: str) -> bool:
   return _xla.pjrt_plugin_loaded(plugin_name)
 
 
-def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
-  _xla.load_pjrt_plugin(plugin_name, library_path)
+def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> Any:
+  return _xla.load_pjrt_plugin(plugin_name, library_path)
 
 
 def pjrt_plugin_initialized(plugin_name: str) -> bool:
@@ -509,6 +510,12 @@ LoadedExecutable.execute = LoadedExecutable_execute
 LoadedExecutable.execute_with_token = LoadedExecutable_execute_with_token
 
 
+_custom_callback_handler: dict[str, Any] = {}
+# Key is xla_platform_name, value is (function_name, function)
+_custom_callback: dict[str, list[Tuple[str, Any]]] = {}
+_custom_callback_lock = threading.Lock()
+
+
 def register_custom_call_target(
     name: str, fn: Any, platform: str = 'cpu'
 ) -> None:
@@ -521,8 +528,37 @@ def register_custom_call_target(
   """
   # To support AMD GPUs, we need to have xla_platform_names["gpu"] == "ROCM"
   # Since that is hardcoded to CUDA, we are using the following as workaround.
-  _xla.register_custom_call_target(name, fn,
-                                   xla_platform_names.get(platform, platform))
+  xla_platform_name = xla_platform_names.get(platform, platform)
+  with _custom_callback_lock:
+    if xla_platform_name in _custom_callback_handler:
+      _custom_callback_handler[xla_platform_name](name, fn, xla_platform_name)
+    else:
+      _custom_callback.setdefault(xla_platform_name, []).append((name, fn))
+
+
+def register_custom_call_handler(platform: str, handler: Any) -> None:
+  """Registers a custom handler and use it to register existing custom calls.
+
+  If a custom call handler for the platform already exist, calling this method
+  is a no-op and it will not register a new handler.
+  Args:
+    platform: the target platform.
+    handler: the function to register a custom call.
+  """
+  xla_platform_name = xla_platform_names.get(platform, platform)
+  with _custom_callback_lock:
+    if xla_platform_name in _custom_callback_handler:
+      logger.debug(
+          'Custom call handler for %s is already register. Will not register a'
+          ' new one',
+          xla_platform_name,
+      )
+      return
+    _custom_callback_handler[xla_platform_name] = handler
+    if xla_platform_name in _custom_callback:
+      for name, fn in _custom_callback[xla_platform_name]:
+        handler(name, fn, xla_platform_name)
+      del _custom_callback[xla_platform_name]
 
 
 register_custom_call_partitioner = _xla.register_custom_call_partitioner

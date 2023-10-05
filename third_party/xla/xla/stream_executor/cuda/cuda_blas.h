@@ -121,7 +121,8 @@ class CUDABlas : public blas::BlasSupport {
 
   BlasLt blas_lt_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(CUDABlas);
+  CUDABlas(const CUDABlas &) = delete;
+  void operator=(const CUDABlas &) = delete;
 };
 
 }  // namespace cuda

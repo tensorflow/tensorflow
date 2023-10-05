@@ -82,8 +82,15 @@ pybind_extension(
         "interpreter_wrapper_pybind11.cc",
     ],
     hdrs = ["interpreter_wrapper.h"],
+    additional_stubgen_deps = [
+        "//third_party/py/numpy:numpy",
+    ],
     compatible_with = get_compatible_with_portable(),
+    enable_stub_generation = True,
     link_in_framework = True,
+    pytype_srcs = [
+        "_pywrap_tensorflow_interpreter_wrapper.pyi",
+    ],
     deps = [
         ":interpreter_wrapper_lib",
         "//tensorflow/lite:framework",

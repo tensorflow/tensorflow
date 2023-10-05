@@ -67,7 +67,7 @@ void AddTFToStablehloPasses(OpPassManager& pm, bool skip_resize,
 
   // Legalizes TF UniformQuantized types into MHLO.
   pm.addNestedPass<func::FuncOp>(
-      mlir::stablehlo::CreateConvertTFQuantOpsToMHLOPass());
+      mlir::quant::stablehlo::CreateConvertTFQuantOpsToMHLOPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
   // TF -> StableHLO legalization.

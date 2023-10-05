@@ -136,9 +136,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
     return shared_ptr_pjrt_client();
   }
 
-  absl::string_view platform_name() const {
-    return ifrt_client_->platform_name();
-  }
+  absl::string_view platform_name() const { return platform_name_; }
   absl::string_view platform_version() const {
     return ifrt_client_->platform_version();
   }
@@ -248,6 +246,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   friend struct PyArray_Storage;
 
   std::shared_ptr<ifrt::Client> ifrt_client_;
+  std::string platform_name_;
 
   // Pointers to intrusive doubly-linked lists of arrays and executables, used
   // to iterate over all known objects when heap profiling. The list structure

@@ -24,12 +24,12 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/platform/dso_loader.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/env.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -533,8 +533,7 @@ bool ROCMFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT hipfftExec,
     if (allocator) {
       auto allocated = allocator->AllocateBytes(input.size());
       if (allocated.ok()) {
-        if (stream->ThenMemcpy(&allocated.value(), input, input.size())
-                .ok()) {
+        if (stream->ThenMemcpy(&allocated.value(), input, input.size()).ok()) {
           input_maybe_copy = DeviceMemory<InputT>(allocated.value());
         } else {
           LOG(ERROR) << "failed to copy input buffer for rocFFT.";

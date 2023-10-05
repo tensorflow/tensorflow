@@ -19,9 +19,9 @@ limitations under the License.
 #include "xla/stream_executor/platform/platform.h"
 
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_CHROMIUMOS)
-#include "xla/stream_executor/platform/google/initialize.h"
+#include "xla/stream_executor/platform/google/initialize.h"  // IWYU pragma: export
 #else
-#include "xla/stream_executor/platform/default/initialize.h"
+#include "xla/stream_executor/platform/default/initialize.h"  // IWYU pragma: export
 #endif
 
 #endif  // XLA_STREAM_EXECUTOR_PLATFORM_INITIALIZE_H_

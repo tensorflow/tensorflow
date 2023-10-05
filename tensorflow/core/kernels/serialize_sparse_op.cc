@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/kernels/reshape_util.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/util/sparse/group_iterator.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 

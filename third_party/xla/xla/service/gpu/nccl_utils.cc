@@ -216,7 +216,7 @@ void CheckNcclAsyncError(NcclComm& lockable_comm) {
     return XLA_CUDA_STATUS(async_err);
   }();
 
-  if (!status.ok()) LOG(ERROR) << status.ToString();
+  if (!status.ok()) LOG(ERROR) << status;
 }
 
 }  // namespace

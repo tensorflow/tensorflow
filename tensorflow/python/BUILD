@@ -47,7 +47,6 @@ visibility = [
     "//third_party/py/tensorflow_recommenders:__subpackages__",
     "//third_party/py/tf_agents:__subpackages__",  # For benchmarks.
     "//third_party/py/tf_slim:__subpackages__",
-    "//third_party/py/keras:__subpackages__",
     "//third_party/py/tf_keras:__subpackages__",
     "//third_party/py/starcraft2:__subpackages__",
     "//third_party/py/tensorflow_gnn:__subpackages__",
@@ -83,7 +82,6 @@ py_strict_library(
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/ops:gradient_checker_v2",
         "//tensorflow/python/ops:stateful_random_ops",
-        "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/structured:structured_ops",
         "//tensorflow/python/tpu:tpu_estimator",
         "//tensorflow/python/tpu:tpu_noestimator",
@@ -130,7 +128,6 @@ py_strict_library(
         "//tensorflow/python/tools/api/generator:__pkg__",
         "//tensorflow/tools/api/tests:__pkg__",
         "//tensorflow/tools/compatibility/update:__pkg__",
-        "//third_party/py/keras:__subpackages__",
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
@@ -411,6 +408,7 @@ py_strict_library(
         "//tensorflow/python/ops:tpu_ops_gen",
         "//tensorflow/python/ops:uniform_quant_ops_gen",
         "//tensorflow/python/ops:while_v2",
+        "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/linalg/sparse:sparse_py",
         "//tensorflow/python/ops/losses",
@@ -438,6 +436,7 @@ py_strict_library(
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/summary:summary_py",
+        "//tensorflow/python/tpu:tpu_noestimator",
         "//tensorflow/python/training",
         "//tensorflow/python/training:quantize_training",
         "//tensorflow/python/user_ops:ops",
@@ -846,9 +845,9 @@ pywrap_tensorflow_macro(
         # nvidia standalone wheels into pywrap_tensorflow_internal. We might be
         # able to remove this in the future, as these stubs should already
         # be brought in via other dependencies.
-        "@local_tsl//tsl/cuda:cudnn_stub",
-        "@local_tsl//tsl/cuda:cufft_stub",
-        "@local_tsl//tsl/cuda:nccl_rpath_stub",
+        "@local_tsl//tsl/cuda:cudnn",
+        "@local_tsl//tsl/cuda:cufft",
+        "@local_tsl//tsl/cuda:nccl_rpath",
     ])) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
     ]) + tf_monitoring_python_deps() + tf_additional_plugin_deps() + tf_additional_profiler_deps() + tf_additional_binary_deps(),
@@ -942,7 +941,7 @@ filegroup(
         "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
         "@local_tsl//tsl/python/lib/core:ml_dtypes_lib",  # bfloat16, float8_e4m3fn, float8_e5m2
         "@local_tsl//tsl/python/lib/core:numpy",  # checkpoint_reader
-        "@local_xla//xla/stream_executor:stream_executor_pimpl",  # stat_summarizer
+        "@local_xla//xla/stream_executor",  # stat_summarizer
     ] + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",  # tfcompile
         "@local_xla//xla:status_macros",  # tfcompile

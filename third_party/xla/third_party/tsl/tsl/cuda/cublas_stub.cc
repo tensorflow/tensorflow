@@ -12,11 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+#include <string_view>
+
 #if CUBLAS_VER_MAJOR >= 11
 #include "third_party/gpus/cuda/include/cublas_v2.h"
 #else
 #include "third_party/gpus/cuda/include/cublas.h"
 #endif
+
+#include "absl/container/flat_hash_set.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "tsl/platform/dso_loader.h"
 #include "tsl/platform/env.h"
@@ -26,43 +31,216 @@ limitations under the License.
 
 namespace {
 // Returns DSO handle or null if loading the DSO fails.
-void* GetDsoHandle() {
-#ifdef PLATFORM_GOOGLE
-  return nullptr;
-#else
-  static auto handle = []() -> void* {
+void *GetDsoHandle() {
+  static auto handle = []() -> void * {
     auto handle_or = tsl::internal::DsoLoader::GetCublasDsoHandle();
     if (!handle_or.ok()) return nullptr;
     return handle_or.value();
   }();
   return handle;
-#endif
 }
 
-template <typename T>
-T LoadSymbol(const char* symbol_name) {
-  void* symbol = nullptr;
+void *LoadSymbol(const char *symbol_name) {
+  void *symbol = nullptr;
   if (auto handle = GetDsoHandle()) {
     tsl::Env::Default()
         ->GetSymbolFromLibrary(handle, symbol_name, &symbol)
         .IgnoreError();
   }
-  return reinterpret_cast<T>(symbol);
+  return symbol;
 }
 
-void LogFatalSymbolNotFound(const char* symbol_name) {
+const char *kSymbols[] = {
+#include "tsl/cuda/cublas.inc"
+};
+
+constexpr size_t kNumSymbols = sizeof(kSymbols) / sizeof(const char *);
+
+absl::flat_hash_set<std::string_view> const &FatalErrorSymbols() {
+  static auto *syms = new absl::flat_hash_set<std::string_view>{
+      "cublasGetCudartVersion",
+      "cublasXerbla",
+      "cublasSnrm2",
+      "cublasDnrm2",
+      "cublasScnrm2",
+      "cublasDznrm2",
+      "cublasSdot",
+      "cublasDdot",
+      "cublasCdotu",
+      "cublasCdotc",
+      "cublasZdotu",
+      "cublasZdotc",
+      "cublasSscal",
+      "cublasDscal",
+      "cublasCscal",
+      "cublasZscal",
+      "cublasCsscal",
+      "cublasZdscal",
+      "cublasSaxpy",
+      "cublasDaxpy",
+      "cublasCaxpy",
+      "cublasZaxpy",
+      "cublasScopy",
+      "cublasDcopy",
+      "cublasCcopy",
+      "cublasZcopy",
+      "cublasSswap",
+      "cublasDswap",
+      "cublasCswap",
+      "cublasZswap",
+      "cublasIsamax",
+      "cublasIdamax",
+      "cublasIcamax",
+      "cublasIzamax",
+      "cublasIsamin",
+      "cublasIdamin",
+      "cublasIcamin",
+      "cublasIzamin",
+      "cublasSasum",
+      "cublasDasum",
+      "cublasScasum",
+      "cublasDzasum",
+      "cublasSrot",
+      "cublasDrot",
+      "cublasCrot",
+      "cublasZrot",
+      "cublasCsrot",
+      "cublasZdrot",
+      "cublasSrotg",
+      "cublasDrotg",
+      "cublasCrotg",
+      "cublasZrotg",
+      "cublasSrotm",
+      "cublasDrotm",
+      "cublasSrotmg",
+      "cublasDrotmg",
+      "cublasSgemv",
+      "cublasDgemv",
+      "cublasCgemv",
+      "cublasZgemv",
+      "cublasSgbmv",
+      "cublasDgbmv",
+      "cublasCgbmv",
+      "cublasZgbmv",
+      "cublasStrmv",
+      "cublasDtrmv",
+      "cublasCtrmv",
+      "cublasZtrmv",
+      "cublasStbmv",
+      "cublasDtbmv",
+      "cublasCtbmv",
+      "cublasZtbmv",
+      "cublasStpmv",
+      "cublasDtpmv",
+      "cublasCtpmv",
+      "cublasZtpmv",
+      "cublasStrsv",
+      "cublasDtrsv",
+      "cublasCtrsv",
+      "cublasZtrsv",
+      "cublasStpsv",
+      "cublasDtpsv",
+      "cublasCtpsv",
+      "cublasZtpsv",
+      "cublasStbsv",
+      "cublasDtbsv",
+      "cublasCtbsv",
+      "cublasZtbsv",
+      "cublasSsymv",
+      "cublasDsymv",
+      "cublasChemv",
+      "cublasZhemv",
+      "cublasSsbmv",
+      "cublasDsbmv",
+      "cublasChbmv",
+      "cublasZhbmv",
+      "cublasSspmv",
+      "cublasDspmv",
+      "cublasChpmv",
+      "cublasZhpmv",
+      "cublasSger",
+      "cublasDger",
+      "cublasCgeru",
+      "cublasCgerc",
+      "cublasZgeru",
+      "cublasZgerc",
+      "cublasSsyr",
+      "cublasDsyr",
+      "cublasCher",
+      "cublasZher",
+      "cublasSspr",
+      "cublasDspr",
+      "cublasChpr",
+      "cublasZhpr",
+      "cublasSsyr2",
+      "cublasDsyr2",
+      "cublasCher2",
+      "cublasZher2",
+      "cublasSspr2",
+      "cublasDspr2",
+      "cublasChpr2",
+      "cublasZhpr2",
+      "cublasSgemm",
+      "cublasDgemm",
+      "cublasCgemm",
+      "cublasZgemm",
+      "cublasSsyrk",
+      "cublasDsyrk",
+      "cublasCsyrk",
+      "cublasZsyrk",
+      "cublasCherk",
+      "cublasZherk",
+      "cublasSsyr2k",
+      "cublasDsyr2k",
+      "cublasCsyr2k",
+      "cublasZsyr2k",
+      "cublasCher2k",
+      "cublasZher2k",
+      "cublasSsymm",
+      "cublasDsymm",
+      "cublasCsymm",
+      "cublasZsymm",
+      "cublasChemm",
+      "cublasZhemm",
+      "cublasStrsm",
+      "cublasDtrsm",
+      "cublasCtrsm",
+      "cublasZtrsm",
+      "cublasStrmm",
+      "cublasDtrmm",
+      "cublasCtrmm",
+      "cublasZtrmm",
+  };
+  return *syms;
+}
+
+}  // namespace
+
+extern "C" {
+
+static void CublasLogFatalSymbolNotFound(const char *symbol_name) {
   LOG(FATAL) << symbol_name << " symbol not found.";
 }
 
-cublasStatus_t GetSymbolNotFoundError() { return CUBLAS_STATUS_INTERNAL_ERROR; }
-}  // namespace
+static cublasStatus_t CublasGetSymbolNotFoundError() {
+  return CUBLAS_STATUS_INTERNAL_ERROR;
+}
 
-#if CUDA_VERSION < 10010
-#include "tsl/cuda/cublas_10_0.inc"
-#elif CUDA_VERSION < 10020
-#include "tsl/cuda/cublas_10_1.inc"
-#elif CUDA_VERSION < 11000
-#include "tsl/cuda/cublas_10_2.inc"
-#else
-#include "tsl/cuda/cublas_11_0.inc"
-#endif
+extern void *_cublas_tramp_table[];
+
+void _cublas_tramp_resolve(int i) {
+  CHECK_LE(0, i);
+  CHECK_LT(i, kNumSymbols);
+  void *p = LoadSymbol(kSymbols[i]);
+  if (!p) {
+    const auto &fatal_error_symbols = FatalErrorSymbols();
+    if (fatal_error_symbols.find(kSymbols[i]) != fatal_error_symbols.end()) {
+      p = reinterpret_cast<void *>(&CublasLogFatalSymbolNotFound);
+    } else {
+      p = reinterpret_cast<void *>(&CublasGetSymbolNotFoundError);
+    }
+  }
+  _cublas_tramp_table[i] = p;
+}
+
+}  // extern "C"

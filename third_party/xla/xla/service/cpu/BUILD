@@ -212,7 +212,6 @@ cc_library(
         ":cpu_instruction_fusion",
         ":cpu_layout_assignment",
         ":cpu_options",
-        ":cpu_shape_verifier",
         ":dot_op_emitter",
         ":executable_proto_cc",
         ":hlo_xla_runtime_pipeline",
@@ -244,7 +243,6 @@ cc_library(
         "//xla/mlir/runtime/transforms:compilation_pipeline_cpu",
         "//xla/mlir/runtime/transforms:compiler",
         "//xla/mlir/runtime/transforms:jit_compiler",
-        "//xla/mlir/tools/mlir_replay/public:compiler_trace_instrumentation",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:all_passes",
         "//xla/mlir_hlo:gml_st_passes",
@@ -275,6 +273,7 @@ cc_library(
         "//xla/service:conditional_to_select",
         "//xla/service:convolution_group_converter",
         "//xla/service:copy_insertion",
+        "//xla/service:cpu_gpu_shape_verifier",
         "//xla/service:dot_decomposer",
         "//xla/service:dump",
         "//xla/service:dynamic_dimension_inference",
@@ -345,7 +344,6 @@ cc_library(
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/spmd:stateful_rng_spmd_partitioner",
         "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_pimpl",  # fixdeps: keep
         "//xla/stream_executor/host:host_platform_id",
         "//xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "//xla/translate/hlo_to_mhlo:hlo_utils",
@@ -440,7 +438,6 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service:llvm_compiler",
         "//xla/stream_executor",
-        "//xla/stream_executor:stream_executor_pimpl",  # fixdeps: keep
         "//xla/stream_executor/host:host_platform_id",
         "@llvm-project//llvm:Target",
     ],
@@ -1390,16 +1387,6 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
-    ],
-)
-
-cc_library(
-    name = "cpu_shape_verifier",
-    srcs = ["cpu_shape_verifier.cc"],
-    hdrs = ["cpu_shape_verifier.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//xla/service:hlo_verifier",
     ],
 )
 

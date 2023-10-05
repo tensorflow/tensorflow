@@ -124,7 +124,8 @@ class OneHotOp : public OpKernel {
  private:
   int32 axis_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(OneHotOp);
+  OneHotOp(const OneHotOp&) = delete;
+  void operator=(const OneHotOp&) = delete;
 };
 
 #define REGISTER_ONE_HOT_INDEX(type, index_type)                \

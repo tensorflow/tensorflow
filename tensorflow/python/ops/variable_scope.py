@@ -925,7 +925,11 @@ class _VariableStore:
 
     # Create the tensor to initialize the variable with default value.
     if initializer is None:
-      assert shape is not None
+      if shape is None:
+        raise ValueError(
+            f"Variable {name} did not get an initializer, so its `shape`"
+            " argument must be specified."
+        )
       initializer, initializing_from_value = self._get_default_initializer(
           name=name, shape=shape, dtype=dtype)
     # Enter an init scope when creating the initializer.

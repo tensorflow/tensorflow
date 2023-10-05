@@ -28,10 +28,10 @@ limitations under the License.
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/platform/port.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/stacktrace.h"
 
 namespace stream_executor {
@@ -238,10 +238,8 @@ std::string CallStr(const char *function_name, Stream *stream,
 
 // Use this macro to avoid having to type every parameter twice to log
 // it with VLOG and CallStr.
-#define PARAM(parameter)                \
-  {                                     \
-#parameter, ToVlogString(parameter) \
-  }
+#define PARAM(parameter) \
+  { #parameter, ToVlogString(parameter) }
 
 // Use this macro to avoid having to type out the name of each
 // function and to save some boilerplate. Intended to be used like this:
@@ -742,25 +740,6 @@ Stream &Stream::ThenDepthToSpace(
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
     CheckError(dnn->DoDepthToSpace(this, input_dimensions, input_data,
                                    depth_to_space_layout, sqrt_depth_reduction,
-                                   output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenSpaceToDepth(
-    const dnn::BatchDescriptor &input_dimensions,
-    const DeviceMemory<float> &input_data,
-    const dnn::DepthToSpaceLayout &space_to_depth_layout,
-    const int sqrt_depth_increase, DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(input_dimensions), PARAM(input_data),
-            PARAM(space_to_depth_layout), PARAM(sqrt_depth_increase),
-            PARAM(output_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoSpaceToDepth(this, input_dimensions, input_data,
-                                   space_to_depth_layout, sqrt_depth_increase,
                                    output_data));
   } else {
     SetErrorAndLogNoDnnSupport();

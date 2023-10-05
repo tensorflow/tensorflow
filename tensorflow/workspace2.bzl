@@ -31,6 +31,7 @@ load("//third_party/gemmlowp:workspace.bzl", gemmlowp = "repo")
 load("//third_party/hexagon:workspace.bzl", hexagon_nn = "repo")
 load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
 load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
+load("//third_party/implib_so:workspace.bzl", implib_so = "repo")
 load("//third_party/icu:workspace.bzl", icu = "repo")
 load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
 load("//third_party/libprotobuf_mutator:workspace.bzl", libprotobuf_mutator = "repo")
@@ -72,6 +73,7 @@ def _initialize_third_party():
     highwayhash()
     hwloc()
     icu()
+    implib_so()
     jpeg()
     kissfft()
     libprotobuf_mutator()
@@ -205,18 +207,14 @@ def _tf_repositories():
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
         patch_file = [
             "//third_party/mkl_dnn:onednn_acl_threadcap.patch",
-            "//third_party/mkl_dnn:onednn_acl_remove_winograd.patch",
-            "//third_party/mkl_dnn:onednn_acl_fixed_format_kernels.patch",
-            "//third_party/mkl_dnn:onednn_acl_depthwise_convolution.patch",
-            "//third_party/mkl_dnn:onednn_acl_threadpool_scheduler.patch",
-            "//third_party/mkl_dnn:onednn_acl_reorder_padded.patch",
-            "//third_party/mkl_dnn:onednn_acl_reorder_update.patch",
             "//third_party/mkl_dnn:onednn_acl_reorder.patch",
             "//third_party/mkl_dnn:onednn_acl_thread_local_scheduler.patch",
+            "//third_party/mkl_dnn:onednn_acl_fp32_bf16_reorder.patch",
+            "//third_party/mkl_dnn:onednn_acl_bf16_capability_detection_for_ubuntu20.04.patch",
         ],
-        sha256 = "a50993aa6265b799b040fe745e0010502f9f7103cc53a9525d59646aef006633",
-        strip_prefix = "oneDNN-2.7.3",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.7.3.tar.gz"),
+        sha256 = "2f76b407ef8893cca71340f88cd800019a1f14f8ac1bbdbb89a84be1370b52e3",
+        strip_prefix = "oneDNN-3.2.1",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v3.2.1.tar.gz"),
     )
 
     tf_http_archive(

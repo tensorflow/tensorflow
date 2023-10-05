@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,16 +14,52 @@
 # limitations under the License.
 # ==============================================================================
 
-set -e
+set -exo pipefail
 
-export LANG=C
+function is_continuous_or_release() {
+  [[ "$KOKORO_JOB_TYPE" == "CONTINUOUS_INTEGRATION" ]] || [[ "$KOKORO_JOB_TYPE" == "RELEASE" ]]
+}
 
-release_tag=2.15
+# Move into the directory of the script
+cd "$(dirname "$0")"
 
-docker build --pull \
-        --tag=linaro/tensorflow-arm64-build:latest-multipython \
-        --tag=linaro/tensorflow-arm64-build:${release_tag}-multipython .
-mkdir -p tagdir-multipython
-echo linaro/tensorflow-arm64-build:latest-multipython > tagdir-multipython/.docker-tag
-mkdir -p tagdir-${release_tag}-multipython
-echo linaro/tensorflow-arm64-build:${release_tag}-multipython > tagdir-${release_tag}-multipython/.docker-tag
+if is_continuous_or_release || [[ -z "$KOKORO_BUILD_ID" ]]; then
+  # A continuous job is the only one to publish to latest
+  TAG="latest-multi-python"
+else
+  # If it is a change, grab a good tag for iterative builds
+  if [[ -z "${KOKORO_GITHUB_PULL_REQUEST_NUMBER}" ]]; then
+    TAG=$(head -n 1 "$KOKORO_PIPER_DIR/presubmit_request.txt" | cut -d" " -f2)
+  else
+    TAG="pr-${KOKORO_GITHUB_PULL_REQUEST_NUMBER}"
+  fi
+fi
+
+# Build for both JAX and TF usage.  We do these in one place because they share
+# almost all of the same cache layers
+export DOCKER_BUILDKIT=1
+for target in jax tf; do
+  IMAGE="gcr.io/tensorflow-sigs/build-arm64:$target-$TAG"
+  docker pull "$IMAGE" || true
+  # Due to some flakiness of resources pulled in the build, allow the docker
+  # command to reattempt build a few times in the case of failure (b/302558736)
+  set +e
+  for i in $(seq 1 5)
+  do
+    docker build \
+    --build-arg REQUIREMENTS_FILE=jax.requirements.txt \
+    --target=$target \
+    --cache-from "$IMAGE" \
+    -t "$IMAGE"  . && break
+  done
+  final=$?
+  if [ $final -ne 0 ]; then
+    exit $final
+  fi
+  set -e
+
+  if [[ -n "$KOKORO_BUILD_ID" ]]; then
+    gcloud auth configure-docker
+    docker push "$IMAGE"
+  fi
+done

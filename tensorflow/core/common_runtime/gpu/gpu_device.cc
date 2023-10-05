@@ -1831,9 +1831,14 @@ Status BaseGPUDeviceFactory::CreateDevices(
     // Creates PJRT GPU client and places it into a TF global resource manager.
     auto gpu_run_options =
         std::make_unique<xla::gpu::GpuExecutableRunOptions>();
+#if TENSORFLOW_USE_ROCM
+    auto platform_name = xla::RocmName();
+#else   // TENSORFLOW_USE_ROCM
+    auto platform_name = xla::CudaName();
+#endif  // TENSORFLOW_USE_ROCM
     std::unique_ptr<xla::PjRtClient> pjrt_client =
         std::make_unique<xla::StreamExecutorGpuClient>(
-            xla::GpuName(), xla_client, std::move(pjrt_devices),
+            platform_name, xla_client, std::move(pjrt_devices),
             /*process_index=*/numa_node,
             /*allocator=*/std::move(allocator_adapter),
             /*host_memory_allocator=*/std::move(pjrt_gpu_host_allocator),

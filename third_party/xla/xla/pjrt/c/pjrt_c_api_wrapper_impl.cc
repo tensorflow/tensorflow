@@ -710,6 +710,32 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(
+    PJRT_Client_CreateViewOfDeviceBuffer_Args* args) {
+  PJRT_ASSIGN_OR_RETURN(xla::Shape shape,
+                        pjrt::BuildXlaShapeFromC(args->element_type, args->dims,
+                                                 args->num_dims, args->layout));
+  std::function<void()> on_delete_callback;
+  if (args->on_delete_callback != nullptr) {
+    on_delete_callback = [on_delete_callback = args->on_delete_callback,
+                          user_arg = args->on_delete_callback_arg,
+                          device_buffer_ptr = args->device_buffer_ptr]() {
+      on_delete_callback(device_buffer_ptr, user_arg);
+    };
+  }
+  std::optional<std::intptr_t> stream = std::nullopt;
+  if (reinterpret_cast<void*>(args->stream) != nullptr) {
+    stream = args->stream;
+  }
+  std::unique_ptr<xla::PjRtBuffer> buffer;
+  PJRT_ASSIGN_OR_RETURN(
+      buffer, args->client->client->CreateViewOfDeviceBuffer(
+                  args->device_buffer_ptr, shape, args->device->device,
+                  on_delete_callback, stream));
+  args->buffer = new PJRT_Buffer{std::move(buffer), args->client};
+  return nullptr;
+}
+
 // --------------------------------- Devices -----------------------------------
 
 PJRT_Error* PJRT_DeviceDescription_Id(PJRT_DeviceDescription_Id_Args* args) {
@@ -1616,7 +1642,19 @@ PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args) {
       std::unique_ptr<xla::PjRtBuffer> dst_buffer,
       args->buffer->buffer->CopyToDevice(args->dst_device->device));
   args->dst_buffer =
-      new PJRT_Buffer{std::move(dst_buffer), args->buffer->client};
+      new PJRT_Buffer{std::move(dst_buffer), args->dst_device->client};
+  return nullptr;
+}
+
+PJRT_Error* PJRT_Buffer_CopyToMemory(PJRT_Buffer_CopyToMemory_Args* args) {
+  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+      "PJRT_Buffer_CopyToMemory_Args",
+      PJRT_Buffer_CopyToMemory_Args_STRUCT_SIZE, args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::PjRtBuffer> dst_buffer,
+      args->buffer->buffer->CopyToMemorySpace(args->dst_memory->memory_space));
+  args->dst_buffer =
+      new PJRT_Buffer{std::move(dst_buffer), args->dst_memory->client};
   return nullptr;
 }
 
