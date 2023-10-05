@@ -16,8 +16,6 @@ use a term commonly used by machine learning practitioners) are expressed as
 programs that TensorFlow executes. TensorFlow programs are encoded as
 computation
 [**graphs**](https://developers.google.com/machine-learning/glossary/#graph).
-
-## Running a TensorFlow server
 Since models are practically programs that TensorFlow executes, using untrusted
 models or graphs is equivalent to running untrusted code.
 
