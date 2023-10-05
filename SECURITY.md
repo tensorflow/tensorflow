@@ -16,62 +16,6 @@ use a term commonly used by machine learning practitioners) are expressed as
 programs that TensorFlow executes. TensorFlow programs are encoded as
 computation
 [**graphs**](https://developers.google.com/machine-learning/glossary/#graph).
-somewhat reduced.
-
-## Running untrusted models
-
-As a general rule: **Always** execute untrusted models inside a sandbox (e.g.,
-[nsjail](https://github.com/google/nsjail)).
-
-There are several ways in which a model could become untrusted. Obviously, if an
-untrusted party supplies TensorFlow kernels, arbitrary code may be executed.
-The same is true if the untrusted party provides Python code, such as the Python
-code that generates TensorFlow graphs.
-
-Even if the untrusted party only supplies the serialized computation graph (in
-form of a `GraphDef`, `SavedModel`, or equivalent on-disk format), the set of
-computation primitives available to TensorFlow is powerful enough that you
-should assume that the TensorFlow process effectively executes arbitrary code.
-One common solution is to allow only a few safe Ops. While this is possible in
-theory, we still recommend you sandbox the execution.
-
-It depends on the computation graph whether a user provided checkpoint is safe.
-It is easily possible to create computation graphs in which malicious
-checkpoints can trigger unsafe behavior. For example, consider a graph that
-contains a `tf.cond` operation depending on the value of a `tf.Variable`. One
-branch of the `tf.cond` is harmless, but the other is unsafe. Since the
-`tf.Variable` is stored in the checkpoint, whoever provides the checkpoint now
-has the ability to trigger unsafe behavior, even though the graph is not under
-their control.
-
-In other words, graphs can contain vulnerabilities of their own. To allow users
-to provide checkpoints to a model you run on their behalf (e.g., in order to
-compare model quality for a fixed model architecture), you must carefully audit
-your model, and we recommend you run the TensorFlow process in a sandbox.
-
-Similar considerations should apply if the model uses **custom ops** (C++ code
-written outside the TensorFlow tree and loaded as plugins).
-
-## Accepting untrusted inputs
-
-It is possible to write models that are secure in the sense that they can safely
-process untrusted inputs assuming there are no bugs. There are, however, two
-main reasons to not rely on this: First, it is easy to write models which must
-not be exposed to untrusted inputs, and second, there are bugs in any software
-system of sufficient complexity. Letting users control inputs could allow them
-to trigger bugs either in TensorFlow or in dependencies.
-
-In general, it is good practice to isolate parts of any system which is exposed
-to untrusted (e.g., user-provided) inputs in a sandbox.
-
-A useful analogy to how any TensorFlow graph is executed is any interpreted
-programming language, such as Python. While it is possible to write secure
-Python code which can be exposed to user supplied inputs (by, e.g., carefully
-quoting and sanitizing input strings, size-checking input blobs, etc.), it is
-very easy to write Python programs which are insecure. Even secure Python code
-could be rendered insecure by a bug in the Python interpreter, or in a bug in a
-Python library used (e.g.,
-[this one](https://www.cvedetails.com/cve/CVE-2017-12852/)).
 
 ## Running a TensorFlow server
 Since models are practically programs that TensorFlow executes, using untrusted
