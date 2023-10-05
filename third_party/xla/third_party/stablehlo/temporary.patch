@@ -181,18 +181,6 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
  
  #-------------------------------------------------------------------------------
  # Directory setup
-diff --ruN a/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll b/stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
---- stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
-+++ stablehlo/stablehlo/conversions/tosa/transforms/StablehloLegalizeToTosa.pdll
-@@ -141,7 +141,7 @@
- Pattern =>
-   replace op<stablehlo.multiply>(input0 : Value<_: Tosa_Tensor>,
-                             input1 : Value<_: Tosa_Tensor>)
--     with op<tosa.mul>(input0, input1) {shift = attr<"0 : i32">};
-+     with op<tosa.mul>(input0, input1) {shift = attr<"0 : i8">};
- Pattern =>
-   replace op<stablehlo.or>(input0 : Value<_: Tosa_Tensor>,
-                       input1 : Value<_: Tosa_Tensor>)
 diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
 --- stablehlo/stablehlo/dialect/Base.cpp
 +++ stablehlo/stablehlo/dialect/Base.cpp
