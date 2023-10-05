@@ -61,8 +61,11 @@ LogicalResult CheckOpIsValid(Operation* op) {
     op->emitError() << "TPUCopyWithDynamicShapeOp is not in a launch";
   }
   std::string device_str = launch_op.getDeviceAttr().getValue().str();
+  std::string cpu0_device;
+  if (failed(tensorflow::GetNonReplicatedCPU0(op, &cpu0_device)))
+    return failure();
   if (device_str != tensorflow::GetDeviceAliasForHostOfLogicalCore(0) &&
-      device_str != "/job:localhost/replica:0/task:0/device:CPU:0") {
+      device_str != cpu0_device) {
     op->emitError()
         << "TPUCopyWithDynamicShapeOp's device is not a recognized host 0: "
         << device_str;
@@ -133,20 +136,23 @@ tf_device::LaunchOp CreateNewHostLaunchOpWithNewResult(
 }
 
 // Create the new device launch op which wraps the copy op.
-tf_device::LaunchOp CreateNewDeviceLaunchOp(
-    Operation* tpu_copy_with_dynamic_shape_op, bool replicated) {
+LogicalResult CreateNewDeviceLaunchOp(
+    Operation* tpu_copy_with_dynamic_shape_op, bool replicated,
+    tf_device::LaunchOp& new_device_launch_op) {
   OpBuilder builder(tpu_copy_with_dynamic_shape_op);
 
   builder.setInsertionPointAfter(tpu_copy_with_dynamic_shape_op);
 
+  // Set the copy op's device to the first TPU.
   std::string device_str;
   if (replicated) {
     device_str = tensorflow::GetDeviceAliasForLogicalCore(0);
-  } else {
-    device_str = "/job:localhost/replica:0/task:0/device:TPU:0";
+  } else if (failed(tensorflow::GetNonReplicatedTPU0(
+                 tpu_copy_with_dynamic_shape_op, &device_str))) {
+    return failure();
   }
 
-  auto new_device_launch_op = builder.create<tf_device::LaunchOp>(
+  new_device_launch_op = builder.create<tf_device::LaunchOp>(
       tpu_copy_with_dynamic_shape_op->getLoc(),
       builder.getStringAttr(device_str),
       /*result_types=*/tpu_copy_with_dynamic_shape_op->getResultTypes());
@@ -159,7 +165,7 @@ tf_device::LaunchOp CreateNewDeviceLaunchOp(
                             tpu_copy_with_dynamic_shape_op->getResults())
                         .getOperation();
   tpu_copy_with_dynamic_shape_op->moveBefore(return_op);
-  return new_device_launch_op;
+  return success();
 }
 
 // Update all the usage of tf_device.return op with launch op result.
@@ -212,7 +218,9 @@ void ExtractTPUCopyWithDynamicShapeOpPass::runOnOperation() {
 
     old_launch_op->erase();
 
-    auto new_device_launch_op = CreateNewDeviceLaunchOp(op, replicated);
+    tf_device::LaunchOp new_device_launch_op;
+    if (failed(CreateNewDeviceLaunchOp(op, replicated, new_device_launch_op)))
+      return signalPassFailure();
     UpdateReturnOpResultWithLaunchOpResult(&new_device_launch_op);
   }
 }
