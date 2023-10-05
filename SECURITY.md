@@ -51,7 +51,6 @@ read/write/executions.
 
 ### Running a TensorFlow server
 
-
 TensorFlow is a platform for distributed computing, and as such there is a
 TensorFlow server (`tf.train.Server`). The TensorFlow server is intended for
 internal communication only. It is not built for use in untrusted environments
