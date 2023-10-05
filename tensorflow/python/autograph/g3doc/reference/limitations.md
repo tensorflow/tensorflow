@@ -172,7 +172,7 @@ The examples below use a `while` loop, but the same notions extend to all
 control flow such as `if` and `for` statements.
 
 In the example below, `x` needs to become a loop variable of the
-corresponding 'tf.while_loop':
+corresponding `tf.while_loop`:
 
 ```
 while x > 0:
