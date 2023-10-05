@@ -29,6 +29,7 @@ void RegisterListOps(MutableOpResolver* resolver) {
   resolver->AddCustom("TensorListGetItem", Register_LIST_GET_ITEM());
   resolver->AddCustom("TensorListLength", Register_LIST_LENGTH());
   resolver->AddCustom("TensorListElementShape", Register_LIST_ELEMENT_SHAPE());
+  resolver->AddCustom("TensorListPopBack", Register_LIST_POP_BACK());
 }
 
 }  // namespace ops
