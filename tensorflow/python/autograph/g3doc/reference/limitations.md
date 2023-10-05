@@ -43,7 +43,7 @@ tf.print(x)  # Error -- x may be None here
 ```
 
 For this reason, AutoGraph forbids variables to be defined in only one branch
-of a TensorFlow conditional, if the variable is used afterward:
+of a TensorFlow conditional, if the variable is used afterwards:
 
 ```
 del x
