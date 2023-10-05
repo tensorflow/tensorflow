@@ -228,8 +228,10 @@ class FusedMatMulOpTest : public OpsTestBase {
     ASSERT_EQ(matmul.dtype(), fused_matmul.dtype());
     ASSERT_EQ(matmul.shape(), fused_matmul.shape());
 
-    double atol = this->TValueType == DT_HALF ? 1e-1 : 1e-5;
-    test::ExpectClose(matmul, fused_matmul, atol);
+    // use specific rtol value for DT_HALF datatype and the default one for all others
+    double atol = this->TValueType == DT_HALF ? 1e-3 : 1e-5;
+    double rtol = this->TValueType == DT_HALF ? 1e-3 : -1.0;
+    test::ExpectClose(matmul, fused_matmul, atol, rtol);
   }
 
   // Verifies that computing MatMul+BiasAdd in a graph is identical to
@@ -264,7 +266,6 @@ class FusedMatMulOpTest : public OpsTestBase {
                                          const string& activation) {
 
     bool use_gpu_device = activation == "Relu" || (this->TValueType == DT_HALF);
-    //VLOG(-1) << "using GPU " << use_gpu_device;
     const BiasAddGraphRunner run_default = [&](const Tensor& input_data,
                                                const Tensor& filter_data,
                                                const Tensor& bias_data,
@@ -362,8 +363,9 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x256WithActivation) {
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x1WithActivation) {
 
-  if(this->TValueType == DT_HALF) // NOT available matmul algorithm in CuDNN for Eigen::half
+  if(this->TValueType == DT_HALF) { // NO available matmul algorithm in CuDNN for Eigen::half
     return;
+  }
 
   for (const string& activation : GetActivations(this->TValueType)) {
     this->VerifyConv2DWithBiasAndActivation(256, 256, 1, false, false,
@@ -373,8 +375,9 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x1WithActivation) {
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1WithActivation) {
 
-  if(this->TValueType == DT_HALF) // NOT available matmul algorithm in CuDNN for Eigen::half
+  if(this->TValueType == DT_HALF) { // NO available matmul algorithm in CuDNN for Eigen::half
     return;
+  }
 
   for (const string& activation : GetActivations(this->TValueType)) {
     this->VerifyConv2DWithBiasAndActivation(1, 256, 1, false, false,
