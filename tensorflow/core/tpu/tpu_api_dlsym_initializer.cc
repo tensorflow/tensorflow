@@ -102,7 +102,7 @@ absl::Status FindAndLoadTpuLibrary() {
 
   // Check if libtpu is attached to the whl
   std::filesystem::path module_path(so_name);
-  if (module_path.has_file_name()) {
+  if (module_path.has_filename()) {
     module_path.remove_filename();
   }
 
