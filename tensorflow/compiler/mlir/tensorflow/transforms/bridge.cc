@@ -207,6 +207,30 @@ namespace TF {
 
 void NoCanonicalization(OpPassManager &pm) {}
 
+void AddGraphExportLoweringPasses(OpPassManager &pm) {
+  auto add_pass = [&](std::unique_ptr<Pass> pass) {
+    pm.addNestedPass<func::FuncOp>(std::move(pass));
+    pm.addPass(CreateBreakUpIslandsPass());
+  };
+
+  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
+  add_pass(CreateFunctionalToExecutorDialectConversionPass());
+  add_pass(TFDevice::CreateReplicateToIslandPass(/*legacy_graph_export=*/true));
+  add_pass(TFDevice::CreateReplicaIDToDeviceOrdinalPass());
+  add_pass(TFDevice::CreateParallelExecuteToIslandsPass(
+      /*legacy_graph_export=*/true));
+  add_pass(TFDevice::CreateLaunchToDeviceAttributePass(
+      /*legacy_graph_export=*/true));
+  pm.addNestedPass<func::FuncOp>(TFTPU::CreateTPUDevicePropagationPass());
+  pm.addNestedPass<func::FuncOp>(TFTPU::CreateTPUColocateSplitsPass());
+  pm.addPass(createSymbolDCEPass());
+  if (tensorflow::GetMlirCommonFlags()
+          ->tf_mlir_enable_convert_control_to_data_outputs_pass) {
+    pm.addPass(tf_executor::CreateTFExecutorConvertControlToDataOutputsPass());
+  }
+  pm.addPass(CreateVerifySuitableForExportPass());
+}
+
 tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
                                                  bool enable_logging,
                                                  bool enable_inliner) {
