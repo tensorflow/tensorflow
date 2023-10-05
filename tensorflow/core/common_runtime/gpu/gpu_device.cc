@@ -274,7 +274,8 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
   OpKernelContext* context_;
   Eigen::GpuDevice device_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(EigenGpuStreamDevice);
+  EigenGpuStreamDevice(const EigenGpuStreamDevice&) = delete;
+  void operator=(const EigenGpuStreamDevice&) = delete;
 };
 
 // This factory helps to ensure that different GPU device objects that refer to
@@ -433,7 +434,8 @@ class BaseGPUDevice::StreamGroupFactory {
   // StreamGroupFactory cannot be created directly; Call
   // StreamGroupFactory::Global() to get the global instance.
   StreamGroupFactory() = default;
-  TF_DISALLOW_COPY_AND_ASSIGN(StreamGroupFactory);
+  StreamGroupFactory(const StreamGroupFactory&) = delete;
+  void operator=(const StreamGroupFactory&) = delete;
 };
 
 BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,

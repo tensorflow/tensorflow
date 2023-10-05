@@ -94,7 +94,8 @@ class DebuggerStateRegistry {
  private:
   static DebuggerStateFactory* factory_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DebuggerStateRegistry);
+  DebuggerStateRegistry(const DebuggerStateRegistry&) = delete;
+  void operator=(const DebuggerStateRegistry&) = delete;
 };
 
 typedef std::function<std::unique_ptr<DebugGraphDecoratorInterface>(
@@ -112,7 +113,8 @@ class DebugGraphDecoratorRegistry {
  private:
   static DebugGraphDecoratorFactory* factory_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DebugGraphDecoratorRegistry);
+  DebugGraphDecoratorRegistry(const DebugGraphDecoratorRegistry&) = delete;
+  void operator=(const DebugGraphDecoratorRegistry&) = delete;
 };
 
 }  // end namespace tensorflow

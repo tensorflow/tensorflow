@@ -54,7 +54,8 @@ class GPUBFCAllocator : public tsl::BFCAllocator {
 
   ~GPUBFCAllocator() override {}
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GPUBFCAllocator);
+  GPUBFCAllocator(const GPUBFCAllocator&) = delete;
+  void operator=(const GPUBFCAllocator&) = delete;
 };
 
 }  // namespace tensorflow
