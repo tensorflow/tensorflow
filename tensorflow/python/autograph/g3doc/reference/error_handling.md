@@ -144,7 +144,7 @@ refer to symbols used in your code.
 
 ### TensorFlow execution errors
 
-TensorFlow's execution errors are displayed normally, but the portions of the
+TensorFlow execution errors are displayed normally, but the portions of the
 error message which correspond to user code contain references to the original
 code.
 
