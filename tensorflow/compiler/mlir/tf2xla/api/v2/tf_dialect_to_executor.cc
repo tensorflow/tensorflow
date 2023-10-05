@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
@@ -56,7 +57,7 @@ constexpr char kExportFailed[] = "failed";
 
 namespace {
 
-void AddGraphExportLoweringPasses(OpPassManager &pm) {
+void AddTfDialectToExecutorPasses(OpPassManager &pm) {
   pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
 
   // First, we need to convert from functional, to executor dialect.
@@ -98,7 +99,7 @@ tensorflow::Status ExportFromTensorflowDialectToExecutor(
     ModuleOp module, llvm::StringRef module_name) {
   PassManager tf_to_executor(module.getContext());
   ::tensorflow::applyTensorflowAndCLOptions(tf_to_executor);
-  AddGraphExportLoweringPasses(tf_to_executor);
+  AddTfDialectToExecutorPasses(tf_to_executor);
 
   if (VLOG_IS_ON(1) ||
       DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain)) {
@@ -138,6 +139,12 @@ tensorflow::Status ExportFromTensorflowDialectToExecutor(
       ->IncrementBy(1);
   return tsl::OkStatus();
 }
+
+mlir::PassPipelineRegistration<> tf_dialect_to_executor_pipeline(
+    "tf-dialect-to-executor-v2",
+    "Run passes to convert from TF Dialect to Executor in preparation for "
+    "exporting module back to TF Graph.",
+    AddTfDialectToExecutorPasses);
 
 }  // namespace v2
 }  // namespace tf2xla
