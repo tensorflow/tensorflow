@@ -1647,6 +1647,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":buffer_assignment_proto_cc",
         ":buffer_value_containers",
         ":heap_simulator",
         ":hlo_alias_analysis",
@@ -1684,6 +1685,7 @@ xla_cc_test(
     deps = [
         ":async_op_canonicalizer",
         ":buffer_assignment",
+        ":buffer_assignment_proto_cc",
         ":buffer_value",
         ":call_graph",
         ":copy_insertion",
@@ -7200,4 +7202,12 @@ xla_cc_test(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ]),
+)
+
+tf_proto_library(
+    name = "buffer_assignment_proto",
+    srcs = ["buffer_assignment.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    visibility = ["//visibility:public"],
 )
