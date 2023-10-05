@@ -107,7 +107,8 @@ class BufferedWritableFile : public WritableFile {
   std::unique_ptr<WritableFile> file_;
   uint32_t crc32_ = 0;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BufferedWritableFile);
+  BufferedWritableFile(const BufferedWritableFile&) = delete;
+  void operator=(const BufferedWritableFile&) = delete;
 };
 
 }  // namespace tsl

@@ -389,8 +389,6 @@ class TensorShape : public TensorShapeBase<TensorShape> {
   /// Returns true if `*this` and `b` have the same sizes. Ignores
   /// dimension names.
   bool IsSameSize(const TensorShape& b) const;
-  bool operator==(const TensorShape& b) const { return IsSameSize(b); }
-  bool operator!=(const TensorShape& b) const { return !IsSameSize(b); }
 
   /// Fill `*dsizes` from `*this`.
   /// Notice: Using IndexType=int32 in combination with To32Bit() can
@@ -442,6 +440,13 @@ class TensorShape : public TensorShapeBase<TensorShape> {
   // For access to TensorShapeBase(DataType).
   friend class Tensor;
 };
+
+inline bool operator==(const TensorShape& a, const TensorShape& b) {
+  return a.IsSameSize(b);
+}
+inline bool operator!=(const TensorShape& a, const TensorShape& b) {
+  return !(a == b);
+}
 
 /// Outputs `TensorShapeBase` to `std::ostream`.
 inline std::ostream& operator<<(std::ostream& os, const TensorShape& ts) {
@@ -610,6 +615,11 @@ class PartialTensorShape : public TensorShapeBase<PartialTensorShape> {
     return TensorShapeUtils::MakeShape(dims, n, out);
   }
 };
+
+inline bool operator==(const PartialTensorShape& a,
+                       const PartialTensorShape& b) {
+  return a.IsIdenticalTo(b);
+}
 
 /// \brief Static helper routines for `PartialTensorShape`. Includes a few
 /// common predicates on a partially known tensor shape.

@@ -1871,5 +1871,23 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
         expand_composites=True)
     self.assertEqual(reconstructed_v._handle_name, expected_handle_name)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherBatchDimsNeg(self):
+    var = resource_variable_ops.ResourceVariable(
+        [1], dtype=dtypes.int32, name="var0"
+    )
+    with ops.control_dependencies([var.initializer]):
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError),
+          "(batch_dims is negative)|(Expected batch_dims in the range)"
+      ):
+        result = resource_variable_ops.resource_gather(
+            var.handle,
+            indices=[1],
+            dtype=var.dtype,
+            batch_dims=-42,
+        )
+        self.evaluate(result)
+
 if __name__ == "__main__":
   test.main()

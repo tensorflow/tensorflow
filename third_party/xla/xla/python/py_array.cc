@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "llvm/Support/Casting.h"
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
@@ -1110,7 +1111,14 @@ Status PyArray::RegisterTypes(py::module& m) {
       },
       py::is_method(type));
   type.attr("platform") = py::cpp_function(
-      [](PyArray self) { return self.ifrt_array()->client()->platform_name(); },
+      [](PyArray self) {
+        if (self.ifrt_array()->client()->platform_name() == "cuda" ||
+            self.ifrt_array()->client()->platform_name() == "rocm") {
+          return absl::string_view("gpu");
+        } else {
+          return self.ifrt_array()->client()->platform_name();
+        }
+      },
       py::is_method(type));
   type.attr("is_ready") = py::cpp_function(
       [](PyArray self) { return xla::ValueOrThrow(self.IsReady()); },

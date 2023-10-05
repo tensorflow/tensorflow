@@ -24,8 +24,10 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/kernel_launch.h"
 #include "xla/service/gpu/runtime/support.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/statusor.h"
 #include "tsl/profiler/lib/profiler_lock.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/lib/traceme_encode.h"
@@ -267,7 +270,8 @@ bool GraphInstances::InstantiatedAllGraphs(
 Status GraphInstances::InstantiateAllGraphs(
     const ServiceExecutableRunOptions* run_options,
     const Executable& executable, const CustomCall::UserData& user_data,
-    void* ptr, std::optional<uint64_t> eviction_timeout_seconds) {
+    void* ptr, OrdinalToFallback::Snapshot* ordinal_to_fallback,
+    std::optional<uint64_t> eviction_timeout_seconds) {
   // We have only "main" function in the executable.
   if (executable.num_functions() == 1) return OkStatus();
 
@@ -298,6 +302,9 @@ Status GraphInstances::InstantiateAllGraphs(
     if (!absl::StartsWith(executable.function_name(ordinal),
                           "xla.gpu.graph.capture"))
       continue;
+
+    StatusOr<std::monostate*> fallback = ordinal_to_fallback->Get(ordinal);
+    if (fallback.ok()) continue;
 
     VLOG(3) << "Instantiate Gpu graph defined by capture function @"
             << executable.function_name(ordinal) << " (ordinal = " << ordinal
@@ -550,6 +557,7 @@ static absl::Status LaunchGraph(
     StreamExecutorConvRunners::Snapshot* convs,
     StreamExecutorGraphInstances::Snapshot* instances,
     CapturedFunctionExecutionCount::Snapshot* counts,
+    OrdinalToFallback::Snapshot* ordinal_to_fallback,
     GemmConfigs::Snapshot* gemm_config, runtime::Executable* executable,
     NonAtomicallyUpgradeableRWLock* gpu_lock,
     ConcurrentRegionStatus* region_status, CustomCall::RemainingArgs fwd_args,
@@ -583,7 +591,10 @@ static absl::Status LaunchGraph(
   // work around disable graph execution and run everything in op-by-op mode.
   bool is_profiling = tsl::profiler::ProfilerLock::HasActiveSession();
 
-  if (count < num_runs_to_instantiate || is_profiling) {
+  StatusOr<std::monostate*> fallback =
+      ordinal_to_fallback->Get(capture.ordinal);
+
+  if (count < num_runs_to_instantiate || is_profiling || fallback.ok()) {
     VLOG(3) << "Run gpu graph in op-by-op mode: ordinal = " << capture.ordinal;
     return RunGraphOpByOp(run_options, function_ref, fwd_args, user_data());
   }
@@ -645,21 +656,34 @@ static absl::Status LaunchGraph(
   TF_ASSIGN_OR_RETURN(
       auto g, CaptureGraph(run_options, function_ref, args, user_data()));
 
-  // At this point we have to grab a writer lock, because we might potentially
-  // have concurrent execution of the cached graph instance.
-  absl::WriterMutexLock lock(instance->mutex.get());
+  se::gpu::OwnedGpuGraphExec::UpdateResult update_result;
+  {
+    // At this point we have to grab a writer lock, because we might potentially
+    // have concurrent execution of the cached graph instance.
+    absl::WriterMutexLock lock(instance->mutex.get());
 
-  // Update captured graph executable.
-  TF_ASSIGN_OR_RETURN(se::gpu::OwnedGpuGraphExec::UpdateResult update_result,
-                      instance->exec.Update(std::move(g)));
+    // Update captured graph executable.
+    TF_ASSIGN_OR_RETURN(update_result, instance->exec.Update(std::move(g)));
+  }
 
   switch (update_result) {
-    case se::gpu::OwnedGpuGraphExec::UpdateResult::kFallback:
+    case se::gpu::OwnedGpuGraphExec::UpdateResult::kFallback: {
       LOG(WARNING) << "Fallback to op-by-op mode because memset node breaks "
                       "graph update";
+      // Deallocate instance.
+      TF_RETURN_IF_ERROR(instances->Erase(capture.ordinal));
+      // Set ordinal_to_fallback to prevent future instantiation of this graph.
+      TF_ASSIGN_OR_RETURN(
+          std::monostate * fallback,
+          ordinal_to_fallback->GetOrCreate(
+              capture.ordinal,
+              []() -> StatusOr<std::monostate> { return std::monostate{}; }));
+      DCHECK(fallback);
       return RunGraphOpByOp(run_options, function_ref, fwd_args, user_data());
+    }
     case se::gpu::OwnedGpuGraphExec::UpdateResult::kSuccess:
       // Update captured pointer hash.
+      absl::WriterMutexLock lock(instance->mutex.get());
       instance->ptr_hash = ptrs_hash;
 
       TraceMe trace([&] {
@@ -691,6 +715,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .UserData<StreamExecutorConvRunners::Snapshot*>()
         .UserData<StreamExecutorGraphInstances::Snapshot*>()
         .UserData<CapturedFunctionExecutionCount::Snapshot*>()
+        .UserData<OrdinalToFallback::Snapshot*>()
         .UserData<GemmConfigs::Snapshot*>()
         .UserData<Executable*>()
         .UserData<NonAtomicallyUpgradeableRWLock*>()

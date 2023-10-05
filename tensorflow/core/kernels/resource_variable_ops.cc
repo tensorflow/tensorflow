@@ -45,6 +45,8 @@ limitations under the License.
 //   (use_locking=false), we never copy even if the variable's
 //   reference count is >1.
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_requires.h"
 #define EIGEN_USE_THREADS
 
@@ -709,6 +711,9 @@ class ResourceGatherOp : public OpKernel {
  public:
   explicit ResourceGatherOp(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("batch_dims", &batch_dims_));
+    OP_REQUIRES(c, batch_dims_ >= 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "batch_dims is negative (", batch_dims_, ")")));
   }
 
   void Compute(OpKernelContext* c) override {

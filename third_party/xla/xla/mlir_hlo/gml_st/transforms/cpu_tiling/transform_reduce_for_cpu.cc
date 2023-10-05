@@ -500,8 +500,8 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
             producerFilterFn);
     if (failed(reductionDimTilingResult)) return failure();
 
-    SCFForPeelingResult reductionDimPeelingResult =
-        peelSCFForOp(rewriter, reductionDimTilingResult->loops.front());
+    SCFForPeelingResult reductionDimPeelingResult = peelSCFForOp(
+        rewriter, cast<scf::ForOp>(reductionDimTilingResult->loops.front()));
     if (reductionDimPeelingResult.mainLoop) {
       setLabel(reductionDimPeelingResult.mainLoop, kPerfectlyTiledLoopLabel);
     }

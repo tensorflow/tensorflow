@@ -36,9 +36,13 @@ inline const char* CpuName() {
   static constexpr char kCpuName[] = "cpu";
   return kCpuName;
 }
-inline const char* GpuName() {
-  static constexpr char kGpuName[] = "gpu";
-  return kGpuName;
+inline const char* CudaName() {
+  static constexpr char kCudaName[] = "cuda";
+  return kCudaName;
+}
+inline const char* RocmName() {
+  static constexpr char kRocmName[] = "rocm";
+  return kRocmName;
 }
 inline const char* TpuName() {
   static constexpr char kTpuName[] = "tpu";
@@ -48,9 +52,13 @@ inline PjRtPlatformId CpuId() {
   static const PjRtPlatformId kCpuId = tsl::Fingerprint64(CpuName());
   return kCpuId;
 }
-inline PjRtPlatformId GpuId() {
-  static const PjRtPlatformId kGpuId = tsl::Fingerprint64(GpuName());
-  return kGpuId;
+inline PjRtPlatformId CudaId() {
+  static const PjRtPlatformId kCudaId = tsl::Fingerprint64(CudaName());
+  return kCudaId;
+}
+inline PjRtPlatformId RocmId() {
+  static const PjRtPlatformId kRocmId = tsl::Fingerprint64(RocmName());
+  return kRocmId;
 }
 inline PjRtPlatformId TpuId() {
   static const PjRtPlatformId kTpuId = tsl::Fingerprint64(TpuName());

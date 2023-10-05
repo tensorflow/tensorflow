@@ -363,6 +363,37 @@ typedef enum TfLiteAllocationType {
   kTfLiteVariantObject,
 } TfLiteAllocationType;
 
+// Memory allocation strategies.
+//
+// TfLiteAllocationType values have been overloaded to mean more than their
+// original intent. This enum should only be used to document the allocation
+// strategy used by a tensor for it data.
+typedef enum TfLiteAllocationStrategy {
+  kTfLiteAllocationStrategyUnknown,
+  kTfLiteAllocationStrategyNone,    // No data is allocated.
+  kTfLiteAllocationStrategyMMap,    // Data is mmaped.
+  kTfLiteAllocationStrategyArena,   // Handled by the arena.
+  kTfLiteAllocationStrategyMalloc,  // Uses `malloc`/`free`.
+  kTfLiteAllocationStrategyNew      // Uses `new[]`/`delete[]`.
+} TfLiteAllocationStrategy;
+
+// Describes how stable a tensor attribute is with regards to an interpreter
+// runs.
+typedef enum TfLiteRunStability {
+  kTfLiteRunStabilityUnknown,
+  kTfLiteRunStabilityUnstable,   // May change at any time.
+  kTfLiteRunStabilitySingleRun,  // Will stay the same for one run.
+  kTfLiteRunStabilityAcrossRuns  // Will stay the same across all runs.
+} TfLiteRunStability;
+
+// Describes the steps of a TFLite operation life cycle.
+typedef enum TfLiteRunStep {
+  kTfLiteRunStepUnknown,
+  kTfLiteRunStepInit,
+  kTfLiteRunStepPrepare,
+  kTfLiteRunStepEval
+} TfLiteRunStep;
+
 // The delegates should use zero or positive integers to represent handles.
 // -1 is reserved from unallocated status.
 typedef int TfLiteBufferHandle;
@@ -1311,6 +1342,29 @@ void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* delegate);
 //  The data_ field of 'delegate' will be returned if the
 //  'opaque_delegate_builder' field is null.
 void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate);
+
+// Returns a tensor data allocation strategy.
+TfLiteAllocationStrategy TfLiteTensorGetAllocationStrategy(
+    const TfLiteTensor* t);
+
+// Returns how stable a tensor data buffer address is across runs.
+TfLiteRunStability TfLiteTensorGetBufferAddressStability(const TfLiteTensor* t);
+
+// Returns how stable a tensor data values are across runs.
+TfLiteRunStability TfLiteTensorGetDataStability(const TfLiteTensor* t);
+
+// Returns the operation step when the data of a tensor is populated.
+//
+// Some operations can precompute their results before the evaluation step. This
+// makes the data available earlier for subsequent operations.
+TfLiteRunStep TfLiteTensorGetDataKnownStep(const TfLiteTensor* t);
+
+// Returns the operation steop when the shape of a tensor is computed.
+//
+// Some operations can precompute the shape of their results before the
+// evaluation step. This makes the shape available earlier for subsequent
+// operations.
+TfLiteRunStep TfLiteTensorGetShapeKnownStep(const TfLiteTensor* t);
 
 #ifdef __cplusplus
 }  // extern "C"

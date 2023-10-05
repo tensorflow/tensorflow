@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/trace_listener.h"
 
 namespace stream_executor {
@@ -67,7 +67,8 @@ class HostPlatform : public Platform {
   // Cache of created StreamExecutors.
   ExecutorCache executor_cache_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(HostPlatform);
+  HostPlatform(const HostPlatform&) = delete;
+  void operator=(const HostPlatform&) = delete;
 };
 
 }  // namespace host

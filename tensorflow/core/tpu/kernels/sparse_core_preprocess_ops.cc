@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
@@ -168,8 +167,6 @@ class ConvertToCooTensorOp : public OpKernel {
   ConvertToCooTensorOp& operator=(const ConvertToCooTensorOp&) = delete;
 
   void Compute(OpKernelContext* ctx) override {
-    VLOG(1) << "Compute ConvertToCooTensorOp";
-
     const Tensor* indices_or_row_splits;
     OP_REQUIRES_OK(ctx,
                    ctx->input("indices_or_row_splits", &indices_or_row_splits));
@@ -288,7 +285,6 @@ class ConvertToCooTensorOp : public OpKernel {
       std::copy(col_ids.begin(), col_ids.end(), col_ids_tensor_ptr);
       std::copy(gains.begin(), gains.end(), gains_tensor_ptr);
     }
-    VLOG(1) << "Compute ConvertToCooTensorOp done";
   }
 
  private:
@@ -327,8 +323,6 @@ GetMinibatchesInCsrWithPhysicalReplicaOp::
 }
 
 void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
-  VLOG(1) << "Compute GetMinibatchesInCsrWithPhysicalReplicaOp";
-
   const Tensor* row_ids;
   OP_REQUIRES_OK(ctx, ctx->input("row_ids", &row_ids));
   const Tensor* col_ids;
@@ -346,14 +340,18 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   const Tensor* program_key_t;
   OP_REQUIRES_OK(ctx, ctx->input("program_key", &program_key_t));
   tstring program_key = program_key_t->vec<tstring>()(0);
+  OP_REQUIRES(ctx, !program_key.empty(),
+              absl::FailedPreconditionError("Expected non-empty program key"));
+
   int64_t per_sparse_core_batch_size = sample_count_ / num_sc_per_chip_;
 
   int64_t max_ids_per_partition = -1;
   int64_t max_unique_ids_per_partition = -1;
 
-  GetMaxIdsAndUniques(ctx, program_key, table_name_, per_sparse_core_batch_size,
-                      feature_width_, &max_ids_per_partition,
-                      &max_unique_ids_per_partition);
+  OP_REQUIRES_OK(ctx, GetMaxIdsAndUniquesExternal(
+                          program_key, table_name_, per_sparse_core_batch_size,
+                          feature_width_, &max_ids_per_partition,
+                          &max_unique_ids_per_partition));
 
   const int32* row_ids_tensor_ptr = row_ids->flat<int32>().data();
   const int32* col_ids_tensor_ptr = col_ids->flat<int32>().data();
@@ -396,8 +394,8 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
           ". But the max minibatches per sparse core is set to be ",
           max_minibatches_per_sc_, " which is smaller.")));
   VLOG(2) << "GetMinibatchesInCsrWithPhysicalReplicaOp: "
-          << "program_key ='" << program_key << "'"
-          << ", table_name = " << table_name_
+          << "program_key = '" << program_key << "'"
+          << ", table_name = '" << table_name_ << "'"
           << ", max_ids = " << max_ids_per_partition
           << ", max_uniques = " << max_unique_ids_per_partition
           << ", num_minibatch_per_sc = " << num_minibatch_per_sc;
@@ -519,8 +517,6 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   row_pointers_unpadded_size_tensor->flat<int32>()(0) =
       row_pointers_unpadded_size;
   ids_unpadded_size_tensor->flat<int32>()(0) = ids_unpadded_size;
-
-  VLOG(1) << "Compute GetMinibatchesInCsrWithPhysicalReplicaOp done";
 }
 
 #ifdef LIBTPU_ON_GCE
@@ -557,15 +553,18 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   const Tensor* program_key_t;
   OP_REQUIRES_OK(ctx, ctx->input("program_key", &program_key_t));
   tstring program_key = program_key_t->vec<tstring>()(0);
+  OP_REQUIRES(ctx, !program_key.empty(),
+              absl::FailedPreconditionError("Expected non-empty program key"));
 
   int32 per_sc_sample_count = sample_count_ / num_sc_per_chip_;
 
   int64_t max_ids_per_partition = -1;
   int64_t max_unique_ids_per_partition = -1;
 
-  GetMaxIdsAndUniques(ctx, program_key, table_name_, per_sc_sample_count,
-                      feature_width_, &max_ids_per_partition,
-                      &max_unique_ids_per_partition);
+  OP_REQUIRES_OK(
+      ctx, GetMaxIdsAndUniquesExternal(
+               program_key, table_name_, per_sc_sample_count, feature_width_,
+               &max_ids_per_partition, &max_unique_ids_per_partition));
 
   sprase_core_ops_stats_handler_->Record(StatsType::MAX_IDS_PER_PARTITION,
                                          max_ids_per_partition, device_name_,
@@ -586,6 +585,17 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   const int32* row_ids_ptr = row_ids->flat<int32>().data();
   const int32* col_ids_ptr = col_ids->flat<int32>().data();
   const float* gains_ptr = gains->flat<float>().data();
+
+#ifndef NDEBUG
+  // row_ids are typically computed by ConvertToCooTensorOp, so we
+  // expect them to be sorted. (It doesn't really matter whether they're
+  // ascending or descending, but here, we check for the former.)
+  for (int i = 1; i < total_id_count; i++) {
+    OP_REQUIRES(ctx, row_ids_ptr[i - 1] <= row_ids_ptr[i],
+                absl::InvalidArgumentError(
+                    "row ids need to be sorted in ascending order."));
+  }
+#endif
 
   const int num_physical_replica = num_replica_ * num_sc_per_chip_;
 
@@ -923,6 +933,16 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(
       ctx, ctx->allocate_output("splits", TensorShape({}), &splits_tensor));
   splits_tensor->flat<int64>()(0) = after_merge_splits;
+
+  Tensor* max_ids_tensor;
+  OP_REQUIRES_OK(
+      ctx, ctx->allocate_output("max_ids", TensorShape({}), &max_ids_tensor));
+  max_ids_tensor->flat<int32>()(0) = this_max_ids;
+
+  Tensor* max_uniques_tensor;
+  OP_REQUIRES_OK(ctx, ctx->allocate_output("max_uniques", TensorShape({}),
+                                           &max_uniques_tensor));
+  max_uniques_tensor->flat<int32>()(0) = this_max_uniques;
 }
 
 #ifdef LIBTPU_ON_GCE

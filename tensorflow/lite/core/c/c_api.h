@@ -130,6 +130,26 @@ typedef struct TfLiteSignatureRunner TfLiteSignatureRunner;
 /// e.g. "2.12.0" or "2.13.0-rc2".
 TFL_CAPI_EXPORT extern const char* TfLiteVersion(void);
 
+// --------------------------------------------------------------------------
+/// The TensorFlow Lite Extension APIs version.
+///
+/// Returns a pointer to a statically allocated string that is the version
+/// number of the TF Lite Extension APIs supported by the (potentially
+/// dynamically loaded) TF Lite Runtime library.  The TF Lite "Extension APIs"
+/// are the APIs for extending TF Lite with custom ops and delegates.
+/// More specifically, this version number covers the (non-experimental)
+/// functionality documented in the following header files:
+///
+///   * lite/c/c_api_opaque.h
+///   * lite/c/common.h
+///   * lite/c/builtin_op_data.h
+///   * lite/builtin_ops.h
+///
+/// This version number uses semantic versioning, and the return value should
+/// be in semver 2 format <http://semver.org>, starting with MAJOR.MINOR.PATCH,
+/// e.g. "2.14.0" or "2.15.0-rc2".
+TFL_CAPI_EXPORT extern const char* TfLiteExtensionApisVersion(void);
+
 /// The supported TensorFlow Lite model file Schema version.
 ///
 /// Returns the (major) version number of the Schema used for model

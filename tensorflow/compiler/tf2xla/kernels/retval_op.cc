@@ -62,7 +62,8 @@ class RetvalOp : public XlaOpKernel {
   int index_;
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RetvalOp);
+  RetvalOp(const RetvalOp&) = delete;
+  void operator=(const RetvalOp&) = delete;
 };
 
 REGISTER_XLA_OP(

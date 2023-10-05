@@ -148,7 +148,8 @@ class ScopedDeviceMemory {
   int device_ordinal_;                // Negative one for inactive object.
   DeviceMemoryAllocator *allocator_;  // Null if this object is inactive.
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ScopedDeviceMemory);
+  ScopedDeviceMemory(const ScopedDeviceMemory &) = delete;
+  void operator=(const ScopedDeviceMemory &) = delete;
 };
 
 // Type alias for compatibility with the previous managed memory implementation.

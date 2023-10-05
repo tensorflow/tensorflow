@@ -220,7 +220,8 @@ class CollectiveGatherOpKernel : public CollectiveOpV1Kernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CollectiveGatherOpKernel);
+  CollectiveGatherOpKernel(const CollectiveGatherOpKernel&) = delete;
+  void operator=(const CollectiveGatherOpKernel&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("CollectiveGather").Device(DEVICE_CPU),
@@ -330,7 +331,8 @@ class CollectiveReduceOpKernel : public CollectiveOpV1Kernel {
  private:
   std::unique_ptr<OpKernel> merge_op_;
   std::unique_ptr<OpKernel> final_op_;
-  TF_DISALLOW_COPY_AND_ASSIGN(CollectiveReduceOpKernel);
+  CollectiveReduceOpKernel(const CollectiveReduceOpKernel&) = delete;
+  void operator=(const CollectiveReduceOpKernel&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("CollectiveReduce").Device(DEVICE_CPU),
@@ -407,7 +409,8 @@ class CollectiveBcastSendOpKernel : public CollectiveOpV1Kernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CollectiveBcastSendOpKernel);
+  CollectiveBcastSendOpKernel(const CollectiveBcastSendOpKernel&) = delete;
+  void operator=(const CollectiveBcastSendOpKernel&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("CollectiveBcastSend").Device(DEVICE_CPU),
@@ -477,7 +480,8 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpV1Kernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CollectiveBcastRecvOpKernel);
+  CollectiveBcastRecvOpKernel(const CollectiveBcastRecvOpKernel&) = delete;
+  void operator=(const CollectiveBcastRecvOpKernel&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("CollectiveBcastRecv").Device(DEVICE_CPU),

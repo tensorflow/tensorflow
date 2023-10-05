@@ -191,7 +191,8 @@ class WhereCPUOp : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(WhereCPUOp);
+  WhereCPUOp(const WhereCPUOp&) = delete;
+  void operator=(const WhereCPUOp&) = delete;
 };
 
 #define REGISTER_WHERE_OP(T) \
@@ -357,7 +358,8 @@ class WhereGPUOp : public AsyncOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(WhereGPUOp);
+  WhereGPUOp(const WhereGPUOp&) = delete;
+  void operator=(const WhereGPUOp&) = delete;
 };
 
 #define REGISTER_GPU_WHERE_OP(T) \

@@ -594,7 +594,8 @@ class WhileOp : public AsyncOpKernel {
     std::vector<Tensor>* const retvals_;  // Not owned.
     DataTypeSlice ret_types_;
 
-    TF_DISALLOW_COPY_AND_ASSIGN(BodyFuncCallFrame);
+    BodyFuncCallFrame(const BodyFuncCallFrame&) = delete;
+    void operator=(const BodyFuncCallFrame&) = delete;
   };
 
   class State {

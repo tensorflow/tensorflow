@@ -167,12 +167,12 @@ func.func @testConcatCanonicalization(%arg0: tensor<2x1xi32>, %arg1: tensor<2x1x
 // CHECK-LABEL: testConcatCwiseUnary
 func.func @testConcatCwiseUnary(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1xf32>, %arg2: tensor<i32>) -> tensor<?x2xf32> {
 
-  // CHECK: %[[CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %arg2)
-  // CHECK: %[[LOG1P:.*]] = "tf.Log1p"(%[[CONCAT]])
+  // CHECK: %[[CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %arg2) {device = "/job:localhost/replica:0/task:0/device:GPU:0"}
+  // CHECK: %[[LOG1P:.*]] = "tf.Log1p"(%[[CONCAT]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0"}
   // CHECK: return %[[LOG1P]]
   %0 = "tf.Log1p"(%arg0) : (tensor<?x1xf32>) -> tensor<?x1xf32>
   %1 = "tf.Log1p"(%arg1) : (tensor<?x1xf32>) -> tensor<?x1xf32>
-  %2 = "tf.ConcatV2"(%0, %1, %arg2) : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<i32>) -> tensor<?x2xf32>
+  %2 = "tf.ConcatV2"(%0, %1, %arg2) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<i32>) -> tensor<?x2xf32>
 
   func.return %2 : tensor<?x2xf32>
 }
@@ -183,13 +183,13 @@ func.func @testConcatCwiseBinaryOnInnerDim(%arg0: tensor<?x1xf32>,
 
   // CHECK-DAG: %[[LHS_AXIS:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>}
 
-  // CHECK: %[[ADD_LHS_CONCAT:.*]] = "tf.Pack"(%arg2, %arg3) {axis = 0 : i64}
-  // CHECK: %[[MUL_LHS_CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %[[LHS_AXIS]])
-  // CHECK: %[[MUL_RHS_CONCAT:.*]] = "tf.Pack"(%arg2, %arg3) {axis = 0 : i64}
+  // CHECK: %[[ADD_LHS_CONCAT:.*]] = "tf.Pack"(%arg2, %arg3) {axis = 0 : i64, device = "/job:localhost/replica:0/task:0/device:GPU:0"}
+  // CHECK: %[[MUL_LHS_CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %[[LHS_AXIS]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0"}
+  // CHECK: %[[MUL_RHS_CONCAT:.*]] = "tf.Pack"(%arg2, %arg3) {axis = 0 : i64, device = "/job:localhost/replica:0/task:0/device:GPU:0"}
 
-  // CHECK: %[[MUL:.*]] = "tf.Mul"(%[[MUL_LHS_CONCAT]], %[[MUL_RHS_CONCAT]])
+  // CHECK: %[[MUL:.*]] = "tf.Mul"(%[[MUL_LHS_CONCAT]], %[[MUL_RHS_CONCAT]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0"}
   // CHECK-SAME: (tensor<?x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
-  // CHECK: %[[ADD:.*]] = "tf.AddV2"(%[[ADD_LHS_CONCAT]], %[[MUL]])
+  // CHECK: %[[ADD:.*]] = "tf.AddV2"(%[[ADD_LHS_CONCAT]], %[[MUL]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0"}
   // CHECK-SAME: (tensor<2xf32>, tensor<?x2xf32>) -> tensor<?x2xf32>
   // CHECK: return %[[ADD]]
 
@@ -200,7 +200,7 @@ func.func @testConcatCwiseBinaryOnInnerDim(%arg0: tensor<?x1xf32>,
   // Add of a scalar const and a tensor.
   %3 = "tf.AddV2"(%arg2, %1) : (tensor<f32>, tensor<?x1xf32>) -> tensor<?x1xf32>
   %4 = "tf.AddV2"(%arg3, %2) : (tensor<f32>, tensor<?x1xf32>) -> tensor<?x1xf32>
-  %5 = "tf.ConcatV2"(%3, %4, %0) : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<i32>) -> tensor<?x2xf32>
+  %5 = "tf.ConcatV2"(%3, %4, %0) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<i32>) -> tensor<?x2xf32>
 
   func.return %5 : tensor<?x2xf32>
 }
@@ -211,13 +211,15 @@ func.func @testConcatCwiseBinaryPreserveAxisType(%arg0: tensor<?x1xf32>,
 
   // CHECK-DAG: %[[LHS_AXIS:.*]] = "tf.Const"() {value = dense<1> : tensor<i64>}
 
-  // CHECK: %[[ADD_LHS_CONCAT:.*]] = "tf.Pack"(%arg2, %arg3) {axis = 0 : i64}
-  // CHECK: %[[MUL_LHS_CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %[[LHS_AXIS]])
-  // CHECK: %[[MUL_RHS_CONCAT:.*]] = "tf.Pack"(%arg2, %arg3) {axis = 0 : i64}
+  // CHECK: %[[ADD_LHS_CONCAT:.*]] = "tf.Pack"(%arg2, %arg3) {axis = 0 : i64, device = "/job:localhost/replica:0/task:0/device:GPU:0"}
+  // CHECK: %[[MUL_LHS_CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %[[LHS_AXIS]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0"}
+  // CHECK: %[[MUL_RHS_CONCAT:.*]] = "tf.Pack"(%arg2, %arg3) {axis = 0 : i64, device = "/job:localhost/replica:0/task:0/device:GPU:0"}
 
   // CHECK: %[[MUL:.*]] = "tf.Mul"(%[[MUL_LHS_CONCAT]], %[[MUL_RHS_CONCAT]])
+  // CHECK-SAME: {device = "/job:localhost/replica:0/task:0/device:GPU:0"}
   // CHECK-SAME: (tensor<?x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
   // CHECK: %[[ADD:.*]] = "tf.AddV2"(%[[ADD_LHS_CONCAT]], %[[MUL]])
+  // CHECK-SAME: {device = "/job:localhost/replica:0/task:0/device:GPU:0"}
   // CHECK-SAME: (tensor<2xf32>, tensor<?x2xf32>) -> tensor<?x2xf32>
   // CHECK: return %[[ADD]]
 
@@ -228,7 +230,7 @@ func.func @testConcatCwiseBinaryPreserveAxisType(%arg0: tensor<?x1xf32>,
   // Add of a scalar const and a tensor.
   %3 = "tf.AddV2"(%arg2, %1) : (tensor<f32>, tensor<?x1xf32>) -> tensor<?x1xf32>
   %4 = "tf.AddV2"(%arg3, %2) : (tensor<f32>, tensor<?x1xf32>) -> tensor<?x1xf32>
-  %5 = "tf.ConcatV2"(%3, %4, %0) : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<i64>) -> tensor<?x2xf32>
+  %5 = "tf.ConcatV2"(%3, %4, %0) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<i64>) -> tensor<?x2xf32>
 
   func.return %5 : tensor<?x2xf32>
 }
@@ -285,15 +287,16 @@ func.func @testConcatCwiseBinaryNegativeAxis(%arg0: tensor<f32>,
 // Synthesize binary ops when 1 of the 3 concat inputs is a non-binary op.
 // CHECK-LABEL: testConcatCwiseBinarySynthMulOp3Inputs
 func.func @testConcatCwiseBinarySynthMulOp3Inputs(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1xf32>, %arg2: tensor<?x1xf32>) -> tensor<?x3xf32> {
-  // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<[2.000000e+00, 3.000000e+00, 1.000000e+00]>
-  // CHECK: %[[CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %arg2,
-  // CHECK: "tf.Mul"(%[[CONCAT]], %[[CONST]])
+  // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NEXT: %[[CONST0:.*]] = "tf.Const"() {value = dense<[2.000000e+00, 3.000000e+00, 1.000000e+00]>
+  // CHECK: %[[CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %arg2, %[[CONST]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0"}
+  // CHECK: "tf.Mul"(%[[CONCAT]], %[[CONST0]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0"}
   %axis = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
   %mul0_const = "tf.Const"() { value = dense<2.0> : tensor<f32> } : () -> tensor<f32>
   %mul0 = "tf.Mul"(%arg0, %mul0_const) : (tensor<?x1xf32>, tensor<f32>) -> tensor<?x1xf32>
   %mul1_const = "tf.Const"() { value = dense<3.0> : tensor<f32> } : () -> tensor<f32>
   %mul1 = "tf.Mul"(%arg1, %mul1_const) : (tensor<?x1xf32>, tensor<f32>) -> tensor<?x1xf32>
-  %ret = "tf.ConcatV2"(%mul0, %mul1, %arg2, %axis) : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<?x1xf32>, tensor<i32>) -> tensor<?x3xf32>
+  %ret = "tf.ConcatV2"(%mul0, %mul1, %arg2, %axis) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<?x1xf32>, tensor<i32>) -> tensor<?x3xf32>
 
   func.return %ret : tensor<?x3xf32>
 }
@@ -678,16 +681,18 @@ func.func @testTileMultiplesAllOnes(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
 // CHECK-LABEL: func @testStaticAndIdenticalTypeForEqualOp
 func.func @testStaticAndIdenticalTypeForEqualOp(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
   // CHECK:      "tf.Equal"(%arg0, %arg1)
+  // CHECK-SAME:   device = "/job:localhost/replica:0/task:0/device:GPU:0"
   // CHECK-SAME:   incompatible_shape_error = true
-  %0 = "tf.Equal"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  %0 = "tf.Equal"(%arg0, %arg1) {incompatible_shape_error = false, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   func.return %0: tensor<2xi1>
 }
 
 // CHECK-LABEL: func @testStaticAndIdenticalTypeForNotEqualOp
 func.func @testStaticAndIdenticalTypeForNotEqualOp(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
   // CHECK:      "tf.NotEqual"(%arg0, %arg1)
+  // CHECK-SAME:   device = "/job:localhost/replica:0/task:0/device:GPU:0"
   // CHECK-SAME:   incompatible_shape_error = true
-  %0 = "tf.NotEqual"(%arg0, %arg1) { incompatible_shape_error = false } : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  %0 = "tf.NotEqual"(%arg0, %arg1) {incompatible_shape_error = false, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   func.return %0: tensor<2xi1>
 }
 
@@ -702,8 +707,9 @@ func.func @testUnknownBroadcastForNotEqualOp(%arg0: tensor<?xi32>, %arg1: tensor
 // CHECK-LABEL: func @testKnownGoodBroadcastForNotEqualOp
 func.func @testKnownGoodBroadcastForNotEqualOp(%arg0: tensor<1x?xi32>, %arg1: tensor<?x1xi32>) -> tensor<?x?xi1> {
   // CHECK:      "tf.NotEqual"(%arg0, %arg1)
+  // CHECK-SAME:   device = "/job:localhost/replica:0/task:0/device:GPU:0"
   // CHECK-SAME:   incompatible_shape_error = true
-  %0 = "tf.NotEqual"(%arg0, %arg1) {incompatible_shape_error = false} : (tensor<1x?xi32>, tensor<?x1xi32>) -> tensor<?x?xi1>
+  %0 = "tf.NotEqual"(%arg0, %arg1) {incompatible_shape_error = false, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<1x?xi32>, tensor<?x1xi32>) -> tensor<?x?xi1>
   func.return %0: tensor<?x?xi1>
 }
 
@@ -734,8 +740,9 @@ func.func @testUnrankedLHSForNotEqualOp(%arg0: tensor<*xi32>, %arg1: tensor<i32>
 // CHECK-LABEL: func @testScalarForNotEqualOp
 func.func @testScalarForNotEqualOp(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i1> {
   // CHECK:      "tf.NotEqual"(%arg0, %arg1)
+  // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:GPU:0"
   // CHECK-SAME: incompatible_shape_error = true
-  %0 = "tf.NotEqual"(%arg0, %arg1) {incompatible_shape_error = false} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  %0 = "tf.NotEqual"(%arg0, %arg1) {incompatible_shape_error = false, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
   func.return %0: tensor<i1>
 }
 
@@ -1008,27 +1015,27 @@ func.func @ToBool_0DScalarI1(%arg0: tensor<i1>) -> tensor<i1> {
 // CHECK-LABEL: func @ToBool_0DScalarInt
 func.func @ToBool_0DScalarInt(%arg0: tensor<i32>) -> tensor<i1> {
   // CHECK: [[Zero:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
-  // CHECK: [[NE:%.*]] = "tf.NotEqual"(%arg0, [[Zero]])
+  // CHECK: [[NE:%.*]] = "tf.NotEqual"(%arg0, [[Zero]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0", incompatible_shape_error = true}
   // CHECK: return [[NE]]
-  %0 = "tf.ToBool"(%arg0) : (tensor<i32>) -> tensor<i1>
+  %0 = "tf.ToBool"(%arg0) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<i32>) -> tensor<i1>
   func.return %0 : tensor<i1>
 }
 
 // CHECK-LABEL: func @ToBool_0DScalarFloat
 func.func @ToBool_0DScalarFloat(%arg0: tensor<f32>) -> tensor<i1> {
   // CHECK: [[Zero:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
-  // CHECK: [[NE:%.*]] = "tf.NotEqual"(%arg0, [[Zero]])
+  // CHECK: [[NE:%.*]] = "tf.NotEqual"(%arg0, [[Zero]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0", incompatible_shape_error = true}
   // CHECK: return [[NE]]
-  %0 = "tf.ToBool"(%arg0) : (tensor<f32>) -> tensor<i1>
+  %0 = "tf.ToBool"(%arg0) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<f32>) -> tensor<i1>
   func.return %0 : tensor<i1>
 }
 
 // CHECK-LABEL: func @ToBool_0DScalarString
 func.func @ToBool_0DScalarString(%arg0: tensor<!tf_type.string>) -> tensor<i1> {
   // CHECK: [[EmptyStr:%.*]] = "tf.Const"() {value = dense<""> : tensor<!tf_type.string>} : () -> tensor<!tf_type.string>
-  // CHECK: [[NE:%.*]] = "tf.NotEqual"(%arg0, [[EmptyStr]]) {incompatible_shape_error = true} : (tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<i1>
+  // CHECK: [[NE:%.*]] = "tf.NotEqual"(%arg0, [[EmptyStr]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0", incompatible_shape_error = true} : (tensor<!tf_type.string>, tensor<!tf_type.string>) -> tensor<i1>
   // CHECK: return [[NE]] : tensor<i1>
-  %0 = "tf.ToBool"(%arg0) : (tensor<!tf_type.string>) -> tensor<i1>
+  %0 = "tf.ToBool"(%arg0) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<!tf_type.string>) -> tensor<i1>
   func.return %0 : tensor<i1>
 }
 
@@ -1162,8 +1169,9 @@ func.func @foldIf(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1>) -> 
   %2 = "tf.If"(%0, %arg0, %arg1) {then_branch = @add, else_branch = @sub, output_shapes = [#tf_type.shape<>], device = "noodle", is_stateless = true} : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
   // CHECK: %1 = "tf.StatefulPartitionedCall"(%0, %arg1)
   // CHECK-SAME: _underscore_attr = "something"
+  // CHECK-SAME: device = "noodle"
   // CHECK-SAME: f = @add
-  %3 = "tf.If"(%1, %2, %arg1) {then_branch = @add, else_branch = @sub, output_shapes = [#tf_type.shape<>], _underscore_attr = "something", is_stateless = false} : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  %3 = "tf.If"(%1, %2, %arg1) {then_branch = @add, else_branch = @sub, output_shapes = [#tf_type.shape<>], device = "noodle", _underscore_attr = "something", is_stateless = false} : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
 
   // CHECK: %2 = "tf.If"
   %4 = "tf.If"(%arg2, %3, %arg1) {then_branch = @add, else_branch = @sub, is_stateless = false} : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
@@ -1178,8 +1186,9 @@ func.func @foldIfRegion(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1
   %true = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
 
   // CHECK: [[Val0:%.*]] = "tf.Mul"(%arg0, %arg1)
+  // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:GPU:0"
   %0 = "tf.IfRegion"(%true) ({
-      %true_value = "tf.Mul"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      %true_value = "tf.Mul"(%arg0, %arg1) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<f32>, tensor<f32>) -> tensor<f32>
       "tf.Yield"(%true_value) : (tensor<f32>) -> ()
     }, {
       %false_value = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
@@ -1187,11 +1196,12 @@ func.func @foldIfRegion(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1
     }) { is_stateless = true}: (tensor<i1>) -> tensor<f32>
 
   // CHECK: [[Val1:%.*]] = "tf.Sub"(%arg0, %arg1)
+  // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:GPU:0"
   %1 = "tf.IfRegion"(%false) ({
       %true_value = "tf.Mul"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
       "tf.Yield"(%true_value) : (tensor<f32>) -> ()
     }, {
-      %false_value = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      %false_value = "tf.Sub"(%arg0, %arg1) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<f32>, tensor<f32>) -> tensor<f32>
       "tf.Yield"(%false_value) : (tensor<f32>) -> ()
     }) { is_stateless = true}: (tensor<i1>) -> tensor<f32>
 
@@ -1205,10 +1215,11 @@ func.func @foldIfRegionMismatchedTypes(%arg0: tensor<?xf32>, %arg1: tensor<?xf32
   %true = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
 
   // CHECK: [[Val0:%.*]] = "tf.Mul"(%arg0, %arg1)
+  // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:GPU:0"
   // CHECK-NEXT: [[Cast:%.*]] = "tf.Cast"([[Val0]])
   // CHECK-NEXT: return [[Cast]]
   %0 = "tf.IfRegion"(%true) ({
-      %true_value = "tf.Mul"(%arg0, %arg1) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+      %true_value = "tf.Mul"(%arg0, %arg1) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
       "tf.Yield"(%true_value) : (tensor<?xf32>) -> ()
     }, {
       %false_value = "tf.Sub"(%arg0, %arg1) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
@@ -1228,14 +1239,14 @@ func.func @eliminatePassThroughIfRegion(%arg0: tensor<f32>, %arg1: tensor<f32>, 
   // CHECK:  },  {
   // CHECK:    %[[SUB:.*]] = "tf.Sub"(%[[ARG0]], %[[ARG1]])
   // CHECK:    "tf.Yield"(%[[SUB]]) : (tensor<f32>)
-  // CHECK:  }) {is_stateless = true} : (tensor<i1>) -> tensor<f32>
+  // CHECK:  }) {device = "/job:localhost/replica:0/task:0/device:GPU:0", is_stateless = true} : (tensor<i1>) -> tensor<f32>
   %0:4 = "tf.IfRegion"(%pred) ({
       %true_value = "tf.Mul"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
       "tf.Yield"(%arg1, %arg2, %true_value, %arg2) : (tensor<f32>, tensor<!tf_type.resource>, tensor<f32>, tensor<!tf_type.resource>) -> ()
     }, {
       %false_value = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
       "tf.Yield"(%arg1, %arg2, %false_value, %arg2) : (tensor<f32>, tensor<!tf_type.resource>, tensor<f32>, tensor<!tf_type.resource>) -> ()
-    }) { is_stateless = true}: (tensor<i1>) -> (tensor<f32>, tensor<!tf_type.resource>, tensor<f32>, tensor<!tf_type.resource>)
+    }) { is_stateless = true, device = "/job:localhost/replica:0/task:0/device:GPU:0"}: (tensor<i1>) -> (tensor<f32>, tensor<!tf_type.resource>, tensor<f32>, tensor<!tf_type.resource>)
   // CHECK: "tf._SomeOp"(%[[ARG2]], %[[ARG1]]) : (tensor<!tf_type.resource>, tensor<f32>) -> ()
   "tf._SomeOp"(%0#1, %0#0) : (tensor<!tf_type.resource>, tensor<f32>) -> ()
   // CHECK: "tf._SomeOp"(%[[ARG2]], %[[IF_OUTPUT]]) : (tensor<!tf_type.resource>, tensor<f32>) -> ()
@@ -1258,7 +1269,7 @@ func.func @eliminatePassThroughCaseRegion(%arg0: tensor<f32>, %arg1: tensor<f32>
   // CHECK:  },  {
   // CHECK:    %[[ADD:.*]] = "tf.AddV2"(%[[ARG0]], %[[ARG1]])
   // CHECK:    "tf.Yield"(%[[ADD]]) : (tensor<f32>)
-  // CHECK:  }) {is_stateless = true} : (tensor<i32>) -> tensor<f32>
+  // CHECK:  }) {device = "/job:localhost/replica:0/task:0/device:GPU:0", is_stateless = true} : (tensor<i32>) -> tensor<f32>
   %0:3 = "tf.CaseRegion"(%index) ({
       %mul = "tf.Mul"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
       "tf.Yield"(%arg1, %mul, %arg2) : (tensor<f32>, tensor<f32>, tensor<!tf_type.resource>) -> ()
@@ -1268,7 +1279,7 @@ func.func @eliminatePassThroughCaseRegion(%arg0: tensor<f32>, %arg1: tensor<f32>
     }, {
       %add = "tf.AddV2"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
       "tf.Yield"(%arg1, %add, %arg2) : (tensor<f32>, tensor<f32>, tensor<!tf_type.resource>) -> ()
-    }) { is_stateless = true}: (tensor<i32>) -> (tensor<f32>, tensor<f32>, tensor<!tf_type.resource>)
+    }) { is_stateless = true, device = "/job:localhost/replica:0/task:0/device:GPU:0"}: (tensor<i32>) -> (tensor<f32>, tensor<f32>, tensor<!tf_type.resource>)
   // CHECK: "tf._SomeOp"(%[[ARG2]], %[[ARG1]]) : (tensor<!tf_type.resource>, tensor<f32>) -> ()
   "tf._SomeOp"(%0#2, %0#0) : (tensor<!tf_type.resource>, tensor<f32>) -> ()
   // CHECK: return %[[CASE_OUTPUT]] : tensor<f32>
@@ -1287,8 +1298,9 @@ func.func @foldCase(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
   %4 = "tf.Case"(%2, %arg0, %arg1) {branches = [@sub, @add], output_shapes = [#tf_type.shape<>], device = "noodle", is_stateless = false} : (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
   // CHECK: PartitionedCall
   // CHECK-SAME: _cluster_launch = "not_ready"
+  // CHECK-SAME: device = "noodle"
   // CHECK-SAME: f = @sub
-  %5 = "tf.Case"(%3, %4, %arg1) {branches = [@sub, @add], output_shapes = [#tf_type.shape<>], _cluster_launch = "not_ready", is_stateless = false} : (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  %5 = "tf.Case"(%3, %4, %arg1) {branches = [@sub, @add], output_shapes = [#tf_type.shape<>], device= "noodle", _cluster_launch = "not_ready", is_stateless = false} : (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
   func.return %5 : tensor<f32>
 }
 
@@ -1357,7 +1369,8 @@ func.func @testWhileRegionSimplePassThrough(%arg0 : tensor<*xf32>, %arg1 : tenso
       %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "tf.Yield"(%barg0, %sub) : (tensor<*xf32>, tensor<i32>) -> ()
     }
-  ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+  ) {device = "/job:localhost/replica:0/task:0/device:GPU:0", is_stateless = false} : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+  // CHECK: device = "/job:localhost/replica:0/task:0/device:GPU:0"
   // CHECK: return %arg0 : tensor<*xf32>
   func.return %0#0 : tensor<*xf32>
 }
@@ -1381,7 +1394,8 @@ func.func @testWhileRegionReturnExternValues(%arg0 : tensor<*xf32>, %arg1 : tens
       %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "tf.Yield"(%arg0, %sub) : (tensor<*xf32>, tensor<i32>) -> ()
     }
-  ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+  ) {is_stateless = false, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+  // CHECK: device = "/job:localhost/replica:0/task:0/device:GPU:0"
   // CHECK: return %arg0 : tensor<*xf32>
   func.return %0#0 : tensor<*xf32>
 }
@@ -1406,7 +1420,8 @@ func.func @testWhileRegionMultiplePassThrough(%arg0 : tensor<*xf32>, %arg1 : ten
       %sub = "tf.Sub"(%barg3, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "tf.Yield"(%barg0, %barg1, %barg2, %sub) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>) -> ()
     }
-  ) { is_stateless = false } : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>)
+  ) {is_stateless = false, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>)
+  // CHECK: device = "/job:localhost/replica:0/task:0/device:GPU:0"
 
   // CHECK: %[[SUB0:.*]] = "tf.Sub"(%arg0, %arg1)
   // CHECK: %[[SUB1:.*]] = "tf.Sub"(%arg2, %[[SUB0]])
@@ -1437,7 +1452,8 @@ func.func @testWhileRegionMultiplePassThroughNonContiguous(%arg0 : tensor<*xf32>
       %sub = "tf.Sub"(%barg3, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "tf.Yield"(%barg0, %arg1neg, %barg2, %sub) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>) -> ()
     }
-  ) { is_stateless = false } : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>)
+  ) {is_stateless = false, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<i32>)
+  // CHECK: device = "/job:localhost/replica:0/task:0/device:GPU:0"
 
   // Verify that use of while loop results corresponding to result #0 and 2 of
   // the while are replaces with corresponding WhileRegion operands
@@ -1471,7 +1487,9 @@ func.func @testWhileRegionPassThroughTypeMismatch(%arg0 : tensor<*xf32>, %arg1 :
       %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "tf.Yield"(%barg0, %sub) : (tensor<?x?xf32>, tensor<i32>) -> ()
     }
-  ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+  ) {is_stateless = false, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+  // CHECK: device = "/job:localhost/replica:0/task:0/device:GPU:0"
+
   // Verify that the result stays uchanged
   // CHECK: return %arg0 : tensor<*xf32>
   func.return %0#0 : tensor<*xf32>
@@ -1503,7 +1521,8 @@ func.func @testWhileRegionUnusedValue(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>
       %dummy1 = arith.constant dense<3.0> : tensor<f32>
       "tf.Yield"(%add, %sub, %dummy0, %dummy1) : (tensor<*xf32>, tensor<i32>, tensor<i32>, tensor<f32>) -> ()
     }
-  ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>,  tensor<i32>, tensor<f32>) -> (tensor<*xf32>, tensor<i32>,  tensor<i32>, tensor<f32>)
+  ) {is_stateless = false, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<*xf32>, tensor<i32>,  tensor<i32>, tensor<f32>) -> (tensor<*xf32>, tensor<i32>,  tensor<i32>, tensor<f32>)
+  // CHECK: device = "/job:localhost/replica:0/task:0/device:GPU:0"
 
   // Verify that return still uses while result # 0
   // CHECK: return %[[WHILE_OUT]]#0 : tensor<*xf32>
@@ -1531,7 +1550,8 @@ func.func @testWhileRegionExplicitCast(%arg0 : tensor<i32>, %arg1 : tensor<*xi32
       %sub1 = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "tf.Yield"(%sub0, %sub1) : (tensor<i32>, tensor<i32>) -> ()
     }
-  ) { is_stateless = false } : (tensor<i32>, tensor<*xi32>) -> (tensor<i32>, tensor<i32>)
+  ) {is_stateless = false, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<i32>, tensor<*xi32>) -> (tensor<i32>, tensor<i32>)
+  // CHECK: device = "/job:localhost/replica:0/task:0/device:GPU:0"
   return %0#0 : tensor<i32>
 }
 
@@ -1556,7 +1576,8 @@ func.func @testWhileRegionPassThroughExplicitCast(%arg0 : tensor<i32>, %arg1 : t
       %sub = "tf.Sub"(%barg0, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "tf.Yield"(%sub, %barg1) : (tensor<i32>, tensor<i32>) -> ()
     }
-  ) { is_stateless = false } : (tensor<i32>, tensor<*xi32>) -> (tensor<i32>, tensor<i32>)
+  ) {is_stateless = false, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<i32>, tensor<*xi32>) -> (tensor<i32>, tensor<i32>)
+  // CHECK: device = "/job:localhost/replica:0/task:0/device:GPU:0"
   // CHECK: return [[CAST1]]
   func.return %0#1 : tensor<i32>
 }
@@ -1578,7 +1599,8 @@ func.func @testWhileRegionPassThroughWithForwarded(%arg0 : tensor<*xf32>, %arg1 
       %sub = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "tf.Yield"(%barg0, %sub) : (tensor<*xf32>, tensor<i32>) -> ()
     }
-  ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+  ) {is_stateless = false, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+  // CHECK: device = "/job:localhost/replica:0/task:0/device:GPU:0"
   // CHECK: return %arg0 : tensor<*xf32>
   func.return %0#0 : tensor<*xf32>
 }
@@ -1590,9 +1612,10 @@ func.func private @testIfElse(tensor<*xf32>) -> tensor<*xf32>
 func.func @testIfDropOutputShapes(tensor<i1>, tensor<2xf32>) -> tensor<2xf32> {
 ^bb0(%arg0: tensor<i1>, %arg1: tensor<2xf32>):
   // CHECK: "tf.If"
+  // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:GPU:0"
   // CHECK-NOT: output_shapes
   %1 = "tf.If"(%arg0, %arg1) {
-    then_branch = @testIfThen, else_branch = @testIfElse, is_stateless = false, output_shapes = [#tf_type.shape<>]
+    then_branch = @testIfThen, else_branch = @testIfElse, is_stateless = false, output_shapes = [#tf_type.shape<>], device = "/job:localhost/replica:0/task:0/device:GPU:0"
   } : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
 
   func.return %1 : tensor<2xf32>
@@ -1602,14 +1625,16 @@ func.func @testIfDropOutputShapes(tensor<i1>, tensor<2xf32>) -> tensor<2xf32> {
 func.func @testNMSV3ToNMSV4(%arg0: tensor<3x4xf32>, %arg1: tensor<3xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<2xi32> {
   %max_size = arith.constant dense<2> : tensor<i32>
   // CHECK: "tf.NonMaxSuppressionV4"
-  %0 = "tf.NonMaxSuppressionV3"(%arg0, %arg1, %max_size, %arg2, %arg3): (tensor<3x4xf32>, tensor<3xf32>, tensor<i32>, tensor<f32>, tensor<f32>) -> (tensor<2xi32>)
+  // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:GPU:0"
+  %0 = "tf.NonMaxSuppressionV3"(%arg0, %arg1, %max_size, %arg2, %arg3) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<3x4xf32>, tensor<3xf32>, tensor<i32>, tensor<f32>, tensor<f32>) -> (tensor<2xi32>)
   func.return %0 : tensor<2xi32>
 }
 
 // CHECK-LABEL: testFusedBatchNormToBatchNormV3
 func.func @testFusedBatchNormToBatchNormV3(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<8xf32>) -> (tensor<8x8x8x8xf32>) {
   // CHECK: "tf.FusedBatchNormV3"
-  %0:5 = "tf.FusedBatchNorm"(%arg0, %arg1, %arg2, %arg3, %arg4): (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32> )
+  // CHECK-SAME: device = "/job:localhost/replica:0/task:0/device:GPU:0"
+  %0:5 = "tf.FusedBatchNorm"(%arg0, %arg1, %arg2, %arg3, %arg4) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32> )
   func.return %0#0  : tensor<8x8x8x8xf32>
 }
 
@@ -1665,8 +1690,8 @@ func.func @testVariableToVariableV2() {
 // CHECK-LABEL: testUnpackAndCwiseUnary
 func.func @testUnpackAndCwiseUnary(%arg0: tensor<?x2xf32>) -> (tensor<?xf32>, tensor<?xf32>) {
 
-  // CHECK: %[[NEG:.*]] = "tf.Neg"(%arg0)
-  // CHECK: %[[UNPACK:.*]]:2 = "tf.Unpack"(%[[NEG]])
+  // CHECK: %[[NEG:.*]] = "tf.Neg"(%arg0) {device = ""}
+  // CHECK: %[[UNPACK:.*]]:2 = "tf.Unpack"(%[[NEG]]) {axis = 1 : i64, device = ""}
   %unpacked:2 = "tf.Unpack"(%arg0) {axis = 1 : i64, device = ""}
                 : (tensor<?x2xf32>) -> (tensor<?xf32>, tensor<?xf32>)
   %0 = "tf.Neg"(%unpacked#0): (tensor<?xf32>) -> tensor<?xf32>
@@ -1897,19 +1922,19 @@ func.func @testFoldEnsureShapeOp(%arg0: tensor<10x20xf32>) -> (tensor<10x20xf32>
 
 // CHECK-LABEL: testConvertPackToReshapeAxis0
 func.func @testConvertPackToReshapeAxis0(%arg0: tensor<2x3xf32>) -> tensor<1x2x3xf32> {
-  %0 = "tf.Pack"(%arg0) {axis = 0 : i64, _xla_outside_compilation = "1"} : (tensor<2x3xf32>) -> tensor<1x2x3xf32>
+  %0 = "tf.Pack"(%arg0) {axis = 0 : i64, _xla_outside_compilation = "1", device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3xf32>) -> tensor<1x2x3xf32>
   func.return %0 : tensor<1x2x3xf32>
   // CHECK: %[[SHAPE:.*]] = "tf.Const"() {value = dense<[1, 2, 3]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) {_xla_outside_compilation = "1"} : (tensor<2x3xf32>, tensor<3xi64>) -> tensor<1x2x3xf32>
+  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) {_xla_outside_compilation = "1", device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3xf32>, tensor<3xi64>) -> tensor<1x2x3xf32>
   // CHECK: return %[[RESHAPE]] : tensor<1x2x3xf32>
 }
 
 // CHECK-LABEL: testConvertPackToReshapeAxis1
 func.func @testConvertPackToReshapeAxis1(%arg0: tensor<2x3xf32>) -> tensor<2x1x3xf32> {
-  %0 = "tf.Pack"(%arg0) {axis = 1 : i64} : (tensor<2x3xf32>) -> tensor<2x1x3xf32>
+  %0 = "tf.Pack"(%arg0) {axis = 1 : i64, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3xf32>) -> tensor<2x1x3xf32>
   func.return %0 : tensor<2x1x3xf32>
   // CHECK: %[[SHAPE:.*]] = "tf.Const"() {value = dense<[2, 1, 3]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) : (tensor<2x3xf32>, tensor<3xi64>) -> tensor<2x1x3xf32>
+  // CHECK: %[[RESHAPE:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2x3xf32>, tensor<3xi64>) -> tensor<2x1x3xf32>
   // CHECK: return %[[RESHAPE]] : tensor<2x1x3xf32>
 }
 
@@ -1949,6 +1974,7 @@ func.func @while_with_id_passthrough(%arg0: tensor<7xf32> {tf._user_specified_na
       %15 = "tf.Identity"(%arg2) {device = ""} : (tensor<i32>) -> tensor<i32>
       "tf.Yield"(%14, %15, %12, %8) : (tensor<i32>, tensor<i32>, tensor<?xf32>, tensor<1xi32>) -> ()
   }) {_num_original_outputs = 4 : i64, _read_only_resource_inputs = [], _xla_propagate_compile_time_consts = true, device = "", is_stateless = false, parallel_iterations = 10 : i64} : (tensor<i32>, tensor<i32>, tensor<7xf32>, tensor<1xi32>) -> (tensor<i32>, tensor<i32>, tensor<?xf32>, tensor<1xi32>)
+  // CHECK: device = ""
   %7 = "tf.Identity"(%6#2) {device = ""} : (tensor<?xf32>) -> tensor<?xf32>
   func.return %7 : tensor<?xf32>
 }
@@ -2018,16 +2044,16 @@ func.func @testDivNoNanAndMulNoNanWithConstantY(%arg0: tensor<2xf32>) -> (tensor
   // CHECK: %[[CON1:.*]] = "tf.Const"() {value = dense<[1.000000e+00, 2.000000e+00]> : tensor<2xf32>} : () -> tensor<2xf32>
   // CHECK-NEXT: %[[CON2:.*]] = "tf.Const"() {value = dense<[1.000000e+01, 0.000000e+00]> : tensor<2xf32>} : () -> tensor<2xf32>
   // CHECK-NEXT: %[[CON3:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<2xf32>} : () -> tensor<2xf32>
-  // CHECK-NEXT: %[[RES1:.*]] = "tf.Div"(%[[ARG0]], %[[CON1]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  // CHECK-NEXT: %[[RES1:.*]] = "tf.Div"(%[[ARG0]], %[[CON1]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   // CHECK-NEXT: %[[RES2:.*]] = "tf.MulNoNan"(%[[ARG0]], %[[CON2]]) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   // CHECK-NEXT: return %[[RES1]], %[[RES2]], %[[CON3]] : tensor<2xf32>, tensor<2xf32>, tensor<2xf32>
   %con1 = "tf.Const"() { value = dense<[1.0, 2.0]> : tensor<2xf32> } : () -> tensor<2xf32>
   %con2 = "tf.Const"() { value = dense<[10.0, 0.0]> : tensor<2xf32> } : () -> tensor<2xf32>
   %con3 = "tf.Const"() { value = dense<[0.0, 0.0]> : tensor<2xf32> } : () -> tensor<2xf32>
 
-  %res1 = "tf.DivNoNan"(%arg0, %con1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
-  %res2 = "tf.MulNoNan"(%arg0, %con2) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
-  %res3 = "tf.DivNoNan"(%arg0, %con3) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  %res1 = "tf.DivNoNan"(%arg0, %con1) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  %res2 = "tf.MulNoNan"(%arg0, %con2) {} : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  %res3 = "tf.DivNoNan"(%arg0, %con3) {}: (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
   func.return %res1, %res2, %res3 : tensor<2xf32>, tensor<2xf32>, tensor<2xf32>
 }
 
@@ -2037,7 +2063,7 @@ func.func @testComplexDivNoNanAndMulNoNanWithConstantY(%arg0: tensor<2xcomplex<f
   // CHECK-NEXT: %[[COMP2:.*]] = "tf.Const"() {value = dense<[(0.000000e+00,0.000000e+00), (2.000000e+00,0.000000e+00)]> : tensor<2xcomplex<f32>>} : () -> tensor<2xcomplex<f32>>
   // CHECK-NEXT: %[[COMP1:.*]] = "tf.Const"() {value = dense<[(1.000000e+00,3.000000e+00), (2.000000e+00,4.000000e+00)]> : tensor<2xcomplex<f32>>} : () -> tensor<2xcomplex<f32>>
   // CHECK-NEXT: %[[COMP3:.*]] = "tf.Const"() {value = dense<(0.000000e+00,0.000000e+00)> : tensor<2xcomplex<f32>>} : () -> tensor<2xcomplex<f32>>
-  // CHECK-NEXT: %[[RES1:.*]] = "tf.Mul"(%[[ARG0]], %[[COMP1]]) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  // CHECK-NEXT: %[[RES1:.*]] = "tf.Mul"(%[[ARG0]], %[[COMP1]]) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
   // CHECK-NEXT: %[[RES2:.*]] = "tf.DivNoNan"(%[[ARG0]], %[[COMP2]]) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
   // CHECK-NEXT: return %[[RES1]], %[[RES2]], %[[COMP3]] : tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>
   %con11 = "tf.Const"() { value = dense<[1.0, 2.0]> : tensor<2xf32> } : () -> tensor<2xf32>
@@ -2051,7 +2077,7 @@ func.func @testComplexDivNoNanAndMulNoNanWithConstantY(%arg0: tensor<2xcomplex<f
   %comp2 = "tf.Complex"(%con21, %con22) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xcomplex<f32>>
   %comp3 = "tf.Complex"(%con31, %con32) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xcomplex<f32>>
 
-  %res1 = "tf.MulNoNan"(%arg0, %comp1) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  %res1 = "tf.MulNoNan"(%arg0, %comp1) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
   %res2 = "tf.DivNoNan"(%arg0, %comp2) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
   %res3 = "tf.MulNoNan"(%arg0, %comp3) : (tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
   func.return %res1, %res2, %res3 : tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>, tensor<2xcomplex<f32>>
@@ -2102,16 +2128,16 @@ func.func @testXlaConvToV2(%lhs: tensor<8x4x16x16x16xf32>, %rhs: tensor<4x3x3x16
   %rhs_dilation = "tf.Const"() {value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
   %padding = "tf.Const"() {value = dense<0> : tensor<3x2xi32>} : () -> tensor<3x2xi32>
   %strides = "tf.Const"() {value = dense<[3, 1, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
-  // CHECK: "tf.XlaConvV2"(%arg0, %arg1, %cst_3, %cst_2, %cst_0, %cst_1, %cst) {batch_group_count = 1 : i64, dimension_numbers = "\18\03 \042\03\00\01\02@\04P\04Z\03\01\02\03b\03\01\02\03", precision_config = ""} : (tensor<8x4x16x16x16xf32>, tensor<4x3x3x16x16xf32>, tensor<3xi32>, tensor<3x2xi32>, tensor<3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<8x4x14x14x16xf32>
-  %0 = "tf.XlaConv"(%lhs, %rhs, %strides, %padding, %lhs_dilation, %rhs_dilation, %feature_group_count) {dimension_numbers = "\18\03 \042\03\00\01\02@\04P\04Z\03\01\02\03b\03\01\02\03", precision_config = ""} : (tensor<8x4x16x16x16xf32>, tensor<4x3x3x16x16xf32>, tensor<3xi32>, tensor<3x2xi32>, tensor<3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<8x4x14x14x16xf32>
+  // CHECK: "tf.XlaConvV2"(%arg0, %arg1, %cst_3, %cst_2, %cst_0, %cst_1, %cst) {batch_group_count = 1 : i64, device = "/job:localhost/replica:0/task:0/device:GPU:0", dimension_numbers = "\18\03 \042\03\00\01\02@\04P\04Z\03\01\02\03b\03\01\02\03", precision_config = ""} : (tensor<8x4x16x16x16xf32>, tensor<4x3x3x16x16xf32>, tensor<3xi32>, tensor<3x2xi32>, tensor<3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<8x4x14x14x16xf32>
+  %0 = "tf.XlaConv"(%lhs, %rhs, %strides, %padding, %lhs_dilation, %rhs_dilation, %feature_group_count) {dimension_numbers = "\18\03 \042\03\00\01\02@\04P\04Z\03\01\02\03b\03\01\02\03", precision_config = "", device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<8x4x16x16x16xf32>, tensor<4x3x3x16x16xf32>, tensor<3xi32>, tensor<3x2xi32>, tensor<3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<8x4x14x14x16xf32>
   func.return %0 : tensor<8x4x14x14x16xf32>
 }
 
 
 // CHECK-LABEL: testXlaReduceToXlaVariadicReduceV2
 func.func @testXlaReduceToXlaVariadicReduceV2(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<*xbf16> {
-  // CHECK: "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operandSegmentSizes = array<i32: 1, 1>, reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
-  %0 = "tf.XlaReduce"(%arg0, %arg1) {dimensions_to_reduce = [], reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
+  // CHECK: "tf.XlaVariadicReduceV2"(%arg0, %arg1) {device = "/job:localhost/replica:0/task:0/device:GPU:0", dimensions_to_reduce = [], operandSegmentSizes = array<i32: 1, 1>, reducer = @sum1} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
+  %0 = "tf.XlaReduce"(%arg0, %arg1) {dimensions_to_reduce = [], reducer = @sum1, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<*xbf16>, tensor<*xbf16>) -> tensor<*xbf16>
   func.return %0 : tensor<*xbf16>
 }
 
@@ -2122,8 +2148,8 @@ func.func private @sum1(%arg0: tensor<*xbf16>, %arg1: tensor<*xbf16>) -> tensor<
 
 // CHECK-LABEL: testXlaVariadicReduceToV2
 func.func @testXlaVariadicReduceToV2(%arg0: tensor<3x4xf32>, %arg1: tensor<f32>) -> tensor<?x?xf32> {
-  // CHECK:  "tf.XlaVariadicReduceV2"(%arg0, %arg1) {dimensions_to_reduce = [], operandSegmentSizes = array<i32: 1, 1>, reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
-  %0 = "tf.XlaVariadicReduce"(%arg0, %arg1) {dimensions_to_reduce = [], reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
+  // CHECK:  "tf.XlaVariadicReduceV2"(%arg0, %arg1) {device = "/job:localhost/replica:0/task:0/device:GPU:0", dimensions_to_reduce = [], operandSegmentSizes = array<i32: 1, 1>, reducer = @sum2} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
+  %0 = "tf.XlaVariadicReduce"(%arg0, %arg1) {dimensions_to_reduce = [], reducer = @sum2, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<3x4xf32>, tensor<f32>) -> tensor<?x?xf32>
   func.return %0 : tensor<?x?xf32>
 }
 func.func private @sum2(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
@@ -2200,23 +2226,23 @@ func.func @testReluOfMinimum6ToRelu6Int(%arg0: tensor<4xi32>) -> tensor<4xi32> {
 // CHECK-LABEL: testTensorListGetItem
 func.func @testTensorListGetItem(%arg0: tensor<1600x1x32xf32>, %arg1: tensor<2xi32>, %arg2: tensor<i32>) -> tensor<1x32xf32> {
   %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<1600x1x32xf32>, tensor<2xi32>) -> tensor<!tf_type.variant<tensor<1x32xf32>>>
-  %1 = "tf.TensorListGetItem"(%0, %arg2, %arg1) : (tensor<!tf_type.variant<tensor<1x32xf32>>>, tensor<i32>, tensor<2xi32>) -> tensor<1x32xf32>
+  %1 = "tf.TensorListGetItem"(%0, %arg2, %arg1) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<!tf_type.variant<tensor<1x32xf32>>>, tensor<i32>, tensor<2xi32>) -> tensor<1x32xf32>
   func.return %1 : tensor<1x32xf32>
 
   // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-  // CHECK: %[[RES:.*]] = "tf.GatherV2"(%arg0, %arg2, %cst) {batch_dims = 0 : i64} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
+  // CHECK: %[[RES:.*]] = "tf.GatherV2"(%arg0, %arg2, %cst) {batch_dims = 0 : i64, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
 }
 
 // CHECK-LABEL: testTensorListGetItemMultipleUsers
 func.func @testTensorListGetItemMultipleUsers(%arg0: tensor<1600x1x32xf32>, %arg1: tensor<2xi32>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> (tensor<1x32xf32>, tensor<1x32xf32>) {
   %0 = "tf.TensorListFromTensor"(%arg0, %arg1) : (tensor<1600x1x32xf32>, tensor<2xi32>) -> tensor<!tf_type.variant<tensor<1x32xf32>>>
-  %1 = "tf.TensorListGetItem"(%0, %arg2, %arg1) : (tensor<!tf_type.variant<tensor<1x32xf32>>>, tensor<i32>, tensor<2xi32>) -> tensor<1x32xf32>
-  %2 = "tf.TensorListGetItem"(%0, %arg3, %arg1) : (tensor<!tf_type.variant<tensor<1x32xf32>>>, tensor<i32>, tensor<2xi32>) -> tensor<1x32xf32>
+  %1 = "tf.TensorListGetItem"(%0, %arg2, %arg1) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<!tf_type.variant<tensor<1x32xf32>>>, tensor<i32>, tensor<2xi32>) -> tensor<1x32xf32>
+  %2 = "tf.TensorListGetItem"(%0, %arg3, %arg1) {device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<!tf_type.variant<tensor<1x32xf32>>>, tensor<i32>, tensor<2xi32>) -> tensor<1x32xf32>
   func.return %1, %2 : tensor<1x32xf32>, tensor<1x32xf32>
 
   // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-  // CHECK: %[[RES0:.*]] = "tf.GatherV2"(%arg0, %arg2, %cst) {batch_dims = 0 : i64} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
-  // CHECK: %[[RES1:.*]] = "tf.GatherV2"(%arg0, %arg3, %cst) {batch_dims = 0 : i64} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
+  // CHECK: %[[RES0:.*]] = "tf.GatherV2"(%arg0, %arg2, %cst) {batch_dims = 0 : i64, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
+  // CHECK: %[[RES1:.*]] = "tf.GatherV2"(%arg0, %arg3, %cst) {batch_dims = 0 : i64, device = "/job:localhost/replica:0/task:0/device:GPU:0"} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
 }
 
 // CHECK-LABEL: testUnaryIdempotent

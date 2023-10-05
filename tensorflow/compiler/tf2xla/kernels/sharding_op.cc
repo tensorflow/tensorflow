@@ -60,7 +60,8 @@ class ShardingOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ShardingOp);
+  ShardingOp(const ShardingOp&) = delete;
+  void operator=(const ShardingOp&) = delete;
   std::vector<int64_t> unspecified_dims_;
 };
 

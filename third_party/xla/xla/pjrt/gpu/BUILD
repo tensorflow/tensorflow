@@ -1,10 +1,9 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//xla:xla.bzl", "xla_cc_test")
-load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
+load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm", "if_gpu_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_tsl//tsl:tsl.bzl", "if_nccl")
 load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
-load("@local_tsl//tsl/platform:build_config_root.bzl", "tf_cuda_tests_tags")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
@@ -54,8 +53,8 @@ cc_library(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_stream_executor_client",
-        "//xla/pjrt:stream_executor_unloaded_executable",
-        "//xla/pjrt:stream_executor_unloaded_executable_proto_cc",
+        "//xla/pjrt:stream_executor_executable",
+        "//xla/pjrt:stream_executor_executable_proto_cc",
         "//xla/pjrt:tracked_device_buffer",
         "//xla/pjrt:utils",
         "//xla/pjrt/distributed:client",
@@ -66,6 +65,7 @@ cc_library(
         "//xla/service/gpu:gpu_executable_run_options",
         "//xla/stream_executor:device_mem_allocator",
         "//xla/stream_executor:device_memory",
+        "//xla/stream_executor:stream_executor_internal",
         "//xla/stream_executor:tf_allocator_adapter",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -84,18 +84,19 @@ cc_library(
         "@local_tsl//tsl/lib/strings:proto_serialization",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/profiler/lib:connected_traceme",
         "@local_tsl//tsl/util:env_var",
         "@tf_runtime//:hostcontext",
-    ] + if_cuda([
+    ] + if_cuda_or_rocm([
+        "//xla/service/gpu:gpu_compiler",
+    ]) + if_cuda([
         ":nccl_id_store_cuda",
         "@local_config_cuda//cuda:cuda_headers",
         "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
-        "//xla/service/gpu:gpu_compiler",
     ]) + if_rocm([
         ":nccl_id_store_rocm",
         "@local_config_rocm//rocm:rocm_headers",
-        "//xla/service/gpu:gpu_compiler",
     ]),
 )
 
@@ -225,7 +226,7 @@ cc_library(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_stream_executor_client",
-        "//xla/pjrt:stream_executor_unloaded_executable",
+        "//xla/pjrt:stream_executor_executable",
         "//xla/pjrt:utils",
         "//xla/service:compiler",
         "//xla/service:dump",
@@ -233,10 +234,12 @@ cc_library(
         "//xla/service:hlo_proto_cc",
         "//xla/service:hlo_proto_util",
         "//xla/service:local_service",
+        "//xla/service:local_service_utils",
         "//xla/service/gpu:executable_proto_cc",
         "//xla/service/gpu:gpu_target_config",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",
     ] + if_cuda([
         ":nccl_id_store_cuda",
@@ -257,22 +260,30 @@ cc_library(
 xla_cc_test(
     name = "se_gpu_pjrt_compiler_test",
     srcs = if_gpu_is_configured(["se_gpu_pjrt_compiler_test.cc"]),
-    tags = tf_cuda_tests_tags(),
+    tags = [
+        "config-cuda-only",
+        "gpu",
+        "no_oss",
+        "requires-gpu-nvidia",
+    ],
     deps = [
         ":se_gpu_pjrt_client",
         ":se_gpu_pjrt_compiler",
+        "//xla:test",
         "//xla/client:xla_computation",
         "//xla/mlir_hlo",
         "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_compiler",
         "//xla/service:gpu_plugin",
         "//xla/service:hlo_parser",
         "//xla/stream_executor/cuda:cublas_plugin",
         "//xla/tests:literal_test_util",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Parser",
         "@local_tsl//tsl/platform:status_matchers",
+        "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -280,12 +291,10 @@ xla_cc_test(
 xla_cc_test(
     name = "se_gpu_pjrt_compiler_aot_test",
     srcs = if_gpu_is_configured(["se_gpu_pjrt_compiler_aot_test.cc"]),
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     tags = [
         "config-cuda-only",
         "gpu",
         "no_oss",
-        "no_tap",
         "requires-gpu-nvidia",
     ],
     deps = [
@@ -303,6 +312,7 @@ xla_cc_test(
         "//xla/service:gpu_plugin",
         "//xla/service:hlo_parser",
         "//xla/service/gpu:gpu_target_config",
+        "//xla/service/gpu:nvptx_compiler_impl",
         "//xla/stream_executor/cuda:cublas_plugin",
         "//xla/tests:literal_test_util",
         "@com_google_absl//absl/memory",
@@ -318,13 +328,5 @@ xla_cc_test(
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
-    ] + if_cuda([
-        ":nccl_id_store_cuda",
-        "@local_config_cuda//cuda:cuda_headers",
-        "//xla/stream_executor/cuda:cuda_activation_header",
-        "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
-    ]) + if_rocm([
-        ":nccl_id_store_rocm",
-        "@local_config_rocm//rocm:rocm_headers",
-    ]),
+    ],
 )

@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/statusor.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace stream_executor {
 
@@ -169,7 +170,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
             std::move(allocator), std::move(host_memory_allocator),
             should_stage_host_to_device_transfers, std::move(gpu_run_options)),
         topology_(xla::StreamExecutorGpuTopologyDescription::Create(
-            xla::GpuId(), std::move(platform_name),
+            tsl::Fingerprint64(platform_name), platform_name,
             devices_.back()->device_kind(), devices_)) {}
 
   xla::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
@@ -203,9 +204,11 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
       std::unique_ptr<PjRtExecutable> executable);
 
-  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerializedExecutable(
+  // TODO(b/296466237): Unify `LoadSerializedExecutable` after fixing existing
+  // tests.
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerialized(
       absl::string_view serialized, std::optional<CompileOptions> options,
-      const LoadOptions& load_options) override;
+      const LoadOptions& load_options);
 
  private:
   xla::StreamExecutorGpuTopologyDescription topology_;
@@ -225,7 +228,8 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     std::optional<std::string> platform_name = std::nullopt,
     bool should_stage_host_to_device_transfers = true,
     PjRtClient::KeyValueGetCallback kv_get = nullptr,
-    PjRtClient::KeyValuePutCallback kv_put = nullptr);
+    PjRtClient::KeyValuePutCallback kv_put = nullptr,
+    bool enable_mock_nccl = false);
 
 }  // namespace xla
 

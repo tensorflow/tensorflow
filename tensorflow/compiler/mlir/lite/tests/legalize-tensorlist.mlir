@@ -119,3 +119,25 @@ func.func @listElementShape(%arg0: tensor<!tf_type.variant<tensor<*xi32>>>) -> t
   // CHECK: %0 = "tfl.custom"(%arg0) {custom_code = "TensorListElementShape", custom_option = #tfl<const_bytes : "0x">} : (tensor<!tf_type.variant<tensor<*xi32>>>) -> tensor<*xi32>
   func.return %0 : tensor<*xi32>
 }
+
+// -----
+
+// CHECK-LABEL: variantZeroesLikeNoLegalize
+func.func @variantZeroesLikeNoLegalize(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<!tf_type.variant<tensor<*xi64>>> {
+  %0 = "tf.TensorListReserve"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<*xi64>>>
+  %1 = "tf.ZerosLike"(%0) : (tensor<!tf_type.variant<tensor<*xi64>>>) -> tensor<!tf_type.variant<tensor<*xi64>>>
+  // CHECK-NOT: "tfl.custom"
+  // CHECK-MSG: Tried legalizing to tfl custom tensorlist ops, but not all can be supported.
+  func.return %1 : tensor<!tf_type.variant<tensor<*xi64>>>
+}
+
+// -----
+
+// CHECK-LABEL: variantAddNNoLegalize
+func.func @variantAddNNoLegalize(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<!tf_type.variant<tensor<*xi64>>> {
+  %0 = "tf.TensorListReserve"(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<!tf_type.variant<tensor<*xi64>>>
+  %1 = "tf.AddN"(%0) : (tensor<!tf_type.variant<tensor<*xi64>>>) -> tensor<!tf_type.variant<tensor<*xi64>>>
+  // CHECK-NOT: "tfl.custom"
+  // CHECK-MSG: Tried legalizing to tfl custom tensorlist ops, but not all can be supported.
+  func.return %1 : tensor<!tf_type.variant<tensor<*xi64>>>
+}

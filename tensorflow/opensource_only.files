@@ -250,7 +250,6 @@ tf_staging/third_party/gpus/cuda/build_defs.bzl.tpl:
 tf_staging/third_party/gpus/cuda/cuda_config.h.tpl:
 tf_staging/third_party/gpus/cuda/cuda_config.py.tpl:
 tf_staging/third_party/gpus/cuda_configure.bzl:
-tf_staging/third_party/gpus/find_cuda_config.py.gz.base64:
 tf_staging/third_party/gpus/find_cuda_config:.py
 tf_staging/third_party/gpus/rocm/BUILD.tpl:
 tf_staging/third_party/gpus/rocm/BUILD:

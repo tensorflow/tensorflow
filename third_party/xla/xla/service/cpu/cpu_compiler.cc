@@ -141,7 +141,6 @@ limitations under the License.
 #include "xla/service/cpu/cpu_instruction_fusion.h"
 #include "xla/service/cpu/cpu_layout_assignment.h"
 #include "xla/service/cpu/cpu_options.h"
-#include "xla/service/cpu/cpu_shape_verifier.h"
 #include "xla/service/cpu/dot_op_emitter.h"
 #include "xla/service/cpu/hlo_xla_runtime_pipeline.h"
 #include "xla/service/cpu/ir_emitter.h"
@@ -155,6 +154,7 @@ limitations under the License.
 #include "xla/service/cpu/simple_orc_jit.h"
 #include "xla/service/cpu/target_machine_features.h"
 #include "xla/service/cpu/xla_framework.h"
+#include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/dot_decomposer.h"
 #include "xla/service/dump.h"
 #include "xla/service/dynamic_dimension_inference.h"
@@ -222,7 +222,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/host/host_platform_id.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -603,7 +603,8 @@ void AddHloVerifier(HloPassPipeline* pipeline, bool allow_sparse_shapes,
     verifier_metadata =
         std::make_unique<DefaultVerifierMetadata>(std::move(opts));
   } else {
-    verifier_metadata = std::make_unique<CpuVerifierMetadata>(std::move(opts));
+    verifier_metadata =
+        std::make_unique<CpuGpuVerifierMetadata>(std::move(opts));
   }
   if (debug_only) {
     pipeline->AddInvariantCheckerDebug<HloVerifier>(

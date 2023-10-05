@@ -89,10 +89,16 @@ if _module_dir:
 setattr(_current_module, "estimator", estimator)
 
 # Lazy-load Keras v2/3.
+_tf_uses_legacy_keras = (
+    _os.environ.get("TF_USE_LEGACY_KERAS", None) in ("true", "True", "1"))
 setattr(_current_module, "keras", _KerasLazyLoader(globals()))
-for _module_dir in ("keras._tf_keras.keras", "keras.api._v2.keras"):
-  _module_dir = _module_util.get_parent_dir_for_name(_module_dir)
-  _current_module.__path__ = [_module_dir] + _current_module.__path__
+_module_dir = _module_util.get_parent_dir_for_name("keras._tf_keras.keras")
+_current_module.__path__ = [_module_dir] + _current_module.__path__
+if _tf_uses_legacy_keras:
+  _module_dir = _module_util.get_parent_dir_for_name("tf_keras.api._v2.keras")
+else:
+  _module_dir = _module_util.get_parent_dir_for_name("keras.api._v2.keras")
+_current_module.__path__ = [_module_dir] + _current_module.__path__
 
 
 # Enable TF2 behaviors
@@ -167,7 +173,7 @@ setattr(_current_module, "initializers", _initializers)
 # SavedModel registry.
 # See b/196254385 for more details.
 try:
-  if _os.environ.get("TF_USE_LEGACY_KERAS", None) in ("true", "True", "1"):
+  if _tf_uses_legacy_keras:
     importlib.import_module("tf_keras.src.optimizers")
   else:
     importlib.import_module("keras.src.optimizers")

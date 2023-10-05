@@ -79,7 +79,8 @@ class MemmappedTensorAllocator : public Allocator {
   // de-allocation.
   bool delete_on_deallocate_ = false;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MemmappedTensorAllocator);
+  MemmappedTensorAllocator(const MemmappedTensorAllocator&) = delete;
+  void operator=(const MemmappedTensorAllocator&) = delete;
 };
 }  // namespace
 

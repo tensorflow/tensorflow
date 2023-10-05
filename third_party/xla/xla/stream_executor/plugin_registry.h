@@ -98,7 +98,8 @@ class PluginRegistry {
   // The set of registered factories, keyed by platform ID.
   std::map<Platform::Id, Factories> factories_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(PluginRegistry);
+  PluginRegistry(const PluginRegistry&) = delete;
+  void operator=(const PluginRegistry&) = delete;
 };
 
 // Explicit specializations are defined in plugin_registry.cc.

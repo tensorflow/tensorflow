@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA
@@ -66,6 +68,37 @@ StatusOr<std::vector<int64_t>> GetNonContractingDims(
                    non_contracting_dims.size() ==
                shape.rank());
   return non_contracting_dims;
+}
+
+const tsl::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
+    const HloInstruction& dot, const int operand_number) {
+  const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
+  if (operand_number == 0) {
+    return dimension_numbers.lhs_batch_dimensions();
+  }
+  return dimension_numbers.rhs_batch_dimensions();
+}
+
+int64_t ContractingDimensionIndex(const HloInstruction& dot,
+                                  const int operand_number) {
+  const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
+  if (operand_number == 0) {
+    CHECK_EQ(dimension_numbers.lhs_contracting_dimensions().size(), 1);
+    return dimension_numbers.lhs_contracting_dimensions(0);
+  }
+  CHECK_EQ(dimension_numbers.rhs_contracting_dimensions().size(), 1);
+  return dimension_numbers.rhs_contracting_dimensions(0);
+}
+
+int64_t NonContractingDimensionIndex(const HloInstruction& dot,
+                                     const int operand_number) {
+  StatusOr<std::vector<int64_t>> non_contracting_dims =
+      GetNonContractingDims(dot.operand(operand_number)->shape(),
+                            BatchDimensionsForOperand(dot, operand_number),
+                            {ContractingDimensionIndex(dot, operand_number)});
+  TF_CHECK_OK(non_contracting_dims.status());
+  CHECK_EQ(non_contracting_dims->size(), 1);
+  return non_contracting_dims->front();
 }
 
 StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
@@ -875,7 +908,7 @@ StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
   rhs_layout.batch_size = batch_size;
 
   bool must_swap_operands =
-      MakeOutputColumnMajor(lhs_layout, rhs_layout, c_layout, output_layout);
+      MakeOutputColumnMajor(lhs_layout, rhs_layout, output_layout, c_layout);
 
   // Do not transopse either input. Note the cuBLASLt documentation somewhat
   // incorrectly claims "A must be transposed and B non-transposed" when A and B
@@ -884,8 +917,8 @@ StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
   // *not* be transposed, and if B is row-major, B must be transposed. We never
   // transpose A or B, and expect the caller to ensure A is row-major and B is
   // column when A and B are FP8.
-  const se::blas::Transpose trans_a = se::blas::Transpose::kNoTranspose;
-  const se::blas::Transpose trans_b = se::blas::Transpose::kNoTranspose;
+  se::blas::Transpose trans_a = se::blas::Transpose::kNoTranspose;
+  se::blas::Transpose trans_b = se::blas::Transpose::kNoTranspose;
   if (primitive_util::IsF8Type(lhs_layout.dtype) &&
       lhs_layout.order == MatrixLayout::Order::kColumnMajor) {
     return InternalError("The F8 LHS must be column-major");
@@ -901,6 +934,17 @@ StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
       se::blas::ComputationType computation_type,
       GetBlasComputationType(lhs_layout.dtype, output_layout.dtype,
                              config.compute_precision));
+
+#if TENSORFLOW_USE_ROCM
+  if (lhs_layout.order == MatrixLayout::Order::kRowMajor) {
+    trans_a = se::blas::Transpose::kTranspose;
+    lhs_layout.Transpose();
+  }
+  if (rhs_layout.order == MatrixLayout::Order::kRowMajor) {
+    trans_b = se::blas::Transpose::kTranspose;
+    rhs_layout.Transpose();
+  }
+#endif
 
   TF_ASSIGN_OR_RETURN(
       se::gpu::BlasLt::MatmulDesc op_desc,

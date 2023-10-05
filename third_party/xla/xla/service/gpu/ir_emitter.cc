@@ -39,8 +39,6 @@ limitations under the License.
 
 namespace xla {
 
-using llvm_ir::SetToFirstInsertPoint;
-
 namespace gpu {
 
 IrEmitter::IrEmitter(IrEmitterContext* ir_emitter_context, bool is_nested)

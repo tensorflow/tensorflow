@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/statusor.h"
 #if GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_driver.h"
@@ -56,9 +56,9 @@ tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int device_ordinal,
 //
 // 'options' is used to query for the CUDA location in case it is
 // customized in a passed flag, and for controlling ptxas optimizations.
-tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
-                                                  const char* ptx_contents,
-                                                  GpuAsmOpts options);
+tsl::StatusOr<std::vector<uint8_t>> CompileGpuAsm(
+    int cc_major, int cc_minor, const char* ptx_contents, GpuAsmOpts options,
+    bool cancel_if_reg_spill = false);
 
 // Same as CompileGpuAsm, but caches the result, and returns unowned view of
 // the compiled binary.

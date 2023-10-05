@@ -274,7 +274,8 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
   OpKernelContext* context_;
   Eigen::GpuDevice device_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(EigenGpuStreamDevice);
+  EigenGpuStreamDevice(const EigenGpuStreamDevice&) = delete;
+  void operator=(const EigenGpuStreamDevice&) = delete;
 };
 
 // This factory helps to ensure that different GPU device objects that refer to
@@ -433,7 +434,8 @@ class BaseGPUDevice::StreamGroupFactory {
   // StreamGroupFactory cannot be created directly; Call
   // StreamGroupFactory::Global() to get the global instance.
   StreamGroupFactory() = default;
-  TF_DISALLOW_COPY_AND_ASSIGN(StreamGroupFactory);
+  StreamGroupFactory(const StreamGroupFactory&) = delete;
+  void operator=(const StreamGroupFactory&) = delete;
 };
 
 BaseGPUDevice::BaseGPUDevice(const SessionOptions& options, const string& name,
@@ -1831,9 +1833,14 @@ Status BaseGPUDeviceFactory::CreateDevices(
     // Creates PJRT GPU client and places it into a TF global resource manager.
     auto gpu_run_options =
         std::make_unique<xla::gpu::GpuExecutableRunOptions>();
+#if TENSORFLOW_USE_ROCM
+    auto platform_name = xla::RocmName();
+#else   // TENSORFLOW_USE_ROCM
+    auto platform_name = xla::CudaName();
+#endif  // TENSORFLOW_USE_ROCM
     std::unique_ptr<xla::PjRtClient> pjrt_client =
         std::make_unique<xla::StreamExecutorGpuClient>(
-            xla::GpuName(), xla_client, std::move(pjrt_devices),
+            platform_name, xla_client, std::move(pjrt_devices),
             /*process_index=*/numa_node,
             /*allocator=*/std::move(allocator_adapter),
             /*host_memory_allocator=*/std::move(pjrt_gpu_host_allocator),

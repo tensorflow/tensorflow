@@ -201,7 +201,8 @@ class ROCMBlas : public blas::BlasSupport {
   rocm::BlasLt blas_lt_;
 #endif
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ROCMBlas);
+  ROCMBlas(const ROCMBlas &) = delete;
+  void operator=(const ROCMBlas &) = delete;
 };
 
 }  // namespace gpu

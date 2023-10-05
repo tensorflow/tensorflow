@@ -94,8 +94,13 @@ cc_library(
         ":gpu_stream",
         ":gpu_types_header",
         "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor:stream_executor_internal",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
@@ -200,6 +205,7 @@ cc_library(
     deps = [
         ":gpu_driver_header",
         "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor:stream_executor_internal",
         "//xla/stream_executor/platform",
         "@local_tsl//tsl/platform:logging",
     ],
@@ -212,6 +218,7 @@ cc_library(
     deps = [
         ":gpu_types_header",
         "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor:stream_executor_internal",
         "@com_google_absl//absl/base:core_headers",
     ],
 )
@@ -225,6 +232,7 @@ cc_library(
         ":gpu_executor_header",
         ":gpu_types_header",
         "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor:stream_executor_internal",
         "@local_tsl//tsl/platform:status",
     ],
 )
@@ -237,6 +245,7 @@ cc_library(
         ":gpu_driver_header",
         ":gpu_executor_header",
         "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor:stream_executor_internal",
     ],
 )
 
@@ -250,6 +259,7 @@ cc_library(
         ":gpu_executor_header",
         ":gpu_stream",
         "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor:stream_executor_internal",
         "@local_tsl//tsl/platform:status",
     ] + if_cuda_is_configured([
         "//xla/stream_executor/cuda:cuda_driver",
@@ -335,6 +345,7 @@ cc_library(
         "@local_tsl//tsl/platform:cuda_libdevice_path",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor/platform",
+        "//xla:util",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -373,7 +384,6 @@ cc_library(
         "@local_tsl//tsl/framework:allocator",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:device_memory_allocator",
-        "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream_executor_headers",
         "@local_tsl//tsl/platform:status",
     ]),
@@ -403,7 +413,7 @@ tsl_gpu_library(
     hdrs = ["gpu_cudamallocasync_allocator.h"],
     cuda_deps = [
         "//xla/stream_executor/cuda:cuda_activation",
-        "//xla/stream_executor/cuda:cuda_gpu_executor",
+        "//xla/stream_executor/cuda:cuda_executor",
     ],
     visibility = ["//visibility:public"],
     deps = [

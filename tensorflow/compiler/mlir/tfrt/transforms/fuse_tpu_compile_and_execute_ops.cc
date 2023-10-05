@@ -63,6 +63,18 @@ void GroupCompileOpAndExecuteOp(mlir::func::FuncOp func,
   }
 }
 
+mlir::Value FindFullShapedOperand(mlir::TF::SplitOp split_op) {
+  auto operand = split_op.getOperand(1);
+  auto defining_op = operand.getDefiningOp();
+  if (!defining_op) {
+    return operand;
+  }
+  if (auto parent_split_op = llvm::dyn_cast<mlir::TF::SplitOp>(defining_op))
+    return FindFullShapedOperand(parent_split_op);
+
+  return operand;
+}
+
 bool MaybeFindUsedExecuteOp(
     const llvm::SmallVector<mlir::TF::TPUExecuteOp, 4> &exec_op_in_group,
     mlir::TF::TPUExecuteOp &used_exec_op) {
@@ -93,6 +105,7 @@ bool MaybeFindUsedExecuteOp(
 void FuseCompileAndExecuteOps(
     mlir::TF::_TPUCompileMlirOp &compile_op,
     const llvm::SmallVector<mlir::TF::TPUExecuteOp, 4> &exec_op_in_group,
+    mlir::TF::TPUExecuteOp &used_exec_op,
     llvm::SmallDenseMap<
         mlir::TF::TPUExecuteOp,
         llvm::SmallDenseMap<int, mlir::TF::SetStaticDimensionBoundsOp>>
@@ -102,21 +115,17 @@ void FuseCompileAndExecuteOps(
   llvm::SmallVector<mlir::Type, 4> output_types;
   output_types.push_back(mlir::RankedTensorType::get(
       {3}, builder.getType<mlir::TF::StringType>()));
-  auto first_exec_op = exec_op_in_group[0];
-  output_types.insert(output_types.end(),
-                      first_exec_op.getResultTypes().begin(),
-                      first_exec_op.getResultTypes().end());
+  output_types.insert(output_types.end(), used_exec_op.getResultTypes().begin(),
+                      used_exec_op.getResultTypes().end());
 
   llvm::SmallVector<int> static_shaped_operand_indices_attr;
   llvm::SmallVector<mlir::Value> static_shape_tensors;
   llvm::SmallVector<mlir::Value> exec_op_args;
-  exec_op_args.resize(first_exec_op.getArgs().size() * exec_op_in_group.size());
+  exec_op_args.resize(used_exec_op.getArgs().size());
 
-  // SetStaticDimensionBoundsOp not supported for SPMD, so only examine the
-  // first execute op.
   auto &static_shaped_operands =
-      exec_to_static_shaped_operands_map[first_exec_op];
-  for (int i = 0; i < first_exec_op.getArgs().size(); ++i) {
+      exec_to_static_shaped_operands_map[used_exec_op];
+  for (int i = 0; i < used_exec_op.getArgs().size(); ++i) {
     auto iter = static_shaped_operands.find(i);
     if (iter != static_shaped_operands.end()) {
       static_shaped_operand_indices_attr.push_back(iter->first);
@@ -128,27 +137,22 @@ void FuseCompileAndExecuteOps(
           mlir::ValueRange({iter->second.getInput()}));
       iter->second->erase();
     } else {
-      exec_op_args[i] = first_exec_op->getOperand(i);
-    }
-  }
-  int num_operands_per_execute = first_exec_op.getArgs().size();
-  for (int i = 1; i < exec_op_in_group.size(); ++i) {
-    for (int j = 0; j < num_operands_per_execute; ++j) {
-      exec_op_args[i * num_operands_per_execute + j] =
-          exec_op_in_group[i]->getOperand(j);
+      auto split_op = ::llvm::dyn_cast_or_null<mlir::TF::SplitOp>(
+          used_exec_op->getOperand(i).getDefiningOp());
+      exec_op_args[i] = split_op ? FindFullShapedOperand(split_op)
+                                 : used_exec_op->getOperand(i);
     }
   }
 
   auto producer_name =
-      first_exec_op->getAttrOfType<mlir::StringAttr>("_producer_name");
+      used_exec_op->getAttrOfType<mlir::StringAttr>("_producer_name");
   if (!producer_name) producer_name = mlir::StringAttr::get(context, "default");
   auto compile_and_execute_op =
       builder.create<mlir::TF::TPUCompileMlirAndExecuteOp>(
-          first_exec_op.getLoc(), output_types, exec_op_args,
+          used_exec_op.getLoc(), output_types, exec_op_args,
           static_shape_tensors,
           builder.getI32ArrayAttr(static_shaped_operand_indices_attr),
-          compile_op.getMlirModule(), compile_op.getMetadata(),
-          num_operands_per_execute, producer_name);
+          compile_op.getMlirModule(), compile_op.getMetadata(), producer_name);
 
   for (auto exec_op : exec_op_in_group) {
     exec_op.replaceAllUsesWith(compile_and_execute_op.getResults());
@@ -237,8 +241,13 @@ class FuseTpuCompileAndExecutePass
       auto compile_op = kv.first;
       const llvm::SmallVector<mlir::TF::TPUExecuteOp, 4> &exec_op_in_group =
           kv.second;
+      mlir::TF::TPUExecuteOp used_exec_op;
+      if (!MaybeFindUsedExecuteOp(exec_op_in_group, used_exec_op)) {
+        signalPassFailure();
+        return;
+      }
 
-      FuseCompileAndExecuteOps(compile_op, exec_op_in_group,
+      FuseCompileAndExecuteOps(compile_op, exec_op_in_group, used_exec_op,
                                exec_to_static_shaped_operands_map, builder,
                                &getContext());
     }

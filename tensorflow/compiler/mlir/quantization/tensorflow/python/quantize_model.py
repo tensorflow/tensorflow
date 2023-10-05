@@ -936,15 +936,23 @@ def _static_range_quantize(
   )
   logging.info('QuantizationOptions: \n%s', quantization_options)
 
-  is_qat_saved_model = _is_qat_saved_model(saved_model_path)
+  is_qat_saved_model_or_method_no_quantize = _is_qat_saved_model(
+      saved_model_path
+  ) or (
+      quantization_options.quantization_method.preset_method
+      == _QuantizationMethod.METHOD_NO_QUANTIZE
+  )
   signature_def_map = save_model.get_signatures_from_saved_model(
       saved_model_path,
       quantization_options.signature_keys,
       set(quantization_options.tags),
   )
 
-  # Checks if the model is from QAT
-  if representative_dataset is None and not is_qat_saved_model:
+  # Checks if the model is from QAT or method is METHOD_NO_QUANTIZE.
+  if (
+      representative_dataset is None
+      and not is_qat_saved_model_or_method_no_quantize
+  ):
     raise ValueError(
         'When `representative_dataset` is not provided, the model should be '
         'trained with quantization-aware training (QAT).'
@@ -956,7 +964,7 @@ def _static_range_quantize(
         'The flag is ignored.'
     )
 
-  if is_qat_saved_model:
+  if is_qat_saved_model_or_method_no_quantize:
     _run_static_range_qat(
         saved_model_path,
         output_directory,
@@ -1148,19 +1156,13 @@ def _verify_output_dir(output_dir: Optional[str], overwrite: bool) -> None:
 
 
 def _populate_quantization_component_spec(
-    quantization_options: _QuantizationOptions,
+    quant_method: _QuantizationMethod,
 ) -> None:
   """Populates default values for QuantizationComponentSpec.
 
   Args:
-    quantization_options: An instance of QuantizationOptions with a field
-      specifying QuantizationComponentSpec.
+    quant_method: The quantization method to be updated.
   """
-  quant_method: _QuantizationMethod = quantization_options.quantization_method
-
-  if quantization_options.unit_wise_quantization_specs:
-    raise ValueError('Selective quantization is not supported yet.')
-
   # Make sure creating one spec per component.
   updated_component_spec = dict()
 
@@ -1187,7 +1189,10 @@ def _populate_quantization_component_spec(
             tensor_type=_TensorType.TENSORTYPE_INT_32,
         )
     )
-  else:
+  elif (
+      quant_method.preset_method
+      == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
+  ):
     updated_component_spec[_QuantizationComponent.COMPONENT_WEIGHT] = (
         _QuantizationComponentSpec(
             quantization_component=_QuantizationComponent.COMPONENT_WEIGHT,
@@ -1199,13 +1204,10 @@ def _populate_quantization_component_spec(
   if quant_method.quantization_component_specs:
     # Check if the component spec is supported configuration in TF-Quant.
     for component_spec in quant_method.quantization_component_specs:
-      if (
-          component_spec.quantization_component
-          == _QuantizationComponent.COMPONENT_WEIGHT
-      ) or (
-          component_spec.quantization_component
-          == _QuantizationComponent.COMPONENT_ACTIVATION
-      ):
+      if component_spec.quantization_component in [
+          _QuantizationComponent.COMPONENT_WEIGHT,
+          _QuantizationComponent.COMPONENT_ACTIVATION,
+      ]:
         if component_spec.tensor_type != _TensorType.TENSORTYPE_INT_8:
           raise ValueError(
               'Only int8 precision is supported for input operands.'
@@ -1234,6 +1236,43 @@ def _populate_quantization_component_spec(
       == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
   ) and len(quant_method.quantization_component_specs) != 1:
     raise ValueError('At least one component spec needs to be specified.')
+
+
+def _populate_unitwise_quantization_specs(
+    quantization_options: _QuantizationOptions,
+) -> None:
+  """Verifies and pupulates unitwise quantization specs."""
+  if not quantization_options.unit_wise_quantization_specs:
+    return
+
+  sorted_top_level_component_specs = sorted(
+      quantization_options.quantization_method.quantization_component_specs,
+      key=lambda x: x.quantization_component,
+  )
+
+  for unitwise_spec in quantization_options.unit_wise_quantization_specs:
+    if not unitwise_spec.unit:
+      raise ValueError(
+          'UnitWiseQuantizationSpec must contain at least one unit.'
+      )
+
+    for unit in unitwise_spec.unit:
+      if not unit.op_type and not unit.node_name:
+        raise ValueError('Either `op_type` or `node_name` must be specified.')
+
+    _populate_quantization_component_spec(unitwise_spec.quantization_method)
+
+    component_specs = (
+        unitwise_spec.quantization_method.quantization_component_specs
+    )
+    if component_specs and (
+        sorted_top_level_component_specs
+        != sorted(component_specs, key=lambda x: x.quantization_component)
+    ):
+      raise ValueError(
+          'Currently unit-wise quantization spec only supports NO_QUANTIZE and'
+          ' same quantization method as the top-level `quantization_method`'
+      )
 
 
 def _populate_calibration_options(
@@ -1316,6 +1355,11 @@ def _populate_quantization_options_default_values(
 
   if not quantization_options.HasField('freeze_all_variables'):
     quantization_options.freeze_all_variables = True
+
+  if quantization_options.enable_legacy_weight_only:
+    raise ValueError(
+        'Legacy weight-only is deprecated. Use weight-only quantization method.'
+    )
 
   # Check default quantization option values for weight-only quantization.
   # TODO(b/242805842): Find good minimum_elements_for_weights number for server.
@@ -1405,8 +1449,12 @@ def _populate_quantization_options_default_values(
           ' unquantized_dump_model_path was not specified.'
       )
 
-  # Check and populate quantization component spec
-  _populate_quantization_component_spec(quantization_options)
+  # Check and populate quantization component spec.
+  _populate_quantization_component_spec(
+      quantization_options.quantization_method
+  )
+  # Verify and populate unit-wise quantization specs.
+  _populate_unitwise_quantization_specs(quantization_options)
 
   if (
       quantization_options.quantization_method.preset_method
@@ -1531,17 +1579,17 @@ def quantize(
     ).load()
 
   method: _QuantizationMethod = quantization_options.quantization_method
-  if method.preset_method == _PresetMethod.METHOD_STATIC_RANGE_INT8:
+  if (
+      method.preset_method == _PresetMethod.METHOD_STATIC_RANGE_INT8
+      or method.preset_method == _PresetMethod.METHOD_NO_QUANTIZE
+  ):
     return _static_range_quantize(
         saved_model_path,
         output_directory,
         quantization_options,
         representative_dataset,
     )
-  elif (method.preset_method == _PresetMethod.METHOD_DYNAMIC_RANGE_INT8) or (
-      method.preset_method == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
-      and quantization_options.enable_legacy_weight_only
-  ):
+  elif method.preset_method == _PresetMethod.METHOD_DYNAMIC_RANGE_INT8:
     return _dynamic_range_quantize(
         saved_model_path,
         output_directory,
@@ -1549,7 +1597,6 @@ def quantize(
     )
   elif (
       method.preset_method == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
-      and not quantization_options.enable_legacy_weight_only
   ):
     return _weight_only_quantize(
         saved_model_path,

@@ -23,6 +23,7 @@ limitations under the License.
 #include <array>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -31,6 +32,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/math/math_util.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -612,10 +615,10 @@ T NanWithSignAndPayload(bool sign, uint64_t nan_payload) {
   return absl::bit_cast<T>(rep);
 }
 
-// Utility for performing a static_cast<> on a std::unique_ptr<>.
+// Utility for performing a down_cast<> on a std::unique_ptr<>.
 template <typename Derived, typename Base>
-std::unique_ptr<Derived> unique_ptr_static_cast(std::unique_ptr<Base> ptr) {
-  return std::unique_ptr<Derived>(static_cast<Derived*>(ptr.release()));
+std::unique_ptr<Derived> unique_ptr_down_cast(std::unique_ptr<Base> ptr) {
+  return absl::WrapUnique(tensorflow::down_cast<Derived*>(ptr.release()));
 }
 
 int64_t Product(absl::Span<const int64_t> xs);
@@ -712,6 +715,12 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
 // Note: The resulting representation can still only represent 8-bit exponent
 // range that is available in F32s (out of a total of 11 exponent bits in F64s).
 std::pair<float, float> SplitF64ToF32(double x);
+
+// Takes a sequence of unpacked int4 values, such that every byte stores one
+// int4 value, and packs them so every byte stores two int4 values. 'input'
+// should have num_elements bytes; 'output' should have (num_elements+1)/2
+// bytes.
+void PackInt4(absl::Span<const char> input, absl::Span<char> output);
 
 class HloInstruction;
 class HloModule;

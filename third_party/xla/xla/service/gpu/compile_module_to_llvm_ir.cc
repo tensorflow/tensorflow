@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/service/gpu/conditional_thunk.h"
 #include "xla/service/gpu/for_thunk.h"
 #include "xla/service/gpu/gpu_constants.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_unnested.h"
@@ -70,12 +69,12 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -107,12 +106,11 @@ static bool HasFp8(const HloModule& hlo_module) {
 }
 
 // Lowers MLIR module to the XLA Gpu runtime custom calls.
-static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
-                                   llvm::StringRef entry_function_name,
-                                   llvm::ArrayRef<int64_t> buffer_sizes,
-                                   ThunkSequence* thunk_sequence,
-                                   const DebugOptions& debug_options,
-                                   GpuVersion compute_capability) {
+static Status LowerToXlaGpuRuntime(
+    mlir::ModuleOp module, llvm::StringRef entry_function_name,
+    llvm::ArrayRef<int64_t> buffer_sizes, ThunkSequence* thunk_sequence,
+    const DebugOptions& debug_options,
+    se::GpuComputeCapability compute_capability) {
   if (!module) {
     return InternalError("No MLIR module to lower.");
   }
@@ -157,19 +155,20 @@ void ForAllThunks(const std::function<void(Thunk*)>& fn,
                   ThunkSequence* thunk_sequence) {
   for (std::unique_ptr<Thunk>& thunk : *thunk_sequence) {
     if (thunk->kind() == Thunk::kConditional) {
-      auto* cond_thunk = static_cast<ConditionalThunk*>(thunk.get());
+      auto* cond_thunk = tensorflow::down_cast<ConditionalThunk*>(thunk.get());
       for (const std::unique_ptr<SequentialThunk>& branch_thunks :
            cond_thunk->branch_thunks()) {
         ForAllThunks(fn, &branch_thunks->thunks());
       }
     } else if (thunk->kind() == Thunk::kFor) {
-      auto* for_thunk = static_cast<ForThunk*>(thunk.get());
+      auto* for_thunk = tensorflow::down_cast<ForThunk*>(thunk.get());
       ForAllThunks(fn, &for_thunk->body_thunk_sequence()->thunks());
     } else if (thunk->kind() == Thunk::kSequential) {
-      auto* sequential_thunk = static_cast<SequentialThunk*>(thunk.get());
+      auto* sequential_thunk =
+          tensorflow::down_cast<SequentialThunk*>(thunk.get());
       ForAllThunks(fn, &sequential_thunk->thunks());
     } else if (thunk->kind() == Thunk::kWhile) {
-      auto* while_thunk = static_cast<WhileThunk*>(thunk.get());
+      auto* while_thunk = tensorflow::down_cast<WhileThunk*>(thunk.get());
       ForAllThunks(fn, &while_thunk->condition_thunk_sequence()->thunks());
       ForAllThunks(fn, &while_thunk->body_thunk_sequence()->thunks());
     } else {
@@ -193,7 +192,8 @@ StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
     mlir::ModuleOp mlir_module, llvm::StringRef entry_function_name,
     llvm::ArrayRef<int64_t> buffer_sizes, const HloModuleConfig& module_config,
     std::unique_ptr<ThunkSequence> thunk_sequence,
-    const HloModule* hlo_module_for_dump, GpuVersion compute_capability) {
+    const HloModule* hlo_module_for_dump,
+    se::GpuComputeCapability compute_capability) {
   // Forward collective (NCCL) attributes for use by the lowering pipeline.
   ForwardCollectiveAttrs(mlir_module, entry_function_name, module_config);
 
@@ -246,7 +246,7 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, const se::Platform::Id platform_id,
-    GpuDeviceInfo gpu_device_info,
+    const se::DeviceDescription& gpu_device_info,
     const BufferValue::SizeFunction& buffer_size_bytes_function) {
   CompileModuleResults results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
@@ -337,7 +337,7 @@ Status CompileModuleToLlvmIrImpl(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, se::Platform::Id platform_id,
-    GpuDeviceInfo gpu_device_info,
+    const se::DeviceDescription& gpu_device_info,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
     const BufferValue::SizeFunction& buffer_size_bytes_function,
     CompileModuleResults* results, se::StreamExecutor* stream_exec) {
@@ -369,8 +369,9 @@ Status CompileModuleToLlvmIrImpl(
   };
   DumpHloModuleIfEnabled(
       *hlo_module, *results->buffer_assignment,
-      absl::StrCat(std::visit(GetCcStr(), gpu_device_info.compute_capability),
-                   "_gpu_", kAfterOptimizationsDumpName));
+      absl::StrCat(
+          std::visit(GetCcStr(), gpu_device_info.gpu_compute_capability()),
+          "_gpu_", kAfterOptimizationsDumpName));
 
   VLOG(1) << "After optimization module fingerprint for " << hlo_module->name()
           << ": " << hlo_module->GetFingerprint128();
@@ -456,7 +457,7 @@ Status CompileModuleToLlvmIrImpl(
         LowerToJitRt(*mlir_module, entry_function.getName(), buffer_sizes,
                      hlo_module->config(), ir_emitter->ConsumeThunkSequence(),
                      /*hlo_module_for_dump=*/hlo_module,
-                     gpu_device_info.compute_capability));
+                     gpu_device_info.gpu_compute_capability()));
     return OkStatus();
   }
 

@@ -115,6 +115,7 @@ limitations under the License.
 #define TF_PREDICT_TRUE(x) (x)
 #endif
 
+// DEPRECATED: directly use the macro implementation instead.
 // A macro to disallow the copy constructor and operator= functions
 // This is usually placed in the private: declarations for a class.
 #define TF_DISALLOW_COPY_AND_ASSIGN(TypeName) \

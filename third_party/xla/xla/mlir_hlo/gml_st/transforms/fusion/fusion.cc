@@ -621,7 +621,7 @@ FailureOr<scf::SCFTilingResult> tileUsingSCFForOpAndFuseGreedily(
 
   // If tiling created an `scf.for` loop nest, we fuse.
   if (!tilingResult->loops.empty()) {
-    scf::ForOp innerLoop = tilingResult->loops.back();
+    scf::ForOp innerLoop = cast<scf::ForOp>(tilingResult->loops.back());
     fuseGreedily(rewriter, innerLoop.getBody(), fuseFilterFn);
   }
   return tilingResult;

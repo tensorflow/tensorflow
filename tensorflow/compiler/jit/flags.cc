@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_graph.h"
 #include "xla/parse_flags_from_env.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/tpu/kernels/sparse_core_xla_flags_defaults.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
@@ -35,6 +36,7 @@ namespace {
 BuildXlaOpsPassFlags* build_ops_flags;
 MarkForCompilationPassFlags* mark_for_compilation_flags;
 XlaDeviceFlags* device_flags;
+XlaSparseCoreFlags* sparse_core_flags;
 XlaOpsCommonFlags* ops_flags;
 XlaCallModuleFlags* call_module_flags;
 MlirCommonFlags* mlir_flags;
@@ -172,7 +174,23 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
       Flag("tf_xla_persistent_cache_prefix",
            &mark_for_compilation_flags->tf_xla_persistent_cache_prefix,
            "Specifies the persistance cache prefix. Default is "
-           "\"xla_compile_cache\"")};
+           "\"xla_compile_cache\""),
+      Flag("tf_xla_sparse_core_disable_table_stacking",
+           &sparse_core_flags->tf_xla_sparse_core_disable_table_stacking,
+           "Disable table stacking for all the tables passed to the SparseCore"
+           "mid level API."),
+      Flag("tf_xla_sparse_core_minibatch_max_division_level",
+           &sparse_core_flags->tf_xla_sparse_core_minibatch_max_division_level,
+           "Max level of division to split input data into minibatches."),
+      Flag("tf_xla_sparse_core_stacking_mem_limit_bytes",
+           &sparse_core_flags->tf_xla_sparse_core_stacking_mem_limit_bytes,
+           "If non-zero, limits the size of the activations for a given table"
+           "to be below these many bytes."),
+      Flag("tf_xla_sparse_core_stacking_table_shard_limit_bytes",
+           &sparse_core_flags
+                ->tf_xla_sparse_core_stacking_table_shard_limit_bytes,
+           "If non-zero, limits the size of any table shard to be below these"
+           "many bytes.")};
   flag_list->insert(flag_list->end(), new_flags.begin(), new_flags.end());
 }
 
@@ -231,6 +249,16 @@ void AllocateAndParseFlags() {
   device_flags = new XlaDeviceFlags;
   device_flags->tf_xla_compile_on_demand = false;
   device_flags->tf_xla_enable_xla_devices = false;
+
+  sparse_core_flags = new XlaSparseCoreFlags;
+  sparse_core_flags->tf_xla_sparse_core_minibatch_max_division_level =
+      kDefaultSparseCoreMinibatchMaxDivisionLevel;
+  sparse_core_flags->tf_xla_sparse_core_disable_table_stacking =
+      kDefaultDisableTableStacking;
+  sparse_core_flags->tf_xla_sparse_core_stacking_mem_limit_bytes =
+      kDefaultXlaSparseCoreStackingMemLimit;
+  sparse_core_flags->tf_xla_sparse_core_stacking_table_shard_limit_bytes =
+      kDefaultXlaSparseCoreStackingTableShardLimit;
 
   ops_flags = new XlaOpsCommonFlags;
   ops_flags->tf_xla_always_defer_compilation = false;
@@ -421,6 +449,11 @@ BuildXlaOpsPassFlags* GetBuildXlaOpsPassFlags() {
 MarkForCompilationPassFlags* GetMarkForCompilationPassFlags() {
   absl::call_once(flags_init, &AllocateAndParseFlags);
   return mark_for_compilation_flags;
+}
+
+XlaSparseCoreFlags* GetXlaSparseCoreFlags() {
+  absl::call_once(flags_init, &AllocateAndParseFlags);
+  return sparse_core_flags;
 }
 
 XlaDeviceFlags* GetXlaDeviceFlags() {

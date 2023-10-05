@@ -109,5 +109,34 @@ TEST_F(PriorityFusionTest, FusionFusionWithDuplication) {
                                         m::Fusion(m::Parameter(0)))));
 }
 
+TEST_F(PriorityFusionTest, FuseWideningConvertIntoConsumers) {
+  // Because of the bitcast consumer, the convert is currently fused only with
+  // the log, resulting in three fusions:
+  //   1. log + convert
+  //   2. multiply
+  //   3. bitcast
+  // This is a bug.
+  absl::string_view kHlo = R"(
+    HloModule test_module
+
+    ENTRY main {
+      p = f16[512]{0} parameter(0)
+      l = f16[512]{0} log(p)
+      c = f32[512]{0} convert(l)
+      s = f32[512]{0} multiply(c, c)
+      bc = s32[512]{0} bitcast(c)
+      ROOT t = (f32[512], s32[512]) tuple(s, bc)
+    })";
+
+  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
+CHECK:      ENTRY
+CHECK-NEXT: %[[PARAM:.*]] = f16[512]{0} parameter(0)
+CHECK-NEXT: %[[FUSION:.*]] = f32[512]{0} fusion(%[[PARAM]])
+CHECK-NEXT: %[[MUL:.*]] = f32[512]{0} multiply(%[[FUSION]], %[[FUSION]])
+CHECK-NEXT: %[[BITCAST:.*]] = s32[512]{0} bitcast(%[[FUSION]])
+CHECK-NEXT: ROOT %{{.*}} = (f32[512]{0}, s32[512]{0}) tuple(%[[MUL]], %[[BITCAST]])
+  )");
+}
+
 }  // namespace gpu
 }  // namespace xla

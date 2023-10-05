@@ -767,7 +767,8 @@ class CudnnSupport : public dnn::DnnSupport {
       ScratchAllocator* scratch_allocator,
       DeviceMemory<uint8_t>* scratch_memory, int* ctc_loss_algo_id) override;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnSupport);
+  CudnnSupport(const CudnnSupport&) = delete;
+  void operator=(const CudnnSupport&) = delete;
 };
 
 }  // namespace gpu

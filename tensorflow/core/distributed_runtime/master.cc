@@ -356,7 +356,8 @@ class DeviceFinder {
     return false;
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DeviceFinder);
+  DeviceFinder(const DeviceFinder&) = delete;
+  void operator=(const DeviceFinder&) = delete;
 };
 
 void Master::CreateSession(const CreateSessionRequest* req,

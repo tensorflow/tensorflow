@@ -229,6 +229,11 @@ absl::Span<const int64_t> GetDimensions(const PJRT_Api* api,
 PJRT_Buffer_MemoryLayout GetMemoryLayout(const PJRT_Api* api,
                                          PJRT_Buffer* buffer);
 
+xla::StatusOr<xla::Shape> BuildXlaShapeFromC(PJRT_Buffer_Type element_type,
+                                             const int64_t* dims,
+                                             size_t num_dims,
+                                             PJRT_Buffer_MemoryLayout* layout);
+
 }  // namespace pjrt
 
 #endif  // XLA_PJRT_C_PJRT_C_API_HELPERS_H_

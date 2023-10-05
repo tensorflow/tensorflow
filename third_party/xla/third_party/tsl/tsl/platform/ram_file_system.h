@@ -97,7 +97,8 @@ class RamRandomAccessFile : public RandomAccessFile, public WritableFile {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RamRandomAccessFile);
+  RamRandomAccessFile(const RamRandomAccessFile&) = delete;
+  void operator=(const RamRandomAccessFile&) = delete;
   std::string name_;
   std::shared_ptr<std::string> data_;
 };

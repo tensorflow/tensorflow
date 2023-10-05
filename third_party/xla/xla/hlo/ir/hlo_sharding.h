@@ -211,15 +211,18 @@ class HloSharding {
       return shard_group_.shard_group_id != -1 &&
              (shard_group_.shard_like || shard_group_.shard_as);
     }
-    return absl::c_all_of(
-        tuple_elements_, [](const HloSharding& s) { return s.IsShardGroup(); });
+    return !tuple_elements_.empty() &&
+           absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
+             return s.IsShardGroup();
+           });
   }
 
   bool IsShardAs() const {
     if (!IsTuple()) {
       return shard_group_.shard_group_id != -1 && shard_group_.shard_as;
     }
-    return absl::c_all_of(tuple_elements_,
+    return !tuple_elements_.empty() &&
+           absl::c_all_of(tuple_elements_,
                           [](const HloSharding& s) { return s.IsShardAs(); });
   }
 
@@ -227,7 +230,8 @@ class HloSharding {
     if (!IsTuple()) {
       return shard_group_.shard_group_id != -1 && shard_group_.shard_like;
     }
-    return absl::c_all_of(tuple_elements_,
+    return !tuple_elements_.empty() &&
+           absl::c_all_of(tuple_elements_,
                           [](const HloSharding& s) { return s.IsShardLike(); });
   }
 

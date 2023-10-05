@@ -28,6 +28,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
@@ -260,8 +261,7 @@ pybind11::dtype IfrtHelpers::python_dtype(ifrt::Array* ifrt_array) {
 StatusOr<pybind11::dict> IfrtHelpers::CudaArrayInterface(
     ifrt::Array* ifrt_array, std::optional<Shape>& scratch) {
   auto* pjrt_buffer = IfrtHelpers::pjrt_buffer(ifrt_array);
-  // TODO(zhangqiaorjc): Differentiate between NVidia and other GPUs.
-  if (pjrt_buffer->client()->platform_id() != GpuId()) {
+  if (pjrt_buffer->client()->platform_id() != CudaId()) {
     return InvalidArgument(
         "__cuda_array_interface__ is only defined for NVidia GPU buffers.");
   }

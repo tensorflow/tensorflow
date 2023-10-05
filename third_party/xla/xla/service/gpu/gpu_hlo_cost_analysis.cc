@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/service/elemental_ir_emitter.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/hlo_op_profile.pb.h"
 #include "xla/service/gpu/hlo_op_profiles.h"
 #include "xla/stream_executor/device_description.h"
@@ -300,15 +299,15 @@ const ProfilesNestedMap* LoadOpProfiles() {
   return ret;
 }
 
-int64_t FlopsPerElement(const GpuDeviceInfo* device_info,
+int64_t FlopsPerElement(const se::DeviceDescription* device_info,
                         const PrimitiveType type, const HloOpcode opcode) {
   std::string compute_capability = "<unknown>";
   if (device_info != nullptr) {
     if (auto* ptr = std::get_if<stream_executor::CudaComputeCapability>(
-            &device_info->compute_capability))
+            &device_info->gpu_compute_capability()))
       compute_capability = absl::StrCat("sm_", ptr->major, ptr->minor);
     if (auto* ptr = std::get_if<stream_executor::RocmComputeCapability>(
-            &device_info->compute_capability))
+            &device_info->gpu_compute_capability()))
       compute_capability = ptr->gfx_version();
   }
 

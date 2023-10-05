@@ -54,7 +54,7 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/service/instruction_hoister.h"
 #include "xla/service/memory_space_assignment/memory_space_assignment.pb.h"
-#include "xla/service/memory_space_assignment/memory_space_assignment_repacking.h"
+#include "xla/service/memory_space_assignment/repacking.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
@@ -81,6 +81,7 @@ using memory_space_assignment::MemoryBoundLoopOptimizer;
 using memory_space_assignment::MemoryBoundLoopOptimizerOptions;
 using memory_space_assignment::MemorySpaceAssignment;
 using memory_space_assignment::MemorySpaceAssignmentCostAnalysis;
+using memory_space_assignment::MemorySpaceAssignmentRepacker;
 using memory_space_assignment::Options;
 using memory_space_assignment::PrefetchIntervalPicker;
 using memory_space_assignment::PresetAssignments;

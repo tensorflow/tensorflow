@@ -472,7 +472,7 @@ class BufferAssignment {
   std::string ToString() const;
   // Verbose string tailored to debugging OOMs, includes the Hlo op metadata for
   // every buffer associated with each allocation.
-  std::string ToVerboseString() const;
+  std::string ToVerboseString(size_t max_buffers_to_show) const;
   std::string BufferInfoString() const;
 
   // Convert BufferAssignment to or from a proto.

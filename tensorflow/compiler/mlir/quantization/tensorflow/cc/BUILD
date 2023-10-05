@@ -199,3 +199,17 @@ tf_cc_test(
         "@llvm-project//mlir:Transforms",
     ],
 )
+
+cc_library(
+    name = "quantization_unit_loc",
+    srcs = ["quantization_unit_loc.cc"],
+    hdrs = ["quantization_unit_loc.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)

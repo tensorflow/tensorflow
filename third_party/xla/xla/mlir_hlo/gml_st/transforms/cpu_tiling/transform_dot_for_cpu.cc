@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/TensorTilingInterfaceImpl.h"
 #include "mlir/IR/Dominance.h"
 #include "mlir/Pass/Pass.h"  // IWYU pragma: keep
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "thlo/IR/thlo_ops.h"
 
@@ -291,8 +292,8 @@ LogicalResult tileAndPeelReductionDim(PatternRewriter &rewriter,
           getSCFTilingOptions(rewriter.getContext(), reductionDimTileSizes));
   if (failed(reductionDimTilingResult)) return failure();
 
-  SCFForPeelingResult reductionDimPeelingResult =
-      peelSCFForOp(rewriter, reductionDimTilingResult->loops.front());
+  SCFForPeelingResult reductionDimPeelingResult = peelSCFForOp(
+      rewriter, cast<scf::ForOp>(reductionDimTilingResult->loops.front()));
   if (reductionDimPeelingResult.mainLoop) {
     setLabel(reductionDimPeelingResult.mainLoop, kPerfectlyTiledLoopLabel);
   }

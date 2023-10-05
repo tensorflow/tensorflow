@@ -193,7 +193,8 @@ class CuptiInterface {
   virtual bool Disabled() const = 0;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CuptiInterface);
+  CuptiInterface(const CuptiInterface&) = delete;
+  void operator=(const CuptiInterface&) = delete;
 };
 
 CuptiInterface* GetCuptiInterface();

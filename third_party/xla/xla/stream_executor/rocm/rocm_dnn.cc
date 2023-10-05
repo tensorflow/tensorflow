@@ -41,7 +41,7 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/hash.h"
@@ -195,9 +195,9 @@ class MIOpenHandle {
  public:
   // Takes ownership of the executor context and the lock to access MIOpen
   // using handle.
-  MIOpenHandle(gpu::ScopedActivateExecutorContext context,
-               std::unique_ptr<absl::MutexLock> lock, miopenHandle_t handle)
-      : context_(std::move(context)), lock_(std::move(lock)), handle_(handle) {}
+  MIOpenHandle(GpuExecutor* executor, std::unique_ptr<absl::MutexLock> lock,
+               miopenHandle_t handle)
+      : context_(executor), lock_(std::move(lock)), handle_(handle) {}
 
   // Returns MIOpen handle. To be passed directly to MIOpen APIs, don't keep
   // a copy.
@@ -690,11 +690,10 @@ class MIOpenAccess {
   MIOpenHandle GetHandle(GpuExecutor* executor, Stream* stream) {
     auto lock = std::make_unique<absl::MutexLock>(&mutex_);
     mutex_.AssertHeld();
-    gpu::ScopedActivateExecutorContext context(executor);
     hipStream_t hip_stream = stream ? AsGpuStreamValue(stream) : nullptr;
     auto status = wrap::miopenSetStream(handle_, hip_stream);
     CHECK_EQ(status, miopenStatusSuccess) << "Failed to set MIOpen stream.";
-    return MIOpenHandle(std::move(context), std::move(lock), handle_);
+    return MIOpenHandle(executor, std::move(lock), handle_);
   }
 
  private:
@@ -820,7 +819,8 @@ class ScopedTensorDescriptor {
  private:
   miopenTensorDescriptor_t handle_;  // Owned.
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ScopedTensorDescriptor);
+  ScopedTensorDescriptor(const ScopedTensorDescriptor&) = delete;
+  void operator=(const ScopedTensorDescriptor&) = delete;
 };
 
 // Turns a FilterDescriptor structure into a miopen filter handle within a
@@ -917,7 +917,8 @@ class ScopedFilterDescriptor {
   // miopen filter descriptor this object creates. Owned.
   miopenTensorDescriptor_t handle_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ScopedFilterDescriptor);
+  ScopedFilterDescriptor(const ScopedFilterDescriptor&) = delete;
+  void operator=(const ScopedFilterDescriptor&) = delete;
 };
 
 // Turns a ConvolutionDescriptor structure into a miopen convolution handle
@@ -994,7 +995,8 @@ class ScopedConvolutionDescriptor {
  private:
   miopenConvolutionDescriptor_t handle_;  // Owned.
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ScopedConvolutionDescriptor);
+  ScopedConvolutionDescriptor(const ScopedConvolutionDescriptor&) = delete;
+  void operator=(const ScopedConvolutionDescriptor&) = delete;
 };
 
 // Turns a PoolingDescriptor structure into a miopen pooling descriptor handle
@@ -1055,7 +1057,8 @@ class ScopedPoolingDescriptor {
  private:
   miopenPoolingDescriptor_t handle_;  // Owned.
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ScopedPoolingDescriptor);
+  ScopedPoolingDescriptor(const ScopedPoolingDescriptor&) = delete;
+  void operator=(const ScopedPoolingDescriptor&) = delete;
 };
 
 // Turns a NormalizeDescriptor structure into a miopen LRN descriptor handle.
@@ -1109,7 +1112,8 @@ class ScopedNormalizeDescriptor {
  private:
   miopenLRNDescriptor_t handle_;  // Owned.
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ScopedNormalizeDescriptor);
+  ScopedNormalizeDescriptor(const ScopedNormalizeDescriptor&) = delete;
+  void operator=(const ScopedNormalizeDescriptor&) = delete;
 };
 
 // Turns a activation mode into a miopen activation mode descriptor with a scope
@@ -1187,7 +1191,8 @@ class ScopedActivationDescriptor {
  private:
   miopenActivationDescriptor_t handle_;  // Owned.
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ScopedActivationDescriptor);
+  ScopedActivationDescriptor(const ScopedActivationDescriptor&) = delete;
+  void operator=(const ScopedActivationDescriptor&) = delete;
 
  public:
   // caching these values here to avoid calling miopenGetActivationDescriptor
@@ -1399,7 +1404,8 @@ class ScopedFusionPlanBase {
   miopenOperatorArgs_t fusion_args_;  // Owned.
   bool fusion_plan_compiled_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ScopedFusionPlanBase);
+  ScopedFusionPlanBase(const ScopedFusionPlanBase&) = delete;
+  void operator=(const ScopedFusionPlanBase&) = delete;
 };
 
 // class to represent the Convolution+Bias+Activation fusion plan
@@ -1511,7 +1517,9 @@ class ScopedFusionPlanConvolutionBiasActivation : public ScopedFusionPlanBase {
   const int k_bias_op_idx = 1;
   const int k_actv_op_idx = 2;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ScopedFusionPlanConvolutionBiasActivation);
+  ScopedFusionPlanConvolutionBiasActivation(
+      const ScopedFusionPlanConvolutionBiasActivation&) = delete;
+  void operator=(const ScopedFusionPlanConvolutionBiasActivation&) = delete;
 };
 
 // class to represent the BatchNorm+Activation (inference) fusion plan
@@ -1611,7 +1619,9 @@ class ScopedFusionPlanBatchNormActivationInference
   const int k_batchnorm_op_idx = 0;
   const int k_actv_op_idx = 1;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ScopedFusionPlanBatchNormActivationInference);
+  ScopedFusionPlanBatchNormActivationInference(
+      const ScopedFusionPlanBatchNormActivationInference&) = delete;
+  void operator=(const ScopedFusionPlanBatchNormActivationInference&) = delete;
 };
 
 // class to represent the BatchNorm+Activation (training-forward) fusion plan
@@ -1710,7 +1720,9 @@ class ScopedFusionPlanBatchNormActivationForward : public ScopedFusionPlanBase {
   const int k_batchnorm_op_idx = 0;
   const int k_actv_op_idx = 1;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ScopedFusionPlanBatchNormActivationForward);
+  ScopedFusionPlanBatchNormActivationForward(
+      const ScopedFusionPlanBatchNormActivationForward&) = delete;
+  void operator=(const ScopedFusionPlanBatchNormActivationForward&) = delete;
 };
 
 // class to represent the BatchNorm+Activation (training-backward) fusion plan
@@ -1811,7 +1823,9 @@ class ScopedFusionPlanBatchNormActivationBackward
   const int k_batchnorm_op_idx = 0;
   const int k_actv_op_idx = 1;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ScopedFusionPlanBatchNormActivationBackward);
+  ScopedFusionPlanBatchNormActivationBackward(
+      const ScopedFusionPlanBatchNormActivationBackward&) = delete;
+  void operator=(const ScopedFusionPlanBatchNormActivationBackward&) = delete;
 };
 
 namespace {
@@ -1930,7 +1944,8 @@ class MIOpenRnnParamsDescriptor : public MIOpenDescriptorCommon<void> {
   ParamsRegions weights_;
   ParamsRegions biases_;
   tsl::Status status_;
-  SE_DISALLOW_COPY_AND_ASSIGN(MIOpenRnnParamsDescriptor);
+  MIOpenRnnParamsDescriptor(const MIOpenRnnParamsDescriptor&) = delete;
+  void operator=(const MIOpenRnnParamsDescriptor&) = delete;
 };
 
 class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
@@ -2014,7 +2029,8 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
   // no dropout in MIOpen.
   // std::unique_ptr<miopenDropoutDescriptor> miopen_dropout_desc_;
   std::unique_ptr<MIOpenRnnParamsDescriptor> miopen_params_desc_;
-  SE_DISALLOW_COPY_AND_ASSIGN(MIOpenRnnDescriptor);
+  MIOpenRnnDescriptor(const MIOpenRnnDescriptor&) = delete;
+  void operator=(const MIOpenRnnDescriptor&) = delete;
 };
 
 // Get ID of the internal parameter tensor.
@@ -2086,7 +2102,9 @@ class MIOpenRnnSequenceTensorDescriptor
   miopenDataType_t data_type_;
   std::vector<miopenTensorDescriptor_t> handles_;
   tsl::Status status_;
-  SE_DISALLOW_COPY_AND_ASSIGN(MIOpenRnnSequenceTensorDescriptor);
+  MIOpenRnnSequenceTensorDescriptor(const MIOpenRnnSequenceTensorDescriptor&) =
+      delete;
+  void operator=(const MIOpenRnnSequenceTensorDescriptor&) = delete;
 };
 
 class MIOpenRnnStateTensorDescriptor
@@ -2130,7 +2148,9 @@ class MIOpenRnnStateTensorDescriptor
   int data_size_;
   tsl::Status status_;
   miopenDataType_t data_type_;
-  SE_DISALLOW_COPY_AND_ASSIGN(MIOpenRnnStateTensorDescriptor);
+  MIOpenRnnStateTensorDescriptor(const MIOpenRnnStateTensorDescriptor&) =
+      delete;
+  void operator=(const MIOpenRnnStateTensorDescriptor&) = delete;
 };
 
 namespace {
@@ -2559,7 +2579,8 @@ class MIOpenCTCLossDescriptor {
  private:
   miopenCTCLossDescriptor_t handle_;  // Owned
 
-  SE_DISALLOW_COPY_AND_ASSIGN(MIOpenCTCLossDescriptor);
+  MIOpenCTCLossDescriptor(const MIOpenCTCLossDescriptor&) = delete;
+  void operator=(const MIOpenCTCLossDescriptor&) = delete;
 };
 
 tsl::Status MIOpenSupport::DoPrepareForCtcLoss(
@@ -4791,491 +4812,6 @@ bool MIOpenSupport::DeriveOutputBatchDescriptor(
   }
 
   return true;
-}
-
-template <typename T>
-bool MIOpenSupport::DoFusedConvolutionBiasActivationImpl(
-    Stream* stream,
-    int miopen_type,  // Actually miopenDataType_t.
-    const dnn::BatchDescriptor& conv_input_descriptor,
-    const DeviceMemory<T>& conv_input_data,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceMemory<T>& filter_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::BatchDescriptor& bias_descriptor,
-    const DeviceMemory<T>& bias_data, dnn::ActivationMode activation_mode,
-    const dnn::BatchDescriptor& output_descriptor, DeviceMemory<T>* output_data,
-    dnn::ProfileResult* output_profile_result) {
-  auto miopen = miopen_->GetHandle(parent_, stream);
-
-  ScopedTensorDescriptor conv_input_nd{
-      conv_input_descriptor, static_cast<miopenDataType_t>(miopen_type)};
-
-  ScopedTensorDescriptor bias_nd{bias_descriptor,
-                                 static_cast<miopenDataType_t>(miopen_type)};
-
-  ScopedTensorDescriptor output_nd{output_descriptor,
-                                   static_cast<miopenDataType_t>(miopen_type)};
-
-  ScopedConvolutionDescriptor conv{convolution_descriptor,
-                                   static_cast<miopenDataType_t>(miopen_type)};
-
-  ScopedFilterDescriptor filter{filter_descriptor,
-                                static_cast<miopenDataType_t>(miopen_type)};
-
-  ScopedActivationDescriptor activation_desc{activation_mode};
-
-  ScopedFusionPlanConvolutionBiasActivation fusion_plan{
-      miopen.handle(), conv_input_nd.handle(), filter.handle(),
-      conv.handle(),   bias_nd.handle(),       activation_desc};
-
-  bool retval = false;
-
-  if (fusion_plan.CompilationSucceeded()) {
-    std::optional<GpuTimer> timer;
-    const bool is_profiling = output_profile_result != nullptr;
-
-    if (is_profiling) {
-      auto timer_or_status = GpuTimer::Create(AsGpuStream(stream));
-      if (!timer_or_status.ok()) {
-        LOG(ERROR) << "Failed to create timer";
-        return false;
-      }
-      timer.emplace(std::move(*timer_or_status));
-    }
-
-    miopenStatus_t status = miopenStatusSuccess;
-
-    if (status == miopenStatusSuccess) {
-      fusion_plan.SetConvolutionArgs(filter_data.opaque());
-    }
-
-    if (status == miopenStatusSuccess) {
-      status = fusion_plan.SetBiasArgs(bias_data.opaque());
-    }
-
-    if (status == miopenStatusSuccess) {
-      status = fusion_plan.SetActivationForwardArgs(activation_desc);
-    }
-
-    if (status == miopenStatusSuccess) {
-      status =
-          fusion_plan.Execute(conv_input_nd.handle(), conv_input_data.opaque(),
-                              output_nd.handle(), output_data->opaque());
-    }
-
-    if (is_profiling) {
-      if (status == miopenStatusSuccess) {
-        tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
-        if (!elapsed.ok()) {
-          LOG(ERROR) << "Failed to get elapsed duration";
-          return false;
-        }
-        output_profile_result->set_elapsed_time_in_ms(
-            absl::ToDoubleMilliseconds(*elapsed));
-      }
-    }
-
-    if (status != miopenStatusSuccess) {
-      // Silently return when we are profiling.
-      if (!is_profiling) {
-        LOG(FATAL) << "failed to enqueue fused-convolution on stream: "
-                   << ToString(status);
-      }
-    }
-
-    retval = true;
-  }
-
-  return retval;
-}
-
-bool MIOpenSupport::DoFusedConvolutionBiasActivation(
-    Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
-    const DeviceMemory<float>& conv_input_data,
-    const dnn::FilterDescriptor& filter_descriptor,
-    const DeviceMemory<float>& filter_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    const dnn::BatchDescriptor& bias_descriptor,
-    const DeviceMemory<float>& bias_data, dnn::ActivationMode activation_mode,
-    const dnn::BatchDescriptor& output_descriptor,
-    DeviceMemory<float>* output_data,
-    dnn::ProfileResult* output_profile_result) {
-  return DoFusedConvolutionBiasActivationImpl<float>(
-      stream, miopenFloat, conv_input_descriptor, conv_input_data,
-      filter_descriptor, filter_data, convolution_descriptor, bias_descriptor,
-      bias_data, activation_mode, output_descriptor, output_data,
-      output_profile_result);
-}
-
-template <typename T, typename U>
-bool MIOpenSupport::DoFusedBatchNormActivationInferenceImpl(
-    Stream* stream,
-    int miopen_type,  // Actually miopenDataType_t.
-    const dnn::BatchDescriptor& x_descriptor, const DeviceMemory<T>& x_data,
-    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<U>& scale_data, const DeviceMemory<U>& offset_data,
-    const DeviceMemory<U>& mean_data, const DeviceMemory<U>& variance_data,
-    double epsilon, dnn::ActivationMode activation_mode,
-    DeviceMemory<T>* y_data, dnn::ProfileResult* output_profile_result) {
-  auto miopen = miopen_->GetHandle(parent_, stream);
-
-  ScopedTensorDescriptor x_nd{x_descriptor,
-                              static_cast<miopenDataType_t>(miopen_type)};
-
-  ScopedTensorDescriptor scale_offset_mean_variance_nd{
-      scale_offset_mean_variance_descriptor,
-      static_cast<miopenDataType_t>(miopen_type)};
-
-  ScopedActivationDescriptor activation_desc{activation_mode};
-
-  ScopedFusionPlanBatchNormActivationInference fusion_plan{
-      miopen.handle(), x_nd.handle(), scale_offset_mean_variance_nd.handle(),
-      activation_desc};
-
-  bool retval = false;
-
-  if (fusion_plan.CompilationSucceeded()) {
-    std::optional<GpuTimer> timer;
-    const bool is_profiling = output_profile_result != nullptr;
-
-    if (is_profiling) {
-      auto timer_or_status = GpuTimer::Create(AsGpuStream(stream));
-      if (!timer_or_status.ok()) {
-        LOG(ERROR) << "Failed to create timer";
-        return false;
-      }
-      timer.emplace(std::move(*timer_or_status));
-    }
-
-    miopenStatus_t status = miopenStatusSuccess;
-
-    if (status == miopenStatusSuccess) {
-      fusion_plan.SetBatchNormInferenceArgs(
-          scale_data.opaque(), offset_data.opaque(), mean_data.opaque(),
-          variance_data.opaque(), epsilon);
-    }
-
-    if (status == miopenStatusSuccess) {
-      status = fusion_plan.SetActivationForwardArgs(activation_desc);
-    }
-
-    if (status == miopenStatusSuccess) {
-      status = fusion_plan.Execute(x_nd.handle(), x_data.opaque(),
-                                   x_nd.handle(), y_data->opaque());
-    }
-
-    if (is_profiling) {
-      if (status == miopenStatusSuccess) {
-        tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
-        if (!elapsed.ok()) {
-          LOG(ERROR) << "Failed to get elapsed duration";
-          return false;
-        }
-        output_profile_result->set_elapsed_time_in_ms(
-            absl::ToDoubleMilliseconds(*elapsed));
-      }
-    }
-
-    if (status != miopenStatusSuccess) {
-      // Silently return when we are profiling.
-      if (!is_profiling) {
-        LOG(FATAL) << "failed to enqueue fused-convolution on stream: "
-                   << ToString(status);
-      }
-    }
-
-    retval = true;
-  }
-
-  return retval;
-}
-
-bool MIOpenSupport::DoFusedBatchNormActivationInference(
-    Stream* stream, const dnn::BatchDescriptor& x_descriptor,
-    const DeviceMemory<float>& x_data,
-    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<float>& scale_data,
-    const DeviceMemory<float>& offset_data,
-    const DeviceMemory<float>& mean_data,
-    const DeviceMemory<float>& variance_data, double epsilon,
-    dnn::ActivationMode activation_mode, DeviceMemory<float>* y_data,
-    dnn::ProfileResult* output_profile_result) {
-  return DoFusedBatchNormActivationInferenceImpl<float, float>(
-      stream, miopenFloat, x_descriptor, x_data,
-      scale_offset_mean_variance_descriptor, scale_data, offset_data, mean_data,
-      variance_data, epsilon, activation_mode, y_data, output_profile_result);
-}
-
-bool MIOpenSupport::DoFusedBatchNormActivationInference(
-    Stream* stream, const dnn::BatchDescriptor& x_descriptor,
-    const DeviceMemory<Eigen::half>& x_data,
-    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<float>& scale_data,
-    const DeviceMemory<float>& offset_data,
-    const DeviceMemory<float>& mean_data,
-    const DeviceMemory<float>& variance_data, double epsilon,
-    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y_data,
-    dnn::ProfileResult* output_profile_result) {
-  return DoFusedBatchNormActivationInferenceImpl<Eigen::half, float>(
-      stream, miopenHalf, x_descriptor, x_data,
-      scale_offset_mean_variance_descriptor, scale_data, offset_data, mean_data,
-      variance_data, epsilon, activation_mode, y_data, output_profile_result);
-}
-
-template <typename T, typename U>
-bool MIOpenSupport::DoFusedBatchNormActivationForwardImpl(
-    Stream* stream,
-    int miopen_type,  // Actually miopenDataType_t.
-    const dnn::BatchDescriptor& x_descriptor, const DeviceMemory<T>& x_data,
-    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<U>& scale_data, const DeviceMemory<U>& offset_data,
-    double epsilon, dnn::ActivationMode activation_mode,
-    DeviceMemory<T>* y_data, DeviceMemory<U>* batch_mean_data,
-    DeviceMemory<U>* batch_var_data, DeviceMemory<U>* saved_mean_data,
-    DeviceMemory<U>* saved_var_data,
-    dnn::ProfileResult* output_profile_result) {
-  auto miopen = miopen_->GetHandle(parent_, stream);
-
-  ScopedTensorDescriptor x_nd{x_descriptor,
-                              static_cast<miopenDataType_t>(miopen_type)};
-
-  ScopedTensorDescriptor scale_offset_mean_variance_nd{
-      scale_offset_mean_variance_descriptor,
-      static_cast<miopenDataType_t>(miopen_type)};
-
-  ScopedActivationDescriptor activation_desc{activation_mode};
-
-  ScopedFusionPlanBatchNormActivationForward fusion_plan{
-      miopen.handle(), x_nd.handle(), scale_offset_mean_variance_nd.handle(),
-      activation_desc};
-
-  bool retval = false;
-
-  if (fusion_plan.CompilationSucceeded()) {
-    std::optional<GpuTimer> timer;
-    const bool is_profiling = output_profile_result != nullptr;
-
-    if (is_profiling) {
-      auto timer_or_status = GpuTimer::Create(AsGpuStream(stream));
-      if (!timer_or_status.ok()) {
-        LOG(ERROR) << "Failed to create timer";
-        return false;
-      }
-      timer.emplace(std::move(*timer_or_status));
-    }
-
-    miopenStatus_t status = miopenStatusSuccess;
-
-    if (status == miopenStatusSuccess) {
-      fusion_plan.SetBatchNormForwardArgs(
-          scale_data.opaque(), offset_data.opaque(), batch_mean_data->opaque(),
-          batch_var_data->opaque(), saved_mean_data->opaque(),
-          saved_var_data->opaque(), epsilon);
-    }
-
-    if (status == miopenStatusSuccess) {
-      status = fusion_plan.SetActivationForwardArgs(activation_desc);
-    }
-
-    if (status == miopenStatusSuccess) {
-      status = fusion_plan.Execute(x_nd.handle(), x_data.opaque(),
-                                   x_nd.handle(), y_data->opaque());
-    }
-
-    if (is_profiling) {
-      if (status == miopenStatusSuccess) {
-        tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
-        if (!elapsed.ok()) {
-          LOG(ERROR) << "Failed to get elapsed duration";
-          return false;
-        }
-        output_profile_result->set_elapsed_time_in_ms(
-            absl::ToDoubleMilliseconds(*elapsed));
-      }
-    }
-
-    if (status != miopenStatusSuccess) {
-      // Silently return when we are profiling.
-      if (!is_profiling) {
-        LOG(FATAL) << "failed to enqueue fused-convolution on stream: "
-                   << ToString(status);
-      }
-    }
-
-    retval = true;
-  }
-
-  return retval;
-}
-
-bool MIOpenSupport::DoFusedBatchNormActivationForward(
-    Stream* stream, const dnn::BatchDescriptor& x_descriptor,
-    const DeviceMemory<float>& x_data,
-    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<float>& scale_data,
-    const DeviceMemory<float>& offset_data, double epsilon,
-    dnn::ActivationMode activation_mode, DeviceMemory<float>* y_data,
-    DeviceMemory<float>* batch_mean_data, DeviceMemory<float>* batch_var_data,
-    DeviceMemory<float>* saved_mean_data, DeviceMemory<float>* saved_var_data,
-    dnn::ProfileResult* output_profile_result) {
-  return DoFusedBatchNormActivationForwardImpl<float, float>(
-      stream, miopenFloat, x_descriptor, x_data,
-      scale_offset_mean_variance_descriptor, scale_data, offset_data, epsilon,
-      activation_mode, y_data, batch_mean_data, batch_var_data, saved_mean_data,
-      saved_var_data, output_profile_result);
-}
-
-bool MIOpenSupport::DoFusedBatchNormActivationForward(
-    Stream* stream, const dnn::BatchDescriptor& x_descriptor,
-    const DeviceMemory<Eigen::half>& x_data,
-    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<float>& scale_data,
-    const DeviceMemory<float>& offset_data, double epsilon,
-    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half>* y_data,
-    DeviceMemory<float>* batch_mean_data, DeviceMemory<float>* batch_var_data,
-    DeviceMemory<float>* saved_mean_data, DeviceMemory<float>* saved_var_data,
-    dnn::ProfileResult* output_profile_result) {
-  return DoFusedBatchNormActivationForwardImpl<Eigen::half, float>(
-      stream, miopenHalf, x_descriptor, x_data,
-      scale_offset_mean_variance_descriptor, scale_data, offset_data, epsilon,
-      activation_mode, y_data, batch_mean_data, batch_var_data, saved_mean_data,
-      saved_var_data, output_profile_result);
-}
-
-template <typename T, typename U>
-bool MIOpenSupport::DoFusedBatchNormActivationBackwardImpl(
-    Stream* stream,
-    int miopen_type,  // Actually miopenDataType_t.
-    const dnn::BatchDescriptor& y_act_backprop_descriptor,
-    const DeviceMemory<T>& y_act_backprop_data,
-    const DeviceMemory<T>& y_act_data, dnn::ActivationMode activation_mode,
-    const DeviceMemory<T>& x_bn_data,
-    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<U>& scale_data, const DeviceMemory<U>& offset_data,
-    const DeviceMemory<U>& saved_mean_data,
-    const DeviceMemory<U>& saved_var_data, DeviceMemory<T>* x_bn_backprop_data,
-    DeviceMemory<U>* scale_backprop_data, DeviceMemory<U>* offset_backprop_data,
-    dnn::ProfileResult* output_profile_result) {
-  auto miopen = miopen_->GetHandle(parent_, stream);
-
-  ScopedTensorDescriptor y_act_backprop_nd{
-      y_act_backprop_descriptor, static_cast<miopenDataType_t>(miopen_type)};
-
-  ScopedTensorDescriptor scale_offset_mean_variance_nd{
-      scale_offset_mean_variance_descriptor,
-      static_cast<miopenDataType_t>(miopen_type)};
-
-  ScopedActivationDescriptor activation_desc{activation_mode};
-
-  ScopedFusionPlanBatchNormActivationBackward fusion_plan{
-      miopen.handle(), y_act_backprop_nd.handle(),
-      scale_offset_mean_variance_nd.handle(), activation_desc};
-
-  bool retval = false;
-
-  if (fusion_plan.CompilationSucceeded()) {
-    std::optional<GpuTimer> timer;
-    const bool is_profiling = output_profile_result != nullptr;
-
-    if (is_profiling) {
-      auto timer_or_status = GpuTimer::Create(AsGpuStream(stream));
-      if (!timer_or_status.ok()) {
-        LOG(ERROR) << "Failed to create timer";
-        return false;
-      }
-      timer.emplace(std::move(*timer_or_status));
-    }
-
-    miopenStatus_t status = miopenStatusSuccess;
-
-    if (status == miopenStatusSuccess) {
-      fusion_plan.SetBatchNormBackwardArgs(
-          x_bn_data.opaque(), scale_data.opaque(), offset_data.opaque(),
-          saved_mean_data.opaque(), saved_var_data.opaque(),
-          scale_backprop_data->opaque(), offset_backprop_data->opaque());
-    }
-
-    if (status == miopenStatusSuccess) {
-      status = fusion_plan.SetActivationBackwardArgs(activation_desc,
-                                                     y_act_data.opaque());
-    }
-
-    if (status == miopenStatusSuccess) {
-      status = fusion_plan.Execute(
-          y_act_backprop_nd.handle(), y_act_backprop_data.opaque(),
-          y_act_backprop_nd.handle(), x_bn_backprop_data->opaque());
-    }
-
-    if (is_profiling) {
-      if (status == miopenStatusSuccess) {
-        tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
-        if (!elapsed.ok()) {
-          LOG(ERROR) << "Failed to get elapsed duration";
-          return false;
-        }
-        output_profile_result->set_elapsed_time_in_ms(
-            absl::ToDoubleMilliseconds(*elapsed));
-      }
-    }
-
-    if (status != miopenStatusSuccess) {
-      // Silently return when we are profiling.
-      if (!is_profiling) {
-        LOG(FATAL) << "failed to enqueue fused-convolution on stream: "
-                   << ToString(status);
-      }
-    }
-
-    retval = true;
-  }
-
-  return retval;
-}
-
-bool MIOpenSupport::DoFusedBatchNormActivationBackward(
-    Stream* stream, const dnn::BatchDescriptor& y_act_backprop_descriptor,
-    const DeviceMemory<float>& y_act_backprop_data,
-    const DeviceMemory<float>& y_act_data, dnn::ActivationMode activation_mode,
-    const DeviceMemory<float>& x_bn_data,
-    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<float>& scale_data,
-    const DeviceMemory<float>& offset_data,
-    const DeviceMemory<float>& saved_mean_data,
-    const DeviceMemory<float>& saved_var_data,
-    DeviceMemory<float>* x_bn_backprop_data,
-    DeviceMemory<float>* scale_backprop_data,
-    DeviceMemory<float>* offset_backprop_data,
-    dnn::ProfileResult* output_profile_result) {
-  return DoFusedBatchNormActivationBackwardImpl<float, float>(
-      stream, miopenFloat, y_act_backprop_descriptor, y_act_backprop_data,
-      y_act_data, activation_mode, x_bn_data,
-      scale_offset_mean_variance_descriptor, scale_data, offset_data,
-      saved_mean_data, saved_var_data, x_bn_backprop_data, scale_backprop_data,
-      offset_backprop_data, output_profile_result);
-}
-
-bool MIOpenSupport::DoFusedBatchNormActivationBackward(
-    Stream* stream, const dnn::BatchDescriptor& y_act_backprop_descriptor,
-    const DeviceMemory<Eigen::half>& y_act_backprop_data,
-    const DeviceMemory<Eigen::half>& y_act_data,
-    dnn::ActivationMode activation_mode,
-    const DeviceMemory<Eigen::half>& x_bn_data,
-    const dnn::BatchDescriptor& scale_offset_mean_variance_descriptor,
-    const DeviceMemory<float>& scale_data,
-    const DeviceMemory<float>& offset_data,
-    const DeviceMemory<float>& saved_mean_data,
-    const DeviceMemory<float>& saved_var_data,
-    DeviceMemory<Eigen::half>* x_bn_backprop_data,
-    DeviceMemory<float>* scale_backprop_data,
-    DeviceMemory<float>* offset_backprop_data,
-    dnn::ProfileResult* output_profile_result) {
-  return DoFusedBatchNormActivationBackwardImpl<Eigen::half, float>(
-      stream, miopenHalf, y_act_backprop_descriptor, y_act_backprop_data,
-      y_act_data, activation_mode, x_bn_data,
-      scale_offset_mean_variance_descriptor, scale_data, offset_data,
-      saved_mean_data, saved_var_data, x_bn_backprop_data, scale_backprop_data,
-      offset_backprop_data, output_profile_result);
 }
 
 }  // namespace gpu

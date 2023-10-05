@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 // Since our ops are going to produce and also consume N addition tensors
@@ -170,10 +171,6 @@ inline string GetMklOpName(const string& name) {
 // We prefix 'MklEager' to the original op to get Mkl Eager op.
 inline string GetMklEagerOpName(const string& name) {
   return string(kMklEagerOpPrefix) + name;
-}
-
-static inline bool IsBF16SupportedByOneDNNOnThisCPU() {
-  return port::TestCPUFeature(port::CPUFeature::AVX512F);
 }
 
 static inline void BF16UnsupportedWarning() {

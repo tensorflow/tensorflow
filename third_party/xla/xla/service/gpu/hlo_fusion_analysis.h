@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/kernel_mapping_scheme.h"
@@ -51,9 +50,10 @@ class HloFusionAnalysis {
   static StatusOr<HloFusionAnalysis> Create(
       FusionBackendConfig backend_config,
       std::vector<const HloInstruction*> hlo_roots,
-      FusionBoundaryFn boundary_fn, const GpuDeviceInfo* device_info);
-  static StatusOr<HloFusionAnalysis> Create(const HloFusionInstruction* fusion,
-                                            const GpuDeviceInfo* device_info);
+      FusionBoundaryFn boundary_fn, const se::DeviceDescription* device_info);
+  static StatusOr<HloFusionAnalysis> Create(
+      const HloFusionInstruction* fusion,
+      const se::DeviceDescription* device_info);
 
   const std::vector<const HloInstruction*>& fusion_roots() const {
     return fusion_roots_;
@@ -90,7 +90,7 @@ class HloFusionAnalysis {
                     FusionBoundaryFn fusion_boundary_fn,
                     std::vector<const HloInstruction*> fusion_arguments,
                     std::vector<const HloInstruction*> fusion_heroes,
-                    const GpuDeviceInfo* device_info,
+                    const se::DeviceDescription* device_info,
                     std::optional<TransposeDescription> tiled_transpose)
       : fusion_backend_config_(std::move(fusion_backend_config)),
         fusion_roots_(std::move(fusion_roots)),
@@ -125,7 +125,7 @@ class HloFusionAnalysis {
   // are /outside/ the fusion.
   std::vector<const HloInstruction*> fusion_arguments_;
   std::vector<const HloInstruction*> fusion_heroes_;
-  const GpuDeviceInfo* device_info_;
+  const se::DeviceDescription* device_info_;
   std::optional<TransposeDescription> tiled_transpose_;
 
   std::optional<ReductionCodegenInfo> reduction_codegen_info_;

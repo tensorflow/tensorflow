@@ -172,6 +172,9 @@ from tensorflow.python.client.client_lib import *
 # Summary
 from tensorflow.python.summary import summary
 
+# TPU
+from tensorflow.python.tpu import api
+
 # Training
 from tensorflow.python.training import training as train
 from tensorflow.python.training import quantize_training as _quantize_training

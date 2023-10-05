@@ -87,10 +87,6 @@ PyLoadedExecutable::~PyLoadedExecutable() {
   if (next_) {
     next_->prev_ = prev_;
   }
-  {
-    py::gil_scoped_release gil_release;
-    ifrt_loaded_executable_.reset();
-  }
 }
 
 std::vector<ClientAndPtr<PjRtDevice>> PyLoadedExecutable::AddressableDevices()

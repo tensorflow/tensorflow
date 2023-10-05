@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tsl/profiler/utils/preprocess_xplane.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/types/optional.h"
-#include "tsl/profiler/lib/connected_traceme.h"
+#include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/xplane_builder.h"
 #include "tsl/profiler/utils/xplane_schema.h"
@@ -138,18 +138,9 @@ CreateMutatorFactories() {
           /*unique_stats=*/true,
           XContextStatsAccessor<uint64_t, StatType::kDeviceOrdinal>,
           XContextStatsAccessor<uint64_t, StatType::kQueueId>,
-          XContextStatsAccessor<uint64_t, StatType::kRunId>>::CreateFactory());
-  // TODO(jiesun): remove kDoEnqueueContinuationProgram after 04/21/2023
-  // see cl/443548431.
-  mutator_factories.push_back(
-      XplaneConnectedEventMutatorFactory<
-          /*producer_event=*/HostEventType::kDoEnqueueContinuationProgram,
-          /*consumer_event=*/HostEventType::kCompleteCallbacks,
-          ContextType::kTpuLaunch,
-          /*unique_stats=*/true,
-          XContextStatsAccessor<uint64_t, StatType::kDeviceOrdinal>,
-          XContextStatsAccessor<uint64_t, StatType::kQueueId>,
-          XContextStatsAccessor<uint64_t, StatType::kRunId>>::CreateFactory());
+          XContextStatsAccessor<uint64_t, StatType::kRunId>,
+          XContextStatsAccessorWithDefault<uint64_t, StatType::kCoreType,
+                                           0ULL>>::CreateFactory());
 
   mutator_factories.push_back(TpuModuleLineMutatorFactory::CreateFactory());
   return mutator_factories;

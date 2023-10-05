@@ -488,7 +488,7 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla/pjrt:pjrt_client",
-        "//xla/pjrt/gpu:se_gpu_pjrt_client",
+        "//xla/pjrt:pjrt_compiler",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

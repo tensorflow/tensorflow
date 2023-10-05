@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_query.h"
-#include "xla/service/gpu/gpu_device_info.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
@@ -44,11 +44,11 @@ class GpuHloScheduleTest : public HloTestBase {
 
   SequentialHloOrdering BuildHloOrdering(HloModule* module) {
     Backend& test_backend = backend();
-    const GpuDeviceInfo gpu_device_info =
-        GetGpuDeviceInfo(test_backend.default_stream_executor());
+    const se::DeviceDescription& gpu_device_info =
+        test_backend.default_stream_executor()->GetDeviceDescription();
     TF_CHECK_OK(ScheduleGpuModule(
         module, /*pointer_size=*/8,
-        /*memory_size=*/gpu_device_info.device_memory_size * 8 / 10));
+        /*memory_limit=*/gpu_device_info.device_memory_size() * 8 / 10));
     return SequentialHloOrdering{module->schedule()};
   }
 

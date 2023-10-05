@@ -332,7 +332,8 @@ class MklDnnShape {
   }
 
   ~MklDnnShape() {}
-  TF_DISALLOW_COPY_AND_ASSIGN(MklDnnShape);  // Cannot copy
+  MklDnnShape(const MklDnnShape&) = delete;
+  void operator=(const MklDnnShape&) = delete;  // Cannot copy
 
   /// Equality function for MklDnnShape objects
   /// @return true if both are equal; false otherwise.

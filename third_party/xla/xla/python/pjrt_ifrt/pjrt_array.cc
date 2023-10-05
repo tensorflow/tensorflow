@@ -340,10 +340,12 @@ StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
   // permits device changes and nothing else.
   PjRtBuffers buffers;
   buffers.reserve(pjrt_buffers_.size());
-  // TODO(yueshengys): Add a on-demand canonicalization when all users
-  // (e.g., ifrt proxy) support memories.
+  CHECK_GT(new_sharding->devices().size(), 0);
+  // Canonicalize memory kind in case it hasn't been done before.
+  MemoryKind canonicalized_sharding_memory_kind = CanonicalizeMemoryKind(
+      new_sharding->memory_kind(), new_sharding->devices().front());
   bool new_sharding_has_memory_kind =
-      new_sharding->memory_kind().memory_kind().has_value();
+      canonicalized_sharding_memory_kind.memory_kind().has_value();
   for (int i = 0; i < pjrt_buffers_.size(); ++i) {
     bool devices_equal =
         pjrt_buffers_[i]->device() == new_sharding->devices()[i];
@@ -351,7 +353,7 @@ StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
     bool memory_kind_equal =
         new_sharding_has_memory_kind && memories_supported &&
         pjrt_buffers_[i]->memory_space()->memory_space_kind() ==
-            new_sharding->memory_kind().memory_kind();
+            canonicalized_sharding_memory_kind.memory_kind();
 
     // No need for data transfer.
     if (devices_equal && (!new_sharding_has_memory_kind ||
@@ -387,7 +389,7 @@ StatusOr<tsl::RCReference<Array>> PjRtArray::Reshard(
         TF_ASSIGN_OR_RETURN(
             auto memory_space,
             GetMemorySpaceFromMemoryKind(new_sharding->devices()[i],
-                                         new_sharding->memory_kind()));
+                                         canonicalized_sharding_memory_kind));
         TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> copied_buffer,
                             pjrt_buffers_[i]->CopyToMemorySpace(memory_space));
         if (semantics == ArrayCopySemantics::kDonateInput) {

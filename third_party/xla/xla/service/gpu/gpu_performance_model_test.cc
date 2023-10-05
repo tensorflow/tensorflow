@@ -26,12 +26,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -46,7 +46,7 @@ class GpuPerformanceModelTest : public HloTestBase {
     };
   }
 
-  GpuDeviceInfo dev_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
+  se::DeviceDescription dev_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
 
  public:
   GpuHloCostAnalysis::Options options_{ShapeSizeBytesFunction(),

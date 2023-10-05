@@ -583,6 +583,57 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::BufferFromHostBuffer(
       on_done_with_host_buffer, device, /*device_layout=*/nullptr);
 }
 
+StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCApiClient::CreateViewOfDeviceBuffer(
+    void* device_ptr, const Shape& shape, PjRtDevice* device,
+    std::function<void()> on_delete_callback,
+    std::optional<std::intptr_t> stream) {
+  PJRT_Client_CreateViewOfDeviceBuffer_Args args;
+  args.struct_size = PJRT_Client_CreateViewOfDeviceBuffer_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.client = c_client_.get();
+  args.device_buffer_ptr = device_ptr;
+  args.dims = shape.dimensions().data();
+  args.num_dims = shape.dimensions().size();
+  args.element_type = pjrt::ConvertToPjRtBufferType(shape.element_type());
+  pjrt::BufferMemoryLayoutData c_layout_data;
+  if (shape.has_layout()) {
+    TF_ASSIGN_OR_RETURN(c_layout_data,
+                        pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
+    args.layout = &(c_layout_data.c_layout);
+  } else {
+    args.layout = nullptr;
+  }
+  if (on_delete_callback != nullptr) {
+    args.on_delete_callback_arg =
+        new std::function(std::move(on_delete_callback));
+    args.on_delete_callback = [](void* device_buffer_ptr, void* user_arg) {
+      auto* c_func = reinterpret_cast<std::function<void()>*>(user_arg);
+      (*c_func)();
+      delete c_func;
+    };
+  } else {
+    args.on_delete_callback = nullptr;
+    args.on_delete_callback_arg = nullptr;
+  }
+  args.device = tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
+  if (stream.has_value()) {
+    args.stream = *stream;
+  } else {
+    args.stream = reinterpret_cast<intptr_t>(nullptr);
+  }
+  const PJRT_Api* c_api = pjrt_c_api();
+  // TODO(jieying): To be removed after 12/29/2023.
+  if (c_api->pjrt_api_version.minor_version < 33) {
+    return Unimplemented(
+        "The plugin does not support CreateViewOfDeviceBuffer");
+  }
+  RETURN_STATUS_IF_PJRT_ERROR(
+      c_api->PJRT_Client_CreateViewOfDeviceBuffer(&args), c_api);
+
+  return std::unique_ptr<PjRtBuffer>(
+      std::make_unique<PjRtCApiBuffer>(this, args.buffer));
+}
+
 const PJRT_Api* PjRtCApiClient::pjrt_c_api() const { return c_api_; }
 
 // --------------------------------- Devices -----------------------------------

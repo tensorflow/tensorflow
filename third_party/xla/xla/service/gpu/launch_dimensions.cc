@@ -21,10 +21,10 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -40,8 +40,9 @@ std::ostream& operator<<(std::ostream& out,
   return out;
 }
 
-static int64_t ThreadsPerBlockLimit(const GpuDeviceInfo& gpu_device_info) {
-  int64_t threads_per_block = gpu_device_info.threads_per_block_limit;
+static int64_t ThreadsPerBlockLimit(
+    const se::DeviceDescription& gpu_device_info) {
+  int64_t threads_per_block = gpu_device_info.threads_per_block_limit();
   if (threads_per_block <= 0) {
     static std::atomic<int64_t> log_count{0};
     if (log_count.fetch_add(1) < 8) {
@@ -50,7 +51,7 @@ static int64_t ThreadsPerBlockLimit(const GpuDeviceInfo& gpu_device_info) {
                       "StreamExecutor's PopulateDeviceDescription should be "
                       "updated for this device.";
     }
-    threads_per_block = gpu_device_info.threads_per_warp;
+    threads_per_block = gpu_device_info.threads_per_warp();
     if (threads_per_block == 0) {
       // Fall back to *something* if we can't even get num threads per warp.
       threads_per_block = 32;
@@ -59,9 +60,9 @@ static int64_t ThreadsPerBlockLimit(const GpuDeviceInfo& gpu_device_info) {
   return threads_per_block;
 }
 
-int64_t ThreadsPerBlockRowVectorized(const Shape& shape,
-                                     const GpuDeviceInfo& gpu_device_info,
-                                     LaunchDimensionsConfig dim_config) {
+int64_t ThreadsPerBlockRowVectorized(
+    const Shape& shape, const se::DeviceDescription& gpu_device_info,
+    LaunchDimensionsConfig dim_config) {
   if (shape.dimensions().empty()) {
     return -1;
   }
@@ -75,7 +76,7 @@ int64_t ThreadsPerBlockRowVectorized(const Shape& shape,
       (shape.dimensions().back() % 256) != 0 &&
       // We do not support row that do not fit in one block.
       threads_per_block_row_vectorized <=
-          gpu_device_info.threads_per_block_limit) {
+          gpu_device_info.threads_per_block_limit()) {
     return threads_per_block_row_vectorized;
   }
   return -1;
@@ -90,13 +91,13 @@ struct BlockSizes {
 };
 
 BlockSizes GetBlockSizes(LaunchDimensionsConfig dim_config,
-                         const GpuDeviceInfo& gpu_device_info,
+                         const se::DeviceDescription& gpu_device_info,
                          const Shape& shape, int64_t num_elements) {
   if (!dim_config.row_vectorized && !dim_config.few_waves) {
     BlockSizes result;
     const int kWarpSchedulers = 4;
     result.threads_per_block_x = std::min<int64_t>(
-        gpu_device_info.threads_per_warp * kWarpSchedulers, num_elements);
+        gpu_device_info.threads_per_warp() * kWarpSchedulers, num_elements);
     result.threads_per_block_y = 1;
     result.block_count = CeilOfRatio(
         num_elements, result.threads_per_block_x * result.threads_per_block_y);
@@ -138,8 +139,8 @@ BlockSizes GetBlockSizes(LaunchDimensionsConfig dim_config,
       // looking at the arithmetic intensity of the kernels can specialize the
       // multiple per kernel.
       int64_t max_block_count =
-          32 * gpu_device_info.core_count *
-          (gpu_device_info.threads_per_core_limit /
+          32 * gpu_device_info.core_count() *
+          (gpu_device_info.threads_per_core_limit() /
            (result.threads_per_block_x * result.threads_per_block_y));
       int64_t capped_block_count = result.block_count;
       while (capped_block_count > max_block_count) {
@@ -154,8 +155,8 @@ BlockSizes GetBlockSizes(LaunchDimensionsConfig dim_config,
       int64_t capped_threads_per_block_x =
           std::min<int64_t>(result.threads_per_block_x, 128);
       int64_t capped_block_count =
-          gpu_device_info.core_count *
-          (gpu_device_info.threads_per_core_limit /
+          gpu_device_info.core_count() *
+          (gpu_device_info.threads_per_core_limit() /
            (capped_threads_per_block_x * result.threads_per_block_y));
       if (capped_block_count < result.block_count) {
         result.threads_per_block_x = capped_threads_per_block_x;
@@ -173,7 +174,7 @@ BlockSizes GetBlockSizes(LaunchDimensionsConfig dim_config,
 }  // namespace
 
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(
-    const Shape& shape, const GpuDeviceInfo& gpu_device_info,
+    const Shape& shape, const se::DeviceDescription& gpu_device_info,
     LaunchDimensionsConfig dim_config) {
   int64_t num_elements = ShapeUtil::ElementsIn(shape);
   if (num_elements <= 1) {
@@ -183,12 +184,12 @@ StatusOr<LaunchDimensions> CalculateLaunchDimensions(
   num_elements = num_elements / dim_config.unroll_factor;
   BlockSizes sizes =
       GetBlockSizes(dim_config, gpu_device_info, shape, num_elements);
-  if (gpu_device_info.block_dim_limit_x > 0 &&
-      sizes.block_count >= gpu_device_info.block_dim_limit_x) {
-    return tsl::errors::Unimplemented("Kernel launch needs more blocks (",
-                                      sizes.block_count,
-                                      ") than allowed by hardware (",
-                                      gpu_device_info.block_dim_limit_x, ").");
+  if (gpu_device_info.block_dim_limit().x > 0 &&
+      sizes.block_count >= gpu_device_info.block_dim_limit().x) {
+    return absl::UnimplementedError(
+        absl::StrCat("Kernel launch needs more blocks (", sizes.block_count,
+                     ") than allowed by hardware (",
+                     gpu_device_info.block_dim_limit().x, ")."));
   }
 
   return LaunchDimensions(

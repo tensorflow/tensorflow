@@ -84,7 +84,8 @@ class KernelLoaderSpec {
   // above.
   std::string kernel_name_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(KernelLoaderSpec);
+  KernelLoaderSpec(const KernelLoaderSpec &) = delete;
+  void operator=(const KernelLoaderSpec &) = delete;
 };
 
 // An abstract kernel loader spec that has an associated file path, where
@@ -108,7 +109,8 @@ class OnDiskKernelLoaderSpec : public KernelLoaderSpec {
   std::string filename_;
 
  private:
-  SE_DISALLOW_COPY_AND_ASSIGN(OnDiskKernelLoaderSpec);
+  OnDiskKernelLoaderSpec(const OnDiskKernelLoaderSpec &) = delete;
+  void operator=(const OnDiskKernelLoaderSpec &) = delete;
 };
 
 // Kernel loader specification for PTX text that resides on disk.
@@ -120,7 +122,8 @@ class CudaPtxOnDisk : public OnDiskKernelLoaderSpec {
   const char *CanonicalSuffix() const override { return ".ptx"; }
 
  private:
-  SE_DISALLOW_COPY_AND_ASSIGN(CudaPtxOnDisk);
+  CudaPtxOnDisk(const CudaPtxOnDisk &) = delete;
+  void operator=(const CudaPtxOnDisk &) = delete;
 };
 
 // Kernel loader specification for CUBIN binary that resides on disk.
@@ -136,7 +139,8 @@ class CudaCubinOnDisk : public OnDiskKernelLoaderSpec {
  private:
   std::string filename_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(CudaCubinOnDisk);
+  CudaCubinOnDisk(const CudaCubinOnDisk &) = delete;
+  void operator=(const CudaCubinOnDisk &) = delete;
 };
 
 // Kernel loader specification for PTX text that resides in memory.
@@ -213,7 +217,8 @@ class CudaPtxInMemory : public KernelLoaderSpec {
   // compute capability specified (in the single-PTX constructor).
   static const std::tuple<int, int> kMinimumCapability;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(CudaPtxInMemory);
+  CudaPtxInMemory(const CudaPtxInMemory &) = delete;
+  void operator=(const CudaPtxInMemory &) = delete;
 };
 
 // Kernel loader specification for a CUBIN blob that resides in memory.
@@ -227,7 +232,8 @@ class CudaCubinInMemory : public KernelLoaderSpec {
  private:
   const char *bytes_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(CudaCubinInMemory);
+  CudaCubinInMemory(const CudaCubinInMemory &) = delete;
+  void operator=(const CudaCubinInMemory &) = delete;
 };
 
 // Describes how to load a kernel on any subset of a number of target platforms.

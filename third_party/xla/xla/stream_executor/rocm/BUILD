@@ -98,7 +98,6 @@ cc_library(
 cc_library(
     name = "rocm_gpu_executor",
     srcs = if_rocm_is_configured(["rocm_gpu_executor.cc"]),
-    hdrs = if_rocm_is_configured(["rocm_gpu_executor.h"]),
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
         ":rocm_diagnostics",
@@ -121,18 +120,6 @@ cc_library(
         "@local_tsl//tsl/platform:env",
     ]),
     alwayslink = True,
-)
-
-cc_library(
-    name = "rocm_gpu_executor_header",
-    textual_hdrs = if_rocm_is_configured(["rocm_gpu_executor.h"]),
-    visibility = ["//visibility:public"],
-    deps = if_rocm_is_configured([
-        ":rocm_kernel",
-        "//xla/stream_executor",
-        "//xla/stream_executor/gpu:gpu_executor_header",
-        "//xla/stream_executor/platform",
-    ]),
 )
 
 cc_library(
@@ -219,7 +206,6 @@ cc_library(
         "//xla/stream_executor",
         "//xla/stream_executor:host_or_device_scalar",
         "//xla/stream_executor:plugin_registry",
-        "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor/gpu:gpu_activation",
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
@@ -261,7 +247,6 @@ cc_library(
         "//xla/stream_executor",
         "//xla/stream_executor:fft",
         "//xla/stream_executor:plugin_registry",
-        "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor/gpu:gpu_activation",
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla/stream_executor/gpu:gpu_executor_header",
@@ -311,7 +296,6 @@ cc_library(
         "//xla/stream_executor",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:plugin_registry",
-        "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor/gpu:gpu_activation_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
         "//xla/stream_executor/gpu:gpu_timer_header",
@@ -473,7 +457,7 @@ cc_library(
         "//xla:status",
         "//xla/stream_executor/platform",
         "//xla/stream_executor/platform:dso_loader",
-        "//xla/stream_executor:scratch_allocator",
+        "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla:util",
     ]) + if_static([

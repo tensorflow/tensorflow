@@ -2,18 +2,18 @@
 #   Base testing infrastructure for XLA.
 
 load("//xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
-load(
-    "@local_tsl//tsl/platform:build_config_root.bzl",
-    "tf_cuda_tests_tags",
-)
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("//xla:xla.bzl", "xla_cc_binary", "xla_cc_test")
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
 load("@local_tsl//tsl:tsl.bzl", "tsl_copts")
+load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
+load(
+    "@local_tsl//tsl/platform:build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -954,6 +954,7 @@ xla_test(
         ":hlo_test_base",
         ":test_macros_header",
         ":xla_internal_test_main",
+        "//xla:array",
         "//xla:execution_options_util",
         "//xla:literal_util",
         "//xla:status_macros",

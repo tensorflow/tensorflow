@@ -952,6 +952,10 @@ class ShapeInference {
   // mutations have identical static shape.
   bool InferShapeForTensorListInitOps(Operation* op);
 
+  // Conservatively infers shape of output tenorlist and item based on
+  // input tensorlist's element shape.
+  bool InferShapeForTensorListPopBackOp(TensorListPopBackOp op);
+
   // Infers the shape of VarHandleOp based on the uses of the VarHandleOp to
   // update the subtypes of the resource type.
   bool InferShapeForVarHandleOp(VarHandleOp op);
@@ -1553,7 +1557,7 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
 }
 
 bool ShapeInference::InferShapeForTensorListInitOps(Operation* op) {
-  DCOMMENT_OP(op, "Inferring shape for TensorList ");
+  DCOMMENT_OP(op, "Inferring shape for TensorListInitOps.");
   Value handle = op->getResult(0);
   Value initial_element_shape = GetElementShapeOperand(op);
   RankedTensorType element_type;
@@ -1576,6 +1580,42 @@ bool ShapeInference::InferShapeForTensorListInitOps(Operation* op) {
   bool changed = RefineResultType(op, handle, tensor_type);
   if (changed) DCOMMENT_OP(op, "Modified after shape inference:");
   return changed;
+}
+
+bool ShapeInference::InferShapeForTensorListPopBackOp(TensorListPopBackOp op) {
+  // The first Operand is assumed to be a TensorType around a variant with a
+  // single subtype (e.g. tensor<!tf_type.variant<tensor<2xi32>>>). We will
+  // copy this type to the first result, and copy the singular variant subtype
+  // to the second result (tensor<2xi32>).
+  DCOMMENT_OP(op, "Inferring shape for TensorListPopBackOp.");
+
+  auto src_list_handle_t =
+      op.getOperand(0).getType().dyn_cast_or_null<TensorType>();
+  if (!src_list_handle_t) return false;
+
+  // Copy of operand tensorlist type.
+  TensorType dst_list_handle_t =
+      src_list_handle_t.clone(src_list_handle_t.getElementType());
+  auto variant_element_t =
+      dst_list_handle_t.getElementType().dyn_cast_or_null<VariantType>();
+  if (!variant_element_t || variant_element_t.getSubtypes().size() != 1)
+    return false;
+
+  // Underlying TensorType from variant that represents a shape signature
+  // compatible with all elements in the tensorlist.
+  TensorType list_handle_element_t = variant_element_t.getSubtypes()[0];
+
+  if (!RefineResultType(op, op->getResult(0), dst_list_handle_t)) {
+    DCOMMENT("InferShapeForTensorListPopBackOp could not propogate result 0"
+             << op);
+    return false;
+  }
+  if (!RefineResultType(op, op->getResult(1), list_handle_element_t)) {
+    DCOMMENT("InferShapeForTensorListPopBackOp could not propogate result 1"
+             << op);
+    return false;
+  }
+  return true;
 }
 
 bool ShapeInference::InferShapeForVarHandleOp(VarHandleOp op) {
@@ -2480,6 +2520,10 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   // the InferenceContext below to get more precise shapes.
   if (IsTensorListInitOp(op) && InferShapeForTensorListInitOps(op)) return true;
 
+  if (auto pop_back = dyn_cast<TF::TensorListPopBackOp>(op)) {
+    return InferShapeForTensorListPopBackOp(pop_back);
+  }
+
   if (auto var_handle_op = dyn_cast<VarHandleOp>(op)) {
     return InferShapeForVarHandleOp(var_handle_op);
   }
@@ -2587,11 +2631,29 @@ FailureOr<bool> ShapeInference::PropagateShapeToFunctions(
       continue;
     }
     FunctionType func_type = func.getFunctionType();
-    func.setType(FunctionType::get(func.getContext(), input_types,
+    ArrayRef<Type> func_inputs = func_type.getInputs();
+    llvm::SmallVector<Type> infer_types;
+    for (auto it : llvm::zip(input_types, func_inputs)) {
+      auto input_type = std::get<0>(it);
+      auto func_input = std::get<1>(it);
+      Type infer_type = TypeMeet(input_type, func_input);
+      auto input_type_shape = input_type.dyn_cast<ShapedType>();
+      // TODO: Always use infer_type even the shape of input_type is unranked.
+      // We cannot do this currently because it will expose some bugs in
+      // multiple tests, either due to incorrect function signatures or
+      // unsupported type.
+      if (input_type_shape && input_type_shape.hasRank()) {
+        infer_types.push_back(infer_type);
+      } else {
+        infer_types.push_back(input_type);
+      }
+    }
+
+    func.setType(FunctionType::get(func.getContext(), infer_types,
                                    func_type.getResults()));
 
     FailureOr<bool> failure_or_converged =
-        PropagateShapeToRegions(input_types, {&func.getBody()}, max_iterations);
+        PropagateShapeToRegions(infer_types, {&func.getBody()}, max_iterations);
     if (failed(failure_or_converged)) {
       any_failure = true;
       continue;

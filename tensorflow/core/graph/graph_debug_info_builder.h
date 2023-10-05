@@ -197,7 +197,8 @@ class GraphDebugInfoBuilder {
   absl::flat_hash_map<StackFrame, int> frame_to_index_;
   int new_name_index_ = 0;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GraphDebugInfoBuilder);
+  GraphDebugInfoBuilder(const GraphDebugInfoBuilder&) = delete;
+  void operator=(const GraphDebugInfoBuilder&) = delete;
 };
 
 }  // namespace tensorflow
