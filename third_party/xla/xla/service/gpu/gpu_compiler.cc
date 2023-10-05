@@ -198,9 +198,7 @@ limitations under the License.
 #include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/traceme.h"
 
-#ifdef PLATFORM_GOOGLE
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.h"
-#endif  // PLATFORM_GOOGLE
 
 namespace xla {
 namespace gpu {
