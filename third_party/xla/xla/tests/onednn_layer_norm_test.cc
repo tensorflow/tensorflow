@@ -85,6 +85,15 @@ TEST_F(LayerNormTest, SimpleTest) {
 )";
 
   EXPECT_TRUE(RunAndCompare(layer_norm_module_str, ErrorSpec{1e-4, 1e-4}));
+  MatchOptimizedHlo(layer_norm_module_str,
+                    R"(
+  ; CHECK:     custom_call_target="__onednn$layernorm",
+  ; CHECK:       backend_config={
+  ; CHECK-DAG:     "onednn_layer_norm_config":{
+  ; CHECK-DAG:       "fused_ops":"SCALE_AND_SHIFT"
+  ; CHECK-DAG:   }
+  ; CHECK:     }
+  )");
 }
 
 }  // namespace
