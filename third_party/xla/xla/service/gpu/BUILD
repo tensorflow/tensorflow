@@ -2809,6 +2809,7 @@ cc_library(
     ]) + [
         ":fusion_pipeline",
         ":prepare_hlo_for_ir_emitting_pipeline",
+        "//xla/hlo/experimental/auto_sharding",
         "@local_tsl//tsl/lib/monitoring:counter",
     ],
 )
