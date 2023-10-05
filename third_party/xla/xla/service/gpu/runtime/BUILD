@@ -1,8 +1,10 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
+    "rocm_default_copts",
 )
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
@@ -49,16 +51,35 @@ cuda_library(
     ),
     hdrs = if_cuda_is_configured(["sleep_kernel.h"]),
     compatible_with = [],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     visibility = ["//visibility:public"],
-    deps = [
+    deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-    ],
+    ]),
+)
+
+cc_library(
+    name = "sleep_kernel_rocm",
+    srcs = if_rocm_is_configured(
+        [
+            "sleep_kernel.cu.cc",
+        ],
+    ),
+    hdrs = if_rocm_is_configured(["sleep_kernel.h"]),
+    compatible_with = [],
+    copts = rocm_default_copts(),
+    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM"]),
+    visibility = ["//visibility:public"],
+    deps = if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 cc_library(
     name = "collectives",
     srcs = ["collectives.cc"],
     hdrs = ["collectives.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM"]),
     visibility = ["//visibility:public"],
     deps = [
         ":support",
@@ -78,11 +99,15 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-    ] + if_cuda_is_configured([
-        ":sleep_kernel_cuda",
-        "@local_config_cuda//cuda:cuda_headers",
+    ] + if_gpu_is_configured([
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
+    ]) + if_cuda_is_configured([
+        ":sleep_kernel_cuda",
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm_is_configured([
+        ":sleep_kernel_rocm",
+        "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
 
