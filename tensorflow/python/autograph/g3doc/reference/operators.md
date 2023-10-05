@@ -70,7 +70,7 @@ Generally, the dispatch follows these rules:
 
 The first rule above means that if you convert normal, non-TensorFlow code with
 AutoGraph and call it with non-TensorFlow inputs, executing the generated code
-should be no different from executing the original.
+should be no different than executing the original.
 
 ### Functional form
 
