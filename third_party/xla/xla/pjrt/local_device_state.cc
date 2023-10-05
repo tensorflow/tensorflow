@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor_internal.h"
 #include "xla/util.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/protobuf/error_codes.pb.h"
@@ -57,12 +58,11 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
                                  : kNumDeviceToDeviceStreams;
   compute_stream_ = std::make_unique<se::Stream>(executor);
   if (stream_options.has_value()) {
-    compute_stream_->implementation()->SetPriority(stream_options->priority);
+    compute_stream_->SetPriority(stream_options->priority);
   }
   host_to_device_stream_ = std::make_unique<se::Stream>(executor);
   if (stream_options.has_value()) {
-    host_to_device_stream_->implementation()->SetPriority(
-        stream_options->priority);
+    host_to_device_stream_->SetPriority(stream_options->priority);
   }
   compute_stream_->Init();
   host_to_device_stream_->Init();
@@ -74,7 +74,7 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
   for (int i = 0; i < num_device_to_host_streams; ++i) {
     auto stream = std::make_unique<se::Stream>(executor);
     if (stream_options.has_value()) {
-      stream->implementation()->SetPriority(stream_options->priority);
+      stream->SetPriority(stream_options->priority);
     }
     stream->Init();
     device_to_host_streams_.push_back(std::move(stream));
@@ -83,7 +83,7 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
   for (int i = 0; i < num_device_to_device_streams; ++i) {
     auto stream = std::make_unique<se::Stream>(executor);
     if (stream_options.has_value()) {
-      stream->implementation()->SetPriority(stream_options->priority);
+      stream->SetPriority(stream_options->priority);
     }
     stream->Init();
     device_to_device_streams_.push_back(std::move(stream));
@@ -92,7 +92,7 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
   for (int i = 0; i < kNumExternalReadyEventStreams; ++i) {
     auto stream = std::make_unique<se::Stream>(executor);
     if (stream_options.has_value()) {
-      stream->implementation()->SetPriority(stream_options->priority);
+      stream->SetPriority(stream_options->priority);
     }
     stream->Init();
     external_ready_event_streams_.push_back(std::move(stream));

@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/framework/allocator.h"
 #include "tsl/framework/bfc_allocator.h"
 #include "tsl/lib/strings/proto_serialization.h"

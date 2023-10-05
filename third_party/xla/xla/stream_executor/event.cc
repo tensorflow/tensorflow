@@ -35,6 +35,9 @@ Event::~Event() {
   }
 }
 
+Event::Event(Event&&) = default;
+Event& Event::operator=(Event&&) = default;
+
 bool Event::Init() {
   auto status = stream_exec_->AllocateEvent(this);
   if (!status.ok()) {
