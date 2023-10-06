@@ -280,6 +280,17 @@ TEST(TfrtCpuClientTest, AsyncTransferSetBufferError) {
       tsl::testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
 }
 
+TEST(TfrtCpuClientTest, CreateErrorBuffer) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(/*asynchronous=*/true));
+  xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer, client->CreateErrorBuffer(InternalError("foobar"), shape,
+                                             client->addressable_devices()[0]));
+  EXPECT_THAT(
+      buffer->ToLiteralSync(),
+      tsl::testing::StatusIs(tsl::error::INTERNAL, HasSubstr("foobar")));
+}
+
 TEST(TfrtCpuClientTest, AsyncTransferRawDataToSubBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(/*asynchronous=*/true));
   xla::Shape shape = ShapeUtil::MakeShape(U32, {3, 2});
