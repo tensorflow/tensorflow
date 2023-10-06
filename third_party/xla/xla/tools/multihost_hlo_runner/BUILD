@@ -67,6 +67,7 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt:pjrt_future",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
         "//xla/service:hlo_parser",
         "//xla/service:hlo_pass_pipeline",
