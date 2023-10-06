@@ -1463,6 +1463,7 @@ cc_library(
         "//tensorflow/core/protobuf:autotuning_proto_cc_impl",
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl",
         "//tensorflow/core:protos_all_cc_impl",
+        "@local_xla//xla:autotune_results_proto_cc_impl",
         "@local_xla//xla:autotuning_proto_cc_impl",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl",
         "@local_tsl//tsl/protobuf:protos_all_cc_impl",

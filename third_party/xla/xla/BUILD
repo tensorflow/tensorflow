@@ -1149,9 +1149,8 @@ tf_proto_library(
     name = "autotune_results_proto",
     srcs = ["autotune_results.proto"],
     cc_api_version = 2,
-    protodeps = [
-        ":autotuning_proto",
-    ],
+    make_default_target_header_only = True,
+    protodeps = [":autotuning_proto"],
     visibility = ["//visibility:public"],
 )
 
