@@ -2,6 +2,7 @@
 
 load("//tensorflow/lite:special_rules.bzl", "ios_visibility_allowlist", "tflite_ios_lab_runner")
 load("//tensorflow/lite/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
+load("//tools/build_defs/apple:apple.bzl", "apple_static_xcframework")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework", "ios_unit_test")
 load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
 
@@ -45,6 +46,7 @@ swift_library(
         ],
         "//conditions:default": [],
     }),
+    copts = ["-no-verify-emitted-module-interface"],
     linkopts = select({
         ":use_coreml_delegate": [
             "-Wl,-weak_framework,CoreML",
@@ -98,6 +100,27 @@ ios_static_framework(
     ],
     bundle_name = "TensorFlowLite",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    deps = [
+        ":TensorFlowLite",
+    ],
+)
+
+# bazel build -c opt --config=ios //tensorflow/lite/swift:TensorFlowLite_xcframework
+apple_static_xcframework(
+    name = "TensorFlowLite_xcframework",
+    avoid_deps = [
+        "//tensorflow/lite/ios:tensorflow_lite_c",
+    ],
+    bundle_name = "TensorFlowLite",
+    ios = {
+        "simulator": [
+            "x86_64",
+            "arm64",
+        ],
+        "device": ["arm64"],
+    },
+    minimum_os_versions = {"ios": TFL_MINIMUM_OS_VERSION},
+    tags = ["manual"],  # TODO: Remove once tf is on bazel 6.x+
     deps = [
         ":TensorFlowLite",
     ],
