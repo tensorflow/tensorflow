@@ -373,6 +373,7 @@ LogicalResult VerifyAllProgramKeyOperandsReplaced(Operation* module) {
       return WalkResult::advance();
     Operation* defining = op->getOperand(0).getDefiningOp();
     if (llvm::dyn_cast_or_null<TF::ConstOp>(defining)) {
+      op->emitError("Couldn't find a program key to insert into this op.");
       return WalkResult::interrupt();
     }
     return WalkResult::advance();
