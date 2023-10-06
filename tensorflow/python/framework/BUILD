@@ -60,7 +60,7 @@ tf_py_strict_test(
     ],
     deps = [
         ":dtypes",
-        ":framework",
+        ":load_library",
         ":test_lib",
         "//tensorflow/python/ops:data_flow_ops",
         "//tensorflow/python/ops:io_ops",
@@ -298,13 +298,7 @@ py_strict_library(
 
 py_strict_library(
     name = "framework",
-    srcs = [
-        "framework_lib.py",
-        "graph_io.py",
-        "importer.py",
-        "load_library.py",
-        "meta_graph.py",
-    ],
+    deprecation = "This target has been split. Depend on the sub-targets instead.",
     srcs_version = "PY3",
     visibility = visibility + ["//tensorflow:internal"],
     deps = [
@@ -324,9 +318,14 @@ py_strict_library(
         ":errors",
         ":fast_tensor_util",
         ":for_generated_wrappers",
+        ":framework_lib",
         ":function",
+        ":graph_io",
         ":graph_util",
+        ":importer",
         ":indexed_slices",
+        ":load_library",
+        ":meta_graph",
         ":op_def_registry",
         ":ops",
         ":random_seed",
@@ -579,8 +578,8 @@ py_strict_library(
     visibility = visibility,
     deps = [
         ":cpp_shape_inference_proto_py",
-        ":framework",
         ":func_graph",
+        ":importer",
         ":ops",
         ":versions",
         "//tensorflow/core:protos_all_py",
@@ -1914,6 +1913,96 @@ pytype_strict_library(
     ],
 )
 
+pytype_strict_library(
+    name = "meta_graph",
+    srcs = ["meta_graph.py"],
+    visibility = visibility + ["//tensorflow:internal"],
+    deps = [
+        ":byte_swap_tensor",
+        ":error_interpolation",
+        ":graph_io",
+        ":importer",
+        ":op_def_registry",
+        ":ops",
+        ":tensor",
+        ":versions",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/client:pywrap_tf_session",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/util:compat",
+        "@pypi_packaging//:pkg",
+    ],
+)
+
+pytype_strict_library(
+    name = "framework_lib",
+    srcs = ["framework_lib.py"],
+    visibility = visibility + ["//tensorflow:internal"],
+    deps = [
+        ":device",
+        ":dtypes",
+        ":importer",
+        ":indexed_slices",
+        ":load_library",
+        ":ops",
+        ":random_seed",
+        ":sparse_tensor",
+        ":tensor",
+        ":tensor_conversion_registry",
+        ":tensor_shape",
+        ":tensor_util",
+    ],
+)
+
+pytype_strict_library(
+    name = "graph_io",
+    srcs = ["graph_io.py"],
+    visibility = visibility + ["//tensorflow:internal"],
+    deps = [
+        ":byte_swap_tensor",
+        ":ops",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+pytype_strict_library(
+    name = "importer",
+    srcs = ["importer.py"],
+    visibility = visibility + ["//tensorflow:internal"],
+    deps = [
+        ":c_api_util",
+        ":device",
+        ":errors",
+        ":function",
+        ":op_def_registry",
+        ":ops",
+        ":tensor",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python/client:pywrap_tf_session",
+        "//tensorflow/python/ops:control_flow_util",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+pytype_strict_library(
+    name = "load_library",
+    srcs = ["load_library.py"],
+    visibility = visibility + ["//tensorflow:internal"],
+    deps = [
+        ":_pywrap_python_op_gen",
+        "//tensorflow/python/client:pywrap_tf_session",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
 py_strict_library(
     name = "stack",
     srcs = ["stack.py"],
@@ -2046,8 +2135,8 @@ py_strict_library(
         ":device",
         ":dtypes",
         ":errors",
-        ":framework",
         ":gpu_util",
+        ":importer",
         ":indexed_slices",
         ":ops",
         ":random_seed",
@@ -2213,13 +2302,14 @@ tf_py_strict_test(
     deps = [
         ":constant_op",
         ":dtypes",
-        ":framework",
+        ":importer",
         ":ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops/parallel_for:control_flow_ops",
         "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ] + tf_additional_xla_deps_py(),
 )
@@ -2386,8 +2476,8 @@ tf_py_strict_test(
         ":constant_op",
         ":device",
         ":dtypes",
-        ":framework",
         ":function",
+        ":importer",
         ":ops",
         ":tensor_shape",
         ":test_lib",
@@ -2433,8 +2523,8 @@ tf_py_strict_test(
         ":constant_op",
         ":dtypes",
         ":error_interpolation",
-        ":framework",
         ":function",
+        ":meta_graph",
         ":ops",
         ":test_lib",
         "//tensorflow/core:protos_all_py",
@@ -3110,8 +3200,8 @@ tf_py_strict_test(
         ":constant_op",
         ":convert_to_constants",
         ":dtypes",
-        ":framework",
         ":function",
+        ":importer",
         ":ops",
         ":tensor_spec",
         ":test_lib",
@@ -3146,6 +3236,7 @@ tf_py_strict_test(
         "//tensorflow/python/training:saver",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
+        "//third_party/py/numpy",
     ],
 )
 
