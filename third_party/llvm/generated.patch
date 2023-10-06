@@ -1,1 +1,839 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/libcxx/include/__hash_table b/libcxx/include/__hash_table
+--- a/libcxx/include/__hash_table
++++ b/libcxx/include/__hash_table
+@@ -21,7 +21,6 @@
+ #include <__memory/addressof.h>
+ #include <__memory/allocator_traits.h>
+ #include <__memory/compressed_pair.h>
+-#include <__memory/construct_at.h>
+ #include <__memory/pointer_traits.h>
+ #include <__memory/swap_allocator.h>
+ #include <__memory/unique_ptr.h>
+@@ -46,7 +45,6 @@
+ #include <cmath>
+ #include <cstring>
+ #include <initializer_list>
+-#include <new> // __launder
+ 
+ #if !defined(_LIBCPP_HAS_NO_PRAGMA_SYSTEM_HEADER)
+ #  pragma GCC system_header
+@@ -109,44 +107,19 @@
+     }
+ 
+     _LIBCPP_INLINE_VISIBILITY __hash_node_base() _NOEXCEPT : __next_(nullptr) {}
+-    _LIBCPP_HIDE_FROM_ABI explicit __hash_node_base(__next_pointer __next) _NOEXCEPT : __next_(__next) {}
+ };
+ 
+ template <class _Tp, class _VoidPtr>
+-struct __hash_node
++struct _LIBCPP_STANDALONE_DEBUG __hash_node
+     : public __hash_node_base
+              <
+                  __rebind_pointer_t<_VoidPtr, __hash_node<_Tp, _VoidPtr> >
+              >
+ {
+     typedef _Tp __node_value_type;
+-    using _Base = __hash_node_base<__rebind_pointer_t<_VoidPtr, __hash_node<_Tp, _VoidPtr> > >;
+-    using __next_pointer = typename _Base::__next_pointer;
+ 
+     size_t            __hash_;
+-
+-    // We allow starting the lifetime of nodes without initializing the value held by the node,
+-    // since that is handled by the hash table itself in order to be allocator-aware.
+-#ifndef _LIBCPP_CXX03_LANG
+-private:
+-    union {
+-        _Tp __value_;
+-    };
+-
+-public:
+-    _LIBCPP_HIDE_FROM_ABI _Tp& __get_value() { return __value_; }
+-#else
+-private:
+-    _ALIGNAS_TYPE(_Tp) char __buffer_[sizeof(_Tp)];
+-
+-public:
+-    _LIBCPP_HIDE_FROM_ABI _Tp& __get_value() {
+-        return *std::__launder(reinterpret_cast<_Tp*>(&__buffer_));
+-    }
+-#endif
+-
+-    _LIBCPP_HIDE_FROM_ABI explicit __hash_node(__next_pointer __next, size_t __hash) : _Base(__next), __hash_(__hash) {}
+-    _LIBCPP_HIDE_FROM_ABI ~__hash_node() {}
++    __node_value_type __value_;
+ };
+ 
+ inline _LIBCPP_INLINE_VISIBILITY
+@@ -338,12 +311,12 @@
+ 
+     _LIBCPP_INLINE_VISIBILITY
+     reference operator*() const {
+-        return __node_->__upcast()->__get_value();
++        return __node_->__upcast()->__value_;
+     }
+ 
+     _LIBCPP_INLINE_VISIBILITY
+     pointer operator->() const {
+-        return pointer_traits<pointer>::pointer_to(__node_->__upcast()->__get_value());
++        return pointer_traits<pointer>::pointer_to(__node_->__upcast()->__value_);
+     }
+ 
+     _LIBCPP_INLINE_VISIBILITY
+@@ -414,11 +387,11 @@
+ 
+     _LIBCPP_INLINE_VISIBILITY
+     reference operator*() const {
+-        return __node_->__upcast()->__get_value();
++        return __node_->__upcast()->__value_;
+     }
+     _LIBCPP_INLINE_VISIBILITY
+     pointer operator->() const {
+-        return pointer_traits<pointer>::pointer_to(__node_->__upcast()->__get_value());
++        return pointer_traits<pointer>::pointer_to(__node_->__upcast()->__value_);
+     }
+ 
+     _LIBCPP_INLINE_VISIBILITY
+@@ -480,12 +453,12 @@
+ 
+     _LIBCPP_INLINE_VISIBILITY
+     reference operator*() const {
+-        return __node_->__upcast()->__get_value();
++        return __node_->__upcast()->__value_;
+     }
+ 
+     _LIBCPP_INLINE_VISIBILITY
+     pointer operator->() const {
+-        return pointer_traits<pointer>::pointer_to(__node_->__upcast()->__get_value());
++        return pointer_traits<pointer>::pointer_to(__node_->__upcast()->__value_);
+     }
+ 
+     _LIBCPP_INLINE_VISIBILITY
+@@ -570,12 +543,12 @@
+ 
+     _LIBCPP_INLINE_VISIBILITY
+     reference operator*() const {
+-        return __node_->__upcast()->__get_value();
++        return __node_->__upcast()->__value_;
+     }
+ 
+     _LIBCPP_INLINE_VISIBILITY
+     pointer operator->() const {
+-        return pointer_traits<pointer>::pointer_to(__node_->__upcast()->__get_value());
++        return pointer_traits<pointer>::pointer_to(__node_->__upcast()->__value_);
+     }
+ 
+     _LIBCPP_INLINE_VISIBILITY
+@@ -697,10 +670,8 @@
+     _LIBCPP_INLINE_VISIBILITY
+     void operator()(pointer __p) _NOEXCEPT
+     {
+-        if (__value_constructed) {
+-            __alloc_traits::destroy(__na_, _NodeTypes::__get_ptr(__p->__get_value()));
+-            std::__destroy_at(std::addressof(*__p));
+-        }
++        if (__value_constructed)
++            __alloc_traits::destroy(__na_, _NodeTypes::__get_ptr(__p->__value_));
+         if (__p)
+             __alloc_traits::deallocate(__na_, __p, 1);
+     }
+@@ -1394,8 +1365,7 @@
+     {
+         __next_pointer __next = __np->__next_;
+         __node_pointer __real_np = __np->__upcast();
+-        __node_traits::destroy(__na, _NodeTypes::__get_ptr(__real_np->__get_value()));
+-        std::__destroy_at(std::addressof(*__real_np));
++        __node_traits::destroy(__na, _NodeTypes::__get_ptr(__real_np->__value_));
+         __node_traits::deallocate(__na, __real_np, 1);
+         __np = __next;
+     }
+@@ -1464,8 +1434,8 @@
+                 const_iterator __i = __u.begin();
+                 while (__cache != nullptr && __u.size() != 0)
+                 {
+-                    __cache->__upcast()->__get_value() =
+-                        _VSTD::move(__u.remove(__i++)->__get_value());
++                    __cache->__upcast()->__value_ =
++                        _VSTD::move(__u.remove(__i++)->__value_);
+                     __next_pointer __next = __cache->__next_;
+                     __node_insert_multi(__cache->__upcast());
+                     __cache = __next;
+@@ -1483,7 +1453,7 @@
+         const_iterator __i = __u.begin();
+         while (__u.size() != 0)
+         {
+-            __node_holder __h = __construct_node(_NodeTypes::__move(__u.remove(__i++)->__get_value()));
++            __node_holder __h = __construct_node(_NodeTypes::__move(__u.remove(__i++)->__value_));
+             __node_insert_multi(__h.get());
+             __h.release();
+         }
+@@ -1525,7 +1495,7 @@
+ #endif // _LIBCPP_HAS_NO_EXCEPTIONS
+             for (; __cache != nullptr && __first != __last; ++__first)
+             {
+-                __cache->__upcast()->__get_value() = *__first;
++                __cache->__upcast()->__value_ = *__first;
+                 __next_pointer __next = __cache->__next_;
+                 __node_insert_unique(__cache->__upcast());
+                 __cache = __next;
+@@ -1565,7 +1535,7 @@
+ #endif // _LIBCPP_HAS_NO_EXCEPTIONS
+             for (; __cache != nullptr && __first != __last; ++__first)
+             {
+-                __cache->__upcast()->__get_value() = *__first;
++                __cache->__upcast()->__value_ = *__first;
+                 __next_pointer __next = __cache->__next_;
+                 __node_insert_multi(__cache->__upcast());
+                 __cache = __next;
+@@ -1659,7 +1629,7 @@
+                                                      __ndptr = __ndptr->__next_)
+             {
+                 if ((__ndptr->__hash() == __hash) &&
+-                    key_eq()(__ndptr->__upcast()->__get_value(), __value))
++                    key_eq()(__ndptr->__upcast()->__value_, __value))
+                     return __ndptr;
+             }
+         }
+@@ -1708,9 +1678,9 @@
+ pair<typename __hash_table<_Tp, _Hash, _Equal, _Alloc>::iterator, bool>
+ __hash_table<_Tp, _Hash, _Equal, _Alloc>::__node_insert_unique(__node_pointer __nd)
+ {
+-    __nd->__hash_ = hash_function()(__nd->__get_value());
++    __nd->__hash_ = hash_function()(__nd->__value_);
+     __next_pointer __existing_node =
+-        __node_insert_unique_prepare(__nd->__hash(), __nd->__get_value());
++        __node_insert_unique_prepare(__nd->__hash(), __nd->__value_);
+ 
+     // Insert the node, unless it already exists in the container.
+     bool __inserted = false;
+@@ -1756,7 +1726,7 @@
+             //      false       true        set __found to true
+             //      true        false       break
+             if (__found != (__pn->__next_->__hash() == __cp_hash &&
+-                            key_eq()(__pn->__next_->__upcast()->__get_value(), __cp_val)))
++                            key_eq()(__pn->__next_->__upcast()->__value_, __cp_val)))
+             {
+                 if (!__found)
+                     __found = true;
+@@ -1810,8 +1780,8 @@
+ typename __hash_table<_Tp, _Hash, _Equal, _Alloc>::iterator
+ __hash_table<_Tp, _Hash, _Equal, _Alloc>::__node_insert_multi(__node_pointer __cp)
+ {
+-    __cp->__hash_ = hash_function()(__cp->__get_value());
+-    __next_pointer __pn = __node_insert_multi_prepare(__cp->__hash(), __cp->__get_value());
++    __cp->__hash_ = hash_function()(__cp->__value_);
++    __next_pointer __pn = __node_insert_multi_prepare(__cp->__hash(), __cp->__value_);
+     __node_insert_multi_perform(__cp, __pn);
+ 
+     return iterator(__cp->__ptr());
+@@ -1822,7 +1792,7 @@
+ __hash_table<_Tp, _Hash, _Equal, _Alloc>::__node_insert_multi(
+         const_iterator __p, __node_pointer __cp)
+ {
+-    if (__p != end() && key_eq()(*__p, __cp->__get_value()))
++    if (__p != end() && key_eq()(*__p, __cp->__value_))
+     {
+         __next_pointer __np = __p.__node_;
+         __cp->__hash_ = __np->__hash();
+@@ -1869,7 +1839,7 @@
+                                                            __nd = __nd->__next_)
+             {
+                 if ((__nd->__hash() == __hash) &&
+-                    key_eq()(__nd->__upcast()->__get_value(), __k))
++                    key_eq()(__nd->__upcast()->__value_, __k))
+                     goto __done;
+             }
+         }
+@@ -2013,9 +1983,9 @@
+          __it != __source.end();)
+     {
+         __node_pointer __src_ptr = __it.__node_->__upcast();
+-        size_t __hash = hash_function()(__src_ptr->__get_value());
++        size_t __hash = hash_function()(__src_ptr->__value_);
+         __next_pointer __existing_node =
+-            __node_insert_unique_prepare(__hash, __src_ptr->__get_value());
++            __node_insert_unique_prepare(__hash, __src_ptr->__value_);
+         auto __prev_iter = __it++;
+         if (__existing_node == nullptr)
+         {
+@@ -2067,9 +2037,9 @@
+          __it != __source.end();)
+     {
+         __node_pointer __src_ptr = __it.__node_->__upcast();
+-        size_t __src_hash = hash_function()(__src_ptr->__get_value());
++        size_t __src_hash = hash_function()(__src_ptr->__value_);
+         __next_pointer __pn =
+-            __node_insert_multi_prepare(__src_hash, __src_ptr->__get_value());
++            __node_insert_multi_prepare(__src_hash, __src_ptr->__value_);
+         (void)__source.remove(__it++).release();
+         __src_ptr->__hash_ = __src_hash;
+         __node_insert_multi_perform(__src_ptr, __pn);
+@@ -2143,8 +2113,8 @@
+                         if _LIBCPP_CONSTEXPR_SINCE_CXX17 (!_UniqueKeys)
+                         {
+                             for (; __np->__next_ != nullptr &&
+-                                   key_eq()(__cp->__upcast()->__get_value(),
+-                                            __np->__next_->__upcast()->__get_value());
++                                   key_eq()(__cp->__upcast()->__value_,
++                                            __np->__next_->__upcast()->__value_);
+                                                                __np = __np->__next_)
+                                 ;
+                         }
+@@ -2178,7 +2148,7 @@
+                                                            __nd = __nd->__next_)
+             {
+                 if ((__nd->__hash() == __hash)
+-                    && key_eq()(__nd->__upcast()->__get_value(), __k))
++                    && key_eq()(__nd->__upcast()->__value_, __k))
+                     return iterator(__nd);
+             }
+         }
+@@ -2205,7 +2175,7 @@
+                                                            __nd = __nd->__next_)
+             {
+                 if ((__nd->__hash() == __hash)
+-                    && key_eq()(__nd->__upcast()->__get_value(), __k))
++                    && key_eq()(__nd->__upcast()->__value_, __k))
+                     return const_iterator(__nd);
+             }
+         }
+@@ -2223,20 +2193,10 @@
+                   "Construct cannot be called with a hash value type");
+     __node_allocator& __na = __node_alloc();
+     __node_holder __h(__node_traits::allocate(__na, 1), _Dp(__na));
+-
+-    // Begin the lifetime of the node itself. Note that this doesn't begin the lifetime of the value
+-    // held inside the node, since we need to use the allocator's construct() method for that.
+-    //
+-    // We don't use the allocator's construct() method to construct the node itself since the
+-    // Cpp17FooInsertable named requirements don't require the allocator's construct() method
+-    // to work on anything other than the value_type.
+-    std::__construct_at(std::addressof(*__h), /* next = */nullptr, /* hash = */0);
+-
+-    // Now construct the value_type using the allocator's construct() method.
+-    __node_traits::construct(__na, _NodeTypes::__get_ptr(__h->__get_value()), _VSTD::forward<_Args>(__args)...);
++    __node_traits::construct(__na, _NodeTypes::__get_ptr(__h->__value_), _VSTD::forward<_Args>(__args)...);
+     __h.get_deleter().__value_constructed = true;
+-
+-    __h->__hash_ = hash_function()(__h->__get_value());
++    __h->__hash_ = hash_function()(__h->__value_);
++    __h->__next_ = nullptr;
+     return __h;
+ }
+ 
+@@ -2250,11 +2210,12 @@
+                   "Construct cannot be called with a hash value type");
+     __node_allocator& __na = __node_alloc();
+     __node_holder __h(__node_traits::allocate(__na, 1), _Dp(__na));
+-    std::__construct_at(std::addressof(*__h), /* next = */nullptr, /* hash = */__hash);
+-    __node_traits::construct(__na, _NodeTypes::__get_ptr(__h->__get_value()),
++    __node_traits::construct(__na, _NodeTypes::__get_ptr(__h->__value_),
+                              _VSTD::forward<_First>(__f),
+                              _VSTD::forward<_Rest>(__rest)...);
+     __h.get_deleter().__value_constructed = true;
++    __h->__hash_ = __hash;
++    __h->__next_ = nullptr;
+     return __h;
+ }
+ 
+diff -ruN --strip-trailing-cr a/libcxx/include/__node_handle b/libcxx/include/__node_handle
+--- a/libcxx/include/__node_handle
++++ b/libcxx/include/__node_handle
+@@ -209,7 +209,7 @@
+     _LIBCPP_INLINE_VISIBILITY
+     value_type& value() const
+     {
+-        return static_cast<_Derived const*>(this)->__ptr_->__get_value();
++        return static_cast<_Derived const*>(this)->__ptr_->__value_;
+     }
+ };
+ 
+@@ -223,14 +223,14 @@
+     key_type& key() const
+     {
+         return static_cast<_Derived const*>(this)->
+-            __ptr_->__get_value().__ref().first;
++            __ptr_->__value_.__ref().first;
+     }
+ 
+     _LIBCPP_INLINE_VISIBILITY
+     mapped_type& mapped() const
+     {
+         return static_cast<_Derived const*>(this)->
+-            __ptr_->__get_value().__ref().second;
++            __ptr_->__value_.__ref().second;
+     }
+ };
+ 
+diff -ruN --strip-trailing-cr a/libcxx/include/__tree b/libcxx/include/__tree
+--- a/libcxx/include/__tree
++++ b/libcxx/include/__tree
+@@ -774,8 +774,6 @@
+ 
+     __node_value_type __value_;
+ 
+-    _LIBCPP_HIDE_FROM_ABI _Tp& __get_value() { return __value_; }
+-
+ private:
+   ~__tree_node() = delete;
+   __tree_node(__tree_node const&) = delete;
+diff -ruN --strip-trailing-cr a/libcxx/include/ext/hash_map b/libcxx/include/ext/hash_map
+--- a/libcxx/include/ext/hash_map
++++ b/libcxx/include/ext/hash_map
+@@ -357,9 +357,9 @@
+     void operator()(pointer __p)
+     {
+         if (__second_constructed)
+-            __alloc_traits::destroy(__na_, _VSTD::addressof(__p->__get_value().second));
++            __alloc_traits::destroy(__na_, _VSTD::addressof(__p->__value_.second));
+         if (__first_constructed)
+-            __alloc_traits::destroy(__na_, _VSTD::addressof(__p->__get_value().first));
++            __alloc_traits::destroy(__na_, _VSTD::addressof(__p->__value_.first));
+         if (__p)
+             __alloc_traits::deallocate(__na_, __p, 1);
+     }
+@@ -667,9 +667,9 @@
+ {
+     __node_allocator& __na = __table_.__node_alloc();
+     __node_holder __h(__node_traits::allocate(__na, 1), _Dp(__na));
+-    __node_traits::construct(__na, _VSTD::addressof(__h->__get_value().first), __k);
++    __node_traits::construct(__na, _VSTD::addressof(__h->__value_.first), __k);
+     __h.get_deleter().__first_constructed = true;
+-    __node_traits::construct(__na, _VSTD::addressof(__h->__get_value().second));
++    __node_traits::construct(__na, _VSTD::addressof(__h->__value_.second));
+     __h.get_deleter().__second_constructed = true;
+     return __h;
+ }
+diff -ruN --strip-trailing-cr a/libcxx/include/forward_list b/libcxx/include/forward_list
+--- a/libcxx/include/forward_list
++++ b/libcxx/include/forward_list
+@@ -211,7 +211,6 @@
+ #include <__memory/allocator.h>
+ #include <__memory/allocator_traits.h>
+ #include <__memory/compressed_pair.h>
+-#include <__memory/construct_at.h>
+ #include <__memory/pointer_traits.h>
+ #include <__memory/swap_allocator.h>
+ #include <__memory_resource/polymorphic_allocator.h>
+@@ -231,7 +230,6 @@
+ #include <__utility/forward.h>
+ #include <__utility/move.h>
+ #include <limits>
+-#include <new> // __launder
+ #include <version>
+ 
+ // standard-mandated includes
+@@ -320,35 +318,17 @@
+ using __begin_node_of = __forward_begin_node<__rebind_pointer_t<_VoidPtr, __forward_list_node<_Tp, _VoidPtr> > >;
+ 
+ template <class _Tp, class _VoidPtr>
+-struct __forward_list_node
++struct _LIBCPP_STANDALONE_DEBUG __forward_list_node
+     : public __begin_node_of<_Tp, _VoidPtr>
+ {
+     typedef _Tp value_type;
+     typedef __begin_node_of<_Tp, _VoidPtr> _Base;
+     typedef typename _Base::pointer _NodePtr;
+ 
+-    // We allow starting the lifetime of nodes without initializing the value held by the node,
+-    // since that is handled by the list itself in order to be allocator-aware.
+-#ifndef _LIBCPP_CXX03_LANG
+-private:
+-    union {
+-        _Tp __value_;
+-    };
+-
+-public:
+-    _LIBCPP_HIDE_FROM_ABI _Tp& __get_value() { return __value_; }
+-#else
+-private:
+-    _ALIGNAS_TYPE(_Tp) char __buffer_[sizeof(_Tp)];
++    value_type __value_;
+ 
+-public:
+-    _LIBCPP_HIDE_FROM_ABI _Tp& __get_value() {
+-        return *std::__launder(reinterpret_cast<_Tp*>(&__buffer_));
+-    }
+-#endif
+-
+-    _LIBCPP_HIDE_FROM_ABI explicit __forward_list_node(_NodePtr __next) : _Base(__next) {}
+-    _LIBCPP_HIDE_FROM_ABI ~__forward_list_node() {}
++    _LIBCPP_HIDE_FROM_ABI __forward_list_node() = default;
++    _LIBCPP_HIDE_FROM_ABI __forward_list_node(const value_type& __v, _NodePtr __next) : _Base(__next), __value_(__v) {}
+ };
+ 
+ 
+@@ -403,10 +383,10 @@
+     __forward_list_iterator() _NOEXCEPT : __ptr_(nullptr) {}
+ 
+     _LIBCPP_INLINE_VISIBILITY
+-    reference operator*() const {return __get_unsafe_node_pointer()->__get_value();}
++    reference operator*() const {return __get_unsafe_node_pointer()->__value_;}
+     _LIBCPP_INLINE_VISIBILITY
+     pointer operator->() const {
+-        return pointer_traits<pointer>::pointer_to(__get_unsafe_node_pointer()->__get_value());
++        return pointer_traits<pointer>::pointer_to(__get_unsafe_node_pointer()->__value_);
+     }
+ 
+     _LIBCPP_INLINE_VISIBILITY
+@@ -488,10 +468,10 @@
+         : __ptr_(__p.__ptr_) {}
+ 
+     _LIBCPP_INLINE_VISIBILITY
+-    reference operator*() const {return __get_unsafe_node_pointer()->__get_value();}
++    reference operator*() const {return __get_unsafe_node_pointer()->__value_;}
+     _LIBCPP_INLINE_VISIBILITY
+     pointer operator->() const {return pointer_traits<pointer>::pointer_to(
+-                __get_unsafe_node_pointer()->__get_value());}
++                __get_unsafe_node_pointer()->__value_);}
+ 
+     _LIBCPP_INLINE_VISIBILITY
+     __forward_list_const_iterator& operator++()
+@@ -597,26 +577,15 @@
+     _LIBCPP_HIDE_FROM_ABI __node_pointer __create_node(__node_pointer __next, _Args&& ...__args) {
+         __node_allocator& __a = __alloc();
+         __allocation_guard<__node_allocator> __guard(__a, 1);
+-        // Begin the lifetime of the node itself. Note that this doesn't begin the lifetime of the value
+-        // held inside the node, since we need to use the allocator's construct() method for that.
+-        //
+-        // We don't use the allocator's construct() method to construct the node itself since the
+-        // Cpp17FooInsertable named requirements don't require the allocator's construct() method
+-        // to work on anything other than the value_type.
+-        std::__construct_at(std::addressof(*__guard.__get()), __next);
+-
+-        // Now construct the value_type using the allocator's construct() method.
+-        __node_traits::construct(__a, std::addressof(__guard.__get()->__get_value()), std::forward<_Args>(__args)...);
++        __guard.__get()->__next_ = __next;
++        __node_traits::construct(__a, std::addressof(__guard.__get()->__value_), std::forward<_Args>(__args)...);
+         return __guard.__release_ptr();
+     }
+ 
+     template <class ..._Args>
+     _LIBCPP_HIDE_FROM_ABI void __delete_node(__node_pointer __node) {
+-        // For the same reason as above, we use the allocator's destroy() method for the value_type,
+-        // but not for the node itself.
+         __node_allocator& __a = __alloc();
+-        __node_traits::destroy(__a, std::addressof(__node->__get_value()));
+-        std::__destroy_at(std::addressof(*__node));
++        __node_traits::destroy(__a, std::addressof(__node->__value_));
+         __node_traits::deallocate(__a, __node, 1);
+     }
+ 
+@@ -878,9 +847,9 @@
+     }
+ 
+     _LIBCPP_INLINE_VISIBILITY
+-    reference       front()       {return base::__before_begin()->__next_->__get_value();}
++    reference       front()       {return base::__before_begin()->__next_->__value_;}
+     _LIBCPP_INLINE_VISIBILITY
+-    const_reference front() const {return base::__before_begin()->__next_->__get_value();}
++    const_reference front() const {return base::__before_begin()->__next_->__value_;}
+ 
+ #ifndef _LIBCPP_CXX03_LANG
+ #if _LIBCPP_STD_VER >= 17
+@@ -1258,7 +1227,7 @@
+ {
+     base::__before_begin()->__next_ = this->__create_node(/* next = */base::__before_begin()->__next_, std::forward<_Args>(__args)...);
+ #if _LIBCPP_STD_VER >= 17
+-    return base::__before_begin()->__next_->__get_value();
++    return base::__before_begin()->__next_->__value_;
+ #endif
+ }
+ 
+@@ -1587,7 +1556,7 @@
+     const iterator __e = end();
+     for (iterator __i = before_begin(); __i.__get_begin()->__next_ != nullptr;)
+     {
+-        if (__i.__get_begin()->__next_->__get_value() == __v)
++        if (__i.__get_begin()->__next_->__value_ == __v)
+         {
+             ++__count_removed;
+             iterator __j = _VSTD::next(__i, 2);
+@@ -1615,7 +1584,7 @@
+     const iterator __e = end();
+     for (iterator __i = before_begin(); __i.__get_begin()->__next_ != nullptr;)
+     {
+-        if (__pred(__i.__get_begin()->__next_->__get_value()))
++        if (__pred(__i.__get_begin()->__next_->__value_))
+         {
+             ++__count_removed;
+             iterator __j = _VSTD::next(__i, 2);
+@@ -1678,11 +1647,11 @@
+     if (__f2 == nullptr)
+         return __f1;
+     __node_pointer __r;
+-    if (__comp(__f2->__get_value(), __f1->__get_value()))
++    if (__comp(__f2->__value_, __f1->__value_))
+     {
+         __node_pointer __t = __f2;
+         while (__t->__next_ != nullptr &&
+-                             __comp(__t->__next_->__get_value(), __f1->__get_value()))
++                             __comp(__t->__next_->__value_, __f1->__value_))
+             __t = __t->__next_;
+         __r = __f2;
+         __f2 = __t->__next_;
+@@ -1694,11 +1663,11 @@
+     __f1 = __f1->__next_;
+     while (__f1 != nullptr && __f2 != nullptr)
+     {
+-        if (__comp(__f2->__get_value(), __f1->__get_value()))
++        if (__comp(__f2->__value_, __f1->__value_))
+         {
+             __node_pointer __t = __f2;
+             while (__t->__next_ != nullptr &&
+-                                 __comp(__t->__next_->__get_value(), __f1->__get_value()))
++                                 __comp(__t->__next_->__value_, __f1->__value_))
+                 __t = __t->__next_;
+             __p->__next_ = __f2;
+             __f2 = __t->__next_;
+@@ -1734,7 +1703,7 @@
+     case 1:
+         return __f1;
+     case 2:
+-        if (__comp(__f1->__next_->__get_value(), __f1->__get_value()))
++        if (__comp(__f1->__next_->__value_, __f1->__value_))
+         {
+             __node_pointer __t = __f1->__next_;
+             __t->__next_ = __f1;
+diff -ruN --strip-trailing-cr a/libcxx/include/list b/libcxx/include/list
+--- a/libcxx/include/list
++++ b/libcxx/include/list
+@@ -217,7 +217,6 @@
+ #include <__memory/allocator.h>
+ #include <__memory/allocator_traits.h>
+ #include <__memory/compressed_pair.h>
+-#include <__memory/construct_at.h>
+ #include <__memory/pointer_traits.h>
+ #include <__memory/swap_allocator.h>
+ #include <__memory_resource/polymorphic_allocator.h>
+@@ -238,7 +237,6 @@
+ #include <__utility/swap.h>
+ #include <cstring>
+ #include <limits>
+-#include <new> // __launder
+ #include <version>
+ 
+ // standard-mandated includes
+@@ -310,9 +308,6 @@
+     __list_node_base() : __prev_(_NodeTraits::__unsafe_link_pointer_cast(__self())),
+                          __next_(_NodeTraits::__unsafe_link_pointer_cast(__self())) {}
+ 
+-    _LIBCPP_HIDE_FROM_ABI explicit __list_node_base(__link_pointer __prev, __link_pointer __next)
+-        : __prev_(__prev), __next_(__next) {}
+-
+     _LIBCPP_INLINE_VISIBILITY
+     __base_pointer __self() {
+         return pointer_traits<__base_pointer>::pointer_to(*this);
+@@ -325,35 +320,14 @@
+ };
+ 
+ template <class _Tp, class _VoidPtr>
+-struct __list_node
++struct _LIBCPP_STANDALONE_DEBUG __list_node
+     : public __list_node_base<_Tp, _VoidPtr>
+ {
+-    // We allow starting the lifetime of nodes without initializing the value held by the node,
+-    // since that is handled by the list itself in order to be allocator-aware.
+-#ifndef _LIBCPP_CXX03_LANG
+-private:
+-    union {
+-        _Tp __value_;
+-    };
+-
+-public:
+-    _LIBCPP_HIDE_FROM_ABI _Tp& __get_value() { return __value_; }
+-#else
+-private:
+-    _ALIGNAS_TYPE(_Tp) char __buffer_[sizeof(_Tp)];
+-
+-public:
+-    _LIBCPP_HIDE_FROM_ABI _Tp& __get_value() {
+-        return *std::__launder(reinterpret_cast<_Tp*>(&__buffer_));
+-    }
+-#endif
++    _Tp __value_;
+ 
+     typedef __list_node_base<_Tp, _VoidPtr> __base;
+     typedef typename __base::__link_pointer __link_pointer;
+ 
+-    _LIBCPP_HIDE_FROM_ABI explicit __list_node(__link_pointer __prev, __link_pointer __next) : __base(__prev, __next) {}
+-    _LIBCPP_HIDE_FROM_ABI ~__list_node() {}
+-
+     _LIBCPP_INLINE_VISIBILITY
+     __link_pointer __as_link() {
+         return static_cast<__link_pointer>(__base::__self());
+@@ -396,12 +370,12 @@
+     _LIBCPP_INLINE_VISIBILITY
+     reference operator*() const
+     {
+-        return __ptr_->__as_node()->__get_value();
++        return __ptr_->__as_node()->__value_;
+     }
+     _LIBCPP_INLINE_VISIBILITY
+     pointer operator->() const
+     {
+-        return pointer_traits<pointer>::pointer_to(__ptr_->__as_node()->__get_value());
++        return pointer_traits<pointer>::pointer_to(__ptr_->__as_node()->__value_);
+     }
+ 
+     _LIBCPP_INLINE_VISIBILITY
+@@ -468,12 +442,12 @@
+     _LIBCPP_INLINE_VISIBILITY
+     reference operator*() const
+     {
+-        return __ptr_->__as_node()->__get_value();
++        return __ptr_->__as_node()->__value_;
+     }
+     _LIBCPP_INLINE_VISIBILITY
+     pointer operator->() const
+     {
+-        return pointer_traits<pointer>::pointer_to(__ptr_->__as_node()->__get_value());
++        return pointer_traits<pointer>::pointer_to(__ptr_->__as_node()->__value_);
+     }
+ 
+     _LIBCPP_INLINE_VISIBILITY
+@@ -626,26 +600,16 @@
+     _LIBCPP_HIDE_FROM_ABI __node_pointer __create_node(__link_pointer __prev, __link_pointer __next, _Args&& ...__args) {
+         __node_allocator& __alloc = __node_alloc();
+         __allocation_guard<__node_allocator> __guard(__alloc, 1);
+-        // Begin the lifetime of the node itself. Note that this doesn't begin the lifetime of the value
+-        // held inside the node, since we need to use the allocator's construct() method for that.
+-        //
+-        // We don't use the allocator's construct() method to construct the node itself since the
+-        // Cpp17FooInsertable named requirements don't require the allocator's construct() method
+-        // to work on anything other than the value_type.
+-        std::__construct_at(std::addressof(*__guard.__get()), __prev, __next);
+-
+-        // Now construct the value_type using the allocator's construct() method.
+-        __node_alloc_traits::construct(__alloc, std::addressof(__guard.__get()->__get_value()), std::forward<_Args>(__args)...);
++        __guard.__get()->__prev_ = __prev;
++        __guard.__get()->__next_ = __next;
++        __node_alloc_traits::construct(__alloc, std::addressof(__guard.__get()->__value_), std::forward<_Args>(__args)...);
+         return __guard.__release_ptr();
+     }
+ 
+     template <class ..._Args>
+     _LIBCPP_HIDE_FROM_ABI void __delete_node(__node_pointer __node) {
+-        // For the same reason as above, we use the allocator's destroy() method for the value_type,
+-        // but not for the node itself.
+         __node_allocator& __alloc = __node_alloc();
+-        __node_alloc_traits::destroy(__alloc, std::addressof(__node->__get_value()));
+-        std::__destroy_at(std::addressof(*__node));
++        __node_alloc_traits::destroy(__alloc, std::addressof(__node->__value_));
+         __node_alloc_traits::deallocate(__alloc, __node, 1);
+     }
+ 
+@@ -930,25 +894,25 @@
+     reference front()
+     {
+         _LIBCPP_ASSERT_VALID_ELEMENT_ACCESS(!empty(), "list::front called on empty list");
+-        return base::__end_.__next_->__as_node()->__get_value();
++        return base::__end_.__next_->__as_node()->__value_;
+     }
+     _LIBCPP_INLINE_VISIBILITY
+     const_reference front() const
+     {
+         _LIBCPP_ASSERT_VALID_ELEMENT_ACCESS(!empty(), "list::front called on empty list");
+-        return base::__end_.__next_->__as_node()->__get_value();
++        return base::__end_.__next_->__as_node()->__value_;
+     }
+     _LIBCPP_INLINE_VISIBILITY
+     reference back()
+     {
+         _LIBCPP_ASSERT_VALID_ELEMENT_ACCESS(!empty(), "list::back called on empty list");
+-        return base::__end_.__prev_->__as_node()->__get_value();
++        return base::__end_.__prev_->__as_node()->__value_;
+     }
+     _LIBCPP_INLINE_VISIBILITY
+     const_reference back() const
+     {
+         _LIBCPP_ASSERT_VALID_ELEMENT_ACCESS(!empty(), "list::back called on empty list");
+-        return base::__end_.__prev_->__as_node()->__get_value();
++        return base::__end_.__prev_->__as_node()->__value_;
+     }
+ 
+ #ifndef _LIBCPP_CXX03_LANG
+@@ -1538,7 +1502,7 @@
+     __link_nodes_at_front(__nl, __nl);
+     ++base::__sz();
+ #if _LIBCPP_STD_VER >= 17
+-    return __node->__get_value();
++    return __node->__value_;
+ #endif
+ }
+ 
+@@ -1556,7 +1520,7 @@
+     __link_nodes_at_back(__nl, __nl);
+     ++base::__sz();
+ #if _LIBCPP_STD_VER >= 17
+-    return __node->__get_value();
++    return __node->__value_;
+ #endif
+ }
+ 
+diff -ruN --strip-trailing-cr a/libcxx/include/unordered_map b/libcxx/include/unordered_map
+--- a/libcxx/include/unordered_map
++++ b/libcxx/include/unordered_map
+@@ -874,9 +874,9 @@
+     void operator()(pointer __p) _NOEXCEPT
+     {
+         if (__second_constructed)
+-            __alloc_traits::destroy(__na_, _VSTD::addressof(__p->__get_value().__get_value().second));
++            __alloc_traits::destroy(__na_, _VSTD::addressof(__p->__value_.__get_value().second));
+         if (__first_constructed)
+-            __alloc_traits::destroy(__na_, _VSTD::addressof(__p->__get_value().__get_value().first));
++            __alloc_traits::destroy(__na_, _VSTD::addressof(__p->__value_.__get_value().first));
+         if (__p)
+             __alloc_traits::deallocate(__na_, __p, 1);
+     }
+@@ -1828,7 +1828,7 @@
+         iterator __i = __u.begin();
+         while (__u.size() != 0) {
+             __table_.__emplace_unique(
+-                __u.__table_.remove((__i++).__i_)->__get_value().__move());
++                __u.__table_.remove((__i++).__i_)->__value_.__move());
+         }
+     }
+ }
+@@ -1920,9 +1920,9 @@
+ {
+     __node_allocator& __na = __table_.__node_alloc();
+     __node_holder __h(__node_traits::allocate(__na, 1), _Dp(__na));
+-    __node_traits::construct(__na, _VSTD::addressof(__h->__get_value().__get_value().first), __k);
++    __node_traits::construct(__na, _VSTD::addressof(__h->__value_.__get_value().first), __k);
+     __h.get_deleter().__first_constructed = true;
+-    __node_traits::construct(__na, _VSTD::addressof(__h->__get_value().__get_value().second));
++    __node_traits::construct(__na, _VSTD::addressof(__h->__value_.__get_value().second));
+     __h.get_deleter().__second_constructed = true;
+     return __h;
+ }
+@@ -2653,7 +2653,7 @@
+         while (__u.size() != 0)
+         {
+             __table_.__insert_multi(
+-                __u.__table_.remove((__i++).__i_)->__get_value().__move());
++                __u.__table_.remove((__i++).__i_)->__value_.__move());
+         }
+     }
+ }
+diff -ruN --strip-trailing-cr a/libcxx/include/unordered_set b/libcxx/include/unordered_set
+--- a/libcxx/include/unordered_set
++++ b/libcxx/include/unordered_set
+@@ -1150,7 +1150,7 @@
+     {
+         iterator __i = __u.begin();
+         while (__u.size() != 0)
+-            __table_.__insert_unique(_VSTD::move(__u.__table_.remove(__i++)->__get_value()));
++            __table_.__insert_unique(_VSTD::move(__u.__table_.remove(__i++)->__value_));
+     }
+ }
+ 
+@@ -1835,7 +1835,7 @@
+     {
+         iterator __i = __u.begin();
+         while (__u.size() != 0)
+-            __table_.__insert_multi(_VSTD::move(__u.__table_.remove(__i++)->__get_value()));
++            __table_.__insert_multi(_VSTD::move(__u.__table_.remove(__i++)->__value_));
+     }
+ }
+ 
