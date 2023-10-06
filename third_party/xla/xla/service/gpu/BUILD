@@ -4,7 +4,7 @@
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("//xla:xla.bzl", "xla_cc_test")
+load("//xla:xla.bzl", "xla_cc_test", "xla_export_hlo_deps")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
@@ -2740,6 +2740,7 @@ cc_library(
         "//xla/service:dynamic_padder",
         "//xla/service:eigh_expander",
         "//xla/service:executable",
+        "//xla/service:export_hlo",
         "//xla/service:flatten_call_graph",
         "//xla/service:float_normalization",
         "//xla/service:float_support",
@@ -2809,7 +2810,7 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/lib:traceme",
-    ]) + [
+    ]) + xla_export_hlo_deps() + [
         ":fusion_pipeline",
         ":prepare_hlo_for_ir_emitting_pipeline",
         "@local_tsl//tsl/lib/monitoring:counter",

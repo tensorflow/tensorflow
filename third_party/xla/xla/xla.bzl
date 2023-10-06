@@ -129,3 +129,6 @@ def auto_sharding_deps():
 
 def auto_sharding_solver_deps():
     return ["//xla/hlo/experimental/auto_sharding:auto_sharding_solver_impl"]
+
+def xla_export_hlo_deps():
+    return []
