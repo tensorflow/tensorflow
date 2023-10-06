@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/stream_executor/tpu/tpu_api_dlsym_set_fn.h"
 #include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "xla/stream_executor/tpu/tsl_status_helper.h"
+#include "tsl/c/tsl_status.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/types.h"
@@ -51,6 +52,41 @@ using tsl::OkStatus;  // TENSORFLOW_STATUS_OK
 using tsl::Status;    // TENSORFLOW_STATUS_OK
 using tsl::profiler::ProfilerInterface;
 
+class ProfilerStatusHelper {
+ public:
+  ProfilerStatusHelper()
+      : c_status(stream_executor::tpu::ProfilerApiFn()->TpuStatus_NewFn()) {}
+
+  ~ProfilerStatusHelper() {
+    stream_executor::tpu::ProfilerApiFn()->TpuStatus_FreeFn(c_status);
+  }
+
+  static tsl::Status FromC(  // TENSORFLOW_STATUS_OK
+      TF_Status* const c_status) {
+    if (stream_executor::tpu::ProfilerApiFn()->TpuStatus_CodeFn(c_status) ==
+        TSL_OK) {
+      return ::tsl::OkStatus();
+    } else {
+      return tsl::Status(  // TENSORFLOW_STATUS_OK
+          absl::StatusCode(
+              stream_executor::tpu::ProfilerApiFn()->TpuStatus_CodeFn(
+                  c_status)),
+          stream_executor::tpu::ProfilerApiFn()->TpuStatus_MessageFn(c_status));
+    }
+  }
+
+  bool ok() const {
+    return stream_executor::tpu::ProfilerApiFn()->TpuStatus_CodeFn(c_status) ==
+           TSL_OK;
+  }
+
+  tsl::Status status() const {  // TENSORFLOW_STATUS_OK
+    return FromC(c_status);
+  }
+
+  TF_Status* const c_status;  // NOLINT
+};
+
 // Tpu implementation of ProfilerInterface.
 //
 // Thread-safety: This class is go/thread-compatible.
@@ -70,7 +106,7 @@ class TpuTracer : public ProfilerInterface {
 };
 
 TpuTracer::TpuTracer() {
-  TslStatusHelper status;
+  ProfilerStatusHelper status;
   stream_executor::tpu::ProfilerApiFn()->TpuProfiler_CreateFn(&tpu_profiler_,
                                                               status.c_status);
   if (!status.ok()) {
@@ -83,7 +119,7 @@ TpuTracer::~TpuTracer() {
 }
 
 Status TpuTracer::Start() {
-  TslStatusHelper status;
+  ProfilerStatusHelper status;
   stream_executor::tpu::ProfilerApiFn()->TpuProfiler_StartFn(tpu_profiler_,
                                                              status.c_status);
   if (!status.ok()) {
@@ -94,7 +130,7 @@ Status TpuTracer::Start() {
 }
 
 Status TpuTracer::Stop() {
-  TslStatusHelper status;
+  ProfilerStatusHelper status;
   stream_executor::tpu::ProfilerApiFn()->TpuProfiler_StopFn(tpu_profiler_,
                                                             status.c_status);
   if (!status.ok()) {
@@ -105,7 +141,7 @@ Status TpuTracer::Stop() {
 }
 
 Status TpuTracer::CollectData(XSpace* space) {
-  TslStatusHelper status;
+  ProfilerStatusHelper status;
   // Get size of buffer required for TPU driver to serialize XSpace into.
   size_t size_in_bytes;
   stream_executor::tpu::ProfilerApiFn()->TpuProfiler_CollectDataFn(
