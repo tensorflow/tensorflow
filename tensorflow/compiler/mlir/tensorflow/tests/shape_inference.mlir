@@ -2173,18 +2173,4 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %6 = "tf.TensorListSetItem"(%if49, %4, %5) {device = ""} : (!tf_variant, tensor<i32>, tensor<2x2xf32>)-> tensor<*x!tf_type.variant>
     func.return
   }
-
-  // Test shape are propagated to function by inferred type.
-  // CHECK-LABEL: func @pcall_fnc
-  func.func @pcall_fnc(%arg0: tensor<?x?x8xf32>) {
-    // CHECK: "tf.StatefulPartitionedCall"
-    // CHECK-SAME: (tensor<?x?x8xf32>) -> tensor<4x4x8xf32>
-    %0 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @pcall_callee_result_func} : (tensor<?x?x8xf32>) -> tensor<?x?x8xf32>
-    func.return
-  }
-  // CHECK-LABEL: func @pcall_callee_result_func
-  // CHECK-SAME: tensor<4x4x8xf32>
-  func.func @pcall_callee_result_func(%arg0: tensor<4x4x?xf32>) -> (tensor<4x4x?xf32>) {
-    func.return %arg0: tensor<4x4x?xf32>
-  }
 }

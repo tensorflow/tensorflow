@@ -2631,29 +2631,11 @@ FailureOr<bool> ShapeInference::PropagateShapeToFunctions(
       continue;
     }
     FunctionType func_type = func.getFunctionType();
-    ArrayRef<Type> func_inputs = func_type.getInputs();
-    llvm::SmallVector<Type> infer_types;
-    for (auto it : llvm::zip(input_types, func_inputs)) {
-      auto input_type = std::get<0>(it);
-      auto func_input = std::get<1>(it);
-      Type infer_type = TypeMeet(input_type, func_input);
-      auto input_type_shape = input_type.dyn_cast<ShapedType>();
-      // TODO: Always use infer_type even the shape of input_type is unranked.
-      // We cannot do this currently because it will expose some bugs in
-      // multiple tests, either due to incorrect function signatures or
-      // unsupported type.
-      if (input_type_shape && input_type_shape.hasRank()) {
-        infer_types.push_back(infer_type);
-      } else {
-        infer_types.push_back(input_type);
-      }
-    }
-
-    func.setType(FunctionType::get(func.getContext(), infer_types,
+    func.setType(FunctionType::get(func.getContext(), input_types,
                                    func_type.getResults()));
 
     FailureOr<bool> failure_or_converged =
-        PropagateShapeToRegions(infer_types, {&func.getBody()}, max_iterations);
+        PropagateShapeToRegions(input_types, {&func.getBody()}, max_iterations);
     if (failed(failure_or_converged)) {
       any_failure = true;
       continue;
