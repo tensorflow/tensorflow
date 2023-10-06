@@ -375,6 +375,37 @@ struct Inliner : public InlinerInterface {
     return LogicalResult::success();
   }
 
+  LogicalResult PatchCollectiveGatherInstanceKey(func::FuncOp func) {
+    // We're expecting the original model to have a single CollectiveGatherV2Op
+    // that gets split into 3 copies in the start_step_0, start_step_1 and
+    // new_while_body functions. To make sure the instance keys are unique among
+    // them we replace the original instance key as:
+    //   new_instance_key = c + original_instance_key
+    // where c = -2, -1 or 0 depending on which function it's being replaced in.
+    static int32_t offset_value = -2;
+    for (auto gather_op : func.getRegion().getOps<TF::CollectiveGatherV2Op>()) {
+      Value orig_instance_key = gather_op->getOperand(3);
+      auto loc = gather_op->getLoc();
+      builder.setInsertionPoint(gather_op);
+      auto offset = builder.create<TF::ConstOp>(
+          loc, builder.getI32IntegerAttr(offset_value));
+      auto new_instance_key = builder.create<TF::AddV2Op>(
+          loc, orig_instance_key, offset->getResult(0));
+      gather_op->setOperand(3, new_instance_key->getResult(0));
+      std::vector<std::string> attr_names = {
+          TF::kReplicationInfoAttr.str(), "_xla_compile_device_type",
+          kEmbeddingPipelining, "_xla_outside_compilation", "device"};
+      for (const auto& attr_name : attr_names) {
+        if (!gather_op->hasAttr(attr_name)) continue;
+        offset->setAttr(attr_name, gather_op->getAttr(attr_name));
+        new_instance_key->setAttr(attr_name, gather_op->getAttr(attr_name));
+      }
+      // Make the next function to get inlined use a different offset.
+      ++offset_value;
+    }
+    return LogicalResult::success();
+  }
+
   // Find any StatefulPartitionedCalls and inline their contents in this func.
   LogicalResult InlineCallsInFunc(func::FuncOp func,
                                   bool inline_all_funcs = false) {
@@ -407,7 +438,10 @@ struct Inliner : public InlinerInterface {
     }
     for (auto op : ops_to_erase) op->erase();
 
-    auto result = UnifyReplicationInfo(func);
+    auto result = PatchCollectiveGatherInstanceKey(func);
+    if (failed(result)) return result;
+
+    result = UnifyReplicationInfo(func);
     if (failed(result)) return result;
 
     result = RemoveOutputInputPairs(func);
