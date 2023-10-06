@@ -35,8 +35,7 @@ TEST(InlineFunctionBody, ColocationConstraintPropagation) {
   // inputs of the function to be inlined, the constraint is propagated with the
   // new name.
 
-  FunctionLibraryDefinition flib_def(OpRegistry::Global(),
-                                     FunctionDefLibrary());
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(), {});
   // Add a simple function that takes 2 inputs and the op is colocated with
   // one of the inputs.
   FunctionDef fdef = FunctionDefHelper::Define(

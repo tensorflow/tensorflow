@@ -727,8 +727,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   absl::flat_hash_map<uint64, std::unique_ptr<CompositeDevice>>
       composite_devices_ ABSL_GUARDED_BY(composite_devices_mu_);
 
-  FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(),
-                                          FunctionDefLibrary()};
+  FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 

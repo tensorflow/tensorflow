@@ -848,8 +848,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
   tensorflow::FunctionDef fdef_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> eager_pflr_;
   std::unique_ptr<EagerClusterFunctionLibraryRuntime> eager_cluster_flr_;
-  FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(),
-                                          FunctionDefLibrary()};
+  FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
 };
 
 // Test executes a remote function through

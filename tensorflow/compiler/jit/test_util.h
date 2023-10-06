@@ -48,8 +48,7 @@ Status ShapeAnnotationsMatch(
 
 // A helper object to create GraphOptimizationPassOptions.
 struct GraphOptimizationPassWrapper {
-  explicit GraphOptimizationPassWrapper()
-      : library(OpRegistry::Global(), FunctionDefLibrary()) {
+  explicit GraphOptimizationPassWrapper() : library(OpRegistry::Global(), {}) {
     session_options.env = Env::Default();
   }
 
