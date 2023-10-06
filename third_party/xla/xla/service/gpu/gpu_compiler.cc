@@ -32,12 +32,17 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/AsmParser/Parser.h"
+#include "llvm/Bitcode/BitcodeReader.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
@@ -1198,6 +1203,31 @@ static void NullDiagnosticHandler(const llvm::DiagnosticInfo& diag_info,
   VLOG(5) << error_string;
 }
 
+namespace {
+
+std::unique_ptr<llvm::Module> CopyToContext(const llvm::Module& module,
+                                            llvm::LLVMContext& context) {
+  // We are setting llvm::SmallString's InternalLen to 0, because we want to
+  // allocate its buffer on the heap. We use llvm::SmallString instead of
+  // std::string, because llvm::raw_svector_ostream is a bit faster than
+  // llvm::raw_string_ostream.
+  llvm::SmallString<0> bitcode;
+  llvm::raw_svector_ostream bitcode_ostream(bitcode);
+  llvm::WriteBitcodeToFile(module, bitcode_ostream);
+
+  llvm::Expected<std::unique_ptr<llvm::Module>> new_module =
+      llvm::parseBitcodeFile(
+          llvm::MemoryBufferRef(llvm::StringRef(bitcode.data(), bitcode.size()),
+                                "split_module"),
+          context);
+  CHECK(new_module) << "Failed to parse bitcode "
+                    << llvm::toString(new_module.takeError());
+
+  return std::move(new_module.get());
+}
+
+}  // namespace
+
 StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
                                    std::unique_ptr<llvm::Module> llvm_module,
@@ -1385,26 +1415,13 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   for (int i = 0; i < llvm_modules.size(); i++) {
     thread_pool->Schedule(
         [&compile_results, compile_single_module, i, &llvm_modules, &counter] {
-          llvm::Module* original_module = llvm_modules[i].get();
-          llvm::LLVMContext context;
-
-          std::unique_ptr<llvm::Module> new_llvm_module;
-          // Switch to a new context by dumping and re-parsing LLVM IR. Each
-          // thread has its own context to avoid race conditions.
-          {
-            std::string ir = llvm_ir::DumpToString(original_module);
-            llvm::SMDiagnostic err;
-            new_llvm_module = llvm::parseAssemblyString(ir, err, context);
-            if (!new_llvm_module) {
-              std::string err_string;
-              llvm::raw_string_ostream os(err_string);
-              err.print(/*ProgName=*/nullptr, os, /*ShowColors=*/false);
-              LOG(FATAL) << "Failed to parse IR: " << err_string;
-            }
-          }
-
-          compile_results[i] = compile_single_module(
-              new_llvm_module.get(), /*relocatable=*/true, /*shard_number=*/i);
+          // Each thread has its own context to avoid race conditions.
+          llvm::LLVMContext new_context;
+          std::unique_ptr<llvm::Module> new_module =
+              CopyToContext(*llvm_modules.at(i), new_context);
+          compile_results.at(i) =
+              compile_single_module(new_module.get(),
+                                    /*relocatable=*/true, /*shard_number=*/i);
           counter.DecrementCount();
         });
   }
