@@ -1396,19 +1396,30 @@ void CheckMemoryCosts(StrategyVector* strategies, const Shape& shape) {
 }
 
 void RemoveInvalidShardingsWithShapes(const Shape& shape,
-                                      StrategyVector* strategies) {
+                                      StrategyVector* strategies,
+                                      bool instruction_has_user_sharding) {
   if (strategies->is_tuple) {
     for (size_t i = 0; i < strategies->childs.size(); i++) {
       RemoveInvalidShardingsWithShapes(shape.tuple_shapes().at(i),
-                                       strategies->childs[i].get());
+                                       strategies->childs[i].get(),
+                                       instruction_has_user_sharding);
     }
   } else {
+    if (instruction_has_user_sharding && strategies->leaf_vector.size() == 1) {
+      // If an instruction has a specified user sharding, and there is only a
+      // single strategy, removing that strategy would mean we won't have any
+      // strategy for that instruction. Further, given that the user has
+      // specified this sharding strategy, we should respect it, and hence not
+      // remove it anyway.
+      return;
+    }
     std::vector<ShardingStrategy> new_vector;
     for (const auto& strategy : strategies->leaf_vector) {
       if (strategy.output_sharding.IsReplicated()) {
         new_vector.push_back(strategy);
         continue;
       }
+
       const auto& tile_assignment = strategy.output_sharding.tile_assignment();
       bool is_strategy_valid = true;
       for (int64_t i = 0; i < shape.rank(); ++i) {
@@ -2293,7 +2304,9 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         }
       }
     }
-    RemoveInvalidShardingsWithShapes(ins->shape(), strategies.get());
+    RemoveInvalidShardingsWithShapes(
+        ins->shape(), strategies.get(),
+        /* instruction_has_user_sharding */ ins->has_sharding());
 
     if (instruction_execution_counts.contains(ins)) {
       ScaleCostsWithExecutionCounts(strategies.get(),
