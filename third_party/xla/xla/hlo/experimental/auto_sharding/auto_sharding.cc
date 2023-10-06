@@ -1939,6 +1939,14 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
 
         break;
       }
+      case HloOpcode::kOptimizationBarrier: {
+        auto operand_strategies = strategy_map.at(ins->operand(0)).get();
+        strategies = MaybeFollowInsStrategyVector(
+            operand_strategies, ins->shape(), instruction_id,
+            /* have_memory_cost */ true, leaf_strategies, cluster_env,
+            pretrimmed_strategy_map);
+        break;
+      }
       // Unary elementwise operations.
       case HloOpcode::kAbs:
       case HloOpcode::kRoundNearestAfz:
@@ -1970,7 +1978,6 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kCbrt:
       case HloOpcode::kTan:
       case HloOpcode::kTanh:
-      case HloOpcode::kOptimizationBarrier:
       // Binary elementwise operations
       case HloOpcode::kAdd:
       case HloOpcode::kAtan2:
@@ -2925,6 +2932,7 @@ Status SetHloShardingPostProcessing(
 
           case HloOpcode::kWhile:
           case HloOpcode::kInfeed:
+          case HloOpcode::kOptimizationBarrier:
           case HloOpcode::kConditional:
           case HloOpcode::kParameter: {
             break;
