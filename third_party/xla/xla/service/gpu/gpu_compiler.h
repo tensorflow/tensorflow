@@ -168,7 +168,7 @@ class GpuCompiler : public LLVMCompiler {
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
       const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
       const AutotuneResults* autotune_results,
-      tsl::thread::ThreadPool* thread_pool = nullptr);
+      tsl::thread::ThreadPool* thread_pool);
 
   // CollectivesScheduleLinearizer enforces a total ordering between collectives
   // to work around divergence in executables introduced due to auto tuning,
@@ -195,27 +195,10 @@ class GpuCompiler : public LLVMCompiler {
     return OkStatus();
   }
 
-  // Add autotuning passes for HLO emitters.
-  virtual Status AddHloEmitterAutotuningPasses(
-      HloPassPipeline* pipeline, se::StreamExecutor* stream_exec,
-      const DebugOptions& debug_options, const CompileOptions& options,
-      const GpuTargetConfig& gpu_target_config,
-      const AutotuneResults* autotune_results,
-      tsl::thread::ThreadPool* thread_pool) {
-    return OkStatus();
-  }
-
-  virtual Status LoadAutotuneResultsFromFile(
-      const DebugOptions& debug_options) {
-    return OkStatus();
-  }
-
-  virtual Status SerializeAutotuneResultsToFile(
-      const DebugOptions& debug_options) {
-    return OkStatus();
-  }
-
  private:
+  Status LoadAutotuneResultsFromFile(const DebugOptions& debug_options);
+  Status SerializeAutotuneResultsToFile(const DebugOptions& debug_options);
+
   // During compilation with device, stream_exec != null and autotune_results
   // == null. During deviceless AOT compilation, stream_exec == null and
   // autotune_results != null.

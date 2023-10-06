@@ -785,10 +785,6 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
       pipeline.AddPass<AllReduceContiguous>();
     }
 
-    TF_RETURN_IF_ERROR(AddHloEmitterAutotuningPasses(
-        &pipeline, stream_exec, debug_options, options, gpu_target_config,
-        autotune_results, thread_pool));
-
     int32_t blueconnect_num_devices_per_host =
         debug_options.xla_gpu_all_reduce_blueconnect_num_devices_per_host();
     if (blueconnect_num_devices_per_host > 0) {
@@ -1825,6 +1821,36 @@ Status GpuCompiler::RunPostSchedulingPipelines(
 se::GpuComputeCapability GpuCompiler::GetGpuVersion(
     se::StreamExecutor* stream_exec) {
   return stream_exec->GetDeviceDescription().gpu_compute_capability();
+}
+
+Status GpuCompiler::LoadAutotuneResultsFromFile(
+    const DebugOptions& debug_options) {
+  // We are doing this before the timer is started.
+  if (absl::string_view file_path =
+          debug_options.xla_gpu_load_autotune_results_from();
+      !file_path.empty()) {
+    static absl::once_flag once;
+    Status status = OkStatus();
+    absl::call_once(once, [&file_path, &status] {
+      status = AutotunerUtil::LoadAutotuneResultsFromFile(file_path);
+    });
+    TF_RETURN_IF_ERROR(status);
+  }
+  return OkStatus();
+}
+
+Status GpuCompiler::SerializeAutotuneResultsToFile(
+    const DebugOptions& debug_options) {
+  // We are doing this after the timer is finished.
+  if (absl::string_view file_path =
+          debug_options.xla_gpu_dump_autotune_results_to();
+      !file_path.empty()) {
+    // Warning: This writes the autotune results at every compilation, possibly
+    // multiple times per process.
+    TF_RETURN_IF_ERROR(
+        AutotunerUtil::SerializeAutotuneResultsToFile(file_path));
+  }
+  return OkStatus();
 }
 
 }  // namespace gpu

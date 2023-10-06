@@ -63,12 +63,6 @@ class NVPTXCompiler : public GpuCompiler {
       AutotuneConfig& autotune_config,
       tsl::thread::ThreadPool* thread_pool) override;
 
-  Status LoadAutotuneResultsFromFile(
-      const DebugOptions& debug_options) override;
-
-  Status SerializeAutotuneResultsToFile(
-      const DebugOptions& debug_options) override;
-
   HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const override;
 
   StatusOr<std::pair<std::string, std::vector<uint8_t>>> CompileTargetBinary(
