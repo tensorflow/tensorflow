@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/hlo_pass_interface.h"
@@ -74,6 +75,7 @@ class CommandBufferScheduling : public HloModulePass {
 
   static std::vector<HloInstructionSequence> CollectCommandBufferSequences(
       HloInstructionSequence inst_sequence);
+  static void MoveParametersToFront(HloComputation* computation);
 };
 
 }  // namespace xla::gpu

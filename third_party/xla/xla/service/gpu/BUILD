@@ -2541,6 +2541,7 @@ xla_cc_test(
     deps = [
         ":command_buffer_scheduling",
         "//xla/hlo/ir:hlo",
+        "//xla/tests:filecheck",
         "//xla/tests:hlo_test_base",
         "//xla/tests:verified_hlo_module",
         "@com_google_googletest//:gtest_main",

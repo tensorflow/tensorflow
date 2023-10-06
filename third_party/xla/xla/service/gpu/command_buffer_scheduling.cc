@@ -50,7 +50,6 @@ bool IsIntermediate(const HloInstruction* inst) {
   switch (inst->opcode()) {
     case HloOpcode::kConstant:
     case HloOpcode::kGetTupleElement:
-    case HloOpcode::kParameter:
       return true;
     default:
       return false;
@@ -116,6 +115,29 @@ CommandBufferScheduling::CollectCommandBufferSequences(
   return start_new_sequence(&acc)->sequences;
 }
 
+// This function moves kParameter instructions in a computation to the beginning
+// of the computation. This simplifies the construction of command buffer
+// computations because we don't need to consider kParameter's as intermediates.
+void CommandBufferScheduling::MoveParametersToFront(
+    HloComputation* computation) {
+  HloSchedule& schedule = computation->parent()->schedule();
+  HloInstructionSequence& sequence = schedule.GetOrCreateSequence(computation);
+  std::vector<HloInstruction*> new_sequence;
+  for (HloInstruction* inst : sequence.instructions()) {
+    if (inst->opcode() == HloOpcode::kParameter) {
+      new_sequence.push_back(inst);
+    }
+  }
+
+  for (HloInstruction* inst : sequence.instructions()) {
+    if (inst->opcode() != HloOpcode::kParameter) {
+      new_sequence.push_back(inst);
+    }
+  }
+
+  schedule.set_sequence(computation, new_sequence);
+}
+
 StatusOr<bool> CommandBufferScheduling::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -123,6 +145,7 @@ StatusOr<bool> CommandBufferScheduling::Run(
     return InternalError("module is not scheduled");
   }
   HloComputation* entry = module->entry_computation();
+  MoveParametersToFront(entry);
   std::vector<HloInstruction*> instructions = entry->MakeInstructionPostOrder();
 
   // TODO(anlunx): Add support for multiple fusion instructions.
