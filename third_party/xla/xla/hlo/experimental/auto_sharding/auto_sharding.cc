@@ -1151,13 +1151,15 @@ StatusOr<std::unique_ptr<StrategyVector>> CreateAllStrategiesVector(
                             call_graph);
     // Split 2 dims
     if (cluster_env.IsDeviceMesh2D()) {
-      // NOTE(zhuohan): In full alpa, we only include 2D partition strategy
-      //                for operators with batch dimension. We didn't include
-      //                this logic here since this pass might be used for
-      //                more general cases.
       EnumerateAllPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
                             strategy_map, strategies, batch_dim_map,
                             only_allow_divisible, call_graph, /*partitions*/ 2);
+    }
+    // Split 3 dims
+    if (cluster_env.IsDeviceMesh3D()) {
+      EnumerateAllPartition(ins, shape, cluster_env.device_mesh_, cluster_env,
+                            strategy_map, strategies, batch_dim_map,
+                            only_allow_divisible, call_graph, /*partitions*/ 3);
     }
 
     if (solver_option.allow_mixed_mesh_shape && cluster_env.IsDeviceMesh2D()) {
@@ -1781,6 +1783,12 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                       strategy_map, batch_dim_map, strategies,
                                       only_allow_divisible, /*partitions*/ 2);
           }
+          if (cluster_env.IsDeviceMesh3D()) {
+            // Split 3 dim, one is always the batch dim
+            EnumeratePartitionReshape(ins, device_mesh, cluster_env,
+                                      strategy_map, batch_dim_map, strategies,
+                                      only_allow_divisible, /*partitions*/ 3);
+          }
 
           // Replicate
           AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
@@ -2107,6 +2115,12 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           EnumerateAllPartition(ins, ins->shape(), device_mesh, cluster_env,
                                 strategy_map, strategies, batch_dim_map,
                                 only_allow_divisible, call_graph, /*parts*/ 2);
+        }
+        if (cluster_env.IsDeviceMesh3D()) {
+          // Split 3 dims
+          EnumerateAllPartition(ins, ins->shape(), device_mesh, cluster_env,
+                                strategy_map, strategies, batch_dim_map,
+                                only_allow_divisible, call_graph, /*parts*/ 3);
         }
         if (cluster_env.IsDeviceMesh2D() &&
             solver_option.allow_mixed_mesh_shape) {
