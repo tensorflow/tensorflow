@@ -1180,11 +1180,11 @@ func.func @op_real(%arg0: tensor<complex<f32>>) -> tensor<f32> {
 // CHECK-LABEL: "op_recv"
 func.func @op_recv(%arg0: !stablehlo.token) -> (tensor<f32>, !stablehlo.token) {
   //      CHECK: "mhlo.recv"(%arg0) {
-  // CHECK-SAME:   channel_handle = #mhlo.channel_handle<handle = 0, type = 0>,
+  // CHECK-SAME:   channel_handle = #mhlo.channel_handle<handle = 0, type = 3>,
   // CHECK-SAME:   is_host_transfer = true
   // CHECK-SAME: } : (!mhlo.token) -> (tensor<f32>, !mhlo.token)
   %0:2 = "stablehlo.recv"(%arg0) {
-    channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>,
+    channel_handle = #stablehlo.channel_handle<handle = 0, type = 3>,
     is_host_transfer = true
   } : (!stablehlo.token) -> (tensor<f32>, !stablehlo.token)
   func.return %0#0, %0#1 : tensor<f32>, !stablehlo.token
@@ -1425,11 +1425,11 @@ func.func @op_select(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) 
 // CHECK-LABEL: "op_send"
 func.func @op_send(%arg0: tensor<f32>, %arg1: !stablehlo.token) -> !stablehlo.token {
   //      CHECK: "mhlo.send"(%arg0, %arg1) {
-  // CHECK-SAME:   channel_handle = #mhlo.channel_handle<handle = 0, type = 0>,
+  // CHECK-SAME:   channel_handle = #mhlo.channel_handle<handle = 0, type = 2>,
   // CHECK-SAME:   is_host_transfer = true
   // CHECK-SAME: } : (tensor<f32>, !mhlo.token) -> !mhlo.token
   %0 = "stablehlo.send"(%arg0, %arg1) {
-    channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>,
+    channel_handle = #stablehlo.channel_handle<handle = 0, type = 2>,
     is_host_transfer = true
   } : (tensor<f32>, !stablehlo.token) -> !stablehlo.token
   func.return %0 : !stablehlo.token

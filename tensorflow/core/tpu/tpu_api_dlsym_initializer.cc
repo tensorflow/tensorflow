@@ -16,6 +16,7 @@ limitations under the License.
 #include <dirent.h>
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <link.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -23,6 +24,7 @@ limitations under the License.
 
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -61,9 +63,9 @@ absl::Status InitializeTpuLibrary(void* library_handle) {
   // loaded. We do not want to register a TPU platform in XLA without the
   // supporting library providing the necessary APIs.
   if (s.ok()) {
-    void (*initialize_fn)(bool init_library, int num_args, const char** args);
-    initialize_fn = reinterpret_cast<decltype(initialize_fn)>(
-        dlsym(library_handle, "TfTpu_Initialize"));
+    auto initialize_fn =
+        reinterpret_cast<std::function<void(bool, int, const char**)>*>(
+            dlsym(library_handle, "TfTpu_Initialize"));
     (*initialize_fn)(/*init_library=*/true, args.second.size(),
                      args.second.data());
 
@@ -76,10 +78,12 @@ absl::Status InitializeTpuLibrary(void* library_handle) {
 // Gets the path of current module. It is usually tensorflow_framework.so.
 const char* GetCurrentModulePath() {
   Dl_info DlInfo;
-  if (!dladdr((void*)GetCurrentModulePath, &DlInfo)) {
+  struct link_map* linkmap = nullptr;
+  if (!dladdr1((void*)GetCurrentModulePath, &DlInfo,
+               reinterpret_cast<void**>(&linkmap), RTLD_DL_LINKMAP)) {
     return nullptr;
   }
-  return DlInfo.dli_fname;
+  return linkmap->l_name;
 }
 
 absl::Status FindAndLoadTpuLibrary() {
@@ -96,9 +100,26 @@ absl::Status FindAndLoadTpuLibrary() {
     }
   }
 
+  // Check if libtpu is attached to the whl
+  std::filesystem::path module_path(so_name);
+  if (module_path.has_filename()) {
+    module_path.remove_filename();
+  }
+
+  module_path = std::filesystem::canonical(module_path);
+  module_path /= "library";
+
   const char* env_value = getenv("TPU_LIBRARY_PATH");
-  const char* libtpu_path =
-      env_value && strlen(env_value) > 0 ? env_value : "libtpu.so";
+  const char* libtpu_path = nullptr;
+  if (env_value && strlen(env_value) > 0) {
+    libtpu_path = env_value;
+  } else if (std::filesystem::exists(
+                 absl::StrCat(module_path.c_str(), "libtpu.so"))) {
+    libtpu_path = absl::StrCat(module_path.c_str(), "libtpu.so").c_str();
+  } else {
+    libtpu_path = "libtpu.so";
+  }
+
   LOG(INFO) << "Libtpu path is: " << libtpu_path;
   void* library = dlopen(libtpu_path, RTLD_LAZY);
   if (library == nullptr) {

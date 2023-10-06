@@ -183,7 +183,8 @@ class StatelessRandomUniformOp : public XlaOpKernel {
   DataType dtype_;
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomUniformOp);
+  StatelessRandomUniformOp(const StatelessRandomUniformOp&) = delete;
+  void operator=(const StatelessRandomUniformOp&) = delete;
 };
 
 // TODO(phawkins): generalize to non-float, non-int32 seed types.
@@ -238,7 +239,8 @@ class StatelessRandomUniformIntOp : public XlaOpKernel {
   DataType dtype_;
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomUniformIntOp);
+  StatelessRandomUniformIntOp(const StatelessRandomUniformIntOp&) = delete;
+  void operator=(const StatelessRandomUniformIntOp&) = delete;
 };
 
 // TODO(phawkins): generalize to non-int32 seed types.
@@ -280,7 +282,9 @@ class StatelessRandomUniformFullIntOp : public XlaOpKernel {
   DataType dtype_;
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomUniformFullIntOp);
+  StatelessRandomUniformFullIntOp(const StatelessRandomUniformFullIntOp&) =
+      delete;
+  void operator=(const StatelessRandomUniformFullIntOp&) = delete;
 };
 
 // TODO(phawkins): generalize to non-int32 seed types.
@@ -331,7 +335,8 @@ class StatelessRandomNormalOp : public XlaOpKernel {
   DataType dtype_;
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomNormalOp);
+  StatelessRandomNormalOp(const StatelessRandomNormalOp&) = delete;
+  void operator=(const StatelessRandomNormalOp&) = delete;
 };
 
 // TODO(phawkins): generalize to non-float, non-int32 seed types.
@@ -378,7 +383,8 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
   DataType dtype_;
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessTruncatedNormalOp);
+  StatelessTruncatedNormalOp(const StatelessTruncatedNormalOp&) = delete;
+  void operator=(const StatelessTruncatedNormalOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StatelessTruncatedNormal")
@@ -442,7 +448,9 @@ class StatelessParameterizedTruncatedNormalOp : public XlaOpKernel {
   DataType dtype_;
   string device_type_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessParameterizedTruncatedNormalOp);
+  StatelessParameterizedTruncatedNormalOp(
+      const StatelessParameterizedTruncatedNormalOp&) = delete;
+  void operator=(const StatelessParameterizedTruncatedNormalOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StatelessParameterizedTruncatedNormal")

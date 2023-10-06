@@ -351,7 +351,8 @@ class FunctionCallFrame : public CallFrameInterface {
   };
   gtl::InlinedVector<Retval, 4> rets_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FunctionCallFrame);
+  FunctionCallFrame(const FunctionCallFrame&) = delete;
+  void operator=(const FunctionCallFrame&) = delete;
 };
 
 // Map of function names to StackTracesMaps.
@@ -411,8 +412,12 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Note: This constructor grabs `lib_def`'s lock in shared mode.
   FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
+  explicit FunctionLibraryDefinition(
+      const OpRegistryInterface* default_registry,
+      const FunctionDefLibrary& lib_def = {},
+      const FunctionDefLibraryStackTraces& library_traces = {});
   FunctionLibraryDefinition(const OpRegistryInterface* default_registry,
-                            const FunctionDefLibrary& lib_def = {});
+                            const GraphDef& graph_def);
   ~FunctionLibraryDefinition() override;
 
   FunctionLibraryDefinition& operator=(const FunctionLibraryDefinition&) =
@@ -599,7 +604,14 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
     return nullptr;
   }
 
+  // Creates a map of function names to stack traces for a FunctionDefLibrary.
+  static FunctionDefLibraryStackTraces CreateStackTracesForFunctionDefLibrary(
+      const FunctionDefLibrary& library, const GraphDebugInfo& debug_info);
+
  private:
+  void Initialize(const FunctionDefLibrary& library,
+                  const FunctionDefLibraryStackTraces& library_traces);
+
   core::RefCountPtr<FunctionRecord> FindHelper(const string& func) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
   std::string FindGradientHelper(const std::string& func) const

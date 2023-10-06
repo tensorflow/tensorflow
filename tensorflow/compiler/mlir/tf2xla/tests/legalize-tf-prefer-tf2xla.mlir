@@ -210,4 +210,21 @@ func.func @fused_conv2d(%input: tensor<1x300x300x40xi8>,
   func.return %conv2d : tensor<1x300x300x40xi8>
 }
 
+//===----------------------------------------------------------------------===//
+// tf.UniqueV2 legalization
+//===----------------------------------------------------------------------===//
+
+// -----
+
+// CHECK-LABEL: @doesnt_legalize_uniquev2
+func.func @doesnt_legalize_uniquev2(%arg0: tensor<3xf32>) -> (tensor<?xf32>, tensor<3xi32>) {
+  //CHECK:        %0 = mhlo.constant dense<0> : tensor<1xi32>
+  //CHECK-NEXT:   %y, %idx = "tf.UniqueV2"(%arg0, %0) {device = ""} : (tensor<3xf32>, tensor<1xi32>) -> (tensor<?xf32>, tensor<3xi32>)
+  //CHECK-NEXT:   return %y, %idx : tensor<?xf32>, tensor<3xi32>
+
+  %cst = "tf.Const"() {device = "", value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
+  %y, %idx = "tf.UniqueV2"(%arg0, %cst) {device = ""} : (tensor<3xf32>, tensor<1xi32>) -> (tensor<?xf32>, tensor<3xi32>)
+  func.return %y, %idx : tensor<?xf32>, tensor<3xi32>
+}
+
 }

@@ -1070,6 +1070,17 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
       reason = "User has assigned a device that is not CPU.";
     }
 
+    const string& type_attr = "T";
+    if (HasNodeAttr(n->def(), type_attr)) {
+      const auto& attr = n->def().attr().at(type_attr);
+      DataType dtype = attr.type();
+      if (dtype == DT_BFLOAT16 && !IsBF16SupportedByOneDNNOnThisCPU()) {
+        mkl_op_registry::BF16UnsupportedWarning();
+        result = false;
+        reason = "Intel oneDNN with bfloat16 is not supported.";
+      }
+    }
+
     if (result == false) {
       VLOG(1) << "MklLayoutRewritePass: Skipping rewriting of the node "
               << n->type_string() << ", reason: " << reason;

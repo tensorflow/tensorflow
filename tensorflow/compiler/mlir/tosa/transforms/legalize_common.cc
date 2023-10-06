@@ -627,16 +627,17 @@ std::optional<Value> convertMultiplyOp(PatternRewriter& rewriter, Operation* op,
     Value op2_rescale_rhs = removeZeroPointAndCastToInt32(
         rewriter, op, input_rhs_val, input_rhs_qtype.getZeroPoint());
 
-    auto op3_mul_op1_op2 =
-        CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), rescale_type,
-                                      op1_rescale_lhs, op2_rescale_rhs, 0);
+    auto op3_mul_op1_op2 = CreateOpAndInfer<tosa::MulOp>(
+        rewriter, op->getLoc(), rescale_type, op1_rescale_lhs, op2_rescale_rhs,
+        rewriter.getI8IntegerAttr(0));
     return buildRescale(rewriter, op, output_type, op3_mul_op1_op2.getResult(),
                         output_rescale_scale, 0, output_qtype.getZeroPoint(),
                         true, scale32);
   }
 
   return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
-                                       input_lhs_val, input_rhs_val, 0)
+                                       input_lhs_val, input_rhs_val,
+                                       rewriter.getI8IntegerAttr(0))
       .getResult();
 }
 
@@ -717,7 +718,7 @@ std::optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
           rewriter, op->getLoc(), rescale_type, x_scaled, y_scaled);
       auto mul_op = CreateOpAndInfer<tosa::MulOp>(
           rewriter, op->getLoc(), rescale_type, sub_op.getResult(),
-          sub_op.getResult(), 0);
+          sub_op.getResult(), rewriter.getI8IntegerAttr(0));
 
       // Convert the operator back to the original type
       return buildRescaleFromInt32(rewriter, op, result_type, mul_op,
@@ -735,7 +736,7 @@ std::optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
       CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), result_type, x, y);
   return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), result_type,
                                        sub_op.getResult(), sub_op.getResult(),
-                                       0)
+                                       rewriter.getI8IntegerAttr(0))
       .getResult();
 }
 
@@ -4612,9 +4613,8 @@ std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
       DenseElementsAttr::get(fp_scalar_ty, {static_cast<float>(0.5 / M_PI)}));
 
   // 2. Remap the periodic behavior of the domain to line up within [0, 1).
-  Value fp_scaled =
-      CreateOpAndInfer<tosa::MulOp>(rewriter, loc, input_type, input, fp_scale,
-                                    rewriter.getI32IntegerAttr(0));
+  Value fp_scaled = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, loc, input_type, input, fp_scale, rewriter.getI8IntegerAttr(0));
   auto floored =
       CreateOpAndInfer<tosa::FloorOp>(rewriter, loc, input_type, fp_scaled);
   auto repeated = CreateOpAndInfer<tosa::SubOp>(rewriter, loc, input_type,
@@ -4629,7 +4629,7 @@ std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
   Value two = rewriter.create<tosa::ConstOp>(
       loc, fp_scalar_ty, DenseElementsAttr::get(fp_scalar_ty, {2.0f}));
   auto scale_up = CreateOpAndInfer<tosa::MulOp>(
-      rewriter, loc, input_type, repeated, two, rewriter.getI32IntegerAttr(0));
+      rewriter, loc, input_type, repeated, two, rewriter.getI8IntegerAttr(0));
   auto translate =
       CreateOpAndInfer<tosa::SubOp>(rewriter, loc, input_type, scale_up, one);
 
@@ -4640,7 +4640,7 @@ std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
           {static_cast<float>(std::numeric_limits<int16_t>::max())}));
   auto int_scaled =
       CreateOpAndInfer<tosa::MulOp>(rewriter, loc, input_type, translate,
-                                    int_limit, rewriter.getI32IntegerAttr(0));
+                                    int_limit, rewriter.getI8IntegerAttr(0));
 
   auto int16_ty = input_type.clone(rewriter.getIntegerType(16));
   auto casted =
@@ -4675,7 +4675,7 @@ std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
           {static_cast<float>(1.0 / static_cast<float>(1 << 22))}));
 
   return CreateOpAndInfer<MulOp>(rewriter, loc, output_type, table_result_fp,
-                                 output_scale, rewriter.getI32IntegerAttr(0))
+                                 output_scale, rewriter.getI8IntegerAttr(0))
       .getResult();
 }
 

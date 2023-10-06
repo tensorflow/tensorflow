@@ -148,7 +148,6 @@ cc_library(
     textual_hdrs = ["cudnn.inc"],
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
-        ":cudnn_version",
         "@com_google_absl//absl/container:flat_hash_map",
         "@local_config_cuda//cuda:cudnn_header",
         "//tsl/platform:dso_loader",
@@ -166,27 +165,6 @@ cc_library(
     name = "tensorrt_rpath",
     linkopts = if_cuda_is_configured(cuda_rpath_flags("tensorrt")),
     visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "cudnn_version",
-    srcs = ["cudnn_version.cc"],
-    hdrs = ["cudnn_version.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tsl_cc_test(
-    name = "cudnn_version_test",
-    srcs = ["cudnn_version_test.cc"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":cudnn_version",
-        "//tsl/platform:test",
-        "//tsl/platform:test_main",
-    ],
 )
 
 cuda_stub(

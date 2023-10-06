@@ -12,8 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/stream_executor/rocm/rocm_gpu_executor.h"
-
 #include <unistd.h>
 
 #include <memory>
@@ -308,6 +306,19 @@ tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
       GetGpuContext(stream), kernel.name(), hipfunc, block_dims.x, block_dims.y,
       block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
       args.number_of_shared_bytes(), hipstream, nullptr, (void**)&config);
+}
+
+tsl::Status GpuExecutor::Submit(Stream* stream,
+                                const CommandBuffer& command_buffer) {
+  if (command_buffer.mode() != CommandBuffer::Mode::kPrimary) {
+    return absl::InvalidArgumentError(
+        "Can't submit non-primary command buffer for execution");
+  }
+
+  auto exec = GpuCommandBuffer::Cast(&command_buffer)->executable();
+  VLOG(3) << "Launch command buffer execuable graph " << exec
+          << " on a stream: " << stream->DebugStreamPointers();
+  return GpuDriver::GraphLaunch(exec, AsGpuStreamValue(stream));
 }
 
 int GpuExecutor::CalculateOccupancy(const DeviceDescription& device_description,
@@ -726,11 +737,11 @@ GpuExecutor::GetStreamImplementation() {
 }
 
 tsl::StatusOr<std::unique_ptr<internal::CommandBufferInterface>>
-GpuExecutor::GetCommandBufferImplementation() {
+GpuExecutor::GetCommandBufferImplementation(CommandBuffer::Mode mode) {
   VLOG(2) << "Create ROCm command buffer (ROCm graph)";
   GpuGraphHandle graph = nullptr;
   TF_RETURN_IF_ERROR(GpuDriver::CreateGraph(&graph));
-  return std::make_unique<GpuCommandBuffer>(this, graph);
+  return std::make_unique<GpuCommandBuffer>(mode, /*parent=*/this, graph);
 }
 
 void* GpuExecutor::GpuContextHack() { return context_; }

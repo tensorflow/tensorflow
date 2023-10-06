@@ -182,9 +182,8 @@ void BM_SmallTopk(benchmark::State& state) {
     CUDA_CHECK(cudaEventCreate(&start));
     CUDA_CHECK(cudaEventCreate(&stop));
     CUDA_CHECK(cudaEventRecord(start, stream));
-    CHECK(RunTopk(stream, Get(T()), input_buffer, n, output_values,
-                  output_indices, k, batch_size)
-              .ok());
+    CHECK_OK(RunTopk(stream, Get(T()), input_buffer, n, output_values,
+                     output_indices, k, batch_size));
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaEventRecord(stop, stream));
     CUDA_CHECK(cudaEventSynchronize(stop));

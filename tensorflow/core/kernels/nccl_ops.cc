@@ -63,7 +63,8 @@ class NcclAsyncOpBase : public AsyncOpKernel {
   int num_devices_;
   string collective_prefix_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(NcclAsyncOpBase);
+  NcclAsyncOpBase(const NcclAsyncOpBase&) = delete;
+  void operator=(const NcclAsyncOpBase&) = delete;
 };
 
 class NcclReduceOpBase : public NcclAsyncOpBase {

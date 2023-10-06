@@ -127,7 +127,8 @@ class TemporaryMemoryManager {
   // are performed through this stream handle.
   Stream* stream_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(TemporaryMemoryManager);
+  TemporaryMemoryManager(const TemporaryMemoryManager&) = delete;
+  void operator=(const TemporaryMemoryManager&) = delete;
 };
 
 ////////////

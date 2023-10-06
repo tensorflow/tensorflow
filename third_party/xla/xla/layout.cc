@@ -203,7 +203,7 @@ absl::string_view DimLevelTypeAbbrev(DimLevelType dim_level_type) {
       return "C";
     case DIM_SINGLETON:
       return "S";
-    case xla::DIM_COMPRESSED_WITH_HI:
+    case xla::DIM_LOOSE_COMPRESSED:
       return "H";
     default:
       LOG(FATAL) << "Invalid DimLevelType value: " << dim_level_type;

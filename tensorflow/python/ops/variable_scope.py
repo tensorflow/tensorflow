@@ -807,7 +807,8 @@ class _VariableStore:
             use_resource=use_resource,
             constraint=constraint,
             synchronization=synchronization,
-            aggregation=aggregation)
+            aggregation=aggregation,
+        )
 
       # pylint: disable=protected-access
       var._set_save_slice_info(
@@ -880,7 +881,8 @@ class _VariableStore:
       raise ValueError("If initializer is a constant, do not specify shape.")
 
     dtype = dtypes.as_dtype(dtype)
-    shape = tensor_shape.as_shape(shape)
+    if shape is not None:
+      shape = tensor_shape.as_shape(shape)
 
     if name in self._vars:
       # Here we handle the case when returning an existing variable.
@@ -901,7 +903,9 @@ class _VariableStore:
         raise ValueError("%s Originally defined at:\n\n%s" %
                          (err_msg, "".join(traceback.format_list(tb))))
       found_var = self._vars[name]
-      if not shape.is_compatible_with(found_var.get_shape()):
+      if shape is not None and not shape.is_compatible_with(
+          found_var.get_shape()
+      ):
         raise ValueError("Trying to share variable %s, but specified shape %s"
                          " and found shape %s." %
                          (name, shape, found_var.get_shape()))
@@ -921,6 +925,11 @@ class _VariableStore:
 
     # Create the tensor to initialize the variable with default value.
     if initializer is None:
+      if shape is None:
+        raise ValueError(
+            f"Variable {name} did not get an initializer, so its `shape`"
+            " argument must be specified."
+        )
       initializer, initializing_from_value = self._get_default_initializer(
           name=name, shape=shape, dtype=dtype)
     # Enter an init scope when creating the initializer.
@@ -932,7 +941,7 @@ class _VariableStore:
         # Instantiate initializer if provided initializer is a type object.
         if tf_inspect.isclass(initializer):
           initializer = initializer()
-        if shape.is_fully_defined():
+        if shape is not None and shape.is_fully_defined():
           if "partition_info" in tf_inspect.getargspec(initializer).args:
             init_val = functools.partial(initializer,
                                          shape.as_list(),
@@ -967,7 +976,9 @@ class _VariableStore:
         constraint=constraint,
         use_resource=use_resource,
         synchronization=synchronization,
-        aggregation=aggregation)
+        aggregation=aggregation,
+        shape=shape,
+    )
     if context.executing_eagerly() and self._store_eager_variables:
       if collections:
         ops.add_to_collections(collections, v)

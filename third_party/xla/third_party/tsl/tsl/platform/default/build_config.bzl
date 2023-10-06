@@ -715,7 +715,6 @@ def tf_additional_lib_deps():
         "@com_google_absl//absl/base:base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
-        "@com_google_absl//absl/types:optional",
     ] + if_static(
         [clean_dep("@nsync//:nsync_cpp")],
         [clean_dep("@nsync//:nsync_headers")],

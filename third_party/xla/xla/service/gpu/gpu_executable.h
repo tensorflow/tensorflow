@@ -260,7 +260,7 @@ class GpuExecutable : public Executable {
       VariantArguments arguments,
       const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
       const BufferAllocation& allocation,
-      se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal,
+      se::DeviceMemoryAllocator* memory_allocator, int device_ordinal,
       int64_t arg_idx);
 
   // The LLVM IR, in string format, of the unoptimized module generated for
@@ -326,10 +326,11 @@ class GpuExecutable : public Executable {
   absl::Mutex module_handle_mutex_;
   // Cache of module handles. Required to keep loaded modules alive until this
   // executable is destroyed.
-  std::map<stream_executor::StreamExecutor*, se::ScopedModuleHandle>
+  absl::flat_hash_map<stream_executor::StreamExecutor*, se::ScopedModuleHandle>
       module_handles_ ABSL_GUARDED_BY(module_handle_mutex_);
   // Cache of constant buffer allocation maps used by `ResolveConstantGlobals`.
-  std::map<stream_executor::StreamExecutor*, BufferAllocToDeviceMemoryMap>
+  absl::flat_hash_map<stream_executor::StreamExecutor*,
+                      std::unique_ptr<BufferAllocToDeviceMemoryMap>>
       module_globals_ ABSL_GUARDED_BY(module_handle_mutex_);
 
   std::vector<ConstantInfo> constants_;

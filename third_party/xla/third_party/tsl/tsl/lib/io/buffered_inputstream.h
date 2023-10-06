@@ -110,7 +110,8 @@ class BufferedInputStream : public InputStreamInterface {
   // buffer allocations.
   Status file_status_ = OkStatus();
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BufferedInputStream);
+  BufferedInputStream(const BufferedInputStream&) = delete;
+  void operator=(const BufferedInputStream&) = delete;
 };
 
 // Explicit instantiations defined in buffered_inputstream.cc.

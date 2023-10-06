@@ -367,6 +367,19 @@ void RewritePreprocessInputs(OpBuilder* builder, func::FuncOp func_op,
   }
 }
 
+LogicalResult VerifyAllProgramKeyOperandsReplaced(Operation* module) {
+  WalkResult result = module->walk([&](Operation* op) {
+    if (!op->hasAttr(kMiniBatchSplitsAttr) && !op->hasAttr(kMiniBatchCsrAttr))
+      return WalkResult::advance();
+    Operation* defining = op->getOperand(0).getDefiningOp();
+    if (llvm::dyn_cast_or_null<TF::ConstOp>(defining)) {
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  return result.wasInterrupted() ? failure() : success();
+}
+
 void EmbeddingProgramKeyPass::runOnOperation() {
   // Find all of the relevant post processing ops.
   llvm::SmallVector<Operation*, 6> preprocess_ops;
@@ -400,6 +413,10 @@ void EmbeddingProgramKeyPass::runOnOperation() {
 
   for (Operation* preprocess_op : preprocess_ops) {
     RewritePreprocessInputs(&builder, getOperation(), preprocess_op);
+  }
+
+  if (failed(VerifyAllProgramKeyOperandsReplaced(getOperation()))) {
+    signalPassFailure();
   }
 }
 

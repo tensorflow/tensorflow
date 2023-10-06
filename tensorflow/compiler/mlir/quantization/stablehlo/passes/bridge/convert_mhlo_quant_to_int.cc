@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <optional>
@@ -22,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
@@ -403,6 +406,22 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
   }
 };
 
+// This is a convenient struct for holding dimension numbers for dot-like ops
+// including DotGeneral and Convolution. So that we can share code for all
+// dot-like ops.
+// For Convolution, only NHWC format is supported.
+// For DotGeneral, there is no contracting dims. The batching and contracting
+// dimensions are defined in
+// https://github.com/openxla/stablehlo/blob/main/docs/spec.md#dot_general.
+struct DotLikeDimensionNumbers {
+  ArrayRef<int64_t> lhs_batching_dims;
+  ArrayRef<int64_t> lhs_spatial_dims;
+  ArrayRef<int64_t> lhs_contracting_dims;
+  ArrayRef<int64_t> rhs_batching_dims;
+  ArrayRef<int64_t> rhs_spatial_dims;
+  ArrayRef<int64_t> rhs_contracting_dims;
+};
+
 // A shared matchAndRewrite implementation for dot-like hybrid quantized
 // operators. Hybrid ops are currently only interpreted as weight-only
 // quantization ops, this might change in the future.
@@ -410,14 +429,16 @@ class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
 // All attrs of the original op are preserved after the conversion.
 template <typename OpType, typename OpAdaptorType>
 LogicalResult matchAndRewriteDotLikeHybridOp(
-    OpType &op, OpAdaptorType &adaptor, ConversionPatternRewriter &rewriter,
-    const quant::UniformQuantizedType &rhs_element_type) {
+    OpType &op, OpAdaptorType &adaptor, ConversionPatternRewriter &rewriter) {
   // For dot like hybrid ops, lhs is float type, rhs is uniform
   // quantized type and result is float type.
   // For weight-only quantization:
   // result = hybridOp(lhs, dequant(rhs))
   Value lhs_float32_tensor = adaptor.getLhs();
   Value rhs = adaptor.getRhs();
+  quant::UniformQuantizedType rhs_element_type =
+      getElementTypeOrSelf(op.getRhs().getType())
+          .template cast<quant::UniformQuantizedType>();
   auto res_float32_tensor_type =
       op.getResult().getType().template cast<TensorType>();
 
@@ -427,7 +448,7 @@ LogicalResult matchAndRewriteDotLikeHybridOp(
       rewriter.getF32FloatAttr((rhs_element_type.getZeroPoint())));
   Value rhs_scale_constant = rewriter.create<mhlo::ConstantOp>(
       op->getLoc(), rewriter.getF32FloatAttr(
-                        static_cast<float_t>(rhs_element_type.getScale())));
+                        static_cast<float>(rhs_element_type.getScale())));
 
   // Dequantize rhs_float32_tensor.
   Value rhs_float32_tensor = rewriter.create<mhlo::ConvertOp>(
@@ -452,152 +473,9 @@ LogicalResult matchAndRewriteDotLikeHybridOp(
   return success();
 }
 
-// A shared matchAndRewrite implementation for dot-like quantized operators.
-//
-// Dot-like operators refer to operators that generate a tensor where each
-// element is obtained by multiplying an element from the lhs with an element
-// from the rhs, possibly followed by summation.
-// e.g. Dot, Multiply, Convolution
-//
-// All attrs of the original op are preserved after the conversion.
-template <typename OpType, typename OpAdaptorType>
-LogicalResult matchAndRewriteDotLikeOp(OpType &op, OpAdaptorType &adaptor,
-                                       ConversionPatternRewriter &rewriter) {
-  auto lhs_element_type = getElementTypeOrSelf(op.getLhs().getType());
-  auto rhs_element_quant_type =
-      op.getRhs()
-          .getType()
-          .getElementType()
-          .template dyn_cast<quant::UniformQuantizedType>();
-  auto res_element_type = getElementTypeOrSelf(op.getResult());
-
-  // Check if the right operand is UniformQuantizedTypes.
-  if (!rhs_element_quant_type) {
-    return rewriter.notifyMatchFailure(
-        op, "Legalization failed: supports only per-tensor quantization.");
-  }
-
-  if (lhs_element_type.template isa<quant::UniformQuantizedType>()) {
-    // If lhs is uniform quantized type, result should also be uniform
-    // quantized type, representing none-hybrid op.
-    if (!res_element_type.template isa<quant::UniformQuantizedType>()) {
-      op->emitError("Unsupported result element type for " +
-                    op->getName().getStringRef().str());
-      return failure();
-    }
-  } else if (lhs_element_type.isF32()) {
-    // If lhs is float32 type, result should also be float32 type,
-    // representing hybrid op.
-    if (!res_element_type.isF32()) {
-      op->emitError("Unsupported result element type for " +
-                    op->getName().getStringRef().str());
-      return failure();
-    }
-    return matchAndRewriteDotLikeHybridOp(op, adaptor, rewriter,
-                                          rhs_element_quant_type);
-  } else {
-    return rewriter.notifyMatchFailure(op, "Unsupported input element type.");
-  }
-
-  auto lhs_float32_tensor_type =
-      op.getLhs().getType().clone(rewriter.getF32Type());
-  auto rhs_float32_tensor_type =
-      op.getRhs().getType().clone(rewriter.getF32Type());
-  auto res_float32_tensor_type =
-      op.getResult().getType().clone(rewriter.getF32Type());
-
-  auto lhs_element_quant_type =
-      lhs_element_type.template dyn_cast<quant::UniformQuantizedType>();
-  auto res_element_quant_type =
-      res_element_type.template dyn_cast<quant::UniformQuantizedType>();
-  Value lhs = adaptor.getLhs();
-  Value rhs = adaptor.getRhs();
-
-  // result =
-  // op((lhs - zp_l) * scale_l, (rhs - zp_r) * scale_r) / scale_res + zp_res
-  // =
-  // op(lhs - zp_l, rhs - zp_r) * scale_l * scale_r / scale_res + zp_res
-  // Get scales and zero points for both operands.
-  Value lhs_zero_point = rewriter.create<mhlo::ConstantOp>(
-      op->getLoc(),
-      rewriter.getF32FloatAttr((lhs_element_quant_type.getZeroPoint())));
-  Value rhs_zero_point = rewriter.create<mhlo::ConstantOp>(
-      op->getLoc(),
-      rewriter.getF32FloatAttr((rhs_element_quant_type.getZeroPoint())));
-
-  // Offset xxx_int32_tensor according to zero points.
-  Value lhs_float32_tensor = rewriter.create<mhlo::ConvertOp>(
-      op->getLoc(), lhs_float32_tensor_type, lhs);
-  lhs_float32_tensor = rewriter.create<chlo::BroadcastSubOp>(
-      op->getLoc(), lhs_float32_tensor_type, lhs_float32_tensor, lhs_zero_point,
-      nullptr);
-  Value rhs_float32_tensor = rewriter.create<mhlo::ConvertOp>(
-      op->getLoc(), rhs_float32_tensor_type, rhs);
-  rhs_float32_tensor = rewriter.create<chlo::BroadcastSubOp>(
-      op->getLoc(), rhs_float32_tensor_type, rhs_float32_tensor, rhs_zero_point,
-      nullptr);
-
-  // Execute the conversion target op.
-  SmallVector<Value, 2> operands{lhs_float32_tensor, rhs_float32_tensor};
-  Value res_float32 = rewriter.create<OpType>(
-      op->getLoc(), res_float32_tensor_type, operands, op->getAttrs());
-
-  // Get scale and zero point of result and offset res_int32 according to
-  // scales.
-  Value result_zero_point = rewriter.create<mhlo::ConstantOp>(
-      op->getLoc(),
-      rewriter.getF32FloatAttr((res_element_quant_type.getZeroPoint())));
-  const double effective_scale = lhs_element_quant_type.getScale() *
-                                 rhs_element_quant_type.getScale() /
-                                 res_element_quant_type.getScale();
-  Value effective_scale_constant = rewriter.create<mhlo::ConstantOp>(
-      op->getLoc(),
-      rewriter.getF32FloatAttr(static_cast<float_t>(effective_scale)));
-  res_float32 = rewriter.create<chlo::BroadcastMulOp>(
-      op->getLoc(), res_float32_tensor_type, res_float32,
-      effective_scale_constant, nullptr);
-  // MOT team figured out using floor(x+0.5) is much faster than using
-  // round(x) on some TPU chips, see cl/449626238.
-  Value half = rewriter.create<mhlo::ConstantOp>(
-      op->getLoc(), rewriter.getF32FloatAttr(0.5f));
-  res_float32 = rewriter.create<chlo::BroadcastAddOp>(
-      op->getLoc(), res_float32_tensor_type, res_float32, half, nullptr);
-  res_float32 = rewriter.create<mhlo::FloorOp>(op->getLoc(), res_float32);
-
-  // Offset res_int32 according to result_zero_point.
-  res_float32 = rewriter.create<chlo::BroadcastAddOp>(
-      op->getLoc(), res_float32_tensor_type, res_float32, result_zero_point,
-      nullptr);
-
-  // Cast res_float_tensor_type to res_int_tensor_type.
-  auto res_int32_tensor_type =
-      op.getResult().getType().clone(rewriter.getI32Type());
-  Value res_int32 = rewriter.create<mhlo::ConvertOp>(
-      op->getLoc(), res_int32_tensor_type, res_float32);
-
-  // Clamp results by [quantization_min, quantization_max].
-  Value result_quantization_min = rewriter.create<mhlo::ConstantOp>(
-      op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
-                        res_element_quant_type.getStorageTypeMin())));
-  Value result_quantization_max = rewriter.create<mhlo::ConstantOp>(
-      op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
-                        res_element_quant_type.getStorageTypeMax())));
-  res_int32 = rewriter.create<mhlo::ClampOp>(
-      op->getLoc(), res_int32_tensor_type, result_quantization_min, res_int32,
-      result_quantization_max);
-
-  // Convert results back to int8.
-  auto res_final_tensor_type =
-      res_int32_tensor_type.clone(res_element_quant_type.getStorageType());
-  rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, res_final_tensor_type,
-                                               res_int32);
-
-  return success();
-}
-
 Value CreateZeroPointPartialOffset(OpBuilder &builder, Location loc,
                                    Value tensor, const int64_t other_tensor_zp,
-                                   ArrayRef<int64_t> contracting_dims) {
+                                   ArrayRef<int64_t> reduction_dims) {
   // This function calculates part of the zero-point-offset by using
   // mhlo::Reduce to sum over the contracting dims of the tensor, and then
   // multiply by zp of the other tensor.
@@ -608,7 +486,7 @@ Value CreateZeroPointPartialOffset(OpBuilder &builder, Location loc,
   auto ranked_tensor = tensor.getType().dyn_cast<RankedTensorType>();
   llvm::SmallVector<int64_t> output_dims;
   for (int64_t i = 0; i < ranked_tensor.getRank(); ++i) {
-    if (absl::c_count(contracting_dims, i) == 0) {
+    if (absl::c_count(reduction_dims, i) == 0) {
       output_dims.push_back(ranked_tensor.getDimSize(i));
     }
   }
@@ -625,7 +503,7 @@ Value CreateZeroPointPartialOffset(OpBuilder &builder, Location loc,
       loc, DenseIntElementsAttr::get(reducer_tensor_type, {0}));
   mhlo::ReduceOp reduce = builder.create<mhlo::ReduceOp>(
       loc, RankedTensorType::get(output_dims, output_element_type), tensor,
-      init_values, builder.getI64TensorAttr(contracting_dims));
+      init_values, builder.getI64TensorAttr(reduction_dims));
   // Define reducer function to compute sum.
   Region &region = reduce.getBody();
   Block &block = region.emplaceBlock();
@@ -669,25 +547,34 @@ Value GetDimValue(OpBuilder &builder, Location loc, Value tensor,
 
 Value CalculateDynamicOutputDims(OpBuilder &builder, Location loc, Value lhs,
                                  Value rhs,
-                                 mhlo::DotDimensionNumbersAttr dims) {
+                                 const DotLikeDimensionNumbers &dims) {
   mlir::ShapedType lhs_shape = lhs.getType().cast<mlir::ShapedType>();
   mlir::ShapedType rhs_shape = rhs.getType().cast<mlir::ShapedType>();
   // Calculate each output dim and concatenate into a 1D tensor.
+  // Output dims are batching dims, spatial dims, LHS result dims, RHS result
+  // dims.
   llvm::SmallVector<Value> output_dims;
   for (int64_t i = 0; i < lhs_shape.getRank(); ++i) {
-    if (absl::c_count(dims.getLhsBatchingDimensions(), i) != 0) {
+    if (absl::c_count(dims.lhs_batching_dims, i) != 0) {
       output_dims.push_back(GetDimValue(builder, loc, lhs, lhs_shape, i));
     }
   }
   for (int64_t i = 0; i < lhs_shape.getRank(); ++i) {
-    if (absl::c_count(dims.getLhsContractingDimensions(), i) == 0 &&
-        absl::c_count(dims.getLhsBatchingDimensions(), i) == 0) {
+    if (absl::c_count(dims.lhs_spatial_dims, i) != 0) {
+      output_dims.push_back(GetDimValue(builder, loc, lhs, lhs_shape, i));
+    }
+  }
+  for (int64_t i = 0; i < lhs_shape.getRank(); ++i) {
+    if (absl::c_count(dims.lhs_batching_dims, i) == 0 &&
+        absl::c_count(dims.lhs_spatial_dims, i) == 0 &&
+        absl::c_count(dims.lhs_contracting_dims, i) == 0) {
       output_dims.push_back(GetDimValue(builder, loc, lhs, lhs_shape, i));
     }
   }
   for (int64_t i = 0; i < rhs_shape.getRank(); ++i) {
-    if (absl::c_count(dims.getRhsContractingDimensions(), i) == 0 &&
-        absl::c_count(dims.getRhsBatchingDimensions(), i) == 0) {
+    if (absl::c_count(dims.rhs_batching_dims, i) == 0 &&
+        absl::c_count(dims.rhs_spatial_dims, i) == 0 &&
+        absl::c_count(dims.rhs_contracting_dims, i) == 0) {
       output_dims.push_back(GetDimValue(builder, loc, rhs, rhs_shape, i));
     }
   }
@@ -697,12 +584,12 @@ Value CalculateDynamicOutputDims(OpBuilder &builder, Location loc, Value lhs,
 
 Value BroadcastZpContribution(OpBuilder &builder, Location loc,
                               Value zp_contribution,
-                              llvm::ArrayRef<int64_t> contracting_dims,
+                              llvm::ArrayRef<int64_t> reduction_dims,
                               llvm::ArrayRef<int64_t> batching_dims,
                               int64_t non_batching_starting_idx,
-                              RankedTensorType output_tensor_type,
+                              TensorType output_tensor_type,
                               Value &output_dims_value, Value lhs, Value rhs,
-                              mhlo::DotDimensionNumbersAttr dims) {
+                              const DotLikeDimensionNumbers &dims) {
   // This function calculates the dims for broadcasting from the
   // zero-point-offset tensor to the final output tensor, and then do the
   // broadcast.
@@ -717,9 +604,9 @@ Value BroadcastZpContribution(OpBuilder &builder, Location loc,
   int64_t result_non_batching_idx = non_batching_starting_idx;
   for (int64_t idx = 0, original_idx = 0; idx < zp_contribution_rank;
        ++idx, ++original_idx) {
-    // zp_contribution has removed contracting dims from the tensor. The
-    // following recovers the index in the original tensor.
-    while (absl::c_count(contracting_dims, original_idx) != 0) {
+    // zp_contribution has removed contracting/spatial dims from the tensor
+    // after reduction. The following recovers the index in the original tensor.
+    while (absl::c_count(reduction_dims, original_idx) != 0) {
       original_idx++;
     }
     if (absl::c_count(batching_dims, original_idx) == 0) {
@@ -754,58 +641,38 @@ Value BroadcastZpContribution(OpBuilder &builder, Location loc,
 
 Value CalculateZeroPointOffset(OpBuilder &builder, Location loc, Value lhs,
                                Value rhs, int64_t lhs_zp, int64_t rhs_zp,
-                               mhlo::DotDimensionNumbersAttr dims) {
-  // According to StableHLO spec, the output tensor has dims in the following
-  // order:
-  //   batching dims, LHS result dims, RHS result dims
-  // where LHS/RHS result dims are any dims that are neither batching dims nor
-  // contracting dims.
-  llvm::SmallVector<int64_t> output_dims;
+                               TensorType output_tensor_type,
+                               const DotLikeDimensionNumbers &dims) {
   mlir::ShapedType lhs_shape = lhs.getType().cast<mlir::ShapedType>();
   mlir::ShapedType rhs_shape = rhs.getType().cast<mlir::ShapedType>();
-  for (int64_t i = 0; i < lhs_shape.getRank(); ++i) {
-    if (absl::c_count(dims.getLhsBatchingDimensions(), i) != 0) {
-      output_dims.push_back(lhs_shape.getDimSize(i));
-    }
-  }
-  for (int64_t i = 0; i < lhs_shape.getRank(); ++i) {
-    if (absl::c_count(dims.getLhsContractingDimensions(), i) == 0 &&
-        absl::c_count(dims.getLhsBatchingDimensions(), i) == 0) {
-      output_dims.push_back(lhs_shape.getDimSize(i));
-    }
-  }
-  for (int64_t i = 0; i < rhs_shape.getRank(); ++i) {
-    if (absl::c_count(dims.getRhsContractingDimensions(), i) == 0 &&
-        absl::c_count(dims.getRhsBatchingDimensions(), i) == 0) {
-      output_dims.push_back(rhs_shape.getDimSize(i));
-    }
-  }
-  auto output_element_type = builder.getI32Type();
-  auto output_tensor_type =
-      RankedTensorType::get(output_dims, output_element_type);
-
   Value result = nullptr;
   Value output_dims_value = nullptr;
   // Calculate LHS contribution when RHS zp is non-zero.
   if (rhs_zp != 0) {
-    Value lhs_zp_contribution = CreateZeroPointPartialOffset(
-        builder, loc, lhs, rhs_zp, dims.getLhsContractingDimensions());
+    llvm::SmallVector<int64_t> reduction_dims =
+        llvm::to_vector(llvm::concat<const int64_t>(dims.lhs_spatial_dims,
+                                                    dims.lhs_contracting_dims));
+    Value lhs_zp_contribution =
+        CreateZeroPointPartialOffset(builder, loc, lhs, rhs_zp, reduction_dims);
     // Broadcast lhs ZP contribution to result tensor shape.
     lhs_zp_contribution = BroadcastZpContribution(
-        builder, loc, lhs_zp_contribution, dims.getLhsContractingDimensions(),
-        dims.getLhsBatchingDimensions(), dims.getLhsBatchingDimensions().size(),
+        builder, loc, lhs_zp_contribution, reduction_dims,
+        dims.lhs_batching_dims, dims.lhs_batching_dims.size(),
         output_tensor_type, output_dims_value, lhs, rhs, dims);
     result = lhs_zp_contribution;
   }
   // Calculate RHS contribution when LHS zp is non-zero.
   if (lhs_zp != 0) {
-    Value rhs_zp_contribution = CreateZeroPointPartialOffset(
-        builder, loc, rhs, lhs_zp, dims.getRhsContractingDimensions());
+    llvm::SmallVector<int64_t> reduction_dims =
+        llvm::to_vector(llvm::concat<const int64_t>(dims.rhs_spatial_dims,
+                                                    dims.rhs_contracting_dims));
+    Value rhs_zp_contribution =
+        CreateZeroPointPartialOffset(builder, loc, rhs, lhs_zp, reduction_dims);
     // Broadcast rhs ZP contribution to result tensor shape.
     rhs_zp_contribution = BroadcastZpContribution(
-        builder, loc, rhs_zp_contribution, dims.getRhsContractingDimensions(),
-        dims.getRhsBatchingDimensions(),
-        lhs_shape.getRank() - dims.getLhsContractingDimensions().size(),
+        builder, loc, rhs_zp_contribution, reduction_dims,
+        dims.rhs_batching_dims,
+        lhs_shape.getRank() - dims.lhs_contracting_dims.size(),
         output_tensor_type, output_dims_value, lhs, rhs, dims);
     if (result) {
       result = builder.create<mhlo::AddOp>(loc, result, rhs_zp_contribution);
@@ -822,7 +689,8 @@ Value CalculateZeroPointOffset(OpBuilder &builder, Location loc, Value lhs,
     Value dynamic_contracting_dim_total = builder.create<mhlo::ConstantOp>(
         loc, builder.getI32IntegerAttr(static_cast<int32_t>(1)));
     // Calculate the product for static/dynamic dims separately.
-    for (const int64_t rhs_idx : dims.getRhsContractingDimensions()) {
+    for (int64_t rhs_idx : llvm::concat<const int64_t>(
+             dims.rhs_spatial_dims, dims.rhs_contracting_dims)) {
       if (rhs_shape.isDynamicDim(rhs_idx)) {
         has_dynamic_contracting_dim = true;
         auto dim = builder.create<mhlo::GetDimensionSizeOp>(
@@ -848,11 +716,76 @@ Value CalculateZeroPointOffset(OpBuilder &builder, Location loc, Value lhs,
   return result;
 }
 
-template <typename DotOp, typename DotOpAdaptor>
-LogicalResult RewriteDotGeneralOp(DotOp op, DotOpAdaptor adaptor,
-                                  ArrayRef<NamedAttribute> attrs,
-                                  const mhlo::DotDimensionNumbersAttr &dims,
-                                  ConversionPatternRewriter &rewriter) {
+// Generic function to create DotGeneral kernel for Dot/DotGeneral ops.
+template <typename DotLikeOp>
+Value CreateDotLikeKernel(OpBuilder &builder, Location loc, DotLikeOp op,
+                          Type result_type, Value &lhs, Value &rhs,
+                          ArrayRef<NamedAttribute> attrs) {
+  return builder.create<mhlo::DotGeneralOp>(loc, result_type,
+                                            ArrayRef<Value>{lhs, rhs}, attrs);
+}
+
+// Template specialization for Convolution op.
+// This function may pad LHS if needed. If so, lhs is updated in place.
+template <>
+Value CreateDotLikeKernel<mhlo::ConvolutionOp>(OpBuilder &builder, Location loc,
+                                               mhlo::ConvolutionOp op,
+                                               Type result_type, Value &lhs,
+                                               Value &rhs,
+                                               ArrayRef<NamedAttribute> attrs) {
+  // We only handle the case where RHS zp is zero.
+  auto original_padding = op.getPaddingAttr().getValues<int64_t>();
+
+  // Explicitly pad LHS with zp and update LHS value.
+  llvm::SmallVector<NamedAttribute> new_attrs(attrs);
+  if (llvm::any_of(original_padding, [](int64_t x) { return x != 0; })) {
+    Value zp = builder.create<mhlo::ConstantOp>(
+        loc,
+        DenseIntElementsAttr::get(
+            RankedTensorType::get({}, builder.getI8Type()),
+            {static_cast<int8_t>(getElementTypeOrSelf(op.getLhs().getType())
+                                     .dyn_cast<quant::UniformQuantizedType>()
+                                     .getZeroPoint())}));
+    // Convert Padding attributes from mhlo::Convolution to mhlo::Pad. Note that
+    // Padding is applied for spatial dimensions [1...rank-1) only for
+    // mhlo::Convolution. But mhlo::Pad require those for all dimensions. Hence
+    // we add 0 to the beginning and end of the padding vectors.
+    int64_t rank = lhs.getType().dyn_cast<TensorType>().getRank();
+    llvm::SmallVector<int64_t> padding_low(rank, 0), padding_high(rank, 0),
+        padding_interior(rank, 0);
+    for (int64_t i = 1; i < rank - 1; ++i) {
+      padding_low[i] = original_padding[i * 2 - 2];
+      padding_high[i] = original_padding[i * 2 - 1];
+    }
+    lhs = builder.create<mhlo::PadOp>(
+        loc, lhs, zp,
+        DenseIntElementsAttr::get(
+            RankedTensorType::get({rank}, builder.getI64Type()), padding_low),
+        DenseIntElementsAttr::get(
+            RankedTensorType::get({rank}, builder.getI64Type()), padding_high),
+        DenseIntElementsAttr::get(
+            RankedTensorType::get({rank}, builder.getI64Type()),
+            padding_interior));
+
+    // After explicitly padding/dilating LHS, update attributes so that LHS is
+    // not padded/dilated again during Convolution.
+    for (auto &attr : new_attrs) {
+      if (attr.getName().getValue() == "padding") {
+        attr.setValue(SplatElementsAttr::get(
+            RankedTensorType::get({rank - 2, 2}, builder.getI64Type()),
+            builder.getI64IntegerAttr(0)));
+      }
+    }
+  }
+  return builder.create<mhlo::ConvolutionOp>(
+      loc, result_type, ArrayRef<Value>{lhs, rhs}, new_attrs);
+}
+
+template <typename DotLikeOp, typename DotLikeOpAdaptor>
+LogicalResult matchAndRewriteDotLikeOp(DotLikeOp op, DotLikeOpAdaptor adaptor,
+                                       ArrayRef<NamedAttribute> attrs,
+                                       const DotLikeDimensionNumbers &dims,
+                                       ConversionPatternRewriter &rewriter) {
   // Lower Dot/DotGeneral UQ ops to DotGeneral int.
   // Assumes that operands and results are uq types.
   auto lhs_element_quant_type =
@@ -878,19 +811,18 @@ LogicalResult RewriteDotGeneralOp(DotOp op, DotOpAdaptor adaptor,
   //   combined_scale = scale_l * scale_r / scale_res
   //   combined_zp = res_zp - zp_offset * combined_scale
   //   zp_offset = zp_l*rhs + zp_r*lhs - zp_l*zp_r
-  SmallVector<Value, 2> operands{lhs, rhs};
-  Value res_i32 = rewriter.create<mhlo::DotGeneralOp>(
-      op->getLoc(), res_int32_tensor_type, operands, attrs);
+  Value res_i32 = CreateDotLikeKernel(rewriter, op->getLoc(), op,
+                                      res_int32_tensor_type, lhs, rhs, attrs);
 
   Value zp_offset = CalculateZeroPointOffset(
       rewriter, op->getLoc(), lhs, rhs, lhs_element_quant_type.getZeroPoint(),
-      rhs_element_quant_type.getZeroPoint(), dims);
+      rhs_element_quant_type.getZeroPoint(), res_int32_tensor_type, dims);
 
   // Multiply dot result and zp_offset by combined_scale only if it is not 1.0.
   double combined_scale_fp = lhs_element_quant_type.getScale() *
                              rhs_element_quant_type.getScale() /
                              res_element_quant_type.getScale();
-  if (combined_scale_fp != 1.0) {
+  if (std::abs(combined_scale_fp - 1.0) > 0.005) {
     Value combined_scale = rewriter.create<mhlo::ConstantOp>(
         op->getLoc(), rewriter.getF32FloatAttr(combined_scale_fp));
 
@@ -933,6 +865,31 @@ LogicalResult RewriteDotGeneralOp(DotOp op, DotOpAdaptor adaptor,
   return success();
 }
 
+template <typename DotLikeOp>
+FailureOr<bool> IsDotLikeOpHybrid(DotLikeOp op) {
+  // Checks whether a dot-like op is hybrid by looking at input/output types.
+  // Returns failure() when the type is not supported.
+  auto lhs_element_quant_type =
+      getElementTypeOrSelf(op.getLhs().getType())
+          .template dyn_cast<quant::UniformQuantizedType>();
+  auto rhs_element_quant_type =
+      getElementTypeOrSelf(op.getRhs().getType())
+          .template dyn_cast<quant::UniformQuantizedType>();
+  auto res_element_quant_type =
+      getElementTypeOrSelf(op.getResult())
+          .template dyn_cast<quant::UniformQuantizedType>();
+  if (lhs_element_quant_type && rhs_element_quant_type &&
+      res_element_quant_type) {
+    return false;
+  } else if (!lhs_element_quant_type && rhs_element_quant_type &&
+             !res_element_quant_type) {
+    return true;
+  } else {
+    op->emitError("Invalid input/output type for Dot/Convolution op");
+    return failure();
+  }
+}
+
 class ConvertUniformQuantizedDotOp : public OpConversionPattern<mhlo::DotOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -940,29 +897,33 @@ class ConvertUniformQuantizedDotOp : public OpConversionPattern<mhlo::DotOp> {
   LogicalResult matchAndRewrite(
       mhlo::DotOp op, mhlo::DotOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    // Use matchAndRewriteDotLikeOp for DotHybrid.
-    if (!op.getLhs()
-             .getType()
-             .getElementType()
-             .isa<quant::UniformQuantizedType>() ||
-        !op.getRhs()
-             .getType()
-             .getElementType()
-             .isa<quant::UniformQuantizedType>()) {
-      return matchAndRewriteDotLikeOp(op, adaptor, rewriter);
+    auto is_hybrid = IsDotLikeOpHybrid(op);
+    if (failed(is_hybrid)) {
+      return failure();
     }
-
-    // DotOp is a special case of DotGeneralOp, where LHS and RHS are both
-    // rank-2 tensors and have contracting dims of 1 and 0 respectively.
-    auto dims = mhlo::DotDimensionNumbersAttr::get(
-        rewriter.getContext(), /*lhsBatchingDimensions=*/{},
-        /*rhsBatchingDimensions=*/{}, /*lhsContractingDimensions=*/{1},
-        /*rhsContractingDimensions=*/{0});
-    llvm::SmallVector<mlir::NamedAttribute> attrs(op->getAttrs());
-    attrs.push_back(
-        {StringAttr::get(rewriter.getContext(), "dot_dimension_numbers"),
-         dims});
-    return RewriteDotGeneralOp(op, adaptor, attrs, dims, rewriter);
+    if (*is_hybrid) {
+      return matchAndRewriteDotLikeHybridOp(op, adaptor, rewriter);
+    } else {
+      // DotOp is a special case of DotGeneralOp, where LHS and RHS are both
+      // rank-2 tensors and have contracting dims of 1 and 0 respectively.
+      auto dims = mhlo::DotDimensionNumbersAttr::get(
+          rewriter.getContext(), /*lhsBatchingDimensions=*/{},
+          /*rhsBatchingDimensions=*/{}, /*lhsContractingDimensions=*/{1},
+          /*rhsContractingDimensions=*/{0});
+      llvm::SmallVector<mlir::NamedAttribute> attrs(op->getAttrs());
+      attrs.push_back(
+          {StringAttr::get(rewriter.getContext(), "dot_dimension_numbers"),
+           dims});
+      return matchAndRewriteDotLikeOp(
+          op, adaptor, attrs,
+          DotLikeDimensionNumbers{/*lhs_batching_dims=*/{},
+                                  /*lhs_spatial_dims=*/{},
+                                  /*lhs_contracting_dims=*/{1},
+                                  /*rhs_batching_dims=*/{},
+                                  /*rhs_spatial_dims=*/{},
+                                  /*rhs_contracting_dims=*/{0}},
+          rewriter);
+    }
   }
 };
 
@@ -974,21 +935,104 @@ class ConvertUniformQuantizedDotGeneralOp
   LogicalResult matchAndRewrite(
       mhlo::DotGeneralOp op, mhlo::DotGeneralOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    // Use matchAndRewriteDotLikeOp for DotHybridGeneral.
-    if (!op.getLhs()
-             .getType()
-             .getElementType()
-             .isa<quant::UniformQuantizedType>() ||
-        !op.getRhs()
-             .getType()
-             .getElementType()
-             .isa<quant::UniformQuantizedType>()) {
-      return matchAndRewriteDotLikeOp(op, adaptor, rewriter);
+    auto is_hybrid = IsDotLikeOpHybrid(op);
+    if (failed(is_hybrid)) {
+      return failure();
     }
-    return RewriteDotGeneralOp(op, adaptor, op->getAttrs(),
-                               op.getDotDimensionNumbers(), rewriter);
+    if (*is_hybrid) {
+      return matchAndRewriteDotLikeHybridOp(op, adaptor, rewriter);
+    } else {
+      return matchAndRewriteDotLikeOp(
+          op, adaptor, op->getAttrs(),
+          DotLikeDimensionNumbers{
+              op.getDotDimensionNumbers().getLhsBatchingDimensions(),
+              /*lhs_spatial_dims=*/{},
+              op.getDotDimensionNumbers().getLhsContractingDimensions(),
+              op.getDotDimensionNumbers().getRhsBatchingDimensions(),
+              /*rhs_spatial_dims=*/{},
+              op.getDotDimensionNumbers().getRhsContractingDimensions()},
+          rewriter);
+    }
   }
 };
+
+bool IsConvNHWC(const mhlo::ConvDimensionNumbersAttr &dims) {
+  return dims.getInputBatchDimension() == 0 &&
+         dims.getInputFeatureDimension() == 3 &&
+         dims.getInputSpatialDimensions().size() == 2 &&
+         dims.getInputSpatialDimensions()[0] == 1 &&
+         dims.getInputSpatialDimensions()[1] == 2 &&
+         dims.getKernelInputFeatureDimension() == 2 &&
+         dims.getKernelOutputFeatureDimension() == 3 &&
+         dims.getKernelSpatialDimensions().size() == 2 &&
+         dims.getKernelSpatialDimensions()[0] == 0 &&
+         dims.getKernelSpatialDimensions()[1] == 1 &&
+         dims.getOutputBatchDimension() == 0 &&
+         dims.getOutputFeatureDimension() == 3 &&
+         dims.getOutputSpatialDimensions().size() == 2 &&
+         dims.getOutputSpatialDimensions()[0] == 1 &&
+         dims.getOutputSpatialDimensions()[1] == 2;
+}
+
+bool IsConvNDHWC(const mhlo::ConvDimensionNumbersAttr &dims) {
+  return dims.getInputBatchDimension() == 0 &&
+         dims.getInputFeatureDimension() == 4 &&
+         dims.getInputSpatialDimensions().size() == 3 &&
+         dims.getInputSpatialDimensions()[0] == 1 &&
+         dims.getInputSpatialDimensions()[1] == 2 &&
+         dims.getInputSpatialDimensions()[2] == 3 &&
+         dims.getKernelInputFeatureDimension() == 3 &&
+         dims.getKernelOutputFeatureDimension() == 4 &&
+         dims.getKernelSpatialDimensions().size() == 3 &&
+         dims.getKernelSpatialDimensions()[0] == 0 &&
+         dims.getKernelSpatialDimensions()[1] == 1 &&
+         dims.getKernelSpatialDimensions()[2] == 2 &&
+         dims.getOutputBatchDimension() == 0 &&
+         dims.getOutputFeatureDimension() == 4 &&
+         dims.getOutputSpatialDimensions().size() == 3 &&
+         dims.getOutputSpatialDimensions()[0] == 1 &&
+         dims.getOutputSpatialDimensions()[1] == 2 &&
+         dims.getOutputSpatialDimensions()[2] == 3;
+}
+
+FailureOr<DotLikeDimensionNumbers> VerifyConvolutionOp(mhlo::ConvolutionOp op) {
+  // RHS (weight) must have zero zp.
+  auto rhs_element_quant_type =
+      getElementTypeOrSelf(op.getRhs().getType())
+          .template dyn_cast<quant::UniformQuantizedType>();
+  if (rhs_element_quant_type.getZeroPoint() != 0) {
+    op->emitError("RHS UQ type must have zero zp.");
+    return failure();
+  }
+  // lhs_dilation must not exist.
+  if (llvm::any_of(op.getLhsDilationAttr().getValues<int64_t>(),
+                   [](int64_t dilate) { return dilate != 1; })) {
+    op->emitError("lhs_dilation must be 1.");
+    return failure();
+  }
+
+  // We only support NHWC Conv2D and NDHWC Conv3D.
+  auto dims = op.getDimensionNumbers();
+  if (IsConvNHWC(dims)) {
+    // 2D Convolution.
+    return DotLikeDimensionNumbers{/*lhs_batching_dims=*/{0},
+                                   /*lhs_spatial_dims=*/{1, 2},
+                                   /*lhs_contracting_dims=*/{3},
+                                   /*rhs_batching_dims=*/{},
+                                   /*rhs_spatial_dims=*/{0, 1},
+                                   /*rhs_contracting_dims=*/{2}};
+  } else if (IsConvNDHWC(dims)) {
+    // 3D Convolution.
+    return DotLikeDimensionNumbers{/*lhs_batching_dims=*/{0},
+                                   /*lhs_spatial_dims=*/{1, 2, 3},
+                                   /*lhs_contracting_dims=*/{4},
+                                   /*rhs_batching_dims=*/{},
+                                   /*rhs_spatial_dims=*/{0, 1, 2},
+                                   /*rhs_contracting_dims=*/{3}};
+  }
+  op->emitError("Convolution data format must be NHWC.");
+  return failure();
+}
 
 class ConvertUniformQuantizedConvolutionOp
     : public OpConversionPattern<mhlo::ConvolutionOp> {
@@ -998,7 +1042,18 @@ class ConvertUniformQuantizedConvolutionOp
   LogicalResult matchAndRewrite(
       mhlo::ConvolutionOp op, mhlo::ConvolutionOpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    return matchAndRewriteDotLikeOp(op, adaptor, rewriter);
+    auto is_hybrid = IsDotLikeOpHybrid(op);
+    if (failed(is_hybrid)) {
+      return failure();
+    }
+    if (*is_hybrid) {
+      return matchAndRewriteDotLikeHybridOp(op, adaptor, rewriter);
+    } else {
+      auto dims = VerifyConvolutionOp(op);
+      if (failed(dims)) return failure();
+      return matchAndRewriteDotLikeOp(op, adaptor, op->getAttrs(), *dims,
+                                      rewriter);
+    }
   }
 };
 

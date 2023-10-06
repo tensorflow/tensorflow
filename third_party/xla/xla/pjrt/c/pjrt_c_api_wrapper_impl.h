@@ -223,6 +223,8 @@ PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
     PJRT_Client_DefaultDeviceAssignment_Args* args);
 PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     PJRT_Client_BufferFromHostBuffer_Args* args);
+PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(
+    PJRT_Client_CreateViewOfDeviceBuffer_Args* args);
 
 PJRT_Error* PJRT_DeviceDescription_Id(PJRT_DeviceDescription_Id_Args* args);
 PJRT_Error* PJRT_DeviceDescription_ProcessIndex(
@@ -559,6 +561,8 @@ constexpr PJRT_Api CreatePjrtApi(
       pjrt::PJRT_Executable_OutputDimensions,
       /*PJRT_Buffer_CopyToMemory=*/
       pjrt::PJRT_Buffer_CopyToMemory,
+      /*PJRT_Client_CreateViewOfDeviceBuffer=*/
+      pjrt::PJRT_Client_CreateViewOfDeviceBuffer,
   };
 }
 

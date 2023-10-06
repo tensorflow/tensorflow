@@ -802,7 +802,8 @@ class FusedConv2DOp : public OpKernel {
   FusedComputationType fused_computation_ = FusedComputationType::kUndefined;
   FusedComputationArgs fused_computation_args_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FusedConv2DOp);
+  FusedConv2DOp(const FusedConv2DOp&) = delete;
+  void operator=(const FusedConv2DOp&) = delete;
 };
 
 // Registration of the CPU implementations.

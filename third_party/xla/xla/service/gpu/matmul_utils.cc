@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA
@@ -66,6 +68,37 @@ StatusOr<std::vector<int64_t>> GetNonContractingDims(
                    non_contracting_dims.size() ==
                shape.rank());
   return non_contracting_dims;
+}
+
+const tsl::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
+    const HloInstruction& dot, const int operand_number) {
+  const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
+  if (operand_number == 0) {
+    return dimension_numbers.lhs_batch_dimensions();
+  }
+  return dimension_numbers.rhs_batch_dimensions();
+}
+
+int64_t ContractingDimensionIndex(const HloInstruction& dot,
+                                  const int operand_number) {
+  const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
+  if (operand_number == 0) {
+    CHECK_EQ(dimension_numbers.lhs_contracting_dimensions().size(), 1);
+    return dimension_numbers.lhs_contracting_dimensions(0);
+  }
+  CHECK_EQ(dimension_numbers.rhs_contracting_dimensions().size(), 1);
+  return dimension_numbers.rhs_contracting_dimensions(0);
+}
+
+int64_t NonContractingDimensionIndex(const HloInstruction& dot,
+                                     const int operand_number) {
+  StatusOr<std::vector<int64_t>> non_contracting_dims =
+      GetNonContractingDims(dot.operand(operand_number)->shape(),
+                            BatchDimensionsForOperand(dot, operand_number),
+                            {ContractingDimensionIndex(dot, operand_number)});
+  TF_CHECK_OK(non_contracting_dims.status());
+  CHECK_EQ(non_contracting_dims->size(), 1);
+  return non_contracting_dims->front();
 }
 
 StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,

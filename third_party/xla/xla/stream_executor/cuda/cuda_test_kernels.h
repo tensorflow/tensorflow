@@ -32,7 +32,7 @@ namespace stream_executor::cuda::internal {
 //
 // Easiest way to get PTX from C++ is to use https://godbolt.org.
 inline constexpr std::string_view kAddI32Kernel = R"(
-.version 8.2
+.version 8.0
 .target sm_50
 .address_size 64
 

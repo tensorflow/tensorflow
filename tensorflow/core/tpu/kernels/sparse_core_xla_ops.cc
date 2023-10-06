@@ -55,27 +55,6 @@ xla::XlaOp PowHack(xla::XlaOp base, xla::XlaOp exp) {
   return xla::Exp(xla::Log(base) * exp);
 }
 
-// Gets the max ids and max unique ids for the given table.
-Status GetMaxIdsAndUniques(const std::string& program_key,
-                           const std::string& table_name,
-                           int64_t num_samples_per_sparse_core,
-                           int64_t feature_width,
-                           int64_t* max_ids_per_partition,
-                           int64_t* max_unique_ids_per_partition) {
-  SparseCore_GetMaxIdsAndUniques_Params params;
-  params.program_key = program_key.c_str();
-  params.table_name = table_name.c_str();
-  params.num_samples_per_sparse_core = num_samples_per_sparse_core;
-  params.feature_width = feature_width;
-  StatusHelper status;
-  params.status = status.c_status;
-
-  stream_executor::tpu::OpsApiFn()->SparseCore_GetMaxIdsAndUniquesFn(&params);
-  *max_ids_per_partition = params.max_ids_per_partition;
-  *max_unique_ids_per_partition = params.max_unique_ids_per_partition;
-  return status.status();
-}
-
 // Get the SparseCore logical replica count.
 // TODO(agagik): get it from the tpu topology.
 StatusOr<int64_t> GetSparseCoresPerChip() { return 4; }
@@ -195,7 +174,8 @@ class XlaSparseDenseMatmulOp : public XlaOpKernel {
   int max_ids_per_partition_;
   int max_unique_ids_per_partition_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaSparseDenseMatmulOp);
+  XlaSparseDenseMatmulOp(const XlaSparseDenseMatmulOp&) = delete;
+  void operator=(const XlaSparseDenseMatmulOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaSparseDenseMatmul"), XlaSparseDenseMatmulOp);
@@ -264,9 +244,9 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
     const int32_t feature_width = embedding_table_shape.dimensions(1);
 
     OP_REQUIRES_OK(
-        ctx, GetMaxIdsAndUniques("", table_name_, per_sparse_core_batch_size,
-                                 feature_width, &max_ids_per_partition,
-                                 &max_unique_ids_per_partition));
+        ctx, GetMaxIdsAndUniquesExternal(
+                 "", table_name_, per_sparse_core_batch_size, feature_width,
+                 &max_ids_per_partition, &max_unique_ids_per_partition));
     VLOG(3) << "XlaSparseDenseMatmulWithCsrInputOp: "
             << "table_name = '" << table_name_
             << "', max_ids = " << max_ids_per_partition
@@ -342,7 +322,9 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
   std::optional<int> quantization_config_num_buckets_;
   std::string table_name_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaSparseDenseMatmulWithCsrInputOp);
+  XlaSparseDenseMatmulWithCsrInputOp(
+      const XlaSparseDenseMatmulWithCsrInputOp&) = delete;
+  void operator=(const XlaSparseDenseMatmulWithCsrInputOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaSparseDenseMatmulWithCsrInput"),
@@ -406,9 +388,9 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
 
     const int32_t feature_width = embedding_table_shape.dimensions(1);
     OP_REQUIRES_OK(
-        ctx, GetMaxIdsAndUniques("", table_name_, per_sparse_core_batch_size,
-                                 feature_width, &max_ids_per_partition,
-                                 &max_unique_ids_per_partition));
+        ctx, GetMaxIdsAndUniquesExternal(
+                 "", table_name_, per_sparse_core_batch_size, feature_width,
+                 &max_ids_per_partition, &max_unique_ids_per_partition));
     VLOG(3) << "XlaSparseDenseMatmulWithCsrInputOp: "
             << "table_name = '" << table_name_
             << "', max_ids = " << max_ids_per_partition
@@ -472,7 +454,9 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
  private:
   std::string table_name_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaSparseDenseMatmulGradWithCsrInputBase);
+  XlaSparseDenseMatmulGradWithCsrInputBase(
+      const XlaSparseDenseMatmulGradWithCsrInputBase&) = delete;
+  void operator=(const XlaSparseDenseMatmulGradWithCsrInputBase&) = delete;
 };
 
 // This TensorFlow op calculates the gradients and performs SGD update on the
@@ -535,7 +519,9 @@ class XlaSparseDenseMatmulGradWithSgdAndCsrInputOp
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaSparseDenseMatmulGradWithSgdAndCsrInputOp);
+  XlaSparseDenseMatmulGradWithSgdAndCsrInputOp(
+      const XlaSparseDenseMatmulGradWithSgdAndCsrInputOp&) = delete;
+  void operator=(const XlaSparseDenseMatmulGradWithSgdAndCsrInputOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaSparseDenseMatmulGradWithSgdAndCsrInput"),
@@ -612,7 +598,10 @@ class XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp);
+  XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp(
+      const XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp&) = delete;
+  void operator=(const XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp&) =
+      delete;
 };
 
 REGISTER_XLA_OP(Name("XlaSparseDenseMatmulGradWithAdagradAndCsrInput"),
@@ -855,7 +844,9 @@ class XlaSparseDenseMatmulGradWithAdamAndCsrInputOp
   float beta2_;
   float epsilon_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaSparseDenseMatmulGradWithAdamAndCsrInputOp);
+  XlaSparseDenseMatmulGradWithAdamAndCsrInputOp(
+      const XlaSparseDenseMatmulGradWithAdamAndCsrInputOp&) = delete;
+  void operator=(const XlaSparseDenseMatmulGradWithAdamAndCsrInputOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaSparseDenseMatmulGradWithAdamAndCsrInput"),
@@ -1013,7 +1004,9 @@ class XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp
   float l1_regularization_strength_;
   float l2_regularization_strength_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp);
+  XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp(
+      const XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp&) = delete;
+  void operator=(const XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaSparseDenseMatmulGradWithFtrlAndCsrInput"),
@@ -1070,7 +1063,8 @@ class XlaSparseCoreOptimizerOpBase : public XlaOpKernel {
  protected:
   int feature_width_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaSparseCoreOptimizerOpBase);
+  XlaSparseCoreOptimizerOpBase(const XlaSparseCoreOptimizerOpBase&) = delete;
+  void operator=(const XlaSparseCoreOptimizerOpBase&) = delete;
 };
 
 // This class uses the SGD optimizer to update the embedding table weights.
@@ -1100,7 +1094,8 @@ class XlaSparseCoreSgdOp : public XlaSparseCoreOptimizerOpBase {
     ctx->SetOutput(0, result);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaSparseCoreSgdOp);
+  XlaSparseCoreSgdOp(const XlaSparseCoreSgdOp&) = delete;
+  void operator=(const XlaSparseCoreSgdOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaSparseCoreSgd"), XlaSparseCoreSgdOp);
@@ -1139,7 +1134,8 @@ class XlaSparseCoreAdagradOp : public XlaSparseCoreOptimizerOpBase {
     ctx->SetOutput(1, accum_result);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaSparseCoreAdagradOp);
+  XlaSparseCoreAdagradOp(const XlaSparseCoreAdagradOp&) = delete;
+  void operator=(const XlaSparseCoreAdagradOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaSparseCoreAdagrad"), XlaSparseCoreAdagradOp);
@@ -1220,7 +1216,9 @@ class XlaSparseCoreAdagradMomentumOp : public XlaSparseCoreOptimizerOpBase {
     ctx->SetOutput(2, momen_result);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaSparseCoreAdagradMomentumOp);
+  XlaSparseCoreAdagradMomentumOp(const XlaSparseCoreAdagradMomentumOp&) =
+      delete;
+  void operator=(const XlaSparseCoreAdagradMomentumOp&) = delete;
 
  private:
   bool use_nesterov_;
@@ -1297,7 +1295,8 @@ class XlaSparseCoreAdamOp : public XlaSparseCoreOptimizerOpBase {
     ctx->SetOutput(2, momen_result);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaSparseCoreAdamOp);
+  XlaSparseCoreAdamOp(const XlaSparseCoreAdamOp&) = delete;
+  void operator=(const XlaSparseCoreAdamOp&) = delete;
 
  private:
   bool use_sum_inside_sqrt_;
@@ -1409,7 +1408,8 @@ class XlaSparseCoreFtrlOp : public XlaSparseCoreOptimizerOpBase {
     ctx->SetOutput(2, linear_result);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaSparseCoreFtrlOp);
+  XlaSparseCoreFtrlOp(const XlaSparseCoreFtrlOp&) = delete;
+  void operator=(const XlaSparseCoreFtrlOp&) = delete;
 
  private:
   bool multiply_linear_by_learning_rate_;

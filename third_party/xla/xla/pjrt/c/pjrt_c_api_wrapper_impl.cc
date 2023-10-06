@@ -710,6 +710,32 @@ PJRT_Error* PJRT_Client_BufferFromHostBuffer(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(
+    PJRT_Client_CreateViewOfDeviceBuffer_Args* args) {
+  PJRT_ASSIGN_OR_RETURN(xla::Shape shape,
+                        pjrt::BuildXlaShapeFromC(args->element_type, args->dims,
+                                                 args->num_dims, args->layout));
+  std::function<void()> on_delete_callback;
+  if (args->on_delete_callback != nullptr) {
+    on_delete_callback = [on_delete_callback = args->on_delete_callback,
+                          user_arg = args->on_delete_callback_arg,
+                          device_buffer_ptr = args->device_buffer_ptr]() {
+      on_delete_callback(device_buffer_ptr, user_arg);
+    };
+  }
+  std::optional<std::intptr_t> stream = std::nullopt;
+  if (reinterpret_cast<void*>(args->stream) != nullptr) {
+    stream = args->stream;
+  }
+  std::unique_ptr<xla::PjRtBuffer> buffer;
+  PJRT_ASSIGN_OR_RETURN(
+      buffer, args->client->client->CreateViewOfDeviceBuffer(
+                  args->device_buffer_ptr, shape, args->device->device,
+                  on_delete_callback, stream));
+  args->buffer = new PJRT_Buffer{std::move(buffer), args->client};
+  return nullptr;
+}
+
 // --------------------------------- Devices -----------------------------------
 
 PJRT_Error* PJRT_DeviceDescription_Id(PJRT_DeviceDescription_Id_Args* args) {

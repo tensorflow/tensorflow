@@ -99,6 +99,7 @@ limitations under the License.
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tfrt/concurrency/async_value.h"  // from @tf_runtime
+#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
 
@@ -727,6 +728,19 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateViewOfDeviceBuffer(
   return std::unique_ptr<PjRtBuffer>(std::make_unique<TfrtCpuBuffer>(
       shape, std::move(tracked_device_buffer), this,
       tensorflow::down_cast<TfrtCpuDevice*>(device)));
+}
+
+StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateErrorBuffer(
+    Status error, const Shape& shape, PjRtDevice* device) {
+  return std::make_unique<TfrtCpuBuffer>(
+      shape,
+      std::make_unique<TrackedTfrtCpuDeviceBuffer>(
+          /*is_tuple=*/false,
+          absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4>{},
+          absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4>{
+              tfrt::AsyncValueRef<CpuEvent>(
+                  tsl::MakeErrorAsyncValueRef(std::move(error)))}),
+      this, tensorflow::down_cast<TfrtCpuDevice*>(device));
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateUninitializedBuffer(

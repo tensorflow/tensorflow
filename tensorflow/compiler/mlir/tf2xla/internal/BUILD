@@ -203,3 +203,39 @@ tf_cc_test(
         "@llvm-project//mlir:Pass",
     ],
 )
+
+cc_library(
+    name = "logging_hooks",
+    srcs = ["logging_hooks.cc"],
+    hdrs = ["logging_hooks.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
+        "//tensorflow/core:framework",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+tf_cc_test(
+    name = "logging_hooks_test",
+    srcs = ["logging_hooks_test.cc"],
+    data = [
+        "testdata/dead_const.mlir",
+    ],
+    deps = [
+        ":logging_hooks",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:resource_loader",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status",
+    ],
+)

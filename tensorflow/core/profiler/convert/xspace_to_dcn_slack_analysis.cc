@@ -34,13 +34,18 @@ limitations under the License.
 #include "xla/side_effect_util.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
+#include "tensorflow/core/profiler/protobuf/topology.pb.h"
 #include "tensorflow/core/profiler/utils/hlo_module_utils.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_map.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_to_module.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tsl/platform/regexp.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 #include "tsl/profiler/utils/math_utils.h"
 #include "tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tsl/profiler/utils/timespan.h"
+#include "tsl/profiler/utils/tpu_xplane_utils.h"
 #include "tsl/profiler/utils/xplane_schema.h"
 #include "tsl/profiler/utils/xplane_utils.h"
 #include "tsl/profiler/utils/xplane_visitor.h"
@@ -50,20 +55,26 @@ namespace profiler {
 namespace {
 
 using tensorflow::profiler::DcnSlackSummary;
+using tensorflow::profiler::Topology;
 using tsl::profiler::CreateTfXPlaneVisitor;
 using tsl::profiler::FindLineWithName;
-using tsl::profiler::FindPlanesWithPrefix;
-using tsl::profiler::kTpuPlanePrefix;
 using tsl::profiler::kXlaOpLineName;
 using tsl::profiler::NanoToMicro;
+using tsl::profiler::PicoToMicro;
 using tsl::profiler::SafeDivide;
 using tsl::profiler::StatType;
+using tsl::profiler::Timespan;
 using tsl::profiler::XEventContextTracker;
 using tsl::profiler::XEventVisitor;
 using tsl::profiler::XLineVisitor;
 using tsl::profiler::XPlaneVisitor;
 using tsl::profiler::XStatVisitor;
 using xla::HloOpcode;
+
+// TODO: Identify mechanism to maintain consistency between producer and
+// consumer here.
+const char kHostEventRegex[] = {
+    "device_[0-9][0-9][0-9]([0-9][0-9][0-9])_gid_(.*)"};
 
 std::optional<std::string> GetAttributeFromInstr(
     const xla::HloInstruction* instr, std::string_view attribute) {
@@ -79,13 +90,55 @@ std::optional<std::string> GetRendezvous(const xla::HloInstruction* instr) {
   return GetAttributeFromInstr(instr, xla::kXlaHostTransferRendezvousNameAttr);
 }
 
+dcn_analysis_internal::DcnHostEvent ParseDcnHostEvent(
+    const XEventVisitor& visitor) {
+  dcn_analysis_internal::DcnHostEvent event;
+  static const LazyRE2 re = {kHostEventRegex};
+  RE2::FullMatch(visitor.Name(), *re, &event.multi_slice_device_id,
+                 &event.rendezvous_name);
+
+  event.timespan = visitor.GetTimespan();
+  return event;
+}
+
 std::optional<std::string> GetTransferType(const xla::HloInstruction* instr) {
   return GetAttributeFromInstr(instr, "_xla_megascale_transfer_type");
+}
+
+std::string HostCollectiveKey(int index_on_host,
+                              std::string_view rendezvous_name) {
+  return absl::StrCat(index_on_host, "_", rendezvous_name);
 }
 
 }  // namespace
 
 namespace dcn_analysis_internal {
+
+void DcnHostEventList::insert(DcnHostEvent event) {
+  if (iter_ != events_.end() && event.timespan < iter_->timespan) {
+    // The event being inserted is from a new line, Reset iterator to the
+    // beginning.
+    iter_ = events_.begin();
+  }
+  while (iter_ != events_.end() && iter_->timespan < event.timespan) {
+    iter_++;
+  }
+  iter_ = events_.insert(iter_, event);
+}
+
+std::optional<DcnHostEvent> DcnHostEventList::pop(const Timespan& timespan) {
+  while (!events_.empty() && events_.front().timespan < timespan) {
+    events_.pop_front();
+  }
+
+  if (!events_.empty() && timespan.Includes(events_.front().timespan)) {
+    DcnHostEvent front = events_.front();
+    events_.pop_front();
+    return front;
+  } else {
+    return std::nullopt;
+  }
+}
 
 absl::StatusOr<InstrMetadata> DcnTracker::GetInstrMetadataFromHloModule(
     std::string_view module_name, std::string_view instr_name) {
@@ -176,20 +229,20 @@ void DcnTracker::VisitOp(const InstrMetadata& instr,
       opState.overlapping_duration = 0;
       opState.stall_duration_ns = visitor.DurationNs();
       opState.send_op_name = visitor.DisplayName();
-      opState.send.set_duration_ns(visitor.DurationNs());
-      opState.send.set_start_time_ns(visitor.TimestampNs());
+      opState.send.set_duration_ps(visitor.DurationPs());
+      opState.send.set_start_time_ps(visitor.TimestampPs());
       break;
     case HloOpcode::kRecv:
-      opState.recv.set_duration_ns(visitor.DurationNs());
-      opState.recv.set_start_time_ns(visitor.TimestampNs());
+      opState.recv.set_duration_ps(visitor.DurationPs());
+      opState.recv.set_start_time_ps(visitor.TimestampPs());
       break;
     case HloOpcode::kSendDone:
-      opState.send_done.set_duration_ns(visitor.DurationNs());
-      opState.send_done.set_start_time_ns(visitor.TimestampNs());
+      opState.send_done.set_duration_ps(visitor.DurationPs());
+      opState.send_done.set_start_time_ps(visitor.TimestampPs());
       break;
     case HloOpcode::kRecvDone: {
-      opState.recv_done.set_duration_ns(visitor.DurationNs());
-      opState.recv_done.set_start_time_ns(visitor.TimestampNs());
+      opState.recv_done.set_duration_ps(visitor.DurationPs());
+      opState.recv_done.set_start_time_ps(visitor.TimestampPs());
       if (opState.start_time != 0) {
         DcnSlack* analysis = slack_analysis_.add_dcn_slack();
         analysis->set_rendezvous(rendezvous_name);
@@ -227,9 +280,17 @@ void DcnTracker::VisitOp(const InstrMetadata& instr,
   UpdateActiveOps(visitor.DurationNs());
 }
 
+std::optional<DcnHostEvent> DcnTracker::GetCollectiveHostEvent(
+    int core_id, std::string_view rendezvous, Timespan timespan) {
+  return core_id_to_host_event_map_[HostCollectiveKey(core_id, rendezvous)].pop(
+      timespan);
+}
+
 void DcnTracker::SummarizeDcnSlackAnalysis() {
   absl::flat_hash_map<std::string_view, DcnSlackSummary> summary;
-  for (const DcnSlack& analysis : slack_analysis_.dcn_slack()) {
+  // TODO(b/302596260) : Expand to process all cores.
+  int core_id = 0;
+  for (DcnSlack& analysis : *slack_analysis_.mutable_dcn_slack()) {
     DcnSlackSummary& s = summary[analysis.rendezvous()];
     s.set_slack_us(s.slack_us() + analysis.slack_us());
     s.set_occurrences(s.occurrences() + 1);
@@ -245,15 +306,32 @@ void DcnTracker::SummarizeDcnSlackAnalysis() {
     s.set_recv_op_name(analysis.recv_op_name());
     s.set_send_op_name(analysis.send_op_name());
     s.set_send_duration_us(s.send_duration_us() +
-                           NanoToMicro(analysis.send().duration_ns()));
+                           PicoToMicro(analysis.send().duration_ps()));
     s.set_recv_duration_us(s.recv_duration_us() +
-                           NanoToMicro(analysis.recv().duration_ns()));
+                           PicoToMicro(analysis.recv().duration_ps()) / 1E6);
     s.set_send_done_duration_us(
         s.send_done_duration_us() +
-        NanoToMicro(analysis.send_done().duration_ns()));
+        PicoToMicro(analysis.send_done().duration_ps()));
     s.set_recv_done_duration_us(
         s.recv_done_duration_us() +
-        NanoToMicro(analysis.recv_done().duration_ns()));
+        PicoToMicro(analysis.recv_done().duration_ps()));
+
+    // Populate Host summary to DcnSlackSummary
+    std::optional<DcnHostEvent> host_event = GetCollectiveHostEvent(
+        core_id, analysis.rendezvous(),
+        Timespan::FromEndPoints(analysis.send().start_time_ps(),
+                                analysis.recv_done().start_time_ps() +
+                                    analysis.recv_done().duration_ps()));
+    if (host_event.has_value()) {
+      OpInstance* host_graph_execution =
+          analysis.mutable_host_graph_execution();
+      host_graph_execution->set_start_time_ps(host_event->timespan.begin_ps());
+      host_graph_execution->set_duration_ps(host_event->timespan.duration_ps());
+
+      s.set_host_stall_us(((int64_t)host_event->timespan.end_ps() -
+                           (int64_t)analysis.recv_done().start_time_ps()) /
+                          1E6);
+    }
   }
 
   for (auto& [_, s] : summary) {
@@ -267,20 +345,73 @@ void DcnTracker::SummarizeDcnSlackAnalysis() {
         SafeDivide(s.recv_done_duration_us(), s.occurrences()));
     s.set_send_duration_us(SafeDivide(s.send_duration_us(), s.occurrences()));
     s.set_recv_duration_us(SafeDivide(s.recv_duration_us(), s.occurrences()));
+    s.set_host_stall_us(SafeDivide(s.host_stall_us(), s.occurrences()));
     *slack_analysis_.add_dcn_slack_summary() = s;
   }
 }
 
+void DcnTracker::ProcessTopology(const Topology& topology) {
+  for (const auto& mesh_location : topology.mesh_location()) {
+    global_chip_id_to_local_index_map_[mesh_location.global_id()] =
+        mesh_location.index_on_host();
+  }
+}
+
+int DcnTracker::GetLocalIndex(int dcn_device_id) {
+  /* Based on if megacore was present or not, the LocalIndex calculation will
+   * differ,
+   * dcn device id would use the global index in cases of megacore, and use
+   * 2*global_index (+1) for non megacore instances
+   * TODO(b/302145703): Identify if transformation can be obtained from the
+   * TpuTopology directly
+   */
+  int global_device_id = dcn_device_id;
+  if (!is_megacore_) {
+    if (global_chip_id_to_local_index_map_.contains(global_device_id)) {
+      return global_chip_id_to_local_index_map_[dcn_device_id / 2] +
+             dcn_device_id % 2;
+    }
+  }
+  if (global_chip_id_to_local_index_map_.contains(global_device_id)) {
+    return global_chip_id_to_local_index_map_[global_device_id];
+  }
+  LOG(WARNING) << "Could not map dcn_device_id to Local index, Using "
+                  "dcn_device_id : "
+               << global_device_id;
+  return global_device_id;
+}
+
+void DcnTracker::VisitHostEvent(const DcnHostEvent& event) {
+  std::string key = HostCollectiveKey(
+      GetLocalIndex(event.multi_slice_device_id), event.rendezvous_name);
+  if (event.rendezvous_name.empty()) return;
+  core_id_to_host_event_map_[key].insert(event);
+}
+
+void ProcessDcnTraces(const XPlane& xplane, DcnTracker& dcn_tracker) {
+  XPlaneVisitor xplane_visitor = CreateTfXPlaneVisitor(&xplane);
+  HloProtoMap hlo_proto_map;
+  xplane_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      dcn_tracker.VisitHostEvent(ParseDcnHostEvent(event));
+    });
+  });
+}
+
 }  // namespace dcn_analysis_internal
 
-DcnSlackAnalysis ConvertXSpaceToDcnSlackAnalysis(const XSpace& xspace) {
-  const auto& xplanes = FindPlanesWithPrefix(xspace, kTpuPlanePrefix);
-  if (xplanes.empty()) return DcnSlackAnalysis();
-  const XPlane* xplane = xplanes.at(0);
+DcnSlackAnalysis ConvertXSpaceToDcnSlackAnalysis(const XSpace& xspace,
+                                                 const XPlane* dcn_host_plane,
+                                                 const Topology* topology,
+                                                 bool is_megacore) {
+  int num_cores = tsl::profiler::FindTensorCorePlanes(xspace).size();
+  if (num_cores == 0) return DcnSlackAnalysis();
+  const XPlane* xplane =
+      FindPlaneWithName(xspace, tsl::profiler::TpuPlaneName(0));
   XPlaneVisitor xplane_visitor = CreateTfXPlaneVisitor(xplane);
   HloProtoMap hlo_proto_map;
   hlo_proto_map.AddHloProtosFromXSpace(xspace);
-  dcn_analysis_internal::DcnTracker dcn_tracker(hlo_proto_map);
+  dcn_analysis_internal::DcnTracker dcn_tracker(hlo_proto_map, is_megacore);
   XEventContextTracker hlo_module_context(
       &xplane_visitor,
       FindLineWithName(*xplane, tsl::profiler::kXlaModuleLineName));
@@ -303,7 +434,7 @@ DcnSlackAnalysis ConvertXSpaceToDcnSlackAnalysis(const XSpace& xspace) {
         if (!module.has_value()) return;
         if (absl::StrContains(hlo_category, "host send") ||
             absl::StrContains(hlo_category, "host recv")) {
-          // All Megascale send/send-done/recv/recv-done ops.
+          // All Dcn send/send-done/recv/recv-done ops.
           auto instr = dcn_tracker.GetInstructionMetadata(module->Name(),
                                                           xevent.DisplayName());
           if (instr.ok()) {
@@ -313,6 +444,14 @@ DcnSlackAnalysis ConvertXSpaceToDcnSlackAnalysis(const XSpace& xspace) {
       });
     }
   });
+
+  if (dcn_host_plane != nullptr) {
+    VLOG(1) << "Processing host traces.";
+    if (topology != nullptr) {
+      dcn_tracker.ProcessTopology(*topology);
+    }
+    ProcessDcnTraces(*dcn_host_plane, dcn_tracker);
+  }
   return dcn_tracker.Finalize();
 }
 

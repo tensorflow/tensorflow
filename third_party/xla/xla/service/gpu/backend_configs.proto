@@ -3,8 +3,8 @@ syntax = "proto3";
 package xla.gpu;
 
 import "xla/autotuning.proto";
-import "xla/stream_executor/dnn.proto";
 import "xla/xla_data.proto";
+import "tsl/protobuf/dnn.proto";
 
 // Backend configs for XLA:GPU.
 //

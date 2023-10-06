@@ -42,7 +42,7 @@ namespace {
 
 class TestEnv {
  public:
-  TestEnv() : flib_def_(OpRegistry::Global(), {}) {
+  TestEnv() : flib_def_(OpRegistry::Global(), FunctionDefLibrary()) {
     std::vector<std::unique_ptr<Device>> devices;
     devices.push_back(
         DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));

@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/utils.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -147,8 +148,8 @@ Status SnapshotStreamWriter::WriteChunk() {
   std::string uncommitted_chunk_file_path =
       tsl::io::JoinPath(params_.UncommittedChunksDirectory(),
                         absl::StrCat("chunk_", chunk_index_));
-  snapshot_util::TFRecordWriter writer(uncommitted_chunk_file_path,
-                                       params_.compression);
+  snapshot_util::TFRecordWriter writer(
+      TranslateFileName(uncommitted_chunk_file_path), params_.compression);
   TF_RETURN_IF_ERROR(writer.Initialize(params_.env));
   while (ShouldWriteRecord()) {
     TF_RETURN_IF_ERROR(WriteRecord(writer));

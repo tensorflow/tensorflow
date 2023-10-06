@@ -17,6 +17,7 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+#if GOOGLE_CUDA
 __global__ void mock_nccl_call(unsigned sleep_ns) {
 #if __CUDA_ARCH__ >= 700  // __nanosleep requires compute capability 7.0
   // Passing too high a number to __nanosleep makes it sleep for much less time
@@ -28,7 +29,18 @@ __global__ void mock_nccl_call(unsigned sleep_ns) {
   __nanosleep(rem);
 #endif
 }
-
+#elif TENSORFLOW_USE_ROCM
+__global__ void mock_nccl_call(unsigned sleep_ns, unsigned clock_rate_khz) {
+  if (threadIdx.x < warpSize) {
+    // s_sleep causes a wave to sleep for (64 * SIMM16[6:0] + 1..64) clocks.
+    uint32_t nclocks = (uint32_t)((float)clock_rate_khz / 64e6 * sleep_ns);
+    for (uint32_t i = 0; i < nclocks / 64; i++) {
+      __builtin_amdgcn_s_sleep(64);
+    }
+  }
+  __syncthreads();
+}
+#endif  // TENSORFLOW_USE_ROCM
 }  // namespace
 
 void* GetSleepKernel() { return reinterpret_cast<void*>(&mock_nccl_call); }

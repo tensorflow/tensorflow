@@ -177,6 +177,7 @@ class GpuRuntimeExecutable {
   // Keep captured and instantiated GPU graphs instances.
   GraphInstances graph_instances_;
   CapturedFunctionExecutionCounts captured_function_counts_;
+  OrdinalToFallback ordinal_to_fallback_;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   // Keep an executable state for all registered runtime modules.

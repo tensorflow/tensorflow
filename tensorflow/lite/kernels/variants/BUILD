@@ -157,6 +157,22 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "list_pop_back_test",
+    srcs = ["list_kernels/list_pop_back_test.cc"],
+    deps = [
+        ":list_ops_lib",
+        ":tensor_array",
+        ":test_util",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/kernels/internal:tensor_ctypes",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "list_ops_util",
     srcs = ["list_ops_util.cc"],

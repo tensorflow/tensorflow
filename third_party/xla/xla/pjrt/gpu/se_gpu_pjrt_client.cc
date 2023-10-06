@@ -44,12 +44,13 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
-#include "xla/pjrt/stream_executor_unloaded_executable.h"
+#include "xla/pjrt/stream_executor_executable.h"
 #include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/pjrt/utils.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/framework/allocator.h"
 #include "tsl/framework/bfc_allocator.h"
 #include "tsl/lib/strings/proto_serialization.h"
@@ -66,7 +67,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/gpu/nccl_id_store.h"
-#include "xla/pjrt/stream_executor_unloaded_executable.pb.h"
+#include "xla/pjrt/stream_executor_executable.pb.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #include "xla/xla.pb.h"
@@ -76,7 +77,7 @@ limitations under the License.
 #include "rocm/rocm_config.h"
 #include "xla/pjrt/compile_options.pb.h"  // NOLINT(build/include)
 #include "xla/pjrt/gpu/nccl_id_store.h"  // NOLINT(build/include)
-#include "xla/pjrt/stream_executor_unloaded_executable.pb.h"  // NOLINT(build/include)
+#include "xla/pjrt/stream_executor_executable.pb.h"  // NOLINT(build/include)
 #include "xla/service/gpu/gpu_compiler.h"  // NOLINT(build/include)
 #include "xla/xla.pb.h"  // NOLINT(build/include)
 #endif  // TENSORFLOW_USE_ROCM
@@ -536,8 +537,8 @@ PjRtFuture<absl::Status> StreamExecutorGpuClient::CopyRawSubBufferToHost(
 
 namespace {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-StatusOr<std::unique_ptr<StreamExecutorUnloadedExecutable>> FromProto(
-    const StreamExecutorUnloadedExecutableProto& proto) {
+StatusOr<std::unique_ptr<StreamExecutorExecutable>> FromProto(
+    const StreamExecutorExecutableProto& proto) {
   TF_ASSIGN_OR_RETURN(CompileOptions compile_options,
                       CompileOptions::FromProto(proto.compile_options()));
   std::vector<std::unique_ptr<xla::AotCompilationResult>>
@@ -548,7 +549,7 @@ StatusOr<std::unique_ptr<StreamExecutorUnloadedExecutable>> FromProto(
         gpu::GpuXlaRuntimeAotCompilationResult::FromString(executable));
     deserialized_aot_executables.push_back(std::move(deserialized));
   }
-  return std::make_unique<StreamExecutorUnloadedExecutable>(
+  return std::make_unique<StreamExecutorExecutable>(
       compile_options, std::move(deserialized_aot_executables),
       proto.num_replicas(), proto.num_partitions(), proto.name());
 }
@@ -560,7 +561,7 @@ StreamExecutorGpuClient::LoadSerialized(absl::string_view serialized,
                                         std::optional<CompileOptions> options,
                                         const LoadOptions& load_options) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  StreamExecutorUnloadedExecutableProto proto;
+  StreamExecutorExecutableProto proto;
   if (serialized.size() > std::numeric_limits<int>::max()) {
     return Internal(
         "PjRtStreamExecutorClient::DeserializeExecutable proto too large "
@@ -595,37 +596,32 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>> StreamExecutorGpuClient::Load(
     std::unique_ptr<PjRtExecutable> executable) {
-  auto se_executable =
-      absl::WrapUnique(tensorflow::down_cast<StreamExecutorUnloadedExecutable*>(
-          executable.release()));
+  auto se_executable = absl::WrapUnique(
+      tensorflow::down_cast<StreamExecutorExecutable*>(executable.release()));
 
   CompileOptions compile_options = se_executable->compile_options();
+  CompileOptions input_options = compile_options;
   TF_RETURN_IF_ERROR(compile_options.ApplyAllOptionOverrides());
   TF_ASSIGN_OR_RETURN(ExecutableExtras extras,
                       GetExecutableExtras(&compile_options));
-
-  TF_ASSIGN_OR_RETURN(
-      auto se_executor,
-      client()->backend().stream_executor(
-          compile_options.executable_build_options.device_ordinal()));
 
   // Load Executable from AOT compilation result.
   std::vector<std::unique_ptr<LocalExecutable>> local_executables;
   local_executables.reserve(se_executable->aot_executables().size());
   for (std::unique_ptr<xla::AotCompilationResult>& aot_executable :
        se_executable->aot_executables()) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                        aot_executable->LoadExecutable(
-                            client()->backend().compiler(), se_executor));
-    local_executables.push_back(std::make_unique<LocalExecutable>(
-        std::move(executable), client()->local_service()->mutable_backend(),
-        compile_options.executable_build_options));
+    TF_ASSIGN_OR_RETURN(std::string serialized,
+                        aot_executable->SerializeAsString());
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<LocalExecutable> local_executable,
+        client()->Load(serialized, compile_options.executable_build_options));
+    local_executables.push_back(std::move(local_executable));
   }
   bool parameter_is_tupled_arguments =
       compile_options.parameter_is_tupled_arguments;
-  auto ret = std::make_unique<PjRtStreamExecutorExecutable>(
+  auto ret = std::make_unique<PjRtStreamExecutorLoadedExecutable>(
       std::move(local_executables), parameter_is_tupled_arguments,
-      std::move(extras.device_assignment), std::move(compile_options),
+      std::move(extras.device_assignment), std::move(input_options),
       std::move(extras.addressable_device_logical_ids),
       std::move(extras.addressable_devices), this);
   TF_RETURN_IF_ERROR(ret->SetUpDonation(parameter_is_tupled_arguments));
@@ -1052,8 +1048,14 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     devices = BuildLocalDevices(std::move(local_device_states), node_id);
   }
 
+#if TENSORFLOW_USE_ROCM
+  auto pjrt_platform_name = xla::RocmName();
+#else   // TENSORFLOW_USE_ROCM
+  auto pjrt_platform_name = xla::CudaName();
+#endif  // TENSORFLOW_USE_ROCM
+
   return std::unique_ptr<PjRtClient>(std::make_unique<StreamExecutorGpuClient>(
-      GpuName(), xla_client, std::move(devices),
+      pjrt_platform_name, xla_client, std::move(devices),
       /*node_id=*/node_id, std::move(allocator),
       std::move(host_memory_allocator), should_stage_host_to_device_transfers,
       /*gpu_run_options=*/std::move(gpu_run_options)));

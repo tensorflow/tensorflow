@@ -35,7 +35,7 @@ class GpuLayoutAssignment : public LayoutAssignment {
       ChannelLayoutConstraints* channel_constraints = nullptr)
       : LayoutAssignment(entry_computation_layout, channel_constraints),
         stream_executor_(stream_executor) {}
-  ~GpuLayoutAssignment() override {}
+  ~GpuLayoutAssignment() override = default;
 
  protected:
   Status AddBackendConstraints(LayoutConstraints* constraints) override;

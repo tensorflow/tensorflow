@@ -14,11 +14,22 @@
 # limitations under the License.
 # ==============================================================================
 
-cat <<EOF
-IMPORTANT: For bazel invocations that uploaded to resultstore (e.g. RBE), you
+function resultstore_extract_fallback {
+  # In case the main script fails somehow.
+  cat <<EOF
+IMPORTANT: For bazel invocations that uploaded to ResultStore (e.g. RBE), you
 can view more detailed results that are probably easier to read than this log.
 Try the links below:
 EOF
-# Find any "Streaming build results to" line, then print the last word in it,
-# and don't print duplicates
-awk '/Streaming build results to/ {print $NF}' "$TFCI_OUTPUT_DIR/script.log" | uniq
+  # Find any "Streaming build results to" line, then print the last word in it,
+  # and don't print duplicates
+  awk '/Streaming build results to/ {print $NF}' "$TFCI_OUTPUT_DIR/script.log" | uniq
+}
+
+# Print out any ResultStore URLs for Bazel invocations' results.
+# Each failed target there will have its own representation, making failures
+# easier to find and read.
+python3 \
+  "$TFCI_GIT_DIR/ci/official/utilities/extract_resultstore_links.py" \
+  "$TFCI_OUTPUT_DIR/script.log" \
+  --print || resultstore_extract_fallback

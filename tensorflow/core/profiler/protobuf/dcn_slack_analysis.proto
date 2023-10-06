@@ -3,8 +3,8 @@ syntax = "proto3";
 package tensorflow.profiler;
 
 message OpInstance {
-  uint64 start_time_ns = 1;
-  uint64 duration_ns = 2;
+  uint64 start_time_ps = 1;
+  uint64 duration_ps = 2;
 }
 
 message DcnSlack {
@@ -52,6 +52,8 @@ message DcnSlack {
   OpInstance recv_done = 12;
 
   string transfer_type = 13;
+
+  OpInstance host_graph_execution = 14;
 }
 
 message DcnSlackSummary {
@@ -80,6 +82,8 @@ message DcnSlackSummary {
   uint64 recv_done_duration_us = 12;
 
   string transfer_type = 13;
+
+  int64 host_stall_us = 14;
 }
 
 message DcnSlackAnalysis {

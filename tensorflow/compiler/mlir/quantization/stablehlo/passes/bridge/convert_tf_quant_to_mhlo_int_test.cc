@@ -20,20 +20,26 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "xla/error_spec.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/tfrt_cpu_pjrt_client.h"
-#include "xla/statusor.h"
 #include "xla/tests/literal_test_util.h"
+#include "tsl/platform/statusor.h"
 
 namespace mlir::quant::stablehlo {
 namespace {
@@ -135,8 +141,8 @@ func.func @main(%input: tensor<1x2x2x1xf32>, %filter: tensor<2x1x1x1xf32>) -> te
     %input_zp = "tf.Const"() { value = dense<-45> : tensor<i32> } : () -> tensor<i32>
     %filter_scale = "tf.Const"() { value = dense<0.047> : tensor<f32> } : ()
     -> tensor<f32>
-    %filter_zp = "tf.Const"() { value = dense<-86> : tensor<i32> } : () -> tensor<i32>
-    %accum_scale = "tf.Const"() { value = dense<0.343> : tensor<f32> } : ()
+    %filter_zp = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
+    %accum_scale = "tf.Const"() { value = dense<0.3431> : tensor<f32> } : ()
     -> tensor<f32>
     %accum_zp = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
     %quant_input = "tf.UniformQuantize"(%input, %input_scale, %input_zp) {Tin = "tfdtype$DT_FLOAT", Tout = "tfdtype$DT_QINT8", attr_map = "", quantization_axis = -1 : i64, quantization_max_val = 127 : i64, quantization_min_val = -128 : i64} : (tensor<1x2x2x1xf32>, tensor<f32>, tensor<i32>) -> tensor<1x2x2x1x!tf_type.qint8>
@@ -149,15 +155,15 @@ func.func @main(%input: tensor<1x2x2x1xf32>, %filter: tensor<2x1x1x1xf32>) -> te
   TF_ASSERT_OK_AND_ASSIGN(auto executable, this->CompileProgram(kProgram));
 
   auto input = xla::LiteralUtil::CreateR4<float>(
-      {{{{14.f}, {-100.f}}, {{-600.f}, {1250.f}}}});
-  auto filter = xla::LiteralUtil::CreateR4<float>({{{{10.f}}}, {{{-2.f}}}});
+      {{{{14.f}, {-100.f}}, {{-200.f}, {350.f}}}});
+  auto filter = xla::LiteralUtil::CreateR4<float>({{{{4.1f}}}, {{{-2.f}}}});
 
   TF_ASSERT_OK_AND_ASSIGN(auto result_literal,
                           this->ExecutePromgramAndReturnSingleResult(
                               executable.get(), {&input, &filter}));
   xla::LiteralTestUtil::ExpectR4Near<float>(
-      {{{{1340.f}, {-3500.f}}, {{-6000.f}, {12500.f}}}}, *result_literal,
-      xla::ErrorSpec(20.f));
+      {{{{458.f}, {-1126.f}}, {{-806.f}, {1433.f}}}}, *result_literal,
+      xla::ErrorSpec(1.f));
 }
 
 TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeDot) {

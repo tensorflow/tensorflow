@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/service/gpu/autotuner_util.h"
 #include "xla/service/gpu/buffer_sharing.h"
 #include "xla/service/gpu/executable.pb.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_target_config.h"
 #include "xla/service/hlo.pb.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/llvm_compiler.h"
 #include "xla/statusor.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
@@ -125,11 +125,7 @@ class GpuCompiler : public LLVMCompiler {
   se::GpuComputeCapability GetGpuVersion(se::StreamExecutor* stream_exec);
 
   GpuTargetConfig GetGpuTargetConfig(se::StreamExecutor* stream_exec) {
-    GpuTargetConfig gpu_target_config;
-    gpu_target_config.gpu_device_info = GetGpuDeviceInfo(stream_exec);
-    gpu_target_config.platform_name = stream_exec->platform()->Name();
-
-    return gpu_target_config;
+    return GpuTargetConfig(stream_exec);
   }
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(

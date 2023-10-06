@@ -179,6 +179,9 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
            &sparse_core_flags->tf_xla_sparse_core_disable_table_stacking,
            "Disable table stacking for all the tables passed to the SparseCore"
            "mid level API."),
+      Flag("tf_xla_sparse_core_minibatch_max_division_level",
+           &sparse_core_flags->tf_xla_sparse_core_minibatch_max_division_level,
+           "Max level of division to split input data into minibatches."),
       Flag("tf_xla_sparse_core_stacking_mem_limit_bytes",
            &sparse_core_flags->tf_xla_sparse_core_stacking_mem_limit_bytes,
            "If non-zero, limits the size of the activations for a given table"
@@ -248,6 +251,8 @@ void AllocateAndParseFlags() {
   device_flags->tf_xla_enable_xla_devices = false;
 
   sparse_core_flags = new XlaSparseCoreFlags;
+  sparse_core_flags->tf_xla_sparse_core_minibatch_max_division_level =
+      kDefaultSparseCoreMinibatchMaxDivisionLevel;
   sparse_core_flags->tf_xla_sparse_core_disable_table_stacking =
       kDefaultDisableTableStacking;
   sparse_core_flags->tf_xla_sparse_core_stacking_mem_limit_bytes =

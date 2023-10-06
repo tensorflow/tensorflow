@@ -35,7 +35,8 @@ class _HostConstantOp : public OpKernel {
 
  private:
   Tensor tensor_;
-  TF_DISALLOW_COPY_AND_ASSIGN(_HostConstantOp);
+  _HostConstantOp(const _HostConstantOp&) = delete;
+  void operator=(const _HostConstantOp&) = delete;
 };
 
 }  // namespace tensorflow

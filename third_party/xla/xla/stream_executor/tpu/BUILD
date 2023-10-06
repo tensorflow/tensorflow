@@ -1,8 +1,8 @@
 # Description: StreamExecutor Interface for TPUs
 
+load("//xla:xla.bzl", "xla_cc_test")
 load("@local_tsl//tsl:tsl.bzl", "set_external_visibility")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla:xla.bzl", "xla_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -250,6 +250,7 @@ cc_library(
         ":tpu_topology_external",
         "//xla/stream_executor:allocator_stats",
         "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor:stream_executor_internal",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/synchronization",
@@ -298,6 +299,7 @@ cc_library(
         "//xla:status",
         "//xla/stream_executor",
         "//xla/stream_executor:allocator_stats",
+        "//xla/stream_executor:stream_executor_internal",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:any_invocable",
@@ -477,6 +479,7 @@ cc_library(
         ":tpu_platform_interface",
         ":tpu_topology_external",
         "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor:stream_executor_internal",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -533,6 +536,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor:stream_executor_internal",
         "@local_tsl//tsl/platform:status",
     ],
 )

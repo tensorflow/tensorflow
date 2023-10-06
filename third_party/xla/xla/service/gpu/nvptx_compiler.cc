@@ -77,6 +77,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/asm_compiler.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_internal.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
@@ -204,7 +205,7 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // This needs to run before GemmRewriter, which is part of
   // OptimizeHloPostLayoutAssignment().
   auto cuda_compute_capability = std::get<se::CudaComputeCapability>(
-      gpu_target_config.gpu_device_info.compute_capability);
+      gpu_target_config.gpu_device_info.gpu_compute_capability());
 
   if (hlo_module->config().debug_options().xla_gpu_enable_cudnn_fmha()) {
     HloPassPipeline mha_fusion_pipeline(

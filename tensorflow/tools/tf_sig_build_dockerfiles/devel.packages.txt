@@ -6,6 +6,7 @@ cuda-cupti-12-2
 cuda-nvprune-12-2
 cuda-libraries-12-2
 cuda-libraries-dev-12-2
+cuda-nvml-dev-12-2
 libcufft-12-2
 libcurand-12-2
 libcusolver-dev-12-2

@@ -20,6 +20,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
@@ -281,6 +282,18 @@ Stream::~Stream() {
   if (allocated_) {
     parent_->DeallocateStream(this);
   }
+}
+
+void Stream::SetPriority(StreamPriority priority) {
+  implementation_->SetPriority(priority);
+}
+
+void Stream::SetPriority(int priority) {
+  implementation_->SetPriority(priority);
+}
+
+std::variant<StreamPriority, int> Stream::priority() const {
+  return implementation_->priority();
 }
 
 tsl::Status Stream::RefreshStatus() {
@@ -740,25 +753,6 @@ Stream &Stream::ThenDepthToSpace(
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
     CheckError(dnn->DoDepthToSpace(this, input_dimensions, input_data,
                                    depth_to_space_layout, sqrt_depth_reduction,
-                                   output_data));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenSpaceToDepth(
-    const dnn::BatchDescriptor &input_dimensions,
-    const DeviceMemory<float> &input_data,
-    const dnn::DepthToSpaceLayout &space_to_depth_layout,
-    const int sqrt_depth_increase, DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(input_dimensions), PARAM(input_data),
-            PARAM(space_to_depth_layout), PARAM(sqrt_depth_increase),
-            PARAM(output_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    CheckError(dnn->DoSpaceToDepth(this, input_dimensions, input_data,
-                                   space_to_depth_layout, sqrt_depth_increase,
                                    output_data));
   } else {
     SetErrorAndLogNoDnnSupport();

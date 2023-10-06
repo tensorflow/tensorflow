@@ -37,12 +37,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/fusion_node_indexing_evaluation.h"
 #include "xla/service/fusion_queue.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/gpu_performance_model.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
@@ -65,15 +65,14 @@ bool ElementIsF32OrF16(const Shape& shape) {
 // nodes and their operands.
 class GpuPriorityFusionQueue : public FusionQueue {
   using Priority = int64_t;
-  using CanFuseCallback = std::function<bool(
+  using CanFuseCallback = std::function<FusionDecision(
       HloInstruction* /*producer*/, int64_t /*consumer operand_index*/)>;
 
  public:
   GpuPriorityFusionQueue(
       HloComputation* computation,
       const GpuHloCostAnalysis::Options& cost_analysis_options,
-      const GpuDeviceInfo* device_info,
-      const std::function<bool(HloInstruction*, int64_t)>& can_fuse)
+      const se::DeviceDescription* device_info, const CanFuseCallback& can_fuse)
       : computation_(computation),
         cost_analysis_(cost_analysis_options, device_info),
         can_fuse_(can_fuse) {
@@ -232,7 +231,8 @@ class GpuPriorityFusionQueue : public FusionQueue {
   // users.
   Priority CalculateProducerPriority(HloInstruction* producer) {
     // Don't fuse if we can't fuse in all users.
-    if (!CanFuseWithAllUsers(producer)) {
+    if (auto fusion_decision = CanFuseWithAllUsers(producer);
+        !fusion_decision) {
       return std::numeric_limits<Priority>::min();
     }
 
@@ -243,10 +243,17 @@ class GpuPriorityFusionQueue : public FusionQueue {
                                     run_times.time_fused);
   }
 
-  bool CanFuseWithAllUsers(HloInstruction* producer) const {
-    return absl::c_all_of(producer->users(), [&](HloInstruction* user) {
-      return can_fuse_(user, user->operand_index(producer));
-    });
+  FusionDecision CanFuseWithAllUsers(HloInstruction* producer) const {
+    FusionDecision result;
+    for (const auto& user : producer->users()) {
+      if (auto fusion_decision = can_fuse_(user, user->operand_index(producer));
+          !fusion_decision) {
+        VLOG(10) << "Cannot fuse " << producer->name() << " with "
+                 << user->name() << ", because: " << fusion_decision.Explain();
+        return fusion_decision;
+      }
+    }
+    return {};
   }
 
   // Store computation for cost analysis.
@@ -391,7 +398,7 @@ std::unique_ptr<FusionQueue> GpuPriorityFusion::GetFusionQueue(
   return std::unique_ptr<FusionQueue>(new GpuPriorityFusionQueue(
       computation, cost_analysis_options_, &device_info_,
       [this](HloInstruction* consumer, int64_t operand_index) {
-        return ShouldFuse(consumer, operand_index).CanFuse();
+        return ShouldFuse(consumer, operand_index);
       }));
 }
 

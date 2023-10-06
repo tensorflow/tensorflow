@@ -100,12 +100,13 @@ filegroup(
 )
 
 cc_library(
-    name = "reduce_scatter_utils",
-    srcs = ["reduce_scatter_utils.cc"],
-    hdrs = ["reduce_scatter_utils.h"],
+    name = "collective_opt_utils",
+    srcs = ["collective_opt_utils.cc"],
+    hdrs = ["collective_opt_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 
@@ -661,6 +662,7 @@ cc_library(
         ":hlo_graph_dumper",
         ":hlo_pass",
         "//xla:protobuf_util",
+        "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:sharding_op_util",
         "//xla:status_macros",
@@ -1167,6 +1169,7 @@ cc_library(
         ":hlo_execution_profile",
         ":hlo_module_config",
         ":hlo_module_util",
+        ":local_service_utils",
         ":platform_util",
         ":service",
         ":shaped_buffer",
@@ -1187,6 +1190,31 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
+    name = "local_service_utils",
+    srcs = ["local_service_utils.cc"],
+    hdrs = ["local_service_utils.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":backend",
+        ":hlo_module_config",
+        ":hlo_module_util",
+        ":service",
+        "//xla:shape_util",
+        "//xla:status_macros",
+        "//xla:statusor",
+        "//xla:util",
+        "//xla/client:executable_build_options",
+        "//xla/client:xla_computation",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -1340,7 +1368,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
     deps = [
-        "//xla/stream_executor:stream_executor_impl",
+        "//xla/stream_executor",
     ] + if_gpu_is_configured([
         ":service",
         "//xla/service/gpu:gpu_compiler",
@@ -1619,6 +1647,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":buffer_assignment_proto_cc",
         ":buffer_value_containers",
         ":heap_simulator",
         ":hlo_alias_analysis",
@@ -1656,6 +1685,7 @@ xla_cc_test(
     deps = [
         ":async_op_canonicalizer",
         ":buffer_assignment",
+        ":buffer_assignment_proto_cc",
         ":buffer_value",
         ":call_graph",
         ":copy_insertion",
@@ -4715,6 +4745,35 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "cpu_gpu_shape_verifier",
+    srcs = ["cpu_gpu_shape_verifier.cc"],
+    hdrs = ["cpu_gpu_shape_verifier.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":hlo_verifier",
+        "//xla:shape_util",
+        "//xla:status",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+xla_cc_test(
+    name = "cpu_gpu_shape_verifier_test",
+    srcs = ["cpu_gpu_shape_verifier_test.cc"],
+    deps = [
+        ":cpu_gpu_shape_verifier",
+        ":hlo_parser",
+        ":hlo_verifier",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "hlo_rematerialization",
     srcs = ["hlo_rematerialization.cc"],
     hdrs = ["hlo_rematerialization.h"],
@@ -7143,4 +7202,12 @@ xla_cc_test(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ]),
+)
+
+tf_proto_library(
+    name = "buffer_assignment_proto",
+    srcs = ["buffer_assignment.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    visibility = ["//visibility:public"],
 )

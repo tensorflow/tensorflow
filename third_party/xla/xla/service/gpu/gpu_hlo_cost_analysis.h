@@ -19,8 +19,8 @@ limitations under the License.
 #include <memory>
 
 #include "absl/strings/string_view.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -33,8 +33,9 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   static constexpr int64_t kMaxIRSize = 10000;
 
  public:
-  explicit GpuHloCostAnalysis(const Options& options,
-                              const GpuDeviceInfo* device_info = nullptr)
+  explicit GpuHloCostAnalysis(
+      const Options& options,
+      const se::DeviceDescription* device_info = nullptr)
       : HloCostAnalysis(options), device_info_(device_info) {}
 
   Status Preprocess(const HloInstruction* hlo) override;
@@ -65,7 +66,7 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
   float CommonElementwiseUtilization(const HloInstruction* a,
                                      const HloInstruction* b) const;
 
-  const GpuDeviceInfo* device_info_;
+  const se::DeviceDescription* device_info_;
 
  protected:
   std::unique_ptr<HloCostAnalysis> CreateNestedCostAnalysis() override;

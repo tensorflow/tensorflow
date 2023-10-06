@@ -746,7 +746,6 @@ xla_cc_binary(
         "//xla/service/gpu/llvm_gpu_backend",
         "//xla/stream_executor",
         "//xla/stream_executor:device_description",
-        "//xla/stream_executor:device_description_proto_cc_impl",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor/host:host_platform",
         "//xla/tests:test_utils",

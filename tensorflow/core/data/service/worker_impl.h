@@ -210,7 +210,8 @@ class DataServiceWorkerImpl {
   // A thread for performing regular heartbeats to the dispatcher.
   std::unique_ptr<Thread> heartbeat_thread_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DataServiceWorkerImpl);
+  DataServiceWorkerImpl(const DataServiceWorkerImpl&) = delete;
+  void operator=(const DataServiceWorkerImpl&) = delete;
 };
 
 // Local in-process workers shared among clients and servers. If clients and

@@ -305,6 +305,33 @@ TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetInputTensorIndex(
 TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetOutputTensorIndex(
     const TfLiteInterpreter* interpreter, int32_t output_index);
 
+/// Assigns (or reassigns) a custom memory allocation for the given
+/// tensor. `flags` is a bitmask, see TfLiteCustomAllocationFlags.
+/// The runtime does NOT take ownership of the underlying memory.
+///
+/// NOTE: User needs to call TfLiteInterpreterAllocateTensors() after this.
+/// Invalid/insufficient buffers will cause an error during
+/// TfLiteInterpreterAllocateTensors or TfLiteInterpreterInvoke (in case of
+/// dynamic shapes in the graph).
+///
+/// Parameters should satisfy the following conditions:
+/// 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
+///    In general, this is true for I/O tensors & variable tensors.
+/// 2. allocation->data has the appropriate permissions for runtime access
+///    (Read-only for inputs, Read-Write for others), and outlives
+///    TfLiteInterpreter.
+/// 3. allocation->bytes >= tensor->bytes.
+///    This condition is checked again if any tensors are resized.
+/// 4. allocation->data should be aligned to kDefaultTensorAlignment
+///    defined in lite/util.h. (Currently 64 bytes)
+///    This check is skipped if kTfLiteCustomAllocationFlagsSkipAlignCheck is
+///    set through `flags`.
+/// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteStatus
+TfLiteInterpreterSetCustomAllocationForTensor(
+    TfLiteInterpreter* interpreter, int tensor_index,
+    const TfLiteCustomAllocation* allocation, int64_t flags);
+
 /// --------------------------------------------------------------------------
 /// SignatureRunner APIs
 

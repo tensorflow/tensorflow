@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/statusor.h"
@@ -78,7 +77,8 @@ using TritonIrEmitter = std::function<Status(
 StatusOr<TritonWrapperResult> TritonWrapper(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
     const HloComputation* hlo_computation, absl::string_view fusion_kind,
-    const se::CudaComputeCapability& cc, const GpuDeviceInfo& device_info,
+    const se::CudaComputeCapability& cc,
+    const se::DeviceDescription& device_info,
     const AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
     TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context);
 
@@ -86,7 +86,8 @@ StatusOr<TritonWrapperResult> TritonWrapper(
 // use TritonWrapper instead.
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
-    const HloComputation* hlo_computation, const GpuDeviceInfo& device_info,
+    const HloComputation* hlo_computation,
+    const se::DeviceDescription& device_info,
     const AutotuneResult::TritonGemmKey& config, TritonIrEmitter ir_emitter,
     mlir::MLIRContext& mlir_context);
 

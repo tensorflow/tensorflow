@@ -62,6 +62,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_module_metadata(false);
   opts.set_xla_dump_hlo_as_long_text(false);
   opts.set_xla_dump_enable_mlir_pretty_form(true);
+  opts.set_xla_debug_buffer_assignment_show_max(15);
 #ifdef ENABLE_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // ENABLE_MKL
@@ -124,7 +125,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_enable_xprof_traceme(false);
   opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
   opts.set_xla_multiheap_size_constraint_per_heap(-1);
-  opts.set_xla_detailed_logging_and_dumping(true);
+  opts.set_xla_detailed_logging(true);
+  opts.set_xla_enable_dumping(true);
 
   opts.set_xla_gpu_enable_xla_runtime_executable(true);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
@@ -1276,6 +1278,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_cublas_fallback(),
                 "Allow Triton GEMM autotuning to fall back to cuBLAS when that "
                 "is faster."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_mock_custom_calls",
+                bool_setter_for(&DebugOptions::set_xla_gpu_mock_custom_calls),
+                debug_options->xla_gpu_mock_custom_calls(),
+                "Replace custom calls with noop operations."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_while_loop_double_buffering",
       bool_setter_for(
@@ -1296,6 +1303,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
               set_xla_gpu_filter_kernels_spilling_registers_on_autotuning),
       debug_options->xla_gpu_filter_kernels_spilling_registers_on_autotuning(),
       "Filter out kernels that spill registers during autotuning"));
+  flag_list->push_back(tsl::Flag(
+      "xla_debug_buffer_assignment_show_max",
+      int64_setter_for(&DebugOptions::set_xla_debug_buffer_assignment_show_max),
+      debug_options->xla_debug_buffer_assignment_show_max(),
+      "Number of buffers to display when debugging the buffer assignment"));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

@@ -31,7 +31,11 @@ extern "C" {
 /// These APIs are accessors for TFLite Opaque Types.  These APIs are primarily
 /// intended to be used by delegates and custom OP implementations.
 ///
-/// WARNING: This is an experimental API and subject to change.
+/// This API is part of the TensorFlow Lite Extension APIs.
+/// We reserve the right to make changes to this API in future releases,
+/// potentially including non-backwards-compatible changes, on a different
+/// schedule than for the other TensorFlow Lite APIs. See
+/// https://www.tensorflow.org/guide/versions#separate_version_number_for_tensorflow_lite_extension_apis.
 
 /** \addtogroup c_api_opaque tensorflow/lite/c/c_api_opaque.h
  *  @{
@@ -392,7 +396,6 @@ TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
     TfLiteOpaqueNode** node,
     TfLiteRegistrationExternal** registration_external);
 
-/// WARNING: This is an experimental API and subject to change.
 /// Entry point for C API ReplaceNodeSubsetsWithDelegateKernels
 ///
 /// Replaces the specified `nodes_to_replace` that are associated with the

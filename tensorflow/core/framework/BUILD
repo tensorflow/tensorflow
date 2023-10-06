@@ -547,7 +547,7 @@ cc_library(
     testonly = True,
     srcs = ["tensor_matcher.cc"],
     hdrs = ["tensor_matcher.h"],
-    visibility = ["//tensorflow:internal"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:portable_gif_internal",

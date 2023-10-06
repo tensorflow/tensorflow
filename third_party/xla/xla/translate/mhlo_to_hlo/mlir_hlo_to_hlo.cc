@@ -3526,6 +3526,11 @@ xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
           module->getAttrOfType<mlir::BoolAttr>("mhlo.is_dynamic")) {
     hlo_module.set_is_dynamic(is_dynamic.getValue());
   }
+  if (auto frontend_attributes =
+          module->getAttrOfType<DictionaryAttr>(kFrontendAttributesAttr)) {
+    ConstructFrontendAttributesFromAttribute(
+        frontend_attributes, *hlo_module.mutable_frontend_attributes());
+  }
   if (auto use_auto_spmd_partitioning = module->getAttrOfType<mlir::BoolAttr>(
           "mhlo.use_auto_spmd_partitioning")) {
     hlo_module.set_use_auto_spmd_partitioning(

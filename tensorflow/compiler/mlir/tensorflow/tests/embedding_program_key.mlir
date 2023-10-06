@@ -137,11 +137,11 @@ func.func @launch_intermediate_usage() {
 // CHECK-LABEL: func @compile_not_in_launch
 func.func @compile_not_in_launch() {
   // CHECK: TPUCompileMlir
-  // CHECK: %[[CONSTANT:[a-z0-9]*]] = "tf.Const"
+  // CHECK: %[[CONSTANT:[a-z0-9]*]] = builtin.unrealized
   // CHECK: "tf.OpA"(%[[CONSTANT]]
    %compilation_status, %program = "tf._TPUCompileMlir"() { metadata = "...", mlir_module = "..." } : () -> (tensor<!tf_type.string>, tensor<3x!tf_type.string>)
   "tf_device.launch"() ({
-    %cst_0 = "tf.Const"() {value = dense<""> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
+    %cst_0 = builtin.unrealized_conversion_cast to tensor<1x!tf_type.string>
     "tf.OpA"(%cst_0) { mini_batch_splits = ""} : (tensor<1x!tf_type.string>) -> ()
     tf_device.return
   }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> ()
@@ -187,7 +187,7 @@ func.func @only_compile_under_replicate() {
   // CHECK-DAG: [[COMPILE_REPLICATE:%[0-9]*]]:4 = tf_device.replicate
   // CHECK-NEXT: [[COMPILE_LAUNCH:%[0-9]*]]:2 = "tf_device.launch"
   // CHECK-DAG: _TPUCompileMlir
-  // CHECK-DAG: %[[CONSTANT:[a-z0-9]*]] = "tf.Const"
+  // CHECK-DAG: %[[CONSTANT:[a-z0-9]*]] = builtin.unrealized
   // CHECK: "tf.OpA"
   %0:4 = "tf_device.replicate"() ({
     %0:2 = "tf_device.launch"() ({
@@ -201,7 +201,7 @@ func.func @only_compile_under_replicate() {
       tensor<3x!tf_type.string>,
       tensor<3x!tf_type.string>
       )
-  %cst_0 = "tf.Const"() {value = dense<""> : tensor<1x!tf_type.string>} : () -> tensor<1x!tf_type.string>
+  %cst_0 = builtin.unrealized_conversion_cast to tensor<1x!tf_type.string>
   "tf.OpA"(%cst_0) { mini_batch_splits = ""} : (tensor<1x!tf_type.string>) -> ()
   return
 }

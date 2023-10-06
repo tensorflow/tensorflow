@@ -302,6 +302,46 @@ class ListOpsTest(parameterized.TestCase):
     self.assertEqual(tf_out.shape, output_tensor.shape)
     self.assertTrue((tf_out == output_tensor).numpy().all())
 
+  @parameterized.named_parameters(
+      ("ReserveLength0", 0),
+      ("ReserveLength1", 1),
+      ("ReserveLength5", 5),
+  )
+  def test_reserve_length(self, num_elements: int):
+    @tf.function(
+        input_signature=[
+            tf.TensorSpec(shape=tf.TensorShape([]), dtype=tf.int32)
+        ]
+    )
+    def reserve_length(num_elements) -> tf.Tensor:
+      l = list_ops.tensor_list_reserve(
+          element_shape=tf.TensorShape(None),
+          element_dtype=tf.int32,
+          num_elements=num_elements,
+      )
+      return list_ops.tensor_list_length(l)
+
+    interpreter = self._get_interpreter_from_c_func(reserve_length)
+
+    input_index = interpreter.get_input_details()[0]["index"]
+
+    interpreter.allocate_tensors()
+
+    input_tensor = np.array(num_elements, dtype=np.int32)
+    interpreter.set_tensor(input_index, input_tensor)
+
+    interpreter.invoke()
+
+    output_tensor = interpreter.get_tensor(
+        interpreter.get_output_details()[0]["index"]
+    )
+
+    tf_out = reserve_length(input_tensor)
+
+    self.assertEqual(tf_out.dtype, output_tensor.dtype)
+    self.assertEqual(tf_out.shape, output_tensor.shape)
+    self.assertTrue((tf_out == output_tensor).numpy().all())
+
 
 if __name__ == "__main__":
   googletest.main()

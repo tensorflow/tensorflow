@@ -99,7 +99,8 @@ class HipSparseHandles {
   hipStream_t stream_;
   hipsparseHandle_t hipsparse_handle_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(HipSparseHandles);
+  HipSparseHandles(const HipSparseHandles&) = delete;
+  void operator=(const HipSparseHandles&) = delete;
 };
 
 // TODO(ebrevdo): Replace global mutex guarding CudaSparseHandles

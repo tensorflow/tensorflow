@@ -314,7 +314,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   absl::MutexLock lock(&module_handle_mutex_);
   auto it = module_globals_.find(executor);
   if (it != module_globals_.end()) {
-    return &it->second;
+    return it->second.get();
   }
 
   se::MultiModuleLoaderSpec module_spec;
@@ -323,7 +323,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   }
   module_spec.AddCudaPtxInMemory(text().c_str());
 
-  absl::flat_hash_map<int64_t, se::DeviceMemoryBase> globals;
+  auto globals = std::make_unique<BufferAllocToDeviceMemoryMap>();
   se::ModuleHandle module_handle;
   // The CUDA driver isn't able to load a PTX and a binary which are both empty.
   // It's okay if we skip loading in this case; if the module isn't loaded, all
@@ -375,7 +375,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
     }
 
     if (info.allocation_index != -1) {
-      InsertOrDie(&globals, info.allocation_index, global);
+      InsertOrDie(globals.get(), info.allocation_index, global);
     }
   }
 
@@ -388,7 +388,8 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
 
   module_handles_.emplace(executor,
                           se::ScopedModuleHandle(executor, module_handle));
-  return &module_globals_.emplace(executor, std::move(globals)).first->second;
+  return module_globals_.emplace(executor, std::move(globals))
+      .first->second.get();
 }
 
 StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(

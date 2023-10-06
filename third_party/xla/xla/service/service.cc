@@ -215,7 +215,7 @@ Status Service::DeconstructTuple(const DeconstructTupleRequest* arg,
 }
 
 Status Service::ValidateResultShape(const Shape& client_shape,
-                                    const Shape& result_shape) const {
+                                    const Shape& result_shape) {
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(client_shape));
   if (!ShapeUtil::Compatible(client_shape, result_shape)) {
     return InvalidArgument(

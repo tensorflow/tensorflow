@@ -50,6 +50,13 @@ cc_library(
   name = "nccl",
   visibility = ["//visibility:public"],
 )
+
+cc_library(
+  name = "nccl_config",
+  hdrs = ["nccl_config.h"],
+  include_prefix = "third_party/nccl",
+  visibility = ["//visibility:public"],
+)
 """
 
 _NCCL_ARCHIVE_BUILD_CONTENT = """
@@ -62,6 +69,12 @@ filegroup(
 alias(
   name = "nccl",
   actual = "@nccl_archive//:nccl",
+  visibility = ["//visibility:public"],
+)
+
+alias(
+  name = "nccl_config",
+  actual = "@nccl_archive//:nccl_config",
   visibility = ["//visibility:public"],
 )
 """
@@ -82,6 +95,12 @@ alias(
 alias(
   name = "nccl_headers",
   actual = "@nccl_archive//:nccl_headers",
+  visibility = ["//visibility:public"],
+)
+
+alias(
+  name = "nccl_config",
+  actual = "@nccl_archive//:nccl_config",
   visibility = ["//visibility:public"],
 )
 """
@@ -142,6 +161,7 @@ def _nccl_autoconf_impl(repository_ctx):
         get_cpu_value(repository_ctx) not in ("Linux", "FreeBSD")):
         # Add a dummy build file to make bazel query happy.
         repository_ctx.file("BUILD", _NCCL_DUMMY_BUILD_CONTENT)
+        repository_ctx.file("nccl_config.h", "#define TF_NCCL_VERSION \"\"")
     elif get_host_environ(repository_ctx, "TF_NCCL_CONFIG_REPO") != None:
         _create_remote_nccl_repository(repository_ctx, get_host_environ(repository_ctx, "TF_NCCL_CONFIG_REPO"))
     else:

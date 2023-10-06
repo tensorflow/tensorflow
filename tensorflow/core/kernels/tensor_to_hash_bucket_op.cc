@@ -60,7 +60,8 @@ class TensorToHashBucketOp : public OpKernel {
  private:
   int64_t num_buckets_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorToHashBucketOp);
+  TensorToHashBucketOp(const TensorToHashBucketOp&) = delete;
+  void operator=(const TensorToHashBucketOp&) = delete;
 };
 
 #define REGISTER_CPU_KERNELS(type)                        \

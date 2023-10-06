@@ -69,7 +69,8 @@ class XlaSpmdFullToShardShapeOp : public XlaOpKernel {
   string manual_sharding_str_;
   int32 single_dim_;
   std::vector<int64_t> unspecified_dims_;
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaSpmdFullToShardShapeOp);
+  XlaSpmdFullToShardShapeOp(const XlaSpmdFullToShardShapeOp&) = delete;
+  void operator=(const XlaSpmdFullToShardShapeOp&) = delete;
 };
 
 class XlaSpmdShardToFullShapeOp : public XlaOpKernel {
@@ -119,7 +120,8 @@ class XlaSpmdShardToFullShapeOp : public XlaOpKernel {
   string manual_sharding_str_;
   int32 single_dim_;
   std::vector<int64_t> unspecified_dims_;
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaSpmdShardToFullShapeOp);
+  XlaSpmdShardToFullShapeOp(const XlaSpmdShardToFullShapeOp&) = delete;
+  void operator=(const XlaSpmdShardToFullShapeOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaSpmdFullToShardShape"), XlaSpmdFullToShardShapeOp);

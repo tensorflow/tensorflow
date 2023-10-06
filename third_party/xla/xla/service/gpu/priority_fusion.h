@@ -39,7 +39,7 @@ namespace gpu {
 class GpuPriorityFusion : public InstructionFusion {
  public:
   explicit GpuPriorityFusion(
-      const GpuDeviceInfo& d,
+      const se::DeviceDescription& d,
       const GpuHloCostAnalysis::Options& cost_analysis_options)
       : InstructionFusion(GpuPriorityFusion::IsExpensive),
         device_info_(d),
@@ -65,7 +65,7 @@ class GpuPriorityFusion : public InstructionFusion {
   HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
                                   HloInstruction* producer) override;
 
-  const GpuDeviceInfo device_info_;
+  se::DeviceDescription device_info_;
 
   // Cost model options that defines priorities in the queue.
   GpuHloCostAnalysis::Options cost_analysis_options_;

@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -90,7 +91,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -109,7 +109,6 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/tensor_float_32_utils.h"
 #include "triton/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -434,9 +433,11 @@ Value EmitParameterLoad(ImplicitLocOpBuilder& b, Value pointer,
                                 mt::EvictionPolicy::NORMAL,
                                 /*isVolatile=*/false);
   }
-  return b.create<mt::LoadOp>(pointer, mt::CacheModifier::NONE,
-                              mt::EvictionPolicy::NORMAL,
-                              /*isVolatile=*/false);
+  return Splat(b,
+               b.create<mt::LoadOp>(pointer, mt::CacheModifier::NONE,
+                                    mt::EvictionPolicy::NORMAL,
+                                    /*isVolatile=*/false),
+               {});
 }
 
 Value EmitConstant(ImplicitLocOpBuilder& b, const HloInstruction& constant) {
@@ -1397,10 +1398,15 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
       dot_input_rhs = apply_mask(1, dot_input_rhs);
     }
 
+    const bool allow_tf32 =
+        absl::c_none_of(dot_instr->precision_config().operand_precision(),
+                        [](const int precision) {
+                          return precision != PrecisionConfig::DEFAULT;
+                        });
+
     // Execute matrix multiplication of input tiles and pass the accumulator.
-    Value accumulator_next = b.create<mt::DotOp>(
-        dot_input_lhs, dot_input_rhs, iter_args.back(),
-        /*allowTF32=*/tsl::tensor_float_32_execution_enabled());
+    Value accumulator_next = b.create<mt::DotOp>(dot_input_lhs, dot_input_rhs,
+                                                 iter_args.back(), allow_tf32);
     iter_args_next.push_back(accumulator_next);
 
     b.create<mlir::scf::YieldOp>(iter_args_next);
@@ -1617,7 +1623,8 @@ std::string GetLibdevicePath(const HloComputation* hlo_computation) {
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
-    const HloComputation* hlo_computation, const GpuDeviceInfo& device_info,
+    const HloComputation* hlo_computation,
+    const se::DeviceDescription& device_info,
     const AutotuneResult::TritonGemmKey& config, TritonIrEmitter ir_emitter,
     mlir::MLIRContext& mlir_context) {
   mlir_context.loadDialect<mt::TritonDialect>();
@@ -1652,7 +1659,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 
   TF_RETURN_IF_ERROR(ir_emitter(b, GetLibdevicePath(hlo_computation), analysis,
                                 hlo_computation, fn, config,
-                                device_info.shared_memory_per_block_optin));
+                                device_info.shared_memory_per_block_optin()));
 
   b.create<mt::ReturnOp>(loc);
 
@@ -1669,7 +1676,8 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 StatusOr<TritonWrapperResult> TritonWrapper(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
     const HloComputation* hlo_computation, absl::string_view fusion_kind,
-    const se::CudaComputeCapability& cc, const GpuDeviceInfo& device_info,
+    const se::CudaComputeCapability& cc,
+    const se::DeviceDescription& device_info,
     const AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
     TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context) {
   if (fusion_kind == kTritonGemmFusionKind) {
@@ -1778,7 +1786,7 @@ StatusOr<TritonWrapperResult> TritonWrapper(
           ->getAttrOfType<mlir::IntegerAttr>("triton_gpu.shared")
           .getInt();
   VLOG(2) << "Shared memory usage: " << shared_mem_bytes << " B";
-  if (shared_mem_bytes > device_info.shared_memory_per_block_optin) {
+  if (shared_mem_bytes > device_info.shared_memory_per_block_optin()) {
     return ResourceExhausted("Shared memory size limit exceeded.");
   }
 

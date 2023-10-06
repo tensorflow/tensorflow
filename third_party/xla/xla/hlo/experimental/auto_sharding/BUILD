@@ -41,6 +41,7 @@ cc_library(
         "//xla:array",
         "//xla:shape_tree",
         "//xla:shape_util",
+        "//xla:status",
         "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",

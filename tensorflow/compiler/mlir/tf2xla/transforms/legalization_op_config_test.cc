@@ -131,7 +131,7 @@ TEST_F(LegalizationOpConfigTest, CountLoweringsSet) {
   // a new op, we should expect these to change too.
   EXPECT_EQ(mlir_lowering_count, 68);
   EXPECT_EQ(tf2xla_fallback_count, 313);
-  EXPECT_EQ(non_categorized_count, 419);
+  EXPECT_EQ(non_categorized_count, 420);
 }
 
 // Just a counter test to see which ops have duplicate lowerings. This isn't a

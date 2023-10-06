@@ -269,7 +269,9 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
 
   absl::flat_hash_set<std::string> recoverable_jobs_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CoordinationServiceStandaloneImpl);
+  CoordinationServiceStandaloneImpl(const CoordinationServiceStandaloneImpl&) =
+      delete;
+  void operator=(const CoordinationServiceStandaloneImpl&) = delete;
 };
 
 void CoordinationServiceStandaloneImpl::TaskState::SetConnected(

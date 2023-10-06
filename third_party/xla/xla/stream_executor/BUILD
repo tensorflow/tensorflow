@@ -83,8 +83,8 @@ filegroup(
         "scratch_allocator.h",
         "stream.h",
         "stream_executor.h",
-        "stream_executor_internal.h",
-        "stream_executor_pimpl.h",
+        "stream_executor_internal.h",  # TODO(ezhulenev): Remove private header
+        "stream_executor_pimpl.h",  # TODO(ezhulenev): Remove private header
         "temporary_device_memory.h",
         "temporary_memory_manager.h",
         "trace_listener.h",
@@ -109,7 +109,6 @@ filegroup(
 STREAM_EXECUTOR_DEPENDENCIES = [
     ":allocator_stats",
     ":device_description_proto_cc",
-    ":dnn_proto_cc",
     ":host_or_device_scalar",
     ":multi_platform_manager",
     "@com_google_absl//absl/algorithm:container",
@@ -422,6 +421,7 @@ cc_library(
         ":device_memory",
         ":platform",
         ":stream_executor_headers",
+        ":stream_executor_internal",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
@@ -500,15 +500,6 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
     ],
-)
-
-tf_proto_library(
-    name = "dnn_proto",
-    srcs = ["dnn.proto"],
-    make_default_target_header_only = True,
-    protodeps = ["@local_tsl//tsl/protobuf:dnn_proto"],
-    visibility = ["//visibility:public"],
-    exports = ["@local_tsl//tsl/protobuf:dnn_proto"],
 )
 
 cc_library(
@@ -681,7 +672,6 @@ cc_library(
     deps = [
         ":device_description_proto_cc",
         ":device_memory",
-        ":dnn_proto_cc",
         ":numeric_options",
         ":stream_executor_headers",
         "//xla/stream_executor/platform",
@@ -708,7 +698,6 @@ cc_library(
         ":device_description",
         ":device_memory",
         ":dnn",
-        ":dnn_proto_cc",
         ":event",
         ":executor_cache",
         ":kernel",
@@ -721,7 +710,6 @@ cc_library(
         ":stream_executor_pimpl",
         ":temporary_device_memory",
         ":temporary_memory_manager",
-        "//xla/stream_executor:dnn_proto_cc_impl",
         "@local_tsl//tsl/protobuf:dnn_proto_cc_impl",
     ],
 )

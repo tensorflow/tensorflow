@@ -76,6 +76,32 @@ PermutationAndShape GetInversePermutationAndShape(
     llvm::ArrayRef<int64_t> permutation_array, ShapedType input_type,
     ConversionPatternRewriter& rewriter);
 
+// Returns true if the op needs reformat.
+bool NeedsReformatTypeAndPermutation(int batch_dim, int feature_dim,
+                                     int spatial_dim_start,
+                                     int default_batch_dim,
+                                     int default_feature_dim,
+                                     int default_spatial_dim_start);
+
+// Gets reformat type and permutation attribute. Call this function only if
+// NeedsReformatTypeAndPermutation returns true. If
+// NeedsReformatTypeAndPermutation returns false, this function returns the pair
+// of input type and no-op permutation.
+
+std::pair<RankedTensorType, DenseIntElementsAttr> GetReformatTypeAndPermutation(
+    int batch_dim, int feature_dim, int spatial_dim_start,
+    int default_batch_dim, int default_feature_dim,
+    int default_spatial_dim_start, int num_spatial_dims, RankedTensorType type,
+    ConversionPatternRewriter& rewriter);
+
+// Insert transpose so the input value is converted to the format specified by
+// the default dims
+Value InsertTranspose(Value value, int batch_dim, int feature_dim,
+                      ArrayRef<int64_t> spatial_dimensions,
+                      int default_batch_dim, int default_feature_dim,
+                      int default_spatial_dim_start, int num_spatial_dims,
+                      ConversionPatternRewriter& rewriter);
+
 // If index_vector_dim == indices.rank() then insert the implicit extra
 // dimension into indices to normalize everything to index_vector_dim ==
 // indices.rank() - 1.

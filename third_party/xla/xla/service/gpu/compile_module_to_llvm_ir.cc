@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/service/gpu/conditional_thunk.h"
 #include "xla/service/gpu/for_thunk.h"
 #include "xla/service/gpu/gpu_constants.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/ir_emitter_unnested.h"
@@ -247,7 +246,7 @@ StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, const se::Platform::Id platform_id,
-    GpuDeviceInfo gpu_device_info,
+    const se::DeviceDescription& gpu_device_info,
     const BufferValue::SizeFunction& buffer_size_bytes_function) {
   CompileModuleResults results;
   TF_RETURN_IF_ERROR(CompileModuleToLlvmIrImpl(
@@ -338,7 +337,7 @@ Status CompileModuleToLlvmIrImpl(
     HloModule* hlo_module, llvm::LLVMContext* llvm_context,
     const std::string& target_triple, const std::string& data_layout,
     const std::string& platform_name, se::Platform::Id platform_id,
-    GpuDeviceInfo gpu_device_info,
+    const se::DeviceDescription& gpu_device_info,
     const HloDataflowAnalysis::CanShareBuffer& can_share_buffer_function,
     const BufferValue::SizeFunction& buffer_size_bytes_function,
     CompileModuleResults* results, se::StreamExecutor* stream_exec) {
@@ -370,8 +369,9 @@ Status CompileModuleToLlvmIrImpl(
   };
   DumpHloModuleIfEnabled(
       *hlo_module, *results->buffer_assignment,
-      absl::StrCat(std::visit(GetCcStr(), gpu_device_info.compute_capability),
-                   "_gpu_", kAfterOptimizationsDumpName));
+      absl::StrCat(
+          std::visit(GetCcStr(), gpu_device_info.gpu_compute_capability()),
+          "_gpu_", kAfterOptimizationsDumpName));
 
   VLOG(1) << "After optimization module fingerprint for " << hlo_module->name()
           << ": " << hlo_module->GetFingerprint128();
@@ -457,7 +457,7 @@ Status CompileModuleToLlvmIrImpl(
         LowerToJitRt(*mlir_module, entry_function.getName(), buffer_sizes,
                      hlo_module->config(), ir_emitter->ConsumeThunkSequence(),
                      /*hlo_module_for_dump=*/hlo_module,
-                     gpu_device_info.compute_capability));
+                     gpu_device_info.gpu_compute_capability()));
     return OkStatus();
   }
 

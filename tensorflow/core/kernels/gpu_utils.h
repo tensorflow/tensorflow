@@ -238,7 +238,8 @@ class AutotuneMap {
   int32 max_autotune_global_count_;
   int32 autotune_global_count_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(AutotuneMap);
+  AutotuneMap(const AutotuneMap&) = delete;
+  void operator=(const AutotuneMap&) = delete;
 };
 
 // A Singleton helper that manages the global autotune results by groups.

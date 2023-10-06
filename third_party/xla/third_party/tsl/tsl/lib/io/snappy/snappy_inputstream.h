@@ -82,7 +82,8 @@ class SnappyInputStream : public InputStreamInterface {
   // is not yet read.
   size_t avail_out_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SnappyInputStream);
+  SnappyInputStream(const SnappyInputStream&) = delete;
+  void operator=(const SnappyInputStream&) = delete;
 };
 
 }  // namespace io

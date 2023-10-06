@@ -29,6 +29,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "xla/stream_executor/tpu/status_helper.h"
+#include "xla/stream_executor/tpu/tpu_api.h"
+#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -96,6 +99,26 @@ std::function<float(float)> GetCombinerScaleTransformFunction(
     return
         [](float x) -> float { return x == 0.0f ? 0.0f : 1.0 / std::sqrt(x); };
   }
+}
+
+Status GetMaxIdsAndUniquesExternal(const std::string& program_key,
+                                   const std::string& table_name,
+                                   int64_t num_samples_per_sparse_core,
+                                   int64_t feature_width,
+                                   int64_t* max_ids_per_partition,
+                                   int64_t* max_unique_ids_per_partition) {
+  SparseCore_GetMaxIdsAndUniques_Params params;
+  params.program_key = program_key.c_str();
+  params.table_name = table_name.c_str();
+  params.num_samples_per_sparse_core = num_samples_per_sparse_core;
+  params.feature_width = feature_width;
+  StatusHelper status;
+  params.status = status.c_status;
+
+  stream_executor::tpu::OpsApiFn()->SparseCore_GetMaxIdsAndUniquesFn(&params);
+  *max_ids_per_partition = params.max_ids_per_partition;
+  *max_unique_ids_per_partition = params.max_unique_ids_per_partition;
+  return status.status();
 }
 
 std::vector<std::vector<std::string>> GetTableStacks(
@@ -180,7 +203,8 @@ std::vector<std::vector<std::string>> GetTableStacks(
 }
 
 ABSL_ATTRIBUTE_WEAK int GetMinibatchMaxDivisionLevel() {
-  return kMinibatchMaxDivisionLevel;
+  XlaSparseCoreFlags* sparse_core_flags = GetXlaSparseCoreFlags();
+  return sparse_core_flags->tf_xla_sparse_core_minibatch_max_division_level;
 }
 
 ABSL_ATTRIBUTE_WEAK bool GetDisableTableStacking() {

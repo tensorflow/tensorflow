@@ -42,7 +42,8 @@ class CounterCell {
   int64 value() const { return 0; }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CounterCell);
+  CounterCell(const CounterCell&) = delete;
+  void operator=(const CounterCell&) = delete;
 };
 
 // Counter which has a null implementation.
@@ -68,7 +69,8 @@ class Counter {
 
   CounterCell default_counter_cell_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Counter);
+  Counter(const Counter&) = delete;
+  void operator=(const Counter&) = delete;
 };
 
 }  // namespace monitoring
@@ -117,7 +119,8 @@ class CounterCell {
  private:
   std::atomic<int64_t> value_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CounterCell);
+  CounterCell(const CounterCell&) = delete;
+  void operator=(const CounterCell&) = delete;
 };
 
 // A stateful class for updating a cumulative integer metric.
@@ -189,7 +192,8 @@ class Counter {
 
   std::unique_ptr<CollectionRegistry::RegistrationHandle> registration_handle_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Counter);
+  Counter(const Counter&) = delete;
+  void operator=(const Counter&) = delete;
 };
 
 ////
