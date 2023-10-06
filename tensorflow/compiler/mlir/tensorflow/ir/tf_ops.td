@@ -2353,4 +2353,24 @@ def TF_GetMinibatchSplitsWithPhysicalReplicaOp : TF_Op<"GetMinibatchSplitsWithPh
   );
 }
 
+def TF_StoreMinibatchStatisticsInFdoOp : TF_Op<"StoreMinibatchStatisticsInFdo", [Pure]> {
+  let summary = "Store the number of IDs and unique IDs in an FDO table.";
+
+  let arguments = (ins
+    TF_StrTensor:$program_key,
+    TF_Int32Tensor:$max_ids,
+    TF_Int32Tensor:$max_uniques,
+
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$sample_count,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_replica,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$feature_width,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_sc_per_chip,
+
+    StrAttr:$table_name,
+    StrAttr:$mini_batch_splits
+  );
+
+  let results = (outs
+  );
+}
 #endif // TF_OPS

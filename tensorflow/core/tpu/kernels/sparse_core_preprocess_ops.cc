@@ -951,4 +951,53 @@ REGISTER_KERNEL_BUILDER(
     GetMinibatchSplitsWithPhysicalReplicaOp)
 #endif
 
+StoreMinibatchStatisticsInFdoOp::StoreMinibatchStatisticsInFdoOp(
+    OpKernelConstruction* ctx)
+    : OpKernel(ctx) {
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("table_name", &table_name_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("num_replica", &num_replica_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("sample_count", &sample_count_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("feature_width", &feature_width_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("num_sc_per_chip", &num_sc_per_chip_));
+  OP_REQUIRES(ctx, sample_count_ % num_sc_per_chip_ == 0,
+              absl::InvalidArgumentError(absl::StrCat(
+                  "sample_count ", sample_count_,
+                  " is not divisible by the number of sparsecores per chip ",
+                  num_sc_per_chip_)));
+  device_name_ = ctx->device()->name();
+}
+
+void StoreMinibatchStatisticsInFdoOp::Compute(OpKernelContext* ctx) {
+  const Tensor* program_key_t;
+  OP_REQUIRES_OK(ctx, ctx->input("program_key", &program_key_t));
+  tstring program_key = program_key_t->vec<tstring>()(0);
+  OP_REQUIRES(ctx, !program_key.empty(),
+              absl::FailedPreconditionError("Expected non-empty program key"));
+  const Tensor* max_ids_t;
+  OP_REQUIRES_OK(ctx, ctx->input("max_ids", &max_ids_t));
+  int64_t max_ids = max_ids_t->scalar<int64>()();
+  const Tensor* max_uniques_t;
+  OP_REQUIRES_OK(ctx, ctx->input("max_uniques", &max_uniques_t));
+  int64_t max_uniques = max_uniques_t->scalar<int64>()();
+
+  int32 per_sc_sample_count = sample_count_ / num_sc_per_chip_;
+
+  int64_t max_ids_per_partition = -1;
+  int64_t max_unique_ids_per_partition = -1;
+
+  OP_REQUIRES_OK(
+      ctx, GetMaxIdsAndUniquesExternal(
+               program_key, table_name_, per_sc_sample_count, feature_width_,
+               &max_ids_per_partition, &max_unique_ids_per_partition));
+
+  CalculateHeadroom(max_ids, max_uniques, program_key, max_ids_per_partition,
+                    max_unique_ids_per_partition);
+}
+
+#ifdef LIBTPU_ON_GCE
+REGISTER_KERNEL_BUILDER(
+    Name("StoreMinibatchStatisticsInFdo").Device(DEVICE_CPU),
+    StoreMinibatchStatisticsInFdoOp)
+#endif
+
 }  // namespace tensorflow

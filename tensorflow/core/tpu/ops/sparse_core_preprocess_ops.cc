@@ -152,4 +152,18 @@ REGISTER_OP("GetMinibatchSplitsWithPhysicalReplica")
       return OkStatus();
     });
 
+REGISTER_OP("StoreMinibatchStatisticsInFdo")
+    .Input("program_key: string")
+    .Input("max_ids: int32")
+    .Input("max_uniques: int32")
+    .Attr("sample_count : int >= 1")
+    .Attr("num_replica: int >= 1")
+    .Attr("feature_width: int >= 1")
+    .Attr("num_sc_per_chip: int >= 1")
+    .Attr("table_name: string")
+    .Attr("mini_batch_splits: string")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      return OkStatus();
+    });
 }  // namespace tensorflow
