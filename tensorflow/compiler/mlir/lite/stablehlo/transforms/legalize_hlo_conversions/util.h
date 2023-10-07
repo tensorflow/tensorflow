@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
@@ -269,6 +270,8 @@ void AddStridedSliceOpIfRequired(ConversionState& state,
                                  const DenseElementsAttr& edge_padding_high,
                                  const DenseElementsAttr& strides);
 
+// Util that casts 'val' to Int32 by adding a tfl cast Op.
+Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter);
 }  // namespace odml
 }  // namespace mlir
 
