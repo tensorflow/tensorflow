@@ -13,19 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <unistd.h>
+
 #include <cstdint>
 #include <memory>
 #include <utility>
 
-#if defined(__APPLE__)
-#include <mach-o/dyld.h>
-#endif
-#if defined(PLATFORM_WINDOWS)
-#include <windows.h>
-#define PATH_MAX MAX_PATH
-#else
-#include <unistd.h>
-#endif
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
@@ -46,7 +39,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/kernel_cache_config.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -876,13 +868,6 @@ GpuContext* GpuExecutor::gpu_context() { return context_; }
 // turn to gsys' topology modeling.
 static int TryToReadNumaNode(const std::string& pci_bus_id,
                              int device_ordinal) {
-#if defined(__APPLE__)
-  LOG(INFO) << "OS X does not support NUMA - returning NUMA node zero";
-  return 0;
-#elif defined(PLATFORM_WINDOWS)
-  // Windows support for NUMA is not currently implemented. Return node 0.
-  return 0;
-#else
   VLOG(2) << "trying to read NUMA node for device ordinal: " << device_ordinal;
   static const int kUnknownNumaNode = -1;
 
@@ -933,7 +918,6 @@ static int TryToReadNumaNode(const std::string& pci_bus_id,
 
   fclose(file);
   return kUnknownNumaNode;
-#endif
 }
 
 tsl::StatusOr<std::unique_ptr<DeviceDescription>>
