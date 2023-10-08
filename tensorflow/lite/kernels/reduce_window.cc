@@ -157,9 +157,7 @@ std::array<int64_t, kMaxReduceWindowDims> ComputeOutputShape(
   std::array<int64_t, kMaxReduceWindowDims> window_range;
   for (int64_t i = 0; i < rank; ++i) {
     window_range[i] =
-        (shape[i] - dilated_window_shape[i] + window_strides[i] - 1) /
-            window_strides[i] +
-        1;
+        (shape[i] - dilated_window_shape[i]) / window_strides[i] + 1;
   }
   return window_range;
 }
@@ -230,7 +228,7 @@ TfLiteStatus SetupOutputTensor(const ReduceWindowContext& ctx) {
   const int rank = ctx.input_tensor->dims->size;
   const std::array<int64_t, kMaxReduceWindowDims> input_shape =
       AsInt64(ctx.input_tensor->dims->data, rank);
-  auto output_shape_data =
+  const std::array<int64_t, kMaxReduceWindowDims> output_shape_data =
       ComputeOutputShape(input_shape.data(), ctx.window_shape_tensor->data.i64,
                          ctx.window_strides_tensor->data.i64,
                          ctx.window_dilations_tensor->data.i64, rank);
