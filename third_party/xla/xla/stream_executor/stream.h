@@ -101,6 +101,12 @@ struct Quantization;
 // Thread-safe post-initialization.
 class Stream {
  public:
+  // Platform specific handle for the underlying resources behind a Stream
+  // implementation (e.g. it gives access to CUstream for CUDA platform).
+  struct PlatformSpecificHandle {
+    void *stream = nullptr;  // will be nullptr if not supported
+  };
+
   // Instantiate a stream tied to parent as a platform executor. Work
   // entrained onto this stream will be launched/managed on that
   // StreamExecutor's platform.
@@ -110,6 +116,11 @@ class Stream {
   // bestowed
   // upon this object.
   ~Stream();
+
+  // TODO(ezhulenev): Consider removing this platform-specific accessor and
+  // forward all users to platform-specific headers, however it requires careful
+  // build rules set up to avoid leaking even more implementation details.
+  PlatformSpecificHandle platform_specific_handle() const;
 
   // Returns whether any errors have occurred while entraining work for this
   // stream.

@@ -296,6 +296,12 @@ std::variant<StreamPriority, int> Stream::priority() const {
   return implementation_->priority();
 }
 
+Stream::PlatformSpecificHandle Stream::platform_specific_handle() const {
+  PlatformSpecificHandle handle;
+  handle.stream = implementation_->GpuStreamHack();
+  return handle;
+}
+
 tsl::Status Stream::RefreshStatus() {
   tsl::Status status = parent_->GetStatus(this);
   // We should not put the stream in an error state, just because the GetStatus

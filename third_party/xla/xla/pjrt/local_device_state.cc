@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor_internal.h"
 #include "xla/util.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/protobuf/error_codes.pb.h"
@@ -195,7 +194,7 @@ StatusOr<se::Stream*> LocalDeviceState::GetStreamFromExternalStream(
   for (const std::unique_ptr<se::Stream>& se_stream :
        external_ready_event_streams_) {
     if (absl::bit_cast<std::intptr_t>(
-            se_stream->implementation()->GpuStreamHack()) == stream) {
+            se_stream->platform_specific_handle().stream) == stream) {
       return se_stream.get();
     }
   }
