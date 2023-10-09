@@ -104,10 +104,13 @@ class DistributedSaveTest(
     dataset = dataset_ops.Dataset.load(self._test_dir)
     self.assertDatasetProduces(dataset, list(range(10)))
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testRepeatedDataset(self):
-    cluster = data_service_test_base.TestCluster(num_workers=1)
-    dataset = dataset_ops.Dataset.range(10)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_workers=[1, 3])))
+  def testRepeatedDataset(self, num_workers):
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
+    dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.repeat(3)
     self.evaluate(distributed_save_op.distributed_save(
         dataset,
@@ -117,7 +120,9 @@ class DistributedSaveTest(
     _wait_for_snapshot(self._test_dir)
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
-    self.assertDatasetProduces(dataset, list(range(10)) * 3)
+    ignore_order = num_workers > 1
+    self.assertDatasetProduces(
+        dataset, list(range(100)) * 3, assert_items_equal=ignore_order)
 
   @combinations.generate(test_base.default_test_combinations())
   def testChooseFromDatasets(self):
