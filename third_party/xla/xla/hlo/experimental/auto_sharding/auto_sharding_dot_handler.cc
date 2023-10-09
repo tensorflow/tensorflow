@@ -92,17 +92,6 @@ class HandlerBase {
     }));
   }
 
-  // Calls the given 'split_func' on all possible mesh dim combinations.
-  void Split(std::function<void(MeshDims)> split_func) {
-    auto mesh_shape = device_mesh_.dimensions();
-    for (int64_t i = 0; i < mesh_shape.size(); ++i) {
-      for (int64_t j = (i + 1); j < mesh_shape.size(); ++j) {
-        split_func({i, j});
-        split_func({j, i});
-      }
-    }
-  }
-
   bool CheckDims(const HloInstruction* ins, const DimMap& dim_map) const {
     for (const auto& [tensor_dim, mesh_dim] : dim_map) {
       auto shape_dim = ins->shape().dimensions().at(tensor_dim);
@@ -137,23 +126,27 @@ class HandlerBase {
                       communication_cost);
   }
 
-  // Enumerates combinations of the given tensor dimensions.
+  // Enumerates combinations of the given mesh + tensor dimensions.
   void Enumerate(std::function<void(const Enumeration&)> split_func,
-                 const MeshDims& mesh_dims, size_t num_outer_dims = 2,
-                 size_t num_inner_dims = 2, bool half = false) {
-    DCHECK_EQ(mesh_dims.size(), 2);
-    for (int64_t i = 0; i < num_outer_dims; ++i) {
-      for (int64_t j = half ? i + 1 : 0; j < num_inner_dims; ++j) {
-        split_func({mesh_dims, i, j});
+                 size_t num_outer_dims = 2, size_t num_inner_dims = 2,
+                 bool half = false) {
+    auto mesh_shape = device_mesh_.dimensions();
+    for (int64_t dim0 = 0; dim0 < mesh_shape.size(); ++dim0) {
+      for (int64_t dim1 = 0; dim1 < mesh_shape.size(); ++dim1) {
+        if (dim0 == dim1) continue;
+        for (int64_t i = 0; i < num_outer_dims; ++i) {
+          for (int64_t j = half ? i + 1 : 0; j < num_inner_dims; ++j) {
+            split_func({{dim0, dim1}, i, j});
+          }
+        }
       }
     }
   }
 
   // Enumerates *half* of the combinations (if inner & outer dims are the same).
   void EnumerateHalf(std::function<void(const Enumeration&)> split_func,
-                     const MeshDims& mesh_dims, size_t num_outer_dims = 2,
-                     size_t num_inner_dims = 2) {
-    Enumerate(split_func, mesh_dims, num_outer_dims, num_inner_dims, true);
+                     size_t num_outer_dims = 2, size_t num_inner_dims = 2) {
+    Enumerate(split_func, num_outer_dims, num_inner_dims, true);
   }
 
   std::unique_ptr<StrategyVector>& strategies_;
@@ -192,7 +185,7 @@ class DotHandler : public HandlerBase {
     CHECK_EQ(lhs_batch_dims_.size(), rhs_batch_dims_.size());
   }
 
-  void SplitLhsSpaceRhsSpace(MeshDims mesh_dims) {
+  void SplitLhsSpaceRhsSpace() {
     auto func = [this](const Enumeration& e) {
       const DimMap lhs_dim_map = {{lhs_space_dims_[e.i], e.mesh_dims[0]}};
       const DimMap rhs_dim_map = {{rhs_space_dims_[e.j], e.mesh_dims[1]}};
@@ -206,10 +199,10 @@ class DotHandler : public HandlerBase {
                e.mesh_dims, device_mesh_);
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_);
     };
-    Enumerate(func, mesh_dims, lhs_space_dims_.size(), rhs_space_dims_.size());
+    Enumerate(func, lhs_space_dims_.size(), rhs_space_dims_.size());
   }
 
-  void SplitLhsSpaceOnly(MeshDims mesh_dims) {
+  void SplitLhsSpaceOnly() {
     auto func = [this](const Enumeration& e) {
       const DimMap lhs_dim_map = {{lhs_space_dims_[e.i], e.mesh_dims[0]},
                                   {lhs_space_dims_[e.j], e.mesh_dims[1]}};
@@ -220,11 +213,10 @@ class DotHandler : public HandlerBase {
                e.mesh_dims, device_mesh_);
       MaybeAppend(name, output_spec, lhs_dim_map, {}, device_mesh_);
     };
-    EnumerateHalf(func, mesh_dims, lhs_space_dims_.size(),
-                  lhs_space_dims_.size());
+    EnumerateHalf(func, lhs_space_dims_.size(), lhs_space_dims_.size());
   }
 
-  void SplitRhsSpaceOnly(MeshDims mesh_dims) {
+  void SplitRhsSpaceOnly() {
     auto func = [this](const Enumeration& e) {
       const DimMap rhs_dim_map = {{rhs_space_dims_[e.i], e.mesh_dims[0]},
                                   {rhs_space_dims_[e.j], e.mesh_dims[1]}};
@@ -238,11 +230,10 @@ class DotHandler : public HandlerBase {
           e.mesh_dims, device_mesh_);
       MaybeAppend(name, output_spec, {}, rhs_dim_map, device_mesh_);
     };
-    EnumerateHalf(func, mesh_dims, rhs_space_dims_.size(),
-                  rhs_space_dims_.size());
+    EnumerateHalf(func, rhs_space_dims_.size(), rhs_space_dims_.size());
   }
 
-  void SplitLhsSpaceBothContract(MeshDims mesh_dims) {
+  void SplitLhsSpaceBothContract() {
     auto func = [this](const Enumeration& e) {
       if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
           device_mesh_.dim(e.mesh_dims[1]) <= 1)
@@ -261,10 +252,10 @@ class DotHandler : public HandlerBase {
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
                   communication_cost);
     };
-    Enumerate(func, mesh_dims, lhs_space_dims_.size(), lhs_con_dims_.size());
+    Enumerate(func, lhs_space_dims_.size(), lhs_con_dims_.size());
   }
 
-  void SplitRhsSpaceBothContract(MeshDims mesh_dims) {
+  void SplitRhsSpaceBothContract() {
     auto func = [this](const Enumeration& e) {
       if (device_mesh_.dim(e.mesh_dims[0]) <= 1) return;
       std::string name =
@@ -284,7 +275,7 @@ class DotHandler : public HandlerBase {
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
                   communication_cost);
     };
-    Enumerate(func, mesh_dims, rhs_space_dims_.size(), lhs_con_dims_.size());
+    Enumerate(func, rhs_space_dims_.size(), lhs_con_dims_.size());
   }
 
   void SplitOneBatchDim() {
@@ -299,11 +290,10 @@ class DotHandler : public HandlerBase {
       HloSharding output_spec = Tile(ins_->shape(), {e.i}, {e.j}, device_mesh_);
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_);
     };
-    Enumerate(func, {-1, -1}, lhs_batch_dims_.size(),
-              device_mesh_.num_dimensions());
+    Enumerate(func, lhs_batch_dims_.size(), device_mesh_.num_dimensions());
   }
 
-  void SplitTwoBatchDims(MeshDims mesh_dims) {
+  void SplitTwoBatchDims() {
     if (lhs_batch_dims_.size() != 2) return;
     auto func = [this](const Enumeration& e) {
       if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
@@ -319,11 +309,10 @@ class DotHandler : public HandlerBase {
           Tile(ins_->shape(), {0, 1}, e.mesh_dims, device_mesh_);
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_);
     };
-    EnumerateHalf(func, mesh_dims, lhs_batch_dims_.size(),
-                  lhs_batch_dims_.size());
+    EnumerateHalf(func, lhs_batch_dims_.size(), lhs_batch_dims_.size());
   }
 
-  void SplitBatchDimLhsSpace(MeshDims mesh_dims) {
+  void SplitBatchDimLhsSpace() {
     if (lhs_batch_dims_.empty()) return;
     auto func = [this](const Enumeration& e) {
       if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
@@ -339,10 +328,10 @@ class DotHandler : public HandlerBase {
                device_mesh_);
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_);
     };
-    Enumerate(func, mesh_dims, lhs_space_dims_.size(), lhs_batch_dims_.size());
+    Enumerate(func, lhs_space_dims_.size(), lhs_batch_dims_.size());
   }
 
-  void SplitBatchDimRhsSpace(MeshDims mesh_dims) {
+  void SplitBatchDimRhsSpace() {
     if (lhs_batch_dims_.empty()) return;
     auto func = [this](const Enumeration& e) {
       if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
@@ -360,10 +349,10 @@ class DotHandler : public HandlerBase {
                e.mesh_dims, device_mesh_);
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_);
     };
-    Enumerate(func, mesh_dims, rhs_space_dims_.size(), lhs_batch_dims_.size());
+    Enumerate(func, rhs_space_dims_.size(), lhs_batch_dims_.size());
   }
 
-  void SplitBatchDimBothContract(MeshDims mesh_dims) {
+  void SplitBatchDimBothContract() {
     if (lhs_batch_dims_.empty()) return;
     auto func = [this](const Enumeration& e) {
       if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
@@ -383,10 +372,10 @@ class DotHandler : public HandlerBase {
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
                   communication_cost);
     };
-    Enumerate(func, mesh_dims, lhs_con_dims_.size(), lhs_batch_dims_.size());
+    Enumerate(func, lhs_con_dims_.size(), lhs_batch_dims_.size());
   }
 
-  void SplitBothContractTwoDims(MeshDims mesh_dims) {
+  void SplitBothContractTwoDims() {
     if (lhs_con_dims_.size() < 2 || rhs_con_dims_.size() < 2) return;
     auto func = [this](const Enumeration& e) {
       // Applies when there are more than one contracting dimension.
@@ -407,10 +396,10 @@ class DotHandler : public HandlerBase {
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
                   communication_cost);
     };
-    EnumerateHalf(func, mesh_dims, lhs_con_dims_.size(), lhs_con_dims_.size());
+    EnumerateHalf(func, lhs_con_dims_.size(), lhs_con_dims_.size());
   }
 
-  void RecomputeSplitBothContract(MeshDims mesh_dims) {
+  void RecomputeSplitBothContract() {
     auto func = [this](const Enumeration& e) {
       if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
           device_mesh_.dim(e.mesh_dims[1]) <= 1)
@@ -428,7 +417,7 @@ class DotHandler : public HandlerBase {
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_,
                   compute_cost, communication_cost);
     };
-    Enumerate(func, mesh_dims, lhs_con_dims_.size(), 1);
+    Enumerate(func, lhs_con_dims_.size(), 1);
   }
 
   void Add1DDataParallel() {
@@ -500,36 +489,36 @@ class DotHandler : public HandlerBase {
   Status RegisterStrategies() {
     // SS = SR x RS
     // Split lhs space dim and rhs space dim.
-    Split([this](MeshDims md) { this->SplitLhsSpaceRhsSpace(md); });
+    SplitLhsSpaceRhsSpace();
 
     // SSR = SSR x RR
     // Split lhs space dims only if it has more than 1 space dims.
     if (lhs_space_dims_.size() > 1) {
-      Split([this](MeshDims md) { this->SplitLhsSpaceOnly(md); });
+      SplitLhsSpaceOnly();
     }
     // RSS = RR x RSS
     // Split rhs space dims only if it has more than 1 space dims.
     if (rhs_space_dims_.size() > 1) {
-      Split([this](MeshDims md) { this->SplitRhsSpaceOnly(md); });
+      SplitRhsSpaceOnly();
     }
 
     // SR = SS x SR
     // Split lhs space dim and both contracting dims.
-    Split([this](MeshDims md) { this->SplitLhsSpaceBothContract(md); });
+    SplitLhsSpaceBothContract();
 
     // RS = RS x SS
     // Split rhs space dim and both contracting dims.
-    Split([this](MeshDims md) { this->SplitRhsSpaceBothContract(md); });
+    SplitRhsSpaceBothContract();
 
     // RR = SS x SS
     // Split two contracting dims on lhs and rhs.
-    Split([this](MeshDims md) { this->SplitBothContractTwoDims(md); });
+    SplitBothContractTwoDims();
 
     // RR = RS x SR
     // This is a special case where we allow spliting only one dim in the
     // multi-dimensional mesh case. This allows some recomputation
     // (e.g., the dense layer in the LM_head of BERT).
-    Split([this](MeshDims md) { this->RecomputeSplitBothContract(md); });
+    RecomputeSplitBothContract();
 
     // Add 1d data parallel in multi-dimensional mesh
     if (solver_option_.allow_mixed_mesh_shape) {
@@ -550,15 +539,15 @@ class DotHandler : public HandlerBase {
 
     // SbSi = SbSi x SbR
     // Split batch dim and lhs space dim
-    Split([this](MeshDims md) { this->SplitBatchDimLhsSpace(md); });
+    SplitBatchDimLhsSpace();
 
     // SbSj = SbR x SbSj
     // Split batch dim and rhs space dim
-    Split([this](MeshDims md) { this->SplitBatchDimRhsSpace(md); });
+    SplitBatchDimRhsSpace();
 
     // SbSj = SbR x SbSj
     // Split batch dim and contracting dim
-    Split([this](MeshDims md) { this->SplitBatchDimBothContract(md); });
+    SplitBatchDimBothContract();
 
     if (solver_option_.batch_matmul_always_split_batch &&
         lhs_batch_dims_.size() == 2 &&
@@ -571,7 +560,7 @@ class DotHandler : public HandlerBase {
 
     // Sb = Sb x Sb
     // Split batch dims.
-    Split([this](MeshDims md) { this->SplitTwoBatchDims(md); });
+    SplitTwoBatchDims();
 
     if (solver_option_.allow_mixed_mesh_shape) {
       Add1DBatchSplit();
@@ -633,7 +622,7 @@ class ConvHandler : public HandlerBase {
     out_out_channel_dim_ = conv_dnums_.output_feature_dimension();
   }
 
-  void SplitLhsBatchRhsOutchannel(MeshDims mesh_dims) {
+  void SplitLhsBatchRhsOutchannel() {
     auto func = [this](const Enumeration& e) {
       const DimMap lhs_dim_map = {{lhs_batch_dim_, e.mesh_dims[0]}};
       const DimMap rhs_dim_map = {{rhs_out_channel_dim_, e.mesh_dims[1]}};
@@ -644,10 +633,10 @@ class ConvHandler : public HandlerBase {
                e.mesh_dims, device_mesh_);
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_);
     };
-    EnumerateHalf(func, mesh_dims);
+    EnumerateHalf(func);
   }
 
-  void SplitLhsBatchBothInchannel(MeshDims mesh_dims) {
+  void SplitLhsBatchBothInchannel() {
     auto func = [this](const Enumeration& e) {
       if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
           device_mesh_.dim(e.mesh_dims[1]) <= 1)
@@ -666,10 +655,10 @@ class ConvHandler : public HandlerBase {
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
                   communication_cost);
     };
-    EnumerateHalf(func, mesh_dims);
+    EnumerateHalf(func);
   }
 
-  void SplitRhsOutchannelBothInchannel(MeshDims mesh_dims) {
+  void SplitRhsOutchannelBothInchannel() {
     auto func = [this](const Enumeration& e) {
       if (device_mesh_.dim(e.mesh_dims[0]) <= 1) return;
       const DimMap lhs_dim_map = {{lhs_in_channel_dim_, e.mesh_dims[0]}};
@@ -686,7 +675,7 @@ class ConvHandler : public HandlerBase {
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
                   communication_cost);
     };
-    EnumerateHalf(func, mesh_dims);
+    EnumerateHalf(func);
   }
 
   void Add1DDataParallel() {
@@ -723,7 +712,7 @@ class ConvHandler : public HandlerBase {
     }
   }
 
-  void SplitDepthwise(MeshDims mesh_dims, bool forward) {
+  void SplitDepthwise(bool forward) {
     auto func = [this, forward](const Enumeration& e) {
       const DimMap lhs_dim_map = {
           {lhs_batch_dim_, e.mesh_dims[forward ? 0 : 1]},
@@ -736,7 +725,7 @@ class ConvHandler : public HandlerBase {
                e.mesh_dims, device_mesh_);
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_);
     };
-    EnumerateHalf(func, mesh_dims);
+    EnumerateHalf(func);
   }
 
   Status RegisterStrategies() {
@@ -748,7 +737,7 @@ class ConvHandler : public HandlerBase {
       // for depthwise conv
       // SS = SS x S
       // Split batch dim and channel dim
-      Split([this](MeshDims md) { this->SplitDepthwise(md, true); });
+      SplitDepthwise(true);
     } else if ((ins_->batch_group_count() ==
                     lhs_->shape().dimensions(lhs_batch_dim_) &&
                 ins_->batch_group_count() ==
@@ -756,20 +745,20 @@ class ConvHandler : public HandlerBase {
       // for depthwise conv filter_backward
       // SS = SS x S
       // Split batch dim and channel dim
-      Split([this](MeshDims md) { this->SplitDepthwise(md, false); });
+      SplitDepthwise(false);
     }
 
     // SS = SR x RS
     // Split lhs batch dim and rhs out_channel dim.
-    Split([this](MeshDims md) { this->SplitLhsBatchRhsOutchannel(md); });
+    SplitLhsBatchRhsOutchannel();
 
     // SR = SS x SR
     // Split lhs batch dim and both in_channel dims.
-    Split([this](MeshDims md) { this->SplitLhsBatchBothInchannel(md); });
+    SplitLhsBatchBothInchannel();
 
     // RS = RS x SS
     // Split rhs out_channel dim and both in_channel dims.
-    Split([this](MeshDims md) { this->SplitRhsOutchannelBothInchannel(md); });
+    SplitRhsOutchannelBothInchannel();
 
     // Add 1d data parallel in multi-dimensional mesh
     if (solver_option_.allow_mixed_mesh_shape) {
