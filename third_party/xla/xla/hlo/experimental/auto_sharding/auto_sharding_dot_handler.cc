@@ -43,6 +43,12 @@ namespace spmd {
 using DimMap = StableHashMap</*tensor dim*/ int, /* mesh dim*/ int>;
 using MeshDims = absl::Span<const int64_t>;
 
+struct Enumeration {
+  MeshDims mesh_dims;
+  int64_t i;
+  int64_t j;
+};
+
 // Contains base functionality common to both DotHandler and ConvHandler.
 class HandlerBase {
  protected:
@@ -131,6 +137,25 @@ class HandlerBase {
                       communication_cost);
   }
 
+  // Enumerates combinations of the given tensor dimensions.
+  void Enumerate(std::function<void(const Enumeration&)> split_func,
+                 const MeshDims& mesh_dims, size_t num_outer_dims = 2,
+                 size_t num_inner_dims = 2, bool half = false) {
+    DCHECK_EQ(mesh_dims.size(), 2);
+    for (int64_t i = 0; i < num_outer_dims; ++i) {
+      for (int64_t j = half ? i + 1 : 0; j < num_inner_dims; ++j) {
+        split_func({mesh_dims, i, j});
+      }
+    }
+  }
+
+  // Enumerates *half* of the combinations (if inner & outer dims are the same).
+  void EnumerateHalf(std::function<void(const Enumeration&)> split_func,
+                     const MeshDims& mesh_dims, size_t num_outer_dims = 2,
+                     size_t num_inner_dims = 2) {
+    Enumerate(split_func, mesh_dims, num_outer_dims, num_inner_dims, true);
+  }
+
   std::unique_ptr<StrategyVector>& strategies_;
   StrategyMap& strategy_map_;
   const HloInstruction* ins_;
@@ -168,253 +193,242 @@ class DotHandler : public HandlerBase {
   }
 
   void SplitLhsSpaceRhsSpace(MeshDims mesh_dims) {
-    DCHECK_EQ(mesh_dims.size(), 2);
-    for (int64_t i = 0; i < lhs_space_dims_.size(); ++i) {
-      for (int64_t j = 0; j < rhs_space_dims_.size(); ++j) {
-        const DimMap lhs_dim_map = {{lhs_space_dims_[i], mesh_dims[0]}};
-        const DimMap rhs_dim_map = {{rhs_space_dims_[j], mesh_dims[1]}};
-        std::string name = absl::StrFormat("SS = SR x RS @ {%s}",
-                                           absl::StrJoin(mesh_dims, ","));
-        HloSharding output_spec =
-            Tile(ins_->shape(),
-                 {space_base_dim_ + i,
-                  space_base_dim_ +
-                      static_cast<int64_t>(lhs_space_dims_.size()) + j},
-                 mesh_dims, device_mesh_);
-        MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_);
-      }
-    }
+    auto func = [this](const Enumeration& e) {
+      const DimMap lhs_dim_map = {{lhs_space_dims_[e.i], e.mesh_dims[0]}};
+      const DimMap rhs_dim_map = {{rhs_space_dims_[e.j], e.mesh_dims[1]}};
+      std::string name = absl::StrFormat("SS = SR x RS @ {%s}",
+                                         absl::StrJoin(e.mesh_dims, ","));
+      HloSharding output_spec =
+          Tile(ins_->shape(),
+               {space_base_dim_ + e.i,
+                space_base_dim_ + static_cast<int64_t>(lhs_space_dims_.size()) +
+                    e.j},
+               e.mesh_dims, device_mesh_);
+      MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_);
+    };
+    Enumerate(func, mesh_dims, lhs_space_dims_.size(), rhs_space_dims_.size());
   }
 
   void SplitLhsSpaceOnly(MeshDims mesh_dims) {
-    DCHECK_EQ(mesh_dims.size(), 2);
-    for (int64_t i = 0; i < lhs_space_dims_.size(); ++i) {
-      for (int64_t j = i + 1; j < lhs_space_dims_.size(); ++j) {
-        const DimMap lhs_dim_map = {{lhs_space_dims_[i], mesh_dims[0]},
-                                    {lhs_space_dims_[j], mesh_dims[1]}};
-        std::string name = absl::StrFormat("SSR = SSR x RR @ {%s}",
-                                           absl::StrJoin(mesh_dims, ","));
-        HloSharding output_spec =
-            Tile(ins_->shape(), {space_base_dim_ + i, space_base_dim_ + j},
-                 mesh_dims, device_mesh_);
-        MaybeAppend(name, output_spec, lhs_dim_map, {}, device_mesh_);
-      }
-    }
+    auto func = [this](const Enumeration& e) {
+      const DimMap lhs_dim_map = {{lhs_space_dims_[e.i], e.mesh_dims[0]},
+                                  {lhs_space_dims_[e.j], e.mesh_dims[1]}};
+      std::string name = absl::StrFormat("SSR = SSR x RR @ {%s}",
+                                         absl::StrJoin(e.mesh_dims, ","));
+      HloSharding output_spec =
+          Tile(ins_->shape(), {space_base_dim_ + e.i, space_base_dim_ + e.j},
+               e.mesh_dims, device_mesh_);
+      MaybeAppend(name, output_spec, lhs_dim_map, {}, device_mesh_);
+    };
+    EnumerateHalf(func, mesh_dims, lhs_space_dims_.size(),
+                  lhs_space_dims_.size());
   }
 
   void SplitRhsSpaceOnly(MeshDims mesh_dims) {
-    DCHECK_EQ(mesh_dims.size(), 2);
-    for (int64_t i = 0; i < rhs_space_dims_.size(); ++i) {
-      for (int64_t j = i + 1; j < rhs_space_dims_.size(); ++j) {
-        const DimMap rhs_dim_map = {{rhs_space_dims_[i], mesh_dims[0]},
-                                    {rhs_space_dims_[j], mesh_dims[1]}};
-        std::string name = absl::StrFormat("RSS = RR x RSS @ {%s}",
-                                           absl::StrJoin(mesh_dims, ","));
-        HloSharding output_spec = Tile(
-            ins_->shape(),
-            {space_base_dim_ + static_cast<int64_t>(lhs_space_dims_.size()) + i,
-             space_base_dim_ + static_cast<int64_t>(lhs_space_dims_.size()) +
-                 j},
-            mesh_dims, device_mesh_);
-        MaybeAppend(name, output_spec, {}, rhs_dim_map, device_mesh_);
-      }
-    }
+    auto func = [this](const Enumeration& e) {
+      const DimMap rhs_dim_map = {{rhs_space_dims_[e.i], e.mesh_dims[0]},
+                                  {rhs_space_dims_[e.j], e.mesh_dims[1]}};
+      std::string name = absl::StrFormat("RSS = RR x RSS @ {%s}",
+                                         absl::StrJoin(e.mesh_dims, ","));
+      HloSharding output_spec = Tile(
+          ins_->shape(),
+          {space_base_dim_ + static_cast<int64_t>(lhs_space_dims_.size()) + e.i,
+           space_base_dim_ + static_cast<int64_t>(lhs_space_dims_.size()) +
+               e.j},
+          e.mesh_dims, device_mesh_);
+      MaybeAppend(name, output_spec, {}, rhs_dim_map, device_mesh_);
+    };
+    EnumerateHalf(func, mesh_dims, rhs_space_dims_.size(),
+                  rhs_space_dims_.size());
   }
 
   void SplitLhsSpaceBothContract(MeshDims mesh_dims) {
-    DCHECK_EQ(mesh_dims.size(), 2);
-    if (device_mesh_.dim(mesh_dims[0]) > 1 &&
-        device_mesh_.dim(mesh_dims[1]) > 1) {
+    auto func = [this](const Enumeration& e) {
+      if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
+          device_mesh_.dim(e.mesh_dims[1]) <= 1)
+        return;
       std::string name =
           absl::StrFormat("SR = SS x SR @ {%s} (allreduce @ %d)",
-                          absl::StrJoin(mesh_dims, ","), mesh_dims[1]);
-      for (int64_t i = 0; i < lhs_space_dims_.size(); ++i) {
-        for (int64_t j = 0; j < lhs_con_dims_.size(); ++j) {
-          const DimMap lhs_dim_map = {{lhs_space_dims_[i], mesh_dims[0]},
-                                      {lhs_con_dims_[j], mesh_dims[1]}};
-          const DimMap rhs_dim_map = {{rhs_con_dims_[j], mesh_dims[1]}};
-          HloSharding output_spec = Tile(ins_->shape(), {space_base_dim_ + i},
-                                         {mesh_dims[0]}, device_mesh_);
-          double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
-          double communication_cost =
-              cluster_env_.AllReduceCost(memory_cost, mesh_dims[1]);
-          MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_,
-                      0, communication_cost);
-        }
-      }
-    }
+                          absl::StrJoin(e.mesh_dims, ","), e.mesh_dims[1]);
+      const DimMap lhs_dim_map = {{lhs_space_dims_[e.i], e.mesh_dims[0]},
+                                  {lhs_con_dims_[e.j], e.mesh_dims[1]}};
+      const DimMap rhs_dim_map = {{rhs_con_dims_[e.j], e.mesh_dims[1]}};
+      HloSharding output_spec = Tile(ins_->shape(), {space_base_dim_ + e.i},
+                                     {e.mesh_dims[0]}, device_mesh_);
+      double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
+      double communication_cost =
+          cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[1]);
+      MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
+                  communication_cost);
+    };
+    Enumerate(func, mesh_dims, lhs_space_dims_.size(), lhs_con_dims_.size());
   }
 
   void SplitRhsSpaceBothContract(MeshDims mesh_dims) {
-    DCHECK_EQ(mesh_dims.size(), 2);
-    if (device_mesh_.dim(mesh_dims[0]) > 1) {
+    auto func = [this](const Enumeration& e) {
+      if (device_mesh_.dim(e.mesh_dims[0]) <= 1) return;
       std::string name =
           absl::StrFormat("RS = RS x SS @ {%s} (allreduce @ %d)",
-                          absl::StrJoin(mesh_dims, ","), mesh_dims[0]);
-      for (int64_t i = 0; i < rhs_space_dims_.size(); ++i) {
-        for (int64_t j = 0; j < lhs_con_dims_.size(); ++j) {
-          const DimMap rhs_dim_map = {{rhs_space_dims_[i], mesh_dims[1]},
-                                      {rhs_con_dims_[j], mesh_dims[0]}};
-          const DimMap lhs_dim_map = {{lhs_con_dims_[j], mesh_dims[0]}};
-          HloSharding output_spec =
-              Tile(ins_->shape(),
-                   {space_base_dim_ +
-                    static_cast<int64_t>(lhs_space_dims_.size()) + i},
-                   {mesh_dims[1]}, device_mesh_);
-          double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
-          double communication_cost =
-              cluster_env_.AllReduceCost(memory_cost, mesh_dims[0]);
-          MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_,
-                      0, communication_cost);
-        }
-      }
-    }
+                          absl::StrJoin(e.mesh_dims, ","), e.mesh_dims[0]);
+      const DimMap rhs_dim_map = {{rhs_space_dims_[e.i], e.mesh_dims[1]},
+                                  {rhs_con_dims_[e.j], e.mesh_dims[0]}};
+      const DimMap lhs_dim_map = {{lhs_con_dims_[e.j], e.mesh_dims[0]}};
+      HloSharding output_spec =
+          Tile(ins_->shape(),
+               {space_base_dim_ + static_cast<int64_t>(lhs_space_dims_.size()) +
+                e.i},
+               {e.mesh_dims[1]}, device_mesh_);
+      double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
+      double communication_cost =
+          cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[0]);
+      MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
+                  communication_cost);
+    };
+    Enumerate(func, mesh_dims, rhs_space_dims_.size(), lhs_con_dims_.size());
   }
 
   void SplitOneBatchDim() {
     if (absl::c_count_if(device_mesh_.dimensions(),
-                         [](int64_t size) { return size > 1; }) == 1) {
-      for (int64_t i = 0; i < lhs_batch_dims_.size(); ++i) {
-        for (int64_t j = 0; j < device_mesh_.num_dimensions(); ++j) {
-          const DimMap lhs_dim_map = {{lhs_batch_dims_[i], j}};
-          const DimMap rhs_dim_map = {{rhs_batch_dims_[i], j}};
-          std::string name = absl::StrFormat("Sb_%d = Sb x Sb @ {%d}", i, j);
-          HloSharding output_spec = Tile(ins_->shape(), {i}, {j}, device_mesh_);
-          MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map,
-                      device_mesh_);
-        }
-      }
+                         [](int64_t size) { return size > 1; }) != 1) {
+      return;
     }
+    auto func = [this](const Enumeration& e) {
+      const DimMap lhs_dim_map = {{lhs_batch_dims_[e.i], e.j}};
+      const DimMap rhs_dim_map = {{rhs_batch_dims_[e.i], e.j}};
+      std::string name = absl::StrFormat("Sb_%d = Sb x Sb @ {%d}", e.i, e.j);
+      HloSharding output_spec = Tile(ins_->shape(), {e.i}, {e.j}, device_mesh_);
+      MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_);
+    };
+    Enumerate(func, {-1, -1}, lhs_batch_dims_.size(),
+              device_mesh_.num_dimensions());
   }
 
   void SplitTwoBatchDims(MeshDims mesh_dims) {
-    DCHECK_EQ(mesh_dims.size(), 2);
-    if (lhs_batch_dims_.size() == 2 && device_mesh_.dim(mesh_dims[0]) > 1 &&
-        device_mesh_.dim(mesh_dims[1]) > 1) {
-      const DimMap lhs_dim_map = {{lhs_batch_dims_[0], mesh_dims[0]},
-                                  {lhs_batch_dims_[1], mesh_dims[1]}};
-      const DimMap rhs_dim_map = {{rhs_batch_dims_[0], mesh_dims[0]},
-                                  {rhs_batch_dims_[1], mesh_dims[1]}};
-      std::string name =
-          absl::StrFormat("Sb = Sb x Sb @ {%s}", absl::StrJoin(mesh_dims, ","));
+    if (lhs_batch_dims_.size() != 2) return;
+    auto func = [this](const Enumeration& e) {
+      if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
+          device_mesh_.dim(e.mesh_dims[1]) <= 1)
+        return;
+      const DimMap lhs_dim_map = {{lhs_batch_dims_[0], e.mesh_dims[0]},
+                                  {lhs_batch_dims_[1], e.mesh_dims[1]}};
+      const DimMap rhs_dim_map = {{rhs_batch_dims_[0], e.mesh_dims[0]},
+                                  {rhs_batch_dims_[1], e.mesh_dims[1]}};
+      std::string name = absl::StrFormat("Sb = Sb x Sb @ {%s}",
+                                         absl::StrJoin(e.mesh_dims, ","));
       HloSharding output_spec =
-          Tile(ins_->shape(), {0, 1}, mesh_dims, device_mesh_);
+          Tile(ins_->shape(), {0, 1}, e.mesh_dims, device_mesh_);
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_);
-    }
+    };
+    EnumerateHalf(func, mesh_dims, lhs_batch_dims_.size(),
+                  lhs_batch_dims_.size());
   }
 
   void SplitBatchDimLhsSpace(MeshDims mesh_dims) {
-    DCHECK_EQ(mesh_dims.size(), 2);
-    if (!lhs_batch_dims_.empty() && device_mesh_.dim(mesh_dims[0]) > 1 &&
-        device_mesh_.dim(mesh_dims[1]) > 1) {
+    if (lhs_batch_dims_.empty()) return;
+    auto func = [this](const Enumeration& e) {
+      if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
+          device_mesh_.dim(e.mesh_dims[1]) <= 1)
+        return;
       std::string name = absl::StrFormat("SbSi = SbSi x SbR @ {%s}",
-                                         absl::StrJoin(mesh_dims, ","));
-      for (int64_t i = 0; i < lhs_space_dims_.size(); ++i) {
-        for (int64_t j = 0; j < lhs_batch_dims_.size(); ++j) {
-          const DimMap lhs_dim_map = {{lhs_space_dims_[i], mesh_dims[1]},
-                                      {lhs_batch_dims_[j], mesh_dims[0]}};
-          const DimMap rhs_dim_map = {{rhs_batch_dims_[j], mesh_dims[0]}};
-          HloSharding output_spec = Tile(
-              ins_->shape(), {j, space_base_dim_ + i}, mesh_dims, device_mesh_);
-          MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map,
-                      device_mesh_);
-        }
-      }
-    }
+                                         absl::StrJoin(e.mesh_dims, ","));
+      const DimMap lhs_dim_map = {{lhs_space_dims_[e.i], e.mesh_dims[1]},
+                                  {lhs_batch_dims_[e.j], e.mesh_dims[0]}};
+      const DimMap rhs_dim_map = {{rhs_batch_dims_[e.j], e.mesh_dims[0]}};
+      HloSharding output_spec =
+          Tile(ins_->shape(), {e.j, space_base_dim_ + e.i}, e.mesh_dims,
+               device_mesh_);
+      MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_);
+    };
+    Enumerate(func, mesh_dims, lhs_space_dims_.size(), lhs_batch_dims_.size());
   }
 
   void SplitBatchDimRhsSpace(MeshDims mesh_dims) {
-    DCHECK_EQ(mesh_dims.size(), 2);
-    if (!lhs_batch_dims_.empty() && device_mesh_.dim(mesh_dims[0]) > 1 &&
-        device_mesh_.dim(mesh_dims[1]) > 1) {
+    if (lhs_batch_dims_.empty()) return;
+    auto func = [this](const Enumeration& e) {
+      if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
+          device_mesh_.dim(e.mesh_dims[1]) <= 1)
+        return;
       std::string name = absl::StrFormat("SbSj = SbR x SbSj @ {%s}",
-                                         absl::StrJoin(mesh_dims, ","));
-      for (int64_t i = 0; i < rhs_space_dims_.size(); ++i) {
-        for (int64_t j = 0; j < lhs_batch_dims_.size(); ++j) {
-          const DimMap rhs_dim_map = {{rhs_space_dims_[i], mesh_dims[1]},
-                                      {rhs_batch_dims_[j], mesh_dims[0]}};
-          const DimMap lhs_dim_map = {{lhs_batch_dims_[j], mesh_dims[0]}};
-          HloSharding output_spec =
-              Tile(ins_->shape(),
-                   {j, space_base_dim_ +
-                           static_cast<int64_t>(lhs_space_dims_.size()) + i},
-                   mesh_dims, device_mesh_);
-          MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map,
-                      device_mesh_);
-        }
-      }
-    }
+                                         absl::StrJoin(e.mesh_dims, ","));
+      const DimMap rhs_dim_map = {{rhs_space_dims_[e.i], e.mesh_dims[1]},
+                                  {rhs_batch_dims_[e.j], e.mesh_dims[0]}};
+      const DimMap lhs_dim_map = {{lhs_batch_dims_[e.j], e.mesh_dims[0]}};
+      HloSharding output_spec =
+          Tile(ins_->shape(),
+               {e.j, space_base_dim_ +
+                         static_cast<int64_t>(lhs_space_dims_.size()) + e.i},
+               e.mesh_dims, device_mesh_);
+      MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_);
+    };
+    Enumerate(func, mesh_dims, rhs_space_dims_.size(), lhs_batch_dims_.size());
   }
 
   void SplitBatchDimBothContract(MeshDims mesh_dims) {
-    DCHECK_EQ(mesh_dims.size(), 2);
-    if (!lhs_batch_dims_.empty() && device_mesh_.dim(mesh_dims[0]) > 1 &&
-        device_mesh_.dim(mesh_dims[1]) > 1) {
+    if (lhs_batch_dims_.empty()) return;
+    auto func = [this](const Enumeration& e) {
+      if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
+          device_mesh_.dim(e.mesh_dims[1]) <= 1)
+        return;
       std::string name =
           absl::StrFormat("SbR = SbSk x SbSk @ {%s} (allreduce @ %d}",
-                          absl::StrJoin(mesh_dims, ","), mesh_dims[1]);
-      for (int64_t i = 0; i < lhs_con_dims_.size(); ++i) {
-        for (int64_t j = 0; j < lhs_batch_dims_.size(); ++j) {
-          const DimMap lhs_dim_map = {{lhs_con_dims_[i], mesh_dims[1]},
-                                      {lhs_batch_dims_[j], mesh_dims[0]}};
-          const DimMap rhs_dim_map = {{rhs_batch_dims_[j], mesh_dims[0]}};
-          HloSharding output_spec =
-              Tile(ins_->shape(), {j}, {mesh_dims[0]}, device_mesh_);
-          double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
-          double communication_cost =
-              cluster_env_.AllReduceCost(memory_cost, mesh_dims[1]);
-          MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_,
-                      0, communication_cost);
-        }
-      }
-    }
+                          absl::StrJoin(e.mesh_dims, ","), e.mesh_dims[1]);
+      const DimMap lhs_dim_map = {{lhs_con_dims_[e.i], e.mesh_dims[1]},
+                                  {lhs_batch_dims_[e.j], e.mesh_dims[0]}};
+      const DimMap rhs_dim_map = {{rhs_batch_dims_[e.j], e.mesh_dims[0]}};
+      HloSharding output_spec =
+          Tile(ins_->shape(), {e.j}, {e.mesh_dims[0]}, device_mesh_);
+      double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
+      double communication_cost =
+          cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[1]);
+      MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
+                  communication_cost);
+    };
+    Enumerate(func, mesh_dims, lhs_con_dims_.size(), lhs_batch_dims_.size());
   }
 
   void SplitBothContractTwoDims(MeshDims mesh_dims) {
-    DCHECK_EQ(mesh_dims.size(), 2);
-    // Applies when there are more than one contracting dimension.
-    if (lhs_con_dims_.size() >= 2 && rhs_con_dims_.size() >= 2 &&
-        device_mesh_.dim(mesh_dims[0]) > 1 &&
-        device_mesh_.dim(mesh_dims[1]) > 1) {
+    if (lhs_con_dims_.size() < 2 || rhs_con_dims_.size() < 2) return;
+    auto func = [this](const Enumeration& e) {
+      // Applies when there are more than one contracting dimension.
+      if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
+          device_mesh_.dim(e.mesh_dims[1]) <= 1)
+        return;
       std::string name = absl::StrFormat(
           "RR = SS x SS @ {%s} (allreduce @ {%s}}",
-          absl::StrJoin(mesh_dims, ","), absl::StrJoin(mesh_dims, ", "));
-      for (int64_t i = 0; i < lhs_con_dims_.size(); ++i) {
-        for (int64_t j = i + 1; j < lhs_con_dims_.size(); ++j) {
-          const DimMap lhs_dim_map = {{lhs_con_dims_[i], mesh_dims[0]},
-                                      {lhs_con_dims_[j], mesh_dims[1]}};
-          const DimMap rhs_dim_map = {{rhs_con_dims_[i], mesh_dims[0]},
-                                      {rhs_con_dims_[j], mesh_dims[1]}};
-          HloSharding output_spec = HloSharding::Replicate();
-          double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
-          double communication_cost = cluster_env_.AllReduceCost(
-              memory_cost, mesh_dims[0], mesh_dims[1]);
-          MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_,
-                      0, communication_cost);
-        }
-      }
-    }
+          absl::StrJoin(e.mesh_dims, ","), absl::StrJoin(e.mesh_dims, ", "));
+      const DimMap lhs_dim_map = {{lhs_con_dims_[e.i], e.mesh_dims[0]},
+                                  {lhs_con_dims_[e.j], e.mesh_dims[1]}};
+      const DimMap rhs_dim_map = {{rhs_con_dims_[e.i], e.mesh_dims[0]},
+                                  {rhs_con_dims_[e.j], e.mesh_dims[1]}};
+      HloSharding output_spec = HloSharding::Replicate();
+      double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
+      double communication_cost = cluster_env_.AllReduceCost(
+          memory_cost, e.mesh_dims[0], e.mesh_dims[1]);
+      MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
+                  communication_cost);
+    };
+    EnumerateHalf(func, mesh_dims, lhs_con_dims_.size(), lhs_con_dims_.size());
   }
 
   void RecomputeSplitBothContract(MeshDims mesh_dims) {
-    DCHECK_EQ(mesh_dims.size(), 2);
-    if (device_mesh_.dim(mesh_dims[0]) > 1 &&
-        device_mesh_.dim(mesh_dims[1]) > 1) {
+    auto func = [this](const Enumeration& e) {
+      if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
+          device_mesh_.dim(e.mesh_dims[1]) <= 1)
+        return;
       std::string name = absl::StrFormat("RR = RS x SR @ {%d} (allreduce @ %d)",
-                                         mesh_dims[0], mesh_dims[0]);
-      for (int64_t i = 0; i < lhs_con_dims_.size(); ++i) {
-        const DimMap lhs_dim_map = {{lhs_con_dims_[i], mesh_dims[0]}};
-        const DimMap rhs_dim_map = {{rhs_con_dims_[i], mesh_dims[0]}};
-        HloSharding output_spec = HloSharding::Replicate();
-        double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
-        double compute_cost =
-            cluster_env_.DotCost(lhs_->shape(), rhs_->shape(), dot_dnums_);
-        double communication_cost =
-            cluster_env_.AllReduceCost(memory_cost, mesh_dims[0]);
-        MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_,
-                    compute_cost, communication_cost);
-      }
-    }
+                                         e.mesh_dims[0], e.mesh_dims[0]);
+      const DimMap lhs_dim_map = {{lhs_con_dims_[e.i], e.mesh_dims[0]}};
+      const DimMap rhs_dim_map = {{rhs_con_dims_[e.i], e.mesh_dims[0]}};
+      HloSharding output_spec = HloSharding::Replicate();
+      double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
+      double compute_cost =
+          cluster_env_.DotCost(lhs_->shape(), rhs_->shape(), dot_dnums_);
+      double communication_cost =
+          cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[0]);
+      MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_,
+                  compute_cost, communication_cost);
+    };
+    Enumerate(func, mesh_dims, lhs_con_dims_.size(), 1);
   }
 
   void Add1DDataParallel() {
@@ -620,54 +634,59 @@ class ConvHandler : public HandlerBase {
   }
 
   void SplitLhsBatchRhsOutchannel(MeshDims mesh_dims) {
-    DCHECK_EQ(mesh_dims.size(), 2);
-    const DimMap lhs_dim_map = {{lhs_batch_dim_, mesh_dims[0]}};
-    const DimMap rhs_dim_map = {{rhs_out_channel_dim_, mesh_dims[1]}};
-    std::string name =
-        absl::StrFormat("SS = SR x RS @ {%s}", absl::StrJoin(mesh_dims, ","));
-    HloSharding output_spec =
-        Tile(ins_->shape(), {out_batch_dim_, out_out_channel_dim_}, mesh_dims,
-             device_mesh_);
-    MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_);
+    auto func = [this](const Enumeration& e) {
+      const DimMap lhs_dim_map = {{lhs_batch_dim_, e.mesh_dims[0]}};
+      const DimMap rhs_dim_map = {{rhs_out_channel_dim_, e.mesh_dims[1]}};
+      std::string name = absl::StrFormat("SS = SR x RS @ {%s}",
+                                         absl::StrJoin(e.mesh_dims, ","));
+      HloSharding output_spec =
+          Tile(ins_->shape(), {out_batch_dim_, out_out_channel_dim_},
+               e.mesh_dims, device_mesh_);
+      MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_);
+    };
+    EnumerateHalf(func, mesh_dims);
   }
 
   void SplitLhsBatchBothInchannel(MeshDims mesh_dims) {
-    DCHECK_EQ(mesh_dims.size(), 2);
-    if (device_mesh_.dim(mesh_dims[0]) > 1 &&
-        device_mesh_.dim(mesh_dims[1]) > 1) {
-      const DimMap lhs_dim_map = {{lhs_batch_dim_, mesh_dims[0]},
-                                  {lhs_in_channel_dim_, mesh_dims[1]}};
-      const DimMap rhs_dim_map = {{rhs_in_channel_dim_, mesh_dims[1]}};
+    auto func = [this](const Enumeration& e) {
+      if (device_mesh_.dim(e.mesh_dims[0]) <= 1 ||
+          device_mesh_.dim(e.mesh_dims[1]) <= 1)
+        return;
+      const DimMap lhs_dim_map = {{lhs_batch_dim_, e.mesh_dims[0]},
+                                  {lhs_in_channel_dim_, e.mesh_dims[1]}};
+      const DimMap rhs_dim_map = {{rhs_in_channel_dim_, e.mesh_dims[1]}};
       std::string name =
           absl::StrFormat("SR = SS x SR @ {%s} (allreduce @ %d)",
-                          absl::StrJoin(mesh_dims, ","), mesh_dims[1]);
+                          absl::StrJoin(e.mesh_dims, ","), e.mesh_dims[1]);
       HloSharding output_spec =
-          Tile(ins_->shape(), {out_batch_dim_}, {mesh_dims[0]}, device_mesh_);
+          Tile(ins_->shape(), {out_batch_dim_}, {e.mesh_dims[0]}, device_mesh_);
       double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
       double communication_cost =
-          cluster_env_.AllReduceCost(memory_cost, mesh_dims[1]);
+          cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[1]);
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
                   communication_cost);
-    }
+    };
+    EnumerateHalf(func, mesh_dims);
   }
 
   void SplitRhsOutchannelBothInchannel(MeshDims mesh_dims) {
-    DCHECK_EQ(mesh_dims.size(), 2);
-    if (device_mesh_.dim(mesh_dims[0]) > 1) {
-      const DimMap lhs_dim_map = {{lhs_in_channel_dim_, mesh_dims[0]}};
-      const DimMap rhs_dim_map = {{rhs_in_channel_dim_, mesh_dims[0]},
-                                  {rhs_out_channel_dim_, mesh_dims[1]}};
+    auto func = [this](const Enumeration& e) {
+      if (device_mesh_.dim(e.mesh_dims[0]) <= 1) return;
+      const DimMap lhs_dim_map = {{lhs_in_channel_dim_, e.mesh_dims[0]}};
+      const DimMap rhs_dim_map = {{rhs_in_channel_dim_, e.mesh_dims[0]},
+                                  {rhs_out_channel_dim_, e.mesh_dims[1]}};
       std::string name =
           absl::StrFormat("RS = RS x SS @ {%s} (allreduce @ %d)",
-                          absl::StrJoin(mesh_dims, ","), mesh_dims[0]);
+                          absl::StrJoin(e.mesh_dims, ","), e.mesh_dims[0]);
       HloSharding output_spec = Tile(ins_->shape(), {out_out_channel_dim_},
-                                     {mesh_dims[1]}, device_mesh_);
+                                     {e.mesh_dims[1]}, device_mesh_);
       double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
       double communication_cost =
-          cluster_env_.AllReduceCost(memory_cost, mesh_dims[0]);
+          cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[0]);
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
                   communication_cost);
-    }
+    };
+    EnumerateHalf(func, mesh_dims);
   }
 
   void Add1DDataParallel() {
@@ -705,17 +724,19 @@ class ConvHandler : public HandlerBase {
   }
 
   void SplitDepthwise(MeshDims mesh_dims, bool forward) {
-    DCHECK_EQ(mesh_dims.size(), 2);
-    const DimMap lhs_dim_map = {
-        {lhs_batch_dim_, mesh_dims[forward ? 0 : 1]},
-        {lhs_in_channel_dim_, mesh_dims[forward ? 1 : 0]}};
-    const DimMap rhs_dim_map = {{rhs_out_channel_dim_, mesh_dims[1]}};
-    std::string name =
-        absl::StrFormat("SS = SS x RS @ {%s}", absl::StrJoin(mesh_dims, ","));
-    HloSharding output_spec =
-        Tile(ins_->shape(), {out_batch_dim_, out_out_channel_dim_}, mesh_dims,
-             device_mesh_);
-    MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_);
+    auto func = [this, forward](const Enumeration& e) {
+      const DimMap lhs_dim_map = {
+          {lhs_batch_dim_, e.mesh_dims[forward ? 0 : 1]},
+          {lhs_in_channel_dim_, e.mesh_dims[forward ? 1 : 0]}};
+      const DimMap rhs_dim_map = {{rhs_out_channel_dim_, e.mesh_dims[1]}};
+      std::string name = absl::StrFormat("SS = SS x RS @ {%s}",
+                                         absl::StrJoin(e.mesh_dims, ","));
+      HloSharding output_spec =
+          Tile(ins_->shape(), {out_batch_dim_, out_out_channel_dim_},
+               e.mesh_dims, device_mesh_);
+      MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_);
+    };
+    EnumerateHalf(func, mesh_dims);
   }
 
   Status RegisterStrategies() {
