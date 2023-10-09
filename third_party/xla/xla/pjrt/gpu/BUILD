@@ -241,17 +241,17 @@ cc_library(
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",
-    ] + if_cuda([
+    ] + if_cuda_or_rocm([
+        "//xla/service/gpu:gpu_compiler",
+    ]) + if_cuda([
         ":nccl_id_store_cuda",
         "@local_config_cuda//cuda:cuda_headers",
         "//xla/stream_executor/cuda:cuda_activation_header",
         "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
-        "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:nvptx_compiler_impl",
     ]) + if_rocm([
         ":nccl_id_store_rocm",
         "@local_config_rocm//rocm:rocm_headers",
-        "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:amdgpu_compiler_impl",
     ]),
     alwayslink = True,
