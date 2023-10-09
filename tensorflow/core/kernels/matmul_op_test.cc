@@ -225,12 +225,8 @@ class FusedMatMulOpTest : public OpsTestBase {
   // FusedMatMul.
   void VerifyMatMulWithBias(int m, int k, int n, bool transpose_a,
                             bool transpose_b) {
-<<<<<<< HEAD
-    printf("=== VerifyMatMulWithBias ( %d, %d, %d, %d, %d ) ===\n", m, k, n, (int)transpose_a, (int)transpose_b);
-=======
     VLOG(2) << "=== VerifyMatMulWithBias (" << m << ", " << k << ", " << n
             << ", " << (int)transpose_a << ", " << (int)transpose_b << ") ===";
->>>>>>> upstream/master
     const BiasAddGraphRunner run_default =
         [&](const Tensor& input_data, const Tensor& filter_data,
             const Tensor& bias_data, Tensor* out) {
@@ -290,11 +286,7 @@ TYPED_TEST_SUITE_P(FusedMatMulWithBiasOpTest);
 // MatMul + BiasAdd + {Activation}                                            //
 // -------------------------------------------------------------------------- //
 
-<<<<<<< HEAD
-TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x256) {
-=======
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x128x64) {
->>>>>>> upstream/master
   this->VerifyMatMulWithBias(256, 128, 64, false, false);
   this->VerifyMatMulWithBias(256, 128, 64, true, false);
   this->VerifyMatMulWithBias(256, 128, 64, false, true);

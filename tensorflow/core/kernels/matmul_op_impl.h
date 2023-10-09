@@ -588,19 +588,10 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
     static const bool use_autotune = MatmulAutotuneEnable();
     bool bCublasLtSupport = true;
 #if TF_HIPBLASLT
-<<<<<<< HEAD
-    if(!std::is_same_v<Scalar, float>)
-      bCublasLtSupport = false;
-    auto cap = stream->GetRocmComputeCapability();
-    // as of ROCm 5.5, hipblaslt only supports MI200.
-    if(cap.gcn_arch_name().substr(0,6) != "gfx90a")
-      bCublasLtSupport = false;
-=======
     if (!std::is_same_v<Scalar, float>) bCublasLtSupport = false;
     auto cap = stream->GetRocmComputeCapability();
     // as of ROCm 5.5, hipblaslt only supports MI200.
     if (cap.gcn_arch_name().substr(0, 6) != "gfx90a") bCublasLtSupport = false;
->>>>>>> upstream/master
 #endif
     if (EnableCublasLtGemm() && bCublasLtSupport) {
       static const int64_t max_scratch_size =
@@ -631,13 +622,8 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         std::optional<int> max_algorithm_count;
         if (!use_autotune) max_algorithm_count = 1;
         absl::Mutex* pmu = nullptr;
-<<<<<<< HEAD
-        auto plan_and_algorithms_or =
-            GetPlanAndAlgorithms(stream, matmul_params, &pmu, max_algorithm_count);
-=======
         auto plan_and_algorithms_or = GetPlanAndAlgorithms(
             stream, matmul_params, &pmu, max_algorithm_count);
->>>>>>> upstream/master
         OP_REQUIRES_OK(context, plan_and_algorithms_or.status());
         absl::MutexLock lock(pmu);
         const auto* plan_and_algorithms =

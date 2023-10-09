@@ -310,14 +310,11 @@ tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
 
 tsl::Status GpuExecutor::Submit(Stream* stream,
                                 const CommandBuffer& command_buffer) {
-<<<<<<< HEAD
-=======
   if (command_buffer.mode() != CommandBuffer::Mode::kPrimary) {
     return absl::InvalidArgumentError(
         "Can't submit non-primary command buffer for execution");
   }
 
->>>>>>> upstream/master
   auto exec = GpuCommandBuffer::Cast(&command_buffer)->executable();
   VLOG(3) << "Launch command buffer execuable graph " << exec
           << " on a stream: " << stream->DebugStreamPointers();

@@ -190,10 +190,7 @@ absl::Status NcclMockImplCommon(se::Stream* stream) {
   void* kernel = GetSleepKernel();
   dim3 gridDim = {1, 1, 1};
   dim3 blockDim = {512, 1, 1};
-<<<<<<< HEAD
-=======
 #endif
->>>>>>> upstream/master
 #if GOOGLE_CUDA
   void* kernel_args[] = {&sleep_duration_ns};
   cudaError_t launch_status =
@@ -203,18 +200,11 @@ absl::Status NcclMockImplCommon(se::Stream* stream) {
                                             cudaGetErrorString(launch_status)));
   }
 #elif TENSORFLOW_USE_ROCM
-<<<<<<< HEAD
-#define CHK(x) \
-  if (auto res = (x); res != hipSuccess) { \
-    return absl::InternalError(absl::StrFormat("HIP call failed with '%s' at line %d", \
-            hipGetErrorString(res), __LINE__)); \
-=======
 #define CHK(x)                                                  \
   if (auto res = (x); res != hipSuccess) {                      \
     return absl::InternalError(                                 \
         absl::StrFormat("HIP call failed with '%s' at line %d", \
                         hipGetErrorString(res), __LINE__));     \
->>>>>>> upstream/master
   }
   int devID = 0;
   hipDeviceProp_t prop{};
@@ -223,11 +213,7 @@ absl::Status NcclMockImplCommon(se::Stream* stream) {
   void* kernel_args[] = {&sleep_duration_ns, &prop.clockRate};
   CHK(hipLaunchKernel(kernel, gridDim, blockDim, kernel_args, 0, gpu_stream));
 #undef CHK
-<<<<<<< HEAD
-#endif // TENSORFLOW_USE_ROCM
-=======
 #endif  // TENSORFLOW_USE_ROCM
->>>>>>> upstream/master
   return absl::OkStatus();
 }
 #endif  // XLA_ENABLE_XCCL

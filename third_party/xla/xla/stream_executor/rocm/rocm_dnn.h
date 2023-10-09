@@ -611,12 +611,8 @@ class MIOpenSupport : public dnn::DnnSupport {
                          DeviceMemory<T>* input_c_backprop_data,
                          DeviceMemory<T>* params_backprop_data,
                          DeviceMemory<uint8>* reserve_space_data,
-<<<<<<< HEAD
                          ScratchAllocator* workspace_allocator,
                          dnn::ProfileResult* output_profile_result);
-=======
-                         ScratchAllocator* workspace_allocator);
->>>>>>> upstream/master
 
   tsl::Status DoPrepareForConvolution(
       dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,

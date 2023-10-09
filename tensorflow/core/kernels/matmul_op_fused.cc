@@ -493,35 +493,13 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
 #if TF_HIPBLASLT
     auto cap = stream->GetRocmComputeCapability();
     // as of ROCm 5.5, hipblaslt only supports MI200.
-<<<<<<< HEAD
-    if(cap.gcn_arch_name().substr(0,6) != "gfx90a")
-      use_cudnn = true;
-=======
     if (cap.gcn_arch_name().substr(0, 6) != "gfx90a") use_cudnn = true;
->>>>>>> upstream/master
 #endif
 
     BlasScratchAllocator scratch_allocator(context);
 
     // The Gelu exact fusion is supported by the cuDNN.
     if (use_cudnn) {
-<<<<<<< HEAD
-      //printf("trans_a %d trans_b %d\n", (int)trans_a, (int)trans_b);
-      MatmulParameters cudnn_matmul_params(
-          stream->parent(),
-          /*ab_type=*/a.dtype(),
-          /*c_type=*/output->dtype(),
-          trans_a,
-          trans_b,
-          static_cast<uint64_t>(m),
-          static_cast<uint64_t>(n),
-          static_cast<uint64_t>(k),
-          a.dim_size(1),
-          b.dim_size(1),
-          output->dim_size(1),
-          matmul_activation_mode
-      );
-=======
       // printf("trans_a %d trans_b %d\n", (int)trans_a, (int)trans_b);
       MatmulParameters cudnn_matmul_params(
           stream->parent(),
@@ -530,7 +508,6 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
           static_cast<uint64_t>(m), static_cast<uint64_t>(n),
           static_cast<uint64_t>(k), a.dim_size(1), b.dim_size(1),
           output->dim_size(1), matmul_activation_mode);
->>>>>>> upstream/master
 
       auto entry_or = AutotuneFusedMatmul<T>(
           use_autotune, FusedMatmulAutotuneMap::GetInstance(),
@@ -587,12 +564,8 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
                                          /*broadcast_b=*/false,
                                          epilog_op};
     absl::Mutex* pmu;
-<<<<<<< HEAD
-    auto plan_and_algorithms_or = GetPlanAndAlgorithms(stream, matmul_params, &pmu);
-=======
     auto plan_and_algorithms_or =
         GetPlanAndAlgorithms(stream, matmul_params, &pmu);
->>>>>>> upstream/master
     OP_REQUIRES_OK(context, plan_and_algorithms_or.status());
     absl::MutexLock lock(pmu);
     const auto* plan_and_algorithms = std::move(plan_and_algorithms_or).value();

@@ -97,10 +97,6 @@ class BlasLtMatmulPlanMap {
                                   PlanAndAlgorithms value);
 
   mutable absl::Mutex mu_;
-<<<<<<< HEAD
-=======
-
->>>>>>> upstream/master
  private:
   absl::flat_hash_map<BlasLtMatmulPlanParams, PlanAndAlgorithms>
       params_plan_map_ ABSL_GUARDED_BY(mu_);
@@ -110,12 +106,7 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
     const DataType& dtype);
 
 StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
-<<<<<<< HEAD
-    se::Stream* stream, const BlasLtMatmulPlanParams& params,
-    absl::Mutex** pmu,
-=======
     se::Stream* stream, const BlasLtMatmulPlanParams& params, absl::Mutex** pmu,
->>>>>>> upstream/master
     std::optional<int> max_algorithm_count = std::nullopt);
 
 template <typename T>

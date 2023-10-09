@@ -2545,12 +2545,8 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
           test_input=True,
           data_format=data_format,
           use_gpu=use_gpu,
-<<<<<<< HEAD
-          max_err=0.005)
-=======
           max_err=0.005,
       )
->>>>>>> upstream/master
 
   @test_util.deprecated_graph_mode_only
   def testFilterGradientValidPaddingStrideThree(self):
@@ -2605,12 +2601,8 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
           test_input=False,
           data_format=data_format,
           use_gpu=use_gpu,
-<<<<<<< HEAD
-          max_err=0.005)
-=======
           max_err=0.005,
       )
->>>>>>> upstream/master
 
   @test_util.deprecated_graph_mode_only
   def testInputGradientSamePaddingStrideTwo(self):
@@ -2665,12 +2657,8 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
           test_input=True,
           data_format=data_format,
           use_gpu=use_gpu,
-<<<<<<< HEAD
-          max_err=0.005)
-=======
           max_err=0.005,
       )
->>>>>>> upstream/master
 
   @test_util.deprecated_graph_mode_only
   def testFilterGradientSamePaddingStrideThree(self):
@@ -2926,12 +2914,8 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
           test_input=False,
           data_format=data_format,
           use_gpu=use_gpu,
-<<<<<<< HEAD
-          max_err=0.005)
-=======
           max_err=0.005,
       )
->>>>>>> upstream/master
 
   @test_util.deprecated_graph_mode_only
   def testInputGradient0_0_0_5PaddingStride1x2(self):
@@ -2950,12 +2934,8 @@ class Conv2DTest(parameterized.TestCase, test.TestCase):
           test_input=True,
           data_format=data_format,
           use_gpu=use_gpu,
-<<<<<<< HEAD
-          max_err=0.005)
-=======
           max_err=0.005,
       )
->>>>>>> upstream/master
 
   @test_util.deprecated_graph_mode_only
   def testFilterGradient0_0_0_5PaddingStride1x2(self):

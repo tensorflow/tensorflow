@@ -3,12 +3,8 @@ load("//xla:xla.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
-<<<<<<< HEAD
-    "if_rocm_is_configured", "rocm_default_copts", "if_rocm"
-=======
     "if_rocm_is_configured",
     "rocm_default_copts",
->>>>>>> upstream/master
 )
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
@@ -48,23 +44,19 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "sleep_kernel_gpu",
-    srcs = if_cuda_or_rocm(
+cuda_library(
+    name = "sleep_kernel_cuda",
+    srcs = if_cuda_is_configured(
         [
             "sleep_kernel.cu.cc",
         ],
     ),
-    copts = rocm_default_copts() + cuda_default_copts(),
-    hdrs = if_cuda_or_rocm(["sleep_kernel.h"]),
+    hdrs = if_cuda_is_configured(["sleep_kernel.h"]),
     compatible_with = [],
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-<<<<<<< HEAD
-    ]) + if_rocm_is_configured([
-=======
     ]),
 )
 
@@ -78,10 +70,9 @@ cc_library(
     hdrs = if_rocm_is_configured(["sleep_kernel.h"]),
     compatible_with = [],
     copts = rocm_default_copts(),
-    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM"]),
+    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
->>>>>>> upstream/master
         "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
@@ -90,7 +81,7 @@ cc_library(
     name = "collectives",
     srcs = ["collectives.cc"],
     hdrs = ["collectives.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM"]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
     visibility = ["//visibility:public"],
     deps = [
         ":support",
@@ -110,19 +101,6 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-<<<<<<< HEAD
-    ] + if_cuda_or_rocm([
-        ":sleep_kernel_gpu",
-        "//xla/stream_executor/gpu:gpu_types_header",
-        "//xla/stream_executor/gpu:gpu_stream_header",
-        ])
-    + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-        
-    ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocm_headers",
-    ])
-=======
     ] + if_gpu_is_configured([
         "//xla/stream_executor/gpu:gpu_types_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
@@ -133,7 +111,6 @@ cc_library(
         ":sleep_kernel_rocm",
         "@local_config_rocm//rocm:rocm_headers",
     ]),
->>>>>>> upstream/master
 )
 
 cc_library(
