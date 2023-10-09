@@ -82,10 +82,11 @@ tensorflow::Status RunTFXLABridge(
         module, llvm::StringRef(), &bridge);
   }
 
-  if (VLOG_IS_ON(2) || DEBUG_DATA_DUMPER()->ShouldDump(
-                           module_name.str(), kDebugGroupBridgePhase1)) {
+  if (VLOG_IS_ON(2) ||
+      DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(),
+                                      kDebugGroupBridgePhase1Clustering)) {
     ::tensorflow::tf2xla::internal::EnablePassIRPrinting(
-        bridge, kBridgeComponent, module_name);
+        bridge, kDebugGroupBridgePhase1Clustering, module_name);
   }
 
   LogicalResult result = bridge.run(module);
