@@ -15,16 +15,26 @@ limitations under the License.
 
 #include "xla/python/profiler.h"
 
+#include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 
+#include "absl/strings/string_view.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
+#include "xla/backends/profiler/plugin/plugin_tracer.h"
+#include "xla/backends/profiler/plugin/profiler_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
+#include "xla/python/exceptions.h"
 #include "xla/python/profiler/internal/traceme_wrapper.h"
 #include "xla/python/status_casters.h"
 #include "xla/python/types.h"
 #include "xla/python/xplane_to_profile_instructions.h"
 #include "xla/status.h"
+#include "tsl/profiler/lib/profiler_factory.h"
+#include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/rpc/client/capture_profile.h"
 #include "tsl/profiler/rpc/profiler_server.h"
@@ -47,6 +57,19 @@ tensorflow::ProfileOptions DefaultPythonProfileOptions() {
   options.set_enable_hlo_proto(true);
   return options;
 }
+
+const PLUGIN_Profiler_Api* FindProfilerApi(const PJRT_Api* pjrt_api) {
+  const PJRT_Structure_Base* next =
+      reinterpret_cast<const PJRT_Structure_Base*>(pjrt_api->extension_start);
+  while (next != nullptr &&
+         next->type != PJRT_Structure_Type::PJRT_Structure_Type_Profiler) {
+    next = next->next;
+  }
+  if (next == nullptr) {
+    return nullptr;
+  }
+  return reinterpret_cast<const PJRT_Profiler_Extension*>(next)->profiler_api;
+}
 }  // namespace
 
 void BuildProfilerSubmodule(py::module* m) {
@@ -63,6 +86,21 @@ void BuildProfilerSubmodule(py::module* m) {
         return server;
       },
       py::arg("port"));
+  profiler.def("register_plugin_profiler", [](py::capsule c_api) -> void {
+    if (absl::string_view(c_api.name()) != "pjrt_c_api") {
+      throw xla::XlaRuntimeError(
+          "Argument to register_plugin_profiler was not a pjrt_c_api capsule.");
+    }
+    const PLUGIN_Profiler_Api* profiler_api =
+        FindProfilerApi(static_cast<const PJRT_Api*>(c_api));
+    std::function<std::unique_ptr<tsl::profiler::ProfilerInterface>(
+        const tensorflow::ProfileOptions&)>
+        create_func = [profiler_api = profiler_api](
+                          const tensorflow::ProfileOptions& options) mutable {
+          return std::make_unique<xla::profiler::PluginTracer>(profiler_api);
+        };
+    tsl::profiler::RegisterProfilerFactory(std::move(create_func));
+  });
 
   py::class_<tsl::ProfilerSession> profiler_session_class(profiler,
                                                           "ProfilerSession");

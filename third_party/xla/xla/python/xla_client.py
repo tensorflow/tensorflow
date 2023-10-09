@@ -45,7 +45,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 202
+_version = 203
 
 # Version number for MLIR:Python components.
 mlir_api_version = 54
@@ -184,7 +184,8 @@ def make_tpu_client():
   """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
   if not pjrt_plugin_loaded('tpu'):
     library_path = os.getenv('TPU_LIBRARY_PATH', 'libtpu.so')
-    load_pjrt_plugin_dynamically('tpu', library_path)
+    c_api = load_pjrt_plugin_dynamically('tpu', library_path)
+    profiler.register_plugin_profiler(c_api)
   return make_tfrt_tpu_c_api_client()
 
 
