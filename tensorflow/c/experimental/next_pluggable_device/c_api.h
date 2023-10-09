@@ -18,11 +18,11 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/kernels_experimental.h"
 #include "tensorflow/c/tf_buffer.h"
+#include "tensorflow/c/tf_status.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 
 // --------------------------------------------------------------------------
