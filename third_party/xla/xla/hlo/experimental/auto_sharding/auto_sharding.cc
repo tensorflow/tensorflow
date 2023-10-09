@@ -308,21 +308,26 @@ std::unique_ptr<StrategyVector> MaybeFollowInsStrategyVector(
   return strategies;
 }
 
-std::unique_ptr<StrategyVector> FollowReduceStrategy(
+StatusOr<std::unique_ptr<StrategyVector>> FollowReduceStrategy(
     const HloInstruction* ins, const Shape& output_shape,
     const HloInstruction* operand, const HloInstruction* unit,
     size_t instruction_id, StrategyMap& strategy_map,
     LeafStrategies& leaf_strategies, const ClusterEnvironment& cluster_env,
-    bool allow_mixed_mesh_shape) {
+    bool allow_mixed_mesh_shape, bool crash_at_error) {
   std::unique_ptr<StrategyVector> strategies;
   if (output_shape.IsTuple()) {
     strategies = CreateTupleStrategyVector(instruction_id);
     strategies->childs.reserve(ins->shape().tuple_shapes_size());
     for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
-      strategies->childs.push_back(FollowReduceStrategy(
+      auto child_strategy_status = FollowReduceStrategy(
           ins, ins->shape().tuple_shapes().at(i), ins->operand(i),
           ins->operand(i + ins->shape().tuple_shapes_size()), instruction_id,
-          strategy_map, leaf_strategies, cluster_env, allow_mixed_mesh_shape));
+          strategy_map, leaf_strategies, cluster_env, allow_mixed_mesh_shape,
+          crash_at_error);
+      if (!child_strategy_status.ok()) {
+        return child_strategy_status;
+      }
+      strategies->childs.push_back(std::move(child_strategy_status.value()));
     }
   } else if (output_shape.IsArray()) {
     strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
@@ -347,7 +352,13 @@ std::unique_ptr<StrategyVector> FollowReduceStrategy(
       HloSharding input_sharding =
           src_strategies->leaf_vector[sid].output_sharding;
       const auto& tensor_dim_to_mesh = cluster_env.GetTensorDimToMeshDimWrapper(
-          operand->shape(), input_sharding);
+          operand->shape(), input_sharding,
+          /* consider_reverse_device_meshes */ false,
+          /* crash_at_error */ crash_at_error);
+      if (tensor_dim_to_mesh.size() != operand->shape().rank()) {
+        return absl::InvalidArgumentError(
+            "Cannot generate tensor dim to mesh dim mapping");
+      }
       std::vector<int64_t> all_reduce_dims;
       for (int64_t op_dim = 0; op_dim < operand->shape().rank(); ++op_dim) {
         int64_t mesh_dim = tensor_dim_to_mesh[op_dim];
@@ -2076,10 +2087,15 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         break;
       }
       case HloOpcode::kReduce: {
-        strategies = FollowReduceStrategy(
+        auto strategies_status = FollowReduceStrategy(
             ins, ins->shape(), ins->operand(0), ins->operand(1), instruction_id,
             strategy_map, leaf_strategies, cluster_env,
-            solver_option.allow_mixed_mesh_shape);
+            solver_option.allow_mixed_mesh_shape, !trying_multiple_mesh_shapes);
+        if (strategies_status.ok()) {
+          strategies = std::move(strategies_status.value());
+        } else {
+          return strategies_status.status();
+        }
         break;
       }
       case HloOpcode::kDot: {
@@ -4276,7 +4292,7 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
         original_device_mesh, device_mesh, option_.device_mesh_alpha,
         option_.device_mesh_beta, prof_result, solver_option);
 
-    XLA_VLOG_LINES(1, module->ToString());
+    XLA_VLOG_LINES(3, module->ToString());
     int64_t memory_lower_bound = spmd::MemoryBudgetLowerBound(
         *module, liveness_set, alias_analysis.get(),
         device_mesh.num_elements());
@@ -4571,6 +4587,10 @@ StatusOr<bool> AutoSharding::Run(
     modules[i] = std::move(module_clone);
     delete pass;
     if (!pass_result.ok()) {
+      VLOG(1) << "Mesh shape " << spmd::ToString(mesh_shapes[i])
+              << " did work lead to an auto-sharding solution due to the "
+                 "following error: "
+              << pass_result.status().message();
       continue;
     }
     VLOG(1) << "Mesh shape " << spmd::ToString(mesh_shapes[i])
