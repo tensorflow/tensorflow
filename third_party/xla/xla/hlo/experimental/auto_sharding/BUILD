@@ -156,9 +156,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":auto_sharding_cost_graph",
-        ":auto_sharding_solver",
         ":auto_sharding_strategy",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -171,8 +172,9 @@ cc_library(
         ":auto_sharding_option",
         ":auto_sharding_strategy",
         ":auto_sharding_wrapper",
-        ":matrix",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 

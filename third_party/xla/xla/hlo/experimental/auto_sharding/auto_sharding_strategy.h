@@ -193,6 +193,8 @@ struct StrategyVector {
 
 // Type aliases.
 using LivenessSet = std::vector<std::vector<const HloValue*>>;
+// A liveness set using node indices instead of HLO values.
+using LivenessNodeSet = std::vector<std::vector<NodeIdx>>;
 // Map an instruction to its strategy vector.
 using StrategyMap =
     StableHashMap<const HloInstruction*, std::unique_ptr<StrategyVector>>;

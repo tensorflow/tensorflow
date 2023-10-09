@@ -2420,10 +2420,10 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
 // NOLINTEND
 
 AutoShardingSolverResult CallSolver(
-    const HloLiveRange& hlo_live_range, const LivenessSet& liveness_set,
-    const StrategyMap& strategy_map, const LeafStrategies& leaf_strategies,
-    const CostGraph& cost_graph, const AliasSet& alias_set,
-    const std::vector<NodeStrategyIdx>& s_hint,
+    const HloLiveRange& hlo_live_range,
+    const LivenessNodeSet& liveness_node_set, const StrategyMap& strategy_map,
+    const LeafStrategies& leaf_strategies, const CostGraph& cost_graph,
+    const AliasSet& alias_set, const std::vector<NodeStrategyIdx>& s_hint,
     int64_t memory_budget_per_device, bool crash_at_infinity_costs_check,
     bool compute_iis, int64_t solver_timeout_in_seconds,
     bool allow_alias_to_follower_conversion,
@@ -2563,18 +2563,7 @@ AutoShardingSolverResult CallSolver(
   }
 
   // Serialize liveness_set
-  request.live.resize(liveness_set.size());
-  for (LivenessIdx time_idx = 0; time_idx < liveness_set.size(); ++time_idx) {
-    for (const HloValue* value : liveness_set[time_idx]) {
-      const HloInstruction* instruction = value->instruction();
-      const ShapeIndex& index = value->index();
-      if (instruction->shape().IsTuple() && index.empty()) continue;
-      const StrategyVector* strategies = strategy_map.at(instruction).get();
-      const NodeIdx node_idx =
-          strategies->GetSubStrategyVector(index)->node_idx;
-      if (node_idx >= 0) request.live[time_idx].push_back(node_idx);
-    }
-  }
+  request.live = liveness_node_set;
 
   PopulateTemporalValues(cost_graph, request);
 
@@ -4356,14 +4345,29 @@ StatusOr<AutoShardingResult> AutoShardingImplementation::RunAutoSharding(
     spmd::CostGraph cost_graph(leaf_strategies, associative_dot_pairs);
     cost_graph.Simplify(option_.simplify_graph);
 
+    // ----- Build the liveness node set -----
+    spmd::LivenessNodeSet liveness_node_set(liveness_set.size());
+    for (spmd::LivenessIdx t = 0; t < liveness_set.size(); ++t) {
+      for (const HloValue* value : liveness_set[t]) {
+        const HloInstruction* instruction = value->instruction();
+        const ShapeIndex& index = value->index();
+        if (instruction->shape().IsTuple() && index.empty()) continue;
+        const spmd::StrategyVector* strategies =
+            strategy_map.at(instruction).get();
+        const spmd::NodeIdx node_idx =
+            strategies->GetSubStrategyVector(index)->node_idx;
+        if (node_idx >= 0) liveness_node_set[t].push_back(node_idx);
+      }
+    }
+
     // ----- Call the ILP Solver -----
     std::vector<spmd::NodeStrategyIdx> s_val;
     std::vector<spmd::EdgeStrategyIdx> e_val;
     double objective = -1.0;
     if (!solver_option.load_solution_vector) {
-      auto solver_result =
-          Solve(*hlo_live_range, liveness_set, strategy_map, leaf_strategies,
-                cost_graph, alias_set, option_, sharding_propagation_solution);
+      auto solver_result = Solve(
+          *hlo_live_range, liveness_node_set, strategy_map, leaf_strategies,
+          cost_graph, alias_set, option_, sharding_propagation_solution);
       if (solver_result.skip_auto_sharding) {
         return AutoShardingResult::kModuleUnchangedNoShardingPerfomed;
       } else if (!solver_result.status.ok()) {
