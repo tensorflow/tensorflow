@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -136,6 +137,96 @@ void CommandBufferScheduling::MoveParametersToFront(
   }
 
   schedule.set_sequence(computation, new_sequence);
+}
+
+StatusOr<CommandBufferScheduling::BuildCommandBufferResult>
+CommandBufferScheduling::BuildCommandBuffer(HloInstructionSequence seq) {
+  auto builder = HloComputation::Builder("command_buffer");
+  const std::vector<HloInstruction*>& instructions = seq.instructions();
+
+  // The sequence might use results of instructions that are not captured by the
+  // sequence. We pass those results as parameters and map the producers of the
+  // results to their corresponding parameter instructions.
+  absl::flat_hash_map<HloInstruction*, HloParameterInstruction*> parameters_map;
+  int64_t parameter_number = 0;
+  for (HloInstruction* inst : instructions) {
+    for (HloInstruction* operand : inst->operands()) {
+      if (absl::c_find(instructions, operand) != instructions.end()) {
+        continue;
+      }
+
+      if (!parameters_map.contains(operand)) {
+        TF_ASSIGN_OR_RETURN(
+            HloInstruction * parameter,
+            builder.AddParameter(HloInstruction::CreateParameter(
+                parameter_number, operand->shape(), "param")));
+        parameter_number++;
+        parameters_map[operand] =
+            static_cast<HloParameterInstruction*>(parameter);
+      }
+    }
+  }
+
+  // We copy instructions from the sequence to the computation and map the
+  // original instruction to its clone.
+  absl::flat_hash_map<HloInstruction*, HloInstruction*> instructions_map;
+  for (HloInstruction* inst : seq.instructions()) {
+    switch (inst->opcode()) {
+      case HloOpcode::kFusion: {
+        std::vector<HloInstruction*> operands;
+        for (HloInstruction* operand : inst->operands()) {
+          auto it = parameters_map.find(operand);
+          if (it != parameters_map.end()) {
+            operands.push_back(it->second);
+          } else {
+            operands.push_back(instructions_map[operand]);
+          }
+        }
+        instructions_map[inst] =
+            builder.AddInstruction(HloInstruction::CreateFusion(
+                inst->shape(), inst->fusion_kind(), operands,
+                inst->fused_instructions_computation()));
+        break;
+      }
+      case HloOpcode::kConstant:
+        instructions_map[inst] = builder.AddInstruction(
+            HloInstruction::CreateConstant(inst->literal().Clone()));
+        break;
+      case HloOpcode::kGetTupleElement: {
+        HloGetTupleElementInstruction* get_tuple_index =
+            static_cast<HloGetTupleElementInstruction*>(inst);
+        HloInstruction* original_operand = get_tuple_index->mutable_operand(0);
+        auto it = parameters_map.find(original_operand);
+        HloInstruction* operand;
+        if (it != parameters_map.end()) {
+          operand = it->second;
+        } else {
+          operand = instructions_map[original_operand];
+        }
+        instructions_map[inst] =
+            builder.AddInstruction(HloInstruction::CreateGetTupleElement(
+                inst->shape(), operand, get_tuple_index->tuple_index()));
+        break;
+      }
+      default:
+        return InternalError("HLO opcode unsupported by command buffers");
+    }
+  }
+
+  // Build result tuple.
+  std::vector<HloInstruction*> new_instructions;
+  absl::flat_hash_map<HloInstruction*, int64_t> inst_to_tuple_index_map;
+  int64_t index = 0;
+  for (HloInstruction* inst : seq.instructions()) {
+    new_instructions.push_back(instructions_map[inst]);
+    inst_to_tuple_index_map[inst] = index;
+    index++;
+  }
+  builder.AddInstruction(HloInstruction::CreateTuple(new_instructions));
+
+  BuildCommandBufferResult result = {builder.Build(), parameters_map,
+                                     inst_to_tuple_index_map};
+  return result;
 }
 
 StatusOr<bool> CommandBufferScheduling::Run(

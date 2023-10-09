@@ -14,13 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/command_buffer_scheduling.h"
 
+#include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/service/hlo_parser.h"
 #include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/verified_hlo_module.h"
@@ -177,6 +182,80 @@ TEST_F(CommandBufferSchedulingTest, MoveParametersToFront) {
           module->ToString(HloPrintOptions{}.set_print_operand_shape(false)),
           expected));
   EXPECT_TRUE(filecheck_matches);
+}
+
+TEST_F(CommandBufferSchedulingTest, BuildComputation) {
+  const char* hlo = R"(
+      HloModule TestModule, is_scheduled=true
+
+      %fused_computation(param_0: s32[], param_1: s32[]) -> (s32[], s32[]) {
+        %p0 = s32[] parameter(0)
+        %p1 = s32[] parameter(1)
+        ROOT %tuple = (s32[], s32[]) tuple(s32[] %p0, s32[] %p1)
+      }
+
+      %fused_computation.1(param_0: s32[], param_1: s32[]) -> s32[] {
+        %p0 = s32[] parameter(0)
+        %p1 = s32[] parameter(1)
+        ROOT %add = s32[] add(s32[] %p0, s32[] %p1)
+      }
+
+      ENTRY %main (a: s32[], b: s32[]) -> s32[] {
+        %a = s32[] parameter(0)
+        %b = s32[] custom-call(), custom_call_target="target"
+        %fusion = (s32[], s32[]) fusion(s32[] %a, s32[] %b), kind=kLoop, calls=%fused_computation
+        %d = s32[] get-tuple-element((s32[], s32[]) %fusion), index=0
+        %fusion.1 = s32[] fusion(s32[] %a, s32[] %d), kind=kLoop, calls=%fused_computation.1
+        ROOT %custom-call = s32[] custom-call(s32[] %fusion.1, s32[] %d), custom_call_target="some target"
+      })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(hlo));
+
+  EXPECT_EQ(module->entry_computation()->instruction_count(), 6);
+  std::vector<HloInstruction*> instructions;
+  HloInstructionSequence seq;
+  for (HloInstruction* inst : module->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kFusion ||
+        inst->opcode() == HloOpcode::kGetTupleElement) {
+      seq.push_back(inst);
+    }
+    instructions.push_back(inst);
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      CommandBufferScheduling::BuildCommandBufferResult result,
+      CommandBufferScheduling::BuildCommandBuffer(seq));
+  HloComputation* computation = module->AddComputationAndUnifyNamesAndIds(
+      std::move(result.computation), false);
+
+  const char* expected = R"(
+// CHECK: %command_buffer (param: s32[], param.1: s32[]) -> ((s32[], s32[]), s32[], s32[]) {
+// CHECK:  %param = s32[] parameter(0)
+// CHECK:  %param.1 = s32[] parameter(1)
+// CHECK:  %fusion.2 = (s32[], s32[]) fusion(%param, %param.1), kind=kLoop, calls=%fused_computation
+// CHECK:  %get-tuple-element = s32[] get-tuple-element(%fusion.2), index=0
+// CHECK:  %fusion.3 = s32[] fusion(%param, %get-tuple-element), kind=kLoop, calls=%fused_computation.1
+// CHECK:  ROOT %tuple.1 = ((s32[], s32[]), s32[], s32[]) tuple(%fusion.2, %get-tuple-element, %fusion.3)
+// CHECK:})";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool filecheck_matches,
+      RunFileCheck(computation->ToString(
+                       HloPrintOptions{}.set_print_operand_shape(false)),
+                   expected));
+  EXPECT_TRUE(filecheck_matches);
+
+  absl::flat_hash_map<HloInstruction*, HloParameterInstruction*>&
+      parameters_map = result.parameters_map;
+  EXPECT_EQ(parameters_map[instructions[0]]->parameter_number(), 0);
+  EXPECT_EQ(parameters_map[instructions[1]]->parameter_number(), 1);
+
+  absl::flat_hash_map<HloInstruction*, int64_t>& inst_to_tuple_index_map =
+      result.inst_to_tuple_index_map;
+  EXPECT_EQ(inst_to_tuple_index_map[instructions[2]], 0);
+  EXPECT_EQ(inst_to_tuple_index_map[instructions[3]], 1);
+  EXPECT_EQ(inst_to_tuple_index_map[instructions[4]], 2);
 }
 
 }  // namespace
