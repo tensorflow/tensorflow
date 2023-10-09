@@ -12,12 +12,18 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/matmul_util.h"
 
+#if GOOGLE_CUDA || TF_HIPBLASLT
+
 #include <optional>
 #include <string>
 #include <utility>
 
 #include "xla/status_macros.h"
+#if GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_blas_lt.h"
+#else
+#include "xla/stream_executor/rocm/hip_blas_lt.h"
+#endif
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/util/env_var.h"
@@ -115,7 +121,7 @@ se::blas::DataType GetScaleType(se::blas::DataType c_type,
 
 StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
     se::Stream* stream, const BlasLtMatmulPlanParams& params,
-    std::optional<int> max_algorithm_count) {
+    absl::Mutex** ppmu, std::optional<int> max_algorithm_count) {
   static const int64_t max_scratch_size =
       GetWorkspaceLimit(1LL << 32);  // 4GB by default
   static const int64_t max_autotune_algorithm_count =
@@ -127,7 +133,7 @@ StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
 
   const PlanAndAlgorithms* plan_and_algorithms = plan_map.Find(params);
   if (!plan_and_algorithms) {
-    se::cuda::BlasLt* blas_lt = se::cuda::GetBlasLt(stream);
+    se::gpu::BlasLt* blas_lt = se::gpu::GetBlasLt(stream);
     TF_RET_CHECK(blas_lt != nullptr);
 
     TF_ASSIGN_OR_RETURN(se::blas::ComputationType computation_type,
@@ -139,7 +145,7 @@ StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
     // cublas_lt's output is column-major. We want row-major so use identity:
     // C^T = (A @ B)^T = B^T @ A^T.
     constexpr auto kColMajor =
-        se::cuda::BlasLt::MatrixLayout::Order::kColumnMajor;
+        se::gpu::BlasLt::MatrixLayout::Order::kColumnMajor;
 
     size_t rows_a = params.k;
     size_t cols_a = params.m;
@@ -161,44 +167,47 @@ StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
 
     TF_ASSIGN_OR_RETURN(
         auto a_desc,
-        se::cuda::BlasLt::MatrixLayout::Create(
+        se::gpu::BlasLt::MatrixLayout::Create(
             params.dtype, rows_a, cols_a, kColMajor, params.batch_count,
             /*leading_dim_stride=*/std::nullopt, batch_stride_a));
     TF_ASSIGN_OR_RETURN(
         auto b_desc,
-        se::cuda::BlasLt::MatrixLayout::Create(
+        se::gpu::BlasLt::MatrixLayout::Create(
             params.dtype, rows_b, cols_b, kColMajor, params.batch_count,
             /*leading_dim_stride=*/std::nullopt, batch_stride_b));
-    TF_ASSIGN_OR_RETURN(auto c_desc, se::cuda::BlasLt::MatrixLayout::Create(
+    TF_ASSIGN_OR_RETURN(auto c_desc, se::gpu::BlasLt::MatrixLayout::Create(
                                          params.dtype, params.n, params.m,
                                          kColMajor, params.batch_count));
-    TF_ASSIGN_OR_RETURN(auto d_desc, se::cuda::BlasLt::MatrixLayout::Create(
+    TF_ASSIGN_OR_RETURN(auto d_desc, se::gpu::BlasLt::MatrixLayout::Create(
                                          params.dtype, params.n, params.m,
                                          kColMajor, params.batch_count));
 
     // `A` and `B` swapped (see above re. column-major output).
     TF_ASSIGN_OR_RETURN(auto op_desc,
-                        se::cuda::BlasLt::MatmulDesc::Create(
+                        se::gpu::BlasLt::MatmulDesc::Create(
                             computation_type, scale_type,
                             /*trans_a=*/params.trans_b,
                             /*trans_b=*/params.trans_a, params.epilogue));
 
     // `A` and `B` swapped (see above re. column-major output).
-    se::cuda::BlasLt::MatmulPlan plan{std::move(op_desc), std::move(b_desc),
-                                      std::move(a_desc), std::move(c_desc),
-                                      std::move(d_desc)};
+    se::gpu::BlasLt::MatmulPlan plan{std::move(op_desc), std::move(b_desc),
+                                     std::move(a_desc), std::move(c_desc),
+                                     std::move(d_desc)};
     TF_ASSIGN_OR_RETURN(
         auto preference,
-        se::cuda::BlasLt::MatmulPreference::Create(max_scratch_size));
+        se::gpu::BlasLt::MatmulPreference::Create(max_scratch_size));
 
     TF_ASSIGN_OR_RETURN(
-        std::vector<se::cuda::BlasLt::MatmulAlgorithm> algorithms,
+        std::vector<se::gpu::BlasLt::MatmulAlgorithm> algorithms,
         blas_lt->GetMatmulAlgorithms(plan, preference, *max_algorithm_count));
 
     plan_and_algorithms =
         plan_map.Insert(params, {std::move(plan), std::move(algorithms)});
   }
+  *ppmu = &plan_map.mu_;
   return plan_and_algorithms;
 }
 
 }  // namespace tensorflow
+
+#endif
