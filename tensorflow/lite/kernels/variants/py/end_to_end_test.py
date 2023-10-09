@@ -82,7 +82,9 @@ class ListOpsTest(parameterized.TestCase):
         concrete_function_list
     )
     # Don't allow flex ops.
-    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS]
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS,
+    ]
     converter.allow_custom_ops = True
     converter.legalize_custom_tensor_list_ops = True
 
@@ -232,6 +234,100 @@ class ListOpsTest(parameterized.TestCase):
     )
 
     tf_out = reserve_stack(input_tensor)
+
+    self.assertEqual(tf_out.dtype, output_tensor.dtype)
+    self.assertEqual(tf_out.shape, output_tensor.shape)
+    self.assertTrue((tf_out == output_tensor).numpy().all())
+
+  @parameterized.named_parameters(
+      ("OneD", [4]),
+      ("TwoD", [2, 2]),
+      ("ThreeD", [2, 3, 4]),
+  )
+  def test_from_pop_back_unrolled(
+      self,
+      tensor_shape: list[int],
+  ):
+    @tf.function(
+        input_signature=[
+            tf.TensorSpec(shape=tf.TensorShape(None), dtype=tf.int32)
+        ]
+    )
+    def from_tensor_pop_each_element(x: tf.Tensor) -> tf.Tensor:
+      l = list_ops.tensor_list_from_tensor(x, element_shape=tensor_shape[1:])
+      a = tf.constant(0, tf.int32, shape=tensor_shape[1:])
+      for unused_i in range(tensor_shape[0]):
+        l, e = list_ops.tensor_list_pop_back(l, tf.int32)
+        a += e
+      return a
+
+    interpreter = self._get_interpreter_from_c_func(
+        from_tensor_pop_each_element
+    )
+
+    input_index = interpreter.get_input_details()[0]["index"]
+
+    interpreter.resize_tensor_input(input_index, tensor_shape)
+
+    interpreter.allocate_tensors()
+
+    input_tensor = np.ndarray(shape=tensor_shape, dtype=np.int32)
+    input_tensor.fill(1)
+    tf_out = from_tensor_pop_each_element(input_tensor)
+    interpreter.set_tensor(input_index, input_tensor)
+
+    interpreter.invoke()
+
+    output_tensor = interpreter.get_tensor(
+        interpreter.get_output_details()[0]["index"]
+    )
+
+    self.assertEqual(tf_out.dtype, output_tensor.dtype)
+    self.assertEqual(tf_out.shape, output_tensor.shape)
+    self.assertTrue((tf_out == output_tensor).numpy().all())
+
+  @parameterized.named_parameters(
+      ("OneD", [4]),
+      ("TwoD", [2, 2]),
+      ("ThreeD", [2, 3, 4]),
+  )
+  def test_from_pop_back_loop(
+      self,
+      tensor_shape: list[int],
+  ):
+    @tf.function(
+        input_signature=[
+            tf.TensorSpec(shape=tf.TensorShape(None), dtype=tf.int32)
+        ]
+    )
+    def from_tensor_pop_each_element(x: tf.Tensor) -> tf.Tensor:
+      l = list_ops.tensor_list_from_tensor(x, element_shape=tensor_shape[1:])
+      a = tf.constant(0, tf.int32, shape=tensor_shape[1:])
+      while len(l) > 0:  # pylint: disable=g-explicit-length-test
+        l, e = list_ops.tensor_list_pop_back(l, tf.int32)
+        a += e
+      return a
+
+    interpreter = self._get_interpreter_from_c_func(
+        from_tensor_pop_each_element
+    )
+
+    input_index = interpreter.get_input_details()[0]["index"]
+
+    interpreter.resize_tensor_input(input_index, tensor_shape)
+
+    interpreter.allocate_tensors()
+
+    input_tensor = np.ndarray(shape=tensor_shape, dtype=np.int32)
+    input_tensor.fill(1)
+    tf_out = from_tensor_pop_each_element(input_tensor)
+    interpreter.set_tensor(input_index, input_tensor)
+
+    interpreter.invoke()
+
+    output_tensor = interpreter.get_tensor(
+        interpreter.get_output_details()[0]["index"]
+    )
 
     self.assertEqual(tf_out.dtype, output_tensor.dtype)
     self.assertEqual(tf_out.shape, output_tensor.shape)

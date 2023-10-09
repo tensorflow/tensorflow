@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
@@ -27,11 +28,13 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -69,7 +72,7 @@ std::optional<mlir::Type> GetSingularVariantBaseType(mlir::Value val) {
     return std::nullopt;
   }
   return subtypes[0].getElementType();
-}  // NOLINT: TODO(b/257472333) This function will be used in child changes.
+}
 
 }  // namespace
 
@@ -103,6 +106,22 @@ namespace {
 #include "tensorflow/compiler/mlir/lite/transforms/generated_legalize_tensorlist.inc"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
+struct ConvertTensorListPopBack
+    : public OpRewritePattern<TF::TensorListPopBackOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::TensorListPopBackOp op,
+                                PatternRewriter& rewriter) const override {
+    // It is currently not possible to easily pack the output of a multi-result
+    // op into an op with a single varidic output in `.td`.
+    auto converted = rewriter.create<TFL::CustomOp>(
+        op->getLoc(), op->getResultTypes(), op->getOperands(),
+        "TensorListPopBack", TFL::ConstBytesAttr::get(getContext(), ""));
+    rewriter.replaceOp(op, converted.getResults());
+    return success();
+  }
+};
+
 bool IsOpSupported(mlir::Operation* op) {
   // Op is vacuously "supported" if it is not a tensorlist op.
   StringRef op_name = op->getName().getStringRef();
@@ -135,6 +154,9 @@ bool IsOpSupported(mlir::Operation* op) {
   }
   if (auto length = llvm::dyn_cast_or_null<TF::TensorListLengthOp>(op)) {
     element_type = GetSingularVariantBaseType(op->getOperand(0));
+  }
+  if (auto pop_back = llvm::dyn_cast_or_null<TF::TensorListPopBackOp>(op)) {
+    element_type = pop_back.getElementDtype();
   }
 
   if (!element_type.has_value()) return false;
@@ -176,23 +198,21 @@ class LegalizeTensorListPass
 
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
-
     auto walk_res = module->walk([&](Operation* op) -> WalkResult {
       if (!IsOpSupported(op) || IsNonTensorListVariantOp(op)) {
         return WalkResult::interrupt();
       }
       return WalkResult::advance();
     });
-
     if (walk_res.wasInterrupted()) {
       llvm::errs() << "Tried legalizing to tfl custom tensorlist ops, but not "
                       "all can be supported."
                    << "\n";
       return;
     }
-
     RewritePatternSet patterns(&getContext());
     populateWithGenerated(patterns);
+    patterns.add<ConvertTensorListPopBack>(&getContext());
     (void)applyPatternsAndFoldGreedily(module, std::move(patterns));
   }
 };

@@ -93,8 +93,12 @@ class TFLiteAuthoringTest(tf.test.TestCase):
     f()
     log_messages = f.get_compatibility_log()
     self.assertIn(
-        "COMPATIBILITY ERROR: failed to legalize operation 'tf.RangeDataset' "
-        "that was explicitly marked illegal", log_messages)
+        "COMPATIBILITY ERROR: op 'tf.DummySeedGenerator, tf.RangeDataset,"
+        " tf.ShuffleDatasetV3' is(are) not natively supported by TensorFlow"
+        " Lite. You need to provide a custom operator."
+        " https://www.tensorflow.org/lite/guide/ops_custom",
+        log_messages,
+    )
 
   def test_compatibility_error_custom(self):
     target_spec = tf.lite.TargetSpec()
