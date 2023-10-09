@@ -14,6 +14,10 @@ limitations under the License.
 
 #include "xla/hlo/transforms/hlo_constant_splitter.h"
 
+#include <cstdint>
+
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/test.h"
 #include "xla/tests/hlo_test_base.h"
@@ -107,6 +111,8 @@ TEST_F(HloConstantSplitterTest, SplittingExpressions) {
   TF_ASSERT_OK(status_or.status());
   // Verify that the changed flag returned is correct.
   EXPECT_TRUE(status_or.value());
+  HloDCE dce;
+  TF_ASSERT_OK(dce.Run(module.get()).status());
   XLA_VLOG_LINES(1, module->entry_computation()->ToString());
   EXPECT_EQ(module->entry_computation()->instruction_count(), 23);
 }
@@ -138,10 +144,87 @@ TEST_F(HloConstantSplitterTest, NoSplittingSideEffectExpressions) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(module_str));
   HloConstantSplitter pass = HloConstantSplitter(/*split_expressions=*/true);
+
+  const int64_t count_before = module->entry_computation()->instruction_count();
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          HloTestBase::RunHloPass(&pass, module.get()));
+  HloDCE dce;
+  TF_ASSERT_OK(dce.Run(module.get()).status());
+  const int64_t count_after_dce =
+      module->entry_computation()->instruction_count();
+
+  // The HloConstantSplitter pass duplicates several constant expressions. Then
+  // the DCE pass removes the dead instructions. Although the flag changed is
+  // true, we do not alter the module in essense.
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(count_before, count_after_dce);
+  int64_t rng_count = 0;
+  for (HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kRng) {
+      rng_count++;
+    }
+  }
+  EXPECT_EQ(rng_count, 1);
+}
+
+TEST_F(HloConstantSplitterTest, InstructionsWithOneUser) {
+  // This HloModule is from b/302613851#comment3.
+  const char* module_str = R"(
+    HloModule test_module, entry_computation_layout={(f32[1024]{0:T(512)})->f32[1024]{0:T(512)}}
+
+    reduce.add {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT add = f32[] add(a, b)
+    }
+
+    ENTRY entry_computation {
+      constant1 = f32[] constant(1.1)
+      b1 = f32[1024]{0} broadcast(constant1), dimensions={}
+      iota.1 = f32[1024]{0} iota(), iota_dimension=0
+      add.1 = f32[1024]{0} add(b1, iota.1)
+      p0 = f32[1024]{0} parameter(0), sharding={devices=[4]0,1,2,3}
+      custom-call.0 = f32[256]{0} custom-call(p0), custom_call_target="SPMDFullToShardShape", sharding={manual}
+      constant0 = f32[] constant(0)
+      reduce.1 = f32[] reduce(custom-call.0, constant0), dimensions={0}, to_apply=reduce.add
+      b3 = f32[1024]{0} broadcast(reduce.1), dimensions={}
+      add.2 = f32[1024]{0} add(add.1, b3)
+      custom-call.1 = f32[4096]{0} custom-call(add.2), custom_call_target="SPMDShardToFullShape", sharding={devices=[4]0,1,2,3}
+      reshape = f32[4,1024]{1,0} reshape(custom-call.1)
+      reduce.2 = f32[1024]{0} reduce(reshape, constant0), dimensions={0}, to_apply=reduce.add
+      iota.2 = f32[1024]{0} iota(), iota_dimension=0
+      mul = f32[1024]{0} multiply(b1, iota.2)
+      ROOT sub = f32[1024]{0} subtract(reduce.2, mul), sharding={devices=[4]0,1,2,3}
+    } // entry_computation
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(module_str));
+  HloConstantSplitter pass = HloConstantSplitter(/*split_expressions=*/true);
   // Verify that the module is not changed as splitting on rng is prevented.
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           HloTestBase::RunHloPass(&pass, module.get()));
-  EXPECT_FALSE(changed);
+  EXPECT_TRUE(changed);
+
+  int64_t broadcast_count_before_dce = 0, broadcast_count_after_dce = 0;
+  for (HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kBroadcast) {
+      broadcast_count_before_dce++;
+    }
+  }
+  EXPECT_EQ(broadcast_count_before_dce, 4);
+
+  HloDCE dce;
+  TF_ASSERT_OK(dce.Run(module.get()).status());
+  for (HloInstruction* instruction :
+       module->entry_computation()->instructions()) {
+    if (instruction->opcode() == HloOpcode::kBroadcast) {
+      broadcast_count_after_dce++;
+    }
+  }
+  EXPECT_EQ(broadcast_count_after_dce, 3);
 }
 
 }  // namespace
