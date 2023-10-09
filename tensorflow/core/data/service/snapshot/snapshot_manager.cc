@@ -602,7 +602,7 @@ absl::Status SnapshotManager::ResetSource(Source& source, int64_t source_index)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   TF_RETURN_IF_ERROR(source.split_provider->Reset());
   ++source.repetition_index;
-  LOG(INFO) << "Starting the " << source.repetition_index << "th repetition "
+  LOG(INFO) << "Starting repetition_" << source.repetition_index << " "
             << "for snapshot " << path_ << ", source " << source_index;
   for (int64_t i = 0; i < streams_.size(); ++i) {
     TF_RETURN_IF_ERROR(env_->RecursivelyCreateDir(RepetitionDirectory(
