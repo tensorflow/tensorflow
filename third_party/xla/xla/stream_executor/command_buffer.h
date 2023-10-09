@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/stream_executor/platform/port.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -49,13 +48,27 @@ class CommandBufferInterface;
 // device.
 class CommandBuffer {
  public:
-  enum class Mode {
-    // Command buffer can be submitted for execution via StreamExecutor APIs.
-    kPrimary,
+  // Command buffer state transitions:
+  //
+  //   (1) kCreate:    a new command buffer under construction
+  //   (2) kUpdate:    updating a previously finalized command buffer
+  //   (3) kFinalized: command buffer ready for execution
+  //
+  // Supported state transitions:
+  //
+  //   (1) Finalize: (kCreate|kUpdate) -> kFinalized
+  //   (2) Update:   kFinalized -> kUpdate
+  //
+  enum class State { kCreate, kUpdate, kFinalized };
 
-    // Command buffer can be executed only within a primary command buffer.
-    kNested
-  };
+  // Command buffers have two modes of execution:
+  //
+  //   (1) kPrimary: command buffer can be submitted for execution via
+  //                 StreamExecutor APIs
+  //   (2) kNested:  command buffer can be executed only within a primary
+  //                 command buffer
+  //
+  enum class Mode { kPrimary, kNested };
 
   //===--------------------------------------------------------------------===//
   // Command buffer constructors

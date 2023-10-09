@@ -144,6 +144,9 @@ class CommandBufferInterface {
   // Returns command buffer execution mode.
   virtual CommandBuffer::Mode mode() const = 0;
 
+  // Returns command buffer state.
+  virtual CommandBuffer::State state() const = 0;
+
  private:
   CommandBufferInterface(const CommandBufferInterface&) = delete;
   void operator=(const CommandBufferInterface&) = delete;

@@ -49,11 +49,12 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
                                    const DeviceMemoryBase& src,
                                    uint64_t size) override;
 
-  CommandBuffer::Mode mode() const override { return mode_; }
-
   tsl::Status Finalize() override;
 
   GpuGraphExecHandle executable() const { return exec_; }
+
+  CommandBuffer::Mode mode() const override { return mode_; }
+  CommandBuffer::State state() const override { return state_; }
 
   // We track the total number of allocated and alive executable graphs in the
   // process to track the command buffers resource usage. Executable graph
@@ -84,7 +85,7 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
                 "GpuGraphExecHandle must be a pointer");
 
   CommandBuffer::Mode mode_;
-  bool finalized_ = false;
+  CommandBuffer::State state_ = CommandBuffer::State::kCreate;
 
   GpuExecutor* parent_;                // not owned, must outlive *this
   GpuGraphHandle graph_ = nullptr;     // owned handle

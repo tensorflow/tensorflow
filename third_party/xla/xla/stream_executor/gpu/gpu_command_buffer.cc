@@ -68,7 +68,7 @@ static int64_t NotifyExecDestroyed() {
 
 GpuCommandBuffer::GpuCommandBuffer(CommandBuffer::Mode mode,
                                    GpuExecutor* parent, GpuGraphHandle graph)
-    : mode_(mode), parent_(parent), graph_(graph), exec_(nullptr) {}
+    : mode_(mode), parent_(parent), graph_(graph) {}
 
 GpuCommandBuffer::~GpuCommandBuffer() {
   if (exec_ != nullptr) {
@@ -121,7 +121,7 @@ tsl::Status GpuCommandBuffer::Trace(
 }
 
 tsl::Status GpuCommandBuffer::CheckNotFinalized() {
-  if (finalized_)
+  if (state_ == CommandBuffer::State::kFinalized)
     return absl::InternalError(
         "Command buffer can't be updated after it was finalized");
   return tsl::OkStatus();
@@ -179,7 +179,7 @@ tsl::Status GpuCommandBuffer::Finalize() {
                "executable graph";
   }
 
-  finalized_ = true;
+  state_ = CommandBuffer::State::kFinalized;
   return tsl::OkStatus();
 }
 
