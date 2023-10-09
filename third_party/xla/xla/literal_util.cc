@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -486,6 +487,15 @@ void SetScalarAtIndexImpl(MutableLiteralBase& literal,
 /* static */ std::string LiteralUtil::MultiIndexAsString(
     absl::Span<const int64_t> multi_index) {
   return StrCat("{", absl::StrJoin(multi_index, ","), "}");
+}
+
+/* static */ std::optional<int64_t> LiteralUtil::LiteralAsScalarInt64(
+    const Literal& l) {
+  if (!ShapeUtil::IsEffectiveScalar(l.shape())) {
+    VLOG(2) << "literal is not an effective scalar: " << l.ToString();
+    return std::nullopt;
+  }
+  return l.GetFirstInteger();
 }
 
 }  // namespace xla

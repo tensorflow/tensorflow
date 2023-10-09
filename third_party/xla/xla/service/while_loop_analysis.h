@@ -46,6 +46,17 @@ std::vector<const HloInstruction *> GetAuxiliaryLoopInductionVars(
 // induction variable detected. Otherwise returns nullopt.
 std::optional<int64_t> GetLoopInductionVarTupleIdx(
     const HloInstruction *while_op);
+
+// Checks the following conditions:
+//  - `i`, the induction varaiable, is initialized to a scalar constant K
+//    (namely, `indvar_init`),
+//  - the while condition does `i < N` or `i <= N` (where N is a know constant)
+//  - the while body does `i++`.
+// If so, it's trivial to compute the loop bound as `N - k` or `N - k + 1`,
+// respectively.
+std::optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction *while_op,
+                                                 int64_t indvar_tuple_idx,
+                                                 const Literal &indvar_init);
 }  // namespace xla
 
 #endif  // XLA_SERVICE_WHILE_LOOP_ANALYSIS_H_
