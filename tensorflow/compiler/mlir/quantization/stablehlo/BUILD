@@ -1,9 +1,9 @@
 # Placeholder: load py_proto_library
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
-load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
-load("//tensorflow/compiler/mlir/quantization/stablehlo:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/compiler/mlir/quantization/stablehlo:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 # TODO(b/264218457): Create stablehlo-quantization-opt and register passes to actually test.
 
@@ -171,21 +171,27 @@ tf_cc_test(
     srcs = [
         "passes/bridge/convert_tf_quant_to_mhlo_int_test.cc",
     ],
+    tags = ["nomac"],  # TODO(b/297362678): re-enable mac test.
     deps = [
         ":bridge_passes",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+        "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla:error_spec",
+        "@local_xla//xla:literal",
         "@local_xla//xla:literal_util",
-        "@local_xla//xla:statusor",
         "@local_xla//xla/mlir_hlo",
         "@local_xla//xla/pjrt:pjrt_client",
+        "@local_xla//xla/pjrt:pjrt_executable",
         "@local_xla//xla/pjrt:tfrt_cpu_pjrt_client",
         "@local_xla//xla/tests:literal_test_util",
         "@stablehlo//:chlo_ops",

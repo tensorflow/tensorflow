@@ -47,20 +47,23 @@ class CommandBufferInterface;
 // buffers allow to amortize the cost of launching "work" on device by building
 // it on the host ahead of time without expensive interaction with underlying
 // device.
-//
-// TODO(ezhulenev): Add a concept of a "nested" command buffer which can't be
-// submitted on its own, but has to be recorded into the parent command buffer.
-// For CUDA backend nested command buffers will never be instantiated into
-// executable graphs, but instead will only have a regular graph instance. We
-// should almost always trace into nested command buffers.
 class CommandBuffer {
  public:
+  enum class Mode {
+    // Command buffer can be submitted for execution via StreamExecutor APIs.
+    kPrimary,
+
+    // Command buffer can be executed only within a primary command buffer.
+    kNested
+  };
+
   //===--------------------------------------------------------------------===//
   // Command buffer constructors
   //===--------------------------------------------------------------------===//
 
   // Creates a new empty command buffer on the given executor.
-  static tsl::StatusOr<CommandBuffer> Create(StreamExecutor* executor);
+  static tsl::StatusOr<CommandBuffer> Create(StreamExecutor* executor,
+                                             Mode mode = Mode::kPrimary);
 
   // Creates a new command buffer on the given executor by tracing `function`
   // invocation. All StreamExecutor operations on a Stream argument will be
@@ -71,7 +74,8 @@ class CommandBuffer {
   // explicit construction APIs, e.g. when calling external libraries.
   static tsl::StatusOr<CommandBuffer> Trace(
       StreamExecutor* executor,
-      absl::AnyInvocable<tsl::Status(Stream*)> function);
+      absl::AnyInvocable<tsl::Status(Stream*)> function,
+      Mode mode = Mode::kPrimary);
 
   //===--------------------------------------------------------------------===//
   // Command buffer API
@@ -96,6 +100,9 @@ class CommandBuffer {
                      const ThreadDim& threads, const BlockDim& blocks,
                      Args... args);
 
+  // Returns command buffer execution mode.
+  Mode mode() const;
+
   internal::CommandBufferInterface* implementation() {
     return implementation_.get();
   }
@@ -104,16 +111,17 @@ class CommandBuffer {
     return implementation_.get();
   }
 
-  explicit CommandBuffer(
-      std::unique_ptr<internal::CommandBufferInterface> implementation);
-
   CommandBuffer(CommandBuffer&&) = default;
   CommandBuffer& operator=(CommandBuffer&&) = default;
 
  private:
+  explicit CommandBuffer(
+      std::unique_ptr<internal::CommandBufferInterface> implementation);
+
   std::unique_ptr<internal::CommandBufferInterface> implementation_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(CommandBuffer);
+  CommandBuffer(const CommandBuffer&) = delete;
+  void operator=(const CommandBuffer&) = delete;
 };
 
 //===----------------------------------------------------------------------===//

@@ -165,7 +165,8 @@ class CachedFunctionHandles {
   FunctionLibraryRuntime* flr_;
   std::map<string, FunctionLibraryRuntime::Handle> handles_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CachedFunctionHandles);
+  CachedFunctionHandles(const CachedFunctionHandles&) = delete;
+  void operator=(const CachedFunctionHandles&) = delete;
 };
 
 // Struct for node's output edge info.

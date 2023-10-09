@@ -47,7 +47,9 @@ limitations under the License.
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "xla/stream_executor/host_or_device_scalar.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
+#include "tensorflow/core/kernels/matmul_util.h"
 #include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "xla/stream_executor/host_or_device_scalar.h"
@@ -586,12 +588,19 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
     static const bool use_autotune = MatmulAutotuneEnable();
     bool bCublasLtSupport = true;
 #if TF_HIPBLASLT
+<<<<<<< HEAD
     if(!std::is_same_v<Scalar, float>)
       bCublasLtSupport = false;
     auto cap = stream->GetRocmComputeCapability();
     // as of ROCm 5.5, hipblaslt only supports MI200.
     if(cap.gcn_arch_name().substr(0,6) != "gfx90a")
       bCublasLtSupport = false;
+=======
+    if (!std::is_same_v<Scalar, float>) bCublasLtSupport = false;
+    auto cap = stream->GetRocmComputeCapability();
+    // as of ROCm 5.5, hipblaslt only supports MI200.
+    if (cap.gcn_arch_name().substr(0, 6) != "gfx90a") bCublasLtSupport = false;
+>>>>>>> upstream/master
 #endif
     if (EnableCublasLtGemm() && bCublasLtSupport) {
       static const int64_t max_scratch_size =
@@ -622,8 +631,13 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         std::optional<int> max_algorithm_count;
         if (!use_autotune) max_algorithm_count = 1;
         absl::Mutex* pmu = nullptr;
+<<<<<<< HEAD
         auto plan_and_algorithms_or =
             GetPlanAndAlgorithms(stream, matmul_params, &pmu, max_algorithm_count);
+=======
+        auto plan_and_algorithms_or = GetPlanAndAlgorithms(
+            stream, matmul_params, &pmu, max_algorithm_count);
+>>>>>>> upstream/master
         OP_REQUIRES_OK(context, plan_and_algorithms_or.status());
         absl::MutexLock lock(pmu);
         const auto* plan_and_algorithms =

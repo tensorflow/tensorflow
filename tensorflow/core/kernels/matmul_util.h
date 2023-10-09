@@ -25,6 +25,16 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "tsl/platform/types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tsl/platform/types.h"
+
+#if GOOGLE_CUDA
+#include "xla/stream_executor/cuda/cuda_blas_lt.h"
+#endif
+
+#if TF_HIPBLASLT
+#include "xla/stream_executor/rocm/hip_blas_lt.h"
+#define CUDA_R_32F HIPBLAS_R_32F
+#endif
 
 #if GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_blas_lt.h"
@@ -87,6 +97,10 @@ class BlasLtMatmulPlanMap {
                                   PlanAndAlgorithms value);
 
   mutable absl::Mutex mu_;
+<<<<<<< HEAD
+=======
+
+>>>>>>> upstream/master
  private:
   absl::flat_hash_map<BlasLtMatmulPlanParams, PlanAndAlgorithms>
       params_plan_map_ ABSL_GUARDED_BY(mu_);
@@ -96,8 +110,12 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
     const DataType& dtype);
 
 StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
+<<<<<<< HEAD
     se::Stream* stream, const BlasLtMatmulPlanParams& params,
     absl::Mutex** pmu,
+=======
+    se::Stream* stream, const BlasLtMatmulPlanParams& params, absl::Mutex** pmu,
+>>>>>>> upstream/master
     std::optional<int> max_algorithm_count = std::nullopt);
 
 template <typename T>

@@ -490,7 +490,8 @@ class BlasSupport {
   BlasSupport() {}
 
  private:
-  SE_DISALLOW_COPY_AND_ASSIGN(BlasSupport);
+  BlasSupport(const BlasSupport &) = delete;
+  void operator=(const BlasSupport &) = delete;
 };
 
 // Macro used to quickly declare overrides for abstract virtuals in the

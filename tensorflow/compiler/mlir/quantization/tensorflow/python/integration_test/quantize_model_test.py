@@ -348,61 +348,6 @@ class QuantizationOptionsTest(quantize_model_test_base.QuantizedModelTest):
           self._input_saved_model_path, quantization_options=options
       )
 
-  @parameterized.named_parameters(
-      ('weight_only_per_tensor', False),
-      ('legacy_weight_only_per_tensor', True),
-  )
-  @test_util.run_in_graph_and_eager_modes
-  def test_enable_legacy_weight_only(
-      self,
-      enable_legacy_weight_only: bool,
-  ):
-    input_shape = (1, 512)
-
-    self._create_matmul_model(
-        input_shape=input_shape,
-        weight_shape=(512, 2),
-        saved_model_path=self._input_saved_model_path,
-    )
-
-    tags = {tag_constants.SERVING}
-    quantization_options = quant_opts_pb2.QuantizationOptions(
-        quantization_method=quant_opts_pb2.QuantizationMethod(
-            preset_method=_PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
-        ),
-        tags=tags,
-        signature_keys=['serving_default'],
-        op_set=quant_opts_pb2.XLA,
-        enable_legacy_weight_only=enable_legacy_weight_only,
-    )
-
-    converted_model = quantize_model.quantize(
-        self._input_saved_model_path,
-        self._output_saved_model_path,
-        quantization_options,
-    )
-    self.assertIsNotNone(converted_model)
-    self.assertCountEqual(
-        converted_model.signatures._signatures.keys(), {'serving_default'}
-    )
-
-    output_loader = saved_model_loader.SavedModelLoader(
-        self._output_saved_model_path
-    )
-    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
-    # Legacy quantization uses float32 tf.Conv2D
-    if enable_legacy_weight_only:
-      self.assertFalse(self._contains_op(output_graphdef, 'XlaDotV2'))
-    else:
-      self.assertTrue(self._contains_op(output_graphdef, 'XlaDotV2'))
-
-    # Due to other meta data, the compression is not exactly 1/4.
-    self.assertSizeRatioLessThan(
-        self._output_saved_model_path,
-        self._input_saved_model_path,
-        threshold=0.3,
-    )
-
   @test_util.run_in_graph_and_eager_modes
   def test_force_graph_mode_calibration(self):
     input_type = dtypes.int32
@@ -5292,8 +5237,6 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
 
   @parameterized.named_parameters(
-      # TODO(b/269421880): Enable legacy weight-only scheme with the uniform
-      # quantized opset
       ('to_xla_per_tensor', quant_opts_pb2.XLA, False),
   )
   @test_util.run_in_graph_and_eager_modes
@@ -5345,18 +5288,18 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     )
 
   @parameterized.named_parameters(
-      # TODO(b/269421880): Enable legacy weight-only scheme with the uniform
-      # quantized opset
-      ('to_xla_per_tensor', quant_opts_pb2.XLA, False, False),
-      # ('to_xla_per_channel', quant_opts_pb2.XLA, True, False),
-      ('to_xla_per_channel_legacy', quant_opts_pb2.XLA, True, True),
+      ('to_xla_per_tensor', quant_opts_pb2.XLA, False),
+      # TODO: b/289761265 - [Converter Component][TF-Quantizer] Improve Weight-
+      # only Quantization
+      # Enable this back once new weight-only quantizer is supported for per-
+      # channel quantization.
+      # ('to_xla_per_channel', quant_opts_pb2.XLA, True),
   )
   @test_util.run_in_graph_and_eager_modes
   def test_conv_model(
       self,
       target_opset: quant_opts_pb2.OpSet,
       enable_per_channel_quantization: bool,
-      enable_legacy_weight_only: bool,
   ):
     input_shape = (1, 3, 4, 512)
     filter_shape = (2, 3, 512, 2)
@@ -5379,7 +5322,6 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         signature_keys=['serving_default'],
         op_set=target_opset,
         enable_per_channel_quantization=enable_per_channel_quantization,
-        enable_legacy_weight_only=enable_legacy_weight_only,
     )
 
     converted_model = quantize_model.quantize(
@@ -5397,9 +5339,6 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self._output_saved_model_path
     )
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
-
-    if not enable_legacy_weight_only:
-      self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
 
     # Due to other meta data, the compression is not exactly 1/4.
     self.assertSizeRatioLessThan(
@@ -5441,18 +5380,18 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertAllClose(original_output, quantized_output, atol=threshold)
 
   @parameterized.named_parameters(
-      # TODO(b/269421880): Enable legacy weight-only scheme with the uniform
-      # quantized opset
-      ('to_xla_per_tensor', quant_opts_pb2.XLA, False, False),
-      # ('to_xla_per_channel', quant_opts_pb2.XLA, True, False),
-      ('to_xla_per_channel_legacy', quant_opts_pb2.XLA, True, True),
+      ('to_xla_per_tensor', quant_opts_pb2.XLA, False),
+      # TODO: b/289761265 - [Converter Component][TF-Quantizer] Improve Weight-
+      # only Quantization
+      # Enable this back once new weight-only quantizer is supported for per-
+      # channel quantization.
+      # ('to_xla_per_channel', quant_opts_pb2.XLA, True),
   )
   @test_util.run_in_graph_and_eager_modes
   def test_depthwise_conv2d_model(
       self,
       target_opset: quant_opts_pb2.OpSet,
       enable_per_channel_quantization: bool,
-      enable_legacy_weight_only: bool,
   ):
     input_shape = (1, 3, 4, 512)
     filter_shape = (2, 3, 512, 2)
@@ -5474,7 +5413,6 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         signature_keys=['serving_default'],
         op_set=target_opset,
         enable_per_channel_quantization=enable_per_channel_quantization,
-        enable_legacy_weight_only=enable_legacy_weight_only,
     )
 
     converted_model = quantize_model.quantize(
@@ -5494,9 +5432,6 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
 
     # Due to other meta data, the compression is not exactly 1/4.
-    if not enable_legacy_weight_only:
-      self.assertTrue(self._contains_op(output_graphdef, 'XlaConvV2'))
-
     size_threshold = 0.5 if enable_per_channel_quantization else 0.32
     self.assertSizeRatioLessThan(
         self._output_saved_model_path,
@@ -5900,6 +5835,18 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
       # should be the same.
       self.assertAllEqual(output_value, dump_file_numpy)
 
+      # Verify if quant_unit.pb file was created correctly.
+      quant_unit_file_path = os.path.join(log_dir_path, folder, 'quant_unit.pb')
+
+      quant_unit = (
+          quant_opts_pb2.UnitWiseQuantizationSpec.QuantizationUnit.FromString(
+              open(quant_unit_file_path, 'rb').read()
+          )
+      )
+
+      self.assertEqual(quant_unit.node_name, 'Conv2D')
+      self.assertRegex(quant_unit.func_name, r'^__inference_conv_\d+')
+
   @parameterized.named_parameters(
       {
           'testcase_name': 'none',
@@ -6012,6 +5959,17 @@ class DebuggerTest(quantize_model_test_base.QuantizedModelTest):
     # should be the same.
     self.assertAllEqual(quantized_output_value, quantized_dump_file_numpy)
     self.assertAllEqual(unquantized_output_value, unquantized_dump_file_numpy)
+
+    # Verify if quant_unit.pb file was created correctly.
+    quant_unit_file_path = os.path.join(log_dir_path, folder, 'quant_unit.pb')
+    quant_unit = (
+        quant_opts_pb2.UnitWiseQuantizationSpec.QuantizationUnit.FromString(
+            open(quant_unit_file_path, 'rb').read()
+        )
+    )
+
+    self.assertEqual(quant_unit.node_name, 'Conv2D')
+    self.assertRegex(quant_unit.func_name, r'^__inference_conv_\d+')
 
 
 @test_util.run_all_in_graph_and_eager_modes

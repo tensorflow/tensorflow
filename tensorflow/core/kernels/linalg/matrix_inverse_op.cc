@@ -81,7 +81,8 @@ class MatrixInverseOp : public LinearAlgebraOp<Scalar> {
  private:
   bool adjoint_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixInverseOp);
+  MatrixInverseOp(const MatrixInverseOp&) = delete;
+  void operator=(const MatrixInverseOp&) = delete;
 };
 
 // For Eigen::half, compute inverse via float32 - otherwise precision is
@@ -123,7 +124,8 @@ class MatrixInverseOp<Eigen::half> : public LinearAlgebraOp<Eigen::half> {
  private:
   bool adjoint_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixInverseOp);
+  MatrixInverseOp(const MatrixInverseOp&) = delete;
+  void operator=(const MatrixInverseOp&) = delete;
 };
 
 

@@ -15,9 +15,13 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_COMMAND_BUFFER_SCHEDULING_H_
 #define XLA_SERVICE_GPU_COMMAND_BUFFER_SCHEDULING_H_
 
+#include <vector>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/statusor.h"
 
@@ -68,6 +72,10 @@ class CommandBufferScheduling : public HloModulePass {
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+  static std::vector<HloInstructionSequence> CollectCommandBufferSequences(
+      HloInstructionSequence inst_sequence);
+  static void MoveParametersToFront(HloComputation* computation);
 };
 
 }  // namespace xla::gpu

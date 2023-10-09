@@ -31,6 +31,7 @@ __global__ void mock_nccl_call(unsigned sleep_ns) {
 }
 #elif TENSORFLOW_USE_ROCM
 __global__ void mock_nccl_call(unsigned sleep_ns, unsigned clock_rate_khz) {
+<<<<<<< HEAD
     if (threadIdx.x < warpSize) {
         // s_sleep causes a wave to sleep for (64 * SIMM16[6:0] + 1..64) clocks. 
         uint32_t nclocks = (uint32_t)((float)clock_rate_khz / 64e6 * sleep_ns);
@@ -41,6 +42,18 @@ __global__ void mock_nccl_call(unsigned sleep_ns, unsigned clock_rate_khz) {
     __syncthreads();
 }
 #endif // TENSORFLOW_USE_ROCM
+=======
+  if (threadIdx.x < warpSize) {
+    // s_sleep causes a wave to sleep for (64 * SIMM16[6:0] + 1..64) clocks.
+    uint32_t nclocks = (uint32_t)((float)clock_rate_khz / 64e6 * sleep_ns);
+    for (uint32_t i = 0; i < nclocks / 64; i++) {
+      __builtin_amdgcn_s_sleep(64);
+    }
+  }
+  __syncthreads();
+}
+#endif  // TENSORFLOW_USE_ROCM
+>>>>>>> upstream/master
 }  // namespace
 
 void* GetSleepKernel() { return reinterpret_cast<void*>(&mock_nccl_call); }

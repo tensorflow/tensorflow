@@ -13,7 +13,11 @@ package(
 # Please reach out to tf-bridge-team@ before using the TF2XLA bridge.
 package_group(
     name = "tf2xla_users",
-    packages = ["//tensorflow/compiler/mlir/quantization/stablehlo/..."],
+    packages = [
+        "//tensorflow/compiler/mlir/quantization/stablehlo/...",
+        # Legacy due to where the bridge currently runs. This should go away.
+        "//tensorflow/compiler/mlir/tensorflow/transforms",
+    ],
 )
 
 cc_library(
@@ -125,9 +129,8 @@ cc_library(
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
+        "//tensorflow/compiler/mlir/tf2xla/internal:logging_hooks",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
@@ -137,7 +140,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/platform:error_logging",
+        "@local_tsl//tsl/lib/monitoring:counter",
         "@local_tsl//tsl/platform:status",
     ],
 )
@@ -152,6 +155,7 @@ tf_cc_test(
     deps = [
         ":tf_dialect_to_executor",
         "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/platform:resource_loader",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -159,6 +163,7 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/lib/monitoring:test_utils",
         "@local_tsl//tsl/platform:status",
     ],
 )

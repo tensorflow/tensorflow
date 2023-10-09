@@ -32,16 +32,18 @@ limitations under the License.
 namespace stream_executor {
 
 /*static*/ tsl::StatusOr<CommandBuffer> CommandBuffer::Create(
-    StreamExecutor* executor) {
+    StreamExecutor* executor, Mode mode) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<internal::CommandBufferInterface> command_buffer,
-      executor->implementation()->GetCommandBufferImplementation());
-  return tsl::StatusOr<CommandBuffer>(std::move(command_buffer));
+      executor->implementation()->GetCommandBufferImplementation(mode));
+
+  CommandBuffer cmd(std::move(command_buffer));
+  return cmd;
 }
 
 /*static*/ tsl::StatusOr<CommandBuffer> CommandBuffer::Trace(
-    StreamExecutor* executor,
-    absl::AnyInvocable<tsl::Status(Stream*)> function) {
+    StreamExecutor* executor, absl::AnyInvocable<tsl::Status(Stream*)> function,
+    Mode mode) {
   Stream stream(executor);
 
   // TODO(ezhulenev): Keep a dedicated stream for command buffer tracing in the
@@ -54,7 +56,7 @@ namespace stream_executor {
 
   // Prepare an empty command buffer instance.
   TF_ASSIGN_OR_RETURN(CommandBuffer command_buffer,
-                      CommandBuffer::Create(executor));
+                      CommandBuffer::Create(executor, mode));
 
   // Trace and finalize the command buffer.
   TF_RETURN_IF_ERROR(command_buffer.implementation()->Trace(
@@ -79,6 +81,10 @@ tsl::Status CommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                                 const DeviceMemoryBase& src,
                                                 uint64_t size) {
   return implementation_->MemcpyDeviceToDevice(dst, src, size);
+}
+
+CommandBuffer::Mode CommandBuffer::mode() const {
+  return implementation_->mode();
 }
 
 tsl::Status CommandBuffer::Finalize() { return implementation_->Finalize(); }

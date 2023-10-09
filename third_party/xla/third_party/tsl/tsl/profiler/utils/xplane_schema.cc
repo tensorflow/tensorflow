@@ -223,6 +223,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"kpi_value", kKpiValue},
       {"element_id", kElementId},
       {"parent_id", kParentId},
+      {"core_type", kCoreType},
       // XPlane semantics related.
       {"_pt", kProducerType},
       {"_ct", kConsumerType},

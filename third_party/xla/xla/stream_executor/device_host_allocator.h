@@ -77,7 +77,8 @@ class DeviceHostAllocator : public tsl::SubAllocator {
   StreamExecutor* stream_exec_;  // not owned, non-null
   const int numa_node_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DeviceHostAllocator);
+  DeviceHostAllocator(const DeviceHostAllocator&) = delete;
+  void operator=(const DeviceHostAllocator&) = delete;
 };
 
 }  // namespace stream_executor

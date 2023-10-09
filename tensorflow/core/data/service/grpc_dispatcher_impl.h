@@ -67,7 +67,8 @@ class GrpcDispatcherImpl : public DispatcherService::Service {
  private:
   DataServiceDispatcherImpl impl_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GrpcDispatcherImpl);
+  GrpcDispatcherImpl(const GrpcDispatcherImpl&) = delete;
+  void operator=(const GrpcDispatcherImpl&) = delete;
 };
 
 }  // namespace data

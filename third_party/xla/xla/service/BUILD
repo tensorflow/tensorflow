@@ -1647,6 +1647,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":buffer_assignment_proto_cc",
         ":buffer_value_containers",
         ":heap_simulator",
         ":hlo_alias_analysis",
@@ -1684,6 +1685,7 @@ xla_cc_test(
     deps = [
         ":async_op_canonicalizer",
         ":buffer_assignment",
+        ":buffer_assignment_proto_cc",
         ":buffer_value",
         ":call_graph",
         ":copy_insertion",
@@ -4743,6 +4745,35 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "cpu_gpu_shape_verifier",
+    srcs = ["cpu_gpu_shape_verifier.cc"],
+    hdrs = ["cpu_gpu_shape_verifier.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":hlo_verifier",
+        "//xla:shape_util",
+        "//xla:status",
+        "//xla:util",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+xla_cc_test(
+    name = "cpu_gpu_shape_verifier_test",
+    srcs = ["cpu_gpu_shape_verifier_test.cc"],
+    deps = [
+        ":cpu_gpu_shape_verifier",
+        ":hlo_parser",
+        ":hlo_verifier",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+cc_library(
     name = "hlo_rematerialization",
     srcs = ["hlo_rematerialization.cc"],
     hdrs = ["hlo_rematerialization.h"],
@@ -7171,4 +7202,22 @@ xla_cc_test(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
     ]),
+)
+
+tf_proto_library(
+    name = "buffer_assignment_proto",
+    srcs = ["buffer_assignment.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "export_hlo",
+    hdrs = ["export_hlo.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/stream_executor:device_description_proto_cc",
+    ],
 )

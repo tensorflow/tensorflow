@@ -140,12 +140,7 @@ cc_library(
     name = "nnapi_plugin_impl",
     hdrs = ["nnapi_plugin.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = nnapi_plugin_impl_visibility_allowlist() + [
-        "//tensorflow/lite/acceleration/configuration/c:__pkg__",
-        "//tensorflow/lite/core/acceleration/configuration/c:__pkg__",
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:__pkg__",
-        "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
-    ],
+    visibility = nnapi_plugin_impl_visibility_allowlist(),
     deps = [
         "//tensorflow/lite/core/acceleration/configuration:nnapi_plugin",
     ],

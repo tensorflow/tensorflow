@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
@@ -132,12 +133,38 @@ bool IsOpSupported(mlir::Operation* op) {
           llvm::dyn_cast_or_null<TF::TensorListElementShapeOp>(op)) {
     element_type = GetSingularVariantBaseType(op->getOperand(0));
   }
+  if (auto length = llvm::dyn_cast_or_null<TF::TensorListLengthOp>(op)) {
+    element_type = GetSingularVariantBaseType(op->getOperand(0));
+  }
 
   if (!element_type.has_value()) return false;
   // TODO(b/288302706) add support for all types handled in the
   // `lower_static_tensor_list` pass.
   return element_type->isF32() || element_type->isInteger(64) ||
          element_type->isInteger(32) || element_type->isInteger(1);
+}
+
+bool HasVariantInputOrOutput(Operation* op) {
+  const bool has_variant_input = llvm::any_of(op->getOperands(), [](Value val) {
+    return val.getType()
+        .cast<TensorType>()
+        .getElementType()
+        .isa<TF::VariantType>();
+  });
+  const bool has_variant_output =
+      llvm::any_of(op->getResultTypes(), [](Type t) {
+        return t.cast<TensorType>().getElementType().isa<TF::VariantType>();
+      });
+  return has_variant_input || has_variant_output;
+}
+
+// There are 2 standard tf ops which are not TensorList ops that may take as
+// input a tensorlist. These are tf.AddN and tf.ZeroesLike. Since the runtime
+// implementation of a tensorlist are not compatible between tf and tflite
+// we cannot use tflite tensorlist kernels until these cases are handled.
+bool IsNonTensorListVariantOp(Operation* op) {
+  return llvm::isa<TF::AddNOp, TF::ZerosLikeOp>(op) &&
+         HasVariantInputOrOutput(op);
 }
 
 // Only legalize TensorFlow TensorList ops if all TensorList ops are supported
@@ -151,7 +178,7 @@ class LegalizeTensorListPass
     mlir::ModuleOp module = getOperation();
 
     auto walk_res = module->walk([&](Operation* op) -> WalkResult {
-      if (!IsOpSupported(op)) {
+      if (!IsOpSupported(op) || IsNonTensorListVariantOp(op)) {
         return WalkResult::interrupt();
       }
       return WalkResult::advance();

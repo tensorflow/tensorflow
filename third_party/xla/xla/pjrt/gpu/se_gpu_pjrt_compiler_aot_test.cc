@@ -99,12 +99,10 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileMlirAndLoad) {
       mlir::parseSourceString<mlir::ModuleOp>(mlir_str, &context);
   TF_ASSERT_OK_AND_ASSIGN(auto topology, se_client->GetTopologyDescription());
   TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      compiler.Compile(xla::CompileOptions(), mlir_module.get(), *topology,
-                       /*client=*/nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto loaded_executable,
-      se_client->Load(std::move(executable), LoadOptions()));
+      auto executable, compiler.Compile(xla::CompileOptions(),
+                                        mlir_module.get(), *topology, nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
+                          se_client->Load(std::move(executable)));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto result, loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
@@ -124,12 +122,11 @@ TEST(StreamExecutorGpuCompilerTest, SuccessAotCompileXlaAndLoad) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
   TF_ASSERT_OK_AND_ASSIGN(auto topology, se_client->GetTopologyDescription());
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          compiler.Compile(xla::CompileOptions(), computation,
-                                           *topology, /*client=*/nullptr));
   TF_ASSERT_OK_AND_ASSIGN(
-      auto loaded_executable,
-      se_client->Load(std::move(executable), LoadOptions()));
+      auto executable,
+      compiler.Compile(xla::CompileOptions(), computation, *topology, nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
+                          se_client->Load(std::move(executable)));
   TF_ASSERT_OK_AND_ASSIGN(
       auto result, loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
   ValidateResult(result);
@@ -148,42 +145,18 @@ TEST(StreamExecutorGpuCompilerTest, SuccessLoadFromSerializedExecutable) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
   TF_ASSERT_OK_AND_ASSIGN(auto topology, se_client->GetTopologyDescription());
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          compiler.Compile(xla::CompileOptions(), computation,
-                                           *topology, /*client=*/nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      compiler.Compile(xla::CompileOptions(), computation, *topology, nullptr));
 
   // Serialize the executable and load it.
   TF_ASSERT_OK_AND_ASSIGN(std::string serialized_executable,
                           executable->SerializeExecutable());
   TF_ASSERT_OK_AND_ASSIGN(
       auto loaded_executable,
-      se_client->LoadSerializedExecutable(serialized_executable, std::nullopt,
-                                          LoadOptions()));
+      se_client->LoadSerialized(serialized_executable, std::nullopt,
+                                LoadOptions()));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto result, loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
-  ValidateResult(result);
-}
-
-TEST(StreamExecutorGpuCompilerTest, SuccessCrossCompileAndLoad) {
-  CompileOptions options = xla::CompileOptions();
-  TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation,
-                          GetXlaComputation(kProgram));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*node_id=*/0));
-  TF_ASSERT_OK_AND_ASSIGN(auto topology, client->GetTopologyDescription());
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      xla::PjRtCompile(options, computation, *topology, client.get()));
-  TF_ASSERT_OK_AND_ASSIGN(std::string serialized,
-                          executable->SerializeExecutable());
-
-  TF_ASSERT_OK_AND_ASSIGN(auto loaded_executable,
-                          client->LoadSerializedExecutable(
-                              serialized, std::nullopt, LoadOptions()));
   TF_ASSERT_OK_AND_ASSIGN(
       auto result, loaded_executable->Execute(/*argument_handles=*/{{}}, {}));
   ValidateResult(result);

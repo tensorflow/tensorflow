@@ -13,20 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/pjrt/stream_executor_unloaded_executable.h"
+#include "xla/pjrt/stream_executor_executable.h"
 
 #include <memory>
 #include <string>
 
-#include "xla/pjrt/stream_executor_unloaded_executable.pb.h"
+#include "xla/pjrt/stream_executor_executable.pb.h"
 #include "xla/service/compiler.h"
 #include "xla/statusor.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
-StatusOr<std::string> StreamExecutorUnloadedExecutable::SerializeExecutable()
-    const {
-  StreamExecutorUnloadedExecutableProto proto;
+StatusOr<std::string> StreamExecutorExecutable::SerializeExecutable() const {
+  StreamExecutorExecutableProto proto;
   TF_ASSIGN_OR_RETURN(*proto.mutable_compile_options(),
                       compile_options_.ToProto());
   for (const std::unique_ptr<xla::AotCompilationResult>& aot_executable :

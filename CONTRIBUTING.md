@@ -89,8 +89,8 @@ Follow either of the two links above to access the appropriate CLA and instructi
 ### Contributing code
 
 If you have improvements to TensorFlow, send us your pull requests! For those
-just getting started, Github has a
-[how to](https://help.github.com/articles/using-pull-requests/).
+just getting started, GitHub has a
+[how-to](https://help.github.com/articles/using-pull-requests/).
 
 TensorFlow team members will be assigned to review your pull requests. Once the
 pull requests are approved and pass continuous integration checks, a TensorFlow
@@ -101,7 +101,7 @@ automatically on GitHub.
 
 If you want to contribute, start working through the TensorFlow codebase,
 navigate to the
-[Github "issues" tab](https://github.com/tensorflow/tensorflow/issues) and start
+[GitHub "issues" tab](https://github.com/tensorflow/tensorflow/issues) and start
 looking through interesting issues. If you are not sure of where to start, then
 start by trying one of the smaller/easier issues here i.e.
 [issues with the "good first issue" label](https://github.com/tensorflow/tensorflow/labels/good%20first%20issue)

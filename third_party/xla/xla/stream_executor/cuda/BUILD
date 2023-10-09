@@ -213,18 +213,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cuda_executor_header",
-    textual_hdrs = if_cuda_is_configured(["cuda_executor.h"]),
-    visibility = ["//visibility:public"],
-    deps = if_cuda_is_configured([
-        ":cuda_kernel",
-        "//xla/stream_executor:stream_executor_headers",
-        "//xla/stream_executor/gpu:gpu_executor_header",
-        "//xla/stream_executor/platform",
-    ]),
-)
-
-cc_library(
     name = "cublas_lt_header",
     hdrs = if_cuda_is_configured([
         "cuda_blas_lt.h",
@@ -305,7 +293,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cuda_activation_header",
-        ":cuda_executor_header",
         ":cuda_platform_id",
         ":cuda_stream",
         ":cuda_helpers",
@@ -353,7 +340,6 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cudnn_header",
         "@local_tsl//tsl/cuda:cudnn",
-        "@local_tsl//tsl/cuda:cudnn_version",
         "@local_tsl//tsl/platform:tensor_float_32_utils",
         "//xla/stream_executor",
         "//xla/stream_executor:dnn",
@@ -416,6 +402,7 @@ xla_test(
         "//xla/stream_executor:multi_platform_manager",
         "//xla/stream_executor:platform",
         "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_benchmark",
         "@local_tsl//tsl/platform:test_main",
     ],
 )
@@ -437,7 +424,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cuda_driver",
-        ":cuda_executor_header",
         ":cuda_stream",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor/gpu:gpu_event",
@@ -452,7 +438,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cuda_driver",
-        ":cuda_executor_header",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor/gpu:gpu_stream",
         "//xla/stream_executor/platform",
@@ -478,7 +463,6 @@ cc_library(
 cc_library(
     name = "cuda_executor",
     srcs = if_cuda_is_configured(["cuda_executor.cc"]),
-    hdrs = if_cuda_is_configured(["cuda_executor.h"]),
     visibility = ["//visibility:public"],
     deps = if_cuda_is_configured([
         ":cuda_activation",

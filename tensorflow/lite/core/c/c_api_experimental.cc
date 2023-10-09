@@ -191,6 +191,16 @@ int32_t TfLiteInterpreterGetSignatureCount(
   return static_cast<int32_t>(interpreter->impl->signature_keys().size());
 }
 
+TfLiteStatus TfLiteInterpreterSetCustomAllocationForTensor(
+    TfLiteInterpreter* interpreter, int tensor_index,
+    const TfLiteCustomAllocation* allocation, int64_t flags) {
+  if (allocation == nullptr) {
+    return kTfLiteError;
+  }
+  return interpreter->impl->SetCustomAllocationForTensor(tensor_index,
+                                                         *allocation, flags);
+}
+
 const char* TfLiteInterpreterGetSignatureKey(
     const TfLiteInterpreter* interpreter, int32_t signature_index) {
   int32_t signature_count = TfLiteInterpreterGetSignatureCount(interpreter);

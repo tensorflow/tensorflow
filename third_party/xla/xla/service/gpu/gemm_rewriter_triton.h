@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -38,10 +37,8 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Is there a non-empty suffix "s" of span such that product(s) % divisor = 0
-// and for all t != s non-empty suffixes of s: d % product(t) = 0?
-bool HasDivisibleSuffixAllowingSplit(absl::Span<int64_t const> span,
-                                     int64_t divisor);
+// Tells if f(a+b) == f(a) + f(b).
+bool IsDistributiveOverAddition(const HloInstruction& hlo);
 
 // Allowlist of unary elementwise operations supported by Triton GEMM codegen.
 std::vector<HloOpcode> TritonSupportedUnaryElementwise(PrimitiveType);
@@ -57,12 +54,6 @@ bool IsTritonSupportedDataType(PrimitiveType, se::GpuComputeCapability);
 
 // Checks elementwise operation against all supported by Triton GEMM codegen.
 bool IsTritonSupportedElementwise(HloOpcode, PrimitiveType);
-
-// Apply split K configuration from the tiling to the fusion instruction:
-// in addition to MakeDotComputationSplitKBatch on its computation add the
-// necessary reduction after it.
-Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
-                          const AutotuneResult::TritonGemmKey& tiling);
 
 // Filters GEMMs which can be handled using Triton.
 FusionDecision CanTritonHandleGEMM(const HloInstruction&,

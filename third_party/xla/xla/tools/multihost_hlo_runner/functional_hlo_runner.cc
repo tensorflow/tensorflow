@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_pass_pipeline.h"
@@ -1049,6 +1050,8 @@ FunctionalHloRunner::RunInternal(
       execute_options.untuple_result = false;
       break;
   }
+  std::optional<std::vector<PjRtFuture<Status>>> futures;
+  futures.emplace();
   for (int repeat = 0; repeat < running_options.num_repeats; ++repeat) {
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices started (repeat = "
             << repeat << ").";
@@ -1059,8 +1062,13 @@ FunctionalHloRunner::RunInternal(
       }
     }
     execute_options.launch_id = repeat;
-    TF_ASSIGN_OR_RETURN(output_buffers,
-                        executable->Execute(argument_ptrs, execute_options));
+    futures->clear();
+    TF_ASSIGN_OR_RETURN(
+        output_buffers,
+        executable->Execute(argument_ptrs, execute_options, futures));
+    for (auto& future : *futures) {
+      TF_RETURN_IF_ERROR(future.Await());
+    }
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices succeeded (repeat = "
             << repeat << ")";
     if (repeat < running_options.num_repeats - 1) {

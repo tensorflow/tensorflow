@@ -252,7 +252,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SQRT, Register_SQRT());
   AddBuiltin(BuiltinOperator_RSQRT, Register_RSQRT(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_SHAPE, Register_SHAPE());
   AddBuiltin(BuiltinOperator_RANK, Register_RANK());
   AddBuiltin(BuiltinOperator_POW, Register_POW());

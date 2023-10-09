@@ -16,7 +16,9 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_gpu.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <thread>  // NOLINT(build/c++11)
 #include <utility>
@@ -32,6 +34,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_gpu_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
@@ -40,9 +44,13 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/service/custom_call_target_registry.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
+#include "xla/tests/literal_test_util.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
@@ -64,6 +72,87 @@ class PjrtCApiGpuTest : public PjrtCApiTestBase {
  public:
   PjrtCApiGpuTest() : PjrtCApiTestBase(GetPjrtApi()) {}
 };
+
+TEST_F(PjrtCApiGpuTest, CreateViewOfDeviceBuffer) {
+  // Prepares a device memory ptr on GPU.
+  std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter> buffer =
+      create_buffer().first;
+  PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args device_buffer_ptr_args;
+  device_buffer_ptr_args.struct_size =
+      PJRT_Buffer_OpaqueDeviceMemoryDataPointer_Args_STRUCT_SIZE;
+  device_buffer_ptr_args.priv = nullptr;
+  device_buffer_ptr_args.buffer = buffer.get();
+  PJRT_Error* device_buffer_ptr_error =
+      api_->PJRT_Buffer_OpaqueDeviceMemoryDataPointer(&device_buffer_ptr_args);
+  ASSERT_EQ(device_buffer_ptr_error, nullptr);
+  // Looks up a device.
+  PJRT_Buffer_Device_Args device_args = PJRT_Buffer_Device_Args{
+      /*struct_size=*/PJRT_Buffer_Device_Args_STRUCT_SIZE,
+      /*priv=*/nullptr,
+      /*buffer=*/buffer.get(),
+  };
+  PJRT_Error* device_error = api_->PJRT_Buffer_Device(&device_args);
+  ASSERT_EQ(device_error, nullptr);
+
+  // Prepares PJRT_Client_CreateViewOfDeviceBuffer_Args.
+  PJRT_Client_CreateViewOfDeviceBuffer_Args create_view_args;
+  create_view_args.struct_size =
+      PJRT_Client_CreateViewOfDeviceBuffer_Args_STRUCT_SIZE;
+  create_view_args.priv = nullptr;
+  create_view_args.client = client_;
+  create_view_args.device_buffer_ptr = device_buffer_ptr_args.device_memory_ptr;
+  xla::Shape shape = xla::ShapeUtil::MakeShape(xla::S32, {4});
+  create_view_args.dims = shape.dimensions().data();
+  create_view_args.num_dims = shape.dimensions().size();
+  create_view_args.element_type =
+      pjrt::ConvertToPjRtBufferType(shape.element_type());
+  pjrt::BufferMemoryLayoutData c_layout_data;
+  TF_ASSERT_OK_AND_ASSIGN(
+      c_layout_data, pjrt::ConvertToBufferMemoryLayoutData(shape.layout()));
+  create_view_args.layout = &(c_layout_data.c_layout);
+  create_view_args.device = device_args.device;
+  std::function<void()> on_delete_callback = []() mutable {};
+  create_view_args.on_delete_callback_arg =
+      new std::function(on_delete_callback);
+  create_view_args.on_delete_callback = [](void* device_buffer_ptr,
+                                           void* user_arg) {
+    auto c_func = reinterpret_cast<std::function<void()>*>(user_arg);
+    (*c_func)();
+    delete c_func;
+  };
+  create_view_args.stream = reinterpret_cast<intptr_t>(nullptr);
+
+  PJRT_Error* error =
+      api_->PJRT_Client_CreateViewOfDeviceBuffer(&create_view_args);
+
+  ASSERT_EQ(error, nullptr);
+  std::unique_ptr<PJRT_Buffer, ::pjrt::PJRT_BufferDeleter> view_buffer(
+      create_view_args.buffer, ::pjrt::MakeBufferDeleter(api_));
+
+  // Transfers view_buffer to host to verify.
+  PJRT_Buffer_ToHostBuffer_Args to_host_args;
+  to_host_args.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;
+  to_host_args.priv = nullptr;
+  to_host_args.src = view_buffer.get();
+  xla::Shape host_shape = xla::ShapeUtil::MakeShape(xla::F32, {4});
+  auto literal = std::make_shared<xla::Literal>(host_shape);
+  to_host_args.host_layout = nullptr;
+  to_host_args.dst = literal->untyped_data();
+  to_host_args.dst_size = xla::ShapeUtil::ByteSizeOfElements(host_shape);
+  to_host_args.event = nullptr;
+
+  PJRT_Error* to_host_error = api_->PJRT_Buffer_ToHostBuffer(&to_host_args);
+
+  ASSERT_EQ(to_host_error, nullptr);
+  xla::PjRtFuture<absl::Status> transfer_to_host =
+      ::pjrt::ConvertCEventToCppFuture(to_host_args.event, api_);
+  TF_CHECK_OK(transfer_to_host.Await());
+  ASSERT_EQ(literal->data<float>().size(), 4);
+  std::vector<float> float_data(4);
+  std::iota(float_data.begin(), float_data.end(), 41.0f);
+  EXPECT_TRUE(xla::LiteralTestUtil::Equal(
+      xla::LiteralUtil::CreateR1<float>(float_data), *literal));
+}
 
 std::unique_ptr<::pjrt::PJRT_KeyValueCallbackData> CreateTestCKVCallback(
     absl::flat_hash_map<std::string, std::string>* kv_store, absl::Mutex& mu) {

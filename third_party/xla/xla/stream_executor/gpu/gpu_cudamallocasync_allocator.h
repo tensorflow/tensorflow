@@ -127,7 +127,8 @@ class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
 
   bool reserve_memory_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GpuCudaMallocAsyncAllocator);
+  GpuCudaMallocAsyncAllocator(const GpuCudaMallocAsyncAllocator&) = delete;
+  void operator=(const GpuCudaMallocAsyncAllocator&) = delete;
 
   // Stats.
   // Structures mutable after construction

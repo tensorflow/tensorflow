@@ -384,7 +384,8 @@ class FunctionOptimizerContext {
   // Use graph view to find active outputs of the function caller nodes.
   GraphView graph_view_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FunctionOptimizerContext);
+  FunctionOptimizerContext(const FunctionOptimizerContext&) = delete;
+  void operator=(const FunctionOptimizerContext&) = delete;
 };
 
 // Returns a pointer to the called function definition iff the given node is

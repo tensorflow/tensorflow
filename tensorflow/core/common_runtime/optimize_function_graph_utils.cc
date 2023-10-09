@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
@@ -47,10 +48,10 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
-#include "tensorflow/core/util/dump_graph.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/host_info.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
@@ -156,7 +157,7 @@ void GetColocationGroup(const Node* node, string* group) {
 
 // Writes the OptimizedFunctionGraphInfo proto into a cache file.
 // Returns error if the cache file writing fails.
-Status WriteToCache(const string& dir_name, const string& file_name,
+Status WriteToCache(const std::string& dir_name, const std::string& file_name,
                     OptimizedFunctionGraphInfo& optimized_function_graph_info,
                     Env* env) {
   const absl::Time cache_writing_start_time = absl::Now();
@@ -172,8 +173,26 @@ Status WriteToCache(const string& dir_name, const string& file_name,
   if (!env->FileExists(dir_name).ok()) {
     TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(dir_name));
   }
+  {
+    bool has_atomic_move = false;
+    TF_RETURN_IF_ERROR(env->HasAtomicMove(dir_name, &has_atomic_move));
+    if (!has_atomic_move) {
+      LOG_EVERY_POW_2(WARNING)
+          << "Filesystem for OptimizedFunctionGraphInfo persistent cache at "
+          << dir_name
+          << " does not support atomic moves. Therefore the "
+             "persistent cache is racy if you have multiple optimizations "
+             "occurring simultaneously!";
+    }
+  }
+  std::string temp_file_name = file_name;
+  if (!env->CreateUniqueFileName(&temp_file_name, ".pb.tmp")) {
+    return absl::UnavailableError(
+        absl::StrCat("Could not create a unique file inside ", dir_name));
+  }
   TF_RETURN_IF_ERROR(tsl::WriteStringToFile(
-      env, file_name, optimized_function_graph_proto_str));
+      env, temp_file_name, optimized_function_graph_proto_str));
+  TF_RETURN_IF_ERROR(env->RenameFile(temp_file_name, file_name));
 
   const absl::Duration cache_writing_duration =
       absl::Now() - cache_writing_start_time;

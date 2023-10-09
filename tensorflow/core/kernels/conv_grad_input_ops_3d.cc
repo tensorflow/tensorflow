@@ -247,7 +247,8 @@ class Conv3DBackpropInputOp : public OpKernel {
   TensorFormat data_format_;
   bool takes_shape_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Conv3DBackpropInputOp);
+  Conv3DBackpropInputOp(const Conv3DBackpropInputOp&) = delete;
+  void operator=(const Conv3DBackpropInputOp&) = delete;
 };
 
 // Custom backprop for input that explicitly does the work sharding and calls
@@ -598,7 +599,8 @@ class Conv3DCustomBackpropInputOp : public OpKernel {
   TensorFormat data_format_;
   bool takes_shape_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Conv3DCustomBackpropInputOp);
+  Conv3DCustomBackpropInputOp(const Conv3DCustomBackpropInputOp&) = delete;
+  void operator=(const Conv3DCustomBackpropInputOp&) = delete;
 };
 
 // Custom backrop input kernel is 30% - 4x faster when compiled with AVX2 than

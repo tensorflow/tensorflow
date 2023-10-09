@@ -39,10 +39,10 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_activation.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_driver.h"
-#include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_stream.h"
 #include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_timer.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/initialize.h"
@@ -51,14 +51,16 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
-#include "tsl/cuda/cudnn_version.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 #include "tsl/util/env_var.h"
 
 // clang-format off
+#include "third_party/gpus/cuda/include/library_types.h"
 #include "third_party/gpus/cudnn/cudnn.h"
+#include "third_party/gpus/cudnn/cudnn_version.h"
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
 #include "third_party/cudnn_frontend/include/cudnn_frontend.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
@@ -166,11 +168,10 @@ std::string CudnnStatusToString(cudnnStatus_t status) {
 // See CudnnAccess::GetHandle() for details.
 class CudnnHandle {
  public:
-  // Takes ownership of the executor context and the lock to access cuDNN
-  // using handle.
-  CudnnHandle(gpu::ScopedActivateExecutorContext context,
-              std::unique_ptr<absl::MutexLock> lock, cudnnHandle_t handle)
-      : context_(std::move(context)), lock_(std::move(lock)), handle_(handle) {}
+  // Takes ownership of the lock to access cuDNN using handle.
+  CudnnHandle(GpuExecutor* executor, std::unique_ptr<absl::MutexLock> lock,
+              cudnnHandle_t handle)
+      : context_(executor), lock_(std::move(lock)), handle_(handle) {}
 
   // Returns cuDNN handle. To be passed directly to cuDNN APIs, don't keep
   // a copy.
@@ -181,6 +182,20 @@ class CudnnHandle {
   std::unique_ptr<absl::MutexLock> lock_;
   cudnnHandle_t handle_;  // Not owned.
 };
+
+// Major version is neither forward or backward compatible and therefore major
+// versions needs to match between source and library.
+//
+// Minor version is backward-compatible and therefore minor version of library
+// needs to be same or higher.
+//
+// Patch releases are always forward and backward compatible and therefore
+// need not match.
+bool IsSourceCompatibleWithCudnnLibrary(dnn::VersionInfo source_version,
+                                        dnn::VersionInfo loaded_version) {
+  return loaded_version.major_version() == source_version.major_version() &&
+         loaded_version.minor_version() >= source_version.minor_version();
+}
 
 }  // namespace
 
@@ -218,14 +233,13 @@ class CudnnAccess {
   CudnnHandle GetHandle(GpuExecutor* executor, Stream* stream) {
     auto lock = std::make_unique<absl::MutexLock>(&mutex_);
     mutex_.AssertHeld();
-    gpu::ScopedActivateExecutorContext context(executor);
     CUstream cu_stream = stream ? AsGpuStreamValue(stream) : cudaStreamLegacy;
     if (!current_stream_ || cu_stream != *current_stream_) {
       current_stream_ = cu_stream;
       const auto status = cudnnSetStream(handle_, cu_stream);
       CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Failed to set cuDNN stream.";
     }
-    return CudnnHandle(std::move(context), std::move(lock), handle_);
+    return CudnnHandle(executor, std::move(lock), handle_);
   }
 
   void NotifyStreamDestroyed(Stream* stream) {
@@ -335,11 +349,11 @@ cudnnRNNAlgo_t ToCudnnRNNAlgo(std::optional<dnn::AlgorithmDesc> algorithm) {
   }
 }
 
-tsl::Status GetLoadedCudnnVersion(CudnnVersion* version) {
-  TF_ASSIGN_OR_RETURN(version->major_version, GetCudnnProperty(MAJOR_VERSION));
-  TF_ASSIGN_OR_RETURN(version->minor_version, GetCudnnProperty(MINOR_VERSION));
-  TF_ASSIGN_OR_RETURN(version->patch_level, GetCudnnProperty(PATCH_LEVEL));
-  return ::tsl::OkStatus();
+tsl::StatusOr<dnn::VersionInfo> GetLoadedCudnnVersion() {
+  TF_ASSIGN_OR_RETURN(int major, GetCudnnProperty(MAJOR_VERSION));
+  TF_ASSIGN_OR_RETURN(int minor, GetCudnnProperty(MINOR_VERSION));
+  TF_ASSIGN_OR_RETURN(int patch_level, GetCudnnProperty(PATCH_LEVEL));
+  return dnn::VersionInfo(major, minor, patch_level);
 }
 
 enum class PreloadCudnnType { ConvFwd, ConvBwdFilter, ConvBwdData, Rnn };
@@ -417,10 +431,10 @@ tsl::Status CudnnSupport::Init() {
   cudnnHandle_t cudnn_handle = nullptr;
   const auto status = cudnnCreate(&cudnn_handle);
   if (status == CUDNN_STATUS_SUCCESS) {
-    CudnnVersion source_version(CUDNN_MAJOR, CUDNN_MINOR, CUDNN_PATCHLEVEL);
+    dnn::VersionInfo source_version(CUDNN_MAJOR, CUDNN_MINOR, CUDNN_PATCHLEVEL);
 
-    CudnnVersion loaded_version;
-    TF_RETURN_IF_ERROR(GetLoadedCudnnVersion(&loaded_version));
+    TF_ASSIGN_OR_RETURN(dnn::VersionInfo loaded_version,
+                        GetLoadedCudnnVersion());
     if (!IsSourceCompatibleWithCudnnLibrary(source_version, loaded_version)) {
       const std::string error = absl::StrCat(
           "Loaded runtime CuDNN library: ", loaded_version.ToString(),
@@ -471,10 +485,7 @@ void CudnnSupport::NotifyStreamDestroyed(Stream* stream) /* override */ {
 }
 
 tsl::StatusOr<stream_executor::dnn::VersionInfo> CudnnSupport::GetVersion() {
-  CudnnVersion version;
-  TF_RETURN_IF_ERROR(GetLoadedCudnnVersion(&version));
-  return stream_executor::dnn::VersionInfo(
-      version.major_version, version.minor_version, version.patch_level);
+  return GetLoadedCudnnVersion();
 }
 
 namespace {
@@ -1021,7 +1032,8 @@ class CudnnPoolingDescriptor {
  private:
   PoolingDescriptor handle_;  // Owned.
 
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnPoolingDescriptor);
+  CudnnPoolingDescriptor(const CudnnPoolingDescriptor&) = delete;
+  void operator=(const CudnnPoolingDescriptor&) = delete;
 };
 
 // Turns a NormalizeDescriptor structure into a cudnn LRN descriptor handle.
@@ -1059,7 +1071,8 @@ class CudnnNormalizeDescriptor {
  private:
   LrnDescriptor handle_;  // Owned.
 
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnNormalizeDescriptor);
+  CudnnNormalizeDescriptor(const CudnnNormalizeDescriptor&) = delete;
+  void operator=(const CudnnNormalizeDescriptor&) = delete;
 };
 
 // Turns a ActivationDescriptor structure into a cudnn activation
@@ -1256,7 +1269,8 @@ class CudnnDropoutDescriptor {
 
  private:
   DropoutDescriptor handle_;  // Owned.
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnDropoutDescriptor);
+  CudnnDropoutDescriptor(const CudnnDropoutDescriptor&) = delete;
+  void operator=(const CudnnDropoutDescriptor&) = delete;
 };
 
 class CudnnRnnParamsDescriptor {
@@ -1288,7 +1302,8 @@ class CudnnRnnParamsDescriptor {
   int64_t params_size_in_bytes_;
   ParamsRegions weights_;
   ParamsRegions biases_;
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnRnnParamsDescriptor);
+  CudnnRnnParamsDescriptor(const CudnnRnnParamsDescriptor&) = delete;
+  void operator=(const CudnnRnnParamsDescriptor&) = delete;
 };
 
 }  // namespace
@@ -1490,7 +1505,8 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
   dnn::AlgorithmConfig algorithm_config_;
   CudnnDropoutDescriptor dropout_desc_;
   CudnnRnnParamsDescriptor params_desc_;
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnRnnDescriptor);
+  CudnnRnnDescriptor(const CudnnRnnDescriptor&) = delete;
+  void operator=(const CudnnRnnDescriptor&) = delete;
 };
 
 #if CUDNN_VERSION >= 7603
@@ -1510,7 +1526,8 @@ class CudnnCtcLossDescriptor {
  private:
   CtcLossDescriptor handle_;  // Owned
 
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnCtcLossDescriptor);
+  CudnnCtcLossDescriptor(const CudnnCtcLossDescriptor&) = delete;
+  void operator=(const CudnnCtcLossDescriptor&) = delete;
 };
 #else
 // dummy class
@@ -1785,7 +1802,9 @@ class CudnnRnnSequenceTensorDescriptor
   TensorDescriptor handle_;
   RNNDataDescriptor rnn_data_handle_;
   std::vector<cudnnTensorDescriptor_t> handles_;  // Copies of handle_.
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnRnnSequenceTensorDescriptor);
+  CudnnRnnSequenceTensorDescriptor(const CudnnRnnSequenceTensorDescriptor&) =
+      delete;
+  void operator=(const CudnnRnnSequenceTensorDescriptor&) = delete;
 };
 
 class CudnnRnnStateTensorDescriptor : public dnn::RnnStateTensorDescriptor {
@@ -1816,7 +1835,8 @@ class CudnnRnnStateTensorDescriptor : public dnn::RnnStateTensorDescriptor {
   int num_layers_;
   int batch_size_;
   int data_size_;
-  SE_DISALLOW_COPY_AND_ASSIGN(CudnnRnnStateTensorDescriptor);
+  CudnnRnnStateTensorDescriptor(const CudnnRnnStateTensorDescriptor&) = delete;
+  void operator=(const CudnnRnnStateTensorDescriptor&) = delete;
 };
 
 namespace {

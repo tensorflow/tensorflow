@@ -55,7 +55,8 @@ class GPUDebugAllocator : public tsl::Allocator {
 
   se::StreamExecutor* stream_exec_;  // Not owned.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GPUDebugAllocator);
+  GPUDebugAllocator(const GPUDebugAllocator&) = delete;
+  void operator=(const GPUDebugAllocator&) = delete;
 };
 
 // An allocator that wraps a GPU allocator and resets the memory on
@@ -83,7 +84,8 @@ class GPUNanResetAllocator : public tsl::Allocator {
 
   se::StreamExecutor* stream_exec_;  // Not owned.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GPUNanResetAllocator);
+  GPUNanResetAllocator(const GPUNanResetAllocator&) = delete;
+  void operator=(const GPUNanResetAllocator&) = delete;
 };
 
 }  // namespace tensorflow

@@ -35,7 +35,6 @@ const llvm::DenseSet<mlir::TypeID>& MlirAlwaysOps() {
       TypeID::get<TF::FusedBatchNormGradV3Op>(),
       TypeID::get<TF::XlaReduceScatterOp>(),
       TypeID::get<TF::ModOp>(),
-      TypeID::get<TF::ConcatV2Op>(),
 
       // MatrixDiagPartV3 should use the MLIR implementation due to performance.
       TypeID::get<TF::MatrixDiagPartV3Op>(),
@@ -174,6 +173,7 @@ bool IsOpTypeAllowedTf2XlaFallback(const TypeID& type_id) {
             TypeID::get<TF::CollectiveReduceV2Op>(),
             TypeID::get<TF::ComplexAbsOp>(),
             TypeID::get<TF::ConjugateTransposeOp>(),
+            TypeID::get<TF::ConcatV2Op>(),
             TypeID::get<TF::ConvOp>(),
             TypeID::get<TF::CoshOp>(),
             TypeID::get<TF::CrossOp>(),

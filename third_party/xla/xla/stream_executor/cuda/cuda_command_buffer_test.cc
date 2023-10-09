@@ -16,7 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
-#include <gtest/gtest.h>
+#include "absl/log/check.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_test_kernels.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/test.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace stream_executor::cuda {
 
@@ -114,5 +115,69 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
   std::vector<int32_t> expected = {3, 3, 3, 3};
   ASSERT_EQ(dst, expected);
 }
+
+//===----------------------------------------------------------------------===//
+// Performance benchmarks below
+//===----------------------------------------------------------------------===//
+
+// In all benchmarks we construct command buffers in nested mode because we
+// do not want to measure graph executable instantiation overhead.
+static constexpr auto nested = CommandBuffer::Mode::kNested;  // NOLINT
+
+#define BENCHMARK_SIZES(NAME) \
+  BENCHMARK(NAME)->Arg(8)->Arg(32)->Arg(128)->Arg(512)->Arg(1024);
+
+static void BM_CreateCommandBuffer(benchmark::State& state) {
+  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  MultiKernelLoaderSpec spec(/*arity=*/3);
+  spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
+
+  AddI32Kernel add(executor);
+  CHECK_OK(executor->GetKernel(spec, &add));
+
+  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(1, 0);
+
+  for (auto s : state) {
+    auto cmd_buffer = CommandBuffer::Create(executor, nested).value();
+    for (int i = 1; i < state.range(0); ++i) {
+      CHECK_OK(cmd_buffer.Launch(add, ThreadDim(), BlockDim(4), b, b, b));
+    }
+    CHECK_OK(cmd_buffer.Finalize());
+  }
+}
+
+BENCHMARK_SIZES(BM_CreateCommandBuffer);
+
+static void BM_TraceCommandBuffer(benchmark::State& state) {
+  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  Stream stream(executor);
+  stream.Init();
+  CHECK(stream.ok());
+
+  MultiKernelLoaderSpec spec(/*arity=*/3);
+  spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
+
+  AddI32Kernel add(executor);
+  CHECK_OK(executor->GetKernel(spec, &add));
+
+  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(1, 0);
+
+  for (auto s : state) {
+    auto launch_kernels = [&](Stream* stream) {
+      for (int i = 1; i < state.range(0); ++i) {
+        CHECK_OK(stream->ThenLaunch(ThreadDim(), BlockDim(4), add, b, b, b));
+      }
+      return tsl::OkStatus();
+    };
+
+    CHECK_OK(CommandBuffer::Trace(executor, launch_kernels));
+  }
+}
+
+BENCHMARK_SIZES(BM_TraceCommandBuffer);
 
 }  // namespace stream_executor::cuda

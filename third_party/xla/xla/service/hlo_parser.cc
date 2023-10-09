@@ -5475,7 +5475,7 @@ bool HloParserImpl::ParseDimLevelTypes(
         dim_level_type_valid = true;
       } else if (lexer_.GetStrVal() == "H") {
         lexer_.Lex();
-        dim_level_type = DIM_COMPRESSED_WITH_HI;
+        dim_level_type = DIM_LOOSE_COMPRESSED;
         dim_level_type_valid = true;
       }
       if (dim_level_type_valid) {

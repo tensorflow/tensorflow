@@ -31,12 +31,8 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using ::absl::LogSeverity;
-using ::absl::ScopedMockLog;
-using ::testing::EndsWith;
 using ::testing::IsEmpty;
 using ::testing::Not;
-using ::testing::StartsWith;
 using ::testing::TempDir;
 
 class AutotunerUtilTest : public HloTestBase {

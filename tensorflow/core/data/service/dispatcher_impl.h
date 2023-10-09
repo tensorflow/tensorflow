@@ -388,7 +388,8 @@ class DataServiceDispatcherImpl {
   std::unique_ptr<Thread> maintenance_thread_;
   MultipleIterationsAutoScaler auto_scaler_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DataServiceDispatcherImpl);
+  DataServiceDispatcherImpl(const DataServiceDispatcherImpl&) = delete;
+  void operator=(const DataServiceDispatcherImpl&) = delete;
 };
 
 }  // namespace data

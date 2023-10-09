@@ -87,15 +87,13 @@ bool_flag(
 
 config_setting(
     name = "fuchsia_mmap_disabled",
-    flag_values = if_google(
-        {
-            ":enable_fuchsia_mmap": "False",
-            "//tools/cpp:cc_target_os": "fuchsia",
-        },
-        {
-            ":enable_fuchsia_mmap": "False",
-        },
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:fuchsia"],
+        [],
     ),
+    flag_values = {
+        ":enable_fuchsia_mmap": "False",
+    },
     values = if_oss(
         # TODO(b/149248802) When we have a Fuchsia Bazel SDK update to use the values it sets.
         {"cpu": "fuchsia"},

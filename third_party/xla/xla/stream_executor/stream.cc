@@ -20,6 +20,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
@@ -281,6 +282,18 @@ Stream::~Stream() {
   if (allocated_) {
     parent_->DeallocateStream(this);
   }
+}
+
+void Stream::SetPriority(StreamPriority priority) {
+  implementation_->SetPriority(priority);
+}
+
+void Stream::SetPriority(int priority) {
+  implementation_->SetPriority(priority);
+}
+
+std::variant<StreamPriority, int> Stream::priority() const {
+  return implementation_->priority();
 }
 
 tsl::Status Stream::RefreshStatus() {

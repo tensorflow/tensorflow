@@ -1356,6 +1356,11 @@ def _populate_quantization_options_default_values(
   if not quantization_options.HasField('freeze_all_variables'):
     quantization_options.freeze_all_variables = True
 
+  if quantization_options.enable_legacy_weight_only:
+    raise ValueError(
+        'Legacy weight-only is deprecated. Use weight-only quantization method.'
+    )
+
   # Check default quantization option values for weight-only quantization.
   # TODO(b/242805842): Find good minimum_elements_for_weights number for server.
   # please also update default value in tflite converter:
@@ -1584,10 +1589,7 @@ def quantize(
         quantization_options,
         representative_dataset,
     )
-  elif (method.preset_method == _PresetMethod.METHOD_DYNAMIC_RANGE_INT8) or (
-      method.preset_method == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
-      and quantization_options.enable_legacy_weight_only
-  ):
+  elif method.preset_method == _PresetMethod.METHOD_DYNAMIC_RANGE_INT8:
     return _dynamic_range_quantize(
         saved_model_path,
         output_directory,
@@ -1595,7 +1597,6 @@ def quantize(
     )
   elif (
       method.preset_method == _PresetMethod.METHOD_STATIC_RANGE_WEIGHT_ONLY_INT8
-      and not quantization_options.enable_legacy_weight_only
   ):
     return _weight_only_quantize(
         saved_model_path,

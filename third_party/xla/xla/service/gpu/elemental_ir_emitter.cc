@@ -47,9 +47,6 @@ namespace xla {
 namespace gpu {
 
 using absl::StrAppend;
-using llvm_ir::IrArray;
-using llvm_ir::IrName;
-using llvm_ir::SetToFirstInsertPoint;
 
 namespace {
 // Returns whether operand is a floating-point literal with the given value.

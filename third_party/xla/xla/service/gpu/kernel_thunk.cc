@@ -100,7 +100,7 @@ static void PrintBufferContents(
   for (const se::DeviceMemoryBase& buf : buffer_args) {
     auto host_buffer = std::make_unique<char[]>(buf.size());
     CHECK(stream->ThenMemcpy(host_buffer.get(), buf, buf.size()).ok());
-    CHECK(stream->BlockHostUntilDone().ok());
+    CHECK_OK(stream->BlockHostUntilDone());
 
     std::string buffer_contents;
     for (int i = 0; i < buf.size(); i++) {

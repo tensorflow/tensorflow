@@ -136,7 +136,8 @@ class PluggableDevice::StreamGroupFactory {
   // StreamGroupFactory cannot be created directly; Call
   // StreamGroupFactory::Global to get the global instance.
   StreamGroupFactory() = default;
-  TF_DISALLOW_COPY_AND_ASSIGN(StreamGroupFactory);
+  StreamGroupFactory(const StreamGroupFactory&) = delete;
+  void operator=(const StreamGroupFactory&) = delete;
 };
 
 PluggableDevice::PluggableDevice(

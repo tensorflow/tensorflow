@@ -109,7 +109,8 @@ class GenericFftOp : public XlaOpKernel {
   const int fft_rank_;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(GenericFftOp);
+  GenericFftOp(const GenericFftOp&) = delete;
+  void operator=(const GenericFftOp&) = delete;
 };
 
 template <int FFTRank>

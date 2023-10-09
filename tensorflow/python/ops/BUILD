@@ -140,6 +140,7 @@ tf_gen_op_strict_wrapper_private_py(
         "//tensorflow/compiler/mlir/tfr/python/experimental:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/opt:__pkg__",
+        "//tensorflow/contrib/recurrent:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
@@ -1476,7 +1477,7 @@ py_strict_library(
         ":ctc_ops_gen",
         ":custom_gradient",
         ":functional_ops",
-        # TODO(b/280454072) Remove inplace_ops and compat when foward compatibility window expires.
+        # TODO(b/280454072) Remove inplace_ops and compat when forward compatibility window expires.
         ":inplace_ops",
         ":linalg_ops",
         ":map_fn",

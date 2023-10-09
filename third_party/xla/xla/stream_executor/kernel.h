@@ -196,7 +196,8 @@ class KernelBase {
 
   KernelMetadata metadata_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(KernelBase);
+  KernelBase(const KernelBase &) = delete;
+  void operator=(const KernelBase &) = delete;
 };
 
 // Whether T is a DeviceMemory-family pointer.
@@ -610,7 +611,8 @@ class TypedKernel : public KernelBase {
     args->add_shared_bytes(arg.size());
   }
 
-  SE_DISALLOW_COPY_AND_ASSIGN(TypedKernel);
+  TypedKernel(const TypedKernel &) = delete;
+  void operator=(const TypedKernel &) = delete;
 };
 
 // Template metaprogramming helper type that helps us produce better error

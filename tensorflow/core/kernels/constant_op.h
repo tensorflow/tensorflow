@@ -34,7 +34,8 @@ class ConstantOp : public OpKernel {
 
  private:
   Tensor tensor_;
-  TF_DISALLOW_COPY_AND_ASSIGN(ConstantOp);
+  ConstantOp(const ConstantOp&) = delete;
+  void operator=(const ConstantOp&) = delete;
 };
 
 class PlaceholderOp : public OpKernel {

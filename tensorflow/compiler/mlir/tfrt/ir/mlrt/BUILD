@@ -15,7 +15,6 @@ td_library(
     visibility = [
         # copybara:uncomment "//learning/brain/tfrt/mlir:__subpackages__",
         "//learning/infra/mira/distributed:__subpackages__",
-        "//tensorflow/compiler/mlir/tfrt:__subpackages__",
     ],
     deps = [
         "@llvm-project//mlir:OpBaseTdFiles",

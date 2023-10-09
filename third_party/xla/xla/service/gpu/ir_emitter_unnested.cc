@@ -1735,7 +1735,6 @@ Status IrEmitterUnnested::EmitTritonFusion(
     }
     impl_fn->eraseFromParent();
 
-    LogAndVerify(module_);
     return {{kernel->getName().str(), launch_dimensions,
              triton_wrapper_result.shmem_bytes}};
   };

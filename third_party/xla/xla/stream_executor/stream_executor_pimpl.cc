@@ -474,6 +474,11 @@ DeviceMemoryBase StreamExecutor::Allocate(uint64_t size, int64_t memory_space) {
   return buf;
 }
 
+void* StreamExecutor::GetUntypedSubBuffer(DeviceMemoryBase* parent,
+                                          uint64_t offset, uint64_t size) {
+  return implementation_->GetSubBuffer(parent, offset, size);
+}
+
 tsl::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
     const std::string& symbol_name, ModuleHandle module_handle) {
   // If failed to get the symbol, opaque/bytes are unchanged. Initialize them to
@@ -744,6 +749,10 @@ std::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
 
 bool StreamExecutor::ClearAllocatorStats() {
   return implementation_->ClearAllocatorStats();
+}
+
+Stream* StreamExecutor::FindAllocatedStream(void* gpu_stream) {
+  return implementation_->FindAllocatedStream(gpu_stream);
 }
 
 template <typename TraceCallT, typename... ArgsT>

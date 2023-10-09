@@ -23,7 +23,24 @@
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
 
+*   [oneDNN CPU performance optimizations](https://github.com/tensorflow/community/blob/master/rfcs/20210930-enable-onednn-ops.md)
+    Windows x64 & x86.
+
+    *   **Windows x64 & x86 packages:**
+        *   oneDNN optimizations are *enabled by default* on X86 CPUs
+    *   To explicitly enable or disable oneDNN optimizations, set the
+        environment variable `TF_ENABLE_ONEDNN_OPTS` to `1` (enable) or `0`
+        (disable) before running TensorFlow. To fall back to default settings,
+        unset the environment variable.
+    *   oneDNN optimizations can yield slightly different numerical results from
+        without oneDNN optimizations due to floating-point round-off errors from
+        different computation approaches and orders.
+    *   To verify if oneDNN optimizations are on, look for a message with
+        *"oneDNN custom operations are on"* in the log. If the exact phrase is
+        not there, it means they are off.
+
 * Making the `tf.function` type system fully available:
+
     * `tf.types.experimental.TraceType` now allows custom tf.function inputs to
        declare Tensor decomposition and type casting support.
     * Introducing `tf.types.experimental.FunctionType` as the comprehensive
@@ -31,12 +48,15 @@
       accessed through the `function_type` property of `tf.function`s and
       `ConcreteFunction`s. See the `tf.types.experimental.FunctionType`
       documentation for more details.
+
 * Introducing `tf.types.experimental.AtomicFunction` as the fastest way to
   perform TF computations in Python.
+
     * Can be accessed through `inference_fn` property of `ConcreteFunction`s
     * Does not support gradients.
     * See `tf.types.experimental.AtomicFunction` documentation for how to call
       and use it.
+
 
 *   `tf.data`:
 
@@ -78,6 +98,8 @@
     * New C API function `TfLiteExtensionApisVersion` added to
       `tensorflow/lite/c/c_api.h`.
 
+    * Add int8 and int16x8 support for RSQRT operator
+
 * Android NDK r25 is supported.
 
 ### Bug Fixes and Other Changes
@@ -100,7 +122,8 @@
     *   Optimized this function for some cases by fusing internal operations.
 
 *   `tf.saved_model.SaveOptions`
-    *   Provided a new `experimental_skip_saver` argument which if specified,
+
+    *   Provided a new `experimental_skip_saver` argument which, if specified,
         will suppress the addition of `SavedModel`-native save and restore ops
         to the `SavedModel`, for cases where users already build custom
         save/restore ops and checkpoint formats for the model being saved, and

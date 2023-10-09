@@ -138,7 +138,8 @@ class TensorSliceReader {
   mutable std::unordered_map<string, TensorSliceSet*> tensors_;
   mutable Status status_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorSliceReader);
+  TensorSliceReader(const TensorSliceReader&) = delete;
+  void operator=(const TensorSliceReader&) = delete;
 };
 
 Status OpenTableTensorSliceReader(const string& fname,

@@ -514,7 +514,8 @@ class MemoryCheckpoint : public IteratorStateWriter {
  private:
   explicit MemoryCheckpoint(std::shared_ptr<IdRegistry> registry, bool is_root)
       : is_root_(is_root), id_registry_(registry) {}
-  TF_DISALLOW_COPY_AND_ASSIGN(MemoryCheckpoint);
+  MemoryCheckpoint(const MemoryCheckpoint&) = delete;
+  void operator=(const MemoryCheckpoint&) = delete;
 
   Status status_ = OkStatus();
   // Only set to true for the checkpoint in IteratorResource.
@@ -618,7 +619,8 @@ class SerializationContext {
  private:
   Params params_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SerializationContext);
+  SerializationContext(const SerializationContext&) = delete;
+  void operator=(const SerializationContext&) = delete;
 };
 
 // Specifies the tf.data pipeline run mode.

@@ -185,7 +185,8 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   std::vector<xla::HloProto> hlo_metadatas_;  // Owned.
   std::vector<const xla::HloProto*> hlo_metadatas_ptrs_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TpuProgramGroup);
+  TpuProgramGroup(const TpuProgramGroup&) = delete;
+  void operator=(const TpuProgramGroup&) = delete;
 };
 
 }  // namespace tpu

@@ -19,7 +19,7 @@ package xla;
 
 import "xla/pjrt/compile_options.proto";
 
-message StreamExecutorUnloadedExecutableProto {
+message StreamExecutorExecutableProto {
   CompileOptionsProto compile_options = 1;
   repeated bytes executables = 2;
   int32 num_replicas = 3;
