@@ -2840,7 +2840,7 @@ func.func @test_squared_difference_f32(%arg0: tensor<1x197x768xf32>, %arg1: tens
 // -----
 
 // CHECK-LABEL: test_broadcast_to_f32
-// CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<3x3x13x7xf32>}
+// CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<-0.000000e+00> : tensor<3x3x13x7xf32>}
 // CHECK: %[[VAL_1:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, 1, 13, 1>} : (tensor<13x1xf32>)
 // CHECK: %[[VAL_2:.*]] = tosa.add %[[VAL_1]], %[[VAL_0]] : (tensor<1x1x13x1xf32>, tensor<3x3x13x7xf32>) -> tensor<3x3x13x7xf32>
 // CHECK: return %[[VAL_2]] : tensor<3x3x13x7xf32>

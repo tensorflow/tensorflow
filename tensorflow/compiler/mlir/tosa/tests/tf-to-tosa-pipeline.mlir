@@ -1075,7 +1075,7 @@ func.func @mirrorpad_reflect(%arg0: tensor<13x21x3xf32>) -> tensor<14x22x4xf32> 
 // -----
 
 // CHECK-LABEL: test_broadcast_to_f32
-// CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<3x3x13x7xf32>}
+// CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<-0.000000e+00> : tensor<3x3x13x7xf32>}
 // CHECK: %[[VAL_1:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, 1, 13, 1>} : (tensor<13x1xf32>)
 // CHECK: %[[VAL_2:.*]] = tosa.add %[[VAL_1]], %[[VAL_0]] : (tensor<1x1x13x1xf32>, tensor<3x3x13x7xf32>) -> tensor<3x3x13x7xf32>
 // CHECK: return %[[VAL_2]] : tensor<3x3x13x7xf32>
@@ -1114,10 +1114,12 @@ func.func @test_broadcast_to_i1(%arg0: tensor<13x1xi1>) -> (tensor<7x7x13x7xi1>)
 // -----
 
 // CHECK-LABEL: test_broadcast_to_i16
-// CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<0> : tensor<7x7x13x3xi16>}
+// CHECK: %[[VAL_0:.*]] = "tosa.const"() <{value = dense<0> : tensor<7x7x13x3xi32>}
 // CHECK: %[[VAL_1:.*]] = tosa.reshape %arg0 {new_shape = array<i64: 1, 1, 13, 1>}
-// CHECK: %[[VAL_3:.*]] = tosa.add %[[VAL_1]], %[[VAL_0]] : (tensor<1x1x13x1xi16>, tensor<7x7x13x3xi16>) -> tensor<7x7x13x3xi16>
-// CHECK: return %[[VAL_3]] : tensor<7x7x13x3xi16>
+// CHECK: %[[VAL_2:.*]] = tosa.cast %[[VAL_1]] : (tensor<1x1x13x1xi16>) -> tensor<1x1x13x1xi32>
+// CHECK: %[[VAL_3:.*]] = tosa.add %[[VAL_2]], %[[VAL_0]] : (tensor<1x1x13x1xi32>, tensor<7x7x13x3xi32>) -> tensor<7x7x13x3xi32>
+// CHECK: %[[VAL_4:.*]] = tosa.cast %[[VAL_3]] : (tensor<7x7x13x3xi32>) -> tensor<7x7x13x3xi16>
+// CHECK: return %[[VAL_4]] : tensor<7x7x13x3xi16>
 func.func @test_broadcast_to_i16(%arg0: tensor<13x1xi16>) -> (tensor<7x7x13x3xi16>) {
   %shape = "tf.Const"() {value = dense<[7, 7, 1, 3]> : tensor<4xi32>}  : () -> tensor<4xi32>
   %1 = "tf.BroadcastTo"(%arg0, %shape) : (tensor<13x1xi16>, tensor<4xi32>) -> tensor<7x7x13x3xi16>
