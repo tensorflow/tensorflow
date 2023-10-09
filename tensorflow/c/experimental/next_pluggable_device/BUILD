@@ -1,5 +1,5 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -61,7 +61,12 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core/tfrt/common:async_value_tensor",
+        "//tensorflow/core/tfrt/common:global_state",
+        "//tensorflow/core/tfrt/common:pjrt_state",
         "//tensorflow/core/tfrt/common:pjrt_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/pjrt:pjrt_c_api_client",
         "@local_xla//xla/pjrt/c:pjrt_c_api_hdrs",

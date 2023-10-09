@@ -111,7 +111,7 @@ TF_CAPI_EXPORT extern void TF_CoordinationServiceDeleteKeyValue(
     TF_Status* status);
 
 // ----------------------------  PJRT  -----------------------------------------
-// Passes the pointer to a vector of PJRT_NamedValue and number of optiosn to
+// Passes the pointer to a vector of PJRT_NamedValue and number of options to
 // set options for creating a PJRT client. Passes nullptr for create_options and
 // 0 for num_options if no options need to be set. You can use
 // ConvertToPjRtNamedValueList in
@@ -119,6 +119,11 @@ TF_CAPI_EXPORT extern void TF_CoordinationServiceDeleteKeyValue(
 TF_CAPI_EXPORT extern void TF_CreateAndSetPjRtCApiClient(
     const char* device_type, TF_Status* status, PJRT_NamedValue* create_options,
     int num_options);
+
+// Resets the PjRt client for a device. After this, `TF_GetPjRtCClient` will
+// returns an error for that device.
+TF_CAPI_EXPORT extern void TF_ResetPjRtCClient(const char* device_type,
+                                               TF_Status* status);
 
 // Gets the `PJRT_Client*` stored in TF global ResourceManager.
 TF_CAPI_EXPORT extern PJRT_Client* TF_GetPjRtCClient(const char* device_type,

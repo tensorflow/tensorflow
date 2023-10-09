@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_resource.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
@@ -257,6 +258,11 @@ void TF_CreateAndSetPjRtCApiClient(const char* device_type, TF_Status* status,
   tsl::Status s = tensorflow::SetPjRtClientInTFGlobalResourceManager(
       tensorflow::DeviceType(device_type), std::move(*pjrt_client));
   tsl::Set_TF_Status_from_Status(status, s);
+}
+
+void TF_ResetPjRtCClient(const char* device_type, TF_Status* status) {
+  status->status =
+      tensorflow::ResetPjRtClient(tensorflow::DeviceType(device_type));
 }
 
 PJRT_Client* TF_GetPjRtCClient(const char* device_type, TF_Status* status) {
