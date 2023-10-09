@@ -32,14 +32,6 @@ namespace TFTPU {
 tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled = false,
                              llvm::StringRef module_name = llvm::StringRef());
 
-// Run all the passes involved in transforming the graph before execution so
-// that it is suitable for targeting TPUs. When fallback_enabled is true, it
-// means if the bridge fails the old bridge will run.  This is used for logging
-// and doesn't affect any logic.
-// This variant of `TPUBridge` is intended for TensorFlow V1 compatibility.
-tensorflow::Status TPUBridgeV1Compat(ModuleOp module,
-                                     bool fallback_enabled = false);
-
 }  // namespace TFTPU
 
 namespace TF {

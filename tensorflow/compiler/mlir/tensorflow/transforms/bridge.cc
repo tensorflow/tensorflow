@@ -112,36 +112,6 @@ void CreateTPUBridgePipeline(OpPassManager &pm, llvm::StringRef module_name) {
                                                                   module_name);
 }
 
-void CreateTPUBridgePipelineV1(OpPassManager &pm) {
-  pm.addPass(tf2xla::internal::CreateInferenceMetricsPass());
-
-  // Convert to unified compilation and replication attributes.
-  pm.addNestedPass<func::FuncOp>(
-      TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
-  // Guarantee all functions have one use, which enables more exact shape
-  // inference.
-  pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
-  pm.addPass(TF::CreateTFShapeInferencePass());
-  // For V1 compatibility, we process a module where the graph does not have
-  // feeds and fetched. We extract first the TPU computation in a submodule,
-  // where it'll be in a function with args and returned values, much more like
-  // a TF v2 module. We can then run the usual pipeline on this nested module.
-  // Afterward we inline back in the parent module and delete the nested one.
-  pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandCoarseningPass());
-  pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandOutliningPass());
-  OpPassManager &nested_module = pm.nest<ModuleOp>();
-  tensorflow::tf2xla::internal::AddBridgeClusteringPipelinePasses(
-      nested_module);
-
-  pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandInliningPass());
-  // There are cases where we don't consume all compilation and replication
-  // attributes like we do for the V2 pipeline, so we need to convert them from
-  // unified to legacy attributes before they get exposed to outside of the
-  // bridge.
-  pm.addNestedPass<func::FuncOp>(
-      CreateConvertToLegacyCompileAndReplicateAttributesPass());
-}
-
 tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
                              llvm::StringRef module_name) {
   VLOG(2)
@@ -179,26 +149,6 @@ tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
   }
 
   return export_status;
-}
-tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool fallback_enabled) {
-  VLOG(2)
-      << "TPU V1 Compat Bridge called stack trace is "
-      << "(NOTE: this is not an error; rather the stack trace for debugging) : "
-      << tensorflow::CurrentStackTrace();
-  Status bridge_status = RunTFXLABridge(
-      module, [](OpPassManager &pm) { CreateTPUBridgePipelineV1(pm); });
-  tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      "tpu", "v1", fallback_enabled,
-      bridge_status.ok() ? "success" : "failure");
-  if (!bridge_status.ok()) {
-    tsl::error_logging::Log(TFTPU::kBridgeComponent,
-                            "TFXLA_PHASE_ONE_MLIR_TPU_V1_COMPAT_BRIDGE",
-                            bridge_status.ToString())
-        .IgnoreError();
-    return bridge_status;
-  }
-
-  return tensorflow::tf2xla::v1::ExportFromTensorflowDialectToExecutor(module);
 }
 
 }  // namespace TFTPU

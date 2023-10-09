@@ -37,13 +37,6 @@ mlir::PassPipelineRegistration<> tpu_pipeline(
       return mlir::TFTPU::CreateTPUBridgePipeline(pm);
     });
 
-// Registers a pipeline builder function for TF TPU V1 bridge.
-mlir::PassPipelineRegistration<> tpu_pipeline_v1(
-    "tf-tpu-bridge-v1",
-    "Run all the passes involved in transforming a TensorFlow V1 graph before "
-    "execution so that it is suitable for targeting TPUs.",
-    mlir::TFTPU::CreateTPUBridgePipelineV1);
-
 // Registers a pipeline builder function for TF Graph export.
 mlir::PassPipelineRegistration<> tpu_export(
     "tf-graph-export",

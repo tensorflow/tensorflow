@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/cluster_tf.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -341,7 +342,6 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
 
   VLOG(1) << "Running MLIR TPU Bridge V1 Compat";
 
-  bool fallback_enabled = false;
   if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
     // We set `uses_uninitialized_resource_args` to false here because the first
     // phase of the bridge is not affected by uninitialized resource args.
@@ -351,12 +351,10 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
                      options.session_options->config,
                      /*uses_uninitialized_resource_args=*/false,
                      /*is_v1_compat=*/true);
-    fallback_enabled = true;
   }
 
   mlir_bridge_gauge_v1->GetCell()->Set(true);
-
-  return mlir::TFTPU::TPUBridgeV1Compat(module, fallback_enabled);
+  return tensorflow::tf2xla::v1::RunSessionTf2xlaClusteringBridge(module);
 }
 
 }  // namespace tensorflow
