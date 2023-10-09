@@ -649,19 +649,19 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateCudaAsyncAllocator(
       return Unavailable("Failed to query available memory from device %i",
                          device_ordinal);
     }
-    // To allow full GPU memory to be visible to the BFC allocator if using
-    // unified memory.
+    // To allow full GPU memory to be visible to the Cuda Async allocator
+    // if using unified memory.
     // When unified memory is enabled, allow GPU memory oversubscription by
     // setting memory_fraction > 1.
     size_t allocator_memory = total_memory * memory_fraction;
     if (preallocate) {
       LOG(INFO) << "XLA backend allocating " << allocator_memory
                 << " bytes on device " << device_ordinal
-                << " for BFCAllocator.";
+                << " for CudaAsyncAllocator.";
     } else {
       LOG(INFO) << "XLA backend will use up to " << allocator_memory
                 << " bytes on device " << device_ordinal
-                << " for BFCAllocator.";
+                << " for CudaAsyncAllocator.";
     }
 
     auto allocator = std::make_unique<se::GpuCudaMallocAsyncAllocator>(
