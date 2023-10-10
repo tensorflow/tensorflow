@@ -43,12 +43,6 @@ namespace tensorflow {
 namespace {
 
 const char* const kXlaClusterOutput = "XlaClusterOutput";
-const char* const kPossibleAutoJitAlternative =
-    "This error might be occurring with the use of xla.compile. If it is not "
-    "necessary that every Op be compiled with XLA, an alternative is to use "
-    "auto_jit with OptimizerOptions.global_jit_level = ON_2 or the environment "
-    "variable TF_XLA_FLAGS=\"tf_xla_auto_jit=2\" which will attempt to use xla "
-    "to compile as much of the graph as the compiler is able to.";
 
 bool IsCpuGpuCompile(const Graph* graph) {
   for (Node* n : graph->nodes()) {
@@ -390,7 +384,9 @@ Status EncapsulateXlaComputationsPass::Run(
                              **options.graph, options.flib_def);
 
   const char* additional_help =
-      IsCpuGpuCompile(options.graph->get()) ? kPossibleAutoJitAlternative : "";
+      IsCpuGpuCompile(options.graph->get())
+          ? xla::status_macros::kPossibleAutoJitAlternative
+          : "";
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(Encapsulate(options.graph, options.flib_def),
                                   additional_help);

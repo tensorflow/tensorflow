@@ -565,20 +565,13 @@ cc_library(
 
 cc_library(
     name = "status",
-    hdrs = ["status.h"],
     tags = [
         "manual",
         "no_oss",
         "nobuilder",
     ],
+    textual_hdrs = ["status.h"],
     visibility = ["//visibility:public"],
-    deps = [
-        "//tsl/platform:logging",
-        "//tsl/platform:macros",
-        "//tsl/platform:stacktrace",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-    ],
 )
 
 cc_library(

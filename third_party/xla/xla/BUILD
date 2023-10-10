@@ -238,6 +238,7 @@ cc_library(
 
 cc_library(
     name = "status_macros",
+    srcs = ["status_macros.cc"],
     hdrs = ["status_macros.h"],
     visibility = ["//visibility:public"],
     deps = [
@@ -248,7 +249,20 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:logging",
         "@local_tsl//tsl/platform:stacktrace",
-        "@local_tsl//tsl/platform:status",
+    ],
+)
+
+xla_cc_test(
+    name = "status_macros_test",
+    size = "small",
+    srcs = ["status_macros_test.cc"],
+    deps = [
+        ":status_macros",
+        ":statusor",
+        ":test",
+        ":test_helpers",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:test_main",
     ],
 )
 
