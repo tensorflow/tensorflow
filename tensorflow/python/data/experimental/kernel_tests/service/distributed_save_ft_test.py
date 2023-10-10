@@ -352,7 +352,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(num_workers=[1, 3], num_repetitions=[1, 5])))
+          combinations.combine(num_workers=[1, 3], num_repetitions=[1, 10])))
   def testRepeatedDatasetRecoversAndCompletes(
       self, num_workers, num_repetitions):
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
@@ -365,7 +365,8 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     get_stream_assignments(cluster, num_workers, [self._path])
     cluster.stop_worker(0)
     cluster.restart_dispatcher()
-    cluster.restart_worker(0)
+    for worker_idx in range(num_workers):
+      cluster.restart_worker(worker_idx)
     self._wait_for_snapshot()
     self.assertTrue(self._snapshot_is_done())
 

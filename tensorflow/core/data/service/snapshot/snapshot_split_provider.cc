@@ -45,6 +45,7 @@ namespace data {
 namespace {
 
 constexpr char kNextSplitIndex[] = "next_split_index";
+constexpr char kRepetitionIndex[] = "repetition_index";
 
 StatusOr<int64_t> GetRepetitionIndex(const std::string& split_file) {
   tsl::StringPiece repetition_dir_path = tsl::io::Dirname(split_file);
@@ -228,6 +229,8 @@ Status SnapshotSplitProvider::Save(
   mutex_lock l(mu_);
   TF_RETURN_IF_ERROR(
       writer->WriteScalar(full_name(kNextSplitIndex), next_split_index_));
+  TF_RETURN_IF_ERROR(
+      writer->WriteScalar(full_name(kRepetitionIndex), repetition_index_));
   return OkStatus();
 }
 
@@ -235,16 +238,17 @@ Status SnapshotSplitProvider::Restore(
     std::function<std::string(std::string)> full_name,
     IteratorStateReader* reader) TF_LOCKS_EXCLUDED(mu_) {
   int64_t next_split_index = 0;
+  int64_t repetition_index = 0;
   TF_RETURN_IF_ERROR(
       reader->ReadScalar(full_name(kNextSplitIndex), &next_split_index));
+  TF_RETURN_IF_ERROR(
+      reader->ReadScalar(full_name(kRepetitionIndex), &repetition_index));
   mutex_lock l(mu_);
   next_split_index_ = next_split_index;
+  repetition_index_ = repetition_index;
   TF_ASSIGN_OR_RETURN(split_to_file_map_, GetSplitsFiles(next_split_index_));
-  auto next_split_file = split_to_file_map_.find(next_split_index_);
-  if (next_split_file != split_to_file_map_.end()) {
-    TF_ASSIGN_OR_RETURN(repetition_index_,
-                        GetRepetitionIndex(next_split_file->second));
-  }
+  LOG(INFO) << "Restored snapshot split provider for split "
+            << next_split_index_ << ", repetition " << repetition_index_ << ".";
   return OkStatus();
 }
 
