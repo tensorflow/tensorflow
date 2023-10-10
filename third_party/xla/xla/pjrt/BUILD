@@ -369,7 +369,10 @@ cc_library(
     hdrs = ["metrics.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//xla/stream_executor",
+        "//xla/stream_executor/gpu:gpu_init",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/lib/monitoring:counter",
         "@local_tsl//tsl/lib/monitoring:gauge",

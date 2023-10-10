@@ -131,10 +131,6 @@ absl::Status DeserializeAoTMlirModule(
 
 void RegisterTFRTDialectsForAoT(mlir::DialectRegistry& registry);
 
-void RecordFreeGpuMemory();
-
-int64_t GetFreeGpuMemory(int gpu_id);
-
 }  // namespace tfrt_stub
 }  // namespace tensorflow
 

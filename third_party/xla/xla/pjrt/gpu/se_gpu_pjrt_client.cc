@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/time/time.h"
 #include "xla/client/local_client.h"
+#include "xla/client/xla_computation.h"
 #include "xla/pjrt/distributed/topology_util.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -67,6 +68,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/gpu/nccl_id_store.h"
+#include "xla/pjrt/metrics.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
@@ -533,6 +535,20 @@ PjRtFuture<absl::Status> StreamExecutorGpuClient::CopyRawSubBufferToHost(
             "StreamExecutorGpuClient::CopyRawSubBufferToHost",
             keys.traceme_context_id);
       });
+}
+
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+StreamExecutorGpuClient::Compile(const XlaComputation& computation,
+                                 CompileOptions options) {
+  auto executable = PjRtStreamExecutorClient::Compile(computation, options);
+
+#ifdef GOOGLE_CUDA
+  for (const auto& device : addressable_devices()) {
+    metrics::RecordFreeGpuSystemMemory(device->local_hardware_id());
+  }
+#endif  // GOOGLE_CUDA
+
+  return executable;
 }
 
 namespace {

@@ -272,8 +272,6 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@local_tsl//tsl/platform:protobuf",
-        "@local_xla//xla/stream_executor",
-        "@local_xla//xla/stream_executor/gpu:gpu_init",
         "@tf_runtime//:bef",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:init_tfrt_dialects",

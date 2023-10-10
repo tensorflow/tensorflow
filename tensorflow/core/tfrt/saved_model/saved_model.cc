@@ -752,19 +752,12 @@ tensorflow::Status SavedModelImpl::Run(
   DCHECK(runner_table);
   DCHECK(resource_array);
 
-  auto status = GraphExecutionRunOnFunction(
+  return GraphExecutionRunOnFunction(
       options_.graph_execution_options, run_options, name, *symbol_uids, func,
       loaded_executable, inputs, outputs, resource_context,
       client_graph_resource_context, runner_table, resource_array, runtime(),
       *fallback_state_, fallback_state_->process_function_library_runtime(),
       &req_deadline_tracker_, /*stream_callback_id=*/std::nullopt);
-
-  if (options_.graph_execution_options.compile_options.device_target ==
-      TfrtDeviceInfraTarget::kGpu) {
-    RecordFreeGpuMemory();
-  }
-
-  return status;
 }
 
 struct SavedModelImpl::JoinedSignature {
