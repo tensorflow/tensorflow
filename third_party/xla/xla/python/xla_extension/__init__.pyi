@@ -615,7 +615,6 @@ class DeviceTopology:
 
 def buffer_to_dlpack_managed_tensor(
     buffer: ArrayImpl,
-    take_ownership: bool = ...,
     stream: int | None = None) -> Any: ...
 def dlpack_managed_tensor_to_buffer(
     tensor: Any, device: Device, stream: int | None) -> ArrayImpl: ...

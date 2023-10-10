@@ -728,8 +728,7 @@ static void Init(py::module_& m) {
 
   m.def("buffer_to_dlpack_managed_tensor",
         xla::ValueOrThrowWrapper(BufferToDLPackManagedTensor),
-        py::arg("buffer"), py::arg("take_ownership") = true,
-        py::arg("stream") = py::none());
+        py::arg("buffer"), py::arg("stream") = py::none());
   m.def("dlpack_managed_tensor_to_buffer",
         [](const pybind11::capsule& tensor, ClientAndPtr<PjRtDevice> device,
            std::optional<std::intptr_t> stream) {

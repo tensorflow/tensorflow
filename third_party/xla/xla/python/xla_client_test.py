@@ -2309,17 +2309,15 @@ def TestFactory(xla_backend,
     # pylint: disable=g-complex-comprehension
     # pyformat: disable
     @parameterized.named_parameters({
-        "testcase_name": "{}_own={}_gpu={}".format(
-            FormatShapeAndDtype(shape, dtype), take_ownership, gpu),
+        "testcase_name": "{}_gpu={}".format(
+            FormatShapeAndDtype(shape, dtype), gpu),
         "dtype": dtype,
         "shape": shape,
-        "take_ownership": take_ownership,
         "gpu": gpu
     } for dtype in dlpack_dtypes for shape in testcase_shapes
-                                    for take_ownership in [False, True]
                                     for gpu in [False, True])
     # pyformat: enable
-    def testRoundTrip(self, dtype, shape, take_ownership, gpu):
+    def testRoundTrip(self, dtype, shape, gpu):
       if gpu and self.gpu_backend is None:
         raise unittest.SkipTest("Test not running with GPU support")
       backend = self.gpu_backend if gpu else self.cpu_backend
@@ -2328,8 +2326,7 @@ def TestFactory(xla_backend,
       else:
         x = np.array(np.random.rand(*shape) * 100, dtype=dtype)
       buffer = backend.buffer_from_pyval(x)
-      dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(
-          buffer, take_ownership=take_ownership)
+      dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(buffer)
       del buffer  # Free "buffer" to make sure dlt retains ownership.
       self.assertEqual(type(dlt).__name__, "PyCapsule")
       y = xla_client._xla.dlpack_managed_tensor_to_buffer(
@@ -2340,8 +2337,7 @@ def TestFactory(xla_backend,
     def testTensorsCanBeConsumedOnceOnly(self):
       x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
       buffer = self.backend.buffer_from_pyval(x)
-      dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(
-          buffer, take_ownership=True)
+      dlt = xla_client._xla.buffer_to_dlpack_managed_tensor(buffer)
 
       def ConsumeDLPackTensor():
         _ = xla_client._xla.dlpack_managed_tensor_to_buffer(
@@ -2353,25 +2349,11 @@ def TestFactory(xla_backend,
           RuntimeError, ".*a DLPack tensor may be consumed at most once.*",
           ConsumeDLPackTensor)
 
-    def testTensorsCanBeOwnedOnceOnly(self):
-      x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
-      buffer = self.backend.buffer_from_pyval(x)
-      _ = xla_client._xla.buffer_to_dlpack_managed_tensor(
-          buffer, take_ownership=True)
-      self.assertTrue(buffer.is_deleted())
-      with self.assertRaisesRegex(
-          RuntimeError,
-          "Cannot convert deleted/invalid buffer to DLPack tensor.*"):
-        _ = xla_client._xla.buffer_to_dlpack_managed_tensor(
-            buffer, take_ownership=True)
-
     def testNonOwnedDlpackCanBeViewedTwice(self):
       x = np.array(np.random.rand(3, 4, 5, 6), dtype=np.float32)
       buffer = self.backend.buffer_from_pyval(x)
-      d1 = xla_client._xla.buffer_to_dlpack_managed_tensor(
-          buffer, take_ownership=False)
-      d2 = xla_client._xla.buffer_to_dlpack_managed_tensor(
-          buffer, take_ownership=False)
+      d1 = xla_client._xla.buffer_to_dlpack_managed_tensor(buffer)
+      d2 = xla_client._xla.buffer_to_dlpack_managed_tensor(buffer)
 
       y = xla_client._xla.dlpack_managed_tensor_to_buffer(
           d1, self.cpu_backend, self.gpu_backend)

@@ -494,6 +494,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@dlpack",
         "@local_config_python//:python_headers",  # buildcleaner: keep
+        "@local_tsl//tsl/platform:errors",
         "@pybind11",
     ],
 )
