@@ -980,38 +980,6 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +}  // namespace mlir
 +
 +#endif  // STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
-diff --ruN a/stablehlo/stablehlo/tests/print_stablehlo.mlir b/stablehlo/stablehlo/tests/print_stablehlo.mlir
---- stablehlo/stablehlo/tests/print_stablehlo.mlir
-+++ stablehlo/stablehlo/tests/print_stablehlo.mlir
-@@ -292,21 +292,21 @@
- }
- 
- #CSR = #sparse_tensor.encoding<{
--  lvlTypes = ["dense", "compressed"]
-+  map = (d0, d1) -> (d0 : dense, d1 : compressed)
- }>
- 
- #DCSR = #sparse_tensor.encoding<{
--  lvlTypes = ["compressed", "compressed"]
-+  map = (d0, d1) -> (d0 : compressed, d1 : compressed)
- }>
- 
- // CHECK-LABEL: func @encodings
- func.func @encodings(%arg0: tensor<10x20xf32, #CSR>,
-                      %arg1: tensor<10x20xf32, #DCSR>) -> tensor<10x20xf32> {
--  // CHECK:      %0 = stablehlo.add %arg0, %arg1 : (tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed" ] }>>) -> tensor<10x20xf32>
--  // CHECK-NEXT: %1 = stablehlo.add %arg1, %arg1 : tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed" ] }>>
--  // CHECK-NEXT: %2 = stablehlo.abs %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>) -> tensor<10x20xf32>
--  // CHECK-NEXT: %3 = stablehlo.abs %arg0 : tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>
--  // CHECK-NEXT: %4 = stablehlo.complex %arg0, %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>) -> tensor<10x20xcomplex<f32>>
-+  // CHECK:      %0 = stablehlo.add %arg0, %arg1 : (tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : compressed, d1 : compressed) }>>) -> tensor<10x20xf32>
-+  // CHECK-NEXT: %1 = stablehlo.add %arg1, %arg1 : tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : compressed, d1 : compressed) }>>
-+  // CHECK-NEXT: %2 = stablehlo.abs %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>) -> tensor<10x20xf32>
-+  // CHECK-NEXT: %3 = stablehlo.abs %arg0 : tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>
-+  // CHECK-NEXT: %4 = stablehlo.complex %arg0, %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>) -> tensor<10x20xcomplex<f32>>
-   %0 = "stablehlo.add"(%arg0, %arg1) : (tensor<10x20xf32, #CSR>,
-                                    tensor<10x20xf32, #DCSR>) -> tensor<10x20xf32>
-   %1 = "stablehlo.add"(%arg1, %arg1) : (tensor<10x20xf32, #DCSR>,
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 --- stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
