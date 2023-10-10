@@ -1,8 +1,9 @@
+load("//tsl:tsl.bzl", "if_not_fuchsia", "if_not_windows", "set_external_visibility", "tsl_copts")
+load("//tsl:tsl.default.bzl", "filegroup")
+load("//tsl/platform:rules_cc.bzl", "cc_library")
+
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//tsl:tsl.default.bzl", "filegroup")
-load("//tsl:tsl.bzl", "if_not_fuchsia", "if_not_windows", "set_external_visibility", "tsl_copts")
-load("//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -564,13 +565,20 @@ cc_library(
 
 cc_library(
     name = "status",
+    hdrs = ["status.h"],
     tags = [
         "manual",
         "no_oss",
         "nobuilder",
     ],
-    textual_hdrs = ["status.h"],
     visibility = ["//visibility:public"],
+    deps = [
+        "//tsl/platform:logging",
+        "//tsl/platform:macros",
+        "//tsl/platform:stacktrace",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
 )
 
 cc_library(
