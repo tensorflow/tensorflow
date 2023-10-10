@@ -61,9 +61,6 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   void SetAdaptiveBatchSchedulerOptions(OpKernelConstruction* c,
                                         int32_t num_batch_threads);
 
-  static void RecordBatchParamNumBatchThreads(int64_t num_batch_threads,
-                                              absl::string_view model_name);
-  static absl::string_view GetModelName(OpKernelContext* ctx);
   static int32 NumBatchThreadsFromEnvironmentWithDefault(
       int default_num_batch_threads);
   static thread::ThreadPool* GetOrCreateBatchThreadsPool();

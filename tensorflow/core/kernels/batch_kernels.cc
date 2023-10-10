@@ -91,17 +91,18 @@ void RecordBatchSplitUsage(
 }
 
 void RecordBatchParamNumBatchThreads(int64_t num_batch_threads,
-                                     const string& model_name) {
+                                     absl::string_view model_name) {
   static auto* cell = monitoring::Gauge<int64_t, 1>::New(
       "/tensorflow/serving/batching/num_batch_threads",
       "Tracks the number of batch threads of a model.", "model_name");
-  cell->GetCell(model_name)->Set(num_batch_threads);
+  cell->GetCell(std::string(model_name))->Set(num_batch_threads);
 }
 
-const string& GetModelName(OpKernelContext* ctx) {
-  static string* kModelNameUnset = new string("model_name_unset");
-  if (!ctx->session_metadata()) return *kModelNameUnset;
-  if (ctx->session_metadata()->name().empty()) return *kModelNameUnset;
+absl::string_view GetModelName(OpKernelContext* ctx) {
+  if (ctx->session_metadata() == nullptr ||
+      ctx->session_metadata()->name().empty()) {
+    return "model_name_unset";
+  }
   return ctx->session_metadata()->name();
 }
 

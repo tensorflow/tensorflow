@@ -47,23 +47,6 @@ constexpr char kBatchesToAverageOverAttr[] = "_batches_to_average_over";
 
 }  // namespace
 
-void BatchFunctionFallbackKernelBase::RecordBatchParamNumBatchThreads(
-    int64_t num_batch_threads, absl::string_view model_name) {
-  static auto* cell = monitoring::Gauge<int64_t, 1>::New(
-      "/tensorflow/serving/batching/num_batch_threads",
-      "Tracks the number of batch threads of a model.", "model_name");
-  cell->GetCell(std::string(model_name))->Set(num_batch_threads);
-}
-
-absl::string_view BatchFunctionFallbackKernelBase::GetModelName(
-    OpKernelContext* ctx) {
-  if (ctx->session_metadata() == nullptr ||
-      ctx->session_metadata()->name().empty()) {
-    return "model_name_unset";
-  }
-  return ctx->session_metadata()->name();
-}
-
 int32 BatchFunctionFallbackKernelBase::
     NumBatchThreadsFromEnvironmentWithDefault(int default_num_batch_threads) {
   int32_t num;
