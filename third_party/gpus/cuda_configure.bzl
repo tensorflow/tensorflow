@@ -824,6 +824,7 @@ filegroup(name="cudnn-include")
     repository_ctx.file("cuda/cuda/include/cublas.h")
     repository_ctx.file("cuda/cuda/include/cudnn.h")
     repository_ctx.file("cuda/cuda/extras/CUPTI/include/cupti.h")
+    repository_ctx.file("cuda/cuda/nvml/include/nvml.h")
     repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cuda", cpu_value))
     repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cudart", cpu_value))
     repository_ctx.file(
@@ -993,6 +994,7 @@ def _create_local_cuda_repository(repository_ctx):
     cudnn_header_dir = cuda_config.config["cudnn_include_dir"]
     cupti_header_dir = cuda_config.config["cupti_include_dir"]
     nvvm_libdevice_dir = cuda_config.config["nvvm_library_dir"]
+    nvml_header_dir = cuda_config.config["nvml_header_dir"]
 
     # Create genrule to copy files from the installed CUDA toolkit into execroot.
     copy_rules = [
@@ -1013,6 +1015,12 @@ def _create_local_cuda_repository(repository_ctx):
             name = "cuda-extras",
             src_dir = cupti_header_dir,
             out_dir = "cuda/extras/CUPTI/include",
+        ),
+        make_copy_dir_rule(
+            repository_ctx,
+            name = "nvml",
+            src_dir = nvml_header_dir,
+            out_dir = "cuda/nvml/include",
         ),
     ]
 
@@ -1250,7 +1258,7 @@ def _create_local_cuda_repository(repository_ctx):
             host_compiler_includes + _cuda_include_path(
                 repository_ctx,
                 cuda_config,
-            ) + [cupti_header_dir, cudnn_header_dir],
+            ) + [cupti_header_dir, cudnn_header_dir, nvml_header_dir],
         )
 
         # For gcc, do not canonicalize system header paths; some versions of gcc

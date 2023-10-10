@@ -48,7 +48,8 @@ class GpuHloScheduleTest : public HloTestBase {
         test_backend.default_stream_executor()->GetDeviceDescription();
     TF_CHECK_OK(ScheduleGpuModule(
         module, /*pointer_size=*/8,
-        /*memory_limit=*/gpu_device_info.device_memory_size() * 8 / 10));
+        /*memory_limit=*/gpu_device_info.device_memory_size() * 8 / 10,
+        gpu_device_info));
     return SequentialHloOrdering{module->schedule()};
   }
 

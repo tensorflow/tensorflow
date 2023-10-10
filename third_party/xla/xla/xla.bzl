@@ -134,3 +134,6 @@ def auto_sharding_solver_deps():
 
 def xla_export_hlo_deps():
     return []
+
+def xla_nvml_deps():
+    return ["@local_config_cuda//cuda:nvml_headers"]
