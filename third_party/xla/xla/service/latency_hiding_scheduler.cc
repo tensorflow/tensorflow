@@ -857,11 +857,11 @@ class ReadySetLt {
       }
     }
     // If we computed memory pressure increase of instructions when we don't
-    // have a better choice let's just choose the one that decreases or
-    // increases less memory pressure.
+    // have a better choice let's just choose the one that decreases the memory
+    // pressure.
     if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-            a_increase.first < b_increase.first, a,
-            b_increase.first < a_increase.first, b, "kDecreaseMemory")) {
+            a_increase.first < 0, a, b_increase.first < 0, b,
+            "kDecreaseMemory")) {
       return *value;
     }
     // If none of the heuristics above triggers then prefer to schedule
