@@ -141,10 +141,17 @@ std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
                                             const HloInstruction* operand,
                                             int64_t op_index,
                                             const HloSharding& output_sharding,
-                                            const CallGraph& call_graph) {
+                                            const CallGraph& call_graph,
+                                            int64_t num_devices) {
   auto ins_clone = ins->Clone();
   ins_clone->set_sharding(output_sharding);
   auto operand_clone = operand->Clone();
+  if (operand_clone->has_sharding() &&
+      !operand_clone->sharding()
+           .Validate(operand_clone->shape(), num_devices)
+           .ok()) {
+    operand_clone->clear_sharding();
+  }
   auto s = ins_clone->ReplaceOperandWith(op_index, operand_clone.get());
   CHECK_OK(s);
   return ShardingPropagation::GetShardingFromUser(*operand_clone, *ins_clone,
@@ -186,7 +193,8 @@ GenerateReshardingCostsAndMissingShardingsForAllOperands(
         cur_input_sharding = input_shardings[k];
       } else {
         cur_input_sharding =
-            GetInputSharding(ins, operand, k, output_sharding, call_graph);
+            GetInputSharding(ins, operand, k, output_sharding, call_graph,
+                             cluster_env.NumDevices());
       }
       bool is_sharding_default_replicated = false;
       if (!cur_input_sharding.has_value()) {
@@ -333,6 +341,7 @@ StatusOr<std::unique_ptr<StrategyVector>> FollowReduceStrategy(
     strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
                                           leaf_strategies);
     const StrategyVector* src_strategies = strategy_map.at(operand).get();
+    // Follows the strategy of the operand.
     strategies->following = src_strategies;
     strategies->leaf_vector.reserve(src_strategies->leaf_vector.size());
     // Map operand dims to inst dim
@@ -345,8 +354,6 @@ StatusOr<std::unique_ptr<StrategyVector>> FollowReduceStrategy(
     CHECK_EQ(ins->dimensions().size() + output_shape.rank(),
              operand->shape().rank())
         << "Invalid kReduce: output size + reduced dimensions size != op count";
-    // Follows the strategy of the operand.
-    strategies->following = src_strategies;
 
     for (size_t sid = 0; sid < src_strategies->leaf_vector.size(); ++sid) {
       HloSharding input_sharding =
