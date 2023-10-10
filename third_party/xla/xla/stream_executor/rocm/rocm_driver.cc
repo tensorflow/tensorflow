@@ -38,12 +38,11 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/stacktrace.h"
-#include "tsl/platform/static_threadlocal.h"
 #include "tsl/platform/threadpool.h"
 
-bool FLAGS_gpuexec_rocm_driver_inject_init_error = false;
-bool FLAGS_gpuexec_rocm_sync_around_driver_calls = false;
-bool FLAGS_gpuexec_rocm_device_0_only = false;
+static constexpr bool FLAGS_gpuexec_rocm_driver_inject_init_error = false;
+static constexpr bool FLAGS_gpuexec_rocm_sync_around_driver_calls = false;
+static constexpr bool FLAGS_gpuexec_rocm_device_0_only = false;
 
 #define RETURN_IF_ROCM_ERROR(expr, ...)                                       \
   do {                                                                        \
@@ -128,20 +127,18 @@ void SynchronizeOrDie() {
   }
 }
 
-struct ThreadLocalData {
+thread_local struct ThreadLocalData {
   int current_device_ordinal;
   GpuContext* context;  // Only valid if id == a known good context.
   int depth;
-};
-
-TSL_STATIC_THREAD_LOCAL_POD(ThreadLocalData, tls_data);
+} tls_data = {};
 
 }  // namespace
 
 ScopedActivateContext::ScopedActivateContext(GpuContext* hip_context) {
   if (FLAGS_gpuexec_rocm_sync_around_driver_calls) SynchronizeOrDie();
 
-  auto* tls = &tls_data.get();
+  auto* tls = &tls_data;
   if (tls->depth == 0) {
     VLOG(3) << "ScopedActivateContext switching to "
             << hip_context->device_ordinal();
@@ -177,7 +174,7 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* hip_context) {
 ScopedActivateContext::~ScopedActivateContext() {
   if (FLAGS_gpuexec_rocm_sync_around_driver_calls) SynchronizeOrDie();
 
-  auto* tls = &tls_data.get();
+  auto* tls = &tls_data;
 
   if (kVerifyGpuContext) {
     CHECK_EQ(CurrentContext(),

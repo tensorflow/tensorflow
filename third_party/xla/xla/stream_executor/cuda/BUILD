@@ -129,7 +129,6 @@ cc_library(
         "@local_tsl//tsl/cuda",
         "@local_tsl//tsl/cuda:cudart",
         "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:static_threadlocal",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",

@@ -1905,11 +1905,3 @@ tsl_cc_test(
         "//tsl/lib/core:status_test_util",
     ],
 )
-
-cc_library(
-    name = "static_threadlocal",
-    hdrs = [
-        "static_threadlocal.h",
-    ],
-    visibility = ["//visibility:public"],
-)

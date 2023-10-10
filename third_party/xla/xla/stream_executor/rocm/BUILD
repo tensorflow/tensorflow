@@ -63,7 +63,6 @@ cc_library(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:stacktrace",
-        "@local_tsl//tsl/platform:static_threadlocal",
     ]),
 )
 

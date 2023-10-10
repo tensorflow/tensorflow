@@ -46,13 +46,12 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/stacktrace.h"
-#include "tsl/platform/static_threadlocal.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/threadpool.h"
 
-bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
-bool FLAGS_gpuexec_cuda_sync_around_driver_calls = false;
-bool FLAGS_gpuexec_cuda_device_0_only = false;
+static constexpr bool FLAGS_gpuexec_cuda_driver_inject_init_error = false;
+static constexpr bool FLAGS_gpuexec_cuda_sync_around_driver_calls = false;
+static constexpr bool FLAGS_gpuexec_cuda_device_0_only = false;
 
 #define RETURN_IF_CUDA_RES_ERROR(expr, ...)                                   \
   do {                                                                        \
@@ -135,20 +134,18 @@ void SynchronizeOrDie() {
                          "Synchronize fail: ", tsl::CurrentStackTrace());
 }
 
-struct ThreadLocalData {
+thread_local struct ThreadLocalData {
   int64_t id;
   GpuContext* context;  // Only valid if id == a known good context.
   int depth;
-};
-
-TSL_STATIC_THREAD_LOCAL_POD(ThreadLocalData, tls_data);
+} tls_data = {};
 
 }  // namespace
 
 ScopedActivateContext::ScopedActivateContext(GpuContext* cuda_context) {
   if (FLAGS_gpuexec_cuda_sync_around_driver_calls) SynchronizeOrDie();
 
-  auto* tls = &tls_data.get();
+  auto* tls = &tls_data;
 
   // If this is an outermost scope, we must not assume that the CUDA context has
   // been left in the same state we left it. Other code may have run on this
@@ -187,7 +184,7 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* cuda_context) {
 ScopedActivateContext::~ScopedActivateContext() {
   if (FLAGS_gpuexec_cuda_sync_around_driver_calls) SynchronizeOrDie();
 
-  auto* tls = &tls_data.get();
+  auto* tls = &tls_data;
 
   if (kVerifyGpuContext) {
     // Note that if kVerifyGpuContext is used, and contexts are deleted, it's
