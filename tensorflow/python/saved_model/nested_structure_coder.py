@@ -437,21 +437,8 @@ class BuiltInTypeSpecCodec:
 class _TypeSpecCodec:
   """Codec for `tf.TypeSpec`."""
 
-  # Mapping from enum value to type (TypeSpec subclass).
-  # Must leave this for backwards-compatibility until all external usages
-  # have been removed.
-  TYPE_SPEC_CLASS_FROM_PROTO = {
-  }
-
-  # Mapping from type (TypeSpec subclass) to enum value.
-  TYPE_SPEC_CLASS_TO_PROTO = dict(
-      (cls, enum) for (enum, cls) in TYPE_SPEC_CLASS_FROM_PROTO.items())
-
   def can_encode(self, pyobj):
     """Returns true if `pyobj` can be encoded as a TypeSpec."""
-    if type(pyobj) in self.TYPE_SPEC_CLASS_TO_PROTO:  # pylint: disable=unidiomatic-typecheck
-      return True
-
     # Check if it's a registered type.
     if isinstance(pyobj, internal.TypeSpec):
       try:
@@ -464,17 +451,13 @@ class _TypeSpecCodec:
 
   def do_encode(self, type_spec_value, encode_fn):
     """Returns an encoded proto for the given `tf.TypeSpec`."""
-    type_spec_class = self.TYPE_SPEC_CLASS_TO_PROTO.get(type(type_spec_value))
-    type_spec_class_name = type(type_spec_value).__name__
-
-    if type_spec_class is None:
-      type_spec_class_name = type_spec_registry.get_name(type(type_spec_value))
-      type_spec_class = struct_pb2.TypeSpecProto.REGISTERED_TYPE_SPEC
-      # Support for saving registered TypeSpecs is currently experimental.
-      # Issue a warning to indicate the limitations.
-      warnings.warn("Encoding a StructuredValue with type %s; loading this "
-                    "StructuredValue will require that this type be "
-                    "imported and registered." % type_spec_class_name)
+    type_spec_class_name = type_spec_registry.get_name(type(type_spec_value))
+    type_spec_class = struct_pb2.TypeSpecProto.REGISTERED_TYPE_SPEC
+    # Support for saving registered TypeSpecs is currently experimental.
+    # Issue a warning to indicate the limitations.
+    warnings.warn("Encoding a StructuredValue with type %s; loading this "
+                  "StructuredValue will require that this type be "
+                  "imported and registered." % type_spec_class_name)
 
     type_state = type_spec_value._serialize()  # pylint: disable=protected-access
     num_flat_components = len(
@@ -507,12 +490,10 @@ class _TypeSpecCodec:
             "registered before you load this object (typically by importing "
             "its module).") from e
     else:
-      if type_spec_class_enum not in self.TYPE_SPEC_CLASS_FROM_PROTO:
-        raise ValueError(
-            f"The type '{class_name}' is not supported by this version of "
-            "TensorFlow. (The object you are loading must have been created "
-            "with a newer version of TensorFlow.)")
-      type_spec_class = self.TYPE_SPEC_CLASS_FROM_PROTO[type_spec_class_enum]
+      raise ValueError(
+          f"The type '{class_name}' is not supported by this version of "
+          "TensorFlow. (The object you are loading must have been created "
+          "with a newer version of TensorFlow.)")
 
     # pylint: disable=protected-access
     return type_spec_class._deserialize(decode_fn(type_spec_proto.type_state))

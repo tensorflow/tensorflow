@@ -19,6 +19,7 @@ import collections
 
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import op_selector
 from tensorflow.python.ops import resource_variable_ops
@@ -31,7 +32,7 @@ UnliftableError = op_selector.UnliftableError
 
 
 def _as_operation(op_or_tensor):
-  if isinstance(op_or_tensor, ops.Tensor):
+  if isinstance(op_or_tensor, tensor_lib.Tensor):
     return op_or_tensor.op
   return op_or_tensor
 

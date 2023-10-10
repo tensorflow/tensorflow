@@ -21,6 +21,7 @@ import weakref
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.trackable import base
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
@@ -152,7 +153,7 @@ class CapturableResource(base.Trackable, metaclass=_ResourceMetaclass):
 
   @_resource_handle.setter
   def _resource_handle(self, value):
-    if isinstance(value, (ops.Tensor, ops.EagerTensor)):
+    if isinstance(value, (tensor.Tensor, ops.EagerTensor)):
       value._parent_trackable = weakref.ref(self)  # pylint: disable=protected-access
     self._resource_handle_value = value
 

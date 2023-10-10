@@ -24,6 +24,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Check if a data type is byte swappable.
+bool IsByteSwappable(DataType dtype);
+
 // Byte-swap a tensor's backing buffer in place.
 //
 // Args:

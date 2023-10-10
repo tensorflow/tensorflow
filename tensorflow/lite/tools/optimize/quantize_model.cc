@@ -272,6 +272,38 @@ std::unordered_set<string> PopulateRealValueOpSet(
   return real_value_op_set;
 }
 
+// Set quantized_bias_type for CONV_2D/FULLY_CONNECTED/TRANSPOSE_CONV so that
+// the accumulator is initialized to the appropriate default value when the bias
+// is NULL.
+void SetOperatorPropertyBiasType(ModelT* model, const TensorType& bias_type) {
+  for (int subgraph_idx = 0, end = model->subgraphs.size(); subgraph_idx < end;
+       subgraph_idx++) {
+    SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
+    // Iterate backward to avoid messing with index.
+    for (int op_idx = subgraph->operators.size() - 1; op_idx >= 0; op_idx--) {
+      OperatorT* op = subgraph->operators[op_idx].get();
+      OperatorCodeT* op_code = model->operator_codes[op->opcode_index].get();
+      if (op_code && op_code->builtin_code == BuiltinOperator_FULLY_CONNECTED) {
+        auto* options = op->builtin_options.AsFullyConnectedOptions();
+        if (options) {
+          options->quantized_bias_type = bias_type;
+        }
+      } else if (op_code && op_code->builtin_code == BuiltinOperator_CONV_2D) {
+        auto* options = op->builtin_options.AsConv2DOptions();
+        if (options) {
+          options->quantized_bias_type = bias_type;
+        }
+      } else if (op_code &&
+                 op_code->builtin_code == BuiltinOperator_TRANSPOSE_CONV) {
+        auto* options = op->builtin_options.AsTransposeConvOptions();
+        if (options) {
+          options->quantized_bias_type = bias_type;
+        }
+      }
+    }
+  }
+}
+
 TfLiteStatus QuantizeBias(ModelT* model, const TensorT* input_tensor,
                           const TensorT* weight_tensor, TensorT* bias_tensor,
                           bool is_per_channel, int channel_dim_index,
@@ -1923,6 +1955,7 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
   TF_LITE_ENSURE_STATUS(ApplyConstraints(model, operator_names,
                                          real_value_op_set, activations_type,
                                          error_reporter));
+  SetOperatorPropertyBiasType(model, bias_type);
   TF_LITE_ENSURE_STATUS(QuantizeBiases(model, operator_names, real_value_op_set,
                                        activations_type, bias_type,
                                        disable_per_channel, error_reporter));

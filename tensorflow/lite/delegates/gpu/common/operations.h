@@ -61,6 +61,7 @@ enum class OperationType {
   FULLY_CONNECTED,
   FULLY_CONNECTED_INT8,
   GATHER,
+  GELU,
   GREATER,
   GREATER_EQUAL,
   HARD_SWISH,
@@ -79,6 +80,7 @@ enum class OperationType {
   NOT_EQUAL,
   ONE_HOT,
   PAD,
+  PAD_V2,
   POOLING_2D,
   POW,
   PRELU,
@@ -93,8 +95,10 @@ enum class OperationType {
   RESHAPE,
   RESIZE,
   RSQRT,
+  SELECT,
   SELECT_V2,
   SIGMOID,
+  SIGN,
   SIN,
   SLICE,
   SOFTMAX,
@@ -121,7 +125,6 @@ using TensorOrScalarBase = std::variant<std::monostate, Tensor<HWC, DataTypeT>,
 using TensorOrScalar = TensorOrScalarBase<DataType::FLOAT32, float>;
 
 struct Padding2D {
-  Padding2D& operator=(const Padding2D& value);
   bool operator==(const Padding2D& value) const;
   bool operator!=(const Padding2D& value) const;
   Padding2D& operator-(const Padding2D& value);
@@ -134,8 +137,6 @@ struct Padding2D {
 };
 
 struct Padding3D {
-  Padding3D() = default;
-  Padding3D& operator=(const Padding3D& value);
   bool operator==(const Padding3D& value);
   bool operator!=(const Padding3D& value);
   Padding3D& operator-(const Padding3D& value);
@@ -390,18 +391,25 @@ Padding3D CalculateSamePadding(const BHWDC& input,
                                const DepthwiseConvolution3DAttributes& attr);
 
 // f(x):= {
-//   if x < 0  : x -> alpha * x
-//   if x >= 0 : x -> min(clip, x)
+//   if alpha != 0: x -> min(activation_max, x)
+//   else
+//     if x < activation_min : x -> min(activation_min, alpha * x)
+//     if x >= activation_min : x -> min(activation_max, x)
 // }
 //
 // Examples:
-//   - ReLU: clip = 0, alpha = 0
-//   - ReLU6: clip = 6, alpha = 0
-//   - Leaky ReLU: clip = 0, alpha = a
+//   - ReLU: activation_min = 0, activation_max = 0, alpha = 0
+//   - ReLU6: activation_min = 0, activation_max = 6, alpha = 0
+//   - Leaky ReLU: activation_min = 0, activation_max = 0, alpha = a
+//   - ReLUN1To1: activation_min = -1, activation_max = 1, alpha = 0
 struct ReLUAttributes {
-  // clip <= 0 mean it is not set.
-  float clip = 0;
+  // activation_min must be < activation_max
+  float activation_min = 0;
 
+  // activation_max <= 0 mean it is not set.
+  float activation_max = 0;
+
+  // alpha must be <= 1
   float alpha = 0;
 };
 
@@ -486,6 +494,7 @@ struct PadAttributes {
 
   BHWC prepended;
   BHWC appended;
+  float constant_values = 0;
 };
 
 // @return shape of a tensor after Pad operation is applied to the given input.
@@ -625,6 +634,7 @@ struct QuantizeAndDequantizeAttributes {
 
 struct GatherAttributes {
   Axis axis = Axis::UNKNOWN;
+  Tensor<Linear, DataType::INT32> indices;
 };
 
 struct OneHotAttributes {
@@ -635,6 +645,7 @@ struct OneHotAttributes {
 struct SelectV2Attributes {
   bool broadcast_true = false;
   bool broadcast_false = false;
+  bool scalar_cond = false;
 };
 
 struct CumsumAttributes {

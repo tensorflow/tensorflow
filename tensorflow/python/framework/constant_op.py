@@ -19,15 +19,20 @@ See the [constants guide](https://tensorflow.org/api_guides/python/constant_op).
 
 # Must be separate from array_ops to avoid a cyclic dependency.
 
-import contextlib
+from typing import Union
+import numpy as np
 from tensorflow.core.framework import types_pb2
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.profiler import trace
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -62,7 +67,7 @@ def _eager_identity(tensor, ctx):
   return result
 
 
-def convert_to_eager_tensor(value, ctx, dtype=None):
+def convert_to_eager_tensor(value, ctx, dtype=None) -> ops._EagerTensorBase:
   """Converts the given `value` to an `EagerTensor`.
 
   Note that this function could return cached copies of created constants for
@@ -79,6 +84,11 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
   Raises:
     TypeError: if `dtype` is not compatible with the type of t.
   """
+  if isinstance(value, np.ndarray):
+    # Make a copy explicitly because the EagerTensor might share the underlying
+    # memory with the input array. Without this copy, users will be able to
+    # modify the EagerTensor after its creation by changing the input array.
+    value = value.copy()
   if isinstance(value, ops.EagerTensor):
     if dtype is not None and value.dtype != dtype:
       raise TypeError(f"Expected tensor {value} with dtype {dtype!r}, but got "
@@ -95,7 +105,8 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
 
 @tf_export(v1=["constant"])
 def constant_v1(
-    value, dtype=None, shape=None, name="Const", verify_shape=False):
+    value, dtype=None, shape=None, name="Const", verify_shape=False
+) -> Union[ops.Operation, ops._EagerTensorBase]:
   """Creates a constant tensor.
 
   The resulting tensor is populated with values of type `dtype`, as
@@ -159,7 +170,9 @@ def constant_v1(
 
 
 @tf_export("constant", v1=[])
-def constant(value, dtype=None, shape=None, name="Const"):
+def constant(
+    value, dtype=None, shape=None, name="Const"
+) -> Union[ops.Operation, ops._EagerTensorBase]:
   """Creates a constant tensor from a tensor-like object.
 
   Note: All eager `tf.Tensor` values are immutable (in contrast to
@@ -259,39 +272,26 @@ def constant(value, dtype=None, shape=None, name="Const"):
                         allow_broadcast=True)
 
 
-def maybe_convert_tensor_to_weak_type(tensor, weak_type):
-  """Converts the Tensor inplace, to a weakly-typed one if needed.
-
-  Args:
-    tensor: A Tensor instance in either Eager or Graph mode.
-    weak_type: Boolean type, whether `tensor` needs to be converted.
-  """
-  if weak_type and not dtypes.is_weak_type(tensor.dtype):
-    tensor._weak_dtype = dtypes.type_to_weak_type[tensor.dtype]  # pylint: disable=protected-access
-
-
 def _constant_impl(
-    value, dtype, shape, name, verify_shape, allow_broadcast):
+    value, dtype, shape, name, verify_shape, allow_broadcast
+) -> Union[ops.Operation, ops._EagerTensorBase]:
   """Implementation of constant."""
-  is_weak_type = dtypes.is_weak_type(dtype)
-
   ctx = context.context()
   if ctx.executing_eagerly():
-    with contextlib.ExitStack() as stack:
-      if trace.enabled:
-        stack.enter_context(trace.Trace("tf.constant"))
-      res = _constant_eager_impl(ctx, value, dtype, shape, verify_shape)
-      maybe_convert_tensor_to_weak_type(res, is_weak_type)
-      return res
+    if trace.enabled:
+      with trace.Trace("tf.constant"):
+        return _constant_eager_impl(ctx, value, dtype, shape, verify_shape)
+    return _constant_eager_impl(ctx, value, dtype, shape, verify_shape)
 
   const_tensor = ops._create_graph_constant(  # pylint: disable=protected-access
       value, dtype, shape, name, verify_shape, allow_broadcast
   )
-  maybe_convert_tensor_to_weak_type(const_tensor, is_weak_type)
   return const_tensor
 
 
-def _constant_eager_impl(ctx, value, dtype, shape, verify_shape):
+def _constant_eager_impl(
+    ctx, value, dtype, shape, verify_shape
+) -> ops._EagerTensorBase:
   """Creates a constant on the current device."""
   t = convert_to_eager_tensor(value, ctx, dtype)
   if shape is None:
@@ -322,7 +322,7 @@ def _constant_eager_impl(ctx, value, dtype, shape, verify_shape):
 
 
 def is_constant(tensor_or_op):
-  if isinstance(tensor_or_op, ops.Tensor):
+  if isinstance(tensor_or_op, tensor_lib.Tensor):
     op = tensor_or_op.op
   else:
     op = tensor_or_op
@@ -334,6 +334,12 @@ def _constant_tensor_conversion_function(v, dtype=None, name=None,
   _ = as_ref
   return constant(v, dtype=dtype, name=name)
 
+# Register the conversion function for the "unconvertible" types
+# as a conversion to a constant.
+tensor_conversion_registry.register_tensor_conversion_function_internal(
+    tensor_conversion_registry._CONSTANT_OP_CONVERTIBLES,  # pylint: disable=protected-access
+    _constant_tensor_conversion_function,
+    0)
 
 tensor_conversion_registry.register_tensor_conversion_function(
     (list, tuple), _constant_tensor_conversion_function, 100)
@@ -396,3 +402,70 @@ def _dimension_tensor_conversion_function(d,
 
 tensor_conversion_registry.register_tensor_conversion_function(
     tensor_shape.Dimension, _dimension_tensor_conversion_function, 100)
+
+
+class _ConstantTensorCodec:
+  """Codec for Tensor."""
+
+  def can_encode(self, pyobj):
+    return isinstance(pyobj, tensor_lib.Tensor)
+
+  def do_encode(self, tensor_value, encode_fn):
+    """Returns an encoded `TensorProto` for the given `tf.Tensor`."""
+    del encode_fn
+    encoded_tensor = struct_pb2.StructuredValue()
+    if isinstance(tensor_value, ops.EagerTensor):
+      encoded_tensor.tensor_value.CopyFrom(
+          tensor_util.make_tensor_proto(tensor_value.numpy())
+      )
+    else:
+      if tensor_value.op.type == "Const":
+        encoded_tensor.tensor_value.CopyFrom(tensor_value.op.get_attr("value"))
+      else:
+        raise nested_structure_coder.NotEncodableError(
+            f"No encoder for object {str(tensor_value)} of type"
+            f" {type(tensor_value)}."
+        )
+    return encoded_tensor
+
+  def can_decode(self, value):
+    return value.HasField("tensor_value")
+
+  def do_decode(self, value, decode_fn):
+    """Returns the `tf.Tensor` encoded by the proto `value`."""
+    del decode_fn
+    tensor_proto = value.tensor_value
+    tensor = constant(tensor_util.MakeNdarray(tensor_proto))
+    return tensor
+
+
+nested_structure_coder.register_codec(_ConstantTensorCodec())
+
+
+class _NumpyCodec:
+  """Codec for Numpy."""
+
+  def can_encode(self, pyobj):
+    return isinstance(pyobj, np.ndarray)
+
+  def do_encode(self, numpy_value, encode_fn):
+    """Returns an encoded `TensorProto` for `np.ndarray`."""
+    del encode_fn
+    encoded_numpy = struct_pb2.StructuredValue()
+    encoded_numpy.numpy_value.CopyFrom(
+        tensor_util.make_tensor_proto(numpy_value)
+    )
+    return encoded_numpy
+
+  def can_decode(self, value):
+    return value.HasField("numpy_value")
+
+  def do_decode(self, value, decode_fn):
+    """Returns the `np.ndarray` encoded by the proto `value`."""
+    del decode_fn
+    tensor_proto = value.numpy_value
+    numpy = tensor_util.MakeNdarray(tensor_proto)
+    return numpy
+
+
+nested_structure_coder.register_codec(_NumpyCodec())

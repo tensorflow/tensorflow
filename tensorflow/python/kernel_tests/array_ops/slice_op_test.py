@@ -181,7 +181,8 @@ class SliceTest(test.TestCase):
     input_val = 0
     # Test with constant input; shape inference fails.
     with self.assertRaisesWithPredicateMatch(
-        (ValueError, errors_impl.InvalidArgumentError), "out of range"):
+        (ValueError, errors_impl.InvalidArgumentError),
+        "Attempting to slice scalar input."):
       constant_op.constant(input_val)[:].get_shape()
 
     # Test evaluating with non-constant input; kernel execution fails.
@@ -250,6 +251,8 @@ class SliceTest(test.TestCase):
           np.complex64,
           np.complex128,
           dtypes.bfloat16.as_numpy_dtype,
+          dtypes.float8_e5m2.as_numpy_dtype,
+          dtypes.float8_e4m3fn.as_numpy_dtype,
       ]:
         inp = np.random.rand(4, 4).astype(dtype)
         a = constant_op.constant(

@@ -30,9 +30,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/file_lock.h"
@@ -48,7 +47,7 @@ namespace {
 
 using flatbuffers::Offset;
 
-Validator::Status RunValidator(absl::string_view model_path,
+Validator::Status RunValidator(const std::string& model_path,
                                const std::string& delegate_so_path,
                                const TFLiteSettingsT& tflite_settings,
                                Validator::Results& results) {

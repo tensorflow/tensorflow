@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/slice_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -273,6 +273,8 @@ TF_CALL_ALL_TYPES(DECLARE_FOR_N);
 
 TF_CALL_POD_STRING_TYPES(REGISTER_SLICE);
 TF_CALL_QUANTIZED_TYPES(REGISTER_SLICE);
+TF_CALL_float8_e5m2(REGISTER_SLICE);
+TF_CALL_float8_e4m3fn(REGISTER_SLICE);
 #undef REGISTER_SLICE
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "tensorflow/lite/core/c/c_api_types.h"
-#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/async/c/types.h"
 #include "tensorflow/lite/core/async/interop/c/types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,10 +29,18 @@ extern "C" {
 // --------------------------------------------------------------------------
 /// TfLiteExecutionTask API.
 ///
-/// TfLiteExecutionTask stores the information for a specific
+/// The opaque TfLiteExecutionTask stores the information for a specific
 /// execution. It includes the mapping from tensors to the buffer handles as
 /// well as the synchronization objects.
 /// WARNING: This file contains experimental APIs and subject to change.
+
+/// Opaque type for execution task.
+/// NOTE: Unless documented, `TfLiteExecutionTask` objects are
+/// "thread-compatible": i.e. not thread-safe but also not thread-hostile
+/// <https://web.archive.org/web/20210125044505/https://www.ibm.com/developerworks/java/library/j-jtp09263/index.html>.
+/// That is, each instance is not thread-safe, but multiple separate instances
+/// are safely independent.
+typedef struct TfLiteExecutionTask TfLiteExecutionTask;
 
 /// Buffers
 /// --------------------------------------------------------------------------
@@ -44,15 +52,23 @@ extern "C" {
 /// `task` and `tensor_signature_name` must not be nullptr.
 /// Returns kTfLiteError if the tensor is not found or nullptr args.
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteExecutionTaskSetBuffer(
-    TfLiteExecutionTask* task, int32_t io_type,
+    TfLiteExecutionTask* task, TfLiteIoType io_type,
     const char* tensor_signature_name, TfLiteBufferHandle handle);
+
+/// Sets the buffer handle to the input / output tensor associated with the
+/// tensor index.
+/// NOTE: This method does not check tensor index is pointing to a valid tensor.
+/// Caller need to make sure the tensor_index points to a valid tensor by
+/// using the element from AsyncSignatureRunner inputs / outputs array.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteExecutionTaskSetBufferByIndex(
+    TfLiteExecutionTask* task, int tensor_index, TfLiteBufferHandle handle);
 
 /// Returns the buffer handle of the input / output tensor associated with
 /// `tensor_signature_name`.
 /// `task` and `tensor_signature_name` must not be nullptr.
 /// Returns kTfLiteNullBufferHandle if the tensor is not found or null input.
 TFL_CAPI_EXPORT extern TfLiteBufferHandle TfLiteExecutionTaskGetBufferByName(
-    const TfLiteExecutionTask* task, int32_t io_type,
+    const TfLiteExecutionTask* task, TfLiteIoType io_type,
     const char* tensor_signature_name);
 
 /// The same as `TfLiteExecutionTaskGetBufferByName` but takes tensor index
@@ -85,7 +101,7 @@ TFL_CAPI_EXPORT extern TfLiteBufferHandle TfLiteExecutionTaskGetBufferByIndex(
 /// TODO(b/191883048): Revisit if we want to bundle the lifetime of sync with
 /// the task itself and delete the TfLiteSynchronization in `Finish(task)`.
 
-/// Sets the sync object to the input / output tensor associated with
+/// Sets the opaque sync object to the input / output tensor associated with
 /// `tensor_signature_name`.
 /// `task` and `tensor_signature_name` must not be nullptr.
 /// A nullptr `sync` esentially means the tensor data does not need
@@ -94,15 +110,24 @@ TFL_CAPI_EXPORT extern TfLiteBufferHandle TfLiteExecutionTaskGetBufferByIndex(
 /// `sync` when destroying the `task` with AsyncSignatureRunner::Finish.
 /// Returns kTfLiteError if the tensor is not found.
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteExecutionTaskSetSync(
-    TfLiteExecutionTask* task, int32_t io_type,
+    TfLiteExecutionTask* task, TfLiteIoType io_type,
     const char* tensor_signature_name, TfLiteSynchronization* sync);
+
+/// Sets the opaque sync object to the input / output tensor associated with the
+/// tensor index.
+/// NOTE: This method does not check tensor index is pointing to a
+/// valid tensor. Caller need to make sure the tensor_index points to a valid
+/// tensor by using the element from AsyncSignatureRunner inputs / outputs
+/// array.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteExecutionTaskSetSyncByIndex(
+    TfLiteExecutionTask* task, int tensor_index, TfLiteSynchronization* sync);
 
 /// Returns the sync object of the input / output tensor associated with
 /// `tensor_signature_name`.
 /// `task` and `tensor_signature_name` must not be nullptr.
 /// Returns nullptr if the tensor is not found or null input.
 TFL_CAPI_EXPORT extern TfLiteSynchronization* TfLiteExecutionTaskGetSyncByName(
-    const TfLiteExecutionTask* task, int32_t io_type,
+    const TfLiteExecutionTask* task, TfLiteIoType io_type,
     const char* tensor_signature_name);
 
 /// The same as `TfLiteExecutionTaskGetSyncByName` but takes tensor index
@@ -117,15 +142,15 @@ TFL_CAPI_EXPORT extern void* TfLiteExecutionTaskGetDelegateExecutionData(
     const TfLiteExecutionTask* task, TfLiteAsyncKernel* kernel);
 
 TFL_CAPI_EXPORT extern void TfLiteExecutionTaskSetDelegateExecutionData(
-    const TfLiteExecutionTask* task, TfLiteAsyncKernel* kernel, void* data);
+    TfLiteExecutionTask* task, TfLiteAsyncKernel* kernel, void* data);
 
 /// Task status
-/// Thread safe accessors for the lastest status of the task.
+/// Thread safe accessors for the latest status of the task.
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteExecutionTaskGetStatus(
     const TfLiteExecutionTask* task);
 
 TFL_CAPI_EXPORT extern void TfLiteExecutionTaskSetStatus(
-    const TfLiteExecutionTask* task, TfLiteStatus status);
+    TfLiteExecutionTask* task, TfLiteStatus status);
 
 // TODO(b/262574034): Also add APIs for error code and error messages.
 

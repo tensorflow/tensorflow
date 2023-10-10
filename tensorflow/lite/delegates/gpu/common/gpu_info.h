@@ -49,6 +49,7 @@ enum class GpuApi {
 
 enum class AdrenoGpu {
   // Adreno 7xx series
+  kAdreno740,
   kAdreno730,
   // Adreno 6xx series
   kAdreno685,
@@ -127,6 +128,7 @@ struct AdrenoInfo {
   bool IsAdreno6xx() const;
   bool IsAdreno7xx() const;
   bool IsAdreno6xxOrHigher() const;
+  bool IsBetterThan(AdrenoGpu gpu) const;
 
   // This function returns some not very documented physical parameter of
   // Adreno6xx GPU.
@@ -262,7 +264,8 @@ struct MaliInfo {
 };
 
 enum class PowerVRGpu {
-  kUnknown,
+  kRogueGm9xxx,
+  kRogueGe8xxx,
   kRogue,
   // New generation of IMG gpus after 2019:
   kAXE,
@@ -274,6 +277,7 @@ enum class PowerVRGpu {
   kBXT,
   kCXT,
   kDXT,
+  kUnknown,
 };
 
 struct PowerVRInfo {
@@ -292,6 +296,8 @@ struct PowerVRInfo {
   bool IsImgBxx() const;
   bool IsImgCxx() const;
   bool IsImgDxx() const;
+
+  bool IsBetterThan(PowerVRGpu gpu) const;
 };
 
 struct OpenGlInfo {

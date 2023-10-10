@@ -44,13 +44,13 @@ CoreRTConverter::CoreRTConverter(
   addConversion([](tfrt::compiler::ChainType type) { return type; });
   addConversion([](tfrt::corert::OpHandlerType type) { return type; });
   addConversion([](tfrt::corert::TensorHandleType type) { return type; });
-  addConversion([=](mlir::TensorType type) -> llvm::Optional<mlir::Type> {
+  addConversion([=](mlir::TensorType type) -> std::optional<mlir::Type> {
     // Ref types are not supported in both compiler and runtime.
     if (type.getElementType().isa<mlir::TF::TensorFlowRefType>())
       return std::nullopt;
     return tensor_handle_type();
   });
-  addConversion([=](mlir::Type type) -> llvm::Optional<mlir::Type> {
+  addConversion([=](mlir::Type type) -> std::optional<mlir::Type> {
     if (type == builder_.getI1Type()) return type;
     return std::nullopt;
   });
@@ -92,7 +92,7 @@ mlir::ArrayAttr CoreRTConverter::CreateOpFuncAttrs(
 }
 
 // TODO(chky): Add support for multiple device instances.
-llvm::Optional<ParseDeviceNameResult> CoreRTConverter::ParseDeviceName(
+std::optional<ParseDeviceNameResult> CoreRTConverter::ParseDeviceName(
     llvm::StringRef device_name) const {
   std::string tf_device_name = device_name.str();
 
@@ -118,7 +118,7 @@ llvm::Optional<ParseDeviceNameResult> CoreRTConverter::ParseDeviceName(
   return result;
 }
 
-llvm::Optional<ParseDeviceNameResult> CoreRTConverter::ParseDeviceName(
+std::optional<ParseDeviceNameResult> CoreRTConverter::ParseDeviceName(
     mlir::Operation *op) const {
   auto device_attr = op->getAttr("device");
   if (!device_attr) {

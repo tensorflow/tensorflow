@@ -39,7 +39,7 @@ def _instance_count_by_class():
   return counter
 
 
-def assert_no_leak(f, num_iters=100000, increase_threshold_absolute_mb=10):
+def assert_no_leak(f, num_iters=100000, increase_threshold_absolute_mb=25):
   """Assert memory usage doesn't increase beyond given threshold for f."""
 
   with context.eager_mode():

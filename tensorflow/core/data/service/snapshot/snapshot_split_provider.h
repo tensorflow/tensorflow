@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/container/btree_map.h"
 #include "absl/time/time.h"
@@ -26,9 +27,9 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher_client.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/tsl/platform/mutex.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -89,6 +90,9 @@ class SnapshotSplitProvider : public SplitProvider {
 
   // The next split to read.
   int64_t next_split_index_ TF_GUARDED_BY(mu_) = 0;
+
+  // Number of times the dataset has repeated.
+  int64_t repetition_index_ TF_GUARDED_BY(mu_) = 0;
 
   // Maps the local split index to the absolute split file path.
   absl::btree_map<int64_t, std::string> split_to_file_map_ TF_GUARDED_BY(mu_);

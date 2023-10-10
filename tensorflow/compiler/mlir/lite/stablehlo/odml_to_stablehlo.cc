@@ -18,13 +18,13 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <system_error>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Path.h"
@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/check_accepted_ops_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_tfl_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_util.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
@@ -61,12 +62,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_graph_optimization_pass.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/lhlo/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
+#include "xla/mlir/framework/transforms/passes.h"
+#include "xla/mlir_hlo/lhlo/transforms/passes.h"
+#include "xla/mlir_hlo/mhlo/IR/register.h"
+#include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
@@ -117,6 +118,11 @@ opt<bool> elide_large_elements_attrs(
     llvm::cl::init(false));
 
 // NOLINTNEXTLINE
+opt<bool> debug_info(
+    "debug-info", llvm::cl::desc("Inclide MLIR debug location info in output."),
+    llvm::cl::Optional, llvm::cl::init(false));
+
+// NOLINTNEXTLINE
 opt<bool> allow_tf("allow-tf", llvm::cl::desc("Allow TF dialect."),
                    llvm::cl::Optional, llvm::cl::init(false));
 
@@ -130,19 +136,24 @@ opt<bool> skip_resize(
     "skip-resize",
     llvm::cl::desc(
         "Skip converting tf.ResizeBilinear and tf.ResizeNearestNeighbor ops."),
-    llvm::cl::Optional, llvm::cl::init(false));
+    llvm::cl::Optional, llvm::cl::init(true));
 
 // NOLINTNEXTLINE
 opt<bool> smuggle_disallowed_ops(
     "smuggle-disallowed-ops",
     llvm::cl::desc("Smuggle disallowed ops via stablehlo.custom_calls."),
-    llvm::cl::Optional, llvm::cl::init(false));
+    llvm::cl::Optional, llvm::cl::init(true));
 
 // NOLINTNEXTLINE
 opt<bool> freeze_tf_graph(
     "freeze-tf-graph",
     llvm::cl::desc("Freeze TF graph to remove tf.ResourceVariable, etc."),
     llvm::cl::Optional, llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<std::string> exported_model_signatures(
+    "exported_model_signatures", llvm::cl::desc("model signature names"),
+    llvm::cl::Optional, llvm::cl::init("serving_default"));
 
 namespace mlir {
 namespace odml {
@@ -166,7 +177,8 @@ tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelOrMLIR(
 
   // TODO(pulkitb): Remove hard-coded tag.
   std::unordered_set<std::string> tags({"serve"});
-  auto exported_names_in_vector = std::vector<std::string>({});
+  std::vector<std::string> exported_names_in_vector =
+      absl::StrSplit(exported_model_signatures, ',');
   absl::Span<std::string> exported_names(exported_names_in_vector);
   std::vector<std::string> custom_opdefs;
 
@@ -218,6 +230,9 @@ tensorflow::Status ExportModule(mlir::ModuleOp module,
   std::string result;
   llvm::raw_string_ostream os(result);
   OpPrintingFlags printing_flags;
+  if (debug_info) {
+    printing_flags.enableDebugInfo();
+  }
   if (elide_large_elements_attrs) {
     printing_flags.elideLargeElementsAttrs();
   }
@@ -233,7 +248,10 @@ tensorflow::Status ExportModule(mlir::ModuleOp module,
 tensorflow::Status ConvertTFToStableHLO(
     ModuleOp tf_module, const PassPipelineCLParser& pass_pipeline) {
   PassManager pm(tf_module.getContext());
-  applyPassManagerCLOptions(pm);
+  if (failed(applyPassManagerCLOptions(pm))) {
+    return tensorflow::errors::Aborted(
+        "Failed to apply MLIR pass manager CL options.");
+  }
 
   auto error_handler = [&](const Twine& msg) {
     emitError(UnknownLoc::get(pm.getContext())) << msg;
@@ -262,7 +280,8 @@ tensorflow::Status ConvertTFToStableHLO(
     // Print out a detailed report of non-converted stats.
     // Because this pass aborts the pass if there are unconverted ops,
     // we need to locate createPrintOpStatsPass after all optimization.
-    pm.addPass(mlir::odml::createPrintOpStatsPass());
+    pm.addPass(
+        mlir::odml::createPrintOpStatsPass(GetAcceptedStableHLODialects()));
   }
 
   if (failed(pm.run(tf_module))) {
@@ -309,7 +328,7 @@ tensorflow::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
                                     elide_large_elements_attrs));
   }
 
-  llvm::Optional<tensorflow::Session*> session = std::nullopt;
+  std::optional<tensorflow::Session*> session = std::nullopt;
   if (bundle) session = bundle->GetSession();  // NOMUTANTS--it should pass.
 
   if (freeze_tf_graph) {
@@ -331,14 +350,14 @@ tensorflow::Status RunConverter(const PassPipelineCLParser& pass_pipeline) {
       ExportModule(*module, output_path, elide_large_elements_attrs);
   if (!conversion_status.ok()) {
     LOG(ERROR) << "TF to StableHLO conversion failed: "
-               << conversion_status.error_message();
+               << conversion_status.message();
 
     auto debug_export_status = ExportModule(
         *module, absl::StrCat(verbose_dir, "/debug_stablehlo.mlir"),
         elide_large_elements_attrs);
     if (!debug_export_status.ok()) {
       LOG(ERROR) << "Failed to export debug_stablehlo.mlir: "
-                 << debug_export_status.error_message();
+                 << debug_export_status.message();
     }
 
     return conversion_status;
@@ -361,10 +380,9 @@ void initAllPasses() {
   mlir::registerTensorFlowPasses();
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
-  // These are in compiler/mlir/xla and not part of the above MHLO passes.
+  // These are in compiler/mlir/tf2xla and not part of the above MHLO passes.
   mlir::mhlo::registerTfXlaPasses();
   mlir::mhlo::registerLegalizeTFPass();
-  mlir::mhlo::registerLegalizeTfTypesPassPass();
   mlir::xla_framework::registerXlaFrameworkPasses();
   tensorflow::RegisterConvertMlirToXlaHloPipelineWithDefaults();
   tensorflow::RegisterGraphOptimizationPasses();
@@ -375,6 +393,10 @@ void initAllPasses() {
 
 int main(int argc, char* argv[]) {
   tensorflow::InitMlir y(&argc, &argv);
+  LOG(INFO) << "odml_to_stablehlo is being deprecated, please use "
+               "TFlite converter with flag: "
+               "converter.target_spec.supported_ops = "
+               "[tf.lite.OpsSet.EXPERIMENTAL_STABLEHLO_OPS] ";
 
   mlir::odml::initAllPasses();
   mlir::PassPipelineCLParser passPipeline("", "Add available compiler passes.");
@@ -384,7 +406,7 @@ int main(int argc, char* argv[]) {
 
   if (!status.ok()) {
     LOG(ERROR) << status;
-    return status.code();
+    return status.raw_code();
   }
   return 0;
 }

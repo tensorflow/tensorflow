@@ -35,8 +35,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/FunctionImplementation.h"  // from @llvm-project
-#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -417,7 +415,7 @@ Attribute ShapeAttr::parse(AsmParser& parser, Type type) {
 
 // Get or create a shape attribute.
 ShapeAttr ShapeAttr::get(MLIRContext* context,
-                         llvm::Optional<ArrayRef<int64_t>> shape) {
+                         std::optional<ArrayRef<int64_t>> shape) {
   if (shape) return Base::get(context, *shape, /*unranked=*/false);
 
   return Base::get(context, ArrayRef<int64_t>(), /*unranked=*/true);
@@ -431,7 +429,7 @@ ShapeAttr ShapeAttr::get(MLIRContext* context, ShapedType shaped_type) {
   return Base::get(context, ArrayRef<int64_t>(), /*unranked=*/true);
 }
 
-llvm::Optional<ArrayRef<int64_t>> ShapeAttr::getValue() const {
+std::optional<ArrayRef<int64_t>> ShapeAttr::getValue() const {
   if (hasRank()) return getShape();
   return std::nullopt;
 }
@@ -456,7 +454,7 @@ bool ShapeAttr::hasStaticShape() const {
 namespace {
 // Returns the shape of the given value if it's ranked; returns std::nullopt
 // otherwise.
-Optional<ArrayRef<int64_t>> GetShape(Value value) {
+std::optional<ArrayRef<int64_t>> GetShape(Value value) {
   auto shaped_type = value.getType().cast<ShapedType>();
   if (shaped_type.hasRank()) return shaped_type.getShape();
   return std::nullopt;
@@ -502,12 +500,12 @@ bool GetCastCompatibleShape(ArrayRef<int64_t> a_shape,
 
 OperandShapeIterator::OperandShapeIterator(Operation::operand_iterator it)
     : llvm::mapped_iterator<Operation::operand_iterator,
-                            llvm::Optional<ArrayRef<int64_t>> (*)(Value)>(
+                            std::optional<ArrayRef<int64_t>> (*)(Value)>(
           it, &GetShape) {}
 
 ResultShapeIterator::ResultShapeIterator(Operation::result_iterator it)
     : llvm::mapped_iterator<Operation::result_iterator,
-                            llvm::Optional<ArrayRef<int64_t>> (*)(Value)>(
+                            std::optional<ArrayRef<int64_t>> (*)(Value)>(
           it, &GetShape) {}
 
 //===----------------------------------------------------------------------===//
@@ -554,6 +552,9 @@ TensorFlowType TensorFlowRefType::get(Type type) {
     switch (itype.getWidth()) {
       case 1:
         return BoolRefType::get(ctx);
+      case 4:
+        return itype.isUnsigned() ? TensorFlowType(Uint4RefType::get(ctx))
+                                  : Int4RefType::get(ctx);
       case 8:
         return itype.isUnsigned() ? TensorFlowType(Uint8RefType::get(ctx))
                                   : Int8RefType::get(ctx);
@@ -589,10 +590,13 @@ Type TensorFlowRefType::RemoveRef() {
   if (isa<Float8E4M3FNType>()) return FloatType::getFloat8E4M3FN(ctx);
   if (isa<Float8E5M2Type>()) return FloatType::getFloat8E5M2(ctx);
   if (isa<BoolRefType>()) return IntegerType::get(ctx, 1);
+  if (isa<Int4RefType>()) return IntegerType::get(ctx, 4, IntegerType::Signed);
   if (isa<Int8RefType>()) return IntegerType::get(ctx, 8);
   if (isa<Int16RefType>()) return IntegerType::get(ctx, 16);
   if (isa<Int32RefType>()) return IntegerType::get(ctx, 32);
   if (isa<Int64RefType>()) return IntegerType::get(ctx, 64);
+  if (isa<Uint4RefType>())
+    return IntegerType::get(ctx, 4, IntegerType::Unsigned);
   if (isa<Uint8RefType>())
     return IntegerType::get(ctx, 8, IntegerType::Unsigned);
   if (isa<Uint16RefType>())
@@ -863,9 +867,11 @@ Attribute TensorProtoAttr::parse(AsmParser& parser, Type type) {
     parser.emitError(parser.getNameLoc(), "Hex string doesn't start with `0x`");
     return nullptr;
   }
+  auto shapedType = type.dyn_cast<ShapedType>();
+  if (!shapedType) return nullptr;
 
   std::string bytes_data = absl::HexStringToBytes(data.substr(2));
-  return TensorProtoAttr::get(type, bytes_data);
+  return TensorProtoAttr::get(shapedType, bytes_data);
 }
 
 void TensorProtoAttr::print(mlir::AsmPrinter& printer) const {

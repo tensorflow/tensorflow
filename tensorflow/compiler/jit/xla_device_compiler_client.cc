@@ -20,7 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/local_client.h"
+#include "xla/client/local_client.h"
 
 namespace tensorflow {
 namespace {
@@ -102,6 +102,8 @@ XlaDeviceCompilerClient::LoadExecutable(
 }
 
 void XlaDeviceCompilerClient::WaitForProgramsToFinish() {
+  if (client_ == nullptr) return;
+
   for (auto* executor : client_->backend().stream_executors()) {
     bool ok = executor->SynchronizeAllActivity();
     if (!ok) {

@@ -15,8 +15,10 @@
 
 # pylint: disable=invalid-name
 """Test utils for tensorflow."""
+
 import collections
 from collections import OrderedDict
+from collections.abc import Iterator
 import contextlib
 import functools
 import gc
@@ -28,6 +30,7 @@ import re
 import tempfile
 import threading
 import time
+from typing import Union
 import unittest
 
 from absl.testing import parameterized
@@ -35,7 +38,6 @@ import numpy as np
 
 from google.protobuf import descriptor_pool
 from google.protobuf import text_format
-
 from tensorflow.core.config import flags
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -43,12 +45,12 @@ from tensorflow.python import pywrap_sanitizers
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import pywrap_tf_session
-from tensorflow.python.client import session
+from tensorflow.python.client import session as s
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.compat.compat import forward_compatibility_horizon
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import tape
 from tensorflow.python.framework import _test_metrics_util
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
@@ -61,6 +63,7 @@ from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import tfrt_utils
@@ -68,12 +71,15 @@ from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
+from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_sync_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
+
+
 from tensorflow.python.ops.ragged import ragged_ops  # pylint: disable=unused-import
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
@@ -377,7 +383,7 @@ def NHWCToNCHW(input_tensor):
   """
   # tensor dim -> new axis order
   new_axes = {3: [0, 2, 1], 4: [0, 3, 1, 2], 5: [0, 4, 1, 2, 3]}
-  if isinstance(input_tensor, ops.Tensor):
+  if isinstance(input_tensor, tensor_lib.Tensor):
     ndims = input_tensor.shape.ndims
     return array_ops.transpose(input_tensor, new_axes[ndims])
   else:
@@ -402,7 +408,7 @@ def NHWCToNCHW_VECT_C(input_shape_or_tensor):
         divisible by 4.
   """
   permutations = {5: [0, 3, 1, 2, 4], 6: [0, 4, 1, 2, 3, 5]}
-  is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
+  is_tensor = isinstance(input_shape_or_tensor, tensor_lib.Tensor)
   temp_shape = (
       input_shape_or_tensor.shape.as_list()
       if is_tensor else input_shape_or_tensor)
@@ -436,7 +442,7 @@ def NCHW_VECT_CToNHWC(input_shape_or_tensor):
     ValueError: if last dimension of `input_shape_or_tensor` is not 4.
   """
   permutations = {5: [0, 2, 3, 1, 4], 6: [0, 2, 3, 4, 1, 5]}
-  is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
+  is_tensor = isinstance(input_shape_or_tensor, tensor_lib.Tensor)
   input_shape = (
       input_shape_or_tensor.shape.as_list()
       if is_tensor else input_shape_or_tensor)
@@ -463,7 +469,7 @@ def NCHWToNHWC(input_tensor):
   """
   # tensor dim -> new axis order
   new_axes = {4: [0, 2, 3, 1], 5: [0, 2, 3, 4, 1]}
-  if isinstance(input_tensor, ops.Tensor):
+  if isinstance(input_tensor, tensor_lib.Tensor):
     ndims = input_tensor.shape.ndims
     return array_ops.transpose(input_tensor, new_axes[ndims])
   else:
@@ -807,7 +813,7 @@ def assert_no_new_tensors(f):
     def _is_tensorflow_object(obj):
       try:
         return isinstance(obj,
-                          (ops.Tensor, variables.Variable,
+                          (tensor_lib.Tensor, variables.Variable,
                            tensor_shape.Dimension, tensor_shape.TensorShape))
       except (ReferenceError, AttributeError):
         # If the object no longer exists, we don't care about it.
@@ -961,15 +967,13 @@ def assert_no_garbage_created(f):
     The decorated function.
   """
 
+  # FIXME(power) -- Update documentation, we no longer care if garbage is
+  # created, we only want to verify we don't have memory leaks.
   def decorator(self, **kwargs):
     """Sets DEBUG_SAVEALL, runs the test, and checks for new garbage."""
-    # Force-load `distribution_strategy_context` to prevent GC at
-    # test time when using eager. Remove once b/117329403 is resolved.
-    tape.distribution_strategy_context.get_strategy()
-
     gc.disable()
     previous_debug_flags = gc.get_debug()
-    gc.set_debug(gc.DEBUG_SAVEALL)
+    gc.set_debug(gc.DEBUG_UNCOLLECTABLE)
     gc.collect()
     previous_garbage = len(gc.garbage)
     result = f(self, **kwargs)
@@ -1094,11 +1098,31 @@ def run_all_in_graph_and_eager_modes(cls):
     if (not name.startswith(unittest.TestLoader.testMethodPrefix) or
         name.startswith("testSkipEager") or
         name.startswith("test_skip_eager") or
-        name == "test_session"):
+        name == "test_session" or
+        name == "test_scope"):
       continue
     value = getattr(cls, name, None)
     if callable(value):
       setattr(cls, name, base_decorator(value))
+  return cls
+
+
+def run_class_in_v1_v2(cls):
+  """Execute all test methods in a given class in v1 and v2 modes."""
+  base_decorator = run_in_v1_v2
+  for name in dir(cls):
+    if (not name.startswith(unittest.TestLoader.testMethodPrefix) or
+        name.startswith("testSkipEager") or
+        name.startswith("test_skip_eager") or
+        name == "test_session" or
+        name == "test_scope"):
+      continue
+
+    attr = getattr(cls, name, None)
+    if not callable(attr):
+      continue
+
+    setattr(cls, name, base_decorator(attr))
   return cls
 
 
@@ -1496,8 +1520,18 @@ def run_in_graph_and_eager_modes(func=None,
     def decorated(self, *args, **kwargs):
       logging.info("Running %s in GRAPH mode.", f.__name__)
       try:
-        with context.graph_mode():
-          with self.test_session(use_gpu=use_gpu, config=config):
+        with context.graph_mode(), self.subTest("graph_mode"):
+          # XLATestCase uses `session`, which also doesn't take any args,
+          # instead of `test_session`
+          for class_ in self.__class__.mro():
+            if class_.__name__ == "XLATestCase":
+              session_func = self.session
+              session_kwargs = {}
+              break
+          else:
+            session_func = self.test_session
+            session_kwargs = dict(use_gpu=use_gpu, config=config)
+          with session_func(**session_kwargs):
             f(self, *args, **kwargs)
       except unittest.case.SkipTest:
         pass
@@ -1522,12 +1556,93 @@ def run_in_graph_and_eager_modes(func=None,
       # Create a new graph for the eagerly executed version of this test for
       # better isolation.
       graph_for_eager_test = ops.Graph()
-      with graph_for_eager_test.as_default(), context.eager_mode():
+      with (
+          graph_for_eager_test.as_default(),
+          context.eager_mode(),
+          self.subTest("eager_mode"),
+      ):
         self.setUp()
         run_eagerly(self, **kwargs)
       ops.dismantle_graph(graph_for_eager_test)
 
     return tf_decorator.make_decorator(f, decorated)
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
+def run_in_v1_v2(func=None,
+                 device_to_use: str = None,
+                 assert_no_eager_garbage: bool = False):
+  """Execute the decorated test in v1 and v2 modes.
+
+  The overall execution is similar to that of `run_in_graph_and_eager_mode`.
+
+  Args:
+    func: A test function/method to be decorated. If `func` is None, this method
+      returns a decorator the can be applied to a function. Otherwise, an
+      already applied decorator is returned.
+    device_to_use: A string in the following format: "/device:CPU:0".
+    assert_no_eager_garbage: If True, sets DEBUG_SAVEALL on the garbage
+      collector and asserts that no extra garbage has been created when running
+      the test with eager execution enabled. This will fail if there are
+      reference cycles (e.g. a = []; a.append(a)). Off by default because some
+      tests may create garbage for legitimate reasons (e.g. they define a class
+      which inherits from `object`), and because DEBUG_SAVEALL is sticky in some
+      Python interpreters (meaning that tests which rely on objects being
+      collected elsewhere in the unit test file will not work). Additionally,
+      checks that nothing still has a reference to Tensors that the test
+      allocated.
+
+  Returns:
+    A decorator that runs a given test in v1 and v2 modes.
+  """
+
+  decorator_tag = "wrapped_with_v1_v2_decorator"
+  if hasattr(func, decorator_tag):
+    # Already decorated with this very same decorator
+    return func
+
+  def decorator(f):
+
+    def decorated(self, *args, **kwargs):
+      logging.info("Running %s in V1 mode.", f.__name__)
+      try:
+        with self.subTest("V1_mode"):
+          v2_compat.disable_v2_behavior()
+          f(self, *args, **kwargs)
+      except unittest.case.SkipTest:
+        pass
+
+      def run_v2(self, **kwargs):
+        logging.info("Running %s in V2 mode.", f.__name__)
+        if device_to_use:
+          with ops.device(device_to_use):
+            f(self, *args, **kwargs)
+        else:
+          f(self, *args, **kwargs)
+
+      if assert_no_eager_garbage:
+        ops.reset_default_graph()
+        run_v2 = assert_no_new_tensors(
+            assert_no_garbage_created(run_v2))
+
+      # This decorator runs the wrapped test twice.
+      # Reset the test environment between runs.
+      self.tearDown()
+      self._tempdir = None  # pylint:disable=protected-access
+
+      ops.reset_default_graph()
+      v2_compat.enable_v2_behavior()
+      with self.subTest("V2_mode"):
+        self.setUp()
+        run_v2(self, **kwargs)
+
+    tf_decorated = tf_decorator.make_decorator(f, decorated)
+    tf_decorated.__dict__[decorator_tag] = True
+    return tf_decorated
 
   if func is not None:
     return decorator(func)
@@ -1544,7 +1659,7 @@ def py_func_if_in_function(f):
     tensor_args = []
     tensor_indices = []
     for i, arg in enumerate(args):
-      if isinstance(arg, (ops.Tensor, variables.Variable)):
+      if isinstance(arg, (tensor_lib.Tensor, variables.Variable)):
         tensor_args.append(arg)
         tensor_indices.append(i)
 
@@ -1659,27 +1774,34 @@ def run_all_in_deprecated_graph_mode_only(cls):
   return cls
 
 
-def run_v1_only(reason, func=None):
-  """Execute the decorated test only if running in v1 mode.
+def _run_vn_only(func=None, v2=True, reason=None):
+  """Execute the decorated test only if running in the specified mode.
 
-  This function is intended to be applied to tests that exercise v1 only
-  functionality. If the test is run in v2 mode it will simply be skipped.
+  This function is intended to be applied to tests that exercise functionality
+   that belongs to either only v2, or v1.
+   If the test is run in the mode opposite of the specified one, it will simply
+   be skipped.
+
+   It shouldn't be used directly, instead, use the `run_v1_only` or
+   `run_v2_only` wrappers that call it.
 
   `deprecated_graph_mode_only`, `run_v1_only`, `run_v2_only`, and
   `run_in_graph_and_eager_modes` are available decorators for different
   v1/v2/eager/graph combinations.
 
   Args:
-    reason: string giving a reason for limiting the test to v1 only.
     func: function to be annotated. If `func` is None, this method returns a
       decorator the can be applied to a function. If `func` is not None this
       returns the decorator applied to `func`.
+    v2: a boolean value indicating whether the test should be skipped in v2,
+      or v1.
+    reason: string giving a reason for limiting the test to a particular mode.
 
   Returns:
-    Returns a decorator that will conditionally skip the decorated test method.
+    A decorator that will skip the test method in the specified version.
   """
-  if not isinstance(reason, str):
-    raise ValueError("'reason' should be string, got {}".format(type(reason)))
+  if not reason:
+    reason = f"Test is only compatible with {'v2 ' if v2 else 'v1'}"
 
   def decorator(f):
     if tf_inspect.isclass(f):
@@ -1699,12 +1821,15 @@ def run_v1_only(reason, func=None):
     else:
       # If f is just a function, just create a decorator for it and return it
       def decorated(self, *args, **kwargs):
-        if tf2.enabled():
+        tf2_enabled = tf2.enabled()
+        # Skip if TF is in v2 mode, but the test is expected to only be run
+        # in v1, and vice versa
+        if (tf2_enabled and not v2) or (not tf2_enabled and v2):
           self.skipTest(reason)
 
         return f(self, *args, **kwargs)
 
-      return decorated
+      return tf_decorator.make_decorator(f, decorated)
 
   if func is not None:
     return decorator(func)
@@ -1712,41 +1837,14 @@ def run_v1_only(reason, func=None):
   return decorator
 
 
-def run_v2_only(func=None):
-  """Execute the decorated test only if running in v2 mode.
+def run_v1_only(reason=None, func=None):
+  """Only execute the test if Tensorflow is in v1 mode."""
+  return _run_vn_only(func=func, v2=False, reason=reason)
 
-  This function is intended to be applied to tests that exercise v2 only
-  functionality. If the test is run in v1 mode it will simply be skipped.
 
-  `deprecated_graph_mode_only`, `run_v1_only`, `run_v2_only`, and
-  `run_in_graph_and_eager_modes` are available decorators for different
-  v1/v2/eager/graph combinations.
-
-  Args:
-    func: function to be annotated. If `func` is None, this method returns a
-      decorator the can be applied to a function. If `func` is not None this
-      returns the decorator applied to `func`.
-
-  Returns:
-    Returns a decorator that will conditionally skip the decorated test method.
-  """
-
-  def decorator(f):
-    if tf_inspect.isclass(f):
-      raise ValueError("`run_v2_only` only supports test methods.")
-
-    def decorated(self, *args, **kwargs):
-      if not tf2.enabled():
-        self.skipTest("Test is only compatible with v2")
-
-      return f(self, *args, **kwargs)
-
-    return decorated
-
-  if func is not None:
-    return decorator(func)
-
-  return decorator
+def run_v2_only(func=None, reason=None):
+  """Only execute the test if Tensorflow is in v2 mode."""
+  return _run_vn_only(func=func, v2=True, reason=reason)
 
 
 def run_gpu_only(func=None):
@@ -2056,7 +2154,7 @@ class FakeEagerSession:
     return self._test_case.evaluate(fetches)
 
 
-class ErrorLoggingSession(session.Session):
+class ErrorLoggingSession(s.Session):
   """Wrapper around a Session that logs errors in run()."""
 
   def run(self, *args, **kwargs):
@@ -2399,6 +2497,9 @@ class EagerSessionWarner:
         "tf.disable_eager_execution() in the main() function of this test "
         "file.")
 
+# TODO(b/286583977): Set it to True and remove.
+_ENABLE_AUTO_BOTH_MODES = False
+
 
 @tf_export("test.TestCase")
 class TensorFlowTestCase(googletest.TestCase):
@@ -2460,6 +2561,12 @@ class TensorFlowTestCase(googletest.TestCase):
 
     self._test_start_time = time.time()
 
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    if _ENABLE_AUTO_BOTH_MODES:
+      run_all_in_graph_and_eager_modes(cls)
+
   def tearDown(self):
     # If a subclass overrides setUp and doesn't call the parent class's setUp,
     # then we may not have set the start time.
@@ -2497,7 +2604,7 @@ class TensorFlowTestCase(googletest.TestCase):
     return self._tempdir
 
   @contextlib.contextmanager
-  def captureWritesToStream(self, stream):
+  def captureWritesToStream(self, stream) -> Iterator[CapturedWrites]:
     """A context manager that captures the writes to a given stream.
 
     This context manager captures all writes to a given stream inside of a
@@ -2541,7 +2648,7 @@ class TensorFlowTestCase(googletest.TestCase):
       os.close(tmp_file)
       os.dup2(orig_fd, fd)
 
-  def _AssertProtoEquals(self, a, b, msg=None):
+  def _AssertProtoEquals(self, a, b, msg=None, relative_tolerance=None):
     """Asserts that a and b are the same proto.
 
     Uses ProtoEq() first, as it returns correct results
@@ -2552,11 +2659,28 @@ class TensorFlowTestCase(googletest.TestCase):
       a: a proto.
       b: another proto.
       msg: Optional message to report on failure.
+      relative_tolerance: float. The allowable difference between the two values
+        being compared is determined by multiplying the relative tolerance by
+        the maximum of the two values. If this is not provided, then all floats
+        are compared using string comparison.
     """
     if not compare.ProtoEq(a, b):
-      compare.assertProtoEqual(self, a, b, normalize_numbers=True, msg=msg)
+      compare.assertProtoEqual(
+          self,
+          a,
+          b,
+          normalize_numbers=True,
+          msg=msg,
+          relative_tolerance=relative_tolerance,
+      )
 
-  def assertProtoEquals(self, expected_message_maybe_ascii, message, msg=None):
+  def assertProtoEquals(
+      self,
+      expected_message_maybe_ascii,
+      message,
+      msg=None,
+      relative_tolerance=None,
+  ):
     """Asserts that message is same as parsed expected_message_ascii.
 
     Creates another prototype of message, reads the ascii message into it and
@@ -2566,17 +2690,31 @@ class TensorFlowTestCase(googletest.TestCase):
       expected_message_maybe_ascii: proto message in original or ascii form.
       message: the message to validate.
       msg: Optional message to report on failure.
+      relative_tolerance: float. The allowable difference between the two values
+        being compared is determined by multiplying the relative tolerance by
+        the maximum of the two values. If this is not provided, then all floats
+        are compared using string comparison.
     """
     if isinstance(expected_message_maybe_ascii, type(message)):
       expected_message = expected_message_maybe_ascii
-      self._AssertProtoEquals(expected_message, message, msg=msg)
+      self._AssertProtoEquals(
+          expected_message,
+          message,
+          msg=msg,
+          relative_tolerance=relative_tolerance,
+      )
     elif isinstance(expected_message_maybe_ascii, (str, bytes)):
       expected_message = type(message)()
       text_format.Merge(
           expected_message_maybe_ascii,
           expected_message,
           descriptor_pool=descriptor_pool.Default())
-      self._AssertProtoEquals(expected_message, message, msg=msg)
+      self._AssertProtoEquals(
+          expected_message,
+          message,
+          msg=msg,
+          relative_tolerance=relative_tolerance,
+      )
     else:
       assert False, ("Can't compare protos of type %s and %s." %
                      (type(expected_message_maybe_ascii), type(message)))
@@ -2645,7 +2783,13 @@ class TensorFlowTestCase(googletest.TestCase):
       return None
     return nest.map_structure(self._eval_tensor, tensors)
 
-  def evaluate(self, tensors):
+  def evaluate(
+      self, tensors
+  ) -> Union[
+      ragged_tensor_value.RaggedTensorValue,
+      sparse_tensor.SparseTensorValue,
+      None
+  ]:
     """Evaluates tensors and returns numpy values.
 
     Args:
@@ -2658,15 +2802,20 @@ class TensorFlowTestCase(googletest.TestCase):
       return self._eval_helper(tensors)
     else:
       sess = ops.get_default_session()
+      flattened_tensors = nest.flatten(tensors)
       if sess is None:
         with self.test_session() as sess:
-          return sess.run(tensors)
+          flattened_results = sess.run(flattened_tensors)
       else:
-        return sess.run(tensors)
+        flattened_results = sess.run(flattened_tensors)
+      return nest.pack_sequence_as(tensors, flattened_results)
 
   # pylint: disable=g-doc-return-or-yield
+  # pylint: disable=redefined-outer-name
   @contextlib.contextmanager
-  def session(self, graph=None, config=None, use_gpu=True, force_gpu=False):
+  def session(
+      self, graph=None, config=None, use_gpu=True, force_gpu=False
+  ) -> Iterator[s.Session]:
     """A context manager for a TensorFlow Session for use in executing tests.
 
     Note that this will set this session and the graph as global defaults.
@@ -2714,7 +2863,7 @@ class TensorFlowTestCase(googletest.TestCase):
                      graph=None,
                      config=None,
                      use_gpu=True,
-                     force_gpu=False):
+                     force_gpu=False) -> Iterator[s.Session]:
     """Returns a TensorFlow Session for use in executing tests.
 
     This method behaves differently than self.session(): for performance reasons
@@ -3542,18 +3691,18 @@ class TensorFlowTestCase(googletest.TestCase):
     Raises:
       TypeError: If the arguments have the wrong type.
     """
-    if not isinstance(input_a, (np.ndarray, np.generic, ops.Tensor)):
+    if not isinstance(input_a, (np.ndarray, np.generic, tensor_lib.Tensor)):
       raise TypeError(
           "input_a must be a Numpy ndarray, Numpy scalar, or a Tensor."
           f"Instead received {type(input_a)}")
-    if not isinstance(input_b, (np.ndarray, np.generic, ops.Tensor)):
+    if not isinstance(input_b, (np.ndarray, np.generic, tensor_lib.Tensor)):
       raise TypeError(
           "input_b must be a Numpy ndarray, Numpy scalar, or a Tensor."
           f"Instead received {type(input_b)}")
     shape_a = input_a.get_shape().as_list() if isinstance(
-        input_a, ops.Tensor) else input_a.shape
+        input_a, tensor_lib.Tensor) else input_a.shape
     shape_b = input_b.get_shape().as_list() if isinstance(
-        input_b, ops.Tensor) else input_b.shape
+        input_b, tensor_lib.Tensor) else input_b.shape
     self.assertAllEqual(shape_a, shape_b, msg=msg)
 
   def assertDeviceEqual(self, device1, device2, msg=None):
@@ -3600,7 +3749,7 @@ class TensorFlowTestCase(googletest.TestCase):
     """Converts `a` to a nested python list."""
     if isinstance(a, ragged_tensor.RaggedTensor):
       return self.evaluate(a).to_list()
-    elif isinstance(a, ops.Tensor):
+    elif isinstance(a, tensor_lib.Tensor):
       a = self.evaluate(a)
       return a.tolist() if isinstance(a, np.ndarray) else a
     elif isinstance(a, np.ndarray):
@@ -3928,7 +4077,7 @@ class AbstractGradientTape:
     self._use_tape = use_tape
     self._persistent = persistent
 
-  def __enter__(self):
+  def __enter__(self) -> backprop.GradientTape:
     if self._use_tape:
       self._tape_impl = backprop.GradientTape(persistent=self._persistent)
     else:

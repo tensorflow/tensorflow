@@ -34,6 +34,7 @@ from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.compat import collections_abc as _collections_abc
+from tensorflow.python.util.custom_nest_protocol import CustomNestProtocol
 
 
 _is_mapping_view = _pywrap_utils.IsMappingView
@@ -241,6 +242,9 @@ def sequence_like(instance, args):
     # For object proxies, first create the underlying type and then re-wrap it
     # in the proxy type.
     return type(instance)(sequence_like(instance.__wrapped__, args))
+  elif isinstance(instance, CustomNestProtocol):
+    metadata = instance.__tf_flatten__()[0]
+    return instance.__tf_unflatten__(metadata, tuple(args))
   else:
     # Not a namedtuple
     return type(instance)(args)
@@ -362,6 +366,10 @@ def _tf_core_yield_sorted_items(iterable):
     # Note: to allow CompositeTensors and their TypeSpecs to have matching
     # structures, we need to use the same key string here.
     yield iterable.value_type.__name__, iterable._component_specs  # pylint: disable=protected-access
+  elif isinstance(iterable, CustomNestProtocol):
+    flat_component = iterable.__tf_flatten__()[1]
+    assert isinstance(flat_component, tuple)
+    yield from enumerate(flat_component)
   else:
     for item in enumerate(iterable):
       yield item
@@ -394,6 +402,10 @@ def _tf_data_yield_value(iterable):
   elif _is_attrs(iterable):
     for _, attr in _get_attrs_items(iterable):
       yield attr
+  elif isinstance(iterable, CustomNestProtocol):
+    flat_component = iterable.__tf_flatten__()[1]
+    assert isinstance(flat_component, tuple)
+    yield from flat_component
   else:
     for value in iterable:
       yield value

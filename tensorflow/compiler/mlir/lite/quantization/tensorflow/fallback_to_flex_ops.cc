@@ -171,7 +171,7 @@ inline TFL::ConstBytesAttr CustomOptionForFlexOp(OpBuilder *builder,
 class FallbackToFlexOps
     : public PassWrapper<FallbackToFlexOps, OperationPass<func::FuncOp>> {
  public:
-  FallbackToFlexOps() {}
+  FallbackToFlexOps() = default;
   explicit FallbackToFlexOps(const std::string &mode) { mode_ = mode; }
   FallbackToFlexOps(const FallbackToFlexOps &other) { mode_ = other.mode_; }
 

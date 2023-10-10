@@ -223,7 +223,7 @@ string Signature::ToString() const {
 Status Signature::Compute() {
   if (map.size() > kMaxGraphSize) {
     return Status(
-        error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrFormat(
             "A graph of %d nodes is too big for signature computation, "
             "the maximal supported node count is %d.",

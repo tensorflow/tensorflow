@@ -17,11 +17,11 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/Eigen/SparseCholesky"
-#include "third_party/eigen3/Eigen/SparseCore"
-#include "third_party/eigen3/Eigen/OrderingMethods"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/SparseCholesky"  // from @eigen_archive
+#include "Eigen/SparseCore"  // from @eigen_archive
+#include "Eigen/OrderingMethods"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"

@@ -22,8 +22,8 @@ limitations under the License.
 
 extern "C" {
 
-TfLiteAttributeMap* TfLiteAttributeMapCreate(int32_t type) {
-  return new TfLiteAttributeMap(static_cast<TfLiteAttrMapType>(type));
+TfLiteAttributeMap* TfLiteAttributeMapCreate(TfLiteAttrMapType type) {
+  return new TfLiteAttributeMap(type);
 }
 
 void TfLiteAttributeMapDelete(TfLiteAttributeMap* attrs) { delete attrs; }
@@ -45,17 +45,66 @@ void TfLiteAttributeMapCopy(const TfLiteAttributeMap* src,
   }
 }
 
+bool TfLiteAttributeMapGetSizeTBufferAttr(const TfLiteAttributeMap* attrs,
+                                          TfLiteBufferAttrKey key,
+                                          size_t* val) {
+  return attrs && attrs->impl.IsBufferAttributeMap() &&
+         attrs->impl.GetAttr(key, val);
+}
+bool TfLiteAttributeMapSetSizeTBufferAttr(TfLiteAttributeMap* attrs,
+                                          TfLiteBufferAttrKey key, size_t val) {
+  if (attrs && attrs->impl.IsBufferAttributeMap()) {
+    attrs->impl.SetAttr(key, val);
+    return true;
+  }
+  return false;
+}
+
+bool TfLiteAttributeMapGetStringBufferAttr(const TfLiteAttributeMap* attrs,
+                                           TfLiteBufferAttrKey key,
+                                           const char** val) {
+  return attrs && attrs->impl.IsBufferAttributeMap() &&
+         attrs->impl.GetAttr(key, val);
+}
+bool TfLiteAttributeMapSetStringBufferAttr(TfLiteAttributeMap* attrs,
+                                           TfLiteBufferAttrKey key,
+                                           const char* val) {
+  if (attrs && attrs->impl.IsBufferAttributeMap()) {
+    attrs->impl.SetAttr(key, val);
+    return true;
+  }
+  return false;
+}
+
+bool TfLiteAttributeMapGetStringSyncAttr(const TfLiteAttributeMap* attrs,
+                                         TfLiteSynchronizationAttrKey key,
+                                         const char** val) {
+  return attrs && attrs->impl.IsSyncAttributeMap() &&
+         attrs->impl.GetAttr(key, val);
+}
+
+bool TfLiteAttributeMapSetStringSyncAttr(TfLiteAttributeMap* attrs,
+                                         TfLiteSynchronizationAttrKey key,
+                                         const char* val) {
+  if (attrs && attrs->impl.IsSyncAttributeMap()) {
+    attrs->impl.SetAttr(key, val);
+    return true;
+  }
+  return false;
+}
+
+// DEPRECATED. Do not use.
 #define DEFINE_ATTR_MAP_ACCESSOR(type, type_name)                              \
   bool TfLiteAttributeMapGet##type_name##Attr(const TfLiteAttributeMap* attrs, \
                                               uint32_t key, type* val) {       \
-    return attrs ? attrs->impl.GetAttr(                                        \
-                       static_cast<TfLiteBufferAttributeKey>(key), val)        \
+    return attrs ? attrs->impl.GetAttr(static_cast<TfLiteBufferAttrKey>(key),  \
+                                       val)                                    \
                  : false;                                                      \
   }                                                                            \
   void TfLiteAttributeMapSet##type_name##Attr(TfLiteAttributeMap* attrs,       \
                                               uint32_t key, type val) {        \
     if (attrs) {                                                               \
-      attrs->impl.SetAttr(static_cast<TfLiteBufferAttributeKey>(key), val);    \
+      attrs->impl.SetAttr(static_cast<TfLiteBufferAttrKey>(key), val);         \
     }                                                                          \
   }                                                                            \
   bool TfLiteAttributeMapGetCustom##type_name##Attr(                           \

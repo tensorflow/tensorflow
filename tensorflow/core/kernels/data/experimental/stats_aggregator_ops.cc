@@ -15,6 +15,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/summary.pb.h"
@@ -109,7 +110,8 @@ class StatsAggregatorImpl : public StatsAggregator {
   std::unordered_map<string, histogram::Histogram> histograms_
       TF_GUARDED_BY(mu_);
   std::unordered_map<string, float> scalars_ TF_GUARDED_BY(mu_);
-  TF_DISALLOW_COPY_AND_ASSIGN(StatsAggregatorImpl);
+  StatsAggregatorImpl(const StatsAggregatorImpl&) = delete;
+  void operator=(const StatsAggregatorImpl&) = delete;
 };
 
 class StatsAggregatorHandleOp
@@ -233,7 +235,8 @@ class StatsAggregatorImplV2 : public StatsAggregator {
   // context
   std::unordered_map<string, histogram::Histogram> histograms_
       TF_GUARDED_BY(mu_);
-  TF_DISALLOW_COPY_AND_ASSIGN(StatsAggregatorImplV2);
+  StatsAggregatorImplV2(const StatsAggregatorImplV2&) = delete;
+  void operator=(const StatsAggregatorImplV2&) = delete;
 };
 
 class StatsAggregatorHandleOpV2
@@ -262,8 +265,9 @@ class StatsAggregatorSummaryOp : public OpKernel {
                 errors::InvalidArgument("resource_handle must be a scalar"));
 
     core::RefCountPtr<StatsAggregatorResource> resource;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &handle));
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &resource));
 
     Tensor* summary_t;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &summary_t));
@@ -284,16 +288,19 @@ class StatsAggregatorSetSummaryWriterOp : public OpKernel {
                 errors::InvalidArgument("resource_handle must be a scalar"));
 
     core::RefCountPtr<StatsAggregatorResource> resource;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
+    ResourceHandle resource_handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 0, &resource_handle));
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, resource_handle, &resource));
 
     const Tensor& summary_resource_handle_t = ctx->input(1);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(summary_resource_handle_t.shape()),
                 errors::InvalidArgument("resource_handle must be a scalar"));
     core::RefCountPtr<SummaryWriterInterface> summary_resource;
-    OP_REQUIRES_OK(
-        ctx, LookupResource(ctx, HandleFromInput(ctx, 1), &summary_resource));
+    ResourceHandle summary_r_handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 1, &summary_r_handle));
+    OP_REQUIRES_OK(ctx,
+                   LookupResource(ctx, summary_r_handle, &summary_resource));
     TF_CHECK_OK(
         resource->stats_aggregator()->SetSummaryWriter(summary_resource.get()));
   }

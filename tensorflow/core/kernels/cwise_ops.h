@@ -21,8 +21,8 @@ limitations under the License.
 #include <functional>
 #include <type_traits>
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -1132,9 +1132,10 @@ struct equal_to : base<T, Eigen::internal::equal_to<T>, bool> {};
 template <typename T>
 struct not_equal_to : base<T, Eigen::internal::not_equal_to<T>, bool> {};
 
-struct logical_and : base<bool, Eigen::internal::scalar_boolean_and_op> {};
+struct logical_and : base<bool, Eigen::internal::scalar_boolean_and_op<bool>> {
+};
 
-struct logical_or : base<bool, Eigen::internal::scalar_boolean_or_op> {};
+struct logical_or : base<bool, Eigen::internal::scalar_boolean_or_op<bool>> {};
 
 template <typename T>
 struct bitwise_and_op {

@@ -29,7 +29,7 @@ FallbackConverter::FallbackConverter(mlir::MLIRContext *context)
     : builder_(context) {
   addConversion([](tfrt::compiler::ChainType type) { return type; });
   addConversion([](tfrt::fallback::TFTensorType type) { return type; });
-  addConversion([=](mlir::TensorType type) -> llvm::Optional<mlir::Type> {
+  addConversion([=](mlir::TensorType type) -> std::optional<mlir::Type> {
     // Ref types are not supported in both compiler and runtime.
     if (type.getElementType().isa<mlir::TF::TensorFlowRefType>()) {
       return std::nullopt;
@@ -37,7 +37,7 @@ FallbackConverter::FallbackConverter(mlir::MLIRContext *context)
 
     return builder_.getType<tfrt::fallback::TFTensorType>();
   });
-  addConversion([=](mlir::Type type) -> llvm::Optional<mlir::Type> {
+  addConversion([=](mlir::Type type) -> std::optional<mlir::Type> {
     if (type == builder_.getI1Type()) return type;
     return std::nullopt;
   });

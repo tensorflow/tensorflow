@@ -741,3 +741,14 @@ func.func @testLogicalAndDoesntFoldWithConstantFalseBroadcast(%arg0: tensor<2xi1
   // CHECK: return %[[LOGICAL_AND]]
   func.return %0: tensor<2xi1>
 }
+
+// -----
+
+// GlobalIterId should not be constant folded
+// CHECK-LABEL: func @testGlobalIterIdNotFolded
+func.func @testGlobalIterIdNotFolded() -> (tensor<i64>) {
+  // CHECK: %[[X:.*]] = "tf.GlobalIterId"
+  %0 = "tf.GlobalIterId"() : () -> tensor<i64>
+  // CHECK: return %[[X]]
+  func.return %0: tensor<i64>
+}

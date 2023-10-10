@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 
 #include <algorithm>
+#include <array>
+#include <cassert>
+#include <complex>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -29,7 +32,6 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
@@ -58,6 +60,8 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
+#include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -157,7 +161,7 @@ OpFoldResult AddNOp::fold(FoldAdaptor adaptor) {
     return false;
   };
 
-  for (auto it : llvm::enumerate(operands)) {
+  for (const auto& it : llvm::enumerate(operands)) {
     if (IsKnownZero(it.value())) continue;
     if (non_zero_index != -1) {
       // Don't fold if we find more than 1 non-zero operand.
@@ -261,6 +265,30 @@ LogicalResult BatchFunctionOp::verifySymbolUses(
   }
 
   return success();
+}
+
+void BatchFunctionOp::eraseArguments(const BitVector& erase_indices) {
+  const StringRef operand_segment_size_attr = getOperandSegmentSizeAttr();
+  auto operandSegmentSizes = getOperation()->getAttrOfType<DenseI32ArrayAttr>(
+      operand_segment_size_attr);
+
+  // `operandSegmentSizes` attribute indicates the sizes of the two
+  // variadic operands of `BatchFunctionOp`: `in_tensors` and
+  // `captured_tensors`. The numbers have to be updated as arguments are
+  // erased.
+  const int32_t num_in_original = operandSegmentSizes[0];
+  int32_t num_in_tensors = num_in_original;
+  int32_t num_captured_tensors = operandSegmentSizes[1];
+
+  for (const unsigned operand_index : erase_indices.set_bits()) {
+    operand_index < num_in_original ? num_in_tensors-- : num_captured_tensors--;
+  }
+
+  getOperation()->eraseOperands(erase_indices);
+  getOperation()->setAttr(
+      operand_segment_size_attr,
+      DenseI32ArrayAttr::get(
+          getContext(), /*content=*/{num_in_tensors, num_captured_tensors}));
 }
 
 //===----------------------------------------------------------------------===//
@@ -893,7 +921,7 @@ static LogicalResult VerifyCaseOrIfOpBranchFunctions(
   TypeRangeWithDesc input{op->getOperands().drop_front().getTypes(), "input"};
   TypeRangeWithDesc result{op->getResultTypes(), "result"};
 
-  for (auto branch : llvm::enumerate(branches)) {
+  for (const auto& branch : llvm::enumerate(branches)) {
     auto branch_func = symbol_table.lookupNearestSymbolFrom<func::FuncOp>(
         op, branch.value().cast<SymbolRefAttr>());
     if (!branch_func)
@@ -963,7 +991,7 @@ LogicalResult CaseRegionOp::verify() {
 
   TypeRangeWithDesc results{op.getResultTypes(), "result"};
 
-  for (auto region_and_idx : llvm::enumerate(op.getBranches())) {
+  for (const auto& region_and_idx : llvm::enumerate(op.getBranches())) {
     std::string description =
         llvm::formatv("branch #{0} result", region_and_idx.index()).str();
     Operation* yield = region_and_idx.value().front().getTerminator();
@@ -1014,9 +1042,9 @@ class CaseOrIfRegionEliminatePassThrough
     if (result_to_extern_value.empty()) return failure();
 
     // Create new case/if region op.
-    auto new_op = rewriter.create<CaseOrIfRegionOp>(
-        op.getLoc(), new_result_types, op.getOperand(), op->getAttrs(),
-        op.getNumRegions());
+    auto new_op = CreateTfOp<CaseOrIfRegionOp>(rewriter, op, new_result_types,
+                                               op.getOperand(), op->getAttrs(),
+                                               op.getNumRegions());
 
     int next_index = 0;
     for (auto result : op.getResults()) {
@@ -1059,35 +1087,43 @@ OpFoldResult CastOp::fold(FoldAdaptor) {
 // CollectiveReduceV2Op
 //===----------------------------------------------------------------------===//
 
-// For `CollectiveReduceV2Op` we have two cases:
-// 1) If at least one ordering token is present, then we purely rely on ordering
+// For `CollectiveReduceV2Op` we have 3 cases:
+// 1) `is_stateless` is true turns off automatic ordering and we purely rely on
+//    instance_key to distinguish collective groups. In this case, ordering
+//    tokens are irrelevant. Each collective group should have a unique
+//    instance_key at runtime.
+// 2) If at least one ordering token is present, then we purely rely on ordering
 //    tokens for side effect modeling and ignore the op-based effect
 //    `TF_CollectiveReduceOrderingEffect` for which this function is relevant
 //    (note that returning `std::nullopt` here signals exactly that).
-// 2) If no ordering token is present, then we treat the op conservatively which
-//    means that different op instances need dependencies. This is realized by
-//    always returning the same string ("") in this case. In fact, we could
-//    return any string here, as long as it is the same string for all op
-//    instances without ordering tokens.
+// 3) If `is_stateless` is false and no ordering token is present, then we treat
+//    the op conservatively which means that different op instances need
+//    dependencies. This is realized by always returning the same string ("")
+//    in this case. In fact, we could return any string here, as long as it is
+//    the same string for all op instances without ordering tokens.
 std::optional<std::string> CollectiveReduceV2Op::GetResourceInstanceStr() {
-  return getNorderingToken() == 0 ? std::optional<std::string>("")
-                                  : std::nullopt;
+  if (!getIsStateless() && getNorderingToken() == 0)
+    return std::optional<std::string>("");
+  return std::nullopt;
 }
 
 std::optional<std::string>
 CollectiveReduceScatterV2Op::GetResourceInstanceStr() {
-  return getNorderingToken() == 0 ? std::optional<std::string>("")
-                                  : std::nullopt;
+  if (!getIsStateless() && getNorderingToken() == 0)
+    return std::optional<std::string>("");
+  return std::nullopt;
 }
 
 std::optional<std::string> CollectiveAllToAllV2Op::GetResourceInstanceStr() {
-  return getNorderingToken() == 0 ? std::optional<std::string>("")
-                                  : std::nullopt;
+  if (!getIsStateless() && getNorderingToken() == 0)
+    return std::optional<std::string>("");
+  return std::nullopt;
 }
 
 std::optional<std::string> CollectiveGatherV2Op::GetResourceInstanceStr() {
-  return getNorderingToken() == 0 ? std::optional<std::string>("")
-                                  : std::nullopt;
+  if (!getIsStateless() && getNorderingToken() == 0)
+    return std::optional<std::string>("");
+  return std::nullopt;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1167,8 +1203,8 @@ LogicalResult HoistCwiseUnaryOutOfConcat::matchAndRewrite(
   SmallVector<Value, 8> unary_ops_args(unary_operands);
 
   // Concatenate unary ops operands.
-  auto concat_unary_operands = rewriter.create<ConcatV2Op>(
-      loc, op.getType(), unary_ops_args, op.getAxis());
+  auto concat_unary_operands = CreateTfOp<ConcatV2Op>(
+      rewriter, op, op.getType(), unary_ops_args, op.getAxis());
 
   // Replace original concat with an unary op.
   OperationState new_unary_op_state(loc, first_arg_op->getName().getStringRef(),
@@ -1176,6 +1212,7 @@ LogicalResult HoistCwiseUnaryOutOfConcat::matchAndRewrite(
                                     op.getResult().getType(),
                                     ArrayRef<NamedAttribute>());
   Operation* new_unary_op = rewriter.create(new_unary_op_state);
+  CopyDeviceAndUnderscoredAttributes(op, new_unary_op);
 
   rewriter.replaceOp(op, new_unary_op->getResults());
 
@@ -1335,8 +1372,8 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
     // Use `PackOp` for scalar concatenation because `ConcatV2Op` doesn't
     // support scalar concatenation.
     if (is_scalar) {
-      auto pack = rewriter.create<PackOp>(loc, result_type, args,
-                                          rewriter.getI64IntegerAttr(axis));
+      auto pack = CreateTfOp<PackOp>(rewriter, op, result_type, args,
+                                     rewriter.getI64IntegerAttr(axis));
       return pack.getResult();
     }
 
@@ -1353,7 +1390,7 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
     auto axis_const = rewriter.create<TF::ConstOp>(loc, attr);
 
     auto concat =
-        rewriter.create<ConcatV2Op>(loc, result_type, args, axis_const);
+        CreateTfOp<ConcatV2Op>(rewriter, op, result_type, args, axis_const);
     return concat.getResult();
   };
 
@@ -1370,6 +1407,7 @@ LogicalResult HoistCwiseBinaryOutOfConcat::matchAndRewrite(
       loc, first_arg_op->getName().getStringRef(), {lhs_concat, rhs_concat},
       op.getResult().getType(), ArrayRef<NamedAttribute>());
   Operation* new_binary_op = rewriter.create(new_binary_op_state);
+  CopyDeviceAndUnderscoredAttributes(op, new_binary_op);
 
   rewriter.replaceOp(op, new_binary_op->getResults());
 
@@ -1521,7 +1559,7 @@ LogicalResult ConcatOffsetOp::verify() {
            << ranked_dim.getRank();
 
   int64_t num_dims = -1;
-  for (auto shape_offset_idx :
+  for (const auto& shape_offset_idx :
        llvm::enumerate(llvm::zip(op.getShape(), op.getOffset()))) {
     Value shape = std::get<0>(shape_offset_idx.value());
     Value offset = std::get<1>(shape_offset_idx.value());
@@ -1592,7 +1630,7 @@ LogicalResult ConcatOffsetOp::fold(FoldAdaptor adaptor,
   for (int32_t dim : shapes.front().getValues<int32_t>()) shape0.push_back(dim);
 
   for (DenseIntElementsAttr shape : llvm::drop_begin(shapes, 1)) {
-    for (auto dims_and_idx : llvm::enumerate(llvm::zip(shape0, shape))) {
+    for (const auto& dims_and_idx : llvm::enumerate(llvm::zip(shape0, shape))) {
       if (dims_and_idx.index() == concat_dim) continue;
 
       if (std::get<0>(dims_and_idx.value()) !=
@@ -1670,7 +1708,7 @@ void ConstOp::build(OpBuilder& builder, OperationState& result, Type type,
 
 LogicalResult ConstOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
+    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   auto value = attributes.get("value");
   if (!value) return emitOptionalError(location, "missing attribute 'value'");
@@ -1897,7 +1935,7 @@ static LogicalResult inferConvReturnTypeComponents(
       // Skip if input or filter size is dynamic.
       if (input_ty.isDynamicDim(dim) || filter_ty.isDynamicDim(i)) continue;
       // Calculate the expected_output_size.
-      tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+      tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerbose(
           input_ty.getDimSize(dim), filter_ty.getDimSize(i),
           get_int(dilations[dim]), stride, padding, &expected_output_size,
           &pad_low, &pad_high);
@@ -1913,7 +1951,8 @@ static LogicalResult inferConvReturnTypeComponents(
 
 LogicalResult Conv2DOp::inferReturnTypeComponents(
     MLIRContext* context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
+    RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   Conv2DOpAdaptor op(operands.getValues(), attributes);
   ArrayRef<Attribute> explicit_padding;
@@ -2111,7 +2150,8 @@ StringRef Conv2DBackpropInputOp::GetOptimalLayout(
 
 LogicalResult Conv3DOp::inferReturnTypeComponents(
     MLIRContext* context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
+    RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   Conv3DOpAdaptor op(operands.getValues(), attributes);
   ArrayRef<Attribute> explicit_padding;
@@ -2261,9 +2301,8 @@ class DivNoNanOrMulNoNanConstantY : public OpRewritePattern<OpT> {
         } else {
           // When `y` is a non-zero splat constant, replace tf.DivNoNan with
           // tf.Div and tf.MulNoNan with tf.Mul.
-          rewriter.replaceOpWithNewOp<RetT>(op, op->getResult(0).getType(),
-                                            op->getOperand(0),
-                                            op->getOperand(1));
+          ReplaceTfOpWithNewOp<RetT>(rewriter, op, op->getResult(0).getType(),
+                                     op->getOperand(0), op->getOperand(1));
         }
         return success();
       }
@@ -2274,8 +2313,8 @@ class DivNoNanOrMulNoNanConstantY : public OpRewritePattern<OpT> {
       } else {
         // When all the elements in `y` are non-splat and non-zero, replace
         // tf.DivNoNan with tf.Div and tf.MulNoNan with tf.Mul.
-        rewriter.replaceOpWithNewOp<RetT>(op, op->getResult(0).getType(),
-                                          op->getOperand(0), op->getOperand(1));
+        ReplaceTfOpWithNewOp<RetT>(rewriter, op, op->getResult(0).getType(),
+                                   op->getOperand(0), op->getOperand(1));
         return success();
       }
     }
@@ -2539,7 +2578,7 @@ OpFoldResult EnsureShapeOp::fold(FoldAdaptor) {
   ShapedType type = getInput().getType().dyn_cast<ShapedType>();
   if (!type || !type.hasRank()) return {};
   // If shape attribute equals input operand's type's shape, fold it to input.
-  Optional<llvm::ArrayRef<int64_t>> shape_constraint = getShape();
+  std::optional<llvm::ArrayRef<int64_t>> shape_constraint = getShape();
   if (type.getShape() == shape_constraint) return getInput();
 
   // If input operand's type's shape always satisfies the shape attribute, fold
@@ -2609,8 +2648,8 @@ static LogicalResult flipComatibleShapeError(Ty op, PatternRewriter& rewriter) {
   }
 
   // Shapes are known to be compatible.
-  rewriter.template replaceOpWithNewOp<Ty>(op, op.getX(), op.getY(),
-                                           rewriter.getBoolAttr(true));
+  ReplaceTfOpWithNewOp<Ty>(rewriter, op, op.getX(), op.getY(),
+                           rewriter.getBoolAttr(true));
   return success();
 }
 }  // namespace
@@ -2974,6 +3013,15 @@ void GatherOp::getCanonicalizationPatterns(RewritePatternSet& results,
 }
 
 //===----------------------------------------------------------------------===//
+// GlobalIterIdOp
+//===----------------------------------------------------------------------===//
+
+// Disable side effects.
+std::optional<std::string> GlobalIterIdOp::GetResourceInstanceStr() {
+  return std::nullopt;
+}
+
+//===----------------------------------------------------------------------===//
 // IfOp
 //===----------------------------------------------------------------------===//
 
@@ -3106,7 +3154,7 @@ LogicalResult FoldConstantIfRegionOp::matchAndRewrite(
     }
   }
   // Inline the region into the block containing the IfRegion.
-  rewriter.mergeBlockBefore(&region.front(), op);
+  rewriter.inlineBlockBefore(&region.front(), op);
   rewriter.eraseOp(yield);
   rewriter.replaceOp(op, updated_results);
   return success();
@@ -3117,6 +3165,45 @@ void IfRegionOp::getCanonicalizationPatterns(RewritePatternSet& results,
                                              MLIRContext* context) {
   results.add<FoldConstantIfRegionOp,
               CaseOrIfRegionEliminatePassThrough<TF::IfRegionOp>>(context);
+}
+
+bool IfRegionOp::areTypesCompatible(Type t1, Type t2) {
+  // For now, we don't enforce type checking across control-flow edges.
+  return true;
+}
+
+void IfRegionOp::getRegionInvocationBounds(
+    ArrayRef<Attribute> operands,
+    SmallVectorImpl<InvocationBounds>& invocationBounds) {
+  // We invoke both `then` and `else` between zero and one times.
+  invocationBounds.assign(2, {0, 1});
+}
+
+OperandRange IfRegionOp::getEntrySuccessorOperands(RegionBranchPoint point) {
+  // IfRegionOp currently only allows one op (the condition), so there are no
+  // remaining operands for the successor.
+  assert((point.isParent() ||
+          (point == (*this)->getRegion(0) || point == (*this)->getRegion(1))) &&
+         "Invalid IfRegionOp region index.");
+  auto end = this->getOperation()->operand_end();
+  return ::mlir::OperandRange(end, end);
+}
+
+void IfRegionOp::getSuccessorRegions(
+    RegionBranchPoint point, SmallVectorImpl<RegionSuccessor>& regions) {
+  if (!point.isParent()) {
+    // The `then` and the `else` region branch back to the parent operation.
+    regions.push_back(RegionSuccessor(getResults()));
+    return;
+  } else {
+    // The parent can branch to either `then` or `else`.
+    regions.push_back(RegionSuccessor(&getThenBranch()));
+    Region* elseRegion = &this->getElseBranch();
+    if (!elseRegion->empty())
+      regions.push_back(RegionSuccessor(elseRegion));
+    else
+      regions.push_back(RegionSuccessor());
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -3187,6 +3274,16 @@ LogicalResult LegacyCallOp::verifySymbolUses(
   }
 
   return success();
+}
+
+void LegacyCallOp::setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
+  // Direct call.
+  if (SymbolRefAttr fAttr = getFAttr()) {
+    SymbolRefAttr calleeAttr = callee.get<SymbolRefAttr>();
+    return setFAttr(cast<FlatSymbolRefAttr>(calleeAttr));
+  }
+  // Indirect call, callee Value is the first operand.
+  return setOperand(0, callee.get<Value>());
 }
 
 //===----------------------------------------------------------------------===//

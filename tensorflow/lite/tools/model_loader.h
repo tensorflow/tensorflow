@@ -34,16 +34,22 @@ namespace tools {
 // Class to load the Model.
 class ModelLoader {
  public:
+  enum class Type : int {
+    kPathModelLoader = 0,
+    kBufferModelLoader = 1,
+    kMmapModelLoader = 2,
+    kPipeModelLoader = 3,
+  };
+
   virtual ~ModelLoader() = default;
 
   // Return whether the model is loaded successfully.
   virtual bool Init();
 
-  const FlatBufferModel* GetModel() const { return model_.get(); }
+  // Return the concrete type of the class.
+  virtual Type type() const = 0;
 
-  // Return whether the FlatBufferModel is created from FlatbufferBuilder
-  // directly.
-  virtual bool IsLoadedFromFlatbufferBuilder() = 0;
+  const FlatBufferModel* GetModel() const { return model_.get(); }
 
  protected:
   // Interface for subclass to create model_. Init() calls InitInternal(). If
@@ -60,13 +66,35 @@ class PathModelLoader : public ModelLoader {
   explicit PathModelLoader(absl::string_view model_path)
       : ModelLoader(), model_path_(model_path) {}
 
-  bool IsLoadedFromFlatbufferBuilder() override { return false; }
+  Type type() const override { return Type::kPathModelLoader; }
 
  protected:
   bool InitInternal() override;
 
  private:
   const std::string model_path_;
+};
+
+// Load the Model from buffer. The buffer is owned by the caller.
+class BufferModelLoader : public ModelLoader {
+ public:
+  BufferModelLoader(const char* caller_owned_buffer, size_t model_size)
+      : caller_owned_buffer_(caller_owned_buffer), model_size_(model_size) {}
+
+  // Move only.
+  BufferModelLoader(BufferModelLoader&&) = default;
+  BufferModelLoader& operator=(BufferModelLoader&&) = default;
+
+  ~BufferModelLoader() override = default;
+
+  Type type() const override { return Type::kBufferModelLoader; }
+
+ protected:
+  bool InitInternal() override;
+
+ private:
+  const char* caller_owned_buffer_ = nullptr;
+  size_t model_size_ = 0;
 };
 
 #ifndef _WIN32
@@ -88,7 +116,7 @@ class MmapModelLoader : public ModelLoader {
     }
   }
 
-  bool IsLoadedFromFlatbufferBuilder() override { return false; }
+  Type type() const override { return Type::kMmapModelLoader; }
 
  protected:
   bool InitInternal() override;
@@ -115,7 +143,7 @@ class PipeModelLoader : public ModelLoader {
 
   ~PipeModelLoader() override { std::free(model_buffer_); }
 
-  bool IsLoadedFromFlatbufferBuilder() override { return true; }
+  Type type() const override { return Type::kPipeModelLoader; }
 
  protected:
   // Reads the serialized Model from read_pipe_fd. Returns false if the number
@@ -140,10 +168,11 @@ class PipeModelLoader : public ModelLoader {
 // write_pipe when write_pipe >= 0, so it should be called at the read thread /
 // process. Returns null if path cannot be parsed.
 // 3) File path: Always return a PathModelLoader.
-// NOTE: This helper function is designed for creating the ModelLoader from
-// command line parameters. Prefer to use the ModelLoader constructors directly
-// when possible.
-std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path);
+// 4) Buffer path: path must be in the format of
+// "buffer:%buffer_handle%:%buffer_size%". This model loader does not own the
+// buffer_handle, and the caller needs to ensure the buffer_handle out-lives the
+// model loader.
+std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(const std::string& path);
 
 }  // namespace tools
 }  // namespace tflite

@@ -17,7 +17,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_TEST_BENCHMARK_H_
 #define TENSORFLOW_CORE_PLATFORM_TEST_BENCHMARK_H_
 
-#include "tensorflow/tsl/platform/test_benchmark.h"
+#include "tsl/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace testing {

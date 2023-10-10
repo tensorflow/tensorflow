@@ -29,8 +29,7 @@ limitations under the License.
 
 namespace {
 
-void FuzzTest(tensorflow::error::Code error_code,
-              std::string_view error_message) {
+void FuzzTest(absl::StatusCode error_code, std::string_view error_message) {
   tensorflow::Status s = tensorflow::Status(error_code, error_message);
   const std::string actual_message = s.ToString();
   const std::size_t pos = actual_message.rfind(error_message);

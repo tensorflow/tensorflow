@@ -22,15 +22,15 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/xla_builder.h"
+#include "xla/literal_util.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/tpu/c_api_conversions.h"
+#include "xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/stream_executor/tpu/proto_helper.h"
+#include "xla/stream_executor/tpu/status_helper.h"
+#include "xla/stream_executor/tpu/tpu_api.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -130,7 +130,8 @@ class RecvTPUEmbeddingActivationsOp : public XlaOpKernel {
   tensorflow::tpu::TPUEmbeddingConfiguration tpu_embedding_config_;
   std::string config_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RecvTPUEmbeddingActivationsOp);
+  RecvTPUEmbeddingActivationsOp(const RecvTPUEmbeddingActivationsOp&) = delete;
+  void operator=(const RecvTPUEmbeddingActivationsOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaRecvTPUEmbeddingActivations").AllowVariantTypes(),
@@ -210,7 +211,9 @@ class RecvTPUEmbeddingDeduplicationDataOp : public XlaOpKernel {
   // TPU Embedding config string.
   std::string config_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RecvTPUEmbeddingDeduplicationDataOp);
+  RecvTPUEmbeddingDeduplicationDataOp(
+      const RecvTPUEmbeddingDeduplicationDataOp&) = delete;
+  void operator=(const RecvTPUEmbeddingDeduplicationDataOp&) = delete;
 };
 
 REGISTER_XLA_OP(
@@ -326,7 +329,8 @@ class SendTPUEmbeddingGradientsOp : public XlaOpKernel {
   // TPU Embedding config string.
   std::string config_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SendTPUEmbeddingGradientsOp);
+  SendTPUEmbeddingGradientsOp(const SendTPUEmbeddingGradientsOp&) = delete;
+  void operator=(const SendTPUEmbeddingGradientsOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaSendTPUEmbeddingGradients").AllowVariantTypes(),
@@ -491,7 +495,8 @@ class SplitDedupDataOp : public XlaOpKernel {
   std::string tuple_mask_string_;
   tensorflow::TensorProto tuple_mask_tensor_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SplitDedupDataOp);
+  SplitDedupDataOp(const SplitDedupDataOp&) = delete;
+  void operator=(const SplitDedupDataOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("SplitDedupData").AllowVariantTypes(), SplitDedupDataOp);
@@ -681,7 +686,8 @@ class MergeDedupDataOp : public XlaOpKernel {
   std::string tuple_mask_string_;
   tensorflow::TensorProto tuple_mask_tensor_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MergeDedupDataOp);
+  MergeDedupDataOp(const MergeDedupDataOp&) = delete;
+  void operator=(const MergeDedupDataOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("MergeDedupData").AllowVariantTypes(), MergeDedupDataOp);
@@ -733,7 +739,8 @@ class ComputeDedupDataTupleMaskOp : public XlaOpKernel {
   // TPU Embedding config string.
   std::string config_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ComputeDedupDataTupleMaskOp);
+  ComputeDedupDataTupleMaskOp(const ComputeDedupDataTupleMaskOp&) = delete;
+  void operator=(const ComputeDedupDataTupleMaskOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("ComputeDedupDataTupleMask").AllowVariantTypes(),

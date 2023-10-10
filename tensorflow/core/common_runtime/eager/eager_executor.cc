@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 
 #include <forward_list>
+#include <functional>
+#include <memory>
+#include <utility>
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -148,7 +151,7 @@ Status EagerExecutor::AddOrExecute(std::unique_ptr<EagerNode> node) {
   } else {
     tensorflow::mutex_lock l(node_queue_mutex_);
     DVLOG(3) << "Add node [id " << item->id << "]" << item->node->DebugString()
-             << " with status: " << status_.ToString();
+             << " with status: " << status_;
     if (state_ != ExecutorState::kActive) {
       status = errors::FailedPrecondition(
           "EagerExecutor accepts new EagerNodes to run only in Active state. "
@@ -232,7 +235,7 @@ void EagerExecutor::ClearError() {
 void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
                              const Status& status, bool from_queue) {
   DVLOG(3) << "Node Done: [id " << item->id << "] " << item->node->DebugString()
-           << " with status: " << status.ToString();
+           << " with status: " << status;
   DCHECK(item->state != NodeState::kDONE);
   item->state = NodeState::kDONE;
 
@@ -329,11 +332,11 @@ void EagerExecutor::NotifyWaiters(uint64 id) {
     // occurred. These calling threads are responsible for checking status_
     // before proceeding.
     const auto range =
-        status_.ok()
-            ? make_pair(node_done_notifications_.lower_bound(id),
-                        node_done_notifications_.upper_bound(upperbound_id))
-            : make_pair(node_done_notifications_.begin(),
-                        node_done_notifications_.end());
+        status_.ok() ? std::make_pair(
+                           node_done_notifications_.lower_bound(id),
+                           node_done_notifications_.upper_bound(upperbound_id))
+                     : std::make_pair(node_done_notifications_.begin(),
+                                      node_done_notifications_.end());
     for (auto it = range.first; it != range.second; ++it) {
       it->second->notify_all();
     }

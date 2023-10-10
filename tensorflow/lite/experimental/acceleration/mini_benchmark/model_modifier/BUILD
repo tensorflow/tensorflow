@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+load("//tensorflow/lite/experimental/acceleration/mini_benchmark:special_rules.bzl", "libjpeg_handle_deps", "register_selected_ops_deps")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
@@ -80,13 +82,14 @@ cc_binary(
         ":embedder",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core:model_builder",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:call",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:decode_jpeg",
         "//tensorflow/lite/schema:schema_fbs_with_reflection",
         "//tensorflow/lite/tools:command_line_flags",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
-    ],
+    ] + libjpeg_handle_deps() + register_selected_ops_deps(),
 )
 
 cc_library(
@@ -122,5 +125,5 @@ cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools:model_loader",
         "@com_google_googletest//:gtest_main",
-    ],
+    ] + libjpeg_handle_deps() + register_selected_ops_deps(),
 )

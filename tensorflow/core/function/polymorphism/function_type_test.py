@@ -251,9 +251,9 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del x, y, z
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
+    mono_type, _ = function_type.canonicalize_to_monomorphic(
         args, kwargs, {}, {}, polymorphic_type)
-
+    bound_args = mono_type.bind(*args, **kwargs)
     self.assertEqual(bound_args.args, (1, 2, 3))
     self.assertEqual(bound_args.kwargs, {})
 
@@ -283,9 +283,10 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del x, y, z
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
+    mono_type, _ = function_type.canonicalize_to_monomorphic(
         args, kwargs, {}, {}, polymorphic_type)
 
+    bound_args = mono_type.bind(*args, **kwargs)
     self.assertEqual(bound_args.args, (1, 2, 3))
     self.assertEqual(bound_args.kwargs, {})
 
@@ -311,10 +312,13 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del x, y, z
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
-        args, kwargs, function_type.FunctionType.get_default_values(foo), {},
+    default_values = function_type.FunctionType.get_default_values(foo)
+    mono_type, _ = function_type.canonicalize_to_monomorphic(
+        args, kwargs, default_values, {},
         polymorphic_type)
 
+    kwargs["z"] = 3
+    bound_args = mono_type.bind(*args, **kwargs)
     self.assertEqual(bound_args.args, (1, 2, 3))
     self.assertEqual(bound_args.kwargs, {})
 
@@ -344,9 +348,10 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del x, y, z
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
+    mono_type, _ = function_type.canonicalize_to_monomorphic(
         args, kwargs, {}, {}, polymorphic_type)
 
+    bound_args = mono_type.bind(*args, **kwargs)
     self.assertEqual(bound_args.args, (1, 2, 3))
     self.assertEqual(bound_args.kwargs, {})
 
@@ -371,9 +376,12 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del my_var_args
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
-        (1, 2, 3), {}, {}, {}, polymorphic_type)
+    args = (1, 2, 3)
+    kwargs = {}
+    mono_type, _ = function_type.canonicalize_to_monomorphic(
+        args, kwargs, {}, {}, polymorphic_type)
 
+    bound_args = mono_type.bind(*args, **kwargs)
     self.assertEqual(bound_args.args, (1, 2, 3))
     self.assertEqual(bound_args.kwargs, {})
 
@@ -398,12 +406,14 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del kwargs
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic((), {
-        "x": 1,
-        "y": 2,
-        "z": 3
-    }, {}, {}, polymorphic_type)
 
+    args = ()
+    kwargs = {"x": 1, "y": 2, "z": 3}
+    mono_type, _ = function_type.canonicalize_to_monomorphic(
+        args, kwargs, {}, {}, polymorphic_type
+    )
+
+    bound_args = mono_type.bind(*args, **kwargs)
     self.assertEqual(bound_args.args, ())
     self.assertEqual(bound_args.kwargs, {"x": 1, "y": 2, "z": 3})
 
@@ -425,11 +435,13 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del args, kwargs
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic((1,), {
-        "y": 2,
-        "z": 3
-    }, {}, {}, polymorphic_type)
+    args = (1,)
+    kwargs = {"y": 2, "z": 3}
+    mono_type, _ = function_type.canonicalize_to_monomorphic(
+        args, kwargs, {}, {}, polymorphic_type
+    )
 
+    bound_args = mono_type.bind(*args, **kwargs)
     self.assertEqual(bound_args.args, (1,))
     self.assertEqual(bound_args.kwargs, {"y": 2, "z": 3})
 
@@ -456,9 +468,10 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       del x, y, z
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
+    mono_type, _ = function_type.canonicalize_to_monomorphic(
         args, kwargs, {}, {}, polymorphic_type)
 
+    bound_args = mono_type.bind(*args, **kwargs)
     self.assertEqual(bound_args.args, (1, 2))
     self.assertEqual(bound_args.kwargs, {"z": 3})
 
@@ -489,9 +502,10 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
     foo = eval("lambda x, y, /, z: x + y + z")  # pylint: disable=eval-used
 
     polymorphic_type = function_type.FunctionType.from_callable(foo)
-    bound_args, mono_type, _ = function_type.canonicalize_to_monomorphic(
+    mono_type, _ = function_type.canonicalize_to_monomorphic(
         args, kwargs, {}, {}, polymorphic_type)
 
+    bound_args = mono_type.bind(*args, **kwargs)
     self.assertEqual(bound_args.args, (1, 2, 3))
     self.assertEqual(bound_args.kwargs, {})
 
@@ -668,8 +682,8 @@ class CapturesTest(test.TestCase):
     self.type_d1 = gen_type_fn({"d": trace_type.from_value(1)})
 
   def testCapturesSubtype(self):
-    self.assertFalse(self.type_a1_b1.is_supertype_of(self.type_a1_b1_c1))
-    self.assertTrue(self.type_a1_b1_c1.is_supertype_of(self.type_a1_b1))
+    self.assertTrue(self.type_a1_b1.is_supertype_of(self.type_a1_b1_c1))
+    self.assertFalse(self.type_a1_b1_c1.is_supertype_of(self.type_a1_b1))
     self.assertFalse(self.type_a1_b1_c1.is_supertype_of(self.type_a2_b2_c2))
     self.assertFalse(self.type_a1_b1_c1.is_supertype_of(self.type_a2_b2_c2))
     self.assertFalse(self.type_d1.is_supertype_of(self.type_a1_b1))
@@ -685,7 +699,7 @@ class CapturesTest(test.TestCase):
 
     supertype_3 = self.type_a1_b1.most_specific_common_subtype(
         [self.type_a1_b1_c2])
-    self.assertLen(supertype_3.captures, 2)
+    self.assertLen(supertype_3.captures, 3)
 
     supertype_4 = self.type_a1_b1_c1.most_specific_common_subtype(
         [self.type_a1_b1_c2])
@@ -693,7 +707,7 @@ class CapturesTest(test.TestCase):
 
     supertype_5 = self.type_a1_b1_c1.most_specific_common_subtype(
         [self.type_d1])
-    self.assertEmpty(supertype_5.captures)
+    self.assertLen(supertype_5.captures, 4)
 
 
 class SanitizationTest(test.TestCase):
@@ -765,6 +779,88 @@ class SerializationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(original.to_proto(), expected)
     self.assertEqual(function_type.FunctionType.from_proto(expected), original)
 
+  def testCapturedDefaultValueStr(self):
+    f_type = function_type.FunctionType([
+        function_type.Parameter(
+            "a", function_type.Parameter.POSITIONAL_OR_KEYWORD, True, None
+        ),
+    ])
+
+    self.assertEqual(str(f_type), "(a=<captured_default_value>)")
+
+
+class FromStructuredSignatureTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.parameters(
+      {
+          "signature": ((1, 2, 3), {}),
+          "expected_types": (
+              trace_type.from_value(1),
+              trace_type.from_value(2),
+              trace_type.from_value(3),
+          ),
+      },
+      {
+          "signature": (([1, 2, 3],), {}),
+          "expected_types": (
+              trace_type.from_value([1, 2, 3]),
+          ),
+      },
+      {
+          "signature": ((), {}),
+          "expected_types": (),
+      },
+  )
+  def testArgs(self, signature, expected_types):
+    generated_type = function_type.from_structured_signature(signature)
+    self.assertEqual(generated_type.output, trace_type.from_value(None))
+    for i, p in enumerate(generated_type.parameters.values()):
+      self.assertEqual(p.kind, function_type.Parameter.POSITIONAL_ONLY)
+      self.assertEqual(p.type_constraint, expected_types[i])
+
+  @parameterized.parameters(
+      {
+          "signature": ((), {"a": 1, "b": 2, "c": 3}),
+          "expected_types": {
+              "a": trace_type.from_value(1),
+              "b": trace_type.from_value(2),
+              "c": trace_type.from_value(3),
+          },
+      },
+      {
+          "signature": ((), {"a": [1, 2, 3]}),
+          "expected_types": {
+              "a": trace_type.from_value([1, 2, 3]),
+          },
+      },
+      {
+          "signature": ((), {}),
+          "expected_types": {},
+      },
+  )
+  def testKwargs(self, signature, expected_types):
+    generated_type = function_type.from_structured_signature(signature)
+    self.assertEqual(generated_type.output, trace_type.from_value(None))
+    for p in generated_type.parameters.values():
+      self.assertEqual(p.kind, function_type.Parameter.KEYWORD_ONLY)
+      self.assertEqual(p.type_constraint, expected_types[p.name])
+
+  @parameterized.parameters(
+      {"output_signature": 1},
+      {"output_signature": [1, 2, 3]},
+      {"output_signature": ()},
+  )
+  def testOutput(self, output_signature):
+    generated_type = function_type.from_structured_signature(
+        ((), {}), output_signature
+    )
+    self.assertEqual(
+        generated_type.output,
+        trace_type.from_value(
+            output_signature,
+            trace_type.InternalTracingContext(is_legacy_signature=True),
+        )
+    )
 
 if __name__ == "__main__":
   test.main()

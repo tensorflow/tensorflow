@@ -331,6 +331,28 @@ TEST(Tensor_uint64, Simple) {
   TestCopies<uint64_t>(t);
 }
 
+TEST(Tensor_int4, Simple) {
+  Tensor t(DT_INT4, TensorShape({10, 20}));
+  EXPECT_TRUE(t.shape().IsSameSize(TensorShape({10, 20})));
+  for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
+      t.matrix<int4>()(a, b) = static_cast<int4>(a * b);
+    }
+  }
+  TestCopies<int4>(t);
+}
+
+TEST(Tensor_uint4, Simple) {
+  Tensor t(DT_UINT4, TensorShape({10, 20}));
+  EXPECT_TRUE(t.shape().IsSameSize(TensorShape({10, 20})));
+  for (int64_t a = 0; a < t.shape().dim_size(0); a++) {
+    for (int64_t b = 0; b < t.shape().dim_size(1); b++) {
+      t.matrix<uint4>()(a, b) = static_cast<uint4>(a * b);
+    }
+  }
+  TestCopies<uint4>(t);
+}
+
 TEST(Tensor_ResourceHandle, Simple) {
   Tensor t(DT_RESOURCE, TensorShape({}));
   ResourceHandle tmp;
@@ -1523,6 +1545,17 @@ TEST(Tensor, Slice_Basic) {
     for (int64_t i = 0; i < y.NumElements(); ++i) {
       EXPECT_EQ(1.0, y.unaligned_flat<float>()(i));
     }
+  }
+  {
+    // Test unaligned access via a Slice for 8-bit data type.
+    Tensor x(DT_INT8, TensorShape({30}));
+    x.flat<int8>().setConstant(0);
+
+    // Take an unaligned slice.
+    Tensor y = x.Slice(1, 13);
+#if EIGEN_MAX_ALIGN_BYTES > 1
+    EXPECT_FALSE(y.IsAligned());
+#endif
   }
 }
 

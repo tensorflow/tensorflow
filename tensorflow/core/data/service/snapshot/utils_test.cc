@@ -24,8 +24,10 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
-#include "tensorflow/tsl/platform/protobuf.h"
-#include "tensorflow/tsl/platform/test.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/protobuf.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/test.h"
 
 namespace tensorflow {
 namespace data {
@@ -64,6 +66,7 @@ TEST(UtilsTest, EstimatedMixedElementsSizeBytes) {
 }
 
 TEST(UtilsTest, EmptyTensor) { EXPECT_GT(EstimatedSizeBytes({Tensor()}), 0); }
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

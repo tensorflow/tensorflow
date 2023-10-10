@@ -21,7 +21,7 @@ import warnings
 
 import numpy as np
 
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -38,13 +38,12 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
 
@@ -53,7 +52,6 @@ RECURRENT_DROPOUT_WARNING_MSG = (
     'Using `implementation=1`.')
 
 
-@keras_export('keras.layers.StackedRNNCells')
 class StackedRNNCells(Layer):
   """Wrapper allowing a stack of RNN cells to behave as a single cell.
 
@@ -195,7 +193,6 @@ class StackedRNNCells(Layer):
     return cls(cells, **config)
 
 
-@keras_export('keras.layers.RNN')
 class RNN(Layer):
   """Base class for recurrent layers.
 
@@ -437,7 +434,7 @@ class RNN(Layer):
     self._num_constants = 0
 
     if stateful:
-      if ds_context.has_strategy():
+      if distribute_lib.has_strategy():
         raise ValueError('RNNs with stateful=True not yet supported with '
                          'tf.distribute.Strategy.')
 
@@ -859,10 +856,10 @@ class RNN(Layer):
         non_zero_count = math_ops.add_n([math_ops.count_nonzero_v2(s)
                                          for s in nest.flatten(self.states)])
         # Set strict = True to keep the original structure of the state.
-        initial_state = control_flow_ops.cond(non_zero_count > 0,
-                                              true_fn=lambda: self.states,
-                                              false_fn=lambda: initial_state,
-                                              strict=True)
+        initial_state = cond.cond(non_zero_count > 0,
+                                  true_fn=lambda: self.states,
+                                  false_fn=lambda: initial_state,
+                                  strict=True)
       else:
         initial_state = self.states
     elif initial_state is None:
@@ -1003,7 +1000,6 @@ class RNN(Layer):
     return layer_serialization.RNNSavedModelSaver(self)
 
 
-@keras_export('keras.layers.AbstractRNNCell')
 class AbstractRNNCell(Layer):
   """Abstract object representing an RNN cell.
 
@@ -1230,7 +1226,6 @@ class DropoutRNNCellMixin(object):
     super(DropoutRNNCellMixin, self).__setstate__(state)
 
 
-@keras_export('keras.layers.SimpleRNNCell')
 class SimpleRNNCell(DropoutRNNCellMixin, Layer):
   """Cell class for SimpleRNN.
 
@@ -1435,7 +1430,6 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.SimpleRNN')
 class SimpleRNN(RNN):
   """Fully-connected RNN where the output is to be fed back to input.
 
@@ -1689,7 +1683,6 @@ class SimpleRNN(RNN):
     return cls(**config)
 
 
-@keras_export(v1=['keras.layers.GRUCell'])
 class GRUCell(DropoutRNNCellMixin, Layer):
   """Cell class for the GRU layer.
 
@@ -1970,7 +1963,6 @@ class GRUCell(DropoutRNNCellMixin, Layer):
     return _generate_zero_filled_state_for_cell(self, inputs, batch_size, dtype)
 
 
-@keras_export(v1=['keras.layers.GRU'])
 class GRU(RNN):
   """Gated Recurrent Unit - Cho et al. 2014.
 
@@ -2249,7 +2241,6 @@ class GRU(RNN):
     return cls(**config)
 
 
-@keras_export(v1=['keras.layers.LSTMCell'])
 class LSTMCell(DropoutRNNCellMixin, Layer):
   """Cell class for the LSTM layer.
 
@@ -2527,7 +2518,6 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
         self, inputs, batch_size, dtype))
 
 
-@keras_export('keras.experimental.PeepholeLSTMCell')
 class PeepholeLSTMCell(LSTMCell):
   """Equivalent to LSTMCell class but adds peephole connections.
 
@@ -2646,7 +2636,6 @@ class PeepholeLSTMCell(LSTMCell):
     return c, o
 
 
-@keras_export(v1=['keras.layers.LSTM'])
 class LSTM(RNN):
   """Long Short-Term Memory layer - Hochreiter 1997.
 

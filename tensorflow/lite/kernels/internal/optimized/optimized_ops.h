@@ -26,18 +26,21 @@ limitations under the License.
 #include <memory>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 
+#include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/reference/add.h"
+#include "tensorflow/lite/kernels/internal/reference/mul.h"
 #include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
 
 #if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 #include <Accelerate/Accelerate.h>
 #endif
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "fixedpoint/fixedpoint.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/core/c/common.h"
@@ -73,8 +76,8 @@ using reference_ops::Broadcast4DSlowLess;
 using reference_ops::Broadcast4DSlowLessEqual;
 using reference_ops::Broadcast4DSlowLessEqualWithScaling;
 using reference_ops::Broadcast4DSlowLessWithScaling;
-using reference_ops::BroadcastAdd4DSlow;
-using reference_ops::BroadcastMul4DSlow;
+using reference_ops::BroadcastAdd6DSlow;
+using reference_ops::BroadcastMul6DSlow;
 using reference_ops::BroadcastSub16POTSlow;
 using reference_ops::BroadcastSubSlow;
 using reference_ops::Concatenation;
@@ -137,41 +140,41 @@ MatrixMap<Scalar> MapAsMatrixWithGivenNumberOfRows(Scalar* data,
   return MatrixMap<Scalar>(data, rows, cols);
 }
 
+static inline void swap_data(ArithmeticParams& arithmetic_params) {
+  std::swap(arithmetic_params.input1_offset, arithmetic_params.input2_offset);
+  std::swap(arithmetic_params.input1_shift, arithmetic_params.input2_shift);
+  std::swap(arithmetic_params.input1_multiplier,
+            arithmetic_params.input2_multiplier);
+}
+
 template <typename ElementwiseF, typename ScalarBroadcastF, typename T>
-inline void BinaryBroadcastFiveFold(const ArithmeticParams& unswitched_params,
-                                    const RuntimeShape& unswitched_input1_shape,
-                                    const T* unswitched_input1_data,
-                                    const RuntimeShape& unswitched_input2_shape,
-                                    const T* unswitched_input2_data,
-                                    const RuntimeShape& output_shape,
-                                    T* output_data, ElementwiseF elementwise_f,
-                                    ScalarBroadcastF scalar_broadcast_f) {
-  ArithmeticParams switched_params = unswitched_params;
-  switched_params.input1_offset = unswitched_params.input2_offset;
-  switched_params.input1_multiplier = unswitched_params.input2_multiplier;
-  switched_params.input1_shift = unswitched_params.input2_shift;
-  switched_params.input2_offset = unswitched_params.input1_offset;
-  switched_params.input2_multiplier = unswitched_params.input1_multiplier;
-  switched_params.input2_shift = unswitched_params.input1_shift;
+TFLITE_NOINLINE void BinaryBroadcastFiveFold(
+    const ArithmeticParams& unswitched_params,
+    const RuntimeShape& unswitched_input1_shape,
+    const T* unswitched_input1_data,
+    const RuntimeShape& unswitched_input2_shape,
+    const T* unswitched_input2_data, const RuntimeShape& output_shape,
+    T* output_data, ElementwiseF elementwise_f,
+    ScalarBroadcastF scalar_broadcast_f) {
+  ArithmeticParams& params = const_cast<ArithmeticParams&>(unswitched_params);
+  const T* input1_data_ptr = unswitched_input1_data;
+  const T* input2_data_reset = unswitched_input2_data;
 
   const bool use_unswitched =
       unswitched_params.broadcast_category ==
       tflite::BroadcastableOpCategory::kFirstInputBroadcastsFast;
-
-  const ArithmeticParams& params =
-      use_unswitched ? unswitched_params : switched_params;
-  const T* input1_data =
-      use_unswitched ? unswitched_input1_data : unswitched_input2_data;
-  const T* input2_data =
-      use_unswitched ? unswitched_input2_data : unswitched_input1_data;
+  if (!use_unswitched) {
+    swap_data(params);  // Swap in-place temporarily; will revert before return.
+    input1_data_ptr = unswitched_input2_data;
+    input2_data_reset = unswitched_input1_data;
+  }
 
   // Fivefold nested loops. The second input resets its position for each
   // iteration of the second loop. The first input resets its position at the
   // beginning of the fourth loop. The innermost loop is an elementwise add of
   // sections of the arrays.
   T* output_data_ptr = output_data;
-  const T* input1_data_ptr = input1_data;
-  const T* input2_data_reset = input2_data;
+
   // In the fivefold pattern, y0, y2 and y4 are not broadcast, and so shared
   // between input shapes. y3 for input 1 is always broadcast, and so the
   // dimension there is 1, whereas optionally y1 might be broadcast for
@@ -228,6 +231,10 @@ inline void BinaryBroadcastFiveFold(const ArithmeticParams& unswitched_params,
       }
       input2_data_reset = input2_data_ptr;
     }
+  }
+
+  if (!use_unswitched) {
+    swap_data(params);  // Revert the referenced params to the original state.
   }
 }
 
@@ -1833,7 +1840,7 @@ inline typename std::enable_if<is_int32_or_int64<T>::value, void>::type Add(
                              .cwiseMax(activation_min)
                              .cwiseMin(activation_max);
   } else {
-    reference_ops::BroadcastAdd4DSlow<T>(params, input1_shape, input1_data,
+    reference_ops::BroadcastAdd6DSlow<T>(params, input1_shape, input1_data,
                                          input2_shape, input2_data,
                                          output_shape, output_data);
   }
@@ -1845,7 +1852,7 @@ inline void BroadcastAddDispatch(
     const T* input1_data, const RuntimeShape& input2_shape,
     const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
   if (params.broadcast_category == BroadcastableOpCategory::kGenericBroadcast) {
-    return BroadcastAdd4DSlow(params, input1_shape, input1_data, input2_shape,
+    return BroadcastAdd6DSlow(params, input1_shape, input1_data, input2_shape,
                               input2_data, output_shape, output_data);
   }
 
@@ -1988,7 +1995,7 @@ inline void MulNoActivation(const ArithmeticParams& params,
     auto scalar = input1_data[0];
     output_map.array() = scalar * input2_map.array();
   } else {
-    reference_ops::BroadcastMul4DSlow(params, input1_shape, input1_data,
+    reference_ops::BroadcastMul6DSlow(params, input1_shape, input1_data,
                                       input2_shape, input2_data, output_shape,
                                       output_data);
   }
@@ -2243,7 +2250,7 @@ inline void BroadcastMulDispatch(
     const T* input1_data, const RuntimeShape& input2_shape,
     const T* input2_data, const RuntimeShape& output_shape, T* output_data) {
   if (params.broadcast_category == BroadcastableOpCategory::kGenericBroadcast) {
-    return BroadcastMul4DSlow(params, input1_shape, input1_data, input2_shape,
+    return BroadcastMul6DSlow(params, input1_shape, input1_data, input2_shape,
                               input2_data, output_shape, output_data);
   }
 
@@ -4275,7 +4282,7 @@ inline void BatchToSpaceND(
 }
 
 template <typename T>
-void TypedMemset(void* ptr, T value, size_t num) {
+TFLITE_NOINLINE void TypedMemset(void* ptr, T value, size_t num) {
   // Optimization for common cases where memset() will suffice.
   if (value == 0 || std::is_same<T, uint8_t>::value) {
     memset(ptr, value, num * sizeof(T));
@@ -7950,15 +7957,13 @@ inline void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
   ArgMax(input1_shape, input1_data, input2_data, output_shape, output_data);
 }
 
-inline void Conv3D(const Conv3DParams& params, const RuntimeShape& input_shape,
-                   const float* input_data, const RuntimeShape& filter_shape,
-                   const float* filter_data, const RuntimeShape& bias_shape,
-                   const float* bias_data, const RuntimeShape& output_shape,
-                   float* output_data, const RuntimeShape& im2col_shape,
-                   float* im2col_data,
-                   const RuntimeShape& transposed_filter_shape,
-                   float* transposed_filter_data,
-                   CpuBackendContext* cpu_backend_context) {
+inline TfLiteStatus Conv3D(
+    const Conv3DParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& filter_shape,
+    const float* filter_data, const RuntimeShape& bias_shape,
+    const float* bias_data, const RuntimeShape& output_shape,
+    float* output_data, const RuntimeShape& im2col_shape, float* im2col_data,
+    CpuBackendContext* cpu_backend_context) {
   const int stride_depth = params.stride_depth;
   const int stride_height = params.stride_height;
   const int stride_width = params.stride_width;
@@ -8005,24 +8010,13 @@ inline void Conv3D(const Conv3DParams& params, const RuntimeShape& input_shape,
     gemm_input_shape = &input_shape;
   }
 
-  // Transpose the filter tensor.
-  TransposeParams transpose_params;
-  transpose_params.perm_count = 5;
-  transpose_params.perm[0] = 4;
-  transpose_params.perm[1] = 0;
-  transpose_params.perm[2] = 1;
-  transpose_params.perm[3] = 2;
-  transpose_params.perm[4] = 3;
-  Transpose<float, 5>(transpose_params, filter_shape, filter_data,
-                      transposed_filter_shape, transposed_filter_data);
-
   const int gemm_input_dims = gemm_input_shape->DimensionsCount();
   int m = FlatSizeSkipDim(*gemm_input_shape, gemm_input_dims - 1);
   int n = output_shape.Dims(4);
   int k = gemm_input_shape->Dims(gemm_input_dims - 1);
 
   cpu_backend_gemm::MatrixParams<float> lhs_params;
-  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.order = cpu_backend_gemm::Order::kColMajor;
   lhs_params.rows = n;
   lhs_params.cols = k;
   cpu_backend_gemm::MatrixParams<float> rhs_params;
@@ -8037,9 +8031,10 @@ inline void Conv3D(const Conv3DParams& params, const RuntimeShape& input_shape,
   gemm_params.bias = bias_data;
   gemm_params.clamp_min = output_activation_min;
   gemm_params.clamp_max = output_activation_max;
-  cpu_backend_gemm::Gemm(lhs_params, transposed_filter_data, rhs_params,
-                         gemm_input_data, dst_params, output_data, gemm_params,
+  cpu_backend_gemm::Gemm(lhs_params, filter_data, rhs_params, gemm_input_data,
+                         dst_params, output_data, gemm_params,
                          cpu_backend_context);
+  return kTfLiteOk;
 }
 
 // Returns in 'im_data' (assumed to be zero-initialized) image patch in storage

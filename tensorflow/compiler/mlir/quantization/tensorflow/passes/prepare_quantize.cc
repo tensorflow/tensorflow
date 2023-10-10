@@ -18,6 +18,7 @@ limitations under the License.
 #include <initializer_list>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -52,8 +53,7 @@ namespace quant {
 
 namespace {
 
-using QuantMethod =
-    tensorflow::quantization::QuantizationMethod::ExperimentalMethod;
+using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
 
 // Applies prepare quantization on the model in TF dialect. This pass runs
 // before the quantization pass and propagate the quantization parameters
@@ -83,8 +83,8 @@ class PrepareQuantizePass
     quant_specs_.inference_type = tensorflow::DT_QINT8;
     enable_per_channel_quantization_ = !quant_specs_.disable_per_channel;
     enable_post_training_quantize_ =
-        (quantization_method ==
-         tensorflow::quantization::QuantizationMethod::STATIC_RANGE);
+        (quantization_method == tensorflow::quantization::QuantizationMethod::
+                                    METHOD_STATIC_RANGE_INT8);
   }
 
   PrepareQuantizePass(const PrepareQuantizePass& other) {
@@ -135,7 +135,7 @@ class PrepareQuantizePass
   // Get the min and max values from the quantization specification for the
   // current function and argument index. Uses default values if the function
   // is specified in the `quantize_allowlist`.
-  std::pair<llvm::Optional<double>, llvm::Optional<double>>
+  std::pair<std::optional<double>, std::optional<double>>
   GetMinMaxValuesForArgument(llvm::StringRef func_name, int index) {
     if (func_name == quant_specs_.target_func) {
       return quant_specs_.input_ranges[index];

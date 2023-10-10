@@ -51,12 +51,12 @@ LogicalResult SmuggleOp(Operation* op, PatternRewriter& rewriter) {
 
 }  // namespace
 
-class SmuggleTFResizeBilinearOpPattern
-    : public OpRewritePattern<TF::ResizeBilinearOp> {
+template <typename OpTy>
+class SmuggleOpPattern : public OpRewritePattern<OpTy> {
  public:
-  using OpRewritePattern<TF::ResizeBilinearOp>::OpRewritePattern;
+  using OpRewritePattern<OpTy>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(TF::ResizeBilinearOp op,
+  LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter& rewriter) const override {
     return SmuggleOp(op, rewriter);
   }
@@ -73,10 +73,11 @@ class SmuggleDisallowedOpsPass
 
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    patterns.add<SmuggleTFResizeBilinearOpPattern>(&getContext());
+    patterns.add<SmuggleOpPattern<TF::ResizeBilinearOp>>(&getContext());
+    patterns.add<SmuggleOpPattern<TF::ResizeNearestNeighborOp>>(&getContext());
 
     ConversionTarget target(getContext());
-    target.addIllegalOp<TF::ResizeBilinearOp>();
+    target.addIllegalDialect<TF::TensorFlowDialect>();
     target.addLegalDialect<mlir::stablehlo::StablehloDialect>();
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns)))) {

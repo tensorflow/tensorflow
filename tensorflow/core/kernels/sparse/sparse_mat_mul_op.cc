@@ -19,11 +19,12 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
+#include <algorithm>
 #include <memory>
 #include <numeric>
 
-#include "third_party/eigen3/Eigen/SparseCore"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "Eigen/SparseCore"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -140,12 +141,15 @@ class CSRSparseMatMulCPUOp : public OpKernel {
                     "dtype of b is not equal to 'type': ",
                     DataTypeString(input_matrix_b->dtype()), " vs. ",
                     DataTypeString(DataTypeToEnum<T>::value)));
-    OP_REQUIRES(ctx,
-                input_matrix_a->batch_size() == input_matrix_b->batch_size(),
-                errors::InvalidArgument(
-                    "Batch sizes of A and B do not agree.  Batch sizes are: ",
-                    input_matrix_a->batch_size(), " vs. ",
-                    input_matrix_b->batch_size()));
+    OP_REQUIRES(
+        ctx,
+        input_matrix_a->batch_size() == input_matrix_b->batch_size() ||
+            (input_matrix_a->batch_size() == 1) ||
+            (input_matrix_b->batch_size() == 1),
+        errors::InvalidArgument(
+            "Batch sizes of A and B are not compatible.  Batch sizes are: ",
+            input_matrix_a->batch_size(), " vs. ",
+            input_matrix_b->batch_size()));
 
     // Validate input_matrix_a's and input_matrix_b's shapes
     TensorShape a_shape;
@@ -171,9 +175,11 @@ class CSRSparseMatMulCPUOp : public OpKernel {
             a_shape.DebugString(), " vs. ", b_shape.DebugString()));
 
     // Infer the output shape of the matrix product.
-    // TODO(ebrevdo): MatMul support for broadcasting at least in the
-    // batch dimension.
-    const int batch_size = input_matrix_a->batch_size();
+    const int batch_size =
+        std::max(input_matrix_a->batch_size(), input_matrix_b->batch_size());
+    const bool broadcast_batch_a = (batch_size > input_matrix_a->batch_size());
+    const bool broadcast_batch_b = (batch_size > input_matrix_b->batch_size());
+
     Tensor output_shape(cpu_allocator(), DT_INT64, TensorShape({rank}));
     auto output_shape_vec = output_shape.vec<int64_t>();
     if (rank == 3) output_shape_vec(0) = batch_size;
@@ -209,11 +215,13 @@ class CSRSparseMatMulCPUOp : public OpKernel {
           matmul_cost_per_batch, [&](int64_t batch_begin, int64_t batch_end) {
             for (int64_t batch_idx = batch_begin; batch_idx < batch_end;
                  ++batch_idx) {
+              int batch_a = broadcast_batch_a ? 0 : batch_idx;
+              int batch_b = broadcast_batch_b ? 0 : batch_idx;
               // For each batch, map the CSRSparseMatrix as Eigen SparseMatrix
               // without copying the underlying data.
-              auto a_ref = GetSparseMatrixRef(*input_matrix_a, rank, batch_idx,
+              auto a_ref = GetSparseMatrixRef(*input_matrix_a, rank, batch_a,
                                               transpose_a_, adjoint_a_);
-              auto b_ref = GetSparseMatrixRef(*input_matrix_b, rank, batch_idx,
+              auto b_ref = GetSparseMatrixRef(*input_matrix_b, rank, batch_b,
                                               transpose_b_, adjoint_b_);
 
               // Matrix multiply while *not* pruning numerical zeros on the fly.
@@ -349,9 +357,14 @@ class CSRSparseMatMulGPUOp : public OpKernel {
         errors::InvalidArgument("dtype of b is not equal to 'type': ",
                                 DataTypeString(b_matrix->dtype()), " vs. ",
                                 DataTypeString(DataTypeToEnum<T>::value)));
+    OP_REQUIRES(
+        ctx,
+        a_matrix->batch_size() == b_matrix->batch_size() ||
+            (a_matrix->batch_size() == 1) || (b_matrix->batch_size() == 1),
+        errors::InvalidArgument(
+            "Batch sizes of A and B are not compatible.  Batch sizes are: ",
+            a_matrix->batch_size(), " vs. ", b_matrix->batch_size()));
 
-    // TODO(ebrevdo): MatMul support for broadcasting at least in the
-    // batch dimension.
     auto a_dense_shape = a_matrix->dense_shape().vec<int64_t>();
     auto b_dense_shape = b_matrix->dense_shape().vec<int64_t>();
 
@@ -370,7 +383,10 @@ class CSRSparseMatMulGPUOp : public OpKernel {
     const int64_t b_inner_dim =
         b_tensor_shape.dim_size(transpose_b_ ? row_dim + 1 : row_dim);
 
-    const int batch_size = a_matrix->batch_size();
+    const int batch_size =
+        std::max(a_matrix->batch_size(), b_matrix->batch_size());
+    const bool broadcast_batch_a = (batch_size > a_matrix->batch_size());
+    const bool broadcast_batch_b = (batch_size > b_matrix->batch_size());
 
     OP_REQUIRES(
         ctx, a_inner_dim == b_inner_dim,
@@ -450,6 +466,8 @@ class CSRSparseMatMulGPUOp : public OpKernel {
 
     // Compute intermediate results
     for (int i = 0; i < batch_size; ++i) {
+      int a_batch = broadcast_batch_a ? 0 : i;
+      int b_batch = broadcast_batch_b ? 0 : i;
       GpuSparseSpGEMMDescr gemmDesc;
       GpuSparseConstSpMatDescr matA;
       GpuSparseConstSpMatDescr matB;
@@ -459,23 +477,23 @@ class CSRSparseMatMulGPUOp : public OpKernel {
                      matA.InitializeCsr(
                          a_input_dense_shape(a_input_dense_shape.size() - 2),
                          a_input_dense_shape(a_input_dense_shape.size() - 1),
-                         a_input_matrix->col_indices_vec(i).size(),
-                         a_input_matrix->row_pointers_vec(i).data(),
-                         a_input_matrix->col_indices_vec(i).data(),
-                         a_input_matrix->values_vec<T>(i).data()));
+                         a_input_matrix->col_indices_vec(a_batch).size(),
+                         a_input_matrix->row_pointers_vec(a_batch).data(),
+                         a_input_matrix->col_indices_vec(a_batch).data(),
+                         a_input_matrix->values_vec<T>(a_batch).data()));
       OP_REQUIRES_OK(ctx,
                      matB.InitializeCsr(
                          b_input_dense_shape(b_input_dense_shape.size() - 2),
                          b_input_dense_shape(b_input_dense_shape.size() - 1),
-                         b_input_matrix->col_indices_vec(i).size(),
-                         b_input_matrix->row_pointers_vec(i).data(),
-                         b_input_matrix->col_indices_vec(i).data(),
-                         b_input_matrix->values_vec<T>(i).data()));
+                         b_input_matrix->col_indices_vec(b_batch).size(),
+                         b_input_matrix->row_pointers_vec(b_batch).data(),
+                         b_input_matrix->col_indices_vec(b_batch).data(),
+                         b_input_matrix->values_vec<T>(b_batch).data()));
       OP_REQUIRES_OK(ctx,
                      matC.InitializeCsr<int, T>(
                          a_input_dense_shape(a_input_dense_shape.size() - 2),
                          b_input_dense_shape(b_input_dense_shape.size() - 1), 0,
-                         nullptr, nullptr, nullptr));
+                         c_row_ptr.data(), nullptr, nullptr));
 
       // Check required size for buffer1 and possibly re-allocate
       size_t bufferSize1;
@@ -579,17 +597,19 @@ class CSRSparseMatMulGPUOp : public OpKernel {
         ctx, /*transpose_a=*/false, /*adjoint_a=*/false, /*transpose_b=*/false);
     OP_REQUIRES_OK(ctx, csr_gemm.Initialize());
 
-#if GOOGLE_CUDA && (CUDA_VERSION >= 10000)
+#if GOOGLE_CUDA
     size_t maxWorkspaceSize = 0;
     for (int i = 0; i < batch_size; ++i) {
+      int a_batch = broadcast_batch_a ? 0 : i;
+      int b_batch = broadcast_batch_b ? 0 : i;
       // Calculate maximum workspace size over batch.
-      ConstCSRComponent<T> a_comp{a_input_matrix->row_pointers_vec(i),
-                                  a_input_matrix->col_indices_vec(i),
-                                  a_input_matrix->values_vec<T>(i),
+      ConstCSRComponent<T> a_comp{a_input_matrix->row_pointers_vec(a_batch),
+                                  a_input_matrix->col_indices_vec(a_batch),
+                                  a_input_matrix->values_vec<T>(a_batch),
                                   a_input_dense_shape};
-      ConstCSRComponent<T> b_comp{b_input_matrix->row_pointers_vec(i),
-                                  b_input_matrix->col_indices_vec(i),
-                                  b_input_matrix->values_vec<T>(i),
+      ConstCSRComponent<T> b_comp{b_input_matrix->row_pointers_vec(b_batch),
+                                  b_input_matrix->col_indices_vec(b_batch),
+                                  b_input_matrix->values_vec<T>(b_batch),
                                   b_input_dense_shape};
       size_t thisWorkspaceSize;
       OP_REQUIRES_OK(
@@ -610,15 +630,17 @@ class CSRSparseMatMulGPUOp : public OpKernel {
 #endif
 
     for (int i = 0; i < batch_size; ++i) {
+      int a_batch = broadcast_batch_a ? 0 : i;
+      int b_batch = broadcast_batch_b ? 0 : i;
       // Calculate output sizes for all minibatch entries.
       // Store in c_batch_ptr and update c_row_ptrs.
-      ConstCSRComponent<T> a_comp{a_input_matrix->row_pointers_vec(i),
-                                  a_input_matrix->col_indices_vec(i),
-                                  a_input_matrix->values_vec<T>(i),
+      ConstCSRComponent<T> a_comp{a_input_matrix->row_pointers_vec(a_batch),
+                                  a_input_matrix->col_indices_vec(a_batch),
+                                  a_input_matrix->values_vec<T>(a_batch),
                                   a_input_dense_shape};
-      ConstCSRComponent<T> b_comp{b_input_matrix->row_pointers_vec(i),
-                                  b_input_matrix->col_indices_vec(i),
-                                  b_input_matrix->values_vec<T>(i),
+      ConstCSRComponent<T> b_comp{b_input_matrix->row_pointers_vec(b_batch),
+                                  b_input_matrix->col_indices_vec(b_batch),
+                                  b_input_matrix->values_vec<T>(b_batch),
                                   b_input_dense_shape};
 
       TTypes<int32>::UnalignedVec c_row_ptr_i(&c_row_ptr(i * (rows + 1)),
@@ -647,13 +669,15 @@ class CSRSparseMatMulGPUOp : public OpKernel {
                        c_row_ptr_t, c_col_ind_t, c_values_t, &c));
 
     for (int i = 0; i < batch_size; ++i) {
-      ConstCSRComponent<T> a_comp{a_input_matrix->row_pointers_vec(i),
-                                  a_input_matrix->col_indices_vec(i),
-                                  a_input_matrix->values_vec<T>(i),
+      int a_batch = broadcast_batch_a ? 0 : i;
+      int b_batch = broadcast_batch_b ? 0 : i;
+      ConstCSRComponent<T> a_comp{a_input_matrix->row_pointers_vec(a_batch),
+                                  a_input_matrix->col_indices_vec(a_batch),
+                                  a_input_matrix->values_vec<T>(a_batch),
                                   a_input_dense_shape};
-      ConstCSRComponent<T> b_comp{b_input_matrix->row_pointers_vec(i),
-                                  b_input_matrix->col_indices_vec(i),
-                                  b_input_matrix->values_vec<T>(i),
+      ConstCSRComponent<T> b_comp{b_input_matrix->row_pointers_vec(b_batch),
+                                  b_input_matrix->col_indices_vec(b_batch),
+                                  b_input_matrix->values_vec<T>(b_batch),
                                   b_input_dense_shape};
       CSRComponent<T> c_comp{c.row_pointers_vec(i), c.col_indices_vec(i),
                              c.values_vec<T>(i), c_dense_shape};
@@ -719,12 +743,12 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
         initialized_(false),
         transpose_a_(transpose_a),
         adjoint_a_(adjoint_a),
-#if (GOOGLE_CUDA && (CUDA_VERSION < 10000)) || TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
         transpose_b_(transpose_b) {
 #else
         transpose_b_(transpose_b),
         info_(nullptr) {
-#endif  // CUDA_VERSION < 10000
+#endif
     // TODO(ebrevdo): Figure out why transposed implementations crash cuSparse.
     transA_ = transpose_a
                   ? (adjoint_a ? GPUSPARSE(OPERATION_TRANSPOSE)
@@ -734,7 +758,7 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
                           : GPUSPARSE(OPERATION_NON_TRANSPOSE);
   }
 
-#if GOOGLE_CUDA && (CUDA_VERSION >= 10000)
+#if GOOGLE_CUDA
   ~CSRSparseSparseMatrixMatMul() {
     if (initialized_) {
       cusparseDestroyCsrgemm2Info(info_);
@@ -752,7 +776,7 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
     TF_RETURN_IF_ERROR(descrA_.Initialize());
     TF_RETURN_IF_ERROR(descrB_.Initialize());
     TF_RETURN_IF_ERROR(descrC_.Initialize());
-#if GOOGLE_CUDA && (CUDA_VERSION >= 10000)
+#if GOOGLE_CUDA
     TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateCsrgemm2Info(&info_));
 #endif
     initialized_ = true;
@@ -761,7 +785,7 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
 
   Status GetWorkspaceSize(const ConstCSRComponent<T>& a,
                           const ConstCSRComponent<T>& b, size_t* bufferSize) {
-#if GOOGLE_CUDA && (CUDA_VERSION >= 10000)
+#if GOOGLE_CUDA
     DCHECK(initialized_);
     const int m =
         a.dense_shape_host(a.dense_shape_host.size() - (transpose_a_ ? 1 : 2));
@@ -813,7 +837,7 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
 
     *output_nnz = -1;
 
-#if (GOOGLE_CUDA && (CUDA_VERSION < 10000)) || TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
     TF_RETURN_IF_ERROR(cuda_sparse_.CsrgemmNnz(
         transA_, transB_, m, n, k, descrA_.descr(), nnzA, a.row_ptr.data(),
         a.col_ind.data(), descrB_.descr(), nnzB, b.row_ptr.data(),
@@ -856,7 +880,7 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
         b.dense_shape_host(b.dense_shape_host.size() - (transpose_b_ ? 2 : 1));
     DCHECK_EQ(n, c->dense_shape_host(c->dense_shape_host.size() - 1));
 
-#if (GOOGLE_CUDA && (CUDA_VERSION < 10000)) || TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
     TF_RETURN_IF_ERROR(cuda_sparse_.Csrgemm(
         transA_, transB_, m, k, n, descrA_.descr(), nnzA, a.values.data(),
         a.row_ptr.data(), a.col_ind.data(), descrB_.descr(), nnzB,
@@ -895,7 +919,7 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
   GpuSparseMatrixDescriptor descrC_;
   gpusparseOperation_t transA_;
   gpusparseOperation_t transB_;
-#if GOOGLE_CUDA && (CUDA_VERSION >= 10000)
+#if GOOGLE_CUDA
   csrgemm2Info_t info_;
 #endif
 };

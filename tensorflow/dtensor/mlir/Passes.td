@@ -42,6 +42,14 @@ def DTensorConstantFolding
   ];
 }
 
+def DTensorCollectiveTypeLoweringPass
+    : Pass<"dtensor-collective-type-lowering", "mlir::func::FuncOp"> {
+  let summary = "Lowers collectives from unsupported types (e.g. complex) to supported types.";
+  let constructor = "CreateDTensorCollectiveTypeLoweringPass()";
+  let dependentDialects = [
+  ];
+}
+
 def DTensorAllReduceSumOptimization
     : Pass<"dtensor-allreduce-sum-optimization", "mlir::func::FuncOp"> {
   let summary = "Changes order of add/allreduce to minimize all reduce operations.";
@@ -167,6 +175,7 @@ def DTensorAllReduceLowering
   let summary = "Converts logical AllReduce ops into physical AllReduce ops.";
   let constructor = "CreateDTensorAllReduceLoweringPass()";
   let dependentDialects = [
+    "::mlir::dtensor::DTensorDialect"
   ];
 }
 
@@ -175,6 +184,7 @@ def DTensorReduceScatterLowering
   let summary = "Converts logical ReduceScatter ops into physical ReduceScatter ops.";
   let constructor = "CreateDTensorReduceScatterLoweringPass()";
   let dependentDialects = [
+    "::mlir::dtensor::DTensorDialect"
   ];
 }
 
@@ -183,6 +193,7 @@ def DTensorAllGatherLowering
   let summary = "Converts logical AllGather ops into physical AllGather ops.";
   let constructor = "CreateDTensorAllGatherLoweringPass()";
   let dependentDialects = [
+    "::mlir::dtensor::DTensorDialect"
   ];
 }
 
@@ -191,6 +202,16 @@ def DTensorAllScatterLowering
   let summary = "Converts logical AllScatter ops into physical Split ops.";
   let constructor = "CreateDTensorAllScatterLoweringPass()";
   let dependentDialects = [
+    "::mlir::dtensor::DTensorDialect"
+  ];
+}
+
+def DTensorAllToAllLowering
+    : Pass<"dtensor-all-to-all-lowering", "mlir::ModuleOp"> {
+  let summary = "Converts logical AllToAll ops into physical AllToAll ops.";
+  let constructor = "CreateDTensorAllToAllLoweringPass()";
+  let dependentDialects = [
+    "::mlir::dtensor::DTensorDialect"
   ];
 }
 
@@ -234,42 +255,18 @@ def DTensorUpdateTPUMetadata
   ];
 }
 
-def DTensorEmbedding
-    : Pass<"dtensor-embedding", "mlir::ModuleOp"> {
-  let summary = "Extracts the ApplyEmbeddingOptimizer and checks if the attached optimizer is usable for TPU embeddings.";
-  let constructor = "CreateDTensorEmbeddingPass()";
-  let dependentDialects = [
-    "::mlir::chlo::ChloDialect",
-    "::mlir::memref::MemRefDialect",
-    "::mlir::mhlo::MhloDialect",
-    "::mlir::shape::ShapeDialect",
-    "::mlir::scf::SCFDialect",
-    "::mlir::tensor::TensorDialect",
-    "::mlir::sparse_tensor::SparseTensorDialect",
-    "::mlir::quant::QuantizationDialect",
-  ];
-}
-
-def DTensorEmbeddingV2
-    : Pass<"dtensor-embedding-v2", "mlir::ModuleOp"> {
-  let summary = "Embedding Pass";
-  let constructor = "CreateDTensorEmbeddingPassV2()";
-  let dependentDialects = [
-  ];
-}
-
-def DTensorEmbeddingCheckpoint
-    : Pass<"dtensor-embedding-checkpoint", "mlir::ModuleOp"> {
-  let summary = "Checkpoint pass to save or load TPU embeddings variables.";
-  let constructor = "CreateDTensorEmbeddingCheckpointPass()";
-  let dependentDialects = [
-  ];
-}
-
 def DTensorFunctionRenaming
     : Pass<"dtensor-function-renaming", "mlir::ModuleOp"> {
   let summary = "Renames private functions by appending an id to each name. This is used to make private function names unique across modules.";
   let constructor = "CreateFunctionRenamingPass()";
+  let dependentDialects = [
+  ];
+}
+
+def DTensorMultiDeviceExpansion
+    : Pass<"dtensor-multi-device-expansion", "mlir::ModuleOp"> {
+  let summary = "Expands a per-device, post-SPMD graph for multiple devices.";
+  let constructor = "CreateDTensorMultiDeviceExpansionPass()";
   let dependentDialects = [
   ];
 }
@@ -281,6 +278,15 @@ def DTensorMergeClusters
   let dependentDialects = [
   ];
 }
+
+def DTensorDecomposeControlflow
+    : Pass<"dtensor-decompose-controlflow", "mlir::ModuleOp"> {
+  let summary = "Decompose control flow ops to different meshes";
+  let constructor = "CreateDTensorDecomposeControlflowPass()";
+  let dependentDialects = [
+  ];
+}
+
 
 def DTensorLowerSendRecv
     : Pass<"dtensor-lower-send-recv", "mlir::ModuleOp"> {
@@ -388,6 +394,37 @@ def DTensorSetHloShardingPass : Pass<"dtensor-set-hlo-sharding", "mlir::ModuleOp
     "If true, the pass checks every DTensorLayout must have Mesh config with use_xla_spmd."
     "Otherwise, the check is disabled.">
   ];
+}
+
+def DTensorLayoutToXlaShardingOpPass : Pass<"dtensor-layout-to-xla-sharding-op", "mlir::func::FuncOp"> {
+  let summary = "Replace `tf.DTensorLayout` op with `tf.XlaSharding` op.";
+
+  let description = [{
+    Provides sharding guide to XLA based on DTensor layout propagation result.
+
+    tf2xla bridge will further lower `tf.XlaSharding` to `hlo.custom_call`.
+
+    For example:
+
+    ```
+      %1 = tf.DTensorLayout(%0)
+    ```
+
+    will be converted to
+    ```
+      %1 = tf.XlaSharding(%0)
+    ```
+
+    When the DTensorLayout's operand is produced by a constant, the
+    DTensorLayout will be removed and no XlaSharding is inserted. This is
+    because tf2xla requires some op operands to be constant. Inserting
+    XlaSharding will break them.
+
+    A side note: "mhlo.sharding" attributes on ops except FuncOp won't be used
+    by XLA.
+  }];
+
+  let constructor = "CreateDTensorLayoutToXlaShardingOpPass()";
 }
 
 def DTensorReplaceAuxiliaryDTensorLayoutOpPass

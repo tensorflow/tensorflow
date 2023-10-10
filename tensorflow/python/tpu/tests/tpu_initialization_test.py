@@ -19,14 +19,13 @@ from absl.testing import parameterized
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.platform import test
-from tensorflow.python.tpu import tpu_strategy_util
 
 
 class TPUInitializationTest(parameterized.TestCase, test.TestCase):
 
   def test_tpu_initialization(self):
     resolver = tpu_cluster_resolver.TPUClusterResolver('')
-    tpu_strategy_util.initialize_tpu_system(resolver)
+    tpu_cluster_resolver.initialize_tpu_system(resolver)
 
 
 if __name__ == '__main__':

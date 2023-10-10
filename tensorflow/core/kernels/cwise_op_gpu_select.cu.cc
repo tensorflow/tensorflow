@@ -17,13 +17,14 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/kernels/cwise_ops_gpu_common.cu.h"
 
 namespace tensorflow {
 namespace functor {
 
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+// Used by bfloat16 even when MLIR_GENERATED_GPU_KERNELS_ENABLED are enabled
+// #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 template <typename T, int NDIMS>
 struct BCastSelectFunctor<GPUDevice, T, NDIMS> {
   void operator()(const GPUDevice& d,
@@ -39,7 +40,7 @@ struct BCastSelectFunctor<GPUDevice, T, NDIMS> {
                                           else_tensor.broadcast(else_bcast));
   }
 };
-#endif
+// #endif
 
 template <typename T>
 struct SelectFunctor<GPUDevice, T> {
@@ -140,6 +141,7 @@ SELECT_AND_BCAST_SELECT_FUNCTOR(int64);
 SELECT_AND_BCAST_SELECT_FUNCTOR(complex64);
 SELECT_AND_BCAST_SELECT_FUNCTOR(complex128);
 #endif
+SELECT_AND_BCAST_SELECT_FUNCTOR(bfloat16);
 
 #undef SELECT_FUNCTOR
 

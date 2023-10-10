@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/str_util.h"
+#include "tsl/platform/str_util.h"
 
 // Basic string utility routines
 namespace tensorflow {

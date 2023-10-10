@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_IMAGE_RESIZE_OPS_H_
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
+#include "xla/primitive_util.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/tf2xla/kernels/light_outside_compilation.h"

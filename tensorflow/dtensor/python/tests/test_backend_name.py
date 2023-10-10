@@ -30,6 +30,7 @@ class DTensorTestUtilBackend(enum.Enum):
   TPU_V3_DONUT_BACKEND = 'tpu_v3_2x2'
   TPU_V4_DONUT_BACKEND = 'tpu_v4_2x2'
   PATHWAYS = 'pw'
+  PATHWAYS_V3_DONUT_BACKEND = 'pw_v3_2x2'
 
 
 DTENSOR_TEST_UTIL_BACKEND = DTensorTestUtilBackend(

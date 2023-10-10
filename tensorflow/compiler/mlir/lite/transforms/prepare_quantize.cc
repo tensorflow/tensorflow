@@ -15,11 +15,11 @@ limitations under the License.
 
 // This transformation pass applies quantization propagation on TFLite dialect.
 #include <iterator>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/memory/memory.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -110,7 +110,7 @@ class PrepareQuantizePass
   // Get the min and max values from the quantization specification for the
   // current function and argument index. Uses default values if the function
   // is specified in the `quantize_allowlist`.
-  std::pair<llvm::Optional<double>, llvm::Optional<double>>
+  std::pair<std::optional<double>, std::optional<double>>
   GetMinMaxValuesForArgument(llvm::StringRef func_name, int index) {
     if (func_name == quant_specs_.target_func) {
       return quant_specs_.input_ranges[index];

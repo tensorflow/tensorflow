@@ -21,7 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/jit/device_compiler_client.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
 
 namespace tensorflow {
 

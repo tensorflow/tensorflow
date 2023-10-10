@@ -15,7 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_embedding_output_layout_utils.h"
 
+#include <cstdint>
 #include <vector>
+
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -31,7 +36,7 @@ Status ComputeOutputTensorShapes(
     for (const TPUEmbeddingConfiguration::FeatureDescriptor& feature :
          config.feature_descriptor()) {
       TensorShapeProto shape;
-      for (int32 input_shape : feature.input_shape()) {
+      for (int32_t input_shape : feature.input_shape()) {
         auto* dim = shape.add_dim();
         dim->set_size(input_shape);
       }

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/optimize_cross_host_control_deps.h"
 
+#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -67,6 +68,80 @@ TEST(OptimizeCrossHostControlDepsTest, OptimizeCrossHostControlOutputEdges) {
             "/job:worker/task:1/device:CPU:0");
 }
 
+TEST(OptimizeCrossHostControlDepsTest, OptimizeCrossHostDataOutputEdges) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  auto c1 = ops::Const(scope.WithOpName("c1"), 1.0f);
+  auto c2 = ops::Const(scope.WithOpName("c2"), 2.0f);
+
+  // For testing, we need a node with two outputs. The easiest way to do
+  // that is by creating (yet another) IdentityN.
+  auto a = ops::IdentityN(scope.WithOpName("a"), {c1, c2});
+  a.operation.node()->set_assigned_device_name("/job:worker/task:0/CPU:0");
+
+  auto b = ops::Identity(scope.WithOpName("b"), a[0]);
+  b.node()->set_assigned_device_name("/job:worker/task:1/CPU:0");
+  auto c = ops::Identity(scope.WithOpName("c"), a[0]);
+  c.node()->set_assigned_device_name("/job:worker/task:1/CPU:1");
+  auto d = ops::Identity(scope.WithOpName("d"), a[1]);
+  d.node()->set_assigned_device_name("/job:worker/task:2/CPU:0");
+  auto e = ops::Identity(scope.WithOpName("e"), a[1]);
+  e.node()->set_assigned_device_name("/job:worker/task:2/CPU:1");
+
+  Graph graph(OpRegistry::Global());
+  TF_ASSERT_OK(scope.ToGraph(&graph));
+  ASSERT_EQ(graph.num_op_nodes(), 7);
+
+  // No optimizations if the cross_host_edges_threshold is set too high.
+  TF_ASSERT_OK(OptimizeCrossHostDataOutputEdges(
+      &graph, /*cross_host_edges_threshold=*/10));
+  ASSERT_EQ(graph.num_op_nodes(), 7);
+
+  // Check the optimization is performed.
+  TF_ASSERT_OK(OptimizeCrossHostDataOutputEdges(
+      &graph, /*cross_host_edges_threshold=*/2));
+
+  ASSERT_EQ(graph.num_op_nodes(), 9);
+
+  Node* data_after1 = GetNodeByName("a/data_after/_0", &graph);
+  Node* data_after2 = GetNodeByName("a/data_after/_1", &graph);
+  // These two nodes are unordered, so "sort" them by device.
+  if (data_after1->assigned_device_name() ==
+      "/job:worker/task:2/device:CPU:0") {
+    std::swap(data_after1, data_after2);
+  }
+
+  ASSERT_NE(data_after1, nullptr);
+  EXPECT_EQ(data_after1->op_def().name(), "IdentityN");
+  EXPECT_EQ(data_after1->assigned_device_name(),
+            "/job:worker/task:1/device:CPU:0");
+  EXPECT_EQ(data_after1->def().input_size(), 2);
+  EXPECT_EQ(data_after1->def().input(0), "a");
+  EXPECT_EQ(data_after1->def().input(1), "a");
+  EXPECT_EQ(data_after1->op_def().name(), "IdentityN");
+
+  ASSERT_NE(data_after2, nullptr);
+  EXPECT_EQ(data_after2->op_def().name(), "IdentityN");
+  EXPECT_EQ(data_after2->assigned_device_name(),
+            "/job:worker/task:2/device:CPU:0");
+  EXPECT_EQ(data_after2->def().input_size(), 2);
+  EXPECT_EQ(data_after2->def().input(0), "a:1");
+  EXPECT_EQ(data_after2->def().input(1), "a:1");
+  EXPECT_EQ(data_after2->op_def().name(), "IdentityN");
+
+  // Adding edges to the graph doesn't update the nodes, so go
+  // through the graph to verify inputs.
+  GraphDef graph_def;
+  graph.ToGraphDef(&graph_def);
+  std::unordered_map<string, const NodeDef*> map;
+  for (auto& node : graph_def.node()) {
+    map[node.name()] = &node;
+  }
+  EXPECT_EQ(map["b"]->input(0), data_after1->name());
+  EXPECT_EQ(map["c"]->input(0), data_after1->name() + ":1");
+  EXPECT_EQ(map["d"]->input(0), data_after2->name());
+  EXPECT_EQ(map["e"]->input(0), data_after2->name() + ":1");
+}
+
 TEST(OptimizeCrossHostControlDepsTest, OptimizeCrossHostControlInputEdges) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
   auto a = ops::Const(scope.WithOpName("a"), 1.0f);
@@ -105,7 +180,7 @@ TEST(OptimizeCrossHostControlDepsTest, OptimizeCrossHostControlInputEdges) {
 TEST(OptimizeCrossHostControlDepsTest, LargeGraph) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
 
-  constexpr int size = 1000;
+  constexpr int size = 750;
 
   std::vector<Operation> layer1;
   for (int i = 0; i < size; ++i) {

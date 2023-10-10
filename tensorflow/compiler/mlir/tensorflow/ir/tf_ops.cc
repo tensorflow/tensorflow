@@ -29,7 +29,6 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
@@ -145,8 +144,9 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   // a TF operation.
   bool isLegalToInline(Operation *call, Operation *callable,
                        bool wouldBeCloned) const final {
-    // Skip inlining for TPUPartitionedCalls.
+    // Skip inlining for TPUPartitionedCalls and RemoteCalls.
     if (isa<TPUPartitionedCallOp>(call)) return false;
+    if (isa<RemoteCallOp>(call)) return false;
     // Maintain inlining for  `tf.function`s with jit_compile option.
     if (callable->hasAttr("tf._XlaMustCompile")) return true;
     auto noinline_attr_name = absl::StrCat("tf.", tensorflow::kNoInlineAttr);

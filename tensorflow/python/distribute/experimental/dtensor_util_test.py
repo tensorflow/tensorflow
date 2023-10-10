@@ -24,6 +24,7 @@ from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values as values_lib
 from tensorflow.python.distribute.experimental import dtensor_util
 from tensorflow.python.distribute.experimental import mirrored_strategy
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 
@@ -43,9 +44,9 @@ class DTensorDistributedValueTest(test_util.DTensorBaseTest):
 
     tensor_1 = constant_op.constant([1.0])
     tensor_2 = constant_op.constant([2.0])
-    batch_layout = layout.Layout.batch_sharded(
+    self.batch_layout = layout.Layout.batch_sharded(
         self.mesh, batch_dim='batch', rank=1)
-    self.dtensor = d_api.pack([tensor_1, tensor_2], batch_layout)
+    self.dtensor = d_api.pack([tensor_1, tensor_2], self.batch_layout)
 
   @parameterized.named_parameters([
       ('py_floats', [1.0, 2.0]),
@@ -70,6 +71,19 @@ class DTensorDistributedValueTest(test_util.DTensorBaseTest):
     self.assertAllClose(per_replica_result[0], constant_op.constant([1.0]))
     self.assertAllClose(per_replica_result[1], constant_op.constant([2.0]))
 
+  def test_graph_behavior(self):
+
+    @def_function.function
+    def run_fn(input_dtensor):
+      return dtensor_util.DTensorDistributedValue(input_dtensor)
+
+    result = run_fn(self.dtensor)
+    # When it cross the boundary of tf.function, it will be unwrapped and
+    # return a dtensor instance directly.
+    self.assertTrue(d_api.is_dtensor(result))
+    self.assertDTensorEqual(constant_op.constant([1.0, 2.0]),
+                            self.batch_layout, result)
+
 
 class DTensorReplicaContextTest(test_util.DTensorBaseTest):
 
@@ -85,15 +99,14 @@ class DTensorReplicaContextTest(test_util.DTensorBaseTest):
     self.mesh = self.configTestMesh(mesh_dict)
 
   def test_unsupported_methods(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     replica_context = dtensor_util.DTensorReplicaContext(strategy)
 
     expected_error = replica_context._UNSUPPORTED_ERROR_MSG
 
     self.assertEqual(replica_context.num_replicas_in_sync, 2)
 
-    with self.assertRaisesRegex(NotImplementedError, expected_error):
-      _ = replica_context.replica_id_in_sync_group
+    self.assertEqual(replica_context.replica_id_in_sync_group, 0)
 
     with self.assertRaisesRegex(NotImplementedError, expected_error):
       replica_context.merge_call(None)

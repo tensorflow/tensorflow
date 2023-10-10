@@ -39,7 +39,7 @@ class TestDataTransferServer : public DataTransferServer {
     *called_ = true;
     return OkStatus();
   }
-  int get_port() override { return 0; }
+  int Port() const override { return 0; }
 
  private:
   bool* called_;

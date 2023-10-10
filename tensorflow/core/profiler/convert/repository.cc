@@ -22,15 +22,30 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/utils/file_system_utils.h"
 
 namespace tensorflow {
 namespace profiler {
+namespace {
+std::string GetHostnameByPath(absl::string_view xspace_path) {
+  std::string_view file_name = tensorflow::io::Basename(xspace_path);
+  // Remove suffix from file_name, preserving entire prefix.
+  absl::ConsumeSuffix(&file_name, ".xplane.pb");
+  return std::string(file_name);
+}
+}  // namespace
 
 StatusOr<SessionSnapshot> SessionSnapshot::Create(
     std::vector<std::string> xspace_paths,
@@ -39,13 +54,28 @@ StatusOr<SessionSnapshot> SessionSnapshot::Create(
     return errors::InvalidArgument("Can not find XSpace path.");
   }
 
-  if (xspaces.has_value() && xspaces->size() != xspace_paths.size()) {
-    return errors::InvalidArgument(
-        "The size of the XSpace paths: ", xspace_paths.size(), " is not equal ",
-        "to the size of the XSpace proto: ", xspaces->size());
+  if (xspaces.has_value()) {
+    if (xspaces->size() != xspace_paths.size()) {
+      return errors::InvalidArgument(
+          "The size of the XSpace paths: ", xspace_paths.size(),
+          " is not equal ",
+          "to the size of the XSpace proto: ", xspaces->size());
+    }
+    for (size_t i = 0; i < xspace_paths.size(); ++i) {
+      auto host_name = GetHostnameByPath(xspace_paths.at(i));
+      if (xspaces->at(i)->hostnames_size() > 0 && !host_name.empty()) {
+        if (!absl::StrContains(host_name, xspaces->at(i)->hostnames(0))) {
+          return errors::InvalidArgument(
+              "The hostname of xspace path and preloaded xpace don't match at "
+              "index: ",
+              i, ". \nThe host name of xpace path is ", host_name,
+              " but the host name of preloaded xpace is ",
+              xspaces->at(i)->hostnames(0), ".");
+        }
+      }
+    }
   }
 
-  // TODO(profiler): How to validate xspace_paths for pre-loaded XSpaces.
   return SessionSnapshot(std::move(xspace_paths), std::move(xspaces));
 }
 
@@ -73,8 +103,78 @@ StatusOr<std::unique_ptr<XSpace>> SessionSnapshot::GetXSpace(
   return xspace_from_file;
 }
 
+StatusOr<std::unique_ptr<XSpace>> SessionSnapshot::GetXSpaceByName(
+    absl::string_view name) const {
+  if (auto it = hostname_map_.find(name); it != hostname_map_.end()) {
+    return GetXSpace(it->second);
+  }
+
+  return errors::InvalidArgument("Can not find the XSpace by name: ", name,
+                                 ". The total number of XSpace is ",
+                                 xspace_paths_.size());
+}
+
 std::string SessionSnapshot::GetHostname(size_t index) const {
-  return std::string(tensorflow::io::Basename(xspace_paths_.at(index)));
+  return GetHostnameByPath(xspace_paths_.at(index));
+}
+
+std::optional<std::string> SessionSnapshot::GetFilePath(
+    absl::string_view toolname, absl::string_view hostname) const {
+  if (!has_accessible_run_dir_) return std::nullopt;
+  std::string file_name = "";
+  if (toolname == "trace_viewer@")
+    file_name = absl::StrCat(hostname, ".", "SSTABLE");
+  if (!file_name.empty())
+    return tensorflow::io::JoinPath(session_run_dir_, file_name);
+  return std::nullopt;
+}
+
+StatusOr<std::string> SessionSnapshot::GetHostDataFileName(
+    const StoredDataType data_type, const std::string host) const {
+  for (const auto& format : *kHostDataSuffixes) {
+    if (data_type == format.first) return absl::StrCat(host, format.second);
+  }
+  return absl::InternalError(&"Unknown StoredDataType: "[data_type]);
+}
+
+StatusOr<std::optional<std::string>> SessionSnapshot::GetHostDataFilePath(
+    const StoredDataType data_type, const std::string host) const {
+  // Gets all the files in session run directory.
+  std::vector<std::string> results;
+  TF_RETURN_IF_ERROR(::tsl::Env::Default()->GetChildren(
+      std::string(GetSessionRunDir()), &results));
+
+  TF_ASSIGN_OR_RETURN(std::string filename,
+                      GetHostDataFileName(data_type, host));
+
+  for (const std::string& path : results) {
+    if (absl::EndsWith(path, filename)) {
+      return ::tsl::profiler::ProfilerJoinPath(GetSessionRunDir(), filename);
+    }
+  }
+
+  return std::nullopt;
+}
+
+StatusOr<std::pair<bool, std::string>> SessionSnapshot::HasCacheFile(
+    const StoredDataType data_type) const {
+  std::optional<std::string> filepath;
+  TF_ASSIGN_OR_RETURN(filepath,
+                      GetHostDataFilePath(data_type, kNoHostIdentifier));
+  if (filepath) {
+    // cache file is present but file contains no data_type events
+    return std::pair<bool, std::string>(true, std::string());
+  }
+
+  TF_ASSIGN_OR_RETURN(filepath,
+                      GetHostDataFilePath(data_type, kAllHostsIdentifier));
+  if (filepath) {
+    // cache file is present and file contains data_type events
+    return std::pair<bool, std::string>(true, filepath.value());
+  }
+
+  // no cache file present
+  return std::pair<bool, std::string>(false, std::string());
 }
 
 }  // namespace profiler

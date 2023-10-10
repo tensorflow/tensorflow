@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
 
+#include <cstdint>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
@@ -26,12 +29,15 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
+#include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tsl/profiler/utils/tf_op_utils.h"
+#include "tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tsl/profiler/utils/timespan.h"
+#include "tsl/profiler/utils/tpu_xplane_utils.h"
+#include "tsl/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -86,12 +92,12 @@ EventType ClassifyGpuCompute(absl::string_view event_name,
 
 EventType ClassifyGpuEvent(absl::string_view event_name,
                            absl::string_view tensor_shapes) {
-  TfOp tf_op = ParseTfOpFullname(event_name);
-  if (IsMemcpyHToDOp(tf_op)) {
+  tsl::profiler::TfOp tf_op = tsl::profiler::ParseTfOpFullname(event_name);
+  if (tsl::profiler::IsMemcpyHToDOp(tf_op)) {
     return HOST_TO_DEVICE;
-  } else if (IsMemcpyDToHOp(tf_op)) {
+  } else if (tsl::profiler::IsMemcpyDToHOp(tf_op)) {
     return DEVICE_TO_HOST;
-  } else if (IsMemcpyDToDOp(tf_op)) {
+  } else if (tsl::profiler::IsMemcpyDToDOp(tf_op)) {
     return DEVICE_TO_DEVICE;
   } else if (absl::StartsWithIgnoreCase(event_name, "nccl")) {
     return DEVICE_COLLECTIVES;
@@ -102,10 +108,11 @@ EventType ClassifyGpuEvent(absl::string_view event_name,
 
 EventType ClassifyCpuEvent(absl::string_view event_name, bool has_device,
                            bool has_correlation_id) {
-  TfOp tf_op = ParseTfOpFullname(event_name);
-  if (IsInfeedEnqueueOp(tf_op) || IsMemcpyHToDOp(tf_op)) {
+  tsl::profiler::TfOp tf_op = tsl::profiler::ParseTfOpFullname(event_name);
+  if (tsl::profiler::IsInfeedEnqueueOp(tf_op) ||
+      tsl::profiler::IsMemcpyHToDOp(tf_op)) {
     return HOST_TO_DEVICE;
-  } else if (IsMemcpyHToHOp(tf_op)) {
+  } else if (tsl::profiler::IsMemcpyHToHOp(tf_op)) {
     return HOST_TO_HOST;
   } else if (has_device && (has_correlation_id ||
                             absl::StartsWithIgnoreCase(
@@ -174,7 +181,7 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
 StepEvents ConvertHostThreadsXPlaneToStepEvents(
     const XPlane& host_trace, const StepEvents* device_step_events) {
   StepEvents host_step_events;
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(&host_trace);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(&host_trace);
   plane.ForEachLine([&](const XLineVisitor& line) {
     StepEvents thread_step_events =
         ConvertHostThreadsXLineToStepEvents(line, device_step_events);
@@ -186,7 +193,7 @@ StepEvents ConvertHostThreadsXPlaneToStepEvents(
 StepEvents ConvertDeviceStepInfoToStepMarkers(const XLineVisitor& line) {
   StepEvents result;
   line.ForEachEvent([&](const XEventVisitor& event) {
-    if (absl::optional<XStatVisitor> stat = event.GetStat(StatType::kGroupId)) {
+    if (std::optional<XStatVisitor> stat = event.GetStat(StatType::kGroupId)) {
       result[stat->IntValue()].AddMarker(
           StepMarker(StepMarkerType::kDeviceStepMarker, event.Name(),
                      event.GetTimespan()));
@@ -253,19 +260,44 @@ StepEvents ConvertDeviceTraceXLineToStepEvents(const uint64 device_id,
   return result;
 }
 
+StepEvents ConvertTpuDeviceTraceXLineToStepEvents(const uint64 device_id,
+                                                  const XLineVisitor& line) {
+  StepEvents result;
+  absl::flat_hash_map<int64_t /* = group_id*/, XEventsOpMetricsDbBuilder>
+      op_metrics_builder;
+  line.ForEachEvent([&](const XEventVisitor& event) {
+    auto group_id = event.GetStat(StatType::kGroupId);
+    op_metrics_builder[group_id->IntOrUintValue()].AddOpMetric(event);
+  });
+  for (auto& [group_id, builder] : op_metrics_builder) {
+    // Finalize Without the step time now.
+    result[group_id].SetPerCoreOpMetricsDb(builder.Finalize(), device_id);
+  }
+  return result;
+}
+
 StepEvents ConvertDeviceTraceXPlaneToStepEvents(const XPlane& device_trace) {
   StepEvents device_step_events;
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(&device_trace);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(&device_trace);
+  std::optional<int> tpu_core_id = tsl::profiler::GetTensorCoreId(plane.Name());
   plane.ForEachLine([&](const XLineVisitor& line) {
     int64_t line_id = line.Id();
-    if (line_id == kThreadIdStepInfo) {
+    if (line_id == kThreadIdStepInfo ||
+        (tpu_core_id.has_value() &&
+         line.Name() == tsl::profiler::kStepLineName)) {
       StepEvents step_marker_events = ConvertDeviceStepInfoToStepMarkers(line);
       CombineStepEvents(step_marker_events, &device_step_events);
     } else if (IsDerivedThreadId(line_id)) {
       return;
     } else {
-      StepEvents stream_step_events =
-          ConvertDeviceTraceXLineToStepEvents(plane.Id(), line);
+      StepEvents stream_step_events;
+      if (!tpu_core_id.has_value()) {
+        stream_step_events =
+            ConvertDeviceTraceXLineToStepEvents(plane.Id(), line);
+      } else {
+        stream_step_events =
+            ConvertTpuDeviceTraceXLineToStepEvents(tpu_core_id.value(), line);
+      }
       CombineStepEvents(stream_step_events, &device_step_events);
     }
   });

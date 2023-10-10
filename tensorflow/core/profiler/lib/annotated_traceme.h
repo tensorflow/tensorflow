@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_ANNOTATED_TRACEME_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_ANNOTATED_TRACEME_H_
 
-#include <optional>
 #include <utility>
 
 #include "absl/strings/string_view.h"
@@ -25,7 +24,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/tsl/profiler/lib/connected_traceme.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -53,41 +51,6 @@ class AnnotatedTraceMe {
  private:
   absl::optional<TraceMe> trace_me_;
   absl::optional<ScopedAnnotation> scoped_annotation_;
-};
-
-class AnnotatedTraceMeProducer {
- public:
-  template <typename NameGeneratorT>
-  explicit AnnotatedTraceMeProducer(
-      NameGeneratorT&& name_generator,
-      tsl::profiler::ContextType context_type =
-          tsl::profiler::ContextType::kGeneric,
-      std::optional<uint64> context_id = std::nullopt, int level = 1) {
-    DCHECK_GE(level, 1);
-    bool annotation_enabled = ScopedAnnotation::IsEnabled();
-    bool traceme_enabled = TraceMe::Active(level);
-    if (TF_PREDICT_FALSE(annotation_enabled || traceme_enabled)) {
-      string name = std::forward<NameGeneratorT>(name_generator)();
-      if (annotation_enabled) {
-        scoped_annotation_.emplace(absl::string_view(name));
-      }
-      if (TF_PREDICT_TRUE(traceme_enabled)) {
-        trace_me_.emplace([&name] { return std::move(name); }, context_type,
-                          context_id, level);
-      }
-    }
-  }
-
-  uint64 GetContextId() const {
-    if (!trace_me_.has_value()) {
-      return 0;
-    }
-    return trace_me_->GetContextId();
-  }
-
- private:
-  std::optional<tsl::profiler::TraceMeProducer> trace_me_;
-  std::optional<ScopedAnnotation> scoped_annotation_;
 };
 
 }  // namespace profiler

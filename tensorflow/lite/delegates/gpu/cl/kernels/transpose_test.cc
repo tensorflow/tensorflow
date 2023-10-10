@@ -29,7 +29,7 @@ namespace {
 
 TEST_F(OpenCLOperationTest, Transpose) {
   auto status = TransposeTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace

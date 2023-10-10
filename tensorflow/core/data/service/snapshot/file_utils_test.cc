@@ -21,17 +21,17 @@ limitations under the License.
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/lib/io/compression.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/path.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/status_matchers.h"
-#include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/platform/test.h"
-#include "tensorflow/tsl/protobuf/error_codes.pb.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/lib/io/compression.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/status_matchers.h"
+#include "tsl/platform/status_to_from_proto.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/platform/test.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -98,15 +98,14 @@ TEST(FileUtilsTest, AtomicallyWriteTFRecord) {
   TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
   std::string test_file = tsl::io::JoinPath(directory, "test_file");
   Tensor out = CreateTensor<int64_t>(TensorShape({2}), {1, 2});
-  TF_ASSERT_OK(AtomicallyWriteTFRecord(
-      test_file, out, tsl::io::compression::kSnappy, tsl::Env::Default()));
+  TF_ASSERT_OK(AtomicallyWriteTFRecords(
+      test_file, {out}, tsl::io::compression::kSnappy, tsl::Env::Default()));
 
-  std::vector<Tensor> in;
   TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));
-  snapshot_util::TFRecordReader reader(test_file, tsl::io::compression::kSnappy,
-                                       {DT_INT64});
+  snapshot_util::TFRecordReaderImpl reader(test_file,
+                                           tsl::io::compression::kSnappy);
   TF_ASSERT_OK(reader.Initialize(tsl::Env::Default()));
-  TF_ASSERT_OK(reader.ReadTensors(&in));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Tensor> in, reader.GetTensors());
   EXPECT_EQ(out.DebugString(), in.front().DebugString());
 }
 
@@ -129,6 +128,12 @@ TEST(FileUtilsTest, GetChildrenEmptyDirectory) {
 TEST(FileUtilsTest, GetChildrenDirectoryNotFound) {
   EXPECT_THAT(GetChildren("Not exist", tsl::Env::Default()),
               StatusIs(tsl::error::NOT_FOUND));
+}
+
+TEST(FileUtilsTest, IsTemporaryFile) {
+  EXPECT_TRUE(IsTemporaryFile("file.tmp"));
+  EXPECT_FALSE(IsTemporaryFile("file"));
+  EXPECT_FALSE(IsTemporaryFile(""));
 }
 
 }  // namespace

@@ -20,6 +20,7 @@ from absl.testing import parameterized
 from tensorflow.python.checkpoint import checkpoint as tracking
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -30,15 +31,15 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import collective_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateful_random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
-from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.util import nest
 
 # When running collectives asynchronously, we need to give each parallel device
@@ -83,8 +84,8 @@ class _Dense(module.Module):
     if self.kernel is None:
       self.kernel = variables.Variable(
           array_ops.ones(
-              array_ops.stack([self.output_size,
-                               array_ops.shape(x)[-1]])))
+              array_ops_stack.stack([self.output_size,
+                                     array_ops.shape(x)[-1]])))
       self.bias = variables.Variable(array_ops.ones([self.output_size]))
     return math_ops.matmul(x, self.kernel, transpose_b=True) + self.bias
 
@@ -96,7 +97,7 @@ class _VirtualDeviceTestCase(test.TestCase):
     ctx = context.context()
     if ctx.list_physical_devices("TPU"):
       self.device_type = "TPU"
-      tpu_strategy_util.initialize_tpu_system()
+      tpu_cluster_resolver.initialize_tpu_system()
     elif ctx.list_physical_devices("GPU"):
       self.device_type = "GPU"
       gpus = ctx.list_physical_devices(self.device_type)
@@ -295,8 +296,11 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
             c.shape, c.dtype, group_size=2, group_key=1, instance_key=1)
         return r0
 
-      return control_flow_ops.switch_case(
-          device_id, branch_fns={0: send, 1: recv})
+      return control_flow_switch_case.switch_case(
+          device_id, branch_fns={
+              0: send,
+              1: recv
+          })
 
     with self.device:
       result = broadcast_send_recv(self.device.device_ids)

@@ -24,14 +24,14 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     features = tf_features_nolayering_check_if_ios(),
     deps = [
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@flatbuffers",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:tensor",
-        "//tensorflow/lite:string_util",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@flatbuffers",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -57,16 +57,16 @@ tf_cc_test(
     features = tf_features_nolayering_check_if_ios(),
     deps = [
         ":parse_example",
-        "@flatbuffers",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/core/api:op_resolver",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/api:op_resolver",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:test_main",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite:string_util",
+        "@flatbuffers",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",

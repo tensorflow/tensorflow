@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "flatbuffers/buffer.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/benchmark_result_evaluator.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_validation_model.h"
@@ -60,19 +60,13 @@ class BlockingValidatorRunnerTest : public ::testing::Test {
 
     options_.data_directory_path = ::testing::TempDir();
     options_.storage_path =
-        absl::StrCat(::testing::TempDir(), "/storage_path.fb");
+        absl::StrCat(::testing::TempDir(), "storage_path.fb.1");
     options_.per_test_timeout_ms = 5000;
 
     plain_model_path_ = MiniBenchmarkTestHelper::DumpToTempFile(
         "mobilenet_quant.tflite",
         g_tflite_acceleration_embedded_mobilenet_model,
         g_tflite_acceleration_embedded_mobilenet_model_len);
-  }
-
-  void TearDown() override {
-    if (should_perform_test_) {
-      ASSERT_EQ(unlink(options_.storage_path.c_str()), 0);
-    }
   }
 
   std::string plain_model_path_;
@@ -140,6 +134,34 @@ TEST_F(BlockingValidatorRunnerTest, SucceedWithFdCloexecEmbeddedValidation) {
   }
 }
 
+TEST_F(BlockingValidatorRunnerTest, SucceedWithBufferModel) {
+  if (!should_perform_test_) {
+    std::cerr << "Skipping test";
+    return;
+  }
+
+  options_.model_buffer =
+      g_tflite_acceleration_embedded_mobilenet_validation_model;
+  options_.model_size =
+      g_tflite_acceleration_embedded_mobilenet_validation_model_len;
+  options_.model_path.clear();
+
+  BlockingValidatorRunner runner(options_);
+  ASSERT_EQ(runner.Init(), kMinibenchmarkSuccess);
+  FlatBufferBuilder fbb;
+  fbb.Finish(CreateTFLiteSettings(fbb));
+
+  std::vector<FlatBufferBuilder> results = runner.TriggerValidation(
+      {flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer())});
+  EXPECT_THAT(results, testing::Not(testing::IsEmpty()));
+  for (auto& result : results) {
+    const BenchmarkEvent* event =
+        GetRoot<BenchmarkEvent>(result.GetBufferPointer());
+    EXPECT_EQ(event->event_type(), BenchmarkEventType_END);
+    EXPECT_TRUE(event->result()->ok());
+  }
+}
+
 TEST_F(BlockingValidatorRunnerTest, SucceedWithFdModelCustomValidation) {
   if (!should_perform_test_) {
     std::cerr << "Skipping test";
@@ -177,7 +199,6 @@ TEST_F(BlockingValidatorRunnerTest, SucceedWithFdModelCustomValidation) {
   }
 }
 
-#ifndef __ANDROID__
 TEST_F(BlockingValidatorRunnerTest, SucceedWhenRunningMultipleTimes) {
   if (!should_perform_test_) {
     std::cerr << "Skipping test";
@@ -203,7 +224,6 @@ TEST_F(BlockingValidatorRunnerTest, SucceedWhenRunningMultipleTimes) {
     }
   }
 }
-#endif  // !__ANDROID__
 
 TEST_F(BlockingValidatorRunnerTest, ReturnErrorWhenTimedOut) {
   if (!should_perform_test_) {

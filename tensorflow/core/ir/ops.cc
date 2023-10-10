@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -35,8 +36,6 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/FunctionImplementation.h"  // from @llvm-project
-#include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -45,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/FunctionImplementation.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
@@ -347,7 +347,7 @@ static bool VerifyGenericTFGOperation(Operation& op) {
   // inputs (or results).
   auto check_ctl_at_end = [&](TypeRange types, StringRef input_or_output) {
     int has_control_dep = -1;
-    for (auto& indexed_operand : llvm::enumerate(types)) {
+    for (const auto& indexed_operand : llvm::enumerate(types)) {
       if (indexed_operand.value() == control_ty) {
         has_control_dep = indexed_operand.index();
         continue;
@@ -425,7 +425,7 @@ LogicalResult GraphFuncOp::verifyBody() {
     return emitOpError() << "function type indicated " << type.getNumInputs()
                          << " args but block has " << body->getNumArguments();
 
-  for (auto& arg_types :
+  for (const auto& arg_types :
        llvm::enumerate(llvm::zip(type.getInputs(), body->getArgumentTypes()))) {
     Type signature_arg = std::get<0>(arg_types.value());
     Type block_arg = std::get<1>(arg_types.value());
@@ -446,7 +446,7 @@ LogicalResult GraphFuncOp::verifyBody() {
     return emitOpError() << "expects " << type.getNumResults()
                          << " returned values but tfg.return has "
                          << return_op->getNumOperands() << " operands";
-  for (auto& indexed_type : llvm::enumerate(type.getResults())) {
+  for (const auto& indexed_type : llvm::enumerate(type.getResults())) {
     Type expected_type = indexed_type.value();
     int res_num = indexed_type.index();
     Type actual_type = return_op->getOperand(res_num).getType();
@@ -457,7 +457,7 @@ LogicalResult GraphFuncOp::verifyBody() {
     }
   }
   Type control_type = getDialect()->getControlType();
-  for (auto& indexed_type : llvm::enumerate(llvm::drop_begin(
+  for (const auto& indexed_type : llvm::enumerate(llvm::drop_begin(
            return_op->getOperandTypes(), type.getNumResults()))) {
     Type actual_type = indexed_type.value();
     if (actual_type != control_type) {
@@ -922,7 +922,7 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation* op,
 
   if (func.getGeneric()) return success();
 
-  for (auto& it : llvm::enumerate(operands)) {
+  for (const auto& it : llvm::enumerate(operands)) {
     Type arg_type = arguments[it.index() * 2];
     Type op_type = it.value();
     if (!tf_type::HasCompatibleElementTypes(arg_type, op_type)) {
@@ -932,7 +932,7 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation* op,
           << " is not compatible with corresponding operand type: " << op_type);
     }
   }
-  for (auto& it : llvm::enumerate(results)) {
+  for (const auto& it : llvm::enumerate(results)) {
     Type ret_type = returns[it.index()];
     Type res_type = it.value();
     if (!tf_type::HasCompatibleElementTypes(ret_type, res_type)) {
@@ -1052,7 +1052,7 @@ static LogicalResult VerifyCaseLikeOp(CaseLikeOp op,
   // The first operand is the branch index and is not passed to the functions.
   TypeRange func_args = ins->drop_front();
 
-  for (auto& it : llvm::enumerate(op.getBranches())) {
+  for (const auto& it : llvm::enumerate(op.getBranches())) {
     SymbolRefAttr func_name = it.value().template cast<FuncAttr>().getName();
     auto func =
         symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(op, func_name);
@@ -1150,7 +1150,7 @@ static LogicalResult VerifyPreservedAttrs(Operation* op,
       num_rets = 1;
     } else {
       num_rets = cast<RegionBranchTerminatorOpInterface>(terminator)
-                     .getMutableSuccessorOperands(region.getRegionNumber())
+                     .getMutableSuccessorOperands(region)
                      .size();
     }
     if (num_rets != attrs.getResAttrs().size()) {
@@ -1166,7 +1166,7 @@ static LogicalResult VerifyPreservedAttrs(Operation* op,
 // YieldOp
 
 MutableOperandRange YieldOp::getMutableSuccessorOperands(
-    std::optional<unsigned> index) {
+    RegionBranchPoint point) {
   // Get the subrange of non-control operands.
   return getArgsMutable();
 }
@@ -1193,7 +1193,7 @@ static LogicalResult VerifyIfLikeRegionOp(IfLikeRegionOp op) {
 // Given an potentially null attribute that would represent a constant value,
 // try to narrow it to a statically known condition.
 // TODO(jeffniu): Incorporate the other cases of `tf.ToBool`.
-static Optional<bool> GetStaticallyKnownBranch(Attribute cond_attr) {
+static std::optional<bool> GetStaticallyKnownBranch(Attribute cond_attr) {
   // Only handle the case of a scalar tensor of i1.
   auto cond = cond_attr.dyn_cast_or_null<ElementsAttr>();
   if (cond && cond.getNumElements() == 1 &&
@@ -1205,16 +1205,29 @@ static Optional<bool> GetStaticallyKnownBranch(Attribute cond_attr) {
 // Get the successor of the regions of an if-like op.
 template <typename IfLikeRegionOp>
 void GetIfLikeRegionOpSuccessorRegions(
-    IfLikeRegionOp op, std::optional<unsigned> index,
-    ArrayRef<Attribute> operands, SmallVectorImpl<RegionSuccessor>& regions) {
-  assert(index.has_value() ||
-         !operands.empty() && "if-like op expected at least 1 operand");
+    IfLikeRegionOp op, RegionBranchPoint point,
+    SmallVectorImpl<RegionSuccessor>& regions) {
   // Both regions branch back to the parent op.
-  if (index.has_value()) {
+  if (!point.isParent()) {
     // Ignore the control token.
     regions.emplace_back(
         ResultRange(op->result_begin(), std::prev(op->result_end())));
-  } else if (auto cond = GetStaticallyKnownBranch(operands[0])) {
+  } else {
+    // Unknown successor.
+    regions.emplace_back(&op.getThenRegion(),
+                         GetLoopRegionDataArgs(op.getThenRegion()));
+    regions.emplace_back(&op.getElseRegion(),
+                         GetLoopRegionDataArgs(op.getElseRegion()));
+  }
+}
+
+// Get the successor of the regions of an if-like op.
+template <typename IfLikeRegionOp>
+void GetIfLikeRegionOpEntrySuccessorRegions(
+    IfLikeRegionOp op, ArrayRef<Attribute> operands,
+    SmallVectorImpl<RegionSuccessor>& regions) {
+  assert(!operands.empty() && "if-like op expected at least 1 operand");
+  if (auto cond = GetStaticallyKnownBranch(operands[0])) {
     // Add only 1 possible successor if the condition is known.
     Region& region = *cond ? op.getThenRegion() : op.getElseRegion();
     regions.emplace_back(&region, GetLoopRegionDataArgs(region));
@@ -1233,7 +1246,7 @@ void GetIfLikeRegionOpSuccessorRegions(
 // Verify a case-like region op.
 template <typename CaseLikeRegionOp>
 static LogicalResult VerifyCaseLikeRegionOp(CaseLikeRegionOp op) {
-  for (auto& it : llvm::enumerate(op.getBranches())) {
+  for (const auto& it : llvm::enumerate(op.getBranches())) {
     if (!TerminatedByYield(it.value().front())) {
       return op.emitOpError("branch region #")
              << it.index() << " is not terminated by a 'tfg.yield' op";
@@ -1260,7 +1273,8 @@ static LogicalResult VerifyCaseLikeRegionOp(CaseLikeRegionOp op) {
 
 // Given a potentially null attribute that would represent a constant value,
 // try to narrow it to a statically known branch index.
-static Optional<unsigned> GetStaticallyKnownCaseBranch(Attribute branch_attr) {
+static std::optional<unsigned> GetStaticallyKnownCaseBranch(
+    Attribute branch_attr) {
   auto branch = branch_attr.dyn_cast_or_null<ElementsAttr>();
   if (branch && branch.getNumElements() == 1 &&
       branch.getElementType().isSignlessInteger(32))
@@ -1271,16 +1285,27 @@ static Optional<unsigned> GetStaticallyKnownCaseBranch(Attribute branch_attr) {
 // Get the successor of the regions of a case-like op.
 template <typename CaseLikeRegionOp>
 void GetCaseLikeRegionOpSuccessorRegions(
-    CaseLikeRegionOp op, std::optional<unsigned> index,
-    ArrayRef<Attribute> operands, SmallVectorImpl<RegionSuccessor>& regions) {
-  assert(index.has_value() ||
-         !operands.empty() && "case-like op expected at least 1 operand");
+    CaseLikeRegionOp op, RegionBranchPoint point,
+    SmallVectorImpl<RegionSuccessor>& regions) {
   // All branch regions branch back to the parent op.
-  if (index.has_value()) {
+  if (!point.isParent()) {
     // Ignore the control token.
     regions.emplace_back(
         ResultRange(op->result_begin(), std::prev(op->result_end())));
-  } else if (auto branch_index = GetStaticallyKnownCaseBranch(operands[0])) {
+  } else {
+    // Unknown successor. Add all of them.
+    for (Region& branch : op.getBranches())
+      regions.emplace_back(&branch, GetLoopRegionDataArgs(branch));
+  }
+}
+
+// Get the entry successor of the regions of a case-like op.
+template <typename CaseLikeRegionOp>
+void GetCaseLikeRegionOpEntrySuccessorRegions(
+    CaseLikeRegionOp op, ArrayRef<Attribute> operands,
+    SmallVectorImpl<RegionSuccessor>& regions) {
+  assert(!operands.empty() && "case-like op expected at least 1 operand");
+  if (auto branch_index = GetStaticallyKnownCaseBranch(operands[0])) {
     // Add only 1 possible successor if the condition is known.
     Region& region = op.getBranches()[*branch_index];
     regions.emplace_back(&region, GetLoopRegionDataArgs(region));
@@ -1295,7 +1320,7 @@ void GetCaseLikeRegionOpSuccessorRegions(
 // ConditionOp
 
 MutableOperandRange ConditionOp::getMutableSuccessorOperands(
-    std::optional<unsigned> index) {
+    RegionBranchPoint point) {
   // Get the subrange of non-control operands that are forwarded to the
   // successor region.
   return getArgsMutable();
@@ -1347,22 +1372,22 @@ static LogicalResult VerifyWhileLikeRegionOp(WhileLikeRegionOp op) {
 
 template <typename WhileLikeRegionOp>
 static void GetWhileLikeRegionOpSuccessorRegions(
-    WhileLikeRegionOp op, std::optional<unsigned> index,
-    ArrayRef<Attribute> operands, SmallVectorImpl<RegionSuccessor>& regions) {
-  // The parent op and the body region always branch to the condion region.
-  if (!index || *index == 1) {
+    WhileLikeRegionOp op, RegionBranchPoint point ,
+    SmallVectorImpl<RegionSuccessor>& regions) {
+  // The parent op and the body region always branch to the condition region.
+  if (point.isParent() || point == op.getRegion(1)) {
     regions.emplace_back(&op.getCondRegion(),
                          GetLoopRegionDataArgs(op.getCondRegion()));
     return;
   }
-  assert(*index == 0 && "invalid region index");
+  assert(point == op->getRegion(0) && "invalid region index");
   // The condition regions branches to the loop body or back to the parent.
   // Try to narrow the condition value to a constant.
   auto condition =
       cast<ConditionOp>(op.getCondRegion().front().getTerminator());
   Attribute cond_attr;
   matchPattern(condition.getCond(), m_Constant(&cond_attr));
-  Optional<bool> cond = GetStaticallyKnownBranch(cond_attr);
+  std::optional<bool> cond = GetStaticallyKnownBranch(cond_attr);
   if (!cond || *cond) {
     regions.emplace_back(&op.getBodyRegion(),
                          GetLoopRegionDataArgs(op.getBodyRegion()));
@@ -1397,19 +1422,18 @@ LogicalResult ForRegionOp::verify() {
   return VerifyPreservedAttrs(*this, {getRegionAttrsAttr()});
 }
 
-OperandRange ForRegionOp::getSuccessorEntryOperands(
-    std::optional<unsigned> index) {
+OperandRange ForRegionOp::getEntrySuccessorOperands(
+    RegionBranchPoint point) {
   return getInit();
 }
 
 void ForRegionOp::getSuccessorRegions(
-    std::optional<unsigned> index, ArrayRef<Attribute> operands,
-    SmallVectorImpl<RegionSuccessor>& regions) {
+    RegionBranchPoint point, SmallVectorImpl<RegionSuccessor>& regions) {
   // Both the parent op and the body region branch to the body. Ignore the loop
   // index block argument, as it is not modified by the loop body itself.
   regions.emplace_back(&getBodyRegion(),
                        GetLoopRegionDataArgs(getBodyRegion()).drop_front());
-  if (!index) return;
+  if (point.isParent()) return;
   // The body might branch back to the parent. Drop the control token.
   regions.emplace_back((*this)->getResults().drop_back());
 }

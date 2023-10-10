@@ -9,7 +9,9 @@ package(
 filegroup(
     name = "higher_level_tests_group",
     srcs = ["sparse_tensor_test.cc"],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.
@@ -72,8 +74,8 @@ cc_library(
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:errors",
-        "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -90,7 +92,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:statusor",
-        "//third_party/eigen3",
         "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
     ],
 )

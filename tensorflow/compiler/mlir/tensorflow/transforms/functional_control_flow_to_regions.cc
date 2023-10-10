@@ -58,7 +58,8 @@ struct FunctionalControlFlowToRegions
 // type as the input arguments are created and then used as call arguments (for
 // While).
 YieldOp CreateCall(Operation* op, func::FuncOp func, Region& caller_region,
-                   ValueRange args, bool use_region_args) {
+                   ValueRange args, bool use_region_args,
+                   bool forward_block_args) {
   assert(caller_region.empty() &&
          "Expected empty region for newly created ops");
   OpBuilder builder(caller_region);
@@ -82,7 +83,15 @@ YieldOp CreateCall(Operation* op, func::FuncOp func, Region& caller_region,
     casted_args.push_back(arg);
   }
   auto call = builder.create<func::CallOp>(loc, func, casted_args);
-  return builder.create<YieldOp>(loc, call.getResults());
+
+  auto results = call.getResults();
+  auto block_args = entry->getArguments();
+  auto yield_args = std::vector<Value>();
+  yield_args.insert(yield_args.end(), results.begin(), results.end());
+  if (forward_block_args) {
+    yield_args.insert(yield_args.end(), block_args.begin(), block_args.end());
+  }
+  return builder.create<YieldOp>(loc, yield_args);
 }
 
 // Converts the condition for an IfOp/WhileOp to a boolean value.
@@ -108,10 +117,12 @@ LogicalResult ConvertIfOp(IfOp if_op) {
 
   CreateCall(if_op, if_op.then_function(),
              /*caller_region=*/if_region.getThenBranch(), if_op.getInput(),
-             /*use_region_args=*/false);
+             /*use_region_args=*/false,
+             /*forward_block_args=*/false);
   CreateCall(if_op, if_op.else_function(),
              /*caller_region=*/if_region.getElseBranch(), if_op.getInput(),
-             /*use_region_args=*/false);
+             /*use_region_args=*/false,
+             /*forward_block_args=*/false);
   if_op.replaceAllUsesWith(if_region.getResults());
   if_op.erase();
   return success();
@@ -127,14 +138,15 @@ LogicalResult ConvertCaseOp(CaseOp case_op) {
   for (const auto& item : llvm::enumerate(case_region.getBranches())) {
     CreateCall(case_op, case_op.branch_function(item.index()),
                /*caller_region=*/item.value(), case_op.getInput(),
-               /*use_region_args=*/false);
+               /*use_region_args=*/false,
+               /*forward_block_args=*/false);
   }
   case_op.replaceAllUsesWith(case_region.getResults());
   case_op.erase();
   return success();
 }
 
-LogicalResult ConvertWhileOp(WhileOp while_op) {
+LogicalResult ConvertWhileOp(WhileOp while_op, bool allow_passthrough_args) {
   auto while_region = OpBuilder(while_op).create<TF::WhileRegionOp>(
       while_op.getLoc(), while_op.getResultTypes(), while_op.getInput(),
       while_op.getParallelIterations(), while_op.getIsStateless(),
@@ -144,14 +156,16 @@ LogicalResult ConvertWhileOp(WhileOp while_op) {
   YieldOp cond_yield =
       CreateCall(while_op, while_op.cond_function(),
                  /*caller_region=*/while_region.getCond(), while_op.getInput(),
-                 /*use_region_args=*/true);
+                 /*use_region_args=*/true,
+                 /*forward_block_args=*/allow_passthrough_args);
   Value i1_cond =
       ConvertConditionToBoolean(cond_yield, cond_yield.getOperand(0));
   cond_yield.setOperand(0, i1_cond);
 
   CreateCall(while_op, while_op.body_function(),
              /*caller_region=*/while_region.getBody(), while_op.getInput(),
-             /*use_region_args=*/true);
+             /*use_region_args=*/true,
+             /*forward_block_args=*/false);
   while_op.replaceAllUsesWith(while_region.getResults());
   while_op.erase();
   return success();
@@ -159,7 +173,7 @@ LogicalResult ConvertWhileOp(WhileOp while_op) {
 
 void FunctionalControlFlowToRegions::runOnOperation() {
   ModuleOp module = getOperation();
-  auto result = module.walk([](Operation* op) {
+  auto result = module.walk([&](Operation* op) {
     if (IfOp if_op = llvm::dyn_cast<IfOp>(op)) {
       if (failed(ConvertIfOp(if_op))) {
         op->emitOpError() << "failed to convert to region form";
@@ -171,7 +185,7 @@ void FunctionalControlFlowToRegions::runOnOperation() {
         return WalkResult::interrupt();
       }
     } else if (auto while_op = llvm::dyn_cast<WhileOp>(op)) {
-      if (failed(ConvertWhileOp(while_op))) {
+      if (failed(ConvertWhileOp(while_op, allow_passthrough_args_))) {
         op->emitOpError() << "failed to convert to region form";
         return WalkResult::interrupt();
       }

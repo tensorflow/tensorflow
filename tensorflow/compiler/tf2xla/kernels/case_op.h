@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_CASE_OP_H_
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -48,7 +49,8 @@ class XlaCaseOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaCaseOp);
+  XlaCaseOp(const XlaCaseOp&) = delete;
+  void operator=(const XlaCaseOp&) = delete;
 
   // If the branch_index input is a constant: prunes out all but the branch
   // corrresponding to that constant branch index, and returns that branch and

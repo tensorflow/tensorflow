@@ -92,9 +92,9 @@ set(TEST_FRAMEWORK_SRC
   ${TFLITE_SOURCE_DIR}/tools/optimize/quantization_utils.cc
   ${TFLITE_SOURCE_DIR}/tools/tool_params.cc
   ${TFLITE_SOURCE_DIR}/tools/versioning/op_version.cc
-  ${TF_SOURCE_DIR}/tsl/platform/default/env_time.cc
-  ${TF_SOURCE_DIR}/tsl/platform/default/logging.cc
-  ${TF_SOURCE_DIR}/tsl/platform/default/mutex.cc
+  ${TSL_SOURCE_DIR}/tsl/platform/default/env_time.cc
+  ${TSL_SOURCE_DIR}/tsl/platform/default/logging.cc
+  ${TSL_SOURCE_DIR}/tsl/platform/default/mutex.cc
   internal/test_util.cc
   acceleration_test_util.cc
   acceleration_test_util_internal.cc
@@ -107,12 +107,17 @@ if(NOT _TFLITE_ENABLE_NNAPI)
     ${TFLITE_SOURCE_DIR}/nnapi/nnapi_util.cc
   )
 endif()
+if(NOT TFLITE_ENABLE_GPU)
+  list(APPEND TEST_FRAMEWORK_SRC
+    ${TFLITE_SOURCE_DIR}/tools/versioning/op_signature.cc
+  )
+endif()
 
 set(TEST_FRAMEWORK_OPTIONS "")
 if(TFLITE_ENABLE_XNNPACK)
   list(APPEND TEST_FRAMEWORK_SRC
     ${TFLITE_SOURCE_DIR}/tools/delegates/xnnpack_delegate_provider.cc
-    ${TFLITE_SOURCE_DIR}/core/experimental/acceleration/configuration/c/xnnpack_plugin.cc)
+    ${TFLITE_SOURCE_DIR}/core/acceleration/configuration/c/xnnpack_plugin.cc)
 else()
   list(APPEND TEST_FRAMEWORK_OPTIONS "-DTFLITE_WITHOUT_XNNPACK")
 endif()

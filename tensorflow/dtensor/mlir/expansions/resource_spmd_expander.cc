@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/core/platform/errors.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/shape_utils.h"
+#include "tensorflow/dtensor/mlir/value_utils.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -61,50 +63,37 @@ StatusOr<mlir::Operation*> ExpandVarHandleOp(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(std::optional<Layout> resource_layout,
                       ExtractSingleLayoutFromOp(op));
 
-  TF_ASSIGN_OR_RETURN(
-      llvm::ArrayRef<int64_t> global_shape,
-      GetGlobalShapeOfValueFromDTensorLayout(op->getOpResult(0)));
-
   if (!resource_layout) {
     // If resource does not have a layout, perform local SPMD expansion.
     return InferSPMDExpandedLocalShape(op);
   }
 
   // If resource has a layout, create VarHandleOps with local shape.
-  auto var_op = llvm::cast<mlir::TF::VarHandleOp>(op);
-  const std::vector<int64_t>& local_shape =
-      resource_layout->LocalShapeFromGlobalShape(global_shape);
+  // auto var_op = llvm::cast<mlir::TF::VarHandleOp>(op);
+  auto op_result = op->getOpResult(0);
+  TF_RETURN_IF_ERROR(InferSPMDExpandedLocalShapeForResourceOutput(
+      &op_result, resource_layout.value(), builder.getContext()));
+  return InferSPMDExpandedLocalShape(op);
+}
 
-  // Replace var handle op with a VarHandleOp with local shape
-  auto resource_type = op->getOpResult(0)
-                           .getType()
-                           .cast<mlir::TensorType>()
-                           .getElementType()
-                           .dyn_cast<mlir::TF::ResourceType>();
+StatusOr<mlir::Operation*> ExpandSummaryWriterOp(mlir::Operation* op) {
+  // This is the layout of the value held by the resource.
+  TF_ASSIGN_OR_RETURN(std::optional<Layout> resource_layout,
+                      ExtractSingleLayoutFromOp(op));
 
-  auto sub_types = resource_type.getSubtypes();
-  auto resource_arg_sub_type = sub_types.front();
+  if (!resource_layout) {
+    // If resource does not have a layout, perform local SPMD expansion.
+    return InferSPMDExpandedLocalShape(op);
+  } else if (!resource_layout->IsFullyReplicated()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("SummaryWriter op should have fully replicated layout. ",
+                     "Got: ", resource_layout->ToString()));
+  }
 
-  // The local shape that is to be assigned to this resource output.
-  llvm::SmallVector<int64_t, 4> local_arg_shape(local_shape.begin(),
-                                                local_shape.end());
-
-  auto local_variable_subtype = mlir::RankedTensorType::get(
-      local_arg_shape, resource_arg_sub_type.getElementType());
-  auto new_var_type = mlir::RankedTensorType::get(
-      {}, mlir::TF::ResourceType::get(
-              mlir::ArrayRef<mlir::TensorType>{local_variable_subtype},
-              builder.getContext()));
-
-  auto var_handle_op = builder.create<mlir::TF::VarHandleOp>(
-      var_op->getLoc(), new_var_type, var_op.getContainer(),
-      var_op.getSharedName());
-
-  auto result_op = InferSPMDExpandedLocalShape(var_handle_op);
-  op->getOpResult(0).replaceAllUsesWith(result_op->getOpResult(0));
-  op->erase();
-
-  return result_op;
+  // For SummaryWriter op, we will expand as fully replicated, but only the
+  // replica 0 will be used to write the summary. This is implemented by all the
+  // other summary op expanders.
+  return InferSPMDExpandedLocalShape(op);
 }
 
 Status ValidateAndAssignResourceInputLayout(mlir::tf_device::ClusterOp op,
@@ -176,6 +165,9 @@ StatusOr<mlir::Operation*> ResourceSPMDExpander::ExpandOp(mlir::Operation* op) {
 
   if (llvm::isa<mlir::TF::VarHandleOp>(op)) {
     return ExpandVarHandleOp(op);
+  }
+  if (llvm::isa<mlir::TF::SummaryWriterOp>(op)) {
+    return ExpandSummaryWriterOp(op);
   }
 
   mlir::OpBuilder builder(op);
@@ -276,8 +268,16 @@ StatusOr<llvm::DenseMap<int, Layout>>
 ResourceSPMDExpander::ComputeLayoutForward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
   // VarHandle and VarIsInitialized have 0 rank outputs.
-  if (llvm::isa<mlir::TF::VarHandleOp, mlir::TF::VarIsInitializedOp>(op))
+  if (llvm::isa<mlir::TF::VarHandleOp, mlir::TF::VarIsInitializedOp>(op)) {
     return llvm::DenseMap<int, Layout>({{0, Layout::Empty()}});
+  }
+
+  // SummaryWriterOp has a rank 0 output, but it need to be fully replicated.
+  if (llvm::isa<mlir::TF::SummaryWriterOp>(op)) {
+    TF_ASSIGN_OR_RETURN(auto mesh, ExtractDeviceMeshEnclosingCluster(op));
+    return llvm::DenseMap<int, Layout>(
+        {{0, Layout::ReplicatedOnMesh(mesh, /*rank=*/0)}});
+  }
 
   // Handling of resource destruction is no-op.
   if (llvm::isa<mlir::TF::DestroyResourceOp>(op))
@@ -285,7 +285,9 @@ ResourceSPMDExpander::ComputeLayoutForward(
 
   // Read variable ops have one input so infer the output layout if input
   // layout exists.
-  if (llvm::isa<mlir::TF::ReadVariableOp>(op)) return input_layouts;
+  if (llvm::isa<mlir::TF::ReadVariableOp>(op)) {
+    return input_layouts;
+  }
 
   // These ops do not have outputs, so do not infer any layout.
   if (llvm::isa<mlir::TF::AssignVariableOp, mlir::TF::AssignAddVariableOp,
@@ -308,14 +310,29 @@ ResourceSPMDExpander::ComputeLayoutBackward(
   // resource tensor layout exists.
   if (llvm::isa<mlir::TF::AssignVariableOp, mlir::TF::AssignAddVariableOp,
                 mlir::TF::AssignSubVariableOp>(op)) {
-    if (input_layouts.find(0) != input_layouts.end())
+    if (input_layouts.find(0) != input_layouts.end()) {
+      auto resource_layout = input_layouts.lookup(0);
+      if (resource_layout.IsEmpty()) {
+        auto mesh = GetMeshOnParentCluster(op);
+        if (mesh.ok()) {
+          auto layout = Layout::ReplicatedOnMesh(
+              mesh.value(), ValueRank(op->getOpOperand(1).get()));
+
+          // Resource has an empty layout, propagate back replicated layout
+          // for the resource.
+          return llvm::DenseMap<int, Layout>({{0, layout}, {1, layout}});
+        }
+      }
       return llvm::DenseMap<int, Layout>({{1, input_layouts.lookup(0)}});
+    }
     return llvm::DenseMap<int, Layout>();
   }
   // Handling of these ops are no-ops.
   if (llvm::isa<mlir::TF::DestroyResourceOp, mlir::TF::VarHandleOp,
-                mlir::TF::VarIsInitializedOp, mlir::TF::ReadVariableOp>(op))
+                mlir::TF::VarIsInitializedOp, mlir::TF::ReadVariableOp,
+                mlir::TF::SummaryWriterOp>(op)) {
     return llvm::DenseMap<int, Layout>();
+  }
 
   // Return an error if not any of the ops above.
   return errors::InvalidArgument(

@@ -1,0 +1,46 @@
+==== triton/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp#16 - /google/src/cloud/ajcbik/mlir_9b5ef2bea8e3de8fd564ab74b8123b446883216f_1695141007/triton/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp ====
+# action=edit type=text
+--- triton/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp	2023-09-12 06:02:26.000000000 -0700
++++ triton/lib/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.cpp	2023-09-19 09:36:52.000000000 -0700
+@@ -693,8 +693,8 @@
+                   ConversionPatternRewriter &rewriter) const override {
+     auto newOp =
+         cast<scf::ForOp>(rewriter.cloneWithoutRegions(*op.getOperation()));
+-    rewriter.inlineRegionBefore(op.getLoopBody(), newOp.getLoopBody(),
+-                                newOp.getLoopBody().end());
++    rewriter.inlineRegionBefore(op.getRegion(), newOp.getRegion(),
++                                newOp.getRegion().end());
+ 
+     // Now, update all the types.
+ 
+@@ -703,7 +703,7 @@
+     // The entry block may have a special conversion if `entryConversion` is
+     // provided. On success, the new entry block to the region is returned for
+     // convenience. Otherwise, failure is returned.
+-    if (failed(rewriter.convertRegionTypes(&newOp.getLoopBody(),
++    if (failed(rewriter.convertRegionTypes(&newOp.getRegion(),
+                                            *getTypeConverter()))) {
+       return rewriter.notifyMatchFailure(op, "could not convert body types");
+     }
+==== triton/lib/Dialect/TritonGPU/Transforms/Pipeline.cpp#16 - /google/src/cloud/ajcbik/mlir_9b5ef2bea8e3de8fd564ab74b8123b446883216f_1695141007/triton/lib/Dialect/TritonGPU/Transforms/Pipeline.cpp ====
+# action=edit type=text
+--- triton/lib/Dialect/TritonGPU/Transforms/Pipeline.cpp	2023-09-18 01:24:33.000000000 -0700
++++ triton/lib/Dialect/TritonGPU/Transforms/Pipeline.cpp	2023-09-19 09:36:23.000000000 -0700
+@@ -284,7 +284,7 @@
+ void LoopPipeliner::collectValueDep(Value v, int stage,
+                                     SetVector<Value> &deps) {
+   // Loop-invariant value, skip
+-  if (v.getParentRegion() != &forOp.getLoopBody())
++  if (v.getParentRegion() != &forOp.getRegion())
+     return;
+ 
+   // Since we only need to peel the loop numStages-1 times, don't worry
+@@ -503,7 +503,7 @@
+ }
+ 
+ void LoopPipeliner::createOrderedDeps() {
+-  for (Operation &op : forOp.getLoopBody().front()) {
++  for (Operation &op : *forOp.getBody()) {
+     if (depOps.contains(&op))
+       orderedDeps.push_back(&op);
+     else if (op.getNumResults() > 0 && validLoads.contains(op.getResult(0)))

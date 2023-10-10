@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/ir/importexport/convert_tensor.h"
 
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -38,7 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/tsl/platform/float8.h"
+#include "tsl/platform/ml_dtypes.h"
 
 namespace mlir {
 namespace tfg {
@@ -225,9 +227,9 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensorProto(
 
     std::vector<int64_t> original_dimensions;
     for (auto dim : input_tensor_shape) original_dimensions.push_back(dim.size);
-    return ElementsAttr(
-        SplatElementsAttr::get(single_attr.getType().clone(original_dimensions),
-                               single_attr.getValues<Attribute>()[0]));
+    return ElementsAttr(SplatElementsAttr::get(
+        single_attr.getShapedType().clone(original_dimensions),
+        single_attr.getValues<Attribute>()[0]));
   }
 
   Tensor t;
@@ -369,7 +371,8 @@ template <typename T, typename U = T, typename Cord>
 void ConvertIntElementsAttr(const DenseElementsAttr attr,
                             RepeatedField<T>* output, Cord* tensor_content) {
   if (attr.isSplat()) {
-    if (attr.getSplatValue<U>() != U(0)) output->Add(attr.getSplatValue<U>());
+    if (attr.getSplatValue<U>() != U(0))
+      output->Add(static_cast<T>(attr.getSplatValue<U>()));
   } else {
     CopyFromArray(tensor_content, attr.getRawData().data(),
                   attr.getRawData().size());
@@ -382,7 +385,8 @@ template <typename T, typename U = T, typename Cord>
 void ConvertUIntElementsAttr(const DenseElementsAttr attr,
                              RepeatedField<T>* output, Cord* tensor_content) {
   if (attr.isSplat()) {
-    if (attr.getSplatValue<U>() != U(0)) output->Add(attr.getSplatValue<U>());
+    if (attr.getSplatValue<U>() != U(0))
+      output->Add(static_cast<T>(attr.getSplatValue<U>()));
   } else {
     CopyFromArray(tensor_content, attr.getRawData().data(),
                   attr.getRawData().size());
@@ -428,7 +432,7 @@ void ConvertFloat8ElementsAttr(const DenseElementsAttr attr,
 }
 
 Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
-  auto type = attr.getType();
+  auto type = attr.getShapedType();
   auto shape = type.getShape();
   tensorflow::DataType output_dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(type, &output_dtype));
@@ -472,6 +476,16 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
     case tensorflow::DT_FLOAT8_E4M3FN:
       ConvertFloat8ElementsAttr<tsl::float8_e4m3fn>(
           dense_attr, output->mutable_float8_val());
+      break;
+    case tensorflow::DT_INT4:
+      ConvertIntElementsAttr<int, tsl::int4>(dense_attr,
+                                             output->mutable_int_val(),
+                                             output->mutable_tensor_content());
+      break;
+    case tensorflow::DT_UINT4:
+      ConvertUIntElementsAttr<int, tsl::uint4>(
+          dense_attr, output->mutable_int_val(),
+          output->mutable_tensor_content());
       break;
     case tensorflow::DT_QUINT8:
     case tensorflow::DT_INT8:

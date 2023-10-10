@@ -30,9 +30,11 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import shape_util
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
@@ -226,12 +228,24 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
 
   def testHalf(self):
     t = tensor_util.make_tensor_proto(np.array([10.0, 20.0], dtype=np.float16))
-    self.assertProtoEquals(
-        """
-      dtype: DT_HALF
-      tensor_shape { dim { size: 2 } }
-      tensor_content: "\000I\000M"
-      """, t)
+    if sys.byteorder == "big":
+      self.assertProtoEquals(
+          """
+        dtype: DT_HALF
+        tensor_shape { dim { size: 2 } }
+        tensor_content: "I\000M\000"
+        """,
+          t,
+      )
+    else:
+      self.assertProtoEquals(
+          """
+        dtype: DT_HALF
+        tensor_shape { dim { size: 2 } }
+        tensor_content: "\000I\000M"
+        """,
+          t,
+      )
 
     a = tensor_util.MakeNdarray(t)
     self.assertEqual(np.float16, a.dtype)
@@ -240,8 +254,6 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
   def testBfloat16(self):
     test_type = dtypes.bfloat16.as_numpy_dtype
     t = tensor_util.make_tensor_proto(np.array([10.0, 20.0], dtype=test_type))
-    # 10.0: 16672 = 010000010(130) 0100000: (1+0/2+1/4) * 2^(130-127)
-    # 20.0: 16800 = 010000011(131) 0100000: (1+0/2+1/4) * 2^(131-127)
     self.assertProtoEquals("""
       dtype: DT_BFLOAT16
       tensor_shape {
@@ -249,8 +261,7 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
           size: 2
         }
       }
-      half_val: 16672
-      half_val: 16800
+      tensor_content: "\x20\x41\x5C\x32\x34\x30\x41"
       """, t)
 
     a = tensor_util.MakeNdarray(t)
@@ -303,6 +314,57 @@ class TensorUtilTest(test.TestCase, parameterized.TestCase):
     a = tensor_util.MakeNdarray(t)
     self.assertEqual(np.int32, a.dtype)
     self.assertAllClose(np.array(10, dtype=np.int32), a)
+
+  def testInt4(self):
+    test_type = dtypes.int4.as_numpy_dtype
+    t = tensor_util.make_tensor_proto(
+        np.array(
+            [-8, -1, 0, 1, 7],
+            dtype=test_type,
+        )
+    )
+    #
+    self.assertProtoEquals(
+        """
+      dtype: DT_INT4
+      tensor_shape {
+        dim {
+          size: 5
+        }
+      }
+      int_val: -8
+      int_val: -1
+      int_val: 0
+      int_val: 1
+      int_val: 7
+      """,
+        t,
+    )
+
+  def testUInt4(self):
+    test_type = dtypes.uint4.as_numpy_dtype
+    t = tensor_util.make_tensor_proto(
+        np.array(
+            [0, 1, 7, 8, 15],
+            dtype=test_type,
+        )
+    )
+    self.assertProtoEquals(
+        """
+      dtype: DT_UINT4
+      tensor_shape {
+        dim {
+          size: 5
+        }
+      }
+      int_val: 0
+      int_val: 1
+      int_val: 7
+      int_val: 8
+      int_val: 15
+      """,
+        t,
+    )
 
   def testLargeInt(self):
     value = np.iinfo(np.int64).max
@@ -970,13 +1032,13 @@ class ConstantValueTest(test.TestCase):
   def testPack_Axis0(self):
     inputs = [np.random.rand(4, 7) for _ in range(3)]
     np_val = np.array(inputs)
-    tf_val = array_ops.stack(inputs)
+    tf_val = array_ops_stack.stack(inputs)
     c_val = tensor_util.constant_value(tf_val)
     self.assertAllClose(np_val, c_val)
 
     # This test needs a placeholder which means we need to construct a graph.
     with ops.Graph().as_default():
-      tf_val = array_ops.stack(
+      tf_val = array_ops_stack.stack(
           [inputs[0],
            array_ops.placeholder(dtypes.float32), inputs[2]])
       c_val = tensor_util.constant_value(tf_val)
@@ -986,11 +1048,11 @@ class ConstantValueTest(test.TestCase):
     # This test needs a placeholder which means we need to construct a graph.
     with ops.Graph().as_default():
       inputs = [np.random.rand(4, 7) for _ in range(3)]
-      tf_val = array_ops.stack(inputs, axis=1)
+      tf_val = array_ops_stack.stack(inputs, axis=1)
       c_val = tensor_util.constant_value(tf_val)
       self.assertIsNone(c_val)
 
-      tf_val = array_ops.stack(
+      tf_val = array_ops_stack.stack(
           [inputs[0],
            array_ops.placeholder(dtypes.float32), inputs[2]], axis=1)
       c_val = tensor_util.constant_value(tf_val)
@@ -1000,7 +1062,8 @@ class ConstantValueTest(test.TestCase):
     input_ = np.random.rand(4, 7)
     # This test needs a placeholder which means we need to construct a graph.
     with ops.Graph().as_default():
-      tf_val = array_ops.stack([input_, array_ops.placeholder(dtypes.float32)])
+      tf_val = array_ops_stack.stack(
+          [input_, array_ops.placeholder(dtypes.float32)])
       c_val = tensor_util.constant_value(tf_val, partial=True)
       self.assertAllClose(input_, c_val[0])
       self.assertIsNone(c_val[1])
@@ -1009,14 +1072,14 @@ class ConstantValueTest(test.TestCase):
     input_ = np.random.rand(4, 7)
     # This test needs a placeholder which means we need to construct a graph.
     with ops.Graph().as_default():
-      tf_val = array_ops.stack(
+      tf_val = array_ops_stack.stack(
           [input_, array_ops.placeholder(dtypes.float32)], axis=1)
       c_val = tensor_util.constant_value(tf_val, partial=True)
       self.assertIsNone(c_val)
 
   def testUnpack_Axis0(self):
     inputs = np.random.rand(3, 4, 7)
-    tf_vals = array_ops.unstack(inputs)
+    tf_vals = array_ops_stack.unstack(inputs)
     c_vals = [tensor_util.constant_value(x) for x in tf_vals]
     self.assertAllClose(inputs, c_vals)
 
@@ -1024,8 +1087,9 @@ class ConstantValueTest(test.TestCase):
     input_ = np.random.rand(4, 7)
     # This test needs a placeholder which means we need to construct a graph.
     with ops.Graph().as_default():
-      packed = array_ops.stack([input_, array_ops.placeholder(dtypes.float32)])
-      tf_vals = array_ops.unstack(packed)
+      packed = array_ops_stack.stack(
+          [input_, array_ops.placeholder(dtypes.float32)])
+      tf_vals = array_ops_stack.unstack(packed)
       c_vals = [tensor_util.constant_value(x, partial=True) for x in tf_vals]
       self.assertAllClose(input_, c_vals[0])
       self.assertIsNone(c_vals[1])
@@ -1042,7 +1106,7 @@ class ConstantValueTest(test.TestCase):
     with ops.Graph().as_default():
       placeholder = array_ops.placeholder(dtypes.float32, shape=(4, 7))
       # it'd be better to use concat here, but concat doesn't support partial
-      packed = array_ops.stack([input_, placeholder])
+      packed = array_ops_stack.stack([input_, placeholder])
       tf_vals = array_ops.split(packed, 2)
       c_vals = [tensor_util.constant_value(x, partial=True) for x in tf_vals]
       self.assertAllClose(input_, c_vals[0][0])
@@ -1103,7 +1167,7 @@ class ConstantValueTest(test.TestCase):
     self.assertIsNone(tensor_util.constant_value(var))
 
   def testVariableV1(self):
-    var = variables.VariableV1(1.0, name="variable_node")
+    var = variable_v1.VariableV1(1.0, name="variable_node")
     self.assertIsNone(tensor_util.constant_value(var))
 
 
@@ -1151,7 +1215,7 @@ class ConstantValueAsShapeTest(test.TestCase):
   def testPack(self):
     # This test needs a placeholder which means we need to construct a graph.
     with ops.Graph().as_default():
-      tf_val = array_ops.stack(
+      tf_val = array_ops_stack.stack(
           [constant_op.constant(16), 37,
            array_ops.placeholder(dtypes.int32)])
       c_val = tensor_util.constant_value_as_shape(tf_val)

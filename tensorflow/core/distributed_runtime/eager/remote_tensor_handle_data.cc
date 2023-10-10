@@ -64,7 +64,7 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
           << "Unable to destroy remote tensor handles. If you are "
              "running a tf.function, it usually indicates some op in "
              "the graph gets an error: "
-          << status.error_message();
+          << status.message();
     }
   } else {
     // This thread may still hold tensorflow::StreamingRPCState::mu_. We need
@@ -78,7 +78,7 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
             << "Unable to destroy remote tensor handles. If you are "
                "running a tf.function, it usually indicates some op in "
                "the graph gets an error: "
-            << status.error_message();
+            << status.message();
       }
     });
   }

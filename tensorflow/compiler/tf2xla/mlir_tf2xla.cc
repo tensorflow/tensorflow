@@ -33,12 +33,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v0/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
+#include "xla/client/xla_computation.h"
+#include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 
 namespace tensorflow {
 
@@ -61,7 +61,7 @@ Status ConvertInputInfo(
     GraphImportConfig* specs) {
   std::vector<std::string> array_names;
   std::vector<std::string> data_types;
-  std::vector<llvm::Optional<std::vector<int>>> shapes;
+  std::vector<std::optional<std::vector<int>>> shapes;
   for (const tf2xla::Feed& feed : config.feed()) {
     std::string place_holder_name =
         feed_name_remap.at(TensorIdToString(feed.id()));

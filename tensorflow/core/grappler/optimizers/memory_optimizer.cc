@@ -544,7 +544,7 @@ bool SchedulingPass(Cluster* cluster, std::unique_ptr<GraphMemory>* memory_ptr,
     Status s = (*memory_ptr)->InferStatically(cluster->GetDevices());
     if (!s.ok()) {
       memory_ptr->reset();
-      VLOG(1) << "Failed to infer memory usage: " << s.error_message();
+      VLOG(1) << "Failed to infer memory usage: " << s.message();
       return false;
     }
   }
@@ -581,7 +581,7 @@ bool SchedulingPass(Cluster* cluster, std::unique_ptr<GraphMemory>* memory_ptr,
                                         /*aggressive_shape_inference=*/false,
                                         /*include_tensor_values=*/false);
   if (!s.ok()) {
-    VLOG(1) << "Failed to infer shapes: " << s.error_message();
+    VLOG(1) << "Failed to infer shapes: " << s.message();
     return false;
   }
 
@@ -591,7 +591,7 @@ bool SchedulingPass(Cluster* cluster, std::unique_ptr<GraphMemory>* memory_ptr,
   Status initialized_topology = graph_topology.InitializeFromGraph(item->graph);
   if (!initialized_topology.ok()) {
     VLOG(1) << "Failed to initialize graph topology view: "
-            << initialized_topology.error_message();
+            << initialized_topology.message();
     return false;
   }
 
@@ -987,7 +987,7 @@ static bool IdentifySwappingCandidates(
     Status s = (*memory_ptr)->InferStatically(cluster->GetDevices());
     if (!s.ok()) {
       memory_ptr->reset();
-      VLOG(1) << "Failed to infer memory usage: " << s.error_message();
+      VLOG(1) << "Failed to infer memory usage: " << s.message();
       return false;
     }
   }

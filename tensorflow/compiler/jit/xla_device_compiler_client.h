@@ -21,7 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/jit/device_compiler_client.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
+#include "xla/client/local_client.h"
 
 namespace tensorflow {
 

@@ -38,6 +38,8 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
@@ -56,8 +58,6 @@ from tensorflow.python.util import traceback_utils
 from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
 
-
-ops.NotDifferentiable("TPUReplicatedInput")
 
 # Ops which can be safely pruned from XLA compile if they have no consumers.
 #  These ops should also have no inputs.
@@ -427,7 +427,7 @@ def _pad_all_input(
   maximum_shapes = []
   for shapes_per_input in input_shape_tensors:
     maximum_shapes.append(
-        math_ops.reduce_max(array_ops.stack(shapes_per_input), axis=0))
+        math_ops.reduce_max(array_ops_stack.stack(shapes_per_input), axis=0))
 
   padded_inputs = []
   real_shapes = []
@@ -481,7 +481,7 @@ def _pad_all_input(
           # TODO(rxsang): This is a hack to make sure padded_input has dynamic
           # shapes, so any tf.size/tf.shape op performed on it won't be constant
           # folded. Do we have better ways to do it?
-          padded_input = control_flow_ops.cond(
+          padded_input = cond.cond(
               array_ops.constant(True),
               lambda: array_ops.pad(input_tensor, paddings),  # pylint: disable=cell-var-from-loop
               lambda: input_tensor)
@@ -1266,7 +1266,7 @@ def split_compile_and_shard(
       # Concatenate all of the outputs together (use stack for scalars).
       shape = x[0].shape
       is_scalar = shape is not None and (shape.ndims == 0)
-      results.append((array_ops.stack(list(x)) if is_scalar
+      results.append((array_ops_stack.stack(list(x)) if is_scalar
                       else array_ops.concat(list(x), axis=axis)))
     else:
       # TODO(phawkins): use a smarter policy, e.g., round-robin across shards.

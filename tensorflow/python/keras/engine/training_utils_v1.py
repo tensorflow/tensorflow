@@ -34,9 +34,9 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
@@ -1044,8 +1044,9 @@ def standardize_weights(y,
       class_sample_weight = math_ops.cast(class_sample_weight, backend.floatx())
       if sample_weight is not None:
         sample_weight = math_ops.cast(
-            ops.convert_to_tensor_v2_with_dispatch(sample_weight),
-            backend.floatx())
+            tensor_conversion.convert_to_tensor_v2_with_dispatch(sample_weight),
+            backend.floatx(),
+        )
     else:
       y_classes = y
       if len(y.shape) == 2:
@@ -1355,7 +1356,7 @@ def check_steps_argument(input_data, steps, steps_name):
 
 def cast_single_tensor(x, dtype=None):
   if isinstance(x, np.ndarray):
-    x = ops.convert_to_tensor_v2_with_dispatch(x)
+    x = tensor_conversion.convert_to_tensor_v2_with_dispatch(x)
   dtype = dtype or backend.floatx()
   if x.dtype.is_floating:
     return math_ops.cast(x, dtype=dtype)
@@ -1381,7 +1382,7 @@ def cast_if_floating_dtype_and_mismatch(targets, outputs):
   new_targets = []
   for target, out in zip(targets, outputs):
     if isinstance(target, np.ndarray):
-      target = ops.convert_to_tensor_v2_with_dispatch(target)
+      target = tensor_conversion.convert_to_tensor_v2_with_dispatch(target)
     if target.dtype != out.dtype:
       new_targets.append(cast_single_tensor(target, dtype=out.dtype))
     else:

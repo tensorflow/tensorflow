@@ -42,6 +42,11 @@ from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
 
 
+_CACHED_CMP_KEY = "_cached_cmp_key"  # Used by hashing and equality.
+# Cache fixed, derived TypeSpec properties to avoid expensive recompute.
+CACHED_FIXED_PROPERTIES = [_CACHED_CMP_KEY]
+
+
 @tf_export("TypeSpec", v1=["TypeSpec", "data.experimental.Structure"])
 class TypeSpec(
     internal.TypeSpec,
@@ -91,7 +96,7 @@ class TypeSpec(
   # be used to reconstruct the `TypeSpec`.  See the documentation for
   # `_serialize()` for more information.
 
-  __slots__ = []
+  __slots__ = CACHED_FIXED_PROPERTIES
 
   @abc.abstractproperty
   def value_type(self):
@@ -239,22 +244,58 @@ class TypeSpec(
         self._component_specs)
     return self._from_components(component_placeholders)
 
-  def _to_tensors(self, value):
-    value_spec = type_spec_from_value(value)
-    assert value_spec.is_subtype_of(self)
-    return [arg for arg in nest.flatten(value, expand_composites=True)
-            if isinstance(arg, core_types.Symbol)]
+  @doc_controls.do_not_doc_inheritable
+  def to_tensors(self, value):
+    """See TraceType base class for details. Do not override."""
 
-  def _cast(self, value, casting_context):
+    tensors = []
+    nest.map_structure(
+        lambda spec, v: tensors.extend(spec.to_tensors(v)),
+        self._component_specs,
+        self._to_components(value))
+    return tensors
+
+  @doc_controls.do_not_doc_inheritable
+  def from_tensors(self, tensors):
+    """See TraceType base class for details. Do not override."""
+    components = nest.map_structure(
+        lambda spec: spec.from_tensors(tensors),
+        self._component_specs
+    )
+    return self._from_components(components)
+
+  @doc_controls.do_not_doc_inheritable
+  def flatten(self):
+    """See TraceType base class for details. Do not override."""
+    flat = []
+    nest.map_structure(
+        lambda spec: flat.extend(spec.flatten()),
+        self._component_specs)
+    return flat
+
+  @doc_controls.do_not_doc_inheritable
+  def cast(self, value, casting_context):
+    """See TraceType base class for details. Do not override."""
     if casting_context.allow_specs and isinstance(value, TypeSpec):
       assert value.is_subtype_of(self), f"Can not cast {value!r} to {self!r}"
       return self
 
+    did_cast = False
+    def cast_fn(spec, v):
+      casted_v = spec.cast(v, casting_context)
+      if casted_v is not v:
+        nonlocal did_cast
+        did_cast = True
+      return casted_v
+
     cast_components = nest.map_structure(
-        lambda spec, v: spec._cast(v, casting_context),  # pylint: disable=protected-access
-        self._component_specs,
-        self._to_components(value))
-    return self._from_components(cast_components)
+        cast_fn, self._component_specs, self._to_components(value)
+    )
+
+    if did_cast:
+      return self._from_components(cast_components)
+    else:
+      return value
 
   # TODO(b/225058047): Reconsider semantics.
   def is_compatible_with(self, spec_or_value):
@@ -559,8 +600,12 @@ class TypeSpec(
 
   def __get_cmp_key(self):
     """Returns a hashable eq-comparable key for `self`."""
-    # TODO(b/133606651): Decide whether to cache this value.
-    return (type(self), self.__make_cmp_key(self._serialize()))
+    if not hasattr(self, _CACHED_CMP_KEY):
+      setattr(self, _CACHED_CMP_KEY, (
+          type(self),
+          self.__make_cmp_key(self._serialize()),
+      ))
+    return getattr(self, _CACHED_CMP_KEY)
 
   def __make_cmp_key(self, value):
     """Converts `value` to a hashable key."""

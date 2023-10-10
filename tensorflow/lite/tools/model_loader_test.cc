@@ -33,7 +33,7 @@ namespace tools {
 namespace {
 
 static constexpr char kModelPath[] =
-    "third_party/tensorflow/lite/java/demo/app/src/main/assets/"
+    "../tflite_mobilenet_float/"
     "mobilenet_v1_1.0_224.tflite";
 
 using ::testing::IsNull;
@@ -70,7 +70,7 @@ TEST_F(ModelLoaderTest, CreateFromPipePath) {
   ModelT model_obj;
   model->GetModel()->UnPackTo(&model_obj);
   std::string model_description = model_obj.description;
-  fbb.Finish(CreateModel(fbb, &model_obj));
+  FinishModelBuffer(fbb, CreateModel(fbb, &model_obj));
   int pipe_fds[2];
   ASSERT_EQ(pipe(pipe_fds), 0);
   pid_t r = fork();
@@ -104,6 +104,24 @@ TEST_F(ModelLoaderTest, CreateFromPipePath) {
             model_description);
 }
 
+TEST_F(ModelLoaderTest, CreateBufferModelLoader) {
+  auto model = FlatBufferModel::BuildFromFile(kModelPath);
+  flatbuffers::FlatBufferBuilder fbb;
+  ModelT model_obj;
+  model->GetModel()->UnPackTo(&model_obj);
+  std::string model_description = model_obj.description;
+  FinishModelBuffer(fbb, CreateModel(fbb, &model_obj));
+  ASSERT_NE(model->allocation(), nullptr);
+
+  auto model_loader = std::make_unique<BufferModelLoader>(
+      reinterpret_cast<const char*>(fbb.GetBufferPointer()), fbb.GetSize());
+  ASSERT_NE(model_loader, nullptr);
+
+  EXPECT_TRUE(model_loader->Init());
+  EXPECT_EQ(model_loader->GetModel()->GetModel()->description()->string_view(),
+            model_description);
+}
+
 TEST_F(ModelLoaderTest, InvalidModelPath) {
   auto model_loader = std::make_unique<PathModelLoader>("invalid/path");
 
@@ -132,6 +150,8 @@ TEST_F(ModelLoaderTest, CreateModelLoaderFromValidPath) {
               WhenDynamicCastTo<MmapModelLoader*>(Not(IsNull())));
   EXPECT_THAT(CreateModelLoaderFromPath("pipe:1:2:3").get(),
               WhenDynamicCastTo<PipeModelLoader*>(Not(IsNull())));
+  EXPECT_THAT(CreateModelLoaderFromPath("buffer:1:2").get(),
+              WhenDynamicCastTo<BufferModelLoader*>(Not(IsNull())));
 }
 
 TEST_F(ModelLoaderTest, CreateModelLoaderFromInvalidPath) {
@@ -140,6 +160,7 @@ TEST_F(ModelLoaderTest, CreateModelLoaderFromInvalidPath) {
 
   EXPECT_EQ(CreateModelLoaderFromPath("pipe:1"), nullptr);
   EXPECT_EQ(CreateModelLoaderFromPath("pipe:1:2:3:4"), nullptr);
+  EXPECT_EQ(CreateModelLoaderFromPath("buffer:1:2:3"), nullptr);
 }
 
 }  // namespace

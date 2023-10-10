@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/btree_map.h"
+#include "absl/log/log.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
@@ -31,13 +32,13 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/mutex.h"
-#include "tensorflow/tsl/platform/path.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/path.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace data {
@@ -45,6 +46,11 @@ namespace {
 
 constexpr char kNextSplitIndex[] = "next_split_index";
 
+StatusOr<int64_t> GetRepetitionIndex(const std::string& split_file) {
+  tsl::StringPiece repetition_dir_path = tsl::io::Dirname(split_file);
+  tsl::StringPiece repetition_dir_name = tsl::io::Basename(repetition_dir_path);
+  return ParseRepetitionDirectoryName(repetition_dir_name);
+}
 }  // namespace
 
 SnapshotSplitProvider::SnapshotSplitProvider(
@@ -97,11 +103,15 @@ Status SnapshotSplitProvider::GetSplitFromFile(const std::string& split_file,
                                                bool* end_of_splits)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   VLOG(3) << "Getting the next split from file: " << split_file;
-  snapshot_util::TFRecordReader reader(split_file, tsl::io::compression::kNone,
-                                       DataTypeVector{1, DT_VARIANT});
-  std::vector<Tensor> tensors;
+  TF_ASSIGN_OR_RETURN(int64_t repetition_index, GetRepetitionIndex(split_file));
+  if (repetition_index_ < repetition_index) {
+    *end_of_splits = true;
+    return OkStatus();
+  }
+  snapshot_util::TFRecordReaderImpl reader(split_file,
+                                           tsl::io::compression::kNone);
   TF_RETURN_IF_ERROR(reader.Initialize(env_));
-  TF_RETURN_IF_ERROR(reader.ReadTensors(&tensors));
+  TF_ASSIGN_OR_RETURN(std::vector<Tensor> tensors, reader.GetTensors());
   if (tensors.size() != 1) {
     return errors::Internal(
         "A snapshot split file is expected to contain 1 tensor. Got ",
@@ -120,8 +130,8 @@ StatusOr<int64_t> SnapshotSplitProvider::GetSplitFromDispatcher(
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             return dispatcher_->GetSnapshotSplit(
                 worker_address_, snapshot_task_.base_path(),
-                snapshot_task_.stream_index(), source_index_, *split,
-                local_split_index, *end_of_splits);
+                snapshot_task_.stream_index(), source_index_, repetition_index_,
+                *split, local_split_index, *end_of_splits);
           },
       "Get next split for snapshot",
       /*deadline_micros=*/env_->NowMicros() +
@@ -132,22 +142,27 @@ StatusOr<int64_t> SnapshotSplitProvider::GetSplitFromDispatcher(
 StatusOr<absl::btree_map<int64_t, std::string>>
 SnapshotSplitProvider::GetSplitsFiles(int64_t start_index) const
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  absl::btree_map<int64_t, std::string> split_to_file_map;
   std::string splits_directory = SourceDirectory(
       snapshot_task_.base_path(), snapshot_task_.stream_index(), source_index_);
-  absl::btree_map<int64_t, std::string> splits;
-
-  TF_ASSIGN_OR_RETURN(std::vector<std::string> split_files,
+  TF_ASSIGN_OR_RETURN(std::vector<std::string> repetition_directories,
                       GetChildren(splits_directory, env_));
-  for (const std::string& split_file : split_files) {
-    TF_ASSIGN_OR_RETURN(auto split_index, SplitIndex(split_file));
-    auto [local_split_index, global_split_index] = split_index;
-    if (local_split_index >= next_split_index_) {
-      splits[local_split_index] =
-          tsl::io::JoinPath(splits_directory, split_file);
+
+  for (const std::string& repetition : repetition_directories) {
+    std::string repetition_dir = io::JoinPath(splits_directory, repetition);
+    TF_ASSIGN_OR_RETURN(std::vector<std::string> split_files,
+                        GetChildren(repetition_dir, env_));
+    for (const std::string& split_file : split_files) {
+      TF_ASSIGN_OR_RETURN(auto split_index, ParseSplitFilename(split_file));
+      auto [local_split_index, global_split_index] = split_index;
+      if (local_split_index >= start_index) {
+        split_to_file_map[local_split_index] =
+            tsl::io::JoinPath(repetition_dir, split_file);
+      }
     }
   }
-  TF_RETURN_IF_ERROR(ValidateSplitFiles(splits, start_index));
-  return splits;
+  TF_RETURN_IF_ERROR(ValidateSplitFiles(split_to_file_map, start_index));
+  return split_to_file_map;
 }
 
 Status SnapshotSplitProvider::ValidateSplitFiles(
@@ -199,7 +214,13 @@ Status SnapshotSplitProvider::ValidateSplitFiles(
   return OkStatus();
 }
 
-Status SnapshotSplitProvider::Reset() { return OkStatus(); }
+Status SnapshotSplitProvider::Reset() {
+  mutex_lock l(mu_);
+  ++repetition_index_;
+  LOG(INFO) << "Reset tf.data snapshot split provider for repetition "
+            << repetition_index_ << ".";
+  return OkStatus();
+}
 
 Status SnapshotSplitProvider::Save(
     std::function<std::string(std::string)> full_name,
@@ -219,6 +240,11 @@ Status SnapshotSplitProvider::Restore(
   mutex_lock l(mu_);
   next_split_index_ = next_split_index;
   TF_ASSIGN_OR_RETURN(split_to_file_map_, GetSplitsFiles(next_split_index_));
+  auto next_split_file = split_to_file_map_.find(next_split_index_);
+  if (next_split_file != split_to_file_map_.end()) {
+    TF_ASSIGN_OR_RETURN(repetition_index_,
+                        GetRepetitionIndex(next_split_file->second));
+  }
   return OkStatus();
 }
 

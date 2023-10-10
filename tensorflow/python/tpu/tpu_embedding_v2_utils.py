@@ -410,7 +410,11 @@ class Adagrad(_Optimizer):
     return ["accumulators"]
 
   def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
-    return [init_ops_v2.Constant(self.initial_accumulator_value)]
+    return [
+        init_ops_v2.Constant(
+            self.initial_accumulator_value, support_partition=True
+        )
+    ]
 
   def _set_optimization_parameters(
       self, parameters: optimization_parameters_pb2.OptimizationParameters):
@@ -548,10 +552,14 @@ class AdagradMomentum(_Optimizer):
     return ["accumulators", "momenta"]
 
   def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
-    return [init_ops_v2.Constant(), init_ops_v2.Constant()]
+    return [
+        init_ops_v2.Constant(support_partition=True),
+        init_ops_v2.Constant(support_partition=True),
+    ]
 
   def _set_optimization_parameters(
-      self, parameters: optimization_parameters_pb2.OptimizationParameters):
+      self, parameters: optimization_parameters_pb2.OptimizationParameters
+  ):
     super()._set_optimization_parameters(parameters)
     parameters.adagrad_momentum.SetInParent()
     parameters.adagrad_momentum.momentum = self.momentum
@@ -716,12 +724,15 @@ class FTRL(_Optimizer):
 
   def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
     return [
-        init_ops_v2.Constant(self.initial_accumulator_value),
-        init_ops_v2.Constant()
+        init_ops_v2.Constant(
+            self.initial_accumulator_value, support_partition=True
+        ),
+        init_ops_v2.Constant(support_partition=True),
     ]
 
   def _set_optimization_parameters(
-      self, parameters: optimization_parameters_pb2.OptimizationParameters):
+      self, parameters: optimization_parameters_pb2.OptimizationParameters
+  ):
     super()._set_optimization_parameters(parameters)
     ftrl = parameters.ftrl
     ftrl.l1 = self.l1_regularization_strength
@@ -884,10 +895,14 @@ class Adam(_Optimizer):
     return ["momenta", "velocities"]
 
   def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
-    return [init_ops_v2.Constant(), init_ops_v2.Constant()]
+    return [
+        init_ops_v2.Constant(support_partition=True),
+        init_ops_v2.Constant(support_partition=True),
+    ]
 
   def _set_optimization_parameters(
-      self, parameters: optimization_parameters_pb2.OptimizationParameters):
+      self, parameters: optimization_parameters_pb2.OptimizationParameters
+  ):
     super(Adam, self)._set_optimization_parameters(parameters)
     parameters.adam.beta1 = self.beta_1
     parameters.adam.beta2 = self.beta_2
@@ -1031,7 +1046,8 @@ class TableConfig:
         'mean' the default. 'sqrtn' often achieves good accuracy, in particular
         with bag-of-words columns. For more information, see
         `tf.nn.embedding_lookup_sparse`.
-      name: An optional string used to name the table. Useful for debugging.
+      name: An optional string used to name the table. Must be defined if
+        running on SparseCore.
       quantization_config: The simulated quantization config. An instance of
         `tf.tpu.experimental.embedding.QuantizationConfig`. See the class for
         more documentation.
@@ -1067,6 +1083,12 @@ class TableConfig:
       raise ValueError(
           f"Argument `combiner` must be one of {accepted_combiners}. "
           f"Received: {combiner}")
+
+    if name is None:
+      logging.warning(
+          "Name of the table config must be specified for running on"
+          " SparseCore. Different table configs must have unique names."
+      )
 
     self.vocabulary_size = vocabulary_size
     self.dim = dim
@@ -1119,18 +1141,19 @@ class TableConfig:
     # We handle the learning rate separately here and don't allow the
     # optimization class to handle this, as it doesn't know about dynamic
     # rates.
-    if callable(self.optimizer.learning_rate):
-      parameters.learning_rate.dynamic.tag = (
-          learning_rate_index[self.optimizer.learning_rate])
-    else:
-      parameters.learning_rate.constant = self.optimizer.learning_rate
+    if self.optimizer:
+      if callable(self.optimizer.learning_rate):
+        parameters.learning_rate.dynamic.tag = (
+            learning_rate_index[self.optimizer.learning_rate])
+      else:
+        parameters.learning_rate.constant = self.optimizer.learning_rate
+      if self.optimizer.low_dimensional_packing_status:
+        parameters.low_dimensional_packing_status = (
+            optimization_parameters_pb2.LowDimensionalPackingStatus.Status.ENABLED
+        )
+      # Use optimizer to handle the rest of the parameters.
+      self.optimizer._set_optimization_parameters(parameters)  # pylint: disable=protected-access
 
-    if self.optimizer.low_dimensional_packing_status:
-      parameters.low_dimensional_packing_status = (
-          optimization_parameters_pb2.LowDimensionalPackingStatus.Status.ENABLED
-      )
-    # Use optimizer to handle the rest of the parameters.
-    self.optimizer._set_optimization_parameters(parameters)  # pylint: disable=protected-access
     if self.quantization_config:
       self.quantization_config._set_optimization_parameters(parameters)  # pylint: disable=protected-access
 
@@ -1208,7 +1231,8 @@ class FeatureConfig:
         has to match the shape (for ragged tensor, the input shape and output
         shape can mismatch). If not provided, the shape can be either provided
         to the `embedding.build` or auto detected at the runtime.
-      name: An optional name for the feature, useful for debugging.
+      name: An optional string used to name the table. Must be defined if
+        running on SparseCore.
 
     Returns:
       `FeatureConfig`.
@@ -1226,6 +1250,11 @@ class FeatureConfig:
       raise ValueError(
           f"Argument `max_sequence_length` must be an int and must be >= 0. "
           f"Received: {max_sequence_length}")
+    if name is None:
+      logging.warning(
+          "Name of the Feature config must be specified for running on"
+          " SparseCore. Different feature configs must have unique names."
+      )
 
     self.table = table
     self.max_sequence_length = max_sequence_length

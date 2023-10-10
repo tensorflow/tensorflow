@@ -25,7 +25,7 @@ cc_library(
     hdrs = ["sparse_matrix.h"],
     deps = [
         "//tensorflow/core:framework",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
     alwayslink = 1,
 )
@@ -63,7 +63,6 @@ tf_kernel_library(
     ],
     deps = [
         ":sparse_matrix",
-        "//third_party/eigen3",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:bitwise_ops_op_lib",
         "//tensorflow/core:framework",
@@ -82,10 +81,12 @@ tf_kernel_library(
         "//tensorflow/core/kernels:dense_update_functor",
         "//tensorflow/core/kernels:fill_functor",
         "//tensorflow/core/kernels:gather_nd_op",
+        "//tensorflow/core/kernels:gpu_prim_hdrs",
         "//tensorflow/core/kernels:scatter_nd_op",
         "//tensorflow/core/kernels:slice_op",
+        "//tensorflow/core/kernels:sparse_utils",
         "//tensorflow/core/kernels:transpose_functor",
-        "//tensorflow/core/kernels:gpu_prim_hdrs",
+        "@eigen_archive//:eigen3",
     ] + if_cuda_or_rocm([
         "//tensorflow/core/util:cuda_solvers",
         "//tensorflow/core/util:cuda_sparse",
@@ -108,6 +109,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:status_matchers",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )

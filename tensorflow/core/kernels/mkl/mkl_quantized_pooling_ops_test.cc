@@ -15,6 +15,7 @@ limitations under the License.
 #if defined(INTEL_MKL) && defined(ENABLE_MKL)
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/kernels/mkl/mkl_kernel_util.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
@@ -32,6 +34,117 @@ limitations under the License.
 namespace tensorflow {
 
 class QuantizedPoolingTest : public OpsTestBase {};
+
+class QuantizedMaxPooling3DTest : public OpsTestBase {
+ protected:
+  void RunFloatPooling(const Tensor& input, const int& ksize, const int& stride,
+                       const string& padding, Tensor* output) {
+    auto root = tensorflow::Scope::NewRootScope();
+    string op_name = "maxpool3d";
+    auto input_op =
+        ops::Const(root.WithOpName("input"), Input::Initializer(input));
+    Output out_op = ops::MaxPool3D(root.WithOpName(op_name), input_op,
+                                   {1, ksize, ksize, ksize, 1},
+                                   {1, stride, stride, stride, 1}, padding);
+    tensorflow::GraphDef graph_def;
+    TF_ASSERT_OK(root.ToGraphDef(&graph_def));
+    MklTestingUtil::RunGraph(graph_def, op_name, output);
+  }
+
+  template <typename T>
+  void RunQuantizedPooling(const Tensor& input_float, const int& ksize,
+                           const int& stride, const string& padding,
+                           Tensor* output) {
+    DataType type = DataTypeToEnum<T>::v();
+    TF_ASSERT_OK(
+        NodeDefBuilder("quantized_max_pool_3d_op", "_QuantizedMaxPool3D")
+            .Input(FakeInput(type))
+            .Input(FakeInput(DT_FLOAT))
+            .Input(FakeInput(DT_FLOAT))
+            .Attr("T", type)
+            .Attr("ksize", {1, ksize, ksize, ksize, 1})
+            .Attr("strides", {1, stride, stride, stride, 1})
+            .Attr("padding", padding)
+            .Finalize(node_def()));
+    TF_ASSERT_OK(InitOp());
+
+    float input_min, input_max;
+    MklTestingUtil::ComputeMinMax<float>(input_float, &input_min, &input_max);
+
+    Tensor input_quantized;
+    MklTestingUtil::RunMklQuantizeOp(input_float, input_min, input_max, type,
+                                     "SCALED", &input_quantized);
+
+    AddInputFromArray<T>(input_quantized.shape(), input_quantized.flat<T>());
+    AddInputFromArray<float>(TensorShape({}), {input_min});
+    AddInputFromArray<float>(TensorShape({}), {input_max});
+
+    TF_ASSERT_OK(RunOpKernel());
+
+    Tensor& output_quantized = *GetOutput(0);
+    Tensor& output_min = *GetOutput(1);
+    Tensor& output_max = *GetOutput(2);
+
+    MklTestingUtil::RunDequantizeOp(output_quantized, output_min, output_max,
+                                    "SCALED", output);
+  }
+};
+
+TEST_F(QuantizedMaxPooling3DTest, QUINT8_INPUT) {
+  const int ksize = 2;
+  const int stride = 2;
+  const string padding = "SAME";
+
+  const int input_depth = 2;
+  const int input_height = 4;
+  const int input_width = 4;
+  const int input_channels = 2;
+  Tensor input_float(
+      DT_FLOAT, {1, input_depth, input_height, input_width, input_channels});
+  test::FillValues<float>(
+      &input_float,
+      {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16,
+       17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
+       32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17,
+       1,  2,  3,  4,  5,  6,  7,  8,  16, 15, 14, 13, 12, 11, 10, 9});
+
+  Tensor expected_output;
+  RunFloatPooling(input_float, ksize, stride, padding, &expected_output);
+
+  Tensor output_float;
+  RunQuantizedPooling<quint8>(input_float, ksize, stride, padding,
+                              &output_float);
+
+  test::ExpectTensorNear<float>(expected_output, output_float, 0.3);
+}
+
+TEST_F(QuantizedMaxPooling3DTest, QINT8_INPUT) {
+  const int ksize = 2;
+  const int stride = 2;
+  const string padding = "SAME";
+
+  const int input_depth = 2;
+  const int input_height = 4;
+  const int input_width = 4;
+  const int input_channels = 2;
+  Tensor input_float(
+      DT_FLOAT, {1, input_depth, input_height, input_width, input_channels});
+  test::FillValues<float>(
+      &input_float,
+      {1,  -2, 3,  4,   5,  6,  -7, 8,  9,   -10, 11, 12,  13, 14,  -15, -16,
+       17, 18, 19, -20, 21, 22, 23, 24, -25, 26,  27, 28,  29, -30, 31,  32,
+       32, 31, 30, -29, 28, 27, 26, 25, -24, 23,  22, -21, 20, 19,  18,  -17,
+       1,  2,  -3, 4,   5,  -6, 7,  8,  16,  15,  14, -13, 12, -11, 10,  9});
+
+  Tensor expected_output;
+  RunFloatPooling(input_float, ksize, stride, padding, &expected_output);
+
+  Tensor output_float;
+  RunQuantizedPooling<qint8>(input_float, ksize, stride, padding,
+                             &output_float);
+
+  test::ExpectTensorNear<float>(expected_output, output_float, 0.3);
+}
 
 TEST_F(QuantizedPoolingTest, SmallAveragePooling) {
   const int ksize = 2;
@@ -148,4 +261,4 @@ TEST_F(QuantizedPoolingTest, SmallMaxPooling) {
 
 }  // namespace tensorflow
 
-#endif  // defined(INTEL_MKL) && defined(ENABLE_MKL)
+#endif  // INTEL_MKL && ENABLE_MKL

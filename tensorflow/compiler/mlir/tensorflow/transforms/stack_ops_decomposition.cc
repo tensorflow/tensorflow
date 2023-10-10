@@ -17,7 +17,6 @@ limitations under the License.
 #include <string>
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
@@ -91,7 +90,7 @@ int64_t FindAliasedInput(func::FuncOp func, int64_t return_index) {
 // size variables before finally changing the function type.
 void ModifyFunctionSignature(
     func::FuncOp func, llvm::SmallDenseMap<Value, Value>* stack_var_to_size_var,
-    llvm::function_ref<llvm::Optional<Type>(int64_t)> arg_to_stack_type,
+    llvm::function_ref<std::optional<Type>(int64_t)> arg_to_stack_type,
     llvm::function_ref<void(ArrayRef<BlockArgument>)> handle_new_size_vars =
         nullptr) {
   auto new_input_types = llvm::to_vector<8>(func.getFunctionType().getInputs());
@@ -137,7 +136,7 @@ LogicalResult HandleWhileOp(
         decomposed_partitioned_call_callees) {
   auto body = while_op.body_function();
   llvm::SmallDenseMap<Value, Value> body_map;
-  auto find_arg_stack_type = [&](int64_t index) -> llvm::Optional<Type> {
+  auto find_arg_stack_type = [&](int64_t index) -> std::optional<Type> {
     auto it = data_var_to_size_var.find(while_op.getOperand(index));
     if (it == data_var_to_size_var.end()) return std::nullopt;
     return it->getFirst().getType();
@@ -209,7 +208,7 @@ LogicalResult HandleIfOp(
   llvm::SmallDenseMap<Value, Value> then_map;
   llvm::SmallDenseMap<Value, Value> else_map;
 
-  auto find_arg_stack_type = [&](int64_t index) -> llvm::Optional<Type> {
+  auto find_arg_stack_type = [&](int64_t index) -> std::optional<Type> {
     auto it = data_var_to_size_var.find(if_op.getOperand(index + 1));
     if (it == data_var_to_size_var.end()) return std::nullopt;
     return it->getFirst().getType();
@@ -314,7 +313,7 @@ LogicalResult HandlePartitionedCallOp(
     lowered_callee = callee.clone();
     lowered_callee.setPrivate();
   }
-  auto find_arg_stack_type = [&](int64_t index) -> llvm::Optional<Type> {
+  auto find_arg_stack_type = [&](int64_t index) -> std::optional<Type> {
     auto it = data_var_to_size_var.find(call.getOperand(index));
     if (it == data_var_to_size_var.end()) return std::nullopt;
     return it->getFirst().getType();
@@ -355,7 +354,7 @@ LogicalResult HandleStackV2Op(
     llvm::SmallDenseMap<Value, Value>* data_var_to_size_var) {
   // Create a buffer variable and a size variable to replace the stack.
   auto elem_type = cutil::GetElementTypeFromAccess(
-      stack.getHandle(), module, [](Operation* user) -> llvm::Optional<Type> {
+      stack.getHandle(), module, [](Operation* user) -> std::optional<Type> {
         auto push = llvm::dyn_cast<TF::StackPushV2Op>(user);
         if (!push) return std::nullopt;
         return push.getElem().getType();

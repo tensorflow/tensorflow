@@ -24,7 +24,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -636,7 +636,8 @@ class EncodeProtoOp : public OpKernel {
   // order of writing.
   std::vector<int> sorted_field_index_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(EncodeProtoOp);
+  EncodeProtoOp(const EncodeProtoOp&) = delete;
+  void operator=(const EncodeProtoOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("EncodeProto").Device(DEVICE_CPU), EncodeProtoOp);

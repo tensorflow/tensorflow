@@ -18,6 +18,7 @@ import copy
 from packaging import version as packaging_version  # pylint: disable=g-bad-import-order
 import os.path
 import re
+import sys
 
 from google.protobuf.any_pb2 import Any
 from google.protobuf import text_format
@@ -29,11 +30,13 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import context
+from tensorflow.python.framework import byte_swap_tensor as bst
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
@@ -228,32 +231,6 @@ SAVE_AND_RESTORE_OPS = ["SaveV2",
                         "LegacyRestore", "LegacyRestoreSlice"]
 
 
-def _op_name(tensor_name):
-  """Extract the Op name from a Tensor name.
-
-  The Op name is everything before a colon, if present,
-  not including any ^ prefix denoting a control dependency.
-
-  Args:
-    tensor_name: the full name of a Tensor in the graph.
-  Returns:
-    The name of the Op of which the given Tensor is an output.
-  Raises:
-    ValueError: if tensor_name is None or empty.
-  """
-  if not tensor_name:
-    raise ValueError(
-        f"Tensor name cannot be empty or None. Received: {tensor_name}.")
-
-  # Control dependency inputs start with ^.
-  if tensor_name.startswith("^"):
-    tensor_name = tensor_name[1:]
-  if ":" in tensor_name:
-    op_name, _ = tensor_name.split(":")
-    return op_name
-  return tensor_name
-
-
 def _get_scope(node_name):
   """Extract the scope name from a node name.
 
@@ -301,7 +278,8 @@ def _find_extraneous_saver_nodes(graph_def, saver_def):
 
   # load the graph DAG in minimal form, without initializing a full Graph object
   nodes = {
-      node_def.name: (set(_op_name(x) for x in node_def.input), node_def.op)
+      node_def.name: (
+          set(tensor.get_op_name(x) for x in node_def.input), node_def.op)
       for node_def in graph_def.node
   }
 
@@ -309,8 +287,8 @@ def _find_extraneous_saver_nodes(graph_def, saver_def):
   retain_scope_restore = None
   # It's possible to have no saver if the graph has no Variables
   if saver_def is not None:
-    save_op_name = _op_name(saver_def.save_tensor_name)
-    restore_op_name = _op_name(saver_def.restore_op_name)
+    save_op_name = tensor.get_op_name(saver_def.save_tensor_name)
+    restore_op_name = tensor.get_op_name(saver_def.restore_op_name)
 
     # The save and restore scopes should always be the same, but if they differ
     # for some reason, we retain them both to be safe.
@@ -636,6 +614,8 @@ def read_meta_graph_file(filename):
     file_content = f.read()
   try:
     meta_graph_def.ParseFromString(file_content)
+    if sys.byteorder == "big":
+      bst.swap_tensor_content_in_graph_function(meta_graph_def, "little", "big")
     return meta_graph_def
   except Exception:  # pylint: disable=broad-except
     pass
@@ -643,6 +623,8 @@ def read_meta_graph_file(filename):
   # Next try to read it as a text file.
   try:
     text_format.Merge(file_content.decode("utf-8"), meta_graph_def)
+    if sys.byteorder == "big":
+      bst.swap_tensor_content_in_graph_function(meta_graph_def, "little", "big")
   except text_format.ParseError as e:
     raise IOError(f"Cannot parse file {filename}: {str(e)}.")
 

@@ -16,8 +16,11 @@
 
 import uuid
 
+# TODO(b/280454072) Remove compat and inplace_ops when foward compatibility
+# window expires.
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function as function_eager
+from tensorflow.python.eager import def_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device
@@ -28,8 +31,10 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_ctc_ops
 from tensorflow.python.ops import inplace_ops
 from tensorflow.python.ops import linalg_ops
@@ -62,8 +67,8 @@ def _generate_defun_backend(unique_api_name, preferred_device, func):
       _DEFUN_API_NAME_ATTRIBUTE: unique_api_name,
       _DEFUN_DEVICE_ATTRIBUTE: preferred_device,
   }
-  return function_eager.defun_with_attributes(
-      func=func, attributes=function_attributes, autograph=False)
+  return def_function.function(
+      func=func, experimental_attributes=function_attributes, autograph=False)
 
 # pylint: disable=protected-access, invalid-name
 @tf_export(v1=["nn.ctc_loss"])
@@ -523,10 +528,11 @@ def _ctc_state_trans(label_seq):
     start_to_label = [[1, 0]]
 
     # Blank to label transitions.
-    blank_to_label = array_ops.stack([label_states[1:], blank_states[:-1]], 1)
+    blank_to_label = array_ops_stack.stack(
+        [label_states[1:], blank_states[:-1]], 1)
 
     # Label to blank transitions.
-    label_to_blank = array_ops.stack([blank_states, label_states], 1)
+    label_to_blank = array_ops_stack.stack([blank_states, label_states], 1)
 
     # Scatter transitions that don't depend on sequence.
     indices = array_ops.concat([start_to_label, blank_to_label, label_to_blank],
@@ -539,8 +545,8 @@ def _ctc_state_trans(label_seq):
     # Label to label transitions. Disallow transitions between repeated labels
     # with no blank state in between.
     batch_idx = array_ops.zeros_like(label_states[2:])
-    indices = array_ops.stack([batch_idx, label_states[2:], label_states[1:-1]],
-                              1)
+    indices = array_ops_stack.stack(
+        [batch_idx, label_states[2:], label_states[1:-1]], 1)
     indices = array_ops.tile(
         array_ops.expand_dims(indices, 0), [batch_size, 1, 1])
     batch_idx = array_ops.expand_dims(math_ops.range(batch_size), 1) * [1, 0, 0]
@@ -1491,10 +1497,17 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
       new_out = []
     else:
       update_i = i + 1 if inclusive and not reverse else i
-      new_out = [
-          inplace_ops.alias_inplace_update(x, update_i, y)
-          for x, y in zip(out, flat_accum)
-      ]
+      # TODO(b/280454072) Cleanup when foward compatibility window expires.
+      if compat.forward_compatible(2023, 10, 26):
+        new_out = [
+            gen_array_ops.tensor_scatter_update(x, [[update_i]], [y])
+            for x, y in zip(out, flat_accum)
+        ]
+      else:
+        new_out = [
+            inplace_ops.alias_inplace_update(x, update_i, y)
+            for x, y in zip(out, flat_accum)
+        ]
     i = i - 1 if reverse else i + 1
     return [i, num_elems] + new_out + flat_accum
 
@@ -1509,8 +1522,15 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
           [[num_outputs], array_ops.shape(initial_accum)], 0)
       out = inplace_ops.empty(out_shape, dtype=initial_accum.dtype, init=True)
       if inclusive:
-        out = inplace_ops.alias_inplace_add(out, init_i + (1 if reverse else 0),
-                                            initial_accum)
+        # TODO(b/280454072) Cleanup when foward compatibility window expires.
+        if compat.forward_compatible(2023, 10, 26):
+          out = gen_array_ops.tensor_scatter_add(
+              out, [[init_i + (1 if reverse else 0)]], [initial_accum]
+          )
+        else:
+          out = inplace_ops.alias_inplace_add(
+              out, init_i + (1 if reverse else 0), initial_accum
+          )
       outputs.append(out)
   loop_in = [init_i, num_elems] + outputs + flat_initial
   hostmem = [

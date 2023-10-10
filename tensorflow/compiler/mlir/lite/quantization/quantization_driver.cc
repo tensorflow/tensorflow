@@ -335,7 +335,7 @@ class QuantizationDriver {
     fn_.walk([&](Operation *op) {
       std::unique_ptr<OpQuantScaleSpec> scale_spec = GetQuantScaleSpec(op);
       if (op->hasTrait<OpTrait::IsTerminator>() ||
-          (IsOpNotQuantizable(op) && !scale_spec->has_same_scale_requirement) ||
+          (!IsOpQuantizable(op) && !scale_spec->has_same_scale_requirement) ||
           llvm::isa<quantfork::QuantizeCastOp, quantfork::DequantizeCastOp,
                     func::ConstantOp, arith::ConstantOp>(op)) {
         return;
@@ -841,7 +841,7 @@ void QuantizationDriver::SetupAllStates() {
 
   fn_.walk([&](Operation *op) {
     std::unique_ptr<OpQuantScaleSpec> scale_spec = GetQuantScaleSpec(op);
-    if (IsOpNotQuantizable(op) && !scale_spec->has_same_scale_requirement) {
+    if (!IsOpQuantizable(op) && !scale_spec->has_same_scale_requirement) {
       return;
     }
     work_list_.push_back(op);

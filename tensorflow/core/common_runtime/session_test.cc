@@ -33,7 +33,7 @@ TEST(SessionTest, InvalidTargetReturnsNull) {
   Status s = tensorflow::NewSession(options, &session);
   EXPECT_EQ(s.code(), error::NOT_FOUND);
   EXPECT_TRUE(absl::StrContains(
-      s.error_message(),
+      s.message(),
       "No session factory registered for the given session options"));
 }
 
@@ -69,10 +69,9 @@ TEST(SessionTest, MultipleFactoriesForTarget) {
   Session* session;
   Status s = tensorflow::NewSession(options, &session);
   EXPECT_EQ(s.code(), error::INTERNAL);
-  EXPECT_TRUE(
-      absl::StrContains(s.error_message(), "Multiple session factories"));
-  EXPECT_TRUE(absl::StrContains(s.error_message(), "FAKE_SESSION_1"));
-  EXPECT_TRUE(absl::StrContains(s.error_message(), "FAKE_SESSION_2"));
+  EXPECT_TRUE(absl::StrContains(s.message(), "Multiple session factories"));
+  EXPECT_TRUE(absl::StrContains(s.message(), "FAKE_SESSION_1"));
+  EXPECT_TRUE(absl::StrContains(s.message(), "FAKE_SESSION_2"));
 }
 
 }  // namespace

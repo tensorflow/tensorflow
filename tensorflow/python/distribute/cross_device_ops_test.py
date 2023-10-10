@@ -42,9 +42,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
 
@@ -204,7 +205,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     Returns:
       A list of `Tensor` or `IndexedSlices`.
     """
-    if isinstance(value, ops.Tensor):
+    if isinstance(value, tensor_lib.Tensor):
       return [value]
     elif isinstance(value, IndexedSlices):
       return [value]
@@ -911,7 +912,7 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
                                       options)
           return math_ops.add_n(self.as_list(reduced)) / len(devices)
 
-        return control_flow_ops.cond(
+        return cond.cond(
             array_ops.identity(False), cond_body, cond_body)
 
       num_replicas = num_processes * len(devices)

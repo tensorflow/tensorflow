@@ -239,7 +239,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
 const char kDeviceAttr[] = "device";
 const char kDeviceGpu[] = "GPU";
 
-llvm::Optional<std::string> GetDevice(mlir::Operation *op) {
+std::optional<std::string> GetDevice(mlir::Operation *op) {
   mlir::StringAttr device = op->getAttrOfType<mlir::StringAttr>(kDeviceAttr);
   if (!device || device.getValue().empty()) {
     return std::nullopt;
@@ -256,7 +256,7 @@ llvm::Optional<std::string> GetDevice(mlir::Operation *op) {
 }
 
 bool IsGpuDevice(mlir::Operation *op) {
-  llvm::Optional<std::string> device = GetDevice(op);
+  std::optional<std::string> device = GetDevice(op);
   if (!device) return false;
   return *device == kDeviceGpu;
 }

@@ -27,7 +27,10 @@ namespace tflite {
 namespace gpu {
 
 struct ConvPointwiseAttributes {
+  // (Slice start width, slice start height)
   std::vector<int2> offsets;
+  // True if we use mean as the reduce op, false to use reduce_sum.
+  bool mean;
 };
 
 GPUOperation CreateConvPointwise(const OperationDef& definition,

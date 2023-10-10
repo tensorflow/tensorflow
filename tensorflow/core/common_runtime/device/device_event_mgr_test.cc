@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <atomic>
 
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
-#include "tensorflow/tsl/framework/device_id.h"
+#include "tsl/framework/device_id.h"
 
 namespace tensorflow {
 
@@ -210,7 +210,7 @@ class EMBenchmarkHelper {
                                    {tensor_size}, AllocationAttributes()));
     }
     gpu_outputs_.clear();
-    while (gpu_outputs_.size() < 1) {
+    while (gpu_outputs_.empty()) {
       gpu_outputs_.push_back(Tensor(gpu_helper_->gpu_allocator(), DT_FLOAT,
                                     {tensor_size}, AllocationAttributes()));
     }
@@ -225,7 +225,7 @@ class EMBenchmarkHelper {
       }
     }
     host_outputs_.clear();
-    while (host_outputs_.size() < 1) {
+    while (host_outputs_.empty()) {
       host_outputs_.push_back(Tensor(gpu_helper_->host_allocator(), DT_FLOAT,
                                      {tensor_size}, AllocationAttributes()));
       for (int i = 0; i < tensor_size; ++i) {

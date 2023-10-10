@@ -14,26 +14,55 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/tf_to_uniform_attribute_utils.h"
 
-#include <functional>
+#include <array>
+#include <cstdint>
 #include <memory>
-#include <set>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/ops/uniform_op_quant_spec.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/util/quantization/uniform_quant_ops_attr.pb.h"
 
 namespace mlir::quant {
 
-using QuantMethod =
-    tensorflow::quantization::QuantizationMethod::ExperimentalMethod;
+using QuantMethod = tensorflow::quantization::QuantizationMethod::PresetMethod;
+
+enum class OpType {
+  kDynamicRangeOp,  // Dynamic Range kernels only have rhs attr.
+  kUnaryOp,         // Unary ops have one min/max attr.
+  kBinaryOp,        // Binary ops have lhs/rhs attr.
+  kQuantizationOp,  // Quantization ops have input/output attr.
+};
+
+// For each op type, the following axis carries axis information:
+// kDynamicRangeOp: rhs_quantization_axis will carry axis information.
+// kUnaryOp: quantization_axis will carry axis information.
+// kBinaryOp: Among {lhs, rhs, output}_quantization_axis, only check rhs.
+// kQuantizationOp: Among {input, output}_quantization_axis, only check input.
+// We therefore check exemplary 3 axes {rhs_, input_, }quantization_axis from
+// previous accumulations.
+constexpr std::array<absl::string_view, 3> kQuantizationAxisAttrs = {
+    "input_quantization_axis", "quantization_axis", "rhs_quantization_axis"};
+
+// Common suffixes for attributes used in FillQuantizationAttributes.
+constexpr std::array<absl::string_view, 2> kSuffixes = {"_min_val", "_max_val"};
 
 Attribute GetWindowStridesValue(
     PatternRewriter& rewriter, llvm::StringMap<Attribute>& identifier_to_attr) {
@@ -103,54 +132,120 @@ Attribute GetBatchGroupCountValue(
   return rewriter.getI64IntegerAttr(1);
 }
 
-void FillQuantizationAttributes(PatternRewriter& rewriter, Operation* op,
-                                NamedAttrList& attrs,
-                                llvm::StringMap<Attribute>& identifier_to_attr,
-                                QuantMethod quantization_method) {
-  // TODO(b/259374419): Support broader quantization schemes
-  absl::flat_hash_map<std::string, int> min_max_scheme_for_8bit_narrow;
-  min_max_scheme_for_8bit_narrow = {{"min", -127}, {"max", 127}};
+Attribute GetQuantizationAxis(PatternRewriter& rewriter, Operation* op,
+                              const int operand_index) {
+  auto* defining_op = op->getOperand(operand_index).getDefiningOp();
+  for (auto attr : kQuantizationAxisAttrs) {
+    if (defining_op->hasAttr(attr)) {
+      return defining_op->getAttr(attr);
+    }
+  }
+  // Not found.
+  return rewriter.getI64IntegerAttr(-1);
+}
 
-  std::set<std::string> quantization_attributes;
-  if (quantization_method ==
-      tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE) {
-    quantization_attributes = {
-        "rhs_quantization_min_val",
-        "rhs_quantization_max_val",
-    };
-  } else {
-    quantization_attributes = {
-        "lhs_quantization_min_val",    "lhs_quantization_max_val",
-        "rhs_quantization_min_val",    "rhs_quantization_max_val",
-        "output_quantization_min_val", "output_quantization_max_val",
-    };
+LogicalResult CheckIfAttrIs8Bit(const std::string& attr, Operation* op,
+                                bool& is_8_bit) {
+  Type element_type;
+  if (attr == "lhs_quantization" || attr == "input_quantization" ||
+      attr == "quantization") {
+    if (op->getNumOperands() < 1) {
+      return failure();
+    }
+    element_type = getElementTypeOrSelf(op->getOperand(0).getType());
+  }
+  if (attr == "rhs_quantization") {
+    if (op->getNumOperands() < 2) {
+      return failure();
+    }
+    element_type = getElementTypeOrSelf(op->getOperand(1).getType());
+  }
+  if (attr == "output_quantization") {
+    if (op->getNumResults() < 1) {
+      return failure();
+    }
+    element_type = getElementTypeOrSelf(op->getOpResult(0).getType());
+  }
+  if (element_type) {
+    is_8_bit = element_type.isa<TF::Qint8Type>();
+    return success();
+  }
+  return failure();
+}
+
+LogicalResult FillQuantizationAttributes(
+    PatternRewriter& rewriter, Operation* op, NamedAttrList& attrs,
+    llvm::StringMap<Attribute>& identifier_to_attr, OpType op_type) {
+  absl::flat_hash_map<std::string, int> min_max_scheme_for_8bit = {
+      {"min", -128}, {"max", 127}};
+  absl::flat_hash_map<std::string, int> min_max_schema_for_32bit = {
+      {"min", -2147483648}, {"max", 2147483647}};
+
+  std::vector<std::string> quantization_attributes;
+  switch (op_type) {
+    case OpType::kDynamicRangeOp:
+      quantization_attributes = {"rhs_quantization"};
+      break;
+    case OpType::kUnaryOp:
+      quantization_attributes = {"quantization"};
+      break;
+    case OpType::kBinaryOp:
+      quantization_attributes = {"lhs_quantization", "rhs_quantization",
+                                 "output_quantization"};
+      break;
+    case OpType::kQuantizationOp:
+      quantization_attributes = {"input_quantization", "output_quantization"};
+      break;
+    default:
+      quantization_attributes = {};
+      break;
   }
 
   for (const auto& attr : quantization_attributes) {
-    auto quant_val = absl::StrContains(attr, "min")
-                         ? min_max_scheme_for_8bit_narrow["min"]
-                         : min_max_scheme_for_8bit_narrow["max"];
-    auto quant_val_attr = rewriter.getI64IntegerAttr(quant_val);
-    attrs.push_back(rewriter.getNamedAttr(attr, quant_val_attr));
+    bool attr_is_8_bit;
+    if (failed(CheckIfAttrIs8Bit(attr, op, attr_is_8_bit))) {
+      return failure();
+    }
+    for (int i = 0; i < kSuffixes.size(); i++) {
+      int64_t quant_val;
+      if (attr_is_8_bit) {
+        quant_val = i == 0 ? min_max_scheme_for_8bit["min"]
+                           : min_max_scheme_for_8bit["max"];
+      } else {
+        quant_val = i == 0 ? min_max_schema_for_32bit["min"]
+                           : min_max_schema_for_32bit["max"];
+      }
+      std::string attr_minmax = absl::StrCat(attr, kSuffixes[i]);
+      attrs.push_back(rewriter.getNamedAttr(
+          attr_minmax, rewriter.getI64IntegerAttr(quant_val)));
+    }
   }
+  return success();
 }
 
+// This LogicalResult covers both the hybrid and fully quantized op cases.
 LogicalResult FillAttributesForUniformQuantizedDotOp(
     PatternRewriter& rewriter, Operation* op,
     llvm::StringMap<Attribute>& identifier_to_attr,
     QuantMethod quantization_method, bool enable_per_channel_quantization) {
   NamedAttrList attrs;
 
-  // Fill quantization related attributes.
-  FillQuantizationAttributes(rewriter, op, attrs, identifier_to_attr,
-                             quantization_method);
-
-  if (!(quantization_method ==
-        tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE)) {
+  if (quantization_method ==
+      tensorflow::quantization::QuantizationMethod::METHOD_DYNAMIC_RANGE_INT8) {
+    // Fill quantization related attributes for Hybrid op.
+    if (failed(FillQuantizationAttributes(rewriter, op, attrs,
+                                          identifier_to_attr,
+                                          OpType::kDynamicRangeOp))) {
+      return failure();
+    }
+  } else {
+    // Fill quantization related attributes for fully quantized op.
+    if (failed(FillQuantizationAttributes(
+            rewriter, op, attrs, identifier_to_attr, OpType::kBinaryOp))) {
+      return failure();
+    }
     // Per-channel activation is not supported
     attrs.push_back(rewriter.getNamedAttr("lhs_quantization_axis",
-                                          rewriter.getI64IntegerAttr(-1)));
-    attrs.push_back(rewriter.getNamedAttr("output_quantization_axis",
                                           rewriter.getI64IntegerAttr(-1)));
   }
 
@@ -158,9 +253,11 @@ LogicalResult FillAttributesForUniformQuantizedDotOp(
   absl::flat_hash_set<int> operands = spec->quantizable_operands;
   int quant_dim = -1;
   if (enable_per_channel_quantization && operands.size() == 1) {
-    quant_dim = spec->coeff_op_quant_dim[*(spec->quantizable_operands.begin())];
+    quant_dim = spec->coeff_op_quant_dim[*(operands.begin())];
   }
   attrs.push_back(rewriter.getNamedAttr("rhs_quantization_axis",
+                                        rewriter.getI64IntegerAttr(quant_dim)));
+  attrs.push_back(rewriter.getNamedAttr("output_quantization_axis",
                                         rewriter.getI64IntegerAttr(quant_dim)));
 
   op->setAttrs(rewriter.getDictionaryAttr(attrs));
@@ -168,6 +265,7 @@ LogicalResult FillAttributesForUniformQuantizedDotOp(
   return success();
 }
 
+// This LogicalResult covers both the hybrid and fully quantized op cases.
 LogicalResult FillAttributesForUniformQuantizedConvolutionOp(
     PatternRewriter& rewriter, Operation* op,
     llvm::StringMap<Attribute>& identifier_to_attr,
@@ -211,16 +309,26 @@ LogicalResult FillAttributesForUniformQuantizedConvolutionOp(
   attrs.push_back(rewriter.getNamedAttr(
       feature_group_cnt_attr, rewriter.getI64IntegerAttr(feature_group_cnt)));
 
-  // Fill quantization related attributes.
-  FillQuantizationAttributes(rewriter, op, attrs, identifier_to_attr,
-                             quantization_method);
+  if (quantization_method ==
+      tensorflow::quantization::QuantizationMethod::METHOD_DYNAMIC_RANGE_INT8) {
+    // Fill quantization related attributes for Hybrid op.
+    if (failed(FillQuantizationAttributes(rewriter, op, attrs,
+                                          identifier_to_attr,
+                                          OpType::kDynamicRangeOp))) {
+      return failure();
+    }
+  } else {
+    // Fill quantization related attributes for fully quantized op.
+    if (failed(FillQuantizationAttributes(
+            rewriter, op, attrs, identifier_to_attr, OpType::kBinaryOp))) {
+      return failure();
+    }
+  }
 
   if (quantization_method !=
-      tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE) {
+      tensorflow::quantization::QuantizationMethod::METHOD_DYNAMIC_RANGE_INT8) {
     // Per-channel activation is not supported
     attrs.push_back(rewriter.getNamedAttr("lhs_quantization_axis",
-                                          rewriter.getI64IntegerAttr(-1)));
-    attrs.push_back(rewriter.getNamedAttr("output_quantization_axis",
                                           rewriter.getI64IntegerAttr(-1)));
   }
 
@@ -228,9 +336,11 @@ LogicalResult FillAttributesForUniformQuantizedConvolutionOp(
   absl::flat_hash_set<int> operands = spec->quantizable_operands;
   int quant_dim = -1;
   if (enable_per_channel_quantization && operands.size() == 1) {
-    quant_dim = spec->coeff_op_quant_dim[*(spec->quantizable_operands.begin())];
+    quant_dim = spec->coeff_op_quant_dim[*(operands.begin())];
   }
   attrs.push_back(rewriter.getNamedAttr("rhs_quantization_axis",
+                                        rewriter.getI64IntegerAttr(quant_dim)));
+  attrs.push_back(rewriter.getNamedAttr("output_quantization_axis",
                                         rewriter.getI64IntegerAttr(quant_dim)));
 
   op->setAttrs(rewriter.getDictionaryAttr(attrs));
@@ -238,4 +348,122 @@ LogicalResult FillAttributesForUniformQuantizedConvolutionOp(
   return success();
 }
 
+LogicalResult FillAttributesForUniformQuantizedAddOp(
+    PatternRewriter& rewriter, Operation* op,
+    llvm::StringMap<Attribute>& identifier_to_attr,
+    const QuantMethod quantization_method,
+    const bool enable_per_channel_quantization) {
+  NamedAttrList attrs;
+
+  // Fill quantization related attributes.
+  if (failed(FillQuantizationAttributes(rewriter, op, attrs, identifier_to_attr,
+                                        OpType::kBinaryOp))) {
+    return failure();
+  }
+  Attribute activation_quantization_axis = rewriter.getI64IntegerAttr(-1);
+  if (enable_per_channel_quantization) {
+    // If either of lhs or rhs is per-channel quantized, the quantization axis
+    // must match for lhs, rhs, and output.
+    activation_quantization_axis =
+        GetQuantizationAxis(rewriter, op, /*operand_index=*/0);
+    if (activation_quantization_axis == rewriter.getI64IntegerAttr(-1)) {
+      activation_quantization_axis =
+          GetQuantizationAxis(rewriter, op, /*operand_index=*/1);
+    }
+  }
+  attrs.push_back(rewriter.getNamedAttr("lhs_quantization_axis",
+                                        activation_quantization_axis));
+  attrs.push_back(rewriter.getNamedAttr("rhs_quantization_axis",
+                                        activation_quantization_axis));
+  attrs.push_back(rewriter.getNamedAttr("output_quantization_axis",
+                                        activation_quantization_axis));
+  op->setAttrs(rewriter.getDictionaryAttr(attrs));
+
+  return success();
+}
+
+LogicalResult FillAttributesForUniformQuantizedClipByValueOp(
+    PatternRewriter& rewriter, Operation* op,
+    llvm::StringMap<Attribute>& identifier_to_attr,
+    QuantMethod quantization_method, bool enable_per_channel_quantization) {
+  NamedAttrList attrs;
+
+  // Fill quantization related attributes.
+  if (failed(FillQuantizationAttributes(rewriter, op, attrs, identifier_to_attr,
+                                        OpType::kUnaryOp))) {
+    return failure();
+  }
+
+  Attribute activation_quantization_axis = rewriter.getI64IntegerAttr(-1);
+  if (enable_per_channel_quantization) {
+    activation_quantization_axis =
+        GetQuantizationAxis(rewriter, op, /*operand_index=*/0);
+  }
+  attrs.push_back(
+      rewriter.getNamedAttr("quantization_axis", activation_quantization_axis));
+  op->setAttrs(rewriter.getDictionaryAttr(attrs));
+
+  return success();
+}
+
+LogicalResult FillAttributesForUniformRequantizeOp(
+    PatternRewriter& rewriter, Operation* op,
+    llvm::StringMap<Attribute>& identifier_to_attr,
+    QuantMethod quantization_method, bool enable_per_channel_quantization) {
+  NamedAttrList attrs;
+
+  // Fill quantization related attributes.
+  if (failed(FillQuantizationAttributes(rewriter, op, attrs, identifier_to_attr,
+                                        OpType::kQuantizationOp))) {
+    return failure();
+  }
+
+  Attribute activation_quantization_axis = rewriter.getI64IntegerAttr(-1);
+  Attribute output_quantization_axis = rewriter.getI64IntegerAttr(-1);
+  // TODO(b/296916785): Revisit axis assignment logic.
+  if (enable_per_channel_quantization) {
+    activation_quantization_axis =
+        GetQuantizationAxis(rewriter, op, /*operand_index=*/0);
+
+    auto output_scale_type = op->getOperand(3).getType().dyn_cast<ShapedType>();
+    if (!output_scale_type) {
+      return failure();
+    }
+    if (output_scale_type.hasRank() && 0 < output_scale_type.getRank()) {
+      output_quantization_axis = activation_quantization_axis;
+    }
+  }
+  // For per-axis -> per-axis requantization, input and output quantization
+  // axis must be equal.
+  attrs.push_back(rewriter.getNamedAttr("input_quantization_axis",
+                                        activation_quantization_axis));
+  attrs.push_back(rewriter.getNamedAttr("output_quantization_axis",
+                                        output_quantization_axis));
+  op->setAttrs(rewriter.getDictionaryAttr(attrs));
+
+  return success();
+}
+
+LogicalResult FillAttributesForUniformQuantizeOp(
+    PatternRewriter& rewriter, Operation* op,
+    llvm::StringMap<Attribute>& identifier_to_attr,
+    QuantMethod quantization_method, bool enable_per_channel_quantization) {
+  NamedAttrList attrs;
+
+  // Fill quantization related attributes.
+  if (failed(FillQuantizationAttributes(rewriter, op, attrs, identifier_to_attr,
+                                        OpType::kUnaryOp))) {
+    return failure();
+  }
+  Attribute quantization_axis = rewriter.getI64IntegerAttr(-1);
+  // TODO(b/296916785): Revisit axis assignment logic.
+  if (enable_per_channel_quantization) {
+    quantization_axis = rewriter.getI64IntegerAttr(3);
+  }
+
+  attrs.push_back(
+      rewriter.getNamedAttr("quantization_axis", quantization_axis));
+  op->setAttrs(rewriter.getDictionaryAttr(attrs));
+  return success();
+}
 }  // namespace mlir::quant

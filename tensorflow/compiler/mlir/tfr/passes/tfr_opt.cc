@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -39,5 +40,6 @@ int main(int argc, char **argv) {
                   mlir::shape::ShapeDialect, mlir::quant::QuantizationDialect,
                   mlir::quantfork::QuantizationForkDialect,
                   mlir::TFR::TFRDialect>();
+  mlir::func::registerAllExtensions(registry);
   return failed(mlir::MlirOptMain(argc, argv, "TFR Pass Driver\n", registry));
 }

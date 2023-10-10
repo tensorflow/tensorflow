@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -87,6 +88,22 @@ class DataTransferClient {
   // Builds a DataTransferClient from the factory registered under `name`.
   static Status Build(std::string name, Config config,
                       std::unique_ptr<DataTransferClient>* out);
+
+  // Returns a string describing properties of the client relevant for checking
+  // compatibility with a server for a given protocol.
+  virtual StatusOr<std::string> GetCompatibilityInfo() const {
+    return std::string();
+  }
+
+  // Returns an error if the client is incompatible with a server which has the
+  // properties described in `server_compatibility_info`.
+  virtual Status CheckCompatibility(
+      const std::string& server_compatibility_info) const {
+    return OkStatus();
+  }
+
+ protected:
+  Env* const env_ = Env::Default();
 };
 
 // Server for communicating with the tf.data service transfer client.
@@ -102,17 +119,20 @@ class DataTransferServer {
   virtual Status Start() = 0;
 
   // Return the port that this server is listening on.
-  virtual int get_port() = 0;
+  virtual int Port() const = 0;
 
   // Register a DataTransferServer factory under `name`.
   static void Register(std::string name, ServerFactoryT factory);
 
-  // Returns the names under which servers have been `Register`ed.
-  static std::vector<std::string> RegisteredNames();
-
   // Builds a DataTransferServer from the factory registered with `name`.
   static Status Build(std::string name, GetElementT get_element,
                       std::shared_ptr<DataTransferServer>* out);
+
+  // Returns a string describing properties of the server relevant for checking
+  // compatibility with a client for a given protocol.
+  virtual StatusOr<std::string> GetCompatibilityInfo() const {
+    return std::string();
+  }
 };
 
 }  // namespace data

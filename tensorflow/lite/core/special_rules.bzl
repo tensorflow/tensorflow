@@ -25,3 +25,7 @@ def verifier_visibility_allowlist():
 def delegate_registry_visibility_allowlist():
     """Returns a list of packages that can depend on delegate_registry.h."""
     return []
+
+def macros_visibility_allowlist():
+    """Returns a list of packages that can depend on macros.h."""
+    return []

@@ -17,19 +17,21 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -47,12 +49,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
-#include "tensorflow/core/util/ptr_util.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/refcount.h"
-#include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/refcount.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -80,39 +81,50 @@ Status Iterator::GetNext(std::vector<Tensor>* outputs, bool* end_of_input) {
   return iterator_->GetNext(ctx_.get(), outputs, end_of_input);
 }
 
-StatusOr<Tensor> Iterator::Save() {
+StatusOr<std::vector<Tensor>> Iterator::Save() {
   VariantTensorDataWriter writer;
   TF_RETURN_IF_ERROR(iterator_->Save(serialization_ctx_.get(), &writer));
   std::vector<std::unique_ptr<VariantTensorData>> data;
   writer.ReleaseData(&data);
 
-  int64_t num_tensors = data.size();
-  Tensor serialized(DT_VARIANT, TensorShape({num_tensors}));
+  std::vector<Tensor> serialized;
   for (size_t i = 0; i < data.size(); ++i) {
+    Tensor tensor(DT_VARIANT, TensorShape({1}));
     IteratorStateVariant variant;
     TF_RETURN_IF_ERROR(variant.InitializeFromVariantData(std::move(data[i])));
-    serialized.vec<Variant>()(i) = std::move(variant);
+    tensor.vec<Variant>()(0) = std::move(variant);
+    serialized.push_back(std::move(tensor));
   }
   return serialized;
 }
 
-Status Iterator::Restore(const Tensor& saved_iterator) {
-  int64_t num_tensors = saved_iterator.dim_size(0);
-  auto saved_vec = saved_iterator.vec<Variant>();
+Status Iterator::Restore(const std::vector<Tensor>& saved_iterator) {
   std::vector<const VariantTensorData*> data;
-  data.reserve(num_tensors);
-  for (int i = 0; i < num_tensors; ++i) {
-    auto* variant = saved_vec(i).get<IteratorStateVariant>();
+  data.reserve(saved_iterator.size());
+  for (int i = 0; i < saved_iterator.size(); ++i) {
+    auto saved_vec = saved_iterator[i].vec<Variant>();
+    auto* variant = saved_vec(0).get<IteratorStateVariant>();
     if (!variant) {
       return errors::Internal(
           "Cannot initialize an iterator from tensor ",
-          saved_vec(i).DebugString(),
+          saved_vec(0).DebugString(),
           ". Expected a variant tensor of type IteratorStateVariant.");
     }
     data.push_back(variant->GetData());
   }
   VariantTensorDataReader reader(data);
   return iterator_->Restore(ctx_.get(), &reader);
+}
+
+std::optional<double> Iterator::GetProcessingTimeNsec() const {
+  if (ctx_->model() == nullptr) return std::nullopt;
+
+  double processing_time_nsec =
+      ctx_->model()->ComputeSnapshotProcessingTimeNsec();
+  if (processing_time_nsec > 0)
+    return processing_time_nsec;
+  else
+    return std::nullopt;
 }
 
 Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
@@ -133,11 +145,12 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
       TF_GRAPH_DEF_VERSION, flib_def.get(), OptimizerOptions{},
       /*thread_pool=*/nullptr, /*parent=*/nullptr,
       /*session_metadata=*/nullptr,
-      Rendezvous::Factory{
-          [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
-            *r = new IntraProcessRendezvous(device_mgr);
-            return OkStatus();
-          }});
+      Rendezvous::Factory{[](const int64_t, const DeviceMgr* device_mgr,
+                             tsl::core::RefCountPtr<Rendezvous>* r) {
+        *r = tsl::core::RefCountPtr<Rendezvous>(
+            new IntraProcessRendezvous(device_mgr));
+        return OkStatus();
+      }});
 
   string fetch_node = "";
   for (const auto& node : graph_def.node()) {
@@ -168,7 +181,7 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
   OpKernelContext ctx(&op_params, /*num_outputs=*/0);
   TF_RETURN_IF_ERROR(data::FinalizeDataset(&ctx, dataset, &finalized_dataset));
   core::ScopedUnref unref(finalized_dataset);
-  *result = WrapUnique(new Dataset(
+  *result = absl::WrapUnique(new Dataset(
       finalized_dataset, dataset, device_mgr.release(), pflr.release(),
       flib_def.release(), pool.release(), std::move(runner)));
   return OkStatus();
@@ -194,6 +207,11 @@ Status Dataset::MakeIterator(
             std::back_inserter(params.split_providers));
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
+  // The model should only be created if autotuning is on.
+  if (ShouldUseAutotuning(finalized_dataset_->options())) {
+    params.model = std::make_shared<model::Model>();
+  }
+  params.run_mode = RunMode::STANDALONE;
   ctx = std::make_unique<IteratorContext>(std::move(params));
   SerializationContext::Params serialization_params(&op_ctx);
   auto serialization_ctx =
@@ -203,8 +221,8 @@ Status Dataset::MakeIterator(
   std::unique_ptr<IteratorBase> iterator;
   TF_RETURN_IF_ERROR(finalized_dataset_->MakeIterator(
       ctx.get(), /*parent=*/nullptr, "Iterator", &iterator));
-  *result = WrapUnique(new Iterator(iterator.release(), ctx.release(),
-                                    serialization_ctx.release()));
+  *result = absl::WrapUnique(new Iterator(iterator.release(), ctx.release(),
+                                          serialization_ctx.release()));
   return OkStatus();
 }
 
