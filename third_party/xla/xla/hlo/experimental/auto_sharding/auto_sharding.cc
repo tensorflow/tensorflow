@@ -107,12 +107,14 @@ std::vector<double> ReshardingCostVector(
 
 // Factory functions for StrategyVector.
 std::unique_ptr<StrategyVector> CreateLeafStrategyVectorWithoutInNodes(
-    size_t instruction_id, LeafStrategies& leaf_strategies) {
+    size_t instruction_id, LeafStrategies& leaf_strategies,
+    std::optional<int64_t> operand_idx = std::nullopt) {
   auto strategies = std::make_unique<StrategyVector>();
   strategies->is_tuple = false;
   strategies->node_idx = leaf_strategies.size();
   leaf_strategies.push_back(strategies.get());
   strategies->instruction_id = instruction_id;
+  strategies->operand_idx = operand_idx;
   return strategies;
 }
 
@@ -256,7 +258,8 @@ std::unique_ptr<StrategyVector> MaybeFollowInsStrategyVector(
     size_t instruction_id, bool have_memory_cost,
     LeafStrategies& leaf_strategies, const ClusterEnvironment& cluster_env,
     StableHashMap<NodeIdx, std::vector<ShardingStrategy>>&
-        pretrimmed_strategy_map) {
+        pretrimmed_strategy_map,
+    std::optional<int64_t> operand_idx = std::nullopt) {
   std::unique_ptr<StrategyVector> strategies;
   if (src_strategies->is_tuple) {
     CHECK(shape.IsTuple());
@@ -271,8 +274,8 @@ std::unique_ptr<StrategyVector> MaybeFollowInsStrategyVector(
     }
   } else {
     CHECK(shape.IsArray() || shape.IsToken());
-    strategies =
-        CreateLeafStrategyVectorWithoutInNodes(instruction_id, leaf_strategies);
+    strategies = CreateLeafStrategyVectorWithoutInNodes(
+        instruction_id, leaf_strategies, operand_idx);
     strategies->in_nodes.push_back(src_strategies);
     // Only follows the given strategy when there is no other strategy to be
     // restored.
@@ -2179,7 +2182,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           strategies->childs.push_back(MaybeFollowInsStrategyVector(
               src_strategies, operand->shape(), instruction_id,
               /* have_memory_cost= */ true, leaf_strategies, cluster_env,
-              pretrimmed_strategy_map));
+              pretrimmed_strategy_map, /* operand_idx */ i));
         }
         break;
       }
@@ -2474,6 +2477,11 @@ AutoShardingSolverResult CallSolver(
     if (iter != sharding_propagation_solution.end()) {
       CHECK(iter->second->has_sharding()) << iter->second->ToString();
       default_strategy = iter->second->sharding();
+      if (strategies->operand_idx) {
+        const auto& tuple_elements = default_strategy.tuple_elements();
+        CHECK_LT(*strategies->operand_idx, tuple_elements.size());
+        default_strategy = tuple_elements[*strategies->operand_idx];
+      }
     }
     for (NodeStrategyIdx j = 0; j < strategies->leaf_vector.size(); ++j) {
       const ShardingStrategy& strategy = strategies->leaf_vector[j];
