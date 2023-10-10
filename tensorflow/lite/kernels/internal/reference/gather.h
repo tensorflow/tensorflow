@@ -17,16 +17,20 @@ limitations under the License.
 
 #include <cstring>
 
+#include "ruy/profiler/instrumentation.h"  // from @ruy
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 
 namespace tflite {
 namespace reference_ops {
 
 template <typename T, typename CoordsT = int32>
-inline void Gather(const tflite::GatherParams& op_params,
-                   const RuntimeShape& input_shape, const T* input_data,
-                   const RuntimeShape& coords_shape, const CoordsT* coords_data,
-                   const RuntimeShape& output_shape, T* output_data) {
+inline TfLiteStatus Gather(const tflite::GatherParams& op_params,
+                           const RuntimeShape& input_shape, const T* input_data,
+                           const RuntimeShape& coords_shape,
+                           const CoordsT* coords_data,
+                           const RuntimeShape& output_shape, T* output_data,
+                           bool int4_input = false) {
   ruy::profiler::ScopeLabel label("Gather");
   int axis = op_params.axis;
   if (axis < 0) {
@@ -64,27 +68,38 @@ inline void Gather(const tflite::GatherParams& op_params,
     inner_size *= input_shape.Dims(i);
   }
 
+  if (int4_input) {
+    // TODO(b/298210669) It doesn't handle the case that inner_size is not
+    // divisible by 2.
+    TFLITE_DCHECK_EQ(inner_size % 2, 0);
+    inner_size /= 2;
+  }
+
   int coord_size = 1;
   for (int i = batch_dims; i < coords_shape.DimensionsCount(); ++i) {
     coord_size *= coords_shape.Dims(i);
   }
 
+  int flat_size = input_shape.FlatSize();
   for (int batch = 0; batch < batch_size; ++batch) {
     for (int outer = 0; outer < outer_size; ++outer) {
       for (int i = 0; i < coord_size; ++i) {
-        TFLITE_DCHECK_GE(coords_data[i], 0);
-        TFLITE_DCHECK_LT(coords_data[i], axis_size);
         // TODO(rsun): replace memcpy with a for loop
+        int64_t from_pos = (((batch * outer_size) + outer) * axis_size +
+                            coords_data[batch * coord_size + i]) *
+                           inner_size;
+        if (from_pos < 0 || from_pos + inner_size > flat_size) {
+          return kTfLiteError;
+        }
+
         std::memcpy(
             output_data +
                 (((batch * outer_size) + outer) * coord_size + i) * inner_size,
-            input_data + (((batch * outer_size) + outer) * axis_size +
-                          coords_data[batch * coord_size + i]) *
-                             inner_size,
-            sizeof(T) * inner_size);
+            &input_data[from_pos], sizeof(T) * inner_size);
       }
     }
   }
+  return kTfLiteOk;
 }
 
 }  // namespace reference_ops

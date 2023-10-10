@@ -20,28 +20,42 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/status/status.h"
-#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/tools/delegates/compatibility/protos/compatibility_result.pb.h"
 #include "tensorflow/lite/tools/versioning/op_signature.h"
 
 namespace tflite {
 namespace tools {
 
+// TODO(b/243489631): Remove online mode support.
+
 // Base class for the delegate compatibility checker (DCC). Extracts the logic
 // of iterating through the model, and lets each specific DCC to check if the
-// operation of one node is compatible with that delegate.
+// operation of a node is compatible with that delegate. TfLiteNode and
+// operator (in schema.fbs) are equivalent.
+// There are two modes supported: online and offline. Online mode needs
+// TfLiteContext while offline mode doesn't. Online mode is supported as an
+// intermediate stage and it is recommended that delegates support offline
+// mode in validation logic, if possible.
 class DelegateCompatibilityCheckerBase {
  public:
   virtual ~DelegateCompatibilityCheckerBase() = default;
 
-  // Iterates over the model, for each operator, call checkCompatibility with
-  // op_code, op, subgraph, model, and op_result as parameters.
-  // Stores the compatibility for each operation in the result structure.
-  absl::Status checkCompatibility(tflite::FlatBufferModel* model_buffer,
-                                  tflite::proto::CompatibilityResult* result);
+  // Iterates over the subgraphs in the model, and for each operator, checks if
+  // it is compatible with the delegate.
+  // Stores the compatibility for each operator in the result structure.
+  absl::Status checkModelCompatibilityOffline(
+      tflite::FlatBufferModel* model_buffer,
+      tflite::proto::CompatibilityResult* result);
+
+  // This function is implemented differently by each specific DCC.
+  // Stores the compatibility for each operator in the result structure.
+  virtual absl::Status checkModelCompatibilityOnline(
+      tflite::FlatBufferModel* model_buffer,
+      tflite::proto::CompatibilityResult* result) = 0;
 
   // This function gets the operation signature (OpSignature) from the
-  // op_code, op, subgraph and model, and then call to checkCompatibility()
+  // op_code, op, subgraph and model, and then call to checkOpSigCompatibility()
   // with the operation signature.
   // Params:
   //   op_code: Used to get the built in code of the operator, in
@@ -53,9 +67,8 @@ class DelegateCompatibilityCheckerBase {
   //   model: Used to get the buffer in order to check if the tensor is
   //               a constant tensor.
   //   op_result: Stores whether the operation is compatible or not and why.
-  // Returns: absl::OkStatus() if the operation is compatible with the delegate,
-  //               and the corresponding status in case it is not.
-  absl::Status checkCompatibility(
+  // Returns: absl::OkStatus() if the function is completed without exceptions.
+  absl::Status checkOpCompatibilityOffline(
       const tflite::OperatorCode* op_code, const tflite::Operator* op,
       const tflite::SubGraph* subgraph, const tflite::Model* model,
       tflite::proto::OpCompatibilityResult* op_result);
@@ -73,10 +86,11 @@ class DelegateCompatibilityCheckerBase {
 
  private:
   // This function is implemented differently by each specific DCC because
-  // they will contain the logic for checking if the operation in op_sig is
+  // they contain the logic for checking if the operation in op_sig is
   // compatible for that specific DCC. op_result stores whether the operation
-  // is supported or not.
-  virtual absl::Status checkCompatibility(
+  // is supported or not, and why. By using offline mode, only op_signature is
+  // used to perform the checks.
+  virtual absl::Status checkOpSigCompatibility(
       const tflite::OpSignature& op_sig,
       tflite::proto::OpCompatibilityResult* op_result) = 0;
 };

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_IR_IMPORTEXPORT_EXPORT_UTILS_H_
-#define TENSORFLOW_CORE_IR_IMPORTEXPORT_EXPORT_UTILS_H_
+#ifndef TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVERT_ATTRIBUTES_H_
+#define TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVERT_ATTRIBUTES_H_
 
 #include <string>
 
@@ -84,4 +84,4 @@ tensorflow::Status ConvertHandleData(ArrayAttr handle_data_arr,
 }  // namespace tfg
 }  // namespace mlir
 
-#endif  // TENSORFLOW_CORE_IR_IMPORTEXPORT_EXPORT_UTILS_H_
+#endif  // TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVERT_ATTRIBUTES_H_

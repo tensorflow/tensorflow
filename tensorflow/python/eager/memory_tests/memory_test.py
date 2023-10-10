@@ -43,7 +43,8 @@ class MemoryTest(test.TestCase):
       inputs = Variable(array_ops.zeros([32, 100], dtypes.float32))
       del inputs
 
-    memory_test_util.assert_no_leak(f, num_iters=10000)
+    memory_test_util.assert_no_leak(
+        f, num_iters=10000, increase_threshold_absolute_mb=10)
 
   def testMemoryLeakInFunction(self):
     if not memory_test_util.memory_profiler_is_available():

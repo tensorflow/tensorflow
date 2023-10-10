@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_STACK_TRACE_H_
-#define TENSORFLOW_CORE_PLATFORM_STACK_TRACE_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_STACK_FRAME_H_
+#define TENSORFLOW_CORE_PLATFORM_STACK_FRAME_H_
 
-#include "tensorflow/tsl/platform/stack_frame.h"
+#include "tsl/platform/stack_frame.h"
 
 namespace tensorflow {
 typedef tsl::StackFrame StackFrame;
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_STACK_TRACE_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_STACK_FRAME_H_

@@ -25,13 +25,13 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "xla/service/hlo.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 
-std::vector<std::pair<uint64_t /*program_id*/, std::unique_ptr<xla::HloProto>>>
+absl::flat_hash_map<uint64_t /*program_id*/, std::unique_ptr<xla::HloProto>>
 ParseHloProtosFromXSpace(const XSpace& space);
 
 class HloProtoMap {
@@ -43,11 +43,17 @@ class HloProtoMap {
   // Returns whether <hlo_proto> is new to HloProtoMap.
   bool AddHloProto(uint64_t program_id, const xla::HloProto* hlo_proto);
 
+  size_t size() const { return hlo_protos_by_program_id_.size(); }
+
   auto begin() const { return hlo_protos_by_program_id_.begin(); }
   auto end() const { return hlo_protos_by_program_id_.end(); }
 
   bool contains(absl::string_view name) const {
     return hlo_protos_by_name_.contains(name);
+  }
+
+  bool contains(uint64_t program_id) const {
+    return hlo_protos_by_program_id_.contains(program_id);
   }
 
   // Returns a list of module names (not sorted).
@@ -63,8 +69,11 @@ class HloProtoMap {
   absl::StatusOr<const xla::HloProto*> GetHloProtoByModuleName(
       absl::string_view module_name) const;
 
+  absl::StatusOr<const xla::HloProto*> GetHloProtoByProgramId(
+      uint64_t program_id) const;
+
  private:
-  absl::flat_hash_map<int64_t, const xla::HloProto*> hlo_protos_by_program_id_;
+  absl::flat_hash_map<uint64_t, const xla::HloProto*> hlo_protos_by_program_id_;
   absl::flat_hash_map<std::string, const xla::HloProto*> hlo_protos_by_name_;
   std::vector<std::unique_ptr<const xla::HloProto>> owned_hlo_protos_;
 };

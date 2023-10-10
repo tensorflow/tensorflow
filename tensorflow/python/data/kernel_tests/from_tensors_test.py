@@ -14,8 +14,9 @@
 # ==============================================================================
 """Tests for `tf.data.Dataset.from_tensors()."""
 import collections
-from absl.testing import parameterized
+import dataclasses
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
@@ -32,7 +33,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -43,6 +44,22 @@ try:
   import attr  # pylint:disable=g-import-not-at-top
 except ImportError:
   attr = None
+
+
+@dataclasses.dataclass
+class MaskedTensor:
+  mask: bool
+  value: np.ndarray
+
+  def __tf_flatten__(self):
+    metadata = (self.mask,)
+    components = (self.value,)
+    return metadata, components
+
+  def __tf_unflatten__(self, metadata, components):
+    mask = metadata[0]
+    value = components[0]
+    return MaskedTensor(mask=mask, value=value)
 
 
 class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -152,6 +169,12 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, expected_output=[element])
 
   @combinations.generate(test_base.default_test_combinations())
+  def testFromTensorsDataclass(self):
+    mt = MaskedTensor(mask=True, value=np.array([1]))
+    dataset = dataset_ops.Dataset.from_tensors(mt)
+    self.assertDatasetProduces(dataset, expected_output=[mt])
+
+  @combinations.generate(test_base.default_test_combinations())
   def testFromTensorsMixedRagged(self):
     components = (np.array(1), np.array([1, 2, 3]), np.array(37.0),
                   sparse_tensor.SparseTensorValue(
@@ -249,7 +272,7 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
                      dataset_ops.get_legacy_output_types(dataset))
     self.assertEqual([3], dataset_ops.get_legacy_output_shapes(dataset))
 
-    dataset = dataset.map(lambda x: array_ops.stack([x, x]))
+    dataset = dataset.map(lambda x: array_ops_stack.stack([x, x]))
     self.assertEqual(dtypes.int64,
                      dataset_ops.get_legacy_output_types(dataset))
     self.assertEqual([2, 3], dataset_ops.get_legacy_output_shapes(dataset))
@@ -302,17 +325,24 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
 class FromTensorsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                 parameterized.TestCase):
 
-  def _build_tensor_dataset(self, variable_array):
+  def _build_tensor_dataset(self, variable_array, options=None):
     components = (variable_array, np.array([1, 2, 3]), np.array(37.0))
-
-    return dataset_ops.Dataset.from_tensors(components)
+    dataset = dataset_ops.Dataset.from_tensors(components)
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def test(self, verify_fn):
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, symbolic_checkpoint):
     arr = np.array(1)
-    verify_fn(self, lambda: self._build_tensor_dataset(arr), num_outputs=1)
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(
+        self, lambda: self._build_tensor_dataset(arr, options), num_outputs=1)
 
 
 class FromTensorsRandomAccessTest(test_base.DatasetTestBase,

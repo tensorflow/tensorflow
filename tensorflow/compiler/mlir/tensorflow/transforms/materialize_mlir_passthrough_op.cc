@@ -12,7 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <iterator>
 #include <memory>
+#include <string>
 #include <tuple>
 
 #include "llvm/ADT/STLExtras.h"
@@ -29,27 +31,27 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 #define DEBUG_TYPE "tf-materialize-passthrough-op"
 
 namespace mlir {
 namespace {
 
+#define GEN_PASS_DEF_MATERIALIZEPASSTHROUGHOP
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class MaterializePassthroughOpPass
-    : public TF::MaterializePassthroughOpBase<MaterializePassthroughOpPass> {
+    : public impl::MaterializePassthroughOpBase<MaterializePassthroughOpPass> {
  public:
   void runOnOperation() override;
 };
 
 void MaterializePassthroughOpPass::runOnOperation() {
-  getOperation().walk([](Operation *op) {
-    auto passthrough_op = dyn_cast<TF::MlirPassthroughOp>(op);
-    if (!passthrough_op) return;
-    std::string module_string(passthrough_op.mlir_module());
+  getOperation().walk([](TF::MlirPassthroughOp op) {
+    std::string module_string(op.getMlirModule());
     // Parse the module.
     auto nested_module =
-        parseSourceString<ModuleOp>(module_string, op->getContext());
+        parseSourceString<ModuleOp>(module_string, op.getContext());
     if (!nested_module) {
       op->emitError() << "could not parse attached MLIR module";
       return;

@@ -1,8 +1,9 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tflite_portable_test_suite_combined")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -42,12 +43,7 @@ config_setting(
 cc_library(
     name = "tflite_with_xnnpack_qs8_default",
     compatible_with = get_compatible_with_portable(),
-    defines = select({
-        # Enable for WebAssembly builds
-        "//tensorflow:emscripten": ["XNNPACK_DELEGATE_ENABLE_QS8=1"],
-        # Disable for all other builds
-        "//conditions:default": [],
-    }),
+    defines = ["XNNPACK_DELEGATE_ENABLE_QS8=1"],
 )
 
 cc_library(
@@ -81,12 +77,7 @@ config_setting(
 cc_library(
     name = "tflite_with_xnnpack_qu8_default",
     compatible_with = get_compatible_with_portable(),
-    defines = select({
-        # Enable for WebAssembly builds
-        "//tensorflow:emscripten": ["XNNPACK_DELEGATE_ENABLE_QU8=1"],
-        # Disable for all other builds
-        "//conditions:default": [],
-    }),
+    defines = ["XNNPACK_DELEGATE_ENABLE_QU8=1"],
 )
 
 cc_library(
@@ -104,6 +95,117 @@ cc_library(
     }),
 )
 
+# Enable offloading of Fully Connected operator with dynamic weights to XNNPACK delegate
+config_setting(
+    name = "tflite_with_xnnpack_dynamic_fully_connected_explicit_true",
+    define_values = {"tflite_with_xnnpack_dynamic_fully_connected": "true"},
+)
+
+# Disable offloading of Fully Connected operator with dynamic weights to XNNPACK delegate
+config_setting(
+    name = "tflite_with_xnnpack_dynamic_fully_connected_explicit_false",
+    define_values = {"tflite_with_xnnpack_dynamic_fully_connected": "false"},
+)
+
+# Default setting for offloading of Fully Connected operator with dynamic weights to XNNPACK delegate
+cc_library(
+    name = "tflite_with_xnnpack_dynamic_fully_connected_default",
+    compatible_with = get_compatible_with_portable(),
+    defines = [],
+)
+
+cc_library(
+    name = "tflite_with_xnnpack_dynamic_fully_connected",
+    compatible_with = get_compatible_with_portable(),
+    defines = select({
+        ":tflite_with_xnnpack_dynamic_fully_connected_explicit_true": ["XNNPACK_DELEGATE_ENABLE_DYNAMIC_FULLY_CONNECTED=1"],
+        ":tflite_with_xnnpack_dynamic_fully_connected_explicit_false": [],
+        "//conditions:default": [],
+    }),
+    deps = select({
+        ":tflite_with_xnnpack_dynamic_fully_connected_explicit_true": [],
+        ":tflite_with_xnnpack_dynamic_fully_connected_explicit_false": [],
+        "//conditions:default": [":tflite_with_xnnpack_dynamic_fully_connected_default"],
+    }),
+)
+
+# Enable logging of delegation errors in XNNPACK delegate
+config_setting(
+    name = "tflite_with_xnnpack_logging_explicit_true",
+    define_values = {"tflite_with_xnnpack_logging": "true"},
+)
+
+# Disable logging of delegation errors in XNNPACK delegate
+config_setting(
+    name = "tflite_with_xnnpack_logging_explicit_false",
+    define_values = {"tflite_with_xnnpack_logging": "false"},
+)
+
+# Default setting for logging of delegation errors in XNNPACK delegate
+cc_library(
+    name = "tflite_with_xnnpack_logging_default",
+    compatible_with = get_compatible_with_portable(),
+    defines = [],
+)
+
+cc_library(
+    name = "tflite_with_xnnpack_logging",
+    compatible_with = get_compatible_with_portable(),
+    defines = select({
+        ":tflite_with_xnnpack_logging_explicit_true": ["XNNPACK_DELEGATE_ENABLE_LOGGING=1"],
+        ":tflite_with_xnnpack_logging_explicit_false": [],
+        "//conditions:default": [],
+    }),
+    deps = select({
+        ":tflite_with_xnnpack_logging_explicit_true": [],
+        ":tflite_with_xnnpack_logging_explicit_false": [],
+        "//conditions:default": [":tflite_with_xnnpack_logging_default"],
+    }),
+)
+
+# Enable transient indirection buffers in XNNPACK delegate
+config_setting(
+    name = "tflite_with_xnnpack_transient_indirection_buffer_explicit_true",
+    define_values = {"tflite_with_xnnpack_transient_indirection_buffer": "true"},
+)
+
+# Disable transient indirection buffers in XNNPACK delegate
+config_setting(
+    name = "tflite_with_xnnpack_transient_indirection_buffer_explicit_false",
+    define_values = {"tflite_with_xnnpack_transient_indirection_buffer": "false"},
+)
+
+# Default setting for transient indirection buffers in XNNPACK delegate
+cc_library(
+    name = "tflite_with_xnnpack_transient_indirection_buffer_default",
+    compatible_with = get_compatible_with_portable(),
+    defines = [],
+)
+
+cc_library(
+    name = "tflite_with_xnnpack_transient_indirection_buffer",
+    compatible_with = get_compatible_with_portable(),
+    defines = select({
+        ":tflite_with_xnnpack_transient_indirection_buffer_explicit_true": ["XNNPACK_DELEGATE_ENABLE_TRANSIENT_INDIRECTION_BUFFER=1"],
+        ":tflite_with_xnnpack_transient_indirection_buffer_explicit_false": [],
+        "//conditions:default": [],
+    }),
+    deps = select({
+        ":tflite_with_xnnpack_transient_indirection_buffer_explicit_true": [],
+        ":tflite_with_xnnpack_transient_indirection_buffer_explicit_false": [],
+        "//conditions:default": [":tflite_with_xnnpack_transient_indirection_buffer_default"],
+    }),
+)
+
+cc_library(
+    name = "xnnpack_delegate_test",
+    testonly = True,
+    hdrs = ["xnnpack_delegate_test.h"],
+    deps = [
+        ":xnnpack_delegate",
+    ],
+)
+
 cc_library(
     name = "xnnpack_delegate",
     srcs = ["xnnpack_delegate.cc"],
@@ -116,19 +218,24 @@ cc_library(
     linkstatic = True,
     deps = [
         ":quantization_util",
+        ":tflite_with_xnnpack_dynamic_fully_connected",
+        ":tflite_with_xnnpack_logging",
         ":tflite_with_xnnpack_qs8",
         ":tflite_with_xnnpack_qu8",
+        ":tflite_with_xnnpack_transient_indirection_buffer",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
-        "@XNNPACK//:xnnpack_for_tflite",
+        "@XNNPACK",
     ],
 )
 
@@ -138,7 +245,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     visibility = internal_visibility_allowlist(),
     deps = [
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -152,15 +259,17 @@ cc_library(
         ":quantization_util",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:reduced_precision_support",
-        "@XNNPACK",
+        "@XNNPACK//:XNNPACK_test_mode",
     ],
 )
 
@@ -200,8 +309,9 @@ cc_library(
         ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
@@ -218,8 +328,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -237,8 +348,9 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
@@ -255,8 +367,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -274,8 +387,9 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
@@ -292,8 +406,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -311,8 +426,9 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
@@ -329,8 +445,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -346,8 +463,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -363,8 +481,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -382,8 +501,9 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
@@ -400,8 +520,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -417,8 +538,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -435,8 +557,9 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -453,8 +576,9 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -471,8 +595,9 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -488,8 +613,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -505,8 +631,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -522,8 +649,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -539,8 +667,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -556,8 +685,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -573,8 +703,49 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "quantized_variable_ops_tester",
+    testonly = 1,
+    srcs = ["quantized_variable_ops_tester.cc"],
+    hdrs = ["quantized_variable_ops_tester.h"],
+    deps = [
+        ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+# Same as quantized_variable_ops_tester above, but depends on xnnpack_delegate (no test
+# mode), used for quantized_variable_ops_multiple_subgraph_test. Why name this
+# no_test_mode instead of renaming the above to test_mode, because all testers
+# depend on test_mode by default, this keeps the name consistent.
+cc_library(
+    name = "quantized_variable_ops_tester_no_test_mode",
+    testonly = 1,
+    srcs = ["quantized_variable_ops_tester.cc"],
+    hdrs = ["quantized_variable_ops_tester.h"],
+    deps = [
+        ":xnnpack_delegate",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -590,8 +761,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -607,8 +779,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -624,8 +797,26 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "slice_tester",
+    testonly = 1,
+    srcs = ["slice_tester.cc"],
+    hdrs = ["slice_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -641,8 +832,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -658,8 +850,44 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "space_to_depth_tester",
+    testonly = 1,
+    srcs = ["space_to_depth_tester.cc"],
+    hdrs = ["space_to_depth_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "strided_slice_tester",
+    testonly = 1,
+    srcs = ["strided_slice_tester.cc"],
+    hdrs = ["strided_slice_tester.h"],
+    deps = [
+        ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -675,8 +903,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -692,8 +921,9 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
@@ -711,8 +941,9 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
@@ -730,11 +961,52 @@ cc_library(
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "variable_ops_tester",
+    testonly = 1,
+    srcs = ["variable_ops_tester.cc"],
+    hdrs = ["variable_ops_tester.h"],
+    deps = [
+        ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+# Same as variable_ops_tester above, but depends on xnnpack_delegate (no test
+# mode), used for variable_ops_multiple_subgraph_test. Why name this
+# no_test_mode instead of renaming the above to test_mode, because all testers
+# depend on test_mode by default, this keeps the name consistent.
+cc_library(
+    name = "variable_ops_tester_no_test_mode",
+    testonly = 1,
+    srcs = ["variable_ops_tester.cc"],
+    hdrs = ["variable_ops_tester.h"],
+    deps = [
+        ":xnnpack_delegate",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
@@ -1070,6 +1342,21 @@ cc_test(
 )
 
 cc_test(
+    name = "sum_test",
+    srcs = ["sum_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":reduce_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "minimum_test",
     srcs = ["minimum_test.cc"],
     linkopts = select({
@@ -1220,6 +1507,39 @@ cc_test(
 )
 
 cc_test(
+    name = "variable_ops_multiple_subgraph_test",
+    srcs = ["variable_ops_multiple_subgraph_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        # Don't use xnnpack_delegate_test_mode because we use CALL_ONCE here,
+        # which XNNPACK does not yet support, and test mode enforces that there
+        # are no unsupported operations.
+        ":xnnpack_delegate",
+        ":variable_ops_tester_no_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "variable_ops_test",
+    srcs = ["variable_ops_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":variable_ops_tester",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "relu_test",
     srcs = ["relu_test.cc"],
     linkopts = select({
@@ -1267,6 +1587,36 @@ cc_test(
 cc_test(
     name = "reshape_test",
     srcs = ["reshape_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":reshape_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "signed_quantized_reshape_test",
+    srcs = ["signed_quantized_reshape_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":reshape_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_quantized_reshape_test",
+    srcs = ["unsigned_quantized_reshape_test.cc"],
     linkopts = select({
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
@@ -1535,6 +1885,36 @@ cc_test(
 )
 
 cc_test(
+    name = "signed_quantized_slice_test",
+    srcs = ["signed_quantized_slice_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":slice_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "signed_quantized_space_to_depth_test",
+    srcs = ["signed_quantized_space_to_depth_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":space_to_depth_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "signed_quantized_split_test",
     srcs = ["signed_quantized_split_test.cc"],
     linkopts = select({
@@ -1550,6 +1930,21 @@ cc_test(
 )
 
 cc_test(
+    name = "signed_quantized_strided_slice_test",
+    srcs = ["signed_quantized_strided_slice_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":strided_slice_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "signed_quantized_sub_test",
     srcs = ["signed_quantized_sub_test.cc"],
     linkopts = select({
@@ -1558,6 +1953,21 @@ cc_test(
     }),
     deps = [
         ":quantized_binary_elementwise_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "signed_quantized_tanh_test",
+    srcs = ["signed_quantized_tanh_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_unary_elementwise_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1595,14 +2005,47 @@ cc_test(
 )
 
 cc_test(
-    name = "split_test",
-    srcs = ["split_test.cc"],
+    name = "signed_quantized_variable_ops_multiple_subgraph_test",
+    srcs = ["signed_quantized_variable_ops_multiple_subgraph_test.cc"],
     linkopts = select({
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
     deps = [
-        ":split_tester",
+        ":test_main",
+        # Don't use xnnpack_delegate_test_mode because we use CALL_ONCE here,
+        # which XNNPACK does not yet support, and test mode enforces that there
+        # are no unsupported operations.
+        ":xnnpack_delegate",
+        ":quantized_variable_ops_tester_no_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "signed_quantized_variable_ops_test",
+    srcs = ["signed_quantized_variable_ops_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_variable_ops_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "slice_test",
+    srcs = ["slice_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":slice_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1618,6 +2061,36 @@ cc_test(
     }),
     deps = [
         ":softmax_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "space_to_depth_test",
+    srcs = ["space_to_depth_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":space_to_depth_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "split_test",
+    srcs = ["split_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":split_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1670,6 +2143,21 @@ cc_test(
 )
 
 cc_test(
+    name = "strided_slice_test",
+    srcs = ["strided_slice_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":strided_slice_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "sub_test",
     srcs = ["sub_test.cc"],
     linkopts = select({
@@ -1679,6 +2167,21 @@ cc_test(
     deps = [
         ":binary_elementwise_tester",
         ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "tanh_test",
+    srcs = ["tanh_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":unary_elementwise_tester",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
@@ -1925,6 +2428,36 @@ cc_test(
 )
 
 cc_test(
+    name = "unsigned_quantized_slice_test",
+    srcs = ["unsigned_quantized_slice_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":slice_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_quantized_space_to_depth_test",
+    srcs = ["unsigned_quantized_space_to_depth_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":space_to_depth_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "unsigned_quantized_split_test",
     srcs = ["unsigned_quantized_split_test.cc"],
     linkopts = select({
@@ -1940,6 +2473,21 @@ cc_test(
 )
 
 cc_test(
+    name = "unsigned_quantized_strided_slice_test",
+    srcs = ["unsigned_quantized_strided_slice_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":strided_slice_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "unsigned_quantized_sub_test",
     srcs = ["unsigned_quantized_sub_test.cc"],
     linkopts = select({
@@ -1948,6 +2496,21 @@ cc_test(
     }),
     deps = [
         ":quantized_binary_elementwise_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_quantized_tanh_test",
+    srcs = ["unsigned_quantized_tanh_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_unary_elementwise_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1985,6 +2548,39 @@ cc_test(
 )
 
 cc_test(
+    name = "unsigned_quantized_variable_ops_multiple_subgraph_test",
+    srcs = ["unsigned_quantized_variable_ops_multiple_subgraph_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        # Don't use xnnpack_delegate_test_mode because we use CALL_ONCE here,
+        # which XNNPACK does not yet support, and test mode enforces that there
+        # are no unsupported operations.
+        ":xnnpack_delegate",
+        ":quantized_variable_ops_tester_no_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_quantized_variable_ops_test",
+    srcs = ["unsigned_quantized_variable_ops_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_variable_ops_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "weights_cache_test",
     srcs = ["weights_cache_test.cc"],
     deps = [
@@ -1992,7 +2588,8 @@ cc_test(
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite:mutable_op_resolver",
+        "//tensorflow/lite/core:framework",
         "@com_google_googletest//:gtest",
     ],
 )

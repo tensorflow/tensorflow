@@ -68,7 +68,7 @@ REGISTER_OP("TPUReplicatedInput")
             // The return value of MergeInputHandleShapesAndTypes indicates
             // the shape was refined, not that there was an error.
             // TODO(phawkins): there seems to be no way to discover errors.
-            (void)c->MergeInputHandleShapesAndTypes(i, *shapes_and_types);
+            (void)!c->MergeInputHandleShapesAndTypes(i, *shapes_and_types);
           } else {
             shapes_and_types = c->input_handle_shapes_and_types(i);
           }

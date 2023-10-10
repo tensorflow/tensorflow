@@ -1,9 +1,13 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
+
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 licenses(["notice"])
 
 glob_lit_tests(
+    name = "all_tests",
     data = [
         ":debug_info_files",
         ":test_utilities",
@@ -37,7 +41,7 @@ filegroup(
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "saved_model_error",
     srcs = ["saved_model_error.py"],
     main = "saved_model_error.py",
@@ -48,7 +52,7 @@ py_binary(
     ],
 )
 
-py_binary(
+py_strict_binary(
     name = "concrete_function_error",
     srcs = ["concrete_function_error.py"],
     main = "concrete_function_error.py",

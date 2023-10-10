@@ -1,0 +1,38 @@
+op {
+  graph_op_name: "SegmentSumV2"
+  in_arg {
+    name: "segment_ids"
+    description: <<END
+A 1-D tensor whose size is equal to the size of `data`'s
+first dimension.  Values should be sorted and can be repeated.
+The values must be less than `num_segments`.
+
+Caution: The values are always validated to be sorted on CPU, never validated
+on GPU.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Has same shape as data, except for the first `segment_ids.rank`
+dimensions, which are replaced with a single dimension which has size
+`num_segments`.
+END
+  }
+  summary: "Computes the sum along segments of a tensor."
+  description: <<END
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+
+Computes a tensor such that
+\\(output_i = \sum_j data_j\\) where sum is over `j` such
+that `segment_ids[j] == i`.
+
+If the sum is empty for a given segment ID `i`, `output[i] = 0`.
+
+Note that this op is currently only supported with jit_compile=True.
+</div>
+
+END
+}

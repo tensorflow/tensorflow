@@ -15,36 +15,47 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/delegates/compatibility/common/delegate_compatibility_checker_base.h"
 
+#include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/tools/delegates/compatibility/common/delegate_compatibility_checker_util.h"
 
 namespace tflite {
 namespace tools {
 
-absl::Status DelegateCompatibilityCheckerBase::checkCompatibility(
+absl::Status DelegateCompatibilityCheckerBase::checkModelCompatibilityOffline(
     tflite::FlatBufferModel* model_buffer, proto::CompatibilityResult* result) {
-  auto model = tflite::GetModel(model_buffer);
+  auto model = model_buffer->GetModel();
   auto subgraphs = model->subgraphs();
   for (int i = 0; i < subgraphs->Length(); ++i) {
     const tflite::SubGraph* subgraph = subgraphs->Get(i);
     for (int j = 0; j < subgraph->operators()->Length(); ++j) {
       proto::OpCompatibilityResult* op_result =
           result->add_compatibility_results();
+      op_result->set_subgraph_index_in_model(i);
+      op_result->set_operator_index_in_subgraph(j);
       const tflite::Operator* op = subgraph->operators()->Get(j);
       const tflite::OperatorCode* op_code =
           model->operator_codes()->Get(op->opcode_index());
-      auto status = checkCompatibility(op_code, op, subgraph, model, op_result);
+      RETURN_IF_ERROR(
+          checkOpCompatibilityOffline(op_code, op, subgraph, model, op_result));
     }
   }
   return absl::OkStatus();
 }
 
-absl::Status DelegateCompatibilityCheckerBase::checkCompatibility(
+absl::Status DelegateCompatibilityCheckerBase::checkOpCompatibilityOffline(
     const tflite::OperatorCode* op_code, const tflite::Operator* op,
     const tflite::SubGraph* subgraph, const tflite::Model* model,
     proto::OpCompatibilityResult* op_result) {
   OpSignature op_sig = tflite::GetOpSignature(op_code, op, subgraph, model);
-  auto status = checkCompatibility(op_sig, op_result);
+  auto status = checkOpSigCompatibility(op_sig, op_result);
   if (op_sig.builtin_data) {
     free(op_sig.builtin_data);
   }

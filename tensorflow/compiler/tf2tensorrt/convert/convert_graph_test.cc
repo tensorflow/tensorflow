@@ -50,14 +50,14 @@ class FakeCluster : public grappler::Cluster {
   const DeviceSet* GetDeviceSet() const override { return device_set_; }
 
   string type() const override { return ""; }
-  Status Provision() override { return Status::OK(); }
+  Status Provision() override { return OkStatus(); }
   Status Initialize(const grappler::GrapplerItem& item) override {
-    return Status::OK();
+    return OkStatus();
   }
   Status Run(const GraphDef& graph_def,
              const std::vector<std::pair<string, Tensor>>& feed,
              const std::vector<string>& fetch, RunMetadata* metadata) override {
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

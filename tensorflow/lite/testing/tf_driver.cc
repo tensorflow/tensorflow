@@ -149,7 +149,7 @@ void TfDriver::LoadModel(const string& bin_file_path) {
   session_.reset(tensorflow::NewSession(options));
   auto status = session_->Create(graphdef);
   if (!status.ok()) {
-    Invalidate("Failed to create session. " + status.error_message());
+    Invalidate(absl::StrCat("Failed to create session. ", status.message()));
   }
 }
 
@@ -197,8 +197,8 @@ void TfDriver::Invoke(const std::vector<std::pair<string, string>>& inputs) {
   auto status = session_->Run({input_tensors_.begin(), input_tensors_.end()},
                               output_names_, {}, &output_tensors_);
   if (!status.ok()) {
-    Invalidate(absl::StrCat("TensorFlow failed to run graph:",
-                            status.error_message()));
+    Invalidate(
+        absl::StrCat("TensorFlow failed to run graph:", status.message()));
   }
 }
 

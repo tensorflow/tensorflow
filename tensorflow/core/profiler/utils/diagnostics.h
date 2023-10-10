@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PROFILER_UTILS_ERRORS_H_
-#define TENSORFLOW_CORE_PROFILER_UTILS_ERRORS_H_
+#ifndef TENSORFLOW_CORE_PROFILER_UTILS_DIAGNOSTICS_H_
+#define TENSORFLOW_CORE_PROFILER_UTILS_DIAGNOSTICS_H_
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/macros.h"
@@ -42,4 +42,4 @@ void PopulateOverviewDiagnostics(const OpStats& op_stats, Diagnostics* diag);
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PROFILER_UTILS_ERRORS_H_
+#endif  // TENSORFLOW_CORE_PROFILER_UTILS_DIAGNOSTICS_H_

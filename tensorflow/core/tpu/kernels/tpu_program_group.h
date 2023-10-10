@@ -16,22 +16,23 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_PROGRAM_GROUP_H_
 
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/client/compile_only_client.h"
-#include "tensorflow/compiler/xla/service/computation_placer.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "xla/client/compile_only_client.h"
+#include "xla/service/computation_placer.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xrt/xrt.pb.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -58,7 +59,7 @@ class TpuAotCompilationOptions : public xla::AotCompilationOptions {
     return allow_separate_sharding_programs_;
   }
 
-  const std::vector<xla::HloModuleConfig::ShardableValueUpdatePair>
+  std::vector<xla::HloModuleConfig::ShardableValueUpdatePair>
   shardable_value_update_pairs() const {
     return shardable_value_update_pairs_;
   }
@@ -86,7 +87,7 @@ class TpuAotCompilationOptions : public xla::AotCompilationOptions {
 
 class TpuProgramGroup : public TpuProgramGroupInterface {
  public:
-  using Status = ::stream_executor::port::Status;
+  using Status = ::tsl::Status;
 
   // Compiles Mlir or TF function computation by lowering into HLO IR and
   // returns TPU programs ready for execution.
@@ -184,7 +185,8 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   std::vector<xla::HloProto> hlo_metadatas_;  // Owned.
   std::vector<const xla::HloProto*> hlo_metadatas_ptrs_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TpuProgramGroup);
+  TpuProgramGroup(const TpuProgramGroup&) = delete;
+  void operator=(const TpuProgramGroup&) = delete;
 };
 
 }  // namespace tpu

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/lite/kernels/shim/status_macros.h"
 #include "tensorflow/lite/kernels/shim/tensor_view.h"
+#include "tensorflow/lite/kernels/shim/tf_tensor_view.h"
 
 namespace tflite {
 namespace shim {
@@ -98,7 +100,7 @@ TensorViewOr TfInvokeContext::GetOutput(const int idx,
   for (int i = 0; i < shape->size(); ++i) shape_64[i] = (*shape)[i];
   auto status = context_->allocate_output(
       idx, ::tensorflow::TensorShape(shape_64), &output_t);
-  if (!status.ok()) return ToAbslStatus(status);
+  if (!status.ok()) return status;
   SH_ASSIGN_OR_RETURN(const TfTensorView& tensor_view,
                       TensorView::New(output_t));
   return std::make_unique<TfTensorView>(std::move(tensor_view));

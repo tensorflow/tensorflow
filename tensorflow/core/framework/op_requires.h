@@ -62,7 +62,7 @@ namespace tensorflow {
     if (!TF_PREDICT_TRUE(STATUS.ok())) {                                       \
       CheckNotInComputeAsync((CTX), "OP_REQUIRES_OK_ASYNC");                   \
       if (!PAYLOAD_VALUE.empty()) {                                            \
-        STATUS.SetPayload(PAYLOAD_KEY, PAYLOAD_VALUE);                         \
+        STATUS.SetPayload(PAYLOAD_KEY, absl::Cord(PAYLOAD_VALUE));             \
       }                                                                        \
       (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, STATUS);                \
       return;                                                                  \
@@ -96,7 +96,7 @@ namespace tensorflow {
 #define OP_REQUIRES_VALUE_IMPL(statusor, lhs, ctx, rexpr) \
   auto statusor = (rexpr);                                \
   OP_REQUIRES_OK(ctx, statusor.status());                 \
-  lhs = std::move(statusor.ValueOrDie())
+  lhs = std::move(statusor.value())
 
 }  // namespace tensorflow
 

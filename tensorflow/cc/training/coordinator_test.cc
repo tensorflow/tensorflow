@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/cc/training/coordinator.h"
 
 #include "tensorflow/cc/training/queue_runner.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -179,21 +179,24 @@ TEST(CoordinatorTest, StatusReporting) {
   BlockingCounter counter(3);
 
   std::unique_ptr<MockQueueRunner> qr1(new MockQueueRunner(&coord));
-  qr1->StartSettingStatus(Status(Code::CANCELLED, ""), &counter, &start);
+  qr1->StartSettingStatus(Status(absl::StatusCode::kCancelled, ""), &counter,
+                          &start);
   TF_ASSERT_OK(coord.RegisterRunner(std::move(qr1)));
 
   std::unique_ptr<MockQueueRunner> qr2(new MockQueueRunner(&coord));
-  qr2->StartSettingStatus(Status(Code::INVALID_ARGUMENT, ""), &counter, &start);
+  qr2->StartSettingStatus(Status(absl::StatusCode::kInvalidArgument, ""),
+                          &counter, &start);
   TF_ASSERT_OK(coord.RegisterRunner(std::move(qr2)));
 
   std::unique_ptr<MockQueueRunner> qr3(new MockQueueRunner(&coord));
-  qr3->StartSettingStatus(Status(Code::OUT_OF_RANGE, ""), &counter, &start);
+  qr3->StartSettingStatus(Status(absl::StatusCode::kOutOfRange, ""), &counter,
+                          &start);
   TF_ASSERT_OK(coord.RegisterRunner(std::move(qr3)));
 
   start.Notify();
   counter.Wait();
   TF_EXPECT_OK(coord.RequestStop());
-  EXPECT_EQ(coord.Join().code(), Code::INVALID_ARGUMENT);
+  EXPECT_EQ(coord.Join().code(), absl::StatusCode::kInvalidArgument);
 }
 
 TEST(CoordinatorTest, JoinWithoutStop) {

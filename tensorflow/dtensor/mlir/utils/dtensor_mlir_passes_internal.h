@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_DTENSOR_MLIR_DTENSOR_MLIR_PASSES_INTERNAL_H_
-#define TENSORFLOW_DTENSOR_MLIR_DTENSOR_MLIR_PASSES_INTERNAL_H_
+#ifndef TENSORFLOW_DTENSOR_MLIR_UTILS_DTENSOR_MLIR_PASSES_INTERNAL_H_
+#define TENSORFLOW_DTENSOR_MLIR_UTILS_DTENSOR_MLIR_PASSES_INTERNAL_H_
 
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 
@@ -23,13 +23,7 @@ namespace dtensor {
 
 void AddDTensorAllReduceCombineOptimization(mlir::OpPassManager* pm);
 
-void AddDTensorEmbeddingPass(mlir::OpPassManager* pm);
-
-void AddDTensorEmbeddingPassV2(mlir::OpPassManager* pm);
-
-void AddDTensorEmbeddingCheckpointPass(mlir::OpPassManager* pm);
-
 }  // namespace dtensor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_DTENSOR_MLIR_DTENSOR_MLIR_PASSES_INTERNAL_H_
+#endif  // TENSORFLOW_DTENSOR_MLIR_UTILS_DTENSOR_MLIR_PASSES_INTERNAL_H_

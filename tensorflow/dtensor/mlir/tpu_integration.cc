@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iterator>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -38,19 +40,21 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
-#include "tensorflow/compiler/xla/client/sharding_builder.h"
+#include "xla/client/sharding_builder.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORTPUINTEGRATION
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // Adds metadata used in TPU Compilation to `cluster` as attributes.
 void AddMetadataToTPUCluster(const Mesh& mesh_config,
@@ -78,7 +82,7 @@ void IdentifyTPUFunctions(
   if (!main_func) return;
 
   for (auto call : main_func.getOps<mlir::TF::StatefulPartitionedCallOp>()) {
-    auto mesh_or_status = Mesh::FromString(string(call.config()));
+    auto mesh_or_status = Mesh::FromString(string(call.getConfig()));
     // Function calls created by end users instead of being converted from
     // tf_device.cluster do not have a serialized mesh as a config attribute. We
     // ignore the error returned from parsing in this case.
@@ -90,7 +94,7 @@ void IdentifyTPUFunctions(
     }
     if (mesh_or_status->is_tpu_mesh() && !skip_xla_compilation) {
       tpu_functions->emplace_back(call);
-      tpu_meshs->emplace_back(std::move(mesh_or_status.ValueOrDie()));
+      tpu_meshs->emplace_back(std::move(mesh_or_status.value()));
     }
   }
 }
@@ -107,8 +111,8 @@ mlir::LogicalResult CreateTPUCluster(
   builder->setInsertionPointToStart(&function_block);
 
   auto cluster = builder->create<mlir::tf_device::ClusterOp>(
-      tpu_call.getLoc(), function->getCallableResults());
-  cluster.body().push_back(new mlir::Block);
+      tpu_call.getLoc(), function->getResultTypes());
+  cluster.getBody().push_back(new mlir::Block);
 
   auto& function_body = function_block.getOperations();
   cluster.GetBody().getOperations().splice(
@@ -127,7 +131,7 @@ mlir::LogicalResult CreateTPUCluster(
 }
 
 struct DTensorTPUIntegration
-    : public DTensorTPUIntegrationBase<DTensorTPUIntegration> {
+    : public impl::DTensorTPUIntegrationBase<DTensorTPUIntegration> {
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
     registry.insert<mlir::dtensor::DTensorDialect>();
     registry.insert<mlir::tf_device::TensorFlowDeviceDialect>();

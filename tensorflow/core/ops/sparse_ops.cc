@@ -507,7 +507,7 @@ REGISTER_OP("SparseSoftmax")
     .Input("sp_values: T")
     .Input("sp_shape: int64")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {half, float, double}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       ShapeHandle values;

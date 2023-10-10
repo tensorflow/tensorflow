@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/python/util/util.h"
 
+#include <Python.h>
+
 #include <functional>
 #include <memory>
 #include <unordered_map>
@@ -143,6 +145,7 @@ string PyObjectToString(PyObject* o) {
   }
 }
 
+// FIXME(b/280464631): Consider remove this class.
 class CachedTypeCheck {
  public:
   explicit CachedTypeCheck(std::function<int(PyObject*)> ternary_predicate)
@@ -284,6 +287,23 @@ int IsAttrsHelper(PyObject* o) {
   return check_cache->CachedLookup(o);
 }
 
+// Returns 1 if `o` is an instance that implements the custom nest protocol.
+// Returns 0 otherwise.
+int IsCustomNestProtocolDefined(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    Safe_PyObjectPtr cls(PyObject_GetAttrString(to_check, "__class__"));
+    if (cls) {
+      return PyObject_HasAttrString(cls.get(), "__tf_flatten__") &
+             PyObject_HasAttrString(cls.get(), "__tf_unflatten__");
+    }
+
+    // PyObject_GetAttrString returns null on error
+    PyErr_Clear();
+    return 0;
+  });
+  return check_cache->CachedLookup(o);
+}
+
 // Returns 1 if `o` is an object of type IndexedSlices.
 // Returns 0 otherwise.
 // Returns -1 if an error occurred.
@@ -320,6 +340,20 @@ int IsTensorSpecHelper(PyObject* o) {
 int IsEagerTensorHelper(PyObject* o) {
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
     return IsInstanceOfRegisteredType(to_check, "EagerTensor");
+  });
+  return check_cache->CachedLookup(o);
+}
+
+int IsTensorProtocolHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "TensorProtocol");
+  });
+  return check_cache->CachedLookup(o);
+}
+
+int IsCoreTypeValueHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "CoreTypeValue");
   });
   return check_cache->CachedLookup(o);
 }
@@ -362,6 +396,7 @@ int IsNestedHelper(PyObject* o) {
   if (IsMappingHelper(o)) return true;
   if (IsMappingViewHelper(o)) return true;
   if (IsAttrsHelper(o)) return true;
+  if (IsCustomNestProtocolDefined(o)) return true;
 
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
     int is_instance = IsInstanceOfRegisteredType(to_check, "Sequence");
@@ -554,6 +589,32 @@ class AttrsValueIterator : public ValueIterator {
   Safe_PyObjectPtr iter_;
 };
 
+class CustomNestedIterator : public ValueIterator {
+ public:
+  explicit CustomNestedIterator(PyObject* nested) : nested_(nested) {
+    Py_INCREF(nested);
+    flattened_.reset(
+        PyObject_CallMethod(nested_.get(), "__tf_flatten__", nullptr));
+    if (flattened_) {
+      Safe_PyObjectPtr seq = make_safe(PySequence_GetItem(flattened_.get(), 1));
+      if (seq) {
+        iter_.reset(PyObject_GetIter(seq.get()));
+      }
+    }
+    if (!iter_ || PyErr_Occurred()) invalidate();
+  }
+
+  Safe_PyObjectPtr next() override {
+    Safe_PyObjectPtr result(PyIter_Next(iter_.get()));
+    return result;
+  }
+
+ private:
+  Safe_PyObjectPtr nested_;
+  Safe_PyObjectPtr flattened_;
+  Safe_PyObjectPtr iter_;
+};
+
 bool IsSparseTensorValueType(PyObject* o) {
   PyObject* sparse_tensor_value_type =
       GetRegisteredPyObject("SparseTensorValue");
@@ -570,7 +631,9 @@ bool IsSparseTensorValueType(PyObject* o) {
 // Returns -1 if an error occurred.
 bool IsCompositeTensorHelper(PyObject* o) {
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
-    return IsInstanceOfRegisteredType(to_check, "CompositeTensor");
+    // TODO(b/246438937): Remove the ResourceVariable test.
+    return IsInstanceOfRegisteredType(to_check, "CompositeTensor") &&
+           !IsResourceVariable(to_check);
   });
   return check_cache->CachedLookup(o);
 }
@@ -582,6 +645,7 @@ bool IsCompositeTensorHelper(PyObject* o) {
 bool IsTypeSpecHelper(PyObject* o) {
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
     int is_type_spec = IsInstanceOfRegisteredType(to_check, "TypeSpec");
+    // TODO(b/246438937): Remove the VariableSpec special case.
     int is_dense_spec = (IsInstanceOfRegisteredType(to_check, "TensorSpec") ||
                          IsInstanceOfRegisteredType(to_check, "VariableSpec"));
     if ((is_type_spec == -1) || (is_dense_spec == -1)) return -1;
@@ -616,6 +680,8 @@ ValueIteratorPtr GetValueIterator(PyObject* nested) {
     return absl::make_unique<MappingValueIterator>(nested);
   } else if (IsAttrsHelper(nested)) {
     return absl::make_unique<AttrsValueIterator>(nested);
+  } else if (IsCustomNestProtocolDefined(nested)) {
+    return std::make_unique<CustomNestedIterator>(nested);
   } else {
     return absl::make_unique<SequenceValueIterator>(nested);
   }
@@ -631,6 +697,8 @@ ValueIteratorPtr GetValueIteratorForData(PyObject* nested) {
     return absl::make_unique<AttrsValueIterator>(nested);
   } else if (IsSparseTensorValueType(nested)) {
     return absl::make_unique<SingleValueIterator>(nested);
+  } else if (IsCustomNestProtocolDefined(nested)) {
+    return std::make_unique<CustomNestedIterator>(nested);
   } else {
     return absl::make_unique<SequenceValueIterator>(nested);
   }
@@ -809,8 +877,8 @@ bool AssertSameStructureHelper(
                && !(IsMappingHelper(o1) && IsMappingHelper(o2))
                /* For CompositeTensor & TypeSpec, we check below. */
                && !(check_composite_tensor_type_spec &&
-                    (IsCompositeTensor(o1) || IsCompositeTensor(o2)) &&
-                    (IsTypeSpec(o1) || IsTypeSpec(o2)))) {
+                    (IsCompositeTensor(o1) || IsTypeSpec(o1)) &&
+                    (IsCompositeTensor(o2) || IsTypeSpec(o2)))) {
       *is_type_error = true;
       *error_msg = tensorflow::strings::StrCat(
           "The two namedtuples don't have the same sequence type. "
@@ -951,6 +1019,8 @@ bool IsOwnedIterator(PyObject* o) { return IsOwnedIteratorHelper(o) == 1; }
 bool IsVariable(PyObject* o) { return IsVariableHelper(o) == 1; }
 bool IsIndexedSlices(PyObject* o) { return IsIndexedSlicesHelper(o) == 1; }
 bool IsDispatchable(PyObject* o) { return IsDispatchableHelper(o) == 1; }
+bool IsTensorProtocol(PyObject* o) { return IsTensorProtocolHelper(o) == 1; }
+bool IsCoreTypeValue(PyObject* o) { return IsCoreTypeValueHelper(o) == 1; }
 
 bool IsTuple(PyObject* o) {
   tensorflow::Safe_PyObjectPtr wrapped;

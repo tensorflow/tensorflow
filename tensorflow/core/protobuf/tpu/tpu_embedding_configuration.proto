@@ -124,6 +124,9 @@ message TPUEmbeddingConfiguration {
     // at the TensorCore will have shape [m, n, k, d].
     repeated int32 input_shape = 3;
   }
+  // If the feature_descriptor field is populated, the model should NOT populate
+  // TableDescriptor.num_features and batch_size_per_tensor_core. These two
+  // fields will be auto-populated by the TPUEmbedding rewrite passes.
   repeated FeatureDescriptor feature_descriptor = 10;
 
   // SPMD (Single Program Multiple Data) sharding configuration for

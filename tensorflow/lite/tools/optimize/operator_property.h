@@ -18,7 +18,7 @@ limitations under the License.
 #include <functional>
 #include <initializer_list>
 
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -144,8 +144,9 @@ struct OpVariant {
 };
 
 OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
-                                     int op_index);
-OperatorProperty GetOperatorProperty(OpVariant op_variant);
+                                     int op_index, int number_of_bits = 8);
+OperatorProperty GetOperatorProperty(OpVariant op_variant,
+                                     int number_of_bits = 8);
 
 }  // namespace operator_property
 }  // namespace optimize

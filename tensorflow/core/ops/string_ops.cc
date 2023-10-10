@@ -124,12 +124,12 @@ REGISTER_OP("UnsortedSegmentJoin")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
     .Output("output: string")
-    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("AsString")
     .Input("input: T")
     .Output("output: string")
-    .Attr("T: {realnumbertype, complex64, complex128, bool, variant}")
+    .Attr("T: {realnumbertype, complex64, complex128, bool, variant, string}")
     .Attr("precision: int = -1")
     .Attr("scientific: bool = false")
     .Attr("shortest: bool = false")
@@ -165,7 +165,7 @@ REGISTER_OP("StringFormat")
 
 REGISTER_OP("StringJoin")
     .Input("inputs: N * string")
-    .Attr("N: int")
+    .Attr("N: int>=0")
     .Attr("separator: string = ''")
     .Output("output: string")
     .SetShapeFn([](InferenceContext* c) {

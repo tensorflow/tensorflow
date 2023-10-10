@@ -53,7 +53,7 @@ class CppGradients
     TF_StatusPtr status(TF_NewStatus());
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
     Status s = StatusFromTF_Status(status.get());
-    CHECK_EQ(errors::OK, s.code()) << s.error_message();
+    CHECK_EQ(errors::OK, s.code()) << s.message();
   }
 };
 
@@ -70,7 +70,7 @@ TEST_P(CppGradients, TestSetAttrString) {
     AbstractContext* ctx_raw = nullptr;
     Status s =
         BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     ctx.reset(ctx_raw);
   }
 
@@ -78,7 +78,7 @@ TEST_P(CppGradients, TestSetAttrString) {
   {
     AbstractTensorHandle* x_raw = nullptr;
     Status s = TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 1.0f, &x_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     t.reset(x_raw);
   }
 
@@ -86,31 +86,31 @@ TEST_P(CppGradients, TestSetAttrString) {
   ForwardOperation forward_op;
   Status s = Reset(check_numerics_op.get(), "CheckNumerics",
                    /*raw_device_name=*/nullptr, &forward_op);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
   if (isa<TracingOperation>(check_numerics_op.get())) {
     s = dyn_cast<TracingOperation>(check_numerics_op.get())
             ->SetOpName("check_numerics");
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
   }
   s = AddInput(check_numerics_op.get(), t.get(), &forward_op);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
   string message = "This is the way!";
   s = SetAttrString(check_numerics_op.get(), "message", message.data(),
                     message.length(), &forward_op);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
   int num_retvals = 1;
   std::vector<AbstractTensorHandle*> outputs(1);
   GradientRegistry registry;
   s = RegisterGradients(&registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
   auto tape = std::make_unique<Tape>(/*persistent=*/false);
   s = Execute(check_numerics_op.get(), ctx.get(), absl::MakeSpan(outputs),
               &num_retvals, &forward_op, tape.get(), registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
 
   string read_message;
   s = forward_op.attrs.Get("message", &read_message);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
   ASSERT_EQ(read_message, message);
 }
 
@@ -136,7 +136,7 @@ TEST_P(CppGradients, TestRecordOperationWithNullGradientFunctionRaises) {
     AbstractContext* ctx_raw = nullptr;
     Status s =
         BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     ctx.reset(ctx_raw);
   }
 
@@ -144,7 +144,7 @@ TEST_P(CppGradients, TestRecordOperationWithNullGradientFunctionRaises) {
   {
     AbstractTensorHandle* x_raw = nullptr;
     Status s = TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 2.0f, &x_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     x.reset(x_raw);
   }
 
@@ -157,7 +157,7 @@ TEST_P(CppGradients, TestRecordOperationWithNullGradientFunctionRaises) {
       "Provided null gradient_function for 'Neg'.\nIf the intent is to treat "
       "this op as non-differentiable consider using RegisterNotDifferentiable "
       "or NotDifferentiableGradientFunction.",
-      s.error_message());
+      s.message());
   ASSERT_EQ(nullptr, outputs[0]);
 }
 

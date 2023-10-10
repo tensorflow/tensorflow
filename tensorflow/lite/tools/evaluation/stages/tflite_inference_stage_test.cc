@@ -19,9 +19,9 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
@@ -188,7 +188,7 @@ TEST(TfliteInferenceStage, CorrectOutput) {
   EXPECT_LT(max_latency, 1e7);
   EXPECT_LE(latency.last_us(), max_latency);
   EXPECT_LE(latency.min_us(), max_latency);
-  EXPECT_GT(latency.sum_us(), max_latency);
+  EXPECT_GE(latency.sum_us(), max_latency);
   EXPECT_LE(latency.avg_us(), max_latency);
   EXPECT_TRUE(latency.has_std_deviation_us());
   EXPECT_EQ(

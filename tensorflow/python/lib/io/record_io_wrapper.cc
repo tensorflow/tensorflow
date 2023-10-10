@@ -17,7 +17,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/memory/memory.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/record_reader.h"
@@ -79,7 +79,7 @@ class PyRecordReader {
     TF_RETURN_IF_ERROR(
         tensorflow::Env::Default()->NewRandomAccessFile(filename_, &file_));
     reader_ =
-        absl::make_unique<tensorflow::io::RecordReader>(file_.get(), options_);
+        std::make_unique<tensorflow::io::RecordReader>(file_.get(), options_);
     return ::tensorflow::OkStatus();
   }
 
@@ -123,7 +123,7 @@ class PyRecordRandomReader {
         tensorflow::io::RecordReaderOptions::CreateRecordReaderOptions("");
     options.buffer_size = kReaderBufferSize;
     auto reader =
-        absl::make_unique<tensorflow::io::RecordReader>(file.get(), options);
+        std::make_unique<tensorflow::io::RecordReader>(file.get(), options);
     *out = new PyRecordRandomReader(std::move(file), std::move(reader));
     return ::tensorflow::OkStatus();
   }
@@ -170,13 +170,13 @@ class PyRecordWriter {
     TF_RETURN_IF_ERROR(
         tensorflow::Env::Default()->NewWritableFile(filename, &file));
     auto writer =
-        absl::make_unique<tensorflow::io::RecordWriter>(file.get(), options);
+        std::make_unique<tensorflow::io::RecordWriter>(file.get(), options);
     *out = new PyRecordWriter(std::move(file), std::move(writer));
     return ::tensorflow::OkStatus();
   }
 
   PyRecordWriter() = delete;
-  ~PyRecordWriter() { Close(); }
+  ~PyRecordWriter() { (void)Close(); }
 
   tensorflow::Status WriteRecord(tensorflow::StringPiece record) {
     if (IsClosed()) {
@@ -236,7 +236,7 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
               py::gil_scoped_release release;
               status = PyRecordReader::New(filename, compression_type, &self);
             }
-            MaybeRaiseRegisteredFromStatus(status);
+            tsl::MaybeRaiseRegisteredFromStatus(status);
             return self;
           }))
       .def("__iter__", [](const py::object& self) { return self; })
@@ -258,7 +258,7 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
                // __next__ calls.
                throw py::stop_iteration();
              }
-             MaybeRaiseRegisteredFromStatus(status);
+             tsl::MaybeRaiseRegisteredFromStatus(status);
              return py::bytes(record);
            })
       .def("close", [](PyRecordReader* self) { self->Close(); })
@@ -268,7 +268,7 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
           py::gil_scoped_release release;
           status = self->Reopen();
         }
-        MaybeRaiseRegisteredFromStatus(status);
+        tsl::MaybeRaiseRegisteredFromStatus(status);
       });
 
   py::class_<PyRecordRandomReader>(m, "RandomRecordReader")
@@ -279,7 +279,7 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
           py::gil_scoped_release release;
           status = PyRecordRandomReader::New(filename, &self);
         }
-        MaybeRaiseRegisteredFromStatus(status);
+        tsl::MaybeRaiseRegisteredFromStatus(status);
         return self;
       }))
       .def("read",
@@ -295,7 +295,7 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
                throw py::index_error(tensorflow::strings::StrCat(
                    "Out of range at reading offset ", offset));
              }
-             MaybeRaiseRegisteredFromStatus(status);
+             tsl::MaybeRaiseRegisteredFromStatus(status);
              return py::make_tuple(py::bytes(record), temp_offset);
            })
       .def("close", [](PyRecordRandomReader* self) { self->Close(); });
@@ -333,13 +333,13 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
               py::gil_scoped_release release;
               status = PyRecordWriter::New(filename, options, &self);
             }
-            MaybeRaiseRegisteredFromStatus(status);
+            tsl::MaybeRaiseRegisteredFromStatus(status);
             return self;
           }))
       .def("__enter__", [](const py::object& self) { return self; })
       .def("__exit__",
            [](PyRecordWriter* self, py::args) {
-             MaybeRaiseRegisteredFromStatus(self->Close());
+             tsl::MaybeRaiseRegisteredFromStatus(self->Close());
            })
       .def(
           "write",
@@ -349,15 +349,15 @@ PYBIND11_MODULE(_pywrap_record_io, m) {
               py::gil_scoped_release release;
               status = self->WriteRecord(record);
             }
-            MaybeRaiseRegisteredFromStatus(status);
+            tsl::MaybeRaiseRegisteredFromStatus(status);
           },
           py::arg("record"))
       .def("flush",
            [](PyRecordWriter* self) {
-             MaybeRaiseRegisteredFromStatus(self->Flush());
+             tsl::MaybeRaiseRegisteredFromStatus(self->Flush());
            })
       .def("close", [](PyRecordWriter* self) {
-        MaybeRaiseRegisteredFromStatus(self->Close());
+        tsl::MaybeRaiseRegisteredFromStatus(self->Close());
       });
 }
 

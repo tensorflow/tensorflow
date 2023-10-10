@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 // Since our ops are going to produce and also consume N addition tensors
@@ -92,9 +93,7 @@ bool inline DoesControlEdgeExist(const Node* src, const Node* dst) {
 // TODO(intel_tf): Cleanup shall be done in future:
 //                 (1) Remove this method;
 //                 (2) Update related code wherever it is called.
-bool inline NativeFormatEnabled() {
-  return true;
-}
+bool inline NativeFormatEnabled() { return true; }
 
 // Check if the data_format attribute in the node def represents 5D tensor
 bool inline Check5DFormat(const NodeDef& ndef) {
@@ -148,7 +147,8 @@ inline string GetMklNativeOpName(const string& name) {
        0 == name.compare("BatchMatMul") || 0 == name.compare("BatchMatMulV2") ||
        0 == name.compare("Einsum") || 0 == name.compare("MatMul") ||
        0 == name.compare("Transpose") || 0 == name.compare("QuantizeV2") ||
-       0 == name.compare("Dequantize") || 0 == name.rfind("Quantized", 0));
+       0 == name.compare("Dequantize") || 0 == name.compare("Softmax") ||
+       0 == name.rfind("Quantized", 0));
 
   if (result) {
     return string(kMklOpPrefix) + name;
@@ -173,10 +173,6 @@ inline string GetMklEagerOpName(const string& name) {
   return string(kMklEagerOpPrefix) + name;
 }
 
-static inline bool IsBF16SupportedByOneDNNOnThisCPU() {
-  return port::TestCPUFeature(port::CPUFeature::AVX512F);
-}
-
 static inline void BF16UnsupportedWarning() {
   static absl::once_flag cpu_bfloat16_warn_once_flag;
   absl::call_once(cpu_bfloat16_warn_once_flag, [] {
@@ -197,8 +193,8 @@ static inline bool IsMklOp(const string& op_name, DataType T,
   string label = is_native_op ? kMklNameChangeOpLabelPattern
                               : kMklLayoutDependentOpLabelPattern;
   string registered_kernels_key = op_name + label + std::to_string(T);
-  thread_local static auto* registered_kernels_map =
-      new absl::flat_hash_map<string, bool>();
+  thread_local static auto registered_kernels_map =
+      std::make_unique<absl::flat_hash_map<string, bool>>();
   auto kernel_element = registered_kernels_map->find(registered_kernels_key);
   bool kernel_registered = false;
 
@@ -289,6 +285,7 @@ static inline bool IsMklElementWiseOp(const string& op_name, DataType T) {
                  0 == op_name.compare(GetMklOpName("Sub")) ||
                  0 == op_name.compare(GetMklOpName("Mul")) ||
                  0 == op_name.compare(GetMklOpName("Maximum")) ||
+                 0 == op_name.compare(GetMklOpName("Sigmoid")) ||
                  0 == op_name.compare(GetMklOpName("SquaredDifference")));
 
   return result;

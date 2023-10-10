@@ -18,8 +18,8 @@ limitations under the License.
 // reduce code duplication and ensure consistency across the different
 // resizers, it performs the input validation.
 
-#ifndef TENSORFLOW_CORE_KERNELS_UTIL_IMAGE_RESIZER_STATE_H_
-#define TENSORFLOW_CORE_KERNELS_UTIL_IMAGE_RESIZER_STATE_H_
+#ifndef TENSORFLOW_CORE_UTIL_IMAGE_RESIZER_STATE_H_
+#define TENSORFLOW_CORE_UTIL_IMAGE_RESIZER_STATE_H_
 
 #define EIGEN_USE_THREADS
 #include <math.h>
@@ -27,7 +27,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -40,7 +40,7 @@ namespace tensorflow {
 // CalculateResizeScale determines the float scaling factor.
 inline float CalculateResizeScale(int64_t in_size, int64_t out_size,
                                   bool align_corners) {
-  return (align_corners && out_size > 1)
+  return (align_corners && in_size > 1 && out_size > 1)
              ? (in_size - 1) / static_cast<float>(out_size - 1)
              : in_size / static_cast<float>(out_size);
 }
@@ -48,7 +48,7 @@ inline float CalculateResizeScale(int64_t in_size, int64_t out_size,
 // Half pixel scaler scales assuming that the pixel centers are at 0.5, i.e. the
 // floating point coordinates of the top,left pixel is 0.5,0.5.
 struct HalfPixelScaler {
-  HalfPixelScaler(){};
+  HalfPixelScaler() = default;
   inline float operator()(const int x, const float scale) const {
     // Note that we subtract 0.5 from the return value, as the existing bilinear
     // sampling code etc assumes pixels are in the old coordinate system.
@@ -60,7 +60,7 @@ struct HalfPixelScaler {
 // translation leading to inconsistent results. For example, a flip then a
 // resize gives different results then a resize then a flip.
 struct LegacyScaler {
-  LegacyScaler(){};
+  LegacyScaler() = default;
   inline float operator()(const int x, const float scale) const {
     return static_cast<float>(x) * scale;
   }
@@ -256,4 +256,4 @@ struct ImageResizerGradientState {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_UTIL_IMAGE_RESIZER_STATE_H_
+#endif  // TENSORFLOW_CORE_UTIL_IMAGE_RESIZER_STATE_H_

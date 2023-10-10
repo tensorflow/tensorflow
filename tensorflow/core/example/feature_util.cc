@@ -162,6 +162,11 @@ Features* GetFeatures<Example>(Example* proto) {
 }
 
 template <>
+Features* GetFeatures<SequenceExample>(SequenceExample* proto) {
+  return proto->mutable_context();
+}
+
+template <>
 const Features& GetFeatures<Features>(const Features& proto) {
   return proto;
 }
@@ -172,34 +177,8 @@ const Features& GetFeatures<Example>(const Example& proto) {
 }
 
 template <>
-const protobuf::RepeatedField<protobuf_int64>& GetFeatureValues<protobuf_int64>(
-    const Feature& feature);
-
-template <>
-protobuf::RepeatedField<protobuf_int64>* GetFeatureValues<protobuf_int64>(
-    Feature* feature);
-
-template <>
-const protobuf::RepeatedField<float>& GetFeatureValues<float>(
-    const Feature& feature);
-
-template <>
-protobuf::RepeatedField<float>* GetFeatureValues<float>(Feature* feature);
-
-template <>
-const protobuf::RepeatedPtrField<std::string>& GetFeatureValues<std::string>(
-    const Feature& feature);
-
-template <>
-const protobuf::RepeatedPtrField<std::string>& GetFeatureValues<tstring>(
-    const Feature& feature);
-
-template <>
-protobuf::RepeatedPtrField<std::string>* GetFeatureValues<std::string>(
-    Feature* feature);
-
-template <>
-protobuf::RepeatedPtrField<std::string>* GetFeatureValues<tstring>(
-    Feature* feature);
+const Features& GetFeatures<SequenceExample>(const SequenceExample& proto) {
+  return proto.context();
+}
 
 }  // namespace tensorflow

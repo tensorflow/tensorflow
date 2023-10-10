@@ -28,7 +28,7 @@ import time
 
 import numpy as np
 
-from tensorflow.dtensor.python import api
+from tensorflow.dtensor.python import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
@@ -118,8 +118,8 @@ def start(period: int) -> threading.Event:
     logging.warning('A heartbeat thread is already running, skipping this one.')
     return _heartbeat_timer
 
-  task_id = api.client_id()
-  num_tasks = api.num_clients()
+  task_id = config.client_id()
+  num_tasks = config.num_clients()
 
   # Worker 0 generates a random token. All other workers receive that token.
   if task_id == 0:
@@ -130,7 +130,7 @@ def start(period: int) -> threading.Event:
   logging.info('Initial heartbeat signal: %s', signal)
 
   device = tf_device.DeviceSpec(
-      job=api.job_name(),
+      job=config.job_name(),
       replica=0,
       task=task_id,
       device_type='CPU',

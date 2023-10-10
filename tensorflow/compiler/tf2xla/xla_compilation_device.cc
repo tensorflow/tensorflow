@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/platform/mem.h"
@@ -114,14 +114,13 @@ void XlaCompilationDevice::Compute(OpKernel* op_kernel,
       ParseShardingFromDevice(op_kernel->def(), std::numeric_limits<int>::max(),
                               /*add_metadata=*/false);
   OP_REQUIRES_OK(context, sharding_parse_result.status());
-  std::optional<xla::OpSharding> op_sharding =
-      sharding_parse_result.ValueOrDie();
+  std::optional<xla::OpSharding> op_sharding = sharding_parse_result.value();
 
   auto frontend_attributes_result =
       GetFrontendAttributesFromAttrSlice(AttrSlice(op_kernel->def()));
   OP_REQUIRES_OK(context, frontend_attributes_result.status());
   std::optional<xla::FrontendAttributes> attributes =
-      frontend_attributes_result.ValueOrDie();
+      frontend_attributes_result.value();
 
   xla::FrontendAttributes merged_attributes = b->frontend_attributes();
   if (attributes.has_value()) {

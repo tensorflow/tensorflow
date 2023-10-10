@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_IR_TFRT_FALLBACK_COMMON_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_IR_TFRT_FALLBACK_COMMON_H_
 
+#include <utility>
+
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -26,7 +28,7 @@ namespace fallback_common {
 
 template <typename OpTy>
 mlir::LogicalResult VerifyExecuteOpCommon(OpTy op) {
-  auto op_attr_array = op.op_attrs().getValue();
+  auto op_attr_array = op.getOpAttrs().getValue();
   for (auto op_attr : op_attr_array) {
     auto key_value = op_attr.template dyn_cast<mlir::ArrayAttr>();
     if (!key_value || key_value.getValue().size() != 2 ||
@@ -43,7 +45,7 @@ mlir::LogicalResult VerifyFallbackExecuteOp(OpTy op) {
   if (failed(result)) return result;
 
   // Verify function attributes.
-  auto op_func_attr_array = op.op_func_attrs().getValue();
+  auto op_func_attr_array = op.getOpFuncAttrs().getValue();
   for (auto op_attr : op_func_attr_array) {
     auto key_value = op_attr.template dyn_cast<mlir::ArrayAttr>();
     if (!key_value || key_value.getValue().size() != 2 ||
@@ -58,7 +60,7 @@ mlir::LogicalResult VerifyFallbackExecuteOp(OpTy op) {
 
 template <typename OpTy>
 void PrintExecuteOpFuncAttribute(mlir::OpAsmPrinter &p, OpTy op) {
-  auto op_func_attrs = op.op_func_attrs();
+  auto op_func_attrs = op.getOpFuncAttrs();
   if (!op_func_attrs.empty()) {
     auto print_key_value = [&](mlir::Attribute attr) {
       auto key_value = attr.cast<mlir::ArrayAttr>().getValue();
@@ -79,7 +81,7 @@ void PrintExecuteOpFuncAttribute(mlir::OpAsmPrinter &p, OpTy op) {
 
 template <typename OpTy>
 void PrintExecuteOpCommon(mlir::OpAsmPrinter &p, OpTy op) {
-  auto op_attrs = op.op_attrs();
+  auto op_attrs = op.getOpAttrs();
   if (!op_attrs.empty()) {
     auto print_key_value = [&](mlir::Attribute attr) {
       auto key_value = attr.cast<mlir::ArrayAttr>().getValue();
@@ -109,6 +111,8 @@ struct ParseExecuteOpOptions {
   bool has_device = false;
   bool has_func_attr = false;
   bool has_cost = false;
+  bool has_op_name = true;
+  bool has_symbol_ref = false;
 };
 
 mlir::ParseResult ParseExecuteOpCommon(mlir::OpAsmParser &parser,

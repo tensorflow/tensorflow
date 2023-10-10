@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_CONV3D_TRANPOSE_H_
-#define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_CONV3D_TRANPOSE_H_
+#ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_CONV3D_TRANSPOSE_H_
+#define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_CONV3D_TRANSPOSE_H_
 
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -111,14 +111,13 @@ inline void Conv3DTranspose(
   if (bias_data) {
     const int outer_size =
         batches * output_depth * output_height * output_width;
-    const int num_channels = input_shape.Dims(4);
     for (int n = 0; n < outer_size; ++n) {
       for (int c = 0; c < output_num_channels; ++c) {
         data_ptr[c] = ActivationFunctionWithMinMax(data_ptr[c] + bias_data[c],
                                                    float_activation_min,
                                                    float_activation_max);
       }
-      data_ptr += num_channels;
+      data_ptr += output_num_channels;
     }
   } else {
     const int flat_size = output_shape.FlatSize();
@@ -132,4 +131,4 @@ inline void Conv3DTranspose(
 }  // namespace reference_ops
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_CONV3D_TRANPOSE_H_
+#endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_CONV3D_TRANSPOSE_H_

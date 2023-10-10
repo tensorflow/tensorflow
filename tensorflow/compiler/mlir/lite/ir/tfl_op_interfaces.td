@@ -36,10 +36,9 @@ def TFL_Dialect : Dialect {
 
   let cppNamespace = "::mlir::TFL";
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
-
   let useDefaultAttributePrinterParser = 1;
   let useDefaultTypePrinterParser = 1;
+  let usePropertiesForAttributes = 0;
 
   let extraClassDeclaration = [{
     ParseResult parseOneResultSameOperandTypeOp(OpAsmParser &parser,

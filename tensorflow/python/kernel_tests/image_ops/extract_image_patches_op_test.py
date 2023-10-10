@@ -17,7 +17,9 @@
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -39,14 +41,23 @@ class ExtractImagePatches(test.TestCase):
     strides = [1] + strides + [1]
     rates = [1] + rates + [1]
 
-    out_tensor = array_ops.extract_image_patches(
-        constant_op.constant(image),
-        ksizes=ksizes,
-        strides=strides,
-        rates=rates,
-        padding=padding,
-        name="im2col")
-    self.assertAllClose(patches, self.evaluate(out_tensor))
+    for dtype in [
+        np.float16,
+        np.float32,
+        np.float64,
+        dtypes.bfloat16.as_numpy_dtype,
+    ]:
+      out_tensor = array_ops.extract_image_patches(
+          constant_op.constant(image, dtype=dtype),
+          ksizes=ksizes,
+          strides=strides,
+          rates=rates,
+          padding=padding,
+          name="im2col",
+      )
+      self.assertAllClose(
+          np.array(patches, dtype=dtype), self.evaluate(out_tensor)
+      )
 
   def testKsize1x1Stride1x1Rate1x1(self):
     """Verifies that for 1x1 kernel the output equals the input."""
@@ -139,6 +150,17 @@ class ExtractImagePatches(test.TestCase):
             padding=padding,
             patches=patches)
 
+  def testInvalidAttributes(self):
+    """Test for passing weird things into ksizes."""
+    with self.assertRaisesRegex(TypeError, "Expected list"):
+      image = constant_op.constant([0.0])
+      ksizes = math_ops.cast(
+          constant_op.constant(dtype=dtypes.int16, value=[[1, 4], [5, 2]]),
+          dtype=dtypes.qint16)
+      strides = [1, 1, 1, 1]
+      self.evaluate(
+          array_ops.extract_image_patches(
+              image, ksizes=ksizes, strides=strides, padding="SAME"))
 
 if __name__ == "__main__":
   test.main()

@@ -14,7 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/util/attr_util.h"
 
+#include <algorithm>
 #include <cstdlib>
+#include <cstring>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
@@ -61,7 +66,7 @@ llvm::Expected<tensorflow::Tensor> DecodeDenseAttrToTfTensor(
         dht.takeError());
   }
 
-  return tfrt::TFRTTensorToTFTensor(*dht, host);
+  return tfrt::TFRTTensorToTFTensor(*dht);
 }
 
 llvm::Error FillAttrValueMapUsingArray(const OpAttrsRawEntry& entry,
@@ -119,8 +124,8 @@ llvm::Error FillAttrValueMapUsingArray(const OpAttrsRawEntry& entry,
       // DTypes in BEF attributes are tfrt::DType enums. So we need
       // to convert then to tensorflow data types first.
       auto bef_dtypes =
-          llvm::makeArrayRef(static_cast<const tfrt::DType*>(op_attr.GetData()),
-                             op_attr.element_count);
+          llvm::ArrayRef(static_cast<const tfrt::DType*>(op_attr.GetData()),
+                         op_attr.element_count);
 
       llvm::SmallVector<tensorflow::DataType, 4> tf_dtypes;
       tf_dtypes.reserve(bef_dtypes.size());

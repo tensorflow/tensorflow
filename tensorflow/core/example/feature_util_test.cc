@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/example/feature_util.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -49,6 +50,18 @@ TEST(GetFeatureValuesInt64Test, ReadsASingleValueFromFeature) {
   EXPECT_EQ(42, values.Get(0));
 }
 
+TEST(GetFeatureValuesInt64Test, ReadsASingleValueFromSequenceExampleContext) {
+  SequenceExample example;
+  (*example.mutable_context()->mutable_feature())["tag"]
+      .mutable_int64_list()
+      ->add_value(42);
+
+  auto tag = GetFeatureValues<protobuf_int64>("tag", example);
+
+  ASSERT_EQ(1, tag.size());
+  EXPECT_EQ(42, tag.Get(0));
+}
+
 TEST(GetFeatureValuesInt64Test, WritesASingleValue) {
   Example example;
 
@@ -68,6 +81,15 @@ TEST(GetFeatureValuesInt64Test, WritesASingleValueToFeature) {
   EXPECT_EQ(42, feature.int64_list().value(0));
 }
 
+TEST(GetFeatureValuesInt64Test, WritesASingleValueToSequenceExample) {
+  SequenceExample example;
+
+  GetFeatureValues<protobuf_int64>("tag", &example)->Add(42);
+
+  ASSERT_EQ(1, example.context().feature().at("tag").int64_list().value_size());
+  EXPECT_EQ(42, example.context().feature().at("tag").int64_list().value(0));
+}
+
 TEST(GetFeatureValuesInt64Test, CheckUntypedFieldExistence) {
   Example example;
   ASSERT_FALSE(HasFeature("tag", example));
@@ -75,6 +97,15 @@ TEST(GetFeatureValuesInt64Test, CheckUntypedFieldExistence) {
   GetFeatureValues<protobuf_int64>("tag", &example)->Add(0);
 
   EXPECT_TRUE(HasFeature("tag", example));
+}
+
+TEST(GetFeatureValuesInt64Test, CheckUntypedFieldExistenceForSequenceExample) {
+  SequenceExample seq_example;
+  ASSERT_FALSE(HasFeature("tag", seq_example));
+
+  GetFeatureValues<protobuf_int64>("tag", &seq_example)->Add(0);
+
+  EXPECT_TRUE(HasFeature("tag", seq_example));
 }
 
 TEST(GetFeatureValuesInt64Test, CheckTypedFieldExistence) {
@@ -87,6 +118,20 @@ TEST(GetFeatureValuesInt64Test, CheckTypedFieldExistence) {
 
   EXPECT_TRUE(HasFeature<protobuf_int64>("tag", example));
   auto tag_ro = GetFeatureValues<protobuf_int64>("tag", example);
+  ASSERT_EQ(1, tag_ro.size());
+  EXPECT_EQ(42, tag_ro.Get(0));
+}
+
+TEST(GetFeatureValuesInt64Test, CheckTypedFieldExistenceForSequenceExample) {
+  SequenceExample sequence_example;
+
+  GetFeatureValues<float>("tag", &sequence_example)->Add(3.14);
+  ASSERT_FALSE(HasFeature<protobuf_int64>("tag", sequence_example));
+
+  GetFeatureValues<protobuf_int64>("tag", &sequence_example)->Add(42);
+
+  EXPECT_TRUE(HasFeature<protobuf_int64>("tag", sequence_example));
+  auto tag_ro = GetFeatureValues<protobuf_int64>("tag", sequence_example);
   ASSERT_EQ(1, tag_ro.size());
   EXPECT_EQ(42, tag_ro.Get(0));
 }
@@ -128,6 +173,18 @@ TEST(GetFeatureValuesFloatTest, ReadsASingleValue) {
   EXPECT_NEAR(3.14, tag.Get(0), kTolerance);
 }
 
+TEST(GetFeatureValuesFloatTest, ReadsASingleValueFromSequenceExample) {
+  SequenceExample example;
+  (*example.mutable_context()->mutable_feature())["tag"]
+      .mutable_float_list()
+      ->add_value(3.14);
+
+  auto tag = GetFeatureValues<float>("tag", example);
+
+  ASSERT_EQ(1, tag.size());
+  EXPECT_NEAR(3.14, tag.Get(0), kTolerance);
+}
+
 TEST(GetFeatureValuesFloatTest, WritesASingleValueToFeature) {
   Feature feature;
 
@@ -146,6 +203,16 @@ TEST(GetFeatureValuesFloatTest, WritesASingleValue) {
             example.features().feature().at("tag").float_list().value_size());
   EXPECT_NEAR(3.14,
               example.features().feature().at("tag").float_list().value(0),
+              kTolerance);
+}
+
+TEST(GetFeatureValuesFloatTest, WritesASingleValueToSequenceExample) {
+  SequenceExample example;
+
+  GetFeatureValues<float>("tag", &example)->Add(3.14);
+
+  ASSERT_EQ(1, example.context().feature().at("tag").float_list().value_size());
+  EXPECT_NEAR(3.14, example.context().feature().at("tag").float_list().value(0),
               kTolerance);
 }
 
@@ -199,6 +266,18 @@ TEST(GetFeatureValuesStringTest, ReadsASingleValue) {
   EXPECT_EQ("FOO", tag.Get(0));
 }
 
+TEST(GetFeatureValuesStringTest, ReadsASingleValueFromSequenceExample) {
+  SequenceExample example;
+  (*example.mutable_context()->mutable_feature())["tag"]
+      .mutable_bytes_list()
+      ->add_value("FOO");
+
+  auto tag = GetFeatureValues<std::string>("tag", example);
+
+  ASSERT_EQ(1, tag.size());
+  EXPECT_EQ("FOO", tag.Get(0));
+}
+
 TEST(GetFeatureValuesStringTest, WritesASingleValueToFeature) {
   Feature feature;
 
@@ -217,6 +296,15 @@ TEST(GetFeatureValuesStringTest, WritesASingleValue) {
             example.features().feature().at("tag").bytes_list().value_size());
   EXPECT_EQ("FOO",
             example.features().feature().at("tag").bytes_list().value(0));
+}
+
+TEST(GetFeatureValuesStringTest, WritesASingleValueSequenceExample) {
+  SequenceExample example;
+
+  *GetFeatureValues<std::string>("tag", &example)->Add() = "FOO";
+
+  ASSERT_EQ(1, example.context().feature().at("tag").bytes_list().value_size());
+  EXPECT_EQ("FOO", example.context().feature().at("tag").bytes_list().value(0));
 }
 
 TEST(GetFeatureValuesStringTest, CheckTypedFieldExistence) {
@@ -681,6 +769,48 @@ TEST(SequenceExampleTest, SetFeatureValuesWithInitializerList) {
       "}\n",
       &expected_proto);
   EXPECT_EQ(se.DebugString(), expected_proto.DebugString());
+}
+
+TEST(MaybeGetFeatureValuesTest, ReturnsNullPtr) {
+  const Example example;
+  auto tag = MaybeGetFeatureValues<protobuf_int64>("tag", example);
+  ASSERT_EQ(tag, nullptr);
+}
+
+TEST(MaybeGetFeatureValuesTest, ReadsASingleInt) {
+  Example example;
+  (*example.mutable_features()->mutable_feature())["tag"]
+      .mutable_int64_list()
+      ->add_value(42);
+
+  auto tag = MaybeGetFeatureValues<protobuf_int64>("tag", example);
+
+  ASSERT_EQ(1, tag->size());
+  EXPECT_EQ(42, tag->Get(0));
+}
+
+TEST(MaybeGetFeatureValuesTest, ReadsASingleFloat) {
+  Example example;
+  (*example.mutable_features()->mutable_feature())["tag"]
+      .mutable_float_list()
+      ->add_value(0.3);
+
+  auto tag = MaybeGetFeatureValues<float>("tag", example);
+
+  ASSERT_EQ(1, tag->size());
+  EXPECT_FLOAT_EQ(0.3, tag->Get(0));
+}
+
+TEST(MaybeGetFeatureValuesTest, ReadsASingleString) {
+  Example example;
+  (*example.mutable_features()->mutable_feature())["tag"]
+      .mutable_bytes_list()
+      ->add_value("entry");
+
+  auto tag = MaybeGetFeatureValues<std::string>("tag", example);
+
+  ASSERT_EQ(1, tag->size());
+  EXPECT_EQ("entry", tag->Get(0));
 }
 
 }  // namespace

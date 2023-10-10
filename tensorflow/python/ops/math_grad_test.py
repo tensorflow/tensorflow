@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for Python ops defined in math_grad.py."""
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import backprop
@@ -21,13 +22,41 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients
+from tensorflow.python.ops import math_grad
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
+
+
+class InferGradientReductionAxes(test.TestCase, parameterized.TestCase):
+
+  @parameterized.parameters(
+      (None, None, None, None),
+      (None, [], None, None),
+      ([], [], [], []),
+      ([], [None], [0], []),
+      ([None], [None], None, None),
+      ([None, 1], [None], [1], [0]),
+      ([None, 1], [1, None], [1], [0]),
+      ([None, 1], [2, None], None, None),
+      ([2], [1], [], [0]),
+      ([2], [2], [], []),
+      ([3, 1, 5, 1, 7], [2, 1, 4, 7], [1, 3], [0, 2]),
+  )
+  def testShapes(self, x_shape, y_shape, expected_x_axes, expected_y_axes):
+    x_axes1, y_axes1 = math_grad._InferGradientReductionAxes(
+        tensor_shape.TensorShape(x_shape), tensor_shape.TensorShape(y_shape))
+    y_axes2, x_axes2 = math_grad._InferGradientReductionAxes(
+        tensor_shape.TensorShape(y_shape), tensor_shape.TensorShape(x_shape))
+    self.assertEqual(x_axes1, x_axes2)
+    self.assertEqual(y_axes1, y_axes2)
+    self.assertEqual(expected_x_axes, x_axes1)
+    self.assertEqual(expected_y_axes, y_axes1)
 
 
 class SquaredDifferenceOpTest(test.TestCase):

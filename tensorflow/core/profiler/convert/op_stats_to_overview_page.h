@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_OP_STATS_TO_OVERVIEW_PAGE_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_OP_STATS_TO_OVERVIEW_PAGE_H_
 
+#include <string>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
@@ -61,9 +63,6 @@ OverviewPageRunEnvironment ComputeRunEnvironment(
     const RunEnvironment& run_environment);
 
 OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats);
-
-OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
-                                          const XSpace& xspace);
 
 // Returns a html which provides tf-function related recommendation.
 std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db);

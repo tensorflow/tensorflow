@@ -1,0 +1,1670 @@
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -279,6 +279,24 @@
+ )
+ 
+ cc_library(
++    name = "experimental_ops",
++    srcs = [
++        "stablehlo/dialect/ExperimentalOps.cpp",
++    ],
++    hdrs = [
++        "stablehlo/dialect/ExperimentalOps.h",
++    ],
++    strip_include_prefix = ".",
++    deps = [
++        ":stablehlo_ops",
++        "@llvm-project//llvm:Support",
++        "@llvm-project//mlir:FuncDialect",
++        "@llvm-project//mlir:IR",
++        "@llvm-project//mlir:Support",
++    ],
++)
++
++cc_library(
+     name = "interpreter_ops",
+     srcs = [
+         "stablehlo/reference/InterpreterOps.cpp",
+@@ -763,6 +781,7 @@
+     deps = [
+         ":base",
+         ":chlo_ops",
++        ":experimental_ops",
+         ":stablehlo_ops",
+         ":stablehlo_ops_inc_gen",
+         ":stablehlo_pass_inc_gen",
+diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
+--- stablehlo/CMakeLists.txt
++++ stablehlo/CMakeLists.txt
+@@ -13,135 +13,20 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ #
+-cmake_minimum_required(VERSION 3.15.0)
+ 
+-if(POLICY CMP0068)
+-  cmake_policy(SET CMP0068 NEW)
+-  set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
+-endif()
+-
+-if(POLICY CMP0075)
+-  cmake_policy(SET CMP0075 NEW)
+-endif()
+-
+-if(POLICY CMP0077)
+-  cmake_policy(SET CMP0077 NEW)
+-endif()
+-
+-# CMP0116: Ninja generators transform `DEPFILE`s from `add_custom_command()`
+-# New in CMake 3.20. https://cmake.org/cmake/help/latest/policy/CMP0116.html
+-if(POLICY CMP0116)
+-  cmake_policy(SET CMP0116 OLD)
+-endif()
++# This build of StableHLO is meant to be embedded in MLIR-HLO.
++# As a result, its root CMakeLists.txt is different from the original
++# CMakeLists.txt from https://github.com/openxla/stablehlo.
++# All other files of this build of StableHLO except for this one are the same
++# as the original files.
++# To get access to a standalone build of StableHLO, check out the
++# openxla/stablehlo repository.
+ 
+ #-------------------------------------------------------------------------------
+ # Options and settings
+ #-------------------------------------------------------------------------------
+-option(STABLEHLO_BUILD_EMBEDDED "Build StableHLO as part of another project" OFF)
+-option(STABLEHLO_ENABLE_BINDINGS_PYTHON "Enables StableHLO Python bindings" OFF)
+-option(STABLEHLO_ENABLE_STRICT_BUILD "Build StableHLO with strict warnings and warnings as errors" OFF)
+ 
+-#-------------------------------------------------------------------------------
+-# Project setup and globals
+-#-------------------------------------------------------------------------------
+-set(STABLEHLO_EXTERNAL_PROJECT_BUILD OFF)
+-
+-if(NOT (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR) AND NOT MLIR_BINARY_DIR)
+-  # Building as part of LLVM via the external project mechanism.
+-  set(STABLEHLO_EXTERNAL_PROJECT_BUILD ON)
+-else()
+-  # Building standalone.
+-  project(stablehlo LANGUAGES CXX C)
+-  set(CMAKE_C_STANDARD 11)
+-  set(CMAKE_CXX_STANDARD 17)
+-endif()
+-
+-# Build with ccache if the package is present
+-set(LLVM_CCACHE_BUILD OFF CACHE BOOL "Set to ON for a ccache enabled build")
+-if(LLVM_CCACHE_BUILD)
+-  find_program(CCACHE_PROGRAM ccache)
+-  if(CCACHE_PROGRAM)
+-      set(LLVM_CCACHE_MAXSIZE "" CACHE STRING "Size of ccache")
+-      set(LLVM_CCACHE_DIR "" CACHE STRING "Directory to keep ccached data")
+-      set(LLVM_CCACHE_PARAMS "CCACHE_CPP2=yes CCACHE_HASHDIR=yes"
+-          CACHE STRING "Parameters to pass through to ccache")
+-
+-      set(CCACHE_PROGRAM "${LLVM_CCACHE_PARAMS} ${CCACHE_PROGRAM}")
+-      if (LLVM_CCACHE_MAXSIZE)
+-        set(CCACHE_PROGRAM "CCACHE_MAXSIZE=${LLVM_CCACHE_MAXSIZE} ${CCACHE_PROGRAM}")
+-      endif()
+-      if (LLVM_CCACHE_DIR)
+-        set(CCACHE_PROGRAM "CCACHE_DIR=${LLVM_CCACHE_DIR} ${CCACHE_PROGRAM}")
+-      endif()
+-      set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ${CCACHE_PROGRAM})
+-  else()
+-    message(FATAL_ERROR "Unable to find the program ccache. Set LLVM_CCACHE_BUILD to OFF")
+-  endif()
+-endif()
+-
+-#-------------------------------------------------------------------------------
+-# MLIR/LLVM Configuration
+-#-------------------------------------------------------------------------------
+-if (STABLEHLO_ENABLE_STRICT_BUILD)
+-  set(LLVM_ENABLE_WARNINGS ON)
+-  set(LLVM_ENABLE_WERROR ON)
+-  set(LLVM_ENABLE_PEDANTIC ON)
+-endif()
+-
+-# Find MLIR to install if we are building standalone. If building as part of
+-# another project, let it handle the MLIR dependency. The dependent project
+-# might use a bundled version of MLIR instead of installing, for instance.
+-if(STABLEHLO_EXTERNAL_PROJECT_BUILD)
+-  message(STATUS "Building StableHLO as an external LLVM project")
+-  set(MLIR_MAIN_SRC_DIR ${LLVM_MAIN_SRC_DIR}/../mlir ) # --src-root
+-  set(MLIR_INCLUDE_DIR ${MLIR_MAIN_SRC_DIR}/include ) # --includedir
+-  set(MLIR_GENERATED_INCLUDE_DIR ${LLVM_BINARY_DIR}/tools/mlir/include)
+-  include_directories(SYSTEM ${MLIR_INCLUDE_DIR})
+-  include_directories(SYSTEM ${MLIR_GENERATED_INCLUDE_DIR})
+-  include_directories(SYSTEM ${MLIR_TABLEGEN_OUTPUT_DIR})
+-
+-  set(BACKEND_PACKAGE_STRING "${PACKAGE_STRING}")
+-  list(APPEND CMAKE_MODULE_PATH "${MLIR_MAIN_SRC_DIR}/cmake/modules")
+-elseif(NOT STABLEHLO_BUILD_EMBEDDED)
+-  message(STATUS "Building StableHLO with an installed MLIR")
+-  find_package(MLIR REQUIRED CONFIG)
+-  message(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
+-  message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+-  set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
+-  set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
+-  list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
+-  list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
+-else()
+-  message(STATUS "Building StableHLO embedded in another project")
+-endif()
+-
+-if(LLVM_ENABLE_ZLIB)
+-  find_package(ZLIB)
+-endif()
+-
+-include(TableGen)
+-include(AddLLVM)
+-include(AddMLIR)
+-include(HandleLLVMOptions)
+-include_directories(${LLVM_INCLUDE_DIRS})
+-include_directories(${MLIR_INCLUDE_DIRS})
+-include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+-include_directories(${CMAKE_CURRENT_BINARY_DIR})
+-link_directories(${LLVM_BUILD_LIBRARY_DIR})
+-add_definitions(${LLVM_DEFINITIONS})
+-
+-#-------------------------------------------------------------------------------
+-# Python configuration
+-#-------------------------------------------------------------------------------
+-
+-if(STABLEHLO_ENABLE_BINDINGS_PYTHON)
+-  if(NOT STABLEHLO_EXTERNAL_PROJECT_BUILD)
+-    message(WARNING "StableHLO Python bindings are not supported in standalone mode")
+-  endif()
+-
+-  include(MLIRDetectPythonEnv)
+-  mlir_configure_python_dev_packages()
+-endif()
++set(STABLEHLO_ENABLE_BINDINGS_PYTHON ${MHLO_ENABLE_BINDINGS_PYTHON})
+ 
+ #-------------------------------------------------------------------------------
+ # Directory setup
+diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
+--- stablehlo/stablehlo/dialect/Base.cpp
++++ stablehlo/stablehlo/dialect/Base.cpp
+@@ -600,5 +600,18 @@
+   return UnrankedTensorType::get(components.getElementType());
+ }
+ 
++DenseIntElementsAttr getPaddingAttr(MLIRContext* context,
++                                    ArrayRef<int64_t> values) {
++  return DenseIntElementsAttr::get(
++      RankedTensorType::get({static_cast<int64_t>(values.size()) / 2, 2},
++                            IntegerType::get(context, 64)),
++      values);
++}
++
++DenseIntElementsAttr getPaddingAttr(Builder* builder,
++                                    ArrayRef<int64_t> values) {
++  return getPaddingAttr(builder->getContext(), values);
++}
++
+ }  // namespace hlo
+ }  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
+--- stablehlo/stablehlo/dialect/Base.h
++++ stablehlo/stablehlo/dialect/Base.h
+@@ -194,6 +194,10 @@
+ 
+ ShapedType createShapedType(ShapedTypeComponents components);
+ 
++DenseIntElementsAttr getPaddingAttr(MLIRContext *context,
++                                    ArrayRef<int64_t> value);
++DenseIntElementsAttr getPaddingAttr(Builder *builder, ArrayRef<int64_t> value);
++
+ // This interface is implemented by both StableHLO and MHLO dialects
+ // and is used as the foundation for sharing verification, type inference and
+ // prettyprinting logic between them.
+diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/dialect/CMakeLists.txt
+--- stablehlo/stablehlo/dialect/CMakeLists.txt
++++ stablehlo/stablehlo/dialect/CMakeLists.txt
+@@ -77,6 +77,20 @@
+ target_include_directories(ChloOps INTERFACE
+   $<BUILD_INTERFACE:${STABLEHLO_SOURCE_DIR}>
+   $<BUILD_INTERFACE:${STABLEHLO_BINARY_DIR}>
++)
++
++add_mlir_dialect_library(ExperimentalOps
++  PARTIAL_SOURCES_INTENDED
++  ExperimentalOps.cpp
++
++  DEPENDS
++  StablehloOpsIncGen
++
++  LINK_LIBS PUBLIC
++  MLIRFuncDialect
++  MLIRIR
++  MLIRSupport
++  StablehloOps
+ )
+ 
+ add_mlir_dialect_library(StablehloRegister
+diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stablehlo/dialect/ExperimentalOps.cpp
+--- stablehlo/stablehlo/dialect/ExperimentalOps.cpp
++++ stablehlo/stablehlo/dialect/ExperimentalOps.cpp
+@@ -0,0 +1,504 @@
++/* Copyright 2023 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#include "stablehlo/dialect/ExperimentalOps.h"
++
++#include <optional>
++
++#include "llvm/ADT/ArrayRef.h"
++#include "llvm/ADT/STLExtras.h"
++#include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinOps.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
++#include "mlir/IR/Types.h"
++
++namespace mlir {
++namespace stablehlo {
++
++LogicalResult DynamicReduceWindowOpAdaptor::verify() {
++  // Before checking the constraints inherited from ReduceWindowOp,
++  // make sure that the operands and the attributes of the underlying custom
++  // call make sense.
++  if (op_->getNumOperands() != 2 * op_->getNumResults() + 5)
++    return op_.emitError("expects size(operands) = 2 * size(results) + 5");
++  if (op_->getNumResults() == 0)
++    return op_.emitError("expects size(results) > 0");
++  for (const auto& attr : op_->getAttrs()) {
++    // api_version and backend_config have default values.
++    // call_target_name should be "stablehlo.dynamic_reduce_window".
++    // called_computations carries the body.
++    if (attr.getName() != "api_version" &&
++        attr.getName() != "backend_config" &&
++        attr.getName() != "call_target_name" &&
++        attr.getName() != "called_computations")
++      return op_.emitError()
++             << attr.getName() << " is not a supported attribute";
++  }
++  if (!op_.getBackendConfig().empty())
++    return op_.emitError() << "expects an empty backend_config";
++  if (op_.getCallTargetName() != "stablehlo.dynamic_reduce_window")
++    return op_.emitError() << "expects @stablehlo.dynamic_reduce_window";
++
++  // Unpack operands and attributes of the underlying custom call into
++  // operation-specific inputs.
++  auto numInputs = getInputs().size();
++  auto inputs = op_.getInputs().slice(0, numInputs);
++  auto initValues = op_.getInputs().slice(numInputs, numInputs);
++  auto windowDimensions = op_.getInputs()[op_.getInputs().size() - 5];
++  auto windowStrides = op_.getInputs()[op_.getInputs().size() - 4];
++  auto baseDilations = op_.getInputs()[op_.getInputs().size() - 3];
++  auto windowDilations = op_.getInputs()[op_.getInputs().size() - 2];
++  auto padding = op_.getInputs()[op_.getInputs().size() - 1];
++  auto results = op_.getResults();
++
++  // reduce_window_c1
++  // This constraint hold automatically thanks to the checks that we have
++  // performed above.
++
++  // reduce_window_i1
++  SmallVector<ShapedType> inputTypes;
++  for (auto [index, input] : llvm::enumerate(inputs)) {
++    auto inputType = input.getType().dyn_cast<ShapedType>();
++    inputTypes.push_back(inputType);
++    if (!inputType)
++      return op_.emitError()
++             << "expects inputs (e.g. operand #" << index << ") to be tensors";
++  }
++
++  // reduce_window_i2
++  SmallVector<ShapedType> initValueTypes;
++  for (auto [index, initValue] : llvm::enumerate(initValues)) {
++    auto initValueType = initValue.getType().dyn_cast<ShapedType>();
++    initValueTypes.push_back(initValueType);
++    if (!initValueType || !initValueType.hasRank() ||
++        initValueType.getRank() != 0)
++      return op_.emitError() << "expects init_values (e.g. operand #"
++                             << numInputs + index << ") "
++                             << "to be 0-dimensional tensors";
++  }
++
++  // reduce_window_i3...reduce_window_i7
++  auto checkRank = [&](StringRef name, int64_t index, Value dynamicAttr,
++                       int64_t expectedRank) -> LogicalResult {
++    auto type = dynamicAttr.getType().dyn_cast<ShapedType>();
++    if (!type || !type.hasRank() || type.getRank() != expectedRank ||
++        !type.getElementType().isIntOrIndex()) {
++      if (index < 0) index += op_->getNumOperands();
++      return op_.emitError()
++             << "expects " << name << " (operand #" << index << ") "
++             << "to be a " << expectedRank << "-dimensional tensor "
++             << "of integer or index type";
++    }
++    return success();
++  };
++  if (failed(checkRank("window_dimensions", -5, windowDimensions, 1)) ||
++      failed(checkRank("window_strides", -4, windowStrides, 1)) ||
++      failed(checkRank("base_dilations", -3, baseDilations, 1)) ||
++      failed(checkRank("window_dilations", -2, windowDilations, 1)) ||
++      failed(checkRank("padding", -1, padding, 2)))
++    return failure();
++
++  // reduce_window_i7
++  auto paddingType = getPadding().getType().dyn_cast<ShapedType>();
++  if (!paddingType || !paddingType.hasRank() || paddingType.getRank() != 2 ||
++      paddingType.getDimSize(1) != 2 ||
++      !paddingType.getElementType().isIntOrIndex())
++    return op_.emitError()
++           << "expects padding_type (operand #" << op_.getNumOperands() - 1
++           << ") to be a 2-dimensional tensor of integer or index type";
++
++  // reduce_window_c2
++  std::optional<ArrayRef<int64_t>> inputShape;
++  for (auto inputType : inputTypes) {
++    if (!inputType.hasRank()) continue;
++    if (!inputShape) inputShape = inputType.getShape();
++    if (failed(verifyCompatibleShape(inputType.getShape(), *inputShape)))
++      return op_.emitError() << "expects all inputs (operands 0.." << numInputs
++                             << ") to have compatible shapes";
++  }
++
++  // reduce_window_c3
++  for (auto [inputType, initValueType] :
++       llvm::zip(inputTypes, initValueTypes)) {
++    if (inputType.getElementType() != initValueType.getElementType())
++      return op_.emitError() << "expects inputs (operands 0.." << numInputs
++                             << ") and init_values (operands " << numInputs
++                             << ".." << numInputs * 2 << ") to have pairwise "
++                             << "the same element types";
++  }
++
++  // reduce_window_c4...reduce_window_c12
++  // In this range, we only verify the constraints with even numbers.
++  // Verifying the constraints with odd numbers would require knowing the
++  // actual values of window_dimensions, window_strides, etc.
++  // While we certainly can try to check whether they are constants and
++  // verify them in that case, that seems like too much at this point.
++  auto checkShape = [&](StringRef name, int64_t index, Value dynamicAttr,
++                        ArrayRef<int64_t> expectedShape) -> LogicalResult {
++    auto type = dynamicAttr.getType().cast<ShapedType>();
++    if (type.getShape() != expectedShape) {
++      if (index < 0) index += op_->getNumOperands();
++      return op_.emitError()
++             << "expects " << name << " (operand #" << index << ") "
++             << "to have shape [" << expectedShape << "]";
++    }
++    return success();
++  };
++  if (inputShape) {
++    auto inputRank = static_cast<int64_t>(inputShape->size());
++    if (failed(checkShape("window_dimensions", -5, windowDimensions,
++                          {inputRank})) ||
++        failed(checkShape("window_strides", -4, windowStrides, {inputRank})) ||
++        failed(checkShape("base_dilations", -3, baseDilations, {inputRank})) ||
++        failed(
++            checkShape("window_dilations", -2, windowDilations, {inputRank})) ||
++        failed(checkShape("padding", -1, padding, {inputRank, 2})))
++      return failure();
++  }
++
++  // reduce_window_c13
++  if (op_.getCalledComputations().size() != 1)
++    return op_.emitError() << "expects called_computations to have 1 element";
++  auto bodyAttr = op_.getCalledComputations()[0].cast<FlatSymbolRefAttr>();
++  auto bodyFunc =
++      op_->getParentOfType<ModuleOp>().lookupSymbol<func::FuncOp>(bodyAttr);
++  if (!bodyFunc)
++    return op_.emitError() << "expects called_computations to refer to "
++                           << "a function that exists within a parent module";
++
++  // reduce_window_c13
++  SmallVector<Type> expectedBodyInputs;
++  llvm::append_range(expectedBodyInputs, initValueTypes);
++  llvm::append_range(expectedBodyInputs, initValueTypes);
++  SmallVector<Type> expectedBodyOutputs;
++  llvm::append_range(expectedBodyOutputs, initValueTypes);
++  auto expectedBodyType = FunctionType::get(
++      op_.getContext(), expectedBodyInputs, expectedBodyOutputs);
++  if (bodyFunc.getFunctionType() != expectedBodyType)
++    return op_.emitError() << "expects body to have type " << expectedBodyType;
++
++  // reduce_window_c14
++  SmallVector<ShapedType> resultTypes;
++  std::optional<ArrayRef<int64_t>> resultShape;
++  for (auto result : results) {
++    auto resultType = result.getType().dyn_cast<ShapedType>();
++    resultTypes.push_back(resultType);
++    if (!resultType) return op_.emitError() << "expects results to be tensors";
++
++    if (!resultType.hasRank()) continue;
++    if (!resultShape) resultShape = resultType.getShape();
++    if (failed(verifyCompatibleShape(resultType.getShape(), *resultShape)))
++      return op_.emitError() << "expects all results to have compatible shapes";
++  }
++
++  // reduce_window_c15
++  // Verifying this constraint would require knowing the actual values of
++  // window_dimensions, window_strides, etc.
++  // While we certainly can try to check whether they are constants and
++  // verify them in that case, that seems like too much at this point.
++
++  // reduce_window_c16
++  for (auto [resultType, initValueType] :
++       llvm::zip(resultTypes, initValueTypes)) {
++    if (resultType.getElementType() != initValueType.getElementType())
++      return op_.emitError() << "expects results and init_values (operands "
++                             << numInputs << ".." << numInputs * 2 << ") "
++                             << "to have pairwise the same element types";
++  }
++
++  return success();
++}
++
++ValueRange DynamicReduceWindowOpAdaptor::getInputs() {
++  auto numInputs = (op_.getInputs().size() - 5) / 2;
++  return op_.getInputs().slice(0, numInputs);
++}
++
++ValueRange DynamicReduceWindowOpAdaptor::getInitValues() {
++  auto numInputs = (op_.getInputs().size() - 5) / 2;
++  return op_.getInputs().slice(numInputs, numInputs);
++}
++
++TypedValue<ShapedType> DynamicReduceWindowOpAdaptor::getWindowDimensions() {
++  return op_.getInputs()[op_.getInputs().size() - 5]
++      .cast<TypedValue<ShapedType>>();
++}
++
++TypedValue<ShapedType> DynamicReduceWindowOpAdaptor::getWindowStrides() {
++  return op_.getInputs()[op_.getInputs().size() - 4]
++      .cast<TypedValue<ShapedType>>();
++}
++
++TypedValue<ShapedType> DynamicReduceWindowOpAdaptor::getBaseDilations() {
++  return op_.getInputs()[op_.getInputs().size() - 3]
++      .cast<TypedValue<ShapedType>>();
++}
++
++TypedValue<ShapedType> DynamicReduceWindowOpAdaptor::getWindowDilations() {
++  return op_.getInputs()[op_.getInputs().size() - 2]
++      .cast<TypedValue<ShapedType>>();
++}
++
++TypedValue<ShapedType> DynamicReduceWindowOpAdaptor::getPadding() {
++  return op_.getInputs()[op_.getInputs().size() - 1]
++      .cast<TypedValue<ShapedType>>();
++}
++
++Region& DynamicReduceWindowOpAdaptor::getBody() {
++  auto bodyAttr = op_.getCalledComputations()[0].cast<FlatSymbolRefAttr>();
++  auto bodyFunc =
++      op_->getParentOfType<ModuleOp>().lookupSymbol<func::FuncOp>(bodyAttr);
++  return bodyFunc.getBody();
++}
++
++ValueRange DynamicReduceWindowOpAdaptor::getResults() {
++  return op_.getResults();
++}
++
++std::optional<DynamicReduceWindowOpAdaptor> getDynamicReduceWindowOp(
++    CustomCallOp op) {
++  if (op.getCallTargetName() != "stablehlo.dynamic_reduce_window") return {};
++  return DynamicReduceWindowOpAdaptor(op);
++}
++
++LogicalResult DynamicRngBitGeneratorOpAdaptor::verify() {
++  // Before checking the constraints inherited from RngBitGeneratorOp,
++  // make sure that the operands and the attributes of the underlying custom
++  // call make sense.
++  if (op_->getNumOperands() != 2)
++    return op_.emitError("expects size(operands) = 2");
++  if (op_->getNumResults() != 2)
++    return op_.emitError("expects size(results) = 2");
++  for (const auto& attr : op_->getAttrs()) {
++    // api_version and backend_config have default values.
++    // call_target_name should be "stablehlo.dynamic_rng_bit_generator".
++    // rng_algorithm comes from the operation.
++    if (attr.getName() != "api_version" && attr.getName() != "backend_config" &&
++        attr.getName() != "call_target_name" &&
++        attr.getName() != "rng_algorithm")
++      return op_.emitError()
++             << attr.getName() << " is not a supported attribute";
++  }
++  if (!op_.getBackendConfig().empty())
++    return op_.emitError() << "expects an empty backend_config";
++  if (op_.getCallTargetName() != "stablehlo.dynamic_rng_bit_generator")
++    return op_.emitError() << "expects @stablehlo.dynamic_rng_bit_generator";
++  if (!op_->hasAttr("rng_algorithm"))
++    return op_.emitError() << "expects an rng_algorithm";
++
++  // Unpack operands and attributes of the underlying custom call into
++  // operation-specific inputs.
++  auto rngAlgorithmAttr = op_->getAttr("rng_algorithm");
++  auto initialState = op_.getInputs()[0];
++  auto outputShape = op_.getInputs()[1];
++  auto outputState = op_.getResults()[0];
++  auto output = op_.getResults()[1];
++
++  // dynamic_rng_bit_generator_i1
++  if (!rngAlgorithmAttr.isa<RngAlgorithmAttr>())
++    return op_.emitError()
++           << "expects a #stablehlo<rng_algorithm ...> rng_algorithm";
++
++  // dynamic_rng_bit_generator_i2
++  // TODO(#643): Clarify supported types for RngBitGeneratorOp.
++  auto initialStateType = initialState.getType().dyn_cast<ShapedType>();
++  if (!initialStateType || !initialStateType.getElementType().isIntOrFloat())
++    return op_.emitError()
++           << "expects initial_state (operand #0) "
++           << "to be a tensor of integer or floating-point type";
++
++  // dynamic_rng_bit_generator_i3
++  auto outputShapeType = outputShape.getType().dyn_cast<ShapedType>();
++  if (!outputShapeType || !outputShapeType.hasRank() ||
++      outputShapeType.getRank() != 1 ||
++      !outputShapeType.getElementType().isIntOrIndex())
++    return op_.emitError()
++           << "expects output_shape (operand #1) "
++           << "to be a 1-dimensional tensor of integer or index type";
++
++  // dynamic_rng_bit_generator_o1
++  // TODO(#643): Clarify supported types for RngBitGeneratorOp.
++  auto outputStateType = outputState.getType().dyn_cast<ShapedType>();
++  if (!outputStateType || !outputStateType.getElementType().isIntOrFloat())
++    return op_.emitError()
++           << "expects output_state (result #0) "
++           << "to be a tensor of integer or floating-point type";
++
++  // dynamic_rng_bit_generator_o2
++  auto outputType = output.getType().dyn_cast<ShapedType>();
++  if (!outputType || !outputType.getElementType().isIntOrFloat())
++    return op_.emitError()
++           << "expects output (result #1) "
++           << "to be a tensor of integer or floating-point type";
++
++  // dynamic_rng_bit_generator_c1
++  if (!hlo::isCompatibleForHloTypeInference(initialStateType, outputStateType))
++    return op_.emitError()
++           << "expects initial_state (operand #0) and output_state (result #0) "
++           << "to have compatible shapes";
++
++  // dynamic_rng_bit_generator_c2
++  // TODO(#486): Verify rng_algorithm in RngBitGeneratorOp.
++
++  // dynamic_rng_bit_generator_c3
++  if (!hlo::isCompatibleForHloTypeInference(outputShape, outputType))
++    return op_.emitError() << "expects output (result #1) to have shape  "
++                           << "compatible with output_shape (operand #2)";
++
++  return success();
++}
++
++RngAlgorithm DynamicRngBitGeneratorOpAdaptor::getRngAlgorithm() {
++  return op_->getAttr("rng_algorithm").cast<RngAlgorithmAttr>().getValue();
++}
++
++TypedValue<ShapedType> DynamicRngBitGeneratorOpAdaptor::getInitialState() {
++  return op_.getInputs()[0].cast<TypedValue<ShapedType>>();
++}
++
++TypedValue<ShapedType> DynamicRngBitGeneratorOpAdaptor::getOutputShape() {
++  return op_.getInputs()[1].cast<TypedValue<ShapedType>>();
++}
++
++TypedValue<ShapedType> DynamicRngBitGeneratorOpAdaptor::getOutputState() {
++  return op_.getResults()[0].cast<TypedValue<ShapedType>>();
++}
++
++TypedValue<ShapedType> DynamicRngBitGeneratorOpAdaptor::getOutput() {
++  return op_.getResults()[1].cast<TypedValue<ShapedType>>();
++}
++
++std::optional<DynamicRngBitGeneratorOpAdaptor> getDynamicRngBitGeneratorOp(
++    CustomCallOp op) {
++  if (op.getCallTargetName() != "stablehlo.dynamic_rng_bit_generator")
++    return {};
++  return DynamicRngBitGeneratorOpAdaptor(op);
++}
++
++LogicalResult DynamicTopKOpAdaptor::verify() {
++  if (op_->getNumOperands() != 2)
++    return op_.emitError("expects size(operands) = 2");
++  if (op_->getNumResults() != 2)
++    return op_.emitError("expects size(results) = 2");
++  for (const auto& attr : op_->getAttrs()) {
++    // api_version and backend_config have default values.
++    // call_target_name should be "stablehlo.dynamic_top_k".
++    if (attr.getName() != "api_version" && attr.getName() != "backend_config" &&
++        attr.getName() != "call_target_name")
++      return op_.emitError()
++             << attr.getName() << " is not a supported attribute";
++  }
++  if (!op_.getBackendConfig().empty())
++    return op_.emitError() << "expects an empty backend_config";
++  if (op_.getCallTargetName() != "stablehlo.dynamic_top_k")
++    return op_.emitError() << "expects @stablehlo.dynamic_top_k";
++
++  auto operand = op_.getInputs()[0];
++  auto k = op_.getInputs()[1];
++  auto values = op_.getResults()[0];
++  auto indices = op_.getResults()[1];
++
++  // dynamic_top_k_i1
++  auto operandType = operand.getType().dyn_cast<ShapedType>();
++  if (!operandType || !operandType.hasRank() || operandType.getRank() < 1 ||
++      !operandType.getElementType().isIntOrFloat())
++    return op_.emitError()
++           << "expects operand #0 "
++           << "to be a tensor of integer or floating-point type "
++           << "of rank at least 1";
++
++  // dynamic_top_k_i2
++  auto kType = k.getType().dyn_cast<ShapedType>();
++  if (!kType || !kType.hasRank() ||
++      kType.getRank() != 0 || !kType.getElementType().isIntOrIndex())
++    return op_.emitError()
++           << "expects k (operand #1) "
++           << "to be a 0-dimensional tensor of integer or index type";
++
++  // dynamic_top_k_o1
++  auto valuesType = values.getType().dyn_cast<ShapedType>();
++  if (!valuesType || !valuesType.hasRank() || valuesType.getRank() < 1 ||
++      !valuesType.getElementType().isIntOrFloat())
++    return op_.emitError()
++           << "expects values (result #0) "
++           << "to be a tensor of integer or floating-point type "
++           << "of rank at least 1";
++
++  // dynamic_top_k_o2
++  auto indicesType = indices.getType().dyn_cast<ShapedType>();
++  if (!indicesType || !indicesType.hasRank() || indicesType.getRank() < 1 ||
++      !indicesType.getElementType().isSignlessInteger(32))
++    return op_.emitError() << "expects indices (result #1) "
++                           << "to be a tensor of si32 of rank at least 1";
++
++  // dynamic_top_k_c1
++  auto operandLastDim = operandType.getRank() - 1;
++  SmallVector<int64_t> expectedValuesShape(operandType.getShape());
++  expectedValuesShape[operandLastDim] =
++      valuesType.getDimSize(valuesType.getRank() - 1);
++  if (failed(verifyCompatibleShape(expectedValuesShape, valuesType.getShape())))
++    return op_.emitError() << "expects the values shape to match the operand "
++                              "shape in all but the last dimension";
++
++  // dynamic_top_k_c2
++  if (valuesType.getElementType() != operandType.getElementType())
++    return op_.emitError()
++           << "expects the values element type to be the same as the operand "
++           << "element type";
++
++  // dynamic_top_k_c3
++  if (!operandType.isDynamicDim(operandLastDim) &&
++      !valuesType.isDynamicDim(operandLastDim) &&
++      operandType.getDimSize(operandLastDim) <
++          valuesType.getDimSize(operandLastDim))
++    return op_.emitError() << "expects the values last dimension to have size "
++                              "at least as large "
++                           << "as operand last dimension";
++
++  // dynamic_top_k_c4
++  if (failed(
++          verifyCompatibleShape(indicesType.getShape(), valuesType.getShape())))
++    return op_.emitError()
++           << "expects the indices shape to match the values shape";
++
++  return success();
++}
++
++TypedValue<ShapedType> DynamicTopKOpAdaptor::getOperand() {
++  return op_.getInputs()[0].cast<TypedValue<ShapedType>>();
++}
++
++TypedValue<ShapedType> DynamicTopKOpAdaptor::getK() {
++  return op_.getInputs()[1].cast<TypedValue<ShapedType>>();
++}
++
++
++TypedValue<ShapedType> DynamicTopKOpAdaptor::getValues() {
++  return op_.getResults()[0].cast<TypedValue<ShapedType>>();
++}
++
++TypedValue<ShapedType> DynamicTopKOpAdaptor::getIndices() {
++  return op_.getResults()[1].cast<TypedValue<ShapedType>>();
++}
++
++std::optional<DynamicTopKOpAdaptor> getDynamicTopKOp(
++    CustomCallOp op) {
++  if (op.getCallTargetName() != "stablehlo.dynamic_top_k") return {};
++  return DynamicTopKOpAdaptor(op);
++}
++
++}  // namespace stablehlo
++}  // namespace mlir
+diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo/dialect/ExperimentalOps.h
+--- stablehlo/stablehlo/dialect/ExperimentalOps.h
++++ stablehlo/stablehlo/dialect/ExperimentalOps.h
+@@ -0,0 +1,227 @@
++/* Copyright 2023 The StableHLO Authors.
++
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
++
++#ifndef STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
++#define STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
++
++// This file supports XLA-specific experiments with the StableHLO opset.
++// These experiments are not yet ready to be upstreamed to openxla/stablehlo
++// and are incubating towards the respective StableHLO RFCs.
++//
++// Custom calls (which are the implementation vehicle of these experiments)
++// don't have compatibility guarantees within the StableHLO process, but
++// the StableHLO team at Google provides out-of-band guarantees for these
++// custom calls, with the same compatibility window as StableHLO upstream.
++
++#include "mlir/IR/Operation.h"
++#include "mlir/IR/Region.h"
++#include "mlir/IR/Value.h"
++#include "mlir/IR/ValueRange.h"
++#include "mlir/Support/LogicalResult.h"
++#include "stablehlo/dialect/StablehloOps.h"
++
++namespace mlir {
++namespace stablehlo {
++
++// The DynamicReduceWindowOp experiment provides a dynamic version of
++// ReduceWindowOp. Once the dynamism RFC is figured out, we expect to have an
++// upstream representation for this notion.
++//
++// Within this experiment, DynamicReduceWindowOp is represented via the
++// `stablehlo.custom_call @stablehlo.dynamic_reduce_window` custom call.
++// This custom call has the following operands which represent a dynamic version
++// of operands and attributes of ReduceWindowOp:
++//   * [0:N]   => inputs
++//   * [N:2*N] => init_values
++//   * [-5]    => window_dimensions
++//   * [-4]    => window_strides
++//   * [-3]    => base_dilations
++//   * [-2]    => window_dilations
++//   * [-1]    => padding
++// Additionally, to represent the body of DynamicReduceWindowOp, the custom call
++// has a satellite function attached to the custom call via called_computations.
++//
++// Semantics of DynamicReduceWindowOp are inherited from semantics of
++// https://github.com/openxla/stablehlo/blob/main/docs/spec.md#reduce_window
++// with the following exceptions:
++//   1) All tensor constants, i.e. window_dimensions, window_strides,
++//      base_dilations, window_dilations and padding, become tensors of
++//      integer type.
++//   2) As a result, some of the constraints can no longer be validated
++//      statically. However, this operation still expects these constraints
++//      to hold dynamically, and if they don't hold, the behavior is undefined.
++class DynamicReduceWindowOpAdaptor {
++ public:
++  DynamicReduceWindowOpAdaptor(CustomCallOp op) : op_(op) {}
++  operator Operation*() { return op_; }
++  Operation* operator->() { return op_; }
++
++  // Same accessors as for stablehlo::ReduceWindowOp, except that all the
++  // std::optional<DenseIntElementsAttr> attributes have turned into values.
++  // These accessors assume that the operation is well-formed (i.e. that it
++  // can pass verification).
++  ValueRange getInputs();
++  ValueRange getInitValues();
++  TypedValue<ShapedType> getWindowDimensions();
++  TypedValue<ShapedType> getWindowStrides();
++  TypedValue<ShapedType> getBaseDilations();
++  TypedValue<ShapedType> getWindowDilations();
++  TypedValue<ShapedType> getPadding();
++  Region& getBody();
++  ValueRange getResults();
++
++  // Verifies the constraints documented above.
++  // Emits errors if errors are detected.
++  LogicalResult verify();
++
++ private:
++  CustomCallOp op_;
++};
++
++// Wraps a custom call in a DynamicReduceWindowOpAdaptor.
++// Fails if the call_target_name of the custom call doesn't match
++// "stablehlo.dynamic_reduce_window".
++std::optional<DynamicReduceWindowOpAdaptor> getDynamicReduceWindowOp(
++    CustomCallOp op);
++
++// The DynamicRngBitGeneratorOp experiment provides a dynamic version of
++// RngBitGeneratorOp. Once the dynamism RFC is figured out, we expect to have an
++// upstream representation for this notion.
++//
++// Within this experiment, DynamicRngBitGeneratorOp is represented via the
++// `stablehlo.custom_call @stablehlo.dynamic_rng_bit_generator` custom call.
++// This custom call has the regular operand of RngBitGeneratorOp plus an
++// additional `output_shape` operand that determines the shape of the output:
++//   * [0] => initial_state
++//   * [1] => output_shape
++//
++// Semantics of DynamicRngBitGeneratorOp are inherited from semantics of
++// https://github.com/openxla/stablehlo/blob/main/docs/spec.md#rng_bit_generator
++// extended with an additional input (I3) and an additional constraint (C3):
++//
++// #### Inputs
++//
++// | Label | Name            | Type                                         |
++// |-------|-----------------|----------------------------------------------|
++// | (I1)  | `rng_algorithm` | enum of `DEFAULT`, `THREE_FRY`, and `PHILOX` |
++// | (I2)  | `initial_state` | 1-dimensional tensor of type `ui64`          |
++// | (I3)  | `output_shape`  | 1-dimensional tensor of integer type         |
++//
++// #### Outputs
++//
++// | Name           | Type                                     |
++// |----------------|------------------------------------------|
++// | `output_state` | 1-dimensional tensor of type `ui64`      |
++// | `output`       | tensor of integer or floating-point type |
++//
++// #### Constraints
++//
++// * (C1) `type(initial_state) = type(output_state)`.
++// * (C2) `size(initial_state)` is defined as:
++//   * implementation-defined if `rng_algorithm = DEFAULT`.
++//   * `2` if `rng_algorithm = THREE_FRY`.
++//   * `2` or `3` if `rng_algorithm = PHILOX`.
++// * (C3) `shape(output) = output_shape`.
++class DynamicRngBitGeneratorOpAdaptor {
++ public:
++  DynamicRngBitGeneratorOpAdaptor(CustomCallOp op) : op_(op) {}
++  operator Operation*() { return op_; }
++  Operation* operator->() { return op_; }
++
++  // Same accessors as for stablehlo::RngBitGeneratorOp, extended with the
++  // additional `output_shape` operand.
++  // These accessors assume that the operation is well-formed (i.e. that it
++  // can pass verification).
++  RngAlgorithm getRngAlgorithm();
++  TypedValue<ShapedType> getInitialState();
++  TypedValue<ShapedType> getOutputShape();
++  TypedValue<ShapedType> getOutputState();
++  TypedValue<ShapedType> getOutput();
++
++  // Verifies the constraints documented above.
++  // Emits errors if errors are detected.
++  LogicalResult verify();
++
++ private:
++  CustomCallOp op_;
++};
++
++// Wraps a custom call in a DynamicRngBitGeneratorOpAdaptor.
++// Fails if the call_target_name of the custom call doesn't match
++// "stablehlo.dynamic_rng_bit_generator".
++std::optional<DynamicRngBitGeneratorOpAdaptor> getDynamicRngBitGeneratorOp(
++    CustomCallOp op);
++
++// The DynamicTopKOp experiment provides a dynamic version of
++// TopKOp. Once the dynamism RFC is figured out, we expect to have an
++// upstream representation for this notion.
++//
++// Within this experiment, DynamicTopKOp is represented via the
++// `stablehlo.custom_call @stablehlo.dynamic_top_k` custom call.
++// This custom call has the regular operand of TopKOp plus an
++// additional `k` operand that determines the shape of the output.
++//
++// Semantics of DynamicTopKOp are inherited from semantics of Chlo.TopKOp.
++//
++// #### Inputs
++//
++// | Label | Name            | Type                                         |
++// |-------|-----------------|----------------------------------------------|
++// | (I1)  | `operand`       | tensor of integer or floating-point type     |
++// | (I2)  | `k`             | 0-dimensional tensor of integer or index type|
++//
++// #### Outputs
++//
++// | Name           | Type                                     |
++// |----------------|------------------------------------------|
++// | `values`       | tensor of integer or floating-point type |
++// | `indices`      | tensor of si32 type                      |
++//
++// #### Constraints
++//
++// * (C1) `shape(values)[:-1] = shape(operand)[:-1]`
++// * (C2) `element_type(values) = element_type(operand)`
++// * (C3) `shape(values)[-1] <= shape(operand)[-1]`
++// * (C4) `shape(indices) = shape(values)`
++class DynamicTopKOpAdaptor {
++ public:
++  DynamicTopKOpAdaptor(CustomCallOp op) : op_(op) {}
++  operator Operation*() { return op_; }
++  Operation* operator->() { return op_; }
++
++  // These accessors assume that the operation is well-formed (i.e. that it
++  // can pass verification).
++  TypedValue<ShapedType> getOperand();
++  TypedValue<ShapedType> getK();
++  TypedValue<ShapedType> getValues();
++  TypedValue<ShapedType> getIndices();
++
++  // Verifies the constraints documented above.
++  // Emits errors if errors are detected.
++  LogicalResult verify();
++
++ private:
++  CustomCallOp op_;
++};
++
++// Wraps a custom call in a DynamicTopKOpAdaptor.
++// Fails if the call_target_name of the custom call doesn't match
++// "stablehlo.dynamic_top_k".
++std::optional<DynamicTopKOpAdaptor> getDynamicTopKOp(CustomCallOp op);
++
++}  // namespace stablehlo
++}  // namespace mlir
++
++#endif  // STABLEHLO_DIALECT_EXPERIMENTAL_OPS_H
+diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
+--- stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
++++ stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
+@@ -426,6 +426,172 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: func @dynamic_reduce_window_success_static_result_type
++func.func @dynamic_reduce_window_success_static_result_type(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>) -> tensor<2x2xf32> {
++  //           CHECK-NOT: stablehlo.dynamic_reduce_window
++  //               CHECK: "stablehlo.reduce_window"(%arg0, %arg1) ({
++  //          CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG2:arg.*]]: tensor<f32>, %[[ARG3:arg.*]]: tensor<f32>):
++  //          CHECK-NEXT:     %[[VAL1:.*]] = stablehlo.add %arg2, %arg3 : tensor<f32>
++  //          CHECK-NEXT:     stablehlo.return %[[VAL1]] : tensor<f32>
++  //          CHECK-NEXT: }) {
++  //          CHECK-SAME:   base_dilations = dense<[2, 1]> : tensor<2xi64>,
++  // CHECK-SAME{LITERAL}:   padding = dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>,
++  //          CHECK-SAME:   window_dilations = dense<[3, 1]> : tensor<2xi64>,
++  //          CHECK-SAME:   window_dimensions = dense<[2, 1]> : tensor<2xi64>,
++  //          CHECK-SAME:   window_strides = dense<[4, 1]> : tensor<2xi64>
++  //          CHECK-SAME: } : (tensor<3x2xf32>, tensor<f32>) -> tensor<2x2xf32>
++  %0 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
++  %1 = stablehlo.constant dense<[4, 1]> : tensor<2xi64>
++  %2 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
++  %3 = stablehlo.constant dense<[3, 1]> : tensor<2xi64>
++  %4 = stablehlo.constant dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>
++  %5 = stablehlo.custom_call @stablehlo.dynamic_reduce_window(%arg0, %arg1, %0, %1, %2, %3, %4) {
++    called_computations = [@dynamic_reduce_window0]
++  } : (tensor<3x2xf32>, tensor<f32>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<2x2xf32>
++  func.return %5 : tensor<2x2xf32>
++}
++
++func.func private @dynamic_reduce_window0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
++  %0 = stablehlo.add %arg0, %arg1 : tensor<f32>
++  func.return %0 : tensor<f32>
++}
++
++// -----
++
++// CHECK-LABEL: func @dynamic_reduce_window_success_dynamic_result_type
++func.func @dynamic_reduce_window_success_dynamic_result_type(%arg0: tensor<?x2xf32>, %arg1: tensor<f32>) -> tensor<?x2xf32> {
++  //           CHECK-NOT: stablehlo.dynamic_reduce_window
++  //               CHECK: "stablehlo.reduce_window"(%arg0, %arg1) ({
++  //          CHECK-NEXT:   ^[[BB:bb.*]](%[[ARG2:arg.*]]: tensor<f32>, %[[ARG3:arg.*]]: tensor<f32>):
++  //          CHECK-NEXT:     %[[VAL1:.*]] = stablehlo.add %arg2, %arg3 : tensor<f32>
++  //          CHECK-NEXT:     stablehlo.return %[[VAL1]] : tensor<f32>
++  //          CHECK-NEXT: }) {
++  //          CHECK-SAME:   base_dilations = dense<[2, 1]> : tensor<2xi64>,
++  // CHECK-SAME{LITERAL}:   padding = dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>,
++  //          CHECK-SAME:   window_dilations = dense<[3, 1]> : tensor<2xi64>,
++  //          CHECK-SAME:   window_dimensions = dense<[2, 1]> : tensor<2xi64>,
++  //          CHECK-SAME:   window_strides = dense<[4, 1]> : tensor<2xi64>
++  //          CHECK-SAME: } : (tensor<?x2xf32>, tensor<f32>) -> tensor<?x2xf32>
++  %0 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
++  %1 = stablehlo.constant dense<[4, 1]> : tensor<2xi64>
++  %2 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
++  %3 = stablehlo.constant dense<[3, 1]> : tensor<2xi64>
++  %4 = stablehlo.constant dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>
++  %5 = stablehlo.custom_call @stablehlo.dynamic_reduce_window(%arg0, %arg1, %0, %1, %2, %3, %4) {
++    called_computations = [@dynamic_reduce_window0]
++  } : (tensor<?x2xf32>, tensor<f32>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<?x2xf32>
++  func.return %5 : tensor<?x2xf32>
++}
++
++func.func private @dynamic_reduce_window0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
++  %0 = stablehlo.add %arg0, %arg1 : tensor<f32>
++  func.return %0 : tensor<f32>
++}
++
++// TODO(burmako): Implement tests for verification failures for dynamic_reduce_window.
++
++// -----
++
++// CHECK-LABEL: func @dynamic_reduce_window_inapplicable_dynamic_window_dimensions
++func.func @dynamic_reduce_window_inapplicable_dynamic_window_dimensions(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>, %arg2: tensor<2xi64>) -> tensor<2x2xf32> {
++  // CHECK: stablehlo.dynamic_reduce_window
++  %0 = stablehlo.constant dense<[4, 1]> : tensor<2xi64>
++  %1 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
++  %2 = stablehlo.constant dense<[3, 1]> : tensor<2xi64>
++  %3 = stablehlo.constant dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>
++  %4 = stablehlo.custom_call @stablehlo.dynamic_reduce_window(%arg0, %arg1, %arg2, %0, %1, %2, %3) {
++    called_computations = [@dynamic_reduce_window0]
++  } : (tensor<3x2xf32>, tensor<f32>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<2x2xf32>
++  func.return %4 : tensor<2x2xf32>
++}
++
++func.func private @dynamic_reduce_window0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
++  %0 = stablehlo.add %arg0, %arg1 : tensor<f32>
++  func.return %0 : tensor<f32>
++}
++
++// -----
++
++// CHECK-LABEL: func @dynamic_reduce_window_inapplicable_dynamic_window_strides
++func.func @dynamic_reduce_window_inapplicable_dynamic_window_strides(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>, %arg2: tensor<2xi64>) -> tensor<2x2xf32> {
++  // CHECK: stablehlo.dynamic_reduce_window
++  %0 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
++  %1 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
++  %2 = stablehlo.constant dense<[3, 1]> : tensor<2xi64>
++  %3 = stablehlo.constant dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>
++  %4 = stablehlo.custom_call @stablehlo.dynamic_reduce_window(%arg0, %arg1, %0, %arg2, %1, %2, %3) {
++    called_computations = [@dynamic_reduce_window0]
++  } : (tensor<3x2xf32>, tensor<f32>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<2x2xf32>
++  func.return %4 : tensor<2x2xf32>
++}
++
++func.func private @dynamic_reduce_window0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
++  %0 = stablehlo.add %arg0, %arg1 : tensor<f32>
++  func.return %0 : tensor<f32>
++}
++
++// -----
++
++// CHECK-LABEL: func @dynamic_reduce_window_inapplicable_dynamic_base_dilations
++func.func @dynamic_reduce_window_inapplicable_dynamic_base_dilations(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>, %arg2: tensor<2xi64>) -> tensor<2x2xf32> {
++  // CHECK: stablehlo.dynamic_reduce_window
++  %0 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
++  %1 = stablehlo.constant dense<[4, 1]> : tensor<2xi64>
++  %2 = stablehlo.constant dense<[3, 1]> : tensor<2xi64>
++  %3 = stablehlo.constant dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>
++  %4 = stablehlo.custom_call @stablehlo.dynamic_reduce_window(%arg0, %arg1, %0, %1, %arg2, %2, %3) {
++    called_computations = [@dynamic_reduce_window0]
++  } : (tensor<3x2xf32>, tensor<f32>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<2x2xf32>
++  func.return %4 : tensor<2x2xf32>
++}
++
++func.func private @dynamic_reduce_window0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
++  %0 = stablehlo.add %arg0, %arg1 : tensor<f32>
++  func.return %0 : tensor<f32>
++}
++
++// -----
++
++// CHECK-LABEL: func @dynamic_reduce_window_inapplicable_dynamic_window_dilations
++func.func @dynamic_reduce_window_inapplicable_dynamic_window_dilations(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>, %arg2: tensor<2xi64>) -> tensor<2x2xf32> {
++  // CHECK: stablehlo.dynamic_reduce_window
++  %0 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
++  %1 = stablehlo.constant dense<[4, 1]> : tensor<2xi64>
++  %2 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
++  %3 = stablehlo.constant dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>
++  %4 = stablehlo.custom_call @stablehlo.dynamic_reduce_window(%arg0, %arg1, %0, %1, %2, %arg2, %3) {
++    called_computations = [@dynamic_reduce_window0]
++  } : (tensor<3x2xf32>, tensor<f32>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<2x2xf32>
++  func.return %4 : tensor<2x2xf32>
++}
++
++func.func private @dynamic_reduce_window0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
++  %0 = stablehlo.add %arg0, %arg1 : tensor<f32>
++  func.return %0 : tensor<f32>
++}
++
++// -----
++
++// CHECK-LABEL: func @dynamic_reduce_window_inapplicable_dynamic_padding
++func.func @dynamic_reduce_window_inapplicable_dynamic_padding(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>, %arg2: tensor<2x2xi64>) -> tensor<2x2xf32> {
++  // CHECK: stablehlo.dynamic_reduce_window
++  %0 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
++  %1 = stablehlo.constant dense<[4, 1]> : tensor<2xi64>
++  %2 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
++  %3 = stablehlo.constant dense<[3, 1]> : tensor<2xi64>
++  %4 = stablehlo.custom_call @stablehlo.dynamic_reduce_window(%arg0, %arg1, %0, %1, %2, %3, %arg2) {
++    called_computations = [@dynamic_reduce_window0]
++  } : (tensor<3x2xf32>, tensor<f32>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<2x2xf32>
++  func.return %4 : tensor<2x2xf32>
++}
++
++func.func private @dynamic_reduce_window0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
++  %0 = stablehlo.add %arg0, %arg1 : tensor<f32>
++  func.return %0 : tensor<f32>
++}
++
++// -----
++
+ // CHECK-LABEL: func @dynamic_reshape_success
+ func.func @dynamic_reshape_success(%arg0: tensor<4xf32>) -> tensor<1x4xf32> {
+   // CHECK-NOT: stablehlo.dynamic_reshape
+@@ -452,6 +618,185 @@
+   %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
+   %1 = stablehlo.dynamic_reshape %arg0, %0 : (tensor<4xf32>, tensor<2xi64>) -> tensor<1x?xf32>
+   return %1 : tensor<1x?xf32>
++}
++
++// -----
++
++// CHECK-LABEL: func @dynamic_rng_bit_generator_success
++func.func @dynamic_rng_bit_generator_success(%arg0: tensor<2xui64>) -> tensor<1x4xf32> {
++  // CHECK-NOT: stablehlo.dynamic_rng_bit_generator
++  // CHECK: stablehlo.rng_bit_generator %arg0, algorithm = DEFAULT : (tensor<2xui64>) -> (tensor<2xui64>, tensor<1x4xf32>)
++  %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_rng_bit_generator(%arg0, %0) {
++    rng_algorithm = #stablehlo<rng_algorithm DEFAULT>
++  } : (tensor<2xui64>, tensor<2xi64>) -> (tensor<2xui64>, tensor<1x4xf32>)
++  return %1#1 : tensor<1x4xf32>
++}
++
++// TODO(burmako): Implement tests for verification failures for dynamic_rng_bit_generator.
++
++// -----
++
++// CHECK-LABEL: func @dynamic_rng_bit_generator_inapplicable_dynamic_output_shape
++func.func @dynamic_rng_bit_generator_inapplicable_dynamic_output_shape(%arg0: tensor<2xui64>, %arg1: tensor<2xi64>) -> tensor<1x4xf32> {
++  // CHECK: stablehlo.dynamic_rng_bit_generator
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_rng_bit_generator(%arg0, %arg1) {
++    rng_algorithm = #stablehlo<rng_algorithm DEFAULT>
++  } : (tensor<2xui64>, tensor<2xi64>) -> (tensor<2xui64>, tensor<1x4xf32>)
++  return %1#1 : tensor<1x4xf32>
++}
++
++// -----
++
++// CHECK-LABEL: func @dynamic_rng_bit_generator_inapplicable_dynamic_output_type
++func.func @dynamic_rng_bit_generator_inapplicable_dynamic_output_type(%arg0: tensor<2xui64>) -> tensor<?x?xf32> {
++  // CHECK: stablehlo.dynamic_rng_bit_generator
++  %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_rng_bit_generator(%arg0, %0) {
++    rng_algorithm = #stablehlo<rng_algorithm DEFAULT>
++  } : (tensor<2xui64>, tensor<2xi64>) -> (tensor<2xui64>, tensor<?x?xf32>)
++  return %1#1 : tensor<?x?xf32>
++}
++
++// -----
++
++// CHECK-LABEL: func @dynamic_top_k_success
++func.func @dynamic_top_k_success(%arg0: tensor<16xf32>) -> (tensor<3xf32>, tensor<3xi32>) {
++  // CHECK: chlo.top_k
++  %k = stablehlo.constant dense<3> : tensor<ui64>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<ui64>) -> (tensor<3xf32>, tensor<3xi32>)
++  return %1#0, %1#1 : tensor<3xf32>, tensor<3xi32>
++}
++
++// -----
++
++// CHECK-LABEL: func @dynamic_top_k_failure_k_mismatch
++func.func @dynamic_top_k_failure_k_mismatch(%arg0: tensor<16xf32>) -> (tensor<3xf32>, tensor<3xi32>) {
++  // CHECK: @stablehlo.dynamic_top_k
++  %k = stablehlo.constant dense<4> : tensor<ui64>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<ui64>) -> (tensor<3xf32>, tensor<3xi32>)
++  return %1#0, %1#1 : tensor<3xf32>, tensor<3xi32>
++}
++
++// -----
++
++// dynamic_top_k I1
++// CHECK-LABEL: func @dynamic_top_k_error_operand_not_float
++func.func @dynamic_top_k_error_operand_not_float(%arg0: tensor<16xcomplex<f64>>) -> (tensor<3xcomplex<f64>>, tensor<3xi32>) {
++  // expected-error@+2{{expects operand #0 to be a tensor of integer or floating-point type}}
++  %k = stablehlo.constant dense<3> : tensor<ui64>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xcomplex<f64>>, tensor<ui64>) -> (tensor<3xcomplex<f64>>, tensor<3xi32>)
++  return %1#0, %1#1 : tensor<3xcomplex<f64>>, tensor<3xi32>
++}
++
++// -----
++
++// dynamic_top_k I1
++// CHECK-LABEL: func @dynamic_top_k_error_operand_unranked
++func.func @dynamic_top_k_error_operand_unranked(%arg0: tensor<*xf32>) -> (tensor<3xf32>, tensor<3xi32>) {
++  // expected-error@+2{{expects operand #0 to be a tensor of integer or floating-point type of rank at least 1}}
++  %k = stablehlo.constant dense<3> : tensor<ui64>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<*xf32>, tensor<ui64>) -> (tensor<3xf32>, tensor<3xi32>)
++  return %1#0, %1#1 : tensor<3xf32>, tensor<3xi32>
++}
++
++// -----
++
++// dynamic_top_k I1
++// CHECK-LABEL: func @dynamic_top_k_error_scalar_operand
++func.func @dynamic_top_k_error_scalar_operand(%arg0: tensor<f32>) -> (tensor<3xf32>, tensor<3xi32>) {
++  // expected-error@+2{{expects operand #0 to be a tensor of integer or floating-point type of rank at least 1}}
++  %k = stablehlo.constant dense<3> : tensor<ui64>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<f32>, tensor<ui64>) -> (tensor<3xf32>, tensor<3xi32>)
++  return %1#0, %1#1 : tensor<3xf32>, tensor<3xi32>
++}
++
++// -----
++
++// dynamic_top_k I2
++// CHECK-LABEL: func @dynamic_top_k_error_k_not_integer
++func.func @dynamic_top_k_error_k_not_integer(%arg0: tensor<16xf32>) -> (tensor<3xf32>, tensor<3xi32>) {
++  // expected-error@+2{{expects k (operand #1) to be a 0-dimensional tensor of integer or index type}}
++  %k = stablehlo.constant dense<3.> : tensor<f32>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<f32>) -> (tensor<3xf32>, tensor<3xi32>)
++  return %1#0, %1#1 : tensor<3xf32>, tensor<3xi32>
++}
++
++// -----
++
++// dynamic_top_k I2
++// CHECK-LABEL: func @dynamic_top_k_error_k_not_scalar
++func.func @dynamic_top_k_error_k_not_scalar(%arg0: tensor<16xf32>) -> (tensor<3xf32>, tensor<3xi32>) {
++  // expected-error@+2{{expects k (operand #1) to be a 0-dimensional tensor of integer or index type}}
++  %k = stablehlo.constant dense<3> : tensor<1xui64>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<1xui64>) -> (tensor<3xf32>, tensor<3xi32>)
++  return %1#0, %1#1 : tensor<3xf32>, tensor<3xi32>
++}
++
++// -----
++
++// dynamic_top_k O1
++// CHECK-LABEL: func @dynamic_top_k_error_values_not_float
++func.func @dynamic_top_k_error_values_not_float(%arg0: tensor<16xf32>) -> (tensor<3xcomplex<f64>>, tensor<3xi32>) {
++  // expected-error@+2{{expects values (result #0) to be a tensor of integer or floating-point type}}
++  %k = stablehlo.constant dense<3> : tensor<ui64>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<ui64>) -> (tensor<3xcomplex<f64>>, tensor<3xi32>)
++  return %1#0, %1#1 : tensor<3xcomplex<f64>>, tensor<3xi32>
++}
++
++// -----
++
++// dynamic_top_k O2
++// CHECK-LABEL: func @dynamic_top_k_error_indices_not_i32
++func.func @dynamic_top_k_error_indices_not_i32(%arg0: tensor<16xf32>) -> (tensor<3xf32>, tensor<3xi64>) {
++  // expected-error@+2{{expects indices (result #1) to be a tensor of si32}}
++  %k = stablehlo.constant dense<3> : tensor<ui64>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<ui64>) -> (tensor<3xf32>, tensor<3xi64>)
++  return %1#0, %1#1 : tensor<3xf32>, tensor<3xi64>
++}
++
++// -----
++
++// dynamic_top_k C1
++// CHECK-LABEL: func @dynamic_top_k_error_values_bad_rank
++func.func @dynamic_top_k_error_values_bad_rank(%arg0: tensor<16xf32>) -> (tensor<3x4xf32>, tensor<3xi32>) {
++  // expected-error@+2{{expects the values shape to match the operand shape in all but the last dimension}}
++  %k = stablehlo.constant dense<3> : tensor<ui64>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<ui64>) -> (tensor<3x4xf32>, tensor<3xi32>)
++  return %1#0, %1#1 : tensor<3x4xf32>, tensor<3xi32>
++}
++
++// -----
++
++// dynamic_top_k C2
++// CHECK-LABEL: func @dynamic_top_k_error_values_bad_element_type
++func.func @dynamic_top_k_error_values_bad_element_type(%arg0: tensor<16xf32>) -> (tensor<3xf64>, tensor<3xi32>) {
++  // expected-error@+2{{expects the values element type to be the same as the operand element type}}
++  %k = stablehlo.constant dense<3> : tensor<ui64>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<ui64>) -> (tensor<3xf64>, tensor<3xi32>)
++  return %1#0, %1#1 : tensor<3xf64>, tensor<3xi32>
++}
++
++// -----
++
++// dynamic_top_k C3
++// CHECK-LABEL: func @dynamic_top_k_error_values_last_dim_too_large
++func.func @dynamic_top_k_error_values_last_dim_too_large(%arg0: tensor<16xf32>) -> (tensor<17xf32>, tensor<3xi32>) {
++  // expected-error@+2{{expects the values last dimension to have size at least as large as operand last dimension}}
++  %k = stablehlo.constant dense<17> : tensor<ui64>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<ui64>) -> (tensor<17xf32>, tensor<3xi32>)
++  return %1#0, %1#1 : tensor<17xf32>, tensor<3xi32>
++}
++
++// -----
++
++// dynamic_top_k C4
++// CHECK-LABEL: func @dynamic_top_k_error_indices_shape_mismatch
++func.func @dynamic_top_k_error_indices_shape_mismatch(%arg0: tensor<16xf32>) -> (tensor<3xf32>, tensor<4xi32>) {
++  // expected-error@+2{{expects the indices shape to match the values shape}}
++  %k = stablehlo.constant dense<3> : tensor<ui64>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<ui64>) -> (tensor<3xf32>, tensor<4xi32>)
++  return %1#0, %1#1 : tensor<3xf32>, tensor<4xi32>
+ }
+ 
+ // -----
+diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
+--- stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
++++ stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
+@@ -607,12 +607,55 @@
+ 
+ // -----
+ 
++// CHECK-LABEL: @main
++func.func @main(%arg0: tensor<3x2xf32>, %arg1: tensor<f32>) -> tensor<*xf32> {
++  // CHECK: stablehlo.dynamic_reduce_window{{.*}} -> tensor<2x2xf32>
++  %0 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
++  %1 = stablehlo.constant dense<[4, 1]> : tensor<2xi64>
++  %2 = stablehlo.constant dense<[2, 1]> : tensor<2xi64>
++  %3 = stablehlo.constant dense<[3, 1]> : tensor<2xi64>
++  %4 = stablehlo.constant dense<[[2, 1], [0, 0]]> : tensor<2x2xi64>
++  %5 = stablehlo.custom_call @stablehlo.dynamic_reduce_window(%arg0, %arg1, %0, %1, %2, %3, %4) {
++    called_computations = [@dynamic_reduce_window0]
++  } : (tensor<3x2xf32>, tensor<f32>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<*xf32>
++  func.return %5 : tensor<*xf32>
++}
++
++func.func private @dynamic_reduce_window0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
++  %0 = stablehlo.add %arg0, %arg1 : tensor<f32>
++  func.return %0 : tensor<f32>
++}
++
++// -----
++
+ // CHECK-LABEL: @refine_dynamic_reshape
+ func.func @refine_dynamic_reshape(%arg0: tensor<4xf32>) -> tensor<*xf32> {
+   // CHECK: stablehlo.dynamic_reshape{{.*}} -> tensor<1x4xf32>
+   %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
+   %1 = stablehlo.dynamic_reshape %arg0, %0 : (tensor<4xf32>, tensor<2xi64>) -> tensor<*xf32>
+   func.return %1 : tensor<*xf32>
++}
++
++// -----
++
++// CHECK-LABEL: @refine_dynamic_rng_bit_generator
++func.func @refine_dynamic_rng_bit_generator(%arg0: tensor<2xui64>) -> (tensor<?xui64>, tensor<*xf32>) {
++  // CHECK: stablehlo.dynamic_rng_bit_generator{{.*}} -> (tensor<2xui64>, tensor<1x4xf32>)
++  %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_rng_bit_generator(%arg0, %0) {
++    rng_algorithm = #stablehlo<rng_algorithm DEFAULT>
++  } : (tensor<2xui64>, tensor<2xi64>) -> (tensor<?xui64>, tensor<*xf32>)
++  func.return %1#0, %1#1 : tensor<?xui64>, tensor<*xf32>
++}
++
++// -----
++
++// CHECK-LABEL: func @refine_dynamic_top_k
++func.func @refine_dynamic_top_k(%arg0: tensor<16xf32>) -> (tensor<?xf32>, tensor<?xi32>) {
++  // CHECK: stablehlo.dynamic_top_k{{.*}} -> (tensor<4xf32>, tensor<4xi32>)
++  %k = stablehlo.constant dense<4> : tensor<ui64>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_top_k(%arg0, %k) : (tensor<16xf32>, tensor<ui64>) -> (tensor<?xf32>, tensor<?xi32>)
++  return %1#0, %1#1 : tensor<?xf32>, tensor<?xi32>
+ }
+ 
+ // -----
+diff --ruN a/stablehlo/stablehlo/transforms/Passes.td b/stablehlo/stablehlo/transforms/Passes.td
+--- stablehlo/stablehlo/transforms/Passes.td
++++ stablehlo/stablehlo/transforms/Passes.td
+@@ -25,6 +25,7 @@
+     For example, if the output_shape operand of DynamicReshapeOp is a constant
+     value, then the operation can be transformed to ReshapeOp.
+   }];
++  let dependentDialects = ["mlir::chlo::ChloDialect"];
+ }
+ 
+ def StablehloLegalizeToVhloPass : Pass<"stablehlo-legalize-to-vhlo", "ModuleOp"> {
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
+--- stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
++++ stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp
+@@ -24,6 +24,8 @@
+ #include "mlir/Interfaces/InferTypeOpInterface.h"
+ #include "mlir/Support/LogicalResult.h"
+ #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
++#include "stablehlo/dialect/ChloOps.h"
++#include "stablehlo/dialect/ExperimentalOps.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/transforms/Passes.h"
+ 
+@@ -198,6 +200,54 @@
+   }
+ };
+ 
++struct CanonicalizeDynamicReduceWindowOpPattern
++    : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp impl,
++                                PatternRewriter& rewriter) const override {
++    auto maybeOp = getDynamicReduceWindowOp(impl);
++    if (!maybeOp || failed(maybeOp->verify())) return failure();
++    DynamicReduceWindowOpAdaptor op = *maybeOp;
++
++    // ReduceWindowOp supports dynamic shapes for operands and results, so we
++    // don't check for that here unlike in some other patterns in this pass.
++    SmallVector<int64_t> windowDimensions, windowStrides, baseDilations,
++        windowDilations, padding;
++    if (failed(hlo::matchInts(op.getWindowDimensions(), windowDimensions)))
++      return rewriter.notifyMatchFailure(op,
++                                         "expected static window_dimensions");
++    if (failed(hlo::matchInts(op.getWindowStrides(), windowStrides)))
++      return rewriter.notifyMatchFailure(op, "expected static window_strides");
++    if (failed(hlo::matchInts(op.getBaseDilations(), baseDilations)))
++      return rewriter.notifyMatchFailure(op, "expected static base_dilations");
++    if (failed(hlo::matchInts(op.getWindowDilations(), windowDilations)))
++      return rewriter.notifyMatchFailure(op,
++                                         "expected static window_dilations");
++    if (failed(hlo::matchInts(op.getPadding(), padding)))
++      return rewriter.notifyMatchFailure(op, "expected static padding");
++    auto newOp = rewriter.create<ReduceWindowOp>(
++        op->getLoc(), op->getResultTypes(), op.getInputs(), op.getInitValues(),
++        rewriter.getI64TensorAttr(windowDimensions),
++        rewriter.getI64TensorAttr(windowStrides),
++        rewriter.getI64TensorAttr(baseDilations),
++        rewriter.getI64TensorAttr(windowDilations),
++        hlo::getPaddingAttr(&rewriter, padding));
++
++    // Inline the called computation into newOp.
++    // This is somewhat annoying because we also have to rewrite the original
++    // func::ReturnOp into stablehlo::ReturnOp.
++    rewriter.cloneRegionBefore(op.getBody(), newOp.getBody(),
++                               newOp.getBody().end());
++    auto funcReturnOp =
++        cast<func::ReturnOp>(newOp.getBody().front().getTerminator());
++    rewriter.setInsertionPointToEnd(&newOp.getBody().front());
++    rewriter.replaceOpWithNewOp<stablehlo::ReturnOp>(
++        funcReturnOp, funcReturnOp.getOperands());
++    rewriter.replaceOp(op, newOp->getResults());
++    return success();
++  }
++};
++
+ struct CanonicalizeDynamicReshapeOpPattern
+     : public OpRewritePattern<DynamicReshapeOp> {
+   using OpRewritePattern::OpRewritePattern;
+@@ -210,6 +260,56 @@
+     if (!op.getType().hasStaticShape())
+       return rewriter.notifyMatchFailure(op, "expected static result type");
+     rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.getOperand());
++    return success();
++  }
++};
++
++struct CanonicalizeDynamicRngBitGeneratorOpPattern
++    : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp impl,
++                                PatternRewriter& rewriter) const override {
++    auto maybeOp = getDynamicRngBitGeneratorOp(impl);
++    if (!maybeOp || failed(maybeOp->verify())) return failure();
++    DynamicRngBitGeneratorOpAdaptor op = *maybeOp;
++
++    // This pattern ignores and discards the output_shape operand. We rely on
++    // the verifier to make sure that its value is consistent with result type.
++    if (!succeeded(hlo::matchInts(op.getOutputShape())))
++      return rewriter.notifyMatchFailure(op, "expected static output_shape");
++    if (!op.getOutput().getType().cast<ShapedType>().hasStaticShape())
++      return rewriter.notifyMatchFailure(op, "expected static output type");
++    rewriter.replaceOpWithNewOp<RngBitGeneratorOp>(
++        op, op->getResultTypes(), op.getRngAlgorithm(), op.getInitialState());
++    return success();
++  }
++};
++
++struct CanonicalizeDynamicTopKOpPattern
++    : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp impl,
++                                PatternRewriter& rewriter) const override {
++    auto maybeOp = getDynamicTopKOp(impl);
++    if (!maybeOp || failed(maybeOp->verify())) return failure();
++    DynamicTopKOpAdaptor op = *maybeOp;
++
++    SmallVector<int64_t> k;
++    if (failed(hlo::matchInts(op.getK(), k)))
++      return rewriter.notifyMatchFailure(impl, "expected constant k");
++
++    // We rely on many of the properties checked by verification.
++    auto valuesType = op.getValues().getType().cast<ShapedType>();
++    auto valuesLastDimSize = valuesType.getShape()[valuesType.getRank() - 1];
++    if (hlo::isDynamicDimSize(valuesLastDimSize) ||
++        valuesLastDimSize != k[0])
++      return rewriter.notifyMatchFailure(
++          op,
++          "expected value of k to match the values last dimension size of "
++          "static values type (result #0)");
++
++    rewriter.replaceOpWithNewOp<chlo::TopKOp>(
++        op, op->getResultTypes(), op.getOperand(), k[0]);
+     return success();
+   }
+ };
+@@ -320,7 +420,10 @@
+     patterns.add<CanonicalizeDynamicGatherOpPattern>(&getContext());
+     patterns.add<CanonicalizeDynamicIotaOpPattern>(&getContext());
+     patterns.add<CanonicalizeDynamicPadOpPattern>(&getContext());
++    patterns.add<CanonicalizeDynamicReduceWindowOpPattern>(&getContext());
+     patterns.add<CanonicalizeDynamicReshapeOpPattern>(&getContext());
++    patterns.add<CanonicalizeDynamicRngBitGeneratorOpPattern>(&getContext());
++    patterns.add<CanonicalizeDynamicTopKOpPattern>(&getContext());
+     patterns.add<CanonicalizeRealDynamicSliceOpToDynamicSliceOpPattern>(
+         &getContext());
+     patterns.add<CanonicalizeRealDynamicSliceOpToSliceOpPattern>(&getContext());
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+--- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
++++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
+@@ -43,6 +43,7 @@
+ #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+ #include "stablehlo/dialect/Base.h"
+ #include "stablehlo/dialect/ChloOps.h"
++#include "stablehlo/dialect/ExperimentalOps.h"
+ #include "stablehlo/dialect/StablehloOps.h"
+ #include "stablehlo/dialect/TypeInference.h"
+ #include "stablehlo/transforms/Passes.h"
+@@ -844,12 +845,97 @@
+   }
+ };
+ 
++struct RefineDynamicReduceWindowOpPattern
++    : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp impl,
++                                PatternRewriter& rewriter) const override {
++    auto maybeOp = getDynamicReduceWindowOp(impl);
++    if (!maybeOp || failed(maybeOp->verify())) return failure();
++    DynamicReduceWindowOpAdaptor op = *maybeOp;
++
++    // At the moment, we only support refining return types using fully static
++    // shape values which serves the current use cases well.
++    // Support for partially static shape values is left for future work.
++    SmallVector<int64_t> windowDimensions, windowStrides, baseDilations,
++        windowDilations, padding;
++    if (failed(hlo::matchInts(op.getWindowDimensions(), windowDimensions)))
++      return rewriter.notifyMatchFailure(op,
++                                         "expected constant window_dimensions");
++    if (failed(hlo::matchInts(op.getWindowStrides(), windowStrides)))
++      return rewriter.notifyMatchFailure(op,
++                                         "expected constant window_strides");
++    if (failed(hlo::matchInts(op.getBaseDilations(), baseDilations)))
++      return rewriter.notifyMatchFailure(op,
++                                         "expected constant base_dilations");
++    if (failed(hlo::matchInts(op.getWindowDilations(), windowDilations)))
++      return rewriter.notifyMatchFailure(op,
++                                         "expected constant window_dilations");
++    if (failed(hlo::matchInts(op.getPadding(), padding)))
++      return rewriter.notifyMatchFailure(op, "expected constant padding");
++
++    SmallVector<ShapedTypeComponents> inferredReturnTypes;
++    if (failed(hlo::inferReduceWindowOp(
++            /*location=*/{}, op.getInputs(), op.getInitValues(),
++            rewriter.getI64TensorAttr(windowDimensions),
++            rewriter.getI64TensorAttr(windowStrides),
++            rewriter.getI64TensorAttr(baseDilations),
++            rewriter.getI64TensorAttr(windowDilations),
++            hlo::getPaddingAttr(&rewriter, padding), inferredReturnTypes)))
++      return rewriter.notifyMatchFailure(op, "inferReduceWindowOp failed");
++    return refineReturnTypes(rewriter, op, inferredReturnTypes);
++  }
++};
++
+ struct RefineDynamicReshapeOpPattern
+     : public OpRewritePattern<DynamicReshapeOp> {
+   using OpRewritePattern::OpRewritePattern;
+   LogicalResult matchAndRewrite(DynamicReshapeOp op,
+                                 PatternRewriter& rewriter) const override {
+     return refineReturnShape(rewriter, op, op.getOutputShape());
++  }
++};
++
++struct RefineDynamicRngBitGeneratorOpPattern
++    : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp impl,
++                                PatternRewriter& rewriter) const override {
++    auto maybeOp = getDynamicRngBitGeneratorOp(impl);
++    if (!maybeOp || failed(maybeOp->verify())) return failure();
++    DynamicRngBitGeneratorOpAdaptor op = *maybeOp;
++
++    // At the moment, we only support refining return types using fully static
++    // shape values which serves the current use cases well.
++    // Support for partially static shape values is left for future work.
++    auto initialStateType = op.getInitialState().getType().cast<ShapedType>();
++    SmallVector<int64_t> outputShape;
++    if (failed(hlo::matchInts(op.getOutputShape(), outputShape)))
++      return rewriter.notifyMatchFailure(op, "expected constant output_shape");
++
++    // We only need to refine the shape of `output` (the second result).
++    // The shape of `output_state` (the first result) is determined by the shape
++    // of `initial_state`, so we ignore it and provide an empty refinement.
++    return refineReturnTypes(rewriter, op, {{initialStateType}, {outputShape}});
++  }
++};
++
++struct RefineDynamicTopKOpPattern : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp impl,
++                                PatternRewriter& rewriter) const override {
++    auto maybeOp = getDynamicTopKOp(impl);
++    if (!maybeOp || failed(maybeOp->verify())) return failure();
++    DynamicTopKOpAdaptor op = *maybeOp;
++
++    auto operandType = op.getOperand().getType().cast<ShapedType>();
++    SmallVector<int64_t> outputShape(operandType.getShape());
++    SmallVector<int64_t> k;
++    if (failed(hlo::matchInts(op.getK(), k)))
++      return rewriter.notifyMatchFailure(op, "expected constant k");
++
++    outputShape[operandType.getRank() - 1] = k[0];
++    return refineReturnTypes(rewriter, op, {{outputShape}, {outputShape}});
+   }
+ };
+ 
+@@ -1181,7 +1267,10 @@
+     patterns.add<RefineDynamicConvOpPattern>(&getContext());
+     patterns.add<RefineDynamicIotaOpPattern>(&getContext());
+     patterns.add<RefineDynamicPadOpPattern>(&getContext());
++    patterns.add<RefineDynamicReduceWindowOpPattern>(&getContext());
+     patterns.add<RefineDynamicReshapeOpPattern>(&getContext());
++    patterns.add<RefineDynamicRngBitGeneratorOpPattern>(&getContext());
++    patterns.add<RefineDynamicTopKOpPattern>(&getContext());
+     patterns.add<RefineInferTypeOpInterfacePattern>(&getContext());
+     patterns.add<RefineRealDynamicSliceOpPattern>(&getContext());
+     patterns.add<RefineReduceScatterOpPattern>(&getContext());
+

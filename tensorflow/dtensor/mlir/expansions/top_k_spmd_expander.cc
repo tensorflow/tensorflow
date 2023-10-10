@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/top_k_spmd_expander.h"
 
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include <string>
+#include <vector>
+
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
@@ -29,20 +32,18 @@ namespace dtensor {
 
 // layout -> layout[:-1] + unsharded
 StatusOr<Layout> GetSuggestedLayout(const Layout& input_layout) {
-  std::vector<ShardingSpec> layout_specs(input_layout.rank());
+  std::vector<std::string> layout_specs(input_layout.rank());
 
   for (int i = 0; i < input_layout.rank() - 1; ++i) {
-    layout_specs[i].set_sharding_spec(input_layout.sharding_spec(i));
+    layout_specs[i] = input_layout.sharding_spec(i);
   }
-  layout_specs[input_layout.rank() - 1].set_sharding_spec(
-      Layout::kUnshardedDim);
-
+  layout_specs[input_layout.rank() - 1] = Layout::kUnshardedDim;
   return Layout::GetLayout(layout_specs, input_layout.mesh());
 }
 
 StatusOr<mlir::Operation*> TopKSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto top_k_op = mlir::cast<mlir::TF::TopKV2Op>(op);
-  mlir::Value input = top_k_op.input();
+  mlir::Value input = top_k_op.getInput();
   TF_ASSIGN_OR_RETURN(auto input_layout, ExtractLayoutFromOperand(input));
 
   if (!input_layout)
@@ -61,7 +62,7 @@ StatusOr<mlir::Operation*> TopKSPMDExpander::ExpandOp(mlir::Operation* op) {
     TF_ASSIGN_OR_RETURN(Layout new_layout, GetSuggestedLayout(*input_layout));
     TF_ASSIGN_OR_RETURN(
         input, EmitAllGather(builder, input, *input_layout, new_layout));
-    mlir::BlockAndValueMapping mapping;
+    mlir::IRMapping mapping;
     mapping.map(op->getOperand(0), input);
     mlir::Operation* new_op = builder.clone(*op, mapping);
     new_op = InferSPMDExpandedLocalShape(new_op);

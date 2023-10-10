@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/dtensor/cc/save_restore_util.h"
 
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/dtensor/mlir/value_utils.h"
 namespace tensorflow {
 namespace dtensor {
 
@@ -89,6 +93,12 @@ StatusOr<SliceSpecByName> BuildSliceSpecDeviceMap(
 
 }  // namespace
 
+// Example is _dev-02-of-16.
+std::string DeviceSuffix(int device_id, int total_devices) {
+  return absl::StrFormat("_dev-%0*d-of-%d", absl::StrCat(total_devices).size(),
+                         device_id, total_devices);
+}
+
 StatusOr<absl::flat_hash_map<
     int64_t, absl::flat_hash_map<int64_t, std::vector<std::string>>>>
 BuildSavingSpec(absl::Span<const SavingTensorMetadata> tensor_metadatas) {
@@ -125,9 +135,10 @@ BuildSavingSpec(absl::Span<const SavingTensorMetadata> tensor_metadatas) {
 }
 
 SaveOpSpecs BuildPerDeviceSave(
+    mlir::OpBuilder& builder,
     const absl::flat_hash_map<int64_t, std::vector<std::string>>& saving_spec,
-    const int device_id, absl::string_view prefix) {
-  std::vector<std::string> new_prefixes;
+    int device_id, mlir::Value prefix, int total_devices) {
+  std::vector<mlir::Value> new_prefixes;
   std::vector<std::vector<int>> tensor_indices;
   std::vector<std::vector<std::string>> shape_and_slice_specs;
   for (const auto& tensor_name_index_and_slice_specs : saving_spec) {
@@ -142,9 +153,18 @@ SaveOpSpecs BuildPerDeviceSave(
       if (save_op_index >= tensor_indices.size()) {
         tensor_indices.push_back({});
         shape_and_slice_specs.push_back({});
+
+        mlir::Value new_prefix =
+            builder
+                .create<mlir::TF::AddOp>(
+                    prefix.getLoc(),
+                    prefix.getType().dyn_cast<mlir::RankedTensorType>(), prefix,
+                    StringScalarConst(builder, prefix.getLoc(),
+                                      DeviceSuffix(device_id, total_devices)))
+                .getZ();
         // Generate new prefix based on device_id and save op index, only when
         // we need a new save_op.
-        new_prefixes.push_back(absl::StrCat(prefix, "_device_", device_id));
+        new_prefixes.push_back(new_prefix);
       }
       tensor_indices[save_op_index].push_back(tensor_index);
       shape_and_slice_specs[save_op_index].push_back(specs[save_op_index]);

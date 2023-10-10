@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 /// \file
+///
 /// Functions for serializiation/deserialization of control dependency
 /// information to/from model metadata.
 ///
@@ -51,6 +52,8 @@ constexpr char kModelControlDependenciesMetadataKey[] =
 /// will contain a version; this constant is the version that will be used for
 /// serialization.  For deserialization, past versions should remain parseable.
 constexpr uint32_t kModelControlDependenciesMetadataVersion = 1;
+
+inline constexpr char kModelUseStablehloTensorKey[] = "keep_stablehlo_constant";
 
 }  // namespace tflite
 

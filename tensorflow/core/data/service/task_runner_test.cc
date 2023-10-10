@@ -16,16 +16,17 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -76,6 +77,8 @@ class RangeIterator : public TaskIterator {
     return repeat_ ? kInfiniteCardinality : range_;
   }
 
+  std::optional<double> GetProcessingTimeNsec() const override { return 1.0e7; }
+
  private:
   const int64_t range_;
   const bool repeat_;
@@ -92,6 +95,8 @@ class InfiniteRangeIterator : public TaskIterator {
   }
 
   int64_t Cardinality() const override { return kInfiniteCardinality; }
+
+  std::optional<double> GetProcessingTimeNsec() const override { return 1.0e7; }
 
  private:
   int64_t next_ = 0;
@@ -115,6 +120,8 @@ class ElementOrErrorIterator : public TaskIterator {
   }
 
   int64_t Cardinality() const override { return elements_.size(); }
+
+  std::optional<double> GetProcessingTimeNsec() const override { return 1.0e7; }
 
  private:
   const std::vector<StatusOr<T>> elements_;

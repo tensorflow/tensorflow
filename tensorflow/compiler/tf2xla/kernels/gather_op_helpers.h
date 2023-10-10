@@ -19,8 +19,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_GATHER_OP_HELPERS_H_
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/client_library.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/util/bcast.h"
 
@@ -43,7 +43,7 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
 // the input instead of context->input(0) in order to allow ResourceGather to
 // handle obtaining the data from the ResourceVariable.
 Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
-                                    const xla::XlaOp input,
+                                    xla::XlaOp input,
                                     const TensorShape& input_shape,
                                     int batch_dims, xla::XlaOp* gather_output);
 }  // namespace tensorflow

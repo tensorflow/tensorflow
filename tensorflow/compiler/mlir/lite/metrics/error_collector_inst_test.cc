@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 
 #include <cstddef>
+#include <memory>
 #include <set>
 #include <string>
 #include <utility>
@@ -35,12 +36,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace mlir {
 namespace TFL {
 namespace {
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 // MockSuccessPass reports errors but doesn't fail.
 class MockSuccessPass
@@ -52,7 +53,7 @@ class MockSuccessPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MockSuccessPass)
 
-  explicit MockSuccessPass() {}
+  explicit MockSuccessPass() = default;
 
  private:
   void runOnOperation() override {
@@ -73,7 +74,7 @@ class MockFailurePass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(MockFailurePass)
 
-  explicit MockFailurePass() {}
+  explicit MockFailurePass() = default;
 
  private:
   void runOnOperation() override {
@@ -109,18 +110,19 @@ TEST(ErrorCollectorTest, TessSuccessPass) {
       "tensorflow/compiler/mlir/lite/metrics/testdata/strided_slice.mlir");
   MLIRContext context;
   context.getOrLoadDialect<mlir::func::FuncDialect>();
-  context.allowUnregisteredDialects();
+  context.getOrLoadDialect<TF::TensorFlowDialect>();
   context.enableMultithreading();
 
   auto module = LoadModule(&context, input_file);
   EXPECT_EQ(module.ok(), true);
 
-  PassManager pm(&context, OpPassManager::Nesting::Implicit);
+  PassManager pm(module.value().get()->getName(),
+                 OpPassManager::Nesting::Implicit);
   pm.addPass(std::make_unique<MockSuccessPass>());
 
   pm.addInstrumentation(
       std::make_unique<ErrorCollectorInstrumentation>(&context));
-  EXPECT_EQ(succeeded(pm.run(module.ValueOrDie().get())), true);
+  EXPECT_EQ(succeeded(pm.run(module.value().get())), true);
 
   auto collected_errors =
       ErrorCollector::GetErrorCollector()->CollectedErrors();
@@ -131,24 +133,25 @@ TEST(ErrorCollectorTest, TessFailurePass) {
   using tflite::metrics::ConverterErrorData;
   MLIRContext context;
   context.getOrLoadDialect<mlir::func::FuncDialect>();
+  context.getOrLoadDialect<TF::TensorFlowDialect>();
   const std::string input_file =
       "tensorflow/compiler/mlir/lite/metrics/testdata/strided_slice.mlir";
   auto input_file_id = StringAttr::get(&context, input_file);
 
-  context.allowUnregisteredDialects();
   context.enableMultithreading();
 
   auto module =
       LoadModule(&context, tensorflow::GetDataDependencyFilepath(input_file));
   EXPECT_EQ(module.ok(), true);
 
-  PassManager pm(&context, OpPassManager::Nesting::Implicit);
+  PassManager pm(module.value().get()->getName(),
+                 OpPassManager::Nesting::Implicit);
   pm.addPass(std::make_unique<MockSuccessPass>());
   pm.addPass(std::make_unique<MockFailurePass>());
 
   pm.addInstrumentation(
       std::make_unique<ErrorCollectorInstrumentation>(&context));
-  EXPECT_EQ(succeeded(pm.run(module.ValueOrDie().get())), false);
+  EXPECT_EQ(succeeded(pm.run(module.value().get())), false);
 
   auto collected_errors =
       ErrorCollector::GetErrorCollector()->CollectedErrors();

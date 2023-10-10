@@ -32,4 +32,4 @@ StatusOr<DatasetBase*> GetFinalizedDataset(OpKernelContext* ctx,
 }  // namespace data
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DATA_FINALIZATION_UTILS_H_
+#endif  // TENSORFLOW_CORE_DATA_FINALIZATION_UTILS_H_

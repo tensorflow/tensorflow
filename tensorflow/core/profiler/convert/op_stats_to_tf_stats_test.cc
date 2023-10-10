@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/test.h"

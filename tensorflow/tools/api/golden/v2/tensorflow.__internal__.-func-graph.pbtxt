@@ -2,6 +2,7 @@ path: "tensorflow.__internal__.FuncGraph"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.func_graph.FuncGraph\'>"
   is_instance: "<class \'tensorflow.python.framework.ops.Graph\'>"
+  is_instance: "<class \'tensorflow.python.client._pywrap_tf_session.PyGraph\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "building_function"
@@ -32,11 +33,19 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "function_captures"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "graph_def_versions"
     mtype: "<type \'property\'>"
   }
   member {
     name: "internal_captures"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "operations"
     mtype: "<type \'property\'>"
   }
   member {
@@ -80,6 +89,9 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member_method {
+    name: "Dismantle"
+  }
+  member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'name\', \'collections\', \'capture_by_value\', \'structured_input_signature\', \'structured_outputs\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
@@ -116,22 +128,6 @@ tf_class {
     argspec: "args=[\'self\', \'closure\', \'spec\', \'key\', \'default_value\', \'placeholder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
-    name: "capture_distributed_variable"
-    argspec: "args=[\'self\', \'variable\', \'placeholder\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "capture_eager_tensor"
-    argspec: "args=[\'self\', \'tensor\', \'name\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "captured"
-    argspec: "args=[\'self\', \'tensor\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "clear_captures"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "clear_collection"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
   }
@@ -160,6 +156,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "get"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_all_collection_keys"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
@@ -181,7 +181,6 @@ tf_class {
   }
   member_method {
     name: "get_operations"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_tensor_by_name"
@@ -208,8 +207,14 @@ tf_class {
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "pop_capture"
-    argspec: "args=[\'self\', \'tensor\'], varargs=None, keywords=None, defaults=None"
+    name: "new_operations"
+  }
+  member_method {
+    name: "num_operations"
+  }
+  member_method {
+    name: "op_def_for_type"
+    argspec: "args=[\'self\', \'type\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "prevent_feeding"
@@ -226,10 +231,6 @@ tf_class {
   member_method {
     name: "replace_capture_with_deferred_capture"
     argspec: "args=[\'self\', \'tensor\', \'closure\', \'spec\', \'placeholder\', \'default_value\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "reset_captures"
-    argspec: "args=[\'self\', \'capture_list\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "switch_to_thread_local"

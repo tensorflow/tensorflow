@@ -17,10 +17,9 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device_set.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
-#include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
 
@@ -67,5 +66,12 @@ Status InitializeTPUSystemGlobally(Env* env, tpu::TopologyProto* tpu_topology);
 Status InitializeTPUSystemGlobally();
 
 }  // namespace tensorflow
+
+// Many clients rely on ADL to lookup InitializeTPUSystemGlobally, now that Env
+// moved to namespace tsl they are all broken without these forwarding
+// declarations.
+namespace tsl {
+using tensorflow::InitializeTPUSystemGlobally;  // NOLINT
+}
 
 #endif  // TENSORFLOW_CORE_TPU_TPU_GLOBAL_INIT_H_

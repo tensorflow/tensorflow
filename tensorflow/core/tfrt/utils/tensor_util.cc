@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -110,8 +110,7 @@ StatusOr<tensorflow::DataType> ConvertTFRTDTypeToTFDType(DType dtype) {
 
 }  // namespace
 
-llvm::Expected<tensorflow::Tensor> TFRTTensorToTFTensor(const Tensor& tensor,
-                                                        HostContext* host) {
+llvm::Expected<tensorflow::Tensor> TFRTTensorToTFTensor(const Tensor& tensor) {
   if (auto* knfbt = llvm::dyn_cast<tensorflow::KernelFallbackTensor>(&tensor)) {
     return *knfbt->GetTensor();
   }
@@ -133,11 +132,10 @@ llvm::Expected<tensorflow::Tensor> TFRTTensorToTFTensor(const Tensor& tensor,
 
 AsyncValueRef<TensorHandle> TFTensorToTFRTTensorHandle(
     const tensorflow::Tensor& tf_tensor, HostContext* host_ctx) {
-  auto knfbt = MakeAvailableAsyncValueRef<tensorflow::KernelFallbackTensor>(
-      host_ctx, tf_tensor);
+  auto knfbt =
+      MakeAvailableAsyncValueRef<tensorflow::KernelFallbackTensor>(tf_tensor);
   return MakeAvailableAsyncValueRef<TensorHandle>(
-      host_ctx, host_ctx->GetHostDeviceRef(), knfbt->metadata(),
-      std::move(knfbt));
+      host_ctx->GetHostDeviceRef(), knfbt->metadata(), std::move(knfbt));
 }
 
 StatusOr<TensorHandle> CreateTensorHandleFromTFTensor(
@@ -212,6 +210,25 @@ StatusOr<tensorflow::Tensor> CreateTFTensorFromTensorHandle(
   }
 
   return tensorflow::errors::Internal("unknown host tensor type");
+}
+
+Expected<tfrt::DenseHostTensor> ConvertTfTensorToDHT(
+    tensorflow::Tensor tf_tensor) {
+  auto metadata = tensorflow::tfd::GetTensorMetadata(tf_tensor);
+  if (!IsTriviallyCopyable(metadata.dtype))
+    return MakeStringError(
+        "Cannot convert tf Tensor with non-trivially copyable dtype to DHT");
+
+  void* data = tf_tensor.data();
+  size_t size = tf_tensor.AllocatedBytes();
+  tfrt::RCReference<tfrt::HostBuffer> host_buffer =
+      tfrt::HostBuffer::CreateFromExternal(
+          data, size, [tf_tensor = std::move(tf_tensor)](void*, size_t) {});
+
+  // Assume HostBuffer::CreateFromExternal never fails.
+  assert(host_buffer);
+
+  return tfrt::DenseHostTensor(metadata, std::move(host_buffer));
 }
 
 }  // namespace tfrt

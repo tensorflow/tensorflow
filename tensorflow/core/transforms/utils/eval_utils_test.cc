@@ -50,7 +50,7 @@ TEST(EvalUtilsTest, InvalidInputs) {
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
 
-  auto iter = func.body().begin()->begin();
+  auto iter = func.getBody().begin()->begin();
   Operation *const_0 = &*iter++;
   ASSERT_TRUE(tfg_dialect->IsConstant(const_0));
   Operation *const_1 = &*iter++;
@@ -88,7 +88,7 @@ TEST(EvalUtilsTest, EvaluateOperation) {
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
 
-  auto iter = func.body().begin()->begin();
+  auto iter = func.getBody().begin()->begin();
   Operation *const_0 = &*iter++;
   Operation *const_1 = &*iter++;
   Operation *add = &*iter++;
@@ -149,7 +149,7 @@ TEST(EvalUtilsTest, OutputInvalidation) {
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
 
-  auto iter = func.body().begin()->begin();
+  auto iter = func.getBody().begin()->begin();
   Operation *const_0 = &*iter++;
   ASSERT_TRUE(tfg_dialect->IsConstant(const_0));
   Operation *const_1 = &*iter++;

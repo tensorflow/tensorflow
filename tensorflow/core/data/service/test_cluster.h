@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
@@ -63,9 +64,13 @@ class TestCluster {
   // the cluster. Initialize should be called only once.
   Status Initialize();
   // Adds a new worker to the cluster.
-  Status AddWorker();
+  Status AddWorker(std::optional<int> port = std::nullopt);
   // Returns the number of workers in this cluster.
   size_t NumWorkers() const { return workers_.size(); }
+  // Returns the port number of a worker.
+  int WorkerBoundPort(size_t worker_index) const {
+    return workers_[worker_index]->BoundPort();
+  }
   // Returns the number of active iterations.
   StatusOr<size_t> NumActiveIterations() const {
     return dispatcher_->NumActiveIterations();
@@ -115,6 +120,9 @@ class DatasetClient {
   // Creates a dataset client. It will process datasets in `cluster`.
   explicit DatasetClient(const TestCluster& cluster);
 
+  // Registers the dataset and returns the dataset ID.
+  StatusOr<std::string> RegisterDataset(const DatasetDef& dataset);
+
   // Maps a worker address to the data it produces when calling `Read`.
   using WorkerResultMap = absl::flat_hash_map<std::string, std::vector<T>>;
 
@@ -131,8 +139,6 @@ class DatasetClient {
   StatusOr<std::vector<TaskInfo>> GetTasks(int64_t iteration_client_id);
 
  private:
-  // Registers the dataset and returns the dataset ID.
-  StatusOr<std::string> RegisterDataset(const DatasetDef& dataset);
   // Creates an iteration and returns the iteration client ID.
   StatusOr<int64_t> CreateIteration(
       const std::string& dataset_id,
@@ -238,7 +244,7 @@ DatasetClient<T>::ReadFromTasks(const std::vector<TaskInfo>& tasks) {
       StatusOr<GetElementResult> element_result = ReadFromTask(task);
       // A task may be cancelled when it has finished but other workers are
       // still producing data.
-      if (errors::IsCancelled(element_result.status())) {
+      if (absl::IsCancelled(element_result.status())) {
         continue;
       }
       TF_RETURN_IF_ERROR(element_result.status());

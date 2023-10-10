@@ -1,7 +1,7 @@
 // RUN: tfg-transforms-opt -tfg-constant-folding %s | FileCheck %s
 
 module {
-  tfg.func @test() {
+  tfg.func @test() -> (tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xi32>) {
     %Placeholder, %ctl = Placeholder name("a") {dtype = f32, shape = #tf_type.shape<2x2>} : () -> (tensor<2x2xf32>)
     %Square, %ctl_0 = Square(%Placeholder) name("b") {T = f32} : (tensor<2x2xf32>) -> (tensor<2x2xf32>)
     %Mul, %ctl_1 = Mul(%Placeholder, %Square) name("c") {T = f32} : (tensor<2x2xf32>, tensor<2x2xf32>) -> (tensor<*xf32>)
@@ -36,6 +36,6 @@ module {
     // CHECK: Const{{.*}} name("p22")
     // CHECK-SAME: value = dense<> : tensor<0xi32>
     %Identity_18, %ctl_25 = Identity(%BroadcastGradientArgs_14#1) name("p22") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
-    return
+    return (%Identity, %Identity_7, %Identity_1, %Identity_8, %Identity_15, %Identity_17, %Identity_16, %Identity_18) : tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xi32>, tensor<*xi32> 
   }
 }

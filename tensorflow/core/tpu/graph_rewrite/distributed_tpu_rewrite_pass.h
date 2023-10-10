@@ -108,19 +108,30 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_GRAPH_REWRITE_DISTRIBUTED_TPU_REWRITE_PASS_H_
 #define TENSORFLOW_CORE_TPU_GRAPH_REWRITE_DISTRIBUTED_TPU_REWRITE_PASS_H_
 
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
-#include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "xla/service/computation_placer.h"
+#include "xla/stream_executor/tpu/tpu_topology.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/stream_executor/tpu/tpu_topology.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
@@ -145,7 +156,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   // information, and provide common APIs over them.
   class ParameterInfo {
    public:
-    ParameterInfo() {}
+    ParameterInfo() = default;
     ParameterInfo(int64_t num_replicas, int64_t num_per_replica_args,
                   int64_t num_distributed_args, int64_t num_broadcast_args,
                   int64_t num_variables, int64_t num_guaranteed_constants,
@@ -249,7 +260,8 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
 
   // Mapping from TPUReplicate cluster name to tpu device names. Value is a
   // mapping from [replica][core] to a TF device name.
-  typedef absl::flat_hash_map<string, std::vector<std::vector<string>>>
+  typedef absl::flat_hash_map<std::string,
+                              std::vector<std::vector<std::string>>>
       TPUReplicateDeviceNamesMapping;
 
   // Determines which devices to use to run the computation.
@@ -274,9 +286,9 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   static Status BuildDeviceAssignment(
       const tpu::TpuTopologyExternal& topology, int num_tpus_per_task,
       const std::vector<std::vector<Device*>>& tpu_devices, int num_replicas,
-      int num_cores_per_replica, const string& topology_attr,
+      int num_cores_per_replica, const std::string& topology_attr,
       absl::Span<const int> device_assignment_attr,
-      std::vector<std::vector<string>>* tf_device_assignment,
+      std::vector<std::vector<std::string>>* tf_device_assignment,
       std::vector<int>* devices_to_lock,
       std::unique_ptr<xla::DeviceAssignment>* xla_device_assignment);
 
@@ -360,16 +372,16 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   // executables.
   static Status BuildCompileNode(
       const Node* replicate_node, const NameAttrList& function,
-      uint64 library_fingerprint, const ParameterInfo& params_info,
+      uint64_t library_fingerprint, const ParameterInfo& params_info,
       const std::vector<InferredShape>& arg_shapes,
       const DataTypeVector& arg_types,
       const std::vector<Node*>& guaranteed_constant_nodes,
-      const string& session_handle,
+      const std::string& session_handle,
       const std::vector<::xla::OpSharding>& arg_sharding,
       const std::vector<bool>& arg_fast_mem,
       const std::vector<std::string>& arg_names,
       const std::vector<::xla::OpSharding>& retval_sharding,
-      int num_cores_per_replica, const string& compile_device,
+      int num_cores_per_replica, const std::string& compile_device,
       const xla::DeviceAssignment* xla_device_assignment,
       const std::vector<Node*>& dynamic_shape_nodes, Graph* graph,
       Node** compile_node, int64_t autotuner_thresh);
@@ -445,7 +457,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
       const DataTypeVector& retval_types,
       const std::vector<::xla::OpSharding>& arg_shardings,
       const std::vector<::xla::OpSharding>& retval_shardings,
-      const std::vector<std::vector<string>>& tpu_device_names,
+      const std::vector<std::vector<std::string>>& tpu_device_names,
       Node* compile_node, const std::vector<Node*>& variable_reads,
       Node* control_predecessor, Node* control_successor,
       Node* multilock_acquire, std::vector<VariableWrite>* variable_writes,
@@ -470,11 +482,11 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
 
   // Map from the name of an outside_compilation cluster to the model-parallel
   // core index that the HostCompute Op should be placed on in that cluster.
-  typedef std::map<string, int> HostComputeCoreMap;
+  typedef std::map<std::string, int> HostComputeCoreMap;
 
   // Map from the name of an outside_compilation cluster to the list of Nodes
   // that should run on the host for that cluster.
-  typedef std::map<string, std::vector<Node*>> OutsideCompilationNodeMap;
+  typedef std::map<std::string, std::vector<Node*>> OutsideCompilationNodeMap;
 
   // Copies the outside_compilation nodes in a cluster to create replica
   // replica_index.
@@ -487,7 +499,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   // Replicates all the nodes in outside_compilation clusters in a compiled
   // computation.
   static Status ReplicateOutsideCompilationNodes(
-      const std::vector<std::vector<string>>& tf_device_assignment,
+      const std::vector<std::vector<std::string>>& tf_device_assignment,
       const HostComputeCoreMap& host_compute_core,
       const OutsideCompilationNodeMap& outside_compilation_nodes,
       NodeToNodeReplicasMap* node_images, Graph* graph);
@@ -497,7 +509,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   static Status CopyOutsideCompilationEdges(
       const std::vector<Node*>& outside_compilation_nodes,
       const NodeToNodeReplicasMap& node_images,
-      const std::unordered_map<string, Node*> outside_compilation_inputs,
+      std::unordered_map<std::string, Node*> outside_compilation_inputs,
       Graph* graph);
 
   // Lifts all the edges in outside_compilation clusters in a compiled
@@ -505,7 +517,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   static Status ReplicateOutsideCompilationEdges(
       const OutsideCompilationNodeMap& outside_compilation_nodes,
       const NodeToNodeReplicasMap& node_images,
-      const std::unordered_map<string, Node*> outside_compilation_inputs,
+      std::unordered_map<std::string, Node*> outside_compilation_inputs,
       Graph* graph);
 
   // Removes all the original outside_compilation nodes from the graph,
@@ -532,10 +544,10 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   static Status GetDeviceTopology(
       const DeviceSet& device_set, const Node& replicate_node,
       int* num_replicas, int* num_cores_per_replica, int* num_tasks,
-      std::vector<std::vector<string>>* tf_device_assignment,
+      std::vector<std::vector<std::string>>* tf_device_assignment,
       std::vector<int>* devices_to_lock,
       std::unique_ptr<xla::DeviceAssignment>* xla_device_assignment,
-      string* tpu_compilation_device);
+      std::string* tpu_compilation_device);
 
   // Gets the types of args, retvals, and parameters.
   static Status GetIOTypes(
@@ -553,7 +565,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
       std::vector<Node*>* variable_reads);
 
   // Adds NoOp nodes for sequencing computation and variable reads/writes.
-  static Status BuildSequencingNodes(const string& tpu_compilation_device,
+  static Status BuildSequencingNodes(const std::string& tpu_compilation_device,
                                      const Node& replicate_node, Graph* graph,
                                      Node** host_transfer_sequencer,
                                      Node** control_before,
@@ -561,7 +573,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
 
   // Performs the pass's rewrite on a TPUReplicate node `node`.
   static Status RewriteTPUReplicateNode(
-      const string& session_handle, const DeviceSet& device_set,
+      const std::string& session_handle, const DeviceSet& device_set,
       Node* replicate_node, FunctionLibraryDefinition* flib_def,
       FunctionLibraryRuntime* flr, Node* host_compute_key_placeholder_node,
       const OutsideCompilationNodeMap& outside_compilation_nodes,
@@ -588,7 +600,7 @@ class DistributedTPURewritePass : public GraphOptimizationPass {
   // attributes so that these nodes do not trigger further graph optimization
   // passes.
   static Status UpdateHeadTailOutsideCompilation(
-      const std::vector<std::vector<string>>& tf_device_assignment,
+      const std::vector<std::vector<std::string>>& tf_device_assignment,
       const std::vector<Node*>& head_tail_outside_compilation_nodes);
 
  private:

@@ -24,10 +24,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 
+namespace tsl {
+class Env;
+}  // namespace tsl
 namespace tensorflow {
+using Env = tsl::Env;
 
 class Device;
-class Env;
 class Graph;
 
 // GraphRunner takes a Graph, some inputs to feed, and some outputs

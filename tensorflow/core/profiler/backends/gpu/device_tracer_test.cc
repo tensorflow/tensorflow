@@ -19,6 +19,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #if GOOGLE_CUDA
@@ -44,24 +45,31 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/profiler/utils/tf_xplane_visitor.h"
 
 // TODO(b/186367334)
 #define CUPTI_NVBUG_3299481_WAR (10000 <= CUDA_VERSION && CUDA_VERSION < 11000)
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+namespace xla {
+namespace profiler {
+extern std::unique_ptr<tensorflow::profiler::ProfilerInterface> CreateGpuTracer(
+    const tensorflow::ProfileOptions& options);
+}  // namespace profiler
+}  // namespace xla
+#endif
 namespace tensorflow {
 namespace profiler {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-extern std::unique_ptr<ProfilerInterface> CreateGpuTracer(
-    const ProfileOptions& options);
 std::unique_ptr<ProfilerInterface> CreateGpuTracer() {
   ProfileOptions options = ProfilerSession::DefaultOptions();
-  return CreateGpuTracer(options);
+  return xla::profiler::CreateGpuTracer(options);
 }
 
 #else
@@ -111,10 +119,10 @@ class DeviceTracerTest : public ::testing::Test {
 
  protected:
   void ExpectFailure(const Status& status, error::Code code) {
-    EXPECT_FALSE(status.ok()) << status.ToString();
+    EXPECT_FALSE(status.ok()) << status;
     if (!status.ok()) {
-      LOG(INFO) << "Status message: " << status.error_message();
-      EXPECT_EQ(code, status.code()) << status.ToString();
+      LOG(INFO) << "Status message: " << status.message();
+      EXPECT_EQ(code, status.code()) << status;
     }
   }
 
@@ -256,7 +264,7 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   // memset.
   EXPECT_GE(device_plane->event_metadata_size(), 5);
   // Check if device capacity is serialized.
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(device_plane);
 
   // Check if the device events timestamps are set.
   int total_events = 0;
@@ -305,13 +313,13 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   // memset.
   EXPECT_GE(device_plane->event_metadata_size(), 5);
   // Check if device capacity is serialized.
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
-  EXPECT_TRUE(plane.GetStat(kDevCapClockRateKHz).has_value());
-  EXPECT_TRUE(plane.GetStat(kDevCapCoreCount).has_value());
-  EXPECT_TRUE(plane.GetStat(kDevCapMemoryBandwidth).has_value());
-  EXPECT_TRUE(plane.GetStat(kDevCapMemorySize).has_value());
-  EXPECT_TRUE(plane.GetStat(kDevCapComputeCapMajor).has_value());
-  EXPECT_TRUE(plane.GetStat(kDevCapComputeCapMinor).has_value());
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(device_plane);
+  EXPECT_TRUE(plane.GetStat(StatType::kDevCapClockRateKHz).has_value());
+  EXPECT_TRUE(plane.GetStat(StatType::kDevCapCoreCount).has_value());
+  EXPECT_TRUE(plane.GetStat(StatType::kDevCapMemoryBandwidth).has_value());
+  EXPECT_TRUE(plane.GetStat(StatType::kDevCapMemorySize).has_value());
+  EXPECT_TRUE(plane.GetStat(StatType::kDevCapComputeCapMajor).has_value());
+  EXPECT_TRUE(plane.GetStat(StatType::kDevCapComputeCapMinor).has_value());
 
   // Check if the device events timestamps are set.
   int total_events = 0;
@@ -356,17 +364,18 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
       FindPlaneWithName(space, kCuptiDriverApiPlaneName);
   ASSERT_NE(cupti_host_plane, nullptr);
 
-  XPlaneVisitor host_plane = CreateTfXPlaneVisitor(cupti_host_plane);
+  XPlaneVisitor host_plane =
+      tsl::profiler::CreateTfXPlaneVisitor(cupti_host_plane);
   // Expect at least one XLine for CUPTI activity events. There may be an
   // additional line for CuptiTracerEventType Overhead.
   EXPECT_GE(host_plane.NumLines(), 1);
 
   // These follow the order in which they were invoked above.
   const std::array<StatType, 4> expected_event_stat_type = {
-      kMemallocDetails,
-      kMemsetDetails,
-      kMemcpyDetails,
-      kMemFreeDetails,
+      StatType::kMemallocDetails,
+      StatType::kMemsetDetails,
+      StatType::kMemcpyDetails,
+      StatType::kMemFreeDetails,
   };
 
   int event_idx = 0;
@@ -392,7 +401,8 @@ TEST_F(DeviceTracerTest, CudaRuntimeResource) {
 
   const XPlane* cupti_device_plane = FindPlaneWithName(space, GpuPlaneName(0));
   ASSERT_NE(cupti_device_plane, nullptr);
-  XPlaneVisitor device_plane = CreateTfXPlaneVisitor(cupti_device_plane);
+  XPlaneVisitor device_plane =
+      tsl::profiler::CreateTfXPlaneVisitor(cupti_device_plane);
 
   bool found_activity_memory_host = false;
   bool found_activity_memory_device = false;

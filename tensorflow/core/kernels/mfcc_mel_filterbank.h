@@ -56,7 +56,8 @@ class MfccMelFilterbank {
   int start_index_;  // Lowest FFT bin used to calculate mel spectrum.
   int end_index_;    // Highest FFT bin used to calculate mel spectrum.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MfccMelFilterbank);
+  MfccMelFilterbank(const MfccMelFilterbank&) = delete;
+  void operator=(const MfccMelFilterbank&) = delete;
 };
 
 }  // namespace tensorflow

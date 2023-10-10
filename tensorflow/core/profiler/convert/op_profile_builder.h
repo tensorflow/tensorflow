@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
@@ -43,7 +44,7 @@ class OpProfileBuilder {
   void AddOp(const OpMetrics& op_metrics);
 
   void Finalize(double peak_gigaflops_per_second_per_core,
-                double peak_gibibytes_per_second_per_core,
+                std::vector<double> peak_mem_gibibytes_per_second_per_core,
                 uint64_t total_time_ps);
 
  private:

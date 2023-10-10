@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TEST_UTILS_H_
-#define TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TEST_UTILS_H_
+#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TRT_TESTUTILS_H_
+#define TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TRT_TESTUTILS_H_
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
@@ -180,4 +180,4 @@ std::vector<CType> CreateVectorIota(int size, CType start_value = CType(0)) {
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
-#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TEST_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TRT_TESTUTILS_H_

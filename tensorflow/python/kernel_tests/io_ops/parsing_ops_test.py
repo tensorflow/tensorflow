@@ -18,6 +18,7 @@ import copy
 import itertools
 
 import numpy as np
+import sys
 
 from google.protobuf import json_format
 
@@ -30,6 +31,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
@@ -96,7 +98,9 @@ class ParseExampleTest(test.TestCase):
     serialized = kwargs["serialized"]
     batch_size = (
         self.evaluate(serialized).size
-        if isinstance(serialized, ops.Tensor) else np.asarray(serialized).size)
+        if isinstance(serialized, tensor_lib.Tensor)
+        else np.asarray(serialized).size
+    )
     for k, f in kwargs["features"].items():
       if isinstance(f, parsing_ops.FixedLenFeature) and f.shape is not None:
         self.assertEqual(tuple(out[k].shape.as_list()), (batch_size,) + f.shape)
@@ -2308,11 +2312,17 @@ class DecodeRawTest(test.TestCase):
       byte_tensor = parsing_ops.decode_raw_v1(example_tensor, dtypes.uint8)
       return self.evaluate(byte_tensor)
 
-  def _decode_v2(self, words, fixed_length=None):
+  def _decode_v2(
+      self, words, fixed_length=None, dtype=dtypes.uint8, little_endian=True
+  ):
     with self.cached_session():
       examples = np.array(words)
       byte_tensor = parsing_ops.decode_raw(
-          examples, dtypes.uint8, fixed_length=fixed_length)
+          examples,
+          dtype,
+          little_endian=little_endian,
+          fixed_length=fixed_length,
+      )
       return self.evaluate(byte_tensor)
 
   def _ordinalize(self, words, fixed_length=None):
@@ -2363,6 +2373,39 @@ class DecodeRawTest(test.TestCase):
 
     observed = self._decode_v2(words, fixed_length=8)
     expected = self._ordinalize(words, fixed_length=8)
+
+    self.assertAllEqual(expected.shape, observed.shape)
+    self.assertAllEqual(expected, observed)
+
+  def testDecodeRawInvalidFixedLengthSize(self):
+    input_bytes = ["1"]
+    # Different error messages depending on shape inference vs kernel.
+    with self.assertRaisesRegex(
+        (ValueError, errors_impl.InvalidArgumentError),
+        "must be a multiple of|evenly divisible by",
+    ):
+      self.evaluate(
+          self._decode_v2(input_bytes, fixed_length=7, dtype=dtypes.float32)
+      )
+
+  def testDecodeRawExtendedInputBytesLittleEndian(self):
+    # Input bytes properly padded internally to at least dtype size.
+    input_bytes = ["\x01\x23"]
+    observed = self._decode_v2(
+        input_bytes, fixed_length=8, dtype=dtypes.int32, little_endian=True
+    )
+    expected = np.array([[0x00002301, 0]], dtype=np.int32)
+
+    self.assertAllEqual(expected.shape, observed.shape)
+    self.assertAllEqual(expected, observed)
+
+  def testDecodeRawExtendedInputBytesBigEndian(self):
+    # Input bytes properly padded internally to at least dtype size.
+    input_bytes = [b"\x01\x23"]
+    observed = self._decode_v2(
+        input_bytes, fixed_length=8, dtype=dtypes.int32, little_endian=False
+    )
+    expected = np.array([[0x01230000, 0]], dtype=np.int32)
 
     self.assertAllEqual(expected.shape, observed.shape)
     self.assertAllEqual(expected, observed)
@@ -2462,7 +2505,10 @@ class ParseTensorOpTest(test.TestCase):
   def testToFloat32(self):
     with self.cached_session():
       expected = np.random.rand(3, 4, 5).astype(np.float32)
-      tensor_proto = tensor_util.make_tensor_proto(expected)
+      if sys.byteorder == "big":
+        tensor_proto = tensor_util.make_tensor_proto(expected.byteswap())
+      else:
+        tensor_proto = tensor_util.make_tensor_proto(expected)
 
       serialized = array_ops.placeholder(dtypes.string)
       tensor = parsing_ops.parse_tensor(serialized, dtypes.float32)
@@ -2507,7 +2553,7 @@ class ParseTensorOpTest(test.TestCase):
       tensor = parsing_ops.parse_tensor(serialized, dtypes.uint16)
 
       with self.assertRaisesOpError(
-          "Could not parse `serialized` as TensorProto: 'bogus'"):
+          "Could not parse `serialized` as TensorProto, base64: Ym9ndXM="):
         tensor.eval(feed_dict={serialized: "bogus"})
 
       with self.assertRaisesOpError(

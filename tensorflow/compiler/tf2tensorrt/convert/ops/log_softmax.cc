@@ -25,12 +25,8 @@ namespace convert {
 
 class ConvertLogSoftmax : public OpConverterBase<ConvertLogSoftmax> {
  public:
-  explicit ConvertLogSoftmax(OpConverterParams *params)
+  explicit ConvertLogSoftmax(const OpConverterParams *params)
       : OpConverterBase<ConvertLogSoftmax>(params) {}
-
-  static constexpr std::array<DataType, 3> AllowedDataTypes() {
-    return {DataType::DT_FLOAT, DataType::DT_HALF};
-  }
 
   static constexpr std::array<InputArgSpec, 1> InputSpec() {
     return std::array<InputArgSpec, 1>{
@@ -49,7 +45,7 @@ class ConvertLogSoftmax : public OpConverterBase<ConvertLogSoftmax> {
           "TensorRT LogSoftmax cannot apply on the batch dimension");
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Convert() {
@@ -95,7 +91,7 @@ class ConvertLogSoftmax : public OpConverterBase<ConvertLogSoftmax> {
     params.converter->SetLayerName(sub, node_def, "sub");
 
     params.outputs->push_back(TRT_TensorOrWeights(sub->getOutput(0)));
-    return Status::OK();
+    return OkStatus();
   }
 };
 

@@ -28,32 +28,32 @@ namespace cl {
 
 TEST_F(OpenCLOperationTest, ConverterToConvWeights1x1OutX4) {
   const auto status = ConverterToConvWeights1x1OutX4Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, ConverterToConvWeights1x1OutX4Unaligned) {
   const auto status = ConverterToConvWeights1x1OutX4UnalignedTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, ConverterToConvWeights1x1OutX2) {
   const auto status = ConverterToConvWeights1x1OutX2Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, ConverterToConvWeightsOutX2) {
   const auto status = ConverterToConvWeightsOutX2Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, ConverterToConvTransposedWeights4x4) {
   const auto status = ConverterToConvTransposedWeights4x4Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, ConverterToConvWeights4xTextures) {
   const auto status = ConverterToConvWeights4xTexturesTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace cl

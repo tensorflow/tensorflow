@@ -279,6 +279,12 @@ class RandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       self.assertAllEqual(len(result.flatten()), len(expected))
       self.assertAllEqual(set(result.flatten()), set(expected))
 
+  def testRandomShuffleInputRank0(self):
+    with self.session():
+      with self.test_scope():
+        shuffle = random_ops.random_shuffle(value=1e20)
+      self.evaluate(shuffle)
+
 
 if __name__ == '__main__':
   googletest.main()

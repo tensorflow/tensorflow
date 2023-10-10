@@ -50,7 +50,6 @@ class ComputeTask {
 
   void Init(std::unique_ptr<GPUOperation>&& operation);
 
-  const OperationDef& GetDefinition() const;
   const GPUOperation& GetGpuOperation() const { return *operation_; }
 
   absl::Status Compile(MetalDevice* device);

@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_def_util.h"
 
-#include <set>
-#include <unordered_map>
-#include <unordered_set>
+#include <algorithm>
+#include <cstring>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -26,13 +28,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/lib/strings/scanner.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -193,11 +191,11 @@ const ApiDef::Arg* FindInputArg(StringPiece name, const ApiDef& api_def) {
   } while (false)
 
 static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
-                          bool output, std::set<string>* names) {
+                          bool output,
+                          absl::flat_hash_set<StringPiece>* names) {
   const string suffix = strings::StrCat(
       output ? " for output '" : " for input '", arg.name(), "'");
-  VALIDATE(gtl::InsertIfNotPresent(names, arg.name()),
-           "Duplicate name: ", arg.name());
+  VALIDATE(names->emplace(arg.name()).second, "Duplicate name: ", arg.name());
   VALIDATE(HasAttrStyleType(arg), "Missing type", suffix);
 
   if (!arg.number_attr().empty()) {
@@ -274,10 +272,10 @@ Status ValidateOpDef(const OpDef& op_def) {
              " (Did you use CamelCase?)");
   }
 
-  std::set<string> names;  // for detecting duplicate names
+  absl::flat_hash_set<StringPiece> names;  // for detecting duplicate names
   for (const auto& attr : op_def.attr()) {
     // Validate name
-    VALIDATE(gtl::InsertIfNotPresent(&names, attr.name()),
+    VALIDATE(names.emplace(attr.name()).second,
              "Duplicate name: ", attr.name());
     DataType dt;
     VALIDATE(!DataTypeFromString(attr.name(), &dt), "Attr can't have name ",
@@ -361,11 +359,11 @@ Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version) {
     } else {
       // Warn only once for each op name, and do it in a threadsafe manner.
       static mutex mu(LINKER_INITIALIZED);
-      static std::unordered_set<string> warned;
+      static auto* warned = new absl::flat_hash_set<string>();
       bool warn;
       {
         mutex_lock lock(mu);
-        warn = warned.insert(op_def.name()).second;
+        warn = warned->insert(op_def.name()).second;
       }
       if (warn) {
         LOG(WARNING) << "Op " << op_def.name() << " is deprecated."
@@ -501,7 +499,7 @@ string MinStr(const OpDef::AttrDef& attr) {
   return strings::StrCat(attr.minimum());
 }
 
-typedef std::unordered_map<string, const OpDef::AttrDef*> AttrMap;
+typedef absl::flat_hash_map<StringPiece, const OpDef::AttrDef*> AttrMap;
 void FillAttrMap(const OpDef& op_def, AttrMap* attr_map) {
   for (const auto& attr : op_def.attr()) {
     (*attr_map)[attr.name()] = &attr;
@@ -819,7 +817,7 @@ uint64 AttrDefHash(const OpDef::AttrDef& a) {
 bool RepeatedAttrDefEqual(
     const protobuf::RepeatedPtrField<OpDef::AttrDef>& a1,
     const protobuf::RepeatedPtrField<OpDef::AttrDef>& a2) {
-  std::unordered_map<string, const OpDef::AttrDef*> a1_set;
+  AttrMap a1_set;
   for (const OpDef::AttrDef& def : a1) {
     if (a1_set.find(def.name()) != a1_set.end()) {
       LOG(ERROR) << "AttrDef names must be unique, but '" << def.name()
@@ -840,15 +838,20 @@ bool RepeatedAttrDefEqual(
 uint64 RepeatedAttrDefHash(
     const protobuf::RepeatedPtrField<OpDef::AttrDef>& a) {
   // Insert AttrDefs into map to deterministically sort by name
-  std::map<string, const OpDef::AttrDef*> a_set;
+  std::vector<const OpDef::AttrDef*> a_sorted;
+  a_sorted.reserve(a.size());
   for (const OpDef::AttrDef& def : a) {
-    a_set[def.name()] = &def;
+    a_sorted.push_back(&def);
   }
+  std::sort(a_sorted.begin(), a_sorted.end(),
+            [](const OpDef::AttrDef* lhs, const OpDef::AttrDef* rhs) {
+              return lhs->name() < rhs->name();
+            });
   // Iterate and combines hashes of keys and values
   uint64 h = 0xDECAFCAFFE;
-  for (const auto& pair : a_set) {
-    h = Hash64(pair.first.data(), pair.first.size(), h);
-    h = Hash64Combine(AttrDefHash(*pair.second), h);
+  for (const auto& def : a_sorted) {
+    h = Hash64(def->name().data(), def->name().size(), h);
+    h = Hash64Combine(AttrDefHash(*def), h);
   }
   return h;
 }
@@ -859,10 +862,12 @@ bool OpDefEqual(const OpDef& o1, const OpDef& o2) {
   if (!RepeatedAttrDefEqual(o1.attr(), o2.attr())) return false;
 
   // `control_output` order doesn't matter.
-  std::set<string> control_output1(o1.control_output().begin(),
-                                   o1.control_output().end());
-  std::set<string> control_output2(o2.control_output().begin(),
-                                   o2.control_output().end());
+  std::vector<StringPiece> control_output1(o1.control_output().begin(),
+                                           o1.control_output().end());
+  std::sort(control_output1.begin(), control_output1.end());
+  std::vector<StringPiece> control_output2(o2.control_output().begin(),
+                                           o2.control_output().end());
+  std::sort(control_output2.begin(), control_output2.end());
   if (control_output1 != control_output2) return false;
 
   // Clear `attr` and `control_output` fields, serialize, and compare serialized
@@ -881,8 +886,15 @@ uint64 OpDefHash(const OpDef& o) {
   uint64 h = RepeatedAttrDefHash(o.attr());
 
   // Compute deterministic order-independent control outputs hash.
-  std::set<string> control_output(o.control_output().begin(),
-                                  o.control_output().end());
+  std::vector<const char*> control_output;
+  control_output.reserve(o.control_output_size());
+  for (const auto& co : o.control_output()) {
+    control_output.push_back(co.c_str());
+  }
+  std::sort(control_output.begin(), control_output.end(),
+            [](const char* lhs, const char* rhs) {
+              return std::strcmp(lhs, rhs) < 0;
+            });
   for (const auto& co : control_output) h = Hash64Combine(h, Hash64(co));
 
   OpDef o_copy = o;

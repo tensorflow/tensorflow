@@ -11,5 +11,5 @@ bazel run \
   tensorflow/lite/builtin_ops.h &&
 bazel run \
   //tensorflow/lite/schema/builtin_ops_list:generate > \
-  tensorflow/lite/core/shims/builtin_ops_list.inc
+  tensorflow/lite/kernels/builtin_ops_list.inc
 ```

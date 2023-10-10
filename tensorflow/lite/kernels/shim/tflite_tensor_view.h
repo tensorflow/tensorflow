@@ -16,13 +16,14 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_SHIM_TFLITE_TENSOR_VIEW_H_
 
 #include <cstring>
+#include <memory>
+#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/shim/tensor_view.h"
-#include "tensorflow/lite/type_to_tflitetype.h"
 
 namespace tflite {
 namespace shim {

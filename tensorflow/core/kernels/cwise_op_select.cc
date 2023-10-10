@@ -135,7 +135,8 @@ class SelectOp : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(SelectOp);
+  SelectOp(const SelectOp&) = delete;
+  void operator=(const SelectOp&) = delete;
 };
 template <typename Device, typename T>
 class SelectV2Op : public OpKernel {
@@ -239,7 +240,8 @@ class SelectV2Op : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(SelectV2Op);
+  SelectV2Op(const SelectV2Op&) = delete;
+  void operator=(const SelectV2Op&) = delete;
 };
 
 #define REGISTER_SELECT(type)                                        \
@@ -294,6 +296,13 @@ REGISTER_SELECT_GPU(complex128);
 
 #undef REGISTER_SELECT_GPU
 #endif
+
+REGISTER_KERNEL_BUILDER(
+    Name("Select").Device(DEVICE_GPU).TypeConstraint<bfloat16>("T"),
+    SelectOp<GPUDevice, bfloat16>);
+REGISTER_KERNEL_BUILDER(
+    Name("SelectV2").Device(DEVICE_GPU).TypeConstraint<bfloat16>("T"),
+    SelectV2Op<GPUDevice, bfloat16>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

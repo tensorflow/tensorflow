@@ -33,6 +33,8 @@ class RandomDatasetOp : public DatasetOpKernel {
   static constexpr const char* const kSeed2 = "seed2";
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
+  static constexpr const char* const kRerandomizeEachIteration =
+      "rerandomize_each_iteration";
 
   explicit RandomDatasetOp(OpKernelConstruction* ctx);
 
@@ -41,6 +43,8 @@ class RandomDatasetOp : public DatasetOpKernel {
 
  private:
   class Dataset;
+  int32_t op_version_;
+  bool rerandomize_each_iteration_ = false;
 };
 
 }  // namespace experimental

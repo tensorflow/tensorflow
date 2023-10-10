@@ -400,7 +400,7 @@ NodeDef* GetTailOfChain(const NodeDef& source, const NodeMap& node_map,
 void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
                          bool invert_permutation);
 
-// Returns Status::OK() if a kernel is registered for node.op() on the device
+// Returns OkStatus() if a kernel is registered for node.op() on the device
 // type corresponding to node.device().
 Status IsKernelRegisteredForNode(
     absl::string_view node_name, bool has_experimental_debug_info,

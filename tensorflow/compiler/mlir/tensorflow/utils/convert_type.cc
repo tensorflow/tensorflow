@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 
+#include <limits>
+
 #include "absl/strings/str_cat.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -78,6 +81,18 @@ Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
     case DT_COMPLEX128:
       *type = mlir::ComplexType::get(builder.getF64Type());
       return OkStatus();
+    case tensorflow::DT_FLOAT8_E4M3FN:
+      *type = builder.getFloat8E4M3FNType();
+      return ::tensorflow::OkStatus();
+    case tensorflow::DT_FLOAT8_E5M2:
+      *type = builder.getFloat8E5M2Type();
+      return ::tensorflow::OkStatus();
+    case DT_INT4:
+      *type = builder.getIntegerType(4, /*isSigned=*/true);
+      return ::tensorflow::OkStatus();
+    case DT_UINT4:
+      *type = builder.getIntegerType(4, /*isSigned=*/false);
+      return ::tensorflow::OkStatus();
 #define HANDLE_TF_TYPE(tftype, enumerant, name)             \
   case DT_##enumerant:                                      \
     *type = builder.getType<mlir::tf_type::tftype##Type>(); \
@@ -103,10 +118,19 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
   } else if (type.isBF16()) {
     *dtype = DT_BFLOAT16;
     return OkStatus();
+  } else if (type.isFloat8E4M3FN()) {
+    *dtype = DT_FLOAT8_E4M3FN;
+    return OkStatus();
+  } else if (type.isFloat8E5M2()) {
+    *dtype = DT_FLOAT8_E5M2;
+    return OkStatus();
   } else if (auto itype = type.dyn_cast<mlir::IntegerType>()) {
     switch (itype.getWidth()) {
       case 1:
         *dtype = DT_BOOL;
+        return OkStatus();
+      case 4:
+        *dtype = itype.isUnsigned() ? DT_UINT4 : DT_INT4;
         return OkStatus();
       case 8:
         *dtype = itype.isUnsigned() ? DT_UINT8 : DT_INT8;
@@ -163,7 +187,7 @@ void ConvertToMlirShape(const TensorShape& input_shape,
                         llvm::SmallVectorImpl<int64_t>* shape) {
   shape->reserve(input_shape.dims());
   for (const auto& d : input_shape) {
-    shape->push_back(d.size);
+    shape->push_back(d.size == kTFDynamicSize ? ShapedType::kDynamic : d.size);
   }
 }
 
@@ -175,7 +199,8 @@ Status ConvertToMlirShape(const TensorShapeProto& input_shape,
     if (d.size() > std::numeric_limits<int64_t>::max()) {
       return errors::InvalidArgument("Shape element overflows");
     }
-    shape->push_back(d.size());
+    shape->push_back(d.size() == kTFDynamicSize ? ShapedType::kDynamic
+                                                : d.size());
   }
   return OkStatus();
 }
@@ -190,7 +215,7 @@ StatusOr<mlir::Type> ConvertToMlirTensorType(const TensorShapeProto& shape,
   }
   llvm::SmallVector<int64_t, 4> shape_dims;
   TF_RETURN_IF_ERROR(ConvertToMlirShape(shape, &shape_dims));
-  return mlir::RankedTensorType::get(shape_dims, element_type);
+  return GetTypeFromTFTensorShape(shape_dims, element_type);
 }
 
 }  // namespace tensorflow

@@ -28,6 +28,18 @@ weights (DT_FLOAT) to apply to the output of the embedding lookup operation.
 END
   }
   attr {
+    name: "NumTables"
+    description: <<END
+number of tables
+END
+  }
+  attr {
+    name: "NumLearningRateTags"
+    description: <<END
+number of learning rate tags
+END
+  }
+  attr {
     name: "config"
     description: <<END
 Serialized TPUEmbeddingConfiguration proto.

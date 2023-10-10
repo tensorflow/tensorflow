@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <atomic>
+#include <string>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -36,6 +40,7 @@ class RecvAtHostOp : public AsyncOpKernel {
  public:
   explicit RecvAtHostOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("key", &key_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("device_type", &device_type_));
     int device_ordinal = 0;
     if (device_ordinal_is_attr) {
       OP_REQUIRES_OK(ctx, ctx->GetAttr("device_ordinal", &device_ordinal));
@@ -64,16 +69,16 @@ class RecvAtHostOp : public AsyncOpKernel {
     parsed_name.id = 0;
     cpu_device_ = DeviceNameUtils::ParsedNameToString(parsed_name);
     if (device_ordinal_is_attr) {
-      parsed_name.type = "TPU";
+      parsed_name.type = device_type_;
       parsed_name.id = device_ordinal;
-      tpu_device_ = DeviceNameUtils::ParsedNameToString(parsed_name);
-      VLOG(2) << "  tpu_device_ = " << tpu_device_;
+      remote_device_ = DeviceNameUtils::ParsedNameToString(parsed_name);
+      VLOG(2) << "  remote_device_ = " << remote_device_;
       VLOG(2) << "  cpu_device_ = " << cpu_device_;
     }
   }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    string tpu_device;
+    string remote_device;
     if (!device_ordinal_is_attr) {
       const Tensor& device_ordinal_tensor = ctx->input(1);
       OP_REQUIRES_ASYNC(
@@ -90,23 +95,32 @@ class RecvAtHostOp : public AsyncOpKernel {
       OP_REQUIRES_ASYNC(
           ctx, DeviceNameUtils::ParseFullName(cpu_device_, &parsed_name),
           errors::Internal("Could not parse device name."), done);
-      parsed_name.type = "TPU";
+      parsed_name.type = device_type_;
       parsed_name.id = device_ordinal;
-      tpu_device = DeviceNameUtils::ParsedNameToString(parsed_name);
-      VLOG(2) << "  tpu_device_ = " << tpu_device;
+      remote_device = DeviceNameUtils::ParsedNameToString(parsed_name);
+      VLOG(2) << "  remote_device_ = " << remote_device;
       VLOG(2) << "  cpu_device_ = " << cpu_device_;
     }
 
+    // Depending on the compile op, the input could be either
+    // a scalar program key and a 1D vector of length 3 with program key at
+    // index 1.
     const Tensor& input = ctx->input(0);
     VLOG(2) << input.DebugString();
     OP_REQUIRES_ASYNC(
         ctx,
         TensorShapeUtils::IsVector(input.shape()) &&
-            input.shape().dim_size(0) == 3,
+                input.shape().dim_size(0) == 3 ||
+            TensorShapeUtils::IsScalar(input.shape()),
         errors::InvalidArgument("Input shape ", input.shape().DebugString(),
                                 " is not a vector of length 3."),
         done);
-    const string rendezvous_key_base = input.vec<tstring>()(1);
+    string rendezvous_key_base;
+    if (TensorShapeUtils::IsVector(input.shape())) {
+      rendezvous_key_base = input.vec<tstring>()(1);
+    } else {
+      rendezvous_key_base = input.flat<tstring>()(0);
+    }
     OP_REQUIRES_ASYNC(
         ctx, ctx->rendezvous() != nullptr,
         errors::Internal("Op kernel context needs to provide a rendezvous."),
@@ -126,7 +140,7 @@ class RecvAtHostOp : public AsyncOpKernel {
     std::vector<Rendezvous::ParsedKey> parsed_key(ctx->num_outputs());
     for (int i = 0; i < ctx->num_outputs(); ++i) {
       rendezvous_key[i] = Rendezvous::CreateKey(
-          device_ordinal_is_attr ? tpu_device_ : tpu_device,
+          device_ordinal_is_attr ? remote_device_ : remote_device,
           /*src_incarnation=*/1, cpu_device_,
           strings::StrCat(rendezvous_key_base, key_, "_dtoh_", i),
           FrameAndIter(0, 0));
@@ -169,8 +183,9 @@ class RecvAtHostOp : public AsyncOpKernel {
 
  private:
   string key_;
-  string tpu_device_;
+  string remote_device_;
   string cpu_device_;
+  string device_type_;
 
   // RecvAtHostOp is neither copyable nor movable.
   RecvAtHostOp(const RecvAtHostOp&) = delete;
@@ -187,6 +202,7 @@ class SendFromHostOp : public OpKernel {
  public:
   explicit SendFromHostOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("key", &key_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("device_type", &device_type_));
     int device_ordinal = 0;
     if (device_ordinal_is_attr) {
       OP_REQUIRES_OK(ctx, ctx->GetAttr("device_ordinal", &device_ordinal));
@@ -221,16 +237,16 @@ class SendFromHostOp : public OpKernel {
     parsed_name.id = 0;
     cpu_device_ = DeviceNameUtils::ParsedNameToString(parsed_name);
     if (device_ordinal_is_attr) {
-      parsed_name.type = "TPU";
+      parsed_name.type = device_type_;
       parsed_name.id = device_ordinal;
-      tpu_device_ = DeviceNameUtils::ParsedNameToString(parsed_name);
-      VLOG(2) << "  tpu_device_ = " << tpu_device_;
+      remote_device_ = DeviceNameUtils::ParsedNameToString(parsed_name);
+      VLOG(2) << "  remote_device_ = " << remote_device_;
       VLOG(2) << "  cpu_device_ = " << cpu_device_;
     }
   }
 
   void Compute(OpKernelContext* ctx) override {
-    std::string tpu_device;
+    std::string remote_device;
     if (!device_ordinal_is_attr) {
       const Tensor& device_ordinal_tensor = ctx->input(ctx->num_inputs() - 1);
       OP_REQUIRES(
@@ -245,23 +261,33 @@ class SendFromHostOp : public OpKernel {
       OP_REQUIRES(ctx,
                   DeviceNameUtils::ParseFullName(cpu_device_, &parsed_name),
                   errors::Internal("Could not parse device name."));
-      parsed_name.type = "TPU";
+      parsed_name.type = device_type_;
       parsed_name.id = device_ordinal;
-      tpu_device = DeviceNameUtils::ParsedNameToString(parsed_name);
-      VLOG(2) << "  tpu_device_ = " << tpu_device;
+      remote_device = DeviceNameUtils::ParsedNameToString(parsed_name);
+      VLOG(2) << "  remote_device_ = " << remote_device;
       VLOG(2) << "  cpu_device_ = " << cpu_device_;
     }
 
     const int num_send_inputs =
         ctx->num_inputs() - (device_ordinal_is_attr ? 1 : 2);
     const Tensor& key_input = ctx->input(num_send_inputs);
+    // Depending on the compile op, the key_input could be either
+    // a scalar program key and a 1D vector of length 3 with program key at
+    // index 1.
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsVector(key_input.shape()) &&
-                    key_input.shape().dim_size(0) == 3,
+                        key_input.shape().dim_size(0) == 3 ||
+                    TensorShapeUtils::IsScalar(key_input.shape()),
                 errors::InvalidArgument("Key input shape ",
                                         key_input.shape().DebugString(),
                                         " is not a vector of length 3."));
-    const string rendezvous_key_base = key_input.vec<tstring>()(1);
+    string rendezvous_key_base;
+    if (TensorShapeUtils::IsVector(key_input.shape())) {
+      rendezvous_key_base = key_input.vec<tstring>()(1);
+    } else {
+      rendezvous_key_base = key_input.flat<tstring>()(0);
+    }
+
     OP_REQUIRES(
         ctx, ctx->rendezvous() != nullptr,
         errors::Internal("Op kernel context needs to provide a rendezvous."));
@@ -274,7 +300,7 @@ class SendFromHostOp : public OpKernel {
       // TODO(misard) Fix this once we have replication.
       const string& rendezvous_key = Rendezvous::CreateKey(
           cpu_device_, /*src_incarnation=*/1,
-          device_ordinal_is_attr ? tpu_device_ : tpu_device,
+          device_ordinal_is_attr ? remote_device_ : remote_device,
           strings::StrCat(rendezvous_key_base, key_, "_htod_", i),
           FrameAndIter(0, 0));
 
@@ -289,7 +315,8 @@ class SendFromHostOp : public OpKernel {
  private:
   string key_;
   string cpu_device_;
-  string tpu_device_;
+  string remote_device_;
+  string device_type_;
 
   // SendFromHostOp is neither copyable nor movable.
   SendFromHostOp(const SendFromHostOp&) = delete;
@@ -299,7 +326,7 @@ class SendFromHostOp : public OpKernel {
 }  // anonymous namespace
 
 // These ops execute on the CPU device and must specify a non-negative value for
-// device_ordinal to indicate which TPU to send infeed to.
+// device_ordinal to indicate which remote device to send infeed to.
 REGISTER_KERNEL_BUILDER(Name("_XlaRecvAtHost").Device(DEVICE_CPU),
                         RecvAtHostOp<true>);
 

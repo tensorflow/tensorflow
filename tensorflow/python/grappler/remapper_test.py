@@ -27,8 +27,10 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -36,7 +38,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import sysconfig
+from tensorflow.python.platform import sysconfig as sysconfig_lib
 from tensorflow.python.platform import test
 from tensorflow.python.util import _pywrap_utils
 
@@ -74,9 +76,9 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     super(RemapperTest, self).setUp()
-    # Gelu fusion on GPU requires cublasLt
+    # GeluApproximate fusion on GPU requires cublasLt.
     os.environ['TF_USE_CUBLASLT'] = '1'
-    # Conv runtime fusion on GPU requires cuDNN frontend APIs.
+    # GeluExact fusion and conv runtime fusion on GPU requires cuDNN frontend.
     os.environ['TF_CUDNN_USE_FRONTEND'] = '1'
     os.environ['TF_CUDNN_USE_RUNTIME_FUSION'] = '1'
 
@@ -90,13 +92,30 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
       # The cublaslt matmul with gelu epilog is only supported since cuda 11.4.
       if not test.is_gpu_available(cuda_only=True):
         self.skipTest('This test requires GPU.')
-      cuda_version_str = sysconfig.get_build_info().get('cuda_version', '0.0')
+      cuda_version_str = sysconfig_lib.get_build_info().get(
+          'cuda_version', '0.0')
       cuda_version = tuple([int(x) for x in cuda_version_str.split('.')])
       if cuda_version < (11, 4):
         self.skipTest('This test requires CUDA >= 11.4.')
 
     if mode == 'mkl' and not test_util.IsMklEnabled():
       self.skipTest('MKL is not enabled.')
+
+  def _VerifyNoFusion(self, model_fn):
+    ops.add_to_collection('train_op', model_fn)
+    mg = meta_graph.create_meta_graph_def(graph=model_fn.graph)
+
+    # Compute referene
+    config = _get_config(remapping_on=False)
+    gdef_ref = tf_optimizer.OptimizeGraph(config, mg)
+
+    # Compute with remapping ON
+    config = _get_config(remapping_on=True)
+    gdef = tf_optimizer.OptimizeGraph(config, mg)
+
+    self.assertEqual(len(gdef_ref.node), len(gdef.node))
+    self.assertAllEqual([n.op for n in gdef_ref.node],
+                        [n.op for n in gdef.node])
 
   def _VerifyValues(self, model_fn, use_low_precision, fused_op, epilog_ops):
     run_options = config_pb2.RunOptions(output_partition_graphs=True)
@@ -138,55 +157,72 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
-  def test_matmul_biasadd_gelu_fusion(self, mode):
+  @test_util.run_without_tensor_float_32('Avoid TF32 convs on A100+ GPUs')
+  def test_matmul_biasadd_activation_fusion(self, mode):
     """Test MatMul+BiasAdd+Gelu fusion."""
     self.maybe_skip_test(mode)
-    data_types = [dtypes.float32]
-    if mode == 'cuda':
-      data_types.append(dtypes.float16)
-    elif mode == 'mkl':
-      data_types.append(dtypes.bfloat16)
 
-    is_bf16_supported = _pywrap_utils.IsBF16SupportedByOneDNNOnThisCPU()
+    def gelu_approximate(x):
+      return nn.gelu(x, approximate=True)
 
-    m, n, k = (3, 3, 4)  # Matrix dimensions
-    for precision in data_types:
-      for approximate in (False, True):
-        # Gelu exact (approximate=False) is not supported with bfloat16
-        # precision since no support for Erf with bfloat16 data type.
-        # TODO(intel-tf): Enable gelu exact with bfloat16, when Erf op is
-        # supported with bfloat16.
-        if precision == dtypes.bfloat16:
-          if not (approximate and is_bf16_supported):
-            continue
+    def gelu_exact(x):
+      return nn.gelu(x, approximate=False)
 
-        # TODO(kaixih@nvidia): Enable gelu exact when Erf op is supported with
-        # cublaslt.
-        if mode == 'cuda' and not approximate:
-          continue
+    device = '/device:GPU:0' if mode == 'cuda' else '/device:CPU:0'
+    config = []
+    if mode == 'mkl':
+      config.append((dtypes.float32, gelu_exact, b'GeluExact'))
+      config.append((dtypes.float32, gelu_approximate, b'GeluApproximate'))
+      if _pywrap_utils.IsBF16SupportedByOneDNNOnThisCPU():
+        config.append((dtypes.bfloat16, gelu_approximate, b'GeluApproximate'))
+        config.append((dtypes.bfloat16, gelu_exact, b'GeluExact'))
+    elif mode == 'cuda':
+      config.append((dtypes.float32, gelu_approximate, b'GeluApproximate'))
+      config.append((dtypes.float16, gelu_approximate, b'GeluApproximate'))
+      # Gelu exact fusion is supported by cuDNN frontend APIs and performant
+      # with fp16 and on Ampere GPUs and later.
+      if (test_util.is_gpu_available(
+          cuda_only=True, min_cuda_compute_capability=(8, 0))):
+        config.append((dtypes.float16, gelu_exact, b'GeluExact'))
+        config.append((dtypes.float16, math_ops.tanh, b'Tanh'))
+        config.append((dtypes.float16, math_ops.sigmoid, b'Sigmoid'))
 
-        device = '/device:GPU:0' if mode == 'cuda' else '/device:CPU:0'
-        # Create MatMul + BiasAdd + Gelu graph
+    m, n, k = (2, 4, 6)  # Matrix dimensions
+    fused_op = ['_MklNativeFusedMatMul', '_MklFusedMatMul', '_FusedMatMul']
+
+    for precision, act_fn, act_name in config:
+      for transpose in (False, True):
+        # Create MatMul + BiasAdd + Activation graph
         ops.reset_default_graph()
         with ops.device(device):
-          x = _input([m, k])
-          w = _weight([k, n])
+          x = _input([k, m] if transpose else [m, k])
+          w = _weight([n, k] if transpose else [k, n])
           b = _bias([n])
           x = math_ops.cast(x, precision)
           w = math_ops.cast(w, precision)
           b = math_ops.cast(b, precision)
-          y = math_ops.matmul(x, w)
+          y = math_ops.matmul(
+              x, w, transpose_a=transpose, transpose_b=transpose)
           z = nn.bias_add(y, b)
-          out = nn.gelu(z, approximate=approximate)
+          out = act_fn(z)
 
-        gelu_type = b'GeluApproximate' if approximate else b'GeluExact'
-        epilog_ops = [b'BiasAdd', gelu_type]
-        fused_op = ['_MklNativeFusedMatMul', '_MklFusedMatMul', '_FusedMatMul']
+        if transpose and (device == '/device:CPU:0') and \
+            act_name in (b'GeluApproximate', b'GeluExact'):
+          if precision == dtypes.bfloat16:
+            # No fusion should happen on CPU.
+            self._VerifyNoFusion(out)
+            continue
+          else:
+            # Gelu should not get fused, only BiasAdd.
+            epilog_ops = [b'BiasAdd']
+        else:
+          epilog_ops = [b'BiasAdd', act_name]
         graph = self._VerifyValues(out, precision != dtypes.float32, fused_op,
                                    epilog_ops)
 
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
+  @test_util.run_without_tensor_float_32('Avoid TF32 convs on A100+ GPUs')
   def test_conv2d_biasadd_act_fusion(self):
     """Test Conv2D+BiasAdd+Relu fusion."""
     if not test_util.is_gpu_available():
@@ -240,6 +276,7 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
+  @test_util.run_without_tensor_float_32('Avoid TF32 convs on A100+ GPUs')
   def test_two_conv2d_fusions(self):
     """Test two Conv2D patterns and only the second is fusable."""
     if not test_util.is_gpu_available(

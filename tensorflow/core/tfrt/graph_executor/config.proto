@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package tensorflow.tfrt_stub;
+
+import "google/protobuf/any.proto";
+
+// The serialization format for custom model configs. Though it is using
+// repeated Any protos, only one object of a proto type is allowed in the list.
+message RuntimeConfigProto {
+  repeated google.protobuf.Any config = 1;
+}

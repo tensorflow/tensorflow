@@ -13,15 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_UTIL_ABSTRACT_STACK_TRACE_H_
-#define TENSORFLOW_CORE_UTIL_ABSTRACT_STACK_TRACE_H_
+#ifndef TENSORFLOW_CORE_UTIL_MANAGED_STACK_TRACE_H_
+#define TENSORFLOW_CORE_UTIL_MANAGED_STACK_TRACE_H_
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/platform/stack_frame.h"
 
@@ -59,25 +62,40 @@ inline bool IsInternalFrameForFilename(absl::string_view file_name) {
          !absl::StrContains(file_name, "test.py");
 }
 
-// Language agnostic stack trace class. It only saves an id, and language
-// clients are responsible for managing the actual stack trace objects.
-class ManagedStackTrace {
+class CapturedStackTrace {
  public:
-  ManagedStackTrace(int id, ToStackFramesFunctor* to_stack_frames)
-      : id_(id), to_stack_frames_(to_stack_frames) {}
+  virtual ~CapturedStackTrace() = default;
+
+  std::vector<StackFrame> ToStackFrames(const SourceMap& source_map,
+                                        const StackTraceFilter& filtered) {
+    return ToStackFrames(source_map, filtered, /*reverse_traversal=*/false,
+                         /*limit=*/-1);
+  }
+  virtual std::vector<StackFrame> ToStackFrames(
+      const SourceMap& source_map, const StackTraceFilter& filtered,
+      bool reverse_traversal, int limit) const = 0;
+};
+
+// Kept for backwards compatibility with existing users, this simply wraps an
+// underlying stack trace pointer.
+class ManagedStackTrace : public CapturedStackTrace {
+ public:
+  explicit ManagedStackTrace(std::shared_ptr<CapturedStackTrace> trace)
+      : trace_(trace) {}
+
+  ~ManagedStackTrace() override { trace_.reset(); }
 
   // Returns stack trace as a vector of `StackFrame`s.
   std::vector<StackFrame> ToStackFrames(const SourceMap& source_map,
                                         const StackTraceFilter& filtered,
-                                        bool reverse_traversal = false,
-                                        int limit = -1) const {
-    return to_stack_frames_(id_, source_map, filtered, reverse_traversal,
-                            limit);
+                                        bool reverse_traversal,
+                                        int limit) const override {
+    return trace_->ToStackFrames(source_map, filtered, reverse_traversal,
+                                 limit);
   }
 
  private:
-  int id_;
-  ToStackFramesFunctor* to_stack_frames_;
+  std::shared_ptr<CapturedStackTrace> trace_;
 };
 
 // Generates a message with a definition location based on a provided stack
@@ -100,4 +118,4 @@ inline std::string DefinitionLocationMsg(
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_UTIL_ABSTRACT_STACK_TRACE_H_
+#endif  // TENSORFLOW_CORE_UTIL_MANAGED_STACK_TRACE_H_

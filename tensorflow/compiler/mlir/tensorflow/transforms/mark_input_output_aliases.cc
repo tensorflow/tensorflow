@@ -15,18 +15,22 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 #define DEBUG_TYPE "tf-device-mark-input-output-aliases"
 
 namespace mlir {
 namespace TFDevice {
 
+#define GEN_PASS_DEF_MARKINPUTOUTPUTALIASESPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 namespace {
 struct MarkInputOutputAliasesPass
-    : public TF::MarkInputOutputAliasesPassBase<MarkInputOutputAliasesPass> {
+    : public impl::MarkInputOutputAliasesPassBase<MarkInputOutputAliasesPass> {
   void runOnOperation() override;
 };
 
@@ -58,7 +62,7 @@ LogicalResult BuildAliasingInfo(
     auto assign_op = llvm::dyn_cast_or_null<TF::AssignVariableOp>(
         result.use_begin()->getOwner());
     if (!assign_op) continue;
-    AliasInfo& alias_info = resource_alias_info_map[assign_op.resource()];
+    AliasInfo& alias_info = resource_alias_info_map[assign_op.getResource()];
     // TODO(b/184420848): We may not need to skip aliasing for entire function
     // in case of multiple assigns.
     if (alias_info.output_index != kUnassigned) {
@@ -78,7 +82,7 @@ LogicalResult BuildAliasingInfo(
         operand.get().getDefiningOp());
     if (!read_op) continue;
     if (!read_op->hasOneUse()) continue;
-    auto it = resource_alias_info_map.find(read_op.resource());
+    auto it = resource_alias_info_map.find(read_op.getResource());
     if (it == resource_alias_info_map.end()) continue;
     AliasInfo& alias_info = it->getSecond();
     // TODO(b/184420848): We may not need to skip aliasing for entire function
@@ -132,7 +136,7 @@ void MarkInputOutputAliasesPass::runOnOperation() {
       return;
     }
 
-    FlatSymbolRefAttr func_attr = cluster_func.funcAttr();
+    FlatSymbolRefAttr func_attr = cluster_func.getFuncAttr();
     func::FuncOp device_func =
         module.lookupSymbol<func::FuncOp>(func_attr.getValue());
     AddAliasingAttributeToDeviceFunc(device_func, resource_alias_info_map);

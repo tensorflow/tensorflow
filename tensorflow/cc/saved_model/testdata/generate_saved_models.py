@@ -112,7 +112,7 @@ MODULE_CTORS = {
     "CyclicModule": (CyclicModule, 2),
     "AssetModule": (AssetModule, 2),
     "StaticHashTableModule": (StaticHashTableModule, 2),
-    "SimpleV1Model": (get_simple_session, 1)
+    "SimpleV1Model": (get_simple_session, 1),
 }
 
 

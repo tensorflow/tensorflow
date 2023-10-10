@@ -17,8 +17,14 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <vector>
 
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "absl/strings/str_cat.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/Support/Alignment.h"
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
@@ -40,9 +46,10 @@ StatusOr<mlir::Value> ComputeGlobalReduce(
     mlir::OpBuilder& builder, const mlir::Value& input,
     const Layout& input_layout, const absl::flat_hash_set<int>& reduced_dims,
     absl::string_view reduce_op, bool keep_dims) {
-  const Layout reduction_layout =
+  TF_ASSIGN_OR_RETURN(
+      const Layout reduction_layout,
       input_layout.GetLayoutWithReducedDims(reduced_dims,
-                                            /*keep_dims=*/true);
+                                            /*keep_dims=*/true));
   std::vector<int32> reduce_dim_array(reduced_dims.begin(), reduced_dims.end());
   const mlir::Value reduction_indices =
       IntConst(builder, input.getLoc(), reduce_dim_array);
@@ -64,7 +71,7 @@ StatusOr<mlir::Value> ComputeGlobalReduce(
   // Then an all reduce.
   absl::flat_hash_set<std::string> reduced_sharding_specs;
   for (const int dim : reduced_dims)
-    if (Layout::IsShardedSpec(input_layout.dim(dim)))
+    if (Layout::IsShardedDimension(input_layout.sharding_spec(dim)))
       reduced_sharding_specs.emplace(input_layout.sharding_spec(dim));
   TF_ASSIGN_OR_RETURN(
       mlir::Operation * global_reduce,
@@ -185,12 +192,12 @@ StatusOr<mlir::Value> ComputeShardedSoftmax(mlir::OpBuilder& builder,
 // 1) Left truncated to match the size of global_shape.
 // 2) Has unsharded dimensions where ever global_shape is 1.
 StatusOr<Layout> GetBroadcastedLayout(llvm::ArrayRef<int64_t> global_shape,
-                                      const std::vector<ShardingSpec>& specs,
+                                      const std::vector<std::string>& specs,
                                       const Mesh& mesh) {
-  std::vector<ShardingSpec> new_specs(global_shape.size());
+  std::vector<std::string> new_specs(global_shape.size());
   for (int i = 0; i < global_shape.size(); ++i) {
     if (global_shape[i] == 1)
-      new_specs[i].set_sharding_spec(Layout::kUnshardedDim);
+      new_specs[i] = Layout::kUnshardedDim;
     else
       new_specs[i] = specs[i + specs.size() - global_shape.size()];
   }
@@ -209,7 +216,7 @@ StatusOr<mlir::Value> GetFPConstOfType(mlir::OpBuilder& builder,
             mlir::DenseFPElementsAttr::get<float>(
                 mlir::RankedTensorType::get({}, type.getElementType()),
                 {value}))
-        .output();
+        .getOutput();
   } else {
     return errors::Unimplemented("non tensor type for labels is not supported");
   }
@@ -241,11 +248,10 @@ StatusOr<mlir::Value> ComputeOneHot(mlir::OpBuilder& builder,
         "expected feature input to have at least rank 1, but found rank 0");
 
   const int64_t local_classes = features_type.getShape().back();
-  const int64_t classes =
-      local_classes *
-      desired_layout.num_shards_for_dim(desired_layout.sharding_specs().back());
+  const int64_t classes = local_classes * desired_layout.num_shards_for_dim(
+                                              desired_layout.rank() - 1);
 
-  int64_t num_shards = desired_layout.num_shards_for_dim(desired_layout.dim(1));
+  int64_t num_shards = desired_layout.num_shards_for_dim(1);
   if (classes % num_shards)
     return errors::InvalidArgument("unable to shard onehot with size ", classes,
                                    " over dimension with ", num_shards,
@@ -277,17 +283,17 @@ StatusOr<mlir::Value> ComputeOneHot(mlir::OpBuilder& builder,
               mesh_coordinates,
               IntConst(builder, input.getLoc(), {0, mesh_dim_index}),
               IntConst(builder, input.getLoc(), {1, 1}))
-          .output();
+          .getOutput();
 
   shard_id = builder
                  .create<mlir::TF::SqueezeOp>(
                      loc, mlir::RankedTensorType::get({}, builder.getI32Type()),
                      shard_id, builder.getI64ArrayAttr({0, 1}))
-                 .output();
+                 .getOutput();
 
   // `new_indices` = `input` - `shard_id` * (classes/num_shards)
   mlir::Value id_offset =
-      builder.create<mlir::TF::MulOp>(loc, shard_id, depth).z();
+      builder.create<mlir::TF::MulOp>(loc, shard_id, depth).getZ();
 
   // Note that the type of id_offset (int32) may not match the type of input.
   // So we insert a cast in this case.
@@ -300,10 +306,10 @@ StatusOr<mlir::Value> ComputeOneHot(mlir::OpBuilder& builder,
                 loc,
                 mlir::RankedTensorType::get({}, input_type.getElementType()),
                 id_offset)
-            .y();
+            .getY();
 
   mlir::Value indices =
-      builder.create<mlir::TF::SubOp>(loc, input, id_offset).z();
+      builder.create<mlir::TF::SubOp>(loc, input, id_offset).getZ();
 
   TF_ASSIGN_OR_RETURN(mlir::Value on_value,
                       GetFPConstOfType(builder, features, 1.0));
@@ -313,7 +319,7 @@ StatusOr<mlir::Value> ComputeOneHot(mlir::OpBuilder& builder,
   return builder
       .create<mlir::TF::OneHotOp>(input.getLoc(), indices, depth, on_value,
                                   off_value, builder.getI64IntegerAttr(1))
-      .output();
+      .getOutput();
 }
 
 }  // namespace
@@ -323,6 +329,8 @@ StatusOr<mlir::Operation*> SoftmaxOpSPMDExpander::ExpandOp(
     mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto logits_layout,
                       ExtractLayoutFromOperand(op->getOperand(0)));
+  TF_ASSIGN_OR_RETURN(const Layout output_layout,
+                      ExtractRequiredSingleLayoutFromOp(op));
 
   if (!logits_layout) {
     return errors::InvalidArgument("Failed during SPMD expansion of ",
@@ -333,20 +341,34 @@ StatusOr<mlir::Operation*> SoftmaxOpSPMDExpander::ExpandOp(
   // (Log)Softmax's logits are a rank >= 1 tensor. We reduce over the last
   // dimension. If this is replicated, we don't need any cross-replica
   // operations and can just emit the op as is.
-  if (logits_layout->IsLastDimReplicated())
-    return InferSPMDExpandedLocalShape(op);
+  mlir::Value softmax_result;
+  if (logits_layout->IsLastDimReplicated()) {
+    InferSPMDExpandedLocalShape(op);
+    softmax_result = op->getOpResult(0);
+  } else {
+    mlir::OpBuilder builder(op);
+    builder.setInsertionPointAfter(op);
 
-  mlir::OpBuilder builder(op);
-  builder.setInsertionPointAfter(op);
+    TF_ASSIGN_OR_RETURN(
+        softmax_result,
+        ComputeShardedSoftmax(builder, op->getOperand(0), *logits_layout,
+                              mlir::isa<mlir::TF::LogSoftmaxOp>(op)));
+    op->getOpResult(0).replaceAllUsesWith(softmax_result);
+    op->erase();
+  }
 
-  TF_ASSIGN_OR_RETURN(
-      const mlir::Value new_softmax,
-      ComputeShardedSoftmax(builder, op->getOperand(0), *logits_layout,
-                            mlir::isa<mlir::TF::LogSoftmaxOp>(op)));
-
-  op->getOpResult(0).replaceAllUsesWith(new_softmax);
-  op->erase();
-  return new_softmax.getDefiningOp();
+  // Add a final Relayout in case the output layout is not the same as the
+  // layout of input logits.
+  llvm::SmallPtrSet<mlir::Operation*, 4> newly_created_ops;
+  auto final_result = EmitRelayout(softmax_result, *logits_layout,
+                                   output_layout, &newly_created_ops);
+  if (!final_result.ok()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Failed to relayout the output of softmax: ",
+                     final_result.status().message()));
+  }
+  softmax_result.replaceAllUsesExcept(*final_result, newly_created_ops);
+  return final_result->getDefiningOp();
 }
 
 StatusOr<llvm::DenseMap<int, Layout>>
@@ -376,9 +398,9 @@ StatusOr<Layout> SoftmaxLossOpSPMDExpander::MaybeRelayoutInputs(
   // This layout represents the 'internal layout' that the softmax will be
   // operating on. Inputs will be relayout'ed to this layout and outputs will be
   // relayout'ed from this layout to their desired layout.
-  std::vector<ShardingSpec> internal_layout(2);
-  internal_layout[0].set_sharding_spec(Layout::kUnshardedDim);
-  internal_layout[1].set_sharding_spec(Layout::kUnshardedDim);
+  std::vector<std::string> internal_layout(2);
+  internal_layout[0] = Layout::kUnshardedDim;
+  internal_layout[1] = Layout::kUnshardedDim;
 
   // Choose an internal layout, ideally this layout would be chosen so that
   // the relayout costs for the inputs (from features_layout/labels_layout to
@@ -389,32 +411,34 @@ StatusOr<Layout> SoftmaxLossOpSPMDExpander::MaybeRelayoutInputs(
   // Pick a batch sharding, first from features, then labels, loss and backprop.
   // Due to possible broadcasting on features and labels, they will only
   // have a batch dim if they are rank 2.
-  if (features_layout.rank() == 2) internal_layout[0] = features_layout.dim(0);
+  if (features_layout.rank() == 2)
+    internal_layout[0] = features_layout.sharding_spec(0);
   if (((labels_layout.rank() == 2) ||
        (is_sparse && labels_layout.rank() == 1)) &&
-      Layout::IsUnshardedSpec(internal_layout[0]))
-    internal_layout[0] = labels_layout.dim(0);
-  if (Layout::IsUnshardedSpec(internal_layout[0]))
-    internal_layout[0] = loss_layout.dim(0);
-  if (Layout::IsUnshardedSpec(internal_layout[0]))
-    internal_layout[0] = backprop_layout.dim(0);
+      Layout::IsUnshardedDimension(internal_layout[0]))
+    internal_layout[0] = labels_layout.sharding_spec(0);
+  if (Layout::IsUnshardedDimension(internal_layout[0]))
+    internal_layout[0] = loss_layout.sharding_spec(0);
+  if (Layout::IsUnshardedDimension(internal_layout[0]))
+    internal_layout[0] = backprop_layout.sharding_spec(0);
 
   // Pick a class sharding, first from features, then labels and backprop.
   // The class dim for features and labels is always the last dim if it exists.
   // Note that loss and backprop have fixed ranks 1 and 2 respectively where as
   // ranks of features and labels may involved broadcasting.
   if (features_layout.rank() > 0 &&
-      (internal_layout[0].sharding_spec() !=
+      (internal_layout[0] !=
        features_layout.sharding_spec(features_layout.rank() - 1)))
-    internal_layout[1] = features_layout.dim(features_layout.rank() - 1);
+    internal_layout[1] =
+        features_layout.sharding_spec(features_layout.rank() - 1);
   if (!is_sparse && labels_layout.rank() > 0 &&
-      Layout::IsUnshardedSpec(internal_layout[1]) &&
-      (internal_layout[0].sharding_spec() !=
+      Layout::IsUnshardedDimension(internal_layout[1]) &&
+      (internal_layout[0] !=
        labels_layout.sharding_spec(labels_layout.rank() - 1)))
-    internal_layout[1] = labels_layout.dim(labels_layout.rank() - 1);
-  if (Layout::IsUnshardedSpec(internal_layout[1]) &&
-      (internal_layout[0].sharding_spec() != backprop_layout.sharding_spec(1)))
-    internal_layout[1] = backprop_layout.dim(1);
+    internal_layout[1] = labels_layout.sharding_spec(labels_layout.rank() - 1);
+  if (Layout::IsUnshardedDimension(internal_layout[1]) &&
+      (internal_layout[0] != backprop_layout.sharding_spec(1)))
+    internal_layout[1] = backprop_layout.sharding_spec(1);
 
   TF_ASSIGN_OR_RETURN(
       llvm::ArrayRef<int64_t> features_global_shape,
@@ -441,7 +465,7 @@ StatusOr<Layout> SoftmaxLossOpSPMDExpander::MaybeRelayoutInputs(
 
   if (is_sparse) {
     // If we are sparse, then the only possible dimension is the batch_dim.
-    std::vector<ShardingSpec> sparse_specs = {internal_layout[0]};
+    std::vector<std::string> sparse_specs = {internal_layout[0]};
     TF_ASSIGN_OR_RETURN(new_labels_layout,
                         GetBroadcastedLayout(labels_global_shape, sparse_specs,
                                              labels_layout.mesh()));
@@ -537,7 +561,7 @@ StatusOr<mlir::Operation*> SoftmaxLossOpSPMDExpander::ExpandOp(
   assert(internal_layout.rank() == 2);
 
   // If the class dim is unshared, we can emit a local op.
-  if (Layout::IsUnshardedSpec(internal_layout.dim(1))) {
+  if (Layout::IsUnshardedDimension(internal_layout.sharding_spec(1))) {
     op = InferSPMDExpandedLocalShape(op);
     return MaybeRelayoutOutputs(op, op->getResult(0), op->getResult(1),
                                 internal_layout, output_layouts[0],
@@ -592,14 +616,15 @@ StatusOr<mlir::Operation*> SoftmaxLossOpSPMDExpander::ExpandOp(
       builder
           .create<mlir::TF::EqualOp>(op->getLoc(), labels, labels_zero,
                                      builder.getBoolAttr(true))
-          .z();
+          .getZ();
   const mlir::Value safe_softmax =
       builder
           .create<mlir::TF::SelectV2Op>(op->getLoc(), is_labels_zero,
                                         features_zero, log_softmax)
-          .output();
+          .getOutput();
   const mlir::Value prod =
-      builder.create<mlir::TF::MulOp>(op->getLoc(), labels, safe_softmax).z();
+      builder.create<mlir::TF::MulOp>(op->getLoc(), labels, safe_softmax)
+          .getZ();
 
   // Compute the reduce sum
   TF_ASSIGN_OR_RETURN(
@@ -609,7 +634,7 @@ StatusOr<mlir::Operation*> SoftmaxLossOpSPMDExpander::ExpandOp(
 
   builder.setInsertionPointAfterValue(positive_loss);
   mlir::Value loss =
-      builder.create<mlir::TF::NegOp>(op->getLoc(), positive_loss).y();
+      builder.create<mlir::TF::NegOp>(op->getLoc(), positive_loss).getY();
 
   mlir::Value backprop =
       builder.create<mlir::TF::SubOp>(op->getLoc(), softmax, labels);
@@ -630,39 +655,40 @@ SoftmaxLossOpSPMDExpander::ComputeLayoutForward(
   // if one is replicated.
   // backprop is softmax(features) - labels
 
-  absl::optional<Layout> features_layout;
+  std::optional<Layout> features_layout;
   if (input_layouts.find(0) != input_layouts.end())
     features_layout.emplace(input_layouts.lookup(0));
-  absl::optional<Layout> labels_layout;
+  std::optional<Layout> labels_layout;
   if (input_layouts.find(1) != input_layouts.end())
     labels_layout.emplace(input_layouts.lookup(1));
 
   // We need to compute shardings for two dimensions: batch and class.
-  std::vector<ShardingSpec> layout_specs(2);
-  layout_specs[0].set_sharding_spec(Layout::kUnshardedDim);
-  layout_specs[1].set_sharding_spec(Layout::kUnshardedDim);
+  std::vector<std::string> layout_specs(2);
+  layout_specs[0] = Layout::kUnshardedDim;
+  layout_specs[1] = Layout::kUnshardedDim;
 
   // First pick the batch dimension, set it to the batch dimension of features
   // if it exists otherwise to the batch dimesion of labels.
   if (features_layout && (features_layout->rank() == 2))
-    layout_specs[0] = features_layout->dim(0);
+    layout_specs[0] = features_layout->sharding_spec(0);
   if (labels_layout &&
       (labels_layout->rank() == 2 ||
        (is_sparse && labels_layout->rank() == 1)) &&
-      Layout::IsUnshardedSpec(layout_specs[0]))
-    layout_specs[0] = labels_layout->dim(0);
+      Layout::IsUnshardedDimension(layout_specs[0]))
+    layout_specs[0] = labels_layout->sharding_spec(0);
 
-  // The class dim for features and labels is always the last dim if it
-  // exists.
+  // The class sharding_spec for features and labels is always the last
+  // sharding_spec if it exists.
   if (features_layout && (features_layout->rank() > 0) &&
-      (layout_specs[0].sharding_spec() !=
+      (layout_specs[0] !=
        features_layout->sharding_spec(features_layout->rank() - 1)))
-    layout_specs[1] = features_layout->dim(features_layout->rank() - 1);
+    layout_specs[1] =
+        features_layout->sharding_spec(features_layout->rank() - 1);
   if (!is_sparse && labels_layout && (labels_layout->rank() > 0) &&
-      Layout::IsUnshardedSpec(layout_specs[1]) &&
-      (layout_specs[0].sharding_spec() !=
+      Layout::IsUnshardedDimension(layout_specs[1]) &&
+      (layout_specs[0] !=
        labels_layout->sharding_spec(labels_layout->rank() - 1)))
-    layout_specs[1] = labels_layout->dim(labels_layout->rank() - 1);
+    layout_specs[1] = labels_layout->sharding_spec(labels_layout->rank() - 1);
 
   TF_ASSIGN_OR_RETURN(const Layout backprop_layout,
                       Layout::GetLayout(layout_specs, mesh));
@@ -678,29 +704,28 @@ SoftmaxLossOpSPMDExpander::ComputeLayoutBackward(
   const bool is_sparse =
       mlir::isa<mlir::TF::SparseSoftmaxCrossEntropyWithLogitsOp>(op);
 
-  absl::optional<Layout> loss_layout;
+  std::optional<Layout> loss_layout;
   if (output_layouts.find(0) != output_layouts.end())
     loss_layout.emplace(output_layouts.lookup(0));
-  absl::optional<Layout> backprop_layout;
+  std::optional<Layout> backprop_layout;
   if (output_layouts.find(1) != output_layouts.end())
     backprop_layout.emplace(output_layouts.lookup(1));
 
   // We need to compute two possible shardings:
   // One for the batch dimension and one for the class dimension.
-  std::vector<ShardingSpec> layout_specs(2);
-  layout_specs[0].set_sharding_spec(Layout::kUnshardedDim);
-  layout_specs[1].set_sharding_spec(Layout::kUnshardedDim);
+  std::vector<std::string> layout_specs(2);
+  layout_specs[0] = Layout::kUnshardedDim;
+  layout_specs[1] = Layout::kUnshardedDim;
 
   // Respect the loss layout if it is set, otherwise use the backprop
   // layout for the batch_dim.
-  if (loss_layout) layout_specs[0] = loss_layout->dim(0);
-  if (backprop_layout && Layout::IsUnshardedSpec(layout_specs[0]))
-    layout_specs[0] = backprop_layout->dim(0);
+  if (loss_layout) layout_specs[0] = loss_layout->sharding_spec(0);
+  if (backprop_layout && Layout::IsUnshardedDimension(layout_specs[0]))
+    layout_specs[0] = backprop_layout->sharding_spec(0);
 
   // Only backprop has class dim so use that if it is available.
-  if (backprop_layout &&
-      backprop_layout->sharding_spec(1) != layout_specs[0].sharding_spec())
-    layout_specs[1] = backprop_layout->dim(1);
+  if (backprop_layout && backprop_layout->sharding_spec(1) != layout_specs[0])
+    layout_specs[1] = backprop_layout->sharding_spec(1);
 
   TF_ASSIGN_OR_RETURN(const auto features_shape,
                       GetShapeOfValue(op->getOperand(0)));

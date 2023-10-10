@@ -13,11 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 """TensorFlow Lite Python Interface: Sanity check."""
+from unittest import mock
 import numpy as np
 
 from tensorflow.lite.python import convert
 from tensorflow.lite.python import op_hint
 from tensorflow.lite.python.interpreter import Interpreter
+from tensorflow.lite.python.metrics import converter_error_data_pb2
+from tensorflow.lite.python.metrics.wrapper import metrics_wrapper
+from tensorflow.lite.toco import toco_flags_pb2 as _conversion_flags_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -26,8 +30,33 @@ from tensorflow.python.framework.graph_util_impl import _bfs_for_reachable_nodes
 from tensorflow.python.framework.graph_util_impl import _extract_graph_summary
 from tensorflow.python.framework.graph_util_impl import _node_name
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
+
+
+def _mock_wrapped_toco_convert(
+    unused_model_flags_str="",
+    conversion_flags_str="",
+    unused_input_data_str="",
+    unused_debug_info_str="",
+    unused_enable_mlir_converter=True,
+):
+  # Simulate the converter throwing and error when
+  # `guarantee_all_funcs_one_use` is not set.
+  if not _conversion_flags_pb2.TocoFlags.FromString(
+      conversion_flags_str
+  ).guarantee_all_funcs_one_use:
+    raise Exception()
+  else:
+    return bytes("A model", encoding="utf-8")
+
+
+def _mock_retrieve_errors():
+  err_data = converter_error_data_pb2.ConverterErrorData(
+      error_code=converter_error_data_pb2.ConverterErrorData.ERROR_STATEFUL_PARTITIONED_CALL_IN_FINAL_IR
+  )
+  return [err_data]
 
 
 class ConvertTest(test_util.TensorFlowTestCase):
@@ -43,6 +72,61 @@ class ConvertTest(test_util.TensorFlowTestCase):
     tflite_model = convert.convert_graphdef(
         sess.graph_def, input_tensors=[in_tensor], output_tensors=[out_tensor])
     self.assertTrue(tflite_model)
+
+  @mock.patch.object(
+      convert,
+      "_deprecated_conversion_binary",
+      new="tocos_from_proto",
+  )
+  @mock.patch.object(
+      convert,
+      "_run_deprecated_conversion_binary",
+      autospec=True,
+  )
+  def testBasicDeprecatedConversionBinary(self, mock_func):
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32
+      )
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
+
+    convert.convert_graphdef(
+        sess.graph_def,
+        input_tensors=[in_tensor],
+        output_tensors=[out_tensor],
+        enable_mlir_converter=False,
+    )
+    mock_func.assert_called_once()
+
+  @mock.patch.object(
+      convert.wrap_toco, "wrapped_toco_convert", new=_mock_wrapped_toco_convert
+  )
+  @mock.patch.object(
+      metrics_wrapper, "retrieve_collected_errors", new=_mock_retrieve_errors
+  )
+  # This test wants to check that in the case of the converter throwing an
+  # `ERROR_STATEFUL_PARTITIONED_CALL_IN_FINAL_IR` error, it will
+  # retry conversion with the `guarantee_all_funcs_one_use` flag.
+  # We can wrap the convert call in order to assert it is called appropriately.
+  @mock.patch.object(convert, "convert", wraps=convert.convert)
+  def testConversionStatefulPartitionRetry(self, mock_convert):
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32
+      )
+      out_tensor = in_tensor + in_tensor
+      sess = session.Session()
+
+    model = convert.convert_graphdef(
+        sess.graph_def,
+        input_tensors=[in_tensor],
+        output_tensors=[out_tensor],
+        enable_mlir_converter=True,
+        guarantee_all_funcs_one_use=False,
+    )
+    self.assertTrue(str(model, encoding="utf-8"), "A model")
+    self.assertEqual(mock_convert.call_count, 2)
 
   def testQuantization(self):
     with ops.Graph().as_default():
@@ -84,14 +168,14 @@ class ConvertTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(input_details))
     self.assertEqual("input", input_details[0]["name"])
     self.assertEqual(np.float32, input_details[0]["dtype"])
-    self.assertTrue(([1, 16, 16, 3] == input_details[0]["shape"]).all())
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]["shape"]).all())  # type: ignore
     self.assertEqual((0., 0.), input_details[0]["quantization"])
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
     self.assertEqual("add", output_details[0]["name"])
     self.assertEqual(np.float32, output_details[0]["dtype"])
-    self.assertTrue(([1, 16, 16, 3] == output_details[0]["shape"]).all())
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]["shape"]).all())  # type: ignore
     self.assertEqual((0., 0.), output_details[0]["quantization"])
 
   def testGraphDefQuantization(self):
@@ -124,13 +208,13 @@ class ConvertTest(test_util.TensorFlowTestCase):
     self.assertEqual(2, len(input_details))
     self.assertEqual("inputA", input_details[0]["name"])
     self.assertEqual(np.uint8, input_details[0]["dtype"])
-    self.assertTrue(([1, 16, 16, 3] == input_details[0]["shape"]).all())
+    self.assertTrue(([1, 16, 16, 3] == input_details[0]["shape"]).all())  # type: ignore
     self.assertEqual((1., 0.),
                      input_details[0]["quantization"])  # scale, zero_point
 
     self.assertEqual("inputB", input_details[1]["name"])
     self.assertEqual(np.uint8, input_details[1]["dtype"])
-    self.assertTrue(([1, 16, 16, 3] == input_details[1]["shape"]).all())
+    self.assertTrue(([1, 16, 16, 3] == input_details[1]["shape"]).all())  # type: ignore
     self.assertEqual((1., 0.),
                      input_details[1]["quantization"])  # scale, zero_point
 
@@ -138,7 +222,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(output_details))
     self.assertEqual("output", output_details[0]["name"])
     self.assertEqual(np.uint8, output_details[0]["dtype"])
-    self.assertTrue(([1, 16, 16, 3] == output_details[0]["shape"]).all())
+    self.assertTrue(([1, 16, 16, 3] == output_details[0]["shape"]).all())  # type: ignore
     self.assertGreater(output_details[0]["quantization"][0], 0)  # scale
 
   def testGraphDefQuantizationInvalid(self):
@@ -343,8 +427,8 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
       a = array_ops.constant([3., 4.])
       b = array_ops.constant([5., 6.])
       hint = op_hint.OpHint("agg")
-      a0, a1 = array_ops.unstack(a)
-      b0, b1 = array_ops.unstack(b)
+      a0, a1 = array_ops_stack.unstack(a)
+      b0, b1 = array_ops_stack.unstack(b)
 
       a0 = hint.add_input(a0, tag="c", aggregate=op_hint.OpHint.AGGREGATE_STACK)
       b0 = hint.add_input(b0, tag="n", aggregate=op_hint.OpHint.AGGREGATE_STACK)
@@ -358,7 +442,7 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
       c1 = hint.add_output(
           c1, tag="out", aggregate=op_hint.OpHint.AGGREGATE_STACK)
 
-      curr = array_ops.stack([c0, c1])
+      curr = array_ops_stack.stack([c0, c1])
       output = array_ops.identity(curr, name="FINAL_OUTPUT")
       with self.cached_session() as sess:
         stubbed_graphdef = op_hint.convert_op_hints_to_stubs(

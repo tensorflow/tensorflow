@@ -34,11 +34,23 @@ import time
 TF_SRC_DIR = "tensorflow"
 VERSION_H = "%s/core/public/version.h" % TF_SRC_DIR
 SETUP_PY = "%s/tools/pip_package/setup.py" % TF_SRC_DIR
-SETUP_PARTNER_BUILD_PY = "%s/tools/pip_package/setup_partner_builds.py" % TF_SRC_DIR
 README_MD = "./README.md"
 TENSORFLOW_BZL = "%s/tensorflow.bzl" % TF_SRC_DIR
+TF_MAC_ARM64_CI_BUILD = (
+    "%s/tools/ci_build/osx/arm64/tensorflow_as_build_release.Jenkinsfile"
+    % TF_SRC_DIR
+)
+TF_MAC_ARM64_CI_TEST = (
+    "%s/tools/ci_build/osx/arm64/tensorflow_as_test_release.Jenkinsfile"
+    % TF_SRC_DIR
+)
 RELEVANT_FILES = [
-    TF_SRC_DIR, VERSION_H, SETUP_PY, SETUP_PARTNER_BUILD_PY, README_MD
+    TF_SRC_DIR,
+    VERSION_H,
+    SETUP_PY,
+    README_MD,
+    TF_MAC_ARM64_CI_BUILD,
+    TF_MAC_ARM64_CI_TEST
 ]
 
 # Version type parameters.
@@ -206,13 +218,6 @@ def update_setup_dot_py(old_version, new_version):
                          "_VERSION = '%s'" % new_version.string, SETUP_PY)
 
 
-def update_setup_partner_builds_dot_py(old_version, new_version):
-  """Update setup_partner_builds.py."""
-  replace_string_in_line("_VERSION = '%s'" % old_version.string,
-                         "_VERSION = '%s'" % new_version.string,
-                         SETUP_PARTNER_BUILD_PY)
-
-
 def update_readme(old_version, new_version):
   """Update README."""
   pep_440_str = new_version.pep_440_str
@@ -229,6 +234,20 @@ def update_tensorflow_bzl(old_version, new_version):
                           new_version.patch)
   replace_string_in_line('VERSION = "%s"' % old_mmp,
                          'VERSION = "%s"' % new_mmp, TENSORFLOW_BZL)
+
+
+def update_m1_builds(old_version, new_version):
+  """Update M1 builds."""
+  replace_string_in_line(
+      "RELEASE_BRANCH = 'r%s.%s'" % (old_version.major, old_version.minor),
+      "RELEASE_BRANCH = 'r%s.%s'" % (new_version.major, new_version.minor),
+      TF_MAC_ARM64_CI_BUILD,
+  )
+  replace_string_in_line(
+      "RELEASE_BRANCH = 'r%s.%s'" % (old_version.major, old_version.minor),
+      "RELEASE_BRANCH = 'r%s.%s'" % (new_version.major, new_version.minor),
+      TF_MAC_ARM64_CI_TEST,
+  )
 
 
 def major_minor_change(old_version, new_version):
@@ -311,10 +330,11 @@ def main():
                             NIGHTLY_VERSION)
   else:
     new_version = Version.parse_from_string(args.version, REGULAR_VERSION)
+    # Update Apple Silicon release CI files for release builds only
+    update_m1_builds(old_version, new_version)
 
   update_version_h(old_version, new_version)
   update_setup_dot_py(old_version, new_version)
-  update_setup_partner_builds_dot_py(old_version, new_version)
   update_readme(old_version, new_version)
   update_tensorflow_bzl(old_version, new_version)
 

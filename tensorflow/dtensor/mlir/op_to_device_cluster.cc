@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 
 #include "llvm/Support/Casting.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 
@@ -43,6 +43,8 @@ namespace tensorflow {
 namespace dtensor {
 
 namespace {
+#define GEN_PASS_DEF_DTENSOROPTODEVICECLUSTER
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // Extracts mesh config from the Op.
 // We currently hard extract mesh information from all the args and assume they
@@ -55,17 +57,16 @@ mlir::LogicalResult WrapDeviceCluster(mlir::OpBuilder *builder,
       op->getLoc(), op->getResultTypes());
   if (auto layout_op = llvm::dyn_cast<mlir::TF::DTensorLayout>(op)) {
     cluster->setAttr(kMeshAttr, builder->getStringAttr(
-                                    layout_op.layout().mesh().ToString()));
-  } else if (auto copy_to_mesh = llvm::dyn_cast<mlir::TF::CopyToMeshOp>(op)) {
-    const std::string layout_string = copy_to_mesh.layout().str();
-    auto layout_or = Layout::FromString(layout_string);
-    if (!layout_or.ok())
-      return op->emitOpError(
-          llvm::formatv("Found tf.CopyToMesh Op with unparsable layout : {0}",
-                        layout_string));
+                                    layout_op.getLayout().mesh().ToString()));
+  } else if (auto copy_to_mesh = llvm::dyn_cast<mlir::TF::RelayoutOp>(op)) {
+    const std::string layout_string = copy_to_mesh.getLayout().str();
+    auto layout = Layout::FromString(layout_string);
+    if (!layout.ok())
+      return op->emitOpError(llvm::formatv(
+          "Found tf.Relayout Op with unparsable layout: {0}", layout_string));
 
     cluster->setAttr(kMeshAttr,
-                     builder->getStringAttr(layout_or->mesh().ToString()));
+                     builder->getStringAttr(layout->mesh().ToString()));
   } else {
     // If mesh configuration can be inferred from the op directly, use the mesh
     // information from op attribute directly. If op is not annotated with mesh
@@ -77,9 +78,9 @@ mlir::LogicalResult WrapDeviceCluster(mlir::OpBuilder *builder,
     if (!status_or_mesh.ok())
       return op->emitOpError(
           llvm::formatv("failed to wrap to device cluster. {0}",
-                        status_or_mesh.status().error_message()));
+                        status_or_mesh.status().message()));
 
-    const auto mesh_config = status_or_mesh.ValueOrDie();
+    const auto mesh_config = status_or_mesh.value();
     if (mesh_config)
       cluster->setAttr(kMeshAttr,
                        builder->getStringAttr(mesh_config->ToString()));
@@ -87,7 +88,7 @@ mlir::LogicalResult WrapDeviceCluster(mlir::OpBuilder *builder,
 
   op->replaceAllUsesWith(cluster);
 
-  cluster.body().push_back(new mlir::Block);
+  cluster.getBody().push_back(new mlir::Block);
 
   builder->setInsertionPointToEnd(&cluster.GetBody());
   builder->create<mlir::tf_device::ReturnOp>(op->getLoc(), op->getResults());
@@ -100,7 +101,7 @@ mlir::LogicalResult WrapDeviceCluster(mlir::OpBuilder *builder,
 
 // MLIR pass that wraps tf_device.cluster op to every TF op.
 struct DTensorOpToDeviceClusterPass
-    : public DTensorOpToDeviceClusterBase<DTensorOpToDeviceClusterPass> {
+    : public impl::DTensorOpToDeviceClusterBase<DTensorOpToDeviceClusterPass> {
   void getDependentDialects(mlir::DialectRegistry &registry) const override {
     registry.insert<mlir::dtensor::DTensorDialect>();
     registry.insert<mlir::tf_device::TensorFlowDeviceDialect>();

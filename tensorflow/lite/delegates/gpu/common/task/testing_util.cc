@@ -48,11 +48,12 @@ absl::Status TestExecutionEnvironment::ExecuteGPUOperation(
   return ExecuteGpuOperationInternal(src_cpu, dst_cpu, std::move(operation));
 }
 
+template <typename DstTensorType>
 absl::Status TestExecutionEnvironment::ExecuteGPUOperation(
     const std::vector<TensorFloat32>& src_cpu,
     std::unique_ptr<GPUOperation>&& operation,
     const std::vector<BHWC>& dst_sizes,
-    const std::vector<TensorFloat32*>& dst_cpu) {
+    const std::vector<DstTensorType*>& dst_cpu) {
   const OperationDef& op_def = operation->GetDefinition();
   std::vector<TensorDescriptor> src_cpu_descs(src_cpu.size());
   std::vector<TensorDescriptor*> src_cpu_desc_ptrs(src_cpu.size());
@@ -77,6 +78,18 @@ absl::Status TestExecutionEnvironment::ExecuteGPUOperation(
   }
   return absl::OkStatus();
 }
+
+template absl::Status TestExecutionEnvironment::ExecuteGPUOperation(
+    const std::vector<TensorFloat32>& src_cpu,
+    std::unique_ptr<GPUOperation>&& operation,
+    const std::vector<BHWC>& dst_sizes,
+    const std::vector<TensorFloat32*>& dst_cpu);
+
+template absl::Status TestExecutionEnvironment::ExecuteGPUOperation(
+    const std::vector<TensorFloat32>& src_cpu,
+    std::unique_ptr<GPUOperation>&& operation,
+    const std::vector<BHWC>& dst_sizes,
+    const std::vector<TensorInt32*>& dst_cpu);
 
 absl::Status TestExecutionEnvironment::ExecuteGPUOperation(
     const std::vector<Tensor5DFloat32>& src_cpu,
@@ -126,44 +139,46 @@ absl::Status PointWiseNear(const std::vector<float>& ref,
   return absl::OkStatus();
 }
 
+template <typename DstTensorType>
 absl::Status TestExecutionEnvironment::ExecuteGpuModel(
     const std::vector<TensorFloat32>& src_cpu,
-    const std::vector<TensorFloat32*>& dst_cpu, GpuModel* gpu_model) {
-  std::vector<TensorFloat32> inputs = src_cpu;
+    const std::vector<DstTensorType*>& dst_cpu, GpuModel* gpu_model) {
+  for (int i = 0; i < gpu_model->input_ids_and_refs.size(); ++i) {
+    gpu_model->tensors[gpu_model->input_ids_and_refs[i].first].UploadData(
+        src_cpu[i]);
+  }
+
   for (int k = 0; k < gpu_model->nodes.size(); ++k) {
     auto& gpu_node = gpu_model->nodes[k];
-    std::vector<TensorDescriptor> src_cpu_descs(gpu_node.inputs.size());
-    std::vector<TensorDescriptor*> src_cpu_desc_ptrs(gpu_node.inputs.size());
+    std::vector<TensorDescriptor*> src_descs(gpu_node.inputs.size());
     for (int i = 0; i < gpu_node.inputs.size(); ++i) {
-      src_cpu_descs[i] = gpu_model->tensors[gpu_node.inputs[i]];
-      src_cpu_descs[i].UploadData(inputs[i]);
-      src_cpu_desc_ptrs[i] = &src_cpu_descs[i];
+      src_descs[i] = &gpu_model->tensors[gpu_node.inputs[i]];
     }
 
-    std::vector<TensorDescriptor> dst_cpu_descs(gpu_node.outputs.size());
-    std::vector<TensorDescriptor*> dst_cpu_desc_ptrs(gpu_node.outputs.size());
+    std::vector<TensorDescriptor*> dst_descs(gpu_node.outputs.size());
     for (int i = 0; i < gpu_node.outputs.size(); ++i) {
-      dst_cpu_descs[i] = gpu_model->tensors[gpu_node.outputs[i]];
-      dst_cpu_desc_ptrs[i] = &dst_cpu_descs[i];
+      dst_descs[i] = &gpu_model->tensors[gpu_node.outputs[i]];
     }
 
     RETURN_IF_ERROR(ExecuteGpuOperationInternal(
-        src_cpu_desc_ptrs, dst_cpu_desc_ptrs,
-        std::move(gpu_model->nodes[k].gpu_operation)));
-
-    inputs.resize(gpu_node.outputs.size());
-    for (int i = 0; i < gpu_node.outputs.size(); ++i) {
-      dst_cpu_descs[i].DownloadData(&inputs[i]);
-    }
+        src_descs, dst_descs, std::move(gpu_model->nodes[k].gpu_operation)));
   }
-  if (dst_cpu.size() != inputs.size()) {
-    return absl::InternalError("Size mismatch.");
-  }
-  for (int i = 0; i < dst_cpu.size(); ++i) {
-    *dst_cpu[i] = inputs[i];
+  for (int i = 0; i < gpu_model->output_ids_and_refs.size(); ++i) {
+    gpu_model->tensors[gpu_model->output_ids_and_refs[i].first].DownloadData(
+        dst_cpu[i]);
   }
   return absl::OkStatus();
 }
+
+template absl::Status TestExecutionEnvironment::ExecuteGpuModel(
+    const std::vector<TensorFloat32>& src_cpu,
+    const std::vector<Tensor<BHWC, DataType::FLOAT32>*>& dst_cpu,
+    GpuModel* gpu_model);
+
+template absl::Status TestExecutionEnvironment::ExecuteGpuModel(
+    const std::vector<TensorFloat32>& src_cpu,
+    const std::vector<Tensor<BHWC, DataType::INT32>*>& dst_cpu,
+    GpuModel* gpu_model);
 
 }  // namespace gpu
 }  // namespace tflite

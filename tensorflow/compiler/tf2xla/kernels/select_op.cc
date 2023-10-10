@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <numeric>
+#include <vector>
 
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
@@ -21,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/util/bcast.h"
@@ -75,7 +76,8 @@ class SelectOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(SelectOp);
+  SelectOp(const SelectOp&) = delete;
+  void operator=(const SelectOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("Select"), MlirXlaOpKernel);
@@ -114,21 +116,22 @@ class SelectOpV2 : public XlaOpKernel {
 
     auto bcasted_cond = BroadcastTo(ctx->Input(0), bcast.output_shape());
     OP_REQUIRES_OK(ctx, bcasted_cond.status());
-    auto cond_handle = bcasted_cond.ValueOrDie();
+    auto cond_handle = bcasted_cond.value();
 
     auto bcasted_then = BroadcastTo(ctx->Input(1), bcast.output_shape());
     OP_REQUIRES_OK(ctx, bcasted_then.status());
-    auto then_handle = bcasted_then.ValueOrDie();
+    auto then_handle = bcasted_then.value();
 
     auto bcasted_else = BroadcastTo(ctx->Input(2), bcast.output_shape());
     OP_REQUIRES_OK(ctx, bcasted_else.status());
-    auto else_handle = bcasted_else.ValueOrDie();
+    auto else_handle = bcasted_else.value();
 
     ctx->SetOutput(0, xla::Select(cond_handle, then_handle, else_handle));
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(SelectOpV2);
+  SelectOpV2(const SelectOpV2&) = delete;
+  void operator=(const SelectOpV2&) = delete;
 };
 
 REGISTER_XLA_OP(Name("SelectV2"), SelectOpV2);

@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <stdexcept>
+#include <utility>
 
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToLLVM/ComplexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"  // from @llvm-project
@@ -28,8 +30,8 @@ limitations under the License.
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
@@ -37,6 +39,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
@@ -51,7 +54,7 @@ namespace {
 constexpr StringRef kTfWrapperLibaryLaunchHelperName =
     "_mlir_ciface_tf_launch_kernel";
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_TFKERNELTOLLVMPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 /// A rewrite patter to convert gpu.launch_func operations into a runtime call
@@ -77,10 +80,7 @@ class ConvertLaunchFuncOpToTfRuntimeCallPattern
   MLIRContext *context_ = &this->getTypeConverter()->getContext();
 
   Type llvm_void_type_ = LLVM::LLVMVoidType::get(context_);
-  Type llvm_pointer_type_ =
-      LLVM::LLVMPointerType::get(IntegerType::get(context_, 8));
-  Type llvm_pointer_pointer_type_ =
-      LLVM::LLVMPointerType::get(llvm_pointer_type_);
+  Type llvm_pointer_type_ = LLVM::LLVMPointerType::get(context_);
   Type llvm_int8_type_ = IntegerType::get(context_, 8);
   Type llvm_int32_type_ = IntegerType::get(context_, 32);
   Type llvm_int64_type_ = IntegerType::get(context_, 64);
@@ -109,7 +109,7 @@ Value ConvertLaunchFuncOpToTfRuntimeCallPattern::generateParamsArray(
   auto num_kernel_operands = launch_op.getNumKernelOperands();
   auto arguments = getTypeConverter()->promoteOperands(
       loc, launch_op.getOperands().take_back(num_kernel_operands),
-      adaptor.operands().take_back(num_kernel_operands), builder);
+      adaptor.getKernelOperands().take_back(num_kernel_operands), builder);
   auto num_arguments = arguments.size();
   SmallVector<Type, 4> argument_types;
   argument_types.reserve(num_arguments);
@@ -119,25 +119,24 @@ Value ConvertLaunchFuncOpToTfRuntimeCallPattern::generateParamsArray(
   auto one = builder.create<LLVM::ConstantOp>(loc, llvm_int32_type_,
                                               builder.getI32IntegerAttr(1));
   auto struct_ptr = builder.create<LLVM::AllocaOp>(
-      loc, LLVM::LLVMPointerType::get(struct_type), one, /*alignment=*/0);
+      loc, llvm_pointer_type_, struct_type, one, /*alignment=*/0);
   auto array_size = builder.create<LLVM::ConstantOp>(
       loc, llvm_int32_type_, builder.getI32IntegerAttr(num_arguments));
   auto array_ptr = builder.create<LLVM::AllocaOp>(
-      loc, llvm_pointer_pointer_type_, array_size, /*alignment=*/0);
+      loc, llvm_pointer_type_, llvm_pointer_type_, array_size, /*alignment=*/0);
   auto zero = builder.create<LLVM::ConstantOp>(loc, llvm_int32_type_,
                                                builder.getI32IntegerAttr(0));
   for (auto en : llvm::enumerate(arguments)) {
     auto index = builder.create<LLVM::ConstantOp>(
         loc, llvm_int32_type_, builder.getI32IntegerAttr(en.index()));
     auto field_ptr = builder.create<LLVM::GEPOp>(
-        loc, LLVM::LLVMPointerType::get(argument_types[en.index()]), struct_ptr,
+        loc, llvm_pointer_type_, struct_type, struct_ptr,
         ArrayRef<Value>{zero, index.getResult()});
     builder.create<LLVM::StoreOp>(loc, en.value(), field_ptr);
-    auto element_ptr = builder.create<LLVM::GEPOp>(
-        loc, llvm_pointer_pointer_type_, array_ptr, index.getResult());
-    auto casted =
-        builder.create<LLVM::BitcastOp>(loc, llvm_pointer_type_, field_ptr);
-    builder.create<LLVM::StoreOp>(loc, casted, element_ptr);
+    auto element_ptr =
+        builder.create<LLVM::GEPOp>(loc, llvm_pointer_type_, llvm_pointer_type_,
+                                    array_ptr, index.getResult());
+    builder.create<LLVM::StoreOp>(loc, field_ptr, element_ptr);
   }
   return array_ptr;
 }
@@ -153,7 +152,7 @@ Value ConvertLaunchFuncOpToTfRuntimeCallPattern::generateParamsArray(
 LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
     gpu::LaunchFuncOp launch_op, OpAdaptor adaptor,
     ConversionPatternRewriter &rewriter) const {
-  if (!launch_op.asyncDependencies().empty() || launch_op.asyncToken()) {
+  if (!launch_op.getAsyncDependencies().empty() || launch_op.getAsyncToken()) {
     return rewriter.notifyMatchFailure(
         launch_op, "Cannot convert with async dependency or result.");
   }
@@ -177,9 +176,9 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
   // Create a global for the module blob.
   SmallString<128> name_buffer(kernel_module.getName());
   name_buffer.append("_blob");
-  Value module_blob =
-      LLVM::createGlobalString(loc, rewriter, name_buffer.str(),
-                               binary_attr.getValue(), LLVM::Linkage::Internal);
+  Value module_blob = LLVM::createGlobalString(loc, rewriter, name_buffer.str(),
+                                               binary_attr.getValue(),
+                                               LLVM::Linkage::Internal, true);
 
   // Make sure the trailing zero is included in the constant.
   auto kernel_name = launch_op.getKernelName().getValue();
@@ -191,9 +190,9 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
   auto kernel_name_global_name =
       (kernel_module.getName() + "_" + kernel_name + "_kernel_name")
           .toStringRef(kernel_name_global_name_buffer);
-  auto kernel_name_global =
-      LLVM::createGlobalString(loc, rewriter, kernel_name_global_name,
-                               kernel_name_buffer, LLVM::Linkage::Internal);
+  auto kernel_name_global = LLVM::createGlobalString(
+      loc, rewriter, kernel_name_global_name, kernel_name_buffer,
+      LLVM::Linkage::Internal, true);
 
   // The TensorFlow OpKernelContext is the first argument of the surrounding
   // LLVMFunc.
@@ -208,19 +207,18 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
   if (!function) {
     PatternRewriter::InsertionGuard guard(rewriter);
     auto function_type = LLVM::LLVMFunctionType::get(
-        llvm_void_type_,
-        {
-            llvm_pointer_type_,         /* void* context */
-            llvm_pointer_type_,         /* void* module_blob */
-            llvm_pointer_type_,         /* void* function_name */
-            llvm_intptr_type_,          /* intptr_t grid_x_dim */
-            llvm_intptr_type_,          /* intptr_t grid_y_dim */
-            llvm_intptr_type_,          /* intptr_t grid_z_dim */
-            llvm_intptr_type_,          /* intptr_t block_x_dim */
-            llvm_intptr_type_,          /* intptr_t block_y_dim */
-            llvm_intptr_type_,          /* intptr_t block_z_dim */
-            llvm_pointer_pointer_type_, /* void **kernel_params */
-        });
+        llvm_void_type_, {
+                             llvm_pointer_type_, /* void* context */
+                             llvm_pointer_type_, /* void* module_blob */
+                             llvm_pointer_type_, /* void* function_name */
+                             llvm_intptr_type_,  /* intptr_t grid_x_dim */
+                             llvm_intptr_type_,  /* intptr_t grid_y_dim */
+                             llvm_intptr_type_,  /* intptr_t grid_z_dim */
+                             llvm_intptr_type_,  /* intptr_t block_x_dim */
+                             llvm_intptr_type_,  /* intptr_t block_y_dim */
+                             llvm_intptr_type_,  /* intptr_t block_z_dim */
+                             llvm_pointer_type_, /* void **kernel_params */
+                         });
     rewriter.setInsertionPointToStart(
         launch_op->getParentOfType<ModuleOp>().getBody());
     function = rewriter.create<LLVM::LLVMFuncOp>(
@@ -229,16 +227,18 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
   rewriter.create<LLVM::CallOp>(
       loc, TypeRange(), mlir::SymbolRefAttr::get(function),
 
-      ArrayRef<Value>{
-          context_arg, module_blob, kernel_name_global, adaptor.gridSizeX(),
-          adaptor.gridSizeY(), adaptor.gridSizeZ(), adaptor.blockSizeX(),
-          adaptor.blockSizeY(), adaptor.blockSizeZ(), kernel_params});
+      ArrayRef<Value>{context_arg, module_blob, kernel_name_global,
+                      adaptor.getGridSizeX(), adaptor.getGridSizeY(),
+                      adaptor.getGridSizeZ(), adaptor.getBlockSizeX(),
+                      adaptor.getBlockSizeY(), adaptor.getBlockSizeZ(),
+                      kernel_params});
 
   rewriter.eraseOp(launch_op);
   return success();
 }
 
-class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
+class TFKernelToLLVMPass
+    : public impl::TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<LLVM::LLVMDialect>();
   }
@@ -255,26 +255,27 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
 
     // Populate type conversions.
     MLIRContext *ctx = m.getContext();
-    LLVMTypeConverter type_converter(ctx);
+    LowerToLLVMOptions options(&getContext());
+    LLVMTypeConverter type_converter(ctx, options);
     type_converter.addConversion([&](tf_framework::OpKernelContextType type) {
-      return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
+      return LLVM::LLVMPointerType::get(type.getContext());
     });
     type_converter.addConversion([&](tf_framework::JITCallableType type) {
-      return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
+      return LLVM::LLVMPointerType::get(type.getContext());
     });
 
     // Populate patterns.
     RewritePatternSet patterns(&getContext());
-    arith::populateArithmeticExpandOpsPatterns(patterns);
+    arith::populateArithExpandOpsPatterns(patterns);
     memref::populateExpandOpsPatterns(patterns);
-    arith::populateArithmeticToLLVMConversionPatterns(type_converter, patterns);
-    populateMemRefToLLVMConversionPatterns(type_converter, patterns);
+    arith::populateArithToLLVMConversionPatterns(type_converter, patterns);
+    populateFinalizeMemRefToLLVMConversionPatterns(type_converter, patterns);
     populateMathToLLVMConversionPatterns(type_converter, patterns);
     populateFuncToLLVMConversionPatterns(type_converter, patterns);
     cf::populateControlFlowToLLVMConversionPatterns(type_converter, patterns);
     populateComplexToLLVMConversionPatterns(type_converter, patterns);
     populateVectorToLLVMConversionPatterns(type_converter, patterns);
-    populateMathToLibmConversionPatterns(patterns, 0);
+    populateMathToLibmConversionPatterns(patterns);
     tf_framework::PopulateTFFrameworkToLLVMConversionPatterns(&type_converter,
                                                               &patterns);
     patterns.add<ConvertLaunchFuncOpToTfRuntimeCallPattern>(type_converter,
@@ -283,7 +284,7 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     ConversionTarget target(*ctx);
     target.addLegalDialect<LLVM::LLVMDialect>();
     target.addIllegalDialect<
-        arith::ArithmeticDialect, func::FuncDialect, complex::ComplexDialect,
+        arith::ArithDialect, func::FuncDialect, complex::ComplexDialect,
         gpu::GPUDialect, tf_framework::TFFrameworkDialect, math::MathDialect>();
     // Mark modules as legal.
     target.addLegalOp<ModuleOp, gpu::GPUModuleOp>();

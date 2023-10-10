@@ -81,7 +81,8 @@ class PaddingFIFOQueue : public FIFOQueue {
   static Status IsSameSizeExceptZerosInFirst(const TensorShape& first,
                                              const TensorShape& second);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PaddingFIFOQueue);
+  PaddingFIFOQueue(const PaddingFIFOQueue&) = delete;
+  void operator=(const PaddingFIFOQueue&) = delete;
 };
 
 }  // namespace tensorflow

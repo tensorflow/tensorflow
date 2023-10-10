@@ -21,14 +21,16 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/core/ir/ops.h"
-#include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
 namespace tfg {
 namespace {
 
+#define GEN_PASS_DEF_DROPOUTPUTSHAPESATTR
+#include "tensorflow/core/transforms/passes.h.inc"
+
 struct DropOutputShapesAttrPass
-    : DropOutputShapesAttrBase<DropOutputShapesAttrPass> {
+    : impl::DropOutputShapesAttrBase<DropOutputShapesAttrPass> {
   LogicalResult initialize(MLIRContext* context) override {
     for (auto& str : skip_) {
       skip_id.insert(StringAttr::get(context, str));

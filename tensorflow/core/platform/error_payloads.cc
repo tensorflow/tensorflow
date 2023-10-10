@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/error_payloads.h"
 
-namespace tensorflow {
+namespace tsl {
 
 using ::tensorflow::core::platform::ErrorSourceProto;
 
@@ -27,8 +27,8 @@ void OkOrSetErrorCounterPayload(
     ErrorSourceProto error_source_proto;
     error_source_proto.set_error_source(error_source);
     status.SetPayload(tensorflow::kErrorSource,
-                      error_source_proto.SerializeAsString());
+                      absl::Cord(error_source_proto.SerializeAsString()));
   }
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

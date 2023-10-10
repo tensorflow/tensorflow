@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
@@ -126,6 +127,27 @@ class RangeSamplerOpsTest(test.TestCase):
     # Accounts for the fact that the same random seed may be picked
     # twice very rarely.
     self.assertLessEqual(num_same, 2)
+
+  def testCandidateOutOfRange(self):
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "out of range"):
+      self.evaluate(
+          candidate_sampling_ops.log_uniform_candidate_sampler(
+              true_classes=[[0, 10]],
+              num_true=2,
+              num_sampled=1000,
+              unique=False,
+              range_max=2))
+
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "out of range"):
+      self.evaluate(
+          candidate_sampling_ops.log_uniform_candidate_sampler(
+              true_classes=[[0, -10]],
+              num_true=2,
+              num_sampled=1000,
+              unique=False,
+              range_max=2))
 
 
 if __name__ == "__main__":

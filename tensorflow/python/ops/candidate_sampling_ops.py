@@ -36,6 +36,10 @@ def uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
   This operation randomly samples a tensor of sampled classes
   (`sampled_candidates`) from the range of integers `[0, range_max)`.
 
+  See the [Candidate Sampling Algorithms
+  Reference](http://www.tensorflow.org/extras/candidate_sampling.pdf)
+  for a quick course on Candidate Sampling.
+
   The elements of `sampled_candidates` are drawn without replacement
   (if `unique=True`) or with replacement (if `unique=False`) from
   the base distribution.
@@ -47,11 +51,36 @@ def uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
   and `sampled_expected_count` representing the number of times each
   of the target classes (`true_classes`) and the sampled
   classes (`sampled_candidates`) is expected to occur in an average
-  tensor of sampled classes.  These values correspond to `Q(y|x)`
-  defined in [this
-  document](http://www.tensorflow.org/extras/candidate_sampling.pdf).
+  tensor of sampled classes. These values correspond to `Q(y|x)`
+  defined in the [Candidate Sampling Algorithms
+  Reference](http://www.tensorflow.org/extras/candidate_sampling.pdf).
   If `unique=True`, then these are post-rejection probabilities and we
   compute them approximately.
+
+  Note that this function (and also other `*_candidate_sampler`
+  functions) only gives you the ingredients to implement the various
+  Candidate Sampling algorithms listed in the big table in the
+  [Candidate Sampling Algorithms
+  Reference](http://www.tensorflow.org/extras/candidate_sampling.pdf). You
+  still need to implement the algorithms yourself.
+
+  For example, according to that table, the phrase "negative samples"
+  may mean different things in different algorithms. For instance, in
+  NCE, "negative samples" means `S_i` (which is just the sampled
+  classes) which may overlap with true classes, while in Sampled
+  Logistic, "negative samples" means `S_i - T_i` which excludes the
+  true classes. The return value `sampled_candidates` corresponds to
+  `S_i`, not to any specific definition of "negative samples" in any
+  specific algorithm. It's your responsibility to pick an algorithm
+  and calculate the "negative samples" defined by that algorithm
+  (e.g. `S_i - T_i`).
+
+  As another example, the `true_classes` argument is for calculating
+  the `true_expected_count` output (as a by-product of this function's
+  main calculation), which may be needed by some algorithms (according
+  to that table). It's not for excluding true classes in the return
+  value `sampled_candidates`. Again that step is algorithm-specific
+  and should be carried out by you.
 
   Args:
     true_classes: A `Tensor` of type `int64` and shape `[batch_size,
@@ -67,10 +96,10 @@ def uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
     name: A name for the operation (optional).
 
   Returns:
-    sampled_candidates: A tensor of type `int64` and shape `[num_sampled]`.  The
-      sampled classes, either with possible duplicates (`unique=False`) or all
-      unique (`unique=True`). In either case, `sampled_candidates` is
-      independent of the true classes.
+    sampled_candidates: A tensor of type `int64` and shape
+      `[num_sampled]`. The sampled classes, either with possible
+      duplicates (`unique=False`) or all unique (`unique=True`). As
+      noted above, `sampled_candidates` may overlap with true classes.
     true_expected_count: A tensor of type `float`.  Same shape as
       `true_classes`. The expected counts under the sampling distribution
       of each of `true_classes`.
@@ -99,6 +128,10 @@ def log_uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
   This operation randomly samples a tensor of sampled classes
   (`sampled_candidates`) from the range of integers `[0, range_max)`.
 
+  See the [Candidate Sampling Algorithms
+  Reference](http://www.tensorflow.org/extras/candidate_sampling.pdf)
+  for a quick course on Candidate Sampling.
+
   The elements of `sampled_candidates` are drawn without replacement
   (if `unique=True`) or with replacement (if `unique=False`) from
   the base distribution.
@@ -118,10 +151,35 @@ def log_uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
   of the target classes (`true_classes`) and the sampled
   classes (`sampled_candidates`) is expected to occur in an average
   tensor of sampled classes.  These values correspond to `Q(y|x)`
-  defined in [this
-  document](http://www.tensorflow.org/extras/candidate_sampling.pdf).
+  defined in the [Candidate Sampling Algorithms
+  Reference](http://www.tensorflow.org/extras/candidate_sampling.pdf).
   If `unique=True`, then these are post-rejection probabilities and we
   compute them approximately.
+
+  Note that this function (and also other `*_candidate_sampler`
+  functions) only gives you the ingredients to implement the various
+  Candidate Sampling algorithms listed in the big table in the
+  [Candidate Sampling Algorithms
+  Reference](http://www.tensorflow.org/extras/candidate_sampling.pdf). You
+  still need to implement the algorithms yourself.
+
+  For example, according to that table, the phrase "negative samples"
+  may mean different things in different algorithms. For instance, in
+  NCE, "negative samples" means `S_i` (which is just the sampled
+  classes) which may overlap with true classes, while in Sampled
+  Logistic, "negative samples" means `S_i - T_i` which excludes the
+  true classes. The return value `sampled_candidates` corresponds to
+  `S_i`, not to any specific definition of "negative samples" in any
+  specific algorithm. It's your responsibility to pick an algorithm
+  and calculate the "negative samples" defined by that algorithm
+  (e.g. `S_i - T_i`).
+
+  As another example, the `true_classes` argument is for calculating
+  the `true_expected_count` output (as a by-product of this function's
+  main calculation), which may be needed by some algorithms (according
+  to that table). It's not for excluding true classes in the return
+  value `sampled_candidates`. Again that step is algorithm-specific
+  and should be carried out by you.
 
   Args:
     true_classes: A `Tensor` of type `int64` and shape `[batch_size,
@@ -135,8 +193,9 @@ def log_uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
     name: A name for the operation (optional).
 
   Returns:
-    sampled_candidates: A tensor of type `int64` and shape `[num_sampled]`.
-      The sampled classes.
+    sampled_candidates: A tensor of type `int64` and shape
+      `[num_sampled]`. The sampled classes. As noted above,
+      `sampled_candidates` may overlap with true classes.
     true_expected_count: A tensor of type `float`.  Same shape as
       `true_classes`. The expected counts under the sampling distribution
       of each of `true_classes`.
@@ -162,6 +221,10 @@ def learned_unigram_candidate_sampler(true_classes, num_true, num_sampled,
   This operation randomly samples a tensor of sampled classes
   (`sampled_candidates`) from the range of integers `[0, range_max)`.
 
+  See the [Candidate Sampling Algorithms
+  Reference](http://www.tensorflow.org/extras/candidate_sampling.pdf)
+  for a quick course on Candidate Sampling.
+
   The elements of `sampled_candidates` are drawn without replacement
   (if `unique=True`) or with replacement (if `unique=False`) from
   the base distribution.
@@ -178,10 +241,35 @@ def learned_unigram_candidate_sampler(true_classes, num_true, num_sampled,
   of the target classes (`true_classes`) and the sampled
   classes (`sampled_candidates`) is expected to occur in an average
   tensor of sampled classes.  These values correspond to `Q(y|x)`
-  defined in [this
-  document](http://www.tensorflow.org/extras/candidate_sampling.pdf).
+  defined in the [Candidate Sampling Algorithms
+  Reference](http://www.tensorflow.org/extras/candidate_sampling.pdf).
   If `unique=True`, then these are post-rejection probabilities and we
   compute them approximately.
+
+  Note that this function (and also other `*_candidate_sampler`
+  functions) only gives you the ingredients to implement the various
+  Candidate Sampling algorithms listed in the big table in the
+  [Candidate Sampling Algorithms
+  Reference](http://www.tensorflow.org/extras/candidate_sampling.pdf). You
+  still need to implement the algorithms yourself.
+
+  For example, according to that table, the phrase "negative samples"
+  may mean different things in different algorithms. For instance, in
+  NCE, "negative samples" means `S_i` (which is just the sampled
+  classes) which may overlap with true classes, while in Sampled
+  Logistic, "negative samples" means `S_i - T_i` which excludes the
+  true classes. The return value `sampled_candidates` corresponds to
+  `S_i`, not to any specific definition of "negative samples" in any
+  specific algorithm. It's your responsibility to pick an algorithm
+  and calculate the "negative samples" defined by that algorithm
+  (e.g. `S_i - T_i`).
+
+  As another example, the `true_classes` argument is for calculating
+  the `true_expected_count` output (as a by-product of this function's
+  main calculation), which may be needed by some algorithms (according
+  to that table). It's not for excluding true classes in the return
+  value `sampled_candidates`. Again that step is algorithm-specific
+  and should be carried out by you.
 
   Args:
     true_classes: A `Tensor` of type `int64` and shape `[batch_size,
@@ -195,8 +283,9 @@ def learned_unigram_candidate_sampler(true_classes, num_true, num_sampled,
     name: A name for the operation (optional).
 
   Returns:
-    sampled_candidates: A tensor of type `int64` and shape `[num_sampled]`.
-      The sampled classes.
+    sampled_candidates: A tensor of type `int64` and shape
+      `[num_sampled]`. The sampled classes. As noted above,
+      `sampled_candidates` may overlap with true classes.
     true_expected_count: A tensor of type `float`.  Same shape as
       `true_classes`. The expected counts under the sampling distribution
       of each of `true_classes`.
@@ -235,6 +324,10 @@ def fixed_unigram_candidate_sampler(true_classes,
   This operation randomly samples a tensor of sampled classes
   (`sampled_candidates`) from the range of integers `[0, range_max)`.
 
+  See the [Candidate Sampling Algorithms
+  Reference](http://www.tensorflow.org/extras/candidate_sampling.pdf)
+  for a quick course on Candidate Sampling.
+
   The elements of `sampled_candidates` are drawn without replacement
   (if `unique=True`) or with replacement (if `unique=False`) from
   the base distribution.
@@ -248,10 +341,35 @@ def fixed_unigram_candidate_sampler(true_classes,
   of the target classes (`true_classes`) and the sampled
   classes (`sampled_candidates`) is expected to occur in an average
   tensor of sampled classes.  These values correspond to `Q(y|x)`
-  defined in [this
-  document](http://www.tensorflow.org/extras/candidate_sampling.pdf).
+  defined in the [Candidate Sampling Algorithms
+  Reference](http://www.tensorflow.org/extras/candidate_sampling.pdf).
   If `unique=True`, then these are post-rejection probabilities and we
   compute them approximately.
+
+  Note that this function (and also other `*_candidate_sampler`
+  functions) only gives you the ingredients to implement the various
+  Candidate Sampling algorithms listed in the big table in the
+  [Candidate Sampling Algorithms
+  Reference](http://www.tensorflow.org/extras/candidate_sampling.pdf). You
+  still need to implement the algorithms yourself.
+
+  For example, according to that table, the phrase "negative samples"
+  may mean different things in different algorithms. For instance, in
+  NCE, "negative samples" means `S_i` (which is just the sampled
+  classes) which may overlap with true classes, while in Sampled
+  Logistic, "negative samples" means `S_i - T_i` which excludes the
+  true classes. The return value `sampled_candidates` corresponds to
+  `S_i`, not to any specific definition of "negative samples" in any
+  specific algorithm. It's your responsibility to pick an algorithm
+  and calculate the "negative samples" defined by that algorithm
+  (e.g. `S_i - T_i`).
+
+  As another example, the `true_classes` argument is for calculating
+  the `true_expected_count` output (as a by-product of this function's
+  main calculation), which may be needed by some algorithms (according
+  to that table). It's not for excluding true classes in the return
+  value `sampled_candidates`. Again that step is algorithm-specific
+  and should be carried out by you.
 
   Args:
     true_classes: A `Tensor` of type `int64` and shape `[batch_size,
@@ -290,8 +408,9 @@ def fixed_unigram_candidate_sampler(true_classes,
     name: A name for the operation (optional).
 
   Returns:
-    sampled_candidates: A tensor of type `int64` and shape `[num_sampled]`.
-      The sampled classes.
+    sampled_candidates: A tensor of type `int64` and shape
+      `[num_sampled]`. The sampled classes. As noted above,
+      `sampled_candidates` may overlap with true classes.
     true_expected_count: A tensor of type `float`.  Same shape as
       `true_classes`. The expected counts under the sampling distribution
       of each of `true_classes`.

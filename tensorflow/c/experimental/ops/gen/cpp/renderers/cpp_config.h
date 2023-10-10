@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_CPP_CONFIG_H_
-#define TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_CPP_CONFIG_H_
+#ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_RENDERERS_CPP_CONFIG_H_
+#define TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_RENDERERS_CPP_CONFIG_H_
 
 #include "tensorflow/core/platform/types.h"
 
@@ -35,4 +35,4 @@ struct CppConfig {
 }  // namespace generator
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_CPP_CONFIG_H_
+#endif  // TENSORFLOW_C_EXPERIMENTAL_OPS_GEN_CPP_RENDERERS_CPP_CONFIG_H_

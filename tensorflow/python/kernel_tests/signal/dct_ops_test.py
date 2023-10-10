@@ -20,6 +20,8 @@ import itertools
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.signal import dct_ops
 from tensorflow.python.platform import test
@@ -193,6 +195,29 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
       n = np.random.choice([None, n])
       self._compare(signals, n, norm=norm, dct_type=dct_type,
                     rtol=tol, atol=tol)
+
+  @parameterized.parameters(itertools.product(
+      [1, 2, 3, 4],
+      [None, "ortho"],
+      [[2], [3], [10], [2, 20], [2, 3, 25]],
+      [np.float32, np.float64]))
+  def test_with_dynamic_dimensions(self, dct_type, norm, shape, dtype):
+    # "ortho" normalization is not implemented for type I.
+    if dct_type == 1 and norm == "ortho":
+      return
+    signals = np.random.rand(*shape).astype(dtype)
+    n = np.random.randint(1, 2 * shape[-1])
+    n = np.random.choice([None, n])
+
+    @def_function.function
+    def func(signals):
+      return dct_ops.dct(signals, n=n, type=dct_type, norm=norm)
+
+    # Trace with all undefined dimensions
+    signals_spec = tensor_spec.TensorSpec([None] * len(shape), dtype)
+    f = func.get_concrete_function(signals_spec)
+    # Run with actual shape
+    f(signals)
 
   def test_error(self):
     signals = np.random.rand(10)

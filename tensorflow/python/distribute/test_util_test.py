@@ -14,6 +14,8 @@
 # ==============================================================================
 """Tests for test utilities."""
 
+import sys
+
 from absl.testing import parameterized
 
 from tensorflow.python.distribute import combinations
@@ -35,7 +37,7 @@ from tensorflow.python.ops import array_ops
             strategy_combinations.multi_worker_mirrored_2x1_gpu,
             strategy_combinations.multi_worker_mirrored_2x2_gpu,
         ] + strategy_combinations.strategies_minus_tpu,
-        mode=['eager', 'graph']))
+        mode=['eager']))
 class GatherTest(test.TestCase, parameterized.TestCase):
 
   def testOne(self, strategy):
@@ -73,6 +75,10 @@ class GatherTest(test.TestCase, parameterized.TestCase):
 class LogicalDevicesTest(test.TestCase):
 
   def testLogicalCPUs(self):
+    # TODO(b/273484131): Causing segmentation fault.
+    if (test.is_gpu_available() and sys.version_info.major == 3 and
+        sys.version_info.minor == 8):
+      self.skipTest('Causing segmentation fault in Python 3.8 / GPU')
     context._reset_context()
     test_util.set_logical_devices_to_at_least('CPU', 3)
     cpu_device = config.list_physical_devices('CPU')[0]

@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <list>
+#include <memory>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xrt/xrt_metrics.h"
@@ -125,7 +128,7 @@ class XRTMemoryManager::DeviceContext {
         status = swap_result_or.status();
         break;
       }
-      if (swap_result_or.ValueOrDie()) {
+      if (swap_result_or.value()) {
         swapped.push_back(it);
       }
     }
@@ -316,7 +319,7 @@ XRTMemoryManager::DeviceContext* XRTMemoryManager::GetDeviceContext(
   }
   DeviceContext* device_context = device_contexts_[device_ordinal].get();
   if (device_context == nullptr && create_if_missing) {
-    device_contexts_[device_ordinal] = absl::make_unique<DeviceContext>();
+    device_contexts_[device_ordinal] = std::make_unique<DeviceContext>();
     device_context = device_contexts_[device_ordinal].get();
   }
   return device_context;
@@ -345,7 +348,7 @@ Status XRTMemoryManager::TryFreeMemoryStep(MemoryReclaimContext* mrctx,
       if (!free_size_or.ok()) {
         return status;
       }
-      size_t size = free_size_or.ValueOrDie();
+      size_t size = free_size_or.value();
       mrctx->free_size += size;
       if (size > 0) {
         return OkStatus();

@@ -14,7 +14,7 @@
 
 #include <cmath>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -72,9 +72,15 @@ TfLiteStatus PointwiseUnaryOpEval(TfLiteContext* context, TfLiteNode* node) {
           context,
           (PointwiseUnaryOpDoEval<Op, double>(context, input, output)));
       break;
-    default:
+    case kTfLiteInt32:
+      TF_LITE_ENSURE_OK(context, (PointwiseUnaryOpDoEval<Op, int32_t>(
+                                     context, input, output)));
+      break;
+    default: {
       TF_LITE_KERNEL_LOG(context, "Unsupported datatype for sign output: %s",
                          TfLiteTypeGetName(output->type));
+      return TfLiteStatus::kTfLiteError;
+    }
   }
 
   return TfLiteStatus::kTfLiteOk;

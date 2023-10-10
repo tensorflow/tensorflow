@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_GTL_EDIT_DISTANCE_H_
-#define TENSORFLOW_LIB_GTL_EDIT_DISTANCE_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_EDIT_DISTANCE_H_
+#define TENSORFLOW_CORE_LIB_GTL_EDIT_DISTANCE_H_
 
 #include <numeric>
 
@@ -106,4 +106,4 @@ inline int64_t LevenshteinDistance(const Container1& s, const Container2& t,
 }  // namespace gtl
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_GTL_EDIT_DISTANCE_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_EDIT_DISTANCE_H_

@@ -20,6 +20,8 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 
@@ -51,17 +53,20 @@ struct SavingTensorMetadata {
 //              tensor_indices = tensor_indies[i],
 //              shape_and_slices = shape_and_slice_spec[i])
 struct SaveOpSpecs {
-  std::vector<std::string> new_prefixes;
+  std::vector<mlir::Value> new_prefixes;
   std::vector<std::vector<int>> tensor_indices;
   std::vector<std::vector<std::string>> shape_and_slice_spec;
 
-  SaveOpSpecs(std::vector<std::string> prefixes,
+  SaveOpSpecs(std::vector<mlir::Value> prefixes,
               std::vector<std::vector<int>> indices,
               std::vector<std::vector<std::string>> specs)
       : new_prefixes(std::move(prefixes)),
         tensor_indices(std::move(indices)),
         shape_and_slice_spec(std::move(specs)) {}
 };
+
+// Returns a device suffix with printf formatting.
+std::string DeviceSuffix(int device_id, int total_devices);
 
 // Builds a complete saving specification for each device on the mesh.
 //
@@ -135,8 +140,9 @@ BuildSavingSpec(absl::Span<const SavingTensorMetadata> tensor_metadatas);
 // shape_and_slice_spec[0] is a list of shape_and_slices parameters for SaveV2
 // op.
 SaveOpSpecs BuildPerDeviceSave(
+    mlir::OpBuilder& builder,
     const absl::flat_hash_map<int64_t, std::vector<std::string>>& saving_spec,
-    int device_id, absl::string_view prefix);
+    int device_id, mlir::Value prefix, int total_devices);
 
 // Figures out the tensor slice_spec for a given layout and mesh device
 // location.

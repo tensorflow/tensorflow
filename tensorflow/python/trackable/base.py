@@ -19,7 +19,7 @@ import weakref
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.trackable import constants
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.util import tf_contextlib
@@ -121,7 +121,7 @@ class CheckpointInitialValueCallable(object):
 
 
 @tf_export("__internal__.tracking.CheckpointInitialValue", v1=[])
-class CheckpointInitialValue(ops.Tensor):
+class CheckpointInitialValue(object):
   """Tensor wrapper for managing update UIDs in `Variables`.
 
   When supplied as an initial value, objects of this type let a `Variable`
@@ -146,11 +146,10 @@ class CheckpointInitialValue(ops.Tensor):
         {VARIABLE_VALUE_KEY: shape_and_slice})[VARIABLE_VALUE_KEY]
     self._checkpoint_position = checkpoint_position
 
-  def __getattr__(self, attr):
-    try:
-      return getattr(self.wrapped_value, attr)
-    except AttributeError:
-      return self.__getattribute__(attr)
+  def __tf_tensor__(self, dtype=None, name=None):
+    del dtype
+    del name
+    return self.wrapped_value
 
   @property
   def checkpoint_position(self):
@@ -166,7 +165,7 @@ class NoRestoreSaveable(saveable_object.SaveableObject):
     super(NoRestoreSaveable, self).__init__(tensor, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):
-    return control_flow_ops.no_op()
+    return gen_control_flow_ops.no_op()
 
 
 _SlotVariableRestoration = collections.namedtuple(
@@ -421,19 +420,23 @@ class Trackable(object):
     """
     return self._self_unconditional_deferred_dependencies
 
-  def _lookup_dependency(self, name):
+  def _lookup_dependency(self, name, cached_dependencies=None):
     """Look up a dependency by name.
 
     May be overridden to include conditional dependencies.
 
     Args:
       name: The local name of the dependency.
+      cached_dependencies: Optional dict containing all computed dependencies
+        returned by `self._trackable_children()`.
 
     Returns:
       A `Trackable` object, or `None` if no dependency by this name was
       found.
     """
-    return self._self_unconditional_dependency_names.get(name, None)
+    if cached_dependencies:
+      return cached_dependencies.get(name)
+    return self._self_unconditional_dependency_names.get(name)
 
   def _add_variable_with_custom_getter(self,
                                        name,
@@ -636,8 +639,9 @@ class Trackable(object):
   def _gather_saveables_for_checkpoint(self):
     """Returns a dictionary of values to checkpoint with this object.
 
-    NOTE: This method is deprecated, please use `_serialize_to_tensors` and
-    `_restore_from_tensors` instead.
+    NOTE: This method is deprecated, prefer implementing `_serialize_to_tensors`
+    and `_restore_from_tensors` instead. This method is only used in the
+    deprecated `tf.compat.v1.train.Saver`.
 
     Keys in the returned dictionary are local to this object and in a separate
     namespace from dependencies. Values may either be `SaveableObject` factories
@@ -660,6 +664,11 @@ class Trackable(object):
     save their own values with the key `VARIABLE_VALUE_KEY`, but objects which
     reference variables simply add a dependency.
 
+    **AsyncCheckpoint Support**
+    If your Trackable implements `_gather_saveables_for_checkpoint`,
+    `_copy_trackable_to_cpu` needs to be implemented as well to support
+    asynchronous checkpoint.
+
     Returns:
       The dictionary mapping attribute names to `SaveableObject` factories
       described above. For example:
@@ -667,19 +676,7 @@ class Trackable(object):
        lambda name="global_name_for_this_object":
        SaveableObject(name=name, ...)}
     """
-    # TODO(kathywu): In order to remove this circular dependency, remove all
-    # external calls to _gather_saveables_for_checkpoint.
-    # pylint: disable=g-import-not-at-top
-    from tensorflow.python.training.saving import saveable_object_util
-    # pylint: enable=g-import-not-at-top
-    if saveable_object_util.trackable_has_serialize_to_tensor(self):
-
-      def create_saveable(name=""):
-        return saveable_object_util.TrackableSaveable(self, name)
-
-      return {"": create_saveable}
-    else:
-      return getattr(self, "_self_saveable_object_factories", {})
+    return getattr(self, "_self_saveable_object_factories", {})
 
   def _serialize_to_tensors(self):
     """Gathers tensors to save to the checkpoint.
@@ -725,6 +722,15 @@ class Trackable(object):
     If the `name` attribute should be saved to the checkpoint, then convert it
     a `tf.Variable`.
 
+    **TF1 Saver Compatibility**
+    If your Trackable needs to be comatible with `tf.compat.v1.train.Saver`,
+    implement `_gather_saveables_from_checkpoint`.
+
+    **AsyncCheckpoint Support**
+    If your Trackable implements `_serialize_to_tensors`,
+    `_copy_trackable_to_cpu` needs to be implemented as well to support
+    asynchronous checkpoint.
+
     Returns:
       A dictionary mapping names to tensors.
     """
@@ -743,27 +749,6 @@ class Trackable(object):
       An op that runs the restoration.
     """
     raise NotImplementedError
-
-  def _map_resources(self, save_options):  # pylint: disable=unused-argument
-    """Makes new resource handle ops corresponding to existing resource tensors.
-
-    Internal sub-classes can override this to inform model saving how to add new
-    resource handle ops to the main GraphDef of a SavedModel (TF 1.x style
-    graph), which allows session based APIs (e.g, C++ loader API) to interact
-    with resources owned by this object.
-
-    Args:
-      save_options: A tf.saved_model.SaveOptions instance.
-
-    Returns:
-      A tuple of (object_map, resource_map):
-        object_map: A dictionary mapping from objects that hold existing
-          resource tensors to replacement objects created to hold the new
-          resource tensors.
-        resource_map: A dictionary mapping from existing resource tensors to
-          newly created resource tensors.
-    """
-    return {}, {}
 
   def _serialize_to_proto(self, object_proto=None, **kwargs):
     """Returns a proto of any type to be saved into the SavedModel.
@@ -1043,9 +1028,9 @@ class Trackable(object):
     return {name: ref for name, ref in self._checkpoint_dependencies}
 
   def _export_to_saved_model_graph(self,
-                                   object_map=None,
-                                   tensor_map=None,
-                                   options=None,
+                                   object_map,
+                                   tensor_map,
+                                   options,
                                    **kwargs):
     """Creates a copy of this object's tensors onto SavedModel graph.
 
@@ -1071,8 +1056,22 @@ class Trackable(object):
     Returns:
       Flat list of original tensors that have been copied.
     """
-    del kwargs  # Unused.
-    self_object_map, self_tensor_map = self._map_resources(options)
-    object_map.update(self_object_map)
-    tensor_map.update(self_tensor_map)
-    return list(self_tensor_map.keys())
+    _, _, _ = object_map, tensor_map, options
+    del kwargs
+    return []
+
+  def _copy_trackable_to_cpu(self, object_map):
+    """Creates a copy of this object onto CPU, also copies values over.
+
+    Needs to be overridden if the `Trackable` requires AsyncCheckpoint support.
+    The method first checks whether a copy of `self` is already created in
+    `object_map`, and creates one if not already created. Then the method copies
+    the **values** of itself over to its copy mapped by `object_map`.
+
+    Args:
+      object_map: A dictionary that maps original Trackables to the copied
+        Trackables, which reside in the CPU.
+    """
+    del object_map  # Unused
+    raise NotImplementedError("Need to implement _copy_trackable_to_cpu() if "
+                              "the Trackable requires AsyncCheckpoint support.")

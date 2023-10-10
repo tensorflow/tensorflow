@@ -23,8 +23,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -36,8 +36,21 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged.row_partition import RowPartition
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
+
+# Each field may contain one of the following types of Tensors.
+_FieldValue = Union[
+    tensor.Tensor,
+    ragged_tensor.RaggedTensor,
+    'StructuredTensor',
+    extension_type.ExtensionType
+]
+# Function that takes a FieldValue as input and returns the transformed
+# FieldValue.
+_FieldFn = Callable[[_FieldValue], _FieldValue]
 
 
+@tf_export('experimental.StructuredTensor')
 class StructuredTensor(extension_type.BatchableExtensionType):
   """A multidimensional collection of structures with the same schema.
 
@@ -59,7 +72,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
   ### Examples
 
   >>> # A scalar StructuredTensor describing a single person.
-  >>> s1 = StructuredTensor.from_pyval(
+  >>> s1 = tf.experimental.StructuredTensor.from_pyval(
   ...     {"age": 82, "nicknames": ["Bob", "Bobby"]})
   >>> s1.shape
   TensorShape([])
@@ -67,7 +80,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
   <tf.Tensor: shape=(), dtype=int32, numpy=82>
 
   >>> # A vector StructuredTensor describing three people.
-  >>> s2 = StructuredTensor.from_pyval([
+  >>> s2 = tf.experimental.StructuredTensor.from_pyval([
   ...     {"age": 12, "nicknames": ["Josaphine"]},
   ...     {"age": 82, "nicknames": ["Bob", "Bobby"]},
   ...     {"age": 42, "nicknames": ["Elmo"]}])
@@ -82,8 +95,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
   A *field path* is a tuple of field names, specifying the path to a nested
   field.
   """
-  _fields: Mapping[str, Union[ops.Tensor, ragged_tensor.RaggedTensor,
-                              'StructuredTensor', extension_type.ExtensionType]]
+  _fields: Mapping[str, _FieldValue]
   _ragged_shape: dynamic_ragged_shape.DynamicRaggedShape
 
   __name__ = 'tf.StructuredTensor'
@@ -95,19 +107,12 @@ class StructuredTensor(extension_type.BatchableExtensionType):
   # sub-levels (embedded) StructuredTensor's.
   FieldName = Union[str, Sequence[str]]
 
-  # Each field may contain one of the following types of Tensors.
-  FieldValue = Union[ops.Tensor, ragged_tensor.RaggedTensor, 'StructuredTensor']
-
-  # Function that takes a FieldValue as input and returns the transformed
-  # FieldValue.
-  FieldFn = Callable[[FieldValue], FieldValue]
-
   # pylint: enable=invalid-name
 
   #=============================================================================
   # Constructor & Factory Methods
   #=============================================================================
-  def __init__(self, fields: Mapping[str, FieldValue],
+  def __init__(self, fields: Mapping[str, _FieldValue],
                ragged_shape: dynamic_ragged_shape.DynamicRaggedShape):
     self._fields = fields
     self._ragged_shape = ragged_shape
@@ -127,12 +132,13 @@ class StructuredTensor(extension_type.BatchableExtensionType):
       nrows: scalar integer `tf.Tensor`, or `None` if `shape.rank==0`.
       row_partitions: tuple of `RowPartition`s, with length `shape.rank-1`.
       internal: ignored argument.
+
     Returns:
       a StructuredTensor.
     """
     assert isinstance(fields, dict), fields
     assert isinstance(shape, tensor_shape.TensorShape), shape
-    assert nrows is None or isinstance(nrows, ops.Tensor), nrows
+    assert nrows is None or isinstance(nrows, tensor.Tensor), nrows
     assert row_partitions is None or isinstance(row_partitions,
                                                 tuple), row_partitions
     return StructuredTensor(
@@ -190,15 +196,15 @@ class StructuredTensor(extension_type.BatchableExtensionType):
 
     Examples:
 
-      >>> StructuredTensor.from_fields({'x': 1, 'y': [1, 2, 3]})
+      >>> tf.experimental.StructuredTensor.from_fields({'x': 1, 'y': [1, 2, 3]})
       <StructuredTensor(
         fields={
           "x": tf.Tensor(1, shape=(), dtype=int32),
           "y": tf.Tensor([1 2 3], shape=(3,), dtype=int32)},
         shape=())>
 
-      >>> StructuredTensor.from_fields({'foo': [1, 2], 'bar': [3, 4]},
-      ...                              shape=[2])
+      >>> tf.experimental.StructuredTensor.from_fields(
+      ...     {'foo': [1, 2], 'bar': [3, 4]}, shape=[2])
       <StructuredTensor(
         fields={
           "bar": tf.Tensor([3 4], shape=(2,), dtype=int32),
@@ -235,9 +241,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
       # Validate keys and convert field values to tensors.
       for key, value in fields.items():
         if not isinstance(key, str):
-
-          raise TypeError(
-              f'Unexpected type for key in `fields`: {key}')
+          raise TypeError(f'Unexpected type for key in `fields`: {key}')
         if not _FIELD_NAME_RE.match(key):
           raise ValueError('Field name %r is not currently allowed.' % key)
         fields[key] = _convert_to_structured_field_value(value)
@@ -247,23 +251,37 @@ class StructuredTensor(extension_type.BatchableExtensionType):
       return cls(fields=fields, ragged_shape=shape)
 
   @classmethod
-  def from_fields_and_rank(cls, fields, rank, validate=False):
+  def from_fields_and_rank(
+      cls,
+      fields: Mapping[str, _FieldValue],
+      rank: int,
+      validate: bool = False,
+      dtype: Optional[dtypes.DType] = None) -> 'StructuredTensor':
     """Creates a `StructuredTensor` from a nonempty dictionary of fields.
+
+    Note that if the shape dtype is not specified, the shape dtype will be
+    inferred from any fields that have a shape dtype. If fields differ, then
+    int64 will be preferred to int32, because coercing from int32 to int64 is
+    safer than coercing from int64 to int32.
+
+    If there are no ragged fields, then it will be int64 by default, but this
+    will be changed to int32 in the future.
 
     Args:
       fields: A dictionary mapping from string to `Tensor`, `RaggedTensor`, or
         `StructuredTensor`, providing the values for individual fields in each
-        structure.  If `rank > 0`, then every tensor in `fields` must have
-        the same shape in the first `rank` dimensions. Cannot be empty.
+        structure.  If `rank > 0`, then every tensor in `fields` must have the
+        same shape in the first `rank` dimensions. Cannot be empty.
       rank: The rank of the resulting structured tensor.
       validate: If true, then add runtime validation ops that check that the
-        field values all have compatible shapes in the outer `rank`
-        dimensions.
+        field values all have compatible shapes in the outer `rank` dimensions.
+      dtype: If specified, then forces dtype of the shape to be this.
 
     Returns:
       A `StructuredTensor`.
     Examples:
-      >>> StructuredTensor.from_fields_and_rank({'x': 1, 'y': [1, 2, 3]}, 0)
+      >>> tf.experimental.StructuredTensor.from_fields_and_rank(
+      ...     {'x': 1, 'y': [1, 2, 3]}, 0)
       <StructuredTensor(
         fields={
           "x": tf.Tensor(1, shape=(), dtype=int32),
@@ -286,7 +304,9 @@ class StructuredTensor(extension_type.BatchableExtensionType):
     fields = {
         k: _convert_to_structured_field_value(v) for (k, v) in fields.items()
     }
-    dtype = _find_shape_dtype(fields, None, None)
+    if dtype is None:
+      dtype = _find_shape_dtype(fields, None, None)
+    fields = _fields_with_dtype(fields, dtype)
 
     shape = _shape_from_fields(fields, rank, dtype)
     if rank > 1:
@@ -297,11 +317,9 @@ class StructuredTensor(extension_type.BatchableExtensionType):
     }
     return StructuredTensor(fields=fields, ragged_shape=shape)
 
-  def with_updates(
-      self,
-      updates: Dict[FieldName, Union[FieldValue, FieldFn, None]],
-      validate: bool = False
-  ) -> 'StructuredTensor':
+  def with_updates(self,
+                   updates: Dict[FieldName, Union[_FieldValue, _FieldFn, None]],
+                   validate: bool = False) -> 'StructuredTensor':
     """Creates a new `StructuredTensor` with the updated fields.
 
     If this `StructuredTensor` is a scalar, and `k` is the `FieldName` being
@@ -350,13 +368,13 @@ class StructuredTensor(extension_type.BatchableExtensionType):
     Raises:
       `ValueError`: If the any of the `FieldName` keys points to non-existent
         sub-structures, if parent and child nodes are updated, if shapes
-        change, if a delete update is given for a non-existant field, or if a
+        change, if a delete update is given for a non-existent field, or if a
         `FieldFn` transforming function is given for a `FieldName` that doesn't
         yet exist.
 
     Examples:
 
-    >>> shoes_us = StructuredTensor.from_pyval([
+    >>> shoes_us = tf.experimental.StructuredTensor.from_pyval([
     ...    {"age": 12, "nicknames": ["Josaphine"],
     ...       "shoes": {"sizes": [8.0, 7.5, 7.5]}},
     ...    {"age": 82, "nicknames": ["Bob", "Bobby"],
@@ -388,11 +406,10 @@ class StructuredTensor(extension_type.BatchableExtensionType):
                 prev_name, name))
     return self._with_updates_impl((), updates_items, validate)
 
-  def _with_updates_impl(
-      self,
-      error_prefix: Tuple[str],
-      updates: List[Tuple[FieldName, Union[FieldValue, FieldFn]]],
-      validate: bool) -> 'StructuredTensor':
+  def _with_updates_impl(self, error_prefix: Tuple[str, ...],
+                         updates: List[Tuple[FieldName, Union[_FieldValue,
+                                                              _FieldFn]]],
+                         validate: bool) -> 'StructuredTensor':
     """Recursive part of `with_updates` implementation."""
     # Get current fields.
     new_fields = dict(self._fields)
@@ -402,8 +419,8 @@ class StructuredTensor(extension_type.BatchableExtensionType):
       return str(error_prefix + (name,))
 
     # Apply value if a function or the value itself.
-    def apply_value(name: str, value: Union['FieldValue',
-                                            'FieldFn']) -> 'FieldValue':
+    def apply_value(name: str, value: Union[_FieldValue,
+                                            _FieldFn]) -> _FieldValue:
       if callable(value):
         # `value` is actually a transforming function.
         if name not in new_fields:
@@ -506,7 +523,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
     >>> d = [
     ...  {'docs': [{'tokens':[1, 2]}, {'tokens':[3]}]},
     ...  {'docs': [{'tokens':[7]}]}]
-    >>> st = StructuredTensor.from_pyval(d)
+    >>> st = tf.experimental.StructuredTensor.from_pyval(d)
     >>> st2 =st.promote(('docs','tokens'), 'docs_tokens')
     >>> st2[0]['docs_tokens']
     <tf.Tensor: shape=(3,), dtype=int32, numpy=array([1, 2, 3], dtype=int32)>
@@ -587,25 +604,25 @@ class StructuredTensor(extension_type.BatchableExtensionType):
     >>> x = {'a': 1, 'b': ['foo', 'bar', 'baz']}       # shape = [] (scalar)
 
     >>> s1 = [[x, x, x, x], [x, x, x, x]]              # shape = [2, 4]
-    >>> StructuredTensor.from_pyval(s1).row_partitions
+    >>> tf.experimental.StructuredTensor.from_pyval(s1).row_partitions
     (tf.RowPartition(row_splits=[0 4 8]),)
 
     >>> s2 = [[x, x], [x, x], [x, x], [x, x]]          # shape = [4, 2]
-    >>> StructuredTensor.from_pyval(s2).row_partitions
+    >>> tf.experimental.StructuredTensor.from_pyval(s2).row_partitions
     (tf.RowPartition(row_splits=[0 2 4 6 8]),)
 
     >>> s3 = [[x, x, x], [], [x, x, x, x], [x]]        # shape = [2, None]
-    >>> StructuredTensor.from_pyval(s3).row_partitions
+    >>> tf.experimental.StructuredTensor.from_pyval(s3).row_partitions
     (tf.RowPartition(row_splits=[0 3 3 7 8]),)
 
     >>> s4 = [[[x, x], [x, x]], [[x, x], [x, x]]]      # shape = [2, 2, 2]
-    >>> StructuredTensor.from_pyval(s4).row_partitions
+    >>> tf.experimental.StructuredTensor.from_pyval(s4).row_partitions
     (tf.RowPartition(row_splits=[0 2 4]),
      tf.RowPartition(row_splits=[0 2 4 6 8]))
 
 
     >>> s5 = [[[x, x], [x]], [[x, x]], [[x, x], [x]]]  # shape = [3, None, None]
-    >>> StructuredTensor.from_pyval(s5).row_partitions
+    >>> tf.experimental.StructuredTensor.from_pyval(s5).row_partitions
     (tf.RowPartition(row_splits=[0 2 3 5]),
      tf.RowPartition(row_splits=[0 2 3 5 7 8]))
 
@@ -644,6 +661,13 @@ class StructuredTensor(extension_type.BatchableExtensionType):
     if self.rank == 0:
       return None
     return self._ragged_shape[0]
+
+  def with_shape_dtype(self, dtype: dtypes.DType) -> 'StructuredTensor':
+    if dtype == self._ragged_shape.dtype:
+      return self
+    return StructuredTensor(
+        fields=_fields_with_dtype(self._fields, dtype),
+        ragged_shape=self._ragged_shape.with_dtype(dtype))
 
   def _is_eager(self):
     """True if all fields are composed of eager tensors."""
@@ -766,7 +790,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
           if not (k.start is None and k.stop is None and k.step is None):
             # TODO(edloper): Better static shape analysis here.
             result_shape[d] = None
-        elif isinstance(k, (int, ops.Tensor)):
+        elif isinstance(k, (int, tensor.Tensor)):
           result_shape[d] = -1  # mark for deletion
         elif k is None:
           raise ValueError('Slicing not supported for tf.newaxis')
@@ -817,7 +841,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
 
     Requires that all fields are Eager tensors.
 
-    >>> StructuredTensor.from_fields(
+    >>> tf.experimental.StructuredTensor.from_fields(
     ...     {'a': [1, 2, 3]}, [3]).to_pyval()
     [{'a': 1}, {'a': 2}, {'a': 3}]
 
@@ -858,7 +882,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
   def from_pyval(cls, pyval, typespec=None):
     """Constructs a StructuredTensor from a nested Python structure.
 
-    >>> StructuredTensor.from_pyval(
+    >>> tf.experimental.StructuredTensor.from_pyval(
     ...     {'a': [1, 2, 3], 'b': [[4, 5], [6, 7]]})
     <StructuredTensor(
         fields={
@@ -988,7 +1012,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
         return ragged_factory_ops.constant(pyval)
       except Exception as exc:
         raise ValueError('Error parsing path %r' % (path_so_far,)) from exc
-    elif isinstance(typespec, tensor_spec.TensorSpec):
+    elif isinstance(typespec, tensor.TensorSpec):
       try:
         result = constant_op.constant(pyval, typespec.dtype)
       except Exception as exc:
@@ -1029,7 +1053,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
       except Exception as exc:
         raise ValueError('Error parsing path %r' % (path_so_far,)) from exc
     else:
-      if not (isinstance(typespec, tensor_spec.TensorSpec) and
+      if not (isinstance(typespec, tensor.TensorSpec) and
               typespec.shape.rank == 0):
         raise ValueError('Value at %r does not match typespec: %r vs %r' %
                          (path_so_far, typespec, pyval))
@@ -1051,7 +1075,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
     Requires that this StructuredTensor have an outer dimension (i.e.,
     `self.shape.rank > 0`).
 
-    >>> st = StructuredTensor.from_pyval(
+    >>> st = tf.experimental.StructuredTensor.from_pyval(
     ...     [{'foo': 12}, {'foo': 33}, {'foo': 99}])
     >>> partition = RowPartition.from_row_lengths([2, 0, 1])
     >>> st.partition_outer_dimension(partition)
@@ -1078,7 +1102,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
     Returns a copy of this RaggedTensor with the specified range of dimensions
     flattened into a single dimension, with elements in row-major order.
 
-    >>> st = StructuredTensor.from_pyval(
+    >>> st = tf.experimental.StructuredTensor.from_pyval(
     ...     [[{'foo': 12}, {'foo': 33}], [], [{'foo': 99}]])
     >>> st.merge_dims(0, 1)
     <StructuredTensor(
@@ -1128,11 +1152,9 @@ class StructuredTensor(extension_type.BatchableExtensionType):
         if field_shape_untruncated is None:
           raise ValueError(f'Cannot convert spec of {k}.')
         untruncated_rank = field_shape_untruncated.rank
-        if (untruncated_rank is not None
-            and untruncated_rank < rank):
-          raise ValueError(
-              f'Rank of field {k} is {untruncated_rank}, '
-              f'but must be at least {rank}.')
+        if (untruncated_rank is not None and untruncated_rank < rank):
+          raise ValueError(f'Rank of field {k} is {untruncated_rank}, '
+                           f'but must be at least {rank}.')
         field_shape = field_shape_untruncated._truncate(rank)  # pylint: disable=protected-access
         if shape is None:
           shape = field_shape
@@ -1174,7 +1196,7 @@ class StructuredTensor(extension_type.BatchableExtensionType):
 _FIELD_NAME_RE = re.compile('^[a-zA-Z][a-zA-Z0-9_]*$')
 
 #=============================================================================
-# Helper funtions
+# Helper functions
 #=============================================================================
 # TODO(edloper): Move some of these helpers to row_partition.py?
 
@@ -1182,7 +1204,7 @@ _FIELD_NAME_RE = re.compile('^[a-zA-Z][a-zA-Z0-9_]*$')
 def _convert_to_structured_field_value(value):
   """Converts `value` to a Tensor, RaggedTensor, or StructuredTensor."""
   if isinstance(value,
-                (ops.Tensor, ragged_tensor.RaggedTensor, StructuredTensor)):
+                (tensor.Tensor, ragged_tensor.RaggedTensor, StructuredTensor)):
     return value
   elif ragged_tensor.is_ragged(value):
     return ragged_tensor.convert_to_tensor_or_ragged_tensor(value)
@@ -1196,50 +1218,38 @@ def _convert_to_structured_field_value(value):
                       value) from e
 
 
-def _find_shape_dtype(fields, nrows, row_partitions):
-  """Return a consistent dtype for fields, nrows, & row_partitions."""
-  field_dtypes = dict()
-  for (key, value) in fields.items():
-    if isinstance(value, ragged_tensor.RaggedTensor):
-      field_dtypes[key] = value.row_splits.dtype
-    elif isinstance(value, StructuredTensor) and value.rank > 0:
-      field_dtypes[key] = value.nrows().dtype
+def _find_shape_dtype(
+    fields: Mapping[str, _FieldValue], nrows: Optional[tensor.Tensor],
+    row_partitions: Optional[Sequence[RowPartition]]) -> dtypes.DType:
+  """Return a consistent dtype for fields, nrows, & row_partitions.
 
-  field_dtype = None
-  for value in field_dtypes.values():
-    if field_dtype is None:
-      field_dtype = value
-    elif field_dtype != value:
-      raise ValueError('field values have incompatible row_partition dtypes. ' +
-                       f'field_dtypes: {field_dtypes}')
+  In the future, the default will switch from int64 to int32, but for now,
+  we stick with int64.
 
-  row_partition_dtype = None
-  row_partition_dtypes = []
-  if row_partitions is not None:
-    row_partition_dtypes = [rp.dtype for rp in row_partitions]
-    for rp_dtype in row_partition_dtypes:
-      if row_partition_dtype is None:
-        row_partition_dtype = rp_dtype
-      elif row_partition_dtype != rp_dtype:
-        raise ValueError('row_partitions have incompatible dtypes with '
-                         f'themselves:{row_partition_dtypes}')
+  Args:
+    fields: the fields of the StructuredTensor.
+    nrows: the nrows of the StructuredTensor
+    row_partitions: the row_partitions of the StructuredTensor.
 
-  nrows_dtype = None
-  if isinstance(nrows, ops.Tensor):
-    nrows_dtype = nrows.dtype
-  all_dtypes = filter(lambda x: x is not None,
-                      [field_dtype, row_partition_dtype, nrows_dtype])
-  shape_dtypes = set()
-  shape_dtypes.update(all_dtypes)
-  if len(shape_dtypes) > 1:
-    raise ValueError('row_partition dtypes are inconsistent: ' +
-                     f'field_dtype:{field_dtype} ' +
-                     f'row_partition_dtype:{row_partition_dtype} ' +
-                     f'nrows_dtype:{nrows_dtype}')
-  elif shape_dtypes:
-    return shape_dtypes.pop()
-  else:
+  Returns:
+    If anything requires int64, then return int64.
+    If int32 is explicitly specified, return int32. Otherwise, return int64.
+  """
+  field_dtypes = [_field_shape_dtype(v) for v in fields.values()]
+  nrows_dtypes = [nrows.dtype] if isinstance(nrows, tensor.Tensor) else []
+  rp_dtypes = [] if row_partitions is None else [
+      rp.dtype for rp in row_partitions
+  ]
+
+  all_dtypes = field_dtypes + nrows_dtypes + rp_dtypes
+
+  if dtypes.int64 in all_dtypes:
     return dtypes.int64
+  if dtypes.int32 in all_dtypes:
+    return dtypes.int32
+
+  # TODO(martinz): Eventually, shift this to tf.int32.
+  return dtypes.int64
 
 
 def _merge_nrows(nrows, static_nrows, value, dtype, validate):
@@ -1260,7 +1270,7 @@ def _merge_nrows(nrows, static_nrows, value, dtype, validate):
     A tuple `(nrows, static_nrows)`.
   """
   static_value_nrows = tensor_shape.dimension_at_index(value.shape, 0)
-  if isinstance(value, ops.Tensor):
+  if isinstance(value, tensor.Tensor):
     value_nrows = array_ops.shape(value, out_type=dtype)[0]
   else:
     value_nrows = value.nrows()
@@ -1281,7 +1291,7 @@ def _merge_nrows(nrows, static_nrows, value, dtype, validate):
 
 def _merge_row_partitions(row_partitions, value, rank, dtype, validate):
   """Merges `row_partitions` with `row_partitions(value)`."""
-  if isinstance(value, ops.Tensor):
+  if isinstance(value, tensor.Tensor):
     value_row_partitions = _row_partitions_for_tensor(value, rank, dtype)
 
   elif isinstance(value, ragged_tensor.RaggedTensor):
@@ -1480,7 +1490,7 @@ def _replace_row_partitions(value, new_partitions):
     A value that is equivalent to `value`, where outer row partitions have been
     replaced by `new_partitions`.
   """
-  if isinstance(value, ops.Tensor) or not new_partitions:
+  if isinstance(value, tensor.Tensor) or not new_partitions:
     return value
 
   elif isinstance(value, ragged_tensor.RaggedTensor):
@@ -1509,7 +1519,7 @@ def _partition_outer_dimension(value, row_partition):
     >>> _partition_outer_dimension(tf.constant([1, 2, 3]), partition)
     <tf.RaggedTensor [[1, 2], [], [3]]>
 
-    >>> struct_value = StructuredTensor.from_pyval(
+    >>> struct_value = tf.experimental.StructuredTensor.from_pyval(
     ...     [{'x': 1}, {'x': 2}, {'x': 3}])
     >>> _partition_outer_dimension(struct_value, partition)
     <StructuredTensor(
@@ -1526,14 +1536,14 @@ def _partition_outer_dimension(value, row_partition):
     `result.rank = value.rank + 1`.
   """
   is_ragged = row_partition.uniform_row_length() is None
-  if isinstance(value, ops.Tensor) and not is_ragged:
+  if isinstance(value, tensor.Tensor) and not is_ragged:
     new_shape = array_ops.concat(
         [[row_partition.nrows(),
           row_partition.uniform_row_length()],
          array_ops.shape(value, out_type=row_partition.dtype)[1:]],
         axis=0)
     return array_ops.reshape(value, new_shape)
-  elif isinstance(value, (ops.Tensor, ragged_tensor.RaggedTensor)):
+  elif isinstance(value, (tensor.Tensor, ragged_tensor.RaggedTensor)):
     return ragged_tensor.RaggedTensor._from_row_partition(  # pylint: disable=protected-access
         value, row_partition)
   else:
@@ -1545,15 +1555,14 @@ def _partition_outer_dimension(value, row_partition):
     fields = dict((k, _partition_outer_dimension(v, row_partition))
                   for (k, v) in value._fields.items())
     return StructuredTensor._old_init(  # pylint: disable=protected-access
-        fields,
-        shape,
-        row_partition.nrows(), (row_partition,) + value.row_partitions)
+        fields, shape, row_partition.nrows(),
+        (row_partition,) + value.row_partitions)
 
 
 def _merge_dims(value, outer_axis, inner_axis):
   """Merges `outer_axis...inner_axis` of `value` into a single dimension."""
   assert outer_axis < inner_axis
-  if isinstance(value, (ops.Tensor, ragged_tensor.RaggedTensor)):
+  if isinstance(value, (tensor.Tensor, ragged_tensor.RaggedTensor)):
     return ragged_tensor.merge_dims(value, outer_axis, inner_axis)
   else:
     assert isinstance(value, StructuredTensor)
@@ -1570,7 +1579,7 @@ _structured_tensor_factory_key = object()  # unique private object
 def _dynamic_ragged_shape_spec_from_spec(
     spec: Union[dynamic_ragged_shape.DynamicRaggedShape.Spec,
                 ragged_tensor.RaggedTensorSpec, StructuredTensor.Spec,
-                tensor_spec.TensorSpec]
+                tensor.TensorSpec]
 ) -> dynamic_ragged_shape.DynamicRaggedShape.Spec:
   if isinstance(spec, StructuredTensor.Spec):
     return spec._ragged_shape  # pylint: disable=protected-access
@@ -1625,10 +1634,9 @@ def _dynamic_ragged_shape_from_tensor(
     return field._ragged_shape  # pylint: disable=protected-access
   shape = array_ops.shape_v2(field, out_type=dtype)
 
-  if isinstance(shape, ops.Tensor):
+  if isinstance(shape, tensor.Tensor):
     return dynamic_ragged_shape.DynamicRaggedShape(
-        row_partitions=[],
-        inner_shape=shape)
+        row_partitions=[], inner_shape=shape)
   elif isinstance(shape, dynamic_ragged_shape.DynamicRaggedShape):
     return shape
   # TODO(martinz): add a test for the following line.
@@ -1639,7 +1647,7 @@ def _dynamic_ragged_shape_from_tensor(
 def _merge_with_optional(
     a: Optional[dynamic_ragged_shape.DynamicRaggedShape],
     b: Optional[dynamic_ragged_shape.DynamicRaggedShape]
-    ) -> Optional[dynamic_ragged_shape.DynamicRaggedShape]:
+) -> Optional[dynamic_ragged_shape.DynamicRaggedShape]:
   if a is None:
     return b
   if b is None:
@@ -1665,12 +1673,35 @@ def _shape_from_fields(
   return field_shape
 
 
+def _field_shape_dtype(field: _FieldValue) -> Optional[dtypes.DType]:
+  if isinstance(field, ragged_tensor.RaggedTensor):
+    return field._row_partition.dtype  # pylint: disable=protected-access
+  if isinstance(field, StructuredTensor):
+    return field._ragged_shape.dtype  # pylint: disable=protected-access
+  return None
+
+
+def _field_with_shape_dtype(field: _FieldValue,
+                            dtype: dtypes.DType) -> _FieldValue:
+  if isinstance(field, ragged_tensor.RaggedTensor):
+    return field.with_row_splits_dtype(dtype)
+  if isinstance(field, StructuredTensor):
+    return field.with_shape_dtype(dtype)
+
+  return field
+
+
+def _fields_with_dtype(fields: Mapping[str, _FieldValue],
+                       dtype: dtypes.DType) -> Mapping[str, _FieldValue]:
+  return {k: _field_with_shape_dtype(v, dtype) for (k, v) in fields.items()}
+
+
 # pylint:disable=protected-access
 def _dynamic_ragged_shape_init(fields, shape, nrows, row_partitions):
   """Produce a DynamicRaggedShape for StructuredTensor."""
   assert isinstance(fields, dict), fields
   assert isinstance(shape, tensor_shape.TensorShape), shape
-  assert nrows is None or isinstance(nrows, ops.Tensor) or isinstance(
+  assert nrows is None or isinstance(nrows, tensor.Tensor) or isinstance(
       nrows, int), nrows
   assert row_partitions is None or isinstance(row_partitions,
                                               tuple), row_partitions
@@ -1681,6 +1712,9 @@ def _dynamic_ragged_shape_init(fields, shape, nrows, row_partitions):
 
   # TODO(martinz): figure out whether to validate.
   dtype = _find_shape_dtype(fields, nrows, row_partitions)
+
+  fields = _fields_with_dtype(fields, dtype)
+
   result = None
   if shape.is_fully_defined():
     result = dynamic_ragged_shape.DynamicRaggedShape._from_inner_shape(
@@ -1708,7 +1742,8 @@ def _dynamic_ragged_shape_init(fields, shape, nrows, row_partitions):
 
   if row_partitions:
     result = _merge_with_optional(
-        result, dynamic_ragged_shape.DynamicRaggedShape.from_row_partitions(
+        result,
+        dynamic_ragged_shape.DynamicRaggedShape.from_row_partitions(
             row_partitions, dtype=dtype))
 
   if result is None:
@@ -1730,9 +1765,7 @@ def StructuredTensorSpec(shape, field_specs):  # pylint:disable=invalid-name
       raise TypeError('field_specs must be a dictionary with TypeSpec values.')
 
   shape = dynamic_ragged_shape.DynamicRaggedShape.Spec._from_tensor_shape(
-      tensor_shape.as_shape(shape),
-      0,
-      dtypes.int32)
+      tensor_shape.as_shape(shape), 0, dtypes.int32)
   rank = shape.rank
   if rank is None:
     raise TypeError("StructuredTensor's shape must have known rank.")
@@ -1741,11 +1774,9 @@ def StructuredTensorSpec(shape, field_specs):  # pylint:disable=invalid-name
     if field_shape_untruncated is None:
       raise ValueError(f'Cannot convert spec of {k}.')
     untruncated_rank = field_shape_untruncated.rank
-    if (untruncated_rank is not None
-        and untruncated_rank < rank):
-      raise ValueError(
-          f'Rank of field {k} is {untruncated_rank},'
-          f' but must be at least {rank}.')
+    if (untruncated_rank is not None and untruncated_rank < rank):
+      raise ValueError(f'Rank of field {k} is {untruncated_rank},'
+                       f' but must be at least {rank}.')
     field_shape = field_shape_untruncated._truncate(rank)
     shape = shape._merge_with(field_shape)
   return StructuredTensor.Spec(_ragged_shape=shape, _fields=field_specs)

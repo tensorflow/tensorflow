@@ -33,10 +33,11 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_MODIFYIONODESPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
-struct ModifyIONodesPass : public ModifyIONodesPassBase<ModifyIONodesPass> {
+struct ModifyIONodesPass
+    : public impl::ModifyIONodesPassBase<ModifyIONodesPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ModifyIONodesPass)
 
@@ -107,7 +108,7 @@ LogicalResult ModifyIONodesPass::ModifyInputNodes(
     Location loc = func.getLoc();
     if (arg.hasOneUse() && llvm::isa<QuantizeOp>(*arg.user_begin())) {
       auto quantize_op = llvm::cast<QuantizeOp>(*arg.user_begin());
-      auto quantize_output = quantize_op.output();
+      auto quantize_output = quantize_op.getOutput();
       auto current_type = quant::QuantizedType::getQuantizedElementType(
                               quantize_output.getType())
                               .getStorageType();
@@ -162,7 +163,7 @@ LogicalResult ModifyIONodesPass::ModifyOutputNodes(
     Operation* returned_op = returned_value.getDefiningOp();
     if (returned_op && llvm::isa<DequantizeOp>(returned_op)) {
       auto dequantize_op = llvm::cast<DequantizeOp>(returned_op);
-      auto dequantize_input = dequantize_op.input();
+      auto dequantize_input = dequantize_op.getInput();
       Type current_type = quant::QuantizedType::getQuantizedElementType(
                               dequantize_input.getType())
                               .getStorageType();
@@ -177,7 +178,7 @@ LogicalResult ModifyIONodesPass::ModifyOutputNodes(
         TypeAttr type_attr = TypeAttr::get(returned_type);
         auto quantize_op = builder.create<QuantizeOp>(
             dequantize_op.getLoc(), returned_type, dequantize_input, type_attr);
-        returned_value = quantize_op.output();
+        returned_value = quantize_op.getOutput();
       } else {
         output_type.print(llvm::errs() << "Requested output type ");
         dequantize_op.emitError(" Couldn't be modified to the requested type.");

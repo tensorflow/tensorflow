@@ -1,6 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -9,6 +10,7 @@ package_group(
     name = "friends",
     packages = [
         "//tensorflow/compiler/mlir/lite/...",
+        "//tensorflow/lite/...",
     ],
 )
 

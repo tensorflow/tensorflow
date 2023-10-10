@@ -47,6 +47,8 @@ constexpr char kEndOfInput[] = "end_of_input";
 constexpr char kNumOpen[] = "num_open";
 constexpr char kArgsSize[] = "args_size";
 constexpr char kArgsList[] = "args_list_";
+constexpr char kCurrentElementsUninitialized[] =
+    "current_elements_uninitialized";
 
 class InterleaveDatasetOp::Dataset : public DatasetBase {
  public:
@@ -131,6 +133,8 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
           current_elements_(params.dataset->cycle_length_),
           args_list_(params.dataset->cycle_length_) {}
 
+    bool SymbolicCheckpointCompatible() const override { return true; }
+
     Status Initialize(IteratorContext* ctx) override {
       TF_RETURN_IF_ERROR(
           dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
@@ -169,6 +173,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
           }
           // We have reached the end of the current element, so move
           // on to the next element in the cycle.
+          // TODO(b/267256258): clean up prefixes in checkpoints here.
           current_elements_[cycle_index_].reset();
           args_list_[cycle_index_].clear();
           --num_open_;
@@ -252,13 +257,12 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(kCycleIndex), cycle_index_));
+          writer->WriteScalar(prefix(), kCycleIndex, cycle_index_));
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(kBlockIndex), block_index_));
-      if (end_of_input_) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kEndOfInput), ""));
-      }
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kNumOpen), num_open_));
+          writer->WriteScalar(prefix(), kBlockIndex, block_index_));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(
+          prefix(), kEndOfInput, static_cast<int64_t>(end_of_input_)));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kNumOpen, num_open_));
       TF_RETURN_IF_ERROR(SaveCurrentElements(ctx, writer));
       return OkStatus();
     }
@@ -269,13 +273,16 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       int64_t cycle_index;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kCycleIndex), &cycle_index));
+          reader->ReadScalar(prefix(), kCycleIndex, &cycle_index));
       cycle_index_ = size_t(cycle_index);
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kBlockIndex), &block_index_));
-      if (reader->Contains(full_name(kEndOfInput))) end_of_input_ = true;
+          reader->ReadScalar(prefix(), kBlockIndex, &block_index_));
+      int64_t end_of_input;
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), kEndOfInput, &end_of_input));
+      end_of_input_ = static_cast<bool>(end_of_input);
       int64_t num_open;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kNumOpen), &num_open));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kNumOpen, &num_open));
       num_open_ = size_t(num_open);
       TF_RETURN_IF_ERROR(RestoreCurrentElements(ctx, reader));
       return OkStatus();
@@ -290,14 +297,18 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
                                IteratorStateWriter* writer)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       for (int idx = 0; idx < current_elements_.size(); idx++) {
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            prefix(),
+            strings::StrCat(kCurrentElementsUninitialized, "[", idx, "]"),
+            !current_elements_[idx]));
         if (current_elements_[idx]) {
           TF_RETURN_IF_ERROR(SaveInput(ctx, writer, current_elements_[idx]));
           TF_RETURN_IF_ERROR(writer->WriteScalar(
-              full_name(strings::StrCat(kArgsSize, "[", idx, "]")),
+              prefix(), strings::StrCat(kArgsSize, "[", idx, "]"),
               args_list_[idx].size()));
           for (int i = 0; i < args_list_[idx].size(); i++) {
             TF_RETURN_IF_ERROR(writer->WriteTensor(
-                full_name(strings::StrCat(kArgsList, "[", idx, "][", i, "]")),
+                prefix(), strings::StrCat(kArgsList, "[", idx, "][", i, "]"),
                 args_list_[idx][i]));
           }
         }
@@ -309,17 +320,20 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
                                   IteratorStateReader* reader)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       for (int idx = 0; idx < current_elements_.size(); idx++) {
-        if (reader->Contains(
-                full_name(strings::StrCat(kArgsSize, "[", idx, "]")))) {
+        int64_t current_element_uninitialized;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(
+            prefix(),
+            strings::StrCat(kCurrentElementsUninitialized, "[", idx, "]"),
+            &current_element_uninitialized));
+        if (!current_element_uninitialized) {
           int64_t args_size;
           TF_RETURN_IF_ERROR(reader->ReadScalar(
-              full_name(strings::StrCat(kArgsSize, "[", idx, "]")),
-              &args_size));
+              prefix(), strings::StrCat(kArgsSize, "[", idx, "]"), &args_size));
           args_list_[idx].resize(args_size);
           for (int i = 0; i < args_size; i++) {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                ctx->flr(),
-                full_name(strings::StrCat(kArgsList, "[", idx, "][", i, "]")),
+                ctx->flr(), prefix(),
+                strings::StrCat(kArgsList, "[", idx, "][", i, "]"),
                 &args_list_[idx][i]));
           }
           // NOTE: We intentionally ignore resource modeling outside GetNext().

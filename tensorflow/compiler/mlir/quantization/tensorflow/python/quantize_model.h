@@ -16,33 +16,74 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PYTHON_QUANTIZE_MODEL_H_
 
 #include <string>
+#include <unordered_set>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/exported_model.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 
 namespace tensorflow {
 namespace quantization {
-namespace internal {
 
-absl::StatusOr<GraphDef> QuantizeQatModel(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags, absl::string_view quant_opts_serialized);
+// Names of the TensorFlow Quantization steps. These names are used primarily
+// for debugging.
+inline constexpr absl::string_view kTfQuantPtqPreCalibrationStepName =
+    "tf_quant_ptq_pre_calibration";
+inline constexpr absl::string_view kTfQuantPtqPostCalibrationStepName =
+    "tf_quant_ptq_post_calibration";
+inline constexpr absl::string_view kTfQuantQatStepName = "tf_quant_qat";
+inline constexpr absl::string_view kTfQuantPtqDynamicRangeStepName =
+    "tf_quant_ptq_dynamic_range";
+inline constexpr absl::string_view kTfQuantWeightOnlyStepName =
+    "tf_quant_weight_only";
+inline constexpr absl::string_view kTfQuantConstantUnfreezingStepName =
+    "tf_quant_constant_unfreezing";
+inline constexpr absl::string_view kTfQuantInsertRestoreOpStepName =
+    "tf_quant_insert_restore_op";
+
+// StableHLO Quantization passes that are ran if StableHLO opset is selected.
+inline constexpr absl::string_view kTfQuantPtqPreCalibrationStepStableHloName =
+    "tf_quant_ptq_pre_calibration_stablehlo";
+inline constexpr absl::string_view kTfQuantPtqPostCalibrationStepStableHloName =
+    "tf_quant_ptq_post_calibration_stablehlo";
+
+absl::StatusOr<ExportedModel> QuantizeQatModel(
+    absl::string_view saved_model_path,
+    const std::vector<std::string>& signature_keys,
+    const std::unordered_set<std::string>& tags,
+    const QuantizationOptions& quantization_options,
+    const absl::flat_hash_map<std::string, std::string>& function_aliases);
 
 // Apply post-training dynamic range quantization to the model.
-absl::StatusOr<GraphDef> QuantizePtqDynamicRange(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags, absl::string_view quant_opts_serialized);
+absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(
+    absl::string_view saved_model_path,
+    const std::vector<std::string>& signature_keys,
+    const std::unordered_set<std::string>& tags,
+    const QuantizationOptions& quantization_options,
+    const absl::flat_hash_map<std::string, std::string>& function_aliases);
 
-absl::StatusOr<GraphDef> QuantizePtqModelPreCalibration(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags);
+absl::StatusOr<ExportedModel> QuantizeWeightOnly(
+    absl::string_view saved_model_path,
+    const QuantizationOptions& quantization_options,
+    const absl::flat_hash_map<std::string, std::string>& function_aliases);
 
-absl::StatusOr<GraphDef> QuantizePtqModelPostCalibration(
-    absl::string_view saved_model_path, absl::string_view exported_names_str,
-    absl::string_view tags, absl::string_view quant_opts_serialized);
+absl::StatusOr<ExportedModel> QuantizePtqModelPreCalibration(
+    absl::string_view saved_model_path,
+    const std::vector<std::string>& signature_keys,
+    const std::unordered_set<std::string>& tags,
+    const QuantizationOptions& quantization_options,
+    const absl::flat_hash_map<std::string, std::string>& function_aliases);
 
-}  // namespace internal
+absl::StatusOr<ExportedModel> QuantizePtqModelPostCalibration(
+    absl::string_view saved_model_path,
+    const std::vector<std::string>& signature_keys,
+    const std::unordered_set<std::string>& tags,
+    const QuantizationOptions& quantization_options,
+    const absl::flat_hash_map<std::string, std::string>& function_aliases);
+
 }  // namespace quantization
 }  // namespace tensorflow
 

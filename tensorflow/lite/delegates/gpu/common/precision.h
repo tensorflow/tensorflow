@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_PRECISION_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_PRECISION_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_PRECISION_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_PRECISION_H_
 
 #include <string>
 
@@ -38,4 +38,4 @@ std::string ToString(CalculationsPrecision precision);
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASK_PRECISION_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_PRECISION_H_

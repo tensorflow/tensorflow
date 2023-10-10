@@ -17,10 +17,17 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_VERSIONING_GPU_COMPATIBILITY_H_
 
 #include "absl/status/status.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/tools/versioning/op_signature.h"
 
 namespace tflite {
+
+// Check if the given op signature is compatible with GPU delegate.
+// WARNING: It's not fully implemented and still under development. Only use the
+// function for an experiemental feature.
+// WARNING: This is an experimental API and subject to change.
+absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig);
 
 // Check if the given operator in a TFLite flatbuffer model is compatible with
 // GPU delegate.

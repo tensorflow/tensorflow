@@ -1,4 +1,5 @@
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -41,6 +42,13 @@ cc_test(
 cc_binary(
     name = "internal_api_samples",
     srcs = ["internal_api_samples.cc"],
+    linkopts = select({
+        "//tensorflow:android": [
+            "-lEGL",
+            "-lGLESv3",
+        ],
+        "//conditions:default": [],
+    }),
     tags = [
         "nobuilder",
         "notap",
@@ -64,12 +72,12 @@ cc_binary(
     name = "memory_sharing_sample",
     srcs = ["memory_sharing_sample.cc"],
     deps = [
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/gpu/cl:environment",
         "//tensorflow/lite/delegates/gpu/cl:inference_context",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_absl//absl/time",
     ],
 )
@@ -78,12 +86,12 @@ cc_binary(
     name = "performance_profiling",
     srcs = ["performance_profiling.cc"],
     deps = [
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/gpu/cl:environment",
         "//tensorflow/lite/delegates/gpu/cl:inference_context",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_absl//absl/time",
     ],
 )

@@ -2,7 +2,7 @@
 // RUN: tfg-transforms-opt -tfg-constant-folding=pattern-category=2 %s | FileCheck %s --check-prefix=CHECK-CAT2
 
 module {
-  tfg.func @test() {
+  tfg.func @test() -> (tensor<*xf32>, tensor<*xf32>) {
     // CHECK-CAT1: , %[[CTRL:.*]] = Const name("c")
     // CHECK-CAT2: , %[[CTRL:.*]] = Const name("c")
     %Const, %ctl = Const name("c") {dtype = f32, value = dense<3.140000e+00> : tensor<1000xf32>} : () -> (tensor<1000xf32>)
@@ -12,6 +12,6 @@ module {
     // CHECK-CAT1: Const [%[[CTRL]]] name("i2")
     // CHECK-CAT2: Identity{{.*}} name("i2")
     %Identity_1, %ctl_2 = Identity(%Const) name("i2") {T = f32} : (tensor<1000xf32>) -> (tensor<*xf32>)
-    return
+    return (%Identity, %Identity_1) : tensor<*xf32>, tensor<*xf32>
   }
 }

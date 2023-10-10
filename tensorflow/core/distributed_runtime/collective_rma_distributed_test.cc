@@ -470,7 +470,7 @@ TEST_P(CollRMADistTest, ConsFirstAbort) {
       });
   rma_->StartAbort(errors::Internal("Deliberate Failure"));
   consumer_note.WaitForNotification();
-  EXPECT_EQ(consumer_status.error_message(), "Cancelled");
+  EXPECT_EQ(consumer_status.message(), "Cancelled");
 }
 
 TEST_P(CollRMADistTest, ResponseTooLarge) {
@@ -506,7 +506,7 @@ TEST_P(CollRMADistTest, ResponseTooLarge) {
         consumer_note.Notify();
       });
   consumer_note.WaitForNotification();
-  EXPECT_THAT(consumer_status.error_message(),
+  EXPECT_THAT(consumer_status.message(),
               ::testing::HasSubstr("Tensor Size Mismatch"));
   producer_note.WaitForNotification();
   TF_EXPECT_OK(producer_status);

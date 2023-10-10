@@ -22,15 +22,13 @@ within various embedded development environments.
 The most important files for using the TensorFlow Lite for Microcontrollers
 interpreter are located in the root of the project, accompanied by tests:
 
--   [`all_ops_resolver.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/all_ops_resolver.h)
-    or
-    [`micro_mutable_op_resolver.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/micro_mutable_op_resolver.h)
-    can be used to provide the operations used by the interpreter to run the
-    model. Since `all_ops_resolver.h` pulls in every available operation, it
-    uses a lot of memory. In production applications, you should use
-    `micro_mutable_op_resolver.h` to pull in only the operations your model
-    needs.
--   [`micro_error_reporter.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/micro_error_reporter.h)
+```
+[`micro_mutable_op_resolver.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/micro_mutable_op_resolver.h)
+can be used to provide the operations used by the interpreter to run the
+model.
+```
+
+-   [`micro_error_reporter.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/tflite_bridge/micro_error_reporter.h)
     outputs debug information.
 -   [`micro_interpreter.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/micro_interpreter.h)
     contains code to handle and run models.
@@ -40,7 +38,7 @@ walkthrough of typical usage.
 
 The build system provides for platform-specific implementations of certain
 files. These are located in a directory with the platform name, for example
-[`sparkfun_edge`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/sparkfun_edge).
+[`cortex-m`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/cortex_m_generic).
 
 Several other directories exist, including:
 
@@ -60,7 +58,7 @@ instructions in this section.
 ### Use the Arduino library
 
 If you are using Arduino, the *Hello World* example is included in the
-`Arduino_TensorFlowLite` Arduino library, which you can download from the
+`Arduino_TensorFlowLite` Arduino library, which you can manually install in the
 Arduino IDE and in [Arduino Create](https://create.arduino.cc/).
 
 Once the library has been added, go to `File -> Examples`. You should see an
@@ -75,8 +73,8 @@ that contain all of the necessary source files, using a `Makefile`. The current
 supported environments are Keil, Make, and Mbed.
 
 To generate these projects with Make, clone the
-[TensorFlow repository](http://github.com/tensorflow/tensorflow) and run the
-following command:
+[TensorFlow/tflite-micro repository](https://github.com/tensorflow/tflite-micro)
+and run the following command:
 
 ```bash
 make -f tensorflow/lite/micro/tools/make/Makefile generate_projects
@@ -84,12 +82,12 @@ make -f tensorflow/lite/micro/tools/make/Makefile generate_projects
 
 This will take a few minutes, since it has to download some large toolchains for
 the dependencies. Once it has finished, you should see some folders created
-inside a path like `tensorflow/lite/micro/tools/make/gen/linux_x86_64/prj/` (the
+inside a path like `gen/linux_x86_64/prj/` (the
 exact path depends on your host operating system). These folders contain the
 generated project and source files.
 
 After running the command, you'll be able to find the *Hello World* projects in
-`tensorflow/lite/micro/tools/make/gen/linux_x86_64/prj/hello_world`. For
+`gen/linux_x86_64/prj/hello_world`. For
 example, `hello_world/keil` will contain the Keil project.
 
 ## Run the tests
@@ -129,18 +127,19 @@ make -f tensorflow/lite/micro/tools/make/Makefile hello_world_bin
 ```
 
 By default, the project will be compiled for the host operating system. To
-specify a different target architecture, use `TARGET=`. The following example
-shows how to build the *Hello World* example for the SparkFun Edge:
+specify a different target architecture, use `TARGET=` and `TARGET_ARCH=`. The
+following example shows how to build the *Hello World* example for a generic
+cortex-m0:
 
 ```bash
-make -f tensorflow/lite/micro/tools/make/Makefile TARGET=sparkfun_edge hello_world_bin
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=cortex_m_generic TARGET_ARCH=cortex-m0 hello_world_bin
 ```
 
 When a target is specified, any available target-specific source files will be
 used in place of the original code. For example, the subdirectory
-`examples/hello_world/sparkfun_edge` contains SparkFun Edge implementations of
-the files `constants.cc` and `output_handler.cc`, which will be used when the
-target `sparkfun_edge` is specified.
+`examples/hello_world/cortex_m_generic` contains SparkFun Edge implementations
+of the files `constants.cc` and `output_handler.cc`, which will be used when the
+target `cortex_m_generic` is specified.
 
 You can find the project names in the project's Makefiles. For example,
 `examples/hello_world/Makefile.inc` specifies the binary names for the *Hello
@@ -169,9 +168,6 @@ encourage pull requests for new optimized implementations.
 
 ## Generate the Arduino library
 
-A nightly build of the Arduino library is available via the Arduino IDE's
-library manager.
-
 If you need to generate a new build of the library, you can run the following
 script from the TensorFlow repository:
 
@@ -180,7 +176,7 @@ script from the TensorFlow repository:
 ```
 
 The resulting library can be found in
-`tensorflow/lite/micro/tools/make/gen/arduino_x86_64/prj/tensorflow_lite.zip`.
+`gen/arduino_x86_64/prj/tensorflow_lite.zip`.
 
 ## Port to new devices
 

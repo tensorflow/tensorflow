@@ -40,34 +40,33 @@ REGISTER_OP("Relayout")
     .Attr("T: type")
     .SetShapeFn(UnchangedShape);
 
+// Relayout the input according to the layout of layout_input.
+REGISTER_OP("RelayoutLike")
+    .Input("input: T")
+    .Input("layout_input: U")  // To infer the output mesh.
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("U: type")
+    .SetShapeFn(UnchangedShape);
+
+// FIXME(b/271292250): Add DTensor suffix to signal this is a meta Op
+// Op. Or remove this altogether, if there is no use for it.
 // Copy `input` to the given mesh and layout.
 REGISTER_OP("CopyToMesh")
     .Input("input: T")
     .Output("output: T")
-    .Attr("layout: string")
-    .Attr("source_layout: string = ''")
+    .Attr("mesh: string")
     .Attr("T: type")
     .SetShapeFn(UnchangedShape);
 
-// Queries the generated sharded prefix that is used to in SaveV2 op in a
-// multi-client setup. Should take exact same inputs as the original SaveV2 is
-// invoked or the value returned won't match the ones generated.
-REGISTER_OP("DTensorShardedPrefix")
-    .Input("prefix: string")
-    .Input("tensor_names: string")
-    .Input("shape_and_slices: string")
-    .Input("mesh: string")
-    .Input("layouts: string")
-    .Input("tensors: dtypes")
-    .Attr("dtypes: list(type)")
-    .Output("output: string")
-    .SetShapeFn([](InferenceContext* c) {
-      // Always output a one d vector of strings.
-      // We could calculate the exact numbers of output here as well but that's
-      // the whole logic of the op itself.
-      c->set_output(0, c->Vector(c->UnknownDim()));
-      return OkStatus();
-    });
+// FIXME(b/271292250): Remove this Op It is no longer used.
+// Gradient of CopyToMesh.
+REGISTER_OP("CopyToMeshGrad")
+    .Input("input: T")
+    .Input("forward_input: T")  // To infer the output mesh.
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn(UnchangedShape);
 
 // DTensorRestoreV2 that is pretty much RestoreV2 but with extra global shapes
 // and layouts.

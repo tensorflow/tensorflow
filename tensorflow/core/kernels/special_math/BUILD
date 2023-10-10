@@ -1,18 +1,16 @@
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 
 # Implementation of Special Functions kernels.
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
-    features = [
-        "parse_headers",
-        "-layering_check",
-    ],
     licenses = ["notice"],
 )
 
 tf_kernel_library(
     name = "special_math_op",
+    gpu_deps = ["//tensorflow/core/kernels:cwise_lib"],
     prefix = "special_math_op",
     deps = [
         "//tensorflow/core:core_cpu",
@@ -23,6 +21,6 @@ tf_kernel_library(
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:fill_functor",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )

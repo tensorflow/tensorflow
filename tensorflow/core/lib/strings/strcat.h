@@ -20,6 +20,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_STRINGS_STRCAT_H_
 #define TENSORFLOW_CORE_LIB_STRINGS_STRCAT_H_
 
-#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/strcat.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_LIB_STRINGS_STRCAT_H_

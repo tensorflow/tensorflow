@@ -18,11 +18,11 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/xla_builder.h"
+#include "xla/literal.h"
+#include "xla/primitive_util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -131,15 +131,15 @@ class RangeOp : public XlaOpKernel {
                              xla::One(ctx->builder(), ctx->input_xla_type(0))) /
                             xla::Abs(delta);
         dynamic_size = xla::ConvertElementType(dynamic_size, xla::S32);
-        output = xla::SetDimensionSize(output.ValueOrDie(), dynamic_size, 0);
+        output = xla::SetDimensionSize(output.value(), dynamic_size, 0);
       } else {
         auto dynamic_size = (xla::Ceil(xla::Abs((limit - start) / delta)));
         dynamic_size = xla::ConvertElementType(dynamic_size, xla::S32);
-        output = xla::SetDimensionSize(output.ValueOrDie(), dynamic_size, 0);
+        output = xla::SetDimensionSize(output.value(), dynamic_size, 0);
       }
     }
 
-    ctx->SetOutput(0, output.ValueOrDie());
+    ctx->SetOutput(0, output.value());
   }
 };
 

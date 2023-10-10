@@ -16,6 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_STRINGS_STR_UTIL_H_
 #define TENSORFLOW_CORE_LIB_STRINGS_STR_UTIL_H_
 
-#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/str_util.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_LIB_STRINGS_STR_UTIL_H_

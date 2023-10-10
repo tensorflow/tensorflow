@@ -20,7 +20,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/types/span.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
@@ -32,7 +32,6 @@ namespace tensorflow {
 PYBIND11_MODULE(_nn_ops, m) {
   m.def("relu",
         [](AbstractContext* ctx, AbstractTensorHandle* a, const char* name) {
-          int num_outputs = 1;
           AbstractTensorHandle* output;
           if (!name) {
             name = "Relu";
@@ -45,7 +44,6 @@ PYBIND11_MODULE(_nn_ops, m) {
       "sparse_softmax_cross_entropy_with_logits",
       [](AbstractContext* ctx, AbstractTensorHandle* features,
          AbstractTensorHandle* labels, const char* name) {
-        int num_outputs = 2;
         AbstractTensorHandle* loss;
         AbstractTensorHandle* backprop;
         if (!name) {

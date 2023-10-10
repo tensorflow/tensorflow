@@ -19,9 +19,6 @@
 
 import functools
 import operator
-import sys
-
-import six
 
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop_util
@@ -35,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
@@ -44,8 +42,9 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
-from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import gradients_impl  # pylint: disable=unused-import
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops.parallel_for import control_flow_ops as pfor_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import _pywrap_utils
@@ -53,19 +52,8 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util import variable_utils
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
-
-# Note that we need to lazy load the following two modules to avoid creating
-# circular dependencies.
-# TODO(b/119775953): fix the circular dependencies.
-pfor_ops = LazyLoader(
-    "pfor_ops", globals(),
-    "tensorflow.python.ops.parallel_for.control_flow_ops")
-
-function = LazyLoader("function", globals(),
-                      "tensorflow.python.eager.function")
 
 _op_attr_type_cache = {}
 
@@ -336,7 +324,7 @@ def _get_arg_spec(f, params, param_args):
       return range(len(args) - 1)
     else:
       return range(len(args))
-  elif all(isinstance(x, six.string_types) for x in params):
+  elif all(isinstance(x, str) for x in params):
     return [args.index(n) for n in params]
   elif all(isinstance(x, int) for x in params):
     return params
@@ -419,7 +407,7 @@ def gradients_function(f, params=None):
 
 
 def _ensure_unique_tensor_objects(parameter_positions, args):
-  """Make each of the parameter_positions in args a unique ops.Tensor object.
+  """Make each of the parameter_positions in args a unique tensor_lib.Tensor object.
 
   Ensure that each parameter is treated independently.
   For example:
@@ -594,44 +582,6 @@ def make_vjp(f, params=None, persistent=True):
   return decorated
 
 
-def flatten_nested_indexed_slices(grad):
-  assert isinstance(grad, indexed_slices.IndexedSlices)
-  if isinstance(grad.values, ops.Tensor):
-    return grad
-  else:
-    assert isinstance(grad.values, indexed_slices.IndexedSlices)
-    g = flatten_nested_indexed_slices(grad.values)
-    return indexed_slices.IndexedSlices(
-        g.values, array_ops.gather(grad.indices, g.indices), g.dense_shape)
-
-
-def aggregate_indexed_slices_gradients(grads):
-  """Aggregates gradients containing `IndexedSlices`s."""
-  if len(grads) < 1:
-    return None
-  if len(grads) == 1:
-    return grads[0]
-  grads = [g for g in grads if g is not None]
-  # If any gradient is a `Tensor`, sum them up and return a dense tensor
-  # object.
-  if any(isinstance(g, ops.Tensor) for g in grads):
-    return math_ops.add_n(grads)
-
-  # The following `_as_indexed_slices_list` casts ids of IndexedSlices into
-  # int64. It is to make sure the inputs of `concat` all have same the data
-  # type.
-  grads = math_ops._as_indexed_slices_list(grads)  # pylint: disable=protected-access
-
-  grads = [flatten_nested_indexed_slices(x) for x in grads]
-  # Form IndexedSlices out of the concatenated values and indices.
-  concat_grad = indexed_slices.IndexedSlices(
-      array_ops.concat([x.values for x in grads], axis=0),
-      array_ops.concat([x.indices for x in grads], axis=0),
-      grads[0].dense_shape)
-
-  return concat_grad
-
-
 def _aggregate_grads(gradients):
   """Aggregate gradients from multiple sources.
 
@@ -646,18 +596,18 @@ def _aggregate_grads(gradients):
 
   if len(gradients) == 1:
     return gradients[0]
-  if all(isinstance(g, ops.Tensor) for g in gradients):
+  if all(isinstance(g, tensor_lib.Tensor) for g in gradients):
     return gen_math_ops.add_n(gradients)
   else:
     assert all(
-        isinstance(g, (ops.Tensor, indexed_slices.IndexedSlices))
+        isinstance(g, (tensor_lib.Tensor, indexed_slices.IndexedSlices))
         for g in gradients)
-    return aggregate_indexed_slices_gradients(gradients)
+    return backprop_util.AggregateIndexedSlicesGradients(gradients)
 
 
 def _num_elements(grad):
   """The number of elements in the `grad` tensor."""
-  if isinstance(grad, ops.Tensor):
+  if isinstance(grad, tensor_lib.Tensor):
     shape_tuple = grad._shape_tuple()  # pylint: disable=protected-access
   elif isinstance(grad, indexed_slices.IndexedSlices):
     shape_tuple = grad.values._shape_tuple()  # pylint: disable=protected-access
@@ -752,7 +702,7 @@ def _extract_tensors_and_variables(tensor):
 
 
 @tf_export("GradientTape", "autodiff.GradientTape", v1=["GradientTape"])
-class GradientTape(object):
+class GradientTape:
   """Record operations for automatic differentiation.
 
   Operations are recorded if they are executed within this context manager and
@@ -1074,32 +1024,35 @@ class GradientTape(object):
                       " of Tensors, Variables or CompositeTensors to be "
                       "differentiated, but received None.")
 
-    flat_targets = []
-    for t in nest.flatten(target):
+    flat_targets = composite_tensor_gradient.get_flat_tensors_for_gradients(
+        nest.flatten(target))
+    # TODO(b/246997907): Remove this once
+    # ResourceVariableGradient.get_gradient_components returns the handle.
+    flat_targets = nest.map_structure(_handle_or_self, flat_targets)
+
+    for t in flat_targets:
       if not backprop_util.IsTrainable(t):
         logging.vlog(
-            logging.WARN, "The dtype of the target tensor must be "
+            1, "The dtype of the target tensor must be "
             "floating (e.g. tf.float32) when calling GradientTape.gradient, "
             "got %r", t.dtype)
-      flat_targets.append(_handle_or_self(t))
-    flat_targets = composite_tensor_gradient.get_flat_tensors_for_gradients(
-        flat_targets)
 
     flat_sources_raw = nest.flatten(sources)
     flat_sources = []
     for t in flat_sources_raw:
+      flat_sources.append(_handle_or_self(t))
+    flat_sources = composite_tensor_gradient.get_flat_tensors_for_gradients(
+        flat_sources)
+    for t in flat_sources:
       if not backprop_util.IsTrainable(t):
         logging.vlog(
-            logging.WARN, "The dtype of the source tensor must be "
+            1, "The dtype of the source tensor must be "
             "floating (e.g. tf.float32) when calling GradientTape.gradient, "
             "got %r", t.dtype)
       if getattr(t, "is_packed", False):
         raise ValueError(
             "GradientTape.gradient is not supported on packed EagerTensors yet."
         )
-      flat_sources.append(_handle_or_self(t))
-    flat_sources = composite_tensor_gradient.get_flat_tensors_for_gradients(
-        flat_sources)
 
     if output_gradients is not None:
       output_gradients = nest.flatten(
@@ -1217,13 +1170,10 @@ class GradientTape(object):
         output = pfor_ops.pfor(loop_fn, target_size,
                                parallel_iterations=parallel_iterations)
       except ValueError as err:
-        six.reraise(
-            ValueError,
-            ValueError(
-                str(err) + "\nEncountered an exception while vectorizing the "
-                "jacobian computation. Vectorization can be disabled by setting"
-                " experimental_use_pfor to False."),
-            sys.exc_info()[2])
+        raise ValueError(
+            "Encountered an exception while vectorizing the "
+            "jacobian computation. Vectorization can be disabled by setting"
+            " experimental_use_pfor to False.") from err
     else:
       if context.executing_eagerly() and not self._persistent:
         raise RuntimeError(
@@ -1367,13 +1317,10 @@ class GradientTape(object):
         output = pfor_ops.pfor(loop_fn, target_row_size,
                                parallel_iterations=parallel_iterations)
       except ValueError as err:
-        six.reraise(
-            ValueError,
-            ValueError(
-                str(err) + "\nEncountered an exception while vectorizing the "
-                "batch_jacobian computation. Vectorization can be disabled by "
-                "setting experimental_use_pfor to False."),
-            sys.exc_info()[2])
+        raise ValueError(
+            "Encountered an exception while vectorizing the "
+            "batch_jacobian computation. Vectorization can be disabled by "
+            "setting experimental_use_pfor to False.") from err
     else:
       if context.executing_eagerly() and not self._persistent:
         raise RuntimeError(

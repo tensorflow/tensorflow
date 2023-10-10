@@ -15,23 +15,21 @@ limitations under the License.
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Tools/mlir-translate/Translation.h"
-#include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_registration.h"
 #include "tfrt/bef_converter/bef_to_mlir_translate.h"  // from @tf_runtime
 #include "tfrt/bef_converter/mlir_to_bef_translate.h"  // from @tf_runtime
 #include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
 
 static mlir::TranslateFromMLIRRegistration mlir_to_bef_registration(
-    "mlir-to-bef", tfrt::MLIRToBEFTranslate,
+    "mlir-to-bef", "translate MLIR to BEF", tfrt::MLIRToBEFTranslate,
     [](mlir::DialectRegistry &registry) {
       tfrt::RegisterTFRTDialects(registry);
       tfrt::RegisterTFRTCompiledDialects(registry);
-      tensorflow::RegisterTfJitRtDialect(registry);
     });
 
 static mlir::TranslateToMLIRRegistration bef_to_mlir_registration(
-    "bef-to-mlir", [](llvm::SourceMgr &source_mgr, mlir::MLIRContext *context) {
+    "bef-to-mlir", "translate BEF to MLIR",
+    [](llvm::SourceMgr &source_mgr, mlir::MLIRContext *context) {
       mlir::DialectRegistry registry;
-      tensorflow::RegisterTfJitRtDialect(registry);
       context->appendDialectRegistry(registry);
       return tfrt::BEFToMLIRTranslate(source_mgr, context);
     });

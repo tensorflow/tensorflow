@@ -24,7 +24,8 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/util/stats_calculator.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #include "tensorflow/lite/nnapi/nnapi_util.h"
@@ -164,14 +165,14 @@ std::vector<Flag> BenchmarkPerformanceOptions::GetFlags() {
   };
 }
 
-bool BenchmarkPerformanceOptions::ParseFlags(int* argc, char** argv) {
+TfLiteStatus BenchmarkPerformanceOptions::ParseFlags(int* argc, char** argv) {
   auto flag_list = GetFlags();
   const bool parse_result =
       Flags::Parse(argc, const_cast<const char**>(argv), flag_list);
   if (!parse_result) {
     std::string usage = Flags::Usage(argv[0], flag_list);
     TFLITE_LOG(ERROR) << usage;
-    return false;
+    return kTfLiteError;
   }
 
   // Parse the value of --perf_options_list to find performance options to be
@@ -179,14 +180,14 @@ bool BenchmarkPerformanceOptions::ParseFlags(int* argc, char** argv) {
   return ParsePerfOptions();
 }
 
-bool BenchmarkPerformanceOptions::ParsePerfOptions() {
+TfLiteStatus BenchmarkPerformanceOptions::ParsePerfOptions() {
   const auto& perf_options_list = params_.Get<std::string>("perf_options_list");
   if (!util::SplitAndParse(perf_options_list, ',', &perf_options_)) {
     TFLITE_LOG(ERROR) << "Cannot parse --perf_options_list: '"
                       << perf_options_list
                       << "'. Please double-check its value.";
     perf_options_.clear();
-    return false;
+    return kTfLiteError;
   }
 
   const auto valid_options = GetValidPerfOptions();
@@ -209,16 +210,16 @@ bool BenchmarkPerformanceOptions::ParsePerfOptions() {
         << perf_options_list << "'. Valid perf options are: ["
         << valid_options_str << "]";
     perf_options_.clear();
-    return false;
+    return kTfLiteError;
   }
 
   if (HasOption("none") && perf_options_.size() > 1) {
     TFLITE_LOG(ERROR) << "The 'none' option can not be used together with "
                          "other perf options in --perf_options_list!";
     perf_options_.clear();
-    return false;
+    return kTfLiteError;
   }
-  return true;
+  return kTfLiteOk;
 }
 
 std::vector<std::string> BenchmarkPerformanceOptions::GetValidPerfOptions()
@@ -348,7 +349,7 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
 #endif
 }
 
-void BenchmarkPerformanceOptions::Run() {
+TfLiteStatus BenchmarkPerformanceOptions::Run() {
   CreatePerformanceOptions();
 
   if (params_.Get<bool>("random_shuffle_benchmark_runs")) {
@@ -379,26 +380,40 @@ void BenchmarkPerformanceOptions::Run() {
     single_option_run_->RemoveListeners(num_external_listeners);
 
     all_run_stats_->MarkBenchmarkStart(*single_option_run_params_);
-    single_option_run_->Run();
+    if (TfLiteStatus status = single_option_run_->Run(); status != kTfLiteOk) {
+      TFLITE_LOG(ERROR) << "Error while running a single-option run: "
+                        << status;
+      return status;
+    }
   }
 
   all_run_stats_->OutputStats();
+  return kTfLiteOk;
 }
 
-void BenchmarkPerformanceOptions::Run(int argc, char** argv) {
+TfLiteStatus BenchmarkPerformanceOptions::Run(int argc, char** argv) {
   // Parse flags that are supported by this particular binary first.
-  if (!ParseFlags(&argc, argv)) return;
+  if (TfLiteStatus status = ParseFlags(&argc, argv); status != kTfLiteOk) {
+    TFLITE_LOG(ERROR) << "Error while parsing the flags for multi-option runs: "
+                      << status;
+    return status;
+  }
 
   // Then parse flags for single-option runs to get information like parameters
   // of the input model etc.
-  if (single_option_run_->ParseFlags(&argc, argv) != kTfLiteOk) return;
+  if (TfLiteStatus status = single_option_run_->ParseFlags(&argc, argv);
+      status != kTfLiteOk) {
+    TFLITE_LOG(ERROR)
+        << "Error while parsing the flags for single-option runs: " << status;
+    return status;
+  }
 
   // Now, the remaining are unrecognized flags and we simply print them out.
   for (int i = 1; i < argc; ++i) {
     TFLITE_LOG(WARN) << "WARNING: unrecognized commandline flag: " << argv[i];
   }
 
-  Run();
+  return Run();
 }
 }  // namespace benchmark
 }  // namespace tflite

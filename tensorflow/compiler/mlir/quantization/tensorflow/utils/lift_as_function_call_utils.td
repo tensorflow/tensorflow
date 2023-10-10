@@ -17,10 +17,29 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 
+// Creates a function call with TF::PartitionedCallOp and a new function to
+// wrap the section between arguments and results.
+//
 // The `returns` number indicates the number of results the function returns.
-class LiftAsFunctionCall<string func_name, int returns = 1> :
+class LiftAsTFPartitionedCall<string func_name, int returns = 1> :
   NativeCodeCall<"LiftAsFunctionCall($_builder, $_loc, "
+                    "FunctionCallOpType::TFPartitionedCallOp, "
                     "\""# func_name #"\", $0...)", returns>;
+
+// Creates a function call with TF::XlaCallModuleOp and a new function to wrap
+// the section between arguments and results.
+//
+// The `returns` number indicates the number of results the function returns.
+class LiftAsTFXlaCallModule<string func_name, int returns = 1> :
+  NativeCodeCall<"LiftAsFunctionCall($_builder, $_loc, "
+                    "FunctionCallOpType::TFXlaCallModuleOp, "
+                    "\""# func_name #"\", $0...)", returns>;
+
+// Add the second argument to the first argument, which is expected to be an
+// argument list.
+// bias(einsum(inputs), bias) --> einsum_with_bias(AppendToVector(inputs, bias))
+// Since inputs is a vector in case of einsum, we cannot use ArgumentList here.
+def AppendToVector : NativeCodeCall<"AppendToVector($0, $1)">;
 
 // The list of arguments of the composite function.
 def ArgumentList : NativeCodeCall<"llvm::SmallVector<Value>{$0...}">;
@@ -41,6 +60,10 @@ class NamedAttr<string attr_name> :
 // `tf_quant.composite_function` attribute.
 def IsNotInLiftedFunc :
       Constraint<CPred<"!IsInLiftedFunc($0.getDefiningOp())">>;
+
+// Checks if the given einsum op is supported for XlaDotV2 quantization.
+def IsEinsumSupportedByXlaDotV2 :
+      Constraint<CPred<"IsEinsumSupportedByXlaDotV2($0)">>;
 
 // This attribute can be used in the `AttributeList` for missing attributes. It
 // is necessary to keep other attributes in the same index as the quantized

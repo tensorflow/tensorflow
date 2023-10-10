@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_TPU_EMBEDDING_CONFIGURATION_PROTO_REWRITE_H_
 #define TENSORFLOW_CORE_TPU_TPU_EMBEDDING_CONFIGURATION_PROTO_REWRITE_H_
 
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 
 namespace tensorflow {
@@ -36,7 +36,7 @@ namespace tensorflow {
 // (2) If the user model fills in feature_descriptor, this function validates
 // that batch_size_per_tensor_core and TableDescriptor.num_features have not
 // been filled in, and then populated them with appropriate values.
-Status PopulateMissingFieldsInTPUEmbeddingConfig(
+absl::Status PopulateMissingFieldsInTPUEmbeddingConfig(
     tpu::TPUEmbeddingConfiguration* config);
 
 }  // namespace tensorflow

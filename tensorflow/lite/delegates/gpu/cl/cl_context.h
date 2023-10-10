@@ -30,7 +30,7 @@ class CLContext {
  public:
   CLContext() {}
   CLContext(cl_context context, bool has_ownership);
-
+  CLContext(cl_context context, bool has_ownership, CLDevice& device);
   // Move only
   CLContext(CLContext&& context);
   CLContext& operator=(CLContext&& context);

@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/string_type.h"
 
 namespace tflite {
@@ -153,6 +153,13 @@ TEST_F(FlatbufferConversionsTest, TestConvertTensorTypeFloat16) {
   EXPECT_EQ(kTfLiteOk,
             ConvertTensorType(TensorType_FLOAT16, &type, &mock_reporter_));
   EXPECT_EQ(kTfLiteFloat16, type);
+}
+
+TEST_F(FlatbufferConversionsTest, TestConvertTensorTypeInt4) {
+  TfLiteType type;
+  EXPECT_EQ(kTfLiteOk,
+            ConvertTensorType(TensorType_INT4, &type, &mock_reporter_));
+  EXPECT_EQ(kTfLiteInt4, type);
 }
 
 }  // namespace tflite

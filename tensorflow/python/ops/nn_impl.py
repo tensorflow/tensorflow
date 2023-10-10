@@ -16,24 +16,23 @@
 
 import math
 
-from tensorflow.python.distribute import distribution_strategy_context as ds
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import candidate_sampling_ops
-from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond as tf_cond
+from tensorflow.python.ops import ctc_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
-from tensorflow.python.ops import gen_array_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_fused_batch_norm_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.losses import util as losses_util
 from tensorflow.python.platform import device_context
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.deprecation import deprecated_args
@@ -109,15 +108,13 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
 
 @tf_export(v1=["nn.sigmoid_cross_entropy_with_logits"])
 @dispatch.add_dispatch_support
-def sigmoid_cross_entropy_with_logits(  # pylint: disable=invalid-name
-    _sentinel=None,
+def sigmoid_cross_entropy_with_logits(
     labels=None,
     logits=None,
     name=None):
   """See sigmoid_cross_entropy_with_logits_v2."""
   # pylint: disable=protected-access
-  nn_ops._ensure_xent_args("sigmoid_cross_entropy_with_logits", _sentinel,
-                           labels, logits)
+  nn_ops._ensure_xent_args("sigmoid_cross_entropy_with_logits", labels, logits)
   # pylint: enable=protected-access
 
   with ops.name_scope(name, "logistic_loss", [logits, labels]) as name:
@@ -406,111 +403,6 @@ def weighted_cross_entropy_with_logits(labels=None,
   return weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight, name)
 
 
-@tf_export("nn.compute_average_loss")
-@dispatch.add_dispatch_support
-def compute_average_loss(per_example_loss,
-                         sample_weight=None,
-                         global_batch_size=None):
-  """Scales per-example losses with sample_weights and computes their average.
-
-  Usage with distribution strategy and custom training loop:
-
-  ```python
-  with strategy.scope():
-    def compute_loss(labels, predictions, sample_weight=None):
-
-      # If you are using a `Loss` class instead, set reduction to `NONE` so that
-      # we can do the reduction afterwards and divide by global batch size.
-      per_example_loss = tf.keras.losses.sparse_categorical_crossentropy(
-          labels, predictions)
-
-      # Compute loss that is scaled by sample_weight and by global batch size.
-      return tf.nn.compute_average_loss(
-          per_example_loss,
-          sample_weight=sample_weight,
-          global_batch_size=GLOBAL_BATCH_SIZE)
-  ```
-
-  Args:
-    per_example_loss: Per-example loss.
-    sample_weight: Optional weighting for each example.
-    global_batch_size: Optional global batch size value. Defaults to (size of
-      first dimension of `losses`) * (number of replicas).
-
-  Returns:
-    Scalar loss value.
-  """  # pylint: disable=g-doc-exception
-  per_example_loss = ops.convert_to_tensor(per_example_loss)
-  input_dtype = per_example_loss.dtype
-
-  with losses_util.check_per_example_loss_rank(per_example_loss):
-    if sample_weight is not None:
-      sample_weight = ops.convert_to_tensor(sample_weight)
-      per_example_loss = losses_util.scale_losses_by_sample_weight(
-          per_example_loss, sample_weight)
-    per_example_loss = math_ops.cast(per_example_loss, input_dtype)
-
-    if global_batch_size is None:
-      if ds.has_strategy() and ds.in_cross_replica_context():
-        raise RuntimeError(
-            "You are calling `compute_average_loss` in cross replica context, "
-            "while it was expected to be called in replica context.")
-
-      num_replicas = ds.get_strategy().num_replicas_in_sync
-      per_replica_batch_size = array_ops.shape_v2(per_example_loss)[0]
-      global_batch_size = per_replica_batch_size * num_replicas
-
-    check_ops.assert_scalar_v2(
-        global_batch_size, message="global_batch_size must be scalar.")
-    check_ops.assert_integer_v2(
-        global_batch_size,
-        message="global_batch_size must be an integer.")
-    check_ops.assert_positive_v2(
-        global_batch_size, message="global_batch_size must be positive.")
-
-    global_batch_size = math_ops.cast(global_batch_size, input_dtype)
-    return math_ops.reduce_sum(per_example_loss) / global_batch_size
-
-
-@tf_export("nn.scale_regularization_loss")
-@dispatch.add_dispatch_support
-def scale_regularization_loss(regularization_loss):
-  """Scales the sum of the given regularization losses by number of replicas.
-
-  Usage with distribution strategy and custom training loop:
-
-  ```python
-  with strategy.scope():
-    def compute_loss(self, label, predictions):
-      per_example_loss = tf.keras.losses.sparse_categorical_crossentropy(
-          labels, predictions)
-
-      # Compute loss that is scaled by sample_weight and by global batch size.
-      loss = tf.nn.compute_average_loss(
-          per_example_loss,
-          sample_weight=sample_weight,
-          global_batch_size=GLOBAL_BATCH_SIZE)
-
-      # Add scaled regularization losses.
-      loss += tf.nn.scale_regularization_loss(tf.nn.l2_loss(weights))
-      return loss
-  ```
-
-  Args:
-    regularization_loss: Regularization loss.
-
-  Returns:
-    Scalar loss value.
-  """  # pylint: disable=g-doc-exception
-  if ds.has_strategy() and ds.in_cross_replica_context():
-    raise RuntimeError(
-        "You are calling `scale_regularization_loss` in cross replica context, "
-        "while it was expected to be called in replica context.")
-
-  num_replicas = ds.get_strategy().num_replicas_in_sync
-  return math_ops.reduce_sum(regularization_loss) / num_replicas
-
-
 @tf_export(v1=["nn.relu_layer"])
 @dispatch.add_dispatch_support
 def relu_layer(x, weights, biases, name=None):
@@ -565,7 +457,7 @@ def swish(features, beta=1.0):
   beta = math_ops.cast(beta, features.dtype)
 
   @custom_gradient.custom_gradient
-  def swish_impl(features):
+  def swish_impl(features, beta):
 
     def grad(dy):
       """Gradient for the Swish activation function."""
@@ -577,14 +469,18 @@ def swish(features, beta=1.0):
       # expression immediately after use during the forward pass.
       with ops.control_dependencies([dy]):
         sigmoid_features = math_ops.sigmoid(beta * features)
+
       activation_grad = (
           sigmoid_features * (1.0 + (beta * features) *
                               (1.0 - sigmoid_features)))
-      return dy * activation_grad
+      beta_grad = math_ops.reduce_sum(
+          dy * math_ops.square(features) * sigmoid_features *
+          (1.0 - sigmoid_features))
+      return (dy * activation_grad, beta_grad)
 
     return features * math_ops.sigmoid(beta * features), grad
 
-  return swish_impl(features)
+  return swish_impl(features, beta)
 
 
 # pylint: disable=redefined-builtin
@@ -746,7 +642,7 @@ def zero_fraction(value, name=None):
     value = ops.convert_to_tensor(value, name="value")
     size = array_ops.size(value, out_type=dtypes.int64)
     # If the count is small, we can save memory/CPU with an int32 reduction.
-    num_nonzero = control_flow_ops.cond(
+    num_nonzero = tf_cond.cond(
         size <= dtypes.int32.max,
         # pylint: disable=g-long-lambda
         true_fn=lambda: math_ops.cast(
@@ -1473,9 +1369,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
     sum_of_weights = math_ops.reduce_sum(
         broadcasted_weights, axes, name="sum_of_weights", keepdims=True)
 
-    divisor = math_ops.reciprocal(sum_of_weights, name="inv_weight_sum")
-
-    weighted_mean = math_ops.multiply(weighted_input_sum, divisor)
+    weighted_mean = math_ops.div_no_nan(weighted_input_sum, sum_of_weights)
 
     # Have the weighted mean; now on to variance:
     weighted_distsq = math_ops.reduce_sum(
@@ -1484,7 +1378,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
         name="weighted_distsq",
         keepdims=True)
 
-    weighted_variance = math_ops.multiply(weighted_distsq, divisor)
+    weighted_variance = math_ops.div_no_nan(weighted_distsq, sum_of_weights)
 
     if not keep_dims:
       weighted_mean = array_ops.squeeze(weighted_mean, axis=axes)
@@ -1683,11 +1577,6 @@ def fused_batch_norm(
   if variance is None:
     variance = constant_op.constant([])
 
-  # Set a minimum epsilon to 1.001e-5, which is a requirement by CUDNN to
-  # prevent exception (see cudnn.h).
-  min_epsilon = 1.001e-5
-  epsilon = epsilon if epsilon > min_epsilon else min_epsilon
-
   y, running_mean, running_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
       x,
       scale,
@@ -1817,7 +1706,7 @@ def _sum_rows(x):
   # we use _sum_rows(x) in the nce_loss() computation since the loss
   # is mostly used for training.
   cols = array_ops.shape(x)[1]
-  ones_shape = array_ops.stack([cols, 1])
+  ones_shape = array_ops_stack.stack([cols, 1])
   ones = array_ops.ones(ones_shape, x.dtype)
   return array_ops.reshape(math_ops.matmul(x, ones), [-1])
 
@@ -1926,11 +1815,12 @@ def _compute_sampled_logits(weights,
 
     # true_w shape is [batch_size * num_true, dim]
     true_w = array_ops.slice(all_w, [0, 0],
-                             array_ops.stack(
+                             array_ops_stack.stack(
                                  [array_ops.shape(labels_flat)[0], -1]))
 
     sampled_w = array_ops.slice(
-        all_w, array_ops.stack([array_ops.shape(labels_flat)[0], 0]), [-1, -1])
+        all_w,
+        array_ops_stack.stack([array_ops.shape(labels_flat)[0], 0]), [-1, -1])
     # inputs has shape [batch_size, dim]
     # sampled_w has shape [num_sampled, dim]
     # Apply X*W', which yields [batch_size, num_sampled]
@@ -2023,7 +1913,7 @@ def nce_loss_v2(weights,
 
   See [Noise-contrastive estimation: A new estimation principle for
   unnormalized statistical
-  models](http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
+  models](https://arxiv.org/abs/1806.03664).
   Also see our [Candidate Sampling Algorithms
   Reference](https://www.tensorflow.org/extras/candidate_sampling.pdf)
 

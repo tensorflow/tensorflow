@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
 
+#include <algorithm>
+#include <memory>
+#include <set>
+#include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -42,7 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/location_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -268,7 +273,7 @@ Status ConvertAttribute(const mlir::ArrayAttr& attr, bool remove_ref_type,
 static bool IsRefTypeControlOp(mlir::Operation* op) {
   if (auto next_iter_sink =
           llvm::dyn_cast<mlir::tf_executor::NextIterationSinkOp>(op))
-    return mlir::getElementTypeOrSelf(next_iter_sink.input().getType())
+    return mlir::getElementTypeOrSelf(next_iter_sink.getInput().getType())
         .isa<mlir::TF::TensorFlowRefType>();
 
   auto op_name_or_status = GetTensorFlowOpName(op->getName().getStringRef());
@@ -310,8 +315,8 @@ StatusOr<llvm::StringRef> GetTensorFlowOpName(llvm::StringRef op_name) {
   return op_name;
 }
 
-StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
-    mlir::Operation* inst, llvm::StringRef name) {
+StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(mlir::Operation* inst,
+                                                       llvm::StringRef name) {
   auto node_def = std::make_unique<NodeDef>();
   // Note: we do not use NodeBuilder or NodeDefBuilder as that would require
   // mapping back from the inputs to the input arguments.

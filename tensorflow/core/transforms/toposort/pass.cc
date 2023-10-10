@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/toposort/pass.h"
 
+#include <memory>
 #include <vector>
 
 #include "llvm/ADT/STLExtras.h"
@@ -23,10 +24,13 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
-#include "tensorflow/core/transforms/pass_detail.h"
+#include "tensorflow/core/ir/ops.h"
 
 namespace mlir {
 namespace tfg {
+
+#define GEN_PASS_DEF_TOPOSORT
+#include "tensorflow/core/transforms/passes.h.inc"
 
 void SortTopologically(Block *block, TFGraphDialect *dialect) {
   if (block->empty() || llvm::hasSingleElement(*block)) return;
@@ -107,7 +111,7 @@ void SortTopologically(Block *block, TFGraphDialect *dialect) {
 namespace {
 
 // A pass that topologically sort Graph regions.
-struct TopoSortPass : TopoSortBase<TopoSortPass> {
+struct TopoSortPass : impl::TopoSortBase<TopoSortPass> {
   void runOnOperation() override {
     auto *dialect = getContext().getLoadedDialect<TFGraphDialect>();
 

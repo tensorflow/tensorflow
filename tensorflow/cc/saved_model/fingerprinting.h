@@ -18,33 +18,30 @@ limitations under the License.
 
 #include <string>
 
-#include "google/protobuf/map.h"
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/platform/types.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/protobuf/fingerprint.pb.h"
-#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
-namespace tensorflow::fingerprinting {
+namespace tensorflow::saved_model::fingerprinting {
 
-// Computes the Fingerprint64 hash of the GraphDef.
-uint64 ComputeHash(const GraphDef& graph_def);
+// Creates a FingerprintDef proto from a SavedModel (regular or chunked) and the
+// checkpoint meta file (.index) in `export_dir`.
+absl::StatusOr<FingerprintDef> CreateFingerprintDef(
+    absl::string_view export_dir);
 
-// Sorts and computes the Fingerprint64 hash of the SignatureDefs.
-uint64 RegularizeAndHashSignatureDefs(
-    const google::protobuf::Map<std::string, SignatureDef>& signature_def_map);
+// Loads the `fingerprint.pb` from `export_dir`, returns an error if there is
+// none.
+absl::StatusOr<FingerprintDef> ReadSavedModelFingerprint(
+    absl::string_view export_dir);
 
-// Canonicalizes and computes the Fingerprint64 hash of the SavedObjectGraph.
-uint64 RegularizeAndHashSavedObjectGraph(
-    const SavedObjectGraph& object_graph_def);
+// Canonical fingerprinting ID for a SavedModel.
+std::string Singleprint(uint64_t graph_def_program_hash,
+                        uint64_t signature_def_hash,
+                        uint64_t saved_object_graph_hash,
+                        uint64_t checkpoint_hash);
+std::string Singleprint(const FingerprintDef& fingerprint);
+absl::StatusOr<std::string> Singleprint(absl::string_view export_dir);
 
-// Creates a FingerprintDef proto from a MetaGraph and the checkpoint meta file
-// (.index) in `export_dir`.
-FingerprintDef CreateFingerprintDef(const MetaGraphDef& metagraph,
-                                    absl::string_view export_dir);
-
-// Canonicalizes the GraphDef in order to remove sources of non-determinism.
-void CanonicalizeGraphDef(GraphDef& graph_def);
-
-}  // namespace tensorflow::fingerprinting
+}  // namespace tensorflow::saved_model::fingerprinting
 
 #endif  // TENSORFLOW_CC_SAVED_MODEL_FINGERPRINTING_H_

@@ -16,28 +16,18 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/replicated_spmd_expander.h"
 
 #include <algorithm>
+#include <vector>
 
 #include "llvm/Support/FormatVariadic.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/shape_utils.h"
+#include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 #include "tensorflow/dtensor/mlir/value_utils.h"
 
 namespace tensorflow {
 namespace dtensor {
-
-namespace {
-
-// Checks that all layouts are fully replicated
-bool AllReplicated(const std::vector<Layout>& layouts) {
-  for (const auto& layout : layouts) {
-    if (!layout.IsFullyReplicated()) return false;
-  }
-  return true;
-}
-
-}  // namespace
 
 // Relayout all operands and outputs to replicated layout.
 StatusOr<mlir::Operation*>

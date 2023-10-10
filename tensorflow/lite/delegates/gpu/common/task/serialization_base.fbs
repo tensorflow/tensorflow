@@ -98,15 +98,6 @@ table BufferDescriptor {
   data:[uint8];
 }
 
-table Texture2DDescriptor {
-  base_obj:GPUObjectDescriptor;
-  element_type:DataType;
-  normalized:bool;
-  normalized_type:DataType;
-  size:Int2;
-  data:[uint8];
-}
-
 enum TensorStorageType : byte {
   UNKNOWN = 0,
   BUFFER = 1,
@@ -151,11 +142,6 @@ table BufferDescriptorMapValue {
   value:BufferDescriptor;
 }
 
-table Texture2DDescriptorMapValue {
-  key:string;
-  value:Texture2DDescriptor;
-}
-
 table TensorDescriptorMapValue {
   key:string;
   value:TensorDescriptor;
@@ -167,11 +153,9 @@ table Arguments {
   half_values:[HalfValue];
 
   buffer_refs:[BufferDescriptorMapValue];
-  texture2d_refs:[Texture2DDescriptorMapValue];
   tensor_refs:[TensorDescriptorMapValue];
 
   buffer_objects:[BufferDescriptorMapValue];
-  texture2d_objects:[Texture2DDescriptorMapValue];
   tensor_objects:[TensorDescriptorMapValue];
 }
 

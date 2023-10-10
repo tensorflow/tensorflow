@@ -18,7 +18,9 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -27,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -121,6 +124,10 @@ class ConcatBaseOp : public OpKernel {
     for (int i = 0; i < N; ++i) {
       const auto& in = c->input(values_input_start_index_ + i);
       OP_REQUIRES(
+          c, in.dims() > 0,
+          errors::InvalidArgument("ConcatOp : Can't concatenate scalars "
+                                  "(use tf.stack instead)"));
+      OP_REQUIRES(
           c, in.dims() == input_dims,
           errors::InvalidArgument(
               "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
@@ -150,7 +157,7 @@ class ConcatBaseOp : public OpKernel {
     TensorShape output_shape(input_shape);
     // TODO(rmlarsen): Remove rank 0 case once !allow_legacy_scalars()?
     if (output_shape.dims() == 0) {
-      output_shape.AddDim(output_concat_dim);
+      OP_REQUIRES_OK(c, output_shape.AddDimWithStatus(output_concat_dim));
     } else {
       output_shape.set_dim(axis, output_concat_dim);
     }
@@ -194,6 +201,8 @@ using ConcatV2Op = ConcatBaseOp<Device, T, NAME_IS_AXIS>;
                           ConcatV2Op<CPUDevice, type>)
 
 TF_CALL_POD_STRING_TYPES(REGISTER_CONCAT);
+TF_CALL_float8_e5m2(REGISTER_CONCAT);
+TF_CALL_float8_e4m3fn(REGISTER_CONCAT);
 REGISTER_CONCAT(quint8);
 REGISTER_CONCAT(qint8);
 REGISTER_CONCAT(quint16);
@@ -217,8 +226,9 @@ REGISTER_CONCAT(qint32);
                           ConcatV2Op<GPUDevice, type>)
 
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU);
-TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);
+TF_CALL_float8_e5m2(REGISTER_GPU);
+TF_CALL_float8_e4m3fn(REGISTER_GPU);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -241,6 +251,7 @@ REGISTER_KERNEL_BUILDER(Name("ConcatV2")
                             .HostMemory("output"),
                         ConcatV2Op<CPUDevice, int32>);
 
+template <typename ShapeType>
 class ConcatOffsetOp : public OpKernel {
  public:
   explicit ConcatOffsetOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
@@ -249,15 +260,15 @@ class ConcatOffsetOp : public OpKernel {
     const Tensor& concat_dim = ctx->input(0);
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(concat_dim.shape()),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Concat dim tensor should be a scalar integer, but got shape ",
-            concat_dim.shape().DebugString()));
+            concat_dim.shape().DebugString())));
     for (int i = 1; i < ctx->num_inputs(); ++i) {
       const Tensor& inp = ctx->input(i);
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(inp.shape()),
-                  errors::InvalidArgument("input ", i,
-                                          " should be a vector, but got shape ",
-                                          inp.shape().DebugString()));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "input ", i, " should be a vector, but got shape ",
+                      inp.shape().DebugString())));
     }
     // Suppose a Concat() op needs to Concatenate N tensors, each of
     // which has the same number of dimensions.  Their shapes match
@@ -279,35 +290,35 @@ class ConcatOffsetOp : public OpKernel {
     //  [0, 5, 0, 0]
     const int32_t N = ctx->num_inputs() - 1;
     const Tensor& inp0 = ctx->input(1);
-    auto inp0_vec = inp0.vec<int32>();
+    auto inp0_vec = inp0.vec<ShapeType>();
     const int64_t cdim = internal::SubtleMustCopy(concat_dim.scalar<int32>()());
     const int64_t dims = inp0.NumElements();
     int32_t axis = cdim < 0 ? cdim + dims : cdim;
     OP_REQUIRES(ctx, FastBoundsCheck(axis, dims),
-                errors::InvalidArgument("Concat dim is out of range: ", cdim,
-                                        " vs. ", dims));
-    int32_t offset = 0;
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Concat dim is out of range: ", cdim, " vs. ", dims)));
+    int64_t offset = 0;
     for (int i = 0; i < N; ++i) {
       const Tensor& inp = ctx->input(1 + i);
-      OP_REQUIRES(
-          ctx, dims == inp.NumElements(),
-          errors::InvalidArgument("input ", i, " should contain ", dims,
-                                  " elements, but got ", inp.NumElements()));
-      auto inp_vec = inp.vec<int32>();
+      OP_REQUIRES(ctx, dims == inp.NumElements(),
+                  absl::InvalidArgumentError(
+                      absl::StrCat("input ", i, " should contain ", dims,
+                                   " elements, but got ", inp.NumElements())));
+      auto inp_vec = inp.vec<ShapeType>();
       Tensor* out = nullptr;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(i, {dims}, &out));
-      auto out_vec = out->vec<int32>();
+      auto out_vec = out->vec<ShapeType>();
       for (int64_t j = 0; j < dims; ++j) {
         if (j == axis) {
           out_vec(j) = offset;
           offset += inp_vec(j);
         } else {
           OP_REQUIRES(ctx, (inp0_vec(j) == inp_vec(j)),
-                      errors::InvalidArgument(
+                      absl::InvalidArgumentError(absl::StrCat(
                           "All dimensions except ", axis, " must match. Input ",
                           i, " has shape [", inp.SummarizeValue(10),
                           "] and doesn't match input 0 with shape [",
-                          inp0.SummarizeValue(10), "]."));
+                          inp0.SummarizeValue(10), "].")));
           out_vec(j) = 0;
         }
       }
@@ -317,13 +328,25 @@ class ConcatOffsetOp : public OpKernel {
   bool IsExpensive() override { return false; }
 };
 
-REGISTER_KERNEL_BUILDER(Name("ConcatOffset").Device(DEVICE_CPU),
-                        ConcatOffsetOp);
+REGISTER_KERNEL_BUILDER(
+    Name("ConcatOffset").Device(DEVICE_CPU).TypeConstraint<int32>("shape_type"),
+    ConcatOffsetOp<int32>);
 REGISTER_KERNEL_BUILDER(Name("ConcatOffset")
                             .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32>("shape_type")
                             .HostMemory("concat_dim")
                             .HostMemory("shape")
                             .HostMemory("offset"),
-                        ConcatOffsetOp);
+                        ConcatOffsetOp<int32>);
+REGISTER_KERNEL_BUILDER(
+    Name("ConcatOffset").Device(DEVICE_CPU).TypeConstraint<int64>("shape_type"),
+    ConcatOffsetOp<int64>);
+REGISTER_KERNEL_BUILDER(Name("ConcatOffset")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int64>("shape_type")
+                            .HostMemory("concat_dim")
+                            .HostMemory("shape")
+                            .HostMemory("offset"),
+                        ConcatOffsetOp<int64>);
 
 }  // namespace tensorflow

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <optional>
+#include <vector>
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
@@ -24,9 +26,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/slicing.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/client/lib/slicing.h"
+#include "xla/client/xla_builder.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -218,8 +220,9 @@ Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
 
   axis = axis.value_or(0);
   DataType index_type = context->input_type(1);
-  if (index_type != DT_INT32 && index_type != DT_INT64) {
-    return errors::InvalidArgument("indices must be int32 or int64");
+  if (index_type != DT_INT16 && index_type != DT_INT32 &&
+      index_type != DT_INT64) {
+    return errors::InvalidArgument("indices must be int16, int32, or int64");
   }
 
   xla::XlaOp gather;
@@ -258,7 +261,8 @@ class GatherOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(GatherOp);
+  GatherOp(const GatherOp&) = delete;
+  void operator=(const GatherOp&) = delete;
 
   // The number of batch dimensions, as passed in the batch_dims attribute.
   // It must be less than or equal to rank(indices).

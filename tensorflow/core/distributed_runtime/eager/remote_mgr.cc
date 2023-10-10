@@ -33,7 +33,7 @@ Status WithErrorSourcePayload(Status error) {
   error_source_proto.set_error_source(
       core::platform::ErrorSourceProto::EAGER_REMOTE_MGR);
   error.SetPayload(tensorflow::kErrorSource,
-                   error_source_proto.SerializeAsString());
+                   absl::Cord(error_source_proto.SerializeAsString()));
   return error;
 }
 }  // namespace
@@ -238,7 +238,7 @@ void RemoteMgr::DeleteExecutorForStream(uint64 stream_id) {
   }
   Status s = it->second.ShutDown();
   if (!s.ok()) {
-    LOG(ERROR) << "EagerExecutor shutdown with error " << s.error_message();
+    LOG(ERROR) << "EagerExecutor shutdown with error " << s.message();
   }
   executor_map_.erase(it);
 }

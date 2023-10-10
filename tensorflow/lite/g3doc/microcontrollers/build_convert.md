@@ -54,7 +54,7 @@ important to change the array declaration to `const` for better memory
 efficiency on embedded platforms.
 
 For an example of how to include and use a model in your program, see
-[`model.cc`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world/model.cc)
+[`evaluate_test.cc`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world/evaluate_test.cc)
 in the *Hello World* example.
 
 ## Model architecture and training
@@ -92,4 +92,4 @@ to run. We are working on expanding operation support, both in terms of
 reference implementations and optimizations for specific architectures.
 
 The supported operations can be seen in the file
-[`all_ops_resolver.cc`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/all_ops_resolver.cc)
+[`micro_mutable_ops_resolver.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/micro_mutable_op_resolver.h)

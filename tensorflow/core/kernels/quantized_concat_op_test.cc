@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -51,7 +52,53 @@ class QuantizedConcatTest : public OpsTestBase {
                       float second_max);
   void TestSecondDim8Bit(float first_min, float first_max, float second_min,
                          float second_max);
+  void TestInvalidMinMax(const Tensor& first_min, const Tensor& first_max);
 };
+
+TEST_F(QuantizedConcatTest, InvalidMin) {
+  // first_min NumElements == 3.
+  Tensor first_min(DT_FLOAT, {3});
+  test::FillValues<float>(&first_min, {0.0, 0.0, 0.0});
+  Tensor first_max(DT_FLOAT, {});
+  test::FillValues<float>(&first_max, {0.0});
+  TestInvalidMinMax(first_min, first_max);
+}
+
+TEST_F(QuantizedConcatTest, InvalidMax) {
+  Tensor first_min(DT_FLOAT, {});
+  test::FillValues<float>(&first_min, {0.0});
+  // first_max NumElements == 0.
+  Tensor first_max(DT_FLOAT, {3, 0, 2});
+  TestInvalidMinMax(first_min, first_max);
+}
+
+void QuantizedConcatTest::TestInvalidMinMax(const Tensor& first_min,
+                                            const Tensor& first_max) {
+  TF_ASSERT_OK(NodeDefBuilder("quantized_concat_op", "QuantizedConcat")
+                   .Input(FakeInput(DT_INT32))
+                   .Input(FakeInput(2, DT_QUINT8))
+                   .Input(FakeInput(2, DT_FLOAT))
+                   .Input(FakeInput(2, DT_FLOAT))
+                   .Attr("N", 2)
+                   .Attr("T", DataTypeToEnum<quint8>::v())
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  Tensor first_quantized(DT_QUINT8, {1});
+  test::FillValues<quint8>(&first_quantized, {1});
+  Tensor second_quantized(DT_QUINT8, {1});
+  test::FillValues<quint8>(&second_quantized, {1});
+
+  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<quint8>(first_quantized.shape(),
+                            first_quantized.flat<quint8>());
+  AddInputFromArray<quint8>(second_quantized.shape(),
+                            second_quantized.flat<quint8>());
+  AddInputFromArray<float>(first_min.shape(), first_min.flat<float>());
+  AddInputFromArray<float>(TensorShape({}), {1.0});
+  AddInputFromArray<float>(first_max.shape(), first_max.flat<float>());
+  AddInputFromArray<float>(TensorShape({}), {2.0});
+  EXPECT_TRUE(errors::IsInvalidArgument(RunOpKernel()));
+}
 
 TEST_F(QuantizedConcatTest, Small8Bit) {
   TestSmall8Bit(0.0f, 255.0f, 0.0f, 25.0f);

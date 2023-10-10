@@ -495,8 +495,8 @@ TEST_P(ResizeBilinearOpTest, TestInvalidOutputSize) {
   AddInputFromArray<int32>(TensorShape({2}), {0, 0});
   Status s = RunOpKernel();
   EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
-  EXPECT_TRUE(absl::StrContains(s.error_message(),
-                                "output dimensions must be positive"))
+  EXPECT_TRUE(
+      absl::StrContains(s.message(), "output dimensions must be positive"))
       << s;
 }
 
@@ -505,8 +505,7 @@ TEST_P(ResizeBilinearOpTest, TestInvalidInputShape) {
   AddInputFromArray<int32>(TensorShape({2}), {4, 4});
   Status s = RunOpKernel();
   EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
-  EXPECT_TRUE(
-      absl::StrContains(s.error_message(), "input must be 4-dimensional"))
+  EXPECT_TRUE(absl::StrContains(s.message(), "input must be 4-dimensional"))
       << s;
 }
 
@@ -515,8 +514,7 @@ TEST_P(ResizeBilinearOpTest, TestInvalidSizeDim) {
   AddInputFromArray<int32>(TensorShape({2, 1}), {4, 4});
   Status s = RunOpKernel();
   EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
-  EXPECT_TRUE(
-      absl::StrContains(s.error_message(), "shape_t must be 1-dimensional"))
+  EXPECT_TRUE(absl::StrContains(s.message(), "shape_t must be 1-dimensional"))
       << s;
 }
 
@@ -525,8 +523,7 @@ TEST_P(ResizeBilinearOpTest, TestInvalidSizeElements) {
   AddInputFromArray<int32>(TensorShape({3}), {4, 4, 1});
   Status s = RunOpKernel();
   EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
-  EXPECT_TRUE(
-      absl::StrContains(s.error_message(), "shape_t must have two elements"))
+  EXPECT_TRUE(absl::StrContains(s.message(), "shape_t must have two elements"))
       << s;
 }
 

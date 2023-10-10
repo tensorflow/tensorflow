@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_TRT_CONVERT_H_
-#define TENSORFLOW_COMPILER_TF2TENSORRT_TRT_CONVERT_H_
+#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_TRT_CONVERT_API_H_
+#define TENSORFLOW_COMPILER_TF2TENSORRT_TRT_CONVERT_API_H_
 
 #include <climits>
 #include <string>
@@ -126,4 +126,4 @@ StatusOr<GraphDef> ConvertAndBuild(
 
 #endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
-#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_TRT_CONVERT_H_
+#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_TRT_CONVERT_API_H_

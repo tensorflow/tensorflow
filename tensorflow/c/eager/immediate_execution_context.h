@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_CONTEXT_H_
 #define TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_CONTEXT_H_
 
+#include <functional>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -119,6 +121,10 @@ class ImmediateExecutionContext : public AbstractContext {
   // already exists.
   virtual Status AddFunctionDef(const FunctionDef& fdef) = 0;
 
+  // Notifies about the function removal.
+  virtual Status AddRemoveFunctionNotifier(const string& func,
+                                           std::function<void()> notifier) = 0;
+
   // Same as `AddFunctionDef`, but additionally saves the `stack_traces` under
   // the key of the function definition name (to be retrieved during function
   // instantiation).
@@ -127,6 +133,10 @@ class ImmediateExecutionContext : public AbstractContext {
 
   // Find and return a added function by its name.
   virtual const FunctionDef* FindFunctionDef(const string& name) const = 0;
+
+  // Find and return a function record added by its name.
+  virtual core::RefCountPtr<FunctionRecord> FindRecord(
+      const string& name) const = 0;
 
   // Return the ParsedName of Host CPU device.
   virtual const DeviceNameUtils::ParsedName& HostCPUParsedName() const = 0;
@@ -167,6 +177,9 @@ class ImmediateExecutionContext : public AbstractContext {
   //===--------------------------------------------------------------------===//
   virtual CustomDeviceOpHandler& GetCustomDeviceOpHandler() = 0;
 
+  // Returns whether `device_name` is registered as a custom device.
+  virtual bool IsCustomDevice(const string& device_name) = 0;
+
   // Register a custom device. It will return error is the device name is
   // already registered.
   // TODO(tfrt-devs): Remove this method. Let caller register it directly into
@@ -177,13 +190,6 @@ class ImmediateExecutionContext : public AbstractContext {
   // Return FunctionLibraryDefinition. Transformations need to use it to use it
   // to invoke MLIR compiler passes.
   virtual FunctionLibraryDefinition* FuncLibDef() = 0;
-
-  // When tensor transfer across functions/eager executions using send/recv ops
-  // are required, `reuse_rendezvous_for_functions_` can be set to true so that
-  // function executions and eager executions use the same rendezvous instance,
-  // instead of creating new instance per function calls.
-  virtual void SetReuseRendezvousForFunctions(
-      bool reuse_rendezvous_for_functions) = 0;
 
   // Resets the global rendezvous used for functions.
   virtual void ResetGlobalRendezvousForFunction() = 0;
@@ -235,6 +241,14 @@ class ImmediateExecutionContext : public AbstractContext {
 
   // Get a list of the names of functions that have been registered.
   virtual std::vector<string> ListFunctionNames() = 0;
+
+  struct CacheStats {
+    int64_t kernel_cache_size;
+    int64_t device_cache_size;
+    std::map<std::string, int64_t> func_kernel_cache_entries;
+    int64_t local_rendezvous_cache_active_size;
+  };
+  virtual CacheStats GetCacheStats() = 0;
 
   //===--------------------------------------------------------------------===//
   // Distributed runtime related functions.

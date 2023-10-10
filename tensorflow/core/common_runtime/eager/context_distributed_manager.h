@@ -26,8 +26,8 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
-#include "tensorflow/core/distributed_runtime/preemption/preemption_notifier.h"
+#include "tsl/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tsl/distributed_runtime/preemption/preemption_notifier.h"
 #endif  // !IS_MOBILE_PLATFORM
 
 namespace tensorflow {
@@ -41,29 +41,37 @@ class EagerContextDistributedManager
   explicit EagerContextDistributedManager(EagerContext* context)
       : context_(context) {}
 
+  // When running in a distributed context, `init_timeout_in_ms` requests the
+  // amount of time to wait for remote workers to respond.
+
   Status SetOrUpdateServerDef(const ServerDef& server_def, bool reset_context,
-                              int keep_alive_secs) override;
+                              int keep_alive_secs, int64_t init_timeout_in_ms,
+                              int retries) override;
+
+  Status InitializeLocalOnlyContext(const ServerDef& server_def,
+                                    int keep_alive_secs) override;
 
   Status EnableCollectiveOps(const ServerDef& server_def) override;
 
   Status CheckRemoteAlive(const std::string& remote_task_name,
                           bool* is_alive) override;
 
-  CoordinationServiceAgent* GetCoordinationServiceAgent() override {
+  tsl::CoordinationServiceAgent* GetCoordinationServiceAgent() override {
     return coordination_service_agent_;
   }
-  void SetCoordinationServiceAgent(CoordinationServiceAgent* agent) {
+  void SetCoordinationServiceAgent(tsl::CoordinationServiceAgent* agent) {
     coordination_service_agent_ = agent;
   }
-  void SetPreemptionNotifier(std::unique_ptr<PreemptionNotifier> notifier) {
+  void SetPreemptionNotifier(
+      std::unique_ptr<tsl::PreemptionNotifier> notifier) {
     preemption_notifier_ = std::move(notifier);
   }
 
  private:
   EagerContext* context_;
   // Owned by context_->GetServer()->worker_env()->session_mgr.
-  CoordinationServiceAgent* coordination_service_agent_ = nullptr;
-  std::unique_ptr<PreemptionNotifier> preemption_notifier_;
+  tsl::CoordinationServiceAgent* coordination_service_agent_ = nullptr;
+  std::unique_ptr<tsl::PreemptionNotifier> preemption_notifier_;
 };
 #endif  // !IS_MOBILE_PLATFORM
 }  // namespace tensorflow

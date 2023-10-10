@@ -21,7 +21,12 @@ namespace tfrt {
 
 inline tensorflow::Status CheckTpuMlirBridgeCompatibility(
     const tensorflow::GraphDef& graph_def) {
-  return tensorflow::Status::OK();
+  return tensorflow::OkStatus();
+}
+
+inline tensorflow::Status CheckSpmdGraph(
+    const tensorflow::GraphDef& graph_def) {
+  return tensorflow::OkStatus();
 }
 
 }  // namespace tfrt

@@ -14,19 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/util.h"
 
-#include <stddef.h>
-#include <stdint.h>
-
 #include <algorithm>
 #include <complex>
+#include <cstddef>
 #include <cstring>
 #include <initializer_list>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/array.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -47,25 +46,12 @@ bool IsFlexOp(const char* custom_name) {
                                 strlen(kFlexCustomCodePrefix)) == 0;
 }
 
-std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> BuildTfLiteIntArray(
-    const std::vector<int>& data) {
-  std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> result(
-      TfLiteIntArrayCreate(data.size()));
-  std::copy(data.begin(), data.end(), result->data);
-  return result;
-}
-
 TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input) {
-  return ConvertArrayToTfLiteIntArray(static_cast<int>(input.size()),
-                                      input.data());
+  return BuildTfLiteArray(input).release();
 }
 
 TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int ndims, const int* dims) {
-  TfLiteIntArray* output = TfLiteIntArrayCreate(ndims);
-  for (size_t i = 0; i < ndims; i++) {
-    output->data[i] = dims[i];
-  }
-  return output;
+  return BuildTfLiteArray(ndims, dims).release();
 }
 
 bool EqualArrayAndTfLiteIntArray(const TfLiteIntArray* a, const int b_size,
@@ -135,6 +121,12 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
     case kTfLiteFloat64:
       *bytes = sizeof(double);
       break;
+    case kTfLiteInt4:
+      // TODO(b/246647008): Multiplying this value by the number of elements
+      // does not yield the size of a tensor when 4-bit values are packed
+      // 2 to a byte.
+      *bytes = sizeof(int8_t);
+      break;
     default:
       if (context) {
         TF_LITE_KERNEL_LOG(
@@ -195,4 +187,72 @@ TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product) {
   }
   return kTfLiteOk;
 }
+
+TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
+                           size_t* bytes, TfLiteContext* context_) {
+  TF_LITE_ENSURE(context_, bytes != nullptr);
+  // When 'dims_size' is 0, we simply assume it's a scalar. Therefore, we start
+  // 'count' as 1.
+  size_t count = 1;
+  for (int k = 0; k < dims_size; k++) {
+    size_t old_count = count;
+    TF_LITE_ENSURE_MSG(
+        context_,
+        MultiplyAndCheckOverflow(old_count, dims[k], &count) == kTfLiteOk,
+        "BytesRequired number of elements overflowed.\n");
+  }
+  size_t type_size = 0;
+  TF_LITE_ENSURE_OK(context_, GetSizeOfType(context_, type, &type_size));
+  TF_LITE_ENSURE_MSG(
+      context_, MultiplyAndCheckOverflow(type_size, count, bytes) == kTfLiteOk,
+      "BytesRequired number of bytes overflowed.\n");
+
+  // GetSizeOfType doesn't work for kTfLiteInt4 due to it having 2 values packed
+  // into 1 byte so the output of GetSizeOfType is the same as int8 aka 1 byte.
+  // Thus the required bytes must be divided by half after everything for int4.
+  if (type == kTfLiteInt4) {
+    *bytes = (*bytes + 1) / 2;
+  }
+
+  return kTfLiteOk;
+}
+
+TensorUniquePtr BuildTfLiteTensor() {
+  auto tensor = TensorUniquePtr((TfLiteTensor*)calloc(1, sizeof(TfLiteTensor)));
+  tensor->buffer_handle = kTfLiteNullBufferHandle;
+  return tensor;
+}
+
+TensorUniquePtr BuildTfLiteTensor(TfLiteType type, const std::vector<int>& dims,
+                                  TfLiteAllocationType allocation_type) {
+  return BuildTfLiteTensor(type, BuildTfLiteArray(dims), allocation_type);
+}
+
+// Allocates an appropriate sized buffer underneath returned tensor
+// based on the value of `dims`. Since arena allocated tensors should not
+// be managed by the user, we do not permit `kTfLiteArena` as a
+// valid allocation type.
+TensorUniquePtr BuildTfLiteTensor(TfLiteType type, IntArrayUniquePtr dims,
+                                  TfLiteAllocationType allocation_type) {
+  assert(allocation_type != kTfLiteArenaRw &&
+         allocation_type != kTfLiteArenaRwPersistent);
+  TfLiteIntArray* dims_data = dims.release();
+  if (!dims_data) {
+    return nullptr;
+  }
+  size_t bytes;
+  auto compute_bytes_stat =
+      BytesRequired(type, dims_data->data, dims_data->size, &bytes, nullptr);
+  if (compute_bytes_stat != kTfLiteOk) {
+    return nullptr;
+  }
+  TensorUniquePtr t = BuildTfLiteTensor();
+  TfLiteTensorReset(type, /*name=*/nullptr, dims_data, /*quantization=*/{},
+                    /*buffer=*/nullptr, bytes, allocation_type,
+                    /*allocation=*/nullptr, /*is_variable=*/false,
+                    /*tensor=*/t.get());
+  TfLiteTensorRealloc(bytes, t.get());
+  return t;
+}
+
 }  // namespace tflite

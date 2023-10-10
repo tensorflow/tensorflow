@@ -444,65 +444,6 @@ class TemplateTest(test.TestCase):
 
     self.assertEqual(["nested", "nested_1"], list(tmpl1._trackable_children()))
 
-  @test_util.run_in_graph_and_eager_modes
-  def test_nested_templates_with_defun(self):
-
-    def variable_scoped_function_no_return_value(trainable=True):
-      # defun cannot compile functions that return non-Tensor objects
-      _ = variable_scope.get_variable(
-          "dummy",
-          shape=[1],
-          trainable=trainable,
-          initializer=init_ops.zeros_initializer())
-
-    def nested_template():
-      nested1 = template.make_template_internal(
-          "nested",
-          variable_scoped_function_no_return_value,
-          create_graph_function_=True)
-      nested2 = template.make_template_internal(
-          "nested",
-          variable_scoped_function_no_return_value,
-          create_graph_function_=True)
-      nested1()
-      nested2()
-      v1 = nested1.variables
-      v2 = nested2.variables
-
-      self.assertEqual(len(v1), 1)
-      self.assertEqual(len(v2), 1)
-
-      # nested1 and nested2 should not share variables
-      self.assertIsNot(v1[0], v2[0])
-      self.assertIs(nested1.trainable_variables[0], v1[0])
-      self.assertIs(nested2.trainable_variables[0], v2[0])
-      self.assertEqual(len(nested1.non_trainable_variables), 0)
-      self.assertEqual(len(nested2.non_trainable_variables), 0)
-
-    tmpl1 = template.make_template("s1", nested_template)
-    tmpl2 = template.make_template("s1", nested_template)
-
-    tmpl1()
-    v1 = tmpl1.variables
-    tmpl1()
-    v2 = tmpl1.variables
-    tmpl2()
-    v3 = tmpl2.variables
-
-    # The second invocation of tmpl1 should reuse the variables
-    # created in the first invocation.
-    for v, w in zip(v1, v2):
-      self.assertIs(v, w)
-
-    # tmpl1 and tmpl2 should not share variables.
-    for v, w in zip(v1, v3):
-      self.assertIsNot(v, w)
-
-    self.assertEqual("s1/nested/dummy:0", v1[0].name)
-    self.assertEqual("s1/nested_1/dummy:0", v1[1].name)
-    self.assertEqual("s1_1/nested/dummy:0", v3[0].name)
-    self.assertEqual("s1_1/nested_1/dummy:0", v3[1].name)
-
   def test_graph_function_no_name(self):
     with context.eager_mode():
 
@@ -771,7 +712,9 @@ class TemplateTest(test.TestCase):
 
     def variable_scoped_function_no_return_value(scope_name):
       # defun cannot compile functions that return non-Tensor objects
-      with variable_scope.variable_scope(scope_name):
+      with variable_scope.variable_scope(
+          scope_name,
+          reuse=variable_scope.AUTO_REUSE):
         _ = variable_scope.get_variable(
             "dummy", shape=[1], initializer=init_ops.zeros_initializer())
 

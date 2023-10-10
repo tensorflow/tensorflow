@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -128,6 +130,16 @@ Status EncodeImageShapeFn(InferenceContext* c) {
   return OkStatus();
 }
 
+// Allow encoding batches of images.
+Status BatchedEncodeImageShapeFn(InferenceContext* c) {
+  ShapeHandle input;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 3, &input));
+  ShapeHandle s;
+  TF_RETURN_IF_ERROR(c->Subshape(input, 0, -3, &s));
+  c->set_output(0, s);
+  return OkStatus();
+}
+
 Status ColorspaceShapeFn(InferenceContext* c) {
   ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input));
@@ -234,7 +246,7 @@ Status CombinedNMSShapeFn(InferenceContext* c) {
   DimensionHandle size_per_class;
   TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &size_per_class));
 
-  int64_t output_size;
+  int64_t output_size = -1;
   bool pad_per_class;
   TF_RETURN_IF_ERROR(c->GetAttr("pad_per_class", &pad_per_class));
   if (!pad_per_class) {
@@ -245,8 +257,11 @@ Status CombinedNMSShapeFn(InferenceContext* c) {
           "max_output_size_per_class must be > 0 "
           "if pad_per_class is set to true ");
     }
-    output_size = std::min(c->Value(output_dim),
-                           c->Value(size_per_class) * c->Value(class_dim));
+    if (c->ValueKnown(size_per_class) && c->ValueKnown(class_dim)) {
+      output_size = std::min(
+          static_cast<int64_t>(c->Value(output_dim)),
+          static_cast<int64_t>(c->Value(size_per_class)) * c->Value(class_dim));
+    }
   }
   c->set_output(0, c->MakeShape({batch_dim, output_size, 4}));
   c->set_output(1, c->MakeShape({batch_dim, output_size}));
@@ -610,7 +625,7 @@ REGISTER_OP("EncodePng")
     .Attr("T: {uint8, uint16} = DT_UINT8")
     .Input("image: T")
     .Output("contents: string")
-    .SetShapeFn(EncodeImageShapeFn);
+    .SetShapeFn(BatchedEncodeImageShapeFn);
 
 // --------------------------------------------------------------------------
 REGISTER_OP("DecodeBmp")

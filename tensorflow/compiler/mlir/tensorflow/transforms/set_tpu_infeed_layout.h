@@ -25,6 +25,10 @@ namespace mlir {
 // Set layouts attribute of tf.InfeedDequeueTuple ops.
 bool SetTPUInfeedLayout(OwningOpRef<ModuleOp>& mlir_module);
 
+// Try to determine the right TPU infeed layout.
+FailureOr<Attribute> GetTPUInfeedLayout(ArrayRef<Type> types,
+                                        OpBuilder& rewriter);
+
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_SET_TPU_INFEED_LAYOUT_H_

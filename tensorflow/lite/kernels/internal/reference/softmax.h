@@ -160,7 +160,7 @@ inline int16_t SoftMaxCalculateExp(const SoftmaxParams& params,
       std::min(std::max(sym_scaled_diff, static_cast<int32_t>(-32768)),
                static_cast<int32_t>(32767));
   // apply the exp() LUT activation function
-  return lut_lookup(sat_sym_scaled_diff, params.exp_lut);
+  return LUTLookup(sat_sym_scaled_diff, params.exp_lut);
 }
 // Quantized softmax with int16_t input and int16_t output.
 inline void SoftmaxInt16(const SoftmaxParams& params,
@@ -209,7 +209,7 @@ inline void SoftmaxInt16(const SoftmaxParams& params,
                  static_cast<int32_t>(32767)));
     // apply 1/(1 + x) LUT activation function
     int16_t reciprocal_scale_Q015 =
-        lut_lookup(sat_sym_shifted_sum, params.one_over_one_plus_x_lut);
+        LUTLookup(sat_sym_shifted_sum, params.one_over_one_plus_x_lut);
 
     // Rescale the exp_result with reciprocal
     // range of output is [0, 32767] correspond to [0.0, 1.0]
