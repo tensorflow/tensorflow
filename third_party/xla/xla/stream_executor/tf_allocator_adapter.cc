@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/stream_executor/tf_allocator_adapter.h"
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -64,7 +66,15 @@ tsl::StatusOr<Stream *> TfAllocatorAdapter::GetStream(int device_ordinal) {
 
 tsl::StatusOr<tsl::Allocator *> TfAllocatorAdapter::GetAllocator(
     int device_ordinal) {
-  CHECK_EQ(stream_->parent()->device_ordinal(), device_ordinal);
+  if (stream_ == nullptr) {
+    return absl::UnavailableError("stream_ is null for TfAllocatorAdapter.");
+  }
+  if (stream_->parent()->device_ordinal() != device_ordinal) {
+    return absl::InternalError(
+        absl::StrCat("stream_->parent()->device_ordinal() ",
+                     stream_->parent()->device_ordinal(),
+                     " not equal to device_ordinal ", device_ordinal));
+  }
   return wrapped_;
 }
 
