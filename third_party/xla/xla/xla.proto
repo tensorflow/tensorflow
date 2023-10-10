@@ -653,6 +653,11 @@ message DebugOptions {
   reserved 5, 117, 133, 139, 176, 178, 180, 193, 214;
 }
 
+// Contains flags which affects the GPU compilation result.
+// These flags are part of Debug Options as of now, and will be migrated to
+// this proto.
+message GpuCompilationEnvironment {}
+
 message ShardableValueUpdatePairProto {
   int64 input_parameter_number = 1;
   repeated int64 parameter_shape_index = 2;
