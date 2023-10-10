@@ -141,6 +141,10 @@ class CommandBufferInterface {
   // finalized no commands can be added to it.
   virtual tsl::Status Finalize() = 0;
 
+  // Begins command buffer update. Command buffer update should be finalized
+  // before it can be executed.
+  virtual tsl::Status Update() = 0;
+
   // Returns command buffer execution mode.
   virtual CommandBuffer::Mode mode() const = 0;
 

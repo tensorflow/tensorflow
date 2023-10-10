@@ -89,4 +89,6 @@ CommandBuffer::Mode CommandBuffer::mode() const {
 
 tsl::Status CommandBuffer::Finalize() { return implementation_->Finalize(); }
 
+tsl::Status CommandBuffer::Update() { return implementation_->Update(); }
+
 }  // namespace stream_executor

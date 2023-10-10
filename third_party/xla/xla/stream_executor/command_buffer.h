@@ -48,7 +48,7 @@ class CommandBufferInterface;
 // device.
 class CommandBuffer {
  public:
-  // Command buffer state transitions:
+  // Command buffer state:
   //
   //   (1) kCreate:    a new command buffer under construction
   //   (2) kUpdate:    updating a previously finalized command buffer
@@ -105,6 +105,10 @@ class CommandBuffer {
   // Finalizes command buffer and makes it executable. Once command buffer is
   // finalized no commands can be added to it.
   tsl::Status Finalize();
+
+  // Begins command buffer update. Command buffer update should be finalized
+  // before it can be executed.
+  tsl::Status Update();
 
   // Type-safe wrapper for launching typed kernels. Notice that the order of
   // arguments is different do disambiguate from the regular launch API.
