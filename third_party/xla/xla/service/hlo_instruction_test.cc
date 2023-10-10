@@ -2425,5 +2425,82 @@ TEST_F(HloInstructionTest, BackendConfigCanContainNonFiniteFloats) {
   EXPECT_NE(new_config.alpha_imag(), new_config.alpha_imag());
 }
 
+TEST_F(HloInstructionTest, VerifyToApplyRegionPointsToReduceScatter) {
+  const Shape rs_input_shape = ShapeUtil::MakeShape(F32, {20});
+  const Shape rs_output_shape = ShapeUtil::MakeShape(F32, {10});
+
+  std::unique_ptr<HloComputation> add_computation;
+  {
+    const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
+    HloComputation::Builder add_builder("add");
+    HloInstruction* param0 = add_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    HloInstruction* param1 = add_builder.AddInstruction(
+        HloInstruction::CreateParameter(1, scalar_shape, "p1"));
+    add_builder.AddInstruction(HloInstruction::CreateBinary(
+        scalar_shape, HloOpcode::kAdd, param0, param1));
+    add_computation = add_builder.Build();
+  }
+
+  std::unique_ptr<HloComputation> main_computation;
+  HloComputation::Builder main_builder("Entry");
+  HloInstruction* param = main_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, rs_input_shape, "input"));
+  main_builder.AddInstruction(HloInstruction::CreateReduceScatter(
+      rs_output_shape, {param}, add_computation.get(), {}, false, std::nullopt,
+      false, 0));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(main_builder.Build());
+  module->AddEmbeddedComputation(std::move(add_computation));
+  // The only embedded computation in the graph should be pointing to
+  // the reduce-scatter instruction.
+  for (HloComputation* comp : module->MakeComputationPostOrder()) {
+    if (!comp->IsEntryComputation()) {
+      EXPECT_TRUE(comp->IsCollectiveCalledComputation());
+      EXPECT_EQ(comp->CollectiveCallInstruction(),
+                module->entry_computation()->root_instruction());
+    }
+  }
+}
+
+TEST_F(HloInstructionTest, VerifyToApplyRegionPointsToAllReduce) {
+  const Shape ar_input_shape = ShapeUtil::MakeShape(F32, {20});
+
+  std::unique_ptr<HloComputation> add_computation;
+  {
+    const Shape scalar_shape = ShapeUtil::MakeScalarShape(F32);
+    HloComputation::Builder add_builder("add");
+    HloInstruction* param0 = add_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    HloInstruction* param1 = add_builder.AddInstruction(
+        HloInstruction::CreateParameter(1, scalar_shape, "p1"));
+    add_builder.AddInstruction(HloInstruction::CreateBinary(
+        scalar_shape, HloOpcode::kAdd, param0, param1));
+    add_computation = add_builder.Build();
+  }
+
+  std::unique_ptr<HloComputation> main_computation;
+  HloComputation::Builder main_builder("Entry");
+  HloInstruction* param = main_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ar_input_shape, "input"));
+  main_builder.AddInstruction(HloInstruction::CreateAllReduce(
+      ar_input_shape, {param}, add_computation.get(), {}, false, std::nullopt,
+      false));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(main_builder.Build());
+  module->AddEmbeddedComputation(std::move(add_computation));
+  // The only embedded computation in the graph should be pointing to
+  // the all-reduce instruction.
+  for (HloComputation* comp : module->MakeComputationPostOrder()) {
+    if (!comp->IsEntryComputation()) {
+      EXPECT_TRUE(comp->IsCollectiveCalledComputation());
+      EXPECT_EQ(comp->CollectiveCallInstruction(),
+                module->entry_computation()->root_instruction());
+    }
+  }
+}
+
 }  // namespace
 }  // namespace xla
