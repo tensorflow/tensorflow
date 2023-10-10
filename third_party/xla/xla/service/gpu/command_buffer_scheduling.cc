@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/gpu/command_buffer_scheduling.h"
 
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/shape.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
@@ -237,44 +239,42 @@ StatusOr<bool> CommandBufferScheduling::Run(
   }
   HloComputation* entry = module->entry_computation();
   MoveParametersToFront(entry);
-  std::vector<HloInstruction*> instructions = entry->MakeInstructionPostOrder();
+  std::vector<HloInstructionSequence> sequences =
+      CollectCommandBufferSequences(module->schedule().sequence(entry));
 
-  // TODO(anlunx): Add support for multiple fusion instructions.
-  // TODO(anlunx): Add support for conditionals and while loops.
-  for (HloInstruction* instruction : instructions) {
-    if (instruction->opcode() != HloOpcode::kFusion) {
-      continue;
+  for (const HloInstructionSequence& seq : sequences) {
+    TF_ASSIGN_OR_RETURN(BuildCommandBufferResult result,
+                        BuildCommandBuffer(seq));
+
+    Shape shape;
+    shape.set_element_type(TUPLE);
+    shape.mutable_tuple_shapes()->resize(result.inst_to_tuple_index_map.size());
+    for (const auto [inst, index] : result.inst_to_tuple_index_map) {
+      shape.mutable_tuple_shapes()->at(index) = inst->shape();
     }
 
-    auto* fusion = static_cast<HloFusionInstruction*>(instruction);
-    auto builder = HloComputation::Builder("command_buffer");
-
-    // Create parameters to the command buffer computation.
-    std::vector<HloInstruction*> parameters;
-    for (int64_t i = 0; i < fusion->operand_count(); i++) {
-      const HloInstruction* operand = fusion->operand(i);
-      TF_ASSIGN_OR_RETURN(HloInstruction * parameter,
-                          builder.AddParameter(HloInstruction::CreateParameter(
-                              i, operand->shape(), "param")));
-      parameters.push_back(parameter);
+    std::vector<HloInstruction*> operands(result.parameters_map.size());
+    for (const auto [inst, parameter] : result.parameters_map) {
+      operands[parameter->parameter_number()] = inst;
     }
-
-    // Create the fusion instruction inside the command buffer.
-    builder.AddInstruction(HloInstruction::CreateFusion(
-        fusion->shape(), fusion->fusion_kind(), parameters,
-        fusion->fused_instructions_computation()));
 
     HloComputation* command_buffer =
-        module->AddComputationAndUnifyNamesAndIds(builder.Build(),
+        module->AddComputationAndUnifyNamesAndIds(std::move(result.computation),
                                                   /*is_entry=*/false);
+    HloInstruction* call_command_buffer = entry->AddInstruction(
+        HloInstruction::CreateCall(shape, operands, command_buffer));
 
-    // Replace the fusion instruction with a call to the command buffer.
-    HloInstruction* call_command_buffer =
-        entry->AddInstruction(HloInstruction::CreateCall(
-            fusion->shape(), fusion->operands(), command_buffer));
-    TF_RETURN_IF_ERROR(call_command_buffer->CopyAllControlDepsFrom(fusion));
-    TF_RETURN_IF_ERROR(fusion->DropAllControlDeps());
-    TF_RETURN_IF_ERROR(entry->ReplaceInstruction(fusion, call_command_buffer));
+    std::vector<HloInstruction*> results(result.inst_to_tuple_index_map.size());
+    for (int i = 0; i < result.inst_to_tuple_index_map.size(); i++) {
+      results[i] = entry->AddInstruction(
+          HloInstruction::CreateGetTupleElement(call_command_buffer, i));
+    }
+
+    for (HloInstruction* inst : seq.instructions()) {
+      int64_t tuple_index = result.inst_to_tuple_index_map[inst];
+      TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(results[tuple_index]));
+      TF_RETURN_IF_ERROR(entry->RemoveInstruction(inst));
+    }
   }
 
   TF_RETURN_IF_ERROR(module->schedule().Update());

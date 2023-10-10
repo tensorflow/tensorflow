@@ -2523,6 +2523,7 @@ cc_library(
     hdrs = ["command_buffer_scheduling.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//xla:shape_util",
         "//xla:statusor",
         "//xla:util",
         "//xla/hlo/ir:hlo",
