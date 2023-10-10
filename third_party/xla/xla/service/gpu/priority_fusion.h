@@ -45,6 +45,8 @@ class GpuPriorityFusion : public InstructionFusion {
         device_info_(d),
         cost_analysis_options_(cost_analysis_options) {}
 
+  absl::string_view name() const override { return "priority-fusion"; }
+
   static bool IsExpensive(const HloInstruction& instruction);
 
  protected:
