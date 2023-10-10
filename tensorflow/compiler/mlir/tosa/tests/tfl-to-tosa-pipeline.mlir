@@ -2439,32 +2439,32 @@ func.func @sparse_to_dense(%arg0 : tensor<?x2xi64>, %arg1 : tensor<?xi64>) -> (t
 // -----
 
 // CHECK-LABEL: @test_arg_max
-func.func @test_arg_max(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
+func.func @test_arg_max(%arg0: tensor<13x21x3xf32>) -> tensor<*xi32> {
   // CHECK: %[[ARGMAX:.+]] = tosa.argmax %arg0 {axis = 1 : i32}
   %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-  %1 = "tfl.arg_max"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<*xf32>
-  func.return %1 : tensor<*xf32>
+  %1 = "tfl.arg_max"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<*xi32>
+  func.return %1 : tensor<*xi32>
 }
 
 // -----
 
 // CHECK-LABEL: @test_arg_max_negative_dim
-func.func @test_arg_max_negative_dim(%arg0: tensor<13x21x3xf32>) -> tensor<13x21xf32> {
+func.func @test_arg_max_negative_dim(%arg0: tensor<13x21x3xf32>) -> tensor<13x21xi32> {
   // CHECK: %[[ARGMAX:.+]] = tosa.argmax %arg0 {axis = 2 : i32}
   %0 = "tfl.pseudo_const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
-  %1 = "tfl.arg_max"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<13x21xf32>
-  func.return %1 : tensor<13x21xf32>
+  %1 = "tfl.arg_max"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<13x21xi32>
+  func.return %1 : tensor<13x21xi32>
 }
 
 // -----
 
 // CHECK-LABEL: @test_arg_min_f32
-func.func @test_arg_min_f32(%arg0: tensor<13x21x3xf32>) -> tensor<*xf32> {
+func.func @test_arg_min_f32(%arg0: tensor<13x21x3xf32>) -> tensor<*xi32> {
   // CHECK: %[[NEG:.+]] = tosa.negate %arg0 : (tensor<13x21x3xf32>) -> tensor<13x21x3xf32>
   // CHECK: tosa.argmax %[[NEG]] {axis = 1 : i32}
   %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-  %1 = "tfl.arg_min"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<*xf32>
-  func.return %1 : tensor<*xf32>
+  %1 = "tfl.arg_min"(%arg0, %0) : (tensor<13x21x3xf32>, tensor<i32>) -> tensor<*xi32>
+  func.return %1 : tensor<*xi32>
 }
 
 // -----
