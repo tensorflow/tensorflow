@@ -73,11 +73,11 @@ class ConcretePerOpGpuDevice : public PerOpGpuDevice {
  public:
   ConcretePerOpGpuDevice();
 
-  void Reinitialize(OpKernelContext* context, const void* gpu_stream,
+  void Reinitialize(OpKernelContext* context, void* gpu_stream,
                     tsl::TfDeviceId tf_device_id, Allocator* base_allocator,
                     char* scratch);
 
-  void Reinitialize(OpKernelContext* context, const void* gpu_stream,
+  void Reinitialize(OpKernelContext* context, void* gpu_stream,
                     tsl::PlatformDeviceId platform_device_id,
                     Allocator* base_allocator, char* scratch);
 

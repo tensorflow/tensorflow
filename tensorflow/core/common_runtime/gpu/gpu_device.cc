@@ -152,6 +152,9 @@ using se::rocm::ScopedActivateExecutorContext;
 
 #endif
 
+static_assert(std::is_pointer_v<gpuStream_t>,
+              "Gpu stream handle must be a pointer");
+
 // Eigen Ops directly allocate memory only for temporary buffers used
 // during OpKernel::Compute().  The recommended way of allocating such
 // memory is via OpKernelContext::allocate_temp().  However, Eigen Ops
@@ -168,7 +171,7 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
         device_(this) {}
   ~EigenGpuStreamDevice() override {}
 
-  void Reinitialize(OpKernelContext* context, const gpuStream_t* gpu_stream,
+  void Reinitialize(OpKernelContext* context, gpuStream_t gpu_stream,
                     tsl::PlatformDeviceId platform_device_id,
                     ::tensorflow::Allocator* alloc, char* scratch) {
     if (LogMemory::IsEnabled()) {
@@ -184,7 +187,7 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
     device_prop_ = &Eigen::GetGpuDeviceProperties(platform_device_id.value());
   }
 
-  const gpuStream_t& stream() const override { return *stream_; }
+  const gpuStream_t& stream() const override { return stream_; }
   const gpuDeviceProp_t& deviceProperties() const override {
     return *device_prop_;
   }
@@ -216,10 +219,10 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
     AsyncFreeData* afData =
         new AsyncFreeData(allocator_, buffer, operation_, step_id_);
 #if GOOGLE_CUDA
-    cudaError_t err = cudaStreamAddCallback(*stream_, asyncLogFree, afData, 0);
+    cudaError_t err = cudaStreamAddCallback(stream_, asyncLogFree, afData, 0);
     CHECK_EQ(err, cudaSuccess);
 #elif TENSORFLOW_USE_ROCM
-    hipError_t err = hipStreamAddCallback(*stream_, asyncLogFree, afData, 0);
+    hipError_t err = hipStreamAddCallback(stream_, asyncLogFree, afData, 0);
     CHECK_EQ(err, hipSuccess);
 #endif
     allocator_->DeallocateRaw(buffer);
@@ -266,7 +269,7 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
 
   string operation_;
   int64_t step_id_;
-  const gpuStream_t* stream_;           // Not owned.
+  gpuStream_t stream_;                  // Not owned.
   const gpuDeviceProp_t* device_prop_;  // Not owned.
   ::tensorflow::Allocator* allocator_;  // Not owned.
   mutable char* scratch_;
@@ -1008,7 +1011,7 @@ ConcretePerOpGpuDevice::ConcretePerOpGpuDevice()
     : stream_device_(std::make_unique<EigenGpuStreamDevice>()) {}
 
 void ConcretePerOpGpuDevice::Reinitialize(OpKernelContext* context,
-                                          const void* gpu_stream,
+                                          void* gpu_stream,
                                           tsl::TfDeviceId tf_device_id,
                                           Allocator* base_allocator,
                                           char* scratch) {
@@ -1016,16 +1019,16 @@ void ConcretePerOpGpuDevice::Reinitialize(OpKernelContext* context,
   TF_CHECK_OK(
       GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id));
   static_cast<EigenGpuStreamDevice*>(stream_device_.get())
-      ->Reinitialize(context, static_cast<const gpuStream_t*>(gpu_stream),
+      ->Reinitialize(context, static_cast<gpuStream_t>(gpu_stream),
                      platform_device_id, base_allocator, scratch);
 }
 
 void ConcretePerOpGpuDevice::Reinitialize(
-    OpKernelContext* context, const void* gpu_stream,
+    OpKernelContext* context, void* gpu_stream,
     tsl::PlatformDeviceId platform_device_id, Allocator* base_allocator,
     char* scratch) {
   static_cast<EigenGpuStreamDevice*>(stream_device_.get())
-      ->Reinitialize(context, static_cast<const gpuStream_t*>(gpu_stream),
+      ->Reinitialize(context, static_cast<gpuStream_t>(gpu_stream),
                      platform_device_id, base_allocator, scratch);
 }
 
@@ -1279,8 +1282,8 @@ void BaseGPUDevice::ReinitializeDevice(OpKernelContext* context,
       static_cast<ConcretePerOpGpuDevice*>(device);
   DCHECK(concrete_device);
   DCHECK_EQ(stream_id, 0);
-  const gpuStream_t* gpu_stream = reinterpret_cast<const gpuStream_t*>(
-      stream_->compute->implementation()->GpuStreamMemberHack());
+  const gpuStream_t gpu_stream = reinterpret_cast<gpuStream_t>(
+      stream_->compute->platform_specific_handle().stream);
   concrete_device->Reinitialize(context, gpu_stream, tf_device_id_, allocator,
                                 scratch_);
 }
