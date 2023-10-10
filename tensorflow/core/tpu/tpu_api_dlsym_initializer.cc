@@ -63,9 +63,9 @@ absl::Status InitializeTpuLibrary(void* library_handle) {
   // loaded. We do not want to register a TPU platform in XLA without the
   // supporting library providing the necessary APIs.
   if (s.ok()) {
-    auto initialize_fn =
-        reinterpret_cast<std::function<void(bool, int, const char**)>*>(
-            dlsym(library_handle, "TfTpu_Initialize"));
+    void (*initialize_fn)(bool init_library, int num_args, const char** args);
+    initialize_fn = reinterpret_cast<decltype(initialize_fn)>(
+        dlsym(library_handle, "TfTpu_Initialize"));
     (*initialize_fn)(/*init_library=*/true, args.second.size(),
                      args.second.data());
 
