@@ -191,3 +191,37 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+cc_library(
+    name = "sparse_core_ops",
+    srcs = [
+        "sparse_core_ops.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/tpu:tpu_embedding_optimization_parameters_utils",
+        "//tensorflow/core/tpu/ops:tpu_compile_op",
+        "//tensorflow/core/tpu/ops:tpu_embedding_ops",
+        "//tensorflow/core/tpu/ops:tpu_execute_op",
+        "//tensorflow/core/tpu/ops:tpu_handle_to_key_op",
+        "//tensorflow/core/tpu/ops:tpu_partitioned_ops",
+        "//tensorflow/core/tpu/ops:tpu_round_robin_op",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "tpu_copy_with_dynamic_shape_op",
+    srcs = [
+        "tpu_copy_with_dynamic_shape_op.cc",
+    ],
+    deps = [
+        "//tensorflow/core/framework:op",
+        "//tensorflow/core/framework:shape_inference",
+        "//tensorflow/core/lib/core:status",
+    ],
+    alwayslink = 1,
+)

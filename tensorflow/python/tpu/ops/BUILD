@@ -40,3 +40,33 @@ tf_gen_op_wrapper_py(
         "//tensorflow/core/tpu/ops:tpu_embedding_ops",
     ],
 )
+
+tf_gen_op_wrapper_py(
+    name = "gen_xla_ops",
+    out = "gen_xla_ops.py",
+    op_allowlist = [
+        "ConvertToCooTensor",
+        "GetMinibatchesInCsrWithPhysicalReplica",
+        "GetMinibatchSplitsWithPhysicalReplica",
+        "TPUCopyWithDynamicShape",
+        "TPUAnnotateTensorsWithDynamicShape",
+        "XlaSparseDenseMatmul",
+        "XlaSparseDenseMatmulWithCsrInput",
+        "XlaSparseDenseMatmulGrad",
+        "XlaSparseDenseMatmulGradWithSgdAndCsrInput",
+        "XlaSparseDenseMatmulGradWithAdagradAndCsrInput",
+        "XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInput",
+        "XlaSparseDenseMatmulGradWithAdamAndCsrInput",
+        "XlaSparseDenseMatmulGradWithFtrlAndCsrInput",
+        "XlaSparseCoreSgd",
+        "XlaSparseCoreAdagrad",
+        "XlaSparseCoreAdagradMomentum",
+        "XlaSparseCoreAdam",
+        "XlaSparseCoreFtrl",
+    ],
+    deps = [
+        "//tensorflow/core/tpu/ops:sparse_core_ops",
+        "//tensorflow/core/tpu/ops:sparse_core_preprocess_ops",
+        "//tensorflow/core/tpu/ops:tpu_copy_with_dynamic_shape_op",
+    ],
+)
