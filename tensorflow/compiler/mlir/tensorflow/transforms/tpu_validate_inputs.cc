@@ -12,23 +12,32 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <bitset>
 #include <functional>
+#include <ios>
 #include <memory>
+#include <optional>
+#include <queue>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 
 #include "absl/strings/match.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
+#include "xla/client/sharding_builder.h"
+#include "xla/xla_data.pb.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -37,6 +46,9 @@ namespace {
 
 #define GEN_PASS_DEF_TPUVALIDATEINPUTSPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
+constexpr char kXLAShardingAttr[] = "_XlaSharding";
+constexpr char kShardingAttr[] = "sharding";
 
 typedef std::unordered_map<std::string, TF::TPUReplicateMetadataOp> MetadataMap;
 
@@ -421,6 +433,110 @@ bool ValidateIntersectionXlaNonXlaOps(Operation* op, MetadataMap metadata_map) {
   }
   return true;
 }
+void GetFlattenedShardings(llvm::SmallVector<xla::OpSharding>& shardings_result,
+                           std::string shard_string) {
+  xla::OpSharding sharding;
+  if (shard_string.empty()) return;
+  if (!sharding.ParseFromString(shard_string)) return;
+  std::queue<xla::OpSharding> shardings;
+  shardings.push(sharding);
+  while (!shardings.empty()) {
+    auto sharding_next = shardings.front();
+    shardings.pop();
+    if (sharding_next.type() == xla::OpSharding::TUPLE) {
+      for (auto& child_sharding : sharding_next.tuple_shardings()) {
+        shardings.push(child_sharding);
+      }
+    } else {
+      shardings_result.push_back(sharding_next);
+    }
+  }
+}
+
+bool IsValidShardingTupleForArity(Operation* op) {
+  if (!op->hasAttr(kXLAShardingAttr) && !op->hasAttr(kShardingAttr)) {
+    return true;
+  }
+  std::string shard_string;
+  if (op->hasAttr(kXLAShardingAttr)) {
+    shard_string =
+        op->getAttrOfType<StringAttr>(kXLAShardingAttr).strref().str();
+  } else {
+    shard_string = op->getAttrOfType<StringAttr>(kShardingAttr).strref().str();
+  }
+  xla::OpSharding sharding;
+  if (!shard_string.empty() && sharding.ParseFromString(shard_string)) {
+    // Only checking op with TUPLE sharding
+    if (sharding.type() != xla::OpSharding::TUPLE) {
+      return true;
+    }
+    // Each output is expected to have a corresponding sharding given by
+    // tuple shardings. So, the no. of outputs (arity) should be same as
+    // number of tuple shardings.
+    if (sharding.tuple_shardings().size() != op->getNumResults()) {
+      op->emitOpError(
+          "TF2XLA TPU bridge input check: invalid no. of tuple shardings ")
+          << sharding.tuple_shardings().size()
+          << " for arity = " << op->getNumResults() << "\n The sharding is "
+          << sharding.DebugString() << "\n";
+      return false;
+    }
+  }
+  return true;
+}
+
+bool IsValidMAXIMALSharding(Operation* op, MetadataMap& metadata_map) {
+  if (!op->hasAttr(TF::kTpuReplicateAttr)) return true;
+  if (!op->hasAttr(kXLAShardingAttr) && !op->hasAttr(kShardingAttr)) {
+    return true;
+  }
+
+  int num_cores_per_replica;
+  // Assuming that the op is a IsTpuRegularOp and has a cluster metadata
+  // for it. These checks are already performed in CheckOpsClusterIO.
+  // Also assuming that if there is sharding, then there must be
+  // cluster and the metadata corresponding to it.
+  auto cluster = op->getAttrOfType<StringAttr>(TF::kTpuReplicateAttr).str();
+  if (cluster.empty()) {
+    return true;
+  }
+  if (metadata_map.find(cluster) == metadata_map.end()) {
+    return true;
+  }
+  num_cores_per_replica = metadata_map[cluster].getNumCoresPerReplica();
+  std::optional<StringRef> shard_string;
+  if (op->hasAttr(kXLAShardingAttr)) {
+    shard_string = op->getAttrOfType<StringAttr>(kXLAShardingAttr).strref();
+  } else {
+    shard_string = op->getAttrOfType<StringAttr>(kShardingAttr).strref();
+  }
+  llvm::SmallVector<xla::OpSharding> shardings;
+  GetFlattenedShardings(shardings, shard_string.value().str());
+
+  for (auto& sharding : shardings) {
+    if (sharding.type() != xla::OpSharding::MAXIMAL) {
+      continue;
+    }
+    if (sharding.tile_assignment_devices_size() != 1) {
+      op->emitOpError("TF/XLA TPU bridge input check: There must be ")
+          << "exactly 1 device for MAXIMAL sharding."
+          << " Number of devices assigned are "
+          << sharding.tile_assignment_devices_size() << "\n";
+      return false;
+    } else {
+      int sharding_device = sharding.tile_assignment_devices(0);
+      if (sharding_device >= num_cores_per_replica || sharding_device < 0) {
+        op->emitOpError(
+            "TF2XLA TPU bridge input check: invalid sharding device ")
+            << sharding_device
+            << " for num_cores_per_replica = " << num_cores_per_replica
+            << "\n The sharding is " << sharding.DebugString() << "\n";
+        return false;
+      }
+    }
+  }
+  return true;
+}
 
 void TPUValidateInputsPass::runOnOperation() {
   ModuleOp module = getOperation();
@@ -441,6 +557,10 @@ void TPUValidateInputsPass::runOnOperation() {
     }
     if (IsIntersectionXlaNonXlaOps(op)) {
       success &= ValidateIntersectionXlaNonXlaOps(op, metadata_map);
+    }
+    if (IsTpuRegularOp(op)) {
+      success &= IsValidMAXIMALSharding(op, metadata_map);
+      success &= IsValidShardingTupleForArity(op);
     }
   });
   if (!success) {

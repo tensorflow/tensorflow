@@ -22,20 +22,27 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {
 
 static bool Initialized = [] {
+  auto& rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
+  rollout_config.enabled_for_xla_launch_ = true;
+  rollout_config.enabled_for_compile_on_demand_ = true;
+
   tensorflow::GetXlaDeviceFlags()->tf_xla_enable_xla_devices = true;
-  tensorflow::GetXlaOpsCommonFlags()->tf_xla_use_device_api = true;
   return true;
 }();
 
 class DeviceContextTest : public ::testing::Test {
  public:
   void SetDevice(const string& device_type) {
+    auto& rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
+    rollout_config.AllowForDeviceInXlaLaunch(DeviceType(device_type));
+    rollout_config.AllowForDeviceInXlaCompileOnDemand(DeviceType(device_type));
+
     auto device_factory = DeviceFactory::GetFactory(device_type);
     SessionOptions options;
     std::vector<std::unique_ptr<Device>> devices;

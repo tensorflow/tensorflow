@@ -42,8 +42,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
-#include "tensorflow/compiler/xla/client/sharding_builder.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/sharding_builder.h"
+#include "xla/xla_data.pb.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -108,7 +108,7 @@ std::optional<StringRef> GetXlaShardingFromOperator(mlir::Operation* op) {
 }
 
 // Returns the sharding string from a op-sharding variant if it is available.
-llvm::Optional<StringRef> GetShardingStringFromVariant(
+std::optional<StringRef> GetShardingStringFromVariant(
     const OpShardingVariant& sharding_or_op) {
   return std::visit(
       [](auto&& sharding_or_op) -> std::optional<StringRef> {
@@ -123,15 +123,17 @@ llvm::Optional<StringRef> GetShardingStringFromVariant(
 }
 
 // Returns the sharding from a op-sharding variant if it is available and valid.
-llvm::Optional<xla::OpSharding> GetShardingFromVariant(
+std::optional<xla::OpSharding> GetShardingFromVariant(
     const OpShardingVariant& sharding_or_op) {
   xla::OpSharding sharding;
   const auto sharding_string = GetShardingStringFromVariant(sharding_or_op);
-  if (sharding_string && sharding.ParseFromString(sharding_string->str())) {
-    return sharding;
-  } else {
+  if (!sharding_string) return std::nullopt;
+  if (tensorflow::DecodeShardingAttribute(sharding_string->str(), sharding,
+                                          false)
+          .failed()) {
     return std::nullopt;
   }
+  return sharding;
 }
 
 // Converts an op-sharding vector into a string attr using the builder.

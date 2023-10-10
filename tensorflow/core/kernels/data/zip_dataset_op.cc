@@ -227,7 +227,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(kInputImplsEmpty),
+          writer->WriteScalar(prefix(), kInputImplsEmpty,
                               static_cast<int64_t>(input_impls_.empty())));
       for (auto& input_impl : input_impls_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl));
@@ -240,7 +240,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       int64_t inputs_empty;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(full_name(kInputImplsEmpty), &inputs_empty));
+          reader->ReadScalar(prefix(), kInputImplsEmpty, &inputs_empty));
       if (static_cast<bool>(inputs_empty)) {
         input_impls_.clear();
       } else {

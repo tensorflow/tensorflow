@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_BASE_RENDEZVOUS_MGR_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_BASE_RENDEZVOUS_MGR_H_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -24,6 +25,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/common_runtime/eager/rendezvous_cache.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
@@ -38,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/refcount.h"
 
 namespace tensorflow {
 
@@ -90,32 +93,25 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
                    Tensor* val, bool* is_dead) override;
 
   // Removes rendezvous for "step_id".
-  //
-  // TODO(zhifengc): Have a background thread in worker that
-  // periodically calls CleanupAll().
-  void Cleanup(int64_t step_id) override;
+  void Cleanup(int64_t step_id) override { cache_->RemoveAndAbort(step_id); }
 
   // Remove all rendezvous instances owned by the rendezvous_mgr.
-  void CleanupAll() override;
+  void CleanupAll() override { cache_->RemoveAll(); }
 
  protected:
   virtual tsl::core::RefCountPtr<BaseRemoteRendezvous> Create(
       int64_t step_id, const WorkerEnv* worker_env) = 0;
 
  private:
-  // Maps step_id to rendezvous.
-  typedef absl::flat_hash_map<int64_t, tsl::core::WeakPtr<BaseRemoteRendezvous>>
-      Table;
+  tsl::core::RefCountPtr<RendezvousCache<BaseRemoteRendezvous>> cache_;
 
   // Not owned.
   const WorkerEnv* const worker_env_;
 
-  mutex mu_;
-  Table table_ TF_GUARDED_BY(mu_);
-
   tsl::core::RefCountPtr<BaseRemoteRendezvous> FindOrCreate(int64_t step_id);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BaseRendezvousMgr);
+  BaseRendezvousMgr(const BaseRendezvousMgr&) = delete;
+  void operator=(const BaseRendezvousMgr&) = delete;
 };
 
 // RemoteRendezvous is a Rendezvous which can handle either
@@ -211,6 +207,8 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   struct DeferredCall {
     const ParsedKey parsed;
     DoneCallback done;
+
+    // Keeps a reference to the rendezvous, to keep it alive.
     tsl::core::RefCountPtr<Rendezvous> rendezvous;
 
     DeferredCall(const ParsedKey& parsed, DoneCallback done,
@@ -225,11 +223,18 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   };
 
   struct PendingCalls {
-    PendingCalls(CancellationToken token, int num_calls, int num_buckets)
-        : token(token), num_calls(num_calls), buckets(num_buckets) {}
+    PendingCalls(CancellationToken token, int num_calls, int num_buckets,
+                 tsl::core::RefCountPtr<Rendezvous> rendez)
+        : token(token),
+          num_calls(num_calls),
+          buckets(num_buckets),
+          rendezvous(std::move(rendez)) {}
     CancellationToken token = CancellationManager::kInvalidToken;
     std::atomic<int> num_calls = 0;
     std::vector<CallBucket> buckets;
+
+    // Keeps a reference to the rendezvous, to keep it alive.
+    tsl::core::RefCountPtr<Rendezvous> rendezvous;
   };
 
   // "CancellationToken" is stored here so that when there's no active
@@ -266,7 +271,8 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   // Must be called only if fully initialized.
   void RecvLocalAsyncInternal(const ParsedKey& parsed, DoneCallback done);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BaseRemoteRendezvous);
+  BaseRemoteRendezvous(const BaseRemoteRendezvous&) = delete;
+  void operator=(const BaseRemoteRendezvous&) = delete;
 };
 
 class BaseRecvTensorCall {
@@ -281,7 +287,8 @@ class BaseRecvTensorCall {
   virtual Status status() const = 0;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(BaseRecvTensorCall);
+  BaseRecvTensorCall(const BaseRecvTensorCall&) = delete;
+  void operator=(const BaseRecvTensorCall&) = delete;
 };
 
 }  // end namespace tensorflow

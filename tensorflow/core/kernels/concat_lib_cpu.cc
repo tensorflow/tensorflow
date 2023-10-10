@@ -16,7 +16,9 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/concat_lib_cpu.h"
+
 #include <vector>
+
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/concat_lib.h"
 
@@ -111,18 +113,15 @@ void ConcatCPU(
       const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&, \
       typename TTypes<T, 2>::Matrix* output);
 TF_CALL_ALL_TYPES(REGISTER)
-REGISTER(quint8)
-REGISTER(qint8)
-REGISTER(quint16)
-REGISTER(qint16)
-REGISTER(qint32)
+TF_CALL_float8_e5m2(REGISTER) TF_CALL_float8_e4m3fn(REGISTER) REGISTER(quint8)
+    REGISTER(qint8) REGISTER(quint16) REGISTER(qint16) REGISTER(qint32)
 
 #if defined(IS_MOBILE_PLATFORM) && !defined(SUPPORT_SELECTIVE_REGISTRATION) && \
     !defined(__ANDROID_TYPES_FULL__)
-// Primarily used for SavedModel support on mobile. Registering it here only
-// if __ANDROID_TYPES_FULL__ is not defined (which already registers string)
-// to avoid duplicate registration.
-REGISTER(tstring);
+    // Primarily used for SavedModel support on mobile. Registering it here only
+    // if __ANDROID_TYPES_FULL__ is not defined (which already registers string)
+    // to avoid duplicate registration.
+    REGISTER(tstring);
 #endif  // defined(IS_MOBILE_PLATFORM) &&
         // !defined(SUPPORT_SELECTIVE_REGISTRATION) &&
         // !defined(__ANDROID_TYPES_FULL__)

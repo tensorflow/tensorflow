@@ -843,7 +843,6 @@ tf_py_test(
     srcs_version = "PY3",
     tags = [
         "no_mac",  # TODO(b/216321151): Re-enable this test.
-        "no_pip",
     ],
     deps = [
         ":simple_hash_table",

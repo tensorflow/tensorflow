@@ -36,12 +36,6 @@ enum TensorType {
   kSparse = 2,
 };
 
-struct EmbeddingResourceAttrs {
-  int64_t table_id;
-  std::optional<int64_t> slot_id;  // NOLINT
-  bool is_dirty = false;
-};
-
 class ConstValueNode {
  public:
   explicit ConstValueNode(std::optional<NodeDef> const_value)
@@ -129,7 +123,7 @@ class TensorWithLayout
   virtual std::string DebugString() const = 0;
 
   // Gets the mesh for the tensors.
-  virtual const Mesh& mesh() const = 0;
+  const Mesh& mesh() const { return layout().mesh(); }
 
   // Computes global shape from layout & local tensor shape.
   //

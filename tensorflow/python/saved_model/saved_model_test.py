@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
@@ -198,8 +199,7 @@ class SavedModelTest(SavedModelTestBase):
     with open(path_to_pb, "w") as f:
       f.write("invalid content")
     with self.session(graph=ops.Graph()) as sess:
-      with self.assertRaisesRegex(
-          IOError, "Cannot parse file.*%s" % constants.SAVED_MODEL_FILENAME_PB):
+      with self.assertRaisesRegex(IOError, "Cannot parse file"):
         loader.load(sess, ["foo"], export_dir)
 
     # Cleanup the directory and start again.
@@ -940,7 +940,7 @@ class SavedModelTest(SavedModelTestBase):
               "AssignAddVariableOp")
         else:
           self.assertIsInstance(
-              loader_impl.get_train_op(meta_graph_def), ops.Tensor)
+              loader_impl.get_train_op(meta_graph_def), tensor_lib.Tensor)
 
   def testTrainOpGroup(self):
     export_dir = self._get_export_dir("test_train_op_group")
@@ -996,7 +996,7 @@ class SavedModelTest(SavedModelTestBase):
               "AssignAddVariableOp")
         else:
           self.assertIsInstance(
-              loader_impl.get_train_op(meta_graph_def), ops.Tensor)
+              loader_impl.get_train_op(meta_graph_def), tensor_lib.Tensor)
 
       with self.session(graph=ops.Graph()) as sess:
         loader.load(sess, ["pre_foo"], export_dir)

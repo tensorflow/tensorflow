@@ -152,4 +152,34 @@ TEST(GPUCompatibility, CreationWithNullCompatibilityListFlatbuffer) {
   EXPECT_EQ(list, nullptr);
 }
 
+TEST(GPUCompatibility, ConvertCompatibilityStatusToStringCorrectly) {
+  EXPECT_EQ(
+      tflite::acceleration::GPUCompatibilityList::CompatibilityStatusToString(
+          tflite::acceleration::gpu::CompatibilityStatus::kSupported),
+      tflite::acceleration::gpu::kStatusSupported);
+  EXPECT_EQ(
+      tflite::acceleration::GPUCompatibilityList::CompatibilityStatusToString(
+          tflite::acceleration::gpu::CompatibilityStatus::kUnsupported),
+      tflite::acceleration::gpu::kStatusUnsupported);
+  EXPECT_EQ(
+      tflite::acceleration::GPUCompatibilityList::CompatibilityStatusToString(
+          tflite::acceleration::gpu::CompatibilityStatus::kUnknown),
+      tflite::acceleration::gpu::kStatusUnknown);
+}
+
+TEST(GPUCompatibility, ConvertStringToCompatibilityStatusCorrectly) {
+  EXPECT_EQ(
+      tflite::acceleration::GPUCompatibilityList::StringToCompatibilityStatus(
+          tflite::acceleration::gpu::kStatusSupported),
+      tflite::acceleration::gpu::CompatibilityStatus::kSupported);
+  EXPECT_EQ(
+      tflite::acceleration::GPUCompatibilityList::StringToCompatibilityStatus(
+          tflite::acceleration::gpu::kStatusUnsupported),
+      tflite::acceleration::gpu::CompatibilityStatus::kUnsupported);
+  EXPECT_EQ(
+      tflite::acceleration::GPUCompatibilityList::StringToCompatibilityStatus(
+          tflite::acceleration::gpu::kStatusUnknown),
+      tflite::acceleration::gpu::CompatibilityStatus::kUnknown);
+}
+
 }  // namespace

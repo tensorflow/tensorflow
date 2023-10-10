@@ -17,6 +17,9 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_tensor.h"
 
+#include <memory>
+#include <utility>
+
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/c/tensor_interface.h"
@@ -49,7 +52,6 @@ using tfrt::HostBuffer;
 using tfrt::HostContext;
 using tfrt::RCReference;
 using tfrt::StringHostTensor;
-using tfrt::Tensor;
 using tfrt::TensorMetadata;
 using tfrt::TensorShape;
 
@@ -150,7 +152,7 @@ CreateRuntimeFallbackTensorFromTfTensorHandle(OwnedTensorHandle owned_th,
   tensorflow::Status status = owned_th->NumDims(&rank);
   if (!status.ok())
     return tfrt::MakeStringError(tfrt::StrCat(
-        "error getting rank from TF tensor handle: ", status.error_message()));
+        "error getting rank from TF tensor handle: ", status.message()));
 
   llvm::SmallVector<tfrt::Index, 4> dims;
   for (auto i = 0; i < rank; ++i) {
@@ -159,7 +161,7 @@ CreateRuntimeFallbackTensorFromTfTensorHandle(OwnedTensorHandle owned_th,
     if (!status.ok())
       return tfrt::MakeStringError(
           tfrt::StrCat("error getting dimension from TFE tensor handle: ",
-                       status.error_message()));
+                       status.message()));
     dims.push_back(dim);
   }
 

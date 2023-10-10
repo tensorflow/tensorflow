@@ -22,8 +22,9 @@ limitations under the License.
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
-#include "tensorflow/compiler/xla/c/c_api_decl.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/c/c_api_decl.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
+#include "xla/stream_executor/tpu/c_api_decl.h"
 
 #define TFNPD_MAJOR 0
 #define TFNPD_MINOR 0
@@ -90,6 +91,10 @@ typedef TFNPD_DeviceEvent* TFNPD_HostTensorToDeviceTensor(
 typedef TFNPD_DeviceEvent* TFNPD_SameDeviceTensorCopy(
     TFNPD_DeviceContext* context);
 
+typedef PJRT_Buffer* TFNPD_SameDevicePjRtBufferCopy(PJRT_Buffer* src_buffer,
+                                                    PJRT_Client* c_client,
+                                                    TF_Status* status);
+
 typedef void TFNPD_DeviceContextDelete(TFNPD_DeviceContext* context);
 
 // ------------------------------  TF2XLA  -------------------------------------
@@ -134,6 +139,7 @@ typedef struct {
   TFNPD_API_STRUCT_FN(TFNPD_DeviceTensorToHostTensor);
   TFNPD_API_STRUCT_FN(TFNPD_HostTensorToDeviceTensor);
   TFNPD_API_STRUCT_FN(TFNPD_SameDeviceTensorCopy);
+  TFNPD_API_STRUCT_FN(TFNPD_SameDevicePjRtBufferCopy);
 
   TFNPD_API_STRUCT_FN(TFNPD_XlaShapeToDeviceShapeRepresentation);
 
@@ -152,9 +158,14 @@ typedef struct TFNPD_PluginParams {
 
   const char* device_type;              // output, set by plugin
   const char* compilation_device_name;  // output, set by plugin
+  int32_t priority;                     // output, set by plugin
+  // Certain devices may set this one to false to avoid using device copy logic
+  // implemented for legacy PluggableDevice.
+  bool is_pluggable_device;         // output, set by plugin
+  bool use_pjrt_on_demand_compile;  // output, set by plugin
 } TFNPD_PluginParams;
 const size_t TFNPD_PLUGIN_PARAMS_STRUCT_SIZE =
-    TF_OFFSET_OF_END(TFNPD_PluginParams, compilation_device_name);
+    TF_OFFSET_OF_END(TFNPD_PluginParams, is_pluggable_device);
 const TFNPD_Api* TFNPD_InitPlugin(TFNPD_PluginParams* params,
                                   TF_Status* tf_status);
 

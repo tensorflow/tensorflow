@@ -31,6 +31,18 @@ namespace xnnpack {
 
 class TransposeConvTester {
  public:
+  enum class WeightsType {
+    kFP32,
+    kFP16,
+    kTensorWiseQuantizedInt8,
+    kChannelWiseQuantizedInt8,
+  };
+  enum class BiasType {
+    kNone,
+    kFP32,
+    kFP16,
+  };
+
   TransposeConvTester() = default;
   TransposeConvTester(const TransposeConvTester&) = delete;
   TransposeConvTester& operator=(const TransposeConvTester&) = delete;
@@ -108,26 +120,23 @@ class TransposeConvTester {
   inline int32_t StrideWidth() const { return stride_width_; }
 
   inline TransposeConvTester& FP16Weights() {
-    fp16_weights_ = true;
+    weights_type_ = WeightsType::kFP16;
+    bias_type_ = BiasType::kFP16;
     return *this;
   }
 
-  inline bool FP16Weights() const { return fp16_weights_; }
-
-  inline TransposeConvTester& INT8Weights() {
-    int8_weights_ = true;
+  inline TransposeConvTester& TensorWiseQuantizedInt8Weights() {
+    weights_type_ = WeightsType::kTensorWiseQuantizedInt8;
+    // Bias is stored in FP32 even when filter is quantized to INT8
+    bias_type_ = BiasType::kFP32;
     return *this;
   }
 
-  inline bool INT8Weights() const { return int8_weights_; }
-
-  inline TransposeConvTester& INT8ChannelWiseWeights() {
-    int8_channel_wise_weights_ = true;
+  inline TransposeConvTester& ChannelWiseQuantizedInt8Weights() {
+    weights_type_ = WeightsType::kChannelWiseQuantizedInt8;
+    // Bias is stored in FP32 even when filter is quantized to INT8
+    bias_type_ = BiasType::kFP32;
     return *this;
-  }
-
-  inline bool INT8ChannelWiseWeights() const {
-    return int8_channel_wise_weights_;
   }
 
   inline TransposeConvTester& SparseWeights() {
@@ -165,14 +174,10 @@ class TransposeConvTester {
     return ComputePadding(OutputHeight(), KernelHeight(), StrideHeight());
   }
 
-  inline bool UseBias() const { return use_bias_; }
-
-  inline TransposeConvTester& WithBias(bool use_bias = true) {
-    use_bias_ = use_bias;
+  inline TransposeConvTester& NoBias() {
+    bias_type_ = BiasType::kNone;
     return *this;
   }
-
-  inline TransposeConvTester& NoBias() { return WithBias(false); }
 
   inline TransposeConvTester& WeightsCache(
       TfLiteXNNPackDelegateWeightsCache* weights_cache) {
@@ -213,6 +218,12 @@ class TransposeConvTester {
  private:
   std::vector<char> CreateTfLiteModel() const;
 
+  inline bool HasBias() const { return bias_type_ != BiasType::kNone; }
+
+  inline WeightsType WeightsType() const { return weights_type_; }
+
+  inline BiasType BiasType() const { return bias_type_; }
+
   int32_t batch_size_ = 1;
   int32_t input_channels_ = 1;
   int32_t output_channels_ = 1;
@@ -223,10 +234,8 @@ class TransposeConvTester {
   int32_t stride_height_ = 1;
   int32_t stride_width_ = 1;
   ::tflite::Padding padding_ = ::tflite::Padding_VALID;
-  bool use_bias_ = true;
-  bool fp16_weights_ = false;
-  bool int8_weights_ = false;
-  bool int8_channel_wise_weights_ = false;
+  enum WeightsType weights_type_ { WeightsType::kFP32 };
+  enum BiasType bias_type_ { BiasType::kFP32 };
   bool sparse_weights_ = false;
   TfLiteXNNPackDelegateWeightsCache* weights_cache_ = nullptr;
 };

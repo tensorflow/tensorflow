@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -131,17 +130,6 @@ void ConvertTpuModelToCpuPass::runOnOperation() {
                              "conversion did not converge.";
     signalPassFailure();
     return;
-  }
-
-  // Add passes to remove the PartitionedCall op and cast bf16 ops to f32.
-  PassManager pm(ctx);
-  pm.addPass(createInlinerPass());
-  pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
-  pm.addPass(CreateCastBf16OpsToF32Pass());
-
-  if (failed(pm.run(module_op))) {
-    module_op.emitError() << "quant-convert-tpu-model-to-cpu failed.";
-    signalPassFailure();
   }
 }
 

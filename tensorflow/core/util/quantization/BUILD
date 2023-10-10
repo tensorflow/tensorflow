@@ -52,10 +52,10 @@ tf_cc_test(
         "uniform_quant_ops_params_test.cc",
     ],
     deps = [
+        ":uniform_quant_ops_attr_proto_cc",
         ":uniform_quant_ops_params",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
-        "//tensorflow/core:testlib",
         "@com_google_googletest//:gtest_main",
     ],
 )

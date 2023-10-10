@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <atomic>
 
 #define EIGEN_USE_THREADS
@@ -28,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/util/stream_executor_util.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -148,7 +149,7 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ true> {
           context, context->allocate_temp(DataTypeToEnum<T>::value,
                                           transformed_y_shape, &transformed_y));
       // Perform NCHW to NHWC
-      std::vector<int32> perm = {0, 2, 3, 1};
+      std::array<int32, 4> perm = {0, 2, 3, 1};
       OP_REQUIRES_OK(
           context, ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
                                              x_input, perm, &transformed_x));
@@ -224,7 +225,7 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ true> {
 
     if (tensor_format == FORMAT_NCHW) {
       // Perform NHWC to NCHW
-      const std::vector<int32> perm = {0, 3, 1, 2};
+      const std::array<int32, 4> perm = {0, 3, 1, 2};
       const Status s = ::tensorflow::DoTranspose(
           context->eigen_device<CPUDevice>(), transformed_y, perm, y_output);
       if (!s.ok()) {
@@ -293,7 +294,7 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ false> {
           context, context->allocate_temp(DataTypeToEnum<T>::value,
                                           transformed_y_shape, &transformed_y));
       // Perform NCHW to NHWC
-      std::vector<int32> perm = {0, 2, 3, 1};
+      std::array<int32, 4> perm = {0, 2, 3, 1};
       OP_REQUIRES_OK(
           context, ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
                                              x_input, perm, &transformed_x));
@@ -344,7 +345,7 @@ struct FusedBatchNorm<CPUDevice, T, U, /* is_training= */ false> {
 
     if (tensor_format == FORMAT_NCHW) {
       // Perform NHWC to NCHW
-      const std::vector<int32> perm = {0, 3, 1, 2};
+      const std::array<int32, 4> perm = {0, 3, 1, 2};
       const Status s = ::tensorflow::DoTranspose(
           context->eigen_device<CPUDevice>(), transformed_y, perm, y_output);
       if (!s.ok()) {
@@ -409,7 +410,7 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
                                             transformed_x_backprop_output_shape,
                                             &transformed_x_backprop_output));
       // Perform NCHW to NHWC
-      std::vector<int32> perm = {0, 2, 3, 1};
+      std::array<int32, 4> perm = {0, 2, 3, 1};
       OP_REQUIRES_OK(
           context, ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
                                              y_backprop_input, perm,
@@ -537,7 +538,7 @@ struct FusedBatchNormGrad<CPUDevice, T, U> {
 
     if (tensor_format == FORMAT_NCHW) {
       // Perform NHWC to NCHW
-      std::vector<int32> perm = {0, 3, 1, 2};
+      std::array<int32, 4> perm = {0, 3, 1, 2};
       OP_REQUIRES_OK(
           context, ::tensorflow::DoTranspose(context->eigen_device<CPUDevice>(),
                                              transformed_x_backprop_output,
@@ -1961,6 +1962,18 @@ REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV3")
                             .TypeConstraint<Eigen::half>("T")
                             .TypeConstraint<float>("U"),
                         FusedBatchNormGradOpV3<CPUDevice, Eigen::half, float>);
+
+REGISTER_KERNEL_BUILDER(Name("FusedBatchNormV3")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<bfloat16>("T")
+                            .TypeConstraint<float>("U"),
+                        FusedBatchNormOpV3<CPUDevice, bfloat16, float>);
+
+REGISTER_KERNEL_BUILDER(Name("FusedBatchNormGradV3")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<bfloat16>("T")
+                            .TypeConstraint<float>("U"),
+                        FusedBatchNormGradOpV3<CPUDevice, bfloat16, float>);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

@@ -28,23 +28,23 @@ namespace {
 // A known Qualcomm Adreno bug makes the 1 channel test fail on some Adreno
 // 5xxs.
 TEST_F(OpenCLOperationTest, SpaceToDepthTensorShape1x2x2x1BlockSize2) {
-  auto status = SpaceToDepthTensorShape1x2x2x1BlockSize2Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.message();
+  ASSERT_OK(SpaceToDepthTensorShape1x2x2x1BlockSize2Test(&exec_env_));
 }
 
 TEST_F(OpenCLOperationTest, SpaceToDepthTensorShape1x2x2x2BlockSize2) {
-  auto status = SpaceToDepthTensorShape1x2x2x2BlockSize2Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.message();
+  ASSERT_OK(SpaceToDepthTensorShape1x2x2x2BlockSize2Test(&exec_env_));
 }
 
 TEST_F(OpenCLOperationTest, SpaceToDepthTensorShape1x2x2x3BlockSize2) {
-  auto status = SpaceToDepthTensorShape1x2x2x3BlockSize2Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.message();
+  ASSERT_OK(SpaceToDepthTensorShape1x2x2x3BlockSize2Test(&exec_env_));
 }
 
 TEST_F(OpenCLOperationTest, SpaceToDepthTensorShape1x4x4x1BlockSize2) {
-  auto status = SpaceToDepthTensorShape1x4x4x1BlockSize2Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.message();
+  ASSERT_OK(SpaceToDepthTensorShape1x4x4x1BlockSize2Test(&exec_env_));
+}
+
+TEST_F(OpenCLOperationTest, SpaceToDepthTensorShape1x6x6x1BlockSize3) {
+  ASSERT_OK(SpaceToDepthTensorShape1x6x6x1BlockSize3Test(&exec_env_));
 }
 
 }  // namespace

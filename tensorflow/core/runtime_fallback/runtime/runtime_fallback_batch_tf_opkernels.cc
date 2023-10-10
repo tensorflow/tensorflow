@@ -12,9 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
 #include <cstdlib>
+#include <functional>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -263,7 +267,12 @@ Status SetUpKernelFallbackCompatRequestContextForBatch(
 
   return SetUpKernelFallbackCompatRequestContext(
       builder, device_manager, pflr, runner_table, resource_array,
-      intra_op_threadpool, session_metadata, /*runner=*/nullptr);
+      intra_op_threadpool, session_metadata,
+      src_fallback_request_state->runner(),
+      src_fallback_request_state->cost_recorder(),
+      src_fallback_request_state->client_graph_resource_context(),
+      src_fallback_request_state->cancellation_manager(),
+      src_fallback_request_state->runtime_config());
 }
 
 StatusOr<RCReference<tfrt::RequestContext>> SetUpRequestContext(
@@ -271,10 +280,8 @@ StatusOr<RCReference<tfrt::RequestContext>> SetUpRequestContext(
     tfrt_stub::OpKernelRunnerTable* runner_table,
     tfd::FallbackResourceArray* resource_array,
     tfrt::RequestContext* src_req_ctx) {
-  // Using the same logic as in the c'tor of FunctionLibraryRuntime::Options,
-  // to avoid clash with any Session-generated step ID. DirectSession and
-  // MasterSession generates non-negative step IDs.
-  int64_t step_id = -std::abs(static_cast<int64_t>(random::New64()));
+  // Connect to the batch step id propagated from batch task.
+  int64_t step_id = src_req_ctx->id();
 
   tfrt::RequestContextBuilder request_context_builder(
       host_ctx, resource_context, step_id);
@@ -295,12 +302,12 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
     const BatchTask& last_task, absl::Span<const Tensor> inputs,
     std::vector<Tensor>* combined_outputs,
     std::function<void(const Status&)> done) const {
-  llvm::SmallVector<AsyncValue*, 8> arguments;
+  std::vector<tsl::RCReference<AsyncValue>> arguments;
   arguments.reserve(inputs.size() + 1);
   // The first argument is a Chain.
-  arguments.push_back(tfrt::GetReadyChain().release());
+  arguments.push_back(tfrt::GetReadyChain());
   for (auto& input : inputs) {
-    arguments.push_back(TFTensorToFallbackTensor(input).release());
+    arguments.push_back(TFTensorToFallbackTensor(input));
   }
   llvm::SmallVector<RCReference<AsyncValue>, 4> results;
   results.resize(bef_func_->result_types().size());
@@ -331,7 +338,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
   batch_exec_ctx.set_work_queue(&exec_ctx.work_queue());
   batch_exec_ctx.set_location(exec_ctx.location());
 
-  bef_func_->ExecuteAsync(batch_exec_ctx, arguments, results);
+  bef_func_->ExecuteAsync(batch_exec_ctx, std::move(arguments), results);
   // There is a comment in tensorflow/core/kernels/batch_kernels.cc
   // counterpart of this method that blocking here seems to improve
   // latency/throughput in practice with how the batching library manage
@@ -339,9 +346,6 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
   // this behavior for now, should reconsider when we redo the batching
   // kernels.
   batch_exec_ctx.work_queue().Await(results);
-  for (AsyncValue* arg : arguments) {
-    arg->DropRef();
-  }
 
   // The first result is a Chain.
   combined_outputs->reserve(results.size() - 1);
@@ -367,7 +371,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
     // If there is only 1 error after deduplication, we emit the error with
     // proper error code mapping from TFRT to TF.
     if (errors.size() == 1) {
-      final_status = FromAbslStatus(*errors[0]);
+      final_status = *errors[0];
     } else {
       std::string msg;
       llvm::raw_string_ostream os(msg);
@@ -400,6 +404,12 @@ REGISTER_OP("_BatchFunctionFallback")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .Attr("batching_queue: string = ''")
+    // A separate set of batch options for the low priority requests, which is
+    // used for priority queue batching.
+    .Attr("low_priority_max_batch_size: int = 0")
+    .Attr("low_priority_batch_timeout_micros: int = 0")
+    .Attr("low_priority_allowed_batch_sizes: list(int) = []")
+    .Attr("low_priority_max_enqueued_batches: int = 0")
     .Attr("Tin: list(type)")
     .Attr("Tcaptured: list(type) >= 0")
     .Attr("Tout: list(type)")

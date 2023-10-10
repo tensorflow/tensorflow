@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/elementwise_spmd_expander.h"
 
 #include <iterator>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -95,8 +96,7 @@ StatusOr<mlir::Operation*> ElementwiseSPMDExpander::ExpandOp(
     //   and easeier. In future, we might do certain optimization to save FLops.
     //   For example, if all operands are 'x,y' and output is '*,*', relayouting
     //   output could be the choice (saving communications).
-    TF_ASSIGN_OR_RETURN(auto truncated_layout,
-                        output_layout->Truncate(rank_offset, /*end=*/true));
+    auto truncated_layout = output_layout->Truncate(rank_offset, /*end=*/true);
     mlir::Value output;
     TF_ASSIGN_OR_RETURN(const auto& shape, ExtractGlobalInputShape(operand));
     absl::flat_hash_set<int> size_one_dims;
@@ -117,8 +117,7 @@ StatusOr<mlir::Operation*> ElementwiseSPMDExpander::ExpandOp(
   // Resource output is only likely to be for identity op. However, keeping
   // the checkgeneric here.
   auto op_result = op->getOpResult(0);
-  if (llvm::isa<mlir::TF::ResourceType>(
-          mlir::getElementTypeOrSelf(op_result))) {
+  if (IsResourceType(op_result)) {
     TF_RETURN_IF_ERROR(InferSPMDExpandedLocalShapeForResourceOutput(
         &op_result, output_layout.value(), builder.getContext()));
   }
@@ -133,7 +132,7 @@ StatusOr<mlir::Operation*> ElementwiseSPMDExpander::ExpandOp(
 StatusOr<llvm::DenseMap<int, Layout>>
 ElementwiseSPMDExpander::ComputeLayoutForward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts) {
-  TF_ASSIGN_OR_RETURN(absl::optional<Layout> merged_operand_layout,
+  TF_ASSIGN_OR_RETURN(std::optional<Layout> merged_operand_layout,
                       GetMergedOperandLayout(input_layouts, op));
 
   if (merged_operand_layout) {
@@ -165,11 +164,9 @@ ElementwiseSPMDExpander::ComputeLayoutBackward(
     auto operand = operand_and_index.value();
 
     TF_ASSIGN_OR_RETURN(auto operand_shape, GetShape(operand));
-    TF_ASSIGN_OR_RETURN(
-        Layout output_layout_truncated,
-        output_layout.Truncate(
-            output_layout.sharding_specs().size() - operand_shape.size(),
-            /*end=*/true));
+    Layout output_layout_truncated = output_layout.Truncate(
+        output_layout.sharding_spec_strs().size() - operand_shape.size(),
+        /*end=*/true);
     auto inferred_operand_layout_strs =
         output_layout_truncated.sharding_spec_strs();
 

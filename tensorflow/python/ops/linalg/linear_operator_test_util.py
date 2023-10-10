@@ -31,6 +31,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -260,7 +261,13 @@ class LinearOperatorDerivedClassTest(test.TestCase, metaclass=abc.ABCMeta):
 
     # Tape tests that can be run on every operator below.
     with backprop.GradientTape() as tape:
-      _assert_not_none(tape.gradient(operator.to_dense(), operator.variables))
+      grad = tape.gradient(operator.to_dense(), operator.variables)
+      _assert_not_none(grad)
+
+    with backprop.GradientTape() as tape:
+      var_grad = tape.gradient(operator, operator.variables)
+      _assert_not_none(var_grad)
+      nest.assert_same_structure(var_grad, grad)
 
     with backprop.GradientTape() as tape:
       _assert_not_none(
@@ -311,7 +318,7 @@ class LinearOperatorDerivedClassTest(test.TestCase, metaclass=abc.ABCMeta):
 
 
 def _test_slicing(use_placeholder, shapes_info, dtype):
-  def test_slicing(self):
+  def test_slicing(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -335,7 +342,7 @@ def _test_slicing(use_placeholder, shapes_info, dtype):
 
 
 def _test_to_dense(use_placeholder, shapes_info, dtype):
-  def test_to_dense(self):
+  def test_to_dense(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -349,7 +356,7 @@ def _test_to_dense(use_placeholder, shapes_info, dtype):
 
 
 def _test_det(use_placeholder, shapes_info, dtype):
-  def test_det(self):
+  def test_det(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -364,7 +371,7 @@ def _test_det(use_placeholder, shapes_info, dtype):
 
 
 def _test_log_abs_det(use_placeholder, shapes_info, dtype):
-  def test_log_abs_det(self):
+  def test_log_abs_det(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -383,7 +390,8 @@ def _test_log_abs_det(use_placeholder, shapes_info, dtype):
 @test_util.run_without_tensor_float_32("Use FP32 in matmul")
 def _test_operator_matmul_with_same_type(use_placeholder, shapes_info, dtype):
   """op_a.matmul(op_b), in the case where the same type is returned."""
-  def test_operator_matmul_with_same_type(self):
+  def test_operator_matmul_with_same_type(
+      self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator_a, mat_a = self.operator_and_matrix(
@@ -402,7 +410,8 @@ def _test_operator_matmul_with_same_type(use_placeholder, shapes_info, dtype):
 
 def _test_operator_solve_with_same_type(use_placeholder, shapes_info, dtype):
   """op_a.solve(op_b), in the case where the same type is returned."""
-  def test_operator_solve_with_same_type(self):
+  def test_operator_solve_with_same_type(
+      self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator_a, mat_a = self.operator_and_matrix(
@@ -420,7 +429,7 @@ def _test_operator_solve_with_same_type(use_placeholder, shapes_info, dtype):
 
 
 def _test_matmul_base(
-    self,
+    self: "LinearOperatorDerivedClassTest",
     use_placeholder,
     shapes_info,
     dtype,
@@ -500,7 +509,7 @@ def _test_matmul(
     adjoint,
     adjoint_arg,
     blockwise_arg):
-  def test_matmul(self):
+  def test_matmul(self: "LinearOperatorDerivedClassTest"):
     _test_matmul_base(
         self,
         use_placeholder,
@@ -521,7 +530,7 @@ def _test_matmul_with_broadcast(
     adjoint,
     adjoint_arg,
     blockwise_arg):
-  def test_matmul_with_broadcast(self):
+  def test_matmul_with_broadcast(self: "LinearOperatorDerivedClassTest"):
     _test_matmul_base(
         self,
         use_placeholder,
@@ -535,7 +544,7 @@ def _test_matmul_with_broadcast(
 
 
 def _test_adjoint(use_placeholder, shapes_info, dtype):
-  def test_adjoint(self):
+  def test_adjoint(self: "LinearOperatorDerivedClassTest"):
     with self.test_session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -551,7 +560,7 @@ def _test_adjoint(use_placeholder, shapes_info, dtype):
 
 
 def _test_cholesky(use_placeholder, shapes_info, dtype):
-  def test_cholesky(self):
+  def test_cholesky(self: "LinearOperatorDerivedClassTest"):
     with self.test_session(graph=ops.Graph()) as sess:
       # This test fails to pass for float32 type by a small margin if we use
       # random_seed.DEFAULT_GRAPH_SEED.  The correct fix would be relaxing the
@@ -570,7 +579,7 @@ def _test_cholesky(use_placeholder, shapes_info, dtype):
 
 
 def _test_eigvalsh(use_placeholder, shapes_info, dtype):
-  def test_eigvalsh(self):
+  def test_eigvalsh(self: "LinearOperatorDerivedClassTest"):
     with self.test_session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -600,7 +609,7 @@ def _test_eigvalsh(use_placeholder, shapes_info, dtype):
 
 
 def _test_cond(use_placeholder, shapes_info, dtype):
-  def test_cond(self):
+  def test_cond(self: "LinearOperatorDerivedClassTest"):
     with self.test_session(graph=ops.Graph()) as sess:
       # svd does not work with zero dimensional matrices, so we'll
       # skip
@@ -646,7 +655,7 @@ def _test_cond(use_placeholder, shapes_info, dtype):
 
 
 def _test_solve_base(
-    self,
+    self: "LinearOperatorDerivedClassTest",
     use_placeholder,
     shapes_info,
     dtype,
@@ -721,7 +730,7 @@ def _test_solve_base(
 
 def _test_solve(
     use_placeholder, shapes_info, dtype, adjoint, adjoint_arg, blockwise_arg):
-  def test_solve(self):
+  def test_solve(self: "LinearOperatorDerivedClassTest"):
     _test_solve_base(
         self,
         use_placeholder,
@@ -736,7 +745,7 @@ def _test_solve(
 
 def _test_solve_with_broadcast(
     use_placeholder, shapes_info, dtype, adjoint, adjoint_arg, blockwise_arg):
-  def test_solve_with_broadcast(self):
+  def test_solve_with_broadcast(self: "LinearOperatorDerivedClassTest"):
     _test_solve_base(
         self,
         use_placeholder,
@@ -750,7 +759,7 @@ def _test_solve_with_broadcast(
 
 
 def _test_inverse(use_placeholder, shapes_info, dtype):
-  def test_inverse(self):
+  def test_inverse(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -762,7 +771,7 @@ def _test_inverse(use_placeholder, shapes_info, dtype):
 
 
 def _test_trace(use_placeholder, shapes_info, dtype):
-  def test_trace(self):
+  def test_trace(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -777,7 +786,7 @@ def _test_trace(use_placeholder, shapes_info, dtype):
 
 
 def _test_add_to_tensor(use_placeholder, shapes_info, dtype):
-  def test_add_to_tensor(self):
+  def test_add_to_tensor(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -794,7 +803,7 @@ def _test_add_to_tensor(use_placeholder, shapes_info, dtype):
 
 
 def _test_diag_part(use_placeholder, shapes_info, dtype):
-  def test_diag_part(self):
+  def test_diag_part(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -815,7 +824,7 @@ def _test_diag_part(use_placeholder, shapes_info, dtype):
 
 @test_util.run_without_tensor_float_32("Use FP32 in matmul")
 def _test_composite_tensor(use_placeholder, shapes_info, dtype):
-  def test_composite_tensor(self):
+  def test_composite_tensor(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -856,7 +865,7 @@ def _test_composite_tensor(use_placeholder, shapes_info, dtype):
 
 @test_util.run_without_tensor_float_32("Use FP32 in matmul")
 def _test_saved_model(use_placeholder, shapes_info, dtype):
-  def test_saved_model(self):
+  def test_saved_model(self: "LinearOperatorDerivedClassTest"):
     with self.session(graph=ops.Graph()) as sess:
       sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
       operator, mat = self.operator_and_matrix(
@@ -892,6 +901,42 @@ def _test_saved_model(use_placeholder, shapes_info, dtype):
 
   return test_saved_model
 
+
+def _test_composite_tensor_gradient(use_placeholder, shapes_info, dtype):
+  def test_composite_tensor_gradient(self: "LinearOperatorDerivedClassTest"):
+    with self.session(graph=ops.Graph()) as sess:
+      sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
+      operator, _ = self.operator_and_matrix(
+          shapes_info, dtype, use_placeholder=use_placeholder)
+      x = self.make_x(operator, adjoint=False)
+      y = operator.matmul(x)
+
+      op_g, = gradients_impl.gradients(
+          y,
+          operator,
+          grad_ys=array_ops.ones_like(y))  # Complex dtypes need grad_ys.
+
+      def _unflatten_and_matmul(components):
+        unflat_op = nest.pack_sequence_as(
+            operator, components, expand_composites=True)
+        return unflat_op.matmul(x)
+
+      flat_op = nest.flatten(operator, expand_composites=True)
+      y_ = _unflatten_and_matmul(flat_op)
+      flat_g = gradients_impl.gradients(
+          y_,
+          flat_op,
+          grad_ys=array_ops.ones_like(y_))
+
+      if all(g is None for g in flat_g):
+        self.assertIsNone(op_g)
+      else:
+        self.assertIsInstance(op_g, operator.__class__)
+        for g, ug in zip(nest.flatten(op_g, expand_composites=True),
+                         nest.flatten(flat_g, expand_composites=True)):
+          self.assertAllClose(g, ug)
+  return test_composite_tensor_gradient
+
 # pylint:enable=missing-docstring
 
 
@@ -904,6 +949,7 @@ def add_tests(test_cls):
       "cholesky": _test_cholesky,
       "cond": _test_cond,
       "composite_tensor": _test_composite_tensor,
+      "composite_tensor_gradient": _test_composite_tensor_gradient,
       "det": _test_det,
       "diag_part": _test_diag_part,
       "eigvalsh": _test_eigvalsh,

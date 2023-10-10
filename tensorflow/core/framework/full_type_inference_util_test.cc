@@ -163,7 +163,7 @@ TEST(Merge, RejectsMismatched) {
   t2.set_type_id(TFT_TENSOR);
 
   const auto ret = Merge()({t1, t2}, {});
-  EXPECT_THAT(ret.status().error_message(),
+  EXPECT_THAT(ret.status().message(),
               ::testing::HasSubstr("expected compatible input types"));
 }
 
@@ -238,7 +238,7 @@ TEST(UnaryContainerAdd, RejectsMismatchedContainerType) {
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/1, /*element_idx=*/0,
                         /*homogeneous=*/false)({t1, t2}, {});
-  EXPECT_THAT(ret.status().error_message(),
+  EXPECT_THAT(ret.status().message(),
               ::testing::HasSubstr("expected container type"));
 }
 
@@ -330,8 +330,7 @@ TEST(UnaryContainerAdd, RejectsMismatchedElementTypesHeterogenous) {
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
                         /*homogeneous=*/false)({t1, t2}, {});
-  EXPECT_THAT(ret.status().error_message(),
-              ::testing::HasSubstr("need union types"));
+  EXPECT_THAT(ret.status().message(), ::testing::HasSubstr("need union types"));
 }
 
 TEST(UnaryContainerAdd, RejectsMismatchedElementTypesHomogeneous) {
@@ -344,7 +343,7 @@ TEST(UnaryContainerAdd, RejectsMismatchedElementTypesHomogeneous) {
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
                         /*homogeneous=*/true)({t1, t2}, {});
-  EXPECT_THAT(ret.status().error_message(),
+  EXPECT_THAT(ret.status().message(),
               ::testing::HasSubstr("expected a subtype"));
 }
 
@@ -359,8 +358,7 @@ TEST(UnaryContainerAdd, RejectsSupertypeElementTypeHeterogeneous) {
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
                         /*homogeneous=*/false)({t1, t2}, {});
-  EXPECT_THAT(ret.status().error_message(),
-              ::testing::HasSubstr("need union types"));
+  EXPECT_THAT(ret.status().message(), ::testing::HasSubstr("need union types"));
 }
 
 TEST(UnaryContainerAdd, RejectsSupertypeElementTypeHomogeneous) {
@@ -374,7 +372,7 @@ TEST(UnaryContainerAdd, RejectsSupertypeElementTypeHomogeneous) {
   const auto ret =
       UnaryContainerAdd(TFT_ARRAY, /*container_idx=*/0, /*element_idx=*/1,
                         /*homogeneous=*/true)({t1, t2}, {});
-  EXPECT_THAT(ret.status().error_message(),
+  EXPECT_THAT(ret.status().message(),
               ::testing::HasSubstr("expected a subtype"));
 }
 
@@ -518,8 +516,7 @@ TEST(MapCovariant, RejectsMismatchedType) {
   t.add_args()->set_type_id(TFT_INT32);
 
   const auto ret = MapCovariant(TFT_ARRAY, TFT_DATASET, 0)({t}, {});
-  EXPECT_THAT(ret.status().error_message(),
-              ::testing::HasSubstr("expected type"));
+  EXPECT_THAT(ret.status().message(), ::testing::HasSubstr("expected type"));
 }
 
 // Create a type inference function for the Tuple.Basic test (in a function so

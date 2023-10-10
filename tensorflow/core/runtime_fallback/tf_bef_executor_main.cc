@@ -19,6 +19,7 @@ limitations under the License.
 // This is allowed to link against Tensorflow libraries.
 
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_split.h"
 #include "llvm/Support/Error.h"

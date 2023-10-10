@@ -45,7 +45,7 @@ NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
   if (status.ok()) {
     Initialize();
   } else {
-    errors_.push_back(status.error_message());
+    errors_.push_back(std::string(status.message()));
     inputs_specified_ = 0;
   }
   if (debug != nullptr) MergeDebugInfo(*debug, &node_def_);
@@ -88,7 +88,7 @@ bool NodeDefBuilder::NextArgAvailable() {
 NodeDefBuilder& NodeDefBuilder::Input(FakeInputFunctor fake_input) {
   if (NextArgAvailable()) {
     Status status = fake_input(*op_def_, inputs_specified_, node_def_, this);
-    if (!status.ok()) errors_.push_back(status.error_message());
+    if (!status.ok()) errors_.push_back(std::string(status.message()));
   }
   return *this;
 }

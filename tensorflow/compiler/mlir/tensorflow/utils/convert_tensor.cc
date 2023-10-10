@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -38,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -46,7 +50,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/tsl/platform/float8.h"
+#include "tsl/platform/ml_dtypes.h"
 
 namespace tensorflow {
 
@@ -219,7 +223,7 @@ StatusOr<ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
     llvm::SmallVector<int64_t> original_dimensions;
     for (auto dim : input_tensor_shape) original_dimensions.push_back(dim.size);
     return ElementsAttr(mlir::SplatElementsAttr::get(
-        single_attr.getType().clone(original_dimensions),
+        single_attr.getShapedType().clone(original_dimensions),
         single_attr.getValues<mlir::Attribute>()[0]));
   }
 
@@ -266,6 +270,15 @@ mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type) {
   // If type is not a RankedTensor or UnrankedTensor, it must be a scalar.
   // Empty TensorShape indicates a scalar.
   return mlir::TF::ShapeAttr::get(type.getContext(), ArrayRef<int64_t>());
+}
+
+StatusOr<TensorSpecProto> ConvertTypeToTensorSpecProto(const mlir::Type& type) {
+  DataType dtype;
+  TF_RETURN_IF_ERROR(ConvertToDataType(type, &dtype));
+  TensorSpecProto tensor_spec;
+  tensor_spec.set_dtype(dtype);
+  *tensor_spec.mutable_shape() = ConvertTypeToTensorShape(type).AsProto();
+  return tensor_spec;
 }
 
 // Converts the tensor shape proto into an MLIR shape attribute.
@@ -355,7 +368,8 @@ void ConvertIntElementsAttr(const mlir::DenseElementsAttr attr,
                             protobuf::RepeatedField<T>* output,
                             Cord* tensor_content) {
   if (attr.isSplat()) {
-    if (attr.getSplatValue<U>() != U(0)) output->Add(attr.getSplatValue<U>());
+    if (attr.getSplatValue<U>() != U(0))
+      output->Add(static_cast<T>(attr.getSplatValue<U>()));
   } else {
     port::CopyFromArray(tensor_content, attr.getRawData().data(),
                         attr.getRawData().size());
@@ -369,7 +383,8 @@ void ConvertUIntElementsAttr(const mlir::DenseElementsAttr attr,
                              protobuf::RepeatedField<T>* output,
                              Cord* tensor_content) {
   if (attr.isSplat()) {
-    if (attr.getSplatValue<U>() != U(0)) output->Add(attr.getSplatValue<U>());
+    if (attr.getSplatValue<U>() != U(0))
+      output->Add(static_cast<T>(attr.getSplatValue<U>()));
   } else {
     port::CopyFromArray(tensor_content, attr.getRawData().data(),
                         attr.getRawData().size());
@@ -404,7 +419,7 @@ void ConvertFloat8ElementsAttr(const mlir::DenseElementsAttr attr,
 }
 
 Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
-  auto type = attr.getType();
+  auto type = attr.getShapedType();
   auto shape = type.getShape();
   DataType output_dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(type, &output_dtype));
@@ -448,6 +463,16 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
     case DT_FLOAT8_E4M3FN:
       ConvertFloat8ElementsAttr<tsl::float8_e4m3fn>(
           dense_attr, output->mutable_float8_val());
+      break;
+    case tensorflow::DT_INT4:
+      ConvertIntElementsAttr<int, tsl::int4>(dense_attr,
+                                             output->mutable_int_val(),
+                                             output->mutable_tensor_content());
+      break;
+    case tensorflow::DT_UINT4:
+      ConvertUIntElementsAttr<int, tsl::uint4>(
+          dense_attr, output->mutable_int_val(),
+          output->mutable_tensor_content());
       break;
     case DT_QUINT8:
     case DT_INT8:

@@ -176,6 +176,22 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "benchmark_tflite_model_lib_test",
+    srcs = [
+        "benchmark_tflite_model_test.cc",
+    ],
+    data = ["@tflite_mobilenet_float//:mobilenet_v1_1.0_224.tflite"],
+    deps = [
+        ":benchmark_model_lib",
+        ":benchmark_params",
+        ":benchmark_tflite_model_lib",
+        "//tensorflow/lite/tools:tool_params",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "benchmark_multirun_stats_recorder",
     hdrs = ["benchmark_multirun_stats_recorder.h"],
@@ -239,6 +255,24 @@ cc_library(
         "//tensorflow/lite/tools:logging",
     ],
 )
+
+cc_library(
+    name = "register_custom_op",
+    srcs = [
+        "register_custom_op.cc",
+    ],
+    hdrs = [
+        "register_custom_op.h",
+    ],
+    copts = common_copts,
+    deps = [
+        "//tensorflow/lite:op_resolver",
+        "@com_google_absl//absl/base:core_headers",
+    ],
+    alwayslink = 1,
+)
+
+exports_files(["register_custom_op.h"])
 
 cc_library(
     name = "benchmark_utils",

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/placement_utils.h"
 
+#include <variant>
+
+#include "absl/status/status.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/custom_device.h"
@@ -68,8 +71,8 @@ bool IsFunction(StringPiece op_name) {
   const OpDef* op_def = nullptr;
   Status s = OpDefForOp(string(op_name), &op_def);
   if (!s.ok()) {
-    if (!errors::IsNotFound(s)) {
-      LOG(WARNING) << "Looking up OpDef failed with error: " << s.ToString();
+    if (!absl::IsNotFound(s)) {
+      LOG(WARNING) << "Looking up OpDef failed with error: " << s;
     }
     // Cannot find OpDef, it is a function.
     return true;
@@ -143,7 +146,7 @@ Status MaybePinToResourceDevice(Device** device, const EagerOperation& op) {
   TF_RETURN_IF_ERROR(op.TensorHandleInputs(&inputs));
   Device* op_device = op.Device() == kVariantDeviceNull
                           ? ctx.HostCPU()
-                          : absl::get<Device*>(op.Device());
+                          : std::get<Device*>(op.Device());
   for (int i = 0; i < inputs->size(); ++i) {
     TensorHandle* tensor_handle = (*inputs)[i];
     if (tensor_handle->dtype == DT_RESOURCE) {

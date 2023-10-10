@@ -1,0 +1,164 @@
+syntax = "proto3";
+
+package xla.gpu;
+
+import "xla/autotuning.proto";
+import "xla/xla_data.proto";
+import "tsl/protobuf/dnn.proto";
+
+// Backend configs for XLA:GPU.
+//
+// These are metadata that the GPU backend attaches to HloInstructions and later
+// uses during e.g. codegen.
+//
+// Remember that proto3 doesn't give clients a way to tell the difference
+// between a field not being present and a field having the default value.
+// Choose your defaults carefully.
+//
+// No guarantee is made about the stability of these protos.
+//
+// See HloInstruction::backend_config() for more info.
+
+// Backend config for a convolution that runs through cudnn.
+message CudnnConvBackendConfig {
+  reserved 1, 2;
+
+  // Opaque algorithm number and tuning knobs chosen for this conv.
+  stream_executor.dnn.AlgorithmProto algorithm = 6;
+
+  // The scaling factor multiplied with the convolution result.
+  double conv_result_scale = 4;
+
+  // Below are the fields related to cuDNN's fused convolution. Refer to
+  // GpuConvParams for their meanings.
+
+  // The requested activation (e.g. relu) after the convolution.
+  stream_executor.dnn.ActivationMode activation_mode = 3;
+
+  // The scaling factor multiplied with the side input. If no side input buffer
+  // is provided, this field must be 0.
+  double side_input_scale = 5;
+
+  // The negative slope coefficient alpha for leaky_relu activation, used only
+  // when activation_mode is kLeakyRelu.
+  //
+  // leakyrelu(x) is defined as x > 0 ? x : alpha * x.
+  //
+  // Since this is a proto3 proto, leakyrelu_alpha is 0 if not specified (in
+  // which case the leakyrelu activation is equivalent to relu).
+  double leakyrelu_alpha = 8;
+
+  // If the filter (and bias, if present) have been reordered, set this flag.
+  // It's placed into a `oneof` block to skip the serialization when not set.
+  oneof filter_and_bias_reordering_oneof {
+    // cuDNN int8x32 vectorized convolutions (NCHW_VECT_C data layout) can be
+    // optimized by reordering the filter and bias (if present). The logical
+    // layout stays the same, but the data is shuffled in a way that is
+    // compatible with NVidia's IMMA instruction (sm75+).
+    bool reordered_int8_nchw_vect = 7;
+  }
+
+  // Serialization of the graph described by the convolution and adjacent
+  // pointwise ops.
+  optional string serialized_graph = 9;
+}
+
+// Backend config for the GEMM operation running through cuBLAS.
+message GemmBackendConfig {
+  // Opaque optional algorithm number. No chosen number indicates that a
+  // different cuBLAS API will be used, which does not allow for choosing an
+  // algorithm.
+  oneof algorithm {
+    int64 selected_algorithm = 1;
+  }
+
+  double alpha_real = 2;
+  double alpha_imag = 9;
+
+  double beta = 3;
+
+  xla.DotDimensionNumbers dot_dimension_numbers = 7;
+
+  xla.PrecisionConfig precision_config = 12;
+
+  // cublasLt matmul epilogue.
+  enum Epilogue {
+    DEFAULT = 0;
+    BIAS = 1;
+    RELU = 2;
+    BIAS_RELU = 3;
+    GELU = 4;
+    GELU_AUX = 5;
+    BIAS_GELU = 6;
+    BIAS_GELU_AUX = 7;
+  }
+
+  Epilogue epilogue = 13;
+}
+
+// Backend config for bitcast operation generated from MLIR MHLO dialect.
+message BitcastBackendConfig {
+  LayoutProto source_layout = 1;
+  LayoutProto result_layout = 2;
+}
+
+// Backend config for async collective operations. Note that for is_sync will
+// be false by default, so even if a backend config is not explicitly attached
+// to the HLOInstruction, getting the backend_config will yield a default valued
+// proto which will have is_sync = false.
+message CollectiveBackendConfig {
+  bool is_sync = 1;
+}
+
+message ReificationCost {
+  double end_to_end_cycles = 1;  // Total execution time of the reified op.
+}
+
+message FusionBackendConfig {
+  // kLoop, kInput, or kOutput (from HloInstruction::FusionKind), or your own
+  // custom string.
+  //
+  // Don't put "kCustom" in here -- just put a string describing the custom
+  // fusion, like "__triton_gemm".
+  //
+  // This is somewhat redundant with HloInstruction::fusion_kind().  We need it
+  // here because LMHLO does not have the concept of a fusion kind, and we use
+  // this same backend-config proto for both HLO and LMHLO.
+  string kind = 1;
+
+  // Only valid when kind == "__triton_gemm".  Even then it's optional: If not
+  // present, we use the default Triton config.
+  AutotuneResult.TritonGemmKey triton_gemm_config = 2;
+
+  // Cost model prediction.
+  ReificationCost reification_cost = 3;
+}
+
+// Backend config for a fused Multi-Headed Attention (fMHA) that runs through
+// cudnn.
+message CudnnfMHABackendConfig {
+  // Opaque algorithm number and tuning knobs chosen for this fMHA.
+  stream_executor.dnn.AlgorithmProto algorithm = 8;
+
+  // The scaling factor multiplied with the BMM1 result. fmha_scale is 1 if the
+  // MHA pattern has no scaling.
+  double fmha_scale = 10;
+
+  // Dropout factor in MHA
+  double dropout_rate = 13;
+
+  // Configs for mha bmms in the forward graph
+  xla.DotDimensionNumbers bmm1_dot_dimension_numbers = 11;
+  xla.DotDimensionNumbers bmm2_dot_dimension_numbers = 12;
+
+  xla.ShapeProto intermediate_tensor_shape = 14;
+
+  // Configs for mha bmms in the backward graph
+  xla.DotDimensionNumbers bmm1_grad_gemm1_dot_dimension_numbers = 16;
+  xla.DotDimensionNumbers bmm1_grad_gemm2_dot_dimension_numbers = 17;
+  xla.DotDimensionNumbers bmm2_grad_gemm1_dot_dimension_numbers = 18;
+  xla.DotDimensionNumbers bmm2_grad_gemm2_dot_dimension_numbers = 19;
+
+  // Random seed used by dropout
+  int64 seed = 15;
+}

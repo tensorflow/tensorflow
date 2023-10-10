@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/framework/dataset.pb.h"
@@ -539,13 +540,16 @@ Status IteratorBase::InitializeBase(IteratorContext* ctx,
   if (parent_) {
     parent_id_ = Hash64CombineUnordered(Hash64(parent_->prefix()),
                                         reinterpret_cast<uint64>(parent_));
-  }
-  if (const auto& model = ctx->model()) {
-    auto factory = [ctx, this](model::Node::Args args) {
-      return CreateNode(ctx, std::move(args));
-    };
-    model->AddNode(std::move(factory), prefix(), parent->model_node(), &node_);
-    cleanup_fns_.push_back([this, model]() { model->RemoveNode(node_); });
+    // This block of code is executed only when `parent_` is not a `nullptr`
+    // because we do not create a `Node` in the `Model` for `RootDataset`.
+    if (const auto& model = ctx->model()) {
+      auto factory = [ctx, this](model::Node::Args args) {
+        return CreateNode(ctx, std::move(args));
+      };
+      model->AddNode(std::move(factory), prefix(), parent->model_node(),
+                     &node_);
+      cleanup_fns_.push_back([this, model]() { model->RemoveNode(node_); });
+    }
   }
   return OkStatus();
 }
@@ -762,11 +766,11 @@ void MergeOptions(const protobuf::MessageLite& source,
 void DatasetBase::Initialize(const Metadata& metadata) {
   Status s = ComputeNumSources();
   if (!s.ok()) {
-    LOG(ERROR) << s;
+    LOG_EVERY_N_SEC(ERROR, 10) << s;
   }
   s = MergeOptionsFromInputs();
   if (!s.ok()) {
-    LOG(ERROR) << s;
+    LOG_EVERY_N_SEC(ERROR, 10) << s;
   }
   metadata_ = metadata;
   if (metadata_.name() == "") {
@@ -780,9 +784,7 @@ Status DatasetBase::ComputeNumSources() {
   std::vector<const DatasetBase*> inputs;
   Status s = InputDatasets(&inputs);
   if (errors::IsUnimplemented(s)) {
-    return errors::Unimplemented(
-        "Cannot compute input sources for dataset of type ", type_string(),
-        ", because the dataset does not implement `InputDatasets`.");
+    return s;
   }
   if (num_sources_ >= 0) {
     // Already computed.
@@ -844,9 +846,7 @@ Status DatasetBase::MergeOptionsFromInputs() {
   std::vector<const DatasetBase*> inputs;
   Status s = InputDatasets(&inputs);
   if (errors::IsUnimplemented(s)) {
-    return errors::Unimplemented(
-        "Cannot merge options for dataset of type ", type_string(),
-        ", because the dataset does not implement `InputDatasets`.");
+    return s;
   }
   if (inputs.empty()) {
     return OkStatus();
@@ -931,8 +931,11 @@ int64_t DatasetBase::Cardinality(CardinalityOptions options) const {
 
 Status DatasetBase::InputDatasets(
     std::vector<const DatasetBase*>* inputs) const {
-  return errors::Unimplemented("InputDatasets not implemented for ",
-                               type_string());
+  return errors::Unimplemented(
+      "Cannot compute input sources for dataset of type ", type_string(),
+      ", because the dataset does not implement `InputDatasets`. To fix this, "
+      "your dataset should override the `InputDatasets` method. If it is a "
+      "source dataset, it should return empty inputs.");
 }
 
 Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
@@ -1143,7 +1146,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                          "\" returned `OutOfRange`. This indicates an "
                          "implementation error as `OutOfRange` errors are not "
                          "expected to be returned here. Original message: ",
-                         s.error_message());
+                         s.message());
     LOG(ERROR) << s;
   }
   DVLOG(3) << prefix() << " GetNext exit";
@@ -1180,7 +1183,7 @@ Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
                          "\" returned `OutOfRange`. This indicates an "
                          "implementation error as `OutOfRange` errors are not "
                          "expected to be returned here. Original message: ",
-                         s.error_message());
+                         s.message());
     LOG(ERROR) << s;
   }
   DVLOG(3) << prefix() << " Skip exit";
@@ -1220,8 +1223,8 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
     if (ctx->stack_trace().has_value() && VLOG_IS_ON(4)) {
       VLOG(4) << "Dataset " << dataset->type_string()
               << " created using the following stack trace:";
-      for (const auto& stack_frame :
-           ctx->stack_trace()->ToStackFrames({}, {})) {
+      for (const auto& stack_frame : ctx->stack_trace()->ToStackFrames(
+               {}, {}, /*reverse_traversal=*/false, /*limit=*/-1)) {
         VLOG(4) << stack_frame.file_name << ":" << stack_frame.line_number
                 << " in " << stack_frame.function_name << "()";
       }

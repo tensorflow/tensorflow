@@ -74,8 +74,8 @@ def get_mp_context():
   return multiprocessing.get_context('forkserver')
 
 
-def handle_test_main(main):
-  main()
+def handle_test_main(main, *args, **kwargs):
+  main(*args, **kwargs)
 
 
 # LINT.ThenChange(test_backend_util.py)

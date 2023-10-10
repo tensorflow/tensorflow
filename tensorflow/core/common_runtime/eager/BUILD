@@ -12,14 +12,12 @@ load(
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
+    "mkl_deps",
 )
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
-        "//tensorflow:internal",
-        "//tensorflow_models:__subpackages__",
-    ],
+    default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
 
@@ -74,6 +72,7 @@ tf_cuda_library(
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
+            "@com_google_absl//absl/container:flat_hash_map",
         ],
     }),
 )
@@ -88,8 +87,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
-        "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -106,7 +105,9 @@ tf_cuda_library(
         ":custom_device",
         ":eager_executor",
         ":kernel_and_device",
+        ":rendezvous_cache",
         ":small_constants_optimizer",
+        ":summary_optimizer",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/eager:immediate_execution_context",
         "//tensorflow/c/eager:immediate_execution_distributed_manager",
@@ -116,6 +117,8 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/nccl:collective_communicator",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -228,10 +231,10 @@ tf_cuda_library(
             "//tensorflow/core/distributed_runtime/eager:cluster_function_library_runtime",
             "//tensorflow/core/distributed_runtime/eager:eager_client",
             "//tensorflow/core/distributed_runtime/eager:remote_mgr",
-            "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
-            "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_agent",
-            "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_impl",
-            "//tensorflow/tsl/distributed_runtime/preemption:preemption_notifier",
+            "@local_tsl//tsl/distributed_runtime/coordination:coordination_service",
+            "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_agent",
+            "@local_tsl//tsl/distributed_runtime/coordination:coordination_service_impl",
+            "@local_tsl//tsl/distributed_runtime/preemption:preemption_notifier",
         ],
     }),
 )
@@ -241,18 +244,17 @@ tf_cc_test(
     srcs = ["context_test.cc"],
     deps = [
         ":context",
+        ":context_distributed_manager",
         ":core",
-        ":eager_operation",
-        ":execute",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/common_runtime/eager:context_distributed_manager",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:logging_ops",
         "//tensorflow/core/kernels:math",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -390,6 +392,7 @@ tf_cuda_library(
             "//tensorflow/core:session_options",
             "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle_data",
             "//tensorflow/core/profiler/lib:traceme",
+            "@com_google_absl//absl/status",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/types:variant",
         ],
@@ -456,7 +459,37 @@ cc_library(
     hdrs = ["small_constants_optimizer.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "summary_optimizer",
+    srcs = ["summary_optimizer.cc"],
+    hdrs = ["summary_optimizer.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "summary_optimizer_test",
+    srcs = ["summary_optimizer_test.cc"],
+    deps = [
+        ":summary_optimizer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -486,6 +519,7 @@ tf_cuda_library(
         ":attr_builder",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@farmhash_archive//:farmhash",
@@ -546,6 +580,8 @@ cc_library(
         ":eager_op_rewrite_registry",
         ":eager_operation",
         ":kernel_and_device",
+        ":small_constants_optimizer",
+        ":summary_optimizer",
         ":tensor_handle",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/compiler/jit:common",
@@ -639,12 +675,11 @@ tf_mkl_kernel_library(
     srcs = ["mkl_eager_op_rewrite.cc"],
     deps = [
         ":eager_op_rewrite_registry",
-        "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core/graph:mkl_graph_util",
-    ],
+    ] + mkl_deps(),
     alwayslink = 1,
 )
 
@@ -658,6 +693,7 @@ tf_cc_test_mkl(
         ":core",
         ":eager_op_rewrite_registry",
         ":mkl_eager_op_rewrite",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -709,6 +745,8 @@ cc_library(
         ":eager_operation",
         ":kernel_and_device",
         ":placement_utils",
+        ":small_constants_optimizer",
+        ":summary_optimizer",
         ":tensor_handle",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_tensor_internal",
@@ -760,6 +798,7 @@ tf_cuda_library(
         ":eager_operation",
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "@com_google_absl//absl/status",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -796,12 +835,25 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "rendezvous_cache",
+    hdrs = ["rendezvous_cache.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:mutex",
+        "@local_tsl//tsl/platform:refcount",
+        "@local_tsl//tsl/platform:thread_annotations",
+    ],
+)
+
 tf_cuda_library(
     name = "attr_builder",
     srcs = ["attr_builder.cc"],
     hdrs = ["attr_builder.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
+        "@com_google_absl//absl/status",
         # Only the TF_AttrType enum is required, so pull in just the C headers.
         # TODO(b/113535673): Break this dependency and avoid the C header completely.
         "//tensorflow/c:tf_attrtype",
@@ -853,6 +905,7 @@ filegroup(
         "eager_executor.h",
         "eager_operation.h",
         "kernel_and_device.h",
+        "rendezvous_cache.h",
         "tensor_handle.h",
         "tensor_handle_data.h",
     ],

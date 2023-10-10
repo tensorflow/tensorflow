@@ -35,9 +35,9 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
     ],
 )
 
@@ -48,9 +48,9 @@ cc_test(
     linkstatic = 1,
     deps = [
         ":telemetry",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/profiling:profile_buffer",
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
@@ -118,8 +118,8 @@ cc_test(
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
-        "//third_party/eigen3",
         "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
         "@flatbuffers",
     ],
 )
@@ -150,8 +150,8 @@ cc_test(
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
-        "//third_party/eigen3",
         "@com_google_googletest//:gtest_main",
+        "@eigen_archive//:eigen3",
         "@flatbuffers",
     ],
 )
@@ -160,7 +160,10 @@ cc_test(
     name = "opaque_delegate_test",
     size = "small",
     srcs = ["opaque_delegate_test.cc"],
-    data = ["//tensorflow/lite:testdata/add.bin"],
+    data = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/test_custom_node_with_init_data.bin",
+    ],
     defines = [
         "TFLITE_USE_OPAQUE_DELEGATE",
     ],
@@ -180,7 +183,10 @@ cc_test(
     name = "opaque_delegate_strip_error_strings_test",
     size = "small",
     srcs = ["opaque_delegate_test.cc"],
-    data = ["//tensorflow/lite:testdata/add.bin"],
+    data = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/test_custom_node_with_init_data.bin",
+    ],
     defines = [
         "TFLITE_USE_OPAQUE_DELEGATE",
         "TF_LITE_STRIP_ERROR_STRINGS",
@@ -217,8 +223,8 @@ cc_library(
         "//tensorflow/lite/schema:schema_conversion_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
-        "//third_party/eigen3",
         "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
         "@flatbuffers",
     ],
 )

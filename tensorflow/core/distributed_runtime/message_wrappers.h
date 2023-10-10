@@ -498,7 +498,6 @@ class MutableRunGraphResponseWrapper {
   // Returned status if requested.
   virtual Status status() const = 0;
   virtual absl::StatusCode status_code() const = 0;
-  virtual const string& status_error_message() const = 0;
   virtual void set_status(const Status& status) = 0;
 
  protected:
@@ -532,7 +531,6 @@ class InMemoryRunGraphResponse : public MutableRunGraphResponseWrapper {
   void AddPartitionGraph(const GraphDef& partition_graph) override;
   Status status() const override;
   absl::StatusCode status_code() const override;
-  const string& status_error_message() const override;
   void set_status(const Status& status) override;
 
  protected:
@@ -566,7 +564,6 @@ class OwnedProtoRunGraphResponse : public MutableRunGraphResponseWrapper {
   void AddPartitionGraph(const GraphDef& partition_graph) override;
   Status status() const override;
   absl::StatusCode status_code() const override;
-  const string& status_error_message() const override;
   void set_status(const Status& status) override;
 
  protected:
@@ -594,7 +591,6 @@ class NonOwnedProtoRunGraphResponse : public MutableRunGraphResponseWrapper {
   void AddPartitionGraph(const GraphDef& partition_graph) override;
   Status status() const override;
   absl::StatusCode status_code() const override;
-  const string& status_error_message() const override;
   void set_status(const Status& status) override;
 
  protected:
@@ -648,7 +644,6 @@ class MutableRunStepResponseWrapper {
   // Returned status if requested.
   virtual Status status() const = 0;
   virtual absl::StatusCode status_code() const = 0;
-  virtual const string& status_error_message() const = 0;
   virtual void set_status(const Status& status) = 0;
 
  protected:
@@ -680,7 +675,6 @@ class InMemoryRunStepResponse : public MutableRunStepResponseWrapper {
   RunMetadata* mutable_metadata() override;
   Status status() const override;
   absl::StatusCode status_code() const override;
-  const string& status_error_message() const override;
   void set_status(const Status& status) override;
 
  protected:
@@ -710,7 +704,6 @@ class OwnedProtoRunStepResponse : public MutableRunStepResponseWrapper {
   RunMetadata* mutable_metadata() override;
   Status status() const override;
   absl::StatusCode status_code() const override;
-  const string& status_error_message() const override;
   void set_status(const Status& status) override;
 
  protected:
@@ -736,7 +729,6 @@ class NonOwnedProtoRunStepResponse : public MutableRunStepResponseWrapper {
   RunMetadata* mutable_metadata() override;
   Status status() const override;
   absl::StatusCode status_code() const override;
-  const string& status_error_message() const override;
   void set_status(const Status& status) override;
 
  protected:

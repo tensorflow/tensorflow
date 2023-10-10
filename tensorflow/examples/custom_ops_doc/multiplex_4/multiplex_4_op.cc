@@ -29,7 +29,6 @@ namespace tensorflow {
 namespace custom_op_examples {
 
 using ::tensorflow::shape_inference::InferenceContext;
-using ::tensorflow::shape_inference::ShapeHandle;
 
 Status MultiplexShapeFunction(InferenceContext* c) {
   int64_t num_cond_a;

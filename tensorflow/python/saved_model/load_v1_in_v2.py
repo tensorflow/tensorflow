@@ -217,7 +217,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
       signature_functions[signature_key] = signature_fn
     return signature_functions
 
-  def load(self, tags):
+  def load(self, tags, skip_restoring_checkpoint=False):
     """Creates an object from the MetaGraph identified by `tags`."""
     meta_graph_def = self.get_meta_graph_def_from_tags(tags)
     load_shared_name_suffix = "_load_{}".format(ops.uid())
@@ -246,7 +246,10 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     )
     (saver,) = load_graph_returns
     restore_from_saver = self._extract_saver_restore(wrapped, saver)
-    self.restore_variables(wrapped, restore_from_saver)
+
+    if not skip_restoring_checkpoint:
+      self.restore_variables(wrapped, restore_from_saver)
+
     with wrapped.graph.as_default():
       init_op = (
           loader_impl.get_init_op(meta_graph_def)
@@ -299,10 +302,12 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     return root
 
 
-def load(export_dir, tags):
+def load(export_dir, tags, skip_restoring_checkpoint=False):
   """Load a v1-style SavedModel as an object."""
   metrics.IncrementReadApi(_LOAD_V1_V2_LABEL)
   loader = _EagerSavedModelLoader(export_dir)
-  result = loader.load(tags=tags)
+  result = loader.load(
+      tags=tags, skip_restoring_checkpoint=skip_restoring_checkpoint
+  )
   metrics.IncrementRead(write_version="1")
   return result

@@ -13,32 +13,36 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <iterator>
 #include <memory>
-#include <string>
 #include <utility>
-#include <vector>
 
-#include "absl/algorithm/container.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/remove_identity_op_pattern.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace mlir {
 namespace quant {
@@ -132,8 +136,12 @@ LogicalResult MatchSupportedAffineOp(Operation* op, Value& binding_output,
       is_supported_affine_op = data_format.getValue().equals("NHWC") ||
                                data_format.getValue().equals("NDHWC");
     }
-  } else if (llvm::isa<TF::MatMulOp, TF::BatchMatMulV2Op>(op)) {
+  } else if (llvm::isa<TF::BatchMatMulV2Op>(op)) {
     if (const auto adj_y = op->getAttrOfType<BoolAttr>("adj_y")) {
+      is_supported_affine_op = !adj_y.getValue();
+    }
+  } else if (llvm::isa<TF::MatMulOp>(op)) {
+    if (const auto adj_y = op->getAttrOfType<BoolAttr>("transpose_b")) {
       is_supported_affine_op = !adj_y.getValue();
     }
   }
@@ -157,7 +165,7 @@ Value MakeOneDimValueBroadcastable(OpBuilder& builder, Location loc,
   }
 
   int64_t num_elements = value_shape.getNumElements();
-  llvm::SmallVector<int64_t> new_shape;
+  SmallVector<int64_t> new_shape;
   for (auto idx : llvm::reverse(llvm::seq<int32_t>(0, rhs_shape.getRank()))) {
     const int64_t rhs_dim = rhs_shape.getDimSize(idx);
     if (num_elements % rhs_dim != 0) {
@@ -213,7 +221,7 @@ Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
   auto dq_op = value.getDefiningOp<quantfork::DequantizeCastOp>();
   if (!dq_op) {
     auto mul_op = builder.create<TF::MulOp>(loc, value, multiplier);
-    return ConstantFoldOpIfPossible(mul_op).front();
+    return mul_op.getResult();
   }
   auto q_op = dq_op.getArg().getDefiningOp<quantfork::QuantizeCastOp>();
   if (!q_op) return {};
@@ -273,187 +281,7 @@ Value MultiplyFakeQuantValue(OpBuilder& builder, Location loc, Value value,
       q_op.getLoc(), new_value_type.clone(new_qtype), new_value);
   auto dequantize = builder.create<quantfork::DequantizeCastOp>(
       dq_op.getLoc(), new_value_type, quantize.getResult());
-  return ConstantFoldOpIfPossible(dequantize).front();
-}
-
-// Generate an einsum equation from the given DotDimensionNumber.
-std::string CreateEinsumEquation(
-    const xla::DotDimensionNumbers& dot_dimension_numbers, const int lhs_rank,
-    const int rhs_rank) {
-  // Prepare necessary indices.
-  absl::flat_hash_set<int64_t> lhs_batch_idx, rhs_batch_idx;
-  absl::flat_hash_set<int64_t> lhs_contract_idx, rhs_contract_idx;
-  lhs_batch_idx.insert(dot_dimension_numbers.lhs_batch_dimensions().begin(),
-                       dot_dimension_numbers.lhs_batch_dimensions().end());
-  lhs_contract_idx.insert(
-      dot_dimension_numbers.lhs_contracting_dimensions().begin(),
-      dot_dimension_numbers.lhs_contracting_dimensions().end());
-  rhs_batch_idx.insert(dot_dimension_numbers.rhs_batch_dimensions().begin(),
-                       dot_dimension_numbers.rhs_batch_dimensions().end());
-  rhs_contract_idx.insert(
-      dot_dimension_numbers.rhs_contracting_dimensions().begin(),
-      dot_dimension_numbers.rhs_contracting_dimensions().end());
-
-  // Generate equation.
-  std::string lhs_eq = "";
-  std::string rhs_eq = "";
-  std::string out_eq = "";
-  char c = 'a';
-  std::vector<char> lhs_batch_dims;
-  std::vector<char> lhs_contract_dims;
-  for (int i = 0; i < lhs_rank; i++) {
-    absl::StrAppend(&lhs_eq, std::string(1, c));
-    if (lhs_batch_idx.contains(i)) {
-      lhs_batch_dims.push_back(c);
-    } else if (lhs_contract_idx.contains(i)) {
-      lhs_contract_dims.push_back(c);
-    }
-    c++;
-  }
-
-  int batch_trace_idx = 0;
-  int contract_trace_idx = 0;
-  const bool rhs_only_batch = lhs_batch_dims.empty();
-  for (int i = 0; i < rhs_rank; i++) {
-    if (rhs_batch_idx.contains(i)) {
-      if (rhs_only_batch) {
-        rhs_eq.push_back(c);
-        lhs_batch_dims.push_back(c);
-        c++;
-      } else {
-        rhs_eq.push_back(lhs_batch_dims[batch_trace_idx]);
-        batch_trace_idx++;
-      }
-    } else if (rhs_contract_idx.contains(i)) {
-      absl::StrAppend(&rhs_eq,
-                      std::string(1, lhs_contract_dims[contract_trace_idx]));
-      contract_trace_idx++;
-    } else {
-      rhs_eq += c;
-      c++;
-    }
-  }
-
-  // Create out_eq by merging lhs and rhs.
-  // In XlaDotv2 style - batch dim - leftover from lhs - leftover from rhs.
-  for (const char c : lhs_batch_dims) {
-    absl::StrAppend(&out_eq, std::string(1, c));
-  }
-  for (const char c : lhs_eq) {
-    if (!absl::StrContains(out_eq, c) && !absl::StrContains(rhs_eq, c)) {
-      absl::StrAppend(&out_eq, std::string(1, c));
-    }
-  }
-  for (const char c : rhs_eq) {
-    if (!absl::StrContains(out_eq, c) && !absl::StrContains(lhs_eq, c)) {
-      absl::StrAppend(&out_eq, std::string(1, c));
-    }
-  }
-
-  return absl::StrCat(lhs_eq, ",", rhs_eq, "->", out_eq);
-}
-
-Value CreateEinsumOpFromXlaDotV2Op(OpBuilder& builder, const Location loc,
-                                   Value lhs, Value rhs, Value output,
-                                   StringAttr dot_dimension_numbers_str) {
-  xla::DotDimensionNumbers dot_dimension_numbers;
-  dot_dimension_numbers.ParseFromString(dot_dimension_numbers_str.str());
-  SmallVector<Value> input_arguments = {lhs, rhs};
-  const int lhs_rank =
-      lhs.getType().template cast<ShapedType>().getShape().size();
-  const int rhs_rank =
-      rhs.getType().template cast<ShapedType>().getShape().size();
-
-  const std::string einsum_equation =
-      CreateEinsumEquation(dot_dimension_numbers, lhs_rank, rhs_rank);
-
-  return builder.create<TF::EinsumOp>(loc, output.getType(), input_arguments,
-                                      builder.getStringAttr(einsum_equation));
-}
-
-// TODO (b/275225582): Supports Xla Gather op in general case.
-bool IsXlaGatherWithoutBatch(Value operand, Value start_indices) {
-  auto operand_type = operand.getType().dyn_cast_or_null<ShapedType>();
-  auto start_indices_type =
-      start_indices.getType().dyn_cast_or_null<ShapedType>();
-  if (start_indices_type == nullptr || operand_type == nullptr) return false;
-  return start_indices_type.getShape().size() == 1;
-}
-
-Value CreateSliceAndReshapeOpFromXlaGatherOpWithoutBatch(
-    OpBuilder& builder, const Location loc, Value operand, Value start_indices,
-    Value slice_sizes, Value output, StringAttr dimension_numbers_str) {
-  // Reads dimension numbers.
-  xla::GatherDimensionNumbers dimension_numbers;
-  dimension_numbers.ParseFromString(dimension_numbers_str.str());
-
-  // Construct full start_indices with given start_indices and
-  // start_index_map.
-  const ArrayRef<int64_t> operand_shape =
-      operand.getType().cast<ShapedType>().getShape();
-  const int64_t operand_rank = operand_shape.size();
-
-  // Fills zeros if start_index is not given in start_indices.
-  Value empty_start_indices = builder.create<TF::FillOp>(
-      loc, RankedTensorType::get({operand_rank}, builder.getI64Type()),
-      /*shape=*/Create1DConstValue<int64_t>(builder, loc, {operand_rank}),
-      /*value=*/CreateScalarConstValue<int64_t>(builder, loc, 0));
-
-  // Converts start_index_map proto to tensor.
-  const int64_t index_map_size = dimension_numbers.start_index_map().size();
-  SmallVector<int64_t> indices(index_map_size);
-  for (int64_t i = 0; i < index_map_size; i++) {
-    indices[i] = dimension_numbers.start_index_map()[i];
-  }
-
-  // Fill elements from start_indices with start_index_map
-  Value scattered_start_indices = builder.create<TF::TensorScatterUpdateOp>(
-      loc, empty_start_indices,
-      /*indices=*/
-      builder.create<TF::ReshapeOp>(
-          loc, RankedTensorType::get({index_map_size, 1}, builder.getI64Type()),
-          Create1DConstValue<int64_t>(builder, loc, indices),
-          Create1DConstValue<int64_t>(builder, loc, {index_map_size, 1})),
-      /*value=*/
-      builder.create<TF::CastOp>(
-          loc,
-          RankedTensorType::get(
-              start_indices.getType().template cast<ShapedType>().getShape(),
-              builder.getI64Type()),
-          start_indices));
-
-  // Slice operand by constructed start_indices and slice_sizes.
-  Value slice = builder.create<TF::SliceOp>(
-      loc, output.getType(), operand,
-      /*start_indices=*/scattered_start_indices,
-      /*slice_sizes=*/
-      builder.create<TF::CastOp>(
-          loc,
-          RankedTensorType::get(
-              slice_sizes.getType().template cast<ShapedType>().getShape(),
-              builder.getI64Type()),
-          slice_sizes));
-
-  // Collapses dimensions by reshaping.
-  absl::flat_hash_set<int64_t> collapsed_dims;
-  collapsed_dims.insert(dimension_numbers.collapsed_slice_dims().begin(),
-                        dimension_numbers.collapsed_slice_dims().end());
-  SmallVector<int64_t> new_shape(operand_rank - collapsed_dims.size());
-  for (int64_t i = 0, j = 0; i < operand_rank; i++) {
-    if (!collapsed_dims.contains(i)) {
-      new_shape[j++] = operand_shape[i];
-    }
-  }
-  if (!new_shape.empty()) new_shape[0] = -1;
-  return builder.create<TF::ReshapeOp>(
-      loc, output.getType(), slice,
-      Create1DConstValue(builder, loc, new_shape));
-}
-
-bool IsPrecisionEmpty(StringAttr prec_str) {
-  xla::PrecisionConfig prec;
-  prec.ParseFromString(prec_str.str());
-  return !prec.operand_precision_size();
+  return dequantize.getResult();
 }
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/prepare_lifting.inc"
@@ -466,7 +294,7 @@ void PrepareLiftingPass::runOnOperation() {
   // with a constant operand to a preceding affine operation.
   RewritePatternSet patterns(ctx);
   populateWithGenerated(patterns);
-  patterns.add<RemoveIdentity>(ctx);
+  patterns.add<RemoveIdentity, ConstantFoldQuantizableOperands>(ctx);
   if (op_set_ != OpSet::XLA) {
     // Convert Einsum into BatchMatMul for non-XLA opsets.
     // For the uniform opset, it is requested to maintain the BatchMatmul logic.
@@ -476,7 +304,7 @@ void PrepareLiftingPass::runOnOperation() {
   }
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
-    func.emitError() << "quant-internal-prepare-lifting failed.";
+    func.emitError() << "quant-prepare-lifting failed.";
     signalPassFailure();
   }
 }

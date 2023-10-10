@@ -27,7 +27,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/dtensor/cc/xla_spmd/layout_to_xla_sharding.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 
@@ -100,8 +100,7 @@ void DTensorLayoutToXlaShardingOpPass::runOnOperation() {
         if (!sharding.ok()) {
           return layout_op.emitOpError()
                  << "Failed to convert layout to sharding for "
-                 << layout.ToString() << ": "
-                 << sharding.status().error_message();
+                 << layout.ToString() << ": " << sharding.status().message();
         }
         mlir::OpBuilder builder(layout_op);
         auto sharding_attr =

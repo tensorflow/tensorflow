@@ -144,8 +144,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
           model_content=fb_model, gpu_compatibility=True)
     txt = mock_stdout.getvalue()
     self.assertIn(
-        'Your model looks compatible with GPU delegate with TFLite runtime',
-        txt)
+        'Your model looks compatible with GPU delegate on TFLite runtime', txt)
 
   def testTxtSignatureDefs(self):
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -216,6 +215,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
 
     converter = tf.lite.TFLiteConverter.from_concrete_functions(
         [func.get_concrete_function()], func)
+    converter.unfold_batchmatmul = True
     fb_model = converter.convert()
     mock_stdout = io.StringIO()
     with test.mock.patch.object(sys, 'stdout', mock_stdout):

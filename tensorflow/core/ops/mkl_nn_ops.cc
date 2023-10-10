@@ -235,15 +235,19 @@ REGISTER_OP("_MklFusedConv2D")
 REGISTER_OP("_MklNativeFusedConv2D")
     .Input("input: T")
     .Input("filter: T")
-    .Input("args: num_args * T")
+    .Input("args: TArgs")
+    .Input("host_args : num_host_args * float")
     .Output("output: T")
     .Attr("T: {bfloat16, float}")
+    .Attr("TArgs: list(type)")
     .Attr("num_args: int >= 0")
+    .Attr("num_host_args: int >=0 = 0")
     .Attr("strides: list(int)")
     .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrStringWithExplicit())
-    .Attr(GetConvnetDataFormatAttrString())
     .Attr(GetExplicitPaddingsAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetConvnetFilterFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("fused_ops: list(string) = []")
@@ -1261,6 +1265,7 @@ REGISTER_OP("_MklQuantizedMatMulWithBias")
     .Attr("transpose_b: bool = false")
     .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
     .Attr("is_weight_const: bool = true")
+    .Attr("is_bias_const: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
       ShapeHandle unused;
@@ -1294,6 +1299,7 @@ REGISTER_OP("_MklQuantizedMatMulWithBiasAndRelu")
     .Attr("transpose_b: bool = false")
     .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
     .Attr("is_weight_const: bool = true")
+    .Attr("is_bias_const: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
       ShapeHandle unused;
@@ -1329,6 +1335,7 @@ REGISTER_OP("_MklQuantizedMatMulWithBiasAndReluAndRequantize")
     .Attr("transpose_b: bool = false")
     .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
     .Attr("is_weight_const: bool = true")
+    .Attr("is_bias_const: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
       ShapeHandle unused;
@@ -1364,6 +1371,7 @@ REGISTER_OP("_MklQuantizedMatMulWithBiasAndDequantize")
     .Attr("transpose_b: bool = false")
     .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
     .Attr("is_weight_const: bool = true")
+    .Attr("is_bias_const: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
       ShapeHandle unused;
@@ -1399,6 +1407,7 @@ REGISTER_OP("_MklQuantizedMatMulWithBiasAndRequantize")
     .Attr("transpose_b: bool = false")
     .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
     .Attr("is_weight_const: bool = true")
+    .Attr("is_bias_const: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
       ShapeHandle unused;
@@ -1844,6 +1853,22 @@ Uses oneDNN APIs to perform fused batch normalization and relu.
 *NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
+
+REGISTER_OP("_MklFusedInstanceNorm")
+    .Input("x: T")
+    .Input("gamma: T")
+    .Input("beta: T")
+    .Output("y: T")
+    .Attr("T: {float, bfloat16}")
+    .Attr("fused_ops: list(string) = []")
+    .Attr("epsilon: float = 0.0001")
+    .Attr("leakyrelu_alpha: float = 0.2")
+    .Attr("reduction_axes: list(int)")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(
+        R"doc(oneDNN version of fused instance normalization operator.
+        Do not invoke this operator directly in Python.
+        Graph rewrite pass is expected to invoke this operator.)doc");
 
 REGISTER_OP("_MklFusedMish")
     .Input("features: T")

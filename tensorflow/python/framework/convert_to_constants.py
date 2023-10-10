@@ -25,6 +25,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_util
@@ -36,16 +37,9 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.saver import export_meta_graph
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import object_identity
 from tensorflow.python.util.tf_export import tf_export
 
-# Lazy load the single eager module to avoid introducing new dependencies for
-# graph_util:convert_variables_to_constants (eg in
-# tensorflow/contrib/session_bundle:session_bundle_py_test).
-wrap_function = lazy_loader.LazyLoader(
-    "wrap_function", globals(),
-    "tensorflow.python.eager.wrap_function")
 
 # Used in _FunctionConverterDataInGraph().
 VAR_ASSIGN_COLLECTION = "extra_var_assign_ops"

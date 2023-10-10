@@ -1,0 +1,97 @@
+ *******************************************************************************
+ Copyright 2023 Arm Limited and affiliates.
+ SPDX-License-Identifier: Apache-2.0
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ *******************************************************************************
+diff --git a/src/cpu/aarch64/acl_thread.cpp b/src/cpu/aarch64/acl_thread.cpp
+index fd2c76d01..bd7bed837 100644
+--- a/src/cpu/aarch64/acl_thread.cpp
++++ b/src/cpu/aarch64/acl_thread.cpp
+@@ -55,14 +55,17 @@ void acl_set_benchmark_scheduler_default() {
+ #endif
+ 
+ #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+-void acl_set_tp_scheduler() {
+-    static std::once_flag flag_once;
+-    // Create threadpool scheduler
+-    std::shared_ptr<arm_compute::IScheduler> threadpool_scheduler
+-            = std::make_unique<ThreadpoolScheduler>();
++void acl_set_tp_scheduler(int intra_threads = 0) {
++    static thread_local std::once_flag flag_once;
+     // set CUSTOM scheduler in ACL
+     std::call_once(flag_once,
+-            [&]() { arm_compute::Scheduler::set(threadpool_scheduler); });
++            [&]() {
++                    // Create threadpool scheduler
++                    std::shared_ptr<arm_compute::IScheduler> threadpool_scheduler
++                        = std::make_unique<ThreadpoolScheduler>();
++                    threadpool_scheduler->set_num_threads(intra_threads);
++
++                    arm_compute::Scheduler::set(threadpool_scheduler); });
+ }
+ 
+ void acl_set_threadpool_num_threads() {
+@@ -102,14 +105,6 @@ void set_acl_threading() {
+         acl_set_benchmark_scheduler_default();
+     }
+ #endif
+-#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+-    if (verbose_has_profile_externals()) {
+-        acl_set_tp_benchmark_scheduler();
+-    } else {
+-        acl_set_tp_scheduler();
+-    }
+-
+-#endif
+ }
+ 
+ } // namespace acl_thread_utils
+diff --git a/src/cpu/aarch64/acl_thread.hpp b/src/cpu/aarch64/acl_thread.hpp
+index f073376e6..654a2aa5d 100644
+--- a/src/cpu/aarch64/acl_thread.hpp
++++ b/src/cpu/aarch64/acl_thread.hpp
+@@ -40,7 +40,7 @@ void acl_set_benchmark_scheduler_default();
+ 
+ #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+ // Retrieve threadpool size during primitive execution and set ThreadpoolScheduler num_threads
+-void acl_set_tp_scheduler();
++void acl_set_tp_scheduler(int intra_threads);
+ void acl_set_threadpool_num_threads();
+ // Swap BenchmarkScheduler for custom scheduler builds (i.e. ThreadPoolScheduler) for DNNL_VERBOSE=profile,profile_externals
+ void acl_set_tp_benchmark_scheduler();
+diff --git a/src/cpu/aarch64/acl_threadpool_scheduler.cpp b/src/cpu/aarch64/acl_threadpool_scheduler.cpp
+index 439ca862e..6656c37a5 100644
+--- a/src/cpu/aarch64/acl_threadpool_scheduler.cpp
++++ b/src/cpu/aarch64/acl_threadpool_scheduler.cpp
+@@ -102,8 +102,6 @@ void ThreadpoolScheduler::schedule_op(ICPPKernel *kernel, const Hints &hints,
+ void ThreadpoolScheduler::run_workloads(
+         std::vector<arm_compute::IScheduler::Workload> &workloads) {
+ 
+-    arm_compute::lock_guard<std::mutex> lock(this->_run_workloads_mutex);
+-
+     const unsigned int num_threads
+             = std::min(static_cast<unsigned int>(_num_threads),
+                     static_cast<unsigned int>(workloads.size()));
+diff --git a/src/cpu/cpu_engine.cpp b/src/cpu/cpu_engine.cpp
+index 0bfec3871..7207b2b60 100644
+--- a/src/cpu/cpu_engine.cpp
++++ b/src/cpu/cpu_engine.cpp
+@@ -47,6 +47,7 @@ status_t cpu_engine_t::create_stream(stream_t **stream, unsigned flags) {
+ #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+ status_t cpu_engine_t::create_stream(stream_t **stream,
+         dnnl::threadpool_interop::threadpool_iface *threadpool) {
++    dnnl::impl::cpu::aarch64::acl_thread_utils::acl_set_tp_scheduler(threadpool->get_num_threads());
+     return safe_ptr_assign<stream_t>(
+             *stream, new cpu_stream_t(this, threadpool));
+ }

@@ -1,3 +1,5 @@
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+
 # Utilities for signature_defs in TFLite
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
@@ -66,16 +68,20 @@ pybind_extension(
     srcs = [
         "signature_def_util_wrapper_pybind11.cc",
     ],
+    data = [
+        "_pywrap_signature_def_util_wrapper.pyi",
+    ],
+    enable_stub_generation = True,
     deps = [
         ":signature_def_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "@pybind11",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "signature_def_utils",
     srcs = ["signature_def_utils.py"],
     srcs_version = "PY3",
@@ -85,7 +91,7 @@ py_library(
     ],
 )
 
-py_test(
+py_strict_test(
     name = "signature_def_utils_test",
     srcs = ["signature_def_utils_test.py"],
     data = ["//tensorflow/lite:testdata/add.bin"],

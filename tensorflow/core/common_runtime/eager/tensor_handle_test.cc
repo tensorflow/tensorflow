@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 
+#include <iostream>
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -98,10 +103,10 @@ class PackedTensorHandleTest : public ::testing::Test {
  public:
   PackedTensorHandleTest() {
     std::vector<std::unique_ptr<Device>> devices;
+    devices.emplace_back(CreateDevice("CPU", host_name_));
     for (const char* name : device_names_) {
       devices.emplace_back(CreateDevice("GPU", name));
     }
-    devices.emplace_back(CreateDevice("CPU", host_name_));
     device_mgr_ = new StaticDeviceMgr(std::move(devices));
 
     context_ = new EagerContext(
@@ -120,8 +125,10 @@ class PackedTensorHandleTest : public ::testing::Test {
 
   EagerContext* context() { return context_; }
 
-  std::vector<Device*> ListDevices() const {
-    return device_mgr_->ListDevices();
+  std::vector<Device*> ListGPUDevices() const {
+    // Remove the first CPU device.
+    auto all_devices = device_mgr_->ListDevices();
+    return std::vector<Device*>(all_devices.begin() + 1, all_devices.end());
   }
 
   bool IsReady(TensorHandle* handle) const { return handle->IsReady(); }
@@ -150,13 +157,13 @@ TEST_F(PackedTensorHandleTest, PackedHandle) {
   // Create 2 local TensorHandles (ready)
   std::vector<TensorHandle*> handles;
   Tensor t0(dtype, shape);
-  Device* d0 = ListDevices().at(0);
+  Device* d0 = ListGPUDevices().at(0);
   TensorHandle* h0 =
       TensorHandle::CreateLocalHandle(std::move(t0), d0, d0, d0, context());
   h0->SetResourceHandleDtypeAndShape({dtype_and_shape});
   handles.push_back(h0);
   Tensor t1(dtype, shape);
-  Device* d1 = ListDevices().at(1);
+  Device* d1 = ListGPUDevices().at(1);
   TensorHandle* h1 =
       TensorHandle::CreateLocalHandle(std::move(t1), d1, d1, d1, context());
   h1->SetResourceHandleDtypeAndShape({dtype_and_shape});
@@ -164,11 +171,11 @@ TEST_F(PackedTensorHandleTest, PackedHandle) {
 
   // Create 2 remote TensorHandles (not ready).
   const string remote_task = "/job:worker/replica:0/task:1";
-  Device* d2 = ListDevices().at(2);
+  Device* d2 = ListGPUDevices().at(2);
   TensorHandle* h2 = TensorHandle::CreateUnshapedRemoteHandle(
       /*op_id=*/0, /*output_num=*/0, remote_task, dtype, d2, context());
   handles.push_back(h2);
-  Device* d3 = ListDevices().at(3);
+  Device* d3 = ListGPUDevices().at(3);
   TensorHandle* h3 = TensorHandle::CreateUnshapedRemoteHandle(
       /*op_id=*/1, /*output_num=*/0, remote_task, dtype, d3, context());
   handles.push_back(h3);
@@ -206,16 +213,16 @@ TEST_F(PackedTensorHandleTest, PackedHandle) {
   for (int i = 0; i < packed_handle->NumPackedHandles(); ++i) {
     TensorHandle* h = nullptr;
     TF_ASSERT_OK(packed_handle->ExtractPackedHandle(i, &h));
-    EXPECT_EQ(h->device(), ListDevices().at(i));
+    EXPECT_EQ(h->device(), ListGPUDevices().at(i));
     EXPECT_EQ(h->Type(), expected_handle_types.at(i));
     EXPECT_EQ(h->FullType().type_id(), TFT_UNSET);
   }
   EXPECT_FALSE(IsReady(packed_handle));
 
-  TF_ASSERT_OK(h2->SetRemoteShape(shape, ListDevices().at(2),
+  TF_ASSERT_OK(h2->SetRemoteShape(shape, ListGPUDevices().at(2),
                                   context()->GetContextViewId()));
   EXPECT_FALSE(IsReady(packed_handle));
-  TF_ASSERT_OK(h3->SetRemoteShape(shape, ListDevices().at(3),
+  TF_ASSERT_OK(h3->SetRemoteShape(shape, ListGPUDevices().at(3),
                                   context()->GetContextViewId()));
   EXPECT_TRUE(IsReady(packed_handle));
 
@@ -227,7 +234,7 @@ TEST_F(PackedTensorHandleTest, PackedSingleHandle) {
   TensorShape shape = {};
 
   Tensor t(dtype, shape);
-  Device* d = ListDevices().at(0);
+  Device* d = ListGPUDevices().at(0);
   TensorHandle* h =
       TensorHandle::CreateLocalHandle(std::move(t), d, d, d, context());
   std::vector<TensorHandle*> handles = {h};
@@ -260,7 +267,7 @@ TEST_F(PackedTensorHandleTest, PoisonHandle) {
   TensorShape shape = {};
 
   Tensor t(dtype, shape);
-  Device* d = ListDevices().at(0);
+  Device* d = ListGPUDevices().at(0);
   TensorHandle* h =
       TensorHandle::CreateLocalHandle(std::move(t), d, d, d, context());
   std::vector<TensorHandle*> handles = {h};
@@ -277,10 +284,10 @@ TEST_F(PackedTensorHandleTest, PoisonHandle) {
   tensorflow::Status fake_failure_status(absl::StatusCode::kAborted,
                                          "Fake failure.");
   packed_handle->Poison(fake_failure_status, packed_handle->device());
-  EXPECT_THAT(
-      WaitReady(packed_handle),
-      tensorflow::testing::StatusIs(fake_failure_status.code(),
-                                    fake_failure_status.error_message()));
+  EXPECT_THAT(WaitReady(packed_handle),
+              tensorflow::testing::StatusIs(
+                  fake_failure_status.code(),
+                  std::string(fake_failure_status.message())));
 
   packed_handle->Unref();
 }
@@ -479,11 +486,11 @@ TEST_F(RemoteTensorHandleTest, PoisonRemote) {
   h->PoisonRemote(fake_failure_status, d1, context->GetContextViewId());
 
   Device* d2 = device_mgr.ListDevices().at(2);
-  EXPECT_THAT(
-      h->SetRemoteShapeAndDevice(shape, d1, context->GetContextViewId(),
-                                 d2->name()),
-      tensorflow::testing::StatusIs(fake_failure_status.code(),
-                                    fake_failure_status.error_message()));
+  EXPECT_THAT(h->SetRemoteShapeAndDevice(shape, d1, context->GetContextViewId(),
+                                         d2->name()),
+              tensorflow::testing::StatusIs(
+                  fake_failure_status.code(),
+                  std::string(fake_failure_status.message())));
 
   h->Unref();
   context->Unref();
@@ -527,11 +534,11 @@ TEST_F(RemoteTensorHandleTest, PoisonRemoteMirror) {
                                          "Fake failure.");
   h->PoisonRemote(fake_failure_status, d2, context->GetContextViewId());
 
-  EXPECT_THAT(
-      h->SetRemoteShapeAndDevice(shape, d2, context->GetContextViewId(),
-                                 d2->name()),
-      tensorflow::testing::StatusIs(fake_failure_status.code(),
-                                    fake_failure_status.error_message()));
+  EXPECT_THAT(h->SetRemoteShapeAndDevice(shape, d2, context->GetContextViewId(),
+                                         d2->name()),
+              tensorflow::testing::StatusIs(
+                  fake_failure_status.code(),
+                  std::string(fake_failure_status.message())));
 
   h->Unref();
   context->Unref();
@@ -676,8 +683,11 @@ TEST(TensorHandle_ResourceShapeMirror, CreateAndCheckMirror) {
   TF_EXPECT_OK(h->AddResourceShapeMirror(d1, op_id, output_num, context));
   EXPECT_TRUE(h->HasResourceShapeMirror(d1, context->GetContextViewId()));
 
-  // Adding a duplicate leads to failure
-  EXPECT_THAT(h->AddResourceShapeMirror(d1, op_id, output_num, context),
+  // Adding an identical mirror is idempotent.
+  TF_EXPECT_OK(h->AddResourceShapeMirror(d1, op_id, output_num, context));
+
+  // Adding a duplicate mirror with inconsistent arguments leads to failure.
+  EXPECT_THAT(h->AddResourceShapeMirror(d1, op_id + 1, output_num, context),
               tensorflow::testing::StatusIs(tensorflow::error::INTERNAL));
   h->Unref();
   context->Unref();

@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/compiler/xrt/xrt_device.h"
 
 #include <map>
+#include <memory>
+#include <string>
 
 #include "absl/container/node_hash_map.h"
 #include "tensorflow/compiler/jit/xla_device.h"
@@ -25,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/tsl/framework/device_id.h"
+#include "tsl/framework/device_id.h"
 
 namespace tensorflow {
 namespace {

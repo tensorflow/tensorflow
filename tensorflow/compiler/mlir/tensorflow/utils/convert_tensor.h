@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/protobuf/struct.pb.h"
 
 namespace tensorflow {
 
@@ -46,6 +47,10 @@ PartialTensorShape ConvertTypeToTensorShape(const mlir::Type& type);
 
 // Converts an MLIR shaped type to a TensorFlow shape attribute.
 mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type);
+
+// Converts an MLIR shaped type to a Tensorflow tensor spec proto.
+absl::StatusOr<TensorSpecProto> ConvertTypeToTensorSpecProto(
+    const mlir::Type& type);
 
 // Converts a TensorFlow shape attribute to an MLIR shape attribute.
 StatusOr<mlir::Attribute> ConvertTensorShapeProto(const TensorShapeProto& shape,

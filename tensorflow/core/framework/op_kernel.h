@@ -219,7 +219,8 @@ class OpKernel {
   const bool is_deferred_;
   bool expensive_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(OpKernel);
+  OpKernel(const OpKernel&) = delete;
+  void operator=(const OpKernel&) = delete;
 };
 
 class AsyncOpKernel : public OpKernel {
@@ -365,7 +366,8 @@ class OpKernelConstruction {
   // Allow access from OpKernel ctor.
   friend class OpKernel;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(OpKernelConstruction);
+  OpKernelConstruction(const OpKernelConstruction&) = delete;
+  void operator=(const OpKernelConstruction&) = delete;
 };
 
 // TODO(mrry): Consider converting to a random_access_iterator, and upgrading
@@ -730,11 +732,16 @@ class OpKernelContext {
 
   // Input
 
-  // Returns an immutable input tensor. May only be used for non-Ref
+  // Returns an immutable input tensor by index. May only be used for non-Ref
   // inputs. For Ref inputs use mutable_input below.
   // REQUIRES: !IsRefType(input_dtype(index))
   // TODO(mrry): Convert this to return Status.
   const Tensor& input(int index) const;
+
+  // Returns an immutable input tensor in "tensor" by index. May only be used
+  // for non-Ref inputs. For Ref inputs use mutable_input below.
+  // REQUIRES: !IsRefType(input_dtype(index))
+  StatusOr<const Tensor*> get_input(int index) const;
 
   // Returns the named immutable input tensor in "tensor", as defined
   // in the OpDef. May only be used for non-Ref inputs. For Ref inputs
@@ -1241,6 +1248,18 @@ class OpKernelContext {
 
   Allocator* get_allocator(AllocatorAttributes attr);
 
+  Params* params() const { return params_; }
+  void set_params(Params* params) { params_ = params; }
+
+  void ResetOutputs(int num_outputs = 0) {
+    for (TensorValue& value : outputs_) {
+      DCHECK(!value.is_ref());
+      delete value.tensor;
+      value.tensor = nullptr;
+    }
+    outputs_.resize(num_outputs);
+  }
+
  private:
   bool record_memory_consumption_ = false;
 
@@ -1301,7 +1320,8 @@ class OpKernelContext {
   friend void CheckNotInComputeAsync(OpKernelContext* ctx,
                                      const char* correct_macro_name);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(OpKernelContext);
+  OpKernelContext(const OpKernelContext&) = delete;
+  void operator=(const OpKernelContext&) = delete;
 };
 
 template <>

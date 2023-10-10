@@ -32,7 +32,6 @@ COMMON_PROTO_SRCS = [
     "debug.proto",
     "device_filters.proto",
     "device_properties.proto",
-    "graph_debug_info.proto",
     "queue_runner.proto",
     "rewriter_config.proto",
     "tensor_bundle.proto",
@@ -53,7 +52,6 @@ COMMON_PROTO_SRCS = [
     for proto_name in [
         "config",
         "device_properties",
-        "graph_debug_info",
         "meta_graph",
         "saved_model",
         "tensorflow_server",
@@ -64,8 +62,8 @@ tf_proto_library(
     name = "autotuning_proto",
     srcs = ["autotuning.proto"],
     make_default_target_header_only = True,
-    protodeps = ["//tensorflow/tsl/protobuf:autotuning_proto"],
-    exports = ["//tensorflow/tsl/protobuf:autotuning_proto"],
+    protodeps = ["@local_xla//xla:autotuning_proto"],
+    exports = ["@local_xla//xla:autotuning_proto"],
 )
 
 tf_proto_library(
@@ -74,7 +72,7 @@ tf_proto_library(
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto",
+        "@local_tsl//tsl/protobuf:dnn_proto",
     ],
 )
 
@@ -141,8 +139,8 @@ tf_proto_library(
     name = "error_codes_proto_impl",
     srcs = ["error_codes.proto"],
     make_default_target_header_only = True,
-    protodeps = ["//tensorflow/tsl/protobuf:error_codes_proto_impl"],
-    exports = ["//tensorflow/tsl/protobuf:error_codes_proto_impl"],
+    protodeps = ["@local_tsl//tsl/protobuf:error_codes_proto_impl"],
+    exports = ["@local_tsl//tsl/protobuf:error_codes_proto_impl"],
 )
 
 exports_files(
@@ -212,16 +210,16 @@ tf_proto_library(
     protodeps = [
         ":error_codes_proto_impl",
         "//tensorflow/core/framework:protos_all",
-        "//tensorflow/tsl/protobuf:bfc_memory_map_proto",
-        "//tensorflow/tsl/protobuf:coordination_config_proto",
-        "//tensorflow/tsl/protobuf:rpc_options_proto",
-        "//tensorflow/tsl/protobuf:status_proto",
+        "@local_tsl//tsl/protobuf:bfc_memory_map_proto",
+        "@local_tsl//tsl/protobuf:coordination_config_proto",
+        "@local_tsl//tsl/protobuf:rpc_options_proto",
+        "@local_tsl//tsl/protobuf:status_proto",
     ],
     tags = ["alt_dep=//third_party/tensorflow/core:protos_all"],
     exports = [
-        "//tensorflow/tsl/protobuf:bfc_memory_map_proto",
-        "//tensorflow/tsl/protobuf:rpc_options_proto",
-        "//tensorflow/tsl/protobuf:status_proto",
+        "@local_tsl//tsl/protobuf:bfc_memory_map_proto",
+        "@local_tsl//tsl/protobuf:rpc_options_proto",
+        "@local_tsl//tsl/protobuf:status_proto",
     ],
 )
 

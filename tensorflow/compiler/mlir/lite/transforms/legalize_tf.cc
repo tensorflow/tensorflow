@@ -57,8 +57,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
-#include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -91,28 +91,6 @@ class LegalizeTFPass : public impl::LegalizeTFPassBase<LegalizeTFPass> {
   /// Performs the lowering to TFLite dialect.
   void runOnOperation() override;
 };
-
-// Returns true if all tensor value in `values` has static shape and same shape.
-bool HasSameStaticShapes(Operation* op) {
-  auto values = op->getOperands();
-  int index = 0;
-  ArrayRef<int64_t> shape;
-  for (Value value : values) {
-    auto shaped_type = value.getType().dyn_cast<ShapedType>();
-    if (!shaped_type || !shaped_type.hasStaticShape()) {
-      return false;
-    }
-    if (index == 0) {
-      shape = shaped_type.getShape();
-    } else {
-      if (shape != shaped_type.getShape()) {
-        return false;
-      }
-    }
-    ++index;
-  }
-  return true;
-}
 
 // Util that casts 'val' to Int32 by adding a cast Op.
 Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {

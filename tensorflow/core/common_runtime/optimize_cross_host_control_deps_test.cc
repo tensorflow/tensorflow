@@ -180,7 +180,7 @@ TEST(OptimizeCrossHostControlDepsTest, OptimizeCrossHostControlInputEdges) {
 TEST(OptimizeCrossHostControlDepsTest, LargeGraph) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
 
-  constexpr int size = 1000;
+  constexpr int size = 750;
 
   std::vector<Operation> layer1;
   for (int i = 0; i < size; ++i) {

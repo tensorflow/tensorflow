@@ -765,7 +765,7 @@ string GenerateNonConversionReport(
         // Log the error in case of issue, however do not stop execution.
         LOG(ERROR) << "Problem encountered while generating the TF-TRT "
                    << "Non-Conversion Report in CSV Format:\n"
-                   << status.error_message();
+                   << status.message();
       }
       show_detailed_conversion_report = true;
     } else if (std::stoi(detailed_report_var) >= 1) {
@@ -949,7 +949,7 @@ Status SegmentGraph(const Graph* tf_graph,
     } else {
       const Status status = candidate_fn(node->tf_node());
       if (!status.ok()) {
-        exclude_node(status.error_message());
+        exclude_node(status.message());
       } else if (tftrt_op_denylist.contains(node->tf_node()->type_string())) {
         // WARNING verbosity since the user explicitly requests this behavior.
         LOG_WARNING_WITH_PREFIX

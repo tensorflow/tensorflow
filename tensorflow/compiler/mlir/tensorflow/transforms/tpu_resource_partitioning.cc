@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/parallel_execute_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/xla_data.pb.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -159,7 +159,7 @@ LogicalResult PartitionResourceReadsWrites(
   tf_device::ParallelExecuteOp parallel_execute =
       cluster_func->getParentOfType<tf_device::ParallelExecuteOp>();
   if (!parallel_execute)
-    parallel_execute = BuildParallelExecuteOp(cluster_func, &builder);
+    parallel_execute = mlir::TF::BuildParallelExecuteOp(cluster_func, &builder);
 
   // Rewrite results before rewriting operands as `tf.TPUPartitionedInputV2`
   // resource handle results is an indicator for a partitioned resource
@@ -262,7 +262,7 @@ LogicalResult PartitionResourceReadsWrites(
     read_var->erase();
     if (partitioned_input->use_empty()) partitioned_input->erase();
   }
-  return RemoveSingletonParallelExecuteOp(parallel_execute, &builder);
+  return mlir::TF::RemoveSingletonParallelExecuteOp(parallel_execute, &builder);
 }
 
 void TPUResourceReadsWritesPartitioningPass::runOnOperation() {

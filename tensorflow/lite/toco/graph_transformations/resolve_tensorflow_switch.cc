@@ -61,7 +61,7 @@ namespace toco {
   const bool predicate_value = predicate_data[0];
 
   // From the TensorFlow docs on .switch() in
-  // third_party/tensorflow/python/ops/control_flow_ops.py
+  // tensorflow/python/ops/control_flow_ops.py
   //
   //    If `pred` is false, the `data` input is forwarded to the first output.
   //    Otherwise, the data goes to the second output.

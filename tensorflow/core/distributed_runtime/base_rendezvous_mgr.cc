@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -33,22 +34,21 @@ limitations under the License.
 
 namespace tensorflow {
 
-static void StartAbortRendevous(tsl::core::RefCountPtr<Rendezvous> rendez,
-                                const Status& s) {
-  rendez->StartAbort(s);
+namespace {
+
+size_t HashCall(BaseRecvTensorCall* call) {
+  // Salt hash with "42" to avoid using the same hash function for the shard key
+  // and the hashtable contained within the the shard itself.
+  return absl::HashOf(call, 42);
 }
+
+}  // namespace
 
 BaseRendezvousMgr::BaseRendezvousMgr(const WorkerEnv* worker_env)
-    : worker_env_(worker_env) {}
+    : cache_(new RendezvousCache<BaseRemoteRendezvous>()),
+      worker_env_(worker_env) {}
 
-BaseRendezvousMgr::~BaseRendezvousMgr() {
-  for (auto& p : table_) {
-    auto rendez = p.second.GetNewRef();
-    if (rendez) {
-      StartAbortRendevous(std::move(rendez), errors::Aborted("Shutdown"));
-    }
-  }
-}
+BaseRendezvousMgr::~BaseRendezvousMgr() = default;
 
 tsl::core::RefCountPtr<RemoteRendezvous> BaseRendezvousMgr::Find(
     int64_t step_id) {
@@ -57,27 +57,8 @@ tsl::core::RefCountPtr<RemoteRendezvous> BaseRendezvousMgr::Find(
 
 tsl::core::RefCountPtr<BaseRemoteRendezvous> BaseRendezvousMgr::FindOrCreate(
     int64_t step_id) {
-  mutex_lock l(mu_);
-  tsl::core::RefCountPtr<BaseRemoteRendezvous> rendez = nullptr;
-  auto iter = table_.find(step_id);
-  if (iter != table_.end()) {
-    rendez = iter->second.GetNewRef();
-    VLOG(5) << this << " step_id:" << step_id << " "
-            << "WeakPtr returned:" << rendez.get();
-    if (!rendez) {
-      table_.erase(iter);
-    }
-  }
-  if (!rendez) {  // Deleted or not found
-    rendez = Create(step_id, worker_env_);
-    VLOG(5) << this << " step_id:" << step_id << " "
-            << "Rendezvous not found, inserting a new one." << rendez.get();
-    // TODO(b/274793840): The WeakPtr still leaks, albeit slower than
-    // leaking entire Rendezvous objects.
-    table_.insert(
-        {step_id, tsl::core::WeakPtr<BaseRemoteRendezvous>{rendez.get()}});
-  }
-  return rendez;
+  return cache_->FindOrCreate(
+      step_id, [this, step_id]() { return Create(step_id, worker_env_); });
 }
 
 void BaseRendezvousMgr::RecvLocalAsync(int64_t step_id,
@@ -103,27 +84,6 @@ Status BaseRendezvousMgr::RecvLocal(int64_t step_id,
                  });
   n.WaitForNotification();
   return ret;
-}
-
-void BaseRendezvousMgr::Cleanup(int64_t step_id) {
-  tsl::core::RefCountPtr<BaseRemoteRendezvous> rendez = nullptr;
-  {
-    mutex_lock l(mu_);
-    auto iter = table_.find(step_id);
-    if (iter != table_.end()) {
-      rendez = iter->second.GetNewRef();
-      table_.erase(iter);
-    }
-  }
-  if (rendez) {
-    StartAbortRendevous(std::move(rendez),
-                        errors::Aborted("Cleanup ", step_id));
-  }
-}
-
-void BaseRendezvousMgr::CleanupAll() {
-  mutex_lock l(mu_);
-  table_.clear();
 }
 
 BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env,
@@ -398,12 +358,7 @@ void BaseRemoteRendezvous::RecvLocalAsync(const ParsedKey& parsed,
       // rendezvous logic. At some point after Initialize() is called, a Tensor
       // is produced locally that will then be sent in response to the incoming
       // RPC.
-
-      // Keeps a reference to ensure current rendezvous won't be released before
-      // these pending calls are applied.
-      tsl::core::RefCountPtr<Rendezvous> rendez_ref = GetNewRef(this);
-      deferred_calls_.emplace_back(parsed, std::move(done),
-                                   std::move(rendez_ref));
+      deferred_calls_.emplace_back(parsed, std::move(done), GetNewRef(this));
       return;
     }
   }
@@ -427,7 +382,7 @@ void BaseRemoteRendezvous::StartAbort(const Status& s) {
   // aggregating errors across devices: this allows us to prefer our original
   // status message over any cancellation related errors.
   Status derived_status = s;
-  if (errors::IsCancelled(s) || errors::IsAborted(s)) {
+  if (absl::IsCancelled(s) || absl::IsAborted(s)) {
     derived_status = StatusGroup::MakeDerived(s);
   }
 
@@ -492,7 +447,7 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
     }
   }
 
-  int hash = absl::Hash<void*>{}(call) % num_shards_;
+  int hash = HashCall(call) % num_shards_;
   bool buckets_found = false;
   bool already_cancelled = false;
   {
@@ -525,8 +480,8 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
       }
       if (!already_cancelled) {
         it = calls_
-                 .emplace(cm,
-                          std::make_unique<PendingCalls>(token, 0, num_shards_))
+                 .emplace(cm, std::make_unique<PendingCalls>(
+                                  token, 0, num_shards_, GetNewRef(this)))
                  .first;
       }
     }
@@ -547,7 +502,7 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
 
 void BaseRemoteRendezvous::DeregisterCall(BaseRecvTensorCall* call,
                                           const Rendezvous::Args& args) {
-  int hash = absl::Hash<void*>{}(call) % num_shards_;
+  int hash = HashCall(call) % num_shards_;
   auto cm = args.cancellation_manager;
   bool is_last_call = false;
   {

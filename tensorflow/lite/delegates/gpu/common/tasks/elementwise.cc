@@ -78,6 +78,14 @@ $0.w = $1.w < INIT_FLT(0.0f) ? exp($1.w) - INIT_FLT(1.0f) : $1.w;)";
     case OperationType::FLOOR:
       result = "$0 = floor($1);";
       break;
+    case OperationType::GELU:
+      // OpenCL has erfc and so it can use the more accurate gelu calculation
+      // as compared to the OpenGL and Vulkan implementations.
+      // gelu(x) = 0.5 * x * erfc(x * -sqrt(0.5))
+      result =
+          "$0 = INIT_FLT4(0.5f) * $1 * erfc($1 * "
+          "INIT_FLT4(-0.70710678118654752440f));";
+      break;
     case OperationType::HARD_SWISH:
       result =
           "$0 = $1 * clamp($1 * INIT_FLT(0.16666667f) + INIT_FLT(0.5f), "
@@ -301,7 +309,9 @@ ElementwiseDescriptor CreateElementwiseTwoInput(
     bool swap_inputs) {
   const BHWC shape = BHWC(1, constant_tensor.shape.h, constant_tensor.shape.w,
                           constant_tensor.shape.c);
-  TensorDescriptor const_tensor_desc = definition.src_tensors[0];
+  TensorDescriptor const_tensor_desc =
+      TensorDescriptor(definition.src_tensors[0].GetDataType(),
+                       definition.src_tensors[0].GetStorageType(), Layout::HWC);
   auto status = const_tensor_desc.UpdateToSupportedStorageType(gpu_info, shape);
   const_tensor_desc.UploadData(constant_tensor);
 

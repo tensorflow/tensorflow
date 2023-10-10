@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 
 namespace mlir {
-namespace TFTPU {
+namespace TF {
 
 tf_device::ParallelExecuteOp BuildParallelExecuteOp(
     tf_device::ClusterFuncOp cluster_func, OpBuilder* builder) {
@@ -58,5 +58,5 @@ LogicalResult RemoveSingletonParallelExecuteOp(
   return success();
 }
 
-}  // namespace TFTPU
+}  // namespace TF
 }  // namespace mlir

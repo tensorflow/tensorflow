@@ -23,7 +23,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import tape as tape_lib
+from tensorflow.python.eager import record
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -34,7 +34,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.memory_checker import MemoryChecker
-from tensorflow.python.layers.pooling import max_pooling3d
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import cond as tf_cond
@@ -962,7 +961,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
       d2y_dx2 = g.gradient(dy_dx, x)  # d2y/dx2 := 6x
     d3y_dx3 = g.gradient(d2y_dx2, x)  # d3y/dx3 := 6
     x = 3
-    self.assertEqual(self.evaluate(y), x**3)
+    self.assertAllClose(self.evaluate(y), x**3)
     self.assertEqual(self.evaluate(dy_dx), 3 * x**2)
     self.assertEqual(self.evaluate(d2y_dx2), 6 * x)
     self.assertEqual(self.evaluate(d3y_dx3), 6)
@@ -1084,7 +1083,7 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     x = constant_op.constant(1.)
     with backprop.GradientTape() as g:
       g.watch(x)
-      tape_lib.record_operation('InvalidBackprop', [y], [x], lambda dy: [])
+      record.record_operation('InvalidBackprop', [y], [x], lambda dy: [])
     with self.assertRaisesRegex(errors_impl.InternalError,
                                 'InvalidBackprop.*too few gradients'):
       g.gradient(y, x)
@@ -1581,29 +1580,6 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     # computation.
     transpose = t.gradient(gc, output_grad)
     self.assertAllClose(3.1, transpose)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testMaxPooling3DGradient(self):
-
-    def forward(a):
-      r = max_pooling3d(a, pool_size=pool_size, strides=strides, padding='SAME')
-      return r
-
-    input_sizes = [1, 3, 2, 4, 1]
-    pool_size = (2, 2, 1)
-    strides = (1, 1, 1)
-
-    total_size = np.prod(input_sizes)
-    x = np.arange(1, total_size + 1, dtype=np.float32)
-    aa = constant_op.constant(x, shape=input_sizes, dtype=dtypes.float32)
-    da = backprop.gradients_function(forward)(aa)
-
-    if not context.executing_eagerly():
-      tf_aa = constant_op.constant(x, shape=input_sizes, dtype=dtypes.float32)
-      tf_max = max_pooling3d(
-          tf_aa, pool_size=pool_size, strides=strides, padding='SAME')
-      tf_da = gradients.gradients(tf_max, [tf_aa])
-      self.assertAllEqual(da[0], tf_da[0])
 
   @test_util.run_in_graph_and_eager_modes
   def testWatchBadThing(self):

@@ -170,7 +170,13 @@ absl::Status ParseInputsWithConstTensorImpl(
       } else {
         Tensor<HWC, DataTypeT> tensor;
         RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
-        *tensor_or_scalar = std::move(tensor);
+        // If case of degenerate 3d tensor, which represents a single value, we
+        // convert is to scalar.
+        if (tensor.data.size() == 1) {
+          *tensor_or_scalar = static_cast<T>(tensor.data[0]);
+        } else {
+          *tensor_or_scalar = std::move(tensor);
+        }
       }
     }
   }
@@ -427,8 +433,8 @@ class ClampOperationsParser : public TFLiteOperationParser {
     // We replace clamp(...) with sequence of elementwise ops:
     // substaction -> usual relu with alpha = 0.0 -> addition.
     // node_sub = v0 = v - a // add op (add -a)
-    // node_relu = v1 = clamp(v0, 0.0, clip); // relu op alpha = 0.0,
-    // clip = b - a;
+    // node_relu = v1 = clamp(v0, 0.0, activation_max); // relu op alpha = 0.0,
+    // activation_max = b - a;
     // node_add = v2 = v1 + a // add op (add a)
     Node* node_sub = graph->NewNode();
     Node* node_relu = graph->NewNode();
@@ -441,7 +447,7 @@ class ClampOperationsParser : public TFLiteOperationParser {
 
     ReLUAttributes relu_attr;
     relu_attr.alpha = 0.0f;
-    relu_attr.clip = clamp_b_ - clamp_a_;
+    relu_attr.activation_max = clamp_b_ - clamp_a_;
     node_relu->operation.type = ToString(OperationType::RELU);
     node_relu->operation.attributes = relu_attr;
 
@@ -1203,6 +1209,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       case OperationType::ELU:
       case OperationType::EXP:
       case OperationType::FLOOR:
+      case OperationType::GELU:
       case OperationType::LOG:
       case OperationType::NEG:
       case OperationType::RSQRT:
@@ -1936,7 +1943,8 @@ class QuantizeOperationParser : public TFLiteOperationParser {
 
 class ReLUOperationParser : public TFLiteOperationParser {
  public:
-  explicit ReLUOperationParser(int clip) : clip_(clip) {}
+  explicit ReLUOperationParser(int activation_min, int activation_max)
+      : activation_min_(activation_min), activation_max_(activation_max) {}
 
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
@@ -1956,13 +1964,15 @@ class ReLUOperationParser : public TFLiteOperationParser {
     const TfLiteLeakyReluParams* tf_options;
     auto status = RetrieveBuiltinData(tflite_node, &tf_options);
     attr.alpha = status.ok() ? tf_options->alpha : 0;
-    attr.clip = clip_;
+    attr.activation_min = activation_min_;
+    attr.activation_max = activation_max_;
     node->operation.attributes = attr;
     return reader->AddOutputs(node);
   }
 
  private:
-  const int clip_;
+  const int activation_min_;
+  const int activation_max_;
 };
 
 class ResamplerOperationParser : public TFLiteOperationParser {
@@ -2156,8 +2166,19 @@ class SelectV2OperationParser : public TFLiteOperationParser {
       if_tensor.data.push_back(if_scalar_tensor.data[0]);
     }
     if (!attr.broadcast_false) {
-      if (is_else_constant) {
-        RETURN_IF_ERROR(reader->ReadTensor(2, &else_tensor));
+      // Support 3D version of the else_tensor if needed. Convert it to 4D.
+      if (is_else_constant &&
+          absl::IsInvalidArgument(reader->ReadTensor(2, &else_tensor))) {
+        Tensor<HWC, DataType::FLOAT32> else_tensor_3d;
+        RETURN_IF_ERROR(reader->ReadTensor(2, &else_tensor_3d));
+        else_tensor.shape =
+            BHWC(1, else_tensor_3d.shape.h, else_tensor_3d.shape.w,
+                 else_tensor_3d.shape.c);
+        else_tensor.id = else_tensor_3d.id;
+        else_tensor.data.reserve(else_tensor_3d.data.size());
+        for (int i = 0; i < else_tensor_3d.data.size(); ++i) {
+          else_tensor.data.push_back(else_tensor_3d.data[i]);
+        }
       }
     } else {
       Tensor<Scalar, DataType::FLOAT32> else_scalar_tensor;
@@ -3073,6 +3094,7 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
     case kTfLiteBuiltinAbs:
       return std::make_unique<ElementwiseOperationParser>(OperationType::ABS);
     case kTfLiteBuiltinAdd:
+    case kTfLiteBuiltinAddN:
       return std::make_unique<ElementwiseOperationParser>(OperationType::ADD);
     case kTfLiteBuiltinAveragePool2d:
       return std::make_unique<Pooling2DOperationParser>(PoolingType::AVERAGE);
@@ -3119,6 +3141,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<FullyConnectedOperationParser>();
     case kTfLiteBuiltinGather:
       return std::make_unique<GatherOperationParser>();
+    case kTfLiteBuiltinGelu:
+      return std::make_unique<ElementwiseOperationParser>(OperationType::GELU);
     case kTfLiteBuiltinGreater:
       return std::make_unique<ElementwiseOperationParser>(
           OperationType::GREATER);
@@ -3186,13 +3210,13 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       }
       break;
     case kTfLiteBuiltinRelu:
-      return std::make_unique<ReLUOperationParser>(0);
+      return std::make_unique<ReLUOperationParser>(0, 0);
     case kTfLiteBuiltinRelu6:
-      return std::make_unique<ReLUOperationParser>(6);
+      return std::make_unique<ReLUOperationParser>(0, 6);
     case kTfLiteBuiltinReluN1To1:
-      return std::make_unique<ClampOperationsParser>(-1.0, 1.0);
+      return std::make_unique<ReLUOperationParser>(-1.0, 1.0);
     case kTfLiteBuiltinLeakyRelu:
-      return std::make_unique<ReLUOperationParser>(0);
+      return std::make_unique<ReLUOperationParser>(0, 0);
     case kTfLiteBuiltinPrelu:
       return std::make_unique<PReLUOperationParser>();
     case kTfLiteBuiltinReshape:
@@ -3246,7 +3270,6 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<UnpackOperationParser>();
     case kTfLiteBuiltinCustom: {
       const absl::string_view custom_name = registration->custom_name;
-      fprintf(stderr, "Found Custom Op: %s\n", registration->custom_name);
       if (custom_name == "Convolution2DTransposeBias") {
         return std::make_unique<TransposeConvCustomOperationParser>();
       }
@@ -3371,20 +3394,41 @@ TfLiteIntArray* GetOpsToReplace(
   return ConvertVectorToTfLiteIntArray(ops_to_replace);
 }
 
-// Creates inputs and outputs passed by io_tensors parameters in the resulting
+// Creates inputs passed by io_tensors parameters in the resulting
 // graph. We force it to make sure that delegated subgraph has same order of
 // inputs and outputs with the original one. When delegated model is built from
 // the tflite model representation tensors are created lazily, so there is no
 // guarantee that the order will match the source model tensors order.
-absl::Status PrecreateIOTensors(
-    TfLiteContext* context, GraphFloat32* graph, const std::vector<int>& io_ids,
+absl::Status PrecreateInputTensors(
+    TfLiteContext* context, GraphFloat32* graph,
+    const std::vector<int>& input_ids,
     absl::flat_hash_map<int, int>* quant_conversion_map,
     absl::flat_hash_map<int, Value*>* tensor_to_value) {
-  for (const auto& id : io_ids) {
+  for (const auto& id : input_ids) {
     const TfLiteTensor& tflite_tensor = context->tensors[id];
     if (tflite::IsConstantTensor(&tflite_tensor)) continue;
     RETURN_IF_ERROR(ObjectReader::ReadNonConstantTensor(
         context, tensor_to_value, quant_conversion_map, graph, id));
+  }
+  return absl::OkStatus();
+}
+
+// Similar to PrecreateInputTensors(), it creates outputs passed by io_tensors
+// parameters in the resulting graph. In addition to that, it calls
+// graph->AddKnownGraphOutput() to notify graph outputs from
+// delegate_params->output_tensors.
+absl::Status PrecreateOutputTensors(
+    TfLiteContext* context, GraphFloat32* graph,
+    const std::vector<int>& output_ids,
+    absl::flat_hash_map<int, int>* quant_conversion_map,
+    absl::flat_hash_map<int, Value*>* tensor_to_value) {
+  for (const auto& id : output_ids) {
+    const TfLiteTensor& tflite_tensor = context->tensors[id];
+    if (tflite::IsConstantTensor(&tflite_tensor)) continue;
+    Value* value;
+    RETURN_IF_ERROR(ObjectReader::ReadNonConstantTensor(
+        context, tensor_to_value, quant_conversion_map, graph, id, &value));
+    graph->AddKnownGraphOutput(value);
   }
   return absl::OkStatus();
 }
@@ -3478,10 +3522,10 @@ absl::Status BuildModelEnforceIO(
   absl::flat_hash_map<int, Value*> tensor_to_value;
   std::vector<ValueId> variable_inputs_to_value_id;
 
-  RETURN_IF_ERROR(PrecreateIOTensors(context, graph, input_ids,
-                                     quant_conversion_map, &tensor_to_value));
-  RETURN_IF_ERROR(PrecreateIOTensors(context, graph, output_ids,
-                                     quant_conversion_map, &tensor_to_value));
+  RETURN_IF_ERROR(PrecreateInputTensors(
+      context, graph, input_ids, quant_conversion_map, &tensor_to_value));
+  RETURN_IF_ERROR(PrecreateOutputTensors(
+      context, graph, output_ids, quant_conversion_map, &tensor_to_value));
   for (int i = 0; i < operations.size(); ++i) {
     TfLiteNode* tflite_node;
     TfLiteRegistration* registration;

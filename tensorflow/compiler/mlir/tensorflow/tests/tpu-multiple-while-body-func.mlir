@@ -1,5 +1,5 @@
 // RUN: tf-opt %s -tf-tpu-bridge 2>&1 | FileCheck %s
-// RUN: tf-opt %s -tf-tpu-bridge-v1 2>&1 | FileCheck %s
+// RUN: tf-opt %s -tf-cluster-tpu-bridge-v1 2>&1 | FileCheck %s
 
 // This test verifies there is no warning about shape inference failure in TPU
 // bridge in handling multiple usage of the same function.

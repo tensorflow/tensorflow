@@ -30,8 +30,8 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/TargetParser/Triple.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
-#include "tensorflow/compiler/xla/util.h"
+#include "xla/service/llvm_ir/llvm_type_conversion_util.h"
+#include "xla/util.h"
 
 namespace tensorflow {
 namespace tfcompile {
@@ -83,7 +83,7 @@ static StatusOr<string> CodegenModule(llvm::TargetMachine* target_machine,
   llvm::legacy::PassManager codegen_passes;
 
   if (target_machine->addPassesToEmitFile(codegen_passes, ostream, nullptr,
-                                          llvm::CGFT_ObjectFile)) {
+                                          llvm::CodeGenFileType::ObjectFile)) {
     return xla::InternalError(
         "Could not create pass pipeline to generate object file");
   }

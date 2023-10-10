@@ -148,7 +148,7 @@ class StepStatsCollectorInterface {
   // `err` message needs to contain device name and allocator name, e.g.:
   // "ResourceExhaustedError: OOM when allocating tensor ...
   // on /job:localhost/replica:0/task:0/device:GPU:0 by allocator GPU_0_bfc"
-  virtual string ReportAllocsOnResourceExhausted(const string& err) = 0;
+  virtual string ReportAllocsOnResourceExhausted(absl::string_view err) = 0;
 };
 
 // StepStatsCollector manages the collection of a StepStats object.
@@ -176,7 +176,7 @@ class StepStatsCollector : public StepStatsCollectorInterface {
                       const string& thread_name);
 
   NodeExecStatsInterface* CreateNodeExecStats(const NodeDef* node) override;
-  string ReportAllocsOnResourceExhausted(const string& err) override;
+  string ReportAllocsOnResourceExhausted(absl::string_view err) override;
 
   // The following 2 Finalize methods populate the StepStats passed
   // from the constructor. Calling it more than once won't have any effect.

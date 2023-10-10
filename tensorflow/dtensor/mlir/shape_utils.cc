@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/shape_utils.h"
 
+#include <optional>
+#include <vector>
+
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -135,7 +138,7 @@ mlir::LogicalResult InferShapeOfTFOpWithCustomOperandConstantFn(
     auto result = type_op.inferReturnTypes(
         op->getContext(), location, op->getOperands(),
         mlir::DictionaryAttr::get(op->getContext(), attributes),
-        op->getRegions(), inferred_return_types);
+        op->getPropertiesStorage(), op->getRegions(), inferred_return_types);
     if (failed(result)) return mlir::failure();
 
     inferred_return_shapes.resize(inferred_return_types.size());
@@ -163,7 +166,7 @@ mlir::LogicalResult InferShapeOfTFOpWithCustomOperandConstantFn(
     return shape_type_op.inferReturnTypeComponents(
         op->getContext(), location, op->getOperands(),
         mlir::DictionaryAttr::get(op->getContext(), attributes),
-        op->getRegions(), inferred_return_shapes);
+        op->getPropertiesStorage(), op->getRegions(), inferred_return_shapes);
   }
 
   // If `operand` is from DTensorLayout op, use input value of DTensorLayout op

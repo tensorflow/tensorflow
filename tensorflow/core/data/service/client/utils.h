@@ -16,8 +16,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_CLIENT_UTILS_H_
 
 #include <cstdint>
+#include <optional>
 #include <string>
 
+#include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 
@@ -28,6 +30,12 @@ namespace data {
 StatusOr<DataServiceMetadata> GetDataServiceMetadata(
     const std::string& dataset_id, const std::string& address,
     const std::string& protocol);
+
+// Gets the `DisableCompressAtRuntimeResponse.compression_disabled_at_runtime`
+// for the given dataset.
+StatusOr<bool> CompressionDisabledAtRuntime(
+    const std::string& dataset_id, const std::string& address,
+    const std::string& protocol, bool disable_compression_at_runtime);
 
 // Gets the `DataServiceConfig` for the data service running at `address`.
 StatusOr<DataServiceConfig> GetDataServiceConfig(const std::string& address,

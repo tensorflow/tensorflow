@@ -24,10 +24,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/value_inference.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/client/value_inference.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/overflow.h"
@@ -85,11 +85,11 @@ TensorShape XlaOpKernelContext::InputShape(absl::string_view name) {
 }
 
 StatusOr<xla::Shape> XlaOpKernelContext::InputXlaShape(int index) {
-  return builder()->GetShape(Input(index));
+  return InputExpression(index).GetXlaShape();
 }
 
 StatusOr<xla::Shape> XlaOpKernelContext::InputXlaShape(absl::string_view name) {
-  return builder()->GetShape(Input(name));
+  return InputExpression(name).GetXlaShape();
 }
 
 DataType XlaOpKernelContext::input_type(int index) const {
@@ -199,18 +199,20 @@ Status XlaOpKernelContext::ConstantInputReshaped(
   return OkStatus();
 }
 
-// Converts an int32 or int64 scalar literal to an int64.
+// Converts an int16, int32 or int64 scalar literal to an int64.
 static Status LiteralToInt64Scalar(const xla::LiteralSlice& literal,
                                    int64_t* out) {
   if (literal.shape().rank() != 0) {
     return errors::InvalidArgument("value is not a scalar");
   }
-  if (literal.shape().element_type() == xla::S32) {
+  if (literal.shape().element_type() == xla::S16) {
+    *out = literal.Get<int16>({});
+  } else if (literal.shape().element_type() == xla::S32) {
     *out = literal.Get<int32>({});
   } else if (literal.shape().element_type() == xla::S64) {
     *out = literal.Get<int64_t>({});
   } else {
-    return errors::InvalidArgument("value must be either int32 or int64");
+    return errors::InvalidArgument("value must be int16, int32, or int64");
   }
   return OkStatus();
 }
@@ -754,8 +756,7 @@ Status XlaOpKernelContext::AssignVariable(absl::string_view name, DataType type,
 static Status GetStatusWithStackTrace(const Status& s,
                                       const XlaOpKernelContext* ctx) {
   if (s.code() == error::INVALID_ARGUMENT) {
-    return Status{s.code(),
-                  absl::StrCat(s.error_message(), "\n", ctx->StackTrace())};
+    return Status{s.code(), absl::StrCat(s.message(), "\n", ctx->StackTrace())};
   }
   return s;
 }

@@ -21,13 +21,13 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
-#include "tensorflow/tsl/distributed_runtime/rpc/grpc_call.h"
+#include "tsl/distributed_runtime/rpc/grpc_call.h"
 
 namespace tensorflow {
 namespace eager {
 
 GrpcEagerServiceImpl::GrpcEagerServiceImpl(
-    const WorkerEnv* env, ::grpc::ServerBuilder* server_builder)
+    WorkerEnv* env, ::grpc::ServerBuilder* server_builder)
     : env_(env),
       local_impl_(env),
       enqueue_streaming_thread_(env_->env, "enqueue_streaming_thread", 1) {

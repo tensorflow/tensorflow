@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
+#include "xla/client/local_client.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -225,6 +225,8 @@ class XlaDevice : public LocalDevice {
   const Metadata xla_metadata_;
   // Which hardware device in the client's platform this XlaDevice controls.
   const int device_ordinal_;
+  // The name/type of this XlaDevice. eg. "XLA_GPU".
+  const DeviceType device_name_;
   // The name of the device that is used to compile Ops for this XlaDevice.
   const DeviceType jit_device_name_;
   // The platform for this device.

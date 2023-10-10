@@ -13,7 +13,7 @@
 # ==============================================================================
 """Implementation of tf.metrics module."""
 
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -29,6 +29,8 @@ from tensorflow.python.ops import sets
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
+from tensorflow.python.ops import variables
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.deprecation import deprecated
@@ -53,7 +55,7 @@ def metric_variable(shape, dtype, validate_shape=True, name=None):
       the final answer should be computed once instead of in every
       replica. Both of these are accomplished by running the computation
       of the final result value inside
-      `distribution_strategy_context.get_replica_context().merge_call(fn)`.
+      `distribute_lib.get_replica_context().merge_call(fn)`.
       Inside the `merge_call()`, ops are only added to the graph once
       and access to a sync on read variable in a computation returns
       the sum across all replicas.
@@ -70,15 +72,15 @@ def metric_variable(shape, dtype, validate_shape=True, name=None):
     `DistributionStrategy` scope a sync on read variable container.
   """
   # Note that synchronization "ON_READ" implies trainable=False.
-  return variable_scope.variable(
+  return variable_v1.VariableV1(
       lambda: array_ops.zeros(shape, dtype),
       trainable=False,
       collections=[
           ops.GraphKeys.LOCAL_VARIABLES, ops.GraphKeys.METRIC_VARIABLES
       ],
       validate_shape=validate_shape,
-      synchronization=variable_scope.VariableSynchronization.ON_READ,
-      aggregation=variable_scope.VariableAggregation.SUM,
+      synchronization=variables.VariableSynchronization.ON_READ,
+      aggregation=variables.VariableAggregation.SUM,
       name=name)
 
 
@@ -306,7 +308,7 @@ def _aggregate_across_replicas(metrics_collections, metric_value_fn, *args):
       ops.add_to_collections(metrics_collections, metric_value)
     return metric_value
 
-  return distribution_strategy_context.get_replica_context().merge_call(
+  return distribute_lib.get_replica_context().merge_call(
       fn, args=args)
 
 

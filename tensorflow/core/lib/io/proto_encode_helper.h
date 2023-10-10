@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stringpiece.h"
-#include "tensorflow/tsl/lib/io/proto_encode_helper.h"
+#include "tsl/lib/io/proto_encode_helper.h"
 
 namespace tensorflow {
 namespace io {

@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/tsl/profiler/lib/traceme_encode.h"
+#include "tsl/profiler/lib/traceme_encode.h"
 
 namespace tensorflow {
 namespace profiler {

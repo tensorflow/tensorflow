@@ -19,9 +19,9 @@ limitations under the License.
 #ifndef TFL_OPS
 #define TFL_OPS
 
-include "mlir/IR/FunctionInterfaces.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/FunctionInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Dialect/Quant/QuantOpsBase.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
@@ -112,6 +112,7 @@ class TFL_VariadicTensorOf<list<Type> allowedRuntimeTypes,
   Variadic<TensorOf<allowedOpTypes>>,
   TFL_RuntimeType<Variadic<TensorOf<allowedRuntimeTypes>>>;
 
+def TFL_I4 : I<4>;
 def TFL_Int32Or64 : SignlessIntOfWidths<[32, 64]>;
 
 def TFL_BoolTensor : TFL_TensorOf<[I1]>;
@@ -460,6 +461,8 @@ class TFL_Op<string mnemonic, list<Trait> traits = []> :
 
   // Whether the TFLite operator has options in the schema representation.
   bit hasOptions = 0b0;
+  // Whether the TFLite operator has options2 in the schema representation.
+  bit hasOptions2 = 0b0;
 
   // Use to specify a custom options type for TFLite operators where
   // the option's name does not match the TFLite operator's name.
@@ -513,6 +516,25 @@ an output element, this operation computes \\(y = |x|\\).
   let results = (outs TFL_TensorOf<[I16, I32, F32, QI8, QI16]>:$y);
 
   let hasFolder = 1;
+}
+
+def TFL_DilateOp : TFL_Op<"dilate", [
+    PredOpTrait<"output and input must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    PredOpTrait<"output and padding value must have same element type",
+      TCresVTEtIsSameAsOpBase<0, 2>>,
+    Pure]> {
+  let summary = "Dilation operator";
+
+  let description = "Extends a tensor by adding new elements between the existing ones.";
+
+  let arguments = (ins
+     TFL_TensorOf<[I8, I16, I32, I64, UI8, UI16, UI32, UI64, F32, F64]>:$input,
+     TFL_TensorOf<[I32]>:$dilations,
+     TFL_0DTensorOf<[I8, I16, I32, I64, UI8, UI16, UI32, UI64, F32, F64]>:$padding_value
+  );
+
+  let results = (outs TFL_TensorOf<[I8, I16, I32, I64, UI8, UI16, UI32, UI64, F32, F64]>:$output);
 }
 
 def TFL_AddOp : TFL_Op<"add", [
@@ -803,14 +825,14 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
 
   let arguments = (
     ins TFL_VariadicTensorOf<
-      [F32, I64, I32, I16, I8, QI8, QUI8, UI8, I1]>:$values,
+      [F32, I64, I32, I16, I8, QI8, QUI8, UI8, UI32, I1]>:$values,
     I32Attr:$axis,
     TFL_AFAttr:$fused_activation_function
   );
 
   let results = (outs
     TFL_TensorOf<
-      [F32, I64, I32, I16, I8, QI8, QUI8, UI8, I1]>:$output
+      [F32, I64, I32, I16, I8, QI8, QUI8, UI8, UI32, I1]>:$output
   );
 
   let hasOptions = 1;
@@ -1122,6 +1144,8 @@ in the batch dimensions and broadcasting.
 
   let hasOptions = 1;
 
+  let hasVerifier = 1;
+
   let extraClassDeclaration = [{
     // DynamicRangeQuantizedOpInterface:
     bool RequireAsymmetricQuantizeInputsAttr() { return true; }
@@ -1146,7 +1170,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$params,
+    TFL_TensorOf<[F32, I1, TFL_I4, I8, I16, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$params,
     TFL_TensorOf<[I16, I32, I64]>:$indices,
     I32Attr:$axis,
     DefaultValuedOptionalAttr<I32Attr, "0">:$batch_dims
@@ -1159,7 +1183,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
   ];
 
   let results = (outs
-    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$output
+    TFL_TensorOf<[F32, I1, TFL_I4, I8, I16, I32, I64, TFL_Str, UI8, QI8, QUI8, QI16]>:$output
   );
 
   let hasOptions = 1;
@@ -2123,16 +2147,17 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
 
 def TFL_LogOp: TFL_Op<"log", [
     Pure,
-    TF_SameOperandsAndResultTypeResolveRef]> {
+    QuantizableResult,
+    TFL_SameFirstOperandAndFirstResultElementType]> {
   let summary = "Natural logarithm operator";
 
   let description = [{
     Performs element-wise natural logarithm operation on input.
   }];
 
-  let arguments = (ins TFL_FpTensor:$x);
+  let arguments = (ins TFL_TensorOf<[F32, QI8]>:$x);
 
-  let results = (outs TFL_FpTensor:$y);
+  let results = (outs TFL_TensorOf<[F32, QI8]>:$y);
 
   let hasFolder = 1;
 
@@ -2179,25 +2204,11 @@ def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
   }];
 }
 
-// TODO(ashwinm): Revisit the granularity of the PredOpTraits. We could
-// break this into smaller PredOpTraits, each with more descriptive messages
-// that would make it easier to trace failures OR, need a way to specify desc
-// per Predicate inside the trait and get tablegen to use that to emit error
-// message.
-def MaxPoolOperandAndResultConstraints : PredOpTrait<"MaxPool2D operand and "
-    "result types match specified constraints",
-  And<[
-    // The input and output tensors should have the same elemental type
-    // and they should be one of the specified types below.
-    TCopVTEtIs<0, AnyTypeOf<[F32, QI8, QUI8]>>,
-    TFL_TCresVTEtIsSameAsOp<0, 0>]>>;
-
 def TFL_MaxPool2DOp : TFL_Op<"max_pool_2d", [
     TFL_OperandHasRank<0, 4>,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     Pure,
-    MaxPoolOperandAndResultConstraints,
     SameOperandsAndResultsScale,
     QuantizableResult,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
@@ -2270,7 +2281,7 @@ def TFL_MeanOp : TFL_Op<"mean", [
 
   let arguments = (ins
     TFL_TensorOf<[F32, I32, I64, QI8, QUI8, UI8, QI16]>:$input,
-    TFL_TensorOf<[I32, I64]>:$axis,
+    TFL_TensorOf<[I32]>:$axis,
     BoolAttr:$keep_dims
   );
 
@@ -2362,13 +2373,13 @@ equivalent to setting:
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I64, I8, UI8, I1, TFL_Str, QI8, QUI8, TFL_Quint8, QI16]>:$input,
+    TFL_TensorOf<[F32, I32, I64, I8, UI8, UI32, I1, TFL_Str, QI8, QUI8, TFL_Quint8, QI16]>:$input,
     TFL_I32OrI64Tensor:$begin,
     TFL_I32OrI64Tensor:$size
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64, I8, UI8, I1, TFL_Str, QI8, QUI8, TFL_Quint8, QI16]>:$output
+    TFL_TensorOf<[F32, I32, I64, I8, UI8, UI32, I1, TFL_Str, QI8, QUI8, TFL_Quint8, QI16]>:$output
   );
 
   let hasVerifier = 1;
@@ -2612,14 +2623,14 @@ def TFL_PackOp : TFL_Op<"pack", [
   }];
 
   let arguments = (ins
-    TFL_VariadicTensorOf<[F32, I8, I16, I32, I64, UI8, QI8, QUI8, QI16, TFL_Quint8]>:$values,
+    TFL_VariadicTensorOf<[F32, I8, I16, I32, I64, UI8, UI32, QI8, QUI8, QI16, TFL_Quint8]>:$values,
 
     ConfinedAttr<I32Attr, [IntPositive]>:$values_count,
     I32Attr:$axis
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I16, I32, I64, UI8, QI8, QUI8, QI16, TFL_Quint8]>:$output
+    TFL_TensorOf<[F32, I8, I16, I32, I64, UI8, UI32, QI8, QUI8, QI16, TFL_Quint8]>:$output
   );
 
   let hasVerifier = 1;
@@ -3063,11 +3074,11 @@ def TFL_RangeOp: TFL_Op<"range", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[I32, F32]>:$start,
-    TFL_TensorOf<[I32, F32]>:$limit,
-    TFL_TensorOf<[I32, F32]>:$delta);
+    TFL_TensorOf<[I32, F32, I64]>:$start,
+    TFL_TensorOf<[I32, F32, I64]>:$limit,
+    TFL_TensorOf<[I32, F32, I64]>:$delta);
 
-  let results = (outs TFL_TensorOf<[I32, F32]>:$result);
+  let results = (outs TFL_TensorOf<[I32, F32, I64]>:$result);
 
   let hasFolder = 1;
 }
@@ -3128,11 +3139,11 @@ def TFL_SelectOp : TFL_Op<"select", [
 
   let arguments = (ins
     TFL_BoolTensor:$condition,
-    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, QI8, QUI8, QI16, TFL_Quint8]>:$x,
-    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, QI8, QUI8, QI16, TFL_Quint8]>:$y);
+    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, UI32, QI8, QUI8, QI16, TFL_Quint8]>:$x,
+    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, UI32, QI8, QUI8, QI16, TFL_Quint8]>:$y);
 
   let results = (outs
-    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, QI8, QUI8, QI16, TFL_Quint8]>:$output);
+    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, UI32, QI8, QUI8, QI16, TFL_Quint8]>:$output);
 
   // TODO(jpienaar): autogenerate this.
   let builders = [
@@ -3167,11 +3178,11 @@ def TFL_SelectV2Op : TFL_Op<"select_v2", [
 
   let arguments = (ins
     TFL_BoolTensor:$condition,
-    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, QI8, QUI8, QI16, TFL_Quint8]>:$x,
-    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, QI8, QUI8, QI16, TFL_Quint8]>:$y);
+    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, UI32, QI8, QUI8, QI16, TFL_Quint8]>:$x,
+    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, UI32, QI8, QUI8, QI16, TFL_Quint8]>:$y);
 
   let results = (outs
-    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, QI8, QUI8, QI16, TFL_Quint8]>:$output);
+    TFL_TensorOf<[F32, I1, I8, I16, I32, I64, UI32, QI8, QUI8, QI16, TFL_Quint8]>:$output);
 
   let builders = [
     OpBuilder<(ins "Value":$cond, "Value":$x, "Value":$y),
@@ -3458,12 +3469,12 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I32, I64, UI8, QI8, QUI8]>:$input,
-    TFL_I32Tensor:$k);
+    TFL_TensorOf<[F32, I8, I16, I32, I64, UI8, QI8, QUI8]>:$input,
+    TFL_TensorOf<[I16, I32]>:$k);
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I32, I64, UI8, QI8, QUI8]>:$values,
-    TFL_I32Tensor:$indices);
+    TFL_TensorOf<[F32, I8, I16, I32, I64, UI8, QI8, QUI8]>:$values,
+    TFL_TensorOf<[I16, I32]>:$indices);
 
   let builders = [
     OpBuilder<(ins "Value":$input, "Value":$k),
@@ -3588,13 +3599,13 @@ def TFL_BatchToSpaceNdOp: TFL_Op<"batch_to_space_nd", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I32, I64, UI8, QI8, QUI8]>:$input,
+    TFL_TensorOf<[F32, I8, I32, I64, UI8, QI8, QUI8, QI16]>:$input,
     TFL_TensorOf<[I32]>:$block_shape,
     TFL_TensorOf<[I32]>:$indices
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I16, I32, I64, UI8, QI8, QUI8]>:$output
+    TFL_TensorOf<[F32, I16, I32, I64, UI8, QI8, QUI8, QI16]>:$output
   );
 }
 
@@ -3613,13 +3624,13 @@ def TFL_SpaceToBatchNdOp: TFL_Op<"space_to_batch_nd", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$input,
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$input,
     TFL_I32Tensor:$block_shape,
     TFL_I32Tensor:$paddings
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8]>:$output
+    TFL_TensorOf<[F32, I32, I64, QI8, QUI8, TFL_Quint8, QI16]>:$output
   );
 }
 
@@ -3864,7 +3875,7 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8, I1, I16, QI16, TFL_Quint8, TFL_Str]>:$input,
+    TFL_TensorOf<[F32, I32, I64, I8, UI8, UI32, QI8, QUI8, I1, I16, QI16, TFL_Quint8, TFL_Str]>:$input,
     TFL_I32Tensor:$begin,
     TFL_I32Tensor:$end,
     TFL_I32Tensor:$strides,
@@ -3873,11 +3884,12 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
     I32Attr:$end_mask,
     I32Attr:$ellipsis_mask,
     I32Attr:$new_axis_mask,
-    I32Attr:$shrink_axis_mask
+    I32Attr:$shrink_axis_mask,
+    BoolAttr:$offset
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8, I1, I16, QI16, TFL_Quint8, TFL_Str]>:$output
+    TFL_TensorOf<[F32, I32, I64, I8, UI8, UI32, QI8, QUI8, I1, I16, QI16, TFL_Quint8, TFL_Str]>:$output
   );
 
   // TFLite kernel only supports up to 5D input including added axis.
@@ -3902,7 +3914,7 @@ def TFL_CastOp : TFL_Op<"cast", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F16, F32, F64, I1, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
+    TFL_TensorOf<[F16, F32, F64, I1, TFL_I4, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$input
   );
 
   let results = (outs TFL_TensorOf<[F16, F32, F64, I1, I16, UI16, I32, UI32, I64, TFL_Quint8, UI8, I8, Complex<F<32>>]>:$output);
@@ -5153,7 +5165,8 @@ def TFL_YieldOp : Op<TFL_Dialect, "yield",
 }
 
 def TFL_IfOp : Op<TFL_Dialect, "if", [
-    DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+    DeclareOpInterfaceMethods<RegionBranchOpInterface,
+                              ["getEntrySuccessorRegions"]>,
     SingleBlockImplicitTerminator<"YieldOp">,
     RecursiveMemoryEffects,
     NoRegionArguments,
@@ -5374,12 +5387,12 @@ subsequent operation and then be optimized away, however.)
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I32, I1, I8, QI8, UI8, QUI8, I16, QI16, I64, Complex<F<32>>]>:$input,
+    TFL_TensorOf<[F32, I32, I1, TFL_I4, I8, QI8, UI8, QUI8, I16, QI16, I64, Complex<F<32>>]>:$input,
     TFL_I32OrI64Tensor:$shape
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I1, I8, QI8, UI8, QUI8, I16, QI16, I64, Complex<F<32>>]>:$output
+    TFL_TensorOf<[F32, I32, I1, TFL_I4, I8, QI8, UI8, QUI8, I16, QI16, I64, Complex<F<32>>]>:$output
   );
 
   let hasCanonicalizer = 1;

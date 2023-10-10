@@ -20,15 +20,16 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
+#include "mlir/InitAllExtensions.h"  // from @llvm-project
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mlprogram_util.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
-#include "tensorflow/compiler/xla/mlir/framework/ir/xla_framework.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
-#include "tensorflow/compiler/xla/service/cpu/hlo_xla_runtime_pipeline.h"
-#include "tensorflow/compiler/xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
+#include "xla/mlir/framework/ir/xla_framework.h"
+#include "xla/mlir_hlo/mhlo/IR/register.h"
+#include "xla/service/cpu/hlo_xla_runtime_pipeline.h"
+#include "xla/translate/mhlo_to_lhlo_with_xla/mhlo_to_lhlo_with_xla.h"
 
 namespace mlir {
 
@@ -36,6 +37,7 @@ void RegisterCommonToolingDialects(mlir::DialectRegistry& registry) {
   mlir::RegisterAllTensorFlowDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
   mlir::registerAllDialects(registry);
+  mlir::registerAllExtensions(registry);
   mlir::stablehlo::registerAllDialects(registry);
   xla::cpu::RegisterHloXlaRuntimePipelineDialects(registry);
 

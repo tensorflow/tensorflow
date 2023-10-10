@@ -44,6 +44,49 @@ namespace odml {
 
 static constexpr std::string_view kStablehloModuleDefaultEntryFuncName = "main";
 static constexpr std::string_view kStablehloFuncNamePrefix = "XlaCallModule";
+static constexpr char kShardingAttr[] = "mhlo.sharding";
+static constexpr char kShardingName[] = "Sharding";
+
+class RemoveCustomCallWithSharding
+    : public mlir::OpRewritePattern<mlir::stablehlo::CustomCallOp> {
+  using OpRewritePattern<mlir::stablehlo::CustomCallOp>::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::stablehlo::CustomCallOp op,
+      PatternRewriter &rewriter) const override {
+    // Removes the custom call with sharding op if the operand type is the
+    // same as the result type.
+    if (op->hasAttr(kShardingAttr) && op.getCallTargetName() == kShardingName &&
+        op.getNumOperands() == 1 && op.getNumResults() == 1 &&
+        op.getOperands().front().getType() ==
+            op.getResults().front().getType()) {
+      rewriter.replaceOp(op, op.getOperands());
+      return mlir::success();
+    }
+    return mlir::failure();
+  }
+};
+
+namespace {
+
+bool IsShloMainFuncOp(mlir::func::FuncOp func_op) {
+  if (func_op == nullptr) {
+    return false;
+  }
+
+  if (!func_op.getSymName().contains(kStablehloModuleDefaultEntryFuncName)) {
+    return false;
+  }
+
+  if (func_op.getSymVisibility() == "nested" ||
+      func_op.getSymVisibility() == "private") {
+    return false;
+  }
+
+  return true;
+}
+
+}  // namespace
 
 class ConvertTFXlaCallModuleOp
     : public mlir::OpRewritePattern<mlir::TF::XlaCallModuleOp> {
@@ -65,10 +108,23 @@ class ConvertTFXlaCallModuleOp
     }
     SymbolTable parent_module_symbol_table(module_op_);
     SymbolTable stablehlo_module_symbol_table(stablehlo_module_op.get());
-    if (stablehlo_module_symbol_table.lookup<mlir::func::FuncOp>(
-            kStablehloModuleDefaultEntryFuncName) == nullptr) {
-      return rewriter.notifyMatchFailure(
-          op, "could not find main function in XlaCallModuleOp");
+    {
+      auto main_func_op =
+          stablehlo_module_symbol_table.lookup<mlir::func::FuncOp>(
+              kStablehloModuleDefaultEntryFuncName);
+      // TODO(b/291988976): move enforcement of this variable outside of this
+      // rewrite pattern such that it's only checked once. Currently, this
+      // approach results in duplicate error messages as this pattern executes
+      // more than once.
+      if (!IsShloMainFuncOp(main_func_op)) {
+        auto error_msg =
+            "'main' FuncOp in XlaCallModuleOp missing or has visibility other "
+            "than 'public'";
+        if (main_func_op) {
+          main_func_op->emitError(error_msg);
+        }
+        return rewriter.notifyMatchFailure(op, error_msg);
+      }
     }
     mlir::Builder stablehlo_builder(stablehlo_module_op.get().getContext());
     // Rename XlaCallModuleOp's functions to avoid naming conflicts.
@@ -89,11 +145,11 @@ class ConvertTFXlaCallModuleOp
     for (auto func_op :
          stablehlo_module_op.get().getOps<mlir::func::FuncOp>()) {
       mlir::func::FuncOp cloned_func_op = func_op.clone();
-      if (cloned_func_op.getSymName().contains(
-              kStablehloModuleDefaultEntryFuncName)) {
+      if (IsShloMainFuncOp(cloned_func_op)) {
         main_fn = cloned_func_op;
-        main_fn.setSymVisibility(stablehlo_builder.getStringAttr("private"));
       }
+      cloned_func_op.setSymVisibility(
+          stablehlo_builder.getStringAttr("private"));
       parent_module_symbol_table.insert(cloned_func_op);
     }
 
@@ -159,6 +215,7 @@ class TFXlaCallModuleOpToStablehloPass
     ModuleOp module_op = getOperation();
     RewritePatternSet patterns(&getContext());
     patterns.add<ConvertTFXlaCallModuleOp>(&getContext(), module_op);
+    patterns.add<RemoveCustomCallWithSharding>(&getContext());
     if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
       return signalPassFailure();
     }

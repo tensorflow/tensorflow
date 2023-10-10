@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -36,7 +37,7 @@ namespace {
 class TosaDequantizeTFLSoftmax
     : public impl::TosaDequantizeTFLSoftmaxPassBase<TosaDequantizeTFLSoftmax> {
  public:
-  explicit TosaDequantizeTFLSoftmax() {}
+  explicit TosaDequantizeTFLSoftmax() = default;
   void runOnOperation() override;
 };
 

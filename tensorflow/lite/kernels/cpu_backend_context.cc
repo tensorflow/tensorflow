@@ -44,8 +44,7 @@ namespace tflite {
 extern TFLITE_ATTRIBUTE_WEAK bool UseGemmlowpOnX86();
 #endif  // defined(TFLITE_HAS_ATTRIBUTE_WEAK) && !(__APPLE__)
 
-// TODO(b/138922878) Enable when Ruy builds on Apple.
-#if defined(TFLITE_HAVE_CPUINFO) && !defined(__APPLE__)
+#if defined(TFLITE_HAVE_CPUINFO)
 CpuBackendContext::CpuInfo::~CpuInfo() {
   if (init_status_ == InitStatus::kInitialized) {
     cpuinfo_deinitialize();

@@ -26,9 +26,9 @@ limitations under the License.
 #if FLATBUFFERS_LITTLEENDIAN == 0
 #include "tensorflow/lite/core/model_builder.h"
 #endif
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration.pb.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/proto_to_flatbuffer.h"
+#include "tensorflow/lite/acceleration/configuration/configuration.pb.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/acceleration/configuration/proto_to_flatbuffer.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_validation_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
@@ -121,7 +121,7 @@ TEST_F(ValidatorTest, HappyPathOnCpuWithCustomValidation) {
       reinterpret_cast<const char*>(model_with_input.GetBufferPointer()),
       model_with_input.GetSize());
 #if FLATBUFFERS_LITTLEENDIAN == 0
-  tflite::FlatBufferModel::ByteSwapSerializedModel(&serialized_str);
+  tflite::FlatBufferModel::ByteSwapSerializedModel(&serialized_str, true);
 #endif
   std::string model_path = MiniBenchmarkTestHelper::DumpToTempFile(
       "mobilenet_quant_with_input.tflite",

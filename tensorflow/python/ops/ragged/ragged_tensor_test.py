@@ -27,8 +27,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
@@ -1845,7 +1845,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       return map_fn.map_fn(
           math_ops.reduce_max,
           rt1,
-          fn_output_signature=tensor_spec.TensorSpec((), x.dtype))
+          fn_output_signature=tensor_lib.TensorSpec((), x.dtype))
 
     self._testGradient(func, [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0],
                        [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0])
@@ -1858,7 +1858,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       return map_fn.map_fn(
           math_ops.reduce_max,
           rt1,
-          fn_output_signature=tensor_spec.TensorSpec((), x.dtype))
+          fn_output_signature=tensor_lib.TensorSpec((), x.dtype))
 
     self._testGradient(func, [3.0, 1.0, 4.0, 1.0, 1.0, 0.0, 2.0, 1.0],
                        [1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0])
@@ -1871,7 +1871,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       return map_fn.map_fn(
           math_ops.reduce_max,
           rt1,
-          fn_output_signature=tensor_spec.TensorSpec((), x.dtype))
+          fn_output_signature=tensor_lib.TensorSpec((), x.dtype))
 
     self._testGradient(func, [], [])
 
@@ -2056,7 +2056,7 @@ class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
     spec1 = RaggedTensorSpec(ragged_rank=1)
     self.assertEqual(spec1.value_type, RaggedTensor)
     spec2 = RaggedTensorSpec(ragged_rank=0)
-    self.assertEqual(spec2.value_type, ops.Tensor)
+    self.assertEqual(spec2.value_type, tensor_lib.Tensor)
 
   @parameterized.parameters([
       (RaggedTensorSpec(ragged_rank=1),
@@ -2079,25 +2079,25 @@ class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
 
   @parameterized.parameters([
       (RaggedTensorSpec(ragged_rank=0, shape=[5, 3]), [
-          tensor_spec.TensorSpec([5, 3], dtypes.float32),
+          tensor_lib.TensorSpec([5, 3], dtypes.float32),
       ]),
       (RaggedTensorSpec(ragged_rank=1), [
-          tensor_spec.TensorSpec(None, dtypes.float32),
-          tensor_spec.TensorSpec([None], dtypes.int64)
+          tensor_lib.TensorSpec(None, dtypes.float32),
+          tensor_lib.TensorSpec([None], dtypes.int64)
       ]),
       (RaggedTensorSpec(ragged_rank=1, row_splits_dtype=dtypes.int32), [
-          tensor_spec.TensorSpec(None, dtypes.float32),
-          tensor_spec.TensorSpec([None], dtypes.int32),
+          tensor_lib.TensorSpec(None, dtypes.float32),
+          tensor_lib.TensorSpec([None], dtypes.int32),
       ]),
       (RaggedTensorSpec(ragged_rank=2), [
-          tensor_spec.TensorSpec(None, dtypes.float32),
-          tensor_spec.TensorSpec([None], dtypes.int64),
-          tensor_spec.TensorSpec([None], dtypes.int64),
+          tensor_lib.TensorSpec(None, dtypes.float32),
+          tensor_lib.TensorSpec([None], dtypes.int64),
+          tensor_lib.TensorSpec([None], dtypes.int64),
       ]),
       (RaggedTensorSpec(shape=[5, None, None], dtype=dtypes.string), [
-          tensor_spec.TensorSpec([None], dtypes.string),
-          tensor_spec.TensorSpec([6], dtypes.int64),
-          tensor_spec.TensorSpec([None], dtypes.int64),
+          tensor_lib.TensorSpec([None], dtypes.string),
+          tensor_lib.TensorSpec([6], dtypes.int64),
+          tensor_lib.TensorSpec([None], dtypes.int64),
       ]),
   ])
   def testComponentSpecs(self, rt_spec, expected):
@@ -2129,28 +2129,28 @@ class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
 
   @parameterized.parameters([
       {
-          'flat_value_spec': tensor_spec.TensorSpec(None, dtypes.float32),
-          'row_splits_spec': tensor_spec.TensorSpec(None, dtypes.int64),
+          'flat_value_spec': tensor_lib.TensorSpec(None, dtypes.float32),
+          'row_splits_spec': tensor_lib.TensorSpec(None, dtypes.int64),
       },
       {
-          'flat_value_spec': tensor_spec.TensorSpec([None,], dtypes.float32),
-          'row_splits_spec': tensor_spec.TensorSpec(None, dtypes.int64),
+          'flat_value_spec': tensor_lib.TensorSpec([None,], dtypes.float32),
+          'row_splits_spec': tensor_lib.TensorSpec(None, dtypes.int64),
       },
       {
-          'flat_value_spec': tensor_spec.TensorSpec(None, dtypes.float32),
-          'row_splits_spec': tensor_spec.TensorSpec([None,], dtypes.int64),
+          'flat_value_spec': tensor_lib.TensorSpec(None, dtypes.float32),
+          'row_splits_spec': tensor_lib.TensorSpec([None,], dtypes.int64),
       },
       {
-          'flat_value_spec': tensor_spec.TensorSpec([None,], dtypes.float32),
-          'row_splits_spec': tensor_spec.TensorSpec([None,], dtypes.int64),
+          'flat_value_spec': tensor_lib.TensorSpec([None,], dtypes.float32),
+          'row_splits_spec': tensor_lib.TensorSpec([None,], dtypes.int64),
       },
       {
-          'flat_value_spec': tensor_spec.TensorSpec([4,], dtypes.float32),
-          'row_splits_spec': tensor_spec.TensorSpec(None, dtypes.int64),
+          'flat_value_spec': tensor_lib.TensorSpec([4,], dtypes.float32),
+          'row_splits_spec': tensor_lib.TensorSpec(None, dtypes.int64),
       },
       {
-          'flat_value_spec': tensor_spec.TensorSpec(None, dtypes.float32),
-          'row_splits_spec': tensor_spec.TensorSpec([3,], dtypes.int64),
+          'flat_value_spec': tensor_lib.TensorSpec(None, dtypes.float32),
+          'row_splits_spec': tensor_lib.TensorSpec([3,], dtypes.int64),
       },
   ])
   def testToFromComponentsStaticUnknownShape(self, flat_value_spec,
@@ -2198,7 +2198,7 @@ class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
   ])
   def testFlatTensorSpecs(self, rt_spec):
     self.assertEqual(rt_spec._flat_tensor_specs,
-                     [tensor_spec.TensorSpec(None, dtypes.variant)])
+                     [tensor_lib.TensorSpec(None, dtypes.variant)])
 
   @parameterized.parameters([
       (dtypes.float32, full_type_pb2.TFT_FLOAT),

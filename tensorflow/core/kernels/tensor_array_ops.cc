@@ -17,12 +17,18 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#if !defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS) && defined(__APPLE__) && \
+    !defined(ANDROID) && !defined(__ANDROID__) &&                       \
+    (!defined(TARGET_OS_IOS) || !TARGET_OS_IOS)
+#define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
+#endif
+
 #include <limits>
 #include <vector>
 // TODO(b/31496047): Fix non-standard include order.
 #include <numeric>  // clang-format off
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -225,7 +231,8 @@ class TensorArrayOp : public TensorArrayCreationOp {
   bool clear_after_read_;
   string tensor_array_name_;  // The name used to create the TensorArray.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayOp);
+  TensorArrayOp(const TensorArrayOp&) = delete;
+  void operator=(const TensorArrayOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TensorArray").Device(DEVICE_CPU), TensorArrayOp);
@@ -262,6 +269,34 @@ TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+#define REGISTER_DEVICE_DEFAULT(type)                        \
+  REGISTER_KERNEL_BUILDER(Name("TensorArray")                \
+                              .Device(DEVICE_DEFAULT)        \
+                              .TypeConstraint<type>("dtype") \
+                              .HostMemory("size")            \
+                              .HostMemory("handle"),         \
+                          TensorArrayOp);                    \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayV2")              \
+                              .Device(DEVICE_DEFAULT)        \
+                              .TypeConstraint<type>("dtype") \
+                              .HostMemory("size")            \
+                              .HostMemory("handle"),         \
+                          TensorArrayOp);                    \
+  REGISTER_KERNEL_BUILDER(Name("TensorArrayV3")              \
+                              .Device(DEVICE_DEFAULT)        \
+                              .TypeConstraint<type>("dtype") \
+                              .HostMemory("size")            \
+                              .HostMemory("handle"),         \
+                          TensorArrayOp);
+
+TF_CALL_int64(REGISTER_DEVICE_DEFAULT);
+TF_CALL_bfloat16(REGISTER_DEVICE_DEFAULT);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_DEVICE_DEFAULT);
+TF_CALL_COMPLEX_TYPES(REGISTER_DEVICE_DEFAULT);
+#undef REGISTER_DEVICE_DEFAULT
+#endif
 
 // GRADIENT *******************************************************************
 // Note that this op may have an optional third input. If present, it represents
@@ -373,7 +408,8 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
   // call.  Typical values look like "gradients", "gradients_1", ...
   string source_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayGradOp);
+  TensorArrayGradOp(const TensorArrayGradOp&) = delete;
+  void operator=(const TensorArrayGradOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TensorArrayGrad").Device(DEVICE_CPU),
@@ -405,6 +441,29 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayGradWithShape")
                             .HostMemory("shape_to_prepend")
                             .HostMemory("grad_handle"),
                         TensorArrayGradOp);
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+REGISTER_KERNEL_BUILDER(Name("TensorArrayGrad")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("handle")
+                            .HostMemory("grad_handle"),
+                        TensorArrayGradOp);
+REGISTER_KERNEL_BUILDER(Name("TensorArrayGradV2")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("handle")
+                            .HostMemory("grad_handle"),
+                        TensorArrayGradOp);
+REGISTER_KERNEL_BUILDER(Name("TensorArrayGradV3")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("handle")
+                            .HostMemory("grad_handle"),
+                        TensorArrayGradOp);
+REGISTER_KERNEL_BUILDER(Name("TensorArrayGradWithShape")
+                            .Device(DEVICE_DEFAULT)
+                            .HostMemory("handle")
+                            .HostMemory("shape_to_prepend")
+                            .HostMemory("grad_handle"),
+                        TensorArrayGradOp);
+#endif
 
 // WRITE **********************************************************************
 
@@ -1008,6 +1067,27 @@ REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV3")
                         TensorArrayConcatOp<CPUDevice, int32>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+REGISTER_KERNEL_BUILDER(Name("TensorArrayConcat")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32>("dtype")
+                            .HostMemory("lengths")
+                            .HostMemory("handle"),
+                        TensorArrayConcatOp<CPUDevice, int32>);
+REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV2")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32>("dtype")
+                            .HostMemory("lengths")
+                            .HostMemory("handle"),
+                        TensorArrayConcatOp<CPUDevice, int32>);
+REGISTER_KERNEL_BUILDER(Name("TensorArrayConcatV3")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32>("dtype")
+                            .HostMemory("lengths")
+                            .HostMemory("handle"),
+                        TensorArrayConcatOp<CPUDevice, int32>);
+#endif
 
 // UNPACK and SCATTER *********************************************************
 

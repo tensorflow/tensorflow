@@ -22,9 +22,11 @@ limitations under the License.
 #include <vector>
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 
@@ -40,45 +42,43 @@ constexpr char kFailure[] = "kFailure";
 
 class MockMlirOptimizationPass : public MlirOptimizationPass {
  public:
-  // MOCK_METHOD does not work on Windows build, using MOCK_CONST_METHODX
-  // instead.
-  MOCK_CONST_METHOD0(name, llvm::StringRef());
-  MOCK_CONST_METHOD4(GetPassState,
-                     MlirOptimizationPassState(
-                         const DeviceSet* device_set,
-                         const ConfigProto& config_proto, const Graph& graph,
-                         const FunctionLibraryDefinition& function_library));
-  MOCK_METHOD5(Run, Status(const std::string& function_name,
-                           const ConfigProto& config_proto,
-                           mlir::ModuleOp module, const Graph& graph,
-                           const FunctionLibraryDefinition& function_library));
+  MOCK_METHOD(llvm::StringRef, name, (), (const, override));
+  MOCK_METHOD(MlirOptimizationPassState, GetPassState,
+              (const DeviceSet* device_set, const ConfigProto& config_proto,
+               const Graph& graph,
+               const FunctionLibraryDefinition& function_library),
+              (const, override));
+  MOCK_METHOD(Status, Run,
+              (const std::string& function_name,
+               const ConfigProto& config_proto, mlir::ModuleOp module,
+               const Graph& graph,
+               const FunctionLibraryDefinition& function_library),
+              (override));
 };
 
 class MockMlirV1CompatOptimizationPass : public MlirV1CompatOptimizationPass {
  public:
-  // MOCK_METHOD does not work on Windows build, using MOCK_CONST_METHODX
-  // instead.
-  MOCK_CONST_METHOD0(name, llvm::StringRef());
-  MOCK_CONST_METHOD4(GetPassState,
-                     MlirOptimizationPassState(
-                         const DeviceSet* device_set,
-                         const ConfigProto& config_proto, const Graph& graph,
-                         const FunctionLibraryDefinition& function_library));
-  MOCK_METHOD2(Run, Status(const GraphOptimizationPassOptions& options,
-                           mlir::ModuleOp module));
+  MOCK_METHOD(llvm::StringRef, name, (), (const, override));
+  MOCK_METHOD(MlirOptimizationPassState, GetPassState,
+              (const DeviceSet* device_set, const ConfigProto& config_proto,
+               const Graph& graph,
+               const FunctionLibraryDefinition& function_library),
+              (const, override));
+  MOCK_METHOD(Status, Run,
+              (const GraphOptimizationPassOptions& options,
+               mlir::ModuleOp module),
+              (override));
 };
 
 class ModifyMlirModulePass : public MlirOptimizationPass {
  public:
   explicit ModifyMlirModulePass(Status run_status) : run_status_(run_status) {}
-  // MOCK_METHOD does not work on Windows build, using MOCK_CONST_METHODX
-  // instead.
-  MOCK_CONST_METHOD0(name, llvm::StringRef());
-  MOCK_CONST_METHOD4(GetPassState,
-                     MlirOptimizationPassState(
-                         const DeviceSet* device_set,
-                         const ConfigProto& config_proto, const Graph& graph,
-                         const FunctionLibraryDefinition& function_library));
+  MOCK_METHOD(llvm::StringRef, name, (), (const, override));
+  MOCK_METHOD(MlirOptimizationPassState, GetPassState,
+              (const DeviceSet* device_set, const ConfigProto& config_proto,
+               const Graph& graph,
+               const FunctionLibraryDefinition& function_library),
+              (const, override));
 
   // Just modify MLIR module so that we can check whether original TF graph
   // has changed or not.
@@ -187,12 +187,12 @@ class MlirGraphOptimizationPassTest : public Test {
   }
 
   ConfigProto config_proto_;
+  FunctionOptimizationPass::FunctionOptions function_options_;
   MlirFunctionOptimizationPass function_optimization_pass_;
   DeviceSet device_set_;
   std::unique_ptr<Graph> graph_;
   std::unique_ptr<FunctionLibraryDefinition> flib_;
   std::vector<std::string> control_ret_node_names_;
-  std::string xla_compile_device_type_;
   bool control_rets_updated_{false};
   monitoring::testing::CellReader<int64_t> mlir_function_pass_fallback_count_ =
       monitoring::testing::CellReader<int64_t>(
@@ -219,11 +219,11 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsNoFallback) {
   GraphDef original_graph_def;
   graph_->ToGraphDef(&original_graph_def);
 
-  EXPECT_EQ(function_optimization_pass_.Run(
-                "test_func", device_set_, config_proto_,
-                xla_compile_device_type_, &graph_, flib_.get(),
-                &control_ret_node_names_, &control_rets_updated_),
-            Status(absl::StatusCode::kAborted, "aborted"));
+  EXPECT_EQ(
+      function_optimization_pass_.Run(
+          "test_func", device_set_, config_proto_, function_options_, &graph_,
+          flib_.get(), &control_ret_node_names_, &control_rets_updated_),
+      Status(absl::StatusCode::kAborted, "aborted"));
   verifyGraph(original_graph_def);
   verifyCounters();
 }
@@ -246,11 +246,11 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsDisabledFallback) {
   AddModuleModificationPass(MlirOptimizationPassState::FallbackEnabled,
                             Status(absl::StatusCode::kAborted, "aborted"));
 
-  EXPECT_EQ(function_optimization_pass_.Run(
-                "test_func", device_set_, config_proto_,
-                xla_compile_device_type_, &graph_, flib_.get(),
-                &control_ret_node_names_, &control_rets_updated_),
-            OkStatus());
+  EXPECT_EQ(
+      function_optimization_pass_.Run(
+          "test_func", device_set_, config_proto_, function_options_, &graph_,
+          flib_.get(), &control_ret_node_names_, &control_rets_updated_),
+      OkStatus());
   verifyGraph(original_graph_def);
   verifyCounters();
 }
@@ -263,11 +263,11 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassDoesNotFailFallback) {
 
   AddModuleModificationPass(MlirOptimizationPassState::FallbackEnabled,
                             OkStatus());
-  EXPECT_EQ(function_optimization_pass_.Run(
-                "test_func", device_set_, config_proto_,
-                xla_compile_device_type_, &graph_, flib_.get(),
-                &control_ret_node_names_, &control_rets_updated_),
-            OkStatus());
+  EXPECT_EQ(
+      function_optimization_pass_.Run(
+          "test_func", device_set_, config_proto_, function_options_, &graph_,
+          flib_.get(), &control_ret_node_names_, &control_rets_updated_),
+      OkStatus());
 
   verifyGraph(original_graph_def, true);
   verifyCounters();
@@ -281,11 +281,11 @@ TEST_F(MlirGraphOptimizationPassTest, GraphDoesntConvertUpdatesCounter) {
 
   AddModuleModificationPass(MlirOptimizationPassState::FallbackEnabled,
                             OkStatus());
-  EXPECT_EQ(function_optimization_pass_.Run(
-                "test_func", device_set_, config_proto_,
-                xla_compile_device_type_, &graph_, flib_.get(),
-                &control_ret_node_names_, &control_rets_updated_),
-            OkStatus());
+  EXPECT_EQ(
+      function_optimization_pass_.Run(
+          "test_func", device_set_, config_proto_, function_options_, &graph_,
+          flib_.get(), &control_ret_node_names_, &control_rets_updated_),
+      OkStatus());
 
   EXPECT_EQ(mlir_function_pass_graph_conversion_count_.Read(kOk), 0);
   EXPECT_EQ(mlir_function_pass_graph_conversion_count_.Read(kInvalidArgument),
@@ -307,6 +307,107 @@ TEST(MlirV1CompatOptimizationPassRegistry, RegisterMultiplePassesFails) {
       MlirV1CompatOptimizationPassRegistry::Global().Add(
           std::make_unique<NiceMock<MockMlirV1CompatOptimizationPass>>()),
       "Only a single pass can be registered");
+}
+
+class MlirGraphOptimizationV1PassTest : public Test {
+ public:
+  void Init(Status pass_run_result,
+            const std::vector<MlirOptimizationPassState>& pass_states) {
+    graph_ = std::make_unique<Graph>(OpRegistry::Global());
+    MlirV1CompatOptimizationPassRegistry::Global().ClearPass();
+    for (const MlirOptimizationPassState& pass_state : pass_states) {
+      auto optimization_pass =
+          std::make_unique<NiceMock<MockMlirV1CompatOptimizationPass>>();
+      ON_CALL(*optimization_pass, GetPassState(_, _, _, _))
+          .WillByDefault(Return(pass_state));
+      ON_CALL(*optimization_pass, Run(_, _))
+          .WillByDefault(Return(pass_run_result));
+      MlirV1CompatOptimizationPassRegistry::Global().Add(
+          std::move(optimization_pass));
+      pass_result_expected_[pass_state][pass_run_result.ok()]++;
+    }
+    flib_ = std::make_unique<FunctionLibraryDefinition>(graph_->flib_def());
+    InitGraphOptions();
+  }
+
+  void verifyGraph(const GraphDef& original_graph_def, bool changed = false) {
+// Proto matchers might be unavailable in the OSS.
+#if defined(PLATFORM_GOOGLE)
+    GraphDef resulted_graph_def;
+    graph_->ToGraphDef(&resulted_graph_def);
+
+    if (changed)
+      EXPECT_THAT(resulted_graph_def,
+                  Not(::testing::proto::IgnoringRepeatedFieldOrdering(
+                      ::testing::EquivToProto(original_graph_def))));
+    else
+      EXPECT_THAT(resulted_graph_def,
+                  ::testing::proto::IgnoringRepeatedFieldOrdering(
+                      ::testing::EquivToProto(original_graph_def)));
+#endif
+  }
+
+  void InitGraphOptions() {
+    session_options_.config = config_proto_;
+    graph_optimization_pass_options_.device_set = &device_set_;
+    graph_optimization_pass_options_.session_options = &session_options_;
+    graph_optimization_pass_options_.graph = &graph_;
+    graph_optimization_pass_options_.flib_def = flib_.get();
+  }
+
+  void verifyCounters() {
+    EXPECT_EQ(mlir_function_pass_fallback_count_.Read(kSuccess),
+              pass_result_expected_[MlirOptimizationPassState::FallbackEnabled]
+                                   [false]);
+    EXPECT_EQ(mlir_function_pass_fallback_count_.Read(kFailure),
+              pass_result_expected_[MlirOptimizationPassState::FallbackEnabled]
+                                   [false]);
+    EXPECT_EQ(mlir_function_pass_graph_conversion_count_.Read(kOk), 0);
+  }
+
+  void TearDown() override {
+    MlirV1CompatOptimizationPassRegistry::Global().ClearPass();
+  }
+
+  ConfigProto config_proto_;
+  FunctionOptimizationPass::FunctionOptions function_options_;
+  MlirV1CompatGraphOptimizationPass function_optimization_pass_;
+  DeviceSet device_set_;
+  std::unique_ptr<Graph> graph_;
+  std::unique_ptr<FunctionLibraryDefinition> flib_;
+  std::vector<std::string> control_ret_node_names_;
+  bool control_rets_updated_{false};
+  SessionOptions session_options_;
+  tensorflow::GraphOptimizationPassOptions graph_optimization_pass_options_;
+  std::map<MlirOptimizationPassState, std::map<bool, int64_t>>
+      pass_result_expected_;
+  monitoring::testing::CellReader<int64_t> mlir_function_pass_fallback_count_ =
+      monitoring::testing::CellReader<int64_t>(
+          /* metric name */
+          "/tensorflow/core/mlir_function_pass_fallback_count");
+  monitoring::testing::CellReader<int64_t>
+      mlir_graph_optimization_pass_fallback_count_ =
+          monitoring::testing::CellReader<int64_t>(
+              /* metric name */
+              "/tensorflow/core/mlir_graph_optimization_pass_fallback_count");
+  monitoring::testing::CellReader<int64_t>
+      mlir_function_pass_graph_conversion_count_ =
+          monitoring::testing::CellReader<int64_t>(
+              /* metric name */
+              "/tensorflow/core/mlir_function_pass_graph_conversion_count");
+};
+
+TEST_F(MlirGraphOptimizationV1PassTest, OptimizationPassDoesNotFailFallback) {
+  Init(OkStatus(), {MlirOptimizationPassState::FallbackEnabled});
+
+  GraphDef original_graph_def;
+  graph_->ToGraphDef(&original_graph_def);
+
+  EXPECT_EQ(function_optimization_pass_.Run(graph_optimization_pass_options_),
+            OkStatus());
+
+  verifyGraph(original_graph_def, /*changed=*/false);
+  verifyCounters();
 }
 
 }  // namespace tensorflow

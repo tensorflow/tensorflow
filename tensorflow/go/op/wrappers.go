@@ -5704,7 +5704,19 @@ func CollectiveAllToAllV2TimeoutSeconds(value float32) CollectiveAllToAllV2Attr 
 	}
 }
 
+// CollectiveAllToAllV2IsStateless sets the optional is_stateless attribute to value.
+// If not specified, defaults to false
+func CollectiveAllToAllV2IsStateless(value bool) CollectiveAllToAllV2Attr {
+	return func(m optionalAttr) {
+		m["is_stateless"] = value
+	}
+}
+
 // Mutually exchanges multiple tensors of identical type and shape.
+//
+// `is_stateless` means each op does not need control dependencies to other
+// collective ops. In this case, keys that are unique at runtime
+// (e.g. `instance_key`) should be used to distinguish collective groups.
 func CollectiveAllToAllV2(scope *Scope, input tf.Output, group_size tf.Output, group_key tf.Output, instance_key tf.Output, ordering_token []tf.Output, optional ...CollectiveAllToAllV2Attr) (data tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -5982,7 +5994,19 @@ func CollectiveGatherV2TimeoutSeconds(value float32) CollectiveGatherV2Attr {
 	}
 }
 
+// CollectiveGatherV2IsStateless sets the optional is_stateless attribute to value.
+// If not specified, defaults to false
+func CollectiveGatherV2IsStateless(value bool) CollectiveGatherV2Attr {
+	return func(m optionalAttr) {
+		m["is_stateless"] = value
+	}
+}
+
 // Mutually accumulates multiple tensors of identical type and shape.
+//
+// `is_stateless` means each op does not need control dependencies to other
+// collective ops. In this case, keys that are unique at runtime
+// (e.g. `instance_key`) should be used to distinguish collective groups.
 func CollectiveGatherV2(scope *Scope, input tf.Output, group_size tf.Output, group_key tf.Output, instance_key tf.Output, ordering_token []tf.Output, optional ...CollectiveGatherV2Attr) (data tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -6138,6 +6162,14 @@ func CollectiveReduceScatterV2TimeoutSeconds(value float32) CollectiveReduceScat
 	}
 }
 
+// CollectiveReduceScatterV2IsStateless sets the optional is_stateless attribute to value.
+// If not specified, defaults to false
+func CollectiveReduceScatterV2IsStateless(value bool) CollectiveReduceScatterV2Attr {
+	return func(m optionalAttr) {
+		m["is_stateless"] = value
+	}
+}
+
 // CollectiveReduceScatterV2MaxSubdivsPerDevice sets the optional max_subdivs_per_device attribute to value.
 // If not specified, defaults to -1
 func CollectiveReduceScatterV2MaxSubdivsPerDevice(value int64) CollectiveReduceScatterV2Attr {
@@ -6147,6 +6179,10 @@ func CollectiveReduceScatterV2MaxSubdivsPerDevice(value int64) CollectiveReduceS
 }
 
 // Mutually reduces multiple tensors of identical type and shape and scatters the result.
+//
+// `is_stateless` means each op does not need control dependencies to other
+// collective ops. In this case, keys that are unique at runtime
+// (e.g. `instance_key`) should be used to distinguish collective groups.
 func CollectiveReduceScatterV2(scope *Scope, input tf.Output, group_size tf.Output, group_key tf.Output, instance_key tf.Output, ordering_token []tf.Output, merge_op string, final_op string, optional ...CollectiveReduceScatterV2Attr) (data tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -6185,6 +6221,14 @@ func CollectiveReduceV2TimeoutSeconds(value float32) CollectiveReduceV2Attr {
 	}
 }
 
+// CollectiveReduceV2IsStateless sets the optional is_stateless attribute to value.
+// If not specified, defaults to false
+func CollectiveReduceV2IsStateless(value bool) CollectiveReduceV2Attr {
+	return func(m optionalAttr) {
+		m["is_stateless"] = value
+	}
+}
+
 // CollectiveReduceV2MaxSubdivsPerDevice sets the optional max_subdivs_per_device attribute to value.
 // If not specified, defaults to -1
 func CollectiveReduceV2MaxSubdivsPerDevice(value int64) CollectiveReduceV2Attr {
@@ -6194,6 +6238,10 @@ func CollectiveReduceV2MaxSubdivsPerDevice(value int64) CollectiveReduceV2Attr {
 }
 
 // Mutually reduces multiple tensors of identical type and shape.
+//
+// `is_stateless` means each op does not need control dependencies to other
+// collective ops. In this case, keys that are unique at runtime
+// (e.g. `instance_key`) should be used to distinguish collective groups.
 func CollectiveReduceV2(scope *Scope, input tf.Output, group_size tf.Output, group_key tf.Output, instance_key tf.Output, ordering_token []tf.Output, merge_op string, final_op string, optional ...CollectiveReduceV2Attr) (data tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -6687,10 +6735,10 @@ func Concat(scope *Scope, concat_dim tf.Output, values []tf.Output) (output tf.O
 // Arguments:
 //
 //	concat_dim: The dimension along which to concatenate.
-//	shape: The `N` int32 vectors representing shape of tensors being concatenated.
+//	shape: The `N` int32 or int64 vectors representing shape of tensors being concatenated.
 //
-// Returns The `N` int32 vectors representing the starting offset
-// of input tensors within the concatenated output.
+// Returns The `N` vectors representing the starting offset
+// of input tensors within the concatenated output with type matching `shape`.
 func ConcatOffset(scope *Scope, concat_dim tf.Output, shape []tf.Output) (offset []tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -7079,6 +7127,119 @@ func ControlTrigger(scope *Scope) (o *tf.Operation) {
 		Type: "ControlTrigger",
 	}
 	return scope.AddOperation(opspec)
+}
+
+// ConvAttr is an optional argument to Conv.
+type ConvAttr func(optionalAttr)
+
+// ConvExplicitPaddings sets the optional explicit_paddings attribute to value.
+//
+// value: If `padding` is `"EXPLICIT"`, the list of explicit padding amounts. For the ith
+// dimension, the amount of padding inserted before and after the dimension is
+// `explicit_paddings[2 * i]` and `explicit_paddings[2 * i + 1]`, respectively. If
+// `padding` is not `"EXPLICIT"`, `explicit_paddings` must be empty.
+// If not specified, defaults to {}
+func ConvExplicitPaddings(value []int64) ConvAttr {
+	return func(m optionalAttr) {
+		m["explicit_paddings"] = value
+	}
+}
+
+// ConvDataFormat sets the optional data_format attribute to value.
+//
+// value: Used to set the data format. By default `CHANNELS_FIRST`, uses
+// `NHWC (2D) / NDHWC (3D)` or if `CHANNELS_LAST`, uses `NCHW (2D) / NCDHW (3D)`.
+// If not specified, defaults to "CHANNELS_LAST"
+func ConvDataFormat(value string) ConvAttr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// ConvDilations sets the optional dilations attribute to value.
+//
+// value: 1-D tensor of length `N+2`. The dilation factor for each dimension of
+// `input`. If set to `k > 1`, there will be `k-1` skipped cells between each
+// filter element on that dimension. The dimension order is determined by the
+// value of `channels_last_format`, see above for details. Dilations in the batch
+// and depth dimensions must be 1.
+// If not specified, defaults to {}
+func ConvDilations(value []int64) ConvAttr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// ConvBatchDims sets the optional batch_dims attribute to value.
+//
+// value: A positive integer specifying the number of batch dimensions for the input
+// tensor. Should be less than the rank of the input tensor.
+// If not specified, defaults to 1
+func ConvBatchDims(value int64) ConvAttr {
+	return func(m optionalAttr) {
+		m["batch_dims"] = value
+	}
+}
+
+// ConvGroups sets the optional groups attribute to value.
+//
+// value: A positive integer specifying the number of groups in which the input is split
+// along the channel axis. Each group is convolved separately with
+// `filters / groups` filters. The output is the concatenation of all the groups
+// results along the channel axis. Input channels and filters must both be
+// divisible by groups.
+// If not specified, defaults to 1
+func ConvGroups(value int64) ConvAttr {
+	return func(m optionalAttr) {
+		m["groups"] = value
+	}
+}
+
+// Computes a N-D convolution given (N+1+batch_dims)-D `input` and (N+2)-D `filter` tensors.
+//
+// General function for computing a N-D convolution. It is required that
+// `1 <= N <= 3`.
+//
+// Arguments:
+//
+//	input: Tensor of type T and shape `batch_shape + spatial_shape + [in_channels]` in the
+//
+// case that `channels_last_format = true` or shape
+// `batch_shape + [in_channels] + spatial_shape` if `channels_last_format = false`.
+// spatial_shape is N-dimensional with `N=2` or `N=3`.
+// Also note that `batch_shape` is dictated by the parameter `batch_dims`
+// and defaults to 1.
+//
+//	filter: An `(N+2)-D` Tensor with the same type as `input` and shape
+//
+// `spatial_filter_shape + [in_channels, out_channels]`, where spatial_filter_shape
+// is N-dimensional with `N=2` or `N=3`.
+//
+//	strides: 1-D tensor of length `N+2`. The stride of the sliding window for each
+//
+// dimension of `input`. Must have `strides[0] = strides[N+1] = 1`.
+//
+//	padding: The type of padding algorithm to use.
+//
+// Returns A (N+1+batch_dims)-D tensor. The dimension order is determined by the value of
+// `channels_last_format`, see below for details.
+func Conv(scope *Scope, input tf.Output, filter tf.Output, strides []int64, padding string, optional ...ConvAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Conv",
+		Input: []tf.Input{
+			input, filter,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Conv2DAttr is an optional argument to Conv2D.
@@ -10726,6 +10887,115 @@ func DebugIdentityV2(scope *Scope, input tf.Output, optional ...DebugIdentityV2A
 	}
 	opspec := tf.OpSpec{
 		Type: "DebugIdentityV2",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// DebugIdentityV3Attr is an optional argument to DebugIdentityV3.
+type DebugIdentityV3Attr func(optionalAttr)
+
+// DebugIdentityV3DeviceName sets the optional device_name attribute to value.
+//
+// value: Name of the device on which the tensor resides.
+// If not specified, defaults to ""
+func DebugIdentityV3DeviceName(value string) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["device_name"] = value
+	}
+}
+
+// DebugIdentityV3TensorName sets the optional tensor_name attribute to value.
+//
+// value: Name of the input tensor.
+// If not specified, defaults to ""
+func DebugIdentityV3TensorName(value string) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["tensor_name"] = value
+	}
+}
+
+// DebugIdentityV3IoOfNode sets the optional io_of_node attribute to value.
+//
+// value: Name of the node of which the tensor is an input or output.
+// If not specified, defaults to ""
+func DebugIdentityV3IoOfNode(value string) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["io_of_node"] = value
+	}
+}
+
+// DebugIdentityV3IsInput sets the optional is_input attribute to value.
+//
+// value: If true, the tensor is an input of the node; otherwise the output.
+// If not specified, defaults to false
+func DebugIdentityV3IsInput(value bool) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["is_input"] = value
+	}
+}
+
+// DebugIdentityV3IoIndex sets the optional io_index attribute to value.
+//
+// value: The index of which the tensor is an input or output of the node.
+// If not specified, defaults to -1
+func DebugIdentityV3IoIndex(value int64) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["io_index"] = value
+	}
+}
+
+// DebugIdentityV3DebugUrls sets the optional debug_urls attribute to value.
+//
+// value: List of URLs to debug targets, e.g.,
+//
+//	file:///foo/tfdbg_dump, grpc:://localhost:11011
+//
+// If not specified, defaults to {}
+func DebugIdentityV3DebugUrls(value []string) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["debug_urls"] = value
+	}
+}
+
+// DebugIdentityV3GatedGrpc sets the optional gated_grpc attribute to value.
+//
+// value: Whether this op will be gated. If any of the debug_urls of this
+//
+//	debug node is of the grpc:// scheme, when the value of this attribute is set
+//	to True, the data will not actually be sent via the grpc stream unless this
+//	debug op has been enabled at the debug_url. If all of the debug_urls of this
+//	debug node are of the grpc:// scheme and the debug op is enabled at none of
+//	them, the output will be an empty Tensor.
+//
+// If not specified, defaults to false
+func DebugIdentityV3GatedGrpc(value bool) DebugIdentityV3Attr {
+	return func(m optionalAttr) {
+		m["gated_grpc"] = value
+	}
+}
+
+// Provides an identity mapping of the non-Ref type input tensor for debugging.
+//
+// Provides an identity mapping of the non-Ref type input tensor for debugging.
+//
+// Arguments:
+//
+//	input: Input tensor, non-Reference type
+func DebugIdentityV3(scope *Scope, input tf.Output, optional ...DebugIdentityV3Attr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DebugIdentityV3",
 		Input: []tf.Input{
 			input,
 		},
@@ -16525,6 +16795,45 @@ func FFT3D(scope *Scope, input tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
+// ND fast Fourier transform.
+//
+// Computes the n-dimensional discrete Fourier transform over
+// designated dimensions of `input`. The designated dimensions of
+// `input` are assumed to be the result of `FFTND`.
+//
+// If fft_length[i]<shape(input)[i], the input is cropped. If
+// fft_length[i]>shape(input)[i], the input is padded with zeros. If fft_length
+// is not given, the default shape(input) is used.
+//
+// Axes mean the dimensions to perform the transform on. Default is to perform on
+// all axes.
+//
+// Arguments:
+//
+//	input: A complex tensor.
+//	fft_length: An int32 tensor. The FFT length for each dimension.
+//	axes: An int32 tensor with a same shape as fft_length. Axes to perform the transform.
+//
+// Returns A complex tensor of the same shape as `input`. The designated
+// dimensions of `input` are replaced with their Fourier transforms.
+//
+// @compatibility(numpy)
+// Equivalent to np.fft.fftn.
+// @end_compatibility
+func FFTND(scope *Scope, input tf.Output, fft_length tf.Output, axes tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "FFTND",
+		Input: []tf.Input{
+			input, fft_length, axes,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // FIFOQueueV2Attr is an optional argument to FIFOQueueV2.
 type FIFOQueueV2Attr func(optionalAttr)
 
@@ -19740,6 +20049,46 @@ func IFFT3D(scope *Scope, input tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
+// ND inverse fast Fourier transform.
+//
+// Computes the n-dimensional inverse discrete Fourier transform over designated
+// dimensions of `input`. The designated dimensions of `input` are assumed to be
+// the result of `IFFTND`.
+//
+// If fft_length[i]<shape(input)[i], the input is cropped. If
+// fft_length[i]>shape(input)[i], the input is padded with zeros. If fft_length
+// is not given, the default shape(input) is used.
+//
+// Axes mean the dimensions to perform the transform on. Default is to perform on
+// all axes.
+//
+// Arguments:
+//
+//	input: A complex tensor.
+//	fft_length: An int32 tensor. The FFT length for each dimension.
+//	axes: An int32 tensor with a same shape as fft_length. Axes to perform the transform.
+//
+// Returns A complex tensor of the same shape as `input`. The designated dimensions of
+// `input` are replaced with their inverse Fourier
+// transforms.
+//
+// @compatibility(numpy)
+// Equivalent to np.fft.fftn.
+// @end_compatibility
+func IFFTND(scope *Scope, input tf.Output, fft_length tf.Output, axes tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "IFFTND",
+		Input: []tf.Input{
+			input, fft_length, axes,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // IRFFTAttr is an optional argument to IRFFT.
 type IRFFTAttr func(optionalAttr)
 
@@ -19912,6 +20261,62 @@ func IRFFT3D(scope *Scope, input tf.Output, fft_length tf.Output, optional ...IR
 		Type: "IRFFT3D",
 		Input: []tf.Input{
 			input, fft_length,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// IRFFTNDAttr is an optional argument to IRFFTND.
+type IRFFTNDAttr func(optionalAttr)
+
+// IRFFTNDTreal sets the optional Treal attribute to value.
+// If not specified, defaults to DT_FLOAT
+func IRFFTNDTreal(value tf.DataType) IRFFTNDAttr {
+	return func(m optionalAttr) {
+		m["Treal"] = value
+	}
+}
+
+// ND inverse real fast Fourier transform.
+//
+// Computes the n-dimensional inverse real discrete Fourier transform over
+// designated dimensions of `input`. The designated dimensions of `input` are
+// assumed to be the result of `IRFFTND`. The inner-most dimension contains the
+// `fft_length / 2 + 1` unique components of the DFT of a real-valued signal.
+//
+// If fft_length[i]<shape(input)[i], the input is cropped. If
+// fft_length[i]>shape(input)[i], the input is padded with zeros. If fft_length
+// is not given, the default shape(input) is used.
+//
+// Axes mean the dimensions to perform the transform on. Default is to perform on
+// all axes.
+//
+// Arguments:
+//
+//	input: A complex tensor.
+//	fft_length: An int32 tensor. The FFT length for each dimension.
+//	axes: An int32 tensor with a same shape as fft_length. Axes to perform the transform.
+//
+// Returns A complex tensor of the same shape as `input`. The designated dimensions of
+// `input` are replaced with their inverse real Fourier transforms.
+//
+// @compatibility(numpy)
+// Equivalent to np.fft.irfftn.
+// @end_compatibility
+func IRFFTND(scope *Scope, input tf.Output, fft_length tf.Output, axes tf.Output, optional ...IRFFTNDAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "IRFFTND",
+		Input: []tf.Input{
+			input, fft_length, axes,
 		},
 		Attrs: attrs,
 	}
@@ -34527,6 +34932,62 @@ func RFFT3D(scope *Scope, input tf.Output, fft_length tf.Output, optional ...RFF
 	return op.Output(0)
 }
 
+// RFFTNDAttr is an optional argument to RFFTND.
+type RFFTNDAttr func(optionalAttr)
+
+// RFFTNDTcomplex sets the optional Tcomplex attribute to value.
+// If not specified, defaults to DT_COMPLEX64
+func RFFTNDTcomplex(value tf.DataType) RFFTNDAttr {
+	return func(m optionalAttr) {
+		m["Tcomplex"] = value
+	}
+}
+
+// ND fast real Fourier transform.
+//
+// Computes the n-dimensional real discrete Fourier transform over designated
+// dimensions of `input`. The designated dimensions of `input` are assumed to be
+// the result of `RFFTND`. The length of the last axis transformed will be
+// fft_length[-1]//2+1.
+//
+// If fft_length[i]<shape(input)[i], the input is cropped. If
+// fft_length[i]>shape(input)[i], the input is padded with zeros. If fft_length
+// is not given, the default shape(input) is used.
+//
+// Axes mean the dimensions to perform the transform on. Default is to perform on
+// all axes.
+//
+// Arguments:
+//
+//	input: A complex tensor.
+//	fft_length: An int32 tensor. The FFT length for each dimension.
+//	axes: An int32 tensor with a same shape as fft_length. Axes to perform the transform.
+//
+// Returns A complex tensor of the same shape as `input`. The designated
+// dimensions of `input` are replaced with their real Fourier transforms.
+//
+// @compatibility(numpy)
+// Equivalent to np.fft.rfftn.
+// @end_compatibility
+func RFFTND(scope *Scope, input tf.Output, fft_length tf.Output, axes tf.Output, optional ...RFFTNDAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RFFTND",
+		Input: []tf.Input{
+			input, fft_length, axes,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Converts one or more images from RGB to HSV.
 //
 // Outputs a tensor of the same shape as the `images` tensor, containing the HSV
@@ -43536,7 +43997,8 @@ func SetSizeValidateIndices(value bool) SetSizeAttr {
 // allowed but ignored.
 //
 // If `validate_indices` is `True`, this op validates the order and range of `set`
-// indices.
+// indices. Setting is to `False` while passing invalid arguments results in
+// undefined behavior.
 //
 // Arguments:
 //
@@ -46682,6 +47144,17 @@ func SparseReshape(scope *Scope, input_indices tf.Output, input_shape tf.Output,
 	return op.Output(0), op.Output(1)
 }
 
+// SparseSegmentMeanAttr is an optional argument to SparseSegmentMean.
+type SparseSegmentMeanAttr func(optionalAttr)
+
+// SparseSegmentMeanSparseGradient sets the optional sparse_gradient attribute to value.
+// If not specified, defaults to false
+func SparseSegmentMeanSparseGradient(value bool) SparseSegmentMeanAttr {
+	return func(m optionalAttr) {
+		m["sparse_gradient"] = value
+	}
+}
+
 // Computes the mean along sparse segments of a tensor.
 //
 // See `tf.sparse.segment_sum` for usage examples.
@@ -46696,15 +47169,20 @@ func SparseReshape(scope *Scope, input_indices tf.Output, input_shape tf.Output,
 //
 // Returns Has same shape as data, except for dimension 0 which
 // has size `k`, the number of segments.
-func SparseSegmentMean(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output) (output tf.Output) {
+func SparseSegmentMean(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, optional ...SparseSegmentMeanAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "SparseSegmentMean",
 		Input: []tf.Input{
 			data, indices, segment_ids,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -46735,6 +47213,43 @@ func SparseSegmentMeanGrad(scope *Scope, grad tf.Output, indices tf.Output, segm
 	return op.Output(0)
 }
 
+// Computes gradients for SparseSegmentMean.
+//
+// Returns tensor "output" with same shape as grad, except for dimension 0 whose
+// value is the number of unique indexes in "indices". Also returns vector
+// "sorted_unique_indices" containing the corresponding indexes from "indices".
+//
+// Arguments:
+//
+//	grad: gradient propagated to the SparseSegmentMean op.
+//	indices: indices passed to the corresponding SparseSegmentMean op.
+//	segment_ids: segment_ids passed to the corresponding SparseSegmentMean op.
+//	dense_output_dim0: dimension 0 of "data" passed to SparseSegmentMean op.
+func SparseSegmentMeanGradV2(scope *Scope, grad tf.Output, indices tf.Output, segment_ids tf.Output, dense_output_dim0 tf.Output) (output tf.Output, sorted_unique_indices tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseSegmentMeanGradV2",
+		Input: []tf.Input{
+			grad, indices, segment_ids, dense_output_dim0,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
+// SparseSegmentMeanWithNumSegmentsAttr is an optional argument to SparseSegmentMeanWithNumSegments.
+type SparseSegmentMeanWithNumSegmentsAttr func(optionalAttr)
+
+// SparseSegmentMeanWithNumSegmentsSparseGradient sets the optional sparse_gradient attribute to value.
+// If not specified, defaults to false
+func SparseSegmentMeanWithNumSegmentsSparseGradient(value bool) SparseSegmentMeanWithNumSegmentsAttr {
+	return func(m optionalAttr) {
+		m["sparse_gradient"] = value
+	}
+}
+
 // Computes the mean along sparse segments of a tensor.
 //
 // Like `SparseSegmentMean`, but allows missing ids in `segment_ids`. If an id is
@@ -46752,18 +47267,34 @@ func SparseSegmentMeanGrad(scope *Scope, grad tf.Output, indices tf.Output, segm
 //
 // Returns Has same shape as data, except for dimension 0 which has size
 // `num_segments`.
-func SparseSegmentMeanWithNumSegments(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
+func SparseSegmentMeanWithNumSegments(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, num_segments tf.Output, optional ...SparseSegmentMeanWithNumSegmentsAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "SparseSegmentMeanWithNumSegments",
 		Input: []tf.Input{
 			data, indices, segment_ids, num_segments,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// SparseSegmentSqrtNAttr is an optional argument to SparseSegmentSqrtN.
+type SparseSegmentSqrtNAttr func(optionalAttr)
+
+// SparseSegmentSqrtNSparseGradient sets the optional sparse_gradient attribute to value.
+// If not specified, defaults to false
+func SparseSegmentSqrtNSparseGradient(value bool) SparseSegmentSqrtNAttr {
+	return func(m optionalAttr) {
+		m["sparse_gradient"] = value
+	}
 }
 
 // Computes the sum along sparse segments of a tensor divided by the sqrt of N.
@@ -46779,15 +47310,20 @@ func SparseSegmentMeanWithNumSegments(scope *Scope, data tf.Output, indices tf.O
 //
 // Returns Has same shape as data, except for dimension 0 which
 // has size `k`, the number of segments.
-func SparseSegmentSqrtN(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output) (output tf.Output) {
+func SparseSegmentSqrtN(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, optional ...SparseSegmentSqrtNAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "SparseSegmentSqrtN",
 		Input: []tf.Input{
 			data, indices, segment_ids,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -46818,6 +47354,43 @@ func SparseSegmentSqrtNGrad(scope *Scope, grad tf.Output, indices tf.Output, seg
 	return op.Output(0)
 }
 
+// Computes gradients for SparseSegmentSqrtN.
+//
+// Returns tensor "output" with same shape as grad, except for dimension 0 whose
+// value is the number of unique indexes in "indices". Also returns vector
+// "sorted_unique_indices" containing the corresponding indexes from "indices".
+//
+// Arguments:
+//
+//	grad: gradient propagated to the SparseSegmentSqrtN op.
+//	indices: indices passed to the corresponding SparseSegmentSqrtN op.
+//	segment_ids: segment_ids passed to the corresponding SparseSegmentSqrtN op.
+//	dense_output_dim0: dimension 0 of "data" passed to SparseSegmentSqrtN op.
+func SparseSegmentSqrtNGradV2(scope *Scope, grad tf.Output, indices tf.Output, segment_ids tf.Output, dense_output_dim0 tf.Output) (output tf.Output, sorted_unique_indices tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseSegmentSqrtNGradV2",
+		Input: []tf.Input{
+			grad, indices, segment_ids, dense_output_dim0,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
+// SparseSegmentSqrtNWithNumSegmentsAttr is an optional argument to SparseSegmentSqrtNWithNumSegments.
+type SparseSegmentSqrtNWithNumSegmentsAttr func(optionalAttr)
+
+// SparseSegmentSqrtNWithNumSegmentsSparseGradient sets the optional sparse_gradient attribute to value.
+// If not specified, defaults to false
+func SparseSegmentSqrtNWithNumSegmentsSparseGradient(value bool) SparseSegmentSqrtNWithNumSegmentsAttr {
+	return func(m optionalAttr) {
+		m["sparse_gradient"] = value
+	}
+}
+
 // Computes the sum along sparse segments of a tensor divided by the sqrt of N.
 //
 // N is the size of the segment being reduced.
@@ -46837,18 +47410,34 @@ func SparseSegmentSqrtNGrad(scope *Scope, grad tf.Output, indices tf.Output, seg
 //
 // Returns Has same shape as data, except for dimension 0 which
 // has size `k`, the number of segments.
-func SparseSegmentSqrtNWithNumSegments(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
+func SparseSegmentSqrtNWithNumSegments(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, num_segments tf.Output, optional ...SparseSegmentSqrtNWithNumSegmentsAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "SparseSegmentSqrtNWithNumSegments",
 		Input: []tf.Input{
 			data, indices, segment_ids, num_segments,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// SparseSegmentSumAttr is an optional argument to SparseSegmentSum.
+type SparseSegmentSumAttr func(optionalAttr)
+
+// SparseSegmentSumSparseGradient sets the optional sparse_gradient attribute to value.
+// If not specified, defaults to false
+func SparseSegmentSumSparseGradient(value bool) SparseSegmentSumAttr {
+	return func(m optionalAttr) {
+		m["sparse_gradient"] = value
+	}
 }
 
 // Computes the sum along sparse segments of a tensor.
@@ -46890,15 +47479,20 @@ func SparseSegmentSqrtNWithNumSegments(scope *Scope, data tf.Output, indices tf.
 //
 // Returns Has same shape as data, except for dimension 0 which
 // has size `k`, the number of segments.
-func SparseSegmentSum(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output) (output tf.Output) {
+func SparseSegmentSum(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, optional ...SparseSegmentSumAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "SparseSegmentSum",
 		Input: []tf.Input{
 			data, indices, segment_ids,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -46927,6 +47521,43 @@ func SparseSegmentSumGrad(scope *Scope, grad tf.Output, indices tf.Output, segme
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Computes gradients for SparseSegmentSum.
+//
+// Returns tensor "output" with same shape as grad, except for dimension 0 whose
+// value is the number of unique indexes in "indices". Also returns vector
+// "sorted_unique_indices" containing the corresponding indexes from "indices".
+//
+// Arguments:
+//
+//	grad: gradient propagated to the SparseSegmentSum op.
+//	indices: indices passed to the corresponding SparseSegmentSum op.
+//	segment_ids: segment_ids passed to the corresponding SparseSegmentSum op.
+//	dense_output_dim0: dimension 0 of "data" passed to SparseSegmentSum op.
+func SparseSegmentSumGradV2(scope *Scope, grad tf.Output, indices tf.Output, segment_ids tf.Output, dense_output_dim0 tf.Output) (output tf.Output, sorted_unique_indices tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseSegmentSumGradV2",
+		Input: []tf.Input{
+			grad, indices, segment_ids, dense_output_dim0,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
+// SparseSegmentSumWithNumSegmentsAttr is an optional argument to SparseSegmentSumWithNumSegments.
+type SparseSegmentSumWithNumSegmentsAttr func(optionalAttr)
+
+// SparseSegmentSumWithNumSegmentsSparseGradient sets the optional sparse_gradient attribute to value.
+// If not specified, defaults to false
+func SparseSegmentSumWithNumSegmentsSparseGradient(value bool) SparseSegmentSumWithNumSegmentsAttr {
+	return func(m optionalAttr) {
+		m["sparse_gradient"] = value
+	}
 }
 
 // Computes the sum along sparse segments of a tensor.
@@ -46971,15 +47602,20 @@ func SparseSegmentSumGrad(scope *Scope, grad tf.Output, indices tf.Output, segme
 //
 // Returns Has same shape as data, except for dimension 0 which
 // has size `num_segments`.
-func SparseSegmentSumWithNumSegments(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, num_segments tf.Output) (output tf.Output) {
+func SparseSegmentSumWithNumSegments(scope *Scope, data tf.Output, indices tf.Output, segment_ids tf.Output, num_segments tf.Output, optional ...SparseSegmentSumWithNumSegmentsAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "SparseSegmentSumWithNumSegments",
 		Input: []tf.Input{
 			data, indices, segment_ids, num_segments,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -49543,6 +50179,37 @@ func StatsAggregatorSummary(scope *Scope, iterator tf.Output) (summary tf.Output
 	return op.Output(0)
 }
 
+// Stochastically cast a given tensor from floats to ints.
+//
+// The values are cast with a deterministic pseudo-random tensor from a uniform distribution generated from user given key, counter, algorithm. Values will saturate if out of the specified integer type range, and will become zero if inputs are NaN.
+//
+// The outputs are a deterministic function of `input`, `key`, `counter`, `alg`.
+//
+// Arguments:
+//
+//	input: The operand to stochastically cast to int.
+//	key: Key for the counter-based RNG algorithm (shape uint64[1]).
+//	counter: Initial counter for the counter-based RNG algorithm (shape uint64[2] or uint64[1] depending on the algorithm). If a larger vector is given, only the needed portion on the left (i.e. [:N]) will be used.
+//	alg: The RNG algorithm (shape int32[]).
+//	Tout: The type of the output.
+//
+// Returns The cast result with the same shape as the input.
+func StochasticCastToInt(scope *Scope, input tf.Output, key tf.Output, counter tf.Output, alg tf.Output, Tout tf.DataType) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"Tout": Tout}
+	opspec := tf.OpSpec{
+		Type: "StochasticCastToInt",
+		Input: []tf.Input{
+			input, key, counter, alg,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Stops gradient computation.
 //
 // When executed in a graph, this op outputs its input tensor as-is.
@@ -50868,6 +51535,55 @@ func TFRecordDataset(scope *Scope, filenames tf.Output, compression_type tf.Outp
 		Type: "TFRecordDataset",
 		Input: []tf.Input{
 			filenames, compression_type, buffer_size,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// TFRecordDatasetV2Attr is an optional argument to TFRecordDatasetV2.
+type TFRecordDatasetV2Attr func(optionalAttr)
+
+// TFRecordDatasetV2Metadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func TFRecordDatasetV2Metadata(value string) TFRecordDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
+// Creates a dataset that emits the records from one or more TFRecord files.
+//
+// Arguments:
+//
+//	filenames: A scalar or vector containing the name(s) of the file(s) to be
+//
+// read.
+//
+//	compression_type: A scalar containing either (i) the empty string (no
+//
+// compression), (ii) "ZLIB", or (iii) "GZIP".
+//
+//	buffer_size: A scalar representing the number of bytes to buffer. A value of
+//
+// 0 means no buffering will be performed.
+//
+//	byte_offsets: A scalar or vector containing the number of bytes for each file
+//
+// that will be skipped prior to reading.
+func TFRecordDatasetV2(scope *Scope, filenames tf.Output, compression_type tf.Output, buffer_size tf.Output, byte_offsets tf.Output, optional ...TFRecordDatasetV2Attr) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TFRecordDatasetV2",
+		Input: []tf.Input{
+			filenames, compression_type, buffer_size, byte_offsets,
 		},
 		Attrs: attrs,
 	}
@@ -54011,6 +54727,14 @@ func TopKV2Sorted(value bool) TopKV2Attr {
 	}
 }
 
+// TopKV2IndexType sets the optional index_type attribute to value.
+// If not specified, defaults to DT_INT32
+func TopKV2IndexType(value tf.DataType) TopKV2Attr {
+	return func(m optionalAttr) {
+		m["index_type"] = value
+	}
+}
+
 // Finds values and indices of the `k` largest elements for the last dimension.
 //
 // If the input is a vector (rank-1), finds the `k` largest entries in the vector
@@ -56895,6 +57619,16 @@ func VarHandleOpSharedName(value string) VarHandleOpAttr {
 	}
 }
 
+// VarHandleOpDebugName sets the optional debug_name attribute to value.
+//
+// value: the user-given name, which still applies in anonymous mode.
+// If not specified, defaults to ""
+func VarHandleOpDebugName(value string) VarHandleOpAttr {
+	return func(m optionalAttr) {
+		m["debug_name"] = value
+	}
+}
+
 // VarHandleOpAllowedDevices sets the optional allowed_devices attribute to value.
 //
 // value: DEPRECATED. The allowed devices containing the resource variable. Set when the
@@ -57503,101 +58237,6 @@ func XlaBroadcastHelper(scope *Scope, lhs tf.Output, rhs tf.Output, broadcast_di
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
-}
-
-// XlaCallModuleAttr is an optional argument to XlaCallModule.
-type XlaCallModuleAttr func(optionalAttr)
-
-// XlaCallModuleDimArgsSpec sets the optional dim_args_spec attribute to value.
-//
-// value: in presence of dynamic shapes, this is the specification for the
-// dimension arguments. In absence of dynamic shapes this list is empty. The
-// `module` takes one 0-dimensional integer tensor dimension argument for each
-// element of `dim_spec_args`. The dimension arguments come after the platform
-// index argument and before the actual arguments. Each specification is a
-// string of the form "<arg_idx>.<axis_idx>" that specifies that the value of
-// the corresponding dimension argument must be "args[arg_idx].shape[axis_idx]",
-// where "args" are the actual array arguments.
-// If not specified, defaults to {}
-func XlaCallModuleDimArgsSpec(value []string) XlaCallModuleAttr {
-	return func(m optionalAttr) {
-		m["dim_args_spec"] = value
-	}
-}
-
-// XlaCallModulePlatforms sets the optional platforms attribute to value.
-//
-// value: the list of platforms supported by `module`. If the list is empty,
-// the `module` is platform independent or there should be no platform checking
-// or preprocessing. The list can contain the strings "CPU", "CUDA", "ROCM",
-// or "TPU".
-// If the list is not empty then it is an error to compile this op for a
-// platform that does not appear in the list. If the list contains more than
-// one platform, then the `module` takes one additional 0-dimensional
-// integer-tensor parameter in the first position, encoding the index in
-// `platforms` of the current compilation platform.
-// If not specified, defaults to {}
-func XlaCallModulePlatforms(value []string) XlaCallModuleAttr {
-	return func(m optionalAttr) {
-		m["platforms"] = value
-	}
-}
-
-// Invokes a StableHLO module.
-//
-// This op is used with JAX native serialization in a TensorFlow context with
-// stability guarantees.
-//
-// Arguments:
-//
-//	args: A list of `Tensor` with possibly different types to be passed as arguments
-//
-// to the `module`. These are the actual arguments and do not include the
-// platform argument (see `platforms`) nor the dimension arguments (see
-// `dim_args_spec`).
-//
-//	version: Tracks changes the semantics of the op, to support backwards
-//
-// compatibility. Minimum supported version is 2. From
-// version 2, the op carries a StableHLO text or bytecode `module`. From
-// version 3, the op also supports the `platforms` attribute. From version 4,
-// the op carries a StableHLO module with compatibility guarantees.
-//
-//	module: A serialized computation, a text or bytecode representation of
-//
-// an mlir.Module. The return type must be a tuple if and only if the `Sout` is
-// a list with 0 or more than 1 elements. The length of `Tout` and
-// `Sout` must match. This op always returns a tuple of results, even if the
-// module returns a single result.
-//
-//	Sout: List of output tensor shapes.
-//	Tout: List of output tensor data types.
-func XlaCallModule(scope *Scope, args []tf.Output, version int64, module string, Sout []tf.Shape, Tout []tf.DataType, optional ...XlaCallModuleAttr) (output []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"version": version, "module": module, "Sout": Sout, "Tout": Tout}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "XlaCallModule",
-		Input: []tf.Input{
-			tf.OutputList(args),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if output, idx, err = makeOutputList(op, idx, "output"); err != nil {
-		scope.UpdateErr("XlaCallModule", err)
-		return
-	}
-	return output
 }
 
 // XlaConcatNDAttr is an optional argument to XlaConcatND.

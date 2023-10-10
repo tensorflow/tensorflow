@@ -44,10 +44,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/union_find.h"
-#include "tensorflow/compiler/xla/util.h"
+#include "xla/service/graphcycles/graphcycles.h"
+#include "xla/statusor.h"
+#include "xla/union_find.h"
+#include "xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/bounds_check.h"
@@ -334,6 +334,19 @@ class MarkForCompilationPassImpl {
 
   StatusOr<bool> ClusteringWillIntroduceInterDeviceDependency(
       const Cluster& from, const Cluster& to);
+
+  bool ShouldCompile(bool is_xla_compile_attr_true,
+                     const DeviceType& device_type,
+                     XlaOpRegistry::AutoclusteringPolicy policy) {
+    return is_xla_compile_attr_true ||
+           policy == XlaOpRegistry::AutoclusteringPolicy::kAlways ||
+           (policy == XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally &&
+            global_jit_level_ != OptimizerOptions::OFF) ||
+           (device_type.type_string() == DEVICE_CPU &&
+            policy ==
+                XlaOpRegistry::AutoclusteringPolicy::kIfExplicitlyRequested &&
+            cpu_global_jit_);
+  }
 
   // Returns true if the devices in `cluster_a` and `cluster_b` are compatible
   // and therefore not a hindrance for combining the two clusters into a larger
@@ -1203,7 +1216,7 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
   return true;
 }
 
-absl::flat_hash_set<string> GetOrCreateClusterExcludeList() {
+absl::flat_hash_set<string> CreateClusterExcludeList() {
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
   absl::flat_hash_set<string> excludelist;
   for (auto s : absl::StrSplit(flags->tf_xla_cluster_exclude_ops, ',')) {
@@ -1294,6 +1307,19 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     }
   }
 
+  auto cluster_exclude_op_list = CreateClusterExcludeList();
+  bool allow_where_op = true;
+  for (const auto& s : cluster_exclude_op_list) {
+    if (s == "Where") {
+      allow_where_op = false;
+    } else {
+      return errors::InvalidArgument(
+          "The operation '", s,
+          "' passed to --tf_xla_cluster_exclude_ops is not supported by "
+          "XLA.");
+    }
+  }
+
   for (Node* node : sorted_nodes) {
     if (*debug_options_.fuel <= 0) {
       VLOG(1)
@@ -1321,25 +1347,23 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       continue;
     }
 
-    auto cluster_exclude_op_list = GetOrCreateClusterExcludeList();
+    // Skip nodes early that won't be compilable for efficiency.
+    bool is_xla_compile_attr_true =
+        GetNodeOrFuncAttr(node, flib_def_, kXlaCompileAttr) ||
+        (global_jit_level_ != OptimizerOptions::OFF &&
+         GetNodeOrFuncAttr(node, flib_def_, kXlaMustCompileAttr));
+    auto policy = registration->autoclustering_policy;
+    if (!ShouldCompile(is_xla_compile_attr_true, device_type, policy)) {
+      continue;
+    }
+
     RecursiveCompilabilityChecker::OperationFilter filter =
         CreateOperationFilter(*registration);
     filter.require_always_compilable = true;
     filter.allow_string_consts = false;
     filter.allow_collective_reduce_v2 = false;
     filter.allow_unique_op = false;
-    filter.allow_where_op = true;
-
-    for (const auto& s : cluster_exclude_op_list) {
-      if (s == "Where") {
-        filter.allow_where_op = false;
-      } else {
-        return errors::InvalidArgument(
-            "The operation '", s,
-            "' passed to --tf_xla_cluster_exclude_ops is not supported by "
-            "XLA.");
-      }
-    }
+    filter.allow_where_op = allow_where_op;
 
     RecursiveCompilabilityChecker checker(
         filter, DeviceType{registration->compilation_device_name});
@@ -1779,13 +1803,7 @@ StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileClusterImpl(
 
   auto policy = registration->autoclustering_policy;
   bool should_compile =
-      cluster.is_xla_compile_attr_true() ||
-      policy == XlaOpRegistry::AutoclusteringPolicy::kAlways ||
-      (policy == XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally &&
-       global_jit_level_ != OptimizerOptions::OFF) ||
-      (device_type.type_string() == DEVICE_CPU &&
-       policy == XlaOpRegistry::AutoclusteringPolicy::kIfExplicitlyRequested &&
-       cpu_global_jit_);
+      ShouldCompile(cluster.is_xla_compile_attr_true(), device_type, policy);
 
   if (!should_compile && device_type.type_string() == DEVICE_CPU &&
       global_jit_level_ > OptimizerOptions::OFF) {
@@ -1883,6 +1901,7 @@ std::atomic<int64_t>* GetPointerToFuel(int64_t initial_value) {
 
   return fuel;
 }
+
 }  // anonymous namespace
 
 Status MarkForCompilationPass::Run(
@@ -2025,6 +2044,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "CheckNumerics",
       "Cholesky",
       "ControlTrigger",
+      "Conv",
       "Conv2D",
       "Conv2DBackpropFilter",
       "Conv2DBackpropInput",
@@ -2044,6 +2064,8 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "DepthwiseConv2dNativeBackpropInput",
       "Dequantize",
       "Diag",
+      "DynamicInfeedEnqueueTupleOp",
+      "DynamicInfeedDequeueTupleOp",
       "DynamicStitch",
       "DynamicPartition",
       "Einsum",
@@ -2202,6 +2224,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "StatelessTruncatedNormal",
       "StatelessTruncatedNormalV2",
       "StatelessWhile",
+      "StochasticCastToInt",
       "Svd",
       "SymbolicGradient",
       "TensorArrayCloseV3",
@@ -2235,6 +2258,13 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "TridiagonalSolve",
       "TridiagonalMatMul",
       "TruncatedNormal",
+      "UniformDequantize",
+      "UniformQuantize",
+      "UniformQuantizedAdd",
+      "UniformQuantizedClipByValue",
+      "UniformQuantizedConvolution",
+      "UniformQuantizedDot",
+      "UniformRequantize",
       "Unique",
       "UniqueV2",
       "UpperBound",

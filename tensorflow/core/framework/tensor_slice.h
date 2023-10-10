@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_SLICE_H_
 
 #include <string>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.pb.h"
 #include "tensorflow/core/lib/core/status.h"

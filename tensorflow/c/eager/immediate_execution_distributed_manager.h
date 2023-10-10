@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_DISTRIBUTED_MANAGER_H_
 #define TENSORFLOW_C_EAGER_IMMEDIATE_EXECUTION_DISTRIBUTED_MANAGER_H_
 
+#include <cstdint>
 #include <string>
 
 #include "tensorflow/core/platform/status.h"
@@ -41,8 +42,15 @@ class ImmediateExecutionDistributedManager {
   // on remote tasks will be considered stale and garbage collected after
   // `keep_alive_secs` of inactivity.
   virtual Status SetOrUpdateServerDef(const ServerDef& server_def,
-                                      bool reset_context,
-                                      int keep_alive_secs) = 0;
+                                      bool reset_context, int keep_alive_secs,
+                                      int64_t init_timeout_in_ms,
+                                      int retries) = 0;
+
+  // Initializes context for the local worker and no contexts will be created
+  // for remote workers. Currently this only works for resetting context.
+  // TODO(b/289445025): Consider removing this when we find a proper fix.
+  virtual Status InitializeLocalOnlyContext(const ServerDef& server_def,
+                                            int keep_alive_secs) = 0;
 
   // Set up a multi-client distributed execution environment. Must be called
   // on all tasks in the cluster. This call internally coordinates with other

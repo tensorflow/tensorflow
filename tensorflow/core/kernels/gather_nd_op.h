@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_GATHER_ND_OP_H_
 // Functor definition for GatherOp, must be compilable by nvcc.
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -25,12 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
 
-namespace tsl {
-class Status;
-}
 namespace tensorflow {
-using tsl::Status;
-
 class OpKernelContext;
 class Tensor;
 

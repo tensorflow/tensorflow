@@ -87,7 +87,7 @@ function generate_tflite_framework {
     'tflite_custom_cc_library('
     '    name = "custom_c_api",'
     '    deps = ['
-    '        "//tensorflow/lite/core/shims:builtin_ops_list",'
+    '        "//tensorflow/lite/kernels:builtin_ops_list",'
     '    ],'
     '    '"$(generate_list_field "models" "$MODEL_NAMES")"
     ')'

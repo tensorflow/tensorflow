@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_step_stats.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -26,10 +29,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/gpu_event_stats.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tsl/profiler/utils/tf_xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -83,7 +86,7 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
 
   absl::flat_hash_map<uint32_t /*device_id*/, DeviceStepStats*>
       sync_dev_stats_map;
-  XPlaneVisitor plane = CreateTfXPlaneVisitor(host_plane);
+  XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(host_plane);
   plane.ForEachLine([&](const XLineVisitor& line) {
     uint32_t thread_id = line.Id();
     line.ForEachEvent([&](const XEventVisitor& event) {
@@ -117,14 +120,14 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
     DeviceStepStats* unknown_stream_dev_stats = nullptr;
     DeviceStepStats* all_streams_dev_stats = nullptr;
     DeviceStepStats* memcpy_dev_stats = nullptr;
-    XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
+    XPlaneVisitor plane = tsl::profiler::CreateTfXPlaneVisitor(device_plane);
     uint32_t device_ordinal = plane.Id();
     plane.ForEachLine([&](const XLineVisitor& line) {
       uint32_t stream_id = line.Id();
       line.ForEachEvent([&](const XEventVisitor& event) {
         GpuEventStats stats(&event);
 
-        auto ns = absl::make_unique<NodeExecStats>();
+        auto ns = std::make_unique<NodeExecStats>();
         SetNodeTimes(event, ns.get());
 
         // Get launch information if available.

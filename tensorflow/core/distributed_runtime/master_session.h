@@ -254,7 +254,8 @@ class MasterSession : public core::RefCounted {
       int64_t rcg_execution_count,
       std::unique_ptr<DebuggerStateInterface>* debugger_state);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MasterSession);
+  MasterSession(const MasterSession&) = delete;
+  void operator=(const MasterSession&) = delete;
 };
 
 }  // end namespace tensorflow

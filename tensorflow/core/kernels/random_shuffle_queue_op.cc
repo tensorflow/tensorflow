@@ -85,7 +85,8 @@ class RandomShuffleQueue : public TypedQueue<std::vector<Tensor> > {
   random::SingleSampleAdapter<random::PhiloxRandom> generator_
       TF_GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RandomShuffleQueue);
+  RandomShuffleQueue(const RandomShuffleQueue&) = delete;
+  void operator=(const RandomShuffleQueue&) = delete;
 };
 
 RandomShuffleQueue::RandomShuffleQueue(
@@ -357,7 +358,7 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                           errors::DataLoss("Failed to restore element from "
                                            "partially-dequeued batch "
                                            "to RandomShuffleQueue: ",
-                                           s.error_message()));
+                                           s.message()));
                     }
                     queues_[j].push_back(element);
                   }
@@ -508,7 +509,8 @@ class RandomShuffleQueueOp : public TypedQueueOp {
   int64_t seed2_;
   std::vector<TensorShape> component_shapes_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RandomShuffleQueueOp);
+  RandomShuffleQueueOp(const RandomShuffleQueueOp&) = delete;
+  void operator=(const RandomShuffleQueueOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("RandomShuffleQueue").Device(DEVICE_CPU),

@@ -35,7 +35,7 @@ tensorflow::Status TransformWithStatus(const TocoFlags& toco_flags,
                                        Model* model);
 inline void Transform(const TocoFlags& toco_flags, Model* model) {
   auto s = TransformWithStatus(toco_flags, model);
-  CHECK(s.ok()) << s.error_message();
+  CHECK(s.ok()) << s.message();
 }
 
 // Exports the Model, which must be of the 'lowered' form returned by
@@ -50,7 +50,7 @@ inline void Export(const TocoFlags& toco_flags, const Model& model,
                    std::string* output_file_contents) {
   auto status = Export(toco_flags, model, true, output_file_contents);
   if (!status.ok()) {
-    LOG(QFATAL) << status.error_message();
+    LOG(QFATAL) << status.message();
   }
 }
 

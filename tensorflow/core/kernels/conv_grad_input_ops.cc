@@ -23,6 +23,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cast_op.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -110,12 +111,12 @@ void LaunchConv2DBackpropInputOpGpuImpl(
   int64_t expected_out_rows, expected_out_cols;
   // The function is guaranteed to succeed because we checked the output and
   // padding was valid earlier.
-  TF_CHECK_OK(GetWindowedOutputSizeVerboseV2(
+  TF_CHECK_OK(GetWindowedOutputSizeVerbose(
       dims.spatial_dims[0].input_size, dims.spatial_dims[0].filter_size,
       row_dilation, row_stride, padding, &expected_out_rows, &padding_top,
       &padding_bottom));
   DCHECK_EQ(dims.spatial_dims[0].output_size, expected_out_rows);
-  TF_CHECK_OK(GetWindowedOutputSizeVerboseV2(
+  TF_CHECK_OK(GetWindowedOutputSizeVerbose(
       dims.spatial_dims[1].input_size, dims.spatial_dims[1].filter_size,
       col_dilation, col_stride, padding, &expected_out_cols, &padding_left,
       &padding_right));
@@ -156,9 +157,9 @@ void LaunchConv2DBackpropInputOpGpuImpl(
     auto transpose = se::blas::Transpose::kTranspose;
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(
-                            transpose, no_transpose, n, m, k, b_ptr, k, a_ptr,
-                            k, &c_ptr, n, se::blas::kDefaultComputePrecision));
+    OP_REQUIRES_OK(
+        ctx, stream->ThenBlasGemm(transpose, no_transpose, n, m, k, b_ptr, k,
+                                  a_ptr, k, &c_ptr, n, GetNumericOptions()));
     return;
   } else if (dims.spatial_dims[0].filter_size ==
                  dims.spatial_dims[0].input_size &&
@@ -183,9 +184,9 @@ void LaunchConv2DBackpropInputOpGpuImpl(
     auto transpose = se::blas::Transpose::kTranspose;
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(
-                            transpose, no_transpose, n, m, k, b_ptr, k, a_ptr,
-                            k, &c_ptr, n, se::blas::kDefaultComputePrecision));
+    OP_REQUIRES_OK(
+        ctx, stream->ThenBlasGemm(transpose, no_transpose, n, m, k, b_ptr, k,
+                                  a_ptr, k, &c_ptr, n, GetNumericOptions()));
     return;
   }
 

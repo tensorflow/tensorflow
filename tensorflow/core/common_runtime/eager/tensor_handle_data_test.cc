@@ -131,10 +131,10 @@ TEST(TensorHandleData, BlockingControlPoisonHandle) {
                                          "Fake failure.");
   handle_data.Poison(fake_failure_status);
 
-  EXPECT_THAT(
-      handle_data.IsPoisoned(),
-      tensorflow::testing::StatusIs(fake_failure_status.code(),
-                                    fake_failure_status.error_message()));
+  EXPECT_THAT(handle_data.IsPoisoned(),
+              tensorflow::testing::StatusIs(
+                  fake_failure_status.code(),
+                  std::string(fake_failure_status.message())));
 }
 
 TEST(TensorHandleData, BlockingControlSetTensor) {

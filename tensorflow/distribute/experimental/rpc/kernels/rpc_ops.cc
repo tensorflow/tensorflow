@@ -12,9 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "grpcpp/channel.h"
@@ -25,6 +27,7 @@ limitations under the License.
 #include "grpcpp/impl/codegen/status.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server_builder.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 // Needed for encoding and decoding ResourceDeleter Variant.
@@ -761,7 +764,7 @@ void RpcCheckStatusOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   {
     auto status = LookupResource(ctx, handle, &future_resource);
     if (!status.ok()) {
-      if (errors::IsNotFound(status)) {
+      if (absl::IsNotFound(status)) {
         ctx->SetStatus(tensorflow::errors::NotFound(
             absl::StrCat("Future resource no longer exists. Please make sure "
                          "resource is not already deleted.")));
@@ -778,7 +781,7 @@ void RpcCheckStatusOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
         Tensor error_code(DT_INT64, TensorShape({})),
             error_message(DT_STRING, TensorShape({}));
         error_code.scalar<int64_t>()() = status.raw_code();
-        error_message.scalar<tstring>()() = status.error_message();
+        error_message.scalar<tstring>()() = status.message();
 
         ctx->set_output(0, error_code);
         ctx->set_output(1, error_message);
@@ -795,7 +798,7 @@ void RpcGetValueOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   {
     auto status = LookupResource(ctx, handle, &future_resource);
     if (!status.ok()) {
-      if (errors::IsNotFound(status)) {
+      if (absl::IsNotFound(status)) {
         ctx->SetStatus(tensorflow::errors::NotFound(
             absl::StrCat("Future resource no longer exists. Please ensure "
                          "resource is not already deleted.")));
@@ -832,61 +835,6 @@ void RpcGetValueOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       });
 }
 
-REGISTER_OP("RpcServer")
-    .Input("server_address: string")
-    .Output("server: resource")
-    .SetIsStateful();
-
-REGISTER_OP("RpcClient")
-    .Attr("shared_name: string = ''")
-    .Input("server_address: string")
-    .Attr("list_registered_methods: bool = false")
-    .Input("timeout_in_ms: int64")  // 0 indicates no timeout.
-                                    // Positive value indicates specified
-                                    // timeout.
-    .Output("client: resource")
-    .Output("method_specs: string")
-    .SetIsStateful();
-
-REGISTER_OP("RpcServerStart").Input("server: resource").SetIsStateful();
-
-REGISTER_OP("RpcServerRegister")
-    .Input("server: resource")
-    .Input("method_name: string")
-    .Input("captured_inputs: Tin")
-    .Attr("Tin: list(type) >=0 = []")
-    .Attr("f: func")
-    .Attr("input_specs: string = ''")
-    .Attr("output_specs: string")
-    .SetIsStateful();
-
-REGISTER_OP("DeleteRpcFutureResource")
-    .Input("handle: resource")
-    .Input("deleter: variant")
-    .SetShapeFn(shape_inference::NoOutputs);
-
-REGISTER_OP("RpcCall")
-    .Input("client: resource")
-    .Input("method_name: string")
-    .Input("args: Tin")
-    .Input("timeout_in_ms: int64")
-    .Attr("Tin: list(type) >= 0")
-    .Output("future: resource")
-    .Output("deleter: variant")
-    .SetIsStateful();
-
-REGISTER_OP("RpcCheckStatus")
-    .Input("status_or: resource")
-    .Output("error_code: int64")
-    .Output("error: string")
-    .SetIsStateful();
-
-REGISTER_OP("RpcGetValue")
-    .Input("status_or: resource")
-    .Attr("Tout: list(type) >= 0")
-    .Output("output: Tout")
-    .SetIsStateful();
-
 REGISTER_KERNEL_BUILDER(Name("RpcServer").Device(DEVICE_CPU), RpcServerOp);
 REGISTER_KERNEL_BUILDER(Name("RpcClient").Device(DEVICE_CPU), RpcClientOp);
 REGISTER_KERNEL_BUILDER(Name("RpcServerStart").Device(DEVICE_CPU),
@@ -901,5 +849,6 @@ REGISTER_KERNEL_BUILDER(Name("DeleteRpcFutureResource").Device(DEVICE_CPU),
                         DeleteRpcFutureResourceOp);
 
 REGISTER_INPUT_COLOCATION_EXEMPTION("RpcServerRegister");
+
 }  // namespace rpc
 }  // namespace tensorflow

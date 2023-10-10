@@ -88,10 +88,12 @@ class PropagatorState {
     TaggedNodeReadyQueue() : front_index_(0) {}
 
     void push_back(const TaggedNode& node) { ready_.push_back(node); }
+
     TaggedNode front() const {
       DCHECK_LT(front_index_, ready_.size());
       return ready_[front_index_];
     }
+
     void pop_front() {
       DCHECK_LT(front_index_, ready_.size());
       front_index_++;
@@ -544,7 +546,8 @@ class PropagatorState {
   absl::flat_hash_map<uint64, FrameState*> outstanding_frames_
       TF_GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PropagatorState);
+  PropagatorState(const PropagatorState&) = delete;
+  void operator=(const PropagatorState&) = delete;
 };
 
 inline int64_t PropagatorState::TaggedNode::get_iter_num() const {

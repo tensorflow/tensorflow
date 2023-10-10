@@ -99,7 +99,7 @@ class DTensorReplicaContextTest(test_util.DTensorBaseTest):
     self.mesh = self.configTestMesh(mesh_dict)
 
   def test_unsupported_methods(self):
-    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+    strategy = mirrored_strategy.MirroredStrategy(mesh=self.mesh)
     replica_context = dtensor_util.DTensorReplicaContext(strategy)
 
     expected_error = replica_context._UNSUPPORTED_ERROR_MSG

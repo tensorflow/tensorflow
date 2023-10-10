@@ -18,6 +18,8 @@ limitations under the License.
 #include <math.h>
 
 #include <algorithm>
+#include <optional>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -38,18 +40,20 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/utils/diagnostics.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
-#include "tensorflow/core/profiler/utils/format_utils.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
-#include "tensorflow/tsl/util/stats_calculator.h"
+#include "tsl/profiler/utils/format_utils.h"
+#include "tsl/profiler/utils/tf_op_utils.h"
+#include "tsl/util/stats_calculator.h"
 
 namespace tensorflow {
 namespace profiler {
 
 namespace {
+
+using tsl::profiler::OneDigit;
 
 const double kNumPsPerMs = 1000000000.0;
 
@@ -286,19 +290,21 @@ std::string InputOpCategoryString(InputOpCategory category) {
 inline bool IsInputOp(absl::string_view category) {
   // Do not include "IteratorGetNext*" here, because IteratorGetNext is an Op
   // that experiences the install stall, not an Op that causes the input stall.
-  return IsInfeedEnqueueOp(category) || IsDatasetOp(category) ||
-         IsMemcpyHToDOp(category);
+  return tsl::profiler::IsInfeedEnqueueOp(category) ||
+         tsl::profiler::IsDatasetOp(category) ||
+         tsl::profiler::IsMemcpyHToDOp(category);
 }
 
 // TODO(ckluk):
 //   Confirm with the tf.data team if the classification below is correct.
 InputOpCategory CategorizeInputOp(absl::string_view name,
                                   absl::string_view category) {
-  if (IsInfeedEnqueueOp(category) || IsMemcpyHToDOp(category)) {
+  if (tsl::profiler::IsInfeedEnqueueOp(category) ||
+      tsl::profiler::IsMemcpyHToDOp(category)) {
     // Ops for sending input from host to device.
     return InputOpCategory::kEnqueue;
   }
-  DCHECK(IsDatasetOp(category));
+  DCHECK(tsl::profiler::IsDatasetOp(category));
   if (absl::EndsWith(name, "::TFRecord") ||
       absl::EndsWith(name, "::TextLine") ||
       absl::EndsWith(name, "::FixedLengthRecord") ||
@@ -359,7 +365,7 @@ double RatioOfHostToDeviceTimeToStepTime(
     const OpMetricsDb& host_tf_metrics_db,
     const InputPipelineAnalysisResult& input_pipeline_analysis) {
   // For TPU execution that uses infeed.
-  absl::optional<double> host_infeed_enqueue_ratio =
+  std::optional<double> host_infeed_enqueue_ratio =
       HostInfeedEnqueueRatio(host_tf_metrics_db);
   if (host_infeed_enqueue_ratio.has_value()) {
     return host_infeed_enqueue_ratio.value();

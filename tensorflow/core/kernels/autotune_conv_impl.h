@@ -23,13 +23,13 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 
-#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/gpu/redzone_allocator.h"
+#include "xla/stream_executor/tf_allocator_adapter.h"
 
 namespace tensorflow::internal {
 
 template <typename LaunchFunc, typename Sig>
-StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneConvImpl(
+StatusOr<std::vector<xla::AutotuneResult>> AutotuneConvImpl(
     OpKernelContext* ctx,
     std::vector<std::unique_ptr<const se::dnn::OpRunner<Sig>>>& runners,
     bool actually_do_autotune, const LaunchFunc& launch_func,
@@ -39,7 +39,7 @@ StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneConvImpl(
   se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
                                               stream);
 
-  std::vector<tensorflow::AutotuneResult> results;
+  std::vector<xla::AutotuneResult> results;
   // TODO(reedwm): Warn if determinism is enabled after autotune is run
   for (auto& runner : runners) {
     // TODO(zhengxq): profile each algorithm multiple times to better
@@ -81,7 +81,7 @@ StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneConvImpl(
       CheckRedzones(rz_scratch_allocator, &result);
       CheckRedzones(rz_allocator, &result);
     } else {
-      result.mutable_failure()->set_kind(AutotuneResult::UNKNOWN);
+      result.mutable_failure()->set_kind(xla::AutotuneResult::UNKNOWN);
       result.mutable_failure()->set_msg(
           absl::StrCat("Profiling failure on CUDNN engine ", desc.ToString(),
                        ": ", cudnn_launch_status.ToString()));

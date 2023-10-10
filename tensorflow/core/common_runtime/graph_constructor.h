@@ -31,7 +31,7 @@ class ShapeRefiner;
 // nodes) when provided to ConvertGraphDefToGraph. To enhance an existing Graph,
 // see ImportGraphDef.
 struct GraphConstructorOptions {
-  GraphConstructorOptions() {}
+  GraphConstructorOptions() = default;
 
   // If true, allows internal ops in the GraphDef.
   bool allow_internal_ops = false;
@@ -61,8 +61,9 @@ extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
 // Same as ConvertGraphDefToGraph, but takes just nodes.  Used by function
 // instantiation.
 // TODO(irving): This will turn into std::vector<NodeInfoPtr> soon.
-extern Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
-                                     gtl::ArraySlice<NodeDef> nodes, Graph* g);
+extern Status ConvertNodeDefsToGraph(
+    const GraphConstructorOptions& opts, gtl::ArraySlice<NodeDef> nodes,
+    Graph* g, const GraphDebugInfo* debug_info = nullptr);
 
 // Options for calling ImportGraphDef().
 struct ImportGraphDefOptions {

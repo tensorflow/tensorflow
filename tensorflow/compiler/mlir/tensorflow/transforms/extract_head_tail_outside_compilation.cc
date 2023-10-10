@@ -40,10 +40,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
-#include "tensorflow/tsl/util/device_name_utils.h"
+#include "tsl/util/device_name_utils.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -53,10 +52,15 @@ namespace TFDevice {
 
 namespace {
 
+constexpr char kXlaMapOutsideCompilationAttr[] = "_xla_map_outside_compilation";
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 
+// Return true if `op` has attributes that say it can be outside compiled by
+// this pass. This pass ignores _xla_map_outside_compilation, which will only be
+// handled by extract_outside_compilation pass.
 bool HasOutsideCompilationAttribute(Operation* op) {
-  return op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr) != nullptr;
+  return op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr) != nullptr &&
+         !op->hasAttrOfType<BoolAttr>(kXlaMapOutsideCompilationAttr);
 }
 
 // Finds op that created a given value. If the value is a BlockArgument, this

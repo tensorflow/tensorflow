@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFR_PASSES_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_TFR_PASSES_PASSES_H_
 
+#include <memory>
 #include <optional>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project

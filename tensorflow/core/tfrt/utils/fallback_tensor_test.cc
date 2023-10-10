@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/core/common_runtime/dma_helper.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -114,6 +115,47 @@ TEST(FallbackTensorTest, FallbackTensor) {
     ASSERT_EQ(assign.tensor().dtype(), tensorflow::DT_INT32);
     EXPECT_EQ(assign.tensor().flat<int32_t>()(0), 123);
   }
+}
+
+TEST(FallbackTensorTest, FallbackTensorCopy) {
+  int32_t scalar = 123;
+  tensorflow::Tensor tensor(scalar);
+
+  {
+    FallbackTensor fallback_tensor(tensor);
+    EXPECT_FALSE(fallback_tensor.is_immutable());
+
+    auto copy = fallback_tensor;
+    EXPECT_TRUE(copy.is_immutable());
+  }
+
+  auto immutable_tensor = ImmutableTensor::Create(tensor);
+
+  {
+    FallbackTensor fallback_tensor(&immutable_tensor);
+    EXPECT_TRUE(fallback_tensor.is_immutable());
+
+    auto copy = fallback_tensor;
+    EXPECT_TRUE(copy.is_immutable());
+  }
+}
+
+TEST(FallbackTensorTest, FallbackTensorCopyRootBuffer) {
+  int32_t scalar = 123;
+  tensorflow::Tensor tensor(scalar);
+  auto immutable_tensor = ImmutableTensor::Create(tensor);
+
+  FallbackTensor fallback_tensor(&immutable_tensor);
+  EXPECT_TRUE(fallback_tensor.is_immutable());
+
+  EXPECT_EQ(fallback_tensor.buffer()->root_buffer(),
+            tensorflow::DMAHelper::buffer(&tensor));
+
+  FallbackTensor copy = fallback_tensor;
+  EXPECT_TRUE(copy.is_immutable());
+
+  EXPECT_EQ(copy.buffer()->root_buffer(),
+            tensorflow::DMAHelper::buffer(&tensor));
 }
 
 }  // namespace

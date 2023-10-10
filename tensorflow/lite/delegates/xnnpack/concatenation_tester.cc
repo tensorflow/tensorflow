@@ -54,14 +54,12 @@ void ConcatenationTester::Test(Interpreter *delegate_interpreter,
 
   for (size_t i = 0; i < NumInputs(); i++) {
     T *default_input_data = default_interpreter->typed_input_tensor<T>(i);
-    std::generate(default_input_data,
-                  default_input_data + ComputeSize(InputShape(i)),
-                  std::ref(input_rng));
+    std::generate_n(default_input_data, ComputeSize(InputShape(i)),
+                    std::ref(input_rng));
 
     T *xnnpack_input_data = delegate_interpreter->typed_input_tensor<T>(i);
-    std::copy(default_input_data,
-              default_input_data + ComputeSize(InputShape(i)),
-              xnnpack_input_data);
+    std::copy_n(default_input_data, ComputeSize(InputShape(i)),
+                xnnpack_input_data);
   }
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
@@ -87,15 +85,13 @@ void ConcatenationTester::Test<float>(Interpreter *delegate_interpreter,
   for (size_t i = 0; i < NumInputs(); i++) {
     float *default_input_data =
         default_interpreter->typed_input_tensor<float>(i);
-    std::generate(default_input_data,
-                  default_input_data + ComputeSize(InputShape(i)),
-                  std::ref(input_rng));
+    std::generate_n(default_input_data, ComputeSize(InputShape(i)),
+                    std::ref(input_rng));
 
     float *xnnpack_input_data =
         delegate_interpreter->typed_input_tensor<float>(i);
-    std::copy(default_input_data,
-              default_input_data + ComputeSize(InputShape(i)),
-              xnnpack_input_data);
+    std::copy_n(default_input_data, ComputeSize(InputShape(i)),
+                xnnpack_input_data);
   }
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);

@@ -59,6 +59,11 @@ class Device : public DeviceBase {
   Device(Env* env, const DeviceAttributes& device_attributes);
   ~Device() override;
 
+  // A compare function that orders devices by their parsed name.
+  static bool LessByParsedName(const Device& a, const Device& b) {
+    return a.parsed_name() < b.parsed_name();
+  }
+
   // Full name of this device (see top comment).
   const std::string& name() const override { return device_attributes_.name(); }
 
@@ -204,7 +209,8 @@ class Device : public DeviceBase {
   // Resources associated w/ this device. E.g., shared variables, etc.
   ResourceMgr* rmgr_ = nullptr;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Device);
+  Device(const Device&) = delete;
+  void operator=(const Device&) = delete;
 };
 
 }  // namespace tensorflow

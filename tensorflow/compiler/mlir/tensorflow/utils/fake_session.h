@@ -15,6 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_FAKE_SESSION_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_FAKE_SESSION_H_
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/errors.h"

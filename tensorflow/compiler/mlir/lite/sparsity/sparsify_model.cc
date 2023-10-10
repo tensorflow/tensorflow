@@ -65,7 +65,7 @@ TfLiteStatus SparsifyModel(const tflite::ModelT& input_model,
   pm.addPass(TFL::CreateDenseToSparsePass());
 
   if (failed(pm.run(module.get()))) {
-    const std::string& err = statusHandler.ConsumeStatus().error_message();
+    const std::string err(statusHandler.ConsumeStatus().message());
     error_reporter->Report("Failed to sparsify: %s", err.c_str());
     return kTfLiteError;
   }

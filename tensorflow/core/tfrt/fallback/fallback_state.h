@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_FALLBACK_FALLBACK_STATE_H_
 
 #include <memory>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -42,6 +43,10 @@ class FallbackState {
       const SessionOptions &session_options,
       const tensorflow::FunctionDefLibrary &fdef_lib);
 
+  static StatusOr<std::unique_ptr<FallbackState>> CreateWithMockGpuDevice(
+      const SessionOptions &session_options,
+      const tensorflow::FunctionDefLibrary &fdef_lib);
+
   FallbackState(const SessionOptions &session_options,
                 std::vector<std::unique_ptr<Device>> devices,
                 const tensorflow::FunctionDefLibrary &fdef_lib);
@@ -63,6 +68,10 @@ class FallbackState {
   const ProcessFunctionLibraryRuntime &process_function_library_runtime()
       const {
     return pflr_;
+  }
+
+  const FunctionLibraryDefinition &func_lib_def() const {
+    return func_lib_def_;
   }
 
  private:

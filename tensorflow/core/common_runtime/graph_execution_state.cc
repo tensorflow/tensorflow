@@ -67,7 +67,7 @@ namespace {
 bool IsCollectiveV2(const string& op) {
   return op == "CollectiveReduceV2" || op == "CollectiveGatherV2" ||
          op == "CollectiveBcastRecvV2" || op == "CollectiveBcastSendV2" ||
-         op == "ColectiveReduceScatterV2";
+         op == "ColectiveReduceScatterV2" || op == "ColectiveAllToAllV2";
 }
 }  // namespace
 
@@ -422,6 +422,8 @@ bool IsFeedAndFetchSupported(DataType dtype, const string& device_type) {
     case DT_INT8:
     case DT_UINT16:
     case DT_UINT8:
+    case DT_INT4:
+    case DT_UINT4:
       return true;
     default:
       return false;
@@ -668,7 +670,7 @@ Status GraphExecutionState::OptimizeGraph(
     // It's ok to skip invalid device annotations in Grappler.
     for (const Device* d : device_set_->devices()) {
       Status added_device = item.AddDevice(d->name());
-      if (!added_device.ok()) VLOG(3) << added_device.error_message();
+      if (!added_device.ok()) VLOG(3) << added_device.message();
     }
     VLOG(3) << "Grappler available devices: "
             << absl::StrJoin(item.devices(), ", ");
@@ -873,7 +875,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   Status s = OptimizeGraph(options, *graph_, flib_def_.get(), &optimized_graph,
                            &optimized_flib);
   if (!s.ok()) {
-    VLOG(2) << "Grappler optimization failed. Error: " << s.error_message();
+    VLOG(2) << "Grappler optimization failed. Error: " << s.message();
     // Simply copy the original graph and the function library if we couldn't
     // optimize it.
     optimized_graph.reset(new Graph(flib_def_.get()));

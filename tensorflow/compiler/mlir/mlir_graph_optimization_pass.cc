@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "absl/container/flat_hash_set.h"
@@ -24,8 +26,10 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_os_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -35,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/status.h"
@@ -84,8 +89,8 @@ static void DumpModule(mlir::ModuleOp module, std::string file_prefix) {
   auto* env = tensorflow::Env::Default();
   auto status = env->RecursivelyCreateDir(prefix);
   if (!status.ok()) {
-    LOG(WARNING) << "cannot create directory '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "cannot create directory '" << prefix
+                 << "': " << status.message();
     return;
   }
 
@@ -98,8 +103,7 @@ static void DumpModule(mlir::ModuleOp module, std::string file_prefix) {
   std::unique_ptr<WritableFile> file_writer;
   status = env->NewWritableFile(prefix, &file_writer);
   if (!status.ok()) {
-    LOG(WARNING) << "cannot open file '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "cannot open file '" << prefix << "': " << status.message();
     return;
   }
 
@@ -112,19 +116,12 @@ static void DumpModule(mlir::ModuleOp module, std::string file_prefix) {
 
   status = file_writer->Append(txt_module);
   if (!status.ok()) {
-    LOG(WARNING) << "error writing to file '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "error writing to file '" << prefix
+                 << "': " << status.message();
     return;
   }
   (void)file_writer->Close();
   VLOG(1) << "Dumped MLIR module to " << prefix;
-}
-
-static std::string GetModuleText(mlir::ModuleOp module) {
-  std::string module_txt;
-  llvm::raw_string_ostream os(module_txt);
-  module.print(os);
-  return module_txt;
 }
 
 MlirOptimizationPassRegistry& MlirOptimizationPassRegistry::Global() {
@@ -140,12 +137,14 @@ static void RegisterDialects(mlir::DialectRegistry& registry) {
                   mlir::shape::ShapeDialect,
                   mlir::tf_device::TensorFlowDeviceDialect,
                   mlir::tf_executor::TensorFlowExecutorDialect>();
+  mlir::func::registerAllExtensions(registry);
   // clang-format on
 }
 
 Status MlirFunctionOptimizationPass::Run(
     const std::string& function_name, const DeviceSet& device_set,
-    const ConfigProto& config_proto, absl::string_view xla_compile_device_type,
+    const ConfigProto& config_proto,
+    const FunctionOptimizationPass::FunctionOptions& function_options,
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
     std::vector<std::string>* control_ret_node_names,
     bool* control_rets_updated) {
@@ -216,7 +215,9 @@ Status MlirFunctionOptimizationPass::Run(
   // the shape inference pass is run early in the pass pipeline, shape inference
   // during import is not necessary.
   import_config.enable_shape_inference = false;
-  import_config.xla_compile_device_type = xla_compile_device_type;
+  import_config.xla_compile_device_type =
+      function_options.xla_compile_device_type;
+  import_config.enable_soft_placement = function_options.allow_soft_placement;
 
   static const char* kTfMlirCategory = "TfMlir";
   tensorflow::metrics::ScopedCounter<2> timings(
@@ -226,7 +227,7 @@ Status MlirFunctionOptimizationPass::Run(
   auto module_ref_status = ConvertGraphToMlir(**graph, debug_info, *flib_def,
                                               import_config, &context);
   mlir_function_pass_graph_conversion_count
-      ->GetCell(tsl::error_name(module_ref_status.status().code()))
+      ->GetCell(absl::StatusCodeToString(module_ref_status.status().code()))
       ->IncrementBy(1);
   timings.ReportAndStop();
 
@@ -237,6 +238,10 @@ Status MlirFunctionOptimizationPass::Run(
       return module_ref_status.status();
     }
     // Do not fail, just keep the original TF graph unchanged in fallback mode.
+    LOG(WARNING) << "Failed to convert graph to MLIR: "
+                 << module_ref_status.status()
+                 << " , continuing without MlirOptimizationPass because "
+                    "fallback enabled.";
     return OkStatus();
   }
 
@@ -249,8 +254,14 @@ Status MlirFunctionOptimizationPass::Run(
   for (auto& pass_registration : registry_->passes()) {
     llvm::StringRef name = pass_registration.pass->name();
 
-    DUMP_MLIR_MODULE(function_name, llvm::formatv("mlir_{0}_before", name),
-                     GetModuleText(*module_ref), VLOG_IS_ON(1));
+    if (DEBUG_DATA_DUMPER()->ShouldDump(function_name, kDebugGroupMain) ||
+        VLOG_IS_ON(1)) {
+      ::tensorflow::DumpMlirOpToFile(
+          DEBUG_DATA_DUMPER()->GetDumpFilename(
+              function_name, kDebugGroupMain,
+              llvm::formatv("mlir_{0}_before", name)),
+          *module_ref, llvm::StringRef(), nullptr);
+    }
 
     Status pass_status = OkStatus();
     auto pass_state = per_pass_state[per_pass_state_index++];
@@ -316,8 +327,13 @@ Status MlirFunctionOptimizationPass::Run(
       }
     }
 
-    DUMP_MLIR_MODULE(function_name, llvm::formatv("mlir_{0}_after", name),
-                     GetModuleText(*module_ref), VLOG_IS_ON(1));
+    if (DEBUG_DATA_DUMPER()->ShouldDump(function_name, kDebugGroupMain) ||
+        VLOG_IS_ON(1)) {
+      ::tensorflow::DumpMlirOpToFile(DEBUG_DATA_DUMPER()->GetDumpFilename(
+                                         function_name, kDebugGroupMain,
+                                         llvm::formatv("mlir_{0}_after", name)),
+                                     *module_ref, llvm::StringRef(), nullptr);
+    }
   }
 
   if (!is_module_updated) {
@@ -388,15 +404,21 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   auto module_ref_status = ConvertGraphToMlir(
       **options.graph, debug_info, *options.flib_def, import_config, &context);
   if (!module_ref_status.ok()) {
-    return (pass_state == MlirOptimizationPassState::Enabled)
-               ? module_ref_status.status()
-               : OkStatus();
+    if (pass_state == MlirOptimizationPassState::Enabled) {
+      return module_ref_status.status();
+    }
+    LOG(WARNING) << "Failed to convert graph to MLIR: "
+                 << module_ref_status.status()
+                 << " , continuing without MlirOptimizationPass because "
+                    "fallback enabled.";
+    return OkStatus();
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       std::move(module_ref_status.value());
   AddDevicesToOp(*module_ref, options.device_set);
 
+  auto module_ref_clone = module_ref->clone();
   llvm::StringRef name = pass->name();
   VLOG(2) << "Run MLIR V1 graph optimization pass: " << StringRefToView(name);
 
@@ -404,6 +426,12 @@ Status MlirV1CompatGraphOptimizationPass::Run(
     DumpModule(*module_ref, llvm::formatv("mlir_{0}_before_", name));
   }
   Status pass_status = pass->Run(options, *module_ref);
+
+  bool is_module_updated = !mlir::OperationEquivalence::isEquivalentTo(
+      module_ref_clone, *module_ref,
+      mlir::OperationEquivalence::Flags::IgnoreLocations);
+  // Destroy this cloned op to avoid memory leaks.
+  module_ref_clone->destroy();
 
   if (!pass_status.ok()) {
     if (pass_state == MlirOptimizationPassState::Enabled) return pass_status;
@@ -425,6 +453,12 @@ Status MlirV1CompatGraphOptimizationPass::Run(
 
   if (VLOG_IS_ON(1)) {
     DumpModule(*module_ref, llvm::formatv("mlir_{0}_after_", name));
+  }
+
+  if (!is_module_updated) {
+    VLOG(2) << "MLIR module is not updated. Using the original graph. "
+            << "Do not convert mlir module back to graph";
+    return OkStatus();
   }
 
   GraphExportConfig export_config;

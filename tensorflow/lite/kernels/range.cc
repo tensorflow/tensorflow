@@ -68,6 +68,13 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* start,
                                 *GetTensorData<int32_t>(delta), &size));
       break;
     }
+    case kTfLiteInt64: {
+      TF_LITE_ENSURE_OK(context,
+                        GetSize(context, *GetTensorData<int64_t>(start),
+                                *GetTensorData<int64_t>(limit),
+                                *GetTensorData<int64_t>(delta), &size));
+      break;
+    }
     case kTfLiteFloat32: {
       TF_LITE_ENSURE_OK(context, GetSize(context, *GetTensorData<float>(start),
                                          *GetTensorData<float>(limit),
@@ -109,6 +116,10 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* start,
       CalculateRange<float>(start, delta, output);
       break;
     }
+    case kTfLiteInt64: {
+      CalculateRange<int64_t>(start, delta, output);
+      break;
+    }
     default: {
       TF_LITE_KERNEL_LOG(context, "Unsupported data type: %d", output->type);
       return kTfLiteError;
@@ -134,10 +145,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(limit), 0);
   TF_LITE_ENSURE_EQ(context, NumDimensions(delta), 0);
 
-  // Currently only supports int32 and float.
+  // Currently only supports int32, int64 and float.
   // TODO(b/117912892): Support quantization as well.
   const auto dtype = start->type;
-  if (dtype != kTfLiteFloat32 && dtype != kTfLiteInt32) {
+  if (dtype != kTfLiteFloat32 && dtype != kTfLiteInt32 &&
+      dtype != kTfLiteInt64) {
     TF_LITE_KERNEL_LOG(context, "Unknown index output data type: %s",
                        TfLiteTypeGetName(dtype));
     return kTfLiteError;
@@ -155,7 +167,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       IsConstantOrPersistentTensor(limit) &&
       IsConstantOrPersistentTensor(delta)) {
     SetTensorToPersistentRo(output);
-    ResizeOutput(context, start, limit, delta, output);
+    TF_LITE_ENSURE_OK(context,
+                      ResizeOutput(context, start, limit, delta, output));
 
     op_data->noop = true;
     return EvalImpl(context, start, delta, output);

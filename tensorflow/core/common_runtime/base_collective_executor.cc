@@ -241,7 +241,7 @@ void BaseCollectiveExecutor::StartAbort(const Status& s) {
     status_ = StatusGroup::MakeDerived(Status(
         s.code(),
         absl::StrCat(
-            "Collective ops is aborted by: ", s.error_message(),
+            "Collective ops is aborted by: ", s.message(),
             "\nThe error could be from a previous operation. Restart your "
             "program to reset.")));
     status = status_;
@@ -342,8 +342,11 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
                                           ctx->op_kernel().type_string_view());
           return profiler::TraceMeEncode(
               std::move(op),
-              {{"id", ctx->step_id()},
+              {{"step_id", ctx->step_id()},
+               {"iter_id", ctx->frame_iter().iter_id},
+               {"frame_id", ctx->frame_iter().frame_id},
                {"instance_key", col_ctx->col_params->instance.instance_key},
+               {"group_key", col_ctx->col_params->group.group_key},
                {"collective", col_ctx->col_params->instance.type}});
         },
         context_id);

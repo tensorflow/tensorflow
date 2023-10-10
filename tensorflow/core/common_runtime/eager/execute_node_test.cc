@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute_node.h"
 
 #include <memory>
+#include <optional>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -42,7 +45,8 @@ class TestKernelAndDeviceFunc final : public KernelAndDeviceFunc {
             /*allow_control_flow_sync_execution=*/false,
             /*shape_inference_on_tfe_dialect_import=*/true,
             /*int_args_and_retvals_on_device=*/false,
-            /*xla_compile_device_type=*/absl::nullopt,
+            /*xla_compile_device_type=*/std::nullopt,
+            /*allow_soft_placement=*/false,
             /*rendezvous_factory=*/Rendezvous::Factory(),
             /*get_op_id=*/nullptr),
         test_input_devices_(std::move(input_devices)) {}

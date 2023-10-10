@@ -144,10 +144,11 @@ TfLiteStatus QuantizeWeights(
                << ", inference_type: " << quant_specs.inference_type << "\n";
   Builder mlir_builder(&context);
 
-  tensorflow::AddDynamicRangeQuantizationPasses(quant_specs, pm);
+  tensorflow::AddDynamicRangeQuantizationPasses(
+      mlir::TFL::PassConfig(quant_specs), pm);
 
   if (failed(pm.run(module.get()))) {
-    absl::string_view err = statusHandler.ConsumeStatus().error_message();
+    absl::string_view err = statusHandler.ConsumeStatus().message();
     error_reporter->Report("Failed to quantize: %s", err);
     return kTfLiteError;
   }

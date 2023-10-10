@@ -858,7 +858,7 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
     LOG_FIRST_FEW_WARNING_WITH_PREFIX
         << "Running native segment for" << name()
         << " due to failure in verifying input shapes: "
-        << verify_input_shape_status.error_message();
+        << verify_input_shape_status.message();
     ExecuteNativeSegment(ctx, async_helper);
     return;
   }

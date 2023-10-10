@@ -16,6 +16,8 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringRef.h"
@@ -165,7 +167,7 @@ class MlirAbstractOp : public TracingOperation {
   Status SetAttrType(const char* attr_name,
                      tensorflow::DataType dtype) override;
   Status SetAttrShape(const char* attr_name, const int64_t* dims,
-                      const int num_dims) override;
+                      int num_dims) override;
   Status SetAttrFunction(const char* attr_name,
                          const AbstractOperation* value) override;
   Status SetAttrFunctionName(const char* attr_name, const char* value,
@@ -189,7 +191,7 @@ class MlirAbstractOp : public TracingOperation {
       const char* attr_name,
       absl::Span<const AbstractOperation*> values) override;
 
-  Status SetOpName(const char* const op_name) override;
+  Status SetOpName(const char* op_name) override;
 
   MLIRContext* GetContext() { return context_; }
 
@@ -543,7 +545,7 @@ Status MlirFunction::GetFunctionDef(tensorflow::FunctionDef** f) {
   TF_RETURN_IF_ERROR(diag_handler.ConsumeStatus());
 
   tensorflow::GraphExportConfig configs;
-  fdef_.reset(new tensorflow::FunctionDef());
+  fdef_ = std::make_unique<tensorflow::FunctionDef>();
   TF_RETURN_IF_ERROR(
       ConvertMlirFunctionToFunctionLibraryDef(func_, configs, fdef_.get()));
   *f = fdef_.get();

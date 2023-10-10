@@ -169,7 +169,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OneHotContext op_context{context, node};
 
   if (IsDynamicTensor(op_context.output)) {
-    ResizeOutputTensor(context, op_context);
+    TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, op_context));
   }
 
   switch (op_context.output->type) {

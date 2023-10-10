@@ -416,7 +416,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
     const FunctionLibraryDefinition* lib_def = nullptr;  // Not owned.
     FunctionBody* func_graph = nullptr;
     Executor* exec = nullptr;
-    FunctionLibraryRuntimeOverlay* overlay_flr = nullptr;
+    core::RefCountPtr<FunctionLibraryRuntimeOverlay> overlay_flr = nullptr;
     string executor_type;
     bool allow_small_function_optimizations = false;
     bool allow_control_flow_sync_execution = false;
@@ -424,7 +424,6 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
     ~Item() {
       delete this->func_graph;
       delete this->exec;
-      delete this->overlay_flr;
     }
   };
   std::unique_ptr<absl::flat_hash_map<Handle, std::unique_ptr<Item>>> items_
@@ -462,7 +461,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
                                CallFrameInterface* frame,
                                Executor::Args* exec_args);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FunctionLibraryRuntimeImpl);
+  FunctionLibraryRuntimeImpl(const FunctionLibraryRuntimeImpl&) = delete;
+  void operator=(const FunctionLibraryRuntimeImpl&) = delete;
 };
 
 FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
@@ -571,7 +571,8 @@ class CallOp : public AsyncOpKernel {
  private:
   FunctionLibraryRuntime::Handle handle_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CallOp);
+  CallOp(const CallOp&) = delete;
+  void operator=(const CallOp&) = delete;
 };
 
 const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
@@ -832,8 +833,8 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
       item->allow_control_flow_sync_execution =
           options.allow_control_flow_sync_execution;
       if (options.lib_def) {
-        item->overlay_flr =
-            new FunctionLibraryRuntimeOverlay(this, options.lib_def);
+        item->overlay_flr.reset(
+            new FunctionLibraryRuntimeOverlay(this, options.lib_def));
       }
       local_handle = next_handle_++;
       items_->emplace(local_handle, std::unique_ptr<Item>(item));
@@ -935,7 +936,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
     tf_shared_lock l(mu_);
     fbody = (*item)->func_graph;
     flr = (*item)->overlay_flr
-              ? static_cast<FunctionLibraryRuntime*>((*item)->overlay_flr)
+              ? static_cast<FunctionLibraryRuntime*>((*item)->overlay_flr.get())
               : static_cast<FunctionLibraryRuntime*>(this);
     executor_type = (*item)->executor_type;
   }
@@ -1408,16 +1409,17 @@ void RegisterDefaultCustomKernelCreator(CustomKernelCreator* c) {
   GetCustomCreatorSingleton()->Set(c);
 }
 
-std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
+core::RefCountPtr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
     const DeviceMgr* device_mgr, Env* env, const ConfigProto* config,
     Device* device, int graph_def_version,
     const FunctionLibraryDefinition* lib_def, thread::ThreadPool* thread_pool,
     const OptimizerOptions& optimizer_options,
     const SessionMetadata* session_metadata,
     ProcessFunctionLibraryRuntime* parent) {
-  return std::unique_ptr<FunctionLibraryRuntime>(new FunctionLibraryRuntimeImpl(
-      device_mgr, env, config, device, graph_def_version, lib_def, thread_pool,
-      optimizer_options, session_metadata, parent));
+  return core::RefCountPtr<FunctionLibraryRuntime>{
+      new FunctionLibraryRuntimeImpl(
+          device_mgr, env, config, device, graph_def_version, lib_def,
+          thread_pool, optimizer_options, session_metadata, parent)};
 }
 
 class SymbolicGradientHelper {
@@ -1433,7 +1435,8 @@ class SymbolicGradientHelper {
   // Makes a copy of fbody_ in gbody.
   void Copy(FunctionBody* gbody);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientHelper);
+  SymbolicGradientHelper(const SymbolicGradientHelper&) = delete;
+  void operator=(const SymbolicGradientHelper&) = delete;
 };
 
 void SymbolicGradientHelper::Copy(FunctionBody* gbody) {

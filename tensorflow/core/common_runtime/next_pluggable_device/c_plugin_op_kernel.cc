@@ -15,28 +15,39 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/next_pluggable_device/c_plugin_op_kernel.h"
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/experimental/next_pluggable_device/c_api.h"
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/kernels_experimental.h"
+#include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_buffer_internal.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/c/tf_tensor_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c_plugin_variable.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_coordination_service_agent_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_variable.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_handle.pb.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/mutex.h"
 
 constexpr int kInvalidLineNumber = -1;
 
@@ -111,7 +122,7 @@ Status CPluginOpKernelConstruction::GetFunctionAttr(
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status));
   TF_RETURN_IF_ERROR(BufferToMessage(serialized_function, function));
   TF_DeleteBuffer(serialized_function);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void CPluginOpKernelConstruction::CtxFailure(const Status& status) {
@@ -168,7 +179,7 @@ Status CPluginOpKernelContext::CreatePluginVariable(
     return StatusFromTF_Status(c_status_ptr.get());
   }
   *variable = new CPluginVariable(c_var_info);
-  return tsl::OkStatus();
+  return absl::OkStatus();
 }
 
 Status CPluginOpKernelContext::AllocateTempForPluginVariable(
@@ -178,7 +189,7 @@ Status CPluginOpKernelContext::AllocateTempForPluginVariable(
       reinterpret_cast<CPluginVariable*>(variable);
   TF_AllocateTempForVariableInfo(ctx_, c_plugin_variable->var_info_,
                                  c_status_ptr.get());
-  tsl::Status status = StatusFromTF_Status(c_status_ptr.get());
+  absl::Status status = StatusFromTF_Status(c_status_ptr.get());
   if (status.ok()) {
     // Invalidate the cached tensor since we allocated a new one.
     c_plugin_variable->tensor_obtained_ = false;
@@ -204,9 +215,9 @@ Status CPluginOpKernelContext::GetInput(const char* name,
   TF_GetInputByName(ctx_, name, &c_tensor, c_status_ptr.get());
   TF_TensorPtr c_tensor_ptr(c_tensor);
   Tensor tensor_tmp;
-  tsl::Status status = TF_TensorToTensor(c_tensor, &tensor_tmp);
+  absl::Status status = TF_TensorToTensor(c_tensor, &tensor_tmp);
   if (status.ok()) {
-    mutex_lock lock(mu_);
+    tsl::mutex_lock lock(mu_);
     obtained_tensors_.push_back(std::move(tensor_tmp));
     *tensor = &(obtained_tensors_.back());
   }
@@ -222,7 +233,7 @@ Status CPluginOpKernelContext::GetInputRange(std::string_view name,
   TF_RETURN_IF_ERROR(StatusFromTF_Status(args.status));
   range->first = args.start;
   range->second = args.stop;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 DataType CPluginOpKernelContext::GetInputDataType(int index) const {
@@ -268,7 +279,7 @@ Status CPluginOpKernelContext::GetFunctionLibraryDefinition(
   auto flib_def_ptr =
       new FunctionLibraryDefinition(OpRegistry::Global(), fdef_lib);
   *flib_def = flib_def_ptr;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CPluginOpKernelContext::GetResourceHandle(
@@ -286,7 +297,7 @@ Status CPluginOpKernelContext::GetResourceHandle(
   const ResourceHandle* handle_ptr = new ResourceHandle(handle_proto);
 
   *handle = handle_ptr;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Status CPluginOpKernelContext::AllocateOutput(int index,

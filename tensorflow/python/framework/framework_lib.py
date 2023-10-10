@@ -21,7 +21,7 @@ from tensorflow.python.framework.device import DeviceSpec
 from tensorflow.python.framework.indexed_slices import IndexedSlices
 from tensorflow.python.framework.ops import Graph
 from tensorflow.python.framework.ops import Operation
-from tensorflow.python.framework.ops import Tensor
+from tensorflow.python.framework.tensor import Tensor
 
 from tensorflow.python.framework.sparse_tensor import SparseTensor
 from tensorflow.python.framework.sparse_tensor import SparseTensorValue

@@ -26,22 +26,11 @@ namespace mlir {
 namespace TFTPU {
 
 // Run all the passes involved in transforming the graph before execution so
-// that it is suitable for targeting TPUs. When enable_logging is true, enables
-// tensorflow::BridgeLogger. When fallback_enabled is true, it means if the
-// bridge fails the old bridge will run. This is used for logging and doesn't
-// affect any logic.
-tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
-                             bool fallback_enabled = false,
-                             const std::string& module_name = "anonymous");
-
-// Run all the passes involved in transforming the graph before execution so
-// that it is suitable for targeting TPUs. When enable_logging is true, enables
-// tensorflow::BridgeLogger.  When fallback_enabled is true, it means if the
-// bridge fails the old bridge will run.  This is used for logging and doesn't
-// affect any logic.
-// This variant of `TPUBridge` is intended for TensorFlow V1 compatibility.
-tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging,
-                                     bool fallback_enabled = false);
+// that it is suitable for targeting TPUs. When fallback_enabled is true, it
+// means if the bridge fails the old bridge will run. This is used for logging
+// and doesn't affect any logic.
+tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled = false,
+                             llvm::StringRef module_name = llvm::StringRef());
 
 }  // namespace TFTPU
 
@@ -59,8 +48,8 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
                                                  bool enable_inliner);
 
 // Runs all passes for non TPU (GPU and CPU) graph.
-tensorflow::Status RunTFXLABridge(ModuleOp module, bool enable_logging,
-                                  const std::string& module_name = "anonymous");
+tensorflow::Status RunTFXLABridge(
+    ModuleOp module, llvm::StringRef module_name = llvm::StringRef());
 }  // namespace TF
 
 }  // namespace mlir

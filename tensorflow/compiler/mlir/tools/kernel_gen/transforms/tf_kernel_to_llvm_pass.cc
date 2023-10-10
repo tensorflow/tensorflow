@@ -80,10 +80,7 @@ class ConvertLaunchFuncOpToTfRuntimeCallPattern
   MLIRContext *context_ = &this->getTypeConverter()->getContext();
 
   Type llvm_void_type_ = LLVM::LLVMVoidType::get(context_);
-  Type llvm_pointer_type_ =
-      LLVM::LLVMPointerType::get(IntegerType::get(context_, 8));
-  Type llvm_pointer_pointer_type_ =
-      LLVM::LLVMPointerType::get(llvm_pointer_type_);
+  Type llvm_pointer_type_ = LLVM::LLVMPointerType::get(context_);
   Type llvm_int8_type_ = IntegerType::get(context_, 8);
   Type llvm_int32_type_ = IntegerType::get(context_, 32);
   Type llvm_int64_type_ = IntegerType::get(context_, 64);
@@ -122,25 +119,24 @@ Value ConvertLaunchFuncOpToTfRuntimeCallPattern::generateParamsArray(
   auto one = builder.create<LLVM::ConstantOp>(loc, llvm_int32_type_,
                                               builder.getI32IntegerAttr(1));
   auto struct_ptr = builder.create<LLVM::AllocaOp>(
-      loc, LLVM::LLVMPointerType::get(struct_type), one, /*alignment=*/0);
+      loc, llvm_pointer_type_, struct_type, one, /*alignment=*/0);
   auto array_size = builder.create<LLVM::ConstantOp>(
       loc, llvm_int32_type_, builder.getI32IntegerAttr(num_arguments));
   auto array_ptr = builder.create<LLVM::AllocaOp>(
-      loc, llvm_pointer_pointer_type_, array_size, /*alignment=*/0);
+      loc, llvm_pointer_type_, llvm_pointer_type_, array_size, /*alignment=*/0);
   auto zero = builder.create<LLVM::ConstantOp>(loc, llvm_int32_type_,
                                                builder.getI32IntegerAttr(0));
   for (auto en : llvm::enumerate(arguments)) {
     auto index = builder.create<LLVM::ConstantOp>(
         loc, llvm_int32_type_, builder.getI32IntegerAttr(en.index()));
     auto field_ptr = builder.create<LLVM::GEPOp>(
-        loc, LLVM::LLVMPointerType::get(argument_types[en.index()]), struct_ptr,
+        loc, llvm_pointer_type_, struct_type, struct_ptr,
         ArrayRef<Value>{zero, index.getResult()});
     builder.create<LLVM::StoreOp>(loc, en.value(), field_ptr);
-    auto element_ptr = builder.create<LLVM::GEPOp>(
-        loc, llvm_pointer_pointer_type_, array_ptr, index.getResult());
-    auto casted =
-        builder.create<LLVM::BitcastOp>(loc, llvm_pointer_type_, field_ptr);
-    builder.create<LLVM::StoreOp>(loc, casted, element_ptr);
+    auto element_ptr =
+        builder.create<LLVM::GEPOp>(loc, llvm_pointer_type_, llvm_pointer_type_,
+                                    array_ptr, index.getResult());
+    builder.create<LLVM::StoreOp>(loc, field_ptr, element_ptr);
   }
   return array_ptr;
 }
@@ -182,7 +178,7 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
   name_buffer.append("_blob");
   Value module_blob = LLVM::createGlobalString(loc, rewriter, name_buffer.str(),
                                                binary_attr.getValue(),
-                                               LLVM::Linkage::Internal, false);
+                                               LLVM::Linkage::Internal, true);
 
   // Make sure the trailing zero is included in the constant.
   auto kernel_name = launch_op.getKernelName().getValue();
@@ -196,7 +192,7 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
           .toStringRef(kernel_name_global_name_buffer);
   auto kernel_name_global = LLVM::createGlobalString(
       loc, rewriter, kernel_name_global_name, kernel_name_buffer,
-      LLVM::Linkage::Internal, false);
+      LLVM::Linkage::Internal, true);
 
   // The TensorFlow OpKernelContext is the first argument of the surrounding
   // LLVMFunc.
@@ -211,19 +207,18 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
   if (!function) {
     PatternRewriter::InsertionGuard guard(rewriter);
     auto function_type = LLVM::LLVMFunctionType::get(
-        llvm_void_type_,
-        {
-            llvm_pointer_type_,         /* void* context */
-            llvm_pointer_type_,         /* void* module_blob */
-            llvm_pointer_type_,         /* void* function_name */
-            llvm_intptr_type_,          /* intptr_t grid_x_dim */
-            llvm_intptr_type_,          /* intptr_t grid_y_dim */
-            llvm_intptr_type_,          /* intptr_t grid_z_dim */
-            llvm_intptr_type_,          /* intptr_t block_x_dim */
-            llvm_intptr_type_,          /* intptr_t block_y_dim */
-            llvm_intptr_type_,          /* intptr_t block_z_dim */
-            llvm_pointer_pointer_type_, /* void **kernel_params */
-        });
+        llvm_void_type_, {
+                             llvm_pointer_type_, /* void* context */
+                             llvm_pointer_type_, /* void* module_blob */
+                             llvm_pointer_type_, /* void* function_name */
+                             llvm_intptr_type_,  /* intptr_t grid_x_dim */
+                             llvm_intptr_type_,  /* intptr_t grid_y_dim */
+                             llvm_intptr_type_,  /* intptr_t grid_z_dim */
+                             llvm_intptr_type_,  /* intptr_t block_x_dim */
+                             llvm_intptr_type_,  /* intptr_t block_y_dim */
+                             llvm_intptr_type_,  /* intptr_t block_z_dim */
+                             llvm_pointer_type_, /* void **kernel_params */
+                         });
     rewriter.setInsertionPointToStart(
         launch_op->getParentOfType<ModuleOp>().getBody());
     function = rewriter.create<LLVM::LLVMFuncOp>(
@@ -260,15 +255,13 @@ class TFKernelToLLVMPass
 
     // Populate type conversions.
     MLIRContext *ctx = m.getContext();
-    // TODO(b/267828330): Migrate to opaque pointers.
     LowerToLLVMOptions options(&getContext());
-    options.useOpaquePointers = false;
     LLVMTypeConverter type_converter(ctx, options);
     type_converter.addConversion([&](tf_framework::OpKernelContextType type) {
-      return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
+      return LLVM::LLVMPointerType::get(type.getContext());
     });
     type_converter.addConversion([&](tf_framework::JITCallableType type) {
-      return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
+      return LLVM::LLVMPointerType::get(type.getContext());
     });
 
     // Populate patterns.

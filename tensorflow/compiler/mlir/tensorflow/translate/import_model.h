@@ -30,8 +30,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 
 namespace tensorflow {
 

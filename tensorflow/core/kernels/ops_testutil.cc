@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_managed_allocator.h"
 #endif
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -80,8 +81,8 @@ OpsTestBase::OpsTestBase() : device_type_(DEVICE_CPU) {
 
   allocator_ = device_->GetAllocator(AllocatorAttributes());
 
-  flib_def_ = std::make_unique<FunctionLibraryDefinition>(
-      OpRegistry::Global(), FunctionDefLibrary{});
+  flib_def_ = std::make_unique<FunctionLibraryDefinition>(OpRegistry::Global(),
+                                                          FunctionDefLibrary{});
   pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions());
@@ -151,6 +152,13 @@ Status OpsTestBase::InitOpWithGraphVersion(int graph_def_version) {
   return OkStatus();
 }
 
+static std::function<void(std::function<void()>)>* GetDefaultRunner() {
+  static auto* const default_runner =
+      new std::function<void(std::function<void()>)>(
+          [](const std::function<void()>& f) { f(); });
+  return default_runner;
+}
+
 void OpsTestBase::CreateContext() {
   // Make sure the old OpKernelContext is deleted before the Params
   // it was using.
@@ -175,6 +183,8 @@ void OpsTestBase::CreateContext() {
   params_->cancellation_manager = &default_cancellation_manager_;
   params_->resource_manager = device_->resource_manager();
   params_->function_library = pflr_->GetFLR(device_->name());
+  params_->runner = GetDefaultRunner();
+  params_->session_metadata = &session_metadata();
 
   context_.reset(new OpKernelContext(params_.get()));
 }

@@ -84,6 +84,10 @@ class PrepareDynamicRangeQuantizePass
   void runOnOperation() override;
 
  private:
+  // Keeps track of ops whose inputs cannot be quantized due to not meeting the
+  // minimum_elements_for_weights threshold. Prevents emitting duplicate
+  // warnings for the same op, once deemed ineligible for quantization.
+  llvm::SetVector<Operation*> visited_nonquantizable_ops_;
   quant::QuantizationSpecs quant_specs_;
 };
 
@@ -95,8 +99,10 @@ class PrepareDynamicRangeQuantizableOp
     : public OpRewritePattern<arith::ConstantOp> {
  public:
   explicit PrepareDynamicRangeQuantizableOp(
-      MLIRContext* context, const quant::QuantizationSpecs& quant_specs)
+      MLIRContext* context, const quant::QuantizationSpecs& quant_specs,
+      llvm::SetVector<Operation*>* const visited_nonquantizable_ops)
       : OpRewritePattern<arith::ConstantOp>(context),
+        visited_nonquantizable_ops_(visited_nonquantizable_ops),
         quant_specs_(quant_specs) {}
 
   LogicalResult matchAndRewrite(arith::ConstantOp op,
@@ -129,6 +135,8 @@ class PrepareDynamicRangeQuantizableOp
   }
 
  private:
+  llvm::SetVector<Operation*>* const visited_nonquantizable_ops_;
+
   // Check if the operand_index is included in the quantizable_indices.
   bool isQuantizableIndex(const int operand_index,
                           const std::vector<int>& quantizable_indices) const {
@@ -142,6 +150,10 @@ class PrepareDynamicRangeQuantizableOp
   // specification for checking the support. For custom ops, it checks the
   // provided map.
   bool hasInt8QuantizableOperandAt(Operation* op, int operand_index) const {
+    if (visited_nonquantizable_ops_->contains(op)) {
+      return false;
+    }
+
     if (auto custom_op = llvm::dyn_cast_or_null<CustomOp>(op)) {
       std::string op_name = custom_op.getCustomCode().str();
       auto custom_map_iter = quant_specs_.custom_map.find(op_name);
@@ -152,7 +164,53 @@ class PrepareDynamicRangeQuantizableOp
                    llvm::dyn_cast<DynamicRangeQuantizedOpInterface>(op)) {
       const auto& quantizable_indices =
           quantizable_op.GetQuantizableOperandIndices();
-      return isQuantizableIndex(operand_index, quantizable_indices);
+
+      if (!isQuantizableIndex(operand_index, quantizable_indices)) {
+        return false;
+      }
+
+      // Special case handling for UnidirectionalSequenceLSTMOp, which doesn't
+      // support partial quantization of its inputs.
+      // Below, we check all of the input constants for the
+      // UnidirectionalSequenceLSTMOp to see if any of them would not be
+      // quantized due to not meeting the minimum_elements_for_weights
+      // threshold. Should we find any, we don't quantize any of the ops.
+      if (!llvm::dyn_cast<UnidirectionalSequenceLSTMOp>(op)) {
+        return true;
+      }
+
+      for (int qi : quantizable_indices) {
+        auto const_op = llvm::dyn_cast_or_null<arith::ConstantOp>(
+            op->getOperand(qi).getDefiningOp());
+        if (!const_op) {
+          continue;
+        }
+
+        DenseFPElementsAttr attr;
+        if (!matchPattern(const_op->getResult(0), m_Constant(&attr))) {
+          continue;
+        }
+
+        if (attr.dyn_cast<DenseFPElementsAttr>().size() >=
+            quant_specs_.minimum_elements_for_weights) {
+          continue;
+        }
+
+        visited_nonquantizable_ops_->insert(op);
+        op->emitWarning(
+            "Skipped quantization for UnidirectionalSequenceLSTMOp. Partial "
+            "quantization of inputs for UnidirectionalSequenceLSTMOp is not "
+            "supported. The operand ")
+            << const_op->getName().getStringRef().str() << " at index " << qi
+            << " was not quantized because it has "
+            << attr.dyn_cast<DenseFPElementsAttr>().size()
+            << " elements which is fewer than the "
+               "`minimum_elements_for_weights` threshold of "
+            << quant_specs_.minimum_elements_for_weights;
+        return false;
+      }
+
+      return true;
     }
     return false;
   }
@@ -427,7 +485,8 @@ void PrepareDynamicRangeQuantizePass::runOnOperation() {
   removeAllStatsOp(func);
 
   RewritePatternSet patterns(&getContext());
-  patterns.add<PrepareDynamicRangeQuantizableOp>(ctx, quant_specs_);
+  patterns.add<PrepareDynamicRangeQuantizableOp>(ctx, quant_specs_,
+                                                 &visited_nonquantizable_ops_);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   ConvertMlirQuantOpsToTFLQuantOps(func);
