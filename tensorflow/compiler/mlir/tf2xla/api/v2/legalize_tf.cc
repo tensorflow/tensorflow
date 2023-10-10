@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -63,6 +64,30 @@ bool ShouldFallbackToGraphCompiler(
          ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
 }
 
+Status DumpHloCompilationResult(std::string_view name,
+                                XlaCompilationResult* compilation_result) {
+  if (VLOG_IS_ON(2)) {
+    TF_ASSIGN_OR_RETURN(
+        auto hlo_module_config,
+        xla::HloModule::CreateModuleConfigFromProto(
+            compilation_result->computation->proto(), xla::DebugOptions()));
+
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<xla::HloModule> hlo_module,
+        xla::HloModule::CreateFromProto(
+            compilation_result->computation->proto(), hlo_module_config));
+
+    std::string all_computations;
+    for (auto computation : hlo_module->computations()) {
+      all_computations += computation->ToString() + "\n\n";
+    }
+
+    tensorflow::DumpRawStringToFile(name, all_computations);
+  }
+
+  return OkStatus();
+}
+
 }  // namespace
 
 tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
@@ -83,6 +108,10 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
         computation, metadata, use_tuple_args, shape_determination_fns,
         arg_shapes, arg_core_mapping, per_core_arg_shapes, client,
         compilation_result.get()));
+
+    DumpHloCompilationResult("legalize_tf_fallback", compilation_result.get())
+        .IgnoreError();
+
     return *compilation_result;
   }
 
@@ -97,6 +126,11 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
                "tf2xla bridge";
     IncrementTfMlirBridgeSecondPhaseCounter(
         MlirBridgeSecondPhaseMetric::kMlirWithFallbackModeSuccess);
+
+    DumpHloCompilationResult("legalize_tf_mlir_bridge",
+                             compilation_result.get())
+        .IgnoreError();
+
     return *compilation_result;
   } else if (mlir_bridge_status.status() ==
              CompileToHloGraphAnalysisFailedError()) {
@@ -121,6 +155,11 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
   if (combined_bridge_status.ok()) {
     VLOG(1) << "Successfully compiled MLIR computation to XLA HLO using "
                "Combined MLIR and XlaBuilder Bridge.";
+
+    DumpHloCompilationResult("legalize_tf_combined_bridge",
+                             compilation_result.get())
+        .IgnoreError();
+
     return *compilation_result;
   }
 
