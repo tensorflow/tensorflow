@@ -644,7 +644,7 @@ SavedModelImpl::SavedModelImpl(
     std::unique_ptr<OpKernelRunnerTable> runner_table,
     std::unique_ptr<tfd::FallbackResourceArray> resource_array,
     std::unique_ptr<GraphExecutor> graph_executor)
-    : SavedModel(std::move(options)),
+    : SavedModel(std::move(options), std::move(graph_executor)),
       symbol_uids_(std::move(symbol_uids)),
       meta_graph_def_(std::move(meta_graph_def)),
       bef_(std::move(bef)),
@@ -657,8 +657,7 @@ SavedModelImpl::SavedModelImpl(
       signatures_(std::move(signatures)),
       fallback_state_(std::move(fallback_state)),
       runner_table_(std::move(runner_table)),
-      resource_array_(std::move(resource_array)),
-      graph_executor_(std::move(graph_executor)) {}
+      resource_array_(std::move(resource_array)) {}
 
 std::vector<std::string> SavedModelImpl::GetFunctionNames() const {
   std::vector<std::string> result;

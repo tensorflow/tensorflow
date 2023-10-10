@@ -116,7 +116,10 @@ class SavedModel {
   explicit SavedModel(const Runtime* runtime) : options_(runtime) {
     DCHECK(runtime);
   }
-  explicit SavedModel(Options&& options) : options_(std::move(options)) {}
+  explicit SavedModel(Options options,
+                      std::unique_ptr<GraphExecutor> graph_executor)
+      : options_(std::move(options)),
+        graph_executor_(std::move(graph_executor)) {}
   virtual ~SavedModel();
 
   const SessionMetadata& model_metadata() const {
@@ -128,6 +131,8 @@ class SavedModel {
     return *options_.graph_execution_options.runtime;
   }
   tfrt::HostContext* GetHostContext() const;
+
+  GraphExecutor& graph_executor() const { return *graph_executor_; }
 
   // Returns meta graph def. Note that the graph_def field in the MetaGraphDef
   // has already been removed.
@@ -177,6 +182,7 @@ class SavedModel {
 
  protected:
   const Options options_;
+  std::unique_ptr<GraphExecutor> graph_executor_;
 };
 
 using SignatureMap = absl::flat_hash_map<std::string, internal::Signature>;
@@ -314,7 +320,6 @@ class SavedModelImpl final : public SavedModel {
   absl::flat_hash_map<std::string /*joined_name*/,
                       std::unique_ptr<LoadingResult>>
       loading_result_cache_ TF_GUARDED_BY(loading_result_cache_mu_);
-  std::unique_ptr<GraphExecutor> graph_executor_;
 };
 
 class SavedModelMiraImpl;
