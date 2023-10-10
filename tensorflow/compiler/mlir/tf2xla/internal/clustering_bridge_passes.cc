@@ -162,9 +162,9 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
 
   pm.addPass(mlir::TFTPU::CreateTPURewritePass(module_name));
   pm.addPass(mlir::createSymbolDCEPass());
-  pm.addNestedPass<FuncOp>(mlir::TFDevice::CreateEmbeddingProgramKeyPass());
   pm.addNestedPass<FuncOp>(
       mlir::TFDevice::CreateReplicateInvariantOpHoistingPass());
+  pm.addNestedPass<FuncOp>(mlir::TFDevice::CreateEmbeddingProgramKeyPass());
   pm.addPass(mlir::TFTPU::CreateTPUMergeVariablesWithExecutePass());
   pm.addNestedPass<FuncOp>(
       mlir::TFTPU::CreateExtractTPUCopyWithDynamicShapeOpPass());
