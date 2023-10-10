@@ -350,6 +350,7 @@ tf_staging/third_party/tensorrt/tensorrt/include/tensorrt_config.h.tpl:
 tf_staging/third_party/tensorrt/tensorrt/tensorrt_config.py.tpl:
 tf_staging/third_party/tensorrt/tensorrt_configure.bzl:
 tf_staging/third_party/tensorrt/workspace.bzl:
+tf_staging/third_party/tf_runtime/BUILD:
 tf_staging/third_party/tf_toolchains.BUILD:
 tf_staging/third_party/tflite_mobilenet.BUILD:
 tf_staging/third_party/tflite_mobilenet_float.BUILD:

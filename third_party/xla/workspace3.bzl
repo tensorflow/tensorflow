@@ -2,7 +2,7 @@
 
 load("@local_tsl//:workspace3.bzl", "tsl_workspace3")
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-load("//third_party:tf_runtime/workspace.bzl", tf_runtime = "repo")
+load("//third_party/tf_runtime:workspace.bzl", tf_runtime = "repo")
 load("//third_party/llvm:workspace.bzl", llvm = "repo")
 
 # buildifier: disable=function-docstring

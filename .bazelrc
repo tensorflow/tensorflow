@@ -420,7 +420,18 @@ build:verbose_logs --output_filter=
 #   avoid having to define linux/win separately.
 build:avx_linux --copt=-mavx
 build:avx_linux --host_copt=-mavx
-build:avx_win --copt=/arch=AVX
+build:avx_win --copt=/arch:AVX
+
+# Use Clang-cl compiler on Windows
+build:win_clang --copt=/clang:-Weverything
+build:win_clang --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-clang-cl
+build:win_clang --extra_execution_platforms=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
+build:win_clang --host_platform=//tensorflow/tools/toolchains/win:x64_windows-clang-cl
+build:win_clang --compiler=clang-cl
+build:win_clang --linkopt=/FORCE:MULTIPLE
+build:win_clang --host_linkopt=/FORCE:MULTIPLE
+test:win_clang --linkopt=/FORCE:MULTIPLE
+test:win_clang --host_linkopt=/FORCE:MULTIPLE
 
 # Options to build TensorFlow 1.x or 2.x.
 # TODO(kanglan): Change v2's define to default behavior
