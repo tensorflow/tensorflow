@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/btree_map.h"
+#include "absl/log/log.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
@@ -216,6 +217,8 @@ Status SnapshotSplitProvider::ValidateSplitFiles(
 Status SnapshotSplitProvider::Reset() {
   mutex_lock l(mu_);
   ++repetition_index_;
+  LOG(INFO) << "Reset tf.data snapshot split provider for repetition "
+            << repetition_index_ << ".";
   return OkStatus();
 }
 

@@ -123,6 +123,7 @@ cc_library(
         "//tensorflow/core/data/service:dispatcher_proto_cc",
         "//tensorflow/core/data/service:grpc_util",
         "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:errors",
