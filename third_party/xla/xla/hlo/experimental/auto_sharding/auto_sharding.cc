@@ -360,7 +360,7 @@ StatusOr<std::unique_ptr<StrategyVector>> FollowReduceStrategy(
           src_strategies->leaf_vector[sid].output_sharding;
       const auto& tensor_dim_to_mesh = cluster_env.GetTensorDimToMeshDimWrapper(
           operand->shape(), input_sharding,
-          /* consider_reverse_device_meshes */ false,
+          /* consider_reverse_device_meshes */ true,
           /* crash_at_error */ crash_at_error);
       if (tensor_dim_to_mesh.size() != operand->shape().rank()) {
         return absl::InvalidArgumentError(
