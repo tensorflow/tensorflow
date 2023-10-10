@@ -6,11 +6,9 @@ load(
 )
 
 package(
-    default_visibility = [
-        "//learning/brain:__subpackages__",
-        "//tensorflow/compiler:__subpackages__",
-    ],
-    licenses = ["notice"],  # Apache 2.0
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//learning/brain:__subpackages__"],
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -26,17 +24,6 @@ cc_library(
         "//tensorflow/cc:scope",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/client/lib:arithmetic",
-        "//tensorflow/compiler/xla/client/lib:constants",
-        "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xrt:xrt_proto_cc",
         "//tensorflow/compiler/xrt:xrt_server",
         "//tensorflow/compiler/xrt/cc:xrt_ops",
@@ -46,8 +33,18 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
+        "@local_xla//xla:literal",
+        "@local_xla//xla:literal_util",
+        "@local_xla//xla:shape_util",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/client:client_library",
+        "@local_xla//xla/client:local_client",
+        "@local_xla//xla/client:xla_builder",
+        "@local_xla//xla/client:xla_computation",
+        "@local_xla//xla/client/lib:arithmetic",
+        "@local_xla//xla/client/lib:constants",
+        "@local_xla//xla/service:platform_util",
     ],
 )
 

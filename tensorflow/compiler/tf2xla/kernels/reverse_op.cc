@@ -15,12 +15,14 @@ limitations under the License.
 
 // XLA-specific reverse Op.
 
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal.h"
+#include "xla/client/xla_builder.h"
+#include "xla/literal.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -53,7 +55,7 @@ class ReverseOp : public XlaOpKernel {
     xla::Literal lax;
     OP_REQUIRES_OK(ctx, ctx->ConstantInput(1, &lax));
 
-    std::vector<int64> dimensions;
+    std::vector<int64_t> dimensions;
     for (int d = 0; d < x_shape.dims(); ++d) {
       if (lax.Get<bool>({d})) {
         dimensions.push_back(d);
@@ -89,7 +91,7 @@ class ReverseV2Op : public XlaOpKernel {
       return;
     }
     // XlaBuilder::Rev() requires concrete values for dimensions arg.
-    std::vector<int64> axes;
+    std::vector<int64_t> axes;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &axes));
 
     // witnessed_axes is used to ensure that the same axis is not marked to be

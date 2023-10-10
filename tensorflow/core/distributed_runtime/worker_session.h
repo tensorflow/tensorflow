@@ -16,12 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_WORKER_SESSION_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_WORKER_SESSION_H_
 
+#include <functional>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
-#include "tensorflow/core/distributed_runtime/cluster_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
+#include "tensorflow/core/framework/function.h"
 
 namespace tensorflow {
 
@@ -32,12 +35,17 @@ class WorkerCacheInterface;
 // WorkerSession encapsulates all of the state relating to a given session.
 class WorkerSession {
  public:
+  using DistributedFunctionLibraryRuntimeCreator =
+      std::function<std::unique_ptr<DistributedFunctionLibraryRuntime>(
+          WorkerSession* worker_session, bool create_worker_session_called,
+          DeviceMgr* remote_device_mgr)>;
+
   // Collection of local devices. These devices are typically
   // RenamedDevices in all except the SessionMgr.legacy_session_ and
   // sessions created with `isolate_session_state == false`. In the
   // those cases, this method returns a pointer to a borrowed
   // DeviceMgr (typically the `worker_env.device_mgr`).
-  const DeviceMgr* device_mgr() {
+  DeviceMgr* device_mgr() {
     return device_mgr_ ? device_mgr_.get() : borrowed_device_mgr_;
   }
 
@@ -52,7 +60,7 @@ class WorkerSession {
   }
   GraphMgr* graph_mgr() const { return graph_mgr_.get(); }
 
-  ClusterFunctionLibraryRuntime* cluster_flr() const {
+  DistributedFunctionLibraryRuntime* cluster_flr() const {
     return cluster_flr_.get();
   }
 
@@ -60,13 +68,15 @@ class WorkerSession {
                 std::unique_ptr<WorkerCacheInterface> worker_cache,
                 std::unique_ptr<DeviceMgr> device_mgr,
                 std::unique_ptr<GraphMgr> graph_mgr,
-                std::unique_ptr<DynamicDeviceMgr> remote_device_mgr);
+                std::unique_ptr<DynamicDeviceMgr> remote_device_mgr,
+                DistributedFunctionLibraryRuntimeCreator cluster_flr_creator);
 
   static std::shared_ptr<WorkerSession> CreateWithBorrowedDeviceMgr(
       const string& session_name, const string& worker_name,
       std::unique_ptr<WorkerCacheInterface> worker_cache,
-      const DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
-      std::unique_ptr<DynamicDeviceMgr> remote_device_mgr);
+      DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
+      std::unique_ptr<DynamicDeviceMgr> remote_device_mgr,
+      DistributedFunctionLibraryRuntimeCreator cluster_flr_creator);
 
   // In the eager runtime we allow WorkerSession to be updated, where the
   // worker cache will be recreated. If WorkerSession upate is expected and a
@@ -90,9 +100,10 @@ class WorkerSession {
  private:
   WorkerSession(const string& session_name, const string& worker_name,
                 std::unique_ptr<WorkerCacheInterface> worker_cache,
-                const DeviceMgr* borrowed_device_mgr,
+                DeviceMgr* borrowed_device_mgr,
                 std::unique_ptr<GraphMgr> graph_mgr,
-                std::unique_ptr<DynamicDeviceMgr> remote_device_mgr);
+                std::unique_ptr<DynamicDeviceMgr> remote_device_mgr,
+                DistributedFunctionLibraryRuntimeCreator cluster_flr_creator);
 
   // The name of the session.
   const string session_name_;
@@ -111,10 +122,10 @@ class WorkerSession {
   // Note: graph_mgr must be deleted before device_mgr!
   const std::unique_ptr<GraphMgr> graph_mgr_;
 
-  std::unique_ptr<ClusterFunctionLibraryRuntime> cluster_flr_;
+  std::unique_ptr<DistributedFunctionLibraryRuntime> cluster_flr_;
 
-  const std::unique_ptr<const DeviceMgr> device_mgr_;
-  const DeviceMgr* const borrowed_device_mgr_;  // Not owned.
+  const std::unique_ptr<DeviceMgr> device_mgr_;
+  DeviceMgr* const borrowed_device_mgr_;  // Not owned.
   std::unique_ptr<DynamicDeviceMgr> remote_device_mgr_;
 };
 

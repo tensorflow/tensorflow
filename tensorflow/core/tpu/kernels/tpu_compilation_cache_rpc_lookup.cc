@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_lookup.h"
 
-#include <grpcpp/security/credentials.h>
+#include <limits>
+#include <memory>
+#include <string>
+#include <vector>
 
+#include "grpcpp/security/credentials.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
@@ -49,7 +53,7 @@ static gpr_timespec TimeToGprTimespec(absl::Time time) {
 }
 }  // namespace
 TpuCompilationCacheRpcLookup::TpuCompilationCacheRpcLookup(
-    const std::string& server_address, int64 max_cache_size)
+    const std::string& server_address, int64_t max_cache_size)
     : max_cache_size_(max_cache_size) {
   // Ensure that large TPU program can get sent over the channel.
   ::grpc::ChannelArguments args;
@@ -93,11 +97,11 @@ Status TpuCompilationCacheRpcLookup::Lookup(
     }
     PostLookupLocked(&cache_entry, entry, &removed_entries);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TpuCompilationCacheRpcLookup::Lookup(
-    int64 uid, int proto_index,
+    int64_t uid, int proto_index,
     std::unique_ptr<CompilationCacheEntryRef>* entry,
     tpu::CompilationCacheFetchTarget fetch_target) {
   profiler::TraceMe proto_lookup_traceme("Remote TPU proto cache lookup by uid",
@@ -138,7 +142,7 @@ Status TpuCompilationCacheRpcLookup::Lookup(
     }
     PostLookupLocked(&cache_entry, entry, &removed_entries);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TpuCompilationCacheRpcLookup::RemoteLookupLocked(
@@ -165,7 +169,7 @@ Status TpuCompilationCacheRpcLookup::RemoteLookupLocked(
   cache_.emplace(local_proto_key, (*cache_entry));
   cache_size_ += (*cache_entry)->size;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void TpuCompilationCacheRpcLookup::PostLookupLocked(

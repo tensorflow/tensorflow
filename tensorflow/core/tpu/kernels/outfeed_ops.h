@@ -16,10 +16,26 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_OUTFEED_OPS_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_OUTFEED_OPS_H_
 
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "tensorflow/compiler/tf2xla/literal_util.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "xla/literal.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 
@@ -28,18 +44,40 @@ namespace tensorflow {
 template <class T>
 class TpuOutfeedDequeueOp : public T {
  public:
-  explicit TpuOutfeedDequeueOp(OpKernelConstruction* ctx);
+  explicit TpuOutfeedDequeueOp(
+      OpKernelConstruction* ctx,
+      std::unique_ptr<TpuTransferOpInterface> transfer_op)
+      : T(ctx, "outfeed_dequeue", 1, std::move(transfer_op)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &shape_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape_, &xla_shape_));
+  }
 
-  Status DoWork(OpKernelContext* ctx,
-                xla::TpuTransferManagerInterface* transfer_manager,
-                stream_executor::StreamExecutor* stream_executor) override;
+  Status DoWork(OpKernelContext* ctx, int device_ordinal) override {
+    Tensor* output;
+    TF_RETURN_IF_ERROR(ctx->allocate_output(0, shape_, &output));
+
+    // Transfer from the outfeed interface of the device.
+    xla::MutableBorrowingLiteral literal;
+    TF_RETURN_IF_ERROR(
+        HostTensorToMutableBorrowingLiteral(xla_shape_, output, &literal));
+
+    VLOG(1) << "TransferLiteralFromOutfeed "
+            << xla::ShapeUtil::HumanStringWithLayout(xla_shape_);
+
+    TF_RETURN_IF_ERROR(
+        T::transfer_op_->TransferLiteralFromOutfeed(device_ordinal, literal));
+
+    VLOG(1) << "TransferLiteralFromOutfeed complete.";
+
+    return OkStatus();
+  }
 
  private:
   TensorShape shape_;
   DataType dtype_;
   xla::Shape xla_shape_;
 
-  // OutfeedDequeueOp is neither copyable nor movable.
   TpuOutfeedDequeueOp(const TpuOutfeedDequeueOp&) = delete;
   TpuOutfeedDequeueOp& operator=(const TpuOutfeedDequeueOp&) = delete;
 };
@@ -49,11 +87,42 @@ class TpuOutfeedDequeueOp : public T {
 template <class T>
 class TpuOutfeedDequeueTupleOp : public T {
  public:
-  explicit TpuOutfeedDequeueTupleOp(OpKernelConstruction* ctx);
+  explicit TpuOutfeedDequeueTupleOp(
+      OpKernelConstruction* ctx,
+      std::unique_ptr<TpuTransferOpInterface> transfer_op)
+      : T(ctx, "outfeed_dequeue", 1, std::move(transfer_op)) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("shapes", &shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtypes", &dtypes_));
+    OP_REQUIRES(
+        ctx, shapes_.size() == dtypes_.size(),
+        errors::InvalidArgument("shapes and dtypes must be the same length."));
+    // The `dtypes` list is inferred from the supplied inputs, so it
+    // is always the correct length.
+    for (int i = 0; i < shapes_.size(); i++) {
+      xla::Shape xla_shape;
+      OP_REQUIRES_OK(ctx,
+                     TensorShapeToXLAShape(dtypes_[i], shapes_[i], &xla_shape));
+      xla_shapes_.push_back(xla_shape);
+    }
+    tuple_shape_ = xla::ShapeUtil::MakeTupleShape(xla_shapes_);
+  }
 
-  Status DoWork(OpKernelContext* ctx,
-                xla::TpuTransferManagerInterface* transfer_manager,
-                stream_executor::StreamExecutor* stream_executor) override;
+  Status DoWork(OpKernelContext* ctx, int device_ordinal) override {
+    VLOG(1) << "TransferLiteralFromOutfeed "
+            << xla::ShapeUtil::HumanStringWithLayout(tuple_shape_);
+
+    for (int i = 0; i < shapes_.size(); ++i) {
+      Tensor* output;
+      TF_RETURN_IF_ERROR(ctx->allocate_output(i, shapes_[i], &output));
+
+      xla::MutableBorrowingLiteral literal;
+      TF_RETURN_IF_ERROR(HostTensorToMutableBorrowingLiteral(xla_shapes_[i],
+                                                             output, &literal));
+      TF_RETURN_IF_ERROR(
+          T::transfer_op_->TransferLiteralFromOutfeed(device_ordinal, literal));
+    }
+    return OkStatus();
+  }
 
  private:
   std::vector<TensorShape> shapes_;
@@ -61,7 +130,6 @@ class TpuOutfeedDequeueTupleOp : public T {
   std::vector<xla::Shape> xla_shapes_;
   xla::Shape tuple_shape_;
 
-  // OutfeedDequeueTupleOp is neither copyable nor movable.
   TpuOutfeedDequeueTupleOp(const TpuOutfeedDequeueTupleOp&) = delete;
   TpuOutfeedDequeueTupleOp& operator=(const TpuOutfeedDequeueTupleOp&) = delete;
 };

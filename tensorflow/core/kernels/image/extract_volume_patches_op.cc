@@ -109,19 +109,20 @@ class ExtractVolumePatchesOp : public UnaryOp<T> {
     const int ksize_cols_eff = ksize_cols + (ksize_cols - 1) * (rate_cols - 1);
     */
 
-    int64 out_planes = 0, out_rows = 0, out_cols = 0;
-    int64 pad_planes = 0, pad_rows = 0, pad_cols = 0;
+    int64_t out_planes = 0, out_rows = 0, out_cols = 0;
+    int64_t pad_planes = 0, pad_rows = 0, pad_cols = 0;
     OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(in_planes, ksize_planes, stride_planes,
+                   GetWindowedOutputSize(in_planes, ksize_planes,
+                                         /*dilation_rate=*/1, stride_planes,
                                          padding_, &out_planes, &pad_planes));
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(in_rows, ksize_rows, stride_rows,
-                                         padding_, &out_rows, &pad_rows));
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(in_cols, ksize_cols, stride_cols,
-                                         padding_, &out_cols, &pad_cols));
+    OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                                in_rows, ksize_rows, /*dilation_rate=*/1,
+                                stride_rows, padding_, &out_rows, &pad_rows));
+    OP_REQUIRES_OK(context, GetWindowedOutputSize(
+                                in_cols, ksize_cols, /*dilation_rate=*/1,
+                                stride_cols, padding_, &out_cols, &pad_cols));
 
-    const std::vector<int64> out_sizes = {
+    const std::vector<int64_t> out_sizes = {
         batch, out_planes, out_rows, out_cols,
         ksize_planes * ksize_rows * ksize_cols * depth};
     TensorShape out_shape(out_sizes);
@@ -148,7 +149,8 @@ class ExtractVolumePatchesOp : public UnaryOp<T> {
 
   Padding padding_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExtractVolumePatchesOp);
+  ExtractVolumePatchesOp(const ExtractVolumePatchesOp&) = delete;
+  void operator=(const ExtractVolumePatchesOp&) = delete;
 };
 
 // Registration of the CPU implementations.

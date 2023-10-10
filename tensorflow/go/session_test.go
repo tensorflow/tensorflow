@@ -375,8 +375,8 @@ func TestSessionConfig(t *testing.T) {
 	// tensorflow Python program:
 	/*
 	 import tensorflow
-	 c = tensorflow.ConfigProto()
-	 c.intra_op_parallelism_threads = 1
+	 c = tensorflow.compat.v1.ConfigProto()
+	 c.inter_op_parallelism_threads = 1
 	 print c.SerializeToString()
 	*/
 	graph := NewGraph()

@@ -13,17 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.window()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
-from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -228,10 +224,9 @@ class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset, expected_output=[np.float32([1., 2.]),
                                   np.float32([2., 3.])])
 
-  @combinations.generate(test_base.default_test_combinations())
+  # Eager-only because the test enumerates the dataset.
+  @combinations.generate(test_base.eager_only_combinations())
   def testNestedOutput(self):
-    if not context.executing_eagerly():
-      self.skipTest("self.evaluate() does not work with a dataset")
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset_ops.Dataset.zip((dataset, dataset)).window(10)
     for i, nested_dataset in enumerate(dataset):
@@ -249,6 +244,27 @@ class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         dataset,
         expected_output=[[[y + 30 * x for y in range(30)] for x in range(3)]])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).window(
+        1, name="window").flat_map(lambda x: x)
+    self.assertDatasetProduces(dataset, [42])
+
+
+class WindowCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                           parameterized.TestCase):
+
+  def _build_dataset(self):
+    dataset = dataset_ops.Dataset.range(42).window(6).interleave(
+        lambda x: x, cycle_length=2, num_parallel_calls=2)
+    return dataset
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
+    verify_fn(self, self._build_dataset, num_outputs=42)
 
 
 if __name__ == "__main__":

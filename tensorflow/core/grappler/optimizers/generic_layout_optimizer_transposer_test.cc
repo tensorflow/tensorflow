@@ -67,7 +67,7 @@ class TransposerImpl : public Transposer {
  public:
   explicit TransposerImpl() : Transposer() {}
   Status TransposeNode(TransposeContext*, utils::MutableNodeView*) override {
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -357,7 +357,7 @@ class TransposerTest : public ::testing::Test {
 
     if (gpu_available) {
       virtual_cluster_ =
-          absl::make_unique<SingleMachine>(/*timeout_s=*/10, 1, 1);
+          std::make_unique<SingleMachine>(/*timeout_s=*/10, 1, 1);
     } else {
       DeviceProperties gpu_device;
       gpu_device.set_type(kGPU);
@@ -3768,17 +3768,17 @@ TEST_F(TransposerTest, StridedSliceTransposerConstFaninBadRank) {
 
 TEST_F(TransposerTest, ReduceTransposerKeepDims) {
   ReduceTransposerKeepDims<int32>();
-  ReduceTransposerKeepDims<int64>();
+  ReduceTransposerKeepDims<int64_t>();
 }
 
 TEST_F(TransposerTest, ReduceTransposerValidAxisNode) {
   ReduceTransposerValidAxisNode<int32>();
-  ReduceTransposerValidAxisNode<int64>();
+  ReduceTransposerValidAxisNode<int64_t>();
 }
 
 TEST(PermutationTest, PermutesVector) {
-  std::vector<int64> input{32, 16, 8, 4};
-  std::vector<int64> expected{4, 8, 16, 32};
+  std::vector<int64_t> input{32, 16, 8, 4};
+  std::vector<int64_t> expected{4, 8, 16, 32};
   TF_ASSERT_OK(PermuteSingle("test", {3, 2, 1, 0}, &input));
   ASSERT_EQ(input.size(), 4);
   for (int i = 0; i < input.size(); ++i) {

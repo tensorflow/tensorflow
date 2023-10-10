@@ -14,17 +14,11 @@
 # ==============================================================================
 """Tests for inspect_utils module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import collections
 import functools
 import imp
 import textwrap
-
-import six
 
 from tensorflow.python import lib
 from tensorflow.python.autograph.pyct import inspect_utils
@@ -56,7 +50,7 @@ def wrapping_decorator():
   return dec
 
 
-class TestClass(object):
+class TestClass:
 
   def member_function(self):
     pass
@@ -283,7 +277,7 @@ class InspectUtilsTest(test.TestCase):
       return free_function
 
     ns = inspect_utils.getnamespace(test_fn)
-    globs = six.get_function_globals(test_fn)
+    globs = test_fn.__globals__
     self.assertTrue(ns['free_function'] is free_function)
     self.assertFalse(globs['free_function'] is free_function)
 
@@ -440,7 +434,7 @@ class InspectUtilsTest(test.TestCase):
     def local_function():
       pass
 
-    class LocalClass(object):
+    class LocalClass:
 
       def member_function(self):
         pass
@@ -488,7 +482,8 @@ class InspectUtilsTest(test.TestCase):
         LocalClass)
 
   def test_getmethodclass_callables(self):
-    class TestCallable(object):
+
+    class TestCallable:
 
       def __call__(self):
         pass
@@ -503,7 +498,8 @@ class InspectUtilsTest(test.TestCase):
         inspect_utils.getmethodclass(tensor.get_shape), type(tensor))
 
   def test_getdefiningclass(self):
-    class Superclass(object):
+
+    class Superclass:
 
       def foo(self):
         pass
@@ -545,10 +541,10 @@ class InspectUtilsTest(test.TestCase):
 
   def test_isconstructor(self):
 
-    class OrdinaryClass(object):
+    class OrdinaryClass:
       pass
 
-    class OrdinaryCallableClass(object):
+    class OrdinaryCallableClass:
 
       def __call__(self):
         pass
@@ -572,8 +568,7 @@ class InspectUtilsTest(test.TestCase):
 
   def test_isconstructor_abc_callable(self):
 
-    @six.add_metaclass(abc.ABCMeta)
-    class AbcBase(object):
+    class AbcBase(metaclass=abc.ABCMeta):
 
       @abc.abstractmethod
       def __call__(self):
@@ -592,24 +587,24 @@ class InspectUtilsTest(test.TestCase):
 
   def test_getfutureimports_functions(self):
     imps = inspect_utils.getfutureimports(basic_definitions.function_with_print)
-    self.assertIn('absolute_import', imps)
-    self.assertIn('division', imps)
-    self.assertIn('print_function', imps)
+    self.assertNotIn('absolute_import', imps)
+    self.assertNotIn('division', imps)
+    self.assertNotIn('print_function', imps)
     self.assertNotIn('generators', imps)
 
   def test_getfutureimports_lambdas(self):
     imps = inspect_utils.getfutureimports(basic_definitions.simple_lambda)
-    self.assertIn('absolute_import', imps)
-    self.assertIn('division', imps)
-    self.assertIn('print_function', imps)
+    self.assertNotIn('absolute_import', imps)
+    self.assertNotIn('division', imps)
+    self.assertNotIn('print_function', imps)
     self.assertNotIn('generators', imps)
 
   def test_getfutureimports_methods(self):
     imps = inspect_utils.getfutureimports(
         basic_definitions.SimpleClass.method_with_print)
-    self.assertIn('absolute_import', imps)
-    self.assertIn('division', imps)
-    self.assertIn('print_function', imps)
+    self.assertNotIn('absolute_import', imps)
+    self.assertNotIn('division', imps)
+    self.assertNotIn('print_function', imps)
     self.assertNotIn('generators', imps)
 
 

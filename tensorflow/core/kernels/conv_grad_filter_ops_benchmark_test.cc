@@ -116,12 +116,15 @@ static Graph* Conv2DBackpropFilter(int batch, int height, int width,
 #define BM_Conv2DBwdFilter(T, FMT, N, H, W, C, FH, FW, FC, SH, SW, PADDING,    \
                            type)                                               \
   static void BM_NAME(BM_Conv2DBackpropFilter, type, T, FMT, N, H, W, C, FH,   \
-                      FW, FC, SH, SW, PADDING)(int iters) {                    \
-    testing::ItemsProcessed(static_cast<int64>(iters) * (N) * (H) * (W) *      \
-                            (C));                                              \
-    test::Benchmark(#type, Conv2DBackpropFilter<T>(N, H, W, C, FH, FW, FC, SH, \
-                                                   SW, PADDING, FORMAT_##FMT)) \
-        .Run(iters);                                                           \
+                      FW, FC, SH, SW,                                          \
+                      PADDING)(::testing::benchmark::State & state) {          \
+    test::Benchmark(#type,                                                     \
+                    Conv2DBackpropFilter<T>(N, H, W, C, FH, FW, FC, SH, SW,    \
+                                            PADDING, FORMAT_##FMT),            \
+                    /*old_benchmark_api*/ false)                               \
+        .Run(state);                                                           \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * (N) *   \
+                            (H) * (W) * (C));                                  \
   }                                                                            \
   BENCHMARK(BM_NAME(BM_Conv2DBackpropFilter, type, T, FMT, N, H, W, C, FH, FW, \
                     FC, SH, SW, PADDING));

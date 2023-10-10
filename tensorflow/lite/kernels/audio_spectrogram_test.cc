@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -67,7 +67,7 @@ TEST(BaseAudioSpectrogramOpModel, NonSquaredTest) {
   m.PopulateTensor<float>(m.input1(),
                           {-1.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   std::vector<int> output_shape = m.GetOutputShape();
   EXPECT_EQ(3, output_shape.size());
@@ -83,7 +83,7 @@ TEST(SpectrogramOpTest, SquaredTest) {
   m.PopulateTensor<float>(m.input1(),
                           {-1.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   std::vector<int> output_shape = m.GetOutputShape();
   EXPECT_EQ(3, output_shape.size());
@@ -99,7 +99,7 @@ TEST(SpectrogramOpTest, StrideTest) {
   m.PopulateTensor<float>(m.input1(), {-1.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f,
                                        1.0f, 0.0f, 1.0f, 0.0f});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   std::vector<int> output_shape = m.GetOutputShape();
   EXPECT_THAT(output_shape, ElementsAre(1, 2, 5));

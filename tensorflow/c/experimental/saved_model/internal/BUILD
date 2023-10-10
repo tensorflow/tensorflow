@@ -21,7 +21,8 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -135,9 +136,7 @@ cc_library(
         "//tensorflow/c/experimental/saved_model/public:saved_model_api.h",
     ],
     copts = tf_copts(),
-    visibility = [
-        "//tensorflow/c/experimental/saved_model/public:__pkg__",
-    ],
+    visibility = ["//tensorflow/c/experimental/saved_model/public:__pkg__"],
     deps = [
         ":concrete_function",
         ":concrete_function_list",
@@ -162,6 +161,9 @@ cc_library(
     name = "saved_model_api_type",
     hdrs = [
         "saved_model_api_type.h",
+    ],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
     ],
     deps = [
         "//tensorflow/c:conversion_macros",
@@ -342,13 +344,16 @@ cc_library(
 
 tf_cc_test(
     name = "saved_model_api_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "saved_model_api_test.cc",
     ],
     data = [
         "//tensorflow/c/experimental/saved_model/internal/testdata:saved_models",
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+    ],
+    tags = [
+        "no_windows",  # b/190030638
     ],
     deps = [
         ":saved_model_api_type",

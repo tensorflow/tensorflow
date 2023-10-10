@@ -59,17 +59,17 @@ class ReaderInterface : public ResourceBase {
   // The std::vector keys/value pointers are assumed to point to empty
   // structures (that have most likely been reserve(num_records)).
   // Returns how many records were actually read.
-  virtual int64 ReadUpTo(const int64 num_records, QueueInterface* queue,
-                         std::vector<tstring>* keys,
-                         std::vector<tstring>* value,
-                         OpKernelContext* context) = 0;
+  virtual int64_t ReadUpTo(const int64_t num_records, QueueInterface* queue,
+                           std::vector<tstring>* keys,
+                           std::vector<tstring>* value,
+                           OpKernelContext* context) = 0;
 
   // Restore this reader to its newly-constructed state.
   virtual Status Reset() = 0;
 
   // Accessors
-  virtual int64 NumRecordsProduced() = 0;
-  virtual int64 NumWorkUnitsCompleted() = 0;
+  virtual int64_t NumRecordsProduced() = 0;
+  virtual int64_t NumWorkUnitsCompleted() = 0;
 
   // -- Serialization/Restoration support --
   // Not all readers will support saving and restoring state.

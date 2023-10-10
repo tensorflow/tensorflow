@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,10 +20,6 @@ activations are clipped, inspired by the GNMT machine translation model.
 The GNMT paper has more details: https://arxiv.org/abs/1609.08144
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from six.moves import range
 
 from tensorflow.python.framework import dtypes
@@ -32,7 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 
 
 def Clip(x):
@@ -120,7 +115,7 @@ def LSTMLayer(cell_name, weights, m, c, x_seq, pad_seq):
 
 def RandomVar(shape, name=None):
   """Returns a variable of the given shape initialized to random values."""
-  return variables.VariableV1(
+  return variable_v1.VariableV1(
       random_ops.random_uniform(shape), dtype=dtypes.float32, name=name)
 
 

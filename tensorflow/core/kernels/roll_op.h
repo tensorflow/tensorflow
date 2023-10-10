@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_ROLL_H
-#define TENSORFLOW_ROLL_H
+#ifndef TENSORFLOW_CORE_KERNELS_ROLL_OP_H_
+#define TENSORFLOW_CORE_KERNELS_ROLL_OP_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -33,14 +33,14 @@ struct Roll {
   // threshold - the index for each dimension that the roll starts to wrap
   //    back to the front
   // isd - inner shift dimension
-  void operator()(const OpKernelContext* context, const int64 num_elements,
+  void operator()(const OpKernelContext* context, const int64_t num_elements,
                   const int num_dims, const gtl::ArraySlice<int32> dim_size,
                   const T* input, T* output,
                   const gtl::ArraySlice<int32> threshold,
-                  const gtl::ArraySlice<int64> dim_range, const int64 isd);
+                  const gtl::ArraySlice<int64_t> dim_range, const int64_t isd);
 };
 
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_ROLLL_H
+#endif  // TENSORFLOW_CORE_KERNELS_ROLL_OP_H_

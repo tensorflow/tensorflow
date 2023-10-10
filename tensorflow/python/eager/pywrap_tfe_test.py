@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for low-level eager execution primitives."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 import traceback
 
@@ -36,11 +32,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 
 
+@test_util.with_eager_op_as_function
 class Tests(test.TestCase):
 
   @test_util.assert_no_new_tensors
@@ -249,21 +247,22 @@ class Tests(test.TestCase):
                                         "num_split", 1000000000000)
 
     value = constant_op.constant(value)
-    attrs = ("num_splits", 1000000000000)
+    attrs = ("num_split", 1000000000000, "T", value.dtype.as_datatype_enum)
     with self.assertRaisesRegex(ValueError, "Number of outputs is too big"):
-      pywrap_tfe.TFE_Py_Execute(ctx._handle, None, "Split", [value], attrs,
-                                1000000000000)
+      pywrap_tfe.TFE_Py_Execute(ctx._handle, None, "Split", [split_dim, value],
+                                attrs, 1000000000000)
 
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
   def testInvalidNumOutputs(self):
     with self.assertRaisesRegex(
-        Exception, r"Value for number_attr\(\) -1 < 0 \[Op:Split\]"):
+        Exception, r"Value for number_attr\(\) -1 < 0 \[Op:Split\]|"
+        r"Value for attr 'num_split' of -1 must be at least minimum 1"):
       array_ops.split(value=[1, 2, 3], num_or_size_splits=-1)
 
     with self.assertRaisesRegex(
         Exception,
-        "Value for attr 'num_split' of 0 must be at least minimum 1"):
+        r"Value for attr 'num_split' of 0 must be at least minimum 1"):
       array_ops.split(value=[1, 2, 3], num_or_size_splits=0)
 
   def testIsFunction(self):
@@ -283,7 +282,7 @@ class Tests(test.TestCase):
       m = resource_variable_ops.ResourceVariable(a_2_by_2)
       with self.assertRaisesRegex(TypeError,
                                   "Expected list for 'values' argument"):
-        _ = array_ops.stack(m, axis=1)
+        _ = array_ops_stack.stack(m, axis=1)
 
   def testGraphResourceVariableRaisesFallback(self):
     with ops.Graph().as_default():
@@ -297,8 +296,11 @@ class Tests(test.TestCase):
                                         False)
 
   def testOpDefDefaultType(self):
-    im = np.random.randint(
-        low=0, high=65535, size=100, dtype=np.uint16).reshape(10, 10, 1)
+    im = np.random.randint(  # pylint: disable=too-many-function-args
+        low=0,
+        high=65535,
+        size=100,
+        dtype=np.uint16).reshape(10, 10, 1)
 
     context.ensure_initialized()
 

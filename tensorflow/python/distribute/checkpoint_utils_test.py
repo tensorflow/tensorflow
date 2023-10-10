@@ -21,10 +21,6 @@ TODO(priyag): Move the tests to core `python.training.CheckpointsTest` when
 distribution strategy moves out of contrib.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from absl.testing import parameterized
@@ -71,6 +67,8 @@ class CheckpointUtilsWithDistributionStrategyTest(
               strategy_combinations.one_device_strategy,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations
+              .mirrored_strategy_with_two_gpus_no_merge_call,
           ],
           in_replica_mode=[True, False],
           mode=["graph"]))
@@ -105,6 +103,8 @@ class CheckpointUtilsWithDistributionStrategyTest(
               strategy_combinations.one_device_strategy,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.mirrored_strategy_with_two_gpus,
+              strategy_combinations
+              .mirrored_strategy_with_two_gpus_no_merge_call,
           ],
           in_replica_mode=[True, False],
           mode=["graph"]))

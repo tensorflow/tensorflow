@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/resource_op_lifting_cleanup.h"
 
+#include <optional>
+#include <variant>
+
 #include "llvm/ADT/BitVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -35,7 +39,7 @@ bool IsResource(Value value) {
 bool IsCastOfResource(Operation &op) {
   auto cast = dyn_cast<TF::CastOp>(op);
   if (!cast) return false;
-  return IsResource(cast.x());
+  return IsResource(cast.getX());
 }
 
 // Removes passthrough ops in the block. The device computation does not need
@@ -49,22 +53,55 @@ void RemovePassthroughOp(Block &block) {
   }
 }
 
+using LocalVarOp = std::variant<TF::VarHandleOp, TF::MlirLocalVarOp>;
+
+Value LocalVarOp_resource(LocalVarOp &op) {
+  if (auto var_handle_op = std::get_if<TF::VarHandleOp>(&op)) {
+    return var_handle_op->getResource();
+  } else {
+    return std::get<TF::MlirLocalVarOp>(op).getResource();
+  }
+}
+
+void LocalVarOp_erase(LocalVarOp &op) {
+  if (auto var_handle_op = std::get_if<TF::VarHandleOp>(&op)) {
+    var_handle_op->erase();
+  } else {
+    std::get<TF::MlirLocalVarOp>(op).erase();
+  }
+}
+
+std::optional<LocalVarOp> IsLocalVarOp(Operation &op) {
+  if (TF::MlirLocalVarOp mlir_local_var_op =
+          llvm::dyn_cast<TF::MlirLocalVarOp>(&op)) {
+    return std::make_optional(LocalVarOp(mlir_local_var_op));
+  }
+  if (TF::VarHandleOp var_handle_op = llvm::dyn_cast<TF::VarHandleOp>(&op)) {
+    auto ANONYMOUS_NAME = ::tensorflow::ResourceHandle::ANONYMOUS_NAME;
+    if (var_handle_op.getSharedName() == ANONYMOUS_NAME) {
+      return std::make_optional(LocalVarOp(var_handle_op));
+    }
+  }
+  return {};
+}
+
 // Eliminate local variables that are only assigned to but never read, and thus
 // are dead.
 void RemoveDeadLocalVariables(Block &block) {
-  llvm::SmallVector<TF::MlirLocalVarOp, 8> local_vars;
+  llvm::SmallVector<LocalVarOp, 8> local_vars;
   for (Operation &op : block) {
-    if (auto local_var = llvm::dyn_cast<TF::MlirLocalVarOp>(&op)) {
-      local_vars.push_back(local_var);
+    if (auto local_var = IsLocalVarOp(op)) {
+      local_vars.push_back(local_var.value());
     }
   }
   for (auto local_var : local_vars) {
-    auto users = local_var.resource().getUsers();
+    auto users = LocalVarOp_resource(local_var).getUsers();
     if (llvm::all_of(users, [](const Operation *user) {
-          return isa<TF::AssignVariableOp>(user);
+          return isa<TF::AssignVariableOp>(user) ||
+                 isa<TF::DestroyResourceOp>(user);
         })) {
       for (auto user : llvm::make_early_inc_range(users)) user->erase();
-      local_var.erase();
+      LocalVarOp_erase(local_var);
     }
   }
 }
@@ -94,7 +131,8 @@ void EliminateUnusedResults(
   OpBuilder builder(op);
   Operation *new_op = Operation::create(
       op->getLoc(), op->getName(), new_result_types, op->getOperands(),
-      op->getAttrs(), op->getSuccessors(), op->getNumRegions());
+      op->getAttrs(), op->getPropertiesStorage(), op->getSuccessors(),
+      op->getNumRegions());
   builder.insert(new_op);
 
   // Move region bodies to the new operation.
@@ -116,14 +154,15 @@ void EliminateUnusedResults(
 // Clones a function if it cannot be patched in place. Clone if there are
 // multiple uses or unknown uses (for external functions). The cloned function
 // will be marked as private.
-FuncOp CloneFunctionIfNeeded(FuncOp func) {
+func::FuncOp CloneFunctionIfNeeded(func::FuncOp func) {
   ModuleOp module = func->getParentOfType<ModuleOp>();
   auto func_uses = SymbolTable::getSymbolUses(func, &module.getBodyRegion());
-  if (func_uses.hasValue() && llvm::hasSingleElement(func_uses.getValue()))
+  if (func_uses.has_value() && llvm::hasSingleElement(func_uses.value()))
     return func;
-  FuncOp cloned = func.clone();
+  func::FuncOp cloned = func.clone();
   cloned.setPrivate();
-  cloned.setName(func.getName().str() + "_lifted");
+  cloned.setName(
+      StringAttr::get(func.getContext(), func.getName().str() + "_lifted"));
   SymbolTable(module).insert(cloned);
   return cloned;
 }
@@ -132,21 +171,22 @@ FuncOp CloneFunctionIfNeeded(FuncOp func) {
 // branch functions to (a) drop the ununsed return values, and (b) as a result
 // if some argument becomes unused in all branches, drop that argument and the
 // corresponding if/case input operand.
-void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
+void EliminateUnusedResultsForIfCase(Operation *op,
+                                     ArrayRef<func::FuncOp> branches) {
   // Clone branch functions if needed since we will be mutating them.
-  SmallVector<FuncOp, 2> cloned_branches;
+  SmallVector<func::FuncOp, 2> cloned_branches;
   cloned_branches.reserve(branches.size());
-  for (FuncOp func : branches) {
-    FuncOp cloned = CloneFunctionIfNeeded(func);
+  for (func::FuncOp func : branches) {
+    func::FuncOp cloned = CloneFunctionIfNeeded(func);
     cloned_branches.push_back(cloned);
     if (cloned == func) continue;
     // Patch up the op attribute to point to the new function.
     for (NamedAttribute attr : op->getAttrs()) {
-      auto symref = attr.second.dyn_cast<FlatSymbolRefAttr>();
+      auto symref = attr.getValue().dyn_cast<FlatSymbolRefAttr>();
       if (!symref) continue;
       if (symref.getValue() != func.getName()) continue;
-      op->setAttr(attr.first,
-                  FlatSymbolRefAttr::get(cloned.getName(), op->getContext()));
+      op->setAttr(attr.getName(),
+                  FlatSymbolRefAttr::get(op->getContext(), cloned.getName()));
       break;
     }
   }
@@ -155,7 +195,7 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
   for (OpResult result : llvm::reverse(op->getResults())) {
     if (!result.use_empty()) continue;
     int result_idx = result.getResultNumber();
-    for (FuncOp func : cloned_branches)
+    for (func::FuncOp func : cloned_branches)
       func.front().getTerminator()->eraseOperand(result_idx);
   }
 
@@ -163,7 +203,7 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
   // those as well.
   int num_args = cloned_branches[0].getNumArguments();
   llvm::BitVector used_args(num_args);
-  for (FuncOp func : branches) {
+  for (func::FuncOp func : branches) {
     for (BlockArgument arg : func.getArguments()) {
       if (!arg.use_empty()) used_args.set(arg.getArgNumber());
     }
@@ -175,7 +215,7 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
     // Traverse arguments backward so that indices to be deleted stay unchanged.
     for (int idx = num_args - 1; idx >= 0; --idx) {
       if (used_args.test(idx)) continue;
-      for (FuncOp func : cloned_branches) func.eraseArgument(idx);
+      for (func::FuncOp func : cloned_branches) func.eraseArgument(idx);
       // For if/case, arg #i of attached function corresponds to operand #i+1
       op->eraseOperand(idx + 1);
     }
@@ -183,10 +223,10 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
 
   // Patch up function types (with less number of return values and potentially
   // less number of arguments)
-  for (FuncOp func : cloned_branches) {
-    func.setType(FunctionType::get(
-        func.front().getArgumentTypes(),
-        func.front().getTerminator()->getOperandTypes(), func.getContext()));
+  for (func::FuncOp func : cloned_branches) {
+    func.setType(
+        FunctionType::get(func.getContext(), func.front().getArgumentTypes(),
+                          func.front().getTerminator()->getOperandTypes()));
   }
 
   EliminateUnusedResults(op);
@@ -194,8 +234,8 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
 
 // Eliminated unused results from a functional while.
 void EliminateUnusedResultsForWhile(TF::WhileOp op) {
-  FuncOp cond = op.cond_function();
-  FuncOp body = op.body_function();
+  func::FuncOp cond = op.cond_function();
+  func::FuncOp body = op.body_function();
 
   llvm::BitVector can_eliminate(op.getNumResults());
   for (OpResult result : llvm::reverse(op.getResults())) {
@@ -215,10 +255,12 @@ void EliminateUnusedResultsForWhile(TF::WhileOp op) {
 
   if (can_eliminate.empty()) return;
 
-  FuncOp cloned_cond = CloneFunctionIfNeeded(cond);
-  FuncOp cloned_body = CloneFunctionIfNeeded(body);
-  op.condAttr(FlatSymbolRefAttr::get(cloned_cond.getName(), op.getContext()));
-  op.bodyAttr(FlatSymbolRefAttr::get(cloned_body.getName(), op.getContext()));
+  func::FuncOp cloned_cond = CloneFunctionIfNeeded(cond);
+  func::FuncOp cloned_body = CloneFunctionIfNeeded(body);
+  op.setCondAttr(
+      FlatSymbolRefAttr::get(op.getContext(), cloned_cond.getName()));
+  op.setBodyAttr(
+      FlatSymbolRefAttr::get(op.getContext(), cloned_body.getName()));
 
   // Drop cond/body args and return value. WhileOp result will be dropped later
   // in EliminateUnusedResults. Traverse in reverse order so that indices to be
@@ -231,10 +273,10 @@ void EliminateUnusedResultsForWhile(TF::WhileOp op) {
   }
 
   // Patch up branch function types.
-  for (FuncOp func : {cloned_cond, cloned_body}) {
-    func.setType(FunctionType::get(
-        func.front().getArgumentTypes(),
-        func.front().getTerminator()->getOperandTypes(), func.getContext()));
+  for (func::FuncOp func : {cloned_cond, cloned_body}) {
+    func.setType(
+        FunctionType::get(func.getContext(), func.front().getArgumentTypes(),
+                          func.front().getTerminator()->getOperandTypes()));
   }
   EliminateUnusedResults(op, &can_eliminate);
 }
@@ -242,7 +284,8 @@ void EliminateUnusedResultsForWhile(TF::WhileOp op) {
 // For resource results, replace all uses with the resource input to which the
 // result is tied to. After this, resource outputs of this op are expected to be
 // unused.
-LogicalResult ForwardCommonArgToOutput(Operation *op, ArrayRef<FuncOp> branches,
+LogicalResult ForwardCommonArgToOutput(Operation *op,
+                                       ArrayRef<func::FuncOp> branches,
                                        ValueRange branch_args,
                                        bool &has_resource_result) {
   // For while, the branch inputs and outputs need to match.
@@ -255,8 +298,8 @@ LogicalResult ForwardCommonArgToOutput(Operation *op, ArrayRef<FuncOp> branches,
 
     has_resource_result = true;
     int result_idx = result.getResultNumber();
-    Optional<int> common_arg_index;
-    for (FuncOp func : branches) {
+    std::optional<int> common_arg_index;
+    for (func::FuncOp func : branches) {
       auto ret = func.front().getTerminator();
       auto block_arg = ret->getOperand(result_idx).dyn_cast<BlockArgument>();
       if (!block_arg) {
@@ -264,23 +307,23 @@ LogicalResult ForwardCommonArgToOutput(Operation *op, ArrayRef<FuncOp> branches,
                << result_idx << " not tied to function argument for branch @"
                << func.getName();
       }
-      if (!common_arg_index.hasValue()) {
+      if (!common_arg_index.has_value()) {
         common_arg_index = block_arg.getArgNumber();
-      } else if (common_arg_index.getValue() != block_arg.getArgNumber()) {
+      } else if (common_arg_index.value() != block_arg.getArgNumber()) {
         return op->emitError("result #")
                << result_idx
                << " is not tied to the same argument across all branches";
       }
     }
 
-    if (io_match && result_idx != common_arg_index.getValue()) {
+    if (io_match && result_idx != common_arg_index.value()) {
       return op->emitOpError("Result #")
              << result_idx << " is tied to argument #"
-             << common_arg_index.getValue();
+             << common_arg_index.value();
     }
 
     // Forward the corresponding input to the output
-    result.replaceAllUsesWith(branch_args[common_arg_index.getValue()]);
+    result.replaceAllUsesWith(branch_args[common_arg_index.value()]);
   }
   return success();
 }
@@ -288,9 +331,9 @@ LogicalResult ForwardCommonArgToOutput(Operation *op, ArrayRef<FuncOp> branches,
 // Canonicalizes a function if. Forwards input argument to resource results and
 // then deletes the resource results.
 LogicalResult CanonicalizeFunctionalIfCase(Operation *op,
-                                           ArrayRef<FuncOp> branches,
+                                           ArrayRef<func::FuncOp> branches,
                                            ValueRange branch_args) {
-  for (FuncOp func : branches) {
+  for (func::FuncOp func : branches) {
     if (failed(CleanupAndCanonicalize(func))) return failure();
   }
 
@@ -310,7 +353,7 @@ LogicalResult CanonicalizeFunctionalIfCase(Operation *op,
 // Canonicalizes a functional while. Forwards common argument to results and
 // drop resource results if posible.
 LogicalResult CanonicalizeFunctionalWhile(TF::WhileOp op) {
-  for (FuncOp func : {op.cond_function(), op.body_function()}) {
+  for (func::FuncOp func : {op.cond_function(), op.body_function()}) {
     if (failed(CleanupAndCanonicalize(func))) return failure();
   }
 
@@ -369,28 +412,29 @@ LogicalResult CanonicalizeRegionIfCaseCluster(Operation *op) {
 // the body, the result is replaced with the operand and all argument/results
 // and retuns values corresponding to that result are dropped.
 LogicalResult CanonicalizeWhileRegion(TF::WhileRegionOp op) {
-  Region &body = op.body();
-  Region &cond = op.cond();
+  Region &body = op.getBody();
+  Region &cond = op.getCond();
   llvm::BitVector can_eliminate(op.getNumResults());
 
   // Traverse in reverse order so that indices to be deleted stay unchanged.
   for (OpResult result : llvm::reverse(op.getResults())) {
     if (!IsResource(result)) continue;
     int result_idx = result.getResultNumber();
-    auto body_arg = body.front()
-                        .getTerminator()
-                        ->getOperand(result_idx)
-                        .dyn_cast<BlockArgument>();
-    if (!body_arg || body_arg.getArgNumber() != result_idx) {
+    Operation *yield_op = body.front().getTerminator();
+    Value yield_operand = yield_op->getOperand(result_idx);
+    Value while_operand = op.getOperand(result_idx);
+    Value body_arg = body.getArgument(result_idx);
+    Value cond_arg = cond.getArgument(result_idx);
+    if (yield_operand != body_arg && yield_operand != while_operand) {
       return op.emitOpError("Result #") << result_idx << " is not tied to arg #"
                                         << result_idx << " of the body";
     }
-    body.getArgument(result_idx).replaceAllUsesWith(op.getOperand(result_idx));
-    cond.getArgument(result_idx).replaceAllUsesWith(op.getOperand(result_idx));
+    body_arg.replaceAllUsesWith(while_operand);
+    cond_arg.replaceAllUsesWith(while_operand);
+    result.replaceAllUsesWith(while_operand);
     body.front().getTerminator()->eraseOperand(result_idx);
     body.eraseArgument(result_idx);
     cond.eraseArgument(result_idx);
-    result.replaceAllUsesWith(op.getOperand(result_idx));
     op.getOperation()->eraseOperand(result_idx);
     can_eliminate.set(result_idx);
   }
@@ -418,11 +462,12 @@ LogicalResult CleanupAndCanonicalize(Operation *parent_op) {
 
     if (auto if_op = dyn_cast<TF::IfOp>(op)) {
       result = CanonicalizeFunctionalIfCase(
-          op, {if_op.then_function(), if_op.else_function()}, if_op.input());
+          op, {if_op.then_function(), if_op.else_function()}, if_op.getInput());
     } else if (auto case_op = dyn_cast<TF::CaseOp>(op)) {
-      SmallVector<FuncOp, 4> branches;
+      SmallVector<func::FuncOp, 4> branches;
       case_op.get_branch_functions(branches);
-      result = CanonicalizeFunctionalIfCase(case_op, branches, case_op.input());
+      result =
+          CanonicalizeFunctionalIfCase(case_op, branches, case_op.getInput());
     } else if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
       if (while_op.cond_function().walk(check_while_cond).wasInterrupted())
         return WalkResult::interrupt();
@@ -431,12 +476,12 @@ LogicalResult CleanupAndCanonicalize(Operation *parent_op) {
                    op)) {
       result = CanonicalizeRegionIfCaseCluster(op);
     } else if (auto while_region = dyn_cast<TF::WhileRegionOp>(op)) {
-      if (while_region.cond().walk(check_while_cond).wasInterrupted())
+      if (while_region.getCond().walk(check_while_cond).wasInterrupted())
         return WalkResult::interrupt();
       // For while region, the body input and output arg should match.
-      CanonicalizeWhileRegion(while_region);
+      result = CanonicalizeWhileRegion(while_region);
     } else if (auto call = dyn_cast<CallOpInterface>(op)) {
-      FuncOp func = dyn_cast<FuncOp>(call.resolveCallable());
+      func::FuncOp func = dyn_cast<func::FuncOp>(call.resolveCallable());
       if (!func) return WalkResult::interrupt();
       result = CleanupAndCanonicalize(func);
     }
@@ -450,7 +495,7 @@ LogicalResult CleanupAndCanonicalize(Operation *parent_op) {
 
 namespace TF {
 
-LogicalResult CleanupAndCanonicalizeForResourceOpLifting(FuncOp func) {
+LogicalResult CleanupAndCanonicalizeForResourceOpLifting(func::FuncOp func) {
   return CleanupAndCanonicalize(func);
 }
 

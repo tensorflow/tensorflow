@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_PYTHON_UTIL_PYTHON_API_INFO_H_
-#define TENSORFLOW_PYTHON_UTIL_PYTHON_API_INFO_H_
+#ifndef TENSORFLOW_PYTHON_FRAMEWORK_PYTHON_API_INFO_H_
+#define TENSORFLOW_PYTHON_FRAMEWORK_PYTHON_API_INFO_H_
 
 #include <Python.h>
 
@@ -112,7 +112,7 @@ class PythonAPIInfo {
   // single `int` attribute.
   struct InputsWithNumberAttr {
     Attribute* number_attr;                      // not owned.
-    int64 default_length;                        // -1 for no default.
+    int64_t default_length;                      // -1 for no default.
     std::vector<ParamIndex> tensor_list_params;  // list(tensor) inputs.
   };
 
@@ -123,7 +123,7 @@ class PythonAPIInfo {
   struct InferredAttributes {
     std::vector<DataType> types;
     std::vector<std::vector<DataType>> type_lists;
-    std::vector<int64> lengths;
+    std::vector<int64_t> lengths;
   };
 
   // Constructs a new PythonAPIInfo.
@@ -259,7 +259,7 @@ class PythonAPIInfo {
 
   ABSL_MUST_USE_RESULT
   bool InferLengthAttributes(const absl::Span<PyObject*> params,
-                             std::vector<int64>& inferred_length_attrs) const;
+                             std::vector<int64_t>& inferred_length_attrs) const;
 
   // ==========================================================================
   // Member Variables
@@ -295,4 +295,4 @@ class PythonAPIInfo {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PYTHON_UTIL_PYTHON_API_INFO_H_
+#endif  // TENSORFLOW_PYTHON_FRAMEWORK_PYTHON_API_INFO_H_

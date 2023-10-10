@@ -19,18 +19,17 @@
 Symbols in this file are deprecated. See replacements in
 tensorflow/python/training/trackable and tensorflow/python/training/saving.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
+import glob
 import os.path
+import threading
 import time
 
 import numpy as np
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.core.protobuf import trackable_object_graph_pb2
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -46,12 +45,12 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import checkpoint_management
+from tensorflow.python.saved_model.pywrap_saved_model import metrics
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training import training_util
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
 
@@ -65,8 +64,34 @@ checkpoint_exists = checkpoint_management.checkpoint_exists
 get_checkpoint_mtimes = checkpoint_management.get_checkpoint_mtimes
 remove_checkpoint = checkpoint_management.remove_checkpoint
 
+# Captures the timestamp of the first Saver object instantiation or end of a
+# save operation. Can be accessed by multiple Saver instances.
+_END_TIME_OF_LAST_WRITE = None
+_END_TIME_OF_LAST_WRITE_LOCK = threading.Lock()
 
-class BaseSaverBuilder(object):
+# API label for cell name used in checkpoint metrics.
+_SAVER_LABEL = "saver_v1"
+
+
+def _get_duration_microseconds(start_time_seconds, end_time_seconds):
+  if end_time_seconds < start_time_seconds:
+    # Avoid returning negative value in case of clock skew.
+    return 0
+  return round((end_time_seconds - start_time_seconds) * 1000000)
+
+
+def _get_checkpoint_size(prefix):
+  """Calculates filesize of checkpoint based on prefix."""
+  size = 0
+  # Gather all files beginning with prefix (.index plus sharded data files).
+  files = glob.glob("{}*".format(prefix))
+  for file in files:
+    # Use TensorFlow's C++ FileSystem API.
+    size += metrics.CalculateFileSize(file)
+  return size
+
+
+class BaseSaverBuilder:
   """Base class for Savers.
 
   Can be extended to create different Ops.
@@ -228,7 +253,8 @@ class BaseSaverBuilder(object):
     # Transformations:
     # * Users pass in "save_path" in save() and restore().  Say "myckpt".
     # * checkpoint_prefix gets fed <save_path><_SHARDED_SUFFIX>.
-    #
+    # * If checkpoint_prefix is a S3 bucket path ".part" is appended to it
+    # * Otherwise _temp/part is appended which is normalized relative to the OS
     # Example:
     #   During runtime, a temporary directory is first created, which contains
     #   files
@@ -254,7 +280,7 @@ class BaseSaverBuilder(object):
       _SHARDED_SUFFIX = array_ops.where(
           string_ops.regex_full_match(checkpoint_prefix, "^s3://.*"),
           constant_op.constant(".part"),
-          constant_op.constant("_temp/part"))
+          constant_op.constant(os.path.normpath("_temp/part")))
       tmp_checkpoint_prefix = string_ops.string_join(
           [checkpoint_prefix, _SHARDED_SUFFIX])
 
@@ -485,6 +511,9 @@ class BaseSaverBuilder(object):
       raise ValueError("save and restore operations need to be built together "
                        " when eager execution is not enabled.")
 
+    if not isinstance(names_to_saveables, dict):
+      names_to_saveables = saveable_object_util.op_list_to_dict(
+          names_to_saveables)
     saveables = saveable_object_util.validate_and_slice_inputs(
         names_to_saveables)
     if max_to_keep is None:
@@ -610,8 +639,71 @@ def _get_saver_or_default():
 
 
 @tf_export(v1=["train.Saver"])
-class Saver(object):
+class Saver:
+  # pylint: disable=line-too-long
   """Saves and restores variables.
+
+  @compatibility(TF2)
+  `tf.compat.v1.train.Saver` is not supported for saving and restoring
+  checkpoints in TF2. Please switch to `tf.train.Checkpoint` or
+  `tf.keras.Model.save_weights`, which perform a more robust [object-based
+  saving](https://www.tensorflow.org/guide/checkpoint#loading_mechanics).
+
+  ### How to Rewrite Checkpoints
+
+  Please rewrite your checkpoints immediately using the object-based checkpoint
+  APIs.
+
+  You can load a name-based checkpoint written by `tf.compat.v1.train.Saver`
+  using `tf.train.Checkpoint.restore` or `tf.keras.Model.load_weights`. However,
+  you may have to change the names of the variables in your model to match the
+  variable names in the name-based checkpoint, which can be viewed with
+  `tf.train.list_variables(path)`.
+
+  Another option is to create an `assignment_map` that maps the name of the
+  variables in the name-based checkpoint to the variables in your model, eg:
+  ```
+  {
+      'sequential/dense/bias': model.variables[0],
+      'sequential/dense/kernel': model.variables[1]
+  }
+  ```
+  and use `tf.compat.v1.train.init_from_checkpoint(path, assignment_map)` to
+  restore the name-based checkpoint.
+
+  After restoring, re-encode your checkpoint
+  using `tf.train.Checkpoint.save` or `tf.keras.Model.save_weights`.
+
+  See the [Checkpoint compatibility](
+  https://www.tensorflow.org/guide/migrate#checkpoint_compatibility)
+  section of the migration guide for more details.
+
+
+  ### Checkpoint Management in TF2
+
+  Use `tf.train.CheckpointManager` to manage checkpoints in TF2.
+  `tf.train.CheckpointManager` offers equivalent `keep_checkpoint_every_n_hours`
+  and `max_to_keep` parameters.
+
+  To recover the latest checkpoint,
+
+  ```
+  checkpoint = tf.train.Checkpoint(model)
+  manager = tf.train.CheckpointManager(checkpoint)
+  status = checkpoint.restore(manager.latest_checkpoint)
+  ```
+
+  `tf.train.CheckpointManager` also writes a [`CheckpointState` proto]
+  (https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/training/checkpoint_state.proto)
+  which contains the timestamp when each checkpoint was created.
+
+  ### Writing `MetaGraphDef`s in TF2
+
+  To replace, `tf.compat.v1.train.Saver.save(write_meta_graph=True)`, use
+  `tf.saved_model.save` to write the `MetaGraphDef` (which is contained in
+  `saved_model.pb`).
+
+  @end_compatibility
 
   See [Variables](https://tensorflow.org/guide/variables)
   for an overview of variables, saving and restoring.
@@ -668,7 +760,7 @@ class Saver(object):
   saver = tf.compat.v1.train.Saver(...variables...)
   # Launch the graph and train, saving the model every 1,000 steps.
   sess = tf.compat.v1.Session()
-  for step in xrange(1000000):
+  for step in range(1000000):
       sess.run(..training_op..)
       if step % 1000 == 0:
           # Append the step number to the checkpoint name:
@@ -684,6 +776,8 @@ class Saver(object):
   If you create several savers, you can specify a different filename for the
   protocol buffer file in the call to `save()`.
   """
+
+  # pylint: enable=line-too-long
 
   def __init__(self,
                var_list=None,
@@ -769,8 +863,8 @@ class Saver(object):
       write_version: controls what format to use when saving checkpoints.  It
         also affects certain filepath matching logic.  The V2 format is the
         recommended choice: it is much more optimized than V1 in terms of memory
-          required and latency incurred during restore.  Regardless of this
-          flag, the Saver is able to restore from both V2 and V1 checkpoints.
+        required and latency incurred during restore.  Regardless of this flag,
+        the Saver is able to restore from both V2 and V1 checkpoints.
       pad_step_number: if True, pads the global step number in the checkpoint
         filepaths to some fixed width (8 by default).  This is turned off by
         default.
@@ -796,6 +890,11 @@ class Saver(object):
     saving. These APIs will load checkpoints written by `Saver`.
     @end_compatibility
     """
+    global _END_TIME_OF_LAST_WRITE
+    with _END_TIME_OF_LAST_WRITE_LOCK:
+      if _END_TIME_OF_LAST_WRITE is None:
+        _END_TIME_OF_LAST_WRITE = time.time()
+
     if defer_build and var_list:
       raise ValueError(
           "If `var_list` is provided then build cannot be deferred. "
@@ -1119,9 +1218,9 @@ class Saver(object):
       write_state: `Boolean` indicating whether or not to write the
         `CheckpointStateProto`.
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-        removed from the NodeDefs. For a detailed guide, see
-        [Stripping Default-Valued
-          Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+        removed from the NodeDefs. For a detailed guide, see [Stripping
+        Default-Valued
+        Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
       save_debug_info: If `True`, save the GraphDebugInfo to a separate file,
         which in the same directory of save_path and with `_debug` added before
         the file extension. This is only enabled when `write_meta_graph` is
@@ -1140,6 +1239,7 @@ class Saver(object):
       RuntimeError: If save and restore ops weren't built.
     """
     # pylint: enable=line-too-long
+    start_time = time.time()
     if not self._is_built and not context.executing_eagerly():
       raise RuntimeError(
           "`build()` should be called before save if defer_build==True")
@@ -1205,6 +1305,18 @@ class Saver(object):
                   save_path))
         raise exc
 
+    end_time = time.time()
+    metrics.AddCheckpointWriteDuration(
+        api_label=_SAVER_LABEL,
+        microseconds=_get_duration_microseconds(start_time, end_time))
+    global _END_TIME_OF_LAST_WRITE
+    with _END_TIME_OF_LAST_WRITE_LOCK:
+      metrics.AddTrainingTimeSaved(
+          api_label=_SAVER_LABEL,
+          microseconds=_get_duration_microseconds(_END_TIME_OF_LAST_WRITE,
+                                                  end_time))
+      _END_TIME_OF_LAST_WRITE = end_time
+
     if write_meta_graph:
       meta_graph_filename = checkpoint_management.meta_graph_filename(
           checkpoint_file, meta_graph_suffix=meta_graph_suffix)
@@ -1218,6 +1330,9 @@ class Saver(object):
     if self._is_empty:
       return None
     else:
+      metrics.RecordCheckpointSize(
+          api_label=_SAVER_LABEL,
+          filesize=_get_checkpoint_size(model_checkpoint_path))
       return model_checkpoint_path
 
   def export_meta_graph(self,
@@ -1243,9 +1358,9 @@ class Saver(object):
         graph (both Save/Restore ops and SaverDefs) that are not associated with
         this Saver.
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-        removed from the NodeDefs. For a detailed guide, see
-        [Stripping Default-Valued
-          Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+        removed from the NodeDefs. For a detailed guide, see [Stripping
+        Default-Valued
+        Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
       save_debug_info: If `True`, save the GraphDebugInfo to a separate file,
         which in the same directory of filename and with `_debug` added before
         the file extension.
@@ -1284,6 +1399,7 @@ class Saver(object):
     Raises:
       ValueError: If save_path is None or not a valid checkpoint.
     """
+    start_time = time.time()
     if self._is_empty:
       return
     if save_path is None:
@@ -1337,6 +1453,9 @@ class Saver(object):
       # We add a more reasonable error message here to help users (b/110263146)
       raise _wrap_restore_error_with_msg(
           err, "a mismatch between the current graph and the graph")
+    metrics.AddCheckpointReadDuration(
+        api_label=_SAVER_LABEL,
+        microseconds=_get_duration_microseconds(start_time, time.time()))
 
   @staticmethod
   def _add_collection_def(meta_graph_def, key, export_scope=None):
@@ -1381,7 +1500,7 @@ def import_meta_graph(meta_graph_or_file,
   # Remember the training_op we want to run by adding it to a collection.
   tf.compat.v1.add_to_collection('train_op', train_op)
   sess = tf.compat.v1.Session()
-  for step in xrange(1000000):
+  for step in range(1000000):
       sess.run(train_op)
       if step % 1000 == 0:
           # Saves checkpoint, which by default also exports a meta_graph
@@ -1400,7 +1519,7 @@ def import_meta_graph(meta_graph_or_file,
     # tf.get_collection() returns a list. In this example we only want
     # the first one.
     train_op = tf.get_collection('train_op')[0]
-    for step in xrange(1000000):
+    for step in range(1000000):
       sess.run(train_op)
   ```
 
@@ -1561,8 +1680,9 @@ def export_meta_graph(filename=None,
       (both Save/Restore ops and SaverDefs) that are not associated with the
       provided SaverDef.
     strip_default_attrs: Boolean. If `True`, default-valued attributes will be
-      removed from the NodeDefs. For a detailed guide, see
-      [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+      removed from the NodeDefs. For a detailed guide, see [Stripping
+      Default-Valued
+      Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
     save_debug_info: If `True`, save the GraphDebugInfo to a separate file,
       which in the same directory of filename and with `_debug` added before the
       file extend.
@@ -1691,6 +1811,8 @@ def saver_from_object_based_checkpoint(checkpoint_path,
   if builder is None:
     builder = BulkSaverBuilder()
 
+  if not isinstance(var_list, dict):
+    var_list = saveable_object_util.op_list_to_dict(var_list)
   saveables = saveable_object_util.validate_and_slice_inputs(var_list)
   current_names = set()
   for saveable in saveables:

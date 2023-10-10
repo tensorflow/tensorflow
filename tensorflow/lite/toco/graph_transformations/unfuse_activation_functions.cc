@@ -34,7 +34,7 @@ namespace toco {
 
   // If a conv operation has an im2col array, yield: it should be dropped first.
   if ((op->type == OperatorType::kConv) && (op->outputs.size() == 2)) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   Operator* ac_op = nullptr;
@@ -49,7 +49,7 @@ namespace toco {
       ac_op = new Relu1Operator;
       break;
     default:
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
   }
 
   // At this point we know that the op has a fused activation function. At the
@@ -78,7 +78,7 @@ namespace toco {
   ac_op->inputs = {tmp_array_name};
   op->outputs = {tmp_array_name};
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

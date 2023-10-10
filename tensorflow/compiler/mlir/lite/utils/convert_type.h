@@ -19,7 +19,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -28,6 +28,9 @@ class Builder;
 }  // namespace mlir
 
 namespace tflite {
+// Convert the MLIR type to the corresponding TFLite tensor.
+tflite::TensorType ConvertTypeToTensorType(mlir::Type type);
+
 // Convert the scalar type of a TFlite tensor to the corresponding MLIR type.
 mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder);
 

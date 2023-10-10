@@ -41,7 +41,7 @@ Status DisablePrefetchLegacyAutotune::OptimizeAndCollectStats(
   if (!autotune_) {
     VLOG(1) << "The optimization disable_prefetch_legacy_autotune is not "
                "applied if autotune is off.";
-    return Status::OK();
+    return OkStatus();
   }
 
   MutableGraphView graph(output);
@@ -58,14 +58,7 @@ Status DisablePrefetchLegacyAutotune::OptimizeAndCollectStats(
     }
   }
 
-  return Status::OK();
-}
-
-void DisablePrefetchLegacyAutotune::Feedback(Cluster* cluster,
-                                             const GrapplerItem& item,
-                                             const GraphDef& optimize_output,
-                                             double result) {
-  // no-op
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(DisablePrefetchLegacyAutotune,

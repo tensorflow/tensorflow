@@ -17,27 +17,18 @@ limitations under the License.
 #ifdef INTEL_MKL
 #define EIGEN_USE_THREADS
 
-#include <algorithm>
-
-#include "mkldnn.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/mkl/mkl_pooling_ops_common.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/mkl_types.h"
-#include "tensorflow/core/util/mkl_util.h"
-#include "tensorflow/core/util/padding.h"
 
-using mkldnn::algorithm;
-using mkldnn::engine;
-using mkldnn::error;
-using mkldnn::memory;
-#ifndef ENABLE_MKLDNN_V1
-using mkldnn::padding_kind;
-#endif
-using mkldnn::pooling_backward;
-using mkldnn::pooling_forward;
-using mkldnn::prop_kind;
+using dnnl::algorithm;
+using dnnl::engine;
+using dnnl::error;
+using dnnl::memory;
+using dnnl::pooling_backward;
+using dnnl::pooling_forward;
+using dnnl::prop_kind;
 
 namespace tensorflow {
 
@@ -49,7 +40,7 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
  public:
   explicit MklMaxPoolingOp(OpKernelConstruction* context)
       : MklPoolingForwardOpBase<T>(context) {
-    // In Max Pooling, MKL-DNN does not allow passing workspace as nullptr.
+    // In Max Pooling, oneDNN does not allow passing workspace as nullptr.
     // So we set workspace_enabled_ to true.
     this->workspace_enabled_ = true;
     this->native_format_ = native_format;
@@ -108,27 +99,29 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
 
       // Get the input memory descriptor
       memory::desc input_md =
-          dnn_shape_input.IsMklTensor()
-              ? dnn_shape_input.GetMklLayout()
-              : is_pool2d ? memory::desc(
-                                TFShapeToMklDnnDimsInNCHW(
-                                    input_tensor_shape, this->data_format_tf_),
-                                MklDnnType<T>(), this->data_format_mkldnn_)
-                          : memory::desc(
-                                TFShapeToMklDnnDimsInNCDHW(
-                                    input_tensor_shape, this->data_format_tf_),
-                                MklDnnType<T>(), this->data_format_mkldnn_);
+          dnn_shape_input.IsMklTensor() ? dnn_shape_input.GetMklLayout()
+          : is_pool2d
+              ? memory::desc(TFShapeToMklDnnDimsInNCHW(input_tensor_shape,
+                                                       this->data_format_tf_),
+                             MklDnnType<T>(), this->data_format_mkldnn_)
+              : memory::desc(TFShapeToMklDnnDimsInNCDHW(input_tensor_shape,
+                                                        this->data_format_tf_),
+                             MklDnnType<T>(), this->data_format_mkldnn_);
 
       // Get src/filter/stride/padding information
       memory::dims src_dims =
-          dnn_shape_input.IsMklTensor()
-              ? dnn_shape_input.GetSizesAsMklDnnDims()
-              : is_pool2d ? TFShapeToMklDnnDimsInNCHW(input_tensor.shape(),
-                                                      this->data_format_tf_)
-                          : TFShapeToMklDnnDimsInNCDHW(input_tensor.shape(),
-                                                       this->data_format_tf_);
+          dnn_shape_input.IsMklTensor() ? dnn_shape_input.GetSizesAsMklDnnDims()
+          : is_pool2d ? TFShapeToMklDnnDimsInNCHW(input_tensor.shape(),
+                                                  this->data_format_tf_)
+                      : TFShapeToMklDnnDimsInNCDHW(input_tensor.shape(),
+                                                   this->data_format_tf_);
       memory::dims filter_dims, strides, padding_left, padding_right;
+#ifndef ENABLE_ONEDNN_V3
       this->PoolParamsToDims(&pool_params, &filter_dims, &strides,
+#else
+      memory::dims dilations;
+      this->PoolParamsToDims(&pool_params, &filter_dims, &strides, &dilations,
+#endif  // !ENABLE_ONEDNN_V3
                              &padding_left, &padding_right, is_pool2d);
 
       // Get a pooling op from the cached pool
@@ -140,38 +133,36 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
         pooling_prop_kind = prop_kind::forward_inference;
       else
         pooling_prop_kind = prop_kind::forward_training;
-#ifdef ENABLE_MKLDNN_V1
-      // TODO(DNNL): Figure out what should be used for input_md.data.format
       MklPoolingParams fwdParams(
-          src_dims, output_dims_mkl_order, filter_dims, strides, padding_left,
-          padding_right, ALGORITHM::pooling_max, pooling_prop_kind,
-          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), input_md,
-          this->native_format_);
+#ifndef ENABLE_ONEDNN_V3
+          src_dims, output_dims_mkl_order, filter_dims, strides,
 #else
-      MklPoolingParams fwdParams(
-          src_dims, output_dims_mkl_order, filter_dims, strides, padding_left,
-          padding_right, ALGORITHM::pooling_max, pooling_prop_kind,
-          static_cast<MEMORY_FORMAT>(input_md.data.format), input_md);
-#endif
+          src_dims, output_dims_mkl_order, filter_dims, strides, dilations,
+#endif  // !ENABLE_ONEDNN_V3
+          padding_left, padding_right, dnnl::algorithm::pooling_max,
+          pooling_prop_kind,
+          static_cast<memory::format_tag>(this->data_format_mkldnn_), input_md,
+          this->native_format_);
+      // Create the oneDNN wrapper over Eigen threadpool and set max threads
+      // in oneDNN.
+      Eigen::ThreadPoolInterface* eigen_interface =
+          EigenThreadPoolFromTfContext(context);
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       pooling_fwd = MklPoolingFwdPrimitiveFactory<T>::Get(fwdParams);
       // Allocate output tensor.
       this->AllocateOutputTensor(context, *(pooling_fwd->GetPoolingFwdPd()),
                                  output_dims_mkl_order,
                                  this->tensor_format_mkldnn_, &output_tensor);
       OP_REQUIRES_OK(context, context->status());
-#ifndef ENABLE_MKLDNN_V1
-      dnn_data_output.SetUsrMem(output_dims_mkl_order,
-                                this->data_format_mkldnn_, output_tensor);
-#else
-      dnn_data_output.SetUsrMem(
-          GET_DST_DESC_FROM_OP_PD(pooling_fwd->GetPoolingFwdPd()),
-          output_tensor);
-#endif  // !ENABLE_MKLDNN_V1
+      dnn_data_output.SetUsrMem(pooling_fwd->GetPoolingFwdPd()->dst_desc(),
+                                output_tensor);
       const T* src_data = input_tensor.flat<T>().data();
 
       T* dst_data = output_tensor->flat<T>().data();
       std::shared_ptr<stream> fwd_cpu_stream;
-      fwd_cpu_stream.reset(CreateStream(context, pooling_fwd->GetEngine()));
+
+      fwd_cpu_stream.reset(CreateStream(&eigen_tp, pooling_fwd->GetEngine()));
 
       if (int8_forward_inference) {
         // Execute pooling op
@@ -180,8 +171,18 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
         // Pass min, max from input to output.
         const Tensor& min_input_t = MklGetInput(context, 1);
         const Tensor& max_input_t = MklGetInput(context, 2);
-        const float min_input = min_input_t.flat<float>()(0);
-        const float max_input = max_input_t.flat<float>()(0);
+        OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_input_t.shape()),
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "min_input shape must be rank 0 but is rank ",
+                        min_input_t.dims(), ", received shape: ",
+                        min_input_t.shape().DebugString())));
+        OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_input_t.shape()),
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "max_input shape must be rank 0 but is rank ",
+                        max_input_t.dims(), ", received shape: ",
+                        max_input_t.shape().DebugString())));
+        const float min_input = min_input_t.scalar<float>()();
+        const float max_input = max_input_t.scalar<float>()();
 
         Tensor* output_min = nullptr;
         Tensor* output_max = nullptr;
@@ -189,11 +190,11 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
         output_min_mkl_shape.SetMklTensor(false);
         output_max_mkl_shape.SetMklTensor(false);
         AllocateOutputSetMklShape(context, 1, &output_min, {},
-                                  output_min_mkl_shape);
+                                  output_min_mkl_shape, this->native_format_);
         AllocateOutputSetMklShape(context, 2, &output_max, {},
-                                  output_max_mkl_shape);
-        output_min->flat<float>()(0) = min_input;
-        output_max->flat<float>()(0) = max_input;
+                                  output_max_mkl_shape, this->native_format_);
+        output_min->scalar<float>()() = min_input;
+        output_max->scalar<float>()() = max_input;
       } else {
         MklDnnData<uint8> dnn_data_wksp(&cpu_engine_);
         AllocateWorkspaceTensor(context, *(pooling_fwd->GetPoolingFwdPd()),
@@ -204,18 +205,19 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
         // Execute pooling op.
         pooling_fwd->Execute(src_data, dst_data, ws_data, fwd_cpu_stream);
       }
-    } catch (mkldnn::error& e) {
+    } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
-      OP_REQUIRES_OK(context, errors::Aborted("Compute received an exception:",
-                                              error_msg));
+      OP_REQUIRES_OK(context,
+                     absl::AbortedError(absl::StrCat(
+                         "Compute received an exception:", error_msg)));
     }
   }
 
  private:
   const int kOutputTensorIndexWorkspace = 1;
-  engine cpu_engine_ = engine(ENGINE_CPU, 0);
+  engine cpu_engine_ = engine(engine::kind::cpu, 0);
 
   void AllocateWorkspaceTensor(
       OpKernelContext* context,
@@ -223,8 +225,7 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       MklDnnData<uint8>* dnn_data_wksp) {
     DCHECK(dnn_data_wksp);
     Tensor* workspace_tensor = nullptr;
-    MEMORY_PRIMITIVE_DESC workspace_pd =
-        pool_fwd_prim_desc.PRIMITIVE_DESC_WORKSPACE;
+    memory::desc workspace_pd = pool_fwd_prim_desc.workspace_desc();
     size_t workspace_bytes = workspace_pd.get_size();
     MklDnnShape workspace_mkl_shape;
     workspace_mkl_shape.SetMklTensor(false);
@@ -272,34 +273,51 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       MklPoolParameters pool_params;
       TensorShape orig_input_shape = orig_input_tensor.shape();
 
+      if (orig_input_tensor.NumElements() == 0 ||
+          grad_tensor.NumElements() == 0) {
+        Tensor* output = nullptr;
+        TensorShape output_shape;
+        auto shape_vec = orig_input_tensor.vec<int32>();
+        for (int64_t i = 0; i < orig_input_tensor.NumElements(); ++i) {
+          OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
+        }
+        OP_REQUIRES_OK(context,
+                       context->allocate_output(0, output_shape, &output));
+        output->flat<T>().setZero();
+        return;
+      }
       bool is_pool2d = (this->ksize_.size() == 4);
       this->InitMklPoolParameters(context, &pool_params, orig_input_mkl_shape,
                                   orig_input_shape);
 
       memory::dims filter_dims, strides, padding_left, padding_right;
+#ifndef ENABLE_ONEDNN_V3
       this->PoolParamsToDims(&pool_params, &filter_dims, &strides,
+#else
+      memory::dims dilations;
+      this->PoolParamsToDims(&pool_params, &filter_dims, &strides, &dilations,
+#endif  // !ENABLE_ONEDNN_V3
                              &padding_left, &padding_right, is_pool2d);
 
       memory::dims orig_input_dims_mkl_order =
           orig_input_mkl_shape.IsMklTensor()
               ? orig_input_mkl_shape.GetSizesAsMklDnnDims()
-              : is_pool2d ? TFShapeToMklDnnDimsInNCHW(orig_input_shape,
-                                                      this->data_format_tf_)
-                          : TFShapeToMklDnnDimsInNCDHW(orig_input_shape,
-                                                       this->data_format_tf_);
+          : is_pool2d ? TFShapeToMklDnnDimsInNCHW(orig_input_shape,
+                                                  this->data_format_tf_)
+                      : TFShapeToMklDnnDimsInNCDHW(orig_input_shape,
+                                                   this->data_format_tf_);
 
       memory::dims diff_dst_dims =
-          grad_mkl_shape.IsMklTensor()
-              ? grad_mkl_shape.GetSizesAsMklDnnDims()
-              : is_pool2d ? TFShapeToMklDnnDimsInNCHW(grad_tensor.shape(),
-                                                      this->data_format_tf_)
-                          : TFShapeToMklDnnDimsInNCDHW(grad_tensor.shape(),
-                                                       this->data_format_tf_);
+          grad_mkl_shape.IsMklTensor() ? grad_mkl_shape.GetSizesAsMklDnnDims()
+          : is_pool2d ? TFShapeToMklDnnDimsInNCHW(grad_tensor.shape(),
+                                                  this->data_format_tf_)
+                      : TFShapeToMklDnnDimsInNCDHW(grad_tensor.shape(),
+                                                   this->data_format_tf_);
 
       memory::dims output_dims_mkl_order;
       this->GetOutputDims(pool_params, &output_dims_mkl_order);
 
-      // get src mem desc
+      // Get src mem desc
       memory::desc src_md =
           orig_input_mkl_shape.IsMklTensor()
               ? orig_input_mkl_shape.GetMklLayout()
@@ -313,26 +331,27 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
               : memory::desc(diff_dst_dims, MklDnnType<T>(),
                              this->data_format_mkldnn_);
 
-#ifdef ENABLE_MKLDNN_V1
-      // TODO(DNNL): Find out what should be used for src_md.data.format.
       MklPoolingParams bwdParams(
           orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
-          strides, padding_left, padding_right, ALGORITHM::pooling_max,
-          prop_kind::forward_training,
-          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), src_md,
-          this->native_format_);
+#ifndef ENABLE_ONEDNN_V3
+          strides, padding_left, padding_right, dnnl::algorithm::pooling_max,
 #else
-      MklPoolingParams bwdParams(
-          orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
-          strides, padding_left, padding_right, ALGORITHM::pooling_max,
+          strides, dilations, padding_left, padding_right,
+          dnnl::algorithm::pooling_max,
+#endif  // !ENABLE_ONEDNN_V3
           prop_kind::forward_training,
-          static_cast<MEMORY_FORMAT>(src_md.data.format), src_md);
-#endif
+          static_cast<memory::format_tag>(this->data_format_mkldnn_), src_md,
+          this->native_format_);
+      Eigen::ThreadPoolInterface* eigen_interface =
+          EigenThreadPoolFromTfContext(context);
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       MklPoolingBwdPrimitive<T>* pooling_bwd =
           MklPoolingBwdPrimitiveFactory<T>::Get(bwdParams);
 
       std::shared_ptr<stream> bwd_cpu_stream;
-      bwd_cpu_stream.reset(CreateStream(context, pooling_bwd->GetEngine()));
+
+      bwd_cpu_stream.reset(CreateStream(&eigen_tp, pooling_bwd->GetEngine()));
       // Allocate output tensor and memory primitive.
       Tensor* output_tensor = nullptr;
       this->AllocateOutputTensor(context, *(pooling_bwd->GetPoolingBwdPd()),
@@ -344,13 +363,10 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           pooling_bwd->GetPoolingBwdPd();
       T* diff_dst_data = nullptr;
       if (!this->native_format_ &&
-          IS_DIFF_DST_REORDER_NEEDED(diff_dst_md, pooling_bwd_pd,
-                                     pooling_bwd)) {
+          (diff_dst_md != pooling_bwd_pd->diff_dst_desc())) {
         grad_dnn_data.SetUsrMem(diff_dst_md, &grad_tensor);
-        grad_dnn_data.CheckReorderToOpMem(
-            MEMORY_PD_WITHOUT_DATA(GET_DIFF_DST_DESC_FROM_OP_PD(pooling_bwd_pd),
-                                   cpu_engine_),
-            context);
+        grad_dnn_data.CheckReorderToOpMem(pooling_bwd_pd->diff_dst_desc(),
+                                          cpu_engine_, context);
         diff_dst_data =
             static_cast<T*>(grad_dnn_data.GetOpMem().get_data_handle());
       } else {
@@ -361,28 +377,18 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       void* ws_data = static_cast<void*>(
           const_cast<uint8*>(workspace_tensor.flat<uint8>().data()));
 
-#ifndef ENABLE_MKLDNN_V1
-      auto ws_md =
-          pooling_bwd->GetPoolingFwdPd()->PRIMITIVE_DESC_WORKSPACE.desc();
-      if (ws_md.data.format != pooling_bwd->GetWorkspaceMemoryFormat()) {
-        workspace_dnn_data.SetUsrMem(ws_md, &workspace_tensor);
-        workspace_dnn_data.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
-            GET_WORKSPACE_DESC_FROM_OP_PD(pooling_bwd_pd), cpu_engine_));
-        ws_data = workspace_dnn_data.GetOpMem().get_data_handle();
-      }
-#endif  // ENABLE_MKLDNN_V1
-
       T* diff_src_data = output_tensor->flat<T>().data();
 
       // Execute pooling op.
       pooling_bwd->Execute(diff_dst_data, diff_src_data, ws_data,
                            bwd_cpu_stream);
-    } catch (mkldnn::error& e) {
+    } catch (dnnl::error& e) {
       string error_msg = "Status:" + std::to_string(e.status) +
                          ", message: " + string(e.message) + ". in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
-      OP_REQUIRES_OK(context, errors::Aborted("Compute received an exception:",
-                                              error_msg));
+      OP_REQUIRES_OK(context,
+                     absl::AbortedError(absl::StrCat(
+                         "Compute received an exception:", error_msg)));
     }
   }
 
@@ -395,7 +401,7 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
   const int kInputTensorIndexOrigOutput = 1;
   const int kInputTensorIndexGradient = 2;
   const int kInputTensorIndexWorkspace = 3;
-  engine cpu_engine_ = engine(ENGINE_CPU, 0);
+  engine cpu_engine_ = engine(engine::kind::cpu, 0);
 };  // MklMaxPoolingGradOp
 
 #define REGISTER_MKL_MAXPOOL3D_KERNELS(T)                                     \
@@ -456,14 +462,20 @@ REGISTER_KERNEL_BUILDER(Name("_MklQuantizedMaxPool")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<quint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklMaxPoolingOp<CPUDevice, quint8>);
+                        MklMaxPoolingOp<CPUDevice, quint8, true>);
 
 REGISTER_KERNEL_BUILDER(Name("_MklQuantizedMaxPool")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<qint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
-                        MklMaxPoolingOp<CPUDevice, qint8>);
+                        MklMaxPoolingOp<CPUDevice, qint8, true>);
 
+REGISTER_KERNEL_BUILDER(
+    Name("_QuantizedMaxPool3D").Device(DEVICE_CPU).TypeConstraint<quint8>("T"),
+    MklMaxPoolingOp<CPUDevice, quint8, true>);
+REGISTER_KERNEL_BUILDER(
+    Name("_QuantizedMaxPool3D").Device(DEVICE_CPU).TypeConstraint<qint8>("T"),
+    MklMaxPoolingOp<CPUDevice, qint8, true>);
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

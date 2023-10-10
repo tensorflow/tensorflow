@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/compiler/xla/client/sharding_builder.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/client/sharding_builder.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -33,24 +33,25 @@ namespace tensorflow {
 // - explicit_sharding if explicit_sharding.has_value()
 // - a non-value if there is no assigned core or
 // - a sharding set as per xla::sharding_builder::AssignDevice.
-xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
+StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
     const string& device_name, int num_cores_per_replica,
-    absl::optional<xla::OpSharding> explicit_sharding = absl::nullopt);
+    std::optional<xla::OpSharding> explicit_sharding = std::nullopt,
+    std::optional<xla::OpMetadata> metadata = std::nullopt);
 
-xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
-    const Node& node, int num_cores_per_replica);
+StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
+    const Node& node, int num_cores_per_replica, bool add_metadata);
 
-xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
-    const NodeDef& node_def, int num_cores_per_replica);
+StatusOr<std::optional<xla::OpSharding>> ParseShardingFromDevice(
+    const NodeDef& node_def, int num_cores_per_replica, bool add_metadata);
 
-xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
-    const Edge& edge, int num_cores_per_replica);
+StatusOr<std::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
+    const Edge& edge, int num_cores_per_replica, bool add_metadata);
 
 void SetShardingDeviceAssignmentFromNode(const Node& src, Node* dst);
 
 // Get sharding inforamtion from node.
-xla::StatusOr<absl::optional<xla::OpSharding>> GetShardingFromNodeDef(
-    const NodeDef& node_def);
+StatusOr<std::optional<xla::OpSharding>> GetShardingFromNodeDef(
+    const NodeDef& node_def, bool add_metadata);
 
 }  // namespace tensorflow
 

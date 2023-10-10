@@ -13,15 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Benchmarks for `tf.data.Dataset.from_tensor_slices()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.experimental.ops import get_single_element
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import structured_function
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import gen_dataset_ops
@@ -33,7 +30,7 @@ class SingleThreadedFlatMapDataset(dataset_ops.UnaryDataset):
   def __init__(self, input_dataset, map_func):
     """See `Dataset.flat_map()` for details."""
     self._input_dataset = input_dataset
-    self._map_func = dataset_ops.StructuredFunctionWrapper(
+    self._map_func = structured_function.StructuredFunctionWrapper(
         map_func,
         self._transformation_name(),
         dataset=input_dataset,
@@ -58,7 +55,6 @@ class SingleThreadedFlatMapDataset(dataset_ops.UnaryDataset):
     return "SingleThreadedFlatMapDataset"
 
 
-# TODO(b/119837791): Add eager benchmarks.
 class FromTensorSlicesBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for `tf.data.Dataset.from_tensor_slices()`."""
 
@@ -70,13 +66,16 @@ class FromTensorSlicesBenchmark(benchmark_base.DatasetBenchmarkBase):
 
     input_data = np.random.randn(input_size)
 
-    dataset = (
-        dataset_ops.Dataset.from_tensor_slices(input_data).repeat(
-            num_epochs).batch(batch_size))
+    dataset = dataset_ops.Dataset.from_tensor_slices(input_data)
+    dataset = dataset.repeat(num_epochs).batch(batch_size)
 
     self.run_and_report_benchmark(
         dataset,
         num_elements=num_elements,
+        extras={
+            "model_name": "from_tensor_slices.benchmark.1",
+            "parameters": "%d.%d" % (input_size, batch_size),
+        },
         name="slice_repeat_batch_input_%d_batch_%d" % (input_size, batch_size))
 
   def benchmark_reshape_slice_repeat(self):
@@ -86,15 +85,16 @@ class FromTensorSlicesBenchmark(benchmark_base.DatasetBenchmarkBase):
 
     num_elements = num_epochs * reshape_dim[0]
 
-    input_data = np.random.randn(input_size)
-
-    dataset = (
-        dataset_ops.Dataset.from_tensor_slices(
-            input_data.reshape(*reshape_dim)).repeat(num_epochs))
+    data = np.random.randn(input_size).reshape(*reshape_dim)
+    dataset = dataset_ops.Dataset.from_tensor_slices(data).repeat(num_epochs)
 
     self.run_and_report_benchmark(
         dataset,
         num_elements=num_elements,
+        extras={
+            "model_name": "from_tensor_slices.benchmark.2",
+            "parameters": "%d" % input_size,
+        },
         name="reshape_slice_repeat_input_%d" % input_size,
     )
 
@@ -114,9 +114,10 @@ class FromTensorSlicesBenchmark(benchmark_base.DatasetBenchmarkBase):
         # attributes are currently only supported in graph mode.
         @def_function.function
         def make_dataset():
-          batched = dataset_ops.Dataset.from_tensors(
-              tensor).repeat(num_rows).batch(num_rows)  # pylint: disable=cell-var-from-loop
-          batched_tensor = get_single_element.get_single_element(batched)
+          # pylint: disable=cell-var-from-loop
+          dataset = dataset_ops.Dataset.from_tensors(tensor)
+          dataset = dataset.repeat(num_rows).batch(num_rows)
+          batched_tensor = get_single_element.get_single_element(dataset)
 
           dataset = dataset_ops.Dataset.from_tensors(batched_tensor).repeat()
           return SingleThreadedFlatMapDataset(
@@ -126,8 +127,12 @@ class FromTensorSlicesBenchmark(benchmark_base.DatasetBenchmarkBase):
             make_dataset(),
             num_elements=100000,
             iters=5,
-            name="slice_repeat_sparse_elements_per_row_%d_num_rows_%d" % (
-                non_zeros_per_row, num_rows))
+            extras={
+                "model_name": "from_tensor_slices.benchmark.3",
+                "parameters": "%d.%d" % (non_zeros_per_row, num_rows),
+            },
+            name="slice_repeat_sparse_elements_per_row_%d_num_rows_%d" %
+            (non_zeros_per_row, num_rows))
 
   def benchmark_slice_batch_cache_repeat(self):
     input_size = 10000
@@ -144,8 +149,12 @@ class FromTensorSlicesBenchmark(benchmark_base.DatasetBenchmarkBase):
     self.run_and_report_benchmark(
         dataset,
         num_elements=num_elements,
-        name="slice_batch_cache_repeat_input_%d_batch_%d" % (input_size,
-                                                             batch_size))
+        extras={
+            "model_name": "from_tensor_slices.benchmark.4",
+            "parameters": "%d.%d" % (input_size, batch_size),
+        },
+        name="slice_batch_cache_repeat_input_%d_batch_%d" %
+        (input_size, batch_size))
 
 
 if __name__ == "__main__":

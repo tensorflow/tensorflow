@@ -12,25 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# LINT.IfChange
 """Classes for different types of export output."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
-
-import six
 
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.saved_model import signature_def_utils
 
 
-class ExportOutput(object):
+class ExportOutput:
   """Represents an output of a model that can be served.
 
   These typically correspond to model heads.
@@ -58,7 +54,7 @@ class ExportOutput(object):
     if isinstance(key, tuple):
       key = self._SEPARATOR_CHAR.join(key)
 
-    if not isinstance(key, six.string_types):
+    if not isinstance(key, str):
       raise ValueError(
           '{} output key must be a string; got {}.'.format(error_label, key))
     return key
@@ -91,7 +87,7 @@ class ExportOutput(object):
     for key, value in outputs.items():
       error_name = error_label or single_output_default_name
       key = self._check_output_key(key, error_name)
-      if not isinstance(value, ops.Tensor):
+      if not isinstance(value, tensor.Tensor):
         raise ValueError(
             '{} output value must be a Tensor; got {}.'.format(
                 error_name, value))
@@ -133,18 +129,19 @@ class ClassificationOutput(ExportOutput):
           `Tensor` with the correct dtype.
     """
     if (scores is not None
-        and not (isinstance(scores, ops.Tensor)
+        and not (isinstance(scores, tensor.Tensor)
                  and scores.dtype.is_floating)):
       raise ValueError('Classification scores must be a float32 Tensor; '
                        'got {}'.format(scores))
     if (classes is not None
-        and not (isinstance(classes, ops.Tensor)
+        and not (isinstance(classes, tensor.Tensor)
                  and dtypes.as_dtype(classes.dtype) == dtypes.string)):
       raise ValueError('Classification classes must be a string Tensor; '
                        'got {}'.format(classes))
     if scores is None and classes is None:
-      raise ValueError('At least one of scores and classes must be set.')
-
+      raise ValueError('Cannot create a ClassificationOutput with empty '
+                       'arguments. At least one of `scores` and `classes` '
+                       'must be defined.')
     self._scores = scores
     self._classes = classes
 
@@ -158,12 +155,22 @@ class ClassificationOutput(ExportOutput):
 
   def as_signature_def(self, receiver_tensors):
     if len(receiver_tensors) != 1:
-      raise ValueError('Classification input must be a single string Tensor; '
-                       'got {}'.format(receiver_tensors))
+      raise ValueError(
+          'Classification signatures can only accept a single tensor input of '
+          'type tf.string. Please check to make sure that you have structured '
+          'the serving_input_receiver_fn so that it creates a single string '
+          'placeholder. If your model function expects multiple inputs, then '
+          'use `tf.io.parse_example()` to parse the string into multiple '
+          f'tensors.\n Received: {receiver_tensors}')
     (_, examples), = receiver_tensors.items()
     if dtypes.as_dtype(examples.dtype) != dtypes.string:
-      raise ValueError('Classification input must be a single string Tensor; '
-                       'got {}'.format(receiver_tensors))
+      raise ValueError(
+          'Classification signatures can only accept a single tensor input of '
+          'type tf.string. Please check to make sure that you have structured '
+          'the serving_input_receiver_fn so that it creates a single string '
+          'placeholder. If your model function expects multiple inputs, then '
+          'use `tf.io.parse_example()` to parse the string into multiple '
+          f'tensors.\n Received: {receiver_tensors}')
     return signature_def_utils.classification_signature_def(
         examples, self.classes, self.scores)
 
@@ -180,7 +187,7 @@ class RegressionOutput(ExportOutput):
     Raises:
       ValueError: if the value is not a `Tensor` with dtype tf.float32.
     """
-    if not (isinstance(value, ops.Tensor) and value.dtype.is_floating):
+    if not (isinstance(value, tensor.Tensor) and value.dtype.is_floating):
       raise ValueError('Regression output value must be a float32 Tensor; '
                        'got {}'.format(value))
     self._value = value
@@ -191,12 +198,22 @@ class RegressionOutput(ExportOutput):
 
   def as_signature_def(self, receiver_tensors):
     if len(receiver_tensors) != 1:
-      raise ValueError('Regression input must be a single string Tensor; '
-                       'got {}'.format(receiver_tensors))
+      raise ValueError(
+          'Regression signatures can only accept a single tensor input of '
+          'type tf.string. Please check to make sure that you have structured '
+          'the serving_input_receiver_fn so that it creates a single string '
+          'placeholder. If your model function expects multiple inputs, then '
+          'use `tf.io.parse_example()` to parse the string into multiple '
+          f'tensors.\n Received: {receiver_tensors}')
     (_, examples), = receiver_tensors.items()
     if dtypes.as_dtype(examples.dtype) != dtypes.string:
-      raise ValueError('Regression input must be a single string Tensor; '
-                       'got {}'.format(receiver_tensors))
+      raise ValueError(
+          'Regression signatures can only accept a single tensor input of '
+          'type tf.string. Please check to make sure that you have structured '
+          'the serving_input_receiver_fn so that it creates a single string '
+          'placeholder. If your model function expects multiple inputs, then '
+          'use `tf.io.parse_example()` to parse the string into multiple '
+          f'tensors.\n Received: {receiver_tensors}')
     return signature_def_utils.regression_signature_def(examples, self.value)
 
 
@@ -339,11 +356,11 @@ class _SupervisedOutput(ExportOutput):
 
       val_name = key + self._SEPARATOR_CHAR + self.METRIC_VALUE_SUFFIX
       op_name = key + self._SEPARATOR_CHAR + self.METRIC_UPDATE_SUFFIX
-      if not isinstance(metric_val, ops.Tensor):
+      if not isinstance(metric_val, tensor.Tensor):
         raise ValueError(
             '{} output value must be a Tensor; got {}.'.format(
                 key, metric_val))
-      if not (tensor_util.is_tensor(metric_op) or
+      if not (tensor_util.is_tf_type(metric_op) or
               isinstance(metric_op, ops.Operation)):
         raise ValueError(
             '{} update_op must be a Tensor or Operation; got {}.'.format(
@@ -352,7 +369,7 @@ class _SupervisedOutput(ExportOutput):
       # We must wrap any ops (or variables) in a Tensor before export, as the
       # SignatureDef proto expects tensors only. See b/109740581
       metric_op_tensor = metric_op
-      if not isinstance(metric_op, ops.Tensor):
+      if not isinstance(metric_op, tensor.Tensor):
         with ops.control_dependencies([metric_op]):
           metric_op_tensor = constant_op.constant([], name='metric_op_wrapper')
 

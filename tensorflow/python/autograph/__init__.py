@@ -12,41 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Conversion of plain Python into TensorFlow graph code.
+"""Conversion of eager-style Python into TensorFlow graph code.
 
 NOTE: In TensorFlow 2.0, AutoGraph is automatically applied when using
 `tf.function`. This module contains lower-level APIs for advanced use.
 
+AutoGraph transforms a subset of Python which operates on TensorFlow objects
+into equivalent TensorFlow graph code. When executing the graph, it has the same
+effect as if you ran the original code in eager mode.
+Python code which doesn't operate on TensorFlow objects remains functionally
+unchanged, but keep in mind that `tf.function` only executes such code at trace
+time, and generally will not be consistent with eager execution.
+
 For more information, see the
-[AutoGraph guide](https://www.tensorflow.org/guide/autograph).
-
-By equivalent graph code we mean code that generates a TensorFlow graph when
-run. The generated graph has the same effects as the original code when executed
-(for example with `tf.function` or `tf.compat.v1.Session.run`). In other words,
-using AutoGraph can be thought of as running Python in TensorFlow.
+[AutoGraph reference documentation](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/autograph/g3doc/reference/index.md),
+and the [tf.function guide](https://www.tensorflow.org/guide/function#autograph_transformations).
 """
-# TODO(b/119833526): Link to the new tf.function + autograph tutorial.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-# TODO(mdan): Bring only the relevant symbols to the top level.
-from tensorflow.python.autograph import operators
-from tensorflow.python.autograph import utils
-from tensorflow.python.autograph.core.converter import ConversionOptions
-from tensorflow.python.autograph.core.converter import Feature
-from tensorflow.python.autograph.impl.api import AutoGraphError
-from tensorflow.python.autograph.impl.api import convert
-from tensorflow.python.autograph.impl.api import converted_call
-from tensorflow.python.autograph.impl.api import do_not_convert
-from tensorflow.python.autograph.impl.api import StackTraceMapper
-from tensorflow.python.autograph.impl.api import to_code
-from tensorflow.python.autograph.impl.api import to_graph
-from tensorflow.python.autograph.lang.directives import set_element_type
-from tensorflow.python.autograph.lang.directives import set_loop_options
-from tensorflow.python.autograph.lang.special_functions import stack
-from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.util.all_util import remove_undocumented
 
 # TODO(mdan): Revisit this list once we finalize the generated code mechanism.

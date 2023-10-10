@@ -16,10 +16,11 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -55,8 +56,8 @@ cc_library(
         ":hexagon_implementation",
         ":utils",
         "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/hexagon/builders:op_builder",
         "//tensorflow/lite/delegates/hexagon/hexagon_nn:hexagon_nn_header",
         "//tensorflow/lite/delegates/utils:simple_delegate",
@@ -64,6 +65,14 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "@hexagon_nn//:hexagon_nn_ops",
     ],
+)
+
+cc_library(
+    name = "enable_hexagon_delegate",
+    defines = select({
+        "//tensorflow:arm_any": ["TFLITE_ENABLE_HEXAGON"],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -80,9 +89,14 @@ cc_library(
         ":utils",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/utils:simple_delegate",
-    ],
+    ] + select({
+        "//tensorflow:ios": [],
+        "//tensorflow:ios_x86_64": [],
+        "//tensorflow:macos": [],
+        "//conditions:default": [":enable_hexagon_delegate"],
+    }),
 )
 
 cc_library(
@@ -96,7 +110,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
     ],
 )
@@ -107,7 +121,7 @@ cc_test(
     linkopts = tflite_linkopts() + ["-lm"],
     deps = [
         ":utils",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string>
+#include <utility>
 
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 #if defined(__APPLE__)
 #include "TargetConditionals.h"
-#if TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR
-// Only enable metal delegate when using a real iPhone device.
+#if (TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR) || \
+    (TARGET_OS_OSX && TARGET_CPU_ARM64)
+// Only enable coreml delegate when using a real iPhone device or Apple Silicon.
 #define REAL_IPHONE_DEVICE
 #include "tensorflow/lite/delegates/coreml/coreml_delegate.h"
 #endif
@@ -41,6 +43,8 @@ class CoreMlDelegateProvider : public DelegateProvider {
   void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
+  std::pair<TfLiteDelegatePtr, int> CreateRankedTfLiteDelegate(
+      const ToolParams& params) const final;
 
   std::string GetName() const final { return "COREML"; }
 };
@@ -72,7 +76,7 @@ void CoreMlDelegateProvider::LogParams(const ToolParams& params,
 
 TfLiteDelegatePtr CoreMlDelegateProvider::CreateTfLiteDelegate(
     const ToolParams& params) const {
-  TfLiteDelegatePtr delegate(nullptr, [](TfLiteDelegate*) {});
+  TfLiteDelegatePtr delegate = CreateNullDelegate();
 
 #if defined(REAL_IPHONE_DEVICE)
   if (params.Get<bool>("use_coreml")) {
@@ -83,6 +87,12 @@ TfLiteDelegatePtr CoreMlDelegateProvider::CreateTfLiteDelegate(
         params.Get<int>("max_delegated_partitions");
     coreml_opts.min_nodes_per_partition =
         params.Get<int>("min_nodes_per_partition");
+#ifdef TFLITE_DEBUG_DELEGATE
+    coreml_opts.first_delegate_node_index =
+        params.Get<int>("first_delegate_node_index");
+    coreml_opts.last_delegate_node_index =
+        params.Get<int>("last_delegate_node_index");
+#endif  // TFLITE_DEBUG_DELEGATE
     delegate = TfLiteDelegatePtr(TfLiteCoreMlDelegateCreate(&coreml_opts),
                                  &TfLiteCoreMlDelegateDelete);
     if (!delegate) {
@@ -93,6 +103,17 @@ TfLiteDelegatePtr CoreMlDelegateProvider::CreateTfLiteDelegate(
 #endif
 
   return delegate;
+}
+
+std::pair<TfLiteDelegatePtr, int>
+CoreMlDelegateProvider::CreateRankedTfLiteDelegate(
+    const ToolParams& params) const {
+  auto ptr = CreateTfLiteDelegate(params);
+  int rank = 0;
+#if defined(REAL_IPHONE_DEVICE)
+  rank = params.GetPosition<bool>("use_coreml");
+#endif
+  return std::make_pair(std::move(ptr), rank);
 }
 
 }  // namespace tools

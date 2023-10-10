@@ -20,7 +20,7 @@ application.
 ## To build/install/run
 
 (0) Refer to
-https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android
+https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/android/test
 to edit the `WORKSPACE` to configure the android NDK/SDK.
 
 (1) Build for your specific platform, e.g.:
@@ -45,7 +45,7 @@ filegroup(
 ```
 
 you need to modify tflite_hexagon_nn_skel_libraries macro in
-tensorflow/lite/special_rules.bzl to specifiy the build target.
+tensorflow/lite/special_rules.bzl to specify the build target.
 
 ```
 return ["//third_party/hexagon_nn_skel:libhexagon_nn_skel"]
@@ -82,9 +82,9 @@ adb shell am start -S \
 (5) The results will be available in Android's logcat, e.g.:
 
 ```
-adb logcat | grep "Average inference"
+adb logcat | grep "Inference timings in us"
 
-... tflite  : Average inference timings in us: Warmup: 91471, Init: 4108, Inference: 80660.1
+... tflite  : Inference timings in us: Init: 1007529, First inference: 4098, Warmup (avg): 1686.59, Inference (avg): 1687.92
 ```
 
 ## To trace Tensorflow Lite internals including operator invocation
@@ -128,9 +128,9 @@ adb shell am start -S \
 messages, e.g.,
 
 ```
-adb logcat | grep "Average inference"
+adb logcat | grep "Inference timings in us"
 
-... tflite  : Average inference timings in us: Warmup: 91471, Init: 4108, Inference: 80660.1
+... tflite  : Inference timings in us: Init: 1007529, First inference: 4098, Warmup (avg): 1686.59, Inference (avg): 1687.92
 ```
 
 (9) Stop tracing by tapping either the System Tracing tile in the Quick Settings

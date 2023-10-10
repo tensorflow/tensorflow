@@ -49,14 +49,19 @@ class SummaryAudioOp : public OpKernel {
     float sample_rate = sample_rate_attr_;
     if (!has_sample_rate_attr_) {
       const Tensor& sample_rate_tensor = c->input(2);
+      OP_REQUIRES(c,
+                  sample_rate_tensor.IsAligned() &&
+                      sample_rate_tensor.NumElements() == 1,
+                  errors::InvalidArgument(
+                      "sample_rate must be rank-0 or contain a single value"));
       sample_rate = sample_rate_tensor.scalar<float>()();
     }
     OP_REQUIRES(c, sample_rate > 0.0f,
                 errors::InvalidArgument("sample_rate must be > 0"));
 
     const int batch_size = tensor.dim_size(0);
-    const int64 length_frames = tensor.dim_size(1);
-    const int64 num_channels =
+    const int64_t length_frames = tensor.dim_size(1);
+    const int64_t num_channels =
         tensor.dims() == 2 ? 1 : tensor.dim_size(tensor.dims() - 1);
 
     Summary s;
@@ -77,17 +82,16 @@ class SummaryAudioOp : public OpKernel {
 
       auto values =
           tensor.shaped<float, 3>({batch_size, length_frames, num_channels});
-      auto channels_by_frames = typename TTypes<float>::ConstMatrix(
-          &values(i, 0, 0),
-          Eigen::DSizes<Eigen::DenseIndex, 2>(length_frames, num_channels));
+      const float* data =
+          tensor.NumElements() == 0 ? nullptr : &values(i, 0, 0);
+
       size_t sample_rate_truncated = lrintf(sample_rate);
       if (sample_rate_truncated == 0) {
         sample_rate_truncated = 1;
       }
-      OP_REQUIRES_OK(
-          c, wav::EncodeAudioAsS16LEWav(
-                 channels_by_frames.data(), sample_rate_truncated, num_channels,
-                 length_frames, sa->mutable_encoded_audio_string()));
+      OP_REQUIRES_OK(c, wav::EncodeAudioAsS16LEWav(
+                            data, sample_rate_truncated, num_channels,
+                            length_frames, sa->mutable_encoded_audio_string()));
     }
 
     Tensor* summary_tensor = nullptr;

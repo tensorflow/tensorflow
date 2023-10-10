@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/core/util/events_writer.h"
 
 #include <math.h>
+
+#include <memory>
+
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -35,7 +38,7 @@ namespace {
 // shorthand
 Env* env() { return Env::Default(); }
 
-void WriteSimpleValue(EventsWriter* writer, double wall_time, int64 step,
+void WriteSimpleValue(EventsWriter* writer, double wall_time, int64_t step,
                       const string& tag, float simple_value) {
   Event event;
   event.set_wall_time(wall_time);
@@ -62,7 +65,7 @@ static bool ReadEventProto(io::RecordReader* reader, uint64* offset,
 }
 
 void VerifyFile(const string& filename) {
-  CHECK(env()->FileExists(filename).ok());
+  TF_CHECK_OK(env()->FileExists(filename));
   std::unique_ptr<RandomAccessFile> event_file;
   TF_CHECK_OK(env()->NewRandomAccessFile(filename, &event_file));
   io::RecordReader* reader = new io::RecordReader(event_file.get());
@@ -80,6 +83,9 @@ void VerifyFile(const string& filename) {
   EXPECT_EQ(actual.file_version(),
             strings::StrCat(EventsWriter::kVersionPrefix,
                             EventsWriter::kCurrentVersion));
+  // Should have the current source metadata.
+  EXPECT_EQ(actual.source_metadata().writer(),
+            EventsWriter::kWriterSourceMetadata);
 
   Event expected;
   CHECK(ReadEventProto(reader, &offset, &actual));

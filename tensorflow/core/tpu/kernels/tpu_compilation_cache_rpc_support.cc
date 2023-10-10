@@ -14,15 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_support.h"
 
+#include <memory>
+
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/platform/casts.h"
 #if defined(LIBTPU_ON_GCE)
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
 #endif
+#include "absl/cleanup/cleanup.h"
+#include "xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
-#include "tensorflow/stream_executor/tpu/proto_helper.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -46,12 +49,12 @@ Status DeserializeRpcResponseToCacheEntry<GetTpuProgramResponseExternal>(
   } else {
     TpuSerializedProto serialized_response_proto =
         stream_executor::tpu::SerializeProto(*response);
-    auto cleanup = xla::MakeCleanup([&serialized_response_proto]() {
+    auto cleanup = absl::MakeCleanup([&serialized_response_proto]() {
       stream_executor::tpu::SerializedProto_Free(serialized_response_proto);
     });
     // When we lookup from remote cache, we fetch a TPU program for a specific
     // core, hence we allocate TPU program group for a single program.
-    auto tpu_program_group = absl::make_unique<TpuProgramGroup>();
+    auto tpu_program_group = std::make_unique<TpuProgramGroup>();
 
     // TODO(b/166575150): can be optimized by sending the buffer over the gRPC
     // without an extra deserializing.
@@ -61,7 +64,7 @@ Status DeserializeRpcResponseToCacheEntry<GetTpuProgramResponseExternal>(
     entry.size = entry.tpu_program_group->program_size();
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
@@ -92,7 +95,7 @@ xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
   }
 
   TpuExecutableSerializedProto executable;
-  auto cleanup_executable = xla::MakeCleanup([&executable]() {
+  auto cleanup_executable = absl::MakeCleanup([&executable]() {
     if (executable.size > 0) {
       stream_executor::tpu::SerializedProto_Free(executable);
     }
@@ -111,13 +114,12 @@ xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
   }
   header.set_is_empty(false);
 
-
   bool may_modify_variables =
       tpu_program_group->may_modify_variables(cache_entry.core_index());
   header.set_may_modify_variables(may_modify_variables);
 
   CompilerMetadataSerializedProto compiler_metadata;
-  auto cleanup_compiler_metadata = xla::MakeCleanup([&compiler_metadata]() {
+  auto cleanup_compiler_metadata = absl::MakeCleanup([&compiler_metadata]() {
     if (compiler_metadata.size > 0) {
       stream_executor::tpu::SerializedProto_Free(compiler_metadata);
     }

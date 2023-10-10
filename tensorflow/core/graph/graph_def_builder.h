@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPH_GRAPH_DEF_BUILDER_H_
 #define TENSORFLOW_CORE_GRAPH_GRAPH_DEF_BUILDER_H_
 
+#include <string>
 #include <vector>
+
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph.h"
@@ -101,7 +104,9 @@ class GraphDefBuilder {
 
     // Returns a string representation of the status associated with *this.
     // Returns the string `"OK"` if the status doesn't have any error.
-    string StatusToString() const { return status_->ToString(); }
+    string StatusToString() const {
+      return status_->ok() ? "OK" : std::string(status_->message());
+    }
 
     // Given the Op type name, return a name for a node of that type.
     // Uses the value set in WithName() if that has been called.  Otherwise,
@@ -144,7 +149,7 @@ class GraphDefBuilder {
   // Start building a new graph.
   explicit GraphDefBuilder(
       const OpRegistryInterface* op_registry = OpRegistry::Global())
-      : graph_(op_registry), opts_(&graph_, &status_) {}
+      : graph_(op_registry), flib_def_(op_registry), opts_(&graph_, &status_) {}
 
   // For use in tests, where you want to fail immediately on error instead
   // of checking the status at the end.
@@ -152,7 +157,7 @@ class GraphDefBuilder {
   explicit GraphDefBuilder(
       TestFailImmediatelyType,
       const OpRegistryInterface* op_registry = OpRegistry::Global())
-      : graph_(op_registry), opts_(&graph_, nullptr) {}
+      : graph_(op_registry), flib_def_(op_registry), opts_(&graph_, nullptr) {}
 
   // Gets the Options with the associated Graph and Status.
   const Options& opts() const { return opts_; }
@@ -166,17 +171,18 @@ class GraphDefBuilder {
   // imported function differs from an existing function or op with the same
   // name.
   Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
-    return graph_.AddFunctionLibrary(fdef_lib);
+    return flib_def_.AddLibrary(fdef_lib);
   }
 
   // Returns whether a user-defined function with `name` already exists in the
   // graph.
   bool HasFunction(const string& name) {
-    return graph_.flib_def().Find(name) != nullptr;
+    return flib_def_.Find(name) != nullptr;
   }
 
  private:
   Graph graph_;
+  FunctionLibraryDefinition flib_def_;
   Status status_;
   Options opts_;
 };
@@ -199,6 +205,10 @@ Node* UnaryOp(const string& op_name, NodeOut input,
 // For adding an Op with two inputs to a GraphDefBuilder.
 Node* BinaryOp(const string& op_name, NodeOut a, NodeOut b,
                const GraphDefBuilder::Options& opts);
+
+// For adding an Op with three inputs to a GraphDefBuilder.
+Node* TernaryOp(const string& op_name, NodeOut a, NodeOut b, NodeOut c,
+                const GraphDefBuilder::Options& opts);
 
 }  // namespace ops
 }  // namespace tensorflow

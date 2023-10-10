@@ -13,11 +13,11 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
-#include "tensorflow/core/framework/selective_registration.h"
+#include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/histogram/histogram.h"
@@ -147,7 +147,7 @@ void RegisterHistogramSummaryOpKernel() {
 // register the Histogram Summary kernel.
 TF_ATTRIBUTE_UNUSED static bool IsHistogramSummaryOpKernelRegistered = []() {
   if (SHOULD_REGISTER_OP_KERNEL("HistogramSummary")) {
-    RegisterHistogramSummaryOpKernel<tensorflow::int64>();
+    RegisterHistogramSummaryOpKernel<int64_t>();
     RegisterHistogramSummaryOpKernel<tensorflow::uint64>();
     RegisterHistogramSummaryOpKernel<tensorflow::int32>();
     RegisterHistogramSummaryOpKernel<tensorflow::uint32>();

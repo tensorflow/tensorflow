@@ -213,7 +213,7 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
       binary_op->type != OperatorType::kMul &&
       binary_op->type != OperatorType::kSub &&
       binary_op->type != OperatorType::kDiv) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   CHECK_EQ(binary_op->inputs.size(), 2);
@@ -231,12 +231,12 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
   };
   if (!is_input_constant[0] && !is_input_constant[1]) {
     // Neither input is constant, so nothing we can fuse into a constant.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (is_input_constant[0] && is_input_constant[1]) {
     // Both inputs are constants. That's a job for constants
     // propagation, not for us to handle here.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   const int index_of_constant_input = is_input_constant[0] ? 0 : 1;
   const int index_of_variable_input = is_input_constant[0] ? 1 : 0;
@@ -248,7 +248,7 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
     if (index_of_constant_input != 1) {
       AddMessageF("Not fusing %s because the denominator is not constant",
                   LogName(*binary_op));
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
   }
 
@@ -257,12 +257,12 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
   if (!preceding_op) {
     AddMessageF("Not fusing %s because it is not the output of another op",
                 LogName(*binary_op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   for (const std::string& output_array : model->flags.output_arrays()) {
     if (preceding_op->outputs[0] == output_array) {
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
   }
 
@@ -274,14 +274,14 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
         "Not fusing %s because the preceding %s is not of one of the supported "
         "types",
         LogName(*binary_op), LogName(*preceding_op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (preceding_op->type == OperatorType::kTransposeConv &&
       binary_op->type != OperatorType::kAdd) {
     AddMessageF("Not fusing %s to preceding %s", LogName(*binary_op),
                 LogName(*preceding_op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (preceding_op->fused_activation_function !=
@@ -290,14 +290,14 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
         "Not fusing %s because the preceding %s has a fused activation "
         "function",
         LogName(*binary_op), LogName(*preceding_op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (preceding_op->inputs.size() < 3) {
     AddMessageF(
         "Not fusing %s because the preceding %s does not have a bias vector",
         LogName(*binary_op), LogName(*preceding_op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   const auto& weights_name = preceding_op->inputs[1];
@@ -314,7 +314,7 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
         LogName(*binary_op), LogName(*preceding_op),
         ArrayDataTypeName(weights.data_type),
         ArrayDataTypeName(bias.data_type));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   const int count_ops_consuming_bias = CountOpsWithInput(*model, bias_name);
@@ -328,14 +328,14 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
           "Not fusing %s because the preceding %s has a non-constant bias "
           "array",
           LogName(*binary_op), LogName(*preceding_op));
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
     if (count_ops_consuming_bias > 1) {
       AddMessageF(
           "Not fusing %s because the bias of the preceding %s is consumed by "
           "another op",
           LogName(*binary_op), LogName(*preceding_op));
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
   } else {
     if (!weights.buffer || !bias.buffer) {
@@ -343,14 +343,14 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
           "Not fusing %s because the preceding %s has non-constant weights or "
           "bias arrays",
           LogName(*binary_op), LogName(*preceding_op));
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
     if (count_ops_consuming_weights > 1 || count_ops_consuming_bias > 1) {
       AddMessageF(
           "Not fusing %s because the weights or bias of the preceding %s is "
           "consumed by another op",
           LogName(*binary_op), LogName(*preceding_op));
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
   }
 
@@ -362,7 +362,7 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
         "Not fusing %s because the output of the preceding %s is consumed by "
         "another op",
         LogName(*binary_op), LogName(*preceding_op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   AddMessageF("Fusing %s into the preceding %s", LogName(*binary_op),
@@ -386,7 +386,7 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
       binary_op->fused_activation_function;
   DeleteOpAndArrays(model, binary_op);
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

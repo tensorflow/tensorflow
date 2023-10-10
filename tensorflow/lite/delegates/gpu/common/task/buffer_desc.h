@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
@@ -42,19 +43,26 @@ struct BufferDescriptor : public GPUObjectDescriptor {
   BufferDescriptor(BufferDescriptor&& desc) = default;
   BufferDescriptor& operator=(BufferDescriptor&& desc) = default;
 
-  absl::Status PerformSelector(const std::string& selector,
+  absl::Status PerformSelector(const GpuInfo& gpu_info,
+                               absl::string_view selector,
                                const std::vector<std::string>& args,
                                const std::vector<std::string>& template_args,
                                std::string* result) const override;
 
-  GPUResources GetGPUResources() const override;
-  absl::Status PerformReadSelector(const std::vector<std::string>& args,
+  GPUResources GetGPUResources(const GpuInfo& gpu_info) const override;
+  absl::Status PerformReadSelector(const GpuInfo& gpu_info,
+                                   const std::vector<std::string>& args,
                                    std::string* result) const;
+  absl::Status PerformWriteSelector(const GpuInfo& gpu_info,
+                                    const std::vector<std::string>& args,
+                                    std::string* result) const;
   absl::Status PerformGetPtrSelector(
       const std::vector<std::string>& args,
       const std::vector<std::string>& template_args, std::string* result) const;
 
   void Release() override;
+
+  uint64_t GetSizeInBytes() const override { return data.size(); };
 };
 
 }  // namespace gpu

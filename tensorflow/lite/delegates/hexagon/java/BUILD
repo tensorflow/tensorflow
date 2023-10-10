@@ -1,16 +1,21 @@
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
-load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
+load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary", "tflite_jni_linkopts")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # EXPERIMENTAL: Native target that runs inference on the Hexagon backend.
 # The Hexagon backend-related targets are intentionally not included in BUILD.bazel.
 tflite_jni_binary(
     name = "libtensorflowlite_hexagon_jni.so",
+    linkopts = tflite_jni_linkopts() + select({
+        "//tensorflow:android": ["-ldl"],
+        "//conditions:default": [],
+    }),
     linkscript = "//tensorflow/lite/delegates/hexagon:version_script.lds",
     tags = [
         "manual",
@@ -27,8 +32,13 @@ cc_library(
     srcs = [
         "libtensorflowlite_hexagon_jni.so",
     ] + select({
+        # copybara:uncomment_begin(separate repo in OSS)
+        # "//tensorflow:android_arm64": ["//tensorflow/lite/delegates/hexagon/hexagon_nn:libhexagon_interface.so"],
+        # "//tensorflow:android_arm": ["//tensorflow/lite/delegates/hexagon/hexagon_nn:libhexagon_interface.so"],
+        # copybara:uncomment_end_and_comment_begin
         "//tensorflow:android_arm64": ["@hexagon_nn//:hexagon/arm64-v8a/libhexagon_interface.so"],
         "//tensorflow:android_arm": ["@hexagon_nn//:hexagon/armeabi-v7a/libhexagon_interface.so"],
+        # copybara:comment_end
         "//conditions:default": [],
     }),
     tags = [

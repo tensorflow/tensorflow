@@ -15,10 +15,6 @@
 
 """Connects all half, float and double tensors to CheckNumericsOp."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -55,6 +51,16 @@ def verify_tensor_all_finite(t=None, msg=None, name=None, x=None, message=None):
 @dispatch.add_dispatch_support
 def verify_tensor_all_finite_v2(x, message, name=None):
   """Assert that the tensor does not contain any NaN's or Inf's.
+
+  >>> @tf.function
+  ... def f(x):
+  ...   x = tf.debugging.assert_all_finite(x, 'Input x must be all finite')
+  ...   return x + 1
+
+  >>> f(tf.constant([np.inf, 1, 2]))
+  Traceback (most recent call last):
+     ...
+  InvalidArgumentError: ...
 
   Args:
     x: Tensor to check.

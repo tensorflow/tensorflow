@@ -58,7 +58,7 @@ class RollOp : public OpKernel {
     OP_REQUIRES(
         context, shift.shape() == axis.shape(),
         errors::InvalidArgument("shift and axis must have the same size"));
-    const int64 num_elements = input.NumElements();
+    const int64_t num_elements = input.NumElements();
     const int num_shifts = static_cast<int>(shift_flat.size());
     const int num_dims = input.dims();
 
@@ -84,16 +84,16 @@ class RollOp : public OpKernel {
     // dim_range is the number of indices over in the flattened tensor
     // you need to skip in order to make it over from one side of a dimension
     // to the other. Used to make the shifts wrap around after a threshold.
-    gtl::InlinedVector<int64, 4> dim_range(num_dims);
-    int64 dim_size_prod = 1;  // dimension size product
+    gtl::InlinedVector<int64_t, 4> dim_range(num_dims);
+    int64_t dim_size_prod = 1;  // dimension size product
     // inner shift dimension (inner most shifted dimension)
-    int64 isd = 0;
+    int64_t isd = 0;
     for (int i = num_dims - 1; i >= 0; i--) {
       if (isd == 0 && shift_mod_sum[i] != 0) isd = i;
       const int ds = std::max<int>(static_cast<int>(input.dim_size(i)), 1);
       dim_size[i] = ds;
       threshold[i] = (ds - shift_mod_sum[i]) % ds;
-      dim_size_prod *= static_cast<int64>(input.dim_size(i));
+      dim_size_prod *= static_cast<int64_t>(input.dim_size(i));
       dim_range[i] = dim_size_prod;
     }
 
@@ -118,12 +118,12 @@ namespace functor {
 // threshold - the index for each dimension that the roll starts to wrap
 //    back to the front
 template <typename T>
-void DoRoll(const OpKernelContext* context, const int64 num_elements,
-            const int num_dims, const gtl::ArraySlice<int32>& dim_size,
-            const T* input, T* output, const gtl::ArraySlice<int32>& threshold,
-            const gtl::ArraySlice<int64>& dim_range) {
+void DoRoll(const OpKernelContext* context, const int64_t num_elements,
+            const int num_dims, const gtl::ArraySlice<int32> dim_size,
+            const T* input, T* output, const gtl::ArraySlice<int32> threshold,
+            const gtl::ArraySlice<int64_t> dim_range) {
   auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range](
-                  int64 start, int64 end) {
+                  int64_t start, int64_t end) {
     // array of indices for each dimension
     gtl::InlinedVector<int, 4> indices(num_dims);
     int offset = 0;  // the shift along the flattened tensor for current element
@@ -132,7 +132,7 @@ void DoRoll(const OpKernelContext* context, const int64 num_elements,
       // stride is the number of indices over in the flattened tensor
       // you need to skip in order to make it over to an adjacent element
       // along a dimension. dim_size[i] != 0 because we set it to max(dim, 1)
-      const int64 stride = dim_range[i] / dim_size[i];
+      const int64_t stride = dim_range[i] / dim_size[i];
       const int shift = dim_size[i] - threshold[i];
       const int indx = (start / stride) % dim_size[i];
       indices[i] = indx;
@@ -141,7 +141,7 @@ void DoRoll(const OpKernelContext* context, const int64 num_elements,
       offset += (shifted_indx - indx) * stride;
     }
 
-    for (int64 i = start; i < end; i++) {
+    for (int64_t i = start; i < end; i++) {
       output[i + offset] = input[i];
       // create next combination of indices
       // while at it adjust offset if needed
@@ -181,26 +181,26 @@ void DoRoll(const OpKernelContext* context, const int64 num_elements,
 // isd - inner shift dimension
 template <typename T>
 // Use memcpy to copy memory in groups when the data type supports memcpy
-void DoRollWithMemcpy(const OpKernelContext* context, const int64 num_elements,
-                      const int num_dims,
-                      const gtl::ArraySlice<int32>& dim_size, const T* input,
-                      T* output, const gtl::ArraySlice<int32>& threshold,
-                      const gtl::ArraySlice<int64>& dim_range,
-                      const int64 isd) {
+void DoRollWithMemcpy(const OpKernelContext* context,
+                      const int64_t num_elements, const int num_dims,
+                      const gtl::ArraySlice<int32> dim_size, const T* input,
+                      T* output, const gtl::ArraySlice<int32> threshold,
+                      const gtl::ArraySlice<int64_t> dim_range,
+                      const int64_t isd) {
   auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range, isd](
-                  int64 start, int64 end) {
+                  int64_t start, int64_t end) {
     // the number of indices over in the flattened tensor you need to skip in
     // order to make it over from one side of the isd to the other
-    const int64 isd_range = std::max<int>(dim_range[isd], 1);
+    const int64_t isd_range = std::max<int>(dim_range[isd], 1);
     // the distance along the flattend tensor to the next element in the isd
-    const int64 isd_stride = isd_range / std::max<int>(dim_size[isd], 1);
+    const int64_t isd_stride = isd_range / std::max<int>(dim_size[isd], 1);
 
     // start and end represent the i-th group currently so we will convert
     // them into numbers representing the i-th elements.
     // there are 2 groups per isd one for all elements before threshold[isd]
     // and another for all elements after threshold[isd].
-    const int64 start_remainder = (start % 2) * threshold[isd] * isd_stride;
-    const int64 end_remainder = (end % 2) * threshold[isd] * isd_stride;
+    const int64_t start_remainder = (start % 2) * threshold[isd] * isd_stride;
+    const int64_t end_remainder = (end % 2) * threshold[isd] * isd_stride;
     start = (start / 2) * isd_range + start_remainder;
     end = (end / 2) * isd_range + end_remainder;
 
@@ -213,13 +213,13 @@ void DoRollWithMemcpy(const OpKernelContext* context, const int64 num_elements,
     // indices = [i, j, k, l, m, n]
     gtl::InlinedVector<int, 4> indices(num_dims);
     // the offset needed to make all inner non-shifting dimensions become 0
-    int64 remainder_offset = 0;
+    int64_t remainder_offset = 0;
     // initialize indices
     for (int i = 0; i < num_dims; i++) {
       // stride is the number of indices over in the flattened tensor
       // you need to skip in order to make it over to an adjacent element
       // along a dimension. dim_size[i] != 0 because we set it to max(dim, 1)
-      const int64 stride = dim_range[i] / dim_size[i];
+      const int64_t stride = dim_range[i] / dim_size[i];
       const int shift = dim_size[i] - threshold[i];
       const int indx = (start / stride) % dim_size[i];
       indices[i] = indx;
@@ -239,7 +239,7 @@ void DoRollWithMemcpy(const OpKernelContext* context, const int64 num_elements,
     // to make it to the next threshold or end point
     int isd_indx_skip = 0;
     // the size of the next group
-    int64 group_size = 0;
+    int64_t group_size = 0;
     // initialize isd_indx_skip and group_size
     if (indices[isd] < threshold[isd]) {
       isd_indx_skip = threshold[isd] - indices[isd];
@@ -249,7 +249,7 @@ void DoRollWithMemcpy(const OpKernelContext* context, const int64 num_elements,
       group_size = isd_indx_skip * isd_stride + remainder_offset;
     }
 
-    int64 i = start;
+    int64_t i = start;
     while (i < end) {
       // copy group of elements
       memcpy(out_ptr, in_ptr, group_size * sizeof(T));
@@ -294,7 +294,7 @@ void DoRollWithMemcpy(const OpKernelContext* context, const int64 num_elements,
   };
   // Shard
   auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
-  const int64 ave_group_size = dim_range[isd] / 2;
+  const int64_t ave_group_size = dim_range[isd] / 2;
   const int total_work = 2 * num_elements / std::max<int>(dim_range[isd], 1);
   // 25000 - experimentally determined with float and bool types
   const int cost_per_group = 25000 * sizeof(T) * ave_group_size;
@@ -304,11 +304,11 @@ void DoRollWithMemcpy(const OpKernelContext* context, const int64 num_elements,
 
 template <typename T>
 struct Roll<CPUDevice, T> {
-  void operator()(const OpKernelContext* context, const int64 num_elements,
+  void operator()(const OpKernelContext* context, const int64_t num_elements,
                   const int num_dims, const gtl::ArraySlice<int32> dim_size,
                   const T* input, T* output,
                   const gtl::ArraySlice<int32> threshold,
-                  const gtl::ArraySlice<int64> dim_range, const int64 isd) {
+                  const gtl::ArraySlice<int64_t> dim_range, const int64_t isd) {
     if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
       // V2 copies memory in groups instead of element by element
       DoRollWithMemcpy<T>(context, num_elements, num_dims, dim_size, input,
@@ -335,7 +335,7 @@ struct Roll<CPUDevice, T> {
   REGISTER_KERNEL_BUILDER(Name("Roll")                           \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("Tshift")   \
+                              .TypeConstraint<int64_t>("Tshift") \
                               .TypeConstraint<int32>("Taxis")    \
                               .HostMemory("shift")               \
                               .HostMemory("axis"),               \
@@ -344,15 +344,15 @@ struct Roll<CPUDevice, T> {
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int32>("Tshift")   \
-                              .TypeConstraint<int64>("Taxis")    \
+                              .TypeConstraint<int64_t>("Taxis")  \
                               .HostMemory("shift")               \
                               .HostMemory("axis"),               \
                           RollOp<CPUDevice, type, int32, int64>) \
   REGISTER_KERNEL_BUILDER(Name("Roll")                           \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("Tshift")   \
-                              .TypeConstraint<int64>("Taxis")    \
+                              .TypeConstraint<int64_t>("Tshift") \
+                              .TypeConstraint<int64_t>("Taxis")  \
                               .HostMemory("shift")               \
                               .HostMemory("axis"),               \
                           RollOp<CPUDevice, type, int64, int64>)
@@ -373,7 +373,7 @@ TF_CALL_ALL_TYPES(REGISTER_CPU);
   REGISTER_KERNEL_BUILDER(Name("Roll")                           \
                               .Device(DEVICE_GPU)                \
                               .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("Tshift")   \
+                              .TypeConstraint<int64_t>("Tshift") \
                               .TypeConstraint<int32>("Taxis")    \
                               .HostMemory("shift")               \
                               .HostMemory("axis"),               \
@@ -382,15 +382,15 @@ TF_CALL_ALL_TYPES(REGISTER_CPU);
                               .Device(DEVICE_GPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int32>("Tshift")   \
-                              .TypeConstraint<int64>("Taxis")    \
+                              .TypeConstraint<int64_t>("Taxis")  \
                               .HostMemory("shift")               \
                               .HostMemory("axis"),               \
                           RollOp<GPUDevice, type, int32, int64>) \
   REGISTER_KERNEL_BUILDER(Name("Roll")                           \
                               .Device(DEVICE_GPU)                \
                               .TypeConstraint<type>("T")         \
-                              .TypeConstraint<int64>("Tshift")   \
-                              .TypeConstraint<int64>("Taxis")    \
+                              .TypeConstraint<int64_t>("Tshift") \
+                              .TypeConstraint<int64_t>("Taxis")  \
                               .HostMemory("shift")               \
                               .HostMemory("axis"),               \
                           RollOp<GPUDevice, type, int64, int64>)

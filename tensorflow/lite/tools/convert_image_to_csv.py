@@ -20,10 +20,6 @@ help create test inputs that can be shared between Python and on-device test
 cases to investigate accuracy issues.
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 
 from absl import app

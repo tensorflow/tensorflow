@@ -17,13 +17,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_TEST_BENCHMARK_H_
 #define TENSORFLOW_CORE_PLATFORM_TEST_BENCHMARK_H_
 
-#include "tensorflow/core/platform/platform.h"
+#include "tsl/platform/test_benchmark.h"
 
-#if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/test_benchmark.h"  // IWYU pragma: export
-#else
-#include "tensorflow/core/platform/default/test_benchmark.h"  // IWYU pragma: export
-#endif  // PLATFORM_GOOGLE
-
+namespace tensorflow {
+namespace testing {
+using tsl::testing::DoNotOptimize;         // NOLINT
+using tsl::testing::InitializeBenchmarks;  // NOLINT
+using tsl::testing::RunBenchmarks;         // NOLINT
+}  // namespace testing
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_TEST_BENCHMARK_H_

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Writes events to disk in a logdir."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -74,8 +70,7 @@ class EventFileWriterV2(object):
     self._session = session
     self._logdir = logdir
     self._closed = False
-    if not gfile.IsDirectory(self._logdir):
-      gfile.MakeDirs(self._logdir)
+    gfile.MakeDirs(self._logdir)
 
     with self._session.graph.as_default():
       with ops.name_scope('filewriter'):
@@ -90,9 +85,9 @@ class EventFileWriterV2(object):
               shape=[])
           self._add_event_op = summary_ops_v2.import_event(
               self._event_placeholder)
-        self._init_op = file_writer.init()
-        self._flush_op = file_writer.flush()
-        self._close_op = file_writer.close()
+        self._init_op = file_writer.init()  # pylint: disable=assignment-from-no-return
+        self._flush_op = file_writer.flush()  # pylint: disable=assignment-from-no-return
+        self._close_op = file_writer.close()  # pylint: disable=assignment-from-no-return
       self._session.run(self._init_op)
 
   def get_logdir(self):

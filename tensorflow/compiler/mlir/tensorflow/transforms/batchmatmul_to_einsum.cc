@@ -23,8 +23,8 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
@@ -49,8 +49,8 @@ class ConvertTFBatchMatMulToEinsumOp
 
   LogicalResult matchAndRewrite(BatchMatMulOpType op,
                                 PatternRewriter& rewriter) const override {
-    Value input_lhs = op.x();
-    Value input_rhs = op.y();
+    Value input_lhs = op.getX();
+    Value input_rhs = op.getY();
 
     // LHS and RHS must be a ranked tensor type
     auto lhs_type = input_lhs.getType().dyn_cast<RankedTensorType>();
@@ -70,8 +70,8 @@ class ConvertTFBatchMatMulToEinsumOp
 
     // einsum equation for batchmatmul
     std::string equation("...mk,...kn->...mn");
-    if (op.adj_x()) std::swap(equation[3], equation[4]);
-    if (op.adj_y()) std::swap(equation[6 + 3], equation[6 + 4]);
+    if (op.getAdjX()) std::swap(equation[3], equation[4]);
+    if (op.getAdjY()) std::swap(equation[6 + 3], equation[6 + 4]);
 
     rewriter.replaceOpWithNewOp<TF::EinsumOp>(
         op, op.getType(),
@@ -82,27 +82,27 @@ class ConvertTFBatchMatMulToEinsumOp
   }
 };
 
+#define GEN_PASS_DEF_BATCHMATMULTOEINSUMPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct BatchMatMulToEinsumPass
-    : public PassWrapper<BatchMatMulToEinsumPass, FunctionPass> {
-  void runOnFunction() override;
+    : public impl::BatchMatMulToEinsumPassBase<BatchMatMulToEinsumPass> {
+  void runOnOperation() override;
 };
 
-void BatchMatMulToEinsumPass::runOnFunction() {
-  OwningRewritePatternList patterns;
-  auto func = getFunction();
+void BatchMatMulToEinsumPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
+  auto func = getOperation();
 
-  patterns.insert<ConvertTFBatchMatMulToEinsumOp<TF::BatchMatMulOp>,
-                  ConvertTFBatchMatMulToEinsumOp<TF::BatchMatMulV2Op>>(
+  patterns.add<ConvertTFBatchMatMulToEinsumOp<TF::BatchMatMulOp>,
+               ConvertTFBatchMatMulToEinsumOp<TF::BatchMatMulV2Op>>(
       &getContext());
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
-PassRegistration<BatchMatMulToEinsumPass> pass(
-    "tf-batch-matmul-to-tf-einsum",
-    "Replace TF BatchMatMul op by TF Einsum op.");
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateBatchMatMulToEinsumPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateBatchMatMulToEinsumPass() {
   return std::make_unique<BatchMatMulToEinsumPass>();
 }
 

@@ -17,69 +17,75 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_DEBUG_ALLOCATOR_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
-#include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/core/platform/types.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "tsl/framework/allocator.h"
+#include "tsl/framework/device_id.h"
+#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 
 // An allocator that wraps a GPU allocator and adds debugging
 // functionality that verifies that users do not write outside their
 // allocated memory.
-class GPUDebugAllocator : public Allocator {
+class GPUDebugAllocator : public tsl::Allocator {
  public:
-  explicit GPUDebugAllocator(Allocator* allocator,
-                             PlatformGpuId platform_gpu_id);
+  explicit GPUDebugAllocator(tsl::Allocator* allocator,
+                             tsl::PlatformDeviceId platform_device_id);
   ~GPUDebugAllocator() override;
-  string Name() override { return "gpu_debug"; }
+  std::string Name() override { return "gpu_debug"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
   bool TracksAllocationSizes() const override;
   size_t RequestedSize(const void* ptr) const override;
   size_t AllocatedSize(const void* ptr) const override;
-  int64 AllocationId(const void* ptr) const override;
-  absl::optional<AllocatorStats> GetStats() override;
-  void ClearStats() override;
+  int64_t AllocationId(const void* ptr) const override;
+  std::optional<tsl::AllocatorStats> GetStats() override;
+  bool ClearStats() override;
 
   // For testing.
   bool CheckHeader(void* ptr);
   bool CheckFooter(void* ptr);
 
  private:
-  Allocator* base_allocator_ = nullptr;  // owned
+  tsl::Allocator* base_allocator_ = nullptr;  // owned
 
   se::StreamExecutor* stream_exec_;  // Not owned.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GPUDebugAllocator);
+  GPUDebugAllocator(const GPUDebugAllocator&) = delete;
+  void operator=(const GPUDebugAllocator&) = delete;
 };
 
 // An allocator that wraps a GPU allocator and resets the memory on
 // allocation and free to 'NaN', helping to identify cases where the
 // user forgets to initialize the memory.
-class GPUNanResetAllocator : public Allocator {
+class GPUNanResetAllocator : public tsl::Allocator {
  public:
-  explicit GPUNanResetAllocator(Allocator* allocator,
-                                PlatformGpuId platform_gpu_id);
+  explicit GPUNanResetAllocator(tsl::Allocator* allocator,
+                                tsl::PlatformDeviceId platform_device_id);
   ~GPUNanResetAllocator() override;
-  string Name() override { return "gpu_nan_reset"; }
+  std::string Name() override { return "gpu_nan_reset"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
   size_t RequestedSize(const void* ptr) const override;
   size_t AllocatedSize(const void* ptr) const override;
-  absl::optional<AllocatorStats> GetStats() override;
-  void ClearStats() override;
+  std::optional<tsl::AllocatorStats> GetStats() override;
+  bool ClearStats() override;
+
+  tsl::AllocatorMemoryType GetMemoryType() const override {
+    return base_allocator_->GetMemoryType();
+  }
 
  private:
-  Allocator* base_allocator_ = nullptr;  // owned
+  tsl::Allocator* base_allocator_ = nullptr;  // owned
 
   se::StreamExecutor* stream_exec_;  // Not owned.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GPUNanResetAllocator);
+  GPUNanResetAllocator(const GPUNanResetAllocator&) = delete;
+  void operator=(const GPUNanResetAllocator&) = delete;
 };
 
 }  // namespace tensorflow

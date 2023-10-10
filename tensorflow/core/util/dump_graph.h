@@ -19,6 +19,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_DUMP_GRAPH_H_
 #define TENSORFLOW_CORE_UTIL_DUMP_GRAPH_H_
 
+#include <functional>
+#include <string>
+
+#include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
@@ -38,6 +42,10 @@ namespace tensorflow {
 // sequence number.
 string DumpGraphDefToFile(const string& name, GraphDef const& graph_def,
                           const string& dirname = "");
+
+// Similar to DumpGraphDefToFile, use CostGraphDef instead of GraphDef.
+string DumpCostGraphDefToFile(const string& name, CostGraphDef const& graph_def,
+                              const string& dirname = "");
 
 // Similar to DumpGraphDefToFile, but builds the GraphDef to dump from a 'graph'
 // and an optional function library 'flib_def'. Returns the file name chosen.
@@ -59,6 +67,13 @@ void SetGraphDumper(
                          WritableFile*)>
         dumper,
     string suffix = ".pbtxt");
+
+// Dump data to a file.
+// This function will create a WritableFile and pass it to the dumper.
+// The dumper callback will be responsible for writing data to the file.
+string DumpToFile(const string& name, const string& dirname,
+                  const string& suffix, const string& type_name,
+                  std::function<Status(WritableFile*)> dumper);
 
 }  // namespace tensorflow
 

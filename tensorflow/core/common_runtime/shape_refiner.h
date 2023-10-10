@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_SHAPE_REFINER_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_SHAPE_REFINER_H_
 
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -47,8 +50,8 @@ class ExtendedInferenceContext {
     }
   }
 
-  DataType input_type(int64 idx) const { return input_types_[idx]; }
-  DataType output_type(int64 idx) const { return output_types_[idx]; }
+  DataType input_type(int64_t idx) const { return input_types_[idx]; }
+  DataType output_type(int64_t idx) const { return output_types_[idx]; }
 
   shape_inference::InferenceContext* get_context() {
     return inference_context_.get();
@@ -62,7 +65,8 @@ class ExtendedInferenceContext {
   std::vector<DataType> input_types_;
   std::vector<DataType> output_types_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExtendedInferenceContext);
+  ExtendedInferenceContext(const ExtendedInferenceContext&) = delete;
+  void operator=(const ExtendedInferenceContext&) = delete;
 };
 
 // ShapeRefiner performs shape inference for TensorFlow Graphs.  It is
@@ -129,7 +133,7 @@ class ShapeRefiner {
 
   // Getters and setters for graph_def_version_.
   int32 graph_def_version() const { return graph_def_version_; }
-  void set_graph_def_version(int32 version) { graph_def_version_ = version; }
+  void set_graph_def_version(int32_t version) { graph_def_version_ = version; }
 
   void set_require_shape_inference_fns(bool require_shape_inference_fns) {
     require_shape_inference_fns_ = require_shape_inference_fns;
@@ -180,9 +184,9 @@ class ShapeRefiner {
   //
   // On success:
   // - outer_context will contain output shapes inferred from input shapes
-  Status InferShapesForFunction(const FunctionDef* function_def,
-                                AttrSlice attributes,
-                                ExtendedInferenceContext* outer_context);
+  Status InferShapesForFunction(
+      const FunctionDef* function_def, AttrSlice attributes,
+      shape_inference::InferenceContext* outer_context);
 
   // Performs shape inference for a node inside a function.
   //
@@ -232,7 +236,7 @@ class ShapeRefiner {
   // by requesting the constant of value of the incoming tensor from the
   // 'outer_context'.
   Status EvaluateConstantIntScalarEdge(
-      const Node* node, int dst_idx, bool* evaluated, int64* result,
+      const Node* node, int dst_idx, bool* evaluated, int64_t* result,
       shape_inference::InferenceContext* outer_context);
 
   // This function tries to materialize as much information about the 'node''s
@@ -302,16 +306,15 @@ class ShapeRefiner {
                       hash<const Node*>>
       node_to_context_;
 
-  // Holds a cache from 'tensor name' to the tensor that is
-  // evaluatable as a constant expression.  This reduces repeated
-  // execution of the entire constant subgraph as a graph is being
-  // built up.  This could be changed to some kind of size-based LRU
-  // cache to avoid consuming too much memory, if that eventually
-  // becomes a concern.
+  // Holds a cache from tensor id (node id:node output) to the tensor that
+  // is evaluable as a constant expression. This reduces repeated execution
+  // of the entire constant subgraph as a graph is being built up. This could
+  // be changed to some kind of size-based LRU cache to avoid consuming too much
+  // memory, if that eventually becomes a concern.
   //
   // Only tensors less than 1KiB are currently stored in the cache.
-  static constexpr int64 kMaxTensorSize = 1024;
-  std::unordered_map<string, Tensor> const_tensor_map_;
+  static constexpr int64_t kMaxTensorSize = 1024;
+  absl::flat_hash_map<std::pair<int, int>, Tensor> const_tensor_map_;
 
   bool require_shape_inference_fns_ = true;
   bool disable_constant_propagation_ = false;
@@ -322,11 +325,10 @@ class ShapeRefiner {
 
   // Cache the graph corresponding to each function definition for which shapes
   // are refined.
-  absl::flat_hash_map<const FunctionDef*, std::unique_ptr<const Graph>,
-                      hash<const FunctionDef*>>
-      functions_;
+  absl::flat_hash_map<std::string, std::unique_ptr<const Graph>> functions_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ShapeRefiner);
+  ShapeRefiner(const ShapeRefiner&) = delete;
+  void operator=(const ShapeRefiner&) = delete;
 };
 
 }  // namespace tensorflow

@@ -82,7 +82,7 @@ static void BM_StringSplit(::testing::benchmark::State& state) {
   Tensor input = GetTestTensor(batch_size);
   Graph* g = SetupStringSplitGraph(input);
   test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()));
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
 }
 
 BENCHMARK(BM_StringSplit)
@@ -113,7 +113,7 @@ static void BM_StringSplitV2(::testing::benchmark::State& state) {
   Tensor input = GetTestTensor(batch_size);
   Graph* g = SetupStringSplitV2Graph(input);
   test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()));
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
 }
 
 BENCHMARK(BM_StringSplitV2)

@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "TensorArrayScatter"
   input_arg {
     name: "handle"

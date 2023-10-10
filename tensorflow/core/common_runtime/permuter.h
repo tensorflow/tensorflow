@@ -50,18 +50,13 @@ class Permuter : public CollectiveImplementationInterface {
   void Run(StatusCallback done) override;
 
   Status InitializeCollectiveParams(CollectiveParams* col_params) override {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Initializes members of CollectiveContext not yet initialized, i.e. device
   // and device_locality.  Also saves the CollectiveContext in this object.
   Status InitializeCollectiveContext(
       std::shared_ptr<CollectiveContext> col_ctx) override;
-
-  Status InitializeCollectiveGroupRuntimeDetails(
-      CollGroupRuntimeDetails*) override {
-    return Status::OK();
-  }
 
  private:
   std::shared_ptr<CollectiveContext> col_ctx_;

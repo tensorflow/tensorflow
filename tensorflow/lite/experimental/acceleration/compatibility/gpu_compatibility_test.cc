@@ -15,26 +15,69 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/compatibility/gpu_compatibility.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <map>
 #include <memory>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/experimental/acceleration/compatibility/devicedb-sample.h"
+#include "tensorflow/lite/experimental/acceleration/compatibility/variables.h"
 
 namespace {
 
 class GPUCompatibilityTest : public ::testing::Test {
  protected:
   GPUCompatibilityTest() {
-    list_ = absl::make_unique<tflite::acceleration::GPUCompatibilityList>(
-        g_tflite_acceleration_devicedb_sample_binary);
+    list_ = tflite::acceleration::GPUCompatibilityList::Create(
+        g_tflite_acceleration_devicedb_sample_binary,
+        g_tflite_acceleration_devicedb_sample_binary_len);
   }
 
   std::unique_ptr<tflite::acceleration::GPUCompatibilityList> list_;
 };
 
+TEST_F(GPUCompatibilityTest, ReturnsUnsupportedStatus) {
+  ASSERT_TRUE(list_ != nullptr);
+
+  std::map<std::string, std::string> variables = {
+      {tflite::acceleration::kAndroidSdkVersion, "28"},
+      {tflite::acceleration::kDeviceModel, "shiraz-ag-2011"},
+  };
+
+  EXPECT_EQ(list_->GetStatus(variables),
+            tflite::acceleration::gpu::CompatibilityStatus::kUnsupported);
+}
+
+TEST_F(GPUCompatibilityTest, ReturnsSupportedStatus) {
+  ASSERT_TRUE(list_ != nullptr);
+
+  std::map<std::string, std::string> variables = {
+      {tflite::acceleration::kAndroidSdkVersion, "24"},
+      {tflite::acceleration::kDeviceModel, "M712C"},
+      {tflite::acceleration::kOpenGLESVersion, "3.1"},
+  };
+
+  EXPECT_EQ(list_->GetStatus(variables),
+            tflite::acceleration::gpu::CompatibilityStatus::kSupported);
+}
+
+TEST_F(GPUCompatibilityTest, ReturnsUnknownStatus) {
+  ASSERT_TRUE(list_ != nullptr);
+
+  std::map<std::string, std::string> variables = {
+      {tflite::acceleration::kAndroidSdkVersion, "26"},
+      {tflite::acceleration::kDeviceModel, "mag2016"},
+      {tflite::acceleration::kOpenGLESVersion, "3.1"},
+  };
+
+  EXPECT_EQ(list_->GetStatus(variables),
+            tflite::acceleration::gpu::CompatibilityStatus::kUnknown);
+}
+
 TEST_F(GPUCompatibilityTest, ReturnsSupportedForFullMatch) {
-  ASSERT_TRUE(list_->IsDatabaseLoaded());
+  ASSERT_TRUE(list_ != nullptr);
 
   tflite::acceleration::AndroidInfo android_info = {.android_sdk_version = "24",
                                                     .model = "m712c"};
@@ -47,7 +90,7 @@ TEST_F(GPUCompatibilityTest, ReturnsSupportedForFullMatch) {
 }
 
 TEST_F(GPUCompatibilityTest, ReturnsUnsupportedForFullMatch) {
-  ASSERT_TRUE(list_->IsDatabaseLoaded());
+  ASSERT_TRUE(list_ != nullptr);
 
   tflite::acceleration::AndroidInfo android_info = {.android_sdk_version = "28",
                                                     .model = "SM-G960F",
@@ -61,8 +104,7 @@ TEST_F(GPUCompatibilityTest, ReturnsUnsupportedForFullMatch) {
 }
 
 TEST_F(GPUCompatibilityTest, ReturnsDefaultOptions) {
-  ASSERT_TRUE(list_->IsDatabaseLoaded());
-
+  ASSERT_TRUE(list_ != nullptr);
   tflite::acceleration::AndroidInfo android_info;
   tflite::gpu::GpuInfo tflite_gpu_info;
   auto default_options = TfLiteGpuDelegateOptionsV2Default();
@@ -94,6 +136,50 @@ TEST(GPUCompatibility, RecogniseInvalidCompatibilityListFlatbuffer) {
   std::fill(invalid_buffer, invalid_buffer + 100, ' ');
   EXPECT_FALSE(tflite::acceleration::GPUCompatibilityList::IsValidFlatbuffer(
       invalid_buffer, 100));
+}
+
+TEST(GPUCompatibility, CreationWithInvalidCompatibilityListFlatbuffer) {
+  unsigned char invalid_buffer[10];
+  std::fill(invalid_buffer, invalid_buffer + 10, ' ');
+  std::unique_ptr<tflite::acceleration::GPUCompatibilityList> list =
+      tflite::acceleration::GPUCompatibilityList::Create(invalid_buffer, 10);
+  EXPECT_EQ(list, nullptr);
+}
+
+TEST(GPUCompatibility, CreationWithNullCompatibilityListFlatbuffer) {
+  std::unique_ptr<tflite::acceleration::GPUCompatibilityList> list =
+      tflite::acceleration::GPUCompatibilityList::Create(nullptr, 0);
+  EXPECT_EQ(list, nullptr);
+}
+
+TEST(GPUCompatibility, ConvertCompatibilityStatusToStringCorrectly) {
+  EXPECT_EQ(
+      tflite::acceleration::GPUCompatibilityList::CompatibilityStatusToString(
+          tflite::acceleration::gpu::CompatibilityStatus::kSupported),
+      tflite::acceleration::gpu::kStatusSupported);
+  EXPECT_EQ(
+      tflite::acceleration::GPUCompatibilityList::CompatibilityStatusToString(
+          tflite::acceleration::gpu::CompatibilityStatus::kUnsupported),
+      tflite::acceleration::gpu::kStatusUnsupported);
+  EXPECT_EQ(
+      tflite::acceleration::GPUCompatibilityList::CompatibilityStatusToString(
+          tflite::acceleration::gpu::CompatibilityStatus::kUnknown),
+      tflite::acceleration::gpu::kStatusUnknown);
+}
+
+TEST(GPUCompatibility, ConvertStringToCompatibilityStatusCorrectly) {
+  EXPECT_EQ(
+      tflite::acceleration::GPUCompatibilityList::StringToCompatibilityStatus(
+          tflite::acceleration::gpu::kStatusSupported),
+      tflite::acceleration::gpu::CompatibilityStatus::kSupported);
+  EXPECT_EQ(
+      tflite::acceleration::GPUCompatibilityList::StringToCompatibilityStatus(
+          tflite::acceleration::gpu::kStatusUnsupported),
+      tflite::acceleration::gpu::CompatibilityStatus::kUnsupported);
+  EXPECT_EQ(
+      tflite::acceleration::GPUCompatibilityList::StringToCompatibilityStatus(
+          tflite::acceleration::gpu::kStatusUnknown),
+      tflite::acceleration::gpu::CompatibilityStatus::kUnknown);
 }
 
 }  // namespace

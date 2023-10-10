@@ -171,8 +171,8 @@ variables covered by these control flow statements into the respective ops.
 The examples below use a `while` loop, but the same notions extend to all
 control flow such as `if` and `for` statements.
 
-In the example below, `x` needs to become a loop variable of the
-corresponding `tf.while_loop':
+In the example below, `x` needs to become a loop variable of the corresponding
+`tf.while_loop`:
 
 ```
 while x > 0:
@@ -303,31 +303,47 @@ while x > 0:
   c.y += 1  # Okay -- c.y can now be properly tracked!
 ```
 
-Another possibility is to rely on immutable objects. This may lead to many
-temporary objects when executing eagerly, but their number is greatly reduced
-in `@tf.function`:
+Another possibility is to rely on immutable objects with value semantics. This
+may lead to many temporary objects when executing eagerly, but their number is
+greatly reduced in `@tf.function`:
 
 ```
-class MyClass(object):
+class MyClass(collections.namedtuple('MyClass', ('y',))):
   def change(self):
-    self.y += 1
-    return self
+    new_y = self.y + 1
+    return MyClass(new_y)
 
 c = MyClass()
 while x > 0:
   c = c.change()  # Okay -- c is now a loop var.
 ```
 
+It is also recommended to use a functional programming style with such immutable
+objects - that is, all arguments are inputs, all changes are return values:
+
+```
+def use_my_class(c: MyClass) -> MyClass:
+  new_c = c.change()
+  return new_c
+```
+
+Don't worry about creating a few extra objects - they are only used at trace
+time, and don't exist at graph execution.
+
 Note: TensorFlow control flow does not currently support arbitrary Python
 objects, but it does support basic collection objects such as `list`, `dict`,
 `tuple`, `namedtuple` and their subclasses. Design your objects as subclasses
-of [namedtuple](https://docs.python.org/3/library/collections.html#collections.namedtuple).
+of [namedtuple](https://docs.python.org/3/library/collections.html#collections.namedtuple),
+or other types that [tf.nest](https://www.tensorflow.org/api_docs/python/tf/nest/map_structure)
+recognizes.
 
 #### Variables closed over by lambda functions
 
+### This limit will be deprecated after 2023-09-23
+
 AutoGraph assumes that variables that local functions close over may be used
 anywhere in the parent function, because in general it is possible to hide a
-function call in almost any Python statement). For this reason, these variables
+function call in almost any Python statement. For this reason, these variables
 are accounted within TensorFlow loops.
 
 For example, the following code correctly captures `a` in the TensorFlow loop
@@ -342,7 +358,7 @@ for i in tf.range(3):
 f()  # Prints 2
 ```
 
-An consequence is that these variables must be defined before the loop (see
+A consequence is that these variables must be defined before the loop (see
 Undefined and None values above). So the following code will raise an error,
 even if the variable is never used after the loop:
 
@@ -446,8 +462,8 @@ for i in tf.range(10):
 
 #### Python collections of fixed structure are allowed TensorFlow control flow
 
-An exception from the previous rule is made by Python collections that are
-static, that is, they don't grow in size for the duration of the computation.
+An exception to the previous rule is made by Python collections that are static,
+that is, they don't grow in size for the duration of the computation.
 
 Caution: Use functional programming style when manipulating static collections.
 
@@ -487,8 +503,8 @@ for i in tf.range(10):
     d[key] += i  # Problem -- accessing `dict` using non-constant key
 ```
 
-The code above will raises an "illegal capture" error. To remedy it, write it
-in functional programming style:
+The code above will raise an "illegal capture" error. To remedy it, write it in
+functional programming style:
 
 ```
 d = {'a': tf.constant(3)}
@@ -514,7 +530,7 @@ rank is dynamic.
 
 TensorFlow has optional static types and shapes: the shape of tensors may be
 static (e.g. `my_tensor.shape=(3, 3)` denotes a three by three matrix) or
-dynamic (e.g. `my_tensor.shape=(None, 3)` denotes a matrix with a dynamic
+dynamic (e.g. `my_tensor.shape=(None, 3)`) denotes a matrix with a dynamic
 number of rows and three columns. When the shapes are dynamic, you can still
 query it at runtime by using the `tf.shape()` function.
 
@@ -680,6 +696,65 @@ while tf.random.uniform(()) > 0.5:
   x = tf.constant((1, 2, 3))  # Error -- inconsistent shapes: (), (3,)
 ```
 
+### Consistency of control flow types
+
+In AutoGraph, one can write Python control flow like `for i in range(10)`, as
+well as TensorFlow control flow like `for i in tf.range(10)`.
+
+However, one could also write (illegal) programs which start as Python control
+flow, then turn into TensorFlow control flow. In such cases, an error will be
+raised.
+
+Below are a few examples, along with recommendations.
+
+#### Python loop, TF-dependent break or return
+
+Example:
+
+```
+for i in range(10):
+  if tf.greater(i, 3):
+    break  # error - TF break inside Python loop
+```
+
+The solution in this case is to change the loop type to a TF loop:
+
+```
+for i in tf.range(10):
+  if tf.greater(i, 3):
+    break  # works
+```
+
+#### Python loop that turns into a TensorFlow loop
+
+Example:
+
+```
+i = 10
+while i > 0:
+  i = tf.math.subtract(i, 1)  # error - loop would turn into a TF loop
+```
+
+The solution in this case is to make sure the loop type starts as a TF loop,
+typically by making sure the condition is always a Tensor:
+
+```
+i = tf.constant(10)  # works
+while i > 0:
+  i = tf.math.subtract(i, 1)
+```
+
+#### TensorFlow loops never turn into Python loops
+
+Note that this is a legal case, as TensorFlow implicitly converts all Python
+values to Tensor:
+
+```
+i = tf.constant(10)
+while i > 0:
+  i = 0  # this is ok, will be auto-converted to Tensor
+```
+
 ### Access to source code
 
 Key point: AutoGraph can only handle functions whose source code can be
@@ -693,12 +768,25 @@ exceptions exist:
  * functions created dynamically, using `exec` or `eval`
 
 Use
-[inspect.getsource](https://docs.python.org/3/library/inspect.html#inspect.getsource)
+[inspect.findsource](https://docs.python.org/3/library/inspect.html#inspect.findsource)
 to quickly diagnose whether the source code is available for a function.
+
+For example:
+
+```
+import inspect
+
+def simple_function():
+  return 1
+
+# If this raises an error, then AutoGraph prints a warning.
+# If it returns source code, then AutoGraph should work as well.
+inspect.findsource(simple_function)
+```
 
 #### Source code of lambda functions
 
-##### Changes in TF 2.4
+##### TF 2.4 and newer
 
 Key Point: When nesting lambda functions, use distinguishing argument names
 to avoid parse errors.
@@ -726,7 +814,7 @@ use distinct argument names:
 l = lambda outer_x: lambda inner_x: inner_x + 1
 ```
 
-##### TF 2.3 and older
+##### Before TF 2.3 and older
 
 In older versions of TensorFlow, the loading code for lambda functions is not
 robust. Follow the guidance below to avoid errors.

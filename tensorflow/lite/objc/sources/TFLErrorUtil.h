@@ -32,6 +32,19 @@ NS_ASSUME_NONNULL_BEGIN
                          description:(NSString *)description
                                error:(NSError **)error;
 
+/**
+ * Sets the error with the given domain, error code and description.
+ *
+ * @param domain The error domain.
+ * @param code The error code.
+ * @param description The error description.
+ * @param error A pointer to populate the error. If `nil`, no error will be populated.
+ */
++ (void)setError:(NSError **)error
+      withDomain:(NSErrorDomain)domain
+            code:(NSInteger)code
+     description:(NSString *)description;
+
 /** Unavailable. */
 - (instancetype)init NS_UNAVAILABLE;
 

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/Eigen/LU"
+#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/LU"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -55,11 +55,11 @@ class LuOp : public OpKernel {
   // LU decomposition for a square matrix takes roughly (2/3) * (num_rows)^3.
   // TODO(anudhyan): Refine this estimate after taking constant factors into
   // account.
-  int64 GetCostPerUnit(const TensorShape& input_matrix_shape) const {
+  int64_t GetCostPerUnit(const TensorShape& input_matrix_shape) const {
     double num_rows = static_cast<double>(input_matrix_shape.dim_size(0));
     double cost = (2 / 3.0) * MathUtil::IPow(num_rows, 3);
     return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64>(cost);
+                                                  : static_cast<int64_t>(cost);
   }
 
   void Compute(OpKernelContext* context) override {
@@ -79,10 +79,11 @@ class LuOp : public OpKernel {
     TensorShape input_matrix_shape;
     TensorShape batch_shape;
     for (int dim = 0; dim < input_rank - 2; ++dim) {
-      batch_shape.AddDim(input.dim_size(dim));
+      OP_REQUIRES_OK(context,
+                     batch_shape.AddDimWithStatus(input.dim_size(dim)));
     }
-    const int64 num_rows = input.dim_size(input_rank - 2);
-    const int64 num_cols = input.dim_size(input_rank - 1);
+    const int64_t num_rows = input.dim_size(input_rank - 2);
+    const int64_t num_cols = input.dim_size(input_rank - 1);
 
     input_matrix_shape.AppendShape({num_rows, num_cols});
     OP_REQUIRES(context, TensorShapeUtils::IsSquareMatrix(input_matrix_shape),
@@ -91,7 +92,7 @@ class LuOp : public OpKernel {
     // packed_triangular_factors is a matrix with the same shape as the input;
     // permutation is a vector.
     TensorShape permutation_shape = batch_shape;
-    permutation_shape.AddDim(num_rows);
+    OP_REQUIRES_OK(context, permutation_shape.AddDimWithStatus(num_rows));
 
     TensorShapes output_matrix_shapes({input.shape(), permutation_shape});
 
@@ -113,8 +114,8 @@ class LuOp : public OpKernel {
 
     // Process the individual matrix problems in parallel using a threadpool.
     auto shard = [this, &input, &num_rows, &num_cols, &outputs,
-                  &output_matrix_shapes, context](int64 begin, int64 end) {
-      for (int64 i = begin; i < end; ++i) {
+                  &output_matrix_shapes, context](int64_t begin, int64_t end) {
+      for (int64_t i = begin; i < end; ++i) {
         ComputeTensorSlice(context, i, input, num_rows, num_cols, outputs,
                            output_matrix_shapes);
       }
@@ -125,9 +126,9 @@ class LuOp : public OpKernel {
           shard);
   }
 
-  void ComputeTensorSlice(OpKernelContext* context, int64 matrix_index,
-                          const Tensor& input, int64 num_rows, int64 num_cols,
-                          const TensorOutputs& outputs,
+  void ComputeTensorSlice(OpKernelContext* context, int64_t matrix_index,
+                          const Tensor& input, int64_t num_rows,
+                          int64_t num_cols, const TensorOutputs& outputs,
                           const TensorShapes& output_matrix_shapes) {
     // TODO(kalakris): Handle alignment if possible. Eigen::Map is
     // unaligned by default.
@@ -185,9 +186,9 @@ REGISTER_LU(double, int32);
 REGISTER_LU(complex64, int32);
 REGISTER_LU(complex128, int32);
 
-REGISTER_LU(float, int64);
-REGISTER_LU(double, int64);
-REGISTER_LU(complex64, int64);
-REGISTER_LU(complex128, int64);
+REGISTER_LU(float, int64_t);
+REGISTER_LU(double, int64_t);
+REGISTER_LU(complex64, int64_t);
+REGISTER_LU(complex128, int64_t);
 
 }  // namespace tensorflow

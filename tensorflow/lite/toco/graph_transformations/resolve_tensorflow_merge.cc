@@ -31,7 +31,7 @@ namespace toco {
   const auto merge_it = model->operators.begin() + op_index;
   const auto* merge_op = merge_it->get();
   if (merge_op->type != OperatorType::kMerge) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // We need to yield until this Merge node has only 1 input, which will mean
@@ -40,7 +40,7 @@ namespace toco {
   // non-selected inputs, so that at some point there will be only 1 input left.
   if (merge_op->inputs.size() > 1) {
     AddMessageF("Waiting for %s to be resolved", LogName(*merge_op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Now that the merge node has 1 input exactly, it is the same as an Identity
@@ -58,7 +58,7 @@ namespace toco {
 
   DeleteOpAndArrays(model, merge_op);
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

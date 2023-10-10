@@ -12,17 +12,27 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #ifndef TENSORFLOW_CORE_DATA_STANDALONE_H_
 #define TENSORFLOW_CORE_DATA_STANDALONE_H_
 
+#include <functional>
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/data/unbounded_thread_pool.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -72,13 +82,29 @@ class Iterator {
   // indication of whether the end of the input pipeline has been reached.
   Status GetNext(std::vector<Tensor>* outputs, bool* end_of_input);
 
+  // Saves a checkpoint of the iterator. Returns Tensors that can be called with
+  // `Restore()`.
+  StatusOr<std::vector<Tensor>> Save();
+
+  // Restores the iterator from a checkpoint. `saved_iterator` is the serialized
+  // iterator saved by calling `Save()`.
+  Status Restore(const std::vector<Tensor>& saved_iterator);
+  // Returns the time it takes the pipeline associated with this iterator
+  // to process an element.
+  // Returns std::nullopt if there is not currently enough information to
+  // determine the processing time, e.g. because not enough data has been
+  // produced yet from the iterator.
+  std::optional<double> GetProcessingTimeNsec() const;
+
  private:
   friend class Dataset;
 
-  Iterator(IteratorBase* iterator, IteratorContext* ctx);
+  Iterator(IteratorBase* iterator, IteratorContext* ctx,
+           SerializationContext* serialization_ctx);
 
   std::unique_ptr<IteratorBase> iterator_;
   std::unique_ptr<IteratorContext> ctx_;
+  std::unique_ptr<SerializationContext> serialization_ctx_;
 };
 
 // Represents an input pipeline as a collection of data sources and a logical
@@ -99,26 +125,33 @@ class Dataset {
   // Creates an iterator for this dataset.
   Status MakeIterator(std::unique_ptr<Iterator>* result);
   // Creates an iterator, optionally with a split provider.
-  Status MakeIterator(std::unique_ptr<SplitProvider> split_provider,
-                      std::unique_ptr<Iterator>* result);
+  Status MakeIterator(
+      std::vector<std::unique_ptr<SplitProvider>> split_providers,
+      std::unique_ptr<Iterator>* result);
 
-  // Creates a split provider for this dataset.
-  Status MakeSplitProvider(std::unique_ptr<SplitProvider>* result);
+  // Creates split providers for this dataset.
+  Status MakeSplitProviders(
+      std::vector<std::unique_ptr<SplitProvider>>* result);
+  // Returns a pointer to the underlying dataset.
+  const DatasetBase* Get() const;
 
  private:
-  Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
-          ProcessFunctionLibraryRuntime* pflr,
-          FunctionLibraryDefinition* flib_def, thread::ThreadPool* pool);
+  Dataset(DatasetBase* finalized_dataset, DatasetBase* original_dataset,
+          DeviceMgr* device_mgr, ProcessFunctionLibraryRuntime* pflr,
+          FunctionLibraryDefinition* flib_def, thread::ThreadPool* pool,
+          std::function<void(std::function<void()>)> runner);
 
-  DatasetBase* dataset_;  // owned
+  DatasetBase* finalized_dataset_;  // owned
+  DatasetBase* original_dataset_;   // owned
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
-  std::unique_ptr<thread::ThreadPool> pool_;
+  std::unique_ptr<thread::ThreadPool> interop_threadpool_;
   std::unique_ptr<FunctionHandleCache> function_handle_cache_;
   std::function<void(std::function<void()>)> runner_;
   ResourceMgr resource_mgr_;
   CancellationManager cancellation_manager_;
+  UnboundedThreadPool unbounded_thread_pool_;
 };
 
 }  // namespace standalone

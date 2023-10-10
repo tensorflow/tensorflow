@@ -18,13 +18,11 @@ In `tf.losses` and `tf.metrics`, we support limited weight broadcasting. This
 file includes operations for those broadcasting rules.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sets
@@ -51,7 +49,7 @@ def _has_valid_nonscalar_shape(
       (weights_rank, weights_shape, values_rank, values_shape)) as scope:
     is_same_rank = math_ops.equal(
         values_rank, weights_rank, name="is_same_rank")
-    return control_flow_ops.cond(
+    return cond.cond(
         is_same_rank,
         lambda: _has_valid_dims(weights_shape, values_shape),
         lambda: is_same_rank,
@@ -98,10 +96,10 @@ def assert_broadcastable(weights, values):
         return control_flow_ops.no_op(name="static_scalar_check_success")
       if weights_rank_static != values_rank_static:
         raise ValueError(
-            "%s values.rank=%s. weights.rank=%s."
-            " values.shape=%s. weights.shape=%s." % (
-                _ASSERT_BROADCASTABLE_ERROR_PREFIX, values_rank_static,
-                weights_rank_static, values.shape, weights.shape))
+            f"{_ASSERT_BROADCASTABLE_ERROR_PREFIX} values.rank="
+            f"{values_rank_static}. weights.rank={weights_rank_static}. "
+            f"values.shape={values.shape}. weights.shape={weights.shape}. "
+            f"Received weights={weights}, values={values}")
       weights_shape_static = tensor_util.constant_value(weights_shape)
       values_shape_static = tensor_util.constant_value(values_shape)
       if weights_shape_static is not None and values_shape_static is not None:
@@ -112,9 +110,10 @@ def assert_broadcastable(weights, values):
         for i in range(ndims):
           if weights_shape_static[i] not in (1, values_shape_static[i]):
             raise ValueError(
-                "%s Mismatch at dim %s. values.shape=%s weights.shape=%s." % (
-                    _ASSERT_BROADCASTABLE_ERROR_PREFIX, i, values_shape_static,
-                    weights_shape_static))
+                f"{_ASSERT_BROADCASTABLE_ERROR_PREFIX} Mismatch at dim {i}. "
+                f"values.shape={values_shape_static}, weights.shape="
+                f"{weights_shape_static}. Received weights={weights}, "
+                f"values={values}")
         return control_flow_ops.no_op(name="static_dims_check_success")
 
     # Dynamic checks.
@@ -125,13 +124,13 @@ def assert_broadcastable(weights, values):
         "values.shape=", values.name, values_shape,
         "is_scalar=", is_scalar,
     )
-    is_valid_shape = control_flow_ops.cond(
+    is_valid_shape = cond.cond(
         is_scalar,
         lambda: is_scalar,
         lambda: _has_valid_nonscalar_shape(  # pylint: disable=g-long-lambda
             weights_rank, weights_shape, values_rank, values_shape),
         name="is_valid_shape")
-    return control_flow_ops.Assert(is_valid_shape, data, name=scope)
+    return control_flow_assert.Assert(is_valid_shape, data, name=scope)
 
 
 @tf_export("__internal__.ops.broadcast_weights", v1=[])

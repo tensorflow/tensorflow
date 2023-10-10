@@ -20,11 +20,11 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/shape.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -38,6 +38,9 @@ Status XLAShapeToTensorShape(const xla::Shape& shape,
 // XLA, so this conversion may fail.
 Status TensorShapeToXLAShape(DataType dtype, const TensorShape& tensor_shape,
                              xla::Shape* shape);
+
+StatusOr<xla::Shape> TensorShapeToXLAShape(DataType dtype,
+                                           const TensorShape& tensor_shape);
 
 // Converts a TensorShape into the equivalent XLA Shape proto, taking an
 // xla::PrimitiveType to specify the element type.  This never fails.
@@ -55,6 +58,11 @@ Status TensorShapeToXLAShape(DataType dtype,
 xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
                                  const PartialTensorShape& tensor_shape);
 
+Status TensorShapeToBoundedXLAShape(DataType dtype,
+                                    const PartialTensorShape& tensor_shape,
+                                    const TensorShape& bound,
+                                    xla::Shape* shape);
+
 // Given an XLA shape with layouts, builds a layout vector in the form able to
 // be fed to ops like InfeedEnqueue/InfeedEnqueueTuple/XRTAllocateV2/....
 // THe returned vector is a linearized sequence of the minor-to-major values of
@@ -63,14 +71,14 @@ xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
 // order of the tuple elements within the tuple shape.
 // If a shape (or a subshape of a tuple shape) has missing layout, a rank long
 // sequence of -1 values will be emitted.
-xla::StatusOr<std::vector<int>> GetShapeLayoutVector(const xla::Shape& shape);
+StatusOr<std::vector<int>> GetShapeLayoutVector(const xla::Shape& shape);
 
 // Given the input shape and a linearized sequence of the minor-to-major values
 // of the layouts, create the output shape by rewriting the input shape layouts.
 // If a layout is missing (has -1 values) for a matching tuple subshape, the
 // layout_func will be called, if not nullptr.
 Status GetShapeWithLayout(
-    const xla::Shape& input_shape, absl::Span<const int64> minor_to_major,
+    const xla::Shape& input_shape, absl::Span<const int64_t> minor_to_major,
     const std::function<xla::Layout(const xla::Shape&)>& layout_func,
     xla::Shape* output_shape);
 

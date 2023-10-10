@@ -14,18 +14,14 @@
 # ==============================================================================
 """Utilities for manipulating the loss collections."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import confusion_matrix
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
@@ -76,9 +72,9 @@ def squeeze_or_expand_dimensions(y_pred, y_true=None, sample_weight=None):
       squeeze_dims = lambda: confusion_matrix.remove_squeezable_dimensions(  # pylint: disable=g-long-lambda
           y_true, y_pred)
       is_last_dim_1 = math_ops.equal(1, array_ops.shape(y_pred)[-1])
-      maybe_squeeze_dims = lambda: control_flow_ops.cond(  # pylint: disable=g-long-lambda
+      maybe_squeeze_dims = lambda: cond.cond(  # pylint: disable=g-long-lambda
           is_last_dim_1, squeeze_dims, lambda: (y_true, y_pred))
-      y_true, y_pred = control_flow_ops.cond(
+      y_true, y_pred = cond.cond(
           math_ops.equal(1, rank_diff), maybe_squeeze_dims, squeeze_dims)
 
   if sample_weight is None:
@@ -104,17 +100,17 @@ def squeeze_or_expand_dimensions(y_pred, y_true=None, sample_weight=None):
 
   def _maybe_expand_weights():
     expand_weights = lambda: array_ops.expand_dims(sample_weight, [-1])
-    return control_flow_ops.cond(
+    return cond.cond(
         math_ops.equal(rank_diff, -1), expand_weights, lambda: sample_weight)
 
   def _maybe_adjust_weights():
-    return control_flow_ops.cond(
+    return cond.cond(
         math_ops.equal(rank_diff, 1), maybe_squeeze_weights,
         _maybe_expand_weights)
 
   # squeeze or expand last dim of `sample_weight` if its rank differs by 1
   # from the new rank of `y_pred`.
-  sample_weight = control_flow_ops.cond(
+  sample_weight = cond.cond(
       math_ops.equal(weights_rank_tensor, 0), lambda: sample_weight,
       _maybe_adjust_weights)
   return y_pred, y_true, sample_weight
@@ -160,7 +156,8 @@ def check_per_example_loss_rank(per_example_loss):
     if loss_rank == 0:
       raise ValueError(
           "Invalid value passed for `per_example_loss`. Expected a tensor with "
-          "at least rank 1, received: {}".format(per_example_loss))
+          f"at least rank 1. Received per_example_loss={per_example_loss} with "
+          f"rank {loss_rank}")
     yield
   else:
     # Handle dynamic rank.

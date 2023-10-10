@@ -14,11 +14,7 @@
 # ==============================================================================
 """Documentation control decorators."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from typing import TypeVar
+from typing import Optional, TypeVar
 
 T = TypeVar("T")
 
@@ -31,6 +27,25 @@ def set_deprecated(obj: T) -> T:
   setattr(obj, _DEPRECATED, None)
   return obj
 
+
+_INHERITABLE_HEADER = "_tf_docs_inheritable_header"
+
+
+def inheritable_header(text):
+
+  def _wrapped(cls):
+    setattr(cls, _INHERITABLE_HEADER, text)
+    return cls
+
+  return _wrapped
+
+
+def get_inheritable_header(obj) -> Optional[str]:
+  return getattr(obj, _INHERITABLE_HEADER, None)
+
+
+header = inheritable_header
+get_header = get_inheritable_header
 
 _DO_NOT_DOC = "_tf_docs_do_not_document"
 

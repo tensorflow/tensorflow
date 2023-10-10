@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
+#include <climits>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -25,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/table.h"
 #include "tensorflow/core/lib/io/table_options.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/public/version.h"
@@ -35,7 +38,7 @@ namespace tensorflow {
 
 namespace checkpoint {
 
-TensorSliceReader::Table::~Table() {}
+TensorSliceReader::Table::~Table() = default;
 
 namespace {
 class TensorSliceReaderTable : public TensorSliceReader::Table {
@@ -82,13 +85,13 @@ Status OpenTableTensorSliceReader(const string& fname,
       s = table::Table::Open(options, f.get(), file_size, &table);
       if (s.ok()) {
         *result = new TensorSliceReaderTable(f.release(), table);
-        return Status::OK();
+        return OkStatus();
       } else {
-        s = Status(s.code(),
-                   strings::StrCat(s.error_message(),
-                                   ": perhaps your file is in a different "
-                                   "file format and you need to use a "
-                                   "different restore operator?"));
+        s = errors::CreateWithUpdatedMessage(
+            s, strings::StrCat(s.message(),
+                               ": perhaps your file is in a different "
+                               "file format and you need to use a "
+                               "different restore operator?"));
       }
     }
   }
@@ -168,9 +171,13 @@ void TensorSliceReader::LoadShard(int shard) const {
                           "checkpoint");
   if (!status_.ok()) return;
   for (const SavedSliceMeta& ssm : sts.meta().tensor()) {
-    TensorShape ssm_shape(ssm.shape());
+    TensorShape ssm_shape;
+    status_ = TensorShape::BuildTensorShapeBase(ssm.shape(), &ssm_shape);
+    if (!status_.ok()) return;
     for (const TensorSliceProto& tsp : ssm.slice()) {
-      TensorSlice ss_slice(tsp);
+      TensorSlice ss_slice;
+      status_ = TensorSlice::BuildTensorSlice(tsp, &ss_slice);
+      if (!status_.ok()) return;
       status_ = RegisterTensorSlice(ssm.name(), ssm_shape, ssm.type(), fname,
                                     ss_slice, &tensors_);
       if (!status_.ok()) return;
@@ -248,7 +255,18 @@ Status TensorSliceReader::GetTensor(
     slice = tss->Slices().begin()->second.slice;
   }
 
-  std::unique_ptr<tensorflow::Tensor> t(new tensorflow::Tensor(type, shape));
+  std::unique_ptr<tensorflow::Tensor> t(new tensorflow::Tensor);
+  Status s = tensorflow::Tensor::BuildTensor(type, shape, t.get());
+  if (!s.ok()) return s;
+
+  for (const auto d : shape.dim_sizes()) {
+    if (d == LLONG_MAX) {
+      return errors::InvalidArgument("Unable to read dimensions of size ",
+                                     LLONG_MAX,
+                                     ". Got shape: ", shape.DebugString());
+    }
+  }
+
   bool success = false;
 
 #define READER_COPY(dt)                                                  \
@@ -266,6 +284,7 @@ Status TensorSliceReader::GetTensor(
     READER_COPY(DT_INT8);
     READER_COPY(DT_INT64);
     READER_COPY(DT_STRING);
+    READER_COPY(DT_BOOL);
     default:
       return errors::Unimplemented("Data type not supported");
   }
@@ -276,7 +295,7 @@ Status TensorSliceReader::GetTensor(
   }
   std::swap(*out_tensor, t);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 TensorSliceReader::VarToShapeMap TensorSliceReader::GetVariableToShapeMap()

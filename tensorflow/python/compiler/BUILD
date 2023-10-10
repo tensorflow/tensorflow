@@ -1,24 +1,15 @@
 # Description:
 # Python APIs for various Tensorflow backends.
-
-load("//tensorflow:tensorflow.bzl", "if_windows")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
-exports_files(["LICENSE"])
-
-py_library(
+py_strict_library(
     name = "compiler",
     srcs = ["__init__.py"],
-    srcs_version = "PY2AND3",
-    deps = if_windows(
-        ["//tensorflow/python/compiler/tensorrt:trt_convert_windows"],
-        otherwise = ["//tensorflow/python/compiler/tensorrt:init_py"],
-    ) + [
-        "//tensorflow/python/compiler/mlir",
-        "//tensorflow/python/compiler/xla:compiler_py",
-    ],
+    srcs_version = "PY3",
 )

@@ -1,6 +1,7 @@
 # Description:
 #   Eigen is a C++ template library for linear algebra: vectors,
 #   matrices, and related algorithms.
+# This is the BUILD file with extra code to patch into @eigen_archive.
 
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
 
@@ -27,8 +28,7 @@ EIGEN3_THIRD_PARTY_HEADERS = [
     "unsupported/Eigen/SpecialFunctions",
     "unsupported/Eigen/CXX11/ThreadPool",
     "unsupported/Eigen/CXX11/Tensor",
-    "unsupported/Eigen/CXX11/FixedPoint",
-] + glob(["unsupported/Eigen/CXX11/src/FixedPoint/*.h"])
+]
 
 cc_library(
     name = "eigen3",
@@ -36,17 +36,8 @@ cc_library(
     includes = if_mkl(["./mkl_include"]),
     visibility = ["//visibility:public"],
     deps = [
-        "@eigen_archive//:eigen",
+        "@eigen_archive//:eigen3_internal",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = ["**/OWNERS"],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 filegroup(
@@ -59,6 +50,7 @@ genrule(
     name = "install_eigen_headers",
     srcs = [
         "@eigen_archive//:eigen_header_files",
+        "@eigen_archive//:eigen_source_files",
         ":eigen_third_party_header_files",
     ],
     outs = ["include"],

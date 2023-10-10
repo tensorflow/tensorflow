@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_GRAPH_OPTIMIZATION_PASS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_GRAPH_OPTIMIZATION_PASS_H_
 
+#include <string>
+
 #include "tensorflow/compiler/mlir/mlir_graph_optimization_pass.h"
 
 namespace mlir {
@@ -27,14 +29,22 @@ class MlirGraphOptimizationPass : public ::tensorflow::MlirOptimizationPass {
  public:
   llvm::StringRef name() const override { return "graph_optimization"; }
 
-  bool IsEnabled(const ::tensorflow::ConfigProto& config_proto,
-                 const tensorflow::Graph& graph) const override {
-    return config_proto.experimental().enable_mlir_graph_optimization();
+  ::tensorflow::MlirOptimizationPassState GetPassState(
+      const ::tensorflow::DeviceSet* device_set,
+      const ::tensorflow::ConfigProto& config_proto,
+      const tensorflow::Graph& graph,
+      const tensorflow::FunctionLibraryDefinition& function_library)
+      const override {
+    return config_proto.experimental().enable_mlir_graph_optimization()
+               ? tensorflow::MlirOptimizationPassState::Enabled
+               : tensorflow::MlirOptimizationPassState::Disabled;
   }
 
-  ::tensorflow::Status Run(const ::tensorflow::ConfigProto& config_proto,
-                           ModuleOp module,
-                           const ::tensorflow::Graph& graph) override;
+  ::tensorflow::Status Run(
+      const std::string& function_name,
+      const ::tensorflow::ConfigProto& config_proto, ModuleOp module,
+      const ::tensorflow::Graph& graph,
+      const tensorflow::FunctionLibraryDefinition& function_library) override;
 };
 
 }  // namespace TF

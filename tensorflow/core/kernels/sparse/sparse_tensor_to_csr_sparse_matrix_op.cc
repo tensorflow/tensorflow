@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <limits>
 
 #define EIGEN_USE_THREADS
 
@@ -19,9 +20,10 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -30,19 +32,20 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/sparse/kernels.h"
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
+#include "tensorflow/core/kernels/sparse_utils.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
-#include "tensorflow/core/util/cuda_solvers.h"
 #include "tensorflow/core/util/cuda_sparse.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
-using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
+#include "xla/stream_executor/cuda/cuda_activation.h"
+using ::stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
-#include "tensorflow/stream_executor/rocm/rocm_activation.h"
-using ::perftools::gputools::rocm::ScopedActivateExecutorContext;
+#include "xla/stream_executor/rocm/rocm_activation.h"
+using ::stream_executor::rocm::ScopedActivateExecutorContext;
 #endif
 
 namespace tensorflow {
@@ -67,19 +70,48 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
     const Tensor& values = ctx->input(1);
     const Tensor& dense_shape = ctx->input(2);
     const int rank = dense_shape.NumElements();
+    OP_REQUIRES_OK(ctx, sparse_utils::ValidateSparseTensor<int64_t>(
+                            indices, values, dense_shape,
+                            sparse_utils::IndexValidation::kUnordered));
     OP_REQUIRES(ctx, rank == 2 || rank == 3,
                 errors::InvalidArgument("SparseTensor must have rank 2 or 3; ",
                                         "but indices has rank: ", rank));
-    auto dense_shape_vec = dense_shape.vec<int64>();
-    const int64 batch_size = (rank == 2) ? 1 : dense_shape_vec(0);
-    const int64 num_rows = dense_shape_vec((rank == 2) ? 0 : 1);
-    const int64 total_nnz = values.NumElements();
+    auto dense_shape_vec = dense_shape.vec<int64_t>();
+    const int64_t batch_size = (rank == 2) ? 1 : dense_shape_vec(0);
+    const int64_t num_rows = dense_shape_vec((rank == 2) ? 0 : 1);
+    const int64_t num_cols = dense_shape_vec((rank == 2) ? 1 : 2);
+    const int64_t total_nnz = values.NumElements();
+
+    static constexpr int64_t kInt32Max = std::numeric_limits<int32>::max();
+    OP_REQUIRES(
+        ctx, batch_size < kInt32Max,
+        errors::InvalidArgument("dense_shape batch_size must be < Int32Max,"
+                                " but the input value is ",
+                                batch_size));
+    OP_REQUIRES(ctx, total_nnz <= kInt32Max,
+                errors::InvalidArgument("values number of elements must be <="
+                                        " Int32Max, but the input value is ",
+                                        total_nnz));
+    OP_REQUIRES(
+        ctx, (num_rows + 1) * batch_size <= kInt32Max,
+        errors::InvalidArgument("The csr row index size, computed based on the"
+                                " dense_shape, must be <= Int32Max, but is too"
+                                " large. Current value is ",
+                                (num_rows + 1) * batch_size));
 
     // Allocate output Tensors.
-    Tensor batch_ptr(cpu_allocator(), DT_INT32, TensorShape({batch_size + 1}));
-    Tensor csr_col_ind(cpu_allocator(), DT_INT32, TensorShape({total_nnz}));
-    Tensor csr_row_ptr(cpu_allocator(), DT_INT32,
-                       TensorShape({(num_rows + 1) * batch_size}));
+    TensorShape batch_ptr_shape;
+    OP_REQUIRES_OK(
+        ctx, TensorShape::BuildTensorShape({batch_size + 1}, &batch_ptr_shape));
+    Tensor batch_ptr(cpu_allocator(), DT_INT32, batch_ptr_shape);
+    TensorShape csr_col_ind_shape;
+    OP_REQUIRES_OK(
+        ctx, TensorShape::BuildTensorShape({total_nnz}, &csr_col_ind_shape));
+    Tensor csr_col_ind(cpu_allocator(), DT_INT32, csr_col_ind_shape);
+    TensorShape csr_row_ind_shape;
+    OP_REQUIRES_OK(ctx, TensorShape::BuildTensorShape(
+                            {(num_rows + 1) * batch_size}, &csr_row_ind_shape));
+    Tensor csr_row_ptr(cpu_allocator(), DT_INT32, csr_row_ind_shape);
 
     // Fill the row pointers with zeros.
     functor::SetZeroFunctor<CPUDevice, int32> set_zero;
@@ -88,9 +120,10 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
     // Convert from COO to CSR format.
     functor::SparseTensorToCSRSparseMatrixCPUFunctor coo_to_csr;
     OP_REQUIRES_OK(
-        ctx, coo_to_csr(batch_size, num_rows, indices.template matrix<int64>(),
-                        batch_ptr.vec<int32>(), csr_row_ptr.vec<int32>(),
-                        csr_col_ind.vec<int32>()));
+        ctx,
+        coo_to_csr(batch_size, num_rows, num_cols,
+                   indices.template matrix<int64_t>(), batch_ptr.vec<int32>(),
+                   csr_row_ptr.vec<int32>(), csr_col_ind.vec<int32>()));
 
     // Create the CSRSparseMatrix object from its component Tensors and prepare
     // the Variant output Tensor.
@@ -126,15 +159,41 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
     const Tensor& values_t = c->input(1);
     const Tensor& dense_shape_t = c->input(2);
     const int rank = dense_shape_t.NumElements();
+    OP_REQUIRES_OK_ASYNC(c,
+                         sparse_utils::ValidateSparseTensor<int64_t>(
+                             indices_t, values_t, dense_shape_t,
+                             sparse_utils::IndexValidation::kNone),
+                         done);
     OP_REQUIRES_ASYNC(
         c, rank == 2 || rank == 3,
-        errors::InvalidArgument("sparse tensor must have rank == 2 or 3; ",
-                                "but indices has ", rank, " columns"),
+        errors::InvalidArgument("SparseTensor must have rank 2 or 3; ",
+                                "but indices has rank:", rank),
         done);
-    auto dense_shape = dense_shape_t.vec<int64>();
-    const int64 batch_size = (rank == 2) ? 1 : dense_shape(0);
-    const int64 rows = dense_shape((rank == 2) ? 0 : 1);
-    const int64 cols = dense_shape((rank == 2) ? 1 : 2);
+    auto dense_shape = dense_shape_t.vec<int64_t>();
+    const int64_t batch_size = (rank == 2) ? 1 : dense_shape(0);
+    const int64_t rows = dense_shape((rank == 2) ? 0 : 1);
+    const int64_t cols = dense_shape((rank == 2) ? 1 : 2);
+
+    static constexpr int64_t kInt32Max = std::numeric_limits<int32>::max();
+    OP_REQUIRES_ASYNC(
+        c, batch_size < kInt32Max,
+        errors::InvalidArgument("dense_shape batch_size must be < Int32Max,"
+                                " but the input value is ",
+                                batch_size),
+        done);
+    OP_REQUIRES_ASYNC(
+        c, values_t.NumElements() <= kInt32Max,
+        errors::InvalidArgument("values number of elements must be <="
+                                " Int32Max, but the input value is ",
+                                values_t.NumElements()),
+        done);
+    OP_REQUIRES_ASYNC(
+        c, (rows + 1) * batch_size <= kInt32Max,
+        errors::InvalidArgument("The csr row index size, computed based on the"
+                                " dense_shape, must be <= Int32Max, but is too"
+                                " large. Current value is ",
+                                (rows + 1) * batch_size),
+        done);
 
     ScratchSpace<int32> nnz_per_batch_host(c, batch_size, /*on_host*/ true);
 
@@ -151,12 +210,12 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
 
       functor::CalculateNNZPerBatchMatrixFromIndices<Device>
           calculate_nnz_from_indices;
-      auto indices = indices_t.matrix<int64>();
+      auto indices = indices_t.matrix<int64_t>();
       OP_REQUIRES_OK_ASYNC(
           c, calculate_nnz_from_indices(c, indices, nnz_per_batch_device),
           done);
 
-      perftools::gputools::DeviceMemoryBase nnz_per_batch_device_ptr(
+      stream_executor::DeviceMemoryBase nnz_per_batch_device_ptr(
           static_cast<void*>(nnz_per_batch_device.data()));
 
       OP_REQUIRES_ASYNC(
@@ -189,7 +248,7 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
                          TensorShape({batch_size + 1}));
 
       auto batch_ptr = batch_ptr_t.vec<int32>();
-      auto indices = indices_t.matrix<int64>();
+      auto indices = indices_t.matrix<int64_t>();
 
       batch_ptr(0) = 0;
       for (int i = 0; i < batch_size; ++i) {
@@ -281,7 +340,7 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
       convert_to_csr();
     } else {
       // Launch the GPU kernel to count nnz entries, then call convert_to_csr.
-      c->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+      c->device()->tensorflow_accelerator_device_info()->event_mgr->ThenExecute(
           stream, convert_to_csr);
     }
   }
@@ -291,14 +350,15 @@ namespace functor {
 
 template <>
 Status CalculateNNZPerBatchMatrixFromIndices<GPUDevice>::operator()(
-    OpKernelContext* c, TTypes<int64>::ConstMatrix indices,
+    OpKernelContext* c, TTypes<int64_t>::ConstMatrix indices,
     TTypes<int32>::Vec nnz_per_batch);
 extern template struct CalculateNNZPerBatchMatrixFromIndices<GPUDevice>;
 
 template <>
 struct SparseTensorToCOOSparseMatrix<GPUDevice> {
-  void operator()(const GPUDevice& d, TTypes<int64>::ConstVec host_dense_shape,
-                  TTypes<int64>::ConstMatrix indices,
+  void operator()(const GPUDevice& d,
+                  TTypes<int64_t>::ConstVec host_dense_shape,
+                  TTypes<int64_t>::ConstMatrix indices,
                   TTypes<int>::Vec coo_row_ind, TTypes<int>::Vec coo_col_ind);
 };
 extern template struct SparseTensorToCOOSparseMatrix<GPUDevice>;

@@ -14,21 +14,18 @@
 # ==============================================================================
 """Tests for XLA JIT compiler."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import platform
 import unittest
 
 import numpy as np
 import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.ops import bitwise_ops
+from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -83,7 +80,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
   def ListsAreClose(self, result, expected, rtol, atol):
     """Tests closeness of two lists of floats."""
     self.assertEqual(len(result), len(expected))
-    for i in xrange(len(result)):
+    for i in range(len(result)):
       self.assertAllClose(result[i], expected[i], rtol, atol)
 
   def AssertCloseAndSorted(self, result, expected, rtol, atol):
@@ -95,8 +92,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
     """Tests that result and expeted are exactly equal."""
     self.assertAllEqual(result, expected)
 
-  @test_util.disable_mlir_bridge(
-      "Handle complex element type in DiagPart lowering")
   def testAllTypeOps(self):
     for dtype in self.numeric_types - {np.int8, np.uint8}:
       self._assertOpOutputMatchesExpected(
@@ -150,6 +145,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
   def testLog(self):
     for dtype in self.float_types - {dtypes.bfloat16.as_numpy_dtype}:
       tol = 1e-4 if dtype == np.float32 else 1e-9
+      # pylint: disable=invalid-unary-operand-type
       x = np.linspace(-np.e, np.e, num=1000, dtype=dtype)
       self._assertOpOutputMatchesExpected(
           math_ops.log, x, expected=np.log(x), atol=tol, rtol=tol)
@@ -264,9 +260,9 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
       self._assertOpOutputMatchesExpected(
           math_ops.is_finite,
-          np.array(
-              [[np.NINF, -2, -1, 0, 0.5, 1, 2, np.inf, np.nan]], dtype=dtype),
-          expected=np.array([[0, 1, 1, 1, 1, 1, 1, 0, 0]], dtype=np.bool))
+          np.array([[np.NINF, -2, -1, 0, 0.5, 1, 2, np.inf, np.nan]],
+                   dtype=dtype),
+          expected=np.array([[0, 1, 1, 1, 1, 1, 1, 0, 0]], dtype=np.bool_))
 
       # Tests for tf.nn ops.
       self._assertOpOutputMatchesExpected(
@@ -449,10 +445,10 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
       self._assertOpOutputMatchesExpected(
           math_ops.is_finite,
-          np.array(
-              [[42, float("inf"), -123], [float("nan"), 0, -0.0]], dtype=dtype),
-          expected=np.array(
-              [[True, False, True], [False, True, True]], dtype=np.bool))
+          np.array([[42, float("inf"), -123], [float("nan"), 0, -0.0]],
+                   dtype=dtype),
+          expected=np.array([[True, False, True], [False, True, True]],
+                            dtype=np.bool_))
 
       self._assertOpOutputMatchesExpected(
           math_ops.lgamma,
@@ -528,9 +524,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
               ],
               dtype=dtype))
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/155501444): Handle _UnaryOpsComposition ops from Grappler")
-  def testFloatOpsDisabledOnMlirBridge(self):
+  def testSigmoidNumericalStability(self):
     for dtype in self.float_types:
       if dtype != np.float16:
         self._assertOpOutputMatchesExpected(
@@ -545,15 +539,26 @@ class UnaryOpsTest(xla_test.XLATestCase):
         return array_ops.quantize_and_dequantize(
             x, -127, 127, signed_input=True, num_bits=8)
 
-      self._assertOpOutputMatchesExpected(
-          quantize_and_dequantize_v2,
-          np.array([-1, -0.5, 0, 0.3], dtype=dtype),
-          expected=np.array([-1., -0.5, 0., 0.296875], dtype=dtype))
+      def quantize_and_dequantize_v3(x):
+        return array_ops.quantize_and_dequantize_v3(
+            x, -127, 127, num_bits=8, signed_input=True, range_given=False)
+
+      def quantize_and_dequantize_v4(x):
+        return array_ops.quantize_and_dequantize_v2(
+            x, -127, 127, signed_input=True, num_bits=8)
+
+      test_fns = (quantize_and_dequantize_v2, quantize_and_dequantize_v3,
+                  quantize_and_dequantize_v4)
+      for test_fn in test_fns:
+        self._assertOpOutputMatchesExpected(
+            test_fn,
+            np.array([-1, -0.5, 0, 0.3], dtype=dtype),
+            expected=np.array([-1., -0.5, 0., 0.296875], dtype=dtype))
 
       def quantize_and_dequantize_v2_round_half_up(x):
         return array_ops.quantize_and_dequantize(
             x,
-            -1,
+            -1.0,
             1.0,
             signed_input=True,
             num_bits=8,
@@ -562,10 +567,10 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
       self._assertOpOutputMatchesExpected(
           quantize_and_dequantize_v2_round_half_up,
-          np.array([-0.8, -0.5, 0, 0.3, 0.8, -2, 33], dtype=dtype),
+          np.array([-0.8, -0.4, 0, 0.3, 0.8, -2, 33], dtype=dtype),
           expected=np.array([
               -102.0 / 127,
-              -63.0 / 127,
+              -51.0 / 127,
               0,
               38.0 / 127,
               102.0 / 127,
@@ -586,44 +591,17 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
       self._assertOpOutputMatchesExpected(
           quantize_and_dequantize_v2_round_half_to_even,
-          np.array(
-              [
-                  -0.8,
-                  # The -0.5 should become -63.5 after scaling and with
-                  # rounding this should become -64. But with the test
-                  # unary_ops_test_cpu_ondemand, this fails as the result
-                  # before scaling becomes -63.499996 and gets rounded to -63.
-                  # TODO(sreenik): Some one more familiar with this test needs
-                  # to take a look and resolve this. This works on all other
-                  # variations of the platform like cpu, and gpu.
-                  # -0.5,
-                  0,
-                  0.3,
-                  0.8,
-                  -2,
-                  33
-              ],
-              dtype=dtype),
-          expected=np.array(
-              [
-                  -102.0 / 127,
-                  # -64.0 / 127,
-                  0,
-                  38.0 / 127,
-                  102.0 / 127,
-                  -128.0 / 127,
-                  1,
-              ],
-              dtype=dtype))
-
-      def quantize_and_dequantize_v3(x):
-        return array_ops.quantize_and_dequantize_v3(
-            x, -127, 127, num_bits=8, signed_input=True, range_given=False)
-
-      self._assertOpOutputMatchesExpected(
-          quantize_and_dequantize_v3,
-          np.array([-1, -0.5, 0, 0.3], dtype=dtype),
-          expected=np.array([-1., -0.5, 0., 0.296875], dtype=dtype))
+          np.array([-0.8, -0.4, 0, 0.3, 0.8, -2, 33], dtype=dtype),
+          expected=np.array([
+              -102.0 / 127,
+              -51.0 / 127,
+              0,
+              38.0 / 127,
+              102.0 / 127,
+              -128.0 / 127,
+              1,
+          ],
+                            dtype=dtype))
 
   def testComplexOps(self):
     for dtype in self.complex_types:
@@ -782,10 +760,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([1 + 3j, -4 + 7j, 2.7, -3j], dtype=dtype),
           expected=np.array([1, -4, 2.7, 0], dtype=ctypes[dtype]))
 
-  @test_util.disable_mlir_bridge(
-      "TF_PopulationCount is missing and is required to translate to "
-      "xla::PopulationCount."
-  )
   def testIntOps(self):
     for dtype in self.int_types:
       self._assertOpOutputMatchesExpected(
@@ -860,14 +834,14 @@ class UnaryOpsTest(xla_test.XLATestCase):
     for dtype in self.float_types:
       self._assertOpOutputMatchesExpected(
           math_ops.is_inf,
-          np.array(
-              [[np.NINF, -2, -1, 0, 0.5, 1, 2, np.inf, np.nan]], dtype=dtype),
-          expected=np.array([[1, 0, 0, 0, 0, 0, 0, 1, 0]], dtype=np.bool))
+          np.array([[np.NINF, -2, -1, 0, 0.5, 1, 2, np.inf, np.nan]],
+                   dtype=dtype),
+          expected=np.array([[1, 0, 0, 0, 0, 0, 0, 1, 0]], dtype=np.bool_))
       self._assertOpOutputMatchesExpected(
           math_ops.is_nan,
-          np.array(
-              [[np.NINF, -2, -1, 0, 0.5, 1, 2, np.inf, np.nan]], dtype=dtype),
-          expected=np.array([[0, 0, 0, 0, 0, 0, 0, 0, 1]], dtype=np.bool))
+          np.array([[np.NINF, -2, -1, 0, 0.5, 1, 2, np.inf, np.nan]],
+                   dtype=dtype),
+          expected=np.array([[0, 0, 0, 0, 0, 0, 0, 0, 1]], dtype=np.bool_))
       self._assertOpOutputMatchesExpected(
           math_ops.sign,
           np.array([[np.nan]], dtype=dtype),
@@ -876,8 +850,8 @@ class UnaryOpsTest(xla_test.XLATestCase):
   def testLogicalOps(self):
     self._assertOpOutputMatchesExpected(
         math_ops.logical_not,
-        np.array([[True, False], [False, True]], dtype=np.bool),
-        expected=np.array([[False, True], [True, False]], dtype=np.bool))
+        np.array([[True, False], [False, True]], dtype=np.bool_),
+        expected=np.array([[False, True], [True, False]], dtype=np.bool_))
 
   def testBiasAddGrad(self):
     self._assertOpOutputMatchesExpected(
@@ -891,57 +865,72 @@ class UnaryOpsTest(xla_test.XLATestCase):
             [[[1., 2.], [3., 4.]], [[5., 6.], [7., 8.]]], dtype=np.float32),
         expected=np.array([14., 22.], dtype=np.float32))
 
-  @test_util.disable_mlir_bridge("TODO(b/153812660): Handle tf.Cast compilation"
-                                )
   def testCast(self):
-    shapes = [[], [4], [2, 3], [2, 0, 4]]
     types = {
         dtypes.bool, dtypes.float32, dtypes.float64, dtypes.complex64,
         dtypes.int32, dtypes.int64, dtypes.uint32, dtypes.uint64
     }
     for src_type in types:
       for dst_type in types:
-        src_np_dtype = src_type.as_numpy_dtype
-        dst_np_dtype = dst_type.as_numpy_dtype
+        self._testCast(src_type, dst_type)
 
-        for shape in shapes:
-          src = np.arange(np.prod(shape)).astype(src_np_dtype)
+  def testCastFp8(self):
+    if platform.system() == "Darwin":
+      # TODO(b/271327511): Fix issue where casts to FP8 very rarely result in
+      # NaN on Mac
+      self.skipTest("Casts to FP8 sometimes result in NaN on Mac")
+    fp8_types = {dtypes.float8_e5m2, dtypes.float8_e4m3fn}
+    other_types = {
+        dtypes.bool, dtypes.float32, dtypes.float64, dtypes.complex64,
+        dtypes.int32, dtypes.int64, dtypes.uint32, dtypes.uint64
+    }
+    for fp8_type in fp8_types:
+      for other_type in other_types | fp8_types:
+        self._testCast(fp8_type, other_type)
+        self._testCast(other_type, fp8_type)
 
-          if src_type in self.complex_tf_types:
-            src += (np.arange(np.prod(shape)) * 2j).astype(src_np_dtype)
-          src = src.reshape(shape)
-          dst = src.astype(dst_np_dtype)
-          self._assertOpOutputMatchesExpected(
-              lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
-              src,
-              expected=dst)
+  def _testCast(self, src_type, dst_type):
+    with self.subTest(src_type=src_type, dst_type=dst_type):
+      shapes = [[], [4], [2, 3], [2, 0, 4]]
+      src_np_dtype = src_type.as_numpy_dtype
+      dst_np_dtype = dst_type.as_numpy_dtype
 
-        # Check special values.
-        if src_type.is_integer:
-          imin = np.iinfo(src_np_dtype).min
-          imax = np.iinfo(src_np_dtype).max
-          src = np.array([imin, imax, 0, 1, -1], dtype=src_np_dtype)
-        elif src_type in self.float_tf_types:
-          if dst_type.is_integer:
-            imin = np.iinfo(dst_np_dtype).min
-            imax = np.iinfo(dst_np_dtype).max // 2
-            src = np.array([imin, imax, 0, 1], dtype=src_np_dtype)
-          elif dst_type in self.float_tf_types:
-            fmin = np.finfo(dst_np_dtype).min
-            fmax = np.finfo(dst_np_dtype).max
-            tiny = np.finfo(dst_np_dtype).tiny
-            eps = np.finfo(dst_np_dtype).eps
-            src = np.array(
-                [fmin, fmax, np.nan, eps, -eps, tiny, -tiny, np.inf, -np.inf],
-                dtype=src_np_dtype)
+      for shape in shapes:
+        src = np.arange(np.prod(shape)).astype(src_np_dtype)
+
+        if src_type in self.complex_tf_types:
+          src += (np.arange(np.prod(shape)) * 2j).astype(src_np_dtype)
+        src = src.reshape(shape)
         dst = src.astype(dst_np_dtype)
         self._assertOpOutputMatchesExpected(
             lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
             src,
             expected=dst)
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/153812660): Handle tf.Bitcast compilation")
+      # Check special values.
+      if src_type.is_integer:
+        imin = np.iinfo(src_np_dtype).min
+        imax = np.iinfo(src_np_dtype).max
+        src = np.array([imin, imax, 0, 1, -1], dtype=src_np_dtype)
+      elif src_type in self.float_tf_types:
+        if dst_type.is_integer:
+          imin = np.iinfo(dst_np_dtype).min
+          imax = np.iinfo(dst_np_dtype).max // 2
+          src = np.array([imin, imax, 0, 1], dtype=src_np_dtype)
+        elif dst_type in self.float_tf_types:
+          fmin = np.finfo(dst_np_dtype).min
+          fmax = np.finfo(dst_np_dtype).max
+          tiny = np.finfo(dst_np_dtype).tiny
+          eps = np.finfo(dst_np_dtype).eps
+          src = np.array(
+              [fmin, fmax, np.nan, eps, -eps, tiny, -tiny, np.inf, -np.inf],
+              dtype=src_np_dtype)
+      dst = src.astype(dst_np_dtype)
+      self._assertOpOutputMatchesExpected(
+          lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
+          src,
+          expected=dst)
+
   def testBitcast(self):
     self._assertOpOutputMatchesExpected(
         lambda x: array_ops.bitcast(x, dtypes.int32),
@@ -964,6 +953,27 @@ class UnaryOpsTest(xla_test.XLATestCase):
           lambda x: array_ops.bitcast(x, dtypes.uint64),
           np.array([1, 0x100000003f800000], np.int64),
           expected=np.array([1, 0x100000003f800000], np.uint64))
+      self._assertOpOutputMatchesExpected(
+          lambda x: array_ops.bitcast(x, dtypes.float64),
+          np.array(
+              [0, 0x3FF0000000000000, 0xc3af161421c8e000, 0x4032000000000007],
+              np.uint64,
+          ),
+          expected=np.array(
+              [0, 1.0, -1.12e+18, 18.000000000000024869], np.float64
+          ),
+          atol=0
+      )
+
+  def testBitcastInt8ToFloat(self):
+    self._assertOpOutputMatchesExpected(
+        lambda x: array_ops.bitcast(x, dtypes.float32),
+        np.array([[1, 0, 0, 0], [0xd0, 0x0f, 0x49, 0x40]], np.int8),
+        expected=np.array([1e-45, 3.14159], np.float32))
+    self._assertOpOutputMatchesExpected(
+        lambda x: array_ops.bitcast(x, dtypes.np.int8),
+        np.array([1e-45, 3.14159], np.float32),
+        expected=np.array([[1, 0, 0, 0], [0xd0, 0x0f, 0x49, 0x40]], np.int8))
 
   def testInvertPermutation(self):
     for np_dtype in [np.int32, np.int64]:
@@ -1050,7 +1060,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
   def testUnpack(self):
     self._assertOpOutputMatchesExpected(
-        array_ops.unstack,
+        array_ops_stack.unstack,
         np.array([[1., 2.], [3., 4.], [5., 6.]], dtype=np.float32),
         expected=[
             np.array([1., 2.], dtype=np.float32),
@@ -1060,7 +1070,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
         equality_test=self.ListsAreClose)
 
     self._assertOpOutputMatchesExpected(
-        lambda x: array_ops.unstack(x, axis=1),
+        lambda x: array_ops_stack.unstack(x, axis=1),
         np.array([[1., 2.], [3., 4.], [5., 6.]], dtype=np.float32),
         expected=[
             np.array([1., 3., 5.], dtype=np.float32),
@@ -1212,6 +1222,28 @@ class UnaryOpsTest(xla_test.XLATestCase):
           equality_test=self.AssertCloseAndSorted,
           rtol=9e-5,
           atol=9e-5)
+
+  def testToBool(self):
+    for dtype in self.numeric_types - self.complex_types:
+      self._assertOpOutputMatchesExpected(
+          gen_functional_ops.to_bool,
+          np.array(5, dtype=dtype),
+          expected=np.array(True))
+
+      self._assertOpOutputMatchesExpected(
+          gen_functional_ops.to_bool,
+          np.array(0, dtype=dtype),
+          expected=np.array(False))
+
+      self._assertOpOutputMatchesExpected(
+          gen_functional_ops.to_bool,
+          np.array([], dtype=dtype),
+          expected=np.array(False))
+
+      self._assertOpOutputMatchesExpected(
+          gen_functional_ops.to_bool,
+          np.array([1, 2, 3], dtype=dtype),
+          expected=np.array(True))
 
 
 if __name__ == "__main__":

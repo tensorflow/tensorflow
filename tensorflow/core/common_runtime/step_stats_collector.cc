@@ -12,8 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
+
+#include <memory>
+
 #include "tensorflow/core/common_runtime/costmodel_manager.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -27,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
@@ -35,9 +36,9 @@ const int kMaxAllocReportNodes = 100;
 const float kMaxAllocReportFraction = 0.99;
 
 struct AllocStats {
-  std::map<int64, std::vector<string>> nodes_by_size;
-  int64 total_bytes = 0;
-  int64 total_nodes = 0;
+  std::map<int64_t, std::vector<string>> nodes_by_size;
+  int64_t total_bytes = 0;
+  int64_t total_nodes = 0;
 };
 
 bool IsRecv(const NodeDef* node) {
@@ -52,7 +53,7 @@ bool IsSend(const NodeDef* node) {
 
 NodeExecStatsWrapper::NodeExecStatsWrapper(
     const NodeDef* node, StepStatsCollector* step_stats_collector)
-    : NodeExecStatsWrapper(MakeUnique<NodeExecStats>(), node,
+    : NodeExecStatsWrapper(std::make_unique<NodeExecStats>(), node,
                            step_stats_collector) {
   stats_->set_node_name(node->name());
 }
@@ -70,9 +71,9 @@ void NodeExecStatsWrapper::Done(const string& device) {
   DCHECK(node_);
   string memory;
   for (auto& all : stats_->memory()) {
-    int64 tot = all.total_bytes();
+    int64_t tot = all.total_bytes();
     if (tot >= 0.1 * 1048576.0) {
-      int64 peak = all.peak_bytes();
+      int64_t peak = all.peak_bytes();
       if (peak > 0) {
         memory =
             strings::StrCat(memory, "[", all.allocator_name(),
@@ -109,13 +110,13 @@ void NodeExecStatsWrapper::Done(const string& device) {
 }
 
 void NodeExecStatsWrapper::RecordExecutorStarted() {
-  int64 now_nanos = Env::Default()->NowNanos();
+  int64_t now_nanos = Env::Default()->NowNanos();
   stats_->set_all_start_micros(now_nanos / EnvTime::kMicrosToNanos);
   stats_->set_all_start_nanos(now_nanos);
 }
 
 void NodeExecStatsWrapper::RecordComputeStarted() {
-  int64 now_nanos = Env::Default()->NowNanos();
+  int64_t now_nanos = Env::Default()->NowNanos();
   DCHECK_NE(stats_->all_start_micros(), 0);
   DCHECK_NE(stats_->all_start_nanos(), 0);
   stats_->set_op_start_rel_micros(now_nanos / EnvTime::kMicrosToNanos -
@@ -124,7 +125,7 @@ void NodeExecStatsWrapper::RecordComputeStarted() {
 }
 
 void NodeExecStatsWrapper::RecordComputeEnded() {
-  int64 now_nanos = Env::Default()->NowNanos();
+  int64_t now_nanos = Env::Default()->NowNanos();
   DCHECK_NE(stats_->all_start_micros(), 0);
   DCHECK_NE(stats_->all_start_nanos(), 0);
   stats_->set_op_end_rel_micros(now_nanos / EnvTime::kMicrosToNanos -
@@ -133,7 +134,7 @@ void NodeExecStatsWrapper::RecordComputeEnded() {
 }
 
 void NodeExecStatsWrapper::RecordExecutorEnded() {
-  int64 now_nanos = Env::Default()->NowNanos();
+  int64_t now_nanos = Env::Default()->NowNanos();
   DCHECK_NE(stats_->all_start_micros(), 0);
   DCHECK_NE(stats_->all_start_nanos(), 0);
   stats_->set_all_end_rel_micros(now_nanos / EnvTime::kMicrosToNanos -
@@ -141,7 +142,7 @@ void NodeExecStatsWrapper::RecordExecutorEnded() {
   stats_->set_all_end_rel_nanos(now_nanos - stats_->all_start_nanos());
 }
 
-void NodeExecStatsWrapper::SetScheduled(int64 nanos) {
+void NodeExecStatsWrapper::SetScheduled(int64_t nanos) {
   stats_->set_scheduled_micros(nanos / EnvTime::kMicrosToNanos);
   stats_->set_scheduled_nanos(nanos);
 }
@@ -327,7 +328,7 @@ void StepStatsCollector::BuildCostModel(
       for (const auto& node_stats : dev_stats.hardware_stats->node_stats()) {
         string node_name = node_stats.node_name();
         // Remove the part of op name (e.g. :Conv2D) in the end of a node name.
-        size_t pos = node_name.find_first_of(":");
+        size_t pos = node_name.find_first_of(':');
         if (pos != std::string::npos) {
           node_name = node_name.substr(0, pos);
         }
@@ -336,7 +337,7 @@ void StepStatsCollector::BuildCostModel(
         // such ops, we sum up the time for all its GPU kernels.
         if (name_to_hw_node_stats.find(node_name) !=
             name_to_hw_node_stats.end()) {
-          int64 time = name_to_hw_node_stats[node_name].op_end_rel_micros();
+          int64_t time = name_to_hw_node_stats[node_name].op_end_rel_micros();
           name_to_hw_node_stats[node_name].set_op_end_rel_micros(
               time + node_stats.op_end_rel_micros());
         } else {
@@ -432,7 +433,8 @@ NodeExecStatsInterface* StepStatsCollector::CreateNodeExecStats(
   return new NodeExecStatsWrapper(node, this);
 }
 
-string StepStatsCollector::ReportAllocsOnResourceExhausted(const string& err) {
+string StepStatsCollector::ReportAllocsOnResourceExhausted(
+    const absl::string_view err) {
   mutex_lock l(mu_);
   if (err.find("OOM") == err.npos) {
     return "";
@@ -462,7 +464,7 @@ string StepStatsCollector::ReportAllocsOnResourceExhausted(const string& err) {
         TrackingAllocator* tracking_alloc = alloc.second;
         gtl::InlinedVector<AllocRecord, 4> cur_records =
             tracking_alloc->GetCurrentRecords();
-        int64 cur_bytes = 0;
+        int64_t cur_bytes = 0;
         for (const auto& r : cur_records) {
           cur_bytes += r.alloc_bytes;
         }
@@ -479,8 +481,8 @@ string StepStatsCollector::ReportAllocsOnResourceExhausted(const string& err) {
   for (const auto& dev_allocs_it : allocs_map) {
     const auto& dev = dev_allocs_it.first;
     const AllocStats& dev_allocs_stats = dev_allocs_it.second;
-    int64 reported_bytes = 0;
-    int64 reported_nodes = 0;
+    int64_t reported_bytes = 0;
+    int64_t reported_nodes = 0;
     bool done = false;
     strings::StrAppend(&report, "\nCurrent usage from device: ", dev.first,
                        ", allocator: ", dev.second, "\n");
@@ -501,8 +503,8 @@ string StepStatsCollector::ReportAllocsOnResourceExhausted(const string& err) {
       }
       if (done) break;
     }
-    int64 remain_nodes = dev_allocs_stats.total_nodes - reported_nodes;
-    int64 remain_bytes = dev_allocs_stats.total_bytes - reported_bytes;
+    int64_t remain_nodes = dev_allocs_stats.total_nodes - reported_nodes;
+    int64_t remain_bytes = dev_allocs_stats.total_bytes - reported_bytes;
     if (remain_nodes > 0) {
       strings::StrAppend(&report, "  Remaining ", remain_nodes, " nodes with ",
                          strings::HumanReadableNumBytes(remain_bytes), "\n");

@@ -12,14 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <unordered_map>
+#include <utility>
+
 #include "tensorflow/core/framework/types.h"
+#include "tsl/platform/refcount.h"
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/device_base.h"
-#endif
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -73,7 +75,7 @@ Status ToBool(gtl::ArraySlice<Tensor> t, bool* v) {
       CASE(uint8);
       CASE(int16);
       CASE(int8);
-      CASE(int64);
+      CASE(int64_t);
 #undef CASE
       case DT_BOOL:
         *v = t[0].scalar<bool>()();
@@ -88,7 +90,7 @@ Status ToBool(gtl::ArraySlice<Tensor> t, bool* v) {
   } else {
     *v = t[0].NumElements() > 0;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Sets "rets" to be the output of "ctx". Validates rets' types based
@@ -107,7 +109,7 @@ Status SetOutputs(const OpKernel* kernel, OpKernelContext* ctx,
     }
     ctx->set_output(i, rets[i]);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void SetRunOptions(OpKernelContext* ctx, FunctionLibraryRuntime::Options* opts,
@@ -126,13 +128,31 @@ void SetRunOptions(OpKernelContext* ctx, FunctionLibraryRuntime::Options* opts,
 class IfOp : public AsyncOpKernel {
  public:
   explicit IfOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
-    auto lib = ctx->function_library();
-    OP_REQUIRES(ctx, lib != nullptr, errors::Internal("No function library"));
+    OP_REQUIRES(ctx, ctx->function_library() != nullptr,
+                errors::Internal("No function library"));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("then_branch", &then_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("else_branch", &else_func_));
   }
 
-  ~IfOp() override {}
+  ~IfOp() override {
+    for (const auto& it : handles_) {
+      auto lib = it.second.second.GetNewRef();
+      if (lib == nullptr) {
+        LOG(INFO) << "FunctionLibraryRuntime already destroyed.";
+        continue;
+      }
+      Status then_status = lib->ReleaseHandle(it.second.first.first);
+      if (!then_status.ok()) {
+        LOG(INFO) << "Ignoring error while destructing IfOp then function: "
+                  << then_status;
+      }
+      Status else_status = lib->ReleaseHandle(it.second.first.second);
+      if (!else_status.ok()) {
+        LOG(INFO) << "Ignoring error while destructing IfOp else function: "
+                  << else_status;
+      }
+    }
+  }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     FHandle then_handle;
@@ -149,8 +169,12 @@ class IfOp : public AsyncOpKernel {
   NameAttrList else_func_;
 
   mutex mu_;
-  std::unordered_map<FunctionLibraryRuntime*, std::pair<FHandle, FHandle>>
-      handles_ GUARDED_BY(mu_);
+
+  // TODO(binghu): Use struct to hold the value to improve readability.
+  std::unordered_map<FunctionLibraryRuntime*,
+                     std::pair<std::pair<FHandle, FHandle>,
+                               tsl::core::WeakPtr<FunctionLibraryRuntime>>>
+      handles_ ABSL_GUARDED_BY(mu_);
 
   class State {
    public:
@@ -162,14 +186,15 @@ class IfOp : public AsyncOpKernel {
           then_handle_(then_handle),
           else_handle_(else_handle),
           done_(std::move(done)),
-          lib_(CHECK_NOTNULL(ctx_->function_library())) {
+          lib_(CHECK_NOTNULL(ctx_->function_library())),
+          opts_(ctx->step_id()) {
       SetRunOptions(ctx_, &opts_, true /* always_collect_stats */);
       for (int i = 1; i < ctx_->num_inputs(); ++i) {
         args_.push_back(ctx_->input(i));
       }
     }
 
-    ~State() {}
+    ~State() = default;
 
     void Start() {
       FHandle handle = cond_ ? then_handle_ : else_handle_;
@@ -220,82 +245,131 @@ class IfOp : public AsyncOpKernel {
       tf_shared_lock l(mu_);
       const auto iter = handles_.find(lib);
       if (TF_PREDICT_TRUE(iter != handles_.end())) {
-        *then_handle = iter->second.first;
-        *else_handle = iter->second.second;
+        *then_handle = iter->second.first.first;
+        *else_handle = iter->second.first.second;
       }
     }
     if (TF_PREDICT_FALSE(*then_handle == kInvalidHandle)) {
       mutex_lock l(mu_);
       const auto iter = handles_.find(lib);
       if (TF_PREDICT_TRUE(iter != handles_.end())) {
-        *then_handle = iter->second.first;
-        *else_handle = iter->second.second;
+        *then_handle = iter->second.first.first;
+        *else_handle = iter->second.first.second;
       } else {
         TF_RETURN_IF_ERROR(Instantiate(ctx, then_func_, then_handle));
         TF_RETURN_IF_ERROR(Instantiate(ctx, else_func_, else_handle));
-        handles_[lib] = {*then_handle, *else_handle};
+        handles_[lib] =
+            std::make_pair(std::make_pair(*then_handle, *else_handle),
+                           tsl::core::WeakPtr<FunctionLibraryRuntime>(lib));
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 
 class CaseOp : public AsyncOpKernel {
  public:
   explicit CaseOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
-    auto lib = ctx->function_library();
-    OP_REQUIRES(ctx, lib != nullptr, errors::Internal("No function library"));
+    OP_REQUIRES(ctx, ctx->function_library() != nullptr,
+                errors::Internal("No function library"));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("branches", &branch_funcs_));
   }
 
-  ~CaseOp() override {}
+  ~CaseOp() override {
+    for (const auto& it : handles_) {
+      auto lib = it.second.second.GetNewRef();
+      if (lib == nullptr) {
+        LOG(INFO) << "FunctionLibraryRuntime already destroyed.";
+        continue;
+      }
+
+      for (const auto& handle : it.second.first) {
+        Status status = lib->ReleaseHandle(handle);
+        if (!status.ok()) {
+          LOG(INFO)
+              << "Ignoring error while destructing CaseOp branch function: "
+              << status;
+        }
+      }
+    }
+  }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    auto lib = ctx->function_library();
-    OP_REQUIRES_ASYNC(ctx, lib != nullptr,
-                      errors::Internal("No function library"), done);
-
-    // TODO(b/37549631): Because this op has `SetIsStateful()` in its op
-    // registration, this kernel may be shared by multiple subgraphs, which have
-    // different associated `FunctionLibraryRuntime` objects and hence different
-    // `FHandle` namespaces. So we must call Instantiate() to make sure we get
-    // the correct function handles with respect to `lib`. Note the underlying
-    // `lib->Instantiate()` caches the created function handles, so calling
-    // `Instantiate()` repeatedly on the same `lib` and function is cheap.
-    std::vector<FHandle> branch_handles(branch_funcs_.size());
-    for (int i = 0; i < branch_funcs_.size(); i++) {
-      OP_REQUIRES_OK_ASYNC(
-          ctx, Instantiate(lib, branch_funcs_[i], &branch_handles[i]), done);
-    }
-
     const Tensor& branch_index = ctx->input(0);
     OP_REQUIRES_ASYNC(ctx, TensorShapeUtils::IsScalar(branch_index.shape()),
                       errors::InvalidArgument("branch_index must be scalar"),
                       done);
-    int32 branch = branch_index.scalar<int32>()();
+    int32_t branch = branch_index.scalar<int32>()();
+
+    std::vector<FHandle> branch_handles(branch_funcs_.size());
+    OP_REQUIRES_OK_ASYNC(ctx, GetHandles(ctx, branch_handles), done);
     (new State(this, ctx, branch, branch_handles, done))->Start();
   }
 
  private:
   std::vector<NameAttrList> branch_funcs_;
+  mutex mu_;
+  std::unordered_map<FunctionLibraryRuntime*,
+                     std::pair<std::vector<FHandle>,
+                               tsl::core::WeakPtr<FunctionLibraryRuntime>>>
+      handles_ ABSL_GUARDED_BY(mu_);
+
+  Status GetHandles(OpKernelContext* ctx,
+                    std::vector<FHandle>& branch_handles) {
+    // TODO(b/37549631): Because this op has `SetIsStateful()` in its
+    // op registration, this kernel may be shared by multiple
+    // subgraphs, which have different associated
+    // `FunctionLibraryRuntime` objects and hence different `FHandle`
+    // namespaces. We currently work around this by caching the map
+    // from `FunctionLibraryRuntime*` to `FHandle` pairs for the two
+    // functions this op uses.
+    auto lib = ctx->function_library();
+    if (lib == nullptr) return errors::Internal("No function library");
+
+    std::vector<FHandle> handles;
+    {
+      tf_shared_lock l(mu_);
+      const auto iter = handles_.find(lib);
+      if (TF_PREDICT_TRUE(iter != handles_.end())) {
+        handles.assign(iter->second.first.begin(), iter->second.first.end());
+      }
+    }
+    if (TF_PREDICT_FALSE(handles.empty())) {
+      mutex_lock l(mu_);
+      const auto iter = handles_.find(lib);
+      if (TF_PREDICT_TRUE(iter != handles_.end())) {
+        handles.assign(iter->second.first.begin(), iter->second.first.end());
+      } else {
+        for (int i = 0; i < branch_funcs_.size(); i++) {
+          handles.resize(branch_funcs_.size());
+          TF_RETURN_IF_ERROR(Instantiate(ctx, branch_funcs_[i], &handles[i]));
+        }
+        handles_[lib] = std::make_pair(
+            handles, tsl::core::WeakPtr<FunctionLibraryRuntime>(lib));
+      }
+    }
+    branch_handles.assign(handles.begin(), handles.end());
+    return OkStatus();
+  }
 
   class State {
    public:
     State(CaseOp* kernel, OpKernelContext* ctx, int branch,
-          std::vector<FHandle> branch_handles, DoneCallback done)
+          const std::vector<FHandle>& branch_handles, DoneCallback done)
         : kernel_(kernel),
           ctx_(ctx),
           branch_(branch),
           branch_handles_(branch_handles),
           done_(std::move(done)),
-          lib_(CHECK_NOTNULL(ctx_->function_library())) {
+          lib_(CHECK_NOTNULL(ctx_->function_library())),
+          opts_(ctx->step_id()) {
       SetRunOptions(ctx_, &opts_, true /* always_collect_stats */);
       for (int i = 1; i < ctx_->num_inputs(); ++i) {
         args_.push_back(ctx_->input(i));
       }
     }
 
-    ~State() {}
+    ~State() = default;
 
     void Start() {
       int branch = branch_;
@@ -335,38 +409,61 @@ class CaseOp : public AsyncOpKernel {
 
 // TODO(drpng): remove this.
 REGISTER_KERNEL_BUILDER(Name("_If").Device(DEVICE_CPU), IfOp);
-REGISTER_KERNEL_BUILDER(Name("_If").Device(DEVICE_GPU).HostMemory("cond"),
+REGISTER_KERNEL_BUILDER(Name("_If").Device(DEVICE_DEFAULT).HostMemory("cond"),
                         IfOp);
 
 REGISTER_KERNEL_BUILDER(Name("If").Device(DEVICE_CPU), IfOp);
-REGISTER_KERNEL_BUILDER(Name("If").Device(DEVICE_GPU).HostMemory("cond"), IfOp);
+REGISTER_KERNEL_BUILDER(Name("If").Device(DEVICE_DEFAULT).HostMemory("cond"),
+                        IfOp);
 
 REGISTER_KERNEL_BUILDER(Name("Case").Device(DEVICE_CPU), CaseOp);
 REGISTER_KERNEL_BUILDER(
-    Name("Case").Device(DEVICE_GPU).HostMemory("branch_index"), CaseOp);
+    Name("Case").Device(DEVICE_DEFAULT).HostMemory("branch_index"), CaseOp);
 REGISTER_KERNEL_BUILDER(Name("StatelessCase").Device(DEVICE_CPU), CaseOp);
 REGISTER_KERNEL_BUILDER(
-    Name("StatelessCase").Device(DEVICE_GPU).HostMemory("branch_index"),
+    Name("StatelessCase").Device(DEVICE_DEFAULT).HostMemory("branch_index"),
     CaseOp);
 
 REGISTER_KERNEL_BUILDER(Name("StatelessIf").Device(DEVICE_CPU), IfOp);
 REGISTER_KERNEL_BUILDER(
-    Name("StatelessIf").Device(DEVICE_GPU).HostMemory("cond"), IfOp);
+    Name("StatelessIf").Device(DEVICE_DEFAULT).HostMemory("cond"), IfOp);
 
 class WhileOp : public AsyncOpKernel {
  public:
   explicit WhileOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
+    OP_REQUIRES(ctx, ctx->function_library() != nullptr,
+                errors::Internal("No function library"));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("cond", &cond_func_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("body", &body_func_));
   }
 
-  ~WhileOp() override {}
+  ~WhileOp() override {
+    for (const auto& it : handles_) {
+      auto lib = it.second.second.GetNewRef();
+      if (lib == nullptr) {
+        LOG(INFO) << "FunctionLibraryRuntime already destroyed.";
+        continue;
+      }
+      Status cond_status = lib->ReleaseHandle(it.second.first.first);
+      if (!cond_status.ok()) {
+        LOG(INFO)
+            << "Ignoring error while destructing WhileOp condition function: "
+            << cond_status;
+      }
+      Status body_status = lib->ReleaseHandle(it.second.first.second);
+      if (!body_status.ok()) {
+        LOG(INFO) << "Ignoring error while destructing WhileOp body function: "
+                  << body_status;
+      }
+    }
+  }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     if (ctx->run_all_kernels_inline()) {
       // Use the non-callback-based implementation when kernels (and function
       // callbacks) execute inline to avoid stack overflow.
       OP_REQUIRES_OK_ASYNC(ctx, DoComputeSync(ctx), done);
+      done();
     } else {
       FHandle cond_handle;
       FHandle body_handle;
@@ -394,18 +491,21 @@ class WhileOp : public AsyncOpKernel {
   NameAttrList body_func_;
 
   mutex mu_;
-  std::unordered_map<FunctionLibraryRuntime*, std::pair<FHandle, FHandle>>
-      handles_ GUARDED_BY(mu_);
+  std::unordered_map<FunctionLibraryRuntime*,
+                     std::pair<std::pair<FHandle, FHandle>,
+                               tsl::core::WeakPtr<FunctionLibraryRuntime>>>
+      handles_ ABSL_GUARDED_BY(mu_);
 
   static Status CondResultToBool(OpKernelContext* ctx,
                                  const FunctionLibraryRuntime::Options& opts,
                                  const Tensor& cond_t, bool* out_result) {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-    const DeviceBase::GpuDeviceInfo* gpu_device_info =
-        ctx->device()->tensorflow_gpu_device_info();
+    bool is_pluggable = ctx->op_device_context() &&
+                        ctx->op_device_context()->IsPluggableDevice();
+    const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info =
+        ctx->device()->tensorflow_accelerator_device_info();
     const bool is_hostmem_dtype =
         cond_t.dtype() == DT_INT32 || cond_t.dtype() == DT_INT64;
-    if (!is_hostmem_dtype && gpu_device_info &&
+    if (!is_hostmem_dtype && (is_pluggable || accelerator_device_info) &&
         (opts.rets_alloc_attrs.empty() ||
          !opts.rets_alloc_attrs[0].on_host())) {
       // Copy the ret value to host if it's allocated on device.
@@ -416,7 +516,6 @@ class WhileOp : public AsyncOpKernel {
           &cond_t, /*tensor_name=*/"", device, &host_cond_t));
       return ToBool({host_cond_t}, out_result);
     }
-#endif
     return ToBool({cond_t}, out_result);
   }
 
@@ -457,7 +556,7 @@ class WhileOp : public AsyncOpKernel {
     Status GetArg(int index, const Tensor** val) override {
       if (index < args_->size()) {
         *val = &(*args_)[index];
-        return Status::OK();
+        return OkStatus();
       } else {
         return errors::InvalidArgument("Argument ", index, " is out of range.");
       }
@@ -487,7 +586,7 @@ class WhileOp : public AsyncOpKernel {
                                        DataTypeString(val.dtype()), ".");
       }
       (*retvals_)[index] = val;
-      return Status::OK();
+      return OkStatus();
     }
 
    private:
@@ -495,7 +594,8 @@ class WhileOp : public AsyncOpKernel {
     std::vector<Tensor>* const retvals_;  // Not owned.
     DataTypeSlice ret_types_;
 
-    TF_DISALLOW_COPY_AND_ASSIGN(BodyFuncCallFrame);
+    BodyFuncCallFrame(const BodyFuncCallFrame&) = delete;
+    void operator=(const BodyFuncCallFrame&) = delete;
   };
 
   class State {
@@ -507,14 +607,15 @@ class WhileOp : public AsyncOpKernel {
           cond_handle_(cond_handle),
           body_handle_(body_handle),
           done_(std::move(done)),
-          lib_(CHECK_NOTNULL(ctx_->function_library())) {
+          lib_(CHECK_NOTNULL(ctx_->function_library())),
+          opts_(ctx->step_id()) {
       SetRunOptions(ctx_, &opts_, false /* always_collect_stats */);
       GetArgsFromContext(ctx, &args_, &loop_var_types_);
       body_frame_ =
-          absl::make_unique<BodyFuncCallFrame>(&args_, &rets_, loop_var_types_);
+          std::make_unique<BodyFuncCallFrame>(&args_, &rets_, loop_var_types_);
     }
 
-    ~State() {}
+    ~State() = default;
 
     void Start() { EvalCond(); }
 
@@ -564,7 +665,7 @@ class WhileOp : public AsyncOpKernel {
       }
 
       if (!cond) {
-        return Finish(Status::OK());
+        return Finish(OkStatus());
       }
       rets_.clear();
       rets_.resize(args_.size());
@@ -671,34 +772,36 @@ class WhileOp : public AsyncOpKernel {
       tf_shared_lock l(mu_);
       const auto iter = handles_.find(lib);
       if (TF_PREDICT_TRUE(iter != handles_.end())) {
-        *cond_handle = iter->second.first;
-        *body_handle = iter->second.second;
+        *cond_handle = iter->second.first.first;
+        *body_handle = iter->second.first.second;
       }
     }
     if (TF_PREDICT_FALSE(*cond_handle == kInvalidHandle)) {
       mutex_lock l(mu_);
       const auto iter = handles_.find(lib);
       if (TF_PREDICT_TRUE(iter != handles_.end())) {
-        *cond_handle = iter->second.first;
-        *body_handle = iter->second.second;
+        *cond_handle = iter->second.first.first;
+        *body_handle = iter->second.first.second;
       } else {
         TF_RETURN_IF_ERROR(Instantiate(ctx, cond_func_, cond_handle));
         TF_RETURN_IF_ERROR(Instantiate(ctx, body_func_, body_handle));
-        handles_[lib] = {*cond_handle, *body_handle};
+        handles_[lib] =
+            std::make_pair(std::make_pair(*cond_handle, *body_handle),
+                           tsl::core::WeakPtr<FunctionLibraryRuntime>(lib));
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 // TODO(drpng): remove these.
 REGISTER_KERNEL_BUILDER(Name("_While").Device(DEVICE_CPU), WhileOp);
-REGISTER_KERNEL_BUILDER(Name("_While").Device(DEVICE_GPU), WhileOp);
+REGISTER_KERNEL_BUILDER(Name("_While").Device(DEVICE_DEFAULT), WhileOp);
 
 REGISTER_KERNEL_BUILDER(Name("While").Device(DEVICE_CPU), WhileOp);
-REGISTER_KERNEL_BUILDER(Name("While").Device(DEVICE_GPU), WhileOp);
+REGISTER_KERNEL_BUILDER(Name("While").Device(DEVICE_DEFAULT), WhileOp);
 
 REGISTER_KERNEL_BUILDER(Name("StatelessWhile").Device(DEVICE_CPU), WhileOp);
-REGISTER_KERNEL_BUILDER(Name("StatelessWhile").Device(DEVICE_GPU), WhileOp);
+REGISTER_KERNEL_BUILDER(Name("StatelessWhile").Device(DEVICE_DEFAULT), WhileOp);
 
 class ToBoolOp : public OpKernel {
  public:
@@ -722,47 +825,101 @@ Status GetScalar(OpKernelContext* ctx, int index, int32* value,
                                    t.shape().DebugString());
   }
   *value = t.scalar<int32>()();
-  return Status::OK();
+  return OkStatus();
 }
 
 class ForOp : public AsyncOpKernel {
  public:
   explicit ForOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
-    auto lib = ctx->function_library();
-    OP_REQUIRES(ctx, lib != nullptr, errors::Internal("No function library"));
-    const NameAttrList* func;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("body", &func));
-    OP_REQUIRES_OK(ctx, Instantiate(lib, *func, &body_handle_));
+    OP_REQUIRES(ctx, ctx->function_library() != nullptr,
+                errors::Internal("No function library"));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("body", &body_func_));
   }
 
-  ~ForOp() override {}
+  ~ForOp() override {
+    for (const auto& it : handles_) {
+      auto lib = it.second.second.GetNewRef();
+      if (lib == nullptr) {
+        LOG(INFO) << "FunctionLibraryRuntime already destroyed.";
+        continue;
+      }
+      Status status = lib->ReleaseHandle(it.second.first);
+      if (!status.ok()) {
+        LOG(INFO) << "Ignoring error while destructing ForOp body function: "
+                  << status;
+      }
+    }
+  }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    (new State(this, ctx, done))->Start();
+    FHandle body_handle;
+
+    OP_REQUIRES_OK_ASYNC(ctx, GetHandles(ctx, &body_handle), done);
+    (new State(this, ctx, body_handle, done))->Start();
   }
 
  private:
-  FHandle body_handle_;
+  NameAttrList body_func_;
+  mutex mu_;
+  std::unordered_map<
+      FunctionLibraryRuntime*,
+      std::pair<FHandle, tsl::core::WeakPtr<FunctionLibraryRuntime>>>
+      handles_ ABSL_GUARDED_BY(mu_);
+
+  Status GetHandles(OpKernelContext* ctx, FHandle* body_handle) {
+    // TODO(b/37549631): Because this op has `SetIsStateful()` in its
+    // op registration, this kernel may be shared by multiple
+    // subgraphs, which have different associated
+    // `FunctionLibraryRuntime` objects and hence different `FHandle`
+    // namespaces. We currently work around this by caching the map
+    // from `FunctionLibraryRuntime*` to `FHandle` pairs for the two
+    // functions this op uses.
+    auto lib = ctx->function_library();
+    if (lib == nullptr) return errors::Internal("No function library");
+    *body_handle = kInvalidHandle;
+    {
+      tf_shared_lock l(mu_);
+      const auto iter = handles_.find(lib);
+      if (TF_PREDICT_TRUE(iter != handles_.end())) {
+        *body_handle = iter->second.first;
+      }
+    }
+    if (TF_PREDICT_FALSE(*body_handle == kInvalidHandle)) {
+      mutex_lock l(mu_);
+      const auto iter = handles_.find(lib);
+      if (TF_PREDICT_TRUE(iter != handles_.end())) {
+        *body_handle = iter->second.first;
+      } else {
+        TF_RETURN_IF_ERROR(Instantiate(ctx, body_func_, body_handle));
+        handles_[lib] = std::make_pair(
+            *body_handle, tsl::core::WeakPtr<FunctionLibraryRuntime>(lib));
+      }
+    }
+    return OkStatus();
+  }
 
   class State {
    public:
-    State(ForOp* kernel, OpKernelContext* ctx, DoneCallback done)
+    State(ForOp* kernel, OpKernelContext* ctx, FHandle handle,
+          DoneCallback done)
         : kernel_(kernel),
           ctx_(ctx),
+          body_handle_(handle),
           done_(std::move(done)),
           lib_(CHECK_NOTNULL(ctx_->function_library())),
+          opts_(ctx->step_id()),
           args_(1 + ctx_->num_inputs() - 3) {
       args_[0] = Tensor(DT_INT32, {});
       iter_ = &args_[0].scalar<int32>()();
 
-      const int32 num_loop_inputs = ctx_->num_inputs() - 3;
+      const int32_t num_loop_inputs = ctx_->num_inputs() - 3;
       rets_.reserve(num_loop_inputs);
       for (int i = 0; i < num_loop_inputs; ++i) {
         rets_.push_back(ctx_->input(3 + i));
       }
     }
 
-    ~State() {}
+    ~State() = default;
 
     void Start() {
       Status s = StartLoop();
@@ -772,6 +929,7 @@ class ForOp : public AsyncOpKernel {
    private:
     ForOp* const kernel_;
     OpKernelContext* const ctx_;
+    FHandle body_handle_;
     const DoneCallback done_;
     FunctionLibraryRuntime* const lib_;
     FunctionLibraryRuntime::Options opts_;
@@ -795,7 +953,7 @@ class ForOp : public AsyncOpKernel {
           (delta_ < 0 && *iter_ >= limit_) ||
           (delta_ == 0 && *iter_ == limit_)) {
         RunNext();
-        return Status::OK();
+        return OkStatus();
       } else {
         return errors::InvalidArgument("Invalid start/limit/delta: ", *iter_,
                                        " ", limit_, " ", delta_);
@@ -810,7 +968,7 @@ class ForOp : public AsyncOpKernel {
         done_loop = *iter_ <= limit_;
       }
       if (done_loop) {
-        Finish(Status::OK());
+        Finish(OkStatus());
         return;
       }
 
@@ -825,15 +983,14 @@ class ForOp : public AsyncOpKernel {
       }
       rets_.clear();
       profiler::TraceMe trace_me("ForOp");
-      lib_->Run(opts_, kernel_->body_handle_, args_, &rets_,
-                [this](const Status& s) {
-                  if (s.ok()) {
-                    *iter_ += delta_;
-                    RunNext();
-                  } else {
-                    Finish(s);
-                  }
-                });
+      lib_->Run(opts_, body_handle_, args_, &rets_, [this](const Status& s) {
+        if (s.ok()) {
+          *iter_ += delta_;
+          RunNext();
+        } else {
+          Finish(s);
+        }
+      });
     }
 
     void Finish(Status s) {
@@ -849,7 +1006,7 @@ class ForOp : public AsyncOpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("For").Device(DEVICE_CPU), ForOp);
 REGISTER_KERNEL_BUILDER(Name("For")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .HostMemory("start")
                             .HostMemory("limit")
                             .HostMemory("delta"),
@@ -871,28 +1028,27 @@ class FakeParamOp : public OpKernel {
     PartialTensorShape partial_shape;
     OP_REQUIRES_OK(context, context->GetAttr("shape", &partial_shape));
     if (!partial_shape.unknown_rank()) {
-      for (int64 d : partial_shape.dim_sizes()) {
+      for (int64_t d : partial_shape.dim_sizes()) {
         shape.AddDim(d == -1 ? 0 : d);
       }
     }
 
-    // Create a persistent tensor that we can repeatedly return to save memory.
+    // Create a tensor that we can repeatedly return to save memory.
     // TODO(b/119612758): add optimization to prevent sending this across
     // devices on each Compute() call.
-    OP_REQUIRES_OK(context, context->allocate_persistent(
-                                dtype, shape, &value_handle_, nullptr));
+    OP_REQUIRES_OK(context, context->allocate_temp(dtype, shape, &value_));
   }
 
   void Compute(OpKernelContext* context) override {
-    context->set_output(0, *value_handle_.AccessTensor(context));
+    context->set_output(0, value_);
   }
 
  private:
-  PersistentTensor value_handle_;
+  Tensor value_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("FakeParam").Device(DEVICE_CPU), FakeParamOp);
-REGISTER_KERNEL_BUILDER(Name("FakeParam").Device(DEVICE_GPU), FakeParamOp);
+REGISTER_KERNEL_BUILDER(Name("FakeParam").Device(DEVICE_DEFAULT), FakeParamOp);
 
 // DeviceIndexOP returns the current device index.
 class DeviceIndexOp : public OpKernel {
@@ -918,13 +1074,13 @@ class DeviceIndexOp : public OpKernel {
   }
 
  private:
-  PersistentTensor value_handle_;
   std::vector<string> device_names_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DeviceIndex").Device(DEVICE_CPU), DeviceIndexOp);
 REGISTER_KERNEL_BUILDER(
-    Name("DeviceIndex").Device(DEVICE_GPU).HostMemory("index"), DeviceIndexOp);
+    Name("DeviceIndex").Device(DEVICE_DEFAULT).HostMemory("index"),
+    DeviceIndexOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -15,60 +15,42 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 
+#include <string>
+#include <utility>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/cc/saved_model/constants.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/cc/saved_model/fingerprinting.h"
+#include "tensorflow/cc/saved_model/metrics.h"
+#include "tensorflow/cc/saved_model/reader.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
+#include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
+#include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/platform/strcat.h"
 
 namespace tensorflow {
-
 namespace {
 
-Status ReadSavedModelProto(const string& export_dir,
-                           SavedModel* saved_model_proto) {
-  LOG(INFO) << "Reading SavedModel from: " << export_dir;
+using strings::StrCat;
 
-  const string saved_model_pb_path =
-      io::JoinPath(export_dir, kSavedModelFilenamePb);
-  if (Env::Default()->FileExists(saved_model_pb_path).ok()) {
-    return ReadBinaryProto(Env::Default(), saved_model_pb_path,
-                           saved_model_proto);
-  }
-  const string saved_model_pbtxt_path =
-      io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
-  if (Env::Default()->FileExists(saved_model_pbtxt_path).ok()) {
-    return ReadTextProto(Env::Default(), saved_model_pbtxt_path,
-                         saved_model_proto);
-  }
-  return Status(error::Code::NOT_FOUND,
-                "Could not find SavedModel .pb or .pbtxt at supplied export "
-                "directory path: " +
-                    export_dir);
-}
+// `tensorflow::SavedModelV2Bundle::Load` API label.
+constexpr char kCCLoadBundleV2Label[] = "cc_load_bundle_v2";
 
-Status ReadSavedModelDebugInfoIfPresent(
-    const string& export_dir,
-    std::unique_ptr<GraphDebugInfo>* debug_info_proto) {
-  LOG(INFO) << "Reading SavedModel debug info (if present) from: "
-            << export_dir;
-
-  const string debug_info_pb_path =
-      io::JoinPath(export_dir, "debug", "saved_model_debug_info.pb");
-  if (Env::Default()->FileExists(debug_info_pb_path).ok()) {
-    GraphDebugInfo debug_info;
-    TF_RETURN_IF_ERROR(
-        ReadBinaryProto(Env::Default(), debug_info_pb_path, &debug_info));
-    *debug_info_proto =
-        absl::make_unique<GraphDebugInfo>(std::move(debug_info));
-  }
-  return Status::OK();
-}
-
-Status ReadCheckpointObjectGraph(BundleReader* bundle_reader,
-                                 TrackableObjectGraph* object_graph) {
+absl::Status ReadCheckpointObjectGraph(BundleReader* bundle_reader,
+                                       TrackableObjectGraph* object_graph) {
   Tensor object_graph_tensor;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       bundle_reader->Lookup(kObjectGraphProtoKey, &object_graph_tensor),
@@ -76,33 +58,35 @@ Status ReadCheckpointObjectGraph(BundleReader* bundle_reader,
   if (object_graph_tensor.dtype() != DT_STRING ||
       object_graph_tensor.dims() != 0 ||
       object_graph_tensor.NumElements() != 1) {
-    return Status(
-        error::Code::FAILED_PRECONDITION,
+    return absl::Status(
+        absl::StatusCode::kFailedPrecondition,
         "SavedModel checkpoint object graph was not the correct type.");
   }
 
   const tstring* object_graph_string = reinterpret_cast<const tstring*>(
       object_graph_tensor.tensor_data().data());
   if (!object_graph->ParseFromString(*object_graph_string)) {
-    return Status(
-        error::Code::FAILED_PRECONDITION,
+    return absl::Status(
+        absl::StatusCode::kFailedPrecondition,
         "SavedModel checkpoint object graph could not be deserialized.");
   }
-  return Status::OK();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-Status SavedModelV2Bundle::Load(const std::string& export_dir,
-                                SavedModelV2Bundle* const bundle) {
+absl::Status SavedModelV2Bundle::Load(const std::string& export_dir,
+                                      SavedModelV2Bundle* const bundle) {
+  metrics::SavedModelReadApi(kCCLoadBundleV2Label).IncrementBy(1);
   SavedModel saved_model_proto;
-  TF_RETURN_IF_ERROR(ReadSavedModelProto(export_dir, &saved_model_proto));
+  TF_RETURN_IF_ERROR(ReadSavedModel(export_dir, &saved_model_proto));
+  metrics::SavedModelReadPath().Set(export_dir);
 
   // Load MetaGraphDef.
   // In version 2 SavedModels, there is only one MetaGraphDef.
   if (saved_model_proto.meta_graphs_size() != 1) {
-    return Status(
-        error::Code::INVALID_ARGUMENT,
+    return absl::Status(
+        absl::StatusCode::kInvalidArgument,
         strings::StrCat(
             "SavedModelV2 should have exactly one MetaGraphDef but actually ",
             "contains ", saved_model_proto.meta_graphs_size()));
@@ -110,30 +94,59 @@ Status SavedModelV2Bundle::Load(const std::string& export_dir,
   bundle->meta_graph_def_ =
       std::move(*saved_model_proto.mutable_meta_graphs(0));
 
+  // Correct the endiness of Tensor content on big-endian system
+  if (!port::kLittleEndian) {
+    TF_RETURN_IF_ERROR(
+        ByteSwapTensorContentInMetaGraphDef(&(bundle->meta_graph_def_)));
+  }
+
   // Load GraphDebugInfo.
   TF_RETURN_IF_ERROR(
       ReadSavedModelDebugInfoIfPresent(export_dir, &bundle->debug_info_));
 
-  // Load the variables checkpoint reader.
-  const std::string variables_prefix = io::JoinPath(
-      export_dir, kSavedModelVariablesDirectory, kSavedModelVariablesFilename);
-  bundle->variable_reader_.reset(
-      new BundleReader(Env::Default(), variables_prefix));
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      bundle->variable_reader_->status(),
-      "Unable to load SavedModel variables checkpoint from ", variables_prefix);
+  const std::string variables_dir =
+      io::JoinPath(export_dir, kSavedModelVariablesDirectory);
+  if (!Env::Default()->FileExists(variables_dir).ok()) {
+    LOG(INFO)
+        << "No checkpoint found, assuming this is a program-only SavedModel";
+  } else {
+    // Load the variables checkpoint reader.
+    const std::string variables_prefix =
+        io::JoinPath(variables_dir, kSavedModelVariablesFilename);
+    bundle->variable_reader_.reset(
+        new BundleReader(Env::Default(), variables_prefix));
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        bundle->variable_reader_->status(),
+        "Unable to load SavedModel variables checkpoint from ",
+        variables_prefix);
 
-  // Deserialize the object graph proto from the tensor bundle.
-  TF_RETURN_IF_ERROR(ReadCheckpointObjectGraph(
-      bundle->variable_reader_.get(), &bundle->trackable_object_graph_));
-  return Status::OK();
+    // Deserialize the object graph proto from the tensor bundle.
+    TF_RETURN_IF_ERROR(ReadCheckpointObjectGraph(
+        bundle->variable_reader_.get(), &bundle->trackable_object_graph_));
+  }
+  // Read the fingerprint.
+  auto fingerprint_proto =
+      saved_model::fingerprinting::ReadSavedModelFingerprint(export_dir);
+  if (fingerprint_proto.ok()) {
+    metrics::SavedModelReadFingerprint().Set(
+        metrics::MakeFingerprintJson(fingerprint_proto.value()));
+
+    TF_ASSIGN_OR_RETURN(
+        std::string path_and_singleprint,
+        metrics::MakeSavedModelPathAndSingleprint(
+            export_dir, saved_model::fingerprinting::Singleprint(
+                            fingerprint_proto.value())));
+    metrics::SavedModelReadPathAndSingleprint().Set(path_and_singleprint);
+  }
+
+  return absl::OkStatus();
 }
 
-Status SavedModelV2Bundle::VisitObjectsToRestore(
+absl::Status SavedModelV2Bundle::VisitObjectsToRestore(
     RestoreObjectsCallback callback) {
   if (saved_object_graph().nodes_size() == 0 ||
       trackable_object_graph().nodes_size() == 0) {
-    return Status::OK();
+    return absl::OkStatus();
   }
 
   // Start from root nodes of both the SavedObjectGraph and TrackableObjectGraph
@@ -149,7 +162,7 @@ Status SavedModelV2Bundle::VisitObjectsToRestore(
                                  std::move(callback));
 }
 
-Status SavedModelV2Bundle::RecurseObjectsToRestore(
+absl::Status SavedModelV2Bundle::RecurseObjectsToRestore(
     const SavedObject* saved_object, int saved_object_node_id,
     const TrackableObjectGraph::TrackableObject* trackable_object,
     std::string object_name, absl::flat_hash_set<int>* seen_trackable_node_ids,
@@ -184,8 +197,7 @@ Status SavedModelV2Bundle::RecurseObjectsToRestore(
     }
     if (trackable_child_node_id < 0 ||
         trackable_child_node_id >= trackable_object_graph().nodes_size()) {
-      return Status(
-          errors::Code::FAILED_PRECONDITION,
+      return errors::FailedPrecondition(
           strings::StrCat("Illegal trackable child node id for ", child_name));
     }
     const auto* trackable_child =
@@ -207,8 +219,8 @@ Status SavedModelV2Bundle::RecurseObjectsToRestore(
     }
 
     if (!saved_child) {
-      return Status(
-          errors::Code::FAILED_PRECONDITION,
+      return absl::Status(
+          absl::StatusCode::kFailedPrecondition,
           strings::StrCat("Could not find saved object to restore for ",
                           child_name));
     }
@@ -217,7 +229,7 @@ Status SavedModelV2Bundle::RecurseObjectsToRestore(
         saved_child, saved_child_node_id, trackable_child, child_name,
         seen_trackable_node_ids, callback));
   }
-  return Status::OK();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

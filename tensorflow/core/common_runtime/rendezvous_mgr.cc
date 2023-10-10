@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 
 namespace tensorflow {
 
@@ -45,8 +47,20 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
   const bool dst_host =
       (recv_args.alloc_attrs.on_host() || parsed.dst.type == "CPU");
   if (src_host && dst_host) {
+    if (VLOG_IS_ON(3)) {
+      bool src_override =
+          send_args.alloc_attrs.on_host() && !(parsed.src.type == "CPU");
+      bool dst_override =
+          recv_args.alloc_attrs.on_host() && !(parsed.dst.type == "CPU");
+      if (src_override || dst_override) {
+        VLOG(3) << "Shortcut to keep tensor on host (src_override "
+                << src_override << " and dst_override " << dst_override
+                << ") tensor dtype:" << DataTypeString(in.dtype()) << " "
+                << parsed.FullKey();
+      }
+    }
     *out = in;
-    done(Status::OK());
+    done(OkStatus());
     return;
   }
 
@@ -74,8 +88,9 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
     return;
   }
 
-  ScopedMemoryDebugAnnotation op_annotation("SameWorkerRecvDone", 0, "dynamic",
-                                            in.dtype(), &in.shape());
+  profiler::ScopedMemoryDebugAnnotation op_annotation(
+      "SameWorkerRecvDone", 0, "dynamic", in.dtype(),
+      [&in]() { return in.shape().DebugString(); });
   AllocatorAttributes attr = recv_args.alloc_attrs;
   attr.set_gpu_compatible(send_args.alloc_attrs.gpu_compatible() ||
                           recv_args.alloc_attrs.gpu_compatible());
@@ -90,7 +105,9 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
       safe_alloc_frontier = dst_device->SafeAllocFrontier(safe_alloc_frontier);
       return safe_alloc_frontier;
     };
-    if (parsed.dst.type == "GPU" && safe_alloc_frontier > 0) {
+    if ((parsed.dst.type == "GPU" ||
+         DeviceFactory::IsPluggableDevice(parsed.dst.type)) &&
+        safe_alloc_frontier > 0) {
       // There's a timestamped allocator at work, so use it instead
       // of sync_dst_compute.
       aa.freed_by_func = &freed_by_func;
@@ -119,7 +136,7 @@ void IntraProcessRecvAsyncImpl(const DeviceMgr* device_mgr,
                                RendezvousInterface::DoneCallback done) {
   VLOG(1) << "IntraProcessRendezvous Recv " << local << " " << parsed.FullKey();
 
-  ScopedMemoryDebugAnnotation op_annotation("RecvAsync");
+  profiler::ScopedMemoryDebugAnnotation op_annotation("RecvAsync");
   // Recv the tensor from local_.
   local->RecvAsync(
       parsed, recv_args,
@@ -151,9 +168,12 @@ void IntraProcessRecvAsyncImpl(const DeviceMgr* device_mgr,
 
 RefCountedIntraProcessRendezvous::RefCountedIntraProcessRendezvous(
     const DeviceMgr* device_mgr)
-    : device_mgr_(device_mgr), local_(this) {}
+    : device_mgr_(device_mgr),
+      local_(this, /* num_shards= */ device_mgr->NumDevices()) {}
 
-RefCountedIntraProcessRendezvous::~RefCountedIntraProcessRendezvous() {}
+RefCountedIntraProcessRendezvous::~RefCountedIntraProcessRendezvous() {
+  VLOG(5) << "Destructor of IntraProcessRendezvous: " << this;
+}
 
 Status RefCountedIntraProcessRendezvous::Send(const ParsedKey& key,
                                               const Rendezvous::Args& args,
@@ -171,12 +191,18 @@ void RefCountedIntraProcessRendezvous::RecvAsync(const ParsedKey& key,
 }
 
 void RefCountedIntraProcessRendezvous::StartAbort(const Status& s) {
+  VLOG(1) << "IntraProcessRendezvous start Abort " << this;
   local_.StartAbort(s);
+}
+
+Status RefCountedIntraProcessRendezvous::GetLocalRendezvousStatus() {
+  return local_.status();
 }
 
 PrivateIntraProcessRendezvous::PrivateIntraProcessRendezvous(
     const DeviceMgr* device_mgr)
-    : device_mgr_(device_mgr), local_(nullptr) {}
+    : device_mgr_(device_mgr),
+      local_(nullptr, /* num_shards= */ device_mgr->NumDevices()) {}
 
 PrivateIntraProcessRendezvous::~PrivateIntraProcessRendezvous() {}
 

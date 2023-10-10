@@ -22,7 +22,7 @@ namespace monitoring {
 namespace {
 
 TEST(MetricDefTest, Simple) {
-  const MetricDef<MetricKind::kCumulative, int64, 0> metric_def0(
+  const MetricDef<MetricKind::kCumulative, int64_t, 0> metric_def0(
       "/tensorflow/metric0", "An example metric with no labels.");
   const MetricDef<MetricKind::kGauge, HistogramProto, 1> metric_def1(
       "/tensorflow/metric1", "An example metric with one label.", "LabelName");
@@ -46,7 +46,7 @@ TEST(MetricDefTest, StringsPersist) {
   string name = "/tensorflow/metric0";
   string description = "test description";
   string label_description = "test label description";
-  const MetricDef<MetricKind::kCumulative, int64, 1> metric_def(
+  const MetricDef<MetricKind::kCumulative, int64_t, 1> metric_def(
       name, description, label_description);
 
   // Mutate the strings

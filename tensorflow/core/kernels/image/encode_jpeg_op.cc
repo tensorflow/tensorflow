@@ -86,9 +86,9 @@ class EncodeJpegOp : public OpKernel {
         errors::InvalidArgument(
             "Cannot encode images with >= max int32 elements"));
 
-    const int32 dim_size0 = static_cast<int32>(image.dim_size(0));
-    const int32 dim_size1 = static_cast<int32>(image.dim_size(1));
-    const int32 dim_size2 = static_cast<int32>(image.dim_size(2));
+    const int32_t dim_size0 = static_cast<int32>(image.dim_size(0));
+    const int32_t dim_size1 = static_cast<int32>(image.dim_size(1));
+    const int32_t dim_size2 = static_cast<int32>(image.dim_size(2));
 
     // Autodetect format if desired, otherwise make sure format and
     // image channels are consistent.
@@ -152,9 +152,9 @@ class EncodeJpegVariableQualityOp : public OpKernel {
         errors::InvalidArgument(
             "Cannot encode images with >= max int32 elements"));
 
-    const int32 dim_size0 = static_cast<int32>(image.dim_size(0));
-    const int32 dim_size1 = static_cast<int32>(image.dim_size(1));
-    const int32 dim_size2 = static_cast<int32>(image.dim_size(2));
+    const int32_t dim_size0 = static_cast<int32>(image.dim_size(0));
+    const int32_t dim_size1 = static_cast<int32>(image.dim_size(1));
+    const int32_t dim_size2 = static_cast<int32>(image.dim_size(2));
 
     // Use default jpeg compression flags except for format and quality.
     jpeg::CompressFlags adjusted_flags;

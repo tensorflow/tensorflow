@@ -16,13 +16,15 @@ limitations under the License.
 // This is the quantization pattern definition file for TensorFlow Lite.
 
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/IR/Ops.td"
+include "mlir/IR/PatternBase.td"
+include "mlir/Dialect/Arith/IR/ArithOps.td"
+include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 
 // Quantize attribute $0 by using quantization parameter from %1.
 def QuantizeByQuantizedType : NativeCodeCall<"quant::Quantize($0, $1.getValue())">;
 def F32ElementsAttr : ElementsAttrBase<
-  CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
+  CPred<"$_self.cast<ElementsAttr>().getShapedType().getElementType().isF32()">, "float constant tensor">;
 
 // Squash tfl.dequantize and tfl.quantize pairs.
 // TODO(fengliuai): Compare the scale of input and output. This can also be
@@ -32,14 +34,5 @@ def : Pat<(TFL_QuantizeOp (TFL_DequantizeOp $in), $qt), (replaceWithValue $in)>;
 // If the tfl.dequantize op wasn't fused, we shouldn't quantize the floating
 // point constant.
 def : Pat<(TFL_DequantizeOp
-             (TFL_QuantizeOp (ConstantOp F32ElementsAttr:$cst), $qt)),
+             (TFL_QuantizeOp (Arith_ConstantOp F32ElementsAttr:$cst), $qt)),
           (TFL_ConstOp $cst)>;
-
-// Quantize the value of a constant op if the quantization parameters have been
-// propagated to the output.
-def : Pat<(TFL_QuantizeOp
-              (ConstantOp ElementsAttr:$value),
-              $qtype),
-          (TFL_QConstOp
-              $qtype,
-              (QuantizeByQuantizedType $value, $qtype))>;

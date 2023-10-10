@@ -14,12 +14,9 @@
 # ==============================================================================
 """Tests for python.util.protobuf.compare."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import re
+import sys
 import textwrap
 
 import six
@@ -207,6 +204,29 @@ class ProtoEqTest(googletest.TestCase):
     self.assertNotEquals('medium < smalls < strings: "a" > >',
                          'small < strings: "b" >')
 
+  def testIsClose(self):
+    self.assertTrue(compare.isClose(1, 1, 1e-10))
+    self.assertTrue(compare.isClose(65061.0420, 65061.0322, 1e-5))
+    self.assertFalse(compare.isClose(65061.0420, 65061.0322, 1e-7))
+
+  def testIsCloseNan(self):
+    self.assertTrue(compare.isClose(float('nan'), float('nan'), 1e-10))
+    self.assertFalse(compare.isClose(float('nan'), 1, 1e-10))
+    self.assertFalse(compare.isClose(1, float('nan'), 1e-10))
+    self.assertFalse(compare.isClose(float('nan'), float('inf'), 1e-10))
+
+  def testIsCloseInf(self):
+    self.assertTrue(compare.isClose(float('inf'), float('inf'), 1e-10))
+    self.assertTrue(compare.isClose(float('-inf'), float('-inf'), 1e-10))
+    self.assertFalse(compare.isClose(float('-inf'), float('inf'), 1e-10))
+    self.assertFalse(compare.isClose(float('inf'), 1, 1e-10))
+    self.assertFalse(compare.isClose(1, float('inf'), 1e-10))
+
+  def testIsCloseSubnormal(self):
+    x = sys.float_info.min * sys.float_info.epsilon
+    self.assertTrue(compare.isClose(x, x, 1e-10))
+    self.assertFalse(compare.isClose(x, 1, 1e-10))
+
 
 class NormalizeNumbersTest(googletest.TestCase):
   """Tests for NormalizeNumberFields()."""
@@ -348,6 +368,17 @@ class AssertTest(googletest.TestCase):
     pb2 = compare_test_pb2.Large()
     pb2.double_ = 4
     compare.assertProtoEqual(self, pb1, pb2, normalize_numbers=True)
+
+  def testLargeProtoData(self):
+    # Proto size should be larger than 2**16.
+    number_of_entries = 2**13
+    string_value = 'dummystr'  # Has length of 2**3.
+    pb1_txt = 'strings: "dummystr"\n' * number_of_entries
+    pb2 = compare_test_pb2.Small(strings=[string_value] * number_of_entries)
+    compare.assertProtoEqual(self, pb1_txt, pb2)
+
+    with self.assertRaises(AssertionError):
+      compare.assertProtoEqual(self, pb1_txt + 'strings: "Should fail."', pb2)
 
   def testPrimitives(self):
     self.assertAll('string_: "x"')

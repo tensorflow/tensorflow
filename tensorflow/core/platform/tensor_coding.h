@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 // Helper routines for encoding/decoding tensor contents.
-#ifndef TENSORFLOW_PLATFORM_TENSOR_CODING_H_
-#define TENSORFLOW_PLATFORM_TENSOR_CODING_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_TENSOR_CODING_H_
+#define TENSORFLOW_CORE_PLATFORM_TENSOR_CODING_H_
 
 #include <string>
 
@@ -48,11 +48,11 @@ inline void CopySubrangeToArray(const std::string& src, size_t pos, size_t n,
 }
 
 // Store encoding of strings[0..n-1] in *out.
-void EncodeStringList(const tstring* strings, int64 n, std::string* out);
+void EncodeStringList(const tstring* strings, int64_t n, std::string* out);
 
 // Decode n strings from src and store in strings[0..n-1].
 // Returns true if successful, false on parse error.
-bool DecodeStringList(const std::string& src, tstring* strings, int64 n);
+bool DecodeStringList(const std::string& src, tstring* strings, int64_t n);
 
 // Assigns base[0..bytes-1] to *s
 void CopyFromArray(std::string* s, const char* base, size_t bytes);
@@ -109,18 +109,18 @@ inline void CopyToArray(const absl::Cord& src, char* dst) {
 
 // Copy n bytes of src to dst. If pos >= src.size() the result is empty.
 // If pos + n > src.size() the subrange [pos, size()) is copied.
-inline void CopySubrangeToArray(const absl::Cord& src, int64 pos, int64 n,
+inline void CopySubrangeToArray(const absl::Cord& src, int64_t pos, int64_t n,
                                 char* dst) {
   src.Subcord(pos, n).CopyToArray(dst);
 }
 
 // Store encoding of strings[0..n-1] in *out.
-void EncodeStringList(const tstring* strings, int64 n, absl::Cord* out);
+void EncodeStringList(const tstring* strings, int64_t n, absl::Cord* out);
 
 // Decode n strings from src and store in strings[0..n-1].
 // Returns true if successful, false on parse error.
-bool DecodeStringList(const absl::Cord& src, std::string* strings, int64 n);
-bool DecodeStringList(const absl::Cord& src, tstring* strings, int64 n);
+bool DecodeStringList(const absl::Cord& src, std::string* strings, int64_t n);
+bool DecodeStringList(const absl::Cord& src, tstring* strings, int64_t n);
 
 // Assigns base[0..bytes-1] to *c
 void CopyFromArray(absl::Cord* c, const char* base, size_t bytes);
@@ -132,4 +132,4 @@ std::unique_ptr<StringListDecoder> NewStringListDecoder(const absl::Cord& in);
 }  // namespace port
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_TENSOR_CODING_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_TENSOR_CODING_H_

@@ -226,13 +226,13 @@ Status UpdateNodeDef(utils::MutableNodeView* node_view, const string& funcName,
   }
 
   VLOG(3) << "Node def after swap is: " << node_def->DebugString();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ImplementationSelector::LoadFunctions(const GraphDef& graph) {
-  lib_info_ = absl::make_unique<FunctionLibraryApiInfo>();
+  lib_info_ = std::make_unique<FunctionLibraryApiInfo>();
   TF_RETURN_IF_ERROR(lib_info_->Init(graph.library()));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ImplementationSelector::MaybeOptimizeFunctionCall(
@@ -257,7 +257,7 @@ Status ImplementationSelector::MaybeOptimizeFunctionCall(
   if (function_attribute_names.empty() &&
       lib_info_->GetApiInfo(node_def->op()) == nullptr) {
     // A regular op, or a function which has no interface.
-    return Status::OK();
+    return OkStatus();
   }
 
   DeviceNameUtils::ParsedName parsed_name;
@@ -298,7 +298,7 @@ Status ImplementationSelector::MaybeOptimizeFunctionCall(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Finds the index of the device from the device name list.
@@ -319,7 +319,7 @@ Status FindDeviceIndex(const utils::MutableNodeView* device_index_node,
     // be the final item in the case op branching list.
     *index = device_list.size();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Rewrites the device_index op to a const op with value of the index.
@@ -368,17 +368,17 @@ Status ImplementationSelector::SelectDeviceIndex(GraphDef* graph) const {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ImplementationSelector::SelectImplementation(GraphDef* graph) const {
   if (!graph->has_library()) {
     VLOG(2) << "Skipping graph since it does not have function def";
-    return Status::OK();
+    return OkStatus();
   }
   if (lib_info_->empty()) {
     VLOG(2) << "Skipping optimization since lib_info is empty";
-    return Status::OK();
+    return OkStatus();
   }
 
   Status status;
@@ -390,7 +390,7 @@ Status ImplementationSelector::SelectImplementation(GraphDef* graph) const {
     TF_RETURN_IF_ERROR(MaybeOptimizeFunctionCall(graph_view.GetNode(k)));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ImplementationSelector::Optimize(Cluster* cluster,

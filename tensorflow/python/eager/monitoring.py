@@ -14,10 +14,6 @@
 # ==============================================================================
 """TensorFlow monitoring APIs."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import functools
 import time
@@ -27,6 +23,7 @@ from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 _MetricMethod = collections.namedtuple('MetricMethod', 'create delete get_cell')
 _counter_methods = [
@@ -70,6 +67,14 @@ _string_gauge_methods = [
         create=pywrap_tfe.TFE_MonitoringNewStringGauge2,
         delete=pywrap_tfe.TFE_MonitoringDeleteStringGauge2,
         get_cell=pywrap_tfe.TFE_MonitoringGetCellStringGauge2),
+    _MetricMethod(
+        create=pywrap_tfe.TFE_MonitoringNewStringGauge3,
+        delete=pywrap_tfe.TFE_MonitoringDeleteStringGauge3,
+        get_cell=pywrap_tfe.TFE_MonitoringGetCellStringGauge3),
+    _MetricMethod(
+        create=pywrap_tfe.TFE_MonitoringNewStringGauge4,
+        delete=pywrap_tfe.TFE_MonitoringDeleteStringGauge4,
+        get_cell=pywrap_tfe.TFE_MonitoringGetCellStringGauge4),
 ]
 _bool_gauge_methods = [
     _MetricMethod(
@@ -329,6 +334,7 @@ class BoolGaugeCell(object):
     return pywrap_tfe.TFE_MonitoringBoolGaugeCellValue(self._cell)
 
 
+@tf_export("__internal__.monitoring.BoolGauge", v1=[])
 class BoolGauge(Metric):
   """A stateful class for updating a gauge-like bool metric.
 
@@ -458,33 +464,66 @@ class Sampler(Metric):
     return SamplerCell(super(Sampler, self).get_cell(*labels))
 
 
+# Keeping track of current MonitoredTimer sections to prevent repetitive
+# counting.
+MonitoredTimerSections = []
+
+
 class MonitoredTimer(object):
   """A context manager to measure the walltime and increment a Counter cell."""
 
-  __slots__ = ["cell", "t"]
+  __slots__ = [
+      "cell",
+      "t",
+      "monitored_section_name",
+      "_counting",
+      "_avoid_repetitive_counting",
+  ]
 
-  def __init__(self, cell):
+  def __init__(
+      self, cell, monitored_section_name=None, avoid_repetitive_counting=False
+  ):
     """Creates a new MonitoredTimer.
 
     Args:
       cell: the cell associated with the time metric that will be inremented.
+      monitored_section_name: name of action being monitored here.
+      avoid_repetitive_counting: when set to True, if already in a monitored
+        timer section with the same monitored_section_name, skip counting.
     """
     self.cell = cell
+    self.monitored_section_name = monitored_section_name
+    self._avoid_repetitive_counting = avoid_repetitive_counting
+    self._counting = True
 
   def __enter__(self):
+    if (
+        self._avoid_repetitive_counting
+        and self.monitored_section_name
+        and self.monitored_section_name in MonitoredTimerSections
+    ):
+      self._counting = False
+      return self
+
     self.t = time.time()
+    if self.monitored_section_name:
+      MonitoredTimerSections.append(self.monitored_section_name)
+
     return self
 
   def __exit__(self, exception_type, exception_value, traceback):
     del exception_type, exception_value, traceback
-    micro_seconds = (time.time() - self.t) * 1000000
-    self.cell.increase_by(int(micro_seconds))
+    if self._counting:
+      micro_seconds = (time.time() - self.t) * 1000000
+      self.cell.increase_by(int(micro_seconds))
+      if self.monitored_section_name:
+        MonitoredTimerSections.remove(self.monitored_section_name)
 
 
 def monitored_timer(cell):
   """A function decorator for adding MonitoredTimer support.
 
-  Arguments:
+  Args:
     cell: the cell associated with the time metric that will be inremented.
   Returns:
     A decorator that measure the function runtime and increment the specified

@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/bits.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -31,7 +32,7 @@ Status DecodeWavShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
 
   DimensionHandle channels_dim;
-  int32 desired_channels;
+  int32_t desired_channels;
   TF_RETURN_IF_ERROR(c->GetAttr("desired_channels", &desired_channels));
   if (desired_channels == -1) {
     channels_dim = c->UnknownDim();
@@ -43,7 +44,7 @@ Status DecodeWavShapeFn(InferenceContext* c) {
     channels_dim = c->MakeDim(desired_channels);
   }
   DimensionHandle samples_dim;
-  int32 desired_samples;
+  int32_t desired_samples;
   TF_RETURN_IF_ERROR(c->GetAttr("desired_samples", &desired_samples));
   if (desired_samples == -1) {
     samples_dim = c->UnknownDim();
@@ -56,7 +57,7 @@ Status DecodeWavShapeFn(InferenceContext* c) {
   }
   c->set_output(0, c->MakeShape({samples_dim, channels_dim}));
   c->set_output(1, c->Scalar());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status EncodeWavShapeFn(InferenceContext* c) {
@@ -64,16 +65,25 @@ Status EncodeWavShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &unused));
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
   c->set_output(0, c->Scalar());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SpectrogramShapeFn(InferenceContext* c) {
   ShapeHandle input;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input));
-  int32 window_size;
+  int32_t window_size;
   TF_RETURN_IF_ERROR(c->GetAttr("window_size", &window_size));
-  int32 stride;
+  if (window_size <= 1) {
+    return errors::InvalidArgument("window size must be > 1, got ",
+                                   window_size);
+  }
+
+  int32_t stride;
   TF_RETURN_IF_ERROR(c->GetAttr("stride", &stride));
+  if (stride <= 0) {
+    return errors::InvalidArgument("stride must be strictly positive, got ",
+                                   stride);
+  }
 
   DimensionHandle input_length = c->Dim(input, 0);
   DimensionHandle input_channels = c->Dim(input, 1);
@@ -82,9 +92,9 @@ Status SpectrogramShapeFn(InferenceContext* c) {
   if (!c->ValueKnown(input_length)) {
     output_length = c->UnknownDim();
   } else {
-    const int64 input_length_value = c->Value(input_length);
-    const int64 length_minus_window = (input_length_value - window_size);
-    int64 output_length_value;
+    const int64_t input_length_value = c->Value(input_length);
+    const int64_t length_minus_window = (input_length_value - window_size);
+    int64_t output_length_value;
     if (length_minus_window < 0) {
       output_length_value = 0;
     } else {
@@ -97,7 +107,7 @@ Status SpectrogramShapeFn(InferenceContext* c) {
       c->MakeDim(1 + NextPowerOfTwo(window_size) / 2);
   c->set_output(0,
                 c->MakeShape({input_channels, output_length, output_channels}));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MfccShapeFn(InferenceContext* c) {
@@ -106,7 +116,7 @@ Status MfccShapeFn(InferenceContext* c) {
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
 
-  int32 dct_coefficient_count;
+  int32_t dct_coefficient_count;
   TF_RETURN_IF_ERROR(
       c->GetAttr("dct_coefficient_count", &dct_coefficient_count));
 
@@ -117,7 +127,7 @@ Status MfccShapeFn(InferenceContext* c) {
 
   c->set_output(0, c->MakeShape({spectrogram_channels, spectrogram_length,
                                  output_channels}));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

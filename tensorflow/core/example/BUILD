@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "@io_bazel_rules_closure//closure:defs.bzl",
@@ -17,10 +17,11 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # TODO(bmzhao): Refactor this target to use granular dependencies
@@ -51,10 +52,23 @@ cc_library(
         ":example_protos_cc",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/platform:types",
-        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "feature_util_test",
+    size = "small",
+    srcs = ["feature_util_test.cc"],
+    deps = [
+        ":example_protos_cc",
+        ":feature_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 # TODO(bmzhao): Refactor this target to use granular dependencies
@@ -97,6 +111,7 @@ tf_proto_library(
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    tags = ["alt_dep=//third_party/tensorflow/core:protos_all"],
 )
 
 tf_proto_library(

@@ -1,15 +1,21 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+    "tf_cc_tests",
+)
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # TODO(bmzhao): This target a holdover from tensorflow/core/BUILD. We
@@ -18,6 +24,18 @@ package(
 cc_library(
     name = "mkl_graph_util",
     hdrs = ["mkl_graph_util.h"],
+    deps = [
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
+    name = "zen_graph_util",
+    hdrs = ["zen_graph_util.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 tf_cc_test(
@@ -47,6 +65,7 @@ filegroup(
         "algorithm.h",
         "default_device.h",
         "graph.h",
+        "graph_debug_info_builder.h",
         "graph_def_builder.h",
         "graph_node_util.h",
         "node_builder.h",
@@ -60,6 +79,7 @@ filegroup(
     srcs = [
         "edgeset.h",
         "graph.h",
+        "graph_debug_info_builder.h",
         "graph_def_builder.h",
         "graph_node_util.h",
         "node_builder.h",
@@ -73,6 +93,7 @@ filegroup(
     srcs = [
         "edgeset.cc",
         "graph.cc",
+        "graph_debug_info_builder.cc",
         "graph_def_builder.cc",
         "graph_node_util.cc",
         "node_builder.cc",
@@ -97,6 +118,7 @@ filegroup(
         "default_device.h",
         "edgeset.h",
         "graph.h",
+        "graph_debug_info_builder.h",
         "graph_def_builder.h",
         "graph_node_util.h",
         "graph_partition.h",
@@ -131,14 +153,14 @@ filegroup(
     srcs = [
         "benchmark_testlib.h",
         "testlib.h",
-    ],
+    ] + if_mkl(["mkl_testlib.h"]),
 )
 
 filegroup(
     name = "testlib_srcs",
     srcs = [
         "testlib.cc",
-    ],
+    ] + if_mkl(["mkl_testlib.cc"]),
 )
 
 filegroup(
@@ -167,6 +189,8 @@ filegroup(
         "edgeset.h",
         "graph.cc",
         "graph.h",
+        "graph_debug_info_builder.cc",
+        "graph_debug_info_builder.h",
         "graph_def_builder.cc",
         "graph_def_builder.h",
         "graph_node_util.cc",
@@ -201,7 +225,9 @@ exports_files(
     srcs = [
         "algorithm_test.cc",
         "control_flow_test.cc",
+        "costmodel_test.cc",
         "edgeset_test.cc",
+        "graph_debug_info_builder_test.cc",
         "graph_def_builder_test.cc",
         "graph_partition_test.cc",
         "graph_test.cc",
@@ -212,4 +238,59 @@ exports_files(
         "validate_test.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
+)
+
+tf_cc_tests(
+    name = "higher_level_tests",
+    size = "small",
+    srcs = [
+        "algorithm_test.cc",
+        "control_flow_test.cc",
+        "costmodel_test.cc",
+        "edgeset_test.cc",
+        "graph_debug_info_builder_test.cc",
+        "graph_def_builder_test.cc",
+        "graph_partition_test.cc",
+        "graph_test.cc",
+        "node_builder_test.cc",
+        "optimizer_cse_test.cc",
+        "subgraph_test.cc",
+        "tensor_id_test.cc",
+        "validate_test.cc",
+    ],
+    linkopts = select({
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/cc:while_loop",
+        "//tensorflow/core",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:direct_session_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:status_matchers",
+        "//tensorflow/core/util:protos_test_cc",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@eigen_archive//:eigen3",
+    ],
 )

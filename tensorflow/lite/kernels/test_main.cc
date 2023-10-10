@@ -12,9 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "tensorflow/lite/kernels/test_delegate_providers.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/testing/util.h"
@@ -22,10 +24,13 @@ limitations under the License.
 
 namespace {
 
-void InitKernelTest(int* argc, char** argv) {
+bool InitKernelTest(int* argc, char** argv) {
   tflite::KernelTestDelegateProviders* const delegate_providers =
       tflite::KernelTestDelegateProviders::Get();
-  delegate_providers->InitFromCmdlineArgs(argc, const_cast<const char**>(argv));
+  if (!delegate_providers->InitFromCmdlineArgs(
+          argc, const_cast<const char**>(argv))) {
+    return false;
+  }
 
   if (delegate_providers->ConstParams().Get<bool>("use_nnapi")) {
     // In Android Q, the NNAPI delegate avoids delegation if the only device
@@ -37,13 +42,18 @@ void InitKernelTest(int* argc, char** argv) {
       params->Set("disable_nnapi_cpu", false);
     }
   }
+  return true;
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
   ::tflite::LogToStderr();
-  InitKernelTest(&argc, argv);
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  if (InitKernelTest(&argc, argv)) {
+    ::testing::InitGoogleTest(&argc, argv);
+    benchmark::RunSpecifiedBenchmarks();
+    return RUN_ALL_TESTS();
+  } else {
+    return EXIT_FAILURE;
+  }
 }

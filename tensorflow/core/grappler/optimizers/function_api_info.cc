@@ -59,7 +59,7 @@ Status FunctionApiInfo::Init(const FunctionDef& function_def) {
         "Function '", function_def.signature().name(),
         "' has a preferred device, but does not implement an interface");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 const string& FunctionApiInfo::preferred_device() const {
@@ -123,7 +123,7 @@ bool IsSameSignature(const FunctionDef& f1, const FunctionDef& f2,
 Status ValidateSignature(const string& interface_name,
                          const std::vector<const FunctionDef*>& equiv_funcs,
                          const FunctionApiInfo::FunctionType function_type) {
-  if (equiv_funcs.size() < 2) return Status::OK();
+  if (equiv_funcs.size() < 2) return OkStatus();
   for (size_t k = 1; k < equiv_funcs.size(); ++k) {
     const bool check_input =
         (function_type == FunctionApiInfo::FunctionType::INFERENCE ||
@@ -139,7 +139,7 @@ Status ValidateSignature(const string& interface_name,
           interface_name, "' but their signatures do not match.");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ValidateSignatures(
@@ -149,7 +149,7 @@ Status ValidateSignatures(
   for (const auto& item : intf_to_func)
     TF_RETURN_IF_ERROR(
         ValidateSignature(item.first, item.second, function_type));
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -194,13 +194,13 @@ Status FunctionLibraryApiInfo::Init(
       ValidateSignatures(fwd_funcs, FunctionApiInfo::FunctionType::FORWARD));
   TF_RETURN_IF_ERROR(
       ValidateSignatures(bwd_funcs, FunctionApiInfo::FunctionType::BACKWARD));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FunctionLibraryApiInfo::GetEquivalentImplementations(
     const string& function_name, std::vector<string>* other_functions) const {
   const auto func_it = func_info_.find(function_name);
-  if (func_it == func_info_.end()) return Status::OK();
+  if (func_it == func_info_.end()) return OkStatus();
   const FunctionApiInfo* func_info = func_it->second.get();
 
   absl::flat_hash_map<string, std::vector<string>>::const_iterator it;
@@ -223,7 +223,7 @@ Status FunctionLibraryApiInfo::GetEquivalentImplementations(
     if (func_name == function_name) continue;
     other_functions->emplace_back(func_name);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 const FunctionApiInfo* FunctionLibraryApiInfo::GetApiInfo(

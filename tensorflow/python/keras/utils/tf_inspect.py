@@ -13,19 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 """TFDecorator-aware replacements for the inspect module."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 import functools
 import inspect as _inspect
 
-import six
-
 from tensorflow.python.util import tf_decorator
 
-ArgSpec = _inspect.ArgSpec
+try:
+  ArgSpec = _inspect.ArgSpec
+except:
+  pass
 
 
 if hasattr(_inspect, 'FullArgSpec'):
@@ -69,11 +67,21 @@ if hasattr(_inspect, 'getfullargspec'):
       from FullArgSpec.
     """
     fullargspecs = getfullargspec(target)
-    argspecs = ArgSpec(
-        args=fullargspecs.args,
-        varargs=fullargspecs.varargs,
-        keywords=fullargspecs.varkw,
-        defaults=fullargspecs.defaults)
+    if hasattr(_inspect, 'ArgSpec'):
+      argspecs = ArgSpec(
+          args=fullargspecs.args,
+          varargs=fullargspecs.varargs,
+          keywords=fullargspecs.varkw,
+          defaults=fullargspecs.defaults)
+    else:
+      argspecs = FullArgSpec(
+          args=fullargspecs.args,
+          varargs=fullargspecs.varargs,
+          varkw=fullargspecs.varkw,
+          defaults=fullargspecs.defaults,
+          kwonlyargs=[],
+          kwonlydefaults=None,
+          annotations={})
     return argspecs
 else:
   _getargspec = _inspect.getargspec
@@ -205,7 +213,7 @@ def _get_argspec_for_partial(obj):
     all_defaults[-len(defaults):] = defaults
 
   # Fill in default values provided by partial function in all_defaults.
-  for kw, default in six.iteritems(partial_keywords):
+  for kw, default in partial_keywords.items():
     if kw in args:
       idx = args.index(kw)
       all_defaults[idx] = default

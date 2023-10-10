@@ -10,6 +10,11 @@ This warning is output when AutoGraph could not convert a function, for an
 unexpected reason. The error message contains the reason why the function could
 not be converted, as well as guidance on how to proceed next.
 
+The exact error message may vary from version to version but in general, the
+cause of the failure appears somewhere in the text, for example as
+"Cause: could not get source code" or "Original error: could not get source
+code".
+
 Note: AutoGraph does not always output a warning. For example, constructors
 are silently called without conversion.
 
@@ -23,6 +28,16 @@ supported in AutoGraph, expect subsequent exceptions.
 Note: the warning is output to the [abseil](https://github.com/abseil/abseil-py)
 logger, with `WARNING` severity. To direct these warnings to `stdout`, use
 `tf.autograph.set_verbosity(0, True)`.
+
+### "Unable to locate the source code" or "Source not found" errors
+
+Newer versions of AutoGraph raise a `ConversionError`. Older versions print a
+warning. In both cases, a similar message about finding the source code is
+included.
+
+These errors are raised when AutoGraph is unable to find the source code of
+functions it needs to transform. See [Limitations](limitations.md) for more
+details.
 
 ### "WARNING: Large unrolled loop detected"
 
@@ -69,11 +84,10 @@ in a context where eager execution is not active. The exception is only raised
 when graph execution is active, for example inside a `@tf.function` with
 AutoGraph turned off.
 
-**When AutoGraph is on**, it can be caused by:
-  * placing a Tensor-dependent `break`, `continue` or `return` inside a Python
-    loop (see example below)
-  * attempting to use a `tf.Tensor` in a list comprehension, by iterating over
-    it or using it in a condition)
+**When AutoGraph is on**, it can be caused by: * placing a Tensor-dependent
+`break`, `continue` or `return` inside a Python loop (see example below) *
+attempting to use a `tf.Tensor` in a list comprehension, by iterating over it or
+using it in a condition
 
 A typical example of mixing Python and TF control flow in an incompatible way
 is:
@@ -126,7 +140,8 @@ remedies.
 This exception is common to code which attempts to obtain values calculated
 within a `tf.cond`, `tf.while_loop`, or another `@tf.function` without using
 functional style or through mutable collections. See
-[Limitations](limitations.md) for more details.
+[Capturing External Symbolic Tensors](https://www.tensorflow.org/guide/function#all_outputs_of_a_tffunction_must_be_return_values)
+and [Limitations](limitations.md) for more details.
 
 ### "StagingError: in converted code"
 
@@ -140,7 +155,7 @@ exceptions, expect them to be wrapped by this exception.
 This error usually appears in the context of a conversion warning. It indicates
 that a lambda function could not be parsed (see [Limitations](limitations.md)).
 
-This type of errors can usually be avoided by creating lambda functions in
+This type of error can usually be avoided by creating lambda functions in
 separate simple assignments, for example:
 
 ```

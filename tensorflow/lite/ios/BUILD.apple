@@ -5,15 +5,18 @@ load(
     "//tensorflow/lite/ios:ios.bzl",
     "TFL_MINIMUM_OS_VERSION",
     "strip_common_include_path_prefix",
-    "tflite_ios_static_framework",
+    "tflite_ios_framework",
+    "tflite_ios_xcframework",
 )
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_binary", "pytype_strict_library")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 package(
     default_visibility = [
         "//tensorflow/lite:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 sh_binary(
@@ -23,15 +26,82 @@ sh_binary(
     ],
     visibility = [
         "//tensorflow/lite:__subpackages__",
-        "//tensorflow_lite_support:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+)
+
+sh_binary(
+    name = "hide_xcframework_symbols_with_allowlist",
+    srcs = [
+        "hide_xcframework_symbols_with_allowlist.sh",
+    ],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+)
+
+pytype_strict_library(
+    name = "extract_object_files",
+    srcs = [
+        "extract_object_files.py",
+    ],
+)
+
+pytype_strict_binary(
+    name = "extract_object_files_main",
+    srcs = [
+        "extract_object_files_main.py",
+    ],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = [
+        ":extract_object_files",
+    ],
+)
+
+filegroup(
+    name = "extract_object_files_testdata",
+    srcs = glob(["testdata/**"]),
+)
+
+py_strict_test(
+    name = "extract_object_files_test",
+    srcs = [
+        "extract_object_files_test.py",
+    ],
+    data = [
+        ":extract_object_files_testdata",
+    ],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":extract_object_files",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:resource_loader",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
 strip_common_include_path_prefix(
     name = "strip_common_include_path_core",
     hdr_labels = [
-        "//tensorflow/lite/c:c_api.h",
+        "//tensorflow/lite:builtin_ops.h",
+        # Here we include the paths of the actual c library headers in tensorflow/lite/core/c instead of the shim headers in tensorflow/lite/c.
+        "//tensorflow/lite/core/c:c_api.h",
+        "//tensorflow/lite/core/c:c_api_experimental.h",
+        "//tensorflow/lite/core/c:c_api_opaque.h",
+        "//tensorflow/lite/core/c:c_api_types.h",
+        "//tensorflow/lite/core/c:common.h",
+        "//tensorflow/lite/core/c:registration_external.h",
+        "//tensorflow/lite/core/async/c:types.h",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate.h",
+        "//tensorflow/lite/profiling/telemetry/c:profiler.h",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting.h",
     ],
 )
 
@@ -45,14 +115,75 @@ strip_common_include_path_prefix(
 )
 
 # bazel build -c opt --config=ios_fat //tensorflow/lite/ios:TensorFlowLiteC_framework
-tflite_ios_static_framework(
+tflite_ios_framework(
     name = "TensorFlowLiteC_framework",
     hdrs = [
+        ":builtin_ops.h",
         ":c_api.h",
+        ":c_api_experimental.h",
+        ":c_api_opaque.h",
+        ":c_api_types.h",
+        ":common.h",
+        ":profiler.h",
+        ":registration_external.h",
+        ":telemetry_setting.h",
+        ":types.h",
         ":xnnpack_delegate.h",
-        "//tensorflow/lite/c:common.h",
     ],
     allowlist_symbols_file = ":allowlist_TensorFlowLiteC.txt",
+    bundle_name = "TensorFlowLiteC",
+    minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    deps = [
+        ":tensorflow_lite_c",
+    ],
+)
+
+# bazel build -c opt --config=ios //tensorflow/lite/ios:TensorFlowLiteC_xcframework
+tflite_ios_xcframework(
+    name = "TensorFlowLiteC_xcframework",
+    allowlist_symbols_file = ":allowlist_TensorFlowLiteC.txt",
+    bundle_name = "TensorFlowLiteC",
+    ios = {
+        "simulator": [
+            "x86_64",
+            "arm64",
+        ],
+        "device": ["arm64"],
+    },
+    minimum_os_versions = {"ios": TFL_MINIMUM_OS_VERSION},
+    public_hdrs = [
+        ":builtin_ops.h",
+        ":c_api.h",
+        ":c_api_experimental.h",
+        ":c_api_types.h",
+        ":common.h",
+        ":profiler.h",
+        ":telemetry_setting.h",
+        ":xnnpack_delegate.h",
+    ],
+    tags = ["manual"],  # TODO: Remove once tf is on bazel 6.x+
+    deps = [
+        ":tensorflow_lite_c",
+    ],
+)
+
+# Similar to TensorFlowLiteC_framework but this is a static framework and symbol
+# hiding is not applied. Note both have the same bundle name.
+ios_static_framework(
+    name = "TensorFlowLiteC_static_framework",
+    hdrs = [
+        ":builtin_ops.h",
+        ":c_api.h",
+        ":c_api_experimental.h",
+        ":c_api_opaque.h",
+        ":c_api_types.h",
+        ":common.h",
+        ":profiler.h",
+        ":registration_external.h",
+        ":telemetry_setting.h",
+        ":types.h",
+        ":xnnpack_delegate.h",
+    ],
     bundle_name = "TensorFlowLiteC",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
     deps = [
@@ -71,7 +202,11 @@ tflite_ios_static_framework(
 # bazel build -c opt --config=ios --ios_multi_cpus=armv7,arm64,x86_64 //tensorflow/lite/ios:TensorFlowLiteSelectTfOps_framework
 ios_static_framework(
     name = "TensorFlowLiteSelectTfOps_framework",
-    avoid_deps = ["//tensorflow/lite/c:common"],
+    avoid_deps = [
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/async/interop/c:types",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting",
+    ],
     bundle_name = "TensorFlowLiteSelectTfOps",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
     deps = [
@@ -85,7 +220,7 @@ ios_static_framework(
 # TensorFlowLiteC framework above in a composable way.
 #
 # bazel build -c opt --config=ios_fat //tensorflow/lite/ios:TensorFlowLiteCCoreML_framework
-tflite_ios_static_framework(
+tflite_ios_framework(
     name = "TensorFlowLiteCCoreML_framework",
     hdrs = [
         ":coreml_delegate.h",
@@ -104,7 +239,7 @@ tflite_ios_static_framework(
 # TensorFlowLiteC framework above in a composable way.
 #
 # bazel build -c opt --config=ios_fat //tensorflow/lite/ios:TensorFlowLiteCMetal_framework
-tflite_ios_static_framework(
+tflite_ios_framework(
     name = "TensorFlowLiteCMetal_framework",
     hdrs = [
         ":metal_delegate.h",
@@ -120,19 +255,32 @@ tflite_ios_static_framework(
 cc_library(
     name = "tensorflow_lite_c",
     hdrs = [
-        "//tensorflow/lite/c:c_api.h",
-        "//tensorflow/lite/c:c_api_types.h",
-        "//tensorflow/lite/c:common.h",
+        "//tensorflow/lite:builtin_ops.h",
+        "//tensorflow/lite/core/async/c:types.h",
+        "//tensorflow/lite/core/c:c_api.h",
+        "//tensorflow/lite/core/c:c_api_experimental.h",
+        "//tensorflow/lite/core/c:c_api_opaque.h",
+        "//tensorflow/lite/core/c:c_api_types.h",
+        "//tensorflow/lite/core/c:common.h",
+        "//tensorflow/lite/core/c:registration_external.h",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate.h",
+        "//tensorflow/lite/profiling/telemetry/c:profiler.h",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting.h",
     ],
     tags = [
         "nobuilder",
         "swift_module=TensorFlowLiteC",
     ],
     deps = [
-        "//tensorflow/lite/c:c_api",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite/core/async/c:types",
+        "//tensorflow/lite/core/c:c_api",
+        "//tensorflow/lite/core/c:c_api_experimental",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/profiling/telemetry/c:profiler",
+        "//tensorflow/lite/profiling/telemetry/c:telemetry_setting",
     ],
 )
 
@@ -144,11 +292,15 @@ build_test(
         "noasan",
         "nomsan",
         "notsan",
+        # TODO(b/176993122): restore once the apple_genrule issue is resolved.
+        "notap",
+        "nozapfhahn",
     ],
     targets = [
         ":TensorFlowLiteCCoreML_framework",
         ":TensorFlowLiteCMetal_framework",
         ":TensorFlowLiteC_framework",
         ":TensorFlowLiteSelectTfOps_framework",
+        ":TensorFlowLiteC_static_framework",
     ],
 )

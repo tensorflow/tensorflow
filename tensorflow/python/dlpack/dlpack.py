@@ -14,10 +14,6 @@
 # ==============================================================================
 """DLPack modules for Tensorflow."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import context
 from tensorflow.python.util.tf_export import tf_export
@@ -63,4 +59,5 @@ def from_dlpack(dlcapsule):
   Returns:
     A Tensorflow eager tensor
   """
-  return pywrap_tfe.TFE_FromDlpackCapsule(dlcapsule, context.context()._handle)
+  context.context().ensure_initialized()
+  return pywrap_tfe.TFE_FromDlpackCapsule(dlcapsule, context.context()._handle)  # pylint: disable=protected-access

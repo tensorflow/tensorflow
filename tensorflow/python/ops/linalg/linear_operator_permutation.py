@@ -14,14 +14,11 @@
 # ==============================================================================
 """`LinearOperator` acting like a permutation matrix."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -36,6 +33,7 @@ __all__ = ["LinearOperatorPermutation",]
 
 
 @tf_export("linalg.LinearOperatorPermutation")
+@linear_operator.make_composite_tensor
 class LinearOperatorPermutation(linear_operator.LinearOperator):
   """`LinearOperator` acting like a [batch] of permutation matrices.
 
@@ -157,10 +155,14 @@ class LinearOperatorPermutation(linear_operator.LinearOperator):
 
       # Check and auto-set hints.
       if is_non_singular is False:  # pylint:disable=g-bool-id-comparison
-        raise ValueError("A Permutation operator is always non-singular.")
+        raise ValueError(f"A Permutation operator is always non-singular. "
+                         f"Expected argument `is_non_singular` to be True. "
+                         f"Received: {is_non_singular}.")
 
       if is_square is False:  # pylint:disable=g-bool-id-comparison
-        raise ValueError("A Permutation operator is always square.")
+        raise ValueError(f"A Permutation operator is always square. "
+                         f"Expected argument `is_square` to be True. "
+                         f"Received: {is_square}.")
       is_square = True
 
       super(LinearOperatorPermutation, self).__init__(
@@ -175,20 +177,19 @@ class LinearOperatorPermutation(linear_operator.LinearOperator):
   def _check_perm(self, perm):
     """Static check of perm."""
     if (perm.shape.ndims is not None and perm.shape.ndims < 1):
-      raise ValueError(
-          "Argument perm must have at least 1 dimension.  "
-          "Found: %s" % perm)
+      raise ValueError(f"Argument `perm` must have at least 1 dimension. "
+                       f"Received: {perm}.")
     if not perm.dtype.is_integer:
-      raise TypeError("Argument perm must be integer dtype. Found:"
-                      " %s" % perm)
+      raise TypeError(f"Argument `perm` must be integer dtype. "
+                      f"Received: {perm}.")
     # Check that the permutation satisfies the uniqueness constraint.
     static_perm = tensor_util.constant_value(perm)
     if static_perm is not None:
       sorted_perm = np.sort(static_perm, axis=-1)
       if np.any(sorted_perm != np.arange(0, static_perm.shape[-1])):
         raise ValueError(
-            "Argument perm must be a vector of unique integers from"
-            " 0 to {}.".format(static_perm.shape[-1] - 1))
+            f"Argument `perm` must be a vector of unique integers from "
+            f"0 to {static_perm.shape[-1] - 1}.")
 
   def _shape(self):
     perm_shape = self._perm.shape
@@ -207,7 +208,7 @@ class LinearOperatorPermutation(linear_operator.LinearOperator):
     return array_ops.shape(perm)[-1]
 
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
-    perm = ops.convert_to_tensor_v2_with_dispatch(self.perm)
+    perm = tensor_conversion.convert_to_tensor_v2_with_dispatch(self.perm)
     if adjoint and not self.is_self_adjoint:
       # TODO(srvasude): invert_permutation doesn't work on batches so we use
       # argsort.
@@ -242,13 +243,13 @@ class LinearOperatorPermutation(linear_operator.LinearOperator):
     return self._matmul(rhs, adjoint=(not adjoint), adjoint_arg=adjoint_arg)
 
   def _to_dense(self):
-    perm = ops.convert_to_tensor_v2_with_dispatch(self.perm)
+    perm = tensor_conversion.convert_to_tensor_v2_with_dispatch(self.perm)
     return math_ops.cast(math_ops.equal(
         math_ops.range(0, self._domain_dimension_tensor(perm)),
         perm[..., array_ops.newaxis]), self.dtype)
 
   def _diag_part(self):
-    perm = ops.convert_to_tensor_v2_with_dispatch(self.perm)
+    perm = tensor_conversion.convert_to_tensor_v2_with_dispatch(self.perm)
     return math_ops.cast(math_ops.equal(
         math_ops.range(0, self._domain_dimension_tensor(perm)),
         perm), self.dtype)
@@ -260,3 +261,11 @@ class LinearOperatorPermutation(linear_operator.LinearOperator):
   @property
   def perm(self):
     return self._perm
+
+  @property
+  def _composite_tensor_fields(self):
+    return ("perm", "dtype")
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    return {"perm": 1}

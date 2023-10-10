@@ -21,10 +21,6 @@ is not necessary, since the dynamic dependencies of custom/contrib ops are
 explicit.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ctypes
 import sys
 

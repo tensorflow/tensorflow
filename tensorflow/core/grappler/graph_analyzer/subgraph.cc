@@ -96,7 +96,7 @@ void Subgraph::ExtractForSignature(SigNodeMap* result) {
   SigNode::TranslationMap full_to_new;
 
   for (auto node : id_) {
-    auto newnode_ref = absl::make_unique<SigNode>(node->node_def());
+    auto newnode_ref = std::make_unique<SigNode>(node->node_def());
     auto newnode = newnode_ref.get();
     (*result)[node->name()] = std::move(newnode_ref);
     full_to_new[node] = newnode;
@@ -147,7 +147,7 @@ bool SubgraphIterator::NextIfSamePort() {
   if (AtEnd()) {
     return false;
   }
-  const int64 link_map_it_second_size = link_map_it_->second.size();
+  const int64_t link_map_it_second_size = link_map_it_->second.size();
   if (link_idx_ + 1 < link_map_it_second_size) {
     ++link_idx_;
     return true;
@@ -175,7 +175,7 @@ void SubgraphIterator::SkipNode() {
 
 bool SubgraphIterator::PropagateNext() {
   // Loops are used to skip over the empty entries.
-  const int64 link_map_it_second_size = link_map_it_->second.size();
+  const int64_t link_map_it_second_size = link_map_it_->second.size();
   while (link_idx_ >= link_map_it_second_size) {
     ++link_map_it_;
     while (link_map_it_ == (*id_it_)->links().end()) {
@@ -221,7 +221,7 @@ Subgraph* SubgraphPtrSet::ExtendParent(const Subgraph::Identity& parent_id,
   // Constructing an object just to check that an equivalent one is already
   // present is kind of ugly but storing the references rather than the objects
   // in the set avoids the need to make the object copyable.
-  auto sg = absl::make_unique<Subgraph>(parent_id, node);
+  auto sg = std::make_unique<Subgraph>(parent_id, node);
   if (find(sg) != end()) {
     // This subgraph was already found by extending from a different path.
     return nullptr;

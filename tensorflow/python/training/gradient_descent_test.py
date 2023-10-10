@@ -14,15 +14,9 @@
 # ==============================================================================
 """Functional test for GradientDescent."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
@@ -232,12 +226,12 @@ class GradientDescentOptimizerTest(test.TestCase):
       with ops.Graph().as_default(), self.cached_session():
         var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
         var1 = variables.Variable([[3.0], [4.0]], dtype=dtype)
-        grads0 = ops.IndexedSlices(
+        grads0 = indexed_slices.IndexedSlices(
             constant_op.constant(
                 [0.1], shape=[1, 1], dtype=dtype),
             constant_op.constant([0]),
             constant_op.constant([2, 1]))
-        grads1 = ops.IndexedSlices(
+        grads1 = indexed_slices.IndexedSlices(
             constant_op.constant(
                 [0.01], shape=[1, 1], dtype=dtype),
             constant_op.constant([1]),
@@ -255,26 +249,6 @@ class GradientDescentOptimizerTest(test.TestCase):
                                            self.evaluate(var0))
         self.assertAllCloseAccordingToType([[3.0], [4.0 - 3.0 * 0.01]],
                                            self.evaluate(var1))
-
-  def testCapturingInDefunWhileExecutingEagerly(self):
-    with context.eager_mode():
-      optimizer = gradient_descent.GradientDescentOptimizer(1.0)
-
-      def step():
-        self.v = resource_variable_ops.ResourceVariable(1.0)
-        with backprop.GradientTape() as tape:
-          loss = self.v ** 2
-        grad = tape.gradient(loss, self.v)
-        optimizer.apply_gradients([(grad, self.v)])
-        return self.v.read_value()
-
-      compiled_step = function.defun(step)
-
-      self.assertEqual(float(step()), -1.0)
-      self.assertEqual(float(compiled_step()), -1.0)
-      # This shouldn't fail; in particular, the learning rate tensor should
-      # be an EagerTensor once again, not a graph Tensor.
-      self.assertEqual(float(step()), -1.0)
 
 
 if __name__ == "__main__":

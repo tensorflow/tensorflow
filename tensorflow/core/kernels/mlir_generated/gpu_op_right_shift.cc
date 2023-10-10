@@ -12,14 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/kernels/mlir_generated/gpu_ops_base.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "tensorflow/core/kernels/mlir_generated/base_gpu_op.h"
 
 namespace tensorflow {
 
-GENERATE_AND_REGISTER_BINARY_KERNEL(RightShift, i8, DT_INT8, int8);
-GENERATE_AND_REGISTER_BINARY_KERNEL(RightShift, i16, DT_INT16, int16);
-GENERATE_AND_REGISTER_BINARY_KERNEL(RightShift, i32, DT_INT32, int32);
-GENERATE_AND_REGISTER_BINARY_KERNEL(RightShift, i64, DT_INT64, int64);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(RightShift, DT_INT8);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(RightShift, DT_UINT8);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(RightShift, DT_INT16);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(RightShift, DT_UINT16);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(RightShift, DT_INT32);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(RightShift, DT_UINT32);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(RightShift, DT_INT64);
+GENERATE_AND_REGISTER_BINARY_GPU_KERNEL(RightShift, DT_UINT64);
 
 }  // namespace tensorflow

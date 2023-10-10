@@ -23,13 +23,14 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tuning_type.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_arguments.h"
+#include "tensorflow/lite/delegates/gpu/metal/metal_device.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
 namespace tflite {
@@ -39,61 +40,67 @@ namespace metal {
 class ComputeTask {
  public:
   ComputeTask() = default;
+  ~ComputeTask();
 
   // Move only
-  ComputeTask(ComputeTask&& args) = default;
-  ComputeTask& operator=(ComputeTask&& args) = default;
+  ComputeTask(ComputeTask&& task);
+  ComputeTask& operator=(ComputeTask&& task);
   ComputeTask(const ComputeTask&) = delete;
   ComputeTask& operator=(const ComputeTask&) = delete;
 
-  /// Returns empty string or error if shader can't be compiled.
-  absl::Status CompileWithDevice(id<MTLDevice> device,
-                                 const NodeDescriptor& desc,
-                                 CalculationsPrecision precision);
+  void Init(std::unique_ptr<GPUOperation>&& operation);
 
-  /// Updates parameters for inputs/outputs/intermediate tensors
-  absl::Status UpdateParamsWithDevice(
-      id<MTLDevice> device, const std::map<ValueId, BHWC>& tensor_shapes);
+  const GPUOperation& GetGpuOperation() const { return *operation_; }
 
-  bool HasInOutIds(const std::set<ValueId>& ids) const;
+  absl::Status Compile(MetalDevice* device);
 
-  void EncodeWithEncoder(id<MTLComputeCommandEncoder> encoder);
+  // should be called after changes of inputs/outputs.
+  absl::Status UpdateParams();
 
-  std::vector<ValueId> GetOutputIds() const;
-  std::vector<ValueId> GetInputIds() const;
+  void Encode(id<MTLComputeCommandEncoder> encoder);
 
-  void SetSrcTensor(const MetalSpatialTensor& tensor, int index);
+  API_AVAILABLE(ios(13.0), macos(11.00), tvos(13.0))
+  void EncodeToICB(id<MTLIndirectComputeCommand> icb_command);
+  API_AVAILABLE(ios(11.0), macos(10.13), tvos(11.0))
+  void AddResourcesToEncoder(id<MTLComputeCommandEncoder> encoder) const;
 
-  void SetDstTensor(const MetalSpatialTensor& tensor, int index);
+  void Update();
 
-  void SetDescription(const std::string& description);
+  void SetSrcTensor(MetalSpatialTensor* tensor, int index);
+
+  void SetDstTensor(MetalSpatialTensor* tensor, int index);
+
+  absl::Status Tune(TuningType tuning_type, MetalDevice* device);
+
+  int3 GetWorkGroupSize() const { return operation_->work_group_size_; }
+  void SetWorkGroupSize(const int3& work_group_size);
+
+  const std::string& GetCode() const { return operation_->code_; }
+  const std::map<std::string, std::string>& GetDefines() const {
+    return defines_;
+  }
+
+  absl::Status Init(MetalDevice* device, const std::string& code,
+                    const std::map<std::string, std::string>& defines);
+  absl::Status RestoreDeserialized(MetalDevice* device);
 
  private:
-  struct InputBuffer {
-    ValueId uid;
-    id<MTLBuffer> metal_handle;
-  };
+  absl::Status CompileProgram(
+      MetalDevice* device, const std::string& code,
+      const std::map<std::string, std::string>& defines);
+  void Release();
 
-  struct OutputBuffer {
-    ValueId uid;
-    id<MTLBuffer> metal_handle;
-  };
-
-  struct UniformBuffer {
-    std::vector<uint8_t> data;
-    UniformsFunction data_function;
-  };
-
-  id<MTLComputePipelineState> program_;
-  std::vector<InputBuffer> input_buffers_;
-  std::vector<OutputBuffer> output_buffers_;
-  std::vector<id<MTLBuffer>> immutable_buffers_;
-  std::vector<UniformBuffer> uniform_buffers_;
-  uint3 groups_size_;
-  uint3 groups_count_;
-  DispatchParamsFunction resize_function_;
-  std::string description_;
+  std::unique_ptr<GPUOperation> operation_;
+  id<MTLComputePipelineState> program_ = nullptr;
   MetalArguments metal_args_;
+
+  bool use_arguments_buffer_ = false;  // optional
+  bool need_icb_support_ = false;      // optional
+  id<MTLArgumentEncoder> arguments_encoder_ = nullptr;
+  id<MTLBuffer> arg_buffer_ = nullptr;
+
+  // for serialization
+  std::map<std::string, std::string> defines_;
 };
 
 }  // namespace metal

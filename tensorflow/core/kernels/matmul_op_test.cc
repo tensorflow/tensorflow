@@ -14,16 +14,21 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/algorithm/container.h"
+#include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
+#include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/public/session.h"
+
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
 
 namespace tensorflow {
 namespace {
@@ -137,6 +142,8 @@ class FusedMatMulOpTest : public OpsTestBase {
       ops::Relu6(root.WithOpName("with_activation"), with_bias);
     } else if (activation_type == "Elu") {
       ops::Elu(root.WithOpName("with_activation"), with_bias);
+    } else if (activation_type == "LeakyRelu") {
+      ops::internal::LeakyRelu(root.WithOpName("with_activation"), with_bias);
     } else {
       ops::Identity(root.WithOpName("with_activation"), with_bias);
     }
@@ -182,16 +189,17 @@ class FusedMatMulOpTest : public OpsTestBase {
                 &fused_matmul);
   }
 
-  void VerifyBiasAddTensorsNear(int m, int k, int n,
+  void VerifyBiasAddTensorsNear(int m, int k, int n, bool transpose_a,
+                                bool transpose_b,
                                 const BiasAddGraphRunner& run_default,
                                 const BiasAddGraphRunner& run_fused) {
     DataType dtype = DataTypeToEnum<T>::v();
 
-    Tensor lhs(dtype, {m, k});
+    Tensor lhs(dtype, {transpose_a ? k : m, transpose_a ? m : k});
     lhs.flat<T>() = lhs.flat<T>().setRandom();
 
     // Add some negative values to filter to properly test Relu.
-    Tensor rhs(dtype, {k, n});
+    Tensor rhs(dtype, {transpose_b ? n : k, transpose_b ? k : n});
     rhs.flat<T>() = rhs.flat<T>().setRandom();
     rhs.flat<T>() -= rhs.flat<T>().constant(static_cast<T>(0.5f));
 
@@ -217,21 +225,25 @@ class FusedMatMulOpTest : public OpsTestBase {
   // FusedMatMul.
   void VerifyMatMulWithBias(int m, int k, int n, bool transpose_a,
                             bool transpose_b) {
+    VLOG(2) << "=== VerifyMatMulWithBias (" << m << ", " << k << ", " << n
+            << ", " << (int)transpose_a << ", " << (int)transpose_b << ") ===";
     const BiasAddGraphRunner run_default =
         [&](const Tensor& input_data, const Tensor& filter_data,
             const Tensor& bias_data, Tensor* out) {
           RunMatMulWithBias(input_data, filter_data, bias_data, transpose_a,
-                            transpose_b, out);
+                            transpose_b, out, /*allow_gpu_device=*/true);
         };
 
     const BiasAddGraphRunner run_fused =
         [&](const Tensor& input_data, const Tensor& filter_data,
             const Tensor& bias_data, Tensor* out) {
           RunFusedMatMulOp(input_data, filter_data, {bias_data}, {"BiasAdd"},
-                           transpose_a, transpose_b, out);
+                           transpose_a, transpose_b, out,
+                           /*allow_gpu_device=*/true);
         };
 
-    VerifyBiasAddTensorsNear(m, k, n, run_default, run_fused);
+    VerifyBiasAddTensorsNear(m, k, n, transpose_a, transpose_b, run_default,
+                             run_fused);
   }
 
   // Verifies that computing MatMul+BiasAdd+{Activation} in a graph is identical
@@ -244,7 +256,8 @@ class FusedMatMulOpTest : public OpsTestBase {
                                                const Tensor& bias_data,
                                                Tensor* out) {
       RunMatMulWithBiasAndActivation(input_data, filter_data, bias_data,
-                                     transpose_a, transpose_b, activation, out);
+                                     transpose_a, transpose_b, activation, out,
+                                     /*allow_gpu_device=*/activation == "Relu");
     };
 
     const BiasAddGraphRunner run_fused = [&](const Tensor& input_data,
@@ -252,10 +265,12 @@ class FusedMatMulOpTest : public OpsTestBase {
                                              const Tensor& bias_data,
                                              Tensor* out) {
       RunFusedMatMulOp(input_data, filter_data, {bias_data},
-                       {"BiasAdd", activation}, transpose_a, transpose_b, out);
+                       {"BiasAdd", activation}, transpose_a, transpose_b, out,
+                       /*allow_gpu_device=*/activation == "Relu");
     };
 
-    VerifyBiasAddTensorsNear(m, k, n, run_default, run_fused);
+    VerifyBiasAddTensorsNear(m, k, n, transpose_a, transpose_b, run_default,
+                             run_fused);
   }
 };
 
@@ -271,67 +286,75 @@ TYPED_TEST_SUITE_P(FusedMatMulWithBiasOpTest);
 // MatMul + BiasAdd + {Activation}                                            //
 // -------------------------------------------------------------------------- //
 
-TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x256) {
-  this->VerifyMatMulWithBias(256, 256, 256, false, false);
-  this->VerifyMatMulWithBias(256, 256, 256, true, false);
-  this->VerifyMatMulWithBias(256, 256, 256, false, true);
-  this->VerifyMatMulWithBias(256, 256, 256, true, true);
+TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x128x64) {
+  this->VerifyMatMulWithBias(256, 128, 64, false, false);
+  this->VerifyMatMulWithBias(256, 128, 64, true, false);
+  this->VerifyMatMulWithBias(256, 128, 64, false, true);
+  this->VerifyMatMulWithBias(256, 128, 64, true, true);
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x256) {
   this->VerifyMatMulWithBias(1, 256, 256, false, false);
+  this->VerifyMatMulWithBias(4, 128, 256, false, false);
+  this->VerifyMatMulWithBias(1, 256, 256, true, false);
+  this->VerifyMatMulWithBias(1, 256, 256, false, true);
+  this->VerifyMatMulWithBias(1, 256, 256, true, true);
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x1) {
   this->VerifyMatMulWithBias(256, 256, 1, false, false);
+  this->VerifyMatMulWithBias(256, 128, 4, false, false);
+  this->VerifyMatMulWithBias(256, 256, 1, true, false);
+  this->VerifyMatMulWithBias(256, 256, 1, false, true);
+  this->VerifyMatMulWithBias(256, 256, 1, true, true);
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1) {
   this->VerifyMatMulWithBias(1, 256, 1, false, false);
 }
 
-TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x256WithActivation) {
-  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
-    this->VerifyConv2DWithBiasAndActivation(256, 256, 256, false, false,
+TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x128x64WithActivation) {
+  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
+    this->VerifyConv2DWithBiasAndActivation(256, 128, 64, false, false,
                                             activation);
-    this->VerifyConv2DWithBiasAndActivation(256, 256, 256, true, false,
+    this->VerifyConv2DWithBiasAndActivation(256, 128, 64, true, false,
                                             activation);
-    this->VerifyConv2DWithBiasAndActivation(256, 256, 256, false, true,
+    this->VerifyConv2DWithBiasAndActivation(256, 128, 64, false, true,
                                             activation);
-    this->VerifyConv2DWithBiasAndActivation(256, 256, 256, true, true,
+    this->VerifyConv2DWithBiasAndActivation(256, 128, 64, true, true,
                                             activation);
   }
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x256WithActivation) {
-  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
     this->VerifyConv2DWithBiasAndActivation(1, 256, 256, false, false,
                                             activation);
   }
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x1WithActivation) {
-  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
     this->VerifyConv2DWithBiasAndActivation(256, 256, 1, false, false,
                                             activation);
   }
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1WithActivation) {
-  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
     this->VerifyConv2DWithBiasAndActivation(1, 256, 1, false, false,
                                             activation);
   }
 }
 
-REGISTER_TYPED_TEST_SUITE_P(FusedMatMulWithBiasOpTest,        //
-                            MatMul256x256x256,                //
-                            MatMul1x256x256,                  //
-                            MatMul256x256x1,                  //
-                            MatMul1x256x1,                    //
-                            MatMul256x256x256WithActivation,  //
-                            MatMul1x256x256WithActivation,    //
-                            MatMul256x256x1WithActivation,    //
+REGISTER_TYPED_TEST_SUITE_P(FusedMatMulWithBiasOpTest,       //
+                            MatMul256x128x64,                //
+                            MatMul1x256x256,                 //
+                            MatMul256x256x1,                 //
+                            MatMul1x256x1,                   //
+                            MatMul256x128x64WithActivation,  //
+                            MatMul1x256x256WithActivation,   //
+                            MatMul256x256x1WithActivation,   //
                             MatMul1x256x1WithActivation);
 
 // TODO(ezhulenev): Add support for more data types.
@@ -358,12 +381,12 @@ static Graph* Matmul(int m, int k, int n, bool transpose_a, bool transpose_b,
 
 #define BM_MatmulDev(M, K, N, TA, TB, T, TFTYPE, DEVICE)                       \
   static void BM_Matmul##_##M##_##K##_##N##_##TA##_##TB##_##TFTYPE##_##DEVICE( \
-      int iters) {                                                             \
-    testing::UseRealTime();                                                    \
-    testing::ItemsProcessed(static_cast<int64>(iters) * M * K * N * 2);        \
-    test::Benchmark(#DEVICE, Matmul<T>(M, K, N, TA, TB, TFTYPE)).Run(iters);   \
+      ::testing::benchmark::State& state) {                                    \
+    test::Benchmark(#DEVICE, Matmul<T>(M, K, N, TA, TB, TFTYPE)).Run(state);   \
+    state.SetItemsProcessed(state.iterations() * M * K * N * 2);               \
   }                                                                            \
-  BENCHMARK(BM_Matmul##_##M##_##K##_##N##_##TA##_##TB##_##TFTYPE##_##DEVICE);
+  BENCHMARK(BM_Matmul##_##M##_##K##_##N##_##TA##_##TB##_##TFTYPE##_##DEVICE)   \
+      ->MeasureProcessCPUTime();
 
 #ifdef GOOGLE_CUDA
 
@@ -385,6 +408,8 @@ static Graph* Matmul(int m, int k, int n, bool transpose_a, bool transpose_b,
   BM_MatmulDev(M, K, N, TA, TB, std::complex<float>, DT_COMPLEX64, cpu);
 
 #endif  // GOOGLE_CUDA
+
+// LINT.IfChange
 
 // Batch size of 1 included for inference.
 // Typical fully connected layers
@@ -460,6 +485,8 @@ BM_Matmul(2000, 1, 2000, true, false);
 BM_Matmul(2000, 1, 2000, false, true);
 BM_Matmul(2000, 1, 2000, true, true);
 
+// LINT.ThenChange(//tensorflow/core/kernels/mkl/mkl_matmul_op_benchmark.cc)
+
 // Benchmarks for batched matmul with broadcasting.
 Node* BroadcastTo(Graph* g, Node* input, Node* shape) {
   Node* ret;
@@ -510,8 +537,8 @@ static Graph* BatchMatmulWithBroadcast(int b0, int b1, int m, int k, int n,
   Node* in1_node = nullptr;
   if (manual_broadcast) {
     for (int i = 0; i < 3; ++i) {
-      auto vec0 = broadcasted_in0_shape.vec<int64>();
-      auto vec1 = broadcasted_in1_shape.vec<int64>();
+      auto vec0 = broadcasted_in0_shape.vec<int64_t>();
+      auto vec1 = broadcasted_in1_shape.vec<int64_t>();
       vec0(i) = (i == 0 ? std::max(b0, b1) : in0.shape().dim_size(i));
       vec1(i) = (i == 0 ? std::max(b0, b1) : in1.shape().dim_size(i));
     }
@@ -528,17 +555,21 @@ static Graph* BatchMatmulWithBroadcast(int b0, int b1, int m, int k, int n,
   return g;
 }
 
+// NOLINTBEGIN
+// Function names are already longer than 80 chars.
 #define BM_BatchMatmulDev(B, M, K, N, TA, TB, T, TFTYPE, DEVICE)                  \
   static void                                                                     \
       BM_BatchMatmul##_##B##_##M##_##K##_##N##_##TA##_##TB##_##TFTYPE##_##DEVICE( \
-          int iters) {                                                            \
-    testing::UseRealTime();                                                       \
-    testing::ItemsProcessed(static_cast<int64>(iters) * B * M * K * N * 2);       \
-    test::Benchmark(#DEVICE, BatchMatmul<T>(B, M, K, N, TA, TB, TFTYPE))          \
-        .Run(iters);                                                              \
+          ::testing::benchmark::State& state) {                                   \
+    test::Benchmark(#DEVICE, BatchMatmul<T>(B, M, K, N, TA, TB, TFTYPE),          \
+                    /*old_benchmark_api*/ false)                                  \
+        .Run(state);                                                              \
+    state.SetItemsProcessed(state.iterations() * B * M * K * N * 2);              \
   }                                                                               \
   BENCHMARK(                                                                      \
-      BM_BatchMatmul##_##B##_##M##_##K##_##N##_##TA##_##TB##_##TFTYPE##_##DEVICE);
+      BM_BatchMatmul##_##B##_##M##_##K##_##N##_##TA##_##TB##_##TFTYPE##_##DEVICE) \
+      ->MeasureProcessCPUTime();
+// NOLINTEND
 
 #define BM_BatchMatmul(B, M, K, N, TA, TB) \
   BM_BatchMatmulDev(B, M, K, N, TA, TB, float, DT_FLOAT, cpu);
@@ -567,15 +598,16 @@ static Graph* BatchMatmulWithBroadcast(int b0, int b1, int m, int k, int n,
 #define BM_BatchMatmulBCastDev(B1, B2, M, K, N, MB, T, TT, D)                  \
   static void                                                                  \
       BM_BatchMatmulBCast##_##B1##_##B2##_##M##_##K##_##N##_##MB##_##TT##_##D( \
-          int iters) {                                                         \
-    testing::UseRealTime();                                                    \
-    testing::ItemsProcessed(static_cast<int64>(iters) * std::max(B1, B2) * M * \
-                            K * N * 2);                                        \
-    test::Benchmark(#D, BatchMatmulWithBroadcast<T>(B1, B2, M, K, N, MB, TT))  \
-        .Run(iters);                                                           \
+          ::testing::benchmark::State& state) {                                \
+    test::Benchmark(#D, BatchMatmulWithBroadcast<T>(B1, B2, M, K, N, MB, TT),  \
+                    /*old_benchmark_api*/ false)                               \
+        .Run(state);                                                           \
+    state.SetItemsProcessed(state.iterations() * std::max(B1, B2) * M * K *    \
+                            N * 2);                                            \
   }                                                                            \
   BENCHMARK(                                                                   \
-      BM_BatchMatmulBCast##_##B1##_##B2##_##M##_##K##_##N##_##MB##_##TT##_##D);
+      BM_BatchMatmulBCast##_##B1##_##B2##_##M##_##K##_##N##_##MB##_##TT##_##D) \
+      ->MeasureProcessCPUTime();
 
 #define BM_BatchMatmulBCast(B1, B2, M, K, N, MB) \
   BM_BatchMatmulBCastDev(B1, B2, M, K, N, MB, float, DT_FLOAT, cpu);

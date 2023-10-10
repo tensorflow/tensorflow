@@ -25,6 +25,7 @@ limitations under the License.
 namespace tflite {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 
 class BaseSelectOpModel : public SingleOpModel {
@@ -90,7 +91,7 @@ TEST(SelectOpTest, SelectBool) {
   model.PopulateTensor<bool>(model.input1(), {true, false, true, false});
   model.PopulateTensor<bool>(model.input2(), {false, false, false, false});
   model.PopulateTensor<bool>(model.input3(), {true, true, true, true});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<bool>(),
               ElementsAreArray({false, true, false, true}));
@@ -104,7 +105,7 @@ TEST(SelectOpTest, SelectFloat) {
   model.PopulateTensor<bool>(model.input1(), {true, false, true, false});
   model.PopulateTensor<float>(model.input2(), {0.1, 0.2, 0.3, 0.4});
   model.PopulateTensor<float>(model.input3(), {0.5, 0.6, 0.7, 0.8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<float>(), ElementsAreArray({0.1, 0.6, 0.3, 0.8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
@@ -117,9 +118,22 @@ TEST(SelectOpTest, SelectUInt8) {
   model.PopulateTensor<bool>(model.input1(), {false, true, false, false});
   model.PopulateTensor<uint8_t>(model.input2(), {1, 2, 3, 4});
   model.PopulateTensor<uint8_t>(model.input3(), {5, 6, 7, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<uint8_t>(), ElementsAreArray({5, 2, 7, 8}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
+}
+
+TEST(SelectOpTest, SelectUInt32) {
+  SelectOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, {1, 1, 1, 4},
+                      TensorType_UINT32);
+
+  model.PopulateTensor<bool>(model.input1(), {false, true, false, false});
+  model.PopulateTensor<uint32_t>(model.input2(), {1, 2, 3, 4});
+  model.PopulateTensor<uint32_t>(model.input3(), {5, 6, 7, 8});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput<uint32_t>(), ElementsAreArray({5, 2, 7, 8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
 }
 
@@ -130,7 +144,7 @@ TEST(SelectOpTest, SelectInt8) {
   model.PopulateTensor<bool>(model.input1(), {false, true, false, false});
   model.PopulateTensor<int8_t>(model.input2(), {1, -2, 3, 4});
   model.PopulateTensor<int8_t>(model.input3(), {5, 6, 7, -8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<int8_t>(), ElementsAreArray({5, -2, 7, -8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
@@ -143,7 +157,7 @@ TEST(SelectOpTest, SelectInt16) {
   model.PopulateTensor<bool>(model.input1(), {false, true, false, false});
   model.PopulateTensor<int16_t>(model.input2(), {1, 2, 3, 4});
   model.PopulateTensor<int16_t>(model.input3(), {5, 6, 7, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<int16_t>(), ElementsAreArray({5, 2, 7, 8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
@@ -156,7 +170,7 @@ TEST(SelectOpTest, SelectInt32) {
   model.PopulateTensor<bool>(model.input1(), {false, true, false, false});
   model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 4});
   model.PopulateTensor<int32_t>(model.input3(), {5, 6, 7, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<int32_t>(), ElementsAreArray({5, 2, 7, 8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
@@ -168,7 +182,7 @@ TEST(SelectOpTest, RankOneSelectInt32) {
   model.PopulateTensor<bool>(model.input1(), {false, true});
   model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 4});
   model.PopulateTensor<int32_t>(model.input3(), {5, 6, 7, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<int32_t>(), ElementsAreArray({5, 6, 3, 4}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 1, 2, 1}));
@@ -183,7 +197,7 @@ TEST(SelectOpTest, ScalarFalseConditionInt32) {
   model.PopulateTensor<bool>(model.input1(), {false});
   model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 4});
   model.PopulateTensor<int32_t>(model.input3(), {5, 6, 7, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<int32_t>(), ElementsAreArray({5, 6, 7, 8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 1, 2, 1}));
@@ -198,10 +212,34 @@ TEST(SelectOpTest, ScalarTrueConditionInt32) {
   model.PopulateTensor<bool>(model.input1(), {true});
   model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 4});
   model.PopulateTensor<int32_t>(model.input3(), {5, 6, 7, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<int32_t>(), ElementsAreArray({1, 2, 3, 4}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 1, 2, 1}));
+}
+
+TEST(SelectOpTest, ScalarFalseConditionFloat32) {
+  SelectOpModel model({1}, {1, 1, 2, 2}, {1, 1, 2, 2}, TensorType_FLOAT32);
+
+  model.PopulateTensor<bool>(model.input1(), {false});
+  model.PopulateTensor<float>(model.input2(), {1, 2, 3, 4});
+  model.PopulateTensor<float>(model.input3(), {5, 6, 7, 8});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput<float>(), ElementsAreArray({5, 6, 7, 8}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2, 2}));
+}
+
+TEST(SelectOpTest, ScalarTrueConditionFloat32) {
+  SelectOpModel model({1}, {1, 1, 2, 2}, {1, 1, 2, 2}, TensorType_FLOAT32);
+
+  model.PopulateTensor<bool>(model.input1(), {true});
+  model.PopulateTensor<float>(model.input2(), {1, 2, 3, 4});
+  model.PopulateTensor<float>(model.input3(), {5, 6, 7, 8});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput<float>(), ElementsAreArray({1, 2, 3, 4}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2, 2}));
 }
 
 TEST(SelectOpTest, RankZeroSelectInt32) {
@@ -210,7 +248,7 @@ TEST(SelectOpTest, RankZeroSelectInt32) {
   model.PopulateTensor<bool>(model.input1(), {false});
   model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 4});
   model.PopulateTensor<int32_t>(model.input3(), {5, 6, 7, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<int32_t>(), ElementsAreArray({5, 6, 7, 8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 2, 1}));
@@ -223,7 +261,7 @@ TEST(SelectV2OpTest, SelectBool) {
   model.PopulateTensor<bool>(model.input1(), {true, false, true, false});
   model.PopulateTensor<bool>(model.input2(), {false, false, false, false});
   model.PopulateTensor<bool>(model.input3(), {true, true, true, true});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<bool>(),
               ElementsAreArray({false, true, false, true}));
@@ -237,7 +275,7 @@ TEST(SelectV2OpTest, SelectFloat) {
   model.PopulateTensor<bool>(model.input1(), {true, false, true, false});
   model.PopulateTensor<float>(model.input2(), {0.1, 0.2, 0.3, 0.4});
   model.PopulateTensor<float>(model.input3(), {0.5, 0.6, 0.7, 0.8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<float>(), ElementsAreArray({0.1, 0.6, 0.3, 0.8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
@@ -250,9 +288,22 @@ TEST(SelectV2OpTest, SelectUInt8) {
   model.PopulateTensor<bool>(model.input1(), {false, true, false, false});
   model.PopulateTensor<uint8_t>(model.input2(), {1, 2, 3, 4});
   model.PopulateTensor<uint8_t>(model.input3(), {5, 6, 7, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<uint8_t>(), ElementsAreArray({5, 2, 7, 8}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
+}
+
+TEST(SelectV2OpTest, SelectUInt32) {
+  SelectV2OpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, {1, 1, 1, 4},
+                        TensorType_UINT32);
+
+  model.PopulateTensor<bool>(model.input1(), {false, true, false, false});
+  model.PopulateTensor<uint32_t>(model.input2(), {1, 2, 3, 4});
+  model.PopulateTensor<uint32_t>(model.input3(), {5, 6, 7, 8});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput<uint32_t>(), ElementsAreArray({5, 2, 7, 8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
 }
 
@@ -263,7 +314,7 @@ TEST(SelectV2OpTest, SelectInt8) {
   model.PopulateTensor<bool>(model.input1(), {false, true, false, false});
   model.PopulateTensor<int8_t>(model.input2(), {1, -2, 3, 4});
   model.PopulateTensor<int8_t>(model.input3(), {5, 6, 7, -8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<int8_t>(), ElementsAreArray({5, -2, 7, -8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
@@ -276,7 +327,7 @@ TEST(SelectV2OpTest, SelectInt16) {
   model.PopulateTensor<bool>(model.input1(), {false, true, false, false});
   model.PopulateTensor<int16_t>(model.input2(), {1, 2, 3, 4});
   model.PopulateTensor<int16_t>(model.input3(), {5, 6, 7, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<int16_t>(), ElementsAreArray({5, 2, 7, 8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
@@ -289,7 +340,7 @@ TEST(SelectV2OpTest, SelectInt32) {
   model.PopulateTensor<bool>(model.input1(), {false, true, false, false});
   model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 4});
   model.PopulateTensor<int32_t>(model.input3(), {5, 6, 7, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<int32_t>(), ElementsAreArray({5, 2, 7, 8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
@@ -301,10 +352,24 @@ TEST(SelectV2OpTest, BroadcastSelectInt32OneDimensionConditionWithSingleValue) {
   model.PopulateTensor<bool>(model.input1(), {false});
   model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 4});
   model.PopulateTensor<int32_t>(model.input3(), {5, 6, 7, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<int32_t>(), ElementsAreArray({5, 6, 7, 8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 2, 1}));
+}
+
+TEST(SelectV2OpTest,
+     BroadcastSelectInt32OneDimensionConditionWithSingleValue5D) {
+  SelectV2OpModel model({1}, {1, 2, 2, 2, 1}, {1, 2, 2, 1}, TensorType_INT32);
+
+  model.PopulateTensor<bool>(model.input1(), {false});
+  model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 4, 5, 6, 7, 8});
+  model.PopulateTensor<int32_t>(model.input3(), {9, 10, 11, 12});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput<int32_t>(),
+              ElementsAreArray({9, 10, 11, 12, 9, 10, 11, 12}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 2, 2, 1}));
 }
 
 TEST(SelectV2OpTest, BroadcastSelectInt32LesserThan4D) {
@@ -313,7 +378,7 @@ TEST(SelectV2OpTest, BroadcastSelectInt32LesserThan4D) {
   model.PopulateTensor<bool>(model.input1(), {false, true});
   model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 4});
   model.PopulateTensor<int32_t>(model.input3(), {5, 6, 7, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<int32_t>(), ElementsAreArray({5, 2, 7, 4}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 2}));
@@ -325,7 +390,7 @@ TEST(SelectV2OpTest, BroadcastSelectInt32OnFalseValue) {
   model.PopulateTensor<bool>(model.input1(), {false});
   model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 4});
   model.PopulateTensor<int32_t>(model.input3(), {5, 6, 7, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<int32_t>(), ElementsAreArray({5, 6, 7, 8}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2, 2}));
@@ -337,7 +402,7 @@ TEST(SelectV2OpTest, BroadcastSelectInt32) {
   model.PopulateTensor<bool>(model.input1(), {false, true});
   model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 4});
   model.PopulateTensor<int32_t>(model.input3(), {5, 6, 7, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<int32_t>(), ElementsAreArray({5, 2, 7, 4}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 2}));
@@ -349,11 +414,56 @@ TEST(SelectV2OpTest, BroadcastSelectInt32OneDimensionConditionWithTwoValues) {
   model.PopulateTensor<bool>(model.input1(), {false, true});
   model.PopulateTensor<int32_t>(model.input2(), {1, 2, 3, 4});
   model.PopulateTensor<int32_t>(model.input3(), {5, 6, 7, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(model.GetOutput<int32_t>(),
               ElementsAreArray({5, 1, 6, 2, 7, 3, 8, 4}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 1, 2, 2}));
+}
+
+TEST(SelectOpTest, MixedFlatSizeOneInputsWithScalarInputConditionTensor) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  SelectOpModel model({}, {1}, {1}, TensorType_INT32);
+
+  model.PopulateTensor<bool>(model.input1(), {false});
+  model.PopulateTensor<int32_t>(model.input2(), {1});
+  model.PopulateTensor<int32_t>(model.input3(), {5});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput<int32_t>(), ElementsAre(5));
+  EXPECT_EQ(model.GetOutputShape().size(), 0);
+}
+
+TEST(SelectOpTest, MixedFlatSizeOneInputsWithScalarInputXTensor) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  SelectOpModel model({1}, {}, {1}, TensorType_INT32);
+
+  model.PopulateTensor<bool>(model.input1(), {true});
+  model.PopulateTensor<int32_t>(model.input2(), {1});
+  model.PopulateTensor<int32_t>(model.input3(), {5});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput<int32_t>(), ElementsAre(1));
+  EXPECT_EQ(model.GetOutputShape().size(), 0);
+}
+
+TEST(SelectOpTest, MixedFlatSizeOneInputsWithScalarInputYTensor) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  SelectOpModel model({1}, {1}, {}, TensorType_INT32);
+
+  model.PopulateTensor<bool>(model.input1(), {false});
+  model.PopulateTensor<int32_t>(model.input2(), {1});
+  model.PopulateTensor<int32_t>(model.input3(), {5});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput<int32_t>(), ElementsAre(5));
+  EXPECT_EQ(model.GetOutputShape().size(), 0);
 }
 
 }  // namespace

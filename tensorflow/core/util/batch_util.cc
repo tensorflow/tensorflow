@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/util/batch_util.h"
 
+#include <algorithm>
+#include <utility>
+
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -26,7 +29,8 @@ namespace batch_util {
 
 namespace {
 
-Status ValidateInput(const Tensor& parent, const Tensor& element, int64 index) {
+Status ValidateInput(const Tensor& parent, const Tensor& element,
+                     int64_t index) {
   DCHECK_NE(parent.dim_size(0), 0);
   DCHECK_GE(index, 0);
   if (element.NumElements() != (parent.NumElements() / parent.dim_size(0))) {
@@ -38,102 +42,105 @@ Status ValidateInput(const Tensor& parent, const Tensor& element, int64 index) {
         element.shape().DebugString(),
         ", [parent slice]: ", chip_shape.DebugString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T>
 Status HandleElementToSlice(const Tensor& /* element */, T* src, T* dest,
-                            int64 num_values) {
-  static_assert(is_simple_type<T>::value, "Memcpy requires a simple type.");
+                            int64_t num_values) {
+  static_assert(tsl::is_simple_type<T>::value,
+                "Memcpy requires a simple type.");
   memcpy(dest, src, num_values * sizeof(T));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
 Status HandleElementToSlice<tstring>(const Tensor& element, tstring* src,
-                                     tstring* dest, int64 num_values) {
+                                     tstring* dest, int64_t num_values) {
   if (element.RefCountIsOne()) {
-    for (int64 i = 0; i < num_values; ++i) {
+    for (int64_t i = 0; i < num_values; ++i) {
       *dest++ = std::move(*src++);
     }
   } else {
     std::copy_n(src, num_values, dest);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
 Status HandleElementToSlice<Variant>(const Tensor& element, Variant* src,
-                                     Variant* dest, int64 num_values) {
+                                     Variant* dest, int64_t num_values) {
   if (element.RefCountIsOne()) {
-    for (int64 i = 0; i < num_values; ++i) {
+    for (int64_t i = 0; i < num_values; ++i) {
       *dest++ = std::move(*src++);
     }
   } else {
     std::copy_n(src, num_values, dest);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
 Status HandleElementToSlice<ResourceHandle>(const Tensor& /* element */,
                                             ResourceHandle* src,
                                             ResourceHandle* dest,
-                                            int64 num_values) {
+                                            int64_t num_values) {
   std::copy_n(src, num_values, dest);
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
 Status HandleElementToSlice<Eigen::half>(const Tensor& /* element */,
                                          Eigen::half* src, Eigen::half* dest,
-                                         int64 num_values) {
+                                         int64_t num_values) {
   std::copy_n(src, num_values, dest);
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T>
-void HandleSliceToElement(const T* src, T* dest, int64 num_values) {
-  static_assert(is_simple_type<T>::value, "Memcpy requires a simple type.");
+void HandleSliceToElement(const T* src, T* dest, int64_t num_values) {
+  static_assert(tsl::is_simple_type<T>::value,
+                "Memcpy requires a simple type.");
   memcpy(dest, src, num_values * sizeof(T));
 }
 
 template <>
 void HandleSliceToElement<tstring>(const tstring* src, tstring* dest,
-                                   int64 num_values) {
+                                   int64_t num_values) {
   std::copy_n(src, num_values, dest);
 }
 
 template <>
 void HandleSliceToElement<Variant>(const Variant* src, Variant* dest,
-                                   int64 num_values) {
+                                   int64_t num_values) {
   std::copy_n(src, num_values, dest);
 }
 
 template <>
 void HandleSliceToElement<ResourceHandle>(const ResourceHandle* src,
                                           ResourceHandle* dest,
-                                          int64 num_values) {
+                                          int64_t num_values) {
   std::copy_n(src, num_values, dest);
 }
 
 template <>
 void HandleSliceToElement<Eigen::half>(const Eigen::half* src,
-                                       Eigen::half* dest, int64 num_values) {
+                                       Eigen::half* dest, int64_t num_values) {
   std::copy_n(src, num_values, dest);
 }
 
 template <typename T>
-void HandleSliceToElement(Tensor* parent, T* src, T* dest, int64 num_values) {
-  static_assert(is_simple_type<T>::value, "Memcpy requires a simple type.");
+void HandleSliceToElement(Tensor* parent, T* src, T* dest, int64_t num_values) {
+  static_assert(tsl::is_simple_type<T>::value,
+                "Memcpy requires a simple type.");
   memcpy(dest, src, num_values * sizeof(T));
 }
 
 template <>
 void HandleSliceToElement<tstring>(Tensor* parent, tstring* src, tstring* dest,
-                                   int64 num_values) {
+                                   int64_t num_values) {
   if (parent->RefCountIsOne()) {
-    for (int64 i = 0; i < num_values; ++i) {
+    for (int64_t i = 0; i < num_values; ++i) {
       dest[i] = std::move(src[i]);
     }
   } else {
@@ -143,9 +150,9 @@ void HandleSliceToElement<tstring>(Tensor* parent, tstring* src, tstring* dest,
 
 template <>
 void HandleSliceToElement<Variant>(Tensor* parent, Variant* src, Variant* dest,
-                                   int64 num_values) {
+                                   int64_t num_values) {
   if (parent->RefCountIsOne()) {
-    for (int64 i = 0; i < num_values; ++i) {
+    for (int64_t i = 0; i < num_values; ++i) {
       dest[i] = std::move(src[i]);
     }
   } else {
@@ -156,22 +163,22 @@ void HandleSliceToElement<Variant>(Tensor* parent, Variant* src, Variant* dest,
 template <>
 void HandleSliceToElement<ResourceHandle>(Tensor* parent, ResourceHandle* src,
                                           ResourceHandle* dest,
-                                          int64 num_values) {
+                                          int64_t num_values) {
   std::copy_n(src, num_values, dest);
 }
 
 template <>
 void HandleSliceToElement<Eigen::half>(Tensor* parent, Eigen::half* src,
-                                       Eigen::half* dest, int64 num_values) {
+                                       Eigen::half* dest, int64_t num_values) {
   std::copy_n(src, num_values, dest);
 }
 
 }  // namespace
 
 // Copies element into the index^th slice of parent (in the 0th dimension).
-Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index) {
+Status CopyElementToSlice(Tensor element, Tensor* parent, int64_t index) {
   TF_RETURN_IF_ERROR(ValidateInput(*parent, element, index));
-  const int64 num_values = element.NumElements();
+  const int64_t num_values = element.NumElements();
 #define HANDLE_TYPE(T)                                              \
   case DataTypeToEnum<T>::value: {                                  \
     T* src = element.base<T>();                                     \
@@ -190,16 +197,17 @@ Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index) {
 }
 
 // Copies the index^th slice of parent (in the 0th dimension) into element.
-Status CopySliceToElement(const Tensor& parent, Tensor* element, int64 index) {
+Status CopySliceToElement(const Tensor& parent, Tensor* element,
+                          int64_t index) {
   TF_RETURN_IF_ERROR(ValidateInput(parent, *element, index));
-  const int64 num_values = element->NumElements();
+  const int64_t num_values = element->NumElements();
 
 #define HANDLE_TYPE(T)                                      \
   case DataTypeToEnum<T>::value: {                          \
     const T* src = parent.base<T>() + (num_values * index); \
     T* dest = element->base<T>();                           \
     HandleSliceToElement<T>(src, dest, num_values);         \
-    return Status::OK();                                    \
+    return OkStatus();                                      \
   }
 
   switch (parent.dtype()) {
@@ -212,8 +220,9 @@ Status CopySliceToElement(const Tensor& parent, Tensor* element, int64 index) {
   }
 }
 
-Status CopyContiguousSlices(const Tensor& src, int64 src_offset,
-                            int64 dst_offset, int64 num_slices, Tensor* dst) {
+Status CopyContiguousSlices(const Tensor& src, int64_t src_offset,
+                            int64_t dst_offset, int64_t num_slices,
+                            Tensor* dst) {
   if (src.dtype() != dst->dtype()) {
     return errors::FailedPrecondition(
         "CopyContiguousSlices cannot perform copy: src and dst have different "
@@ -234,10 +243,10 @@ Status CopyContiguousSlices(const Tensor& src, int64 src_offset,
         dst->shape().DebugString());
   }
 
-  const int64 src_dim0 = src.dim_size(0);
-  const int64 dst_dim0 = dst->dim_size(0);
-  int64 src_chip_size = 1;
-  int64 dst_chip_size = 1;
+  const int64_t src_dim0 = src.dim_size(0);
+  const int64_t dst_dim0 = dst->dim_size(0);
+  int64_t src_chip_size = 1;
+  int64_t dst_chip_size = 1;
   for (int i = 1; i < src.dims(); ++i) {
     src_chip_size *= src.dim_size(i);
   }
@@ -253,7 +262,7 @@ Status CopyContiguousSlices(const Tensor& src, int64 src_offset,
   }
 
   if (src_chip_size == 0 && dst_chip_size == 0) {
-    return Status::OK();
+    return OkStatus();
   }
 
   if (src_offset < 0 || src_offset + num_slices > src_dim0 || dst_offset < 0 ||
@@ -270,7 +279,7 @@ Status CopyContiguousSlices(const Tensor& src, int64 src_offset,
     const T* src_p = src.base<T>() + (src_chip_size * src_offset);     \
     T* dst_p = dst->base<T>() + (dst_chip_size * dst_offset);          \
     HandleSliceToElement<T>(src_p, dst_p, src_chip_size * num_slices); \
-    return Status::OK();                                               \
+    return OkStatus();                                                 \
   }
 
   switch (src.dtype()) {
@@ -287,16 +296,16 @@ Status CopyContiguousSlices(const Tensor& src, int64 src_offset,
 //
 // NOTE(mrry): The implementation may be able to optimize the copy to a move.
 // This is particularly important for DT_STRING tensors.
-Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64 index) {
+Status MaybeMoveSliceToElement(Tensor* parent, Tensor* element, int64_t index) {
   TF_RETURN_IF_ERROR(ValidateInput(*parent, *element, index));
-  const int64 num_values = element->NumElements();
+  const int64_t num_values = element->NumElements();
 
 #define HANDLE_TYPE(T)                                      \
   case DataTypeToEnum<T>::value: {                          \
     T* src = parent->base<T>() + (num_values * index);      \
     T* dest = element->base<T>();                           \
     HandleSliceToElement<T>(parent, src, dest, num_values); \
-    return Status::OK();                                    \
+    return OkStatus();                                      \
   }
 
   switch (parent->dtype()) {
@@ -323,7 +332,7 @@ Status ValidateElementToLargerSlice(const Tensor& element, Tensor* parent) {
         "Shapes are: [element]: ", element.shape().DebugString(),
         ", [parent slice]: ", chip_shape.DebugString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T, int NDIMS>
@@ -331,7 +340,7 @@ Status HandleElementToLargerSlice(const Tensor& element, Tensor* parent,
                                   int index) {
   TF_RETURN_IF_ERROR(ValidateElementToLargerSlice(element, parent));
   if (element.NumElements() == 0) {
-    return Status::OK();
+    return OkStatus();
   }
   auto element_t = element.tensor<T, NDIMS>();
   auto parent_t = parent->tensor<T, NDIMS + 1>();
@@ -343,7 +352,7 @@ Status HandleElementToLargerSlice(const Tensor& element, Tensor* parent,
     slice_size[i] = element_t.dimension(i - 1);
   }
   parent_t.slice(slice_indices, slice_size) = element_t.reshape(slice_size);
-  return Status::OK();
+  return OkStatus();
 }
 
 template <int NDIMS>
@@ -377,7 +386,7 @@ Status CopyElementToLargerSlice(const Tensor& element, Tensor* parent,
   case NDIMS: {                                                             \
     TF_RETURN_IF_ERROR(                                                     \
         HandleElementToLargerSliceWithRank<NDIMS>(element, parent, index)); \
-    return Status::OK();                                                    \
+    return OkStatus();                                                      \
   }
 
   switch (element.dims()) {
@@ -398,7 +407,7 @@ Status SetElementZero(Tensor* element, const Tensor& padding) {
 #define HANDLE_TYPE(T)                                     \
   if (element->dtype() == DataTypeToEnum<T>::value) {      \
     element->flat<T>().setConstant(padding.scalar<T>()()); \
-    return Status::OK();                                   \
+    return OkStatus();                                     \
   }
   TF_CALL_DATASET_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE

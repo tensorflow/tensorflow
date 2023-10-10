@@ -1,8 +1,9 @@
 load("//tensorflow/core/platform:build_config.bzl", "tf_platform_alias")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -220,6 +221,24 @@ cc_library(
 )
 
 cc_library(
+    name = "merge_densify",
+    srcs = ["merge_densify.cc"],
+    hdrs = ["merge_densify.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:model_transformer",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:any",
+    ],
+)
+
+cc_library(
     name = "merge_padding_with",
     srcs = ["merge_padding_with.cc"],
     hdrs = ["merge_padding_with.h"],
@@ -265,6 +284,7 @@ cc_library(
         ":fuse_mul_to_conv",
         ":make_fully_connected",
         ":make_padding",
+        ":merge_densify",
         ":merge_padding_with",
         ":remove_noop",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",

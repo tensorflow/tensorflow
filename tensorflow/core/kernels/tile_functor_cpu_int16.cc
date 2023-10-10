@@ -23,7 +23,7 @@ namespace functor {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 template struct Tile<CPUDevice, int16, int32>;
-template struct Tile<CPUDevice, int16, int64>;
+template struct Tile<CPUDevice, int16, int64_t>;
 
 }  // end namespace functor
 }  // end namespace tensorflow

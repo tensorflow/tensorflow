@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/internal/tfprof_node_show.h"
 
+#include <vector>
+
 namespace tensorflow {
 namespace tfprof {
 namespace {}
@@ -22,7 +24,7 @@ ShowNode::ShowNode(const TFGraphNode* node) : node(node), account(false) {
   ReInit(-1);
 }
 
-void ShowNode::ReInit(int64 step) {
+void ShowNode::ReInit(int64_t step) {
   mutable_proto()->set_name(name());
   mutable_proto()->clear_devices();
   if (!node->canonical_device().empty()) {
@@ -133,7 +135,7 @@ ShowMultiNode::ShowMultiNode(TFMultiGraphNode* node)
   ReInit(-1, {".*"});
 }
 
-bool ShowMultiNode::ReInit(int64 step,
+bool ShowMultiNode::ReInit(int64_t step,
                            const std::vector<string>& type_regexes) {
   bool has_matched_type = node->SnapshotNodes(step, type_regexes);
 

@@ -18,8 +18,8 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/Eigen/Eigenvalues"
+#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/Eigenvalues"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -48,7 +48,7 @@ class SelfAdjointEigV2Op : public LinearAlgebraOp<Scalar> {
 
   TensorShapes GetOutputMatrixShapes(
       const TensorShapes& input_matrix_shapes) const final {
-    int64 n = input_matrix_shapes[0].dim_size(0);
+    int64_t n = input_matrix_shapes[0].dim_size(0);
     if (compute_v_) {
       return TensorShapes({TensorShape({n}), TensorShape({n, n})});
     } else {
@@ -58,7 +58,7 @@ class SelfAdjointEigV2Op : public LinearAlgebraOp<Scalar> {
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
                      MatrixMaps* outputs) final {
-    const int64 rows = inputs[0].rows();
+    const int64_t rows = inputs[0].rows();
     if (rows == 0) {
       // If X is an empty matrix (0 rows, 0 col), X * X' == X.
       // Therefore, we return X.

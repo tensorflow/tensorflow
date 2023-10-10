@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace test {
@@ -34,11 +33,14 @@ void TestEdgeCasesNear() {
   EXPECT_FALSE(
       IsClose(Eigen::NumTraits<T>::lowest(), Eigen::NumTraits<T>::highest(),
               static_cast<double>(Eigen::NumTraits<T>::highest()), 0.0));
-  EXPECT_FALSE(IsClose(Eigen::NumTraits<T>::quiet_NaN(),
-                       Eigen::NumTraits<T>::quiet_NaN(), 0.0, 0.0));
-  EXPECT_FALSE(IsClose(Eigen::NumTraits<T>::quiet_NaN(),
-                       Eigen::NumTraits<T>::quiet_NaN(),
+  EXPECT_FALSE(IsClose(Eigen::NumTraits<T>::quiet_NaN(), T(0.0), 0.0, 0.0));
+  EXPECT_TRUE(IsClose(Eigen::NumTraits<T>::quiet_NaN(),
+                      Eigen::NumTraits<T>::quiet_NaN(), 0.0, 0.0));
+  EXPECT_FALSE(IsClose(Eigen::NumTraits<T>::quiet_NaN(), T(0.0),
                        Eigen::NumTraits<double>::infinity(), 0.0));
+  EXPECT_TRUE(IsClose(Eigen::NumTraits<T>::quiet_NaN(),
+                      Eigen::NumTraits<T>::quiet_NaN(),
+                      Eigen::NumTraits<double>::infinity(), 0.0));
 }
 
 // For debug printing. Example usage:
@@ -207,12 +209,14 @@ void TestEdgeCasesClose() {
                       Eigen::NumTraits<T>::highest(),
                       static_cast<double>(Eigen::NumTraits<T>::highest()),
                       static_cast<double>(Eigen::NumTraits<T>::highest())));
-  EXPECT_FALSE(IsClose(Eigen::NumTraits<T>::quiet_NaN(),
-                       Eigen::NumTraits<T>::quiet_NaN(), 0.0, 0.0));
-  EXPECT_FALSE(IsClose(Eigen::NumTraits<T>::quiet_NaN(),
-                       Eigen::NumTraits<T>::quiet_NaN(),
-                       Eigen::NumTraits<double>::infinity(),
-                       Eigen::NumTraits<double>::infinity()));
+  EXPECT_FALSE(IsClose(Eigen::NumTraits<T>::quiet_NaN(), T(0.0), 0.0, 0.0));
+  EXPECT_TRUE(IsClose(Eigen::NumTraits<T>::quiet_NaN(),
+                      Eigen::NumTraits<T>::quiet_NaN(), 0.0, 0.0));
+  EXPECT_FALSE(IsClose(Eigen::NumTraits<T>::quiet_NaN(), T(0.0),
+                       Eigen::NumTraits<double>::infinity(), 0.0));
+  EXPECT_TRUE(IsClose(Eigen::NumTraits<T>::quiet_NaN(),
+                      Eigen::NumTraits<T>::quiet_NaN(),
+                      Eigen::NumTraits<double>::infinity(), 0.0));
 }
 
 TEST(TensorTestUtilTest, ExpectTensorCloseHalf) {

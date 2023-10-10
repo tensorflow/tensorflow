@@ -14,21 +14,16 @@
 # ==============================================================================
 """Tests and benchmarks for the ResNet50 model, executed eagerly."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gc
 import os
 import tempfile
 import time
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.python.client import device_lib
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import record
 from tensorflow.python.eager.benchmarks.resnet50 import resnet50
 from tensorflow.python.eager.benchmarks.resnet50 import resnet50_test_util
 from tensorflow.python.framework import test_util
@@ -46,7 +41,7 @@ def compute_gradients(model, images, labels, num_replicas=1):
   # TODO(b/110991947): We can mistakenly trace the gradient call in
   # multi-threaded environment. Explicitly disable recording until
   # this is fixed.
-  with tape.stop_recording():
+  with record.stop_recording():
     grads = grad_tape.gradient(loss, model.variables)
   return grads
 
@@ -266,8 +261,8 @@ class ResNet50Benchmarks(tf.test.Benchmark):
 
   def _report(self, label, start, num_iters, device, batch_size, data_format,
               num_replicas=1):
-    resnet50_test_util.report(self, label, start, num_iters, device,
-                              batch_size, data_format, num_replicas=1)
+    resnet50_test_util.report(self, label, start, num_iters, device, batch_size,
+                              data_format, num_replicas)
 
   def _train_batch_sizes(self):
     """Choose batch sizes based on GPU capability."""
@@ -312,13 +307,13 @@ class ResNet50Benchmarks(tf.test.Benchmark):
       num_iters = 30
       with tf.device(device):
         images, _ = resnet50_test_util.random_batch(batch_size, data_format)
-        for _ in xrange(num_burn):
+        for _ in range(num_burn):
           model(images, training=False).cpu()
         if execution_mode:
           context.async_wait()
         gc.collect()
         start = time.time()
-        for _ in xrange(num_iters):
+        for _ in range(num_iters):
           model(images, training=False).cpu()
         if execution_mode:
           context.async_wait()
@@ -365,7 +360,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
         num_iters = 10
         with tf.device(device):
           iterator = make_iterator((images, labels))
-          for _ in xrange(num_burn):
+          for _ in range(num_burn):
             (images, labels) = iterator.next()
             apply_grads(model, optimizer,
                         compute_gradients(model, images, labels))
@@ -375,7 +370,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
           gc.collect()
 
           start = time.time()
-          for _ in xrange(num_iters):
+          for _ in range(num_iters):
             (images, labels) = iterator.next()
             apply_grads(model, optimizer,
                         compute_gradients(model, images, labels))

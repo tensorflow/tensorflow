@@ -22,13 +22,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "linenoise.h"
-#include "tensorflow/c/c_api.h"
-#include "tensorflow/c/checkpoint_reader.h"
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
@@ -38,16 +35,15 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
 #include "tensorflow/core/profiler/tfprof_log.pb.h"
 #include "tensorflow/core/profiler/tfprof_options.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
 namespace tfprof {
 void completion(const char* buf, linenoiseCompletions* lc) {
   string buf_str = buf;
-  if (buf_str.find(" ") == buf_str.npos) {
+  if (buf_str.find(' ') == buf_str.npos) {
     for (const char* opt : kCmds) {
-      if (string(opt).find(buf_str) == 0) {
+      if (absl::StartsWith(string(opt), buf_str)) {
         linenoiseAddCompletion(lc, opt);
       }
     }
@@ -61,7 +57,7 @@ void completion(const char* buf, linenoiseCompletions* lc) {
     buf_str = buf_str.substr(last_dash + 1, kint32max);
   }
   for (const char* opt : kOptions) {
-    if (string(opt).find(buf_str) == 0) {
+    if (absl::StartsWith(string(opt), buf_str)) {
       linenoiseAddCompletion(lc, (prefix + opt).c_str());
     }
   }
@@ -73,18 +69,18 @@ int Run(int argc, char** argv) {
   string FLAGS_run_meta_path = "";
   string FLAGS_op_log_path = "";
   string FLAGS_checkpoint_path = "";
-  int32 FLAGS_max_depth = 10;
-  int64 FLAGS_min_bytes = 0;
-  int64 FLAGS_min_peak_bytes = 0;
-  int64 FLAGS_min_residual_bytes = 0;
-  int64 FLAGS_min_output_bytes = 0;
-  int64 FLAGS_min_micros = 0;
-  int64 FLAGS_min_accelerator_micros = 0;
-  int64 FLAGS_min_cpu_micros = 0;
-  int64 FLAGS_min_params = 0;
-  int64 FLAGS_min_float_ops = 0;
-  int64 FLAGS_min_occurrence = 0;
-  int64 FLAGS_step = -1;
+  int32_t FLAGS_max_depth = 10;
+  int64_t FLAGS_min_bytes = 0;
+  int64_t FLAGS_min_peak_bytes = 0;
+  int64_t FLAGS_min_residual_bytes = 0;
+  int64_t FLAGS_min_output_bytes = 0;
+  int64_t FLAGS_min_micros = 0;
+  int64_t FLAGS_min_accelerator_micros = 0;
+  int64_t FLAGS_min_cpu_micros = 0;
+  int64_t FLAGS_min_params = 0;
+  int64_t FLAGS_min_float_ops = 0;
+  int64_t FLAGS_min_occurrence = 0;
+  int64_t FLAGS_step = -1;
   string FLAGS_order_by = "name";
   string FLAGS_account_type_regexes = ".*";
   string FLAGS_start_name_regexes = ".*";
@@ -189,8 +185,8 @@ int Run(int argc, char** argv) {
   std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader;
   TF_Status* status = TF_NewStatus();
   if (!FLAGS_checkpoint_path.empty()) {
-    ckpt_reader.reset(
-        new checkpoint::CheckpointReader(FLAGS_checkpoint_path, status));
+    ckpt_reader = std::make_unique<checkpoint::CheckpointReader>(
+        FLAGS_checkpoint_path, status);
     if (TF_GetCode(status) != TF_OK) {
       absl::FPrintF(stderr, "%s\n", TF_Message(status));
       TF_DeleteStatus(status);
@@ -201,7 +197,8 @@ int Run(int argc, char** argv) {
 
   std::unique_ptr<TFStats> tf_stat;
   if (!FLAGS_profile_path.empty()) {
-    tf_stat.reset(new TFStats(FLAGS_profile_path, std::move(ckpt_reader)));
+    tf_stat =
+        std::make_unique<TFStats>(FLAGS_profile_path, std::move(ckpt_reader));
   } else {
     absl::PrintF(
         "Try to use a single --profile_path instead of "
@@ -228,8 +225,8 @@ int Run(int argc, char** argv) {
         return 1;
       }
     }
-    tf_stat.reset(new TFStats(std::move(graph), nullptr, std::move(op_log),
-                              std::move(ckpt_reader)));
+    tf_stat = std::make_unique<TFStats>(
+        std::move(graph), nullptr, std::move(op_log), std::move(ckpt_reader));
 
     std::vector<string> run_meta_files =
         absl::StrSplit(FLAGS_run_meta_path, ',', absl::SkipEmpty());

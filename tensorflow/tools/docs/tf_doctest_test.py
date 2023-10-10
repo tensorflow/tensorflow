@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tf_doctest."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import doctest
 
@@ -127,7 +122,7 @@ class TfDoctestOutputCheckerTest(parameterized.TestCase):
       raise e
 
   @parameterized.parameters(
-      # CHeck examples out of tolerence.
+      # Check examples out of tolerence.
       ['1.001e-2', [0]],
       ['0.0', [1.001e-3]],
   )
@@ -148,7 +143,7 @@ class TfDoctestOutputCheckerTest(parameterized.TestCase):
       e.args = (e.args[0] + msg,)
       raise e
 
-  def test_no_floats(self):
+  def test_want_no_floats(self):
     want = 'text ... text'
     got = 'text 1.0 1.2 1.9 text'
     output_checker = tf_doctest_lib.TfDoctestOutputChecker()
@@ -156,9 +151,29 @@ class TfDoctestOutputCheckerTest(parameterized.TestCase):
         output_checker.check_output(
             want=want, got=got, optionflags=doctest.ELLIPSIS))
 
+  @parameterized.parameters(['text [1.0 ] text', 'text [1.00] text'],
+                            ['text [ 1.0] text', 'text [1.0 ] text'],
+                            ['text [ 1.0 ] text', 'text [ 1.0] text'],
+                            ['text [1.000] text', 'text [ 1.0 ] text'])
+  def test_extra_spaces(self, want, got):
+    output_checker = tf_doctest_lib.TfDoctestOutputChecker()
+    self.assertTrue(
+        output_checker.check_output(
+            want=want, got=got, optionflags=doctest.ELLIPSIS))
+
+  @parameterized.parameters(['Hello. 2.0', 'Hello. 2.0000001'],
+                            ['Hello... 2.0', 'Hello   2.0000001'])
+  def test_extra_dots(self, want, got):
+    output_checker = tf_doctest_lib.TfDoctestOutputChecker()
+    self.assertTrue(
+        output_checker.check_output(
+            want=want, got=got, optionflags=doctest.ELLIPSIS
+        )
+    )
+
   @parameterized.parameters(['1.0, ..., 1.0', '1.0, 1.0, 1.0'],
                             ['1.0, 1.0..., 1.0', '1.0, 1.002, 1.0'])
-  def test_warning_messages(self, want, got):
+  def test_wrong_float_counts(self, want, got):
     output_checker = tf_doctest_lib.TfDoctestOutputChecker()
 
     output_checker.check_output(
@@ -169,6 +184,37 @@ class TfDoctestOutputCheckerTest(parameterized.TestCase):
         example=example, got=got, optionflags=doctest.ELLIPSIS)
     self.assertIn("doesn't work if *some* of the", result)
 
+  @parameterized.parameters(
+      ['<...>', ('<...>', False)],
+      ['TensorFlow', ('TensorFlow', False)],
+      [
+          'tf.Variable([[1, 2], [3, 4]])',
+          ('tf.Variable([[1, 2], [3, 4]])', False)
+      ],
+      ['<tf.Tensor: shape=(), dtype=float32, numpy=inf>', ('inf', True)],
+      [
+          '<tf.RaggedTensor:... shape=(2, 2), numpy=1>',
+          ('<tf.RaggedTensor:... shape=(2, 2), numpy=1>', False)
+      ],
+      [
+          """<tf.Tensor: shape=(2, 2), dtype=int32, numpy=
+              array([[2, 2],
+                     [3, 5]], dtype=int32)>""",
+          ('\n              array([[2, 2],\n                     [3, 5]], '
+           'dtype=int32)', True)
+      ],
+      [
+          '[<tf.Tensor: shape=(2,), dtype=int32, numpy=array([1, 2], '
+          'dtype=int32)>, '
+          '<tf.Tensor: shape=(2,), dtype=int32, numpy=array([3, 4], '
+          'dtype=int32)>]',
+          ('[array([1, 2], dtype=int32), array([3, 4], dtype=int32)]', True)
+      ],
+  )
+  def test_tf_tensor_numpy_output(self, string, expected_output):
+    output_checker = tf_doctest_lib.TfDoctestOutputChecker()
+    output = output_checker._tf_tensor_numpy_output(string)
+    self.assertEqual(expected_output, output)
 
 if __name__ == '__main__':
   absltest.main()

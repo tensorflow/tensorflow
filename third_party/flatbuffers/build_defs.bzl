@@ -279,6 +279,11 @@ def _gen_flatbuffer_srcs_impl(ctx):
     else:
         no_includes_statement = []
 
+    if ctx.attr.language_flag == "--python":
+        onefile_statement = ["--gen-onefile"]
+    else:
+        onefile_statement = []
+
     # Need to generate all files in a directory.
     if not outputs:
         outputs = [ctx.actions.declare_directory("{}_all".format(ctx.attr.name))]
@@ -314,12 +319,14 @@ def _gen_flatbuffer_srcs_impl(ctx):
                             "-I",
                             ctx.bin_dir.path,
                         ] + no_includes_statement +
+                        onefile_statement +
                         include_paths_cmd_line + [
                 "--no-union-value-namespacing",
                 "--gen-object-api",
                 src.path,
             ],
             progress_message = "Generating flatbuffer files for {}:".format(src),
+            use_default_shell_env = True,
         )
     return [
         DefaultInfo(files = depset(outputs)),
@@ -355,7 +362,7 @@ _gen_flatbuffer_srcs = rule(
         "_flatc": attr.label(
             default = Label("@flatbuffers//:flatc"),
             executable = True,
-            cfg = "host",
+            cfg = "exec",
         ),
     },
     output_to_genfiles = True,
@@ -378,16 +385,22 @@ def flatbuffer_py_strip_prefix_srcs(name, srcs = [], strip_prefix = ""):
         )
 
 def _concat_flatbuffer_py_srcs_impl(ctx):
-    # Merge all generated python files.
-    command = "find '%s' -name '*.py' -exec cat {} + | sed '/import flatbuffers/d'"
-    command += " | sed '1s/^/import flatbuffers\\'$'\\n/' > %s"
+    # Merge all generated python files. The files are concatenated and import
+    # statements are removed. Finally we import the flatbuffer runtime library.
+    # IMPORTANT: Our Windows shell does not support "find ... -exec" properly.
+    # If you're changing the commandline below, please build wheels and run smoke
+    # tests on all the three operating systems.
+    command = "echo 'import flatbuffers\n' > %s; "
+    command += "for f in $(find %s -name '*.py' | sort); do cat $f | sed '/import flatbuffers/d' >> %s; done "
     ctx.actions.run_shell(
         inputs = ctx.attr.deps[0].files,
         outputs = [ctx.outputs.out],
         command = command % (
+            ctx.outputs.out.path,
             ctx.attr.deps[0].files.to_list()[0].path,
             ctx.outputs.out.path,
         ),
+        use_default_shell_env = True,
     )
 
 _concat_flatbuffer_py_srcs = rule(
@@ -426,6 +439,8 @@ def flatbuffer_py_library(
         deps = deps,
         include_paths = include_paths,
     )
+
+    # TODO(b/235550563): Remove the concatnation rule with 2.0.6 update.
     all_srcs_no_include = "{}_srcs_no_include".format(name)
     _gen_flatbuffer_srcs(
         name = all_srcs_no_include,
@@ -447,7 +462,7 @@ def flatbuffer_py_library(
         srcs = [
             ":{}".format(concat_py_srcs),
         ],
-        srcs_version = "PY2AND3",
+        srcs_version = "PY3",
         deps = deps + [
             "@flatbuffers//:runtime_py",
         ],

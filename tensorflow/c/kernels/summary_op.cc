@@ -17,12 +17,12 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/kernels/tensor_shape_utils.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
-#include "tensorflow/core/framework/selective_registration.h"
+#include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/bfloat16.h"
@@ -154,7 +154,7 @@ void RegisterScalarSummaryOpKernel() {
 // register the ScalarSummary kernel.
 TF_ATTRIBUTE_UNUSED bool IsScalarSummaryOpKernelRegistered = []() {
   if (SHOULD_REGISTER_OP_KERNEL("ScalarSummary")) {
-    RegisterScalarSummaryOpKernel<tensorflow::int64>();
+    RegisterScalarSummaryOpKernel<int64_t>();
     RegisterScalarSummaryOpKernel<tensorflow::uint64>();
     RegisterScalarSummaryOpKernel<tensorflow::int32>();
     RegisterScalarSummaryOpKernel<tensorflow::uint32>();

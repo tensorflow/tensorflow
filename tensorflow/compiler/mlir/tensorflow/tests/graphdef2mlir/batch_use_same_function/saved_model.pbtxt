@@ -1,0 +1,137 @@
+#RUN: tf-mlir-translate --savedmodel-signaturedefs-to-mlir-lite -tf-savedmodel-tags=serve,tpu %p | FileCheck %s
+
+# Test importing a saved model with 2 signatures that are using a same
+# BatchFunction Op, which references to a same inference_func from graph_def
+# library. The result should be that both signatures uses the same
+# BatchFunction Op (the shared_name is the same) and the same copy of
+# inference_func.
+
+# CHECK: f = @inference_func[[post_fix:[^,]*]]
+# CHECK-SAME: shared_name = "batch"
+# CH#CK: sym_name = "predict0"
+
+# CHECK: f = @inference_func[[post_fix]],
+# CHECK-SAME: shared_name = "batch"
+# CH#CK: sym_name = "predict1"
+
+meta_graphs: {
+  meta_info_def: {
+    tags: ["serve", "tpu"]
+  }
+  graph_def: {
+    node: {
+      name: "input0"
+      op: "Placeholder"
+      attr: {
+        key: "dtype"
+        value: {
+          type: DT_STRING
+        }
+      }
+    }
+    node: {
+      name: "input1"
+      op: "Placeholder"
+      attr: {
+        key: "dtype"
+        value: {
+          type: DT_INT32
+        }
+      }
+    }
+    node: {
+      name: "batch_func"
+      op: "BatchFunction"
+      input: ["input1"]
+      attr: {
+        key: "Tcaptured"
+        value: {
+          list: {
+            type: []
+          }
+        }
+      }
+      attr: {
+        key: "Tin"
+        value: {
+          list: {
+            type: [DT_INT32]
+          }
+        }
+      }
+      attr: {
+        key: "Tout"
+        value: {
+          list: {
+            type: [DT_FLOAT, DT_FLOAT]
+          }
+        }
+      }
+      attr: {
+        key: "f"
+        value: {
+          func: {
+            name: "inference_func"
+          }
+        }
+      }
+      attr: {
+        key: "shared_name"
+        value: {
+          s: "batch"
+        }
+      }
+    }
+    library: {
+      function {
+        signature {
+          name: "inference_func"
+          input_arg {
+            name: "arg0"
+            type: DT_FLOAT
+          }
+        }
+        ret {
+          key: "retval0"
+          value: "arg0"
+        }
+      }
+    }
+  }
+  signature_def: {
+    key: "predict0"
+    value: {
+      inputs: {
+        key: "inputs"
+        value: {
+          name: "input0"
+          dtype: DT_STRING
+        }
+      }
+      outputs: {
+        key: "outputs"
+        value: {
+          name: "batch_func:0"
+        }
+      }
+    }
+  }
+  signature_def: {
+    key: "predict1"
+    value: {
+      inputs: {
+        key: "tf_example_input"
+        value: {
+          name: "input0"
+          dtype: DT_STRING
+        }
+      }
+      outputs: {
+        key: "outputs"
+        value: {
+          name: "batch_func:1"
+        }
+      }
+    }
+  }
+}

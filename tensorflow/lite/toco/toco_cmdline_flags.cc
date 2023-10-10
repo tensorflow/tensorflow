@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/toco/toco_cmdline_flags.h"
+
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -21,10 +24,9 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/strip.h"
 #include "absl/types/optional.h"
-#include "tensorflow/lite/toco/toco_cmdline_flags.h"
-#include "tensorflow/lite/toco/toco_port.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/lite/toco/toco_port.h"
 
 namespace toco {
 
@@ -188,7 +190,18 @@ bool ParseTocoFlagsFromCommandLineFlags(
            parsed_flags.enable_select_tf_ops.default_value(), ""),
       // WARNING: Experimental interface, subject to change
       Flag("force_select_tf_ops", parsed_flags.force_select_tf_ops.bind(),
-           parsed_flags.force_select_tf_ops.default_value(), "")};
+           parsed_flags.force_select_tf_ops.default_value(), ""),
+      // WARNING: Experimental interface, subject to change
+      Flag("unfold_batchmatmul", parsed_flags.unfold_batchmatmul.bind(),
+           parsed_flags.unfold_batchmatmul.default_value(), ""),
+      // WARNING: Experimental interface, subject to change
+      Flag("accumulation_type", parsed_flags.accumulation_type.bind(),
+           parsed_flags.accumulation_type.default_value(),
+           "Accumulation type to use with quantize_to_float16"),
+      // WARNING: Experimental interface, subject to change
+      Flag("allow_bfloat16", parsed_flags.allow_bfloat16.bind(),
+           parsed_flags.allow_bfloat16.default_value(), "")};
+
   bool asked_for_help =
       *argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-help"));
   if (asked_for_help) {
@@ -227,11 +240,10 @@ void EnforceFlagRequirement(const T& flag, const std::string& flag_name,
 // Gets the value from the flag if specified. Returns default if the
 // FlagRequirement is kUseDefault.
 template <typename T>
-absl::optional<T> GetFlagValue(const Arg<T>& flag,
-                               FlagRequirement requirement) {
+std::optional<T> GetFlagValue(const Arg<T>& flag, FlagRequirement requirement) {
   if (flag.specified()) return flag.value();
   if (requirement == FlagRequirement::kUseDefault) return flag.default_value();
-  return absl::optional<T>();
+  return std::optional<T>();
 }
 
 }  // namespace
@@ -286,11 +298,12 @@ void ReadTocoFlagsFromCommandLineFlags(const ParsedTocoFlags& parsed_toco_flags,
   READ_TOCO_FLAG(post_training_quantize, FlagRequirement::kNone);
   READ_TOCO_FLAG(enable_select_tf_ops, FlagRequirement::kNone);
   READ_TOCO_FLAG(force_select_tf_ops, FlagRequirement::kNone);
+  READ_TOCO_FLAG(unfold_batchmatmul, FlagRequirement::kNone);
+  PARSE_TOCO_FLAG(IODataType, accumulation_type, FlagRequirement::kNone);
+  READ_TOCO_FLAG(allow_bfloat16, FlagRequirement::kNone);
 
   if (parsed_toco_flags.force_select_tf_ops.value() &&
       !parsed_toco_flags.enable_select_tf_ops.value()) {
-    // TODO(ycling): Consider to enforce `enable_select_tf_ops` when
-    // `force_select_tf_ops` is true.
     LOG(WARNING) << "--force_select_tf_ops should always be used with "
                     "--enable_select_tf_ops.";
   }

@@ -14,12 +14,7 @@
 # ==============================================================================
 """Tests for XLA listdiff operator."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
@@ -65,7 +60,7 @@ class ListDiffTest(xla_test.XLATestCase):
     int_low = -7
     int_high = 8
     max_size = 50
-    for _ in xrange(num_random_tests):
+    for _ in range(num_random_tests):
       x_size = np.random.randint(max_size + 1)
       x = np.random.randint(int_low, int_high, size=x_size)
       y_size = np.random.randint(max_size + 1)

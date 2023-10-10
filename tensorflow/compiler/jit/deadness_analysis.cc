@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/deadness_analysis_internal.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
@@ -115,7 +115,7 @@ namespace tensorflow {
 
 namespace {
 
-using se::port::StatusOr;
+using tsl::StatusOr;
 
 // Represents a logical predicate, used as described in the algorithm overview
 // above.
@@ -127,7 +127,7 @@ class Predicate {
 
   // An ID assigned to the Predicate at construction time.  Conceptually like a
   // pointer, except that it is stable across runs.
-  int64 id() const { return id_; }
+  int64_t id() const { return id_; }
 
   virtual absl::Span<Predicate* const> GetOperands() const = 0;
 
@@ -141,10 +141,10 @@ class Predicate {
   static void Visit(Predicate* p, const FunctionTy& func);
 
  protected:
-  explicit Predicate(int64 id) : id_(id) {}
+  explicit Predicate(int64_t id) : id_(id) {}
 
  private:
-  const int64 id_;
+  const int64_t id_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Predicate);
 };
@@ -152,7 +152,7 @@ class Predicate {
 // Represents a logical conjunction of a set of predicates.
 class AndPredicate : public Predicate {
  public:
-  explicit AndPredicate(int64 id, std::vector<Predicate*> operands)
+  explicit AndPredicate(int64_t id, std::vector<Predicate*> operands)
       : Predicate(id), operands_(std::move(operands)) {}
 
   string ToString() const override {
@@ -182,7 +182,7 @@ class AndPredicate : public Predicate {
 // Represents a logical disjunction of a set of predicates.
 class OrPredicate : public Predicate {
  public:
-  explicit OrPredicate(int64 id, std::vector<Predicate*> operands)
+  explicit OrPredicate(int64_t id, std::vector<Predicate*> operands)
       : Predicate(id), operands_(std::move(operands)) {}
 
   string ToString() const override {
@@ -211,7 +211,7 @@ class OrPredicate : public Predicate {
 // Represents a logical negation of a set of predicates.
 class NotPredicate : public Predicate {
  public:
-  explicit NotPredicate(int64 id, Predicate* operand)
+  explicit NotPredicate(int64_t id, Predicate* operand)
       : Predicate(id), operands_({operand}) {}
 
   string ToString() const override {
@@ -249,7 +249,7 @@ class NotPredicate : public Predicate {
 // iterations).
 class AndRecurrencePredicate : public Predicate {
  public:
-  explicit AndRecurrencePredicate(int64 id, Predicate* start, Predicate* step,
+  explicit AndRecurrencePredicate(int64_t id, Predicate* start, Predicate* step,
                                   std::vector<string> frame)
       : Predicate(id), operands_({start, step}), frame_(std::move(frame)) {}
 
@@ -280,7 +280,7 @@ class AndRecurrencePredicate : public Predicate {
 // symbols.
 class SymbolPredicate : public Predicate {
  public:
-  explicit SymbolPredicate(int64 id, TensorId tensor_id, bool must_be_true)
+  explicit SymbolPredicate(int64_t id, TensorId tensor_id, bool must_be_true)
       : Predicate(id),
         tensor_id_(std::move(tensor_id)),
         must_be_true_(must_be_true) {}
@@ -313,8 +313,8 @@ class SymbolPredicate : public Predicate {
 // symbols.
 class IntSymbolPredicate : public Predicate {
  public:
-  explicit IntSymbolPredicate(int64 id, TensorId tensor_id,
-                              absl::optional<int> must_have_value)
+  explicit IntSymbolPredicate(int64_t id, TensorId tensor_id,
+                              std::optional<int> must_have_value)
       : Predicate(id),
         tensor_id_(std::move(tensor_id)),
         must_have_value_(must_have_value) {}
@@ -336,13 +336,11 @@ class IntSymbolPredicate : public Predicate {
   // represents the proposition "tensor_id() is live (and may evaluate to any
   // value)".
   TensorId tensor_id() const { return tensor_id_; }
-  const absl::optional<int>& must_have_value() const {
-    return must_have_value_;
-  }
+  const std::optional<int>& must_have_value() const { return must_have_value_; }
 
  private:
   TensorId tensor_id_;
-  absl::optional<int> must_have_value_;
+  std::optional<int> must_have_value_;
 };
 
 template <typename FunctionTy>
@@ -431,7 +429,7 @@ class PredicateFactory {
       TF_RET_CHECK(tensor.FromProto(*proto));
 
       *predicate = tensor.scalar<bool>()() ? MakeTrue() : MakeFalse();
-      return Status::OK();
+      return OkStatus();
     }
 
     SignatureForSymbol signature = {tensor_id, must_be_true};
@@ -447,11 +445,11 @@ class PredicateFactory {
       *predicate = it->second.get();
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status MakeSymbolPredicate(Node* node, int output_idx,
-                             absl::optional<int> must_have_value,
+                             std::optional<int> must_have_value,
                              Predicate** predicate) {
     TensorId tensor_id(node->name(), output_idx);
 
@@ -466,7 +464,7 @@ class PredicateFactory {
 
       *predicate = tensor.scalar<int32>()() == *must_have_value ? MakeTrue()
                                                                 : MakeFalse();
-      return Status::OK();
+      return OkStatus();
     }
     SignatureForIntSymbol signature = {tensor_id, must_have_value};
     auto it = interned_int_symbol_instances_.find(signature);
@@ -481,7 +479,7 @@ class PredicateFactory {
       *predicate = it->second.get();
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Predicate* MakeTrue() { return MakeAndPredicate({}); }
@@ -562,7 +560,7 @@ class PredicateFactory {
   using SignatureForAndRec =
       std::tuple<Predicate*, Predicate*, std::vector<string>>;
   using SignatureForSymbol = std::pair<SafeTensorId, bool>;
-  using SignatureForIntSymbol = std::pair<SafeTensorId, absl::optional<int32>>;
+  using SignatureForIntSymbol = std::pair<SafeTensorId, std::optional<int32>>;
 
   struct HashSignatureForAndOr {
     size_t operator()(const SignatureForAndOr& signature) const {
@@ -635,7 +633,7 @@ class PredicateFactory {
   absl::flat_hash_map<SignatureForIntSymbol, std::unique_ptr<Predicate>,
                       HashSignatureForIntSymbol>
       interned_int_symbol_instances_;
-  int64 id_counter_ = 0;
+  int64_t id_counter_ = 0;
   int stack_depth_ = 0;
 };
 
@@ -925,7 +923,7 @@ Status DeadnessAnalysisImpl::GetInputPreds(
       result->push_back(it->second);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DeadnessAnalysisImpl::HandleSwitch(Node* n,
@@ -959,7 +957,7 @@ Status DeadnessAnalysisImpl::HandleSwitch(Node* n,
     for (int i = 0; i < n->num_outputs() - 1; i++) {
       TF_RETURN_IF_ERROR(predicate_factory_.MakeSymbolPredicate(
           pred_edge->src(), pred_edge->src_output(),
-          /*must_have_value=*/absl::optional<int32>(i), &branch_pred));
+          /*must_have_value=*/std::optional<int32>(i), &branch_pred));
       input_preds.push_back(branch_pred);
       SetPredicate(n, i, predicate_factory_.MakeAndPredicate(input_preds),
                    should_revisit);
@@ -978,7 +976,7 @@ Status DeadnessAnalysisImpl::HandleSwitch(Node* n,
                predicate_factory_.MakeAndPredicate(input_preds),
                should_revisit);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -1006,7 +1004,7 @@ Status FindUniqueBackedge(Node* merge, const Edge** result) {
       *result = e;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // If `backedge_predicate` is equal to `symbolic_predicate` & Step where Step
@@ -1071,7 +1069,7 @@ Status GetFullFrame(const Node* n, absl::Span<const ControlFlowInfo> cfi_infos,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // If the node is inside some frames, get the name of the outermost non-empty
@@ -1092,7 +1090,7 @@ Status GetRootFrame(const Node* n, absl::Span<const ControlFlowInfo> cfi_infos,
   }
 
   *frame = cfi_iter->frame_name;
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -1136,7 +1134,7 @@ Status DeadnessAnalysisImpl::HandleMerge(Node* n,
 
       SetPredicate(n, {0, 1, Graph::kControlSlot}, input_data_pred,
                    should_revisit);
-      return Status::OK();
+      return OkStatus();
     }
 
     std::vector<Predicate*> input_preds;
@@ -1147,7 +1145,7 @@ Status DeadnessAnalysisImpl::HandleMerge(Node* n,
         predicate_factory_.MakeOrPredicate(input_preds);
     SetPredicate(n, {0, 1, Graph::kControlSlot}, input_data_pred,
                  should_revisit);
-    return Status::OK();
+    return OkStatus();
   }
 
   if (it->second->kind() == Predicate::Kind::kSymbol) {
@@ -1179,11 +1177,11 @@ Status DeadnessAnalysisImpl::HandleMerge(Node* n,
         Predicate* and_rec = predicate_factory_.MakeAndRecurrencePredicate(
             start, step, std::move(frame));
         SetPredicate(n, {0, 1, Graph::kControlSlot}, and_rec, should_revisit);
-        return Status::OK();
+        return OkStatus();
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DeadnessAnalysisImpl::HandleRecv(Node* n,
@@ -1199,7 +1197,7 @@ Status DeadnessAnalysisImpl::HandleRecv(Node* n,
   SetPredicate(n, {0, Graph::kControlSlot},
                predicate_factory_.MakeAndPredicate(input_preds),
                should_revisit);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DeadnessAnalysisImpl::HandleGeneric(Node* n,
@@ -1212,7 +1210,7 @@ Status DeadnessAnalysisImpl::HandleGeneric(Node* n,
     SetPredicate(n, output_idx, pred, should_revisit);
   }
   SetPredicate(n, Graph::kControlSlot, pred, should_revisit);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DeadnessAnalysisImpl::HandleNode(Node* n,
@@ -1232,7 +1230,7 @@ Status DeadnessAnalysisImpl::HandleNode(Node* n,
   } else {
     TF_RETURN_IF_ERROR(HandleGeneric(n, should_revisit));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Compute a special topological order for the Graph, where nodes having the
@@ -1342,7 +1340,7 @@ Status DeadnessAnalysisImpl::GetFrameBasedTopologicalOrder(
         "Some enters/exits have never been visited in the traversal."
         " Most probably the input graph is malformed.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // We populate the nodes along a special topological order where nodes having
@@ -1416,7 +1414,7 @@ Status DeadnessAnalysisImpl::Populate(bool enable_optimistic) {
             << (success ? "optimistic" : "pessimistic") << " mode.";
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DeadnessAnalysisImpl::PopulateFrame(absl::Span<Node* const> topo,
@@ -1536,7 +1534,7 @@ Status DeadnessAnalysisImpl::PopulateFrame(absl::Span<Node* const> topo,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<DeadnessAnalysis::DeadnessPredicate>
@@ -1550,6 +1548,7 @@ DeadnessAnalysisImpl::GetPredicateFor(Node* n, int oidx) const {
 
 void DeadnessAnalysisImpl::Print() const {
   std::vector<TensorId> tensor_ids;
+  tensor_ids.reserve(predicate_map_.size());
   for (const auto& kv_pair : predicate_map_) {
     tensor_ids.push_back(kv_pair.first);
   }
@@ -1578,7 +1577,7 @@ DeadnessAnalysis::~DeadnessAnalysis() {}
   }
 
   *result = std::move(analysis);
-  return Status::OK();
+  return OkStatus();
 }
 
 absl::flat_hash_map<TensorId, string, TensorId::Hasher>
@@ -1596,7 +1595,7 @@ Status ComputePredicates(const Graph& graph, PredicateMapTy* out_predicate_map,
   DeadnessAnalysisImpl impl(&graph);
   TF_RETURN_IF_ERROR(impl.Populate(enable_optimistic));
   *out_predicate_map = impl.PredicateMapAsString();
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace deadness_analysis_internal

@@ -56,7 +56,7 @@ class SerializeTensorOpTest : public OpsTestBase {
     TF_EXPECT_OK(status);
     OpKernelContext::Params params;
     params.device = device.get();
-    params.inputs = &inputs;
+    params.inputs = inputs;
     params.frame_iter = FrameAndIter(0, 0);
     params.op_kernel = op.get();
     std::vector<AllocatorAttributes> attrs;
@@ -106,12 +106,12 @@ TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_double) {
 }
 
 TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_int64) {
-  MakeOp<int64>(TensorShape({2, 3, 4}),
-                [](int x) -> int64 { return static_cast<int64>(x - 10); });
+  MakeOp<int64_t>(TensorShape({2, 3, 4}),
+                  [](int x) -> int64 { return static_cast<int64_t>(x - 10); });
   TF_ASSERT_OK(RunOpKernel());
   Tensor parse_output;
-  ParseSerializedOutput<int64>(GetOutput(0), &parse_output);
-  test::ExpectTensorEqual<int64>(parse_output, GetInput(0));
+  ParseSerializedOutput<int64_t>(GetOutput(0), &parse_output);
+  test::ExpectTensorEqual<int64_t>(parse_output, GetInput(0));
 }
 
 TEST_F(SerializeTensorOpTest, SerializeTensorOpTest_int32) {

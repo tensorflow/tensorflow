@@ -25,12 +25,16 @@ The binary takes the following required parameters:
 
 and the following optional parameters:
 
-*   `num_threads`: `int` (default=1) \
-    The number of threads to use for running TFLite interpreter.
+*   `num_threads`: `int` (default=-1) \
+    The number of threads to use for running TFLite interpreter. By default,
+    this is set to the platform default value -1.
 *   `warmup_runs`: `int` (default=1) \
     The number of warmup runs to do before starting the benchmark.
 *   `num_runs`: `int` (default=50) \
     The number of runs. Increase this to reduce variance.
+*   `max_secs` : float (default=150.0) \
+    The maximum number of seconds the benchmark will run before being
+    terminated.
 *   `run_delay`: `float` (default=-1.0) \
     The delay in seconds between subsequent benchmark runs. Non-positive values
     mean use no delay.
@@ -42,15 +46,108 @@ and the following optional parameters:
     there is no delay between subsequent runs.
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
+*   `max_profiling_buffer_entries`: `int` (default=1024) \
+    The initial max number of profiling events that will be stored during each
+    inference run. It is only meaningful when `enable_op_profiling` is set to
+    `true`. Note, the actual value of this parameter will be adjusted if the
+    model has more nodes than the specified value of this parameter. Also, when
+    `allow_dynamic_profiling_buffer_increase` is set to `true`, the number of
+    profiling buffer entries will be increased dynamically.
+*   `allow_dynamic_profiling_buffer_increase`: `bool` (default=false) \
+    Whether allowing dynamic increase on the number of profiling buffer entries.
+    It is only meaningful when `enable_op_profiling` is set to `true`. Note,
+    allowing dynamic buffer size increase may cause more profiling overhead,
+    thus it is preferred to set `max_profiling_buffer_entries` to a large-enough
+    value.
+
 *   `profiling_output_csv_file`: `str` (default="") \
     File path to export profile data to as CSV. The results are printed to
     `stdout` if option is not set. Requires `enable_op_profiling` to be `true`
     and the path to include the name of the output CSV; otherwise results are
     printed to `stdout`.
-*  `verbose`: `bool` (default=false) \
+
+*   `print_preinvoke_state`: `bool` (default=false) \
+    Whether to print out the TfLite interpreter internals just before calling
+    tflite::Interpreter::Invoke. The internals will include allocated memory
+    size of each tensor etc. Enabling this could help understand TfLite graph
+    and memory usage.
+
+*   `print_postinvoke_state`: `bool` (default=false) \
+    Whether to print out the TfLite interpreter internals just before benchmark
+    completes (i.e. after all repeated Invoke calls complete). The internals
+    will include allocated memory size of each tensor etc. Enabling this could
+    help understand TfLite graph and memory usage, particularly when there are
+    dynamic-shaped tensors in the graph.
+
+*   `report_peak_memory_footprint`: `bool` (default=false) \
+    Whether to report the peak memory footprint by periodically checking the
+    memory footprint. Internally, a separate thread will be spawned for this
+    periodic check. Therefore, the performance benchmark result could be
+    affected.
+
+*   `memory_footprint_check_interval_ms`: `int` (default=50) \
+    The interval in millisecond between two consecutive memory footprint checks.
+    This is only used when --report_peak_memory_footprint is set to true.
+
+*   `dry_run`: `bool` (default=false) \
+    Whether to run the tool just with simply loading the model, allocating
+    tensors etc. but without actually invoking any op kernels.
+
+*   `verbose`: `bool` (default=false) \
     Whether to log parameters whose values are not set. By default, only log
     those parameters that are set by parsing their values from the commandline
     flags.
+
+*   `release_dynamic_tensors`: `bool` (default=false) \
+    Whether to configure the Interpreter to immediately release the memory of
+    dynamic tensors in the graph once they are not used.
+
+*   `optimize_memory_for_large_tensors`: `int` (default=0) \
+    Whether to optimize memory usage for large tensors with sacrificing latency.
+    When the feature is enabled, `release_dynamic_tensors` is also enabled.
+
+This list of parameters is not exhaustive. See
+[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/benchmark/benchmark_model.cc)
+and
+[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/benchmark/benchmark_tflite_model.cc)
+for all parameters that the binary takes.
+
+### Model input parameters
+By default, the tool will use randomized data for model inputs. The following
+parameters allow users to specify customized input values to the model when
+running the benchmark tool:
+
+*   `input_layer`: `string` \
+    A comma-separated list of input layer names, e.g. 'input1,input2'. Note all
+    inputs of the model graph need to be specified. However, the input name
+    does not need to match that encoded in the model. Additionally, the order
+    of input layer names specified here is assumed to be same with that is seen
+    by the Tensorflow Lite interpreter. This is a bit inconvenient but the
+    [visualization tool](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/visualize.py)
+    should help to find this order.
+*   `input_layer_shape`: `string` \
+    A colon-separated list of input layer shapes, where each shape is a
+    comma-separated list, e.g. '1,30:1,10'. Similar to `input_layer`, this
+    parameter also requires shapes of all inputs be specified, and the order of
+    inputs be same with that is seen by the interpreter.
+*   `input_layer_value_range`: `string` \
+    A map-like string representing value range for *integer* input layers. Each
+    item is separated by ':', and the item value consists of input layer name
+    and integer-only range values (both low and high are inclusive) separated by
+    ',', e.g. 'input1,1,2:input2,0,254'. Note that the input layer name must
+    exist in the list of names specified by `input_layer`.
+*   `input_layer_value_files`: `string` \
+    A map-like string representing files that contain input values. Each
+    item is separated by ',', and the item value consists of input layer name
+    and the file path separated by ':',
+    e.g. 'input1:file_path1,input2:file_path2'. In case the input layer name
+    contains ':' e.g. "input:0", escape it with "::" literal,
+    e.g. `input::0:file_path1`. If a input name appears in both
+    `input_layer_value_range` and `input_layer_value_files`, the corresponding
+    input value range specified by`input_layer_value_range` will be ignored.
+    The file format is binary, and the content should be either a byte array or
+    null-separated strings. Note that the input layer name must also exist in
+    the list of names specified by `input_layer`.
 
 ### TFLite delegate parameters
 The tool supports all runtime/delegate parameters introduced by
@@ -61,11 +158,14 @@ where applicable. For details about each parameter, please refer to
 #### Common parameters
 * `max_delegated_partitions`: `int` (default=0)
 * `min_nodes_per_partition`:`int` (default=0)
+* `delegate_serialize_dir`: `str` (default="")
+* `delegate_serialize_token`: `str` (default="")
 
 #### GPU delegate
 * `use_gpu`: `bool` (default=false)
 * `gpu_precision_loss_allowed`: `bool` (default=true)
 * `gpu_experimental_enable_quant`: `bool` (default=true)
+* `gpu_inference_for_sustained_speed`: `bool` (default=false)
 * `gpu_backend`: `string` (default="")
 * `gpu_wait_type`: `str` (default="")
 
@@ -81,8 +181,10 @@ where applicable. For details about each parameter, please refer to
     Note this requires Android 11+.
 *   `nnapi_accelerator_name`: `str` (default="") \
     Note this requires Android 10+.
-*   `disable_nnapi_cpu`: `bool` (default=false)
+*   `disable_nnapi_cpu`: `bool` (default=true)
 *   `nnapi_allow_fp16`: `bool` (default=false)
+*   `nnapi_allow_dynamic_dimensions`:`bool` (default=false)
+*   `nnapi_use_burst_mode`:`bool` (default=false)
 
 #### Hexagon delegate
 * `use_hexagon`: `bool` (default=false)
@@ -91,9 +193,20 @@ Note enabling this option will not produce profiling results outputs unless
 `enable_op_profiling` is also turned on. When both parameters are set to true,
 the profile of ops on hexagon DSP will be added to the profile table. Note that,
 the reported data on hexagon is in cycles, not in ms like on cpu.
+* `hexagon_lib_path`: `string` (default="/data/local/tmp/") \
+The library path for the underlying Hexagon libraries.
+This is where libhexagon_nn_skel*.so files should be.
+For libhexagon_interface.so it needs to be on a path that can be loaded from
+example: put it in LD_LIBRARY_PATH.
 
 #### XNNPACK delegate
-*   `use_xnnpack`: `bool` (default=false)
+*   `use_xnnpack`: `bool` (default=false) \
+Note if this option is explicitly set to `false`, the TfLite runtime will use
+its original CPU kernels for model execution. In other words, after enabling
+the feature that the XNNPACK delegate is applied by default in TfLite runtime,
+explictly setting this flag to `false` will cause the benchmark tool to disable
+the feature at runtime, and to use the original non-delegated CPU execution path
+for model benchmarking.
 
 #### CoreML delegate
 *   `use_coreml`: `bool` (default=false)
@@ -103,11 +216,28 @@ the reported data on hexagon is in cycles, not in ms like on cpu.
 *   `external_delegate_path`: `string` (default="")
 *   `external_delegate_options`: `string` (default="")
 
+#### Stable delegate [Experimental]
+*   `stable_delegate_loader_settings`: `string` (default="") A path to the
+    JSON-encoded delegate [`TFLiteSettings`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/acceleration/configuration/configuration.proto#L488) file, which is defined in `configuration.proto`.
+
+As some delegates are only available on certain platforms, when running the
+benchmark tool on a particular platform, specifying `--help` will print out all
+supported parameters.
+
+### Use multiple delegates
+When multiple delegates are specified to be used in the commandline flags, the
+order of delegates applied to the TfLite runtime will be same as their enabling
+commandline flag is specified. For example, "--use_xnnpack=true --use_gpu=true"
+means applying the XNNPACK delegate first, and then the GPU delegate secondly.
+In comparison, "--use_gpu=true --use_xnnpack=true" means applying the GPU
+delegate first, and then the XNNPACK delegate secondly.
+
 ## To build/install/run
 
 ### On Android:
 
-(0) Refer to https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android to edit the `WORKSPACE` to configure the android NDK/SDK.
+(0) Refer to https://www.tensorflow.org/lite/guide/build_android to edit the
+`WORKSPACE` to configure the android NDK/SDK.
 
 (1) Build for your specific platform, e.g.:
 

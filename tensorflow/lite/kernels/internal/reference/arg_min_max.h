@@ -15,11 +15,22 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_ARG_MIN_MAX_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_ARG_MIN_MAX_H_
 
+#include <functional>
+
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
 
 namespace reference_ops {
+
+template <typename T>
+std::function<bool(T, T)> GetComparefunction(bool is_arg_max) {
+  if (is_arg_max) {
+    return std::greater<T>();
+  } else {
+    return std::less<T>();
+  }
+}
 
 template <typename T1, typename T2, typename T3, typename Cmp>
 void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
@@ -62,6 +73,15 @@ void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
     }
   }
 }
+
+template <typename T1, typename T2, typename T3>
+void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
+               const T3* input2_data, const RuntimeShape& output_shape,
+               T2* output_data, const bool is_arg_max) {
+  ArgMinMax(input1_shape, input1_data, input2_data, output_shape, output_data,
+            GetComparefunction<T1>(is_arg_max));
+}
+
 }  // namespace reference_ops
 }  // namespace tflite
 

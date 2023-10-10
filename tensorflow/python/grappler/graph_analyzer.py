@@ -18,15 +18,12 @@ The subgraph patterns are sorted by occurrence, and only the transitive fanin
 part of the graph with regard to the fetch nodes is considered.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import sys
 
-from tensorflow.python import _pywrap_graph_analyzer as tf_wrap
-from tensorflow.python.platform import app
+from absl import app
+
+from tensorflow.python.grappler import _pywrap_graph_analyzer as tf_wrap
 
 
 def main(_):

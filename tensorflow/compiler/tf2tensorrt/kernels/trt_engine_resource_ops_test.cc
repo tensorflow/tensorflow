@@ -20,6 +20,9 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_join.h"
+#include "tensorflow/compiler/tf2tensorrt/common/datavec.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_instance.pb.h"  // NOLINT
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
@@ -53,7 +56,18 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
-class TRTEngineResourceOpsTest : public OpsTestBase {
+struct TestParam {
+  nvinfer1::Dims dims;
+  bool dynamic_shape;
+  int n_inputs;
+};
+
+class TRTEngineResourceOpsTest
+    : public OpsTestBase,
+      public ::testing::WithParamInterface<TestParam> {
+ public:
+  TRTEngineResourceOpsTest() : param_(GetParam()) {}
+
  protected:
   void Reset() {
     for (auto& temp : tensors_) {
@@ -67,42 +81,156 @@ class TRTEngineResourceOpsTest : public OpsTestBase {
     inputs_.clear();
   }
 
+  ITensorProxyPtr NetworkWith1Input(nvinfer1::INetworkDefinition* network,
+                                    ITensorProxyPtr input) {
+    // Add a unary layer.
+    nvinfer1::IUnaryLayer* layer =
+        network->addUnary(*input->trt_tensor(), nvinfer1::UnaryOperation::kEXP);
+    EXPECT_NE(nullptr, layer);
+    return layer->getOutput(0);
+  }
+
+  // Constructs a network with two inputs, where the second input is a shape
+  // tensor. We take a slice of the first input with the size of the slice
+  // specified by the second input, assuming the first input is a 2D tensor.
+  // We then add the slice to itself to produce the output of the network.
+  ITensorProxyPtr NetworkWith2Inputs(nvinfer1::INetworkDefinition* network,
+                                     ITensorProxyPtr input) {
+    nvinfer1::Dims dims2{1, {2}};
+    ITensorProxyPtr input2 =
+        network->addInput(absl::StrCat(IONamePrefixes::kInputPHName, 1).c_str(),
+                          nvinfer1::DataType::kINT32, dims2);
+    EXPECT_NE(nullptr, input2->trt_tensor());
+
+    nvinfer1::Dims start{2, {0, 0}};
+    nvinfer1::Dims stride{2, {1, 1}};
+    auto slice_layer =
+        network->addSlice(*input->trt_tensor(), start, stride, stride);
+    EXPECT_NE(nullptr, slice_layer);
+
+    slice_layer->setInput(2, *input2->trt_tensor());
+    ITensorProxyPtr sliced_input = slice_layer->getOutput(0);
+    EXPECT_NE(nullptr, sliced_input->trt_tensor());
+
+    auto layer = network->addElementWise(*sliced_input->trt_tensor(),
+                                         *sliced_input->trt_tensor(),
+                                         nvinfer1::ElementWiseOperation::kSUM);
+    EXPECT_NE(nullptr, layer);
+    return layer->getOutput(0);
+  }
+
   TrtUniquePtrType<nvinfer1::ICudaEngine> CreateTRTEngine() {
     TrtUniquePtrType<nvinfer1::IBuilder> builder(
         nvinfer1::createInferBuilder(logger_));
-    TrtUniquePtrType<nvinfer1::INetworkDefinition> network(
-        builder->createNetwork());
+    TrtUniquePtrType<nvinfer1::INetworkDefinition> network;
+#if IS_TRT_VERSION_GE(8, 0, 0, 0)
+    network =
+        TrtUniquePtrType<nvinfer1::INetworkDefinition>(builder->createNetworkV2(
+            1U << static_cast<int>(
+                nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH)));
+#else
+    network =
+        TrtUniquePtrType<nvinfer1::INetworkDefinition>(builder->createNetworkV2(
+            1U << static_cast<int>(
+                nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH)));
+#endif
 
     // Add the input.
-    nvinfer1::Dims dims;
-    dims.nbDims = 1;
-    dims.d[0] = 1;
-    nvinfer1::ITensor* input =
-        network->addInput("input", nvinfer1::DataType::kFLOAT, dims);
-    EXPECT_NE(nullptr, input);
-
-    // Add a unary layer.
-    nvinfer1::IUnaryLayer* layer =
-        network->addUnary(*input, nvinfer1::UnaryOperation::kEXP);
-    EXPECT_NE(nullptr, layer);
-
+    nvinfer1::Dims dims = this->param_.dims;
+    if (this->param_.dynamic_shape) {
+      std::fill(dims.d, dims.d + dims.nbDims, -1);
+    }
+    const std::string in_name = StrCat(IONamePrefixes::kInputPHName, 0);
+    ITensorProxyPtr input =
+        network->addInput(in_name.c_str(), nvinfer1::DataType::kFLOAT, dims);
+    EXPECT_NE(nullptr, input->trt_tensor());
     // Mark the output.
-    nvinfer1::ITensor* output = layer->getOutput(0);
+    ITensorProxyPtr output =
+        this->param_.n_inputs == 1
+            ? this->NetworkWith1Input(network.get(), input)
+            : this->NetworkWith2Inputs(network.get(), input);
     output->setName("output");
-    network->markOutput(*output);
+    network->markOutput(*output->trt_tensor());
 
     // Build the engine
+    TrtUniquePtrType<nvinfer1::IBuilderConfig> builder_config(
+        builder->createBuilderConfig());
+    builder_config->setMaxWorkspaceSize(1 << 10);
     builder->setMaxBatchSize(1);
-    builder->setMaxWorkspaceSize(1 << 10);
+
+    if (this->param_.dynamic_shape) {
+      TrtShapeOptimizationProfile profile;
+      profile.SetShapeTensorMask(network.get());
+      const int n_input = param_.n_inputs;
+      // Set the input mask to true (no resource input)
+      std::vector<bool> input_mask(n_input, true);
+      profile.SetInputMask(input_mask);
+      // The for loop defines three optimization profiles for the network.
+      for (int i = 1; i <= 3; i++) {
+        std::vector<TensorShape> shape_vec(n_input);
+        // Define a shape with all dimensions set to 3*i.
+        std::vector<int> dimvec(this->param_.dims.nbDims, 3 * i);
+        TensorShape shape;
+        TF_CHECK_OK(
+            TensorShapeUtils::MakeShape(dimvec.data(), dimvec.size(), &shape));
+
+        const ITensorProxyPtr input = network->getInput(0);
+        const char* name = input->getName();
+        VLOG(2) << "Defining profile for input " << name;
+        shape_vec[0] = shape;
+        if (this->param_.n_inputs == 2) {
+          // The shape of the shape tensor.
+          TF_CHECK_OK(TensorShapeUtils::MakeShape(
+              std::vector<int32>{param_.dims.nbDims}, &shape));
+          shape_vec[1] = shape;
+          // Values of the shape tensor
+          Tensor shape_tensor(DT_INT32, shape);
+          // Define shape values {1, i}, where 1 is the value of the first dim,
+          // and i is the value of the second dimension.
+          std::vector<int32> vals{1, i};
+          std::copy_n(vals.data(), vals.size(),
+                      shape_tensor.flat<int32_t>().data());
+          DataVec shape_values{{"one", {}}, {"two", shape_tensor}};
+          TF_CHECK_OK(profile.CollectShapeValues(shape_values));
+        } else {
+          TF_CHECK_OK(profile.CollectShapeValues({{"one", {}}}));
+        }
+        profile.AddShape(shape_vec);
+      }
+      std::vector<PartialTensorShape> input_partial_shapes;
+      TF_CHECK_OK(GetNetworkInputShapes(network.get(), &input_partial_shapes));
+      profile.InitProfiles(input_partial_shapes, ProfileStrategy::kOptimal);
+      // Configure and build engine
+      TF_CHECK_OK(profile.ConfigureBuilder(builder.get(), builder_config.get(),
+                                           network.get()));
+    }
+    VLOG(2) << "ConfigureBuilder Finished";
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine(
-        builder->buildCudaEngine(*network));
+        builder->buildEngineWithConfig(*network, *builder_config));
+    VLOG(2) << "Engine constructed";
     EXPECT_NE(nullptr, engine);
     return engine;
   }
-  Logger logger_;
+  Logger& logger_ = *Logger::GetLogger();
+  TestParam param_;
 };
 
-TEST_F(TRTEngineResourceOpsTest, Basic) {
+#if IS_TRT_VERSION_GE(7, 1, 3, 0)
+constexpr std::array<TestParam, 3> TestParameters = {
+    TestParam{nvinfer1::Dims{1, {1}}, false, 1},
+    TestParam{nvinfer1::Dims{1, {1}}, true, 1},
+    TestParam{nvinfer1::Dims{2, {3, 3}}, true, 2}};
+#else
+constexpr std::array<TestParam, 2> TestParameters = {
+    TestParam{nvinfer1::Dims{1, {1}}, false, 1},
+    TestParam{nvinfer1::Dims{1, {1}}, true, 1}};
+#endif
+
+INSTANTIATE_TEST_CASE_P(EngineResourceOpsTestInstantiation,
+                        TRTEngineResourceOpsTest,
+                        ::testing::ValuesIn(TestParameters));
+
+TEST_P(TRTEngineResourceOpsTest, Basic) {
   // Create the GPU device.
   std::unique_ptr<Device> device(
       DeviceFactory::NewDevice("GPU", {}, "/job:worker/replica:0/task:0"));
@@ -151,11 +279,16 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
 
   // Create an engine and add it to the cache of the resource.
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine = CreateTRTEngine();
-  TrtUniquePtrType<nvinfer1::IExecutionContext> context(
-      engine->createExecutionContext());
+  ExecutionContext context = ExecutionContext::Create(engine.get());
+
+  std::vector<TensorShape> engine_input_shape(1);
+  TF_ASSERT_OK(DimsAdapter(param_.dims).TensorShape(&(engine_input_shape[0])));
+  if (param_.n_inputs > 1) {
+    engine_input_shape.push_back(TensorShape({1, 1}));
+  }
   resource->cache_.emplace(
-      std::vector<TensorShape>{TensorShape({1, 1})},
-      absl::make_unique<EngineContext>(std::move(engine), std::move(context)));
+      engine_input_shape,
+      std::make_unique<EngineContext>(std::move(engine), std::move(context)));
   // Check that the resource has multiple references before it is unregistered
   // from the resource manager.
   EXPECT_FALSE(resource->RefCountIsOne());
@@ -177,8 +310,8 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
   EXPECT_TRUE(resource->RefCountIsOne());
   resource->Unref();
 
-  // Check that unregistering the resource from the resource manager returns an
-  // error as the resource has already been unregistered.
+  // Check that unregistering the resource from the resource manager returns
+  // an error as the resource has already been unregistered.
   Reset();
   TF_ASSERT_OK(NodeDefBuilder("op", "DestroyResourceOp")
                    .Attr("ignore_lookup_error", false)
@@ -191,16 +324,17 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
   // Verify the file for the serialized engine.
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(filename, &file));
-  auto reader = absl::make_unique<io::RecordReader>(file.get());
+  auto reader = std::make_unique<io::RecordReader>(file.get());
   uint64 offset = 0;
   tstring record;
   TF_ASSERT_OK(reader->ReadRecord(&offset, &record));
   TRTEngineInstance engine_instance;
   engine_instance.ParseFromString(record);
-  EXPECT_EQ(1, engine_instance.input_shapes_size());
-  EXPECT_EQ(2, engine_instance.input_shapes(0).dim_size());
-  EXPECT_EQ(1, engine_instance.input_shapes(0).dim(0).size());
-  EXPECT_EQ(1, engine_instance.input_shapes(0).dim(1).size());
+  EXPECT_EQ(param_.n_inputs, engine_instance.input_shapes_size());
+  EXPECT_EQ(param_.dims.nbDims, engine_instance.input_shapes(0).dim_size());
+  for (int i = 0; i < param_.dims.nbDims; i++) {
+    EXPECT_EQ(param_.dims.d[i], engine_instance.input_shapes(0).dim(i).size());
+  }
   EXPECT_TRUE(errors::IsOutOfRange(reader->ReadRecord(&offset, &record)));
 
   // Recreate the resource and use the file with the serialized engine to
@@ -220,6 +354,36 @@ TEST_F(TRTEngineResourceOpsTest, Basic) {
   // the cache of the resource is not empty.
   EXPECT_TRUE(rm->Lookup(container, resource_name, &resource).ok());
   EXPECT_EQ(1, resource->cache_.size());
+  if (this->param_.dynamic_shape) {
+    EXPECT_EQ(3, resource->profiles_.GetNumProfiles());
+    EXPECT_EQ(3, resource->cache_.begin()->second->GetNumContexts());
+
+    if (this->param_.n_inputs == 1) {
+      // Check if profiles are restored correctly.
+      std::vector<TensorShape> shapes(1);
+      // We create a shape vector that matches only profile 1.
+      TF_CHECK_OK(
+          TensorShapeUtils::MakeShape(std::vector<int32>{6}, &shapes[0]));
+      EXPECT_EQ(1, resource->profiles_.GetProfileNumber(shapes));
+    } else {
+      // Check if shape values are restored corretly.
+      std::vector<TensorShape> shapes(2);
+      // We create a shape vector that matches only profile 2.
+      TF_CHECK_OK(
+          TensorShapeUtils::MakeShape(std::vector<int32>{9, 9}, &shapes[0]));
+      TF_CHECK_OK(
+          TensorShapeUtils::MakeShape(std::vector<int32>{2}, &shapes[1]));
+      Tensor shape_tensor(DT_INT32, shapes[1]);
+      std::vector<int32> vals{1, 3};
+      std::copy_n(vals.data(), vals.size(),
+                  shape_tensor.flat<int32_t>().data());
+      // DataVec names are not in used CollectShapeValues, only the order
+      // matters.
+      DataVec shape_values{{"one", {}}, {"two", shape_tensor}};
+      TF_CHECK_OK(resource->profiles_.CollectShapeValues(shape_values));
+      EXPECT_EQ(2, resource->profiles_.GetProfileNumber(shapes));
+    }
+  }
   // Check that the resource has multiple references before it is unregistered
   // from the resource manager.
   EXPECT_FALSE(resource->RefCountIsOne());

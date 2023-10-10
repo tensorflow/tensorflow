@@ -27,8 +27,6 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-const char kAnonymousRandomSeedGenerator[] = "AnonymousRandomSeedGenerator";
-const char kNumRandomSamples[] = "num_random_samples";
 const char kSeedGenerator[] = "SeedGenerator";
 const char kSeed[] = "seed";
 const char kSeed2[] = "seed2";
@@ -38,14 +36,14 @@ const char kReshuffle[] = "reshuffle";
 
 string SeedGeneratorManager::DebugString() const { return kSeedGenerator; }
 
-void FixedSeedGenerator::GenerateSeeds(int64* seed1, int64* seed2) {
+void FixedSeedGenerator::GenerateSeeds(int64_t* seed1, int64_t* seed2) {
   mutex_lock l(mu_);
   num_random_samples_++;
   *seed1 = seeds_.seed();
   *seed2 = seeds_.seed2();
 }
 
-void RandomSeedGenerator::GenerateSeeds(int64* seed1, int64* seed2) {
+void RandomSeedGenerator::GenerateSeeds(int64_t* seed1, int64_t* seed2) {
   mutex_lock l(mu_);
   num_random_samples_++;
   *seed1 = generator_();
@@ -64,16 +62,18 @@ void RandomSeedGenerator::Reset() {
 
 AnonymousSeedGeneratorHandleOp::AnonymousSeedGeneratorHandleOp(
     OpKernelConstruction* ctx)
-    : AnonymousResourceOp<SeedGeneratorManager>(ctx) {}
+    : AnonymousResourceOp<SeedGeneratorManager>(ctx,
+                                                /* ref_counting */ true,
+                                                /* return_deleter */ true) {}
 
 void AnonymousSeedGeneratorHandleOp::Compute(OpKernelContext* ctx) {
-  int64 seed;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed, &seed));
-  int64 seed2;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed2, &seed2));
+  int64_t seed;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed, &seed));
+  int64_t seed2;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed2, &seed2));
   // Seeds will be consumed by `CreateResource`, which is called via `Compute`.
   mutex_lock l(mu_);
-  seeds_ = absl::make_unique<RandomSeeds>(seed, seed2);
+  seeds_ = std::make_unique<RandomSeeds>(seed, seed2);
   OP_REQUIRES_OK(ctx, ParseScalarArgument<bool>(ctx, kReshuffle, &reshuffle_));
   AnonymousResourceOp<SeedGeneratorManager>::Compute(ctx);
 }
@@ -91,7 +91,7 @@ Status AnonymousSeedGeneratorHandleOp::CreateResource(
     *manager = new SeedGeneratorManager(new FixedSeedGenerator(*seeds_));
   }
   seeds_ = nullptr;
-  return Status::OK();
+  return OkStatus();
 }
 
 void DeleteSeedGeneratorOp::Compute(OpKernelContext* ctx) {

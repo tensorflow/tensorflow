@@ -16,14 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_C_TF_TENSOR_INTERNAL_H_
 #define TENSORFLOW_C_TF_TENSOR_INTERNAL_H_
 
-#include <memory>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <utility>
 
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/c/tf_tensor_helper.h"  // IWYU pragma: export
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/platform/status.h"
 
 // Internal structures used by the C API. These are likely to change and should
 // not be depended on.
@@ -54,7 +60,7 @@ class TF_ManagedBuffer : public tensorflow::TensorBuffer {
   TensorBuffer* root_buffer() override { return this; }
   void FillAllocationDescription(
       tensorflow::AllocationDescription* proto) const override {
-    tensorflow::int64 rb = size();
+    int64_t rb = size();
     proto->set_requested_bytes(rb);
     proto->set_allocator_name(tensorflow::cpu_allocator()->Name());
   }
@@ -104,10 +110,13 @@ class TensorInterface : public AbstractTensorInterface {
   void* Data() const override;
   bool IsAligned() const override;
   bool CanMove() const override;
+  std::string SummarizeValue() const override;
 
+  void SetShape(const int64_t* dims, int num_dims);
   Status ToTensor(tensorflow::Tensor* dst) const;
   Status BitcastFrom(const TensorInterface& from, DataType type,
                      const int64_t* new_dims, int num_new_dims);
+  Status FromProto(const tensorflow::TensorProto& from);
 
   tensorflow::Tensor& Tensor() { return tensor_; }
 
@@ -119,9 +128,9 @@ inline Tensor& TensorFromInterface(AbstractTensorInterface* tensor) {
   return down_cast<TensorInterface*>(tensor)->Tensor();
 }
 
-Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
+AbstractTensorInterface* TensorInterfaceFromTensor(const Tensor& src,
+                                                   Status* status);
 
-TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_TF_TENSOR_INTERNAL_H_

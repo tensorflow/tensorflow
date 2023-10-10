@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+// This file is MACHINE GENERATED! Do not edit.
+
 #ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_MATH_OPS_H_
 #define TENSORFLOW_C_EXPERIMENTAL_OPS_MATH_OPS_H_
 
@@ -20,51 +23,76 @@ limitations under the License.
 
 namespace tensorflow {
 namespace ops {
-Status Mul(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
-           absl::Span<AbstractTensorHandle*> outputs, const char* name);
 
-Status Conj(AbstractContext* ctx,
-            absl::Span<AbstractTensorHandle* const> inputs,
-            absl::Span<AbstractTensorHandle*> outputs, const char* name);
+// Returns x * y element-wise.
+Status Mul(AbstractContext* ctx, AbstractTensorHandle* const x,
+           AbstractTensorHandle* const y, AbstractTensorHandle** z,
+           const char* name = nullptr, const char* raw_device_name = nullptr);
 
-Status Add(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
-           absl::Span<AbstractTensorHandle*> outputs, const char* name);
+// Returns the complex conjugate of a complex number.
+Status Conj(AbstractContext* ctx, AbstractTensorHandle* const input,
+            AbstractTensorHandle** output, const char* name = nullptr,
+            const char* raw_device_name = nullptr);
 
-Status MatMul(AbstractContext* ctx,
-              absl::Span<AbstractTensorHandle* const> inputs,
-              absl::Span<AbstractTensorHandle*> outputs, const char* name,
-              bool transpose_a, bool transpose_b);
+// Returns x + y element-wise.
+Status AddV2(AbstractContext* ctx, AbstractTensorHandle* const x,
+             AbstractTensorHandle* const y, AbstractTensorHandle** z,
+             const char* name = nullptr, const char* raw_device_name = nullptr);
 
-Status Neg(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
-           absl::Span<AbstractTensorHandle*> outputs, const char* name);
+// Multiply the matrix "a" by the matrix "b".
+Status MatMul(AbstractContext* ctx, AbstractTensorHandle* const a,
+              AbstractTensorHandle* const b, AbstractTensorHandle** product,
+              bool transpose_a = false, bool transpose_b = false,
+              const char* name = nullptr,
+              const char* raw_device_name = nullptr);
 
-Status Sum(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
-           absl::Span<AbstractTensorHandle*> outputs, const char* name);
+// Computes numerical negative value element-wise.
+Status Neg(AbstractContext* ctx, AbstractTensorHandle* const x,
+           AbstractTensorHandle** y, const char* name = nullptr,
+           const char* raw_device_name = nullptr);
 
-Status Sub(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
-           absl::Span<AbstractTensorHandle*> outputs, const char* name);
+// Computes the sum of elements across dimensions of a tensor.
+Status Sum(AbstractContext* ctx, AbstractTensorHandle* const input,
+           AbstractTensorHandle* const reduction_indices,
+           AbstractTensorHandle** output, bool keep_dims = false,
+           const char* name = nullptr, const char* raw_device_name = nullptr);
 
-Status Div(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
-           absl::Span<AbstractTensorHandle*> outputs, const char* name);
+// Returns x - y element-wise.
+Status Sub(AbstractContext* ctx, AbstractTensorHandle* const x,
+           AbstractTensorHandle* const y, AbstractTensorHandle** z,
+           const char* name = nullptr, const char* raw_device_name = nullptr);
 
-Status DivNoNan(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, const char* name);
+// Returns x / y element-wise.
+Status Div(AbstractContext* ctx, AbstractTensorHandle* const x,
+           AbstractTensorHandle* const y, AbstractTensorHandle** z,
+           const char* name = nullptr, const char* raw_device_name = nullptr);
 
-Status Exp(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
-           absl::Span<AbstractTensorHandle*> outputs, const char* name);
+// Returns 0 if the denominator is zero.
+Status DivNoNan(AbstractContext* ctx, AbstractTensorHandle* const x,
+                AbstractTensorHandle* const y, AbstractTensorHandle** z,
+                const char* name = nullptr,
+                const char* raw_device_name = nullptr);
 
-Status Sqrt(AbstractContext* ctx,
-            absl::Span<AbstractTensorHandle* const> inputs,
-            absl::Span<AbstractTensorHandle*> outputs, const char* name);
+// Computes exponential of x element-wise.  \\(y = e^x\\).
+Status Exp(AbstractContext* ctx, AbstractTensorHandle* const x,
+           AbstractTensorHandle** y, const char* name = nullptr,
+           const char* raw_device_name = nullptr);
 
-Status SqrtGrad(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, const char* name);
+// Computes square root of x element-wise.
+Status Sqrt(AbstractContext* ctx, AbstractTensorHandle* const x,
+            AbstractTensorHandle** y, const char* name = nullptr,
+            const char* raw_device_name = nullptr);
 
-Status Log1p(AbstractContext* ctx,
-             absl::Span<AbstractTensorHandle* const> inputs,
-             absl::Span<AbstractTensorHandle*> outputs, const char* name);
+// Computes the gradient for the sqrt of `x` wrt its input.
+Status SqrtGrad(AbstractContext* ctx, AbstractTensorHandle* const y,
+                AbstractTensorHandle* const dy, AbstractTensorHandle** z,
+                const char* name = nullptr,
+                const char* raw_device_name = nullptr);
+
+// Computes natural logarithm of (1 + x) element-wise.
+Status Log1p(AbstractContext* ctx, AbstractTensorHandle* const x,
+             AbstractTensorHandle** y, const char* name = nullptr,
+             const char* raw_device_name = nullptr);
 
 }  // namespace ops
 }  // namespace tensorflow

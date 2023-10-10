@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,10 +16,6 @@
 
 Adapted from Tangent.
 """
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import atexit
 import errno
@@ -48,9 +43,12 @@ def _remove_file(file_name):
 
 def load_source(source, delete_on_exit):
   """Loads the given source code as a Python module."""
-  # TODO(mdan): Drop the linter verride once the CI stops running Py2.
-  with tempfile.NamedTemporaryFile(  # pylint:disable=unexpected-keyword-arg
-      mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+  with tempfile.NamedTemporaryFile(
+      mode='w',
+      suffix='.py',
+      prefix='__autograph_generated_file',
+      delete=False,
+      encoding='utf-8') as f:
     module_name = os.path.basename(f.name[:-3])
     file_name = f.name
     f.write(source)

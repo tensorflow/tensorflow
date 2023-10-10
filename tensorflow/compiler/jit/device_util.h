@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_JIT_DEVICE_INFO_CACHE_H_
-#define TENSORFLOW_COMPILER_JIT_DEVICE_INFO_CACHE_H_
+#ifndef TENSORFLOW_COMPILER_JIT_DEVICE_UTIL_H_
+#define TENSORFLOW_COMPILER_JIT_DEVICE_UTIL_H_
 
 #include <functional>
 #include <memory>
@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/status_macros.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
@@ -118,7 +118,7 @@ class DeviceInfoCache {
     return names_[device.id()];
   }
 
-  xla::StatusOr<DeviceId> GetIdFor(absl::string_view name);
+  StatusOr<DeviceId> GetIdFor(absl::string_view name);
 
   using DeviceRegistration = const XlaOpRegistry::DeviceRegistration;
 
@@ -126,8 +126,7 @@ class DeviceInfoCache {
     return id_to_compilation_device_[device.id()];
   }
 
-  xla::StatusOr<DeviceRegistration*> GetCompilationDevice(
-      absl::string_view name) {
+  StatusOr<DeviceRegistration*> GetCompilationDevice(absl::string_view name) {
     TF_ASSIGN_OR_RETURN(DeviceId device_id, GetIdFor(name));
     return GetCompilationDevice(device_id);
   }
@@ -138,8 +137,7 @@ class DeviceInfoCache {
 
   using DeviceTypeConstRef = std::reference_wrapper<const DeviceType>;
 
-  xla::StatusOr<DeviceTypeConstRef> GetDeviceTypeFor(
-      absl::string_view device_name) {
+  StatusOr<DeviceTypeConstRef> GetDeviceTypeFor(absl::string_view device_name) {
     TF_ASSIGN_OR_RETURN(DeviceId device_id, GetIdFor(device_name));
     return std::cref(*id_to_device_type_[device_id.id()]);
   }
@@ -198,7 +196,7 @@ Status DeviceNameToDeviceType(const string& device, DeviceType* device_type);
 //   case it is the responsibility of the optimization pass that injected the
 //   CPU nodes into the cluster to ensure that these nodes can be compiled by
 //   the unknown XLA backend.
-xla::StatusOr<jit::DeviceId> PickDeviceForXla(
+StatusOr<jit::DeviceId> PickDeviceForXla(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu);
 
@@ -207,9 +205,9 @@ xla::StatusOr<jit::DeviceId> PickDeviceForXla(
 //
 // We return a failing Status for errors unrelated to the device choice
 // algorithm itself.
-xla::StatusOr<absl::optional<jit::DeviceId>> MaybePickDeviceForXla(
+StatusOr<std::optional<jit::DeviceId>> MaybePickDeviceForXla(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu);
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_JIT_DEVICE_INFO_CACHE_H_
+#endif  // TENSORFLOW_COMPILER_JIT_DEVICE_UTIL_H_

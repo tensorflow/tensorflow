@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for return_statements module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.autograph.converters import functions
 from tensorflow.python.autograph.converters import return_statements
 from tensorflow.python.autograph.core import converter_testing
@@ -134,7 +130,7 @@ class SingleReturnTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(f, 2)
     self.assertTransformedEquivalent(f, -2)
 
-  def text_conditional_in_context_manager(self):
+  def test_conditional_in_context_manager(self):
 
     def f(x):
       with ops.name_scope(''):

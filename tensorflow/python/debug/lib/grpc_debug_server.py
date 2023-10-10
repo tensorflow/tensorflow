@@ -14,18 +14,14 @@
 # ==============================================================================
 """gRPC debug server in Python."""
 # pylint: disable=g-bad-import-order
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import json
+import queue
 import threading
 import time
 
 from concurrent import futures
 import grpc
-from six.moves import queue
 
 from tensorflow.core.debug import debug_service_pb2
 from tensorflow.core.framework import graph_pb2
@@ -47,7 +43,7 @@ def _state_change(new_state, node_name, output_slot, debug_op):
   return state_change
 
 
-class EventListenerBaseStreamHandler(object):
+class EventListenerBaseStreamHandler:
   """Per-stream handler of EventListener gRPC streams."""
 
   def __init__(self):
@@ -391,7 +387,7 @@ class EventListenerBaseServicer(debug_service_pb2_grpc.EventListenerServicer):
     finally:
       self._server_lock.release()
 
-  def request_watch(self, node_name, output_slot, debug_op, breakpoint=False):
+  def request_watch(self, node_name, output_slot, debug_op, breakpoint=False):  # pylint: disable=redefined-builtin
     """Request enabling a debug tensor watchpoint or breakpoint.
 
     This will let the server send a EventReply to the client side

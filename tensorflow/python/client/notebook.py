@@ -26,16 +26,12 @@ Press "a" in command mode to insert cell above or "b" to insert cell below.
 
 Your root notebooks directory is FLAGS.notebook_dir
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import os
 import socket
 import sys
 
-from tensorflow.python.platform import app
+from absl import app
 
 # pylint: disable=g-import-not-at-top
 # Official recommended way of turning on fast protocol buffers as of 10/21/14

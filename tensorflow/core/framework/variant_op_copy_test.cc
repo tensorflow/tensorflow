@@ -167,7 +167,7 @@ TEST(VariantOpCopyTest, CreateConstOnCPU) {
   // Create the input StoredTensorValue and serialize it.
   StoredTensorValue from;
   from.stored = Tensor(DT_INT64, TensorShape({}));
-  from.stored.scalar<int64>()() = 0xdeadbeef;
+  from.stored.scalar<int64_t>()() = 0xdeadbeef;
   VariantTensorData data;
   data.set_type_name(from.TypeName());
   from.Encode(&data);
@@ -190,7 +190,7 @@ TEST(VariantOpCopyTest, CreateConstOnCPU) {
   EXPECT_EQ("StoredTensorValue", variant.TypeName());
   const StoredTensorValue* to = variant.get<StoredTensorValue>();
   EXPECT_EQ(to->stored.dtype(), DT_INT64);
-  EXPECT_EQ(0xdeadbeef, to->stored.scalar<int64>()());
+  EXPECT_EQ(0xdeadbeef, to->stored.scalar<int64_t>()());
 }
 
 TEST(VariantOpCopyTest, CreateConstOnGPU) {
@@ -201,7 +201,7 @@ TEST(VariantOpCopyTest, CreateConstOnGPU) {
   // Create the input StoredTensorValue and serialize it.
   StoredTensorValue from;
   from.stored = Tensor(DT_INT64, TensorShape({}));
-  from.stored.scalar<int64>()() = 0xdeadbeef;
+  from.stored.scalar<int64_t>()() = 0xdeadbeef;
   VariantTensorData data;
   data.set_type_name(from.TypeName());
   from.Encode(&data);
@@ -233,7 +233,7 @@ TEST(VariantOpCopyTest, CreateConstOnGPU) {
   EXPECT_EQ("StoredTensorValue", variant.TypeName());
   const StoredTensorValue* to = variant.get<StoredTensorValue>();
   EXPECT_EQ(to->stored.dtype(), DT_INT64);
-  EXPECT_EQ(0xdeadbeef, to->stored.scalar<int64>()());
+  EXPECT_EQ(0xdeadbeef, to->stored.scalar<int64_t>()());
 }
 
 TEST(VariantOpCopyTest, CreateConstOnGPUFailsGracefully) {
@@ -260,8 +260,8 @@ TEST(VariantOpCopyTest, CreateConstOnGPUFailsGracefully) {
   ClientSession session(root);
   std::vector<Tensor> outputs;
   Status s = session.Run({create_const}, &outputs);
-  EXPECT_TRUE(absl::StrContains(s.error_message(),
-                                "GPU copy from non-DMA string tensor"))
+  EXPECT_TRUE(
+      absl::StrContains(s.message(), "GPU copy from non-DMA string tensor"))
       << s.ToString();
 }
 
@@ -365,12 +365,12 @@ TEST(VariantOpCopyTest, CreateCopyCPUToGPUStringFailsSafely) {
   ClientSession session(root);
   std::vector<Tensor> outputs;
   Status err = session.Run({create_op, identity}, &outputs);
-  EXPECT_EQ(err.code(), errors::Code::INVALID_ARGUMENT);
+  EXPECT_TRUE(errors::IsInvalidArgument(err));
   EXPECT_TRUE(
-      absl::StrContains(err.error_message(),
+      absl::StrContains(err.message(),
                         "During Variant Host->Device Copy: non-DMA-copy "
                         "attempted of tensor type: string"))
-      << err.error_message();
+      << err.message();
 }
 
 // TODO(ebrevdo): Identify a way to create two virtual GPUs within a

@@ -134,6 +134,7 @@ def make_tflite_files(
            " --output_file=$(location %s)" +
            " --input_format=TENSORFLOW_GRAPHDEF" +
            " --output_format=TFLITE " +
+           " --enable_v1_converter " +
            " ".join(flags)
                .replace("std_value", "std_dev_value")
                .replace("quantize_weights=true", "quantize_weights"))

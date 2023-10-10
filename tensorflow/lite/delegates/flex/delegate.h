@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_FLEX_DELEGATE_H_
 #define TENSORFLOW_LITE_DELEGATES_FLEX_DELEGATE_H_
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
 
@@ -40,10 +40,20 @@ class KernelTest;
 //   ... build interpreter ...
 //
 //   if (delegate) {
-//     interpreter->ModifyGraphWithDelegate(std::move(delegate));
+//     interpreter->ModifyGraphWithDelegate(delegate.get());
 //   }
+//
+//   void* delegate_data = delegate->data_;
+//   interpreter->SetCancellationFunction(
+//     delegate_data,
+//     FlexDelegate::HasCancelled);
+//
 //   ... run inference ...
+//
+//    static_cast<FlexDelegate*>(delegate_data)->Cancel();
+//
 //   ... destroy interpreter ...
+//   ... destroy delegate ...
 class FlexDelegate : public SimpleDelegateInterface {
  public:
   friend class flex::testing::KernelTest;
@@ -57,11 +67,22 @@ class FlexDelegate : public SimpleDelegateInterface {
 
   flex::DelegateData* mutable_data() { return &delegate_data_; }
 
+  // This method is thread safe. It does two things:
+  //   1. Calls the CancellationManager of the TF eager runtime to support
+  //      intra-op cancellation in TF.
+  //   2. Uses the CancellationManager to signal TFLite interpreter for inter-op
+  //      cancellation.
+  // Training is non-recoverable after calling this API.
+  void Cancel();
+
+  // The param `data` must be a pointer to a FlexDelegate instance.
+  static bool HasCancelled(void* data);
+
  protected:
   // We sometimes have to create certain stub data to test FlexDelegate. To
   // achieve this, we will make a testing flex delegate class that inherits from
   // FlexDelegate to override certain things for stub data creation. Therefore,
-  // this function accepts a FlexDelegate instance to initiliaze it properly for
+  // this function accepts a FlexDelegate instance to initialize it properly for
   // create a testing flex delegate in some cases, and it is only used in
   // testing.
   static TfLiteDelegateUniquePtr Create(
@@ -90,6 +111,13 @@ class FlexDelegate : public SimpleDelegateInterface {
                                     TfLiteTensor* output);
 
   flex::DelegateData delegate_data_;
+
+  // Pointer to the base TfLiteDelegate which is created from the Create call.
+  TfLiteDelegate* base_delegate_ = nullptr;
+
+ private:
+  // A cancellation manager.
+  std::unique_ptr<tensorflow::CancellationManager> cancellation_manager_;
 };
 
 }  // namespace tflite

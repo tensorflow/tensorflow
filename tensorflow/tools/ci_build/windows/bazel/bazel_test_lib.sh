@@ -19,18 +19,10 @@ function run_configure_for_cpu_build {
   yes "" | ./configure
 }
 
-function run_configure_for_gpu_build {
-  # Enable CUDA support
-  export TF_NEED_CUDA=1
-
-  yes "" | ./configure
-}
-
 function set_remote_cache_options {
   echo "build --remote_instance_name=projects/tensorflow-testing/instances/default_instance" >> "${TMP_BAZELRC}"
   echo "build --remote_default_exec_properties=build=windows-x64" >> "${TMP_BAZELRC}"
-  echo "build --remote_cache=remotebuildexecution.googleapis.com" >> "${TMP_BAZELRC}"
-  echo "build --tls_enabled=true" >> "${TMP_BAZELRC}"
+  echo "build --remote_cache=grpcs://remotebuildexecution.googleapis.com" >> "${TMP_BAZELRC}"
   echo "build --remote_timeout=3600" >> "${TMP_BAZELRC}"
   echo "build --auth_enabled=true" >> "${TMP_BAZELRC}"
   echo "build --spawn_strategy=standalone" >> "${TMP_BAZELRC}"
@@ -44,9 +36,4 @@ function create_python_test_dir() {
   rm -rf "$1"
   mkdir -p "$1"
   cmd /c "mklink /J $1\\tensorflow .\\tensorflow"
-}
-
-function reinstall_tensorflow_pip() {
-  echo "y" | pip uninstall tensorflow -q || true
-  pip install ${1} --no-deps
 }

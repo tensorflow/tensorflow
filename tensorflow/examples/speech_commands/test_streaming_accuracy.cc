@@ -82,12 +82,12 @@ bazel run tensorflow/examples/speech_commands:test_streaming_accuracy -- \
 #include "tensorflow/examples/speech_commands/recognize_commands.h"
 
 // These are all common classes it's handy to reference with no namespace.
+using ::int64_t;
 using tensorflow::Flag;
-using tensorflow::Status;
-using tensorflow::Tensor;
 using tensorflow::int32;
-using tensorflow::int64;
+using tensorflow::Status;
 using tensorflow::string;
+using tensorflow::Tensor;
 using tensorflow::uint16;
 using tensorflow::uint32;
 
@@ -109,7 +109,7 @@ Status LoadGraph(const string& graph_file_name,
   if (!session_create_status.ok()) {
     return session_create_status;
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Takes a file name, and loads a list of labels from it, one per line, and
@@ -125,7 +125,7 @@ Status ReadLabelsFile(const string& file_name, std::vector<string>* result) {
   while (std::getline(file, line)) {
     result->push_back(line);
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace
@@ -138,11 +138,11 @@ int main(int argc, char* argv[]) {
   string input_data_name = "decoded_sample_data:0";
   string input_rate_name = "decoded_sample_data:1";
   string output_name = "labels_softmax";
-  int32 clip_duration_ms = 1000;
-  int32 clip_stride_ms = 30;
-  int32 average_window_ms = 500;
-  int32 time_tolerance_ms = 750;
-  int32 suppression_ms = 1500;
+  int32_t clip_duration_ms = 1000;
+  int32_t clip_stride_ms = 30;
+  int32_t average_window_ms = 500;
+  int32_t time_tolerance_ms = 750;
+  int32_t suppression_ms = 1500;
   float detection_threshold = 0.7f;
   bool verbose = false;
   std::vector<Flag> flag_list = {
@@ -199,7 +199,7 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  std::vector<std::pair<string, tensorflow::int64>> ground_truth_list;
+  std::vector<std::pair<string, int64_t>> ground_truth_list;
   Status read_ground_truth_status =
       tensorflow::ReadGroundTruthFile(ground_truth, &ground_truth_list);
   if (!read_ground_truth_status.ok()) {
@@ -230,8 +230,8 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  const int64 clip_duration_samples = (clip_duration_ms * sample_rate) / 1000;
-  const int64 clip_stride_samples = (clip_stride_ms * sample_rate) / 1000;
+  const int64_t clip_duration_samples = (clip_duration_ms * sample_rate) / 1000;
+  const int64_t clip_stride_samples = (clip_stride_ms * sample_rate) / 1000;
   Tensor audio_data_tensor(tensorflow::DT_FLOAT,
                            tensorflow::TensorShape({clip_duration_samples, 1}));
 
@@ -241,11 +241,11 @@ int main(int argc, char* argv[]) {
   tensorflow::RecognizeCommands recognize_commands(
       labels_list, average_window_ms, detection_threshold, suppression_ms);
 
-  std::vector<std::pair<string, int64>> all_found_words;
+  std::vector<std::pair<string, int64_t>> all_found_words;
   tensorflow::StreamingAccuracyStats previous_stats;
 
-  const int64 audio_data_end = (sample_count - clip_duration_samples);
-  for (int64 audio_data_offset = 0; audio_data_offset < audio_data_end;
+  const int64_t audio_data_end = (sample_count - clip_duration_samples);
+  for (int64_t audio_data_offset = 0; audio_data_offset < audio_data_end;
        audio_data_offset += clip_stride_samples) {
     const float* input_start = &(audio_data[audio_data_offset]);
     const float* input_end = input_start + clip_duration_samples;
@@ -261,7 +261,7 @@ int main(int argc, char* argv[]) {
       return -1;
     }
 
-    const int64 current_time_ms = (audio_data_offset * 1000) / sample_rate;
+    const int64_t current_time_ms = (audio_data_offset * 1000) / sample_rate;
     string found_command;
     float score;
     bool is_new_command;
@@ -279,11 +279,11 @@ int main(int argc, char* argv[]) {
         tensorflow::CalculateAccuracyStats(ground_truth_list, all_found_words,
                                            current_time_ms, time_tolerance_ms,
                                            &stats);
-        int32 false_positive_delta = stats.how_many_false_positives -
-                                     previous_stats.how_many_false_positives;
-        int32 correct_delta = stats.how_many_correct_words -
-                              previous_stats.how_many_correct_words;
-        int32 wrong_delta =
+        int32_t false_positive_delta = stats.how_many_false_positives -
+                                       previous_stats.how_many_false_positives;
+        int32_t correct_delta = stats.how_many_correct_words -
+                                previous_stats.how_many_correct_words;
+        int32_t wrong_delta =
             stats.how_many_wrong_words - previous_stats.how_many_wrong_words;
         string recognition_state;
         if (false_positive_delta == 1) {

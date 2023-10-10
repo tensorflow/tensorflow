@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/graph/graph_node_util.h"
 
+#include <vector>
+
+#include "absl/container/btree_set.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph.h"
@@ -24,14 +27,8 @@ namespace tensorflow {
 
 string SummarizeNode(const Node& node) { return SummarizeNodeDef(node.def()); }
 
-string FormatNodeForError(const NodeDebugInfo& debug_info) {
-  return debug_info.original_node_names.empty()
-             ? errors::FormatNodeNameForError(debug_info.name)
-             : errors::FormatNodeNamesForError(debug_info.original_node_names);
-}
-
 string FormatNodeForError(const Node& node) {
-  return FormatNodeForError(NodeDebugInfo(node));
+  return FormatNodeDefForError(node.def());
 }
 
 Status NameRangesForNode(const Node& node, const OpDef& op_def,
@@ -44,35 +41,49 @@ Status AttachDef(const Status& status, const Node& node,
   return AttachDef(status, node.def(), allow_multiple_formatted_node);
 }
 
-void GetMergedOriginalNodeNames(const NodeDebugInfo& from,
-                                const NodeDebugInfo& to,
-                                std::set<string>* names) {
+absl::btree_set<string> GetMergedNames(const std::vector<string>& from_names,
+                                       const std::vector<string>& to_names) {
+  absl::btree_set<string> merged_names;
+  merged_names.insert(from_names.begin(), from_names.end());
+  merged_names.insert(to_names.begin(), to_names.end());
+  return merged_names;
+}
+
+void MergeDebugInfo(const NodeDebugInfo& from, Node* to_node) {
+  NodeDebugInfo to = NodeDebugInfo(*to_node);
   if (!from.original_node_names.empty()) {
-    names->insert(from.original_node_names.begin(),
-                  from.original_node_names.end());
-  } else {
-    names->insert(from.name);
+    auto node_names =
+        GetMergedNames(from.original_node_names, to.original_node_names);
+    to_node->set_original_node_names({node_names.begin(), node_names.end()});
   }
-  names->insert(to.original_node_names.begin(), to.original_node_names.end());
-}
-
-void MergeDebugInfo(const NodeDebugInfo& from, Node* to) {
-  std::set<string> names;
-  GetMergedOriginalNodeNames(from, NodeDebugInfo(*to), &names);
-  to->set_original_node_names({names.begin(), names.end()});
-}
-
-void MergeDebugInfo(const NodeDebugInfo& from, NodeDef* to) {
-  std::set<string> names;
-  GetMergedOriginalNodeNames(from, NodeDebugInfo(*to), &names);
-  to->mutable_experimental_debug_info()->clear_original_node_names();
-  if (!names.empty()) {
-    *to->mutable_experimental_debug_info()->mutable_original_node_names() = {
-        names.begin(), names.end()};
+  if (!from.original_func_names.empty()) {
+    auto func_names =
+        GetMergedNames(from.original_func_names, to.original_func_names);
+    to_node->set_original_func_names({func_names.begin(), func_names.end()});
   }
 }
 
-void MergeDebugInfo(const NodeDef& from, NodeDef* to) {
-  MergeDebugInfo(NodeDebugInfo(from), to);
+void MergeDebugInfo(const NodeDebugInfo& from, NodeDef* to_node_def) {
+  NodeDebugInfo to = NodeDebugInfo(*to_node_def);
+  if (!from.original_node_names.empty()) {
+    auto node_names =
+        GetMergedNames(from.original_node_names, to.original_node_names);
+    to_node_def->mutable_experimental_debug_info()->clear_original_node_names();
+    *to_node_def->mutable_experimental_debug_info()
+         ->mutable_original_node_names() = {node_names.begin(),
+                                            node_names.end()};
+  }
+  if (!from.original_func_names.empty()) {
+    auto func_names =
+        GetMergedNames(from.original_func_names, to.original_func_names);
+    to_node_def->mutable_experimental_debug_info()->clear_original_func_names();
+    *to_node_def->mutable_experimental_debug_info()
+         ->mutable_original_func_names() = {func_names.begin(),
+                                            func_names.end()};
+  }
+}
+
+void MergeDebugInfo(const NodeDef& from_node_def, NodeDef* to_node_def) {
+  MergeDebugInfo(NodeDebugInfo(from_node_def), to_node_def);
 }
 }  // namespace tensorflow

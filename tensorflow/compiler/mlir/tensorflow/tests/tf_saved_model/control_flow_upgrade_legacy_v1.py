@@ -16,10 +16,6 @@
 # RUN: %p/control_flow_upgrade_legacy_v1 | FileCheck %s
 
 # pylint: disable=missing-docstring,line-too-long
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow.compat.v1 as tf
 from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 from tensorflow.python.ops import control_flow_ops
@@ -29,6 +25,13 @@ from tensorflow.python.ops import control_flow_ops
 # CHECK-NOT: tf_executor.Switch
 # CHECK-NOT: tf_executor.Merge
 # CHECK: "tf.If"
+# CHECK-SAME: else_branch = @"key/[[else:[a-zA-Z_0-9]+]]"
+# CHECK-SAME: then_branch = @"key/[[then:[a-zA-Z_0-9]+]]"
+
+# CHECK: func private @"key/[[else]]"(
+# CHECK-SAME: tf._original_func_name
+# CHECK: func private @"key/[[then]]"(
+# CHECK-SAME: tf._original_func_name
 
 
 def Test():

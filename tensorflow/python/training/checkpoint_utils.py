@@ -12,17 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tools to work with checkpoints."""
+"""Tools to work with name-based checkpoints.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+While some of these symbols also work with the TF2 object-based checkpoints,
+they are not recommended for TF2. Please check  `tensorflow/python/checkpoint`
+for newer utilities built to work with TF2 checkpoints.
+"""
 
+from collections import abc
+import os
 import time
 
-import six
-
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.checkpoint import checkpoint_management
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -30,7 +32,6 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util.tf_export import tf_export
@@ -48,6 +49,18 @@ def load_checkpoint(ckpt_dir_or_file):
 
   If `ckpt_dir_or_file` resolves to a directory with multiple checkpoints,
   reader for the latest checkpoint is returned.
+
+  Example usage:
+
+  ```python
+  import tensorflow as tf
+  a = tf.Variable(1.0)
+  b = tf.Variable(2.0)
+  ckpt = tf.train.Checkpoint(var_list={'a': a, 'b': b})
+  ckpt_path = ckpt.save('tmp-ckpt')
+  reader= tf.train.load_checkpoint(ckpt_path)
+  print(reader.get_tensor('var_list/a/.ATTRIBUTES/VARIABLE_VALUE'))  # 1.0
+  ```
 
   Args:
     ckpt_dir_or_file: Directory with checkpoints file or path to checkpoint
@@ -71,6 +84,22 @@ def load_checkpoint(ckpt_dir_or_file):
 def load_variable(ckpt_dir_or_file, name):
   """Returns the tensor value of the given variable in the checkpoint.
 
+  When the variable name is unknown, you can use `tf.train.list_variables` to
+  inspect all the variable names.
+
+  Example usage:
+
+  ```python
+  import tensorflow as tf
+  a = tf.Variable(1.0)
+  b = tf.Variable(2.0)
+  ckpt = tf.train.Checkpoint(var_list={'a': a, 'b': b})
+  ckpt_path = ckpt.save('tmp-ckpt')
+  var= tf.train.load_variable(
+      ckpt_path, 'var_list/a/.ATTRIBUTES/VARIABLE_VALUE')
+  print(var)  # 1.0
+  ```
+
   Args:
     ckpt_dir_or_file: Directory with checkpoints file or path to checkpoint.
     name: Name of the variable to return.
@@ -93,7 +122,7 @@ def list_variables(ckpt_dir_or_file):
 
   Example usage:
 
-    ```python
+  ```python
   import tensorflow as tf
   import os
   ckpt_directory = "/tmp/training_checkpoints/ckpt"
@@ -219,6 +248,45 @@ def checkpoints_iterator(checkpoint_dir,
 def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   """Replaces `tf.Variable` initializers so they load from a checkpoint file.
 
+  @compatibility(TF2)
+  `tf.compat.v1.train.init_from_checkpoint` is not recommended for restoring
+  variable values in TF2.
+
+  To restore checkpoints in TF2, please use
+  `tf.keras.Model.load_weights` or `tf.train.Checkpoint.restore`. These APIs use
+  use an [object-based method of checkpointing]
+  (https://www.tensorflow.org/guide/checkpoint#loading_mechanics), while
+  `tf.compat.v1.init_from_checkpoint` relies on a more-fragile variable-name
+  based method of checkpointing. There is no object-based equivalent of
+  `init_from_checkpoint` in TF2.
+
+  Please re-write your checkpoints immediately using the object-based APIs,
+  see [migration guide]
+  (https://www.tensorflow.org/guide/migrate#checkpoint_compatibility) for more
+  details.
+
+  You can load a name-based checkpoint written by `tf.compat.v1.train.Saver`
+  using `tf.train.Checkpoint.restore` or `tf.keras.Model.load_weights`. However,
+  you may have to change the names of the variables in your model to match the
+  variable names in the name-based checkpoint, which can be viewed with
+  `tf.train.list_variables(path)`.
+
+  Another option is to create an `assignment_map` that maps the name of the
+  variables in the name-based checkpoint to the variables in your model, eg:
+  ```
+  {
+      'sequential/dense/bias': model.variables[0],
+      'sequential/dense/kernel': model.variables[1]
+  }
+  ```
+  and use `tf.compat.v1.train.init_from_checkpoint(path, assignment_map)` to
+  restore the name-based checkpoint.
+
+  After restoring, re-encode your checkpoint using `tf.train.Checkpoint.save`
+  or `tf.keras.Model.save_weights`.
+
+  @end_compatibility
+
   Values are not loaded immediately, but when the initializer is run
   (typically by running a `tf.compat.v1.global_variables_initializer` op).
 
@@ -243,6 +311,10 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   Supports loading into partitioned variables, which are represented as
   `'<variable>/part_<part #>'`.
 
+  Assignment map can be a dict, or a list of pairs.  The latter is
+  necessary to initialize multiple variables in the current graph from
+  the same variable in the checkpoint.
+
   Example:
 
   ```python
@@ -265,7 +337,7 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
                            partitioner=lambda shape, dtype: [5, 1])
 
   # Initialize all variables in `new_scope_1` from `old_scope_1`.
-  init_from_checkpoint('/tmp/model.ckpt', {'old_scope_1/': 'new_scope_1'})
+  init_from_checkpoint('/tmp/model.ckpt', {'old_scope_1/': 'new_scope_1/'})
 
   # Use names to specify which variables to initialize from checkpoint.
   init_from_checkpoint('/tmp/model.ckpt',
@@ -289,20 +361,21 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
 
   Args:
     ckpt_dir_or_file: Directory with checkpoints file or path to checkpoint.
-    assignment_map: Dict, where keys are names of the variables in the
-      checkpoint and values are current variables or names of current variables
-      (in default graph).
+    assignment_map: Dict, or a list of key-value pairs, where keys are names
+      of the variables in the checkpoint and values are current variables or
+      names of current variables (in default graph).
 
   Raises:
     ValueError: If missing variables in current graph, or if missing
       checkpoints or tensors in checkpoints.
+
   """
   init_from_checkpoint_fn = lambda _: _init_from_checkpoint(
       ckpt_dir_or_file, assignment_map)
-  if distribution_strategy_context.get_cross_replica_context():
+  if distribute_lib.get_cross_replica_context():
     init_from_checkpoint_fn(None)
   else:
-    distribution_strategy_context.get_replica_context().merge_call(
+    distribute_lib.get_replica_context().merge_call(
         init_from_checkpoint_fn)
 
 
@@ -311,8 +384,14 @@ def _init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   ckpt_file = _get_checkpoint_filename(ckpt_dir_or_file)
   reader = load_checkpoint(ckpt_dir_or_file)
   variable_map = reader.get_variable_to_shape_map()
+  if isinstance(assignment_map, abc.Mapping):
+    assignment_map = assignment_map.items()
+
+  # We only want to sort by tensor names.
+  sort_key = lambda pair: pair[0]
+
   for tensor_name_in_ckpt, current_var_or_name in sorted(
-      six.iteritems(assignment_map)):
+      assignment_map, key=sort_key):
     var = None
     # Check if this is Variable object or list of Variable objects (in case of
     # partitioned variables).
@@ -395,6 +474,8 @@ def _init_from_checkpoint(ckpt_dir_or_file, assignment_map):
 
 def _get_checkpoint_filename(ckpt_dir_or_file):
   """Returns checkpoint filename given directory or specific checkpoint file."""
+  if isinstance(ckpt_dir_or_file, os.PathLike):
+    ckpt_dir_or_file = os.fspath(ckpt_dir_or_file)
   if gfile.IsDirectory(ckpt_dir_or_file):
     return checkpoint_management.latest_checkpoint(ckpt_dir_or_file)
   return ckpt_dir_or_file

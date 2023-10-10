@@ -21,8 +21,8 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/public/session.h"
 
@@ -72,6 +72,7 @@ struct SavedModelBundle : public SavedModelBundleInterface {
 class SavedModelBundleLite : public SavedModelBundleInterface {
  public:
   SavedModelBundleLite() = default;
+  SavedModelBundleLite(SavedModelBundleLite&& other) = default;
   SavedModelBundleLite& operator=(SavedModelBundleLite&& other) = default;
 
   SavedModelBundleLite(std::unique_ptr<Session> session,

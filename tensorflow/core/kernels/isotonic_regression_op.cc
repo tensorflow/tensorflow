@@ -22,8 +22,8 @@ limitations under the License.
 
 namespace {
 
+using ::int64_t;
 using tensorflow::int32;
-using tensorflow::int64;
 
 // The # of ops estimated for the isotonic regression solver is the size of the
 // array multiplied by this constant. This is used by the thread pool executor
@@ -156,7 +156,8 @@ void solve_pava_batch(const std::function<SegmentType(int, int)>& make_segment,
 
   thread_pool->ParallelFor(
       batch_size, kCostMultiplier * problem_size,
-      [&make_segment, &solution, &segments](int64 row_start, int64 row_limit) {
+      [&make_segment, &solution, &segments](int64_t row_start,
+                                            int64_t row_limit) {
         // Casting to int is safe, as we do boundary checks in `Compute`.
         for (int row_index = static_cast<int>(row_start);
              row_index < static_cast<int>(row_limit); ++row_index) {
@@ -177,7 +178,7 @@ class IsotonicRegressionOp : public tensorflow::OpKernel {
     // Grab the input tensor.
     const tensorflow::Tensor& input_tensor = context->input(0);
     const auto input = input_tensor.flat_inner_dims<Tin, 2>();
-    int int_max = std::numeric_limits<int32>::max();
+    int int_max = std::numeric_limits<int32_t>::max();
     OP_REQUIRES(context,
                 tensorflow::FastBoundsCheck(input.dimensions()[0], int_max) &&
                     tensorflow::FastBoundsCheck(input.dimensions()[1], int_max),

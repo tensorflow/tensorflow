@@ -13,17 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
+#include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -33,17 +36,17 @@ limitations under the License.
 
 PYBIND11_MODULE(tfr_wrapper, m) {
   m.def("verify", [](std::string input) {
-    mlir::MLIRContext ctx;
-    auto& registry = ctx.getDialectRegistry();
-    registry.insert<mlir::scf::SCFDialect, mlir::TF::TensorFlowDialect,
-                    mlir::StandardOpsDialect, mlir::shape::ShapeDialect,
-                    mlir::TFR::TFRDialect>();
-    ctx.getDialectRegistry().loadAll(&ctx);
+    mlir::DialectRegistry registry;
+    registry.insert<mlir::arith::ArithDialect, mlir::scf::SCFDialect,
+                    mlir::TF::TensorFlowDialect, mlir::func::FuncDialect,
+                    mlir::shape::ShapeDialect, mlir::TFR::TFRDialect>();
+    mlir::MLIRContext ctx(registry);
+    ctx.loadAllAvailableDialects();
 
     llvm::SourceMgr source_mgr = llvm::SourceMgr();
     source_mgr.AddNewSourceBuffer(llvm::MemoryBuffer::getMemBuffer(input),
                                   llvm::SMLoc());
-    auto module = mlir::parseSourceFile(source_mgr, &ctx);
+    auto module = mlir::parseSourceFile<mlir::ModuleOp>(source_mgr, &ctx);
     if (!module) {
       return false;
     }

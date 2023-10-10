@@ -14,10 +14,6 @@
 # ==============================================================================
 """Identity Tests."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.distributions import bijector_test_util
 from tensorflow.python.ops.distributions import identity_bijector

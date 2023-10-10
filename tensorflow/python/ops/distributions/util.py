@@ -14,10 +14,6 @@
 # ==============================================================================
 """Utilities for probability distributions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import hashlib
 
@@ -29,7 +25,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -131,7 +129,7 @@ def same_dynamic_shape(a, b):
 
   # One of the shapes isn't fully defined, so we need to use the dynamic
   # shape.
-  return control_flow_ops.cond(
+  return tf_cond.cond(
       math_ops.equal(array_ops.rank(a), array_ops.rank(b)),
       all_shapes_equal, lambda: constant_op.constant(False))
 
@@ -649,7 +647,8 @@ def rotate_transpose(x, shift, name="rotate_transpose"):
       # independently from the array upon which it operates (like python).
       ndims = array_ops.rank(x)
       shift = array_ops.where_v2(
-          math_ops.less(shift, 0), math_ops.mod(-shift, ndims),
+          math_ops.less(shift, 0),
+          math_ops.mod(-shift, ndims),  # pylint: disable=invalid-unary-operand-type
           ndims - math_ops.mod(shift, ndims))
       first = math_ops.range(0, shift)
       last = math_ops.range(shift, ndims)
@@ -1339,7 +1338,7 @@ def pad(x, axis, front=False, back=False, value=0, count=1, name=None):
     x = array_ops.pad(
         x,
         paddings=array_ops.one_hot(
-            indices=array_ops.stack(
+            indices=array_ops_stack.stack(
                 [axis if front else -1, axis if back else -1]),
             depth=ndims,
             axis=0,
@@ -1388,7 +1387,7 @@ def parent_frame_arguments():
   return final_args
 
 
-class AppendDocstring(object):
+class AppendDocstring:
   """Helper class to promote private subclass docstring to public counterpart.
 
   Example:

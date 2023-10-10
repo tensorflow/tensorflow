@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/internal/tfprof_tensor.h"
 
+#include <vector>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 
@@ -54,13 +56,13 @@ void TFProfTensor::Build() {
     // Int64 for all integers.
     case DataType::DT_INT32:
     case DataType::DT_INT64: {
-      std::vector<int64> values_vec;
+      std::vector<int64_t> values_vec;
       if (tensor_->dtype() == DataType::DT_INT32) {
-        GetValueVec<int32, int64>(&values_vec);
+        GetValueVec<int32, int64_t>(&values_vec);
       } else if (tensor_->dtype() == DataType::DT_INT64) {
-        GetValueVec<int64, int64>(&values_vec);
+        GetValueVec<int64_t, int64_t>(&values_vec);
       }
-      BuildOutput<int64>(0, 0, values_vec, &tfprof_tensor_pb_);
+      BuildOutput<int64_t>(0, 0, values_vec, &tfprof_tensor_pb_);
       break;
     }
     case DataType::DT_STRING: {

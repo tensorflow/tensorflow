@@ -13,17 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 """Contains testing utilities related to mixed precision."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
@@ -55,8 +53,9 @@ def create_identity_with_grad_check_fn(expected_gradient, expected_dtype=None):
       if expected_dtype:
         assert dx.dtype == expected_dtype, (
             'dx.dtype should be %s but is: %s' % (expected_dtype, dx.dtype))
-      expected_tensor = ops.convert_to_tensor_v2_with_dispatch(
-          expected_gradient, dtype=dx.dtype, name='expected_gradient')
+      expected_tensor = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          expected_gradient, dtype=dx.dtype, name='expected_gradient'
+      )
       # Control dependency is to ensure input is available. It's possible the
       # dataset will throw a StopIteration to indicate there is no more data, in
       # which case we don't want to run the assertion.
@@ -94,7 +93,7 @@ def create_identity_with_nan_gradients_fn(have_nan_gradients):
     """Function whose gradient is NaN iff `have_nan_gradients` is True."""
     x = array_ops.identity(x)
     def grad(dx):
-      return control_flow_ops.cond(
+      return cond.cond(
           have_nan_gradients,
           lambda: dx * float('NaN'),
           lambda: dx
@@ -184,6 +183,27 @@ class MultiplyLayer(AssertTypeLayer):
     config['var_name'] = self._var_name
     config['assert_type'] = self._assert_type
     return config
+
+
+class MultiplyLayerWithoutAutoCast(MultiplyLayer):
+  """Same as MultiplyLayer, but does not use AutoCastVariables."""
+
+  def build(self, _):
+    dtype = self.dtype
+    if dtype in ('float16', 'bfloat16'):
+      dtype = 'float32'
+    self.v = self.add_weight(
+        'v', (),
+        initializer='ones',
+        dtype=dtype,
+        experimental_autocast=False,
+        regularizer=self._regularizer)
+    self.built = True
+
+  def call(self, inputs):
+    self.assert_input_types(inputs)
+    assert self.v.dtype in (dtypes.float32, dtypes.float64)
+    return self._multiply(inputs, math_ops.cast(self.v, inputs.dtype))
 
 
 class IdentityRegularizer(regularizers.Regularizer):

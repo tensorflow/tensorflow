@@ -16,6 +16,7 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -36,11 +37,14 @@ namespace {
 constexpr char kReplicationAttr[] = "mhlo.is_same_data_across_replicas";
 constexpr char kMirroredVariableIndicesAttr[] = "_mirrored_variable_indices";
 
+#define GEN_PASS_DEF_ANNOTATEPARAMETERREPLICATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+
 // Analyzes the inputs to ClusterFuncOps in the module, and annotates their
 // invoked functions whether each input has the same data across replicas.
-struct AnnotateParameterReplication
-    : public PassWrapper<AnnotateParameterReplication,
-                         OperationPass<ModuleOp>> {
+struct AnnotateParameterReplicationPass
+    : public impl::AnnotateParameterReplicationPassBase<
+          AnnotateParameterReplicationPass> {
   void runOnOperation() override;
 };
 
@@ -54,7 +58,7 @@ Value SkipIdentityAndReadVariable(Value v) {
   return v;
 }
 
-void AnnotateParameterReplication::runOnOperation() {
+void AnnotateParameterReplicationPass::runOnOperation() {
   ModuleOp m = getOperation();
   OpBuilder builder(m.getContext());
   m.walk([&](tf_device::ClusterFuncOp cluster_func) {
@@ -69,7 +73,8 @@ void AnnotateParameterReplication::runOnOperation() {
             mirrored_index.cast<IntegerAttr>().getInt());
       }
     }
-    auto func = llvm::cast<FuncOp>(m.lookupSymbol(cluster_func.func()));
+    auto func =
+        llvm::cast<func::FuncOp>(m.lookupSymbol(cluster_func.getFunc()));
     for (auto entry : llvm::enumerate(cluster_func.getOperands())) {
       auto operand = SkipIdentityAndReadVariable(entry.value());
       auto block_arg = operand.dyn_cast<BlockArgument>();
@@ -79,11 +84,12 @@ void AnnotateParameterReplication::runOnOperation() {
           continue;
         }
       } else if (!operand.getParentRegion()->isProperAncestor(
-                     &replicate.body())) {
+                     &replicate.getBody())) {
         // Not a replication-invariant operand.
         continue;
       }
-      func.setArgAttr(entry.index(), kReplicationAttr, builder.getUnitAttr());
+      func.setArgAttr(entry.index(), kReplicationAttr,
+                      builder.getBoolAttr(true));
     }
   });
 }
@@ -92,13 +98,8 @@ void AnnotateParameterReplication::runOnOperation() {
 
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateAnnotateParameterReplicationPass() {
-  return std::make_unique<AnnotateParameterReplication>();
+  return std::make_unique<AnnotateParameterReplicationPass>();
 }
-
-static PassRegistration<AnnotateParameterReplication> pass(
-    "tf-annotate-parameter-replication",
-    "Annotate whether a ClusterFuncOp's parameters have the same data across "
-    "replicas.");
 
 }  // namespace TFDevice
 }  // namespace mlir

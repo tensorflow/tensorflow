@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <pybind11/stl.h>
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/experimental/gradients/math_grad.h"
 #include "tensorflow/c/experimental/gradients/nn_grad.h"
@@ -41,7 +41,7 @@ Status RegisterGradients(GradientRegistry* registry) {
   TF_RETURN_IF_ERROR(registry->Register("Mul", MulRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("Log1p", Log1pRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("DivNoNan", DivNoNanRegisterer));
-  return Status::OK();
+  return OkStatus();
 }
 
 PYBIND11_MODULE(_tape, m) {

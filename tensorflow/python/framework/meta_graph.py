@@ -14,16 +14,12 @@
 # ==============================================================================
 
 """MetaGraph and related functions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
-from distutils import version as distutils_version  # pylint: disable=g-bad-import-order
+from packaging import version as packaging_version  # pylint: disable=g-bad-import-order
 import os.path
 import re
+import sys
 
-import six
 from google.protobuf.any_pb2 import Any
 from google.protobuf import text_format
 
@@ -34,11 +30,13 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import context
+from tensorflow.python.framework import byte_swap_tensor as bst
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
@@ -82,7 +80,7 @@ def _node_def(from_node_def, export_scope, unbound_inputs, clear_devices=False):
       node_def.input[i] = ops.strip_name_scope(v, export_scope)
   node_def.name = compat.as_bytes(
       ops.strip_name_scope(from_node_def.name, export_scope))
-  for k, v in six.iteritems(from_node_def.attr):
+  for k, v in from_node_def.attr.items():
     if k == "_class":
       new_s = [compat.as_bytes(
           ops.strip_name_scope(s, export_scope)) for s in v.list.s
@@ -117,9 +115,10 @@ def _read_file(filename):
   """
   graph_def = graph_pb2.GraphDef()
   if not file_io.file_exists(filename):
-    raise IOError("File %s does not exist." % filename)
+    raise IOError(f"File {filename} does not exist.")
   # First try to read it as a binary file.
-  file_content = file_io.FileIO(filename, "rb").read()
+  with file_io.FileIO(filename, "rb") as f:
+    file_content = f.read()
   try:
     graph_def.ParseFromString(file_content)
     return graph_def
@@ -130,7 +129,7 @@ def _read_file(filename):
   try:
     text_format.Merge(file_content, graph_def)
   except text_format.ParseError as e:
-    raise IOError("Cannot parse file %s: %s." % (filename, str(e)))
+    raise IOError(f"Cannot parse file {filename}: {str(e)}.")
 
   return graph_def
 
@@ -211,9 +210,9 @@ def _get_kind_name(item):
   Returns:
     The string representation of the kind in CollectionDef.
   """
-  if isinstance(item, (six.string_types, six.binary_type)):
+  if isinstance(item, (str, bytes)):
     kind = "bytes_list"
-  elif isinstance(item, six.integer_types):
+  elif isinstance(item, int):
     kind = "int64_list"
   elif isinstance(item, float):
     kind = "float_list"
@@ -232,31 +231,6 @@ SAVE_AND_RESTORE_OPS = ["SaveV2",
                         "LegacyRestore", "LegacyRestoreSlice"]
 
 
-def _op_name(tensor_name):
-  """Extract the Op name from a Tensor name.
-
-  The Op name is everything before a colon, if present,
-  not including any ^ prefix denoting a control dependency.
-
-  Args:
-    tensor_name: the full name of a Tensor in the graph.
-  Returns:
-    The name of the Op of which the given Tensor is an output.
-  Raises:
-    ValueError: if tensor_name is None or empty.
-  """
-  if not tensor_name:
-    raise ValueError("Tensor name cannot be empty or None.")
-
-  # Control dependency inputs start with ^.
-  if tensor_name.startswith("^"):
-    tensor_name = tensor_name[1:]
-  if ":" in tensor_name:
-    op_name, _ = tensor_name.split(":")
-    return op_name
-  return tensor_name
-
-
 def _get_scope(node_name):
   """Extract the scope name from a node name.
 
@@ -271,7 +245,8 @@ def _get_scope(node_name):
     ValueError: if tensor_name is None or empty
   """
   if not node_name:
-    raise ValueError("Node name cannot be empty or None.")
+    raise ValueError(
+        f"Node name cannot be empty or None. Received: {node_name}.")
 
   # Control dependency inputs start with ^.
   if node_name.startswith("^"):
@@ -303,7 +278,8 @@ def _find_extraneous_saver_nodes(graph_def, saver_def):
 
   # load the graph DAG in minimal form, without initializing a full Graph object
   nodes = {
-      node_def.name: (set(_op_name(x) for x in node_def.input), node_def.op)
+      node_def.name: (
+          set(tensor.get_op_name(x) for x in node_def.input), node_def.op)
       for node_def in graph_def.node
   }
 
@@ -311,8 +287,8 @@ def _find_extraneous_saver_nodes(graph_def, saver_def):
   retain_scope_restore = None
   # It's possible to have no saver if the graph has no Variables
   if saver_def is not None:
-    save_op_name = _op_name(saver_def.save_tensor_name)
-    restore_op_name = _op_name(saver_def.restore_op_name)
+    save_op_name = tensor.get_op_name(saver_def.save_tensor_name)
+    restore_op_name = tensor.get_op_name(saver_def.restore_op_name)
 
     # The save and restore scopes should always be the same, but if they differ
     # for some reason, we retain them both to be safe.
@@ -354,7 +330,7 @@ def _should_include_node(node_or_node_name, export_scope, exclude_nodes):
   Returns:
     `True` if the node should be included.
   """
-  if not isinstance(node_or_node_name, six.string_types):
+  if not isinstance(node_or_node_name, str):
     try:
       node_name = node_or_node_name.name
     except AttributeError:
@@ -387,9 +363,10 @@ def add_collection_def(meta_graph_def, key, graph=None,
       ignoring the current values (if set).
   """
   if graph and not isinstance(graph, ops.Graph):
-    raise TypeError("graph must be of type Graph, not %s", type(graph))
+    raise TypeError(
+        f"graph must be of type Graph. Received type: {type(graph)}.")
 
-  if not isinstance(key, six.string_types) and not isinstance(key, bytes):
+  if not isinstance(key, str) and not isinstance(key, bytes):
     logging.warning("Only collections with string type keys will be "
                     "serialized. This key has %s", type(key))
     return
@@ -543,17 +520,21 @@ def create_meta_graph_def(meta_info_def=None,
   # pylint: enable=line-too-long
   # Type check.
   if graph and not isinstance(graph, ops.Graph):
-    raise TypeError("graph must be of type Graph, not %s", type(graph))
+    raise TypeError(
+        f"graph must be of type Graph. Received type: {type(graph)}.")
   if meta_info_def and not isinstance(meta_info_def,
                                       meta_graph_pb2.MetaGraphDef.MetaInfoDef):
-    raise TypeError("meta_info_def must be of type MetaInfoDef, not %s",
-                    type(meta_info_def))
+    raise TypeError(
+        "meta_info_def must be of type MetaInfoDef. "
+        f"Received type: {type(meta_info_def)}.")
   if graph_def and not isinstance(graph_def, graph_pb2.GraphDef):
-    raise TypeError("graph_def must be of type GraphDef, not %s",
-                    type(graph_def))
+    raise TypeError(
+        "graph_def must be of type GraphDef. "
+        f"Received type: {type(graph_def)}.")
   if saver_def and not isinstance(saver_def, saver_pb2.SaverDef):
-    raise TypeError("saver_def must be of type SaverDef, not %s",
-                    type(saver_def))
+    raise TypeError(
+        f"saver_def must be of type SaverDef. "
+        f"Received type: {type(saver_def)}.")
 
   # Sets graph to default graph if it's not passed in.
   graph = graph or ops.get_default_graph()
@@ -627,11 +608,14 @@ def read_meta_graph_file(filename):
   """
   meta_graph_def = meta_graph_pb2.MetaGraphDef()
   if not file_io.file_exists(filename):
-    raise IOError("File %s does not exist." % filename)
+    raise IOError(f"File does not exist. Received: {filename}.")
   # First try to read it as a binary file.
-  file_content = file_io.FileIO(filename, "rb").read()
+  with file_io.FileIO(filename, "rb") as f:
+    file_content = f.read()
   try:
     meta_graph_def.ParseFromString(file_content)
+    if sys.byteorder == "big":
+      bst.swap_tensor_content_in_graph_function(meta_graph_def, "little", "big")
     return meta_graph_def
   except Exception:  # pylint: disable=broad-except
     pass
@@ -639,8 +623,10 @@ def read_meta_graph_file(filename):
   # Next try to read it as a text file.
   try:
     text_format.Merge(file_content.decode("utf-8"), meta_graph_def)
+    if sys.byteorder == "big":
+      bst.swap_tensor_content_in_graph_function(meta_graph_def, "little", "big")
   except text_format.ParseError as e:
-    raise IOError("Cannot parse file %s: %s." % (filename, str(e)))
+    raise IOError(f"Cannot parse file {filename}: {str(e)}.")
 
   return meta_graph_def
 
@@ -810,8 +796,7 @@ def import_scoped_meta_graph_with_return_elements(
       variables_have_trainable = True
     else:
       variables_have_trainable = (
-          distutils_version.LooseVersion(tf_version)
-          >= distutils_version.LooseVersion("1.9"))
+          packaging_version.parse(tf_version) >= packaging_version.parse("1.9"))
 
     # Sort collections so we see TRAINABLE_VARIABLES first and can default these
     # variables to trainable if the value is not set in their VariableDef.
@@ -1010,7 +995,9 @@ def export_scoped_meta_graph(filename=None,
                 output.get_shape().as_proto() for output in value.outputs])
           bytesize += value.node_def.ByteSize()
           if bytesize >= (1 << 31) or bytesize < 0:
-            raise ValueError("GraphDef cannot be larger than 2GB.")
+            raise ValueError(
+                "GraphDef cannot be larger than 2GB. "
+                f"Received size: {bytesize}.")
 
       graph._copy_functions_to_graph_def(graph_def, bytesize)  # pylint: disable=protected-access
 
@@ -1094,7 +1081,10 @@ def copy_scoped_meta_graph(from_scope, to_scope,
 
   if from_graph == to_graph and from_scope == to_scope:
     raise ValueError("'from_scope' and 'to_scope' need to be different "
-                     "when performing copy in the same graph.")
+                     "when performing copy in the same graph. "
+                     f"Received: 'from_graph': {from_graph}, "
+                     f"'to_graph': {to_graph}, "
+                     f"'from_scope': {from_scope}, 'to_scope': {to_scope}.")
 
   orig_meta_graph, var_list = export_scoped_meta_graph(
       export_scope=from_scope, graph=from_graph)

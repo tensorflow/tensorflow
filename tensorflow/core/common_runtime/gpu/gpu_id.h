@@ -17,13 +17,6 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device/device_id.h"
 
-namespace tensorflow {
-
-// TODO(annarev): remove these aliases after all references are updated
-// to use device ids.
-typedef TfDeviceId TfGpuId;
-typedef PlatformDeviceId PlatformGpuId;
-
-}  // namespace tensorflow
+// TODO(sanjoy): Delete the header and forward the references.
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_H_

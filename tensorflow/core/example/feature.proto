@@ -63,6 +63,7 @@ option java_multiple_files = true;
 option java_package = "org.tensorflow.example";
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/example/example_protos_go_proto";
 
+// LINT.IfChange
 // Containers to hold repeated fundamental values.
 message BytesList {
   repeated bytes value = 1;
@@ -105,3 +106,5 @@ message FeatureLists {
   // Map from feature name to feature list.
   map<string, FeatureList> feature_list = 1;
 }
+// LINT.ThenChange(
+//     https://www.tensorflow.org/code/tensorflow/python/training/training.py)

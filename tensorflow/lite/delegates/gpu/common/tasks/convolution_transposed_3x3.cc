@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_3x3.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -29,7 +30,13 @@ ConvolutionTransposed3x3::ConvolutionTransposed3x3(
     : GPUOperation(definition), padding_(padding) {
   work_group_size_ = int3(8, 4, 1);
   work_group_launch_order_ = int3(2, 0, 1);
-  if (gpu_info.IsPowerVR()) {
+  if (gpu_info.IsApple()) {
+    if (gpu_info.apple_info.IsBionic()) {
+      weights_upload_type_ = WeightsUploadType::GLOBAL_MEM;
+    } else {
+      weights_upload_type_ = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+    }
+  } else if (gpu_info.IsPowerVR()) {
     weights_upload_type_ = WeightsUploadType::LOCAL_MEM_ASYNC;
   } else if (gpu_info.IsNvidia() || gpu_info.IsIntel()) {
     weights_upload_type_ = WeightsUploadType::LOCAL_MEM_BY_THREADS;
@@ -38,51 +45,32 @@ ConvolutionTransposed3x3::ConvolutionTransposed3x3(
   } else {
     weights_upload_type_ = WeightsUploadType::GLOBAL_MEM;
   }
-  code_ = GenerateConvolutionTransposedCode(definition_, weights_upload_type_,
-                                            padding_, work_group_launch_order_);
+  if (gpu_info.IsApple()) {
+    weights_layout_ = WeightsLayout::kOICustomSpatialO4I4;
+  } else {
+    weights_layout_ = WeightsLayout::kOICustomSpatialI4O4;
+  }
+  code_ = GenerateConvolutionTransposedCode(gpu_info, definition_,
+                                            weights_upload_type_, padding_,
+                                            work_group_launch_order_);
   if (definition_.precision == CalculationsPrecision::F16 &&
       gpu_info.IsPowerVR()) {
-    compiler_options_.push_back(CompilerOptions::kClPowervrFp16);
+    compiler_options_.push_back(CompilerOptions::kClFastRelaxedMath);
   }
-}
-
-ConvolutionTransposed3x3::ConvolutionTransposed3x3(
-    ConvolutionTransposed3x3&& operation)
-    : GPUOperation(std::move(operation)),
-      padding_(operation.padding_),
-      weights_upload_type_(operation.weights_upload_type_) {}
-
-ConvolutionTransposed3x3& ConvolutionTransposed3x3::operator=(
-    ConvolutionTransposed3x3&& operation) {
-  if (this != &operation) {
-    std::swap(padding_, operation.padding_);
-    std::swap(weights_upload_type_, operation.weights_upload_type_);
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
 }
 
 std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
-    const OperationDef& op_def,
+    const GpuInfo& gpu_info, const OperationDef& op_def,
     ConvolutionTransposed3x3::WeightsUploadType weights_upload_type,
     int2 padding, int3 work_group_launch_order) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetAddressMode(AddressMode::kZero);
-  if (op_def.IsBatchSupported()) {
-    src_desc.SetStateVar("BatchedWidth", "true");
-  }
   AddSrcTensor("src_tensor", src_desc);
-
-  auto dst_desc = op_def.dst_tensors[0];
-  if (op_def.IsBatchSupported()) {
-    dst_desc.SetStateVar("BatchedWidth", "true");
-  }
-  AddDstTensor("dst_tensor", dst_desc);
+  AddDstTensor("dst_tensor", op_def.src_tensors[0]);
 
   if (op_def.src_tensors.size() == 2) {
     // dynamic weights
     BufferDescriptor desc;
-    desc.element_type = op_def.src_tensors[1].data_type;
+    desc.element_type = op_def.src_tensors[1].GetDataType();
     desc.element_size = 4;
     desc.memory_type =
         weights_upload_type ==
@@ -103,34 +91,48 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
           ConvolutionTransposed3x3::WeightsUploadType::LOCAL_MEM_ASYNC;
 
   std::string c;
-  switch (op_def.precision) {
-    case CalculationsPrecision::F32:
-    case CalculationsPrecision::F16:
-      c += "#define CONV(R, SRC, F) \\\n";
-      c += "  R += SRC.x * weights_cache[F]; \\\n";
-      c += "  R += SRC.y * weights_cache[F + 1]; \\\n";
-      c += "  R += SRC.z * weights_cache[F + 2]; \\\n";
-      c += "  R += SRC.w * weights_cache[F + 3];   \n";
-      break;
-    case CalculationsPrecision::F32_F16:
-      c += "#define CONV(R, SRC, F) \\\n";
-      c += "  R += convert_float4(SRC.x * weights_cache[F] + SRC.y * "
-           "weights_cache[F + 1] + SRC.z * weights_cache[F + 2] + SRC.w * "
-           "weights_cache[F + 3]);\n";
-      break;
+  if (GetWeightsDescription().IsI4O4()) {
+    switch (op_def.precision) {
+      case CalculationsPrecision::F32:
+      case CalculationsPrecision::F16:
+        c += "#define CONV(R, SRC, F) \\\n";
+        c += "  R += SRC.x * weights_cache[F]; \\\n";
+        c += "  R += SRC.y * weights_cache[F + 1]; \\\n";
+        c += "  R += SRC.z * weights_cache[F + 2]; \\\n";
+        c += "  R += SRC.w * weights_cache[F + 3];   \n";
+        break;
+      case CalculationsPrecision::F32_F16:
+        c += "#define CONV(R, SRC, F) \\\n";
+        c += "  R += TO_ACCUM_TYPE(SRC.x * weights_cache[F] + SRC.y * "
+             "weights_cache[F + 1] + SRC.z * weights_cache[F + 2] + SRC.w * "
+             "weights_cache[F + 3]);\n";
+        break;
+    }
+  } else {
+    // O4I4
+    c += "#define CONV(R, SRC, F) \\\n";
+    c += "  R.x += dot(SRC, weights_cache[F]); \\\n";
+    c += "  R.y += dot(SRC, weights_cache[F + 1]); \\\n";
+    c += "  R.z += dot(SRC, weights_cache[F + 2]); \\\n";
+    c += "  R.w += dot(SRC, weights_cache[F + 3]);   \n";
   }
 
+  const int wg_total_size =
+      work_group_size_.x * work_group_size_.y * work_group_size_.z;
+  const std::string barrier =
+      wg_total_size == 32 && gpu_info.IsWaveSizeEqualTo32()
+          ? "SIMD_LOCAL_MEM_BARRIER"
+          : "LOCAL_MEM_BARRIER";
   const std::string weights_space =
       weights_upload_type ==
               ConvolutionTransposed3x3::WeightsUploadType::CONSTANT_MEM
           ? "__constant"
           : "__global";
 
-  const std::string pixel_stride =
-      op_def.IsBatchSupported() ? "args.dst_tensor.Batch()" : "1";
-  c += "__attribute__((reqd_work_group_size(8, 4, 1)))\n";
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
+  if (gpu_info.IsApiOpenCl()) {
+    c += "__attribute__((reqd_work_group_size(8, 4, 1)))\n";
+  }
+  c += "MAIN_FUNCTION($0) {\n";
   int3 launch_remap;
   launch_remap[work_group_launch_order.x] = 0;
   launch_remap[work_group_launch_order.y] = 1;
@@ -139,23 +141,23 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
     std::string result;
     const std::string sid = std::to_string(id);
     if (work_group_launch_order[id] == id) {
-      return "get_global_id(" + sid + ")";
+      return "GLOBAL_ID_" + sid;
     } else {
-      return "get_group_id(" + std::to_string(launch_remap[id]) +
-             ") * get_local_size(" + sid + ") + get_local_id(" + sid + ")";
+      return "GROUP_ID_" + std::to_string(launch_remap[id]) + " * GROUP_SIZE_" +
+             sid + " + LOCAL_ID_" + sid;
     }
   };
-  if (op_def.IsBatchSupported()) {
+  if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
     c += "  int linear_id = " + GetGlobalID(0) + ";\n";
-    c += "  int X0 = linear_id / args.dst_tensor.Batch();\n";
+    c += "  int X = linear_id / args.dst_tensor.Batch();\n";
     c += "  int B = linear_id % args.dst_tensor.Batch();\n";
-    c += "  int DST_X = X0 * 2 * args.dst_tensor.Batch() + B;\n";
-    c += "  int SRC_X = linear_id + args.padding_x;\n";
+    c += "  args.src_tensor.SetBatchRef(B);\n";
+    c += "  args.dst_tensor.SetBatchRef(B);\n";
   } else {
     c += "  int X = " + GetGlobalID(0) + ";\n";
-    c += "  int DST_X = X * 2;\n";
-    c += "  int SRC_X = X + args.padding_x;\n";
   }
+  c += "  int DST_X = X * 2;\n";
+  c += "  int SRC_X = X + args.padding_x;\n";
   c += "  int Y = " + GetGlobalID(1) + ";\n";
   c += "  int DST_Y = Y * 2;\n";
   c += "  int SRC_Y = Y + args.padding_y;\n";
@@ -164,25 +166,24 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
     c += "  if (DST_X >= args.dst_tensor.Width() || DST_Y >= "
          "args.dst_tensor.Height() || Z >= args.dst_tensor.Slices()) return;\n";
   }
-  c += "  ACCUM_FLT4 r0 = (ACCUM_FLT4)(0.0f);\n";
-  c += "  ACCUM_FLT4 r1 = (ACCUM_FLT4)(0.0f);\n";
-  c += "  ACCUM_FLT4 r2 = (ACCUM_FLT4)(0.0f);\n";
-  c += "  ACCUM_FLT4 r3 = (ACCUM_FLT4)(0.0f);\n";
+  c += "  ACCUM_FLT4 r0 = INIT_ACCUM_FLT4(0.0f);\n";
+  c += "  ACCUM_FLT4 r1 = INIT_ACCUM_FLT4(0.0f);\n";
+  c += "  ACCUM_FLT4 r2 = INIT_ACCUM_FLT4(0.0f);\n";
+  c += "  ACCUM_FLT4 r3 = INIT_ACCUM_FLT4(0.0f);\n";
   c += "  int f_offset = Z * args.filter_offset;\n";
   if (need_local_mem) {
     c += "  __local FLT4 weights_cache[36];\n";
   }
   if (weights_upload_type ==
       ConvolutionTransposed3x3::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
-    c += "  int local_id = (int)(get_local_id(1) * 8 + get_local_id(0));\n";
+    c += "  int local_id = LOCAL_ID_1 * 8 + LOCAL_ID_0;\n";
   }
-  const std::string next_x = "SRC_X + " + pixel_stride;
-  if (!src_desc.SupportsZeroClamp(Axis::WIDTH)) {
+  if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
     c += "  bool in_x0 = SRC_X >= 0 && SRC_X < args.src_tensor.Width();\n";
-    c += "  bool in_x1 = " + next_x + " >= 0 && " + next_x +
-         " < args.src_tensor.Width();\n";
+    c += "  bool in_x1 = SRC_X + 1 >= 0 && SRC_X + 1 < "
+         "args.src_tensor.Width();\n";
   }
-  if (!src_desc.SupportsZeroClamp(Axis::HEIGHT)) {
+  if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
     c += "  bool in_y0 = SRC_Y >= 0 && SRC_Y < args.src_tensor.Height();\n";
     c += "  bool in_y1 = SRC_Y + 1 >= 0 && SRC_Y + 1 < "
          "args.src_tensor.Height();\n";
@@ -194,7 +195,8 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
                                          "in_y" + std::to_string(y)};
     for (int i = 0; i < axes.size(); ++i) {
       const auto& axis = axes[i];
-      if (src_desc.HasAxis(axis) && !src_desc.SupportsZeroClamp(axis)) {
+      if (src_desc.HasAxis(axis) &&
+          !src_desc.SupportsZeroClamp(axis, gpu_info)) {
         if (!check.empty()) {
           check += " && ";
         }
@@ -204,11 +206,11 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
     return check;
   };
   if (src_desc.IsLinear()) {
-    if (src_desc.ReturnsZeroForNegOneRead()) {
-      c += "  args.src_tensor.GetAddress(addr_0, SRC_X, SRC_Y, 0);\n";
-      c += "  args.src_tensor.GetAddress(addr_1," + next_x + ", SRC_Y, 0);\n";
-      c += "  args.src_tensor.GetAddress(addr_2, SRC_X, SRC_Y + 1, 0);\n";
-      c += "  args.src_tensor.GetAddress(addr_3," + next_x + ", SRC_Y+1, 0);\n";
+    if (src_desc.ReturnsZeroForNegOneRead(gpu_info)) {
+      c += "  int addr_0 = args.src_tensor.GetAddress(SRC_X, SRC_Y, 0);\n";
+      c += "  int addr_1 = args.src_tensor.GetAddress(SRC_X + 1, SRC_Y, 0);\n";
+      c += "  int addr_2 = args.src_tensor.GetAddress(SRC_X, SRC_Y + 1, 0);\n";
+      c += "  int addr_3 = args.src_tensor.GetAddress(SRC_X+1, SRC_Y+1, 0);\n";
       c += "  addr_0 = select(-1, addr_0, (in_x0 && in_y0));\n";
       c += "  addr_1 = select(-1, addr_1, (in_x1 && in_y0));\n";
       c += "  addr_2 = select(-1, addr_2, (in_x0 && in_y1));\n";
@@ -223,14 +225,13 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
            "in_y1));\n";
     } else {
       c += "  int xc0 = clamp(SRC_X, 0, args.src_tensor.Width() - 1);\n";
-      c += "  int xc1 = clamp(" + next_x +
-           ", 0, args.src_tensor.Width() - 1);\n";
+      c += "  int xc1 = clamp(SRC_X + 1, 0, args.src_tensor.Width() - 1);\n";
       c += "  int yc0 = clamp(SRC_Y, 0, args.src_tensor.Height() - 1);\n";
       c += "  int yc1 = clamp(SRC_Y + 1, 0, args.src_tensor.Height() - 1);\n";
-      c += "  args.src_tensor.GetAddress(addr_0, xc0, yc0, 0);\n";
-      c += "  args.src_tensor.GetAddress(addr_1, xc1, yc0, 0);\n";
-      c += "  args.src_tensor.GetAddress(addr_2, xc0, yc1, 0);\n";
-      c += "  args.src_tensor.GetAddress(addr_3, xc1, yc1, 0);\n";
+      c += "  int addr_0 = args.src_tensor.GetAddress(xc0, yc0, 0);\n";
+      c += "  int addr_1 = args.src_tensor.GetAddress(xc1, yc0, 0);\n";
+      c += "  int addr_2 = args.src_tensor.GetAddress(xc0, yc1, 0);\n";
+      c += "  int addr_3 = args.src_tensor.GetAddress(xc1, yc1, 0);\n";
       c += "  int dz = args.src_tensor.SliceStride();\n";
     }
   }
@@ -238,22 +239,21 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
     if (src_desc.IsLinear()) {
       const std::string id = std::to_string(y * 2 + x);
       const std::string addr = "addr_" + std::to_string(y * 2 + x);
-      if (src_desc.ReturnsZeroForNegOneRead()) {
+      if (src_desc.ReturnsZeroForNegOneRead(gpu_info)) {
         return "args.src_tensor.Read(" + addr + "); " + addr + " += dz_" + id +
                ";\n";
       } else {
-        return "args.src_tensor.Read(" + addr + ") * (FLT)(in_x" +
+        return "args.src_tensor.Read(" + addr + ") * INIT_FLT(in_x" +
                std::to_string(x) + " && in_y" + std::to_string(y) + "); " +
                addr + " += dz;\n";
       }
     } else {
       std::string check = generate_check(x, y);
       if (!check.empty()) {
-        check = " * (FLT)(" + check + ")";
+        check = " * INIT_FLT(" + check + ")";
       }
-      return "args.src_tensor.Read(SRC_X + " + std::to_string(x) + "*" +
-             pixel_stride + ", SRC_Y + " + std::to_string(y) + ", s)" + check +
-             ";\n";
+      return "args.src_tensor.Read(SRC_X + " + std::to_string(x) +
+             ", SRC_Y + " + std::to_string(y) + ", s)" + check + ";\n";
     }
   };
   const int padding_x_rem = abs(padding.x) % 2;
@@ -274,7 +274,7 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
   }
   c += "  for (int s = 0; s < args.src_tensor.Slices(); ++s) {\n";
   if (need_local_mem) {
-    c += "    barrier(CLK_LOCAL_MEM_FENCE);\n";
+    c += "    " + barrier + ";\n";
   }
   if (weights_upload_type ==
       ConvolutionTransposed3x3::WeightsUploadType::LOCAL_MEM_ASYNC) {
@@ -301,7 +301,7 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
   c += "    FLT4 src3 = " + read_src(1, 1);
   c += "    f_offset += 36;\n";
   if (need_local_mem) {
-    c += "    barrier(CLK_LOCAL_MEM_FENCE);\n";
+    c += "    " + barrier + ";\n";
   }
   for (int i = 0; i < 9; ++i) {
     const std::string r_name = "r" + std::to_string(permutation[i].first);
@@ -320,7 +320,7 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
       const std::string s_x = std::to_string(x);
       const std::string s_y = std::to_string(y);
       const std::string id = std::to_string(y * 2 + x);
-      const std::string x_c = "DST_X + " + s_x + " * " + pixel_stride;
+      const std::string x_c = "DST_X + " + s_x;
       const std::string y_c = "DST_Y + " + s_y;
       c += "  if (" + x_c + " < args.dst_tensor.Width() && " + y_c +
            " < args.dst_tensor.Height()) {\n";
@@ -339,7 +339,7 @@ absl::Status ConvolutionTransposed3x3::BindArguments(ArgumentsBinder* args) {
       padding_.x >= 1 ? (padding_.x - 1) / 2 : (padding_.x - 2) / 2;
   const int padding_y =
       padding_.y >= 1 ? (padding_.y - 1) / 2 : (padding_.y - 2) / 2;
-  RETURN_IF_ERROR(args->SetInt("padding_x", padding_x * src_[0]->Batch()));
+  RETURN_IF_ERROR(args->SetInt("padding_x", padding_x));
   return args->SetInt("padding_y", padding_y);
 }
 
@@ -378,6 +378,29 @@ std::vector<int> ConvolutionTransposed3x3::GetSpatialWeightsRemap() const {
   }
 }
 
+void ConvolutionTransposed3x3::UploadWeights(
+    const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights) {
+  const auto weights_desc = GetWeightsDescription();
+  const int flt_count =
+      GetTotalElementsCountForLayout(weights_desc, weights.shape);
+
+  BufferDescriptor desc;
+  desc.element_type = weights_desc.type;
+  desc.element_size = 4;
+  desc.memory_type =
+      weights_upload_type_ ==
+              ConvolutionTransposed3x3::WeightsUploadType::CONSTANT_MEM
+          ? MemoryType::CONSTANT
+          : MemoryType::GLOBAL;
+  desc.size = flt_count * SizeOf(desc.element_type);
+  desc.data.resize(desc.size);
+
+  RearrangeWeights(weights, weights_desc, absl::MakeSpan(desc.data));
+
+  args_.AddObject("weights",
+                  std::make_unique<BufferDescriptor>(std::move(desc)));
+}
+
 bool IsConvolutionTransposed3x3Supported(
     const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
@@ -392,27 +415,32 @@ ConvolutionTransposed3x3 CreateConvolutionTransposed3x3(
   ConvolutionTransposed3x3 result(definition, gpu_info, padding);
   result.UploadWeights(attr.weights);
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
-  desc.element_type = definition.GetDataType();
-  desc.UploadLinearData(attr.bias);
-  result.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr.bias);
+  result.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                       std::move(bias_tensor_desc)));
   return result;
 }
 
 ConvolutionTransposed3x3 CreateConvolutionTransposed3x3DynamicWeights(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  const int2 padding = int2(attr.padding.prepended.w, attr.padding.prepended.h);
-  ConvolutionTransposed3x3 result(definition, gpu_info, padding);
+  OperationDef new_def = definition;
+  new_def.src_tensors = {
+      definition.src_tensors[0]};  // leaving only src_tensor def, weights defs
+                                   // will be added later
+  const DataType weights_type = definition.GetDataType();
+  // add 1 src_tensor(buffer) for weights
+  new_def.src_tensors.push_back(
+      {weights_type, TensorStorageType::BUFFER, Layout::HWC});
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
-  desc.element_type = definition.GetDataType();
-  desc.UploadLinearData(attr.bias);
-  result.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  const int2 padding = int2(attr.padding.prepended.w, attr.padding.prepended.h);
+  ConvolutionTransposed3x3 result(new_def, gpu_info, padding);
+
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr.bias);
+  result.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                       std::move(bias_tensor_desc)));
   return result;
 }
 

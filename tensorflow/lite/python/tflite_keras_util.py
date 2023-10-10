@@ -17,13 +17,9 @@
 
 The functions defined in this library have been copied over from Keras in order
 to remove the dependency from TensorFlow Lite to Keras. The functions which
-could not be copied over are accessed using the dependecy inversion principle.
+could not be copied over are accessed using the dependency inversion principle.
 (for details, refer to tensorflow/python/util/keras_deps.py).
 """
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import copy
 
@@ -76,9 +72,19 @@ def model_input_signature(model, keep_original_batch_size=False):
     A list containing either a single TensorSpec or an object with nested
     TensorSpecs. This list does not contain the `training` argument.
   """
-  input_specs = model._get_save_spec(dynamic_batch=not keep_original_batch_size)  # pylint: disable=protected-access
-  if input_specs is None:
-    return None
+  if hasattr(model, 'save_spec'):
+    input_specs = model.save_spec(dynamic_batch=not keep_original_batch_size)
+    if input_specs is None:
+      return None
+    # The model's save spec returns (args, kwargs). Extract the first input arg
+    # to use as the input spec.
+    # TODO(b/188105669): Add support for multiple tensor arguments.
+    input_specs = input_specs[0][0]
+  else:
+    input_specs = model._get_save_spec(  # pylint: disable=protected-access
+        dynamic_batch=not keep_original_batch_size)
+    if input_specs is None:
+      return None
   input_specs = _enforce_names_consistency(input_specs)
   # Return a list with a single element as the model's input signature.
   if isinstance(input_specs,
@@ -115,7 +121,7 @@ def _create_pseudo_names(tensors, prefix):
   `[x, y]` becomes:
   `['output_1', 'output_2']`
 
-  Arguments:
+  Args:
     tensors: `Model`'s outputs or inputs.
     prefix: 'output_' for outputs, 'input_' for inputs.
 
@@ -183,11 +189,6 @@ def trace_model_call(model, input_signature=None):
         model, inputs=inputs, build_graph=False, training=False, saving=True):
       outputs = model(inputs, training=False)
 
-    # Outputs always has to be a flat dict.
-    output_names = model.output_names  # Functional Model.
-    if output_names is None:  # Subclassed Model.
-      output_names = create_pseudo_output_names(outputs)
-    outputs = nest.flatten(outputs)
-    return {name: output for name, output in zip(output_names, outputs)}
+    return outputs
 
   return _wrapped_model

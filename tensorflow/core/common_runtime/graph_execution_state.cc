@@ -27,14 +27,15 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -62,6 +63,14 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+bool IsCollectiveV2(const string& op) {
+  return op == "CollectiveReduceV2" || op == "CollectiveGatherV2" ||
+         op == "CollectiveBcastRecvV2" || op == "CollectiveBcastSendV2" ||
+         op == "ColectiveReduceScatterV2" || op == "ColectiveAllToAllV2";
+}
+}  // namespace
+
 GraphExecutionState::GraphExecutionState(
     std::unique_ptr<GraphDef>&& graph_def,
     std::unique_ptr<FunctionLibraryDefinition>&& flib_def,
@@ -72,7 +81,8 @@ GraphExecutionState::GraphExecutionState(
       session_options_(options.session_options),
       session_handle_(options.session_handle),
       flib_def_(std::move(flib_def)),
-      graph_(nullptr) {}
+      graph_(nullptr),
+      run_placer_(options.run_placer) {}
 
 GraphExecutionState::~GraphExecutionState() {
   node_name_to_cost_id_map_.clear();
@@ -86,23 +96,23 @@ GraphExecutionState::~GraphExecutionState() {
   VLOG(4) << "Graph proto is \n" << graph_def.DebugString();
 #endif  // __ANDROID__
 
-  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
+  auto flib_def = std::make_unique<FunctionLibraryDefinition>(
       OpRegistry::Global(), graph_def.library());
 
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&graph_def, *flib_def, 0));
 
   if (options.session_options->config.graph_options().place_pruned_graph() ||
-      !options.session_options->config.experimental()
-           .optimize_for_static_graph()) {
+      options.session_options->config.experimental()
+          .disable_optimize_for_static_graph()) {
     auto ret = absl::WrapUnique(new GraphExecutionState(
-        absl::make_unique<GraphDef>(std::move(graph_def)), std::move(flib_def),
+        std::make_unique<GraphDef>(std::move(graph_def)), std::move(flib_def),
         options));
 
     // When place_pruned_graph is true, a different Graph* will be initialized
     // each time we prune the original graph, so there is no need to
     // construct a Graph* in this case.
     if (!options.session_options->config.graph_options().place_pruned_graph()) {
-      auto base_graph = absl::make_unique<Graph>(OpRegistry::Global());
+      auto base_graph = std::make_unique<Graph>(OpRegistry::Global());
       TF_RETURN_IF_ERROR(ConvertGraphDefToGraph({}, *ret->original_graph_def_,
                                                 base_graph.get()));
       TF_RETURN_IF_ERROR(ret->InitBaseGraph(std::move(base_graph)));
@@ -111,13 +121,13 @@ GraphExecutionState::~GraphExecutionState() {
   } else {
     auto ret = absl::WrapUnique(
         new GraphExecutionState(nullptr, std::move(flib_def), options));
-    auto base_graph = absl::make_unique<Graph>(OpRegistry::Global());
+    auto base_graph = std::make_unique<Graph>(OpRegistry::Global());
     TF_RETURN_IF_ERROR(
         ConvertGraphDefToGraph({}, std::move(graph_def), base_graph.get()));
     TF_RETURN_IF_ERROR(ret->InitBaseGraph(std::move(base_graph)));
     *out_state = std::move(ret);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ Status GraphExecutionState::MakeForPrunedGraph(
@@ -143,20 +153,20 @@ GraphExecutionState::~GraphExecutionState() {
   }
 
   // NOTE(mrry): This makes a copy of `graph_def`, which is
-  // regrettable. We could make `GraphDef` objects sharable between
+  // regrettable. We could make `GraphDef` objects shareable between
   // execution states to optimize pruned graph execution, but since
   // this case is primarily used for interactive sessions, we make the
   // bet that graph construction is not performance-critical. (Note
   // also that the previous version used `Extend()`, which is strictly
   // more expensive than copying a `GraphDef`.)
   GraphDef temp(*base_execution_state.original_graph_def_);
-  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
+  auto flib_def = std::make_unique<FunctionLibraryDefinition>(
       OpRegistry::Global(), temp.library());
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&temp, *flib_def, 0));
   auto ret = absl::WrapUnique(
       new GraphExecutionState(nullptr, std::move(flib_def), options));
 
-  auto base_graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto base_graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_RETURN_IF_ERROR(
       ConvertGraphDefToGraph({}, std::move(temp), base_graph.get()));
 
@@ -167,16 +177,17 @@ GraphExecutionState::~GraphExecutionState() {
   TF_RETURN_IF_ERROR(ret->InitBaseGraph(std::move(base_graph)));
   TF_RETURN_IF_ERROR(ret->BuildGraph(subgraph_options, out_client_graph));
   *out_state = std::move(ret);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GraphExecutionState::Extend(
     const GraphDef& extension_def,
     std::unique_ptr<GraphExecutionState>* out) const {
-  if (session_options_->config.experimental().optimize_for_static_graph()) {
+  if (!session_options_->config.experimental()
+           .disable_optimize_for_static_graph()) {
     return errors::FailedPrecondition(
         "Extending the graph is not supported when "
-        "`optimize_for_static_graph` is true.");
+        "`disable_optimize_for_static_graph` is false.");
   }
 
   GraphDef gdef;
@@ -256,14 +267,14 @@ Status GraphExecutionState::Extend(
   combined_options.stateful_placements = stateful_placements_;
 
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&gdef, *flib_def_, 0));
-  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
+  auto flib_def = std::make_unique<FunctionLibraryDefinition>(
       OpRegistry::Global(), gdef.library());
   auto new_execution_state = absl::WrapUnique(
-      new GraphExecutionState(absl::make_unique<GraphDef>(std::move(gdef)),
+      new GraphExecutionState(std::make_unique<GraphDef>(std::move(gdef)),
                               std::move(flib_def), combined_options));
 
   if (!session_options_->config.graph_options().place_pruned_graph()) {
-    auto base_graph = absl::make_unique<Graph>(OpRegistry::Global());
+    auto base_graph = std::make_unique<Graph>(OpRegistry::Global());
     TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
         {}, *new_execution_state->original_graph_def_, base_graph.get()));
     TF_RETURN_IF_ERROR(
@@ -274,7 +285,7 @@ Status GraphExecutionState::Extend(
   // NOTE(mrry): Extend() is likely to be used for non-throughput-sensitive
   // interactive workloads, but in future we may want to transfer other
   // parts of the placement and/or cost model.
-  return Status::OK();
+  return OkStatus();
 }
 
 void GraphExecutionState::SaveStatefulNodes(Graph* graph) {
@@ -333,7 +344,7 @@ class TensorConnectionPruneRewrite : public subgraph::PruneRewrite {
 
     (*out_node)->set_assigned_device_name(
         feed_tensor.node->assigned_device_name());
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -347,12 +358,12 @@ Status LookupDevice(const DeviceSet& device_set, const string& tensor_name,
   *out_device_attrs = nullptr;
   if (tensor2device.empty()) {
     *out_device_attrs = &device_set.client_device()->attributes();
-    return Status::OK();
+    return OkStatus();
   }
   const auto it = tensor2device.find(tensor_name);
   if (it == tensor2device.end()) {
     *out_device_attrs = &device_set.client_device()->attributes();
-    return Status::OK();
+    return OkStatus();
   }
   DeviceNameUtils::ParsedName parsed_name;
   if (!DeviceNameUtils::ParseFullName(it->second, &parsed_name)) {
@@ -368,7 +379,7 @@ Status LookupDevice(const DeviceSet& device_set, const string& tensor_name,
                                    "' in CallableOptions does not exist");
   }
   *out_device_attrs = &device->attributes();
-  return Status::OK();
+  return OkStatus();
 }
 
 struct TensorAndDevice {
@@ -395,7 +406,9 @@ bool IsFeedAndFetchSupported(DataType dtype, const string& device_type) {
   // TODO(ashankar): Instead of a allowlist here, perhaps we could query
   // the kernel registry for _Arg and _Retval kernels instead.
   if (device_type == DEVICE_CPU) return true;
-  if (device_type != DEVICE_GPU) return false;
+  if (device_type != DEVICE_GPU &&
+      !DeviceFactory::IsPluggableDevice(device_type))
+    return false;
   switch (dtype) {
     case DT_BFLOAT16:
     case DT_BOOL:
@@ -409,6 +422,8 @@ bool IsFeedAndFetchSupported(DataType dtype, const string& device_type) {
     case DT_INT8:
     case DT_UINT16:
     case DT_UINT8:
+    case DT_INT4:
+    case DT_UINT4:
       return true;
     default:
       return false;
@@ -418,7 +433,7 @@ bool IsFeedAndFetchSupported(DataType dtype, const string& device_type) {
 Status ValidateFeedAndFetchDevices(
     const Graph& graph,
     const std::vector<TensorAndDevice>& tensors_and_devices) {
-  if (tensors_and_devices.empty()) return Status::OK();
+  if (tensors_and_devices.empty()) return OkStatus();
   std::vector<bool> found(tensors_and_devices.size(), false);
   for (const Node* node : graph.nodes()) {
     // Linearly looping through all nodes and then all feed+fetch tensors isn't
@@ -450,7 +465,7 @@ Status ValidateFeedAndFetchDevices(
           "in the Graph");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetFeedShapeAndTypeFromAttribute(const NodeDef& node,
@@ -485,7 +500,7 @@ Status GetFeedShapeAndTypeFromAttribute(const NodeDef& node,
     return errors::InvalidArgument("Could not determine shape for feed node: ",
                                    node.name(), " of type ", node.op());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -593,7 +608,7 @@ Status GraphExecutionState::PruneGraph(
   for (int i = 0; i < options.callable_options.tensor_connection_size(); ++i) {
     out_rewrite_metadata->feed_types.pop_back();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GraphExecutionState::InitBaseGraph(std::unique_ptr<Graph>&& new_graph) {
@@ -610,14 +625,16 @@ Status GraphExecutionState::InitBaseGraph(std::unique_ptr<Graph>&& new_graph) {
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
 
-  Placer placer(new_graph.get(), "", flib_def_.get(), device_set_,
-                /* default_local_device= */ nullptr,
-                session_options_ == nullptr ||
-                    session_options_->config.allow_soft_placement(),
-                session_options_ != nullptr &&
-                    session_options_->config.log_device_placement());
-  // TODO(mrry): Consider making the Placer cancellable.
-  TF_RETURN_IF_ERROR(placer.Run());
+  if (run_placer_) {
+    Placer placer(new_graph.get(), "", flib_def_.get(), device_set_,
+                  /* default_local_device= */ nullptr,
+                  session_options_ == nullptr ||
+                      session_options_->config.allow_soft_placement(),
+                  session_options_ != nullptr &&
+                      session_options_->config.log_device_placement());
+    // TODO(mrry): Consider making the Placer cancellable.
+    TF_RETURN_IF_ERROR(placer.Run());
+  }
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_PLACEMENT, optimization_options));
@@ -629,11 +646,13 @@ Status GraphExecutionState::InitBaseGraph(std::unique_ptr<Graph>&& new_graph) {
 
   SaveStatefulNodes(new_graph.get());
   graph_ = new_graph.release();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GraphExecutionState::OptimizeGraph(
-    const BuildGraphOptions& options, std::unique_ptr<Graph>* optimized_graph,
+    const BuildGraphOptions& options, const Graph& graph,
+    const FunctionLibraryDefinition* flib_def,
+    std::unique_ptr<Graph>* optimized_graph,
     std::unique_ptr<FunctionLibraryDefinition>* optimized_flib) {
 #ifdef IS_MOBILE_PLATFORM
   return errors::InvalidArgument("Mobile platforms not supported");
@@ -651,7 +670,7 @@ Status GraphExecutionState::OptimizeGraph(
     // It's ok to skip invalid device annotations in Grappler.
     for (const Device* d : device_set_->devices()) {
       Status added_device = item.AddDevice(d->name());
-      if (!added_device.ok()) VLOG(3) << added_device.error_message();
+      if (!added_device.ok()) VLOG(3) << added_device.message();
     }
     VLOG(3) << "Grappler available devices: "
             << absl::StrJoin(item.devices(), ", ");
@@ -704,8 +723,8 @@ Status GraphExecutionState::OptimizeGraph(
 
       // For feeds with tensor index == 0 we try to infer data type and tensor
       // shape from the graph, by looking at the fed node attributes.
-      node_names.reserve(graph_->num_nodes());
-      for (const Node* node : graph_->nodes()) {
+      node_names.reserve(graph.num_nodes());
+      for (const Node* node : graph.nodes()) {
         node_names.insert(node->name());
         if (feed_nodes.find(node->name()) == feed_nodes.end()) continue;
 
@@ -754,8 +773,8 @@ Status GraphExecutionState::OptimizeGraph(
     // Validate that the feeds and fetches are valid.
     if (node_names.empty()) {
       // Collect all node names in the graph if we didn't already.
-      node_names.reserve(graph_->num_nodes());
-      for (const Node* node : graph_->nodes()) {
+      node_names.reserve(graph.num_nodes());
+      for (const Node* node : graph.nodes()) {
         node_names.insert(node->name());
       }
     }
@@ -775,10 +794,10 @@ Status GraphExecutionState::OptimizeGraph(
     }
 
     // Convert Graph to GraphDef and add it to the GrapplerItem.
-    graph_->ToGraphDef(&item.graph);
+    graph.ToGraphDef(&item.graph);
     // TODO(b/114748242): Add a unit test to test this bug fix.
-    if (flib_def_) {
-      *item.graph.mutable_library() = flib_def_->ToProto();
+    if (flib_def) {
+      *item.graph.mutable_library() = flib_def->ToProto();
     }
 
     // Construct a virtual cluster and find the cpu_device, which the
@@ -803,7 +822,7 @@ Status GraphExecutionState::OptimizeGraph(
     // Optimized graph might have new functions specialized for it's
     // instantiation context (see Grappler function optimizer), and modified
     // function body for the existing functions.
-    optimized_flib->reset(new FunctionLibraryDefinition(*flib_def_));
+    optimized_flib->reset(new FunctionLibraryDefinition(*flib_def));
 
     for (const FunctionDef& fdef : new_graph.library().function()) {
       const string& func_name = fdef.signature().name();
@@ -830,7 +849,7 @@ Status GraphExecutionState::OptimizeGraph(
     for (Node* node : optimized_graph->get()->nodes()) {
       node->set_assigned_device_name(node->requested_device());
     }
-    return Status::OK();
+    return OkStatus();
   } else {
     return errors::InvalidArgument("Meta Optimizer disabled");
   }
@@ -853,9 +872,10 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   std::unique_ptr<Graph> optimized_graph;
   std::unique_ptr<FunctionLibraryDefinition> optimized_flib;
 
-  Status s = OptimizeGraph(options, &optimized_graph, &optimized_flib);
+  Status s = OptimizeGraph(options, *graph_, flib_def_.get(), &optimized_graph,
+                           &optimized_flib);
   if (!s.ok()) {
-    VLOG(2) << "Grappler optimization failed. Error: " << s.error_message();
+    VLOG(2) << "Grappler optimization failed. Error: " << s.message();
     // Simply copy the original graph and the function library if we couldn't
     // optimize it.
     optimized_graph.reset(new Graph(flib_def_.get()));
@@ -891,19 +911,22 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
 
-  int64 collective_graph_key = options.collective_graph_key;
+  int64_t collective_graph_key = options.collective_graph_key;
   if (collective_graph_key == BuildGraphOptions::kNoCollectiveGraphKey) {
     // BuildGraphOptions does not specify a collective_graph_key.  Check all
     // nodes in the Graph and FunctionLibraryDefinition for collective ops and
     // if found, initialize a collective_graph_key as a hash of the ordered set
     // of instance keys.
     std::set<int32> instance_key_set;
+    bool has_collective_v2 = false;
     for (Node* node : optimized_graph->nodes()) {
       if (node->IsCollective()) {
-        int32 instance_key;
+        int32_t instance_key;
         TF_RETURN_IF_ERROR(
             GetNodeAttr(node->attrs(), "instance_key", &instance_key));
         instance_key_set.emplace(instance_key);
+      } else if (IsCollectiveV2(node->type_string())) {
+        has_collective_v2 = true;
       } else {
         const FunctionDef* fdef = optimized_flib->Find(node->def().op());
         if (fdef != nullptr) {
@@ -912,10 +935,12 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
                 ndef.op() == "CollectiveBcastSend" ||
                 ndef.op() == "CollectiveBcastRecv" ||
                 ndef.op() == "CollectiveGather") {
-              int32 instance_key;
+              int32_t instance_key;
               TF_RETURN_IF_ERROR(
                   GetNodeAttr(ndef, "instance_key", &instance_key));
               instance_key_set.emplace(instance_key);
+            } else if (IsCollectiveV2(ndef.op())) {
+              has_collective_v2 = true;
             }
           }
         }
@@ -923,10 +948,12 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
     }
     if (!instance_key_set.empty()) {
       uint64 hash = 0x8774aa605c729c72ULL;
-      for (int32 instance_key : instance_key_set) {
+      for (int32_t instance_key : instance_key_set) {
         hash = Hash64Combine(instance_key, hash);
       }
       collective_graph_key = hash;
+    } else if (has_collective_v2) {
+      collective_graph_key = 0x8774aa605c729c72ULL;
     }
   }
 
@@ -947,7 +974,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   // TODO(vrv): We should check invariants of the graph here.
   metrics::UpdateGraphBuildTime(Env::Default()->NowMicros() - start_time_usecs);
   *out = std::move(dense_copy);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

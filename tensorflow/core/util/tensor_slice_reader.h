@@ -19,9 +19,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_TENSOR_SLICE_READER_H_
 #define TENSORFLOW_CORE_UTIL_TENSOR_SLICE_READER_H_
 
+#include <functional>
+#include <memory>
 #include <unordered_map>
-
+#include <utility>
 #include <vector>
+
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
@@ -75,7 +78,7 @@ class TensorSliceReader {
   int num_files() const { return sss_.size(); }
 
   // Get the status of the reader.
-  const Status status() const { return status_; }
+  Status status() const { return status_; }
 
   // Checks if the reader contains any slice of a tensor. In case the reader
   // does contain the tensor, if "shape" is not nullptr, fill "shape" with the
@@ -135,11 +138,12 @@ class TensorSliceReader {
   mutable std::unordered_map<string, TensorSliceSet*> tensors_;
   mutable Status status_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorSliceReader);
+  TensorSliceReader(const TensorSliceReader&) = delete;
+  void operator=(const TensorSliceReader&) = delete;
 };
 
 Status OpenTableTensorSliceReader(const string& fname,
-                                  TensorSliceReader::Table** table);
+                                  TensorSliceReader::Table** result);
 
 template <typename T>
 bool TensorSliceReader::CopySliceData(const string& name,
@@ -179,6 +183,22 @@ bool TensorSliceReader::CopySliceData(const string& name,
     if (!ParseProtoUnlimited(&sts, value)) {
       VLOG(1) << "Failed to parse the record for tensor " << name << ", slice "
               << slice_s.DebugString() << ": computed key = " << key;
+      return false;
+    }
+    // Ensure the TensorSlice contains the expected amount of data.
+    TensorShape shp_s;
+    Status s = slice_s.SliceTensorShape(tss->shape(), &shp_s);
+    if (!s.ok()) {
+      VLOG(1) << "Failed to slice tensor " << name << ", slice "
+              << slice_s.DebugString() << ": " << s;
+      return false;
+    }
+    if (checkpoint::TensorProtoDataSize<T>(sts.data().data()) !=
+        shp_s.num_elements()) {
+      VLOG(1) << "Tensor " << name << ", slice " << slice_s.DebugString()
+              << " had an unexpected amount of data: expected = "
+              << shp_s.num_elements() << ", got = "
+              << checkpoint::TensorProtoDataSize<T>(sts.data().data());
       return false;
     }
     CopyDataFromTensorSliceToTensorSlice(

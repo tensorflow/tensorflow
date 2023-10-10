@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/matrix.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/lib/matrix.h"
+#include "xla/client/xla_builder.h"
 
 namespace tensorflow {
 namespace {
@@ -31,7 +31,8 @@ class CholeskyOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Cholesky").TypeConstraint("T", kFloatTypes), CholeskyOp);
+REGISTER_XLA_OP(Name("Cholesky").TypeConstraint("T", kFloatAndComplexTypes),
+                CholeskyOp);
 
 }  // namespace
 }  // namespace tensorflow

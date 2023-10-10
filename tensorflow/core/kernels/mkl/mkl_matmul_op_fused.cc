@@ -15,9 +15,9 @@ limitations under the License.
 
 // See docs in ../ops/math_ops.cc.
 
-// This file uses MKL-DNN InnerProduct for acceleration of TF Matrix-Matrix
+// This file uses oneDNN InnerProduct for acceleration of TF Matrix-Matrix
 // Multiplication (MatMul) with bias (BiasAdd) operations.
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL)
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
@@ -28,27 +28,34 @@ namespace tensorflow {
 
 // Fuse Operation
 template <typename Device, typename T, bool native_format = false>
-class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
+class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, void, T> {
  public:
   explicit MklFusedMatMulOp(OpKernelConstruction* ctx)
-      : MklDnnMatMulOpBase<T, T>(ctx) {
+      : MklDnnMatMulOpBase<T, void, T>(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("fused_ops", &fused_ops_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_a", &transpose_a_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_b", &transpose_b_));
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("is_filter_const", &(this->is_weight_const_)));
+    if (AreWeightsFrozen()) {
+      this->is_weight_const_ = true;
+    } else {
+      OP_REQUIRES_OK(
+          ctx, ctx->GetAttr("is_filter_const", &(this->is_weight_const_)));
+    }
 
     OP_REQUIRES(ctx, fused_ops_.size() <= 2,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "MklFusedMatMul must have 2 post-arguments at most."));
     OP_REQUIRES(
         ctx, fused_ops_[0] == "BiasAdd",
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "The 1st post-argument of MklFusedMatMul must be BiasAdd."));
     if (fused_ops_.size() > 1 && fused_ops_[1] == "Add") fuse_add_ = true;
     OP_REQUIRES(
         ctx, transpose_a_ == false,
-        errors::InvalidArgument("In[0] of MklMatMul can't be transposed."));
+        absl::InvalidArgumentError("In[0] of MklMatMul can't be transposed."));
+    if (fused_ops_.size() == 2 && fused_ops_[1] == "LeakyRelu") {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("leakyrelu_alpha", &leakyrelu_alpha));
+    }
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -57,12 +64,17 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
     const Tensor& weight_tensor = ctx->input(this->kInputIndexWeight);
     const Tensor& bias_tensor = MklGetInput(ctx, this->kInputIndexBias);
 
+    if (std::is_same<T, float>::value) {
+      (void)SetFPMathMode();
+    }
+
     MklDnnShape src_mkl_shape;
     MklDnnShape weight_mkl_shape;
     GetMklShape(ctx, this->kInputIndexSrc, &src_mkl_shape, native_format);
     GetMklShape(ctx, this->kInputIndexWeight, &weight_mkl_shape, native_format);
-    OP_REQUIRES(ctx, !weight_mkl_shape.IsMklTensor(),
-                errors::InvalidArgument("Weight should not be in MKL Layout"));
+    OP_REQUIRES(
+        ctx, !weight_mkl_shape.IsMklTensor(),
+        absl::InvalidArgumentError("Weight should not be in MKL Layout"));
 
     // Get shapes of input tensors
     auto src_tf_shape = src_mkl_shape.IsMklTensor() ? src_mkl_shape.GetTfShape()
@@ -71,31 +83,36 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
 
     // Check the constraint of input matrix and bias
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(src_tf_shape),
-                errors::InvalidArgument("In[0] is not a matrix"));
+                absl::InvalidArgumentError("In[0] is not a matrix"));
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(weight_tf_shape),
-                errors::InvalidArgument("In[1] is not a matrix"));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(bias_tensor.shape()),
-                errors::InvalidArgument("Biases must be 1D"));
+                absl::InvalidArgumentError("In[1] is not a matrix"));
+    for (int i = 0; i < bias_tensor.dims() - 1; i++) {
+      OP_REQUIRES(ctx, bias_tensor.dim_size(i) == 1,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("For bias_dims > 1, all except the "
+                                   "last dimension (channel) must be 1, got: ",
+                                   bias_tensor.shape().DebugString())));
+    }
 
     // Expression: [batch, k] * [k, channel] + [channel] = [batch, channel]
     //
     // Get dimension size of each matrix, dim_pair[] is the location of k
     // in the inputs, we have constraint that k of the two inputs are
     // the same
-    const int dim_pair[] = {1, transpose_b_ ? 1 : 0};
-    const int batch = src_tf_shape.dim_size(1 - dim_pair[0]);
-    const int k = src_tf_shape.dim_size(dim_pair[0]);
-    const int channel = weight_tf_shape.dim_size(1 - dim_pair[1]);
+    const int64_t dim_pair[] = {1, transpose_b_ ? 1 : 0};
+    const int64_t batch = src_tf_shape.dim_size(1 - dim_pair[0]);
+    const int64_t k = src_tf_shape.dim_size(dim_pair[0]);
+    const int64_t channel = weight_tf_shape.dim_size(1 - dim_pair[1]);
 
     OP_REQUIRES(
         ctx, k == weight_tf_shape.dim_size(dim_pair[1]),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Matrix size-incompatible: In[0]: ", src_tf_shape.DebugString(),
-            ", In[1]: ", weight_tf_shape.DebugString()));
-    OP_REQUIRES(ctx, bias_tensor.shape().dim_size(0) == channel,
-                errors::InvalidArgument(
+            ", In[1]: ", weight_tf_shape.DebugString())));
+    OP_REQUIRES(ctx, bias_tensor.dim_size(bias_tensor.dims() - 1) == channel,
+                absl::InvalidArgumentError(absl::StrCat(
                     "Must provide as many biases as the channel size: ",
-                    bias_tensor.shape().DebugString(), " vs. ", channel));
+                    bias_tensor.shape().DebugString(), " vs. ", channel)));
 
     // For inputs s[batch, k], w[k, channel] and b[channel], the primitive
     // dims should be described like this:
@@ -106,33 +123,35 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
     memory::dims weight_dims = memory::dims({channel, k});
     memory::dims bias_dims = memory::dims({channel});
     memory::dims dst_dims = memory::dims({batch, channel});
-    MEMORY_FORMAT src_format = MEMORY_FORMAT::nc;
-    MEMORY_FORMAT weight_format =
-        transpose_b_ ? MEMORY_FORMAT::oi : MEMORY_FORMAT::io;
+    memory::format_tag src_format = memory::format_tag::nc;
+    memory::format_tag weight_format =
+        transpose_b_ ? memory::format_tag::oi : memory::format_tag::io;
 
-    // Set weight format for primitive:
-    //   1. const, let MKL-DNN determine format because it will be cached;
-    //   2. var, keep the original format to avoid reordering.
+    // Set weight format `any` for primitive as per oneDNN recommendation.
     MklDnnMatMulFwdParams matmul_params(
         src_dims, weight_dims, bias_dims, dst_dims, src_format,
-        (this->is_weight_const_) ? MEMORY_FORMAT::any : weight_format,
-        MEMORY_FORMAT::nc);
-
+        (this->is_weight_const_) ? memory::format_tag::any : weight_format,
+        memory::format_tag::nc, this->is_weight_const_);
     // Extend the basic parameters for data types and fusions.
     ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
+    auto st = ExecuteSingleThreadedGemm(batch, channel, k, sizeof(T));
+    // Create the oneDNN wrapper over Eigen threadpool and set max threads
+    // in oneDNN.
+    Eigen::ThreadPoolInterface* eigen_interface =
+        EigenThreadPoolFromTfContext(ctx);
+    tsl::OneDnnThreadPool eigen_tp(eigen_interface, ThreadPoolUseCallerThread(),
+                                   st ? 1 : -1);
     MklDnnMatMulFwdPrimitive<T, T, T, T, T>* matmul_prim =
         MklDnnMatMulFwdPrimitiveFactory<T, T, T, T, T>::Get(matmul_params, 0);
 
     // Allocate output tensor.
     Tensor* dst_tensor = nullptr;
-    std::shared_ptr<mkldnn::inner_product_forward::primitive_desc> matmul_pd =
+    std::shared_ptr<dnnl::inner_product_forward::primitive_desc> matmul_pd =
         matmul_prim->GetPrimitiveDesc();
 
     // The output shape of MatMul is same both for MKL and TF version.
     // They are all NC format, no matter what's the format of input.
     // And the shape of AddOp is also the same with output's shape.
-    auto dst_pd = matmul_pd->PRIMITIVE_DESC_DST;
-
     MklDnnShape output_mkl_shape;
     output_mkl_shape.SetMklTensor(false);
 
@@ -159,7 +178,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
                                   output_tf_shape, output_mkl_shape,
                                   native_format);
         auto output_format_tag =
-            MklTensorFormatToMklDnnDataFormat(MKL_TENSOR_FORMAT_NC);
+            MklTensorFormatToMklDnnDataFormat(MklTensorFormat::FORMAT_NC);
         auto add_md =
             add_mkl_shape.IsMklTensor()
                 ? add_mkl_shape.GetMklLayout()
@@ -176,15 +195,13 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
           // changing memory layout, hence using same memory descriptor.
           add_md = dst_md =
               memory::desc({add_tensor.NumElements()}, MklDnnType<T>(),
-                           mkldnn::memory::format_tag::x);
+                           dnnl::memory::format_tag::x);
         }
 
-        auto fuse_add_src_ =
-            MEMORY_CONSTRUCTOR(ADD_MD, this->cpu_engine_, add_buf);
-        auto fuse_add_dst_ =
-            MEMORY_CONSTRUCTOR(DST_MD, this->cpu_engine_, dst_buf);
+        auto fuse_add_src_ = memory(add_md, this->cpu_engine_, add_buf);
+        auto fuse_add_dst_ = memory(dst_md, this->cpu_engine_, dst_buf);
         auto reorder_desc =
-            REORDER_PD_CONSTRUCTOR(ADD_MD, DST_MD, this->cpu_engine_);
+            ReorderPd(this->cpu_engine_, add_md, this->cpu_engine_, dst_md);
 
         CreateAndExecuteReorder(reorder_desc, fuse_add_src_, fuse_add_dst_,
                                 this->cpu_engine_, ctx);
@@ -214,33 +231,31 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
                         ? src_mkl_shape.GetMklLayout()
                         : memory::desc(src_dims, MklDnnType<T>(), src_format);
 
-      if (IS_SRC_REORDER_NEEDED(src_md, matmul_pd, matmul_prim)) {
+      if (src_md != matmul_pd->src_desc()) {
         src_mkl.SetUsrMem(src_md, src_data);
-        src_mkl.CheckReorderToOpMem(
-            MEMORY_PD_WITHOUT_DATA(matmul_pd.get()->PRIMITIVE_DESC_SRC,
-                                   this->cpu_engine_),
-            ctx);
+        src_mkl.CheckReorderToOpMem(matmul_pd.get()->src_desc(),
+                                    this->cpu_engine_, ctx);
         src_data = reinterpret_cast<T*>(src_mkl.GetOpMem().get_data_handle());
       }
 
       // Get cached data when weight is const.
       const memory::desc weight_md =
           memory::desc(weight_dims, MklDnnType<T>(), weight_format);
-      if (IS_WEIGHTS_REORDER_NEEDED(weight_md, matmul_pd, matmul_prim)) {
+      if (weight_md != matmul_pd->weights_desc()) {
         T* cached_weight_data = nullptr;
 
         if (this->is_weight_const_) {
+          // TODO(intel-tf): When oneDNN major version changes to v4.x, weight
+          // caching may not work as expected if the underlying memory
+          // descriptor has changed (i.e. compared to v3.x). We have to return
+          // a status here to catch oneDNN major version change to avoid
+          // unexpected results.
           if (this->IsWeightCacheEmpty(ctx)) {
             this->CacheWeight(ctx, matmul_pd, cached_weight_data, weight_tensor,
                               weight_mkl, weight_md);
           }
-#ifdef ENABLE_MKLDNN_V1
-          cached_weight_data = this->GetCachedWeight(
-              ctx, GET_WEIGHTS_DESC_FROM_OP_PD(matmul_pd));
-#else
-          cached_weight_data = this->GetCachedWeight(
-              ctx, GET_WEIGHTS_DESC_FROM_OP_PD(matmul_pd).desc());
-#endif
+          cached_weight_data =
+              this->GetCachedWeight(ctx, matmul_pd->weights_desc());
         }
 
         // Cache weight may fail when it gets different format in different
@@ -250,25 +265,28 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
           weight_data = cached_weight_data;
         } else {
           weight_mkl.SetUsrMem(weight_md, weight_data);
-          weight_mkl.CheckReorderToOpMem(
-              MEMORY_PD_WITHOUT_DATA(matmul_pd.get()->PRIMITIVE_DESC_WEIGHTS,
-                                     this->cpu_engine_),
-              ctx);
+          weight_mkl.CheckReorderToOpMem(matmul_pd.get()->weights_desc(),
+                                         this->cpu_engine_, ctx);
           weight_data =
               reinterpret_cast<T*>(weight_mkl.GetOpMem().get_data_handle());
         }
       }
       std::shared_ptr<stream> cpu_stream;
-      cpu_stream.reset(CreateStream(ctx, matmul_prim->GetEngine()));
+
+      cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
+
+      UserScratchPad<unsigned char> scratch_pad;
+      scratch_pad.AllocateSPTensor(matmul_prim, ctx);
+
       // Execute fused matmul op.
       matmul_prim->Execute(src_data, weight_data, bias_data, dst_data,
-                           cpu_stream);
-    } catch (mkldnn::error& e) {
+                           matmul_params, scratch_pad.Get(), cpu_stream);
+    } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
-      OP_REQUIRES_OK(
-          ctx, errors::Aborted("Operation received an exception:", error_msg));
+      OP_REQUIRES_OK(ctx, absl::AbortedError(absl::StrCat(
+                              "Operation received an exception:", error_msg)));
     }
   }
 
@@ -283,14 +301,23 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
         params.post_op_params.push_back({"relu6", {1.0, 6.0, 0.0}});
       } else if (post_op == "Elu") {
         params.post_op_params.push_back({"elu", {1.0, 1.0, 0.0}});
+      } else if (post_op == "GeluApproximate") {
+        params.post_op_params.push_back({"gelu_approximate", {1.0, 1.0, 0.0}});
+      } else if (post_op == "GeluExact") {
+        params.post_op_params.push_back({"gelu_exact", {1.0, 1.0, 0.0}});
       } else if (post_op == "Tanh") {
         params.post_op_params.push_back({"tanh", {1.0, 0.0, 0.0}});
       } else if (post_op == "Add") {
         params.post_op_params.push_back({"sum", {1.0}});
+      } else if (post_op == "LeakyRelu") {
+        params.post_op_params.push_back(
+            {"leakyrelu", {1.0, leakyrelu_alpha, 0.0}});
+      } else if (post_op == "Sigmoid") {
+        params.post_op_params.push_back({"logistic", {1.0, 0.0, 0.0}});
       } else {
-        OP_REQUIRES_OK(
-            ctx, errors::InvalidArgument(
-                     "Unsupported post-argument in MklFusedMatMul: ", post_op));
+        OP_REQUIRES_OK(ctx, absl::InvalidArgumentError(absl::StrCat(
+                                "Unsupported post-argument in MklFusedMatMul: ",
+                                post_op)));
       }
     }
   }
@@ -299,6 +326,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
   bool fuse_add_ = false;
   bool transpose_a_;
   bool transpose_b_;
+  float leakyrelu_alpha = 0.2;
   std::vector<string> fused_ops_;
   const int kInputIndex_Add = 3;
   const int kOutputIndex_Dst = 0;

@@ -21,10 +21,8 @@ option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/example
 // read and write this format.  That is, the Example is mostly *not* a
 // self-describing format.  In TensorFlow, Examples are read in row-major
 // format, so any configuration that describes data with rank-2 or above
-// should keep this in mind.  For example, to store an M x N matrix of Bytes,
-// the BytesList must contain M*N bytes, with M rows of N contiguous values
-// each.  That is, the BytesList value must store the matrix as:
-//     .... row 0 .... .... row 1 .... // ...........  // ... row M-1 ....
+// should keep this in mind. If you flatten a matrix into a FloatList it should
+// be stored as [ row 0 ... row 1 ... row M-1 ]
 //
 // An Example for a movie recommendation application:
 //   features {

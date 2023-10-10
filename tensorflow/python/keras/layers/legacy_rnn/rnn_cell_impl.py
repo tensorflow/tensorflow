@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# pylint: disable=g-classes-have-attributes
 """Module implementing RNN Cells.
 
 This module provides a number of basic commonly used RNN cells, such as LSTM
@@ -20,10 +21,6 @@ operators that allow adding dropouts, projections, or embeddings for inputs.
 Constructing multi-layer cells is supported by the class `MultiRNNCell`, or by
 calling the `rnn` ops several times.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import warnings
 
@@ -32,6 +29,8 @@ from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import activations
@@ -51,7 +50,7 @@ from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -127,7 +126,7 @@ def _concat(prefix, suffix, static=False):
     ValueError: if prefix or suffix was `None` and asked for dynamic
       Tensors out.
   """
-  if isinstance(prefix, ops.Tensor):
+  if isinstance(prefix, tensor.Tensor):
     p = prefix
     p_static = tensor_util.constant_value(prefix)
     if p.shape.ndims == 0:
@@ -141,7 +140,7 @@ def _concat(prefix, suffix, static=False):
     p = (
         constant_op.constant(p.as_list(), dtype=dtypes.int32)
         if p.is_fully_defined() else None)
-  if isinstance(suffix, ops.Tensor):
+  if isinstance(suffix, tensor.Tensor):
     s = suffix
     s_static = tensor_util.constant_value(suffix)
     if s.shape.ndims == 0:
@@ -284,9 +283,11 @@ class RNNCell(base_layer.Layer):
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
     if inputs is not None:
       # Validate the given batch_size and dtype against inputs if provided.
-      inputs = ops.convert_to_tensor_v2_with_dispatch(inputs, name="inputs")
+      inputs = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          inputs, name="inputs"
+      )
       if batch_size is not None:
-        if tensor_util.is_tensor(batch_size):
+        if tensor_util.is_tf_type(batch_size):
           static_batch_size = tensor_util.constant_value(
               batch_size, partial=True)
         else:
@@ -345,6 +346,12 @@ class RNNCell(base_layer.Layer):
   # TODO(b/134773139): Remove when contrib RNN cells implement `get_config`
   def get_config(self):  # pylint: disable=useless-super-delegation
     return super(RNNCell, self).get_config()
+
+  @property
+  def _use_input_spec_as_call_signature(self):
+    # We do not store the shape information for the state argument in the call
+    # function for legacy RNN cells, so do not generate an input signature.
+    return False
 
 
 class LayerRNNCell(RNNCell):
@@ -426,7 +433,7 @@ class BasicRNNCell(LayerRNNCell):
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
     _check_supported_dtypes(self.dtype)
     if context.executing_eagerly() and tf_config.list_logical_devices("GPU"):
-      logging.warn(
+      logging.warning(
           "%s: Note that this cell is not optimized for performance. "
           "Please use tf.contrib.cudnn_rnn.CudnnRNNTanh for better "
           "performance on GPU.", self)
@@ -535,7 +542,7 @@ class GRUCell(LayerRNNCell):
     _check_supported_dtypes(self.dtype)
 
     if context.executing_eagerly() and tf_config.list_logical_devices("GPU"):
-      logging.warn(
+      logging.warning(
           "%s: Note that this cell is not optimized for performance. "
           "Please use tf.contrib.cudnn_rnn.CudnnGRU for better "
           "performance on GPU.", self)
@@ -707,11 +714,11 @@ class BasicLSTMCell(LayerRNNCell):
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
     _check_supported_dtypes(self.dtype)
     if not state_is_tuple:
-      logging.warn(
+      logging.warning(
           "%s: Using a concatenated state is slower and will soon be "
           "deprecated.  Use state_is_tuple=True.", self)
     if context.executing_eagerly() and tf_config.list_logical_devices("GPU"):
-      logging.warn(
+      logging.warning(
           "%s: Note that this cell is not optimized for performance. "
           "Please use tf.contrib.cudnn_rnn.CudnnLSTM for better "
           "performance on GPU.", self)
@@ -908,16 +915,16 @@ class LSTMCell(LayerRNNCell):
         _reuse=reuse, name=name, dtype=dtype, **kwargs)
     _check_supported_dtypes(self.dtype)
     if not state_is_tuple:
-      logging.warn(
+      logging.warning(
           "%s: Using a concatenated state is slower and will soon be "
           "deprecated.  Use state_is_tuple=True.", self)
     if num_unit_shards is not None or num_proj_shards is not None:
-      logging.warn(
+      logging.warning(
           "%s: The num_unit_shards and proj_unit_shards parameters are "
           "deprecated and will be removed in Jan 2017.  "
           "Use a variable scope with a partitioner instead.", self)
     if context.executing_eagerly() and tf_config.list_logical_devices("GPU"):
-      logging.warn(
+      logging.warning(
           "%s: Note that this cell is not optimized for performance. "
           "Please use tf.contrib.cudnn_rnn.CudnnLSTM for better "
           "performance on GPU.", self)

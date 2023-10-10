@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function_body.h"
+#include "tensorflow/core/common_runtime/lower_function_call_inline_policy.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -48,6 +49,7 @@ class InlinedFunctionBodyPlacer {
   virtual absl::optional<string> ControlNodeDevice() const = 0;
   virtual absl::optional<string> BodyNodeDevice(const NodeDef& ndef) const = 0;
 
+  // LINT.IfChange
   // Place input nodes on the same device as the corresponding caller input
   // node. Do not specify any placement for all other nodes.
   static std::unique_ptr<InlinedFunctionBodyPlacer> DefaultPlacer(
@@ -59,10 +61,12 @@ class InlinedFunctionBodyPlacer {
 
   // Place input nodes on the same device as the corresponding caller input
   // node. Do not place output node. Place control nodes on the same device as
-  // caller node. For all function body nodes overrides job, replica and task
-  // parts of the device assignment to match function caller node.
+  // caller node. For all function body nodes set job, replica and task
+  // parts of the device assignment to match function caller node where those
+  // are unspecified.
   static std::unique_ptr<InlinedFunctionBodyPlacer> MultiDevicePlacer(
       const Graph& graph, const Node& caller);
+  // LINT.ThenChange(lower_function_call_inline_policy.h)
 
   using Factory = std::function<std::unique_ptr<InlinedFunctionBodyPlacer>(
       const Graph&, const Node&)>;
@@ -146,7 +150,7 @@ struct InlineFunctionBodyOptions {
   string DebugString() const;
 };
 
-// Returns 'Status::OK()' iff the function '*fbody' can be inlined at 'node'
+// Returns 'OkStatus()' iff the function '*fbody' can be inlined at 'node'
 // based on the type signature of 'node' and 'fbody':
 //
 // (1) Caller node has the same number of inputs and outputs as the function.
@@ -164,7 +168,7 @@ Status ValidateInlining(const Node* node, const FunctionBody* fbody,
 // edges properly. "override_device" specifies whether inlining should replace
 // explicitly specified devices inside fbody with the callee's device.
 //
-// Returns 'Status::OK()' if function was successfully inlined into the graph.
+// Returns 'OkStatus()' if function was successfully inlined into the graph.
 // If function inlining is not possible returns an error with a reason, and
 // leaves the graph in unmodified state.
 Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
@@ -230,13 +234,6 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
 inline bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
   return ExpandInlineFunctions(lib, graph, ExpandInlineFunctionsOptions());
 }
-
-struct LowerFunctionalOpsConstants {
-  static constexpr const char* const kLowerUsingSwitchMergeAttr =
-      "_lower_using_switch_merge";
-  static constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
-      "_lower_as_multi_device_function";
-};
 
 }  // end namespace tensorflow
 

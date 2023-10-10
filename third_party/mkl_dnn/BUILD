@@ -1,9 +1,8 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
-    default_visibility = [
-        "//tensorflow:__subpackages__",
-    ],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
 
@@ -15,17 +14,29 @@ config_setting(
         "build_with_mkl": "true",
         "build_with_mkl_opensource": "true",
     },
-    visibility = ["//visibility:public"],
 )
 
 config_setting(
-    name = "build_with_mkldnn_threadpool",
+    name = "build_with_mkldnn_openmp",
     define_values = {
         "build_with_mkl": "true",
-        "build_with_mkl_opensource": "true",
-        "build_with_mkldnn_threadpool": "true",
+        "build_with_openmp": "true",
     },
-    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "build_with_mkl_aarch64_openmp",
+    define_values = {
+        "build_with_mkl_aarch64": "true",
+        "build_with_openmp": "true",
+    },
+)
+
+config_setting(
+    name = "build_with_mkl_aarch64",
+    define_values = {
+        "build_with_mkl_aarch64": "true",
+    },
 )
 
 bzl_library(

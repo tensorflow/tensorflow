@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace Eigen {
 struct ThreadPoolDevice;
@@ -38,20 +40,21 @@ namespace stream_executor {
 class Stream;
 }  // namespace stream_executor
 
+namespace tsl {
+class Env;
+namespace thread {
+class ThreadPool;
+}  // namespace thread
+}  // namespace tsl
 namespace tensorflow {
 
 class Device;
 class DeviceAttributes;
-class Env;
 class EventMgr;
 class OpKernelContext;
 class ResourceMgr;
 class ScopedAllocatorMgr;
 class TensorProto;
-
-namespace thread {
-class ThreadPool;
-}
 
 // A wrapper for an Eigen Gpu Device that includes per-op state. The
 // class is defined even for non-GPU devices since the
@@ -108,8 +111,8 @@ class DeviceContext : public core::RefCounted {
 
   // If possible, wait for all events on *stream to complete then execute func.
   // A non-OK Status is returned otherwise.  The stream argument should be the
-  // one provided by GpuDeviceInfo.  This function is not applicable to devices
-  // that don't provide such a value.
+  // one provided by AcceleratorDeviceInfo.  This function is not applicable to
+  // devices that don't provide such a value.
   virtual Status ThenExecute(Device* device, stream_executor::Stream* stream,
                              std::function<void()> func) {
     return errors::Internal("ThenExecute not supported by device");
@@ -117,18 +120,21 @@ class DeviceContext : public core::RefCounted {
 
   // check if device is a pluggable device
   virtual bool IsPluggableDevice() { return false; }
+
+  // Returns the pinned host memory allocator for the device.
+  virtual Allocator* host_memory_allocator() const { return nullptr; }
 };
 
 class DeviceBase {
  public:
-  explicit DeviceBase(Env* env) : env_(env) {}
+  explicit DeviceBase(tsl::Env* env) : env_(env) {}
   virtual ~DeviceBase();
 
-  Env* env() const { return env_; }
+  tsl::Env* env() const { return env_; }
 
   struct CpuWorkerThreads {
     int num_threads = 0;
-    thread::ThreadPool* workers = nullptr;
+    tsl::thread::ThreadPool* workers = nullptr;
   };
 
   // Does not take ownership.
@@ -148,28 +154,30 @@ class DeviceBase {
   // using a single stream.)
   // "event_mgr" is used to delay deallocation of temporary GPU buffers.
   // TODO(pbar) Work out how to move this out of DeviceBase.
-  // GpuDeviceInfo name is an unfortunate legacy, it is used not only by GPUs
-  // but also by TPU devices (to provide default device context).
-  struct GpuDeviceInfo {
+  struct AcceleratorDeviceInfo {
     // Make sure all the defaults are NULL, so we can spot missing assignments.
     stream_executor::Stream* stream = nullptr;
     DeviceContext* default_context = nullptr;
+    DeviceContext* pjrt_context = nullptr;
+    bool use_pjrt_tensor_buffer = false;
     EventMgr* event_mgr = nullptr;
     int gpu_id = -1;
   };
 
   // Does not take ownership.
-  void set_tensorflow_gpu_device_info(GpuDeviceInfo* g) {
-    gpu_device_info_ = g;
+  void set_tensorflow_accelerator_device_info(
+      AcceleratorDeviceInfo* device_info) {
+    accelerator_device_info_ = device_info;
   }
 
-  virtual const GpuDeviceInfo* tensorflow_gpu_device_info() const {
-    return gpu_device_info_;
+  virtual const AcceleratorDeviceInfo* tensorflow_accelerator_device_info()
+      const {
+    return accelerator_device_info_;
   }
 
   // The preferred thread pool for this device. If it is nullptr, the system
   // automatically assigns a thread pool for execution.
-  virtual thread::ThreadPool* tensorflow_device_thread_pool() {
+  virtual tsl::thread::ThreadPool* tensorflow_device_thread_pool() {
     return device_thread_pool_;
   }
 
@@ -193,7 +201,7 @@ class DeviceBase {
   // Return an Allocator prepared for use in particular places by graph
   // optimization
   virtual Allocator* GetScopedAllocator(AllocatorAttributes attr,
-                                        int64 step_id) {
+                                        int64_t step_id) {
     LOG(FATAL) << "Device does not implement GetScopedAllocator()";
     return nullptr;
   }
@@ -220,13 +228,21 @@ class DeviceBase {
                                        PerOpGpuDevice* /*device*/,
                                        DeviceContext* /*dc*/,
                                        Allocator* /*allocator*/) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Unimplemented by default
   virtual const DeviceAttributes& attributes() const;
   virtual int NumaNode() const { return attributes().locality().numa_node(); }
   virtual const std::string& name() const;
+  virtual const DeviceNameUtils::ParsedName& parsed_name() const;
+
+  // Updates `attributes()`, indicating the XLA global ID associated with this
+  // device. This ID is unique across clients in a multi-client setup. For TPUs
+  // this does not happen until the TPU system has been initialized.
+  //
+  // Implemented in Device.
+  virtual void set_xla_global_id(int64_t id) {}
 
   // Materializes the given TensorProto into 'tensor' stored in Device
   // memory.  Most devices will want to override this.
@@ -268,16 +284,16 @@ class DeviceBase {
 
  protected:
   // Does not take ownership.
-  void set_tensorflow_device_thread_pool(thread::ThreadPool* thread_pool) {
+  void set_tensorflow_device_thread_pool(tsl::thread::ThreadPool* thread_pool) {
     device_thread_pool_ = thread_pool;
   }
 
  private:
-  Env* const env_;
+  tsl::Env* const env_;
   CpuWorkerThreads* cpu_worker_threads_ = nullptr;
   // Set by GPUs as well as by TPU devices.
-  GpuDeviceInfo* gpu_device_info_ = nullptr;
-  thread::ThreadPool* device_thread_pool_ = nullptr;
+  AcceleratorDeviceInfo* accelerator_device_info_ = nullptr;
+  tsl::thread::ThreadPool* device_thread_pool_ = nullptr;
   std::vector<Eigen::ThreadPoolDevice*> eigen_cpu_devices_;
 };
 

@@ -14,17 +14,12 @@
 # ==============================================================================
 """Test that we can connect to a real Cloud TPU."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl import flags
 from absl.testing import absltest
 
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import remote
 from tensorflow.python.framework import config
-from tensorflow.python.tpu import tpu_strategy_util
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string('tpu', '', 'Name of TPU to connect to.')
@@ -79,7 +74,7 @@ class RemoteCloudTPUTest(absltest.TestCase):
         expected_devices,
         [device.name for device in config.list_logical_devices()])
 
-    tpu_strategy_util.initialize_tpu_system(resolver)
+    tpu_cluster_resolver.initialize_tpu_system(resolver)
 
 if __name__ == '__main__':
   absltest.main()

@@ -30,7 +30,7 @@ class UnifiedAPI
     TF_StatusPtr status(TF_NewStatus());
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
     Status s = StatusFromTF_Status(status.get());
-    CHECK_EQ(errors::OK, s.code()) << s.error_message();
+    CHECK_EQ(errors::OK, s.code()) << s.message();
   }
 
  public:
@@ -48,7 +48,7 @@ Status TestScalarShape(AbstractContext* ctx,
     return errors::InvalidArgument(
         "Tensor expected to have scalar shape found rank: ", shape.dims());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 TEST_P(UnifiedAPI, TestTensorShapeScalar) {
@@ -61,15 +61,15 @@ TEST_P(UnifiedAPI, TestTensorShapeScalar) {
     AbstractContext* ctx_raw = nullptr;
     Status s =
         BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     ctx.reset(ctx_raw);
   }
 
   AbstractTensorHandlePtr x;
   {
     AbstractTensorHandle* x_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx.get(), 2.0f, &x_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    Status s = TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 2.0f, &x_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     x.reset(x_raw);
   }
 
@@ -77,7 +77,7 @@ TEST_P(UnifiedAPI, TestTensorShapeScalar) {
                       /*inputs=*/{x.get()},
                       /*outputs=*/{},
                       /*use_function=*/UseFunction());
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
 }
 
 // Checks that inputs[0] is a matrix with shape 2x4.
@@ -90,7 +90,7 @@ Status TestTensorShape2x4(AbstractContext* ctx,
     return errors::InvalidArgument(
         "Tensor expected to have rank 2 found rank: ", shape.dims());
   }
-  int64 dim_sizes[] = {2, 4};
+  int64_t dim_sizes[] = {2, 4};
   for (int i = 0; i < shape.dims(); i++) {
     if (shape.dim_size(i) != dim_sizes[i]) {
       return errors::InvalidArgument("Dim ", i, " expected to be of size ",
@@ -98,7 +98,7 @@ Status TestTensorShape2x4(AbstractContext* ctx,
                                      " found: ", shape.dim_size(i));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 TEST_P(UnifiedAPI, TestTensorShape2x4) {
@@ -111,7 +111,7 @@ TEST_P(UnifiedAPI, TestTensorShape2x4) {
     AbstractContext* ctx_raw = nullptr;
     Status s =
         BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     ctx.reset(ctx_raw);
   }
 
@@ -120,9 +120,9 @@ TEST_P(UnifiedAPI, TestTensorShape2x4) {
     AbstractTensorHandle* x_raw = nullptr;
     float data[] = {0., 0., 0., 0., 0., 0., 0., 0};
     int64_t dim_sizes[] = {2, 4};
-    Status s =
-        TestTensorHandleWithDimsFloat(ctx.get(), data, dim_sizes, 2, &x_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    Status s = TestTensorHandleWithDims<float, TF_FLOAT>(ctx.get(), data,
+                                                         dim_sizes, 2, &x_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     x.reset(x_raw);
   }
 
@@ -130,7 +130,7 @@ TEST_P(UnifiedAPI, TestTensorShape2x4) {
                       /*inputs=*/{x.get()},
                       /*outputs=*/{},
                       /*use_function=*/UseFunction());
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
 }
 
 TEST_P(UnifiedAPI, TestUnknownShapeTracing) {
@@ -148,13 +148,13 @@ TEST_P(UnifiedAPI, TestUnknownShapeTracing) {
     PartialTensorShape shape;
     Status s = dyn_cast<tracing::TracingContext>(ctx.get())->AddParameter(
         DT_FLOAT, shape, &x_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     x.reset(x_raw);
   }
 
   PartialTensorShape shape;
   Status s = x->Shape(&shape);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
   ASSERT_TRUE(shape.unknown_rank());
 }
 
@@ -170,36 +170,28 @@ TEST_P(UnifiedAPI, TestPartialShapeTracing) {
   {
     tracing::TracingTensorHandle* x_raw = nullptr;
     PartialTensorShape shape;
-    int64 dim_sizes[] = {2, -1};
+    int64_t dim_sizes[] = {2, -1};
     Status s = PartialTensorShape::MakePartialShape(dim_sizes, 2, &shape);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     s = dyn_cast<tracing::TracingContext>(ctx.get())->AddParameter(
         DT_FLOAT, shape, &x_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     x.reset(x_raw);
   }
 
   PartialTensorShape shape;
   Status s = x->Shape(&shape);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
   ASSERT_FALSE(shape.unknown_rank());
 
   ASSERT_EQ(2, shape.dim_size(0));
   ASSERT_EQ(-1, shape.dim_size(1));
 }
 
-#ifdef PLATFORM_GOOGLE
-INSTANTIATE_TEST_SUITE_P(
-    UnifiedCppAPI, UnifiedAPI,
-    ::testing::Combine(::testing::Values("graphdef", "mlir"),
-                       /*tfrt*/ ::testing::Values(true, false),
-                       /*use_function*/ ::testing::Values(true, false)));
-#else
 INSTANTIATE_TEST_SUITE_P(
     UnifiedCppAPI, UnifiedAPI,
     ::testing::Combine(::testing::Values("graphdef", "mlir"),
                        /*tfrt*/ ::testing::Values(false),
                        /*use_function*/ ::testing::Values(true, false)));
-#endif
 }  // namespace
 }  // namespace tensorflow

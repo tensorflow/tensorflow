@@ -33,7 +33,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -43,12 +43,10 @@ limitations under the License.
 #include "tensorflow/core/util/proto/decode.h"
 #include "tensorflow/core/util/proto/descriptors.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
 
-using ::tensorflow::MakeUnique;
 using ::tensorflow::protobuf::Descriptor;
 using ::tensorflow::protobuf::DescriptorPool;
 using ::tensorflow::protobuf::DynamicMessageFactory;
@@ -72,7 +70,7 @@ struct DefaultValue {
     float v_float;         // DT_FLOAT
     int8 v_int8;           // DT_INT8
     int32 v_int32;         // DT_INT32
-    int64 v_int64;         // DT_INT64
+    int64_t v_int64;       // DT_INT64
     const char* v_string;  // DT_STRING
     uint8 v_uint8;         // DT_UINT8
     uint8 v_uint32;        // DT_UINT32
@@ -108,7 +106,7 @@ Status InitDefaultValue(DataType dtype, const T value, DefaultValue* result) {
       result->value.v_int32 = static_cast<int32>(value);
       break;
     case DT_INT64:
-      result->value.v_int64 = static_cast<int64>(value);
+      result->value.v_int64 = static_cast<int64_t>(value);
       break;
     case DT_UINT8:
       result->value.v_uint8 = static_cast<uint8>(value);
@@ -125,7 +123,7 @@ Status InitDefaultValue(DataType dtype, const T value, DefaultValue* result) {
           "Cannot initialize default value for unsupported type: ",
           DataTypeString(dtype));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
@@ -142,7 +140,7 @@ Status InitDefaultValue(DataType dtype, const char* value,
   }
   result->dtype = DT_STRING;
   result->value.v_string = value;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Initializes a default value from the output data type and the field
@@ -192,7 +190,7 @@ Status InitDefaultValueFromFieldDescriptor(DataType dtype,
       return InitDefaultValue(dtype, "", result);
       // default: intentionally omitted in order to enable static checking.
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // A FieldInfo holds a handful of information from the FieldDescriptor
@@ -265,14 +263,14 @@ class CountCollector {
     if (!SkipValue(input, field)) {
       return errors::DataLoss("ReadValue: Failed skipping field when counting");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Reads (in this case counts) a length-delimited list of values.
   Status ReadPackedValues(CodedInputStream* input, const FieldInfo& field,
                           size_t buf_size) {
     if (buf_size == 0) {
-      return Status::OK();
+      return OkStatus();
     }
 
     const void* tmpbuf;
@@ -341,7 +339,7 @@ class CountCollector {
         st = CountPackedFixed<int32>(buf, buf_size);
         break;
       case WireFormatLite::TYPE_SFIXED64:
-        st = CountPackedFixed<int64>(buf, buf_size);
+        st = CountPackedFixed<int64_t>(buf, buf_size);
         break;
       case WireFormatLite::TYPE_SINT32:
         st = CountPackedVarint(buf, buf_size);
@@ -358,7 +356,7 @@ class CountCollector {
     if (!field.is_repeated && *count_ptr_ > 1) {
       *count_ptr_ = 1;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -397,7 +395,7 @@ class CountCollector {
     }
 
     *count_ptr_ += count;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Counts the number of fixed-size values in a packed field. This can be done
@@ -410,7 +408,7 @@ class CountCollector {
           "Illegal data length for packed fixed-size type: ", len);
     }
     *count_ptr_ += len / sizeof(T);
-    return Status::OK();
+    return OkStatus();
   }
 
   // Skips a single value in the input stream. Dispatches to the appropriately
@@ -497,7 +495,7 @@ class DenseCollector {
     // Only for repeated fields do we advance the next_repeat_index_ past 1.
     // TODO(nix): to handle oneof we must also zero out any previous values
     //  seen on the wire.
-    int32 index = 0;
+    int32_t index = 0;
     if (field.is_repeated) {
       index = next_repeat_index_;
     }
@@ -553,7 +551,7 @@ class DenseCollector {
       case DataType::DT_INT32:
         return FillDefault<int32>(default_value_.value.v_int32);
       case DataType::DT_INT64:
-        return FillDefault<int64>(default_value_.value.v_int64);
+        return FillDefault<int64_t>(default_value_.value.v_int64);
       case DataType::DT_STRING:
         return FillDefault<tstring>(default_value_.value.v_string);
       case DataType::DT_UINT8:
@@ -580,7 +578,7 @@ class DenseCollector {
     for (int i = next_repeat_index_; i < max_repeat_count_; i++) {
       reinterpret_cast<T*>(datap_)[i] = default_value;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   int32 next_repeat_index_ = 0;
@@ -699,8 +697,8 @@ class DecodeProtoOp : public OpKernel {
       DefaultValue default_value;
       OP_REQUIRES_OK(context, InitDefaultValueFromFieldDescriptor(
                                   dtype, field_descriptor, &default_value));
-      fields_.push_back(
-          MakeUnique<FieldInfo>(field_descriptor, output_index, default_value));
+      fields_.push_back(std::make_unique<FieldInfo>(
+          field_descriptor, output_index, default_value));
     }
 
     message_prototype_ = message_factory_.GetPrototype(message_desc);
@@ -735,7 +733,7 @@ class DecodeProtoOp : public OpKernel {
     const TensorShape& shape_prefix = buf_tensor.shape();
 
     TensorShape sizes_shape = shape_prefix;
-    sizes_shape.AddDim(field_count);
+    OP_REQUIRES_OK(ctx, sizes_shape.AddDimWithStatus(field_count));
     Tensor* sizes_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, sizes_shape, &sizes_tensor));
 
@@ -789,10 +787,10 @@ class DecodeProtoOp : public OpKernel {
     //   the memory of the input tensor.
     std::vector<Tensor*> outputs(field_count);
     for (int fi = 0; fi < field_count; ++fi) {
-      TensorShape flat_shape = {static_cast<int64>(message_count),
+      TensorShape flat_shape = {static_cast<int64_t>(message_count),
                                 max_sizes[fi]};
       TensorShape out_shape = shape_prefix;
-      out_shape.AddDim(max_sizes[fi]);
+      OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(max_sizes[fi]));
 
       // Surprisingly we don't specify the types from the output_types
       // attribute: that is done for us based on the Op declaration:
@@ -868,7 +866,7 @@ class DecodeProtoOp : public OpKernel {
     // Update the size tensor and max repeat size for each field.
     auto sizes = sizes_tensor->flat_inner_dims<int32>();
     for (int fi = 0; fi < field_count; fi++) {
-      int32 size = field_sizes[fi];
+      int32_t size = field_sizes[fi];
       sizes(message_index, fields_[fi]->output_index) = size;
       if ((*max_sizes)[fi] < size) {
         (*max_sizes)[fi] = size;
@@ -894,7 +892,7 @@ class DecodeProtoOp : public OpKernel {
           CHECK_GT(element_size, 0);
           stride = last_dim_size * element_size;
 
-          const int64 flatshape[1] = {tensor->NumElements() * element_size};
+          const int64_t flatshape[1] = {tensor->NumElements() * element_size};
           data = tensor->bit_casted_shaped<uint8, 1>(flatshape).data();
         } else {
           // DataTypeSize() returns 0 for string types.
@@ -1034,7 +1032,7 @@ class DecodeProtoOp : public OpKernel {
           *field_info, WireFormatLite::GetTagWireType(tag), input,
           &collectors[expected_field_info_iter - fields_.begin()]));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Collects values for a single field.
@@ -1074,7 +1072,7 @@ class DecodeProtoOp : public OpKernel {
         return errors::DataLoss(
             "CollectField: Failed skipping malformed field");
       }
-      return Status::OK();
+      return OkStatus();
     }
     return collector->ReadValue(input, field);
   }
@@ -1101,7 +1099,8 @@ class DecodeProtoOp : public OpKernel {
   // security review.
   bool sanitize_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DecodeProtoOp);
+  DecodeProtoOp(const DecodeProtoOp&) = delete;
+  void operator=(const DecodeProtoOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DecodeProtoV2").Device(DEVICE_CPU),

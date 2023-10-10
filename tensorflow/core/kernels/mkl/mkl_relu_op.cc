@@ -14,27 +14,33 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/nn_ops.cc.
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
+// TODO(intel-tf): This file is no longer used and needs to be removed.
+// This file will be an empty compilation unit when building with oneDNN v3.x
+// (default behavior). It can be compiled only when building with oneDNN v2.x.
 
 #include <unordered_map>
 
-#include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "dnnl.hpp"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
-using mkldnn::algorithm;
-using mkldnn::eltwise_forward;
-using mkldnn::memory;
-using mkldnn::prop_kind;
-using mkldnn::stream;
+using dnnl::algorithm;
+using dnnl::eltwise_forward;
+using dnnl::memory;
+using dnnl::prop_kind;
+using dnnl::stream;
 
-using EltwiseFwdPd = mkldnn::eltwise_forward::primitive_desc;
-using EltwiseBwdPd = mkldnn::eltwise_backward::primitive_desc;
+using EltwiseFwdPd = dnnl::eltwise_forward::primitive_desc;
+using EltwiseBwdPd = dnnl::eltwise_backward::primitive_desc;
 
 namespace tensorflow {
 
@@ -74,7 +80,10 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
   //   dst_data:  output data buffer of dst
   void Execute(const T* src_data, T* dst_data,
                std::shared_ptr<stream> fwd_stream) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
+    mutex_lock lock(primitive_execution_mu_);
+#endif
+#ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *fwd_stream);
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data),
@@ -83,7 +92,7 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
     DCHECK_EQ(context_.fwd_primitives.size(),
               context_.fwd_primitives_args.size());
     execute_primitives(context_.fwd_primitives, fwd_stream,
@@ -99,25 +108,22 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
  private:
   // Primitive reuse context for eltwise Fwd ops: Relu, Elu, Tanh
   struct EltwiseFwdContext {
-    // MKLDNN memory
+    // oneDNN memory
     std::shared_ptr<memory> src_mem;
     std::shared_ptr<memory> dst_mem;
 
     // desc & primitive desc
-    std::shared_ptr<mkldnn::eltwise_forward::desc> fwd_desc;
+    std::shared_ptr<dnnl::eltwise_forward::desc> fwd_desc;
     std::shared_ptr<EltwiseFwdPd> fwd_pd;
 
     // memory desc
     std::shared_ptr<memory::desc> src_md;
     std::shared_ptr<memory::desc> dst_md;
 
-    // memory primitive desc
-    std::shared_ptr<memory::desc> src_mpd;
-
     // Eltwise primitive
-    std::shared_ptr<mkldnn::primitive> eltwise_fwd;
+    std::shared_ptr<dnnl::primitive> eltwise_fwd;
 
-    std::vector<mkldnn::primitive> fwd_primitives;
+    std::vector<dnnl::primitive> fwd_primitives;
 
     std::vector<std::unordered_map<int, memory>> fwd_primitives_args;
 
@@ -128,7 +134,6 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
           fwd_pd(nullptr),
           src_md(nullptr),
           dst_md(nullptr),
-          src_mpd(nullptr),
           eltwise_fwd(nullptr) {}
   };
 
@@ -136,7 +141,6 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
   void Setup(const MklEltwiseFwdParams<T>& fwdParams) {
     // create memory descriptors for eltwise data with specified format
     context_.src_md.reset(new memory::desc(fwdParams.src_md.data));
-    context_.src_mpd.reset(new memory::desc(*context_.src_md));
 
     // Create an eltwise forward descriptor and primitive descriptor
     context_.fwd_desc.reset(new eltwise_forward::desc(
@@ -153,12 +157,15 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
     // Create eltwise primitive and add it to net
     context_.eltwise_fwd.reset(new eltwise_forward(*context_.fwd_pd));
     context_.fwd_primitives_args.push_back(
-        {{MKLDNN_ARG_SRC, *context_.src_mem},
-         {MKLDNN_ARG_DST, *context_.dst_mem}});
+        {{DNNL_ARG_SRC, *context_.src_mem}, {DNNL_ARG_DST, *context_.dst_mem}});
     context_.fwd_primitives.push_back(*context_.eltwise_fwd);
   }
 
   struct EltwiseFwdContext context_;
+
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T>
@@ -255,7 +262,10 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
   //   diff_src_data:  output data buffer of diff_src
   void Execute(const T* src_data, const T* diff_dst_data, T* diff_src_data,
                std::shared_ptr<stream> bwd_stream) {
-#ifdef ENABLE_MKLDNN_THREADPOOL
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
+    mutex_lock lock(primitive_execution_mu_);
+#endif
+#ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *bwd_stream);
     context_.diff_dst_mem->set_data_handle(
@@ -268,7 +278,7 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
     context_.diff_dst_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(diff_dst_data)));
     context_.diff_src_mem->set_data_handle(static_cast<void*>(diff_src_data));
-#endif  // ENABLE_MKLDNN_THREADPOOL
+#endif  // !ENABLE_ONEDNN_OPENMP
     DCHECK_EQ(context_.bwd_primitives.size(),
               context_.bwd_primitives_args.size());
     execute_primitives(context_.bwd_primitives, bwd_stream,
@@ -285,34 +295,28 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
  private:
   // Primitive reuse context for eltwise Bwd ops: Relu, Elu, Tanh
   struct EltwiseBwdContext {
-    // MKLDNN memory
+    // oneDNN memory
     std::shared_ptr<memory> src_mem;
     std::shared_ptr<memory> diff_dst_mem;
     std::shared_ptr<memory> diff_src_mem;
 
     // Backward Eltwise descriptor.
-    std::shared_ptr<mkldnn::eltwise_backward::desc> bwd_desc;
+    std::shared_ptr<dnnl::eltwise_backward::desc> bwd_desc;
 
     // Memory descriptors.
     std::shared_ptr<memory::desc> src_md;
     std::shared_ptr<memory::desc> diff_dst_md;
     std::shared_ptr<memory::desc> common_md;
 
-    // Memory primitive descriptor.
-    // TODO(gzmkl): for MKL-DNN 1.0, src_mpd is same as src_md
-    //              So it should be removed once MKL-DNN 0.x is cleaned.
-    std::shared_ptr<memory::desc> src_mpd;
-    std::shared_ptr<memory::desc> diff_dst_mpd;
-
     // Forward and backward descriptors and primitive descriptors.
-    std::shared_ptr<mkldnn::eltwise_forward::desc> fwd_desc;
+    std::shared_ptr<dnnl::eltwise_forward::desc> fwd_desc;
     std::shared_ptr<EltwiseFwdPd> fwd_pd;
     std::shared_ptr<EltwiseBwdPd> bwd_pd;
 
     // Eltwise primitive.
-    std::shared_ptr<mkldnn::primitive> eltwise_bwd;
+    std::shared_ptr<dnnl::primitive> eltwise_bwd;
 
-    std::vector<mkldnn::primitive> bwd_primitives;
+    std::vector<dnnl::primitive> bwd_primitives;
 
     std::vector<MemoryArgsMap> bwd_primitives_args;
 
@@ -323,8 +327,6 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
           src_md(nullptr),
           diff_dst_md(nullptr),
           common_md(nullptr),
-          src_mpd(nullptr),
-          diff_dst_mpd(nullptr),
           fwd_desc(nullptr),
           fwd_pd(nullptr),
           bwd_pd(nullptr),
@@ -336,15 +338,13 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
     // Create memory descriptors for eltwise data w/ no specified format
     context_.src_md.reset(new memory::desc(bwdParams.common_md.data));
     context_.diff_dst_md.reset(new memory::desc(bwdParams.common_md.data));
-    context_.src_mpd.reset(new memory::desc(*context_.src_md));
-    context_.diff_dst_mpd.reset(new memory::desc(*context_.diff_dst_md));
 
     // Create forward eltwise primitive.
-    context_.fwd_desc.reset(new mkldnn::eltwise_forward::desc(
+    context_.fwd_desc.reset(new dnnl::eltwise_forward::desc(
         prop_kind::forward_training, bwdParams.alg_kind, *context_.src_md,
         bwdParams.alpha, bwdParams.beta));
     context_.fwd_pd.reset(new EltwiseFwdPd(*context_.fwd_desc, cpu_engine_));
-    context_.bwd_desc.reset(new mkldnn::eltwise_backward::desc(
+    context_.bwd_desc.reset(new dnnl::eltwise_backward::desc(
         bwdParams.alg_kind, *context_.diff_dst_md, *context_.src_md,
         bwdParams.alpha, bwdParams.beta));
     context_.bwd_pd.reset(
@@ -360,16 +360,20 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
     context_.diff_src_mem.reset(
         new memory(bwd_pd->diff_src_desc(), cpu_engine_, DummyData));
     // Create eltwise primitive and add it to net.
-    context_.eltwise_bwd.reset(new mkldnn::eltwise_backward(*context_.bwd_pd));
+    context_.eltwise_bwd.reset(new dnnl::eltwise_backward(*context_.bwd_pd));
     context_.bwd_primitives_args.push_back(
         {{bwdParams.forward_input_type, *context_.src_mem},
-         {MKLDNN_ARG_DIFF_DST, *context_.diff_dst_mem},
-         {MKLDNN_ARG_DIFF_SRC, *context_.diff_src_mem}});
+         {DNNL_ARG_DIFF_DST, *context_.diff_dst_mem},
+         {DNNL_ARG_DIFF_SRC, *context_.diff_src_mem}});
 
     context_.bwd_primitives.push_back(*context_.eltwise_bwd);
   }
 
   struct EltwiseBwdContext context_;
+
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T>
@@ -475,11 +479,18 @@ class MklReluOpBase : public OpKernel {
       // Try to get an eltwise forward primitive from caching pool
       MklEltwiseFwdParams<T> fwdParams(src_dims, src_md, alg_kind, alpha_,
                                        beta_);
+      // Create the oneDNN wrapper over Eigen threadpool and set max threads
+      // in oneDNN.
+      Eigen::ThreadPoolInterface* eigen_interface =
+          EigenThreadPoolFromTfContext(context);
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       MklEltwiseFwdPrimitive<T>* eltwise_fwd =
           MklEltwiseFwdPrimitiveFactory<T>::Get(fwdParams);
       auto eltwise_fwd_pd = eltwise_fwd->GetEltwiseFwdPd();
       std::shared_ptr<stream> fwd_cpu_stream;
-      fwd_cpu_stream.reset(CreateStream(context, eltwise_fwd->GetEngine()));
+
+      fwd_cpu_stream.reset(CreateStream(&eigen_tp, eltwise_fwd->GetEngine()));
       // Check if src needs to be reordered
       bool is_src_reordered = false;
       const T* src_data = src_tensor.flat<T>().data();
@@ -535,7 +546,7 @@ class MklReluOpBase : public OpKernel {
 
       // execute eltwise
       eltwise_fwd->Execute(src_data, dst_data, fwd_cpu_stream);
-    } catch (mkldnn::error& e) {
+    } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
@@ -580,7 +591,7 @@ class MklReluGradOpBase : public OpKernel {
   // What is the type of input tensor that grad op receives from forward op --
   // is it 'x' (SRC) or 'y' (DST). For Relu-family, it is 'x', so fwd op SRC.
 
-  virtual int GetTypeOfInputTensorFromFwdOp() const { return MKLDNN_ARG_SRC; }
+  virtual int GetTypeOfInputTensorFromFwdOp() const { return DNNL_ARG_SRC; }
 
   void Compute(OpKernelContext* context) {
     try {
@@ -663,7 +674,7 @@ class MklReluGradOpBase : public OpKernel {
         src_dims = dnn_shape_src.GetSizesAsMklDnnDims();
       }
 
-      // As per comment above, we tell MKLDNN that both the inputs are in same
+      // As per comment above, we tell oneDNN that both the inputs are in same
       // format. So we set common memory descriptor in MKL format, if any of the
       // inputs are in MKL format. Let's get memory descriptor that we will use
       // for both the inputs.
@@ -680,12 +691,17 @@ class MklReluGradOpBase : public OpKernel {
       MklEltwiseBwdParams<T> bwdParams(src_dims, common_md, alg_kind, alpha_,
                                        beta_, GetTypeOfInputTensorFromFwdOp());
 
+      Eigen::ThreadPoolInterface* eigen_interface =
+          EigenThreadPoolFromTfContext(context);
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       MklEltwiseBwdPrimitive<T>* eltwise_bwd =
           MklEltwiseBwdPrimitiveFactory<T>::Get(bwdParams);
 
       auto eltwise_bwd_pd = eltwise_bwd->GetEltwiseBwdPd();
       std::shared_ptr<stream> bwd_cpu_stream;
-      bwd_cpu_stream.reset(CreateStream(context, eltwise_bwd->GetEngine()));
+
+      bwd_cpu_stream.reset(CreateStream(&eigen_tp, eltwise_bwd->GetEngine()));
       // check whether need reorder for src / diff_dst
       const T* src_data = src_tensor.flat<T>().data();
       if (src_md != eltwise_bwd_pd->src_desc()) {
@@ -738,7 +754,7 @@ class MklReluGradOpBase : public OpKernel {
       // execute eltwise bwd
       eltwise_bwd->Execute(src_data, diff_dst_data, diff_src_data,
                            bwd_cpu_stream);
-    } catch (mkldnn::error& e) {
+    } catch (dnnl::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
@@ -759,13 +775,13 @@ class MklReluGradOpBase : public OpKernel {
 
 template <typename Device, typename T>
 class MklReluOp
-    : public MklReluOpBase<Device, T, mkldnn::algorithm::eltwise_relu> {
+    : public MklReluOpBase<Device, T, dnnl::algorithm::eltwise_relu> {
  public:
   ~MklReluOp() {}
 
   explicit MklReluOp(OpKernelConstruction* context)
-      : MklReluOpBase<Device, T, mkldnn::algorithm::eltwise_relu>(context, 0.0f,
-                                                                  0.0f) {}
+      : MklReluOpBase<Device, T, dnnl::algorithm::eltwise_relu>(context, 0.0f,
+                                                                0.0f) {}
 
   virtual void Compute_Scalar(OpKernelContext* context) {
     const size_t src_index = 0;  // index of src input tensor
@@ -790,12 +806,12 @@ class MklReluOp
 
 template <typename Device, typename T>
 class MklReluGradOp
-    : public MklReluGradOpBase<Device, T, mkldnn::algorithm::eltwise_relu> {
+    : public MklReluGradOpBase<Device, T, dnnl::algorithm::eltwise_relu> {
  public:
   ~MklReluGradOp() {}
 
   explicit MklReluGradOp(OpKernelConstruction* context)
-      : MklReluGradOpBase<Device, T, mkldnn::algorithm::eltwise_relu>(
+      : MklReluGradOpBase<Device, T, dnnl::algorithm::eltwise_relu>(
             context, 0.0f, 0.0f) {}
 
   virtual void Compute_Scalar(OpKernelContext* context) {
@@ -826,14 +842,13 @@ class MklReluGradOp
 };
 
 template <typename Device, typename T>
-class MklEluOp
-    : public MklReluOpBase<Device, T, mkldnn::algorithm::eltwise_elu> {
+class MklEluOp : public MklReluOpBase<Device, T, dnnl::algorithm::eltwise_elu> {
  public:
   ~MklEluOp() {}
 
   explicit MklEluOp(OpKernelConstruction* context)
-      : MklReluOpBase<Device, T, mkldnn::algorithm::eltwise_elu>(context, 0.0f,
-                                                                 0.0f) {}
+      : MklReluOpBase<Device, T, dnnl::algorithm::eltwise_elu>(context, 0.0f,
+                                                               0.0f) {}
 
   virtual void Compute_Scalar(OpKernelContext* context) {
     const size_t src_index = 0;  // index of src input tensor
@@ -862,12 +877,12 @@ class MklEluOp
 
 template <typename Device, typename T>
 class MklEluGradOp
-    : public MklReluGradOpBase<Device, T, mkldnn::algorithm::eltwise_elu> {
+    : public MklReluGradOpBase<Device, T, dnnl::algorithm::eltwise_elu> {
  public:
   ~MklEluGradOp() {}
 
   explicit MklEluGradOp(OpKernelConstruction* context)
-      : MklReluGradOpBase<Device, T, mkldnn::algorithm::eltwise_elu>(
+      : MklReluGradOpBase<Device, T, dnnl::algorithm::eltwise_elu>(
             context, 0.0f, 0.0f) {}
 
   virtual void Compute_Scalar(OpKernelContext* context) {
@@ -908,13 +923,13 @@ class MklEluGradOp
 
 template <typename Device, typename T>
 class MklTanhOp
-    : public MklReluOpBase<Device, T, mkldnn::algorithm::eltwise_tanh> {
+    : public MklReluOpBase<Device, T, dnnl::algorithm::eltwise_tanh> {
  public:
   ~MklTanhOp() {}
 
   explicit MklTanhOp(OpKernelConstruction* context)
-      : MklReluOpBase<Device, T, mkldnn::algorithm::eltwise_tanh>(context, 0.0f,
-                                                                  0.0f) {}
+      : MklReluOpBase<Device, T, dnnl::algorithm::eltwise_tanh>(context, 0.0f,
+                                                                0.0f) {}
 
   virtual void Compute_Scalar(OpKernelContext* context) {
     const size_t src_index = 0;  // index of src input tensor
@@ -942,14 +957,14 @@ class MklTanhOp
 
 template <typename Device, typename T>
 class MklTanhGradOp
-    : public MklReluGradOpBase<
-          Device, T, mkldnn::algorithm::eltwise_tanh_use_dst_for_bwd> {
+    : public MklReluGradOpBase<Device, T,
+                               dnnl::algorithm::eltwise_tanh_use_dst_for_bwd> {
  public:
   ~MklTanhGradOp() {}
 
   explicit MklTanhGradOp(OpKernelConstruction* context)
       : MklReluGradOpBase<Device, T,
-                          mkldnn::algorithm::eltwise_tanh_use_dst_for_bwd>(
+                          dnnl::algorithm::eltwise_tanh_use_dst_for_bwd>(
             context, 0.0f, 0.0f) {}
 
   virtual int GetDiffDstIndex() const { return 1; }
@@ -957,7 +972,7 @@ class MklTanhGradOp
   virtual int GetDiffSrcIndex() const { return 0; }
 
   // TanhGrad gets 'y' from Tanh, where 'y' is output of Tanh(x).
-  virtual int GetTypeOfInputTensorFromFwdOp() const { return MKLDNN_ARG_DST; }
+  virtual int GetTypeOfInputTensorFromFwdOp() const { return DNNL_ARG_DST; }
 
   virtual void Compute_Scalar(OpKernelContext* context) {
     // NOTE: Order of y and dy for Tanh is reverse of that for Relu/Elu/other
@@ -993,12 +1008,12 @@ class MklTanhGradOp
 #define RELU6_UPPER_BOUND 6.0f
 template <typename Device, typename T>
 class MklRelu6Op
-    : public MklReluOpBase<Device, T, mkldnn::algorithm::eltwise_bounded_relu> {
+    : public MklReluOpBase<Device, T, dnnl::algorithm::eltwise_bounded_relu> {
  public:
   ~MklRelu6Op() {}
 
   explicit MklRelu6Op(OpKernelConstruction* context)
-      : MklReluOpBase<Device, T, mkldnn::algorithm::eltwise_bounded_relu>(
+      : MklReluOpBase<Device, T, dnnl::algorithm::eltwise_bounded_relu>(
             context, RELU6_UPPER_BOUND, 0.0f) {}
 
   virtual void Compute_Scalar(OpKernelContext* context) {
@@ -1024,12 +1039,12 @@ class MklRelu6Op
 template <typename Device, typename T>
 class MklRelu6GradOp
     : public MklReluGradOpBase<Device, T,
-                               mkldnn::algorithm::eltwise_bounded_relu> {
+                               dnnl::algorithm::eltwise_bounded_relu> {
  public:
   ~MklRelu6GradOp() {}
 
   explicit MklRelu6GradOp(OpKernelConstruction* context)
-      : MklReluGradOpBase<Device, T, mkldnn::algorithm::eltwise_bounded_relu>(
+      : MklReluGradOpBase<Device, T, dnnl::algorithm::eltwise_bounded_relu>(
             context, RELU6_UPPER_BOUND, 0.0f) {}
 
   virtual void Compute_Scalar(OpKernelContext* context) {
@@ -1059,13 +1074,13 @@ class MklRelu6GradOp
 
 template <typename Device, typename T>
 class MklLeakyReluOp
-    : public MklReluOpBase<Device, T, mkldnn::algorithm::eltwise_relu> {
+    : public MklReluOpBase<Device, T, dnnl::algorithm::eltwise_relu> {
  public:
   ~MklLeakyReluOp() {}
 
   explicit MklLeakyReluOp(OpKernelConstruction* context)
-      : MklReluOpBase<Device, T, mkldnn::algorithm::eltwise_relu>(context, 0.0f,
-                                                                  0.0f) {
+      : MklReluOpBase<Device, T, dnnl::algorithm::eltwise_relu>(context, 0.0f,
+                                                                0.0f) {
     float alpha;
     OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha));
     OP_REQUIRES(
@@ -1098,12 +1113,12 @@ class MklLeakyReluOp
 
 template <typename Device, typename T>
 class MklLeakyReluGradOp
-    : public MklReluGradOpBase<Device, T, mkldnn::algorithm::eltwise_relu> {
+    : public MklReluGradOpBase<Device, T, dnnl::algorithm::eltwise_relu> {
  public:
   ~MklLeakyReluGradOp() {}
 
   explicit MklLeakyReluGradOp(OpKernelConstruction* context)
-      : MklReluGradOpBase<Device, T, mkldnn::algorithm::eltwise_relu>(
+      : MklReluGradOpBase<Device, T, dnnl::algorithm::eltwise_relu>(
             context, 0.0f, 0.0f) {
     float alpha;
     OP_REQUIRES_OK(context, context->GetAttr("alpha", &alpha));
@@ -1225,4 +1240,4 @@ TF_CALL_bfloat16(REGISTER_LeakyRelu_MKL_SUPPORTED_KERNELS_TYPES);
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

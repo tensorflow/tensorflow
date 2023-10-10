@@ -16,14 +16,9 @@
 
 OpLogProto is used to add extra model information for offline analysis.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import sys
 
-import six
 from tensorflow.core.profiler import tfprof_log_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -113,14 +108,15 @@ def _get_logged_ops(graph, run_meta=None, add_trace=True,
       add_entry = True
 
     if add_trace:
-      for tb in op.traceback:
-        trace = entry.code_def.traces.add()
-        trace.file_id = _str_id(tb[0], string_to_id) if tb[0] else 0
-        trace.lineno = tb[1] if tb[1] else -1
-        trace.function_id = _str_id(tb[2], string_to_id) if tb[2] else 0
-        trace.line_id = _str_id(tb[3], string_to_id) if tb[3] else 0
-        # TODO(slebedev): remove this unused field from the proto.
-        trace.func_start_line = -1
+      if op.traceback:
+        for filename, lineno, funcname, line in op.traceback:
+          trace = entry.code_def.traces.add()
+          trace.file_id = _str_id(filename, string_to_id) if filename else 0
+          trace.lineno = lineno if lineno else -1
+          trace.function_id = _str_id(funcname, string_to_id) if funcname else 0
+          trace.line_id = _str_id(line, string_to_id) if line else 0
+          # TODO(slebedev): remove this unused field from the proto.
+          trace.func_start_line = -1
       add_entry = True
 
     if add_entry:
@@ -173,7 +169,7 @@ def merge_default_with_oplog(graph, op_log=None, run_meta=None,
     all_ops = {}
     for entry in op_log.log_entries:
       all_ops[entry.name] = entry
-    for op_name, entry in six.iteritems(logged_ops):
+    for op_name, entry in logged_ops.items():
       if op_name in all_ops:
         all_ops[op_name].types.extend(entry.types)
         if entry.float_ops > 0 and all_ops[op_name].float_ops == 0:
@@ -184,7 +180,7 @@ def merge_default_with_oplog(graph, op_log=None, run_meta=None,
         all_ops[op_name] = entry
     tmp_op_log.log_entries.extend(all_ops.values())
 
-  for s, i in six.iteritems(string_to_id):
+  for s, i in string_to_id.items():
     tmp_op_log.id_to_string[i] = s
   return tmp_op_log
 

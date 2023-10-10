@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/meta_support.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -44,9 +45,9 @@ namespace {
 template <class T, class Toutput>
 void ScalarAddition(OpKernelContext* context, const T* full_input,
                     float full_input_min, float full_input_max,
-                    int64 num_elements, T scalar_input, float scalar_input_min,
-                    float scalar_input_max, float output_min, float output_max,
-                    Toutput* output) {
+                    int64_t num_elements, T scalar_input,
+                    float scalar_input_min, float scalar_input_max,
+                    float output_min, float output_max, Toutput* output) {
   const Toutput scalar_in_output_range = RequantizeInNewRange<T, Toutput>(
       scalar_input, scalar_input_min, scalar_input_max, output_min, output_max);
   for (int i = 0; i < num_elements; ++i) {
@@ -78,9 +79,9 @@ void ScalarAddition(OpKernelContext* context, const quint8* full_input,
   const int32 input_mult_int32 = input_1_int64 - input_0_int64;
 
   const int64 lowest_quantized =
-      static_cast<int64>(Eigen::NumTraits<qint32>::lowest());
+      static_cast<int64_t>(Eigen::NumTraits<qint32>::lowest());
   const int64 highest_quantized =
-      static_cast<int64>(Eigen::NumTraits<qint32>::highest());
+      static_cast<int64_t>(Eigen::NumTraits<qint32>::highest());
 
   const int64x2_t input_0_64x2 = vmovq_n_s64(input_0_int64);
   const int32x2_t input_mult_32x2 = vmov_n_s32(input_mult_int32);
@@ -100,7 +101,7 @@ void ScalarAddition(OpKernelContext* context, const quint8* full_input,
     vst1q_s32(output_ptr + 4, result_high_32x4);
   }
   for (; i < num_elements; ++i) {
-    const int64 full_input_value = static_cast<int64>(full_input[i]);
+    const int64 full_input_value = static_cast<int64_t>(full_input[i]);
     int64 full_input_in_output_range_64 =
         input_0_int64 + (full_input_value * input_mult_int32);
     full_input_in_output_range_64 =
@@ -118,36 +119,36 @@ void ScalarAddition(OpKernelContext* context, const quint8* full_input,
 template <>
 void ScalarAddition(OpKernelContext* context, const quint8* full_input,
                     float full_input_min, float full_input_max,
-                    int64 num_elements, quint8 scalar_input,
+                    int64_t num_elements, quint8 scalar_input,
                     float scalar_input_min, float scalar_input_max,
                     float output_min, float output_max, qint32* output) {
-  const int32 scalar_in_output_range = RequantizeInNewRange<quint8, qint32>(
+  const int32_t scalar_in_output_range = RequantizeInNewRange<quint8, qint32>(
       scalar_input, scalar_input_min, scalar_input_max, output_min, output_max);
 
   const float input_0_float =
       QuantizedToFloat<quint8>(0, full_input_min, full_input_max);
   const float input_1_float =
       QuantizedToFloat<quint8>(1, full_input_min, full_input_max);
-  const int64 input_0_int64 =
+  const int64_t input_0_int64 =
       FloatToQuantizedUnclamped<qint32>(input_0_float, output_min, output_max);
-  const int64 input_1_int64 =
+  const int64_t input_1_int64 =
       FloatToQuantizedUnclamped<qint32>(input_1_float, output_min, output_max);
-  const int32 input_mult_int32 = input_1_int64 - input_0_int64;
+  const int32_t input_mult_int32 = input_1_int64 - input_0_int64;
 
-  const int64 lowest_quantized =
-      static_cast<int64>(Eigen::NumTraits<qint32>::lowest());
-  const int64 highest_quantized =
-      static_cast<int64>(Eigen::NumTraits<qint32>::highest());
+  const int64_t lowest_quantized =
+      static_cast<int64_t>(Eigen::NumTraits<qint32>::lowest());
+  const int64_t highest_quantized =
+      static_cast<int64_t>(Eigen::NumTraits<qint32>::highest());
 
   for (int i = 0; i < num_elements; ++i) {
-    const int64 full_input_value = static_cast<int64>(full_input[i]);
-    int64 full_input_in_output_range_64 =
+    const int64_t full_input_value = static_cast<int64_t>(full_input[i]);
+    int64_t full_input_in_output_range_64 =
         input_0_int64 + (full_input_value * input_mult_int32);
     full_input_in_output_range_64 =
         std::max(full_input_in_output_range_64, lowest_quantized);
     full_input_in_output_range_64 =
         std::min(full_input_in_output_range_64, highest_quantized);
-    const int32 full_input_in_output_range =
+    const int32_t full_input_in_output_range =
         static_cast<int32>(full_input_in_output_range_64);
     output[i] = full_input_in_output_range + scalar_in_output_range;
   }
@@ -158,7 +159,7 @@ void ScalarAddition(OpKernelContext* context, const quint8* full_input,
 template <class T, class Toutput>
 void VectorAddition(OpKernelContext* context, const T* x_data, float min_x,
                     float max_x, const T* y_data, float min_y, float max_y,
-                    int64 num_elements, float output_min, float output_max,
+                    int64_t num_elements, float output_min, float output_max,
                     Toutput* output) {
   for (int i = 0; i < num_elements; ++i) {
     const Toutput x_in_output_range = RequantizeInNewRange<T, Toutput>(
@@ -193,9 +194,9 @@ void VectorAddition(OpKernelContext* context, const quint8* x_data, float min_x,
   const int32 y_mult_int32 = y_1_int64 - y_0_int64;
 
   const int64 lowest_quantized =
-      static_cast<int64>(Eigen::NumTraits<qint32>::lowest());
+      static_cast<int64_t>(Eigen::NumTraits<qint32>::lowest());
   const int64 highest_quantized =
-      static_cast<int64>(Eigen::NumTraits<qint32>::highest());
+      static_cast<int64_t>(Eigen::NumTraits<qint32>::highest());
 
   const int64x2_t x_0_64x2 = vmovq_n_s64(x_0_int64);
   const int32x2_t x_mult_32x2 = vmov_n_s32(x_mult_int32);
@@ -222,13 +223,13 @@ void VectorAddition(OpKernelContext* context, const quint8* x_data, float min_x,
   }
 
   for (; i < num_elements; ++i) {
-    const int64 x_value = static_cast<int64>(x_data[i]);
+    const int64 x_value = static_cast<int64_t>(x_data[i]);
     int64 x_in_output_range_64 = x_0_int64 + (x_value * x_mult_int32);
     x_in_output_range_64 = std::max(x_in_output_range_64, lowest_quantized);
     x_in_output_range_64 = std::min(x_in_output_range_64, highest_quantized);
     const int32 x_in_output_range = static_cast<int32>(x_in_output_range_64);
 
-    const int64 y_value = static_cast<int64>(y_data[i]);
+    const int64 y_value = static_cast<int64_t>(y_data[i]);
     int64 y_in_output_range_64 = y_0_int64 + (y_value * y_mult_int32);
     y_in_output_range_64 = std::max(y_in_output_range_64, lowest_quantized);
     y_in_output_range_64 = std::min(y_in_output_range_64, highest_quantized);
@@ -243,41 +244,41 @@ void VectorAddition(OpKernelContext* context, const quint8* x_data, float min_x,
 template <>
 void VectorAddition(OpKernelContext* context, const quint8* x_data, float min_x,
                     float max_x, const quint8* y_data, float min_y, float max_y,
-                    int64 num_elements, float output_min, float output_max,
+                    int64_t num_elements, float output_min, float output_max,
                     qint32* output) {
   const float x_0_float = QuantizedToFloat<quint8>(0, min_x, max_x);
   const float x_1_float = QuantizedToFloat<quint8>(1, min_x, max_x);
-  const int64 x_0_int64 =
+  const int64_t x_0_int64 =
       FloatToQuantizedUnclamped<qint32>(x_0_float, output_min, output_max);
-  const int64 x_1_int64 =
+  const int64_t x_1_int64 =
       FloatToQuantizedUnclamped<qint32>(x_1_float, output_min, output_max);
-  const int32 x_mult_int32 = x_1_int64 - x_0_int64;
+  const int32_t x_mult_int32 = x_1_int64 - x_0_int64;
 
   const float y_0_float = QuantizedToFloat<quint8>(0, min_y, max_y);
   const float y_1_float = QuantizedToFloat<quint8>(1, min_y, max_y);
-  const int64 y_0_int64 =
+  const int64_t y_0_int64 =
       FloatToQuantizedUnclamped<qint32>(y_0_float, output_min, output_max);
-  const int64 y_1_int64 =
+  const int64_t y_1_int64 =
       FloatToQuantizedUnclamped<qint32>(y_1_float, output_min, output_max);
-  const int32 y_mult_int32 = y_1_int64 - y_0_int64;
+  const int32_t y_mult_int32 = y_1_int64 - y_0_int64;
 
-  const int64 lowest_quantized =
-      static_cast<int64>(Eigen::NumTraits<qint32>::lowest());
-  const int64 highest_quantized =
-      static_cast<int64>(Eigen::NumTraits<qint32>::highest());
+  const int64_t lowest_quantized =
+      static_cast<int64_t>(Eigen::NumTraits<qint32>::lowest());
+  const int64_t highest_quantized =
+      static_cast<int64_t>(Eigen::NumTraits<qint32>::highest());
 
   for (int i = 0; i < num_elements; ++i) {
-    const int64 x_value = static_cast<int64>(x_data[i]);
-    int64 x_in_output_range_64 = x_0_int64 + (x_value * x_mult_int32);
+    const int64_t x_value = static_cast<int64_t>(x_data[i]);
+    int64_t x_in_output_range_64 = x_0_int64 + (x_value * x_mult_int32);
     x_in_output_range_64 = std::max(x_in_output_range_64, lowest_quantized);
     x_in_output_range_64 = std::min(x_in_output_range_64, highest_quantized);
-    const int32 x_in_output_range = static_cast<int32>(x_in_output_range_64);
+    const int32_t x_in_output_range = static_cast<int32>(x_in_output_range_64);
 
-    const int64 y_value = static_cast<int64>(y_data[i]);
-    int64 y_in_output_range_64 = y_0_int64 + (y_value * y_mult_int32);
+    const int64_t y_value = static_cast<int64_t>(y_data[i]);
+    int64_t y_in_output_range_64 = y_0_int64 + (y_value * y_mult_int32);
     y_in_output_range_64 = std::max(y_in_output_range_64, lowest_quantized);
     y_in_output_range_64 = std::min(y_in_output_range_64, highest_quantized);
-    const int32 y_in_output_range = static_cast<int32>(y_in_output_range_64);
+    const int32_t y_in_output_range = static_cast<int32>(y_in_output_range_64);
 
     output[i] = x_in_output_range + y_in_output_range;
   }
@@ -287,12 +288,12 @@ void VectorAddition(OpKernelContext* context, const quint8* x_data, float min_x,
 
 template <class T, class Toutput>
 void VectorTensorAddition(const T* vector_data, float min_vector,
-                          float max_vector, int64 vector_num_elements,
+                          float max_vector, int64_t vector_num_elements,
                           const T* tensor_data, float min_tensor,
-                          float max_tensor, int64 tensor_num_elements,
+                          float max_tensor, int64_t tensor_num_elements,
                           float output_min, float output_max, Toutput* output) {
   for (int i = 0; i < tensor_num_elements; ++i) {
-    const int64 vector_i = i % vector_num_elements;
+    const int64_t vector_i = i % vector_num_elements;
     const Toutput vector_in_output_range = RequantizeInNewRange<T, Toutput>(
         vector_data[vector_i], min_vector, max_vector, output_min, output_max);
     const Toutput tensor_in_output_range = RequantizeInNewRange<T, Toutput>(
@@ -330,9 +331,9 @@ void VectorTensorAddition(const quint8* vector_data, float min_vector,
   const int32 tensor_mult_int32 = tensor_1_int64 - tensor_0_int64;
 
   const int64 lowest_quantized =
-      static_cast<int64>(Eigen::NumTraits<qint32>::lowest());
+      static_cast<int64_t>(Eigen::NumTraits<qint32>::lowest());
   const int64 highest_quantized =
-      static_cast<int64>(Eigen::NumTraits<qint32>::highest());
+      static_cast<int64_t>(Eigen::NumTraits<qint32>::highest());
 
   const int64x2_t vector_0_64x2 = vmovq_n_s64(vector_0_int64);
   const int32x2_t vector_mult_32x2 = vmov_n_s32(vector_mult_int32);
@@ -361,7 +362,7 @@ void VectorTensorAddition(const quint8* vector_data, float min_vector,
       vst1q_s32(output_ptr + 4, result_high_32x4);
     }
     for (; vector_i < vector_num_elements; ++vector_i, ++i) {
-      const int64 vector_value = static_cast<int64>(vector_data[vector_i]);
+      const int64 vector_value = static_cast<int64_t>(vector_data[vector_i]);
       int64 vector_in_output_range_64 =
           vector_0_int64 + (vector_value * vector_mult_int32);
       vector_in_output_range_64 =
@@ -371,7 +372,7 @@ void VectorTensorAddition(const quint8* vector_data, float min_vector,
       const int32 vector_in_output_range =
           static_cast<int32>(vector_in_output_range_64);
 
-      const int64 tensor_value = static_cast<int64>(tensor_data[i]);
+      const int64 tensor_value = static_cast<int64_t>(tensor_data[i]);
       int64 tensor_in_output_range_64 =
           tensor_0_int64 + (tensor_value * tensor_mult_int32);
       tensor_in_output_range_64 =
@@ -390,55 +391,55 @@ void VectorTensorAddition(const quint8* vector_data, float min_vector,
 
 template <>
 void VectorTensorAddition(const quint8* vector_data, float min_vector,
-                          float max_vector, int64 vector_num_elements,
+                          float max_vector, int64_t vector_num_elements,
                           const quint8* tensor_data, float min_tensor,
-                          float max_tensor, int64 tensor_num_elements,
+                          float max_tensor, int64_t tensor_num_elements,
                           float output_min, float output_max, qint32* output) {
   const float vector_0_float =
       QuantizedToFloat<quint8>(0, min_vector, max_vector);
   const float vector_1_float =
       QuantizedToFloat<quint8>(1, min_vector, max_vector);
-  const int64 vector_0_int64 =
+  const int64_t vector_0_int64 =
       FloatToQuantizedUnclamped<qint32>(vector_0_float, output_min, output_max);
-  const int64 vector_1_int64 =
+  const int64_t vector_1_int64 =
       FloatToQuantizedUnclamped<qint32>(vector_1_float, output_min, output_max);
-  const int32 vector_mult_int32 = vector_1_int64 - vector_0_int64;
+  const int32_t vector_mult_int32 = vector_1_int64 - vector_0_int64;
 
   const float tensor_0_float =
       QuantizedToFloat<quint8>(0, min_tensor, max_tensor);
   const float tensor_1_float =
       QuantizedToFloat<quint8>(1, min_tensor, max_tensor);
-  const int64 tensor_0_int64 =
+  const int64_t tensor_0_int64 =
       FloatToQuantizedUnclamped<qint32>(tensor_0_float, output_min, output_max);
-  const int64 tensor_1_int64 =
+  const int64_t tensor_1_int64 =
       FloatToQuantizedUnclamped<qint32>(tensor_1_float, output_min, output_max);
-  const int32 tensor_mult_int32 = tensor_1_int64 - tensor_0_int64;
+  const int32_t tensor_mult_int32 = tensor_1_int64 - tensor_0_int64;
 
-  const int64 lowest_quantized =
-      static_cast<int64>(Eigen::NumTraits<qint32>::lowest());
-  const int64 highest_quantized =
-      static_cast<int64>(Eigen::NumTraits<qint32>::highest());
+  const int64_t lowest_quantized =
+      static_cast<int64_t>(Eigen::NumTraits<qint32>::lowest());
+  const int64_t highest_quantized =
+      static_cast<int64_t>(Eigen::NumTraits<qint32>::highest());
 
   for (int i = 0; i < tensor_num_elements; ++i) {
-    const int64 vector_i = i % vector_num_elements;
-    const int64 vector_value = static_cast<int64>(vector_data[vector_i]);
-    int64 vector_in_output_range_64 =
+    const int64_t vector_i = i % vector_num_elements;
+    const int64_t vector_value = static_cast<int64_t>(vector_data[vector_i]);
+    int64_t vector_in_output_range_64 =
         vector_0_int64 + (vector_value * vector_mult_int32);
     vector_in_output_range_64 =
         std::max(vector_in_output_range_64, lowest_quantized);
     vector_in_output_range_64 =
         std::min(vector_in_output_range_64, highest_quantized);
-    const int32 vector_in_output_range =
+    const int32_t vector_in_output_range =
         static_cast<int32>(vector_in_output_range_64);
 
-    const int64 tensor_value = static_cast<int64>(tensor_data[i]);
-    int64 tensor_in_output_range_64 =
+    const int64_t tensor_value = static_cast<int64_t>(tensor_data[i]);
+    int64_t tensor_in_output_range_64 =
         tensor_0_int64 + (tensor_value * tensor_mult_int32);
     tensor_in_output_range_64 =
         std::max(tensor_in_output_range_64, lowest_quantized);
     tensor_in_output_range_64 =
         std::min(tensor_in_output_range_64, highest_quantized);
-    const int32 tensor_in_output_range =
+    const int32_t tensor_in_output_range =
         static_cast<int32>(tensor_in_output_range_64);
 
     output[i] = vector_in_output_range + tensor_in_output_range;
@@ -457,10 +458,28 @@ class QuantizedAddOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& x = context->input(0);
     const Tensor& y = context->input(1);
-    const float min_x = context->input(2).flat<float>()(0);
-    const float max_x = context->input(3).flat<float>()(0);
-    const float min_y = context->input(4).flat<float>()(0);
-    const float max_y = context->input(5).flat<float>()(0);
+    const Tensor& min_x_tensor = context->input(2);
+    const Tensor& max_x_tensor = context->input(3);
+    const Tensor& min_y_tensor = context->input(4);
+    const Tensor& max_y_tensor = context->input(5);
+
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_x_tensor.shape()),
+                errors::InvalidArgument("`min_x` must be rank 0 but is rank ",
+                                        min_x_tensor.dims()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_x_tensor.shape()),
+                errors::InvalidArgument("`max_x` must be rank 0 but is rank ",
+                                        max_x_tensor.dims()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_y_tensor.shape()),
+                errors::InvalidArgument("`min_y` must be rank 0 but is rank ",
+                                        min_y_tensor.dims()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_y_tensor.shape()),
+                errors::InvalidArgument("`max_y` must be rank 0 but is rank ",
+                                        max_y_tensor.dims()));
+
+    const float min_x = min_x_tensor.scalar<float>()();
+    const float max_x = max_x_tensor.scalar<float>()();
+    const float min_y = min_y_tensor.scalar<float>()();
+    const float max_y = max_y_tensor.scalar<float>()();
 
     BCast bcast(BCast::FromShape(x.shape()), BCast::FromShape(y.shape()));
     if (!bcast.IsValid()) {
@@ -512,11 +531,11 @@ class QuantizedAddOp : public OpKernel {
       }
     } else if (ndims == 2) {
       const T* vector_data;
-      int64 vector_num_elements;
+      int64_t vector_num_elements;
       float vector_min;
       float vector_max;
       const T* tensor_data;
-      int64 tensor_num_elements;
+      int64_t tensor_num_elements;
       float tensor_min;
       float tensor_max;
       if (x.NumElements() < y.NumElements()) {
@@ -538,6 +557,8 @@ class QuantizedAddOp : public OpKernel {
         tensor_min = min_x;
         tensor_max = max_x;
       }
+      OP_REQUIRES(context, vector_num_elements > 0,
+                  errors::InvalidArgument("Must have some elements to add"));
       VectorTensorAddition<T, Toutput>(
           vector_data, vector_min, vector_max, vector_num_elements, tensor_data,
           tensor_min, tensor_max, tensor_num_elements, min_z_value, max_z_value,

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/c/ops.h"
 #include "tensorflow/c/tf_status.h"
-#include "tensorflow/core/framework/selective_registration.h"
+#include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -46,7 +46,7 @@ void Register_ScalarSummaryOp() {
 }
 
 TF_ATTRIBUTE_UNUSED static bool SummaryScalarOpRegistered = []() {
-  if (SHOULD_REGISTER_OP("ScalarSummary")) {
+  if (&TF_NewStatus != nullptr && SHOULD_REGISTER_OP("ScalarSummary")) {
     Register_ScalarSummaryOp();
   }
   return true;

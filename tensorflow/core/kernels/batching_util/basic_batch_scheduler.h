@@ -194,8 +194,7 @@ class BasicBatchScheduler : public BatchScheduler<TaskType> {
     //
     // The goal is to smooth out batch sizes under low request rates, and thus
     // avoid latency spikes.
-    int64 batch_timeout_micros = 0;
-
+    int64_t batch_timeout_micros = 0;
 
     // The maximum allowable number of enqueued (accepted by Schedule() but
     // not yet being processed on a batch thread) tasks in terms of batches.
@@ -224,6 +223,13 @@ class BasicBatchScheduler : public BatchScheduler<TaskType> {
     // concurrent processing, and then return concatenated results corresponding
     // to 128.
     bool enable_large_batch_splitting = false;
+
+    // If true, inputs split happens lazily after dequeue and not on the
+    // critical path of enqueue.
+    //
+    // Must be false if `enable_large_batch_splitting` is false; elsewise errors
+    // are returned at queue creation time.
+    bool enable_lazy_split = false;
 
     // `split_input_task_func` specifies how to split `input_task` into
     // `output_tasks`.
@@ -287,7 +293,8 @@ class BasicBatchScheduler : public BatchScheduler<TaskType> {
   // single queue.
   std::unique_ptr<BatchScheduler<TaskType>> shared_scheduler_queue_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BasicBatchScheduler);
+  BasicBatchScheduler(const BasicBatchScheduler&) = delete;
+  void operator=(const BasicBatchScheduler&) = delete;
 };
 
 //////////
@@ -325,6 +332,7 @@ Status BasicBatchScheduler<TaskType>::Create(
       options.enable_large_batch_splitting;
   shared_scheduler_queue_options.split_input_task_func =
       options.split_input_task_func;
+  shared_scheduler_queue_options.enable_lazy_split = options.enable_lazy_split;
   shared_scheduler_queue_options.max_execution_batch_size =
       options.max_execution_batch_size;
   std::unique_ptr<BatchScheduler<TaskType>> shared_scheduler_queue;
@@ -334,7 +342,7 @@ Status BasicBatchScheduler<TaskType>::Create(
 
   scheduler->reset(
       new BasicBatchScheduler<TaskType>(std::move(shared_scheduler_queue)));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename TaskType>

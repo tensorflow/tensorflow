@@ -12,9 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
+
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
+
+// Stub NNAPI implementation for platforms that don't support NNAPI.
 
 const NnApi* NnApiImplementation() {
   static const NnApi nnapi = {};
   return &nnapi;
+}
+
+std::unique_ptr<const NnApi> CreateNnApiFromSupportLibrary(
+    const NnApiSLDriverImplFL5* /*nnapi_support_library_driver*/) {
+  std::unique_ptr<NnApi> nnapi(new NnApi);
+  *nnapi = *NnApiImplementation();
+  return nnapi;
 }

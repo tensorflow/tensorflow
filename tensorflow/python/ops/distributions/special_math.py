@@ -70,10 +70,6 @@
 
 """Special Math Ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -364,7 +360,7 @@ def log_ndtr(x, series_order=3, name="log_ndtr"):
     #   the branch is chosen.
     return array_ops.where_v2(
         math_ops.greater(x, upper_segment),
-        -_ndtr(-x),  # log(1-x) ~= -x, x << 1
+        -_ndtr(-x),  # log(1-x) ~= -x, x << 1  # pylint: disable=invalid-unary-operand-type
         array_ops.where_v2(
             math_ops.greater(x, lower_segment),
             math_ops.log(_ndtr(math_ops.maximum(x, lower_segment))),

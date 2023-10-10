@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/filter_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -36,7 +36,7 @@ class FilterDatasetParams : public DatasetParams {
         pred_func_(std::move(pred_func)),
         func_lib_(std::move(func_lib)),
         type_arguments_(std::move(type_arguments)) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
                                    input_dataset_params.iterator_prefix());
@@ -56,15 +56,16 @@ class FilterDatasetParams : public DatasetParams {
           absl::StrCat(FilterDatasetOp::kOtherArguments, "_", i));
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {{FilterDatasetOp::kPredicate, pred_func_},
-                    {FilterDatasetOp::kTarguments, type_arguments_},
-                    {FilterDatasetOp::kOutputShapes, output_shapes_},
-                    {FilterDatasetOp::kOutputTypes, output_dtypes_}};
-    return Status::OK();
+    *attr_vector = {{"predicate", pred_func_},
+                    {"Targuments", type_arguments_},
+                    {"output_shapes", output_shapes_},
+                    {"output_types", output_dtypes_},
+                    {"metadata", ""}};
+    return OkStatus();
   }
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }
@@ -84,7 +85,7 @@ class FilterDatasetOpTest : public DatasetOpsTestBase {};
 FilterDatasetParams FilterDatasetParams1() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/
-      {CreateTensor<int64>(TensorShape{9, 1}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+      {CreateTensor<int64_t>(TensorShape{9, 1}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice_dataset");
   return FilterDatasetParams(
       std::move(tensor_slice_dataset_params),
@@ -101,7 +102,7 @@ FilterDatasetParams FilterDatasetParams1() {
 FilterDatasetParams FilterDatasetParams2() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/
-      {CreateTensor<int64>(TensorShape{0}, {})},
+      {CreateTensor<int64_t>(TensorShape{0}, {})},
       /*node_name=*/"tensor_slice_dataset");
   return FilterDatasetParams(
       std::move(tensor_slice_dataset_params),
@@ -118,7 +119,7 @@ FilterDatasetParams FilterDatasetParams2() {
 FilterDatasetParams InvalidPredFuncFilterDatasetParams1() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/
-      {CreateTensor<int64>(TensorShape{3, 3}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+      {CreateTensor<int64_t>(TensorShape{3, 3}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice_dataset");
   return FilterDatasetParams(
       std::move(tensor_slice_dataset_params),
@@ -137,7 +138,8 @@ FilterDatasetParams InvalidPredFuncFilterDatasetParams1() {
 FilterDatasetParams InvalidPredFuncFilterDatasetParams2() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/
-      {CreateTensor<int64>(TensorShape{3, 3, 1}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+      {CreateTensor<int64_t>(TensorShape{3, 3, 1},
+                             {0, 0, 0, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice_dataset");
   return FilterDatasetParams(
       std::move(tensor_slice_dataset_params),
@@ -155,7 +157,7 @@ FilterDatasetParams InvalidPredFuncFilterDatasetParams2() {
 FilterDatasetParams InvalidPredFuncFilterDatasetParams3() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/
-      {CreateTensor<int64>(TensorShape{9}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+      {CreateTensor<int64_t>(TensorShape{9}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice_dataset");
   return FilterDatasetParams(
       std::move(tensor_slice_dataset_params),
@@ -172,7 +174,7 @@ FilterDatasetParams InvalidPredFuncFilterDatasetParams3() {
 std::vector<GetNextTestCase<FilterDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/FilterDatasetParams1(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({1}), {{0}, {0}, {0}})},
+           CreateTensors<int64_t>(TensorShape({1}), {{0}, {0}, {0}})},
           {/*dataset_params=*/FilterDatasetParams2(),
            /*expected_outputs=*/{}}};
 }
@@ -249,7 +251,7 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/FilterDatasetParams1(),
            /*breakpoints=*/{0, 2, 6},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({1}), {{0}, {0}, {0}})},
+           CreateTensors<int64_t>(TensorShape({1}), {{0}, {0}, {0}})},
           {/*dataset_params=*/FilterDatasetParams2(),
            /*breakpoints=*/{0, 2, 6},
            /*expected_outputs=*/{}}};
@@ -270,7 +272,7 @@ TEST_P(ParameterizedInvalidPredicateFuncTest, InvalidPredicateFunc) {
   EXPECT_EQ(
       iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence)
           .code(),
-      tensorflow::error::INVALID_ARGUMENT);
+      absl::StatusCode::kInvalidArgument);
   EXPECT_TRUE(out_tensors.empty());
 }
 

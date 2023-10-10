@@ -76,12 +76,14 @@ StatusOr<mlir::Attribute> ConvertNonFuncAttributeValue(const AttrValue& value,
         return tensorflow::errors::Unimplemented(
             absl::StrCat("Attribute ", value.DebugString()));
       }
-      return builder->getArrayAttr(
-          llvm::makeArrayRef(attrs.begin(), attrs.end()));
+      return builder->getArrayAttr(llvm::ArrayRef(attrs.begin(), attrs.end()));
     }
     case AttrValue::VALUE_NOT_SET:
       return builder->getUnitAttr();
     // kPlaceholder is not implemented.
+    case AttrValue::kPlaceholder:
+      return mlir::TF::PlaceholderAttr::get(builder->getContext(),
+                                            value.placeholder());
     default:
       return tensorflow::errors::Unimplemented(
           absl::StrCat("Attribute ", value.DebugString()));

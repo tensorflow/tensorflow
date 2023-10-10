@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_DUMP_MLIR_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_DUMP_MLIR_UTIL_H_
 
+#include <memory>
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -25,12 +27,16 @@ limitations under the License.
 
 namespace tensorflow {
 
+inline constexpr absl::string_view kCrashReproducerStdErr = "-";
+inline constexpr absl::string_view kCrashReproducerCrashAnalysis =
+    "crash_analysis";
+
 // Creates a file to use for dumping and returns success if a file could be
 // created. The opened file is placed in 'os' and the path of the file used is
 // placed in 'filepath'.
 //
-// If the TF_DUMP_GRAPH_PREFIX environment variable is "-", then the LOG(INFO)
-// macro is used instead.
+// If the TF_DUMP_GRAPH_PREFIX environment variable is kCrashReproducerStdErr,
+// then the LOG(INFO) macro is used instead.
 //
 // This will create a file name via prefixing `name` with the value of the
 // TF_DUMP_GRAPH_PREFIX environment variable if `dirname` is empty and
@@ -42,14 +48,16 @@ Status CreateFileForDumping(llvm::StringRef name,
 
 // Dumps MLIR operation to a file and returns the file name used.
 //
-// If the TF_DUMP_GRAPH_PREFIX environment variable is "-", then the MLIR
-// operation will be logged (using the LOG(INFO) macro) instead.
+// If the TF_DUMP_GRAPH_PREFIX environment variable is kCrashReproducerStdErr,
+// then the MLIR operation will be logged (using the LOG(INFO) macro) instead.
 //
 // This will create a file name via prefixing `name` with the value of the
 // TF_DUMP_GRAPH_PREFIX environment variable if `dirname` is empty and
 // suffixing `name` with ".mlir".
+// If `pass_manager` is provided, prints a header with the pass pipeline.
 std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
-                             llvm::StringRef dirname = "");
+                             llvm::StringRef dirname = "",
+                             const mlir::PassManager* pass_manager = nullptr);
 
 // Reads the directory to dump the MLIR module from environment variables.
 // Default is reading from TF_DUMP_GRAPH_PREFIX, and if the string is 'sponge'
@@ -66,10 +74,18 @@ std::string DumpRawStringToFile(llvm::StringRef name, llvm::StringRef content,
                                 llvm::StringRef dirname = "");
 
 // Enable the crash reproducer on the provided PassManager to the provided
-// directory path. If the provided path is empty, it is retrieved from the
-// environment variable `MLIR_CRASH_REPRODUCER_DIRECTORY`. If the provided path
-// is the string "sponge", the file will be included in the sponge "Output
-// Files" by looking up the environment to infer the directory path.
+// directory path.
+// If the provided path is empty, it is retrieved from the
+// environment variable `MLIR_CRASH_REPRODUCER_DIRECTORY`.
+// If the provided path is the string "sponge", the file will be included
+// in the sponge "Output Files" by looking up the environment to infer
+// the directory path.
+// If the provided path is the string kCrashReproducerStdErr, the data is
+// dumped into the stderr.
+// If the provided path is the string kCrashReproducerCrashAnalysis, the data
+// is dumped to the crash analysis system. Note, environment var
+// `MLIR_CRASH_REPRODUCER_DIRECTORY` can be used to override
+// kCrashReproducerCrashAnalysis settings.
 void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path = "");
 
 // This applies both the PassManagerCLOptions provided by MLIR along with any
@@ -81,6 +97,9 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path = "");
 void applyTensorflowAndCLOptions(mlir::PassManager& pm,
                                  llvm::StringRef dir_path = "");
 
+// Prints the pass pipeline of `pass_manager` to `os`.
+void PrintPassPipeline(const mlir::PassManager& pass_manager,
+                       mlir::Operation* op, llvm::raw_ostream& os);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_DUMP_MLIR_UTIL_H_

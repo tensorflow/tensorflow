@@ -1,8 +1,9 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -107,6 +108,16 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "compiled_node_test",
+    srcs = ["compiled_node_test.cc"],
+    deps = [
+        ":compiled_node",
+        "//tensorflow/lite/delegates/gpu/gl:variable",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "fuse_inplace",
     srcs = ["fuse_inplace.cc"],
@@ -180,6 +191,7 @@ cc_test(
     tags = [
         "local",
         "no_mac",  # TODO(b/171881489)
+        "no_oss",  # TODO(b/171881489)
     ],
     deps = [
         ":compiled_node",

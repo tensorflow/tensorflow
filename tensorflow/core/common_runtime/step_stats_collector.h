@@ -18,7 +18,10 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 #include <vector>
+
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tracking_allocator.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -27,7 +30,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class Allocator;
 class AllocatorMemoryUsed;
 class CostModelManager;
 class Graph;
@@ -37,7 +39,6 @@ class OpKernelContext;
 class StepStats;
 class StepStatsCollector;
 class Tensor;
-class TrackingAllocator;
 
 // Statistics collection interface for individual node execution.
 //
@@ -82,7 +83,7 @@ class NodeExecStatsInterface {
 
   // Records the absolute time in nanoseconds at which this node became
   // runnable (i.e. was scheduled for execution).
-  virtual void SetScheduled(int64 nanos) = 0;
+  virtual void SetScheduled(int64_t nanos) = 0;
 };
 
 // Wraps NodeExecStats and adds allocation to it.
@@ -108,7 +109,7 @@ class NodeExecStatsWrapper : public NodeExecStatsInterface {
   bool TrackAllocations() const override { return true; }
   void SetMemory(OpKernelContext* ctx) override;
   void SetOutput(int slot, const Tensor* tensor) override;
-  void SetScheduled(int64 nanos) override;
+  void SetScheduled(int64_t nanos) override;
 
  private:
   friend class StepStatsCollector;
@@ -147,7 +148,7 @@ class StepStatsCollectorInterface {
   // `err` message needs to contain device name and allocator name, e.g.:
   // "ResourceExhaustedError: OOM when allocating tensor ...
   // on /job:localhost/replica:0/task:0/device:GPU:0 by allocator GPU_0_bfc"
-  virtual string ReportAllocsOnResourceExhausted(const string& err) = 0;
+  virtual string ReportAllocsOnResourceExhausted(absl::string_view err) = 0;
 };
 
 // StepStatsCollector manages the collection of a StepStats object.
@@ -175,7 +176,7 @@ class StepStatsCollector : public StepStatsCollectorInterface {
                       const string& thread_name);
 
   NodeExecStatsInterface* CreateNodeExecStats(const NodeDef* node) override;
-  string ReportAllocsOnResourceExhausted(const string& err) override;
+  string ReportAllocsOnResourceExhausted(absl::string_view err) override;
 
   // The following 2 Finalize methods populate the StepStats passed
   // from the constructor. Calling it more than once won't have any effect.

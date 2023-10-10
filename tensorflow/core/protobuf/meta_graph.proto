@@ -5,6 +5,7 @@ package tensorflow;
 import "google/protobuf/any.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/op_def.proto";
+import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 import "tensorflow/core/protobuf/saved_object_graph.proto";
@@ -17,9 +18,6 @@ option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
-// NOTE: This protocol buffer is evolving, and will go through revisions in the
-// coming months.
-//
 // Protocol buffer containing the following which are necessary to restart
 // training, run inference. It can be used to serialize/de-serialize memory
 // objects necessary for running computation in a graph when crossing the
@@ -261,7 +259,7 @@ message TensorInfo {
 // graph.
 //
 // For example, a model with two loss computations, sharing a single input,
-// might have the following signature_def map.
+// might have the following signature_def map, in a MetaGraphDef message.
 //
 // Note that across the two SignatureDefs "loss_A" and "loss_B", the input key,
 // output key, and method_name are identical, and will be used by system(s) that
@@ -287,9 +285,9 @@ message TensorInfo {
 //         tensor_shape: ...
 //       }
 //     }
+//     method_name: "some/package/compute_loss"
 //   }
 //   ...
-//   method_name: "some/package/compute_loss"
 // }
 // signature_def {
 //   key: "loss_B"
@@ -310,9 +308,9 @@ message TensorInfo {
 //         tensor_shape: ...
 //       }
 //     }
+//     method_name: "some/package/compute_loss"
 //   }
 //   ...
-//   method_name: "some/package/compute_loss"
 // }
 message SignatureDef {
   // Named input parameters.
@@ -328,6 +326,8 @@ message SignatureDef {
   // method_name. This is commonly used to support multi-headed computation,
   // where a single graph computation may return multiple results.
   string method_name = 3;
+  // Named input to corresponding default values if any.
+  map<string, TensorProto> defaults = 4;
 }
 
 // An asset file def for a single file or a set of sharded files with the same

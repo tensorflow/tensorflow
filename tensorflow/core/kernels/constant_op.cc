@@ -24,7 +24,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/constant_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -38,7 +38,8 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/macros.h"
-
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 
 namespace tensorflow {
 
@@ -50,7 +51,7 @@ NodeDef StripTensorDataFromNodeDef(OpKernelConstruction* ctx) {
     DCHECK_EQ(reinterpret_cast<const protobuf::Message*>(&original)
                   ->GetDescriptor()
                   ->field_count(),
-              6)
+              7)
         << "The NodeDef format has changed, and the attr-stripping code may "
            "need to be updated.";
   }
@@ -64,6 +65,9 @@ NodeDef StripTensorDataFromNodeDef(OpKernelConstruction* ctx) {
   // is safe to drop other attrs from the NodeDef.
   AddNodeAttr("dtype", ctx->output_type(0), &ret);
   MergeDebugInfo(original, &ret);
+  if (original.has_experimental_type()) {
+    *ret.mutable_experimental_type() = original.experimental_type();
+  }
   return ret;
 }
 
@@ -73,7 +77,7 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
     : OpKernel(ctx, StripTensorDataFromNodeDef(ctx), false),
       tensor_(ctx->output_type(0)) {
   const TensorProto* proto = nullptr;
-  ScopedMemoryDebugAnnotation op_annotation(name_view().data());
+  profiler::ScopedMemoryDebugAnnotation op_annotation(name_view().data());
   OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
   OP_REQUIRES_OK(ctx, ctx->device()->MakeTensorFromProto(
                           *proto, AllocatorAttributes(), &tensor_));
@@ -115,7 +119,7 @@ REGISTER_KERNEL(GPU, qint16);
 REGISTER_KERNEL(GPU, quint16);
 REGISTER_KERNEL(GPU, uint32);
 REGISTER_KERNEL(GPU, qint32);
-REGISTER_KERNEL(GPU, int64);
+REGISTER_KERNEL(GPU, int64_t);
 REGISTER_KERNEL(GPU, uint64);
 REGISTER_KERNEL(GPU, complex64);
 REGISTER_KERNEL(GPU, complex128);
@@ -124,6 +128,17 @@ REGISTER_KERNEL(GPU, Variant);
 #undef REGISTER_KERNEL
 #endif
 
+#define REGISTER_DEFAULT_KERNEL(TYPE)                                     \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("Const").Device(DEVICE_DEFAULT).TypeConstraint<TYPE>("dtype"), \
+      ConstantOp);
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_KERNEL);
+TF_CALL_QUANTIZED_TYPES(REGISTER_DEFAULT_KERNEL);
+TF_CALL_qint16(REGISTER_DEFAULT_KERNEL);
+TF_CALL_quint16(REGISTER_DEFAULT_KERNEL);
+TF_CALL_bool(REGISTER_DEFAULT_KERNEL);
+TF_CALL_variant(REGISTER_DEFAULT_KERNEL);
+#undef REGISTER_DEFAULT_KERNEL
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
@@ -165,18 +180,18 @@ class FillOp : public OpKernel {
   }
 };
 
-#define REGISTER_KERNEL(D, TYPE)                                   \
-  REGISTER_KERNEL_BUILDER(Name("Fill")                             \
-                              .Device(DEVICE_##D)                  \
-                              .TypeConstraint<TYPE>("T")           \
-                              .TypeConstraint<int32>("index_type") \
-                              .HostMemory("dims"),                 \
-                          FillOp<D##Device, TYPE, int32>);         \
-  REGISTER_KERNEL_BUILDER(Name("Fill")                             \
-                              .Device(DEVICE_##D)                  \
-                              .TypeConstraint<TYPE>("T")           \
-                              .TypeConstraint<int64>("index_type") \
-                              .HostMemory("dims"),                 \
+#define REGISTER_KERNEL(D, TYPE)                                     \
+  REGISTER_KERNEL_BUILDER(Name("Fill")                               \
+                              .Device(DEVICE_##D)                    \
+                              .TypeConstraint<TYPE>("T")             \
+                              .TypeConstraint<int32>("index_type")   \
+                              .HostMemory("dims"),                   \
+                          FillOp<D##Device, TYPE, int32>);           \
+  REGISTER_KERNEL_BUILDER(Name("Fill")                               \
+                              .Device(DEVICE_##D)                    \
+                              .TypeConstraint<TYPE>("T")             \
+                              .TypeConstraint<int64_t>("index_type") \
+                              .HostMemory("dims"),                   \
                           FillOp<D##Device, TYPE, int64>);
 
 #define REGISTER_CPU_KERNEL(TYPE) REGISTER_KERNEL(CPU, TYPE)
@@ -187,8 +202,10 @@ REGISTER_KERNEL(CPU, quint8);
 REGISTER_KERNEL(CPU, quint16);
 REGISTER_KERNEL(CPU, qint8);
 REGISTER_KERNEL(CPU, qint16);
+REGISTER_KERNEL(CPU, qint32);
+REGISTER_KERNEL(CPU, int4);
+REGISTER_KERNEL(CPU, uint4);
 #undef REGISTER_CPU_KERNEL
-
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
@@ -202,22 +219,24 @@ REGISTER_KERNEL(GPU, uint8);
 REGISTER_KERNEL(GPU, int8);
 REGISTER_KERNEL(GPU, uint16);
 REGISTER_KERNEL(GPU, int16);
-REGISTER_KERNEL(GPU, int64);
+REGISTER_KERNEL(GPU, int64_t);
 REGISTER_KERNEL(GPU, bool);
+REGISTER_KERNEL(GPU, int4);
+REGISTER_KERNEL(GPU, uint4);
 // Currently we do not support filling strings on GPU
+#endif
 
-// A special GPU kernel for int32.
+// A special DEVICE_DEFAULT kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Fill")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int32>("index_type")
                             .HostMemory("dims")
                             .HostMemory("value")
                             .HostMemory("output"),
                         FillOp<CPUDevice, int32, int32>);
-#endif
 
 #undef REGISTER_KERNEL
 
@@ -263,26 +282,28 @@ TF_CALL_POD_STRING_TYPES(REGISTER_CPU);
 REGISTER_CPU(Variant);
 #undef REGISTER_CPU
 
-
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER_KERNEL(bool, GPU);
 REGISTER_KERNEL(Eigen::half, GPU);
-REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL(float, GPU);
 REGISTER_KERNEL(double, GPU);
+REGISTER_KERNEL(int64_t, GPU);
 REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
-REGISTER_KERNEL(int64, GPU);
+#endif
+
+REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL(Variant, GPU);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#undef REGISTER_KERNEL
+
 REGISTER_KERNEL_BUILDER(Name("ZerosLike")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .HostMemory("y"),
                         ZerosLikeOp<CPUDevice, int32>);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-#undef REGISTER_KERNEL
 
 template <typename Device, typename T>
 class OnesLikeOp : public OpKernel {
@@ -308,25 +329,27 @@ class OnesLikeOp : public OpKernel {
 TF_CALL_POD_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
 
-
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 REGISTER_KERNEL(bool, GPU);
 REGISTER_KERNEL(Eigen::half, GPU);
-REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL(float, GPU);
 REGISTER_KERNEL(double, GPU);
+REGISTER_KERNEL(int64_t, GPU);
 REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
-REGISTER_KERNEL(int64, GPU);
-REGISTER_KERNEL_BUILDER(Name("OnesLike")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
-                            .HostMemory("y"),
-                        OnesLikeOp<CPUDevice, int32>);
+#endif
+REGISTER_KERNEL(bfloat16, GPU);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef REGISTER_KERNEL
+
+REGISTER_KERNEL_BUILDER(Name("OnesLike")
+                            .Device(DEVICE_DEFAULT)
+                            .TypeConstraint<int32>("T")
+                            .HostMemory("y"),
+                        OnesLikeOp<CPUDevice, int32>);
 
 PlaceholderOp::PlaceholderOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &expected_shape_));

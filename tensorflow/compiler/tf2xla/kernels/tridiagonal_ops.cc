@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/slicing.h"
-#include "tensorflow/compiler/xla/client/lib/tridiagonal.h"
+#include "xla/client/lib/slicing.h"
+#include "xla/client/lib/tridiagonal.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/errors.h"
@@ -39,17 +39,40 @@ class TridiagonalSolveOp : public XlaOpKernel {
       return;
     }
 
-    auto result = xla::tridiagonal::ThomasSolver(diagonals, rhs);
+    auto result = xla::tridiagonal::TridiagonalSolver(xla::tridiagonal::kThomas,
+                                                      diagonals, rhs);
     if (!result.ok()) {
       ctx->SetStatus(result.status());
       return;
     }
-    ctx->SetOutput(0, result.ValueOrDie());
+    ctx->SetOutput(0, result.value());
+  }
+};
+
+class TridiagonalMatMulOp : public XlaOpKernel {
+ public:
+  explicit TridiagonalMatMulOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  void Compile(XlaOpKernelContext* ctx) override {
+    auto upper_diagonal = ctx->Input(0);
+    auto main_diagonal = ctx->Input(1);
+    auto lower_diagonal = ctx->Input(2);
+    auto rhs = ctx->Input(3);
+
+    auto result = xla::tridiagonal::TridiagonalMatMul(
+        upper_diagonal, main_diagonal, lower_diagonal, rhs);
+    if (!result.ok()) {
+      ctx->SetStatus(result.status());
+      return;
+    }
+    ctx->SetOutput(0, result.value());
   }
 };
 
 REGISTER_XLA_OP(Name("TridiagonalSolve").TypeConstraint("T", kFloatTypes),
                 TridiagonalSolveOp);
+
+REGISTER_XLA_OP(Name("TridiagonalMatMul").TypeConstraint("T", kFloatTypes),
+                TridiagonalMatMulOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -12,22 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Built-in regularizers.
-"""
+"""Built-in regularizers."""
 # pylint: disable=invalid-name
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import math
-
-import six
 
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import math_ops
-from tensorflow.python.util.tf_export import keras_export
 
 
 def _check_penalty_number(x):
@@ -47,7 +40,6 @@ def _none_to_default(inputs, default):
   return default if inputs is None else default
 
 
-@keras_export('keras.regularizers.Regularizer')
 class Regularizer(object):
   """Regularizer base class.
 
@@ -183,7 +175,7 @@ class Regularizer(object):
     loading models to HDF5 formats, Keras model cloning, some visualization
     utilities, and exporting models to and from JSON.
 
-    Arguments:
+    Args:
         config: A Python dictionary, typically the output of get_config.
 
     Returns:
@@ -212,7 +204,6 @@ class Regularizer(object):
     raise NotImplementedError(str(self) + ' does not implement get_config()')
 
 
-@keras_export('keras.regularizers.L1L2')
 class L1L2(Regularizer):
   """A regularizer that applies both L1 and L2 regularization penalties.
 
@@ -257,7 +248,6 @@ class L1L2(Regularizer):
     return {'l1': float(self.l1), 'l2': float(self.l2)}
 
 
-@keras_export('keras.regularizers.L1', 'keras.regularizers.l1')
 class L1(Regularizer):
   """A regularizer that applies a L1 regularization penalty.
 
@@ -291,7 +281,6 @@ class L1(Regularizer):
     return {'l1': float(self.l1)}
 
 
-@keras_export('keras.regularizers.L2', 'keras.regularizers.l2')
 class L2(Regularizer):
   """A regularizer that applies a L2 regularization penalty.
 
@@ -325,7 +314,6 @@ class L2(Regularizer):
     return {'l2': float(self.l2)}
 
 
-@keras_export('keras.regularizers.l1_l2')
 def l1_l2(l1=0.01, l2=0.01):  # pylint: disable=redefined-outer-name
   r"""Create a regularizer that applies both L1 and L2 penalties.
 
@@ -335,7 +323,7 @@ def l1_l2(l1=0.01, l2=0.01):  # pylint: disable=redefined-outer-name
   The L2 regularization penalty is computed as:
   `loss = l2 * reduce_sum(square(x))`
 
-  Arguments:
+  Args:
       l1: Float; L1 regularization factor.
       l2: Float; L2 regularization factor.
 
@@ -350,12 +338,10 @@ l1 = L1
 l2 = L2
 
 
-@keras_export('keras.regularizers.serialize')
 def serialize(regularizer):
   return serialize_keras_object(regularizer)
 
 
-@keras_export('keras.regularizers.deserialize')
 def deserialize(config, custom_objects=None):
   if config == 'l1_l2':
     # Special case necessary since the defaults used for "l1_l2" (string)
@@ -368,14 +354,13 @@ def deserialize(config, custom_objects=None):
       printable_module_name='regularizer')
 
 
-@keras_export('keras.regularizers.get')
 def get(identifier):
   """Retrieve a regularizer instance from a config or identifier."""
   if identifier is None:
     return None
   if isinstance(identifier, dict):
     return deserialize(identifier)
-  elif isinstance(identifier, six.string_types):
+  elif isinstance(identifier, str):
     return deserialize(str(identifier))
   elif callable(identifier):
     return identifier

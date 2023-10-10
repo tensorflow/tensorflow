@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for SavedModelLoader class."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import shutil
 
@@ -29,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import builder as saved_model_builder
@@ -55,8 +52,8 @@ SAVED_MODEL_WITH_MAIN_OP = _get_export_dir("saved_model_with_main_op")
 def build_graph_helper():
   g = ops.Graph()
   with g.as_default():
-    x = variables.VariableV1(5, name="x")
-    y = variables.VariableV1(11, name="y")
+    x = variable_v1.VariableV1(5, name="x")
+    y = variable_v1.VariableV1(11, name="y")
     z = x + y
 
     foo_sig_def = signature_def_utils.build_signature_def({
@@ -103,7 +100,7 @@ class SavedModelLoaderTest(test.TestCase, parameterized.TestCase):
 
   def test_load_function(self, builder_cls):
     # Force test to run in graph mode.
-    # The SaveModelLoader.load method is a v1-only API that requires a session
+    # The SavedModelLoader.load method is a v1-only API that requires a session
     # to work.
     with ops.Graph().as_default():
       self.export_simple_graph(builder_cls)
@@ -141,7 +138,7 @@ class SavedModelLoaderTest(test.TestCase, parameterized.TestCase):
 
   def test_load_with_import_scope(self, builder_cls):
     # Force test to run in graph mode.
-    # The SaveModelLoader.restore_variables ahd SaveModelLoader.run_init_ops
+    # The SavedModelLoader.restore_variables and SavedModelLoader.run_init_ops
     # methods are v1-only APIs that require a session to work.
     with ops.Graph().as_default():
       self.export_graph_with_main_op(builder_cls)
@@ -175,14 +172,14 @@ class SavedModelLoaderTest(test.TestCase, parameterized.TestCase):
 
   def test_restore_variables(self, builder_cls):
     # Force test to run in graph mode.
-    # The SaveModelLoader.restore_variables method is a v1-only API requiring a
+    # The SavedModelLoader.restore_variables method is a v1-only API requiring a
     # session to work.
     with ops.Graph().as_default():
       self.export_graph_with_main_op(builder_cls)
       loader = loader_impl.SavedModelLoader(SAVED_MODEL_WITH_MAIN_OP)
       with self.session() as sess:
-        x = variables.VariableV1(0, name="x")
-        y = variables.VariableV1(0, name="y")
+        x = variable_v1.VariableV1(0, name="x")
+        y = variable_v1.VariableV1(0, name="y")
         z = x * y
 
         self.evaluate(variables.global_variables_initializer())
@@ -196,7 +193,7 @@ class SavedModelLoaderTest(test.TestCase, parameterized.TestCase):
 
   def test_run_init_op(self, builder_cls):
     # Force test to run in graph mode.
-    # The SaveModelLoader.restore_variables ahd SaveModelLoader.run_init_ops
+    # The SavedModelLoader.restore_variables and SavedModelLoader.run_init_ops
     # methods are v1-only APIs that require a session to work.
     with ops.Graph().as_default():
       self.export_graph_with_main_op(builder_cls)
@@ -242,14 +239,15 @@ class SavedModelLoaderTest(test.TestCase, parameterized.TestCase):
       builder_cls: SavedModelBuilder or _SavedModelBuilder class
     """
     # Force test to run in graph mode.
-    # The SaveModelBuilder.add_meta_graph_and_variables and SaveModelLoader.load
-    # methods are v1-only APIs that require a session to work.
+    # The SavedModelBuilder.add_meta_graph_and_variables and
+    # SavedModelLoader.load methods are v1-only APIs that require a session to
+    # work.
     with ops.Graph().as_default():
       path = _get_export_dir("no_variable_saved_model")
       with session.Session(graph=ops.Graph()) as sess:
-        x = variables.VariableV1(
+        x = variable_v1.VariableV1(
             5, name="x", collections=["not_global_variable"])
-        y = variables.VariableV1(
+        y = variable_v1.VariableV1(
             11, name="y", collections=["not_global_variable"])
         self.assertFalse(variables._all_saveable_objects())
         z = x + y
@@ -289,6 +287,14 @@ class SavedModelLoaderTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(ValueError, "not found in graph"):
       loader.load_graph(graph, ["foo_graph"], return_elements=["z:0"])
+
+  def test_parse_saved_model_exception(self, builder_cls):
+    """Test that error message for not exist model have OS-depend delimiter in path"""
+    path = _get_export_dir("not_existing_dir")
+    pattern = os.path.sep + "{"
+    with self.assertRaises(IOError) as err:
+      loader_impl.parse_saved_model(path)
+    self.assertTrue(pattern in str(err.exception))
 
 
 if __name__ == "__main__":

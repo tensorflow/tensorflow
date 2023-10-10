@@ -13,11 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for not_equal."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -35,7 +31,7 @@ def make_not_equal_tests(options):
   }]
 
   def build_graph(parameters):
-    """Build the not euqal op testing graph."""
+    """Build the not equal op testing graph."""
     input_value1 = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         name="input1",

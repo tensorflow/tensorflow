@@ -280,7 +280,7 @@ bool OptimizerCSE::Optimize(
   // now, our updates are almost always the most downstream nodes in
   // the graph.
   std::vector<Node*> order;
-  GetReversePostOrder(*g_, &order);
+  GetReversePostOrder(*g_, &order, NodeComparatorID());
 
   // Our value is just a single Node*, meaning we keep just a single
   // candidate for a given node hash value.  This may cause us to

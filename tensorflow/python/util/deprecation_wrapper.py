@@ -18,10 +18,6 @@ Please use module_wrapper instead.
 TODO(yifeif): remove once no longer referred by estimator
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.util import module_wrapper
 
 # For backward compatibility for other pip packages that use this class.

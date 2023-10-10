@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 
 // These functions can be removed without notice. They exist to facilitate some
 // refactoring of graph construction code in the Python API.
@@ -37,17 +38,15 @@ void SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
 void ClearAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
                TF_Status* status);
 
+// Sets the experimental_type` field in the node_def Protocol Buffer.
+void SetFullType(TF_Graph* graph, TF_Operation* op,
+                 const TF_Buffer* full_type_proto);
+
 void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device);
 
 // Updates 'dst' to consume 'new_src'.
 void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
                 TF_Status* status);
-
-void RemoveAllControlInputs(TF_Graph* graph, TF_Operation* op);
-
-// Sets whether ops missing a shape inference function should trigger an
-// error. The default is true.
-void SetRequireShapeInferenceFns(TF_Graph* graph, bool require);
 
 // Extends `session` with any new operations added to its associated graph.
 // Usually this happens automatically in TF_SessionRun. After this is called,

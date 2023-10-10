@@ -15,118 +15,118 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_3x3_thin.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
+#include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
+#include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/weights_conversion.h"
 
 namespace tflite {
 namespace gpu {
+namespace {
+std::string ConvInstr(CalculationsPrecision precision, bool is_i4_o4,
+                      const std::string& dst_name, const std::string& src_name,
+                      int weights_offset) {
+  std::string c;
+  if (is_i4_o4) {
+    switch (precision) {
+      case CalculationsPrecision::F32:
+      case CalculationsPrecision::F16:
+        c += "  $0 += $1.x * args.weights.Read($2); \n";
+        c += "  $0 += $1.y * args.weights.Read($3); \n";
+        c += "  $0 += $1.z * args.weights.Read($4); \n";
+        c += "  $0 += $1.w * args.weights.Read($5); \n";
+        break;
+      case CalculationsPrecision::F32_F16:
+        c += "  $0 += TO_ACCUM_TYPE($1.x * args.weights.Read($2) + $1.y * "
+             "args.weights.Read($3) + $1.z * args.weights.Read($4) + $1.w * "
+             "args.weights.Read($5)); \n";
+        break;
+    }
+  } else {
+    // O4I4
+    c += "  $0.x += dot($1, args.weights.Read($2)); \n";
+    c += "  $0.y += dot($1, args.weights.Read($3)); \n";
+    c += "  $0.z += dot($1, args.weights.Read($4)); \n";
+    c += "  $0.w += dot($1, args.weights.Read($5)); \n";
+  }
+  return absl::Substitute(c, dst_name, src_name, weights_offset,
+                          weights_offset + 1, weights_offset + 2,
+                          weights_offset + 3);
+}
+}  // namespace
 
 ConvolutionTransposed3x3Thin::ConvolutionTransposed3x3Thin(
-    const OperationDef& definition, const ConvolutionTransposedAttributes& attr)
+    const GpuInfo& gpu_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr)
     : GPUOperation(definition) {
+  if (gpu_info.IsApple()) {
+    weights_layout_ = WeightsLayout::kOICustomSpatialO4I4;
+  } else {
+    weights_layout_ = WeightsLayout::kOICustomSpatialI4O4;
+  }
   code_ = GenerateConvolutionTransposedCode(
-      definition_, DivideRoundUp(attr.weights.shape.i, 4),
+      definition_, gpu_info, DivideRoundUp(attr.weights.shape.i, 4),
       DivideRoundUp(attr.weights.shape.o, 4));
 }
 
-ConvolutionTransposed3x3Thin::ConvolutionTransposed3x3Thin(
-    ConvolutionTransposed3x3Thin&& operation)
-    : GPUOperation(std::move(operation)) {}
-
-ConvolutionTransposed3x3Thin& ConvolutionTransposed3x3Thin::operator=(
-    ConvolutionTransposed3x3Thin&& operation) {
-  if (this != &operation) {
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
 std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
-    const OperationDef& op_def, int src_depth, int dst_depth) {
-  auto src_desc = op_def.src_tensors[0];
-  src_desc.SetAddressMode(AddressMode::kZero);
-  AddSrcTensor("src_tensor", src_desc);
+    const OperationDef& op_def, const GpuInfo& gpu_info, int src_depth,
+    int dst_depth) {
+  AddSrcTensor("src_tensor", op_def.src_tensors[0]);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
   if (op_def.src_tensors.size() == 2) {
     // dynamic weights
     BufferDescriptor desc;
-    desc.element_type = op_def.src_tensors[1].data_type;
+    desc.element_type = op_def.src_tensors[1].GetDataType();
     desc.element_size = 4;
     desc.memory_type = MemoryType::CONSTANT;
     AddSrcBuffer("weights", desc);
   }
 
-  const auto src_tensor_type = op_def.src_tensors[0].storage_type;
-
   std::string c;
 
-  switch (op_def.precision) {
-    case CalculationsPrecision::F32:
-    case CalculationsPrecision::F16:
-      c += "#define CONV(R, SRC, F, i) \\\n";
-      c += "  R += SRC.x * F[i + 0]; \\\n";
-      c += "  R += SRC.y * F[i + 1]; \\\n";
-      c += "  R += SRC.z * F[i + 2]; \\\n";
-      c += "  R += SRC.w * F[i + 3];   \n";
-      break;
-    case CalculationsPrecision::F32_F16:
-      c += "#define CONV(R, SRC, F, i) \\\n";
-      c += "  R += convert_float4(SRC.x * F[i + 0] + SRC.y * F[i + 1]";
-      c += "+ SRC.z * F[i + 2] + SRC.w * F[i + 3]);\n";
-      break;
-  }
-
-  c += "__kernel void main_function(\n";
-  c += "$0) {\n";
+  c += "MAIN_FUNCTION($0) {\n";
   if (op_def.IsBatchSupported()) {
-    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int linear_id = GLOBAL_ID_0;\n";
     c += "  int X = linear_id / args.dst_tensor.Batch();\n";
     c += "  int B = linear_id % args.dst_tensor.Batch();\n";
     c += "  args.dst_tensor.SetBatchRef(B);\n";
     c += "  args.src_tensor.SetBatchRef(B);\n";
   } else {
-    c += "  int X = get_global_id(0);\n";
+    c += "  int X = GLOBAL_ID_0;\n";
   }
-  c += "  int Y = get_global_id(1);\n";
+  c += "  int Y = GLOBAL_ID_1;\n";
   c += "  if (X >= args.src_tensor.Width() || Y >= args.src_tensor.Height()) "
        "return;\n";
   for (int d = 0; d < dst_depth; ++d) {
     const std::string layer = std::to_string(d);
     c += "  ACCUM_FLT4 r" + layer + "[2][2];\n";
-    c += "  r" + layer + "[0][0] = (ACCUM_FLT4)(0.0f);\n";
-    c += "  r" + layer + "[0][1] = (ACCUM_FLT4)(0.0f);\n";
-    c += "  r" + layer + "[1][0] = (ACCUM_FLT4)(0.0f);\n";
-    c += "  r" + layer + "[1][1] = (ACCUM_FLT4)(0.0f);\n";
+    c += "  r" + layer + "[0][0] = INIT_ACCUM_FLT4(0.0f);\n";
+    c += "  r" + layer + "[0][1] = INIT_ACCUM_FLT4(0.0f);\n";
+    c += "  r" + layer + "[1][0] = INIT_ACCUM_FLT4(0.0f);\n";
+    c += "  r" + layer + "[1][1] = INIT_ACCUM_FLT4(0.0f);\n";
   }
-  int filters_index = 0;
   for (int s = 0; s < src_depth; ++s) {
     const std::string z = std::to_string(s);
     c += "  {\n";
-    if (src_tensor_type == TensorStorageType::BUFFER) {
-      c += "  bool x_in = X + 1 < args.src_tensor.Width();\n";
-      c += "  bool y_in = Y + 1 < args.src_tensor.Height();\n";
+    if (op_def.src_tensors[0].SupportsZeroClamp(Axis::WIDTH, gpu_info) &&
+        op_def.src_tensors[0].SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
       c += "  FLT4 src0 = args.src_tensor.Read(X, Y, " + z + ");\n";
-      c += "  FLT4 src1 = (FLT4)(0.0);\n";
-      c += "  FLT4 src2 = (FLT4)(0.0);\n";
-      c += "  FLT4 src3 = (FLT4)(0.0);\n";
-      c += "  if (x_in) {\n";
-      c += "    src1 = args.src_tensor.Read(X + 1, Y, " + z + ");\n";
-      c += "  }\n";
-      c += "  if (y_in) {\n";
-      c += "    src2 = args.src_tensor.Read(X, Y + 1, " + z + ");\n";
-      c += "  }\n";
-      c += "  if (x_in && y_in) {\n";
-      c += "    src3 = args.src_tensor.Read(X + 1, Y + 1, " + z + ");\n";
-      c += "  }\n";
-    } else if (src_tensor_type == TensorStorageType::IMAGE_BUFFER) {
-      c += "  args.src_tensor.GetAddress(c0, X, Y, " + z + ");\n";
-      c += "  args.src_tensor.GetAddress(c1, X + 1, Y, " + z + ");\n";
-      c += "  args.src_tensor.GetAddress(c2, X, Y + 1, " + z + ");\n";
-      c += "  args.src_tensor.GetAddress(c3, X + 1, Y + 1, " + z + ");\n";
+      c += "  FLT4 src1 = args.src_tensor.Read(X + 1, Y, " + z + ");\n";
+      c += "  FLT4 src2 = args.src_tensor.Read(X, Y + 1, " + z + ");\n";
+      c += "  FLT4 src3 = args.src_tensor.Read(X + 1, Y + 1, " + z + ");\n";
+    } else if (op_def.src_tensors[0].IsLinear() &&
+               op_def.src_tensors[0].ReturnsZeroForNegOneRead(gpu_info)) {
+      c += "  int c0 = args.src_tensor.GetAddress(X, Y, " + z + ");\n";
+      c += "  int c1 = args.src_tensor.GetAddress(X + 1, Y, " + z + ");\n";
+      c += "  int c2 = args.src_tensor.GetAddress(X, Y + 1, " + z + ");\n";
+      c += "  int c3 = args.src_tensor.GetAddress(X + 1, Y + 1, " + z + ");\n";
       c += "  bool x_in = X + 1 < args.src_tensor.Width();\n";
       c += "  bool y_in = Y + 1 < args.src_tensor.Height();\n";
       c += "  c1 = select(-1, c1, x_in);\n";
@@ -137,28 +137,45 @@ std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
       c += "  FLT4 src2 = args.src_tensor.Read(c2);\n";
       c += "  FLT4 src3 = args.src_tensor.Read(c3);\n";
     } else {
+      // Manual zero clamp
+      c += "  bool x_in = X + 1 < args.src_tensor.Width();\n";
+      c += "  bool y_in = Y + 1 < args.src_tensor.Height();\n";
       c += "  FLT4 src0 = args.src_tensor.Read(X, Y, " + z + ");\n";
-      c += "  FLT4 src1 = args.src_tensor.Read(X + 1, Y, " + z + ");\n";
-      c += "  FLT4 src2 = args.src_tensor.Read(X, Y + 1, " + z + ");\n";
-      c += "  FLT4 src3 = args.src_tensor.Read(X + 1, Y + 1, " + z + ");\n";
+      c += "  FLT4 src1 = INIT_FLT4(0.0);\n";
+      c += "  FLT4 src2 = INIT_FLT4(0.0);\n";
+      c += "  FLT4 src3 = INIT_FLT4(0.0);\n";
+      c += "  if (x_in) {\n";
+      c += "    src1 = args.src_tensor.Read(X + 1, Y, " + z + ");\n";
+      c += "  }\n";
+      c += "  if (y_in) {\n";
+      c += "    src2 = args.src_tensor.Read(X, Y + 1, " + z + ");\n";
+      c += "  }\n";
+      c += "  if (x_in && y_in) {\n";
+      c += "    src3 = args.src_tensor.Read(X + 1, Y + 1, " + z + ");\n";
+      c += "  }\n";
     }
     for (int d = 0; d < dst_depth; ++d) {
       const std::string layer = std::to_string(d);
-      const std::string f_offset = std::to_string(filters_index);
-      filters_index++;
-      c += "  {\n";
-      c += "  __constant FLT4* L0 = args.weights.GetPtr() + 36 * " + f_offset +
-           ";\n";
-      c += "  CONV(r" + layer + "[0][0], src0, L0, 0);\n";
-      c += "  CONV(r" + layer + "[0][1], src0, L0, 4);\n";
-      c += "  CONV(r" + layer + "[0][1], src1, L0, 8);\n";
-      c += "  CONV(r" + layer + "[1][0], src0, L0, 12);\n";
-      c += "  CONV(r" + layer + "[1][0], src2, L0, 16);\n";
-      c += "  CONV(r" + layer + "[1][1], src0, L0, 20);\n";
-      c += "  CONV(r" + layer + "[1][1], src1, L0, 24);\n";
-      c += "  CONV(r" + layer + "[1][1], src2, L0, 28);\n";
-      c += "  CONV(r" + layer + "[1][1], src3, L0, 32);\n";
-      c += "  }\n";
+      const int filters_index = (s * dst_depth + d) * 36;
+      const bool is_i4_o4 = GetWeightsDescription().IsI4O4();
+      c += ConvInstr(op_def.precision, is_i4_o4, "r" + layer + "[0][0]", "src0",
+                     filters_index);
+      c += ConvInstr(op_def.precision, is_i4_o4, "r" + layer + "[0][1]", "src0",
+                     filters_index + 4);
+      c += ConvInstr(op_def.precision, is_i4_o4, "r" + layer + "[0][1]", "src1",
+                     filters_index + 8);
+      c += ConvInstr(op_def.precision, is_i4_o4, "r" + layer + "[1][0]", "src0",
+                     filters_index + 12);
+      c += ConvInstr(op_def.precision, is_i4_o4, "r" + layer + "[1][0]", "src2",
+                     filters_index + 16);
+      c += ConvInstr(op_def.precision, is_i4_o4, "r" + layer + "[1][1]", "src0",
+                     filters_index + 20);
+      c += ConvInstr(op_def.precision, is_i4_o4, "r" + layer + "[1][1]", "src1",
+                     filters_index + 24);
+      c += ConvInstr(op_def.precision, is_i4_o4, "r" + layer + "[1][1]", "src2",
+                     filters_index + 28);
+      c += ConvInstr(op_def.precision, is_i4_o4, "r" + layer + "[1][1]", "src3",
+                     filters_index + 32);
     }
     c += "  }\n";
   }
@@ -198,6 +215,25 @@ std::vector<int> ConvolutionTransposed3x3Thin::GetSpatialWeightsRemap() const {
   return std::vector<int>{4, 5, 3, 7, 1, 8, 6, 2, 0};
 }
 
+void ConvolutionTransposed3x3Thin::UploadWeights(
+    const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights) {
+  const auto weights_desc = GetWeightsDescription();
+  const int flt_count =
+      GetTotalElementsCountForLayout(weights_desc, weights.shape);
+
+  BufferDescriptor desc;
+  desc.element_type = weights_desc.type;
+  desc.element_size = 4;
+  desc.memory_type = MemoryType::CONSTANT;
+  desc.size = flt_count * SizeOf(desc.element_type);
+  desc.data.resize(desc.size);
+
+  RearrangeWeights(weights, weights_desc, absl::MakeSpan(desc.data));
+
+  args_.AddObject("weights",
+                  std::make_unique<BufferDescriptor>(std::move(desc)));
+}
+
 bool IsConvolutionTransposed3x3ThinSupported(
     const ConvolutionTransposedAttributes& attr) {
   return attr.weights.shape.o <= 8 && attr.weights.shape.w == 3 &&
@@ -210,29 +246,33 @@ bool IsConvolutionTransposed3x3ThinSupported(
 ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  ConvolutionTransposed3x3Thin result(definition, attr);
+  ConvolutionTransposed3x3Thin result(gpu_info, definition, attr);
   result.UploadWeights(attr.weights);
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
-  desc.element_type = definition.GetDataType();
-  desc.UploadLinearData(attr.bias);
-  result.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr.bias);
+  result.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                       std::move(bias_tensor_desc)));
   return result;
 }
 
 ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3ThinDynamicWeights(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  ConvolutionTransposed3x3Thin result(definition, attr);
+  OperationDef new_def = definition;
+  new_def.src_tensors = {
+      definition.src_tensors[0]};  // leaving only src_tensor def, weights defs
+                                   // will be added later
+  const DataType weights_type = definition.GetDataType();
+  // add 1 src_tensor(buffer) for weights
+  new_def.src_tensors.push_back(
+      {weights_type, TensorStorageType::BUFFER, Layout::HWC});
+  ConvolutionTransposed3x3Thin result(gpu_info, new_def, attr);
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
-  desc.element_type = definition.GetDataType();
-  desc.UploadLinearData(attr.bias);
-  result.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr.bias);
+  result.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                       std::move(bias_tensor_desc)));
   return result;
 }
 

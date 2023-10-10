@@ -26,6 +26,8 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
   static constexpr const char* const kComponents = "components";
   static constexpr const char* const kToutputTypes = "Toutput_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
+  static constexpr const char* const kIsFiles = "is_files";
+  static constexpr const char* const kReplicateOnSplit = "replicate_on_split";
 
   explicit TensorSliceDatasetOp(OpKernelConstruction* ctx);
 
@@ -36,6 +38,8 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
   class Dataset;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
+  bool is_files_ = false;
+  bool replicate_on_split_ = false;
 };
 
 }  // namespace data

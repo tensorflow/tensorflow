@@ -1,21 +1,24 @@
+# proto-file: tensorflow/core/api_def/base_api/api_def_ScatterNd.pbtxt
+# proto-message: scatter_nd reference proto;
+
 op {
   graph_op_name: "ScatterNd"
   in_arg {
     name: "indices"
     description: <<END
-Index tensor.
+Tensor of indices.
 END
   }
   in_arg {
     name: "updates"
     description: <<END
-Updates to scatter into output.
+Values to scatter into the output tensor.
 END
   }
   in_arg {
     name: "shape"
     description: <<END
-1-D. The shape of the resulting tensor.
+1-D. The shape of the output tensor.
 END
   }
   out_arg {
@@ -25,39 +28,45 @@ A new tensor with the given shape and updates applied according
 to the indices.
 END
   }
-  summary: "Scatter `updates` into a new tensor according to `indices`."
+  summary: "Scatters `updates` into a tensor of shape `shape` according to `indices`."
   description: <<END
-Creates a new tensor by applying sparse `updates` to individual values or
-slices within a tensor (initially zero for numeric, empty for string) of
-the given `shape` according to indices.  This operator is the inverse of the
-`tf.gather_nd` operator which extracts values or slices from a given tensor.
+Scatter sparse `updates` according to individual values at the specified
+`indices`. This op returns an output tensor with the `shape` you specify. This
+op is the inverse of the `tf.gather_nd` operator which extracts values or slices
+from a given tensor.
 
-This operation is similar to tensor_scatter_add, except that the tensor is
-zero-initialized. Calling `tf.scatter_nd(indices, values, shape)` is identical
-to `tensor_scatter_add(tf.zeros(shape, values.dtype), indices, values)`
+This operation is similar to `tf.tensor_scatter_nd_add`, except that the tensor
+is zero-initialized. Calling `tf.scatter_nd(indices, updates, shape)`
+is identical to calling
+`tf.tensor_scatter_nd_add(tf.zeros(shape, updates.dtype), indices, updates)`
 
-If `indices` contains duplicates, then their updates are accumulated (summed).
+If `indices` contains duplicates, the associated `updates` are accumulated
+(summed) into the output tensor.
 
-**WARNING**: The order in which updates are applied is nondeterministic, so the
-output will be nondeterministic if `indices` contains duplicates -- because
-of some numerical approximation issues, numbers summed in different order
-may yield different results.
+**WARNING**: For floating-point data types, the output may be nondeterministic.
+This is because the order in which the updates are applied is nondeterministic
+and when floating-point numbers are added in different orders the resulting
+numerical approximation error can be slightly different. However, the output
+will be deterministic if op determinism is enabled via
+`tf.config.experimental.enable_op_determinism`.
 
-`indices` is an integer tensor containing indices into a new tensor of shape
-`shape`.  The last dimension of `indices` can be at most the rank of `shape`:
+`indices` is an integer tensor containing indices into the output tensor. The
+last dimension of `indices` can be at most the rank of `shape`:
 
     indices.shape[-1] <= shape.rank
 
-The last dimension of `indices` corresponds to indices into elements
+The last dimension of `indices` corresponds to indices of elements
 (if `indices.shape[-1] = shape.rank`) or slices
 (if `indices.shape[-1] < shape.rank`) along dimension `indices.shape[-1]` of
-`shape`.  `updates` is a tensor with shape
+`shape`.
+
+`updates` is a tensor with shape:
 
     indices.shape[:-1] + shape[indices.shape[-1]:]
 
-The simplest form of scatter is to insert individual elements in a tensor by
-index. For example, say we want to insert 4 scattered elements in a rank-1
-tensor with 8 elements.
+The simplest form of the scatter op is to insert individual elements in
+a tensor by index. Consider an example where you want to insert 4 scattered
+elements in a rank-1 tensor with 8 elements.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd1.png" alt>
@@ -77,9 +86,9 @@ The resulting tensor would look like this:
 
     [0, 11, 0, 10, 9, 0, 0, 12]
 
-We can also, insert entire slices of a higher rank tensor all at once. For
-example, if we wanted to insert two slices in the first dimension of a
-rank-3 tensor with two matrices of new values.
+You can also insert entire slices of a higher rank tensor all at once. For
+example, you can insert two slices in the first dimension of a rank-3 tensor
+with two matrices of new values.
 
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/ScatterNd2.png" alt>
@@ -88,7 +97,7 @@ rank-3 tensor with two matrices of new values.
 In Python, this scatter operation would look like this:
 
 ```python
-    indices = tf.constant([[0], [2]])
+    indices = tf.constant([[1], [3]])
     updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
                             [7, 7, 7, 7], [8, 8, 8, 8]],
                            [[5, 5, 5, 5], [6, 6, 6, 6],
@@ -100,10 +109,10 @@ In Python, this scatter operation would look like this:
 
 The resulting tensor would look like this:
 
-    [[[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
-     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+    [[[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
      [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
-     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]
+     [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+     [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]]]
 
 Note that on CPU, if an out of bound index is found, an error is returned.
 On GPU, if an out of bound index is found, the index is ignored.

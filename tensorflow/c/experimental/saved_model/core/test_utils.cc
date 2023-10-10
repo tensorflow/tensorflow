@@ -45,8 +45,7 @@ EagerContextPtr CreateTestingEagerContext(DeviceMgr* device_mgr) {
   return EagerContextPtr(new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      /* async= */ false,
-      /* lazy_copy_function_remote_inputs= */ false, device_mgr,
+      /* async= */ false, device_mgr,
       /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
       /* cluster_flr= */ nullptr));
 }
@@ -60,8 +59,8 @@ std::vector<DataType> DataTypeSetToVector(DataTypeSet set) {
   return result;
 }
 
-std::vector<std::vector<int64>> InterestingShapes() {
-  std::vector<std::vector<int64>> interesting_shapes;
+std::vector<std::vector<int64_t>> InterestingShapes() {
+  std::vector<std::vector<int64_t>> interesting_shapes;
   interesting_shapes.push_back({});             // Scalar
   interesting_shapes.push_back({10});           // 1D Vector
   interesting_shapes.push_back({3, 3});         // 2D Matrix
@@ -71,8 +70,8 @@ std::vector<std::vector<int64>> InterestingShapes() {
 
 ImmediateTensorHandlePtr CreateTensorHandle(ImmediateExecutionContext* ctx,
                                             DataType dtype,
-                                            absl::Span<const int64> shape,
-                                            int8 value) {
+                                            absl::Span<const int64_t> shape,
+                                            int8_t value) {
   AbstractTensorPtr tensor(ctx->CreateTensor(dtype, shape));
   CHECK_NE(tensor.get(), nullptr)
       << "Tensor creation failed for tensor of dtype: "
@@ -89,19 +88,21 @@ ImmediateTensorHandlePtr CreateTensorHandle(ImmediateExecutionContext* ctx,
 }
 
 void FillNumericTensorBuffer(DataType dtype, size_t num_elements, void* buffer,
-                             int8 value) {
+                             int8_t value) {
   switch (dtype) {
 #define CASE(type)                                   \
   case DataTypeToEnum<type>::value: {                \
     type* typed_buffer = static_cast<type*>(buffer); \
     for (size_t i = 0; i < num_elements; ++i) {      \
-      typed_buffer[i] = value;                       \
+      typed_buffer[i] = static_cast<type>(value);    \
     }                                                \
     break;                                           \
   }
     TF_CALL_INTEGRAL_TYPES(CASE);
     TF_CALL_double(CASE);
     TF_CALL_float(CASE);
+    TF_CALL_int4(CASE);
+    TF_CALL_uint4(CASE);
 #undef CASE
     default:
       CHECK(false) << "Unsupported data type: " << DataTypeString(dtype);
@@ -112,25 +113,28 @@ void FillNumericTensorBuffer(DataType dtype, size_t num_elements, void* buffer,
 // Checks the underlying data is equal for the buffers for two numeric tensors.
 // Note: The caller must ensure to check that the dtypes and sizes of the
 // underlying buffers are the same before calling this.
-void CheckBufferDataIsEqual(DataType dtype, int64 num_elements, void* a,
+void CheckBufferDataIsEqual(DataType dtype, int64_t num_elements, void* a,
                             void* b) {
   switch (dtype) {
-#define CASE(type)                               \
-  case DataTypeToEnum<type>::value: {            \
-    type* typed_a = static_cast<type*>(a);       \
-    type* typed_b = static_cast<type*>(b);       \
-    for (int64 i = 0; i < num_elements; ++i) {   \
-      if (DataTypeIsFloating(dtype)) {           \
-        EXPECT_FLOAT_EQ(typed_a[i], typed_b[i]); \
-      } else {                                   \
-        EXPECT_EQ(typed_a[i], typed_b[i]);       \
-      }                                          \
-    }                                            \
-    break;                                       \
+#define CASE(type)                                       \
+  case DataTypeToEnum<type>::value: {                    \
+    type* typed_a = static_cast<type*>(a);               \
+    type* typed_b = static_cast<type*>(b);               \
+    for (int64_t i = 0; i < num_elements; ++i) {         \
+      if (DataTypeIsFloating(dtype)) {                   \
+        EXPECT_FLOAT_EQ(static_cast<float>(typed_a[i]),  \
+                        static_cast<float>(typed_b[i])); \
+      } else {                                           \
+        EXPECT_EQ(typed_a[i], typed_b[i]);               \
+      }                                                  \
+    }                                                    \
+    break;                                               \
   }
     TF_CALL_INTEGRAL_TYPES(CASE);
     TF_CALL_double(CASE);
     TF_CALL_float(CASE);
+    TF_CALL_int4(CASE);
+    TF_CALL_uint4(CASE);
 #undef CASE
     default:
       CHECK(false) << "Unsupported data type: " << DataTypeString(dtype);
@@ -140,7 +144,7 @@ void CheckBufferDataIsEqual(DataType dtype, int64 num_elements, void* a,
 AbstractTensorPtr TensorHandleToTensor(ImmediateExecutionTensorHandle* handle) {
   Status status;
   AbstractTensorPtr tensor(handle->Resolve(&status));
-  CHECK(status.ok()) << status.error_message();
+  CHECK(status.ok()) << status.message();
   CHECK_NE(tensor.get(), nullptr);
   return tensor;
 }

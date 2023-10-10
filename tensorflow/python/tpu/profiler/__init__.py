@@ -15,16 +15,12 @@
 
 """Classes for TPU trace events."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=wildcard-import,unused-import
-from tensorflow.core.profiler.protobuf.trace_events_pb2 import *
 from tensorflow.core.profiler.profiler_analysis_pb2 import *
+from tensorflow.python.util.all_util import remove_undocumented
+from tsl.profiler.protobuf.trace_events_pb2 import *
 # pylint: enable=wildcard-import,unused-import
 
-from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = ['Trace', 'Resource', 'Device', 'TraceEvent']
 

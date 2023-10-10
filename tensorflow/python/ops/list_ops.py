@@ -15,16 +15,13 @@
 """Ops to manipulate lists of tensors."""
 
 # pylint: disable=g-bad-name
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
-from tensorflow.core.framework import types_pb2
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -34,12 +31,6 @@ from tensorflow.python.ops import handle_data_util
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_list_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.util.lazy_loader import LazyLoader
-
-# list_ops -> control_flow_ops -> tensor_array_ops -> list_ops
-control_flow_ops = LazyLoader(
-    "control_flow_ops", globals(),
-    "tensorflow.python.ops.control_flow_ops")
 
 
 ops.NotDifferentiable("TensorListConcatLists")
@@ -67,17 +58,18 @@ def _set_handle_data(list_handle, element_shape, element_dtype):
   # TODO(b/169968286): It would be better if we had a consistent story for
   # creating handle data from eager operations (shared with VarHandleOp).
   if isinstance(list_handle, ops.EagerTensor):
-    if tensor_util.is_tensor(element_shape):
+    if tensor_util.is_tf_type(element_shape):
       element_shape = tensor_shape.TensorShape(None)
     elif not isinstance(element_shape, tensor_shape.TensorShape):
       element_shape = tensor_shape.TensorShape(element_shape)
     handle_data = cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData()
     handle_data.is_set = True
+    # TODO(b/191472076): This duplicates type inference. Clean up.
     handle_data.shape_and_type.append(
         cpp_shape_inference_pb2.CppShapeInferenceResult.HandleShapeAndType(
             shape=element_shape.as_proto(),
             dtype=element_dtype.as_datatype_enum,
-            specialized_type=types_pb2.ST_TENSOR_LIST))
+            type=full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_ARRAY)))
     list_handle._handle_data = handle_data  # pylint: disable=protected-access
 
 
@@ -196,23 +188,19 @@ def tensor_list_set_item(input_handle,
                          resize_if_index_out_of_bounds=False,
                          name=None):
   """Sets `item` at `index` in input list."""
-  if resize_if_index_out_of_bounds:
-    input_list_size = gen_list_ops.tensor_list_length(input_handle)
-    # TODO(srbs): This could cause some slowdown. Consider fusing resize
-    # functionality in the SetItem op.
-    input_handle = control_flow_ops.cond(
-        index >= input_list_size,
-        lambda: gen_list_ops.tensor_list_resize(  # pylint: disable=g-long-lambda
-            input_handle, index + 1),
-        lambda: input_handle)
   output_handle = gen_list_ops.tensor_list_set_item(
-      input_handle=input_handle, index=index, item=item, name=name)
+      input_handle=input_handle,
+      index=index,
+      item=item,
+      name=name,
+      resize_if_index_out_of_bounds=resize_if_index_out_of_bounds,
+  )
   handle_data_util.copy_handle_data(input_handle, output_handle)
   return output_handle
 
 
 @ops.RegisterGradient("TensorListPushBack")
-def _PushBackGrad(op, dresult):
+def _PushBackGrad(op: ops.Operation, dresult):
   return gen_list_ops.tensor_list_pop_back(
       dresult,
       element_shape=array_ops.shape(op.inputs[1]),
@@ -220,7 +208,7 @@ def _PushBackGrad(op, dresult):
 
 
 @ops.RegisterGradient("TensorListPopBack")
-def _PopBackGrad(op, dlist, delement):
+def _PopBackGrad(op: ops.Operation, dlist, delement):
   if dlist is None:
     dlist = empty_tensor_list(
         element_dtype=delement.dtype,
@@ -232,13 +220,13 @@ def _PopBackGrad(op, dlist, delement):
 
 
 @ops.RegisterGradient("TensorListStack")
-def _TensorListStackGrad(unused_op, dtensor):
+def _TensorListStackGrad(unused_op: ops.Operation, dtensor):
   return tensor_list_from_tensor(dtensor, element_shape=dtensor.shape[1:]), None
 
 
 @ops.RegisterGradient("TensorListConcat")
 @ops.RegisterGradient("TensorListConcatV2")
-def _TensorListConcatGrad(op, dtensor, unused_dlengths):
+def _TensorListConcatGrad(op: ops.Operation, dtensor, unused_dlengths):
   """Gradient function for TensorListConcat."""
   dlist = tensor_list_split(
       dtensor,
@@ -252,7 +240,7 @@ def _TensorListConcatGrad(op, dtensor, unused_dlengths):
 
 
 @ops.RegisterGradient("TensorListSplit")
-def _TensorListSplitGrad(op, dlist):
+def _TensorListSplitGrad(op: ops.Operation, dlist):
   tensor, _, lengths = op.inputs
   element_shape = array_ops.slice(array_ops.shape(tensor), [1], [-1])
   element_shape = array_ops.concat([[-1], element_shape], axis=0)
@@ -264,7 +252,7 @@ def _TensorListSplitGrad(op, dlist):
 
 
 @ops.RegisterGradient("TensorListFromTensor")
-def _TensorListFromTensorGrad(op, dlist):
+def _TensorListFromTensorGrad(op: ops.Operation, dlist):
   """Gradient for TensorListFromTensor."""
   t = op.inputs[0]
   if t.shape.dims and t.shape.dims[0].value is not None:
@@ -286,7 +274,7 @@ def _TensorListFromTensorGrad(op, dlist):
 
 
 @ops.RegisterGradient("TensorListGetItem")
-def _TensorListGetItemGrad(op, ditem):
+def _TensorListGetItemGrad(op: ops.Operation, ditem):
   """Gradient for TensorListGetItem."""
   list_size = gen_list_ops.tensor_list_length(op.inputs[0])
   list_grad = gen_list_ops.tensor_list_set_item(
@@ -302,29 +290,36 @@ def _TensorListGetItemGrad(op, ditem):
 
 
 @ops.RegisterGradient("TensorListSetItem")
-def _TensorListSetItemGrad(op, dlist):
+def _TensorListSetItemGrad(op: ops.Operation, dlist):
   """Gradient function for TensorListSetItem."""
-  _, index, item = op.inputs
+  input_list, index, item = op.inputs
   list_grad = gen_list_ops.tensor_list_set_item(
-      dlist, index=index, item=array_ops.zeros_like(item))
+      dlist, index=index, item=array_ops.zeros_like(item)
+  )
   index_grad = None
   element_grad = tensor_list_get_item(
       dlist,
       index,
       element_shape=array_ops.shape(item),
-      element_dtype=item.dtype)
+      element_dtype=item.dtype,
+  )
+  if op.get_attr(
+      "resize_if_index_out_of_bounds"
+  ):
+    input_list_size = gen_list_ops.tensor_list_length(input_list)
+    list_grad = gen_list_ops.tensor_list_resize(list_grad, input_list_size)
   return list_grad, index_grad, element_grad
 
 
 @ops.RegisterGradient("TensorListResize")
-def _TensorListResizeGrad(op, dlist):
+def _TensorListResizeGrad(op: ops.Operation, dlist):
   input_list, _ = op.inputs
   input_list_size = gen_list_ops.tensor_list_length(input_list)
   return gen_list_ops.tensor_list_resize(dlist, input_list_size), None
 
 
 @ops.RegisterGradient("TensorListGather")
-def _TensorListGatherGrad(op, dtensor):
+def _TensorListGatherGrad(op: ops.Operation, dtensor):
   """Gradient function for TensorListGather."""
   input_list, indices, _ = op.inputs
   element_shape = gen_list_ops.tensor_list_element_shape(
@@ -338,7 +333,7 @@ def _TensorListGatherGrad(op, dtensor):
 
 @ops.RegisterGradient("TensorListScatter")
 @ops.RegisterGradient("TensorListScatterV2")
-def _TensorListScatterGrad(op, dlist):
+def _TensorListScatterGrad(op: ops.Operation, dlist):
   """Gradient function for TensorListScatter."""
   tensor = op.inputs[0]
   indices = op.inputs[1]
@@ -354,7 +349,7 @@ def _TensorListScatterGrad(op, dlist):
 
 
 @ops.RegisterGradient("TensorListScatterIntoExistingList")
-def _TensorListScatterIntoExistingListGrad(op, dlist):
+def _TensorListScatterIntoExistingListGrad(op: ops.Operation, dlist):
   """Gradient function for TensorListScatterIntoExistingList."""
   _, tensor, indices = op.inputs
   dtensor = gen_list_ops.tensor_list_gather(
@@ -389,7 +384,7 @@ def _build_element_shape(shape):
   Returns:
     A None-free shape that can be converted to a tensor.
   """
-  if isinstance(shape, ops.Tensor):
+  if isinstance(shape, tensor_lib.Tensor):
     return shape
   if isinstance(shape, tensor_shape.TensorShape):
     # `TensorShape.as_list` requires rank to be known.
@@ -404,7 +399,7 @@ def _build_element_shape(shape):
   def convert(val):
     if val is None:
       return -1
-    if isinstance(val, ops.Tensor):
+    if isinstance(val, tensor_lib.Tensor):
       return val
     if isinstance(val, tensor_shape.Dimension):
       return val.value if val.value is not None else -1

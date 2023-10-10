@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <memory>
 #include <set>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -64,7 +66,7 @@ bool TFShow::LookUpCheckPoint(const string& name,
     TF_DeleteStatus(status);
     return false;
   }
-  tensor->reset(new TFProfTensor(std::move(out_tensor)));
+  *tensor = std::make_unique<TFProfTensor>(std::move(out_tensor));
   TF_DeleteStatus(status);
   return true;
 }
@@ -135,8 +137,8 @@ bool TFShow::ReAccount(ShowNode* node, const Options& opts) {
   return false;
 }
 
-string TFShow::FormatNodeMemory(ShowNode* node, int64 bytes,
-                                int64 total_bytes) const {
+string TFShow::FormatNodeMemory(ShowNode* node, int64_t bytes,
+                                int64_t total_bytes) const {
   string memory = FormatMemory(total_bytes);
   if (node->account) {
     memory = FormatMemory(bytes) + "/" + memory;

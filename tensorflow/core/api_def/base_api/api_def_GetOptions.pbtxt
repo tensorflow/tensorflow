@@ -1,0 +1,11 @@
+op {
+  graph_op_name: "GetOptions"
+  visibility: HIDDEN
+  in_arg {
+    name: "input_dataset"
+    description: <<END
+A variant tensor representing the input dataset.
+END
+  }
+  summary: "Returns the `tf.data.Options` attached to `input_dataset`."
+}

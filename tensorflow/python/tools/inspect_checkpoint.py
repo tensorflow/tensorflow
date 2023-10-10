@@ -13,17 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 """A simple script for inspect checkpoint files."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import re
 import sys
 
+from absl import app
 import numpy as np
 
-from tensorflow.python.platform import app
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.platform import flags
 from tensorflow.python.training import py_checkpoint_reader
 
@@ -79,7 +76,10 @@ def print_tensors_in_checkpoint_file(file_name, tensor_name, all_tensors,
       for key, value in sorted(var_to_shape_map.items()):
         print("tensor: %s (%s) %s" % (key, var_to_dtype_map[key].name, value))
         if all_tensors:
-          print(reader.get_tensor(key))
+          try:
+            print(reader.get_tensor(key))
+          except errors_impl.InternalError:
+            print("<not convertible to a numpy dtype>")
     elif not tensor_name:
       print(reader.debug_string().decode("utf-8", errors="ignore"))
     else:

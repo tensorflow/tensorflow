@@ -144,7 +144,7 @@ class Allocator {
       // Nothing needs to be done, these aren't kept in the books.
       return;
     }
-    auto iter = std::lower_bound(live_allocs_.begin(), live_allocs_.end(), a);
+    auto iter = live_allocs_.lower_bound(a);
     CHECK(iter != live_allocs_.end());
     CHECK(*iter == a);
     live_allocs_.erase(iter);

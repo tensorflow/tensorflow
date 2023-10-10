@@ -30,7 +30,7 @@ using ::testing::Test;
 
 struct SimpleConfig {
  public:
-  static constexpr const char* kAccelerationTestConfig =
+  static constexpr char kAccelerationTestConfig[] =
       R"(
       #test-id,some-other-data
       test-1,data-1
@@ -41,6 +41,10 @@ struct SimpleConfig {
       test-6
       test-7,data-7
       )";
+
+  static const char* AccelerationTestConfig() {
+    return kAccelerationTestConfig;
+  }
 
   static SimpleConfig ParseConfigurationLine(const std::string& conf_line) {
     return {conf_line};
@@ -186,6 +190,10 @@ TEST(GetAccelerationTestParam, SupportDenylist) {
 struct UnmatchedSimpleConfig {
  public:
   static constexpr const char* kAccelerationTestConfig = nullptr;
+
+  static const char* AccelerationTestConfig() {
+    return kAccelerationTestConfig;
+  }
 
   static UnmatchedSimpleConfig ParseConfigurationLine(
       const std::string& conf_line) {

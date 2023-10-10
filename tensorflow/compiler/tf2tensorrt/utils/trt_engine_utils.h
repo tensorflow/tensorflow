@@ -19,6 +19,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/compiler/tf2tensorrt/common/datavec.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -29,28 +32,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
+using ::tsl::StatusOr;
 
-// Input/output data format for OpConverterTest::BuildAndRun().
-struct InputOutputData {
-  void* Buffer() const {
-    return const_cast<char*>(tensor.tensor_data().data());
-  }
-
-  size_t TotalBytes() const { return tensor.TotalBytes(); }
-
-  string name;
-  Tensor tensor;
-};
-
-using DataVec = std::vector<InputOutputData>;
-
-// Gets the binding index of a tensor in an engine.
-//
-// The binding index is looked up using the tensor's name and the profile index.
-// Profile index should be set to zero, if we do not have optimization profiles.
-Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
-                          const nvinfer1::ICudaEngine* cuda_engine,
-                          int* binding_index);
+// Creates a TensorRT execution context.
+ExecutionContext CreateExecutionContext(nvinfer1::ICudaEngine* cuda_engine);
 
 // Sets input buffers for TRT from a list of input tensors. The input tensors
 // are either defined by ctx or by input_vec.
@@ -58,7 +43,9 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
                           nvinfer1::IExecutionContext* execution_context,
                           const int trt_profile_idx,
                           std::vector<void*>& buffers, bool use_implicit_batch,
-                          int num_batch, OpKernelContext* ctx = nullptr,
+                          int num_batch,
+                          const TrtShapeOptimizationProfile& profiles,
+                          OpKernelContext* ctx = nullptr,
                           const DataVec* input_vec = nullptr);
 
 // Returns the shape of a binding from TensorRT.

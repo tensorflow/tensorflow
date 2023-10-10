@@ -14,16 +14,14 @@
 # ==============================================================================
 """Concat and stack operations for RaggedTensors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+import typing
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.ragged import ragged_array_ops
 from tensorflow.python.ops.ragged import ragged_gather_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
@@ -31,7 +29,8 @@ from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
-def concat(values, axis, name=None):
+@dispatch.dispatch_for_api(array_ops.concat)
+def concat(values: typing.List[ragged_tensor.RaggedOrDense], axis, name=None):
   """Concatenates potentially ragged tensors along one dimension.
 
   Given a list of tensors with the same rank `K` (`K >= axis`), returns a
@@ -73,7 +72,10 @@ def concat(values, axis, name=None):
 
 @tf_export('ragged.stack')
 @dispatch.add_dispatch_support
-def stack(values, axis=0, name=None):
+@dispatch.dispatch_for_api(array_ops_stack.stack)
+def stack(values: typing.List[ragged_tensor.RaggedOrDense],
+          axis=0,
+          name=None):
   """Stacks a list of rank-`R` tensors into one rank-`(R+1)` `RaggedTensor`.
 
   Given a list of tensors or ragged tensors with the same rank `R`
@@ -107,7 +109,9 @@ def stack(values, axis=0, name=None):
     name: A name prefix for the returned tensor (optional).
 
   Returns:
-    A `RaggedTensor` with rank `R+1`.
+    A `RaggedTensor` with rank `R+1` (if `R>0`).
+    If `R==0`, then the result will be returned as a 1D `Tensor`, since
+    `RaggedTensor` can only be used when `rank>1`.
     `result.ragged_rank=1+max(axis, max(rt.ragged_rank for rt in values]))`.
 
   Raises:
@@ -148,11 +152,8 @@ def _ragged_stack_concat_helper(rt_inputs, axis, stack_values):
   rt_inputs = list(rt_inputs)
 
   # Special case: if there's only one input, then return it as-is.
-  if len(rt_inputs) == 1:
-    if stack_values:
-      return ragged_array_ops.expand_dims(rt_inputs[0], axis=axis)
-    else:
-      return rt_inputs[0]
+  if len(rt_inputs) == 1 and not stack_values:
+    return rt_inputs[0]
 
   # Check the rank (number of dimensions) of the input tensors.
   ndims = None
@@ -177,7 +178,7 @@ def _ragged_stack_concat_helper(rt_inputs, axis, stack_values):
   if all(not ragged_tensor.is_ragged(rt) for rt in rt_inputs):
     if ndims is not None and (axis == out_ndims - 1 or axis == ndims - 1):
       if stack_values:
-        return array_ops.stack(rt_inputs, axis)
+        return array_ops_stack.stack(rt_inputs, axis)
       else:
         return array_ops.concat(rt_inputs, axis)
 
@@ -233,7 +234,7 @@ def _ragged_stack_concat_axis_0(rt_inputs, stack_values):
 
   # If we are performing a stack operation, then add another splits.
   if stack_values:
-    stack_lengths = array_ops.stack([rt.nrows() for rt in rt_inputs])
+    stack_lengths = array_ops_stack.stack([rt.nrows() for rt in rt_inputs])
     stack_splits = ragged_util.lengths_to_splits(stack_lengths)
     concatenated_nested_splits.insert(0, stack_splits)
 
@@ -254,12 +255,19 @@ def _ragged_stack_concat_axis_1(rt_inputs, stack_values):
   """
   num_inputs = len(rt_inputs)
 
+  nrows_checks = []
   rt_nrows = rt_inputs[0].nrows()
-  nrows_msg = 'Input tensors have incompatible shapes.'
-  nrows_checks = [
-      check_ops.assert_equal(rt.nrows(), rt_nrows, message=nrows_msg)
-      for rt in rt_inputs[1:]
-  ]
+  for index, rt in enumerate(rt_inputs[1:]):
+    nrows_checks.append(
+        check_ops.assert_equal(
+            rt_nrows,
+            rt.nrows(),
+            message=(
+                f'Input tensors at index 0 (=x) and {index+1} (=y) have'
+                ' incompatible shapes.'
+            ),
+        )
+    )
 
   with ops.control_dependencies(nrows_checks):
     # Concatenate the inputs together to put them in a single ragged tensor.

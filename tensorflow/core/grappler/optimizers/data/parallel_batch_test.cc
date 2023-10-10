@@ -28,7 +28,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-TEST(ParallelBatch, Batch) {
+TEST(ParallelBatch, BatchDataset) {
   using test::function::NDef;
   GrapplerItem item;
   item.graph = test::function::GDef(
@@ -50,7 +50,7 @@ TEST(ParallelBatch, Batch) {
   EXPECT_TRUE(output.node(index).attr().at("parallel_copy").b());
 }
 
-TEST(ParallelBatch, PaddedBatch) {
+TEST(ParallelBatch, PaddedBatchDataset) {
   using test::function::NDef;
   GrapplerItem item;
   item.graph = test::function::GDef(

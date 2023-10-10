@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <fstream>
 #include <iostream>
+#include <string>
 
 #include "absl/strings/escaping.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -30,8 +31,8 @@ namespace {
 
 tensorflow::Tensor CreateTensor(const tensorflow::DataType type,
                                 const std::vector<int64_t>& dim) {
-  tensorflow::TensorShape shape{tensorflow::gtl::ArraySlice<tensorflow::int64>{
-      reinterpret_cast<const tensorflow::int64*>(dim.data()), dim.size()}};
+  tensorflow::TensorShape shape{tensorflow::gtl::ArraySlice<int64_t>{
+      reinterpret_cast<const int64_t*>(dim.data()), dim.size()}};
   return {type, shape};
 }
 
@@ -119,12 +120,14 @@ TfDriver::TfDriver(const std::vector<string>& input_layer,
     input_tensors_[input_layer[i]] = {};
     CHECK(DataTypeFromString(input_layer_type[i], &input_types_[i]));
     input_shapes_[i] = Split<int64_t>(input_layer_shape[i], ",");
+    input_name_to_id_[input_layer[i]] = i;
   }
 
   output_ids_.resize(output_layer.size());
   output_tensors_.reserve(output_layer.size());
   for (int i = 0; i < output_layer.size(); i++) {
     output_ids_[i] = i;
+    output_name_to_id_[output_layer[i]] = i;
   }
 }
 
@@ -146,7 +149,56 @@ void TfDriver::LoadModel(const string& bin_file_path) {
   session_.reset(tensorflow::NewSession(options));
   auto status = session_->Create(graphdef);
   if (!status.ok()) {
-    Invalidate("Failed to create session. " + status.error_message());
+    Invalidate(absl::StrCat("Failed to create session. ", status.message()));
+  }
+}
+
+void TfDriver::ReshapeTensor(const string& name, const string& csv_values) {
+  if (!IsValid()) return;
+  int id = input_name_to_id_[name];
+  input_shapes_[id] = Split<int64_t>(csv_values, ",");
+  input_tensors_[input_names_[id]] =
+      CreateTensor(input_types_[id], input_shapes_[id]);
+  ResetTensor(name);
+}
+
+void TfDriver::ResetTensor(const std::string& name) {
+  if (!IsValid()) return;
+  int id = input_name_to_id_[name];
+  auto tensor = input_tensors_[input_names_[id]];
+  switch (input_types_[id]) {
+    case tensorflow::DT_FLOAT: {
+      FillTensorWithZeros<float>(&tensor);
+      break;
+    }
+    case tensorflow::DT_INT32: {
+      FillTensorWithZeros<int32_t>(&tensor);
+      break;
+    }
+    default:
+      Invalidate(absl::StrCat("Unsupported tensor type ", input_types_[id],
+                              tensorflow::DataType_Name(input_types_[id]),
+                              " in ResetInput"));
+      return;
+  }
+}
+string TfDriver::ReadOutput(const string& name) {
+  if (!IsValid()) return "";
+  return ReadOutput(output_tensors_[output_name_to_id_[name]]);
+}
+void TfDriver::Invoke(const std::vector<std::pair<string, string>>& inputs) {
+  if (!IsValid()) return;
+  for (const auto& input : inputs) {
+    auto id = input_name_to_id_[input.first];
+    auto tensor = CreateTensor(input_types_[id], input_shapes_[id]);
+    SetInput(input.second, &tensor);
+    input_tensors_[input_names_[id]] = tensor;
+  }
+  auto status = session_->Run({input_tensors_.begin(), input_tensors_.end()},
+                              output_names_, {}, &output_tensors_);
+  if (!status.ok()) {
+    Invalidate(
+        absl::StrCat("TensorFlow failed to run graph:", status.message()));
   }
 }
 
@@ -161,6 +213,10 @@ void TfDriver::SetInput(const string& values_as_string,
     case tensorflow::DT_INT32:
       num_values_available =
           FillTensorWithData<int32_t>(tensor, values_as_string);
+      break;
+    case tensorflow::DT_UINT32:
+      num_values_available =
+          FillTensorWithData<uint32_t>(tensor, values_as_string);
       break;
     case tensorflow::DT_UINT8:
       num_values_available =
@@ -184,48 +240,16 @@ void TfDriver::SetInput(const string& values_as_string,
   }
 }
 
-void TfDriver::SetInput(int id, const string& values_as_string) {
-  if (!IsValid()) return;
-  auto tensor = CreateTensor(input_types_[id], input_shapes_[id]);
-  SetInput(values_as_string, &tensor);
-  input_tensors_[input_names_[id]] = tensor;
-}
-
-void TfDriver::ResetTensor(int id) {
-  if (!IsValid()) return;
-  auto tensor = input_tensors_[input_names_[id]];
-  switch (input_types_[id]) {
-    case tensorflow::DT_FLOAT: {
-      FillTensorWithZeros<float>(&tensor);
-      break;
-    }
-    case tensorflow::DT_INT32: {
-      FillTensorWithZeros<int32_t>(&tensor);
-      break;
-    }
-    default:
-      Invalidate(absl::StrCat("Unsupported tensor type ", input_types_[id],
-                              tensorflow::DataType_Name(input_types_[id]),
-                              " in ResetInput"));
-      return;
-  }
-}
-
-void TfDriver::ReshapeTensor(int id, const string& values_as_string) {
-  input_shapes_[id] = Split<int64_t>(values_as_string, ",");
-  input_tensors_[input_names_[id]] =
-      CreateTensor(input_types_[id], input_shapes_[id]);
-  ResetTensor(id);
-}
-
 string TfDriver::ReadOutput(const tensorflow::Tensor& tensor) {
   switch (tensor.dtype()) {
     case tensorflow::DT_FLOAT:
       return TensorDataToCsvString<float>(tensor);
     case tensorflow::DT_INT32:
       return TensorDataToCsvString<int32_t>(tensor);
+    case tensorflow::DT_UINT32:
+      return TensorDataToCsvString<uint32_t>(tensor);
     case tensorflow::DT_INT64:
-      return TensorDataToCsvString<tensorflow::int64>(tensor);
+      return TensorDataToCsvString<int64_t>(tensor);
     case tensorflow::DT_UINT8:
       return TensorDataToCsvString<uint8_t>(tensor);
     case tensorflow::DT_STRING:
@@ -237,21 +261,6 @@ string TfDriver::ReadOutput(const tensorflow::Tensor& tensor) {
                               tensorflow::DataType_Name(tensor.dtype()),
                               " in ReadOutput"));
       return "";
-  }
-}
-
-string TfDriver::ReadOutput(int id) {
-  if (!IsValid()) return "";
-  return ReadOutput(output_tensors_[id]);
-}
-
-void TfDriver::Invoke() {
-  if (!IsValid()) return;
-  auto status = session_->Run({input_tensors_.begin(), input_tensors_.end()},
-                              output_names_, {}, &output_tensors_);
-  if (!status.ok()) {
-    Invalidate(absl::StrCat("TensorFlow failed to run graph:",
-                            status.error_message()));
   }
 }
 

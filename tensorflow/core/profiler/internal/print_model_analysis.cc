@@ -21,16 +21,12 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_format.h"
-#include "tensorflow/c/checkpoint_reader.h"
-#include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/profiler/internal/advisor/tfprof_advisor.h"
 #include "tensorflow/core/profiler/internal/tfprof_stats.h"
 #include "tensorflow/core/profiler/tfprof_log.pb.h"
 #include "tensorflow/core/profiler/tfprof_options.h"
 #include "tensorflow/core/profiler/tfprof_options.pb.h"
 #include "tensorflow/core/profiler/tfprof_output.pb.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -101,7 +97,7 @@ bool NewProfiler(const string* graph, const string* op_log) {
 
   std::unique_ptr<OpLogProto> op_log_ptr;
   if (op_log && !op_log->empty()) {
-    op_log_ptr.reset(new OpLogProto());
+    op_log_ptr = std::make_unique<OpLogProto>();
     if (!op_log_ptr->ParseFromString(*op_log)) {
       absl::FPrintF(stderr, "Failed to parse OpLogProto.\n");
       return false;
@@ -125,7 +121,7 @@ void DeleteProfiler() {
   }
 }
 
-double AddStep(int64 step, const string* graph, const string* run_meta,
+double AddStep(int64_t step, const string* graph, const string* run_meta,
                const string* op_log) {
   CHECK(tf_stat);
 
@@ -147,7 +143,7 @@ double AddStep(int64 step, const string* graph, const string* run_meta,
 
   if (op_log && !op_log->empty()) {
     std::unique_ptr<OpLogProto> op_log_ptr;
-    op_log_ptr.reset(new OpLogProto());
+    op_log_ptr = std::make_unique<OpLogProto>();
     op_log_ptr->ParseFromString(*op_log);
     tf_stat->AddOpLogProto(std::move(op_log_ptr));
   }
@@ -186,13 +182,13 @@ string PrintModelAnalysis(const string* graph, const string* run_meta,
 
   std::unique_ptr<RunMetadata> run_meta_ptr;
   if (run_meta && !run_meta->empty()) {
-    run_meta_ptr.reset(new RunMetadata());
+    run_meta_ptr = std::make_unique<RunMetadata>();
     run_meta_ptr->ParseFromString(*run_meta);
   }
 
   std::unique_ptr<OpLogProto> op_log_ptr;
   if (op_log && !op_log->empty()) {
-    op_log_ptr.reset(new OpLogProto());
+    op_log_ptr = std::make_unique<OpLogProto>();
     op_log_ptr->ParseFromString(*op_log);
   }
 

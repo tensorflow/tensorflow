@@ -72,7 +72,7 @@ limitations under the License.
 #define TF_CALL_resource(m) m(::tensorflow::ResourceHandle)
 #define TF_CALL_variant(m) m(::tensorflow::Variant)
 #define TF_CALL_complex64(m) m(::tensorflow::complex64)
-#define TF_CALL_int64(m) m(::tensorflow::int64)
+#define TF_CALL_int64(m) m(::int64_t)
 #define TF_CALL_uint64(m) m(::tensorflow::uint64)
 #define TF_CALL_bool(m) m(bool)
 
@@ -86,6 +86,12 @@ limitations under the License.
 #define TF_CALL_uint16(m) m(::tensorflow::uint16)
 #define TF_CALL_complex128(m) m(::tensorflow::complex128)
 #define TF_CALL_half(m) m(Eigen::half)
+
+#define TF_CALL_float8_e5m2(m) m(::tensorflow::float8_e5m2)
+#define TF_CALL_float8_e4m3fn(m) m(::tensorflow::float8_e4m3fn)
+
+#define TF_CALL_int4(m) m(::tensorflow::int4)
+#define TF_CALL_uint4(m) m(::tensorflow::uint4)
 
 #elif defined(__ANDROID_TYPES_FULL__)
 
@@ -104,7 +110,7 @@ limitations under the License.
 #define TF_CALL_resource(m)
 #define TF_CALL_variant(m)
 #define TF_CALL_complex64(m)
-#define TF_CALL_int64(m) m(::tensorflow::int64)
+#define TF_CALL_int64(m) m(::int64_t)
 #define TF_CALL_uint64(m)
 #define TF_CALL_bool(m) m(bool)
 
@@ -118,6 +124,12 @@ limitations under the License.
 #define TF_CALL_uint16(m)
 #define TF_CALL_complex128(m)
 #define TF_CALL_half(m) m(Eigen::half)
+
+#define TF_CALL_float8_e5m2(m)
+#define TF_CALL_float8_e4m3fn(m)
+
+#define TF_CALL_int4(m)
+#define TF_CALL_uint4(m)
 
 #else  // defined(IS_MOBILE_PLATFORM) && !defined(__ANDROID_TYPES_FULL__)
 
@@ -149,6 +161,12 @@ limitations under the License.
 #define TF_CALL_uint16(m)
 #define TF_CALL_complex128(m)
 #define TF_CALL_half(m)
+
+#define TF_CALL_float8_e5m2(m)
+#define TF_CALL_float8_e4m3fn(m)
+
+#define TF_CALL_int4(m)
+#define TF_CALL_uint4(m)
 
 #endif  // defined(IS_MOBILE_PLATFORM)  - end of TF_CALL_type defines
 
@@ -193,7 +211,7 @@ limitations under the License.
 
 // Call "m" on all number types supported on GPU.
 #define TF_CALL_GPU_NUMBER_TYPES(m) \
-  TF_CALL_half(m) TF_CALL_float(m) TF_CALL_double(m)
+  TF_CALL_half(m) TF_CALL_bfloat16(m) TF_CALL_float(m) TF_CALL_double(m)
 
 // Call "m" on all types supported on GPU.
 #define TF_CALL_GPU_ALL_TYPES(m) \

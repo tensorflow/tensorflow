@@ -14,17 +14,13 @@
 # ==============================================================================
 """Tests for scatter_nd_ops that only work in V1."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 import numpy as np
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.platform import test
 
 
@@ -115,7 +111,7 @@ class StatefulScatterNdTest(test.TestCase):
         new = ref.copy()
         np_scatter(new, indices, updates)
         # Scatter via tensorflow
-        ref_var = variables.VariableV1(ref)
+        ref_var = variable_v1.VariableV1(ref)
         self.evaluate(ref_var.initializer)
         self.evaluate(tf_scatter(ref_var, indices, updates))
 
@@ -140,7 +136,7 @@ class StatefulScatterNdTest(test.TestCase):
       params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
       updates = np.array([-3, -4, -5]).astype(np.float32)
       with self.cached_session(use_gpu=False):
-        ref = variables.VariableV1(params)
+        ref = variable_v1.VariableV1(params)
         self.evaluate(ref.initializer)
 
         # Indices all in range, no problem.
@@ -157,3 +153,7 @@ class StatefulScatterNdTest(test.TestCase):
         with self.assertRaisesOpError(
             r"indices\[2\] = \[6\] does not index into shape \[6\]"):
           op(ref, indices, updates).eval()
+
+
+if __name__ == "__main__":
+  test.main()

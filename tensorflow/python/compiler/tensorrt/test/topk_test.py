@@ -14,10 +14,6 @@
 # ==============================================================================
 """Model script to test TF-TensorRT integration."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import constant_op
@@ -44,7 +40,7 @@ class TopKTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return {"TRTEngineOp_0": ["Const", "TopK"]}
+    return {"TRTEngineOp_000": ["Const", "TopK"]}
 
 
 class TopKOutputTypeTest(trt_test.TfTrtIntegrationTestBase):
@@ -69,7 +65,7 @@ class TopKOutputTypeTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return {"TRTEngineOp_0": ["Const", "TopK", "Reshape", "Reshape/shape"]}
+    return {"TRTEngineOp_000": ["Const", "TopK", "Reshape", "Reshape/shape"]}
 
 
 if __name__ == "__main__":

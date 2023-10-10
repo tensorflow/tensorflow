@@ -1,0 +1,13 @@
+path: "tensorflow.__internal__.tracking.CheckpointInitialValue"
+tf_class {
+  is_instance: "<class \'tensorflow.python.trackable.base.CheckpointInitialValue\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "checkpoint_position"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'checkpoint_position\', \'shape\', \'shard_info\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+}

@@ -23,8 +23,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -127,8 +127,6 @@ absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, HW* shape);
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, OHWI* shape);
 
 absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, BHWC* shape);
-
-absl::Status IsActivationSupported(TfLiteFusedActivation fused_activation);
 
 // If there is fused activation present, then there will be another node created
 // that will have identical output as the given node. New operation node will

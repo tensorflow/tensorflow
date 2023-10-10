@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -41,7 +41,7 @@ TfLiteStatus ResizeOutputImpl(TfLiteContext* context, const TfLiteTensor* dims,
     T data = GetTensorData<T>(dims)[i];
     if (data < 0) {
       TfLiteIntArrayFree(output_shape);
-      context->ReportError(context, "Fill dimensions must be >= 0", dims->type);
+      TF_LITE_KERNEL_LOG(context, "Fill dimensions must be >= 0", dims->type);
       return kTfLiteError;
     }
     output_shape->data[i] = data;
@@ -57,7 +57,7 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* dims,
     case kTfLiteInt64:
       return ResizeOutputImpl<int64_t>(context, dims, output);
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Fill only currently supports int32, int64 for input 0, "
           "got %d.",
@@ -92,7 +92,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
   output->type = value->type;
 
-  if (IsConstantTensor(dims)) {
+  TF_LITE_ENSURE_EQ(context, output->params.scale, value->params.scale);
+  TF_LITE_ENSURE_EQ(context, output->params.zero_point,
+                    value->params.zero_point);
+
+  if (value->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, value->params.zero_point, 0);
+  }
+
+  if (IsConstantOrPersistentTensor(dims)) {
     TF_LITE_ENSURE_OK(context, ResizeOutput(context, dims, output));
   } else {
     SetTensorToDynamic(output);
@@ -132,11 +140,20 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                       GetTensorShape(output),                                 \
                       GetTensorData<data_type>(output))
   switch (output->type) {
+    case kTfLiteInt8:
+      TF_LITE_FILL(int8_t);
+      break;
+    case kTfLiteInt16:
+      TF_LITE_FILL(int16_t);
+      break;
     case kTfLiteInt32:
       TF_LITE_FILL(int32_t);
       break;
     case kTfLiteInt64:
       TF_LITE_FILL(int64_t);
+      break;
+    case kTfLiteFloat16:
+      TF_LITE_FILL(Eigen::half);
       break;
     case kTfLiteFloat32:
       TF_LITE_FILL(float);
@@ -148,10 +165,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       FillString(value, output);
       break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
-          "Fill only currently supports int32, int64, float32, bool, string "
-          "for input 1, got %d.",
+          "Fill only currently supports int8, int16, int32, int64, float32, "
+          "bool, string for input 1, got %d.",
           value->type);
       return kTfLiteError;
   }

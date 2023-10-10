@@ -18,16 +18,13 @@
 
 See the [Neural network](https://tensorflow.org/api_guides/python/nn) guide.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys as _sys
 
 # pylint: disable=unused-import
 from tensorflow.python.ops import ctc_ops as _ctc_ops
 from tensorflow.python.ops import embedding_ops as _embedding_ops
 from tensorflow.python.ops import nn_grad as _nn_grad
+from tensorflow.python.ops import nn_fused_batch_norm_grad as _nn_fused_batch_norm_grad
 from tensorflow.python.ops import nn_ops as _nn_ops
 from tensorflow.python.ops.math_ops import sigmoid
 from tensorflow.python.ops.math_ops import tanh
@@ -38,6 +35,7 @@ from tensorflow.python.ops.math_ops import tanh
 # pylint: disable=wildcard-import,unused-import
 from tensorflow.python.ops.ctc_ops import *
 from tensorflow.python.ops.nn_impl import *
+from tensorflow.python.ops.nn_impl_distribute import *
 from tensorflow.python.ops.nn_ops import *
 from tensorflow.python.ops.candidate_sampling_ops import *
 from tensorflow.python.ops.embedding_ops import *

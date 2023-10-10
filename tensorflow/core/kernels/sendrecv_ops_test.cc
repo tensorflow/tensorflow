@@ -29,12 +29,12 @@ namespace {
 class DummyRendezvous : public Rendezvous {
   Status Send(const ParsedKey& key, const Args& args, const Tensor& val,
               const bool is_dead) override {
-    return Status::OK();
+    return OkStatus();
   }
   void RecvAsync(const ParsedKey& key, const Args& args,
                  DoneCallback done) override {
     static Tensor* t = new Tensor(DT_FLOAT, TensorShape({0}));
-    done(Status::OK(), args, args, *t, false);
+    done(OkStatus(), args, args, *t, false);
   }
   void StartAbort(const Status& status) override {}
 };
@@ -58,7 +58,7 @@ void BM_Send(::testing::benchmark::State& state) {
   test::Benchmark("cpu", Send(), nullptr, nullptr, new DummyRendezvous, "",
                   /*old_benchmark_api*/ false)
       .Run(state);
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()));
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
 }
 BENCHMARK(BM_Send)->UseRealTime();
 
@@ -66,7 +66,7 @@ void BM_Recv(::testing::benchmark::State& state) {
   test::Benchmark("cpu", Recv(), nullptr, nullptr, new DummyRendezvous, "",
                   /*old_benchmark_api*/ false)
       .Run(state);
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()));
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
 }
 BENCHMARK(BM_Recv)->UseRealTime();
 

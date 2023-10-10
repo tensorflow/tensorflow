@@ -40,8 +40,14 @@ def TF_LayoutSensitiveInterface : OpInterface<"LayoutSensitiveInterface"> {
   let methods = [
     InterfaceMethod<
       [{Returns current operation data format (data layout).}],
-      "StringRef", "data_format", (ins)
+      "StringRef", "getDataFormat", (ins)
     >,
+    InterfaceMethod<
+      [{Deprecated method that returns current operation data format (data layout).}],
+      "StringRef", "data_format", (ins),
+      /*methodBody=*/[{
+        return $_op.getDataFormat();
+    }]>,
     InterfaceMethod<
       [{Returns indices of layout dependent arguments.}],
       "SmallVector<unsigned, 4>", "GetLayoutDependentArgs", (ins)
@@ -105,27 +111,6 @@ def TF_FoldOperandsTransposeInterface : OpInterface<"FoldOperandsTransposeInterf
 }
 
 //===----------------------------------------------------------------------===//
-// TensorFlow Contraction Fusion Interfaces.
-//===----------------------------------------------------------------------===//
-
-def TF_ContractionFusableInterface : OpInterface<"ContractionFusableInterface"> {
-  let description = [{
-    A contraction fusable operation is one that can be fused into the output of
-    a tensor contraction (MatMul, Conv2D, etc...) operation.
-
-    For example all element wise operations are trivially contraction fusable.
-  }];
-
-  let methods = [
-    InterfaceMethod<
-      [{Returns contraction fusion if the operation satisfies all the fusion
-        requirements. Otherwise returns empty optional.}],
-      "Optional<ContractionFusion>", "GetContractionFusion", (ins)
-    >,
-  ];
-}
-
-//===----------------------------------------------------------------------===//
 // TensorFlow Resource Handle Interfaces.
 //===----------------------------------------------------------------------===//
 
@@ -137,13 +122,38 @@ def TF_ResourceHandleAllocatorInterface : OpInterface<"ResourceHandleAllocatorIn
 
   let methods = [
     InterfaceMethod<
-      /*desc=*/[{Returns the resource handle value and unique id associated with
-                 the resource handle. If a resource handle is reused, then an
-                 existing id will be returned.}],
-      /*retTy=*/"ResourceHandleValueAndId",
-      /*methodName=*/"GetResourceHandleValueAndId",
+      /*desc=*/[{Returns resource handle values and the unique ids associated with
+                 the resource handles for this op. The handles should be created
+                 for only the resource tensors in the results of the op. If a
+                 resource handle is reused, then an existing id will be
+                 returned. The order of the resource handles in the returned
+                 vector are the order of those resources in the results of the
+                 op.}],
+      /*retTy=*/"llvm::SmallVector<ResourceHandleValueAndId, 4>",
+      /*methodName=*/"GetResourceHandleValueAndIdList",
       /*args=*/(ins "llvm::SmallDenseMap<ResourceHandle, int64_t>&":$resource_handle_id_map,
                     "int64_t&":$next_id)
+    >,
+  ];
+}
+
+def TF_GetResourceInstanceInterface : OpInterface<"GetResourceInstanceInterface"> {
+  let description = [{Returns a string corresponding to the resource instance
+                      accessed by this op}];
+
+  let methods = [
+    InterfaceMethod<
+      /*desc=*/[{Returns a string corresponding to the resource instance
+                 accessed by this op, or `std::nullopt` if the resource should
+                 be ignored. The implementation must guarantee that the
+                 mapping between resource instances and strings is bijective,
+                 i.e., two op instances should return the same string if and
+                 only if they access the same resource. The interface should
+                 only be used for ops that access exactly one op-based resource
+                 (see `tf_op_base.td` for details).}],
+      /*retTy=*/"std::optional<std::string>",
+      /*methodName=*/"GetResourceInstanceStr",
+      /*args=*/(ins)
     >,
   ];
 }

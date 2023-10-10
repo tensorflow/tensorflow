@@ -17,11 +17,6 @@
 This functions cannot be in the non-keras loss_scale.py file since they depend
 on keras, and files outside of keras should not depend on files inside keras.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import six
 
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
@@ -50,7 +45,7 @@ def get(identifier):
   if isinstance(identifier, dict):
     return deserialize(identifier)
 
-  if isinstance(identifier, six.integer_types + (float,)):
+  if isinstance(identifier, (int, float)):
     return loss_scale_module.FixedLossScale(identifier)
   if identifier == 'dynamic':
     return loss_scale_module.DynamicLossScale()

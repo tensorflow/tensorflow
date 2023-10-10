@@ -12,18 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Operations for linear algebra."""
+"""Operations for linear algebra.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+API docstring: tensorflow.linalg
+"""
 
 import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops_impl
@@ -66,7 +66,7 @@ def _RegularizedGramianCholesky(matrix, l2_regularizer, first_kind):
 
   gramian = math_ops.matmul(
       matrix, matrix, adjoint_a=first_kind, adjoint_b=not first_kind)
-  if isinstance(l2_regularizer, ops.Tensor) or l2_regularizer != 0:
+  if isinstance(l2_regularizer, tensor_lib.Tensor) or l2_regularizer != 0:
     matrix_shape = array_ops.shape(matrix)
     batch_shape = matrix_shape[:-2]
     if first_kind:
@@ -360,7 +360,7 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
         # We have to defer determining the shape to runtime and use
         # conditional execution of the appropriate graph.
         matrix_shape = array_ops.shape(matrix)[-2:]
-        return control_flow_ops.cond(
+        return cond.cond(
             matrix_shape[-2] >= matrix_shape[-1],
             lambda: _overdetermined(matrix, rhs, l2_regularizer),
             lambda: _underdetermined(matrix, rhs, l2_regularizer))
@@ -398,7 +398,8 @@ def eig(tensor, name=None):
     name: string, optional name of the operation.
 
   Returns:
-    e: Eigenvalues. Shape is `[..., N]`. Sorted in non-decreasing order.
+    e: Eigenvalues. Shape is `[..., N]`. The eigenvalues are not necessarily
+       ordered.
     v: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
       matrices contain eigenvectors of the corresponding matrices in `tensor`
   """
@@ -709,19 +710,21 @@ def norm(tensor,
     if (not isinstance(axis[0], int) or not isinstance(axis[1], int) or
         axis[0] == axis[1]):
       raise ValueError(
-          "'axis' must be None, an integer, or a tuple of 2 unique integers")
+          "'axis' must be None, an integer, or a tuple of 2 "
+          f"unique integers, got {axis}")
     supported_matrix_norms = ['euclidean', 'fro', 1, 2, np.inf]
     if ord not in supported_matrix_norms:
-      raise ValueError("'ord' must be a supported matrix norm in %s, got %s" %
-                       (supported_matrix_norms, ord))
+      raise ValueError(f"'ord' must be a supported matrix norm in "
+                       f"{supported_matrix_norms}, got {ord}")
   else:
     if not (isinstance(axis, int) or axis is None):
       raise ValueError(
-          "'axis' must be None, an integer, or a tuple of 2 unique integers")
+          "'axis' must be None, an integer, or a "
+          f"tuple of 2 unique integers, got {axis}")
 
     supported_vector_norms = ['euclidean', 1, 2, np.inf]
     if (not np.isreal(ord) or ord <= 0) and ord not in supported_vector_norms:
-      raise ValueError("'ord' must be a supported vector norm, got %s" % ord)
+      raise ValueError(f"'ord' must be a supported vector norm, got {ord}")
     if axis is not None:
       axis = (axis,)
 
@@ -732,7 +735,10 @@ def norm(tensor,
       if is_matrix_norm and ord in [2, 2.0]:
         rank = array_ops.rank(tensor)
         positive_axis = map_fn.map_fn(
-            lambda i: control_flow_ops.cond(i >= 0, lambda: i, lambda: i + rank),
+            lambda i: cond.cond(
+                i >= 0,
+                lambda: i,
+                lambda: i + rank),
             ops.convert_to_tensor(axis))
         axes = math_ops.range(rank)
         perm_before = array_ops.concat([
@@ -754,11 +760,12 @@ def norm(tensor,
             axis=-1)
         result = array_ops.transpose(matrix_2_norm, perm=perm_after)
       else:
+        # NOTE: we unfortunately cannot use tf.math.reduce_euclidean_norm, since
+        # this introduces a new op that is not supported in XLA, and breaks
+        # many existing TPU workloads (e.g. ResNet).
         result = math_ops.sqrt(
             math_ops.reduce_sum(
                 tensor * math_ops.conj(tensor), axis, keepdims=True))
-        # TODO(rmlarsen): Replace with the following, once gradients are defined
-        # result = math_ops.reduce_euclidean_norm(tensor, axis, keepdims=True)
     else:
       result = math_ops.abs(tensor)
       if ord == 1:

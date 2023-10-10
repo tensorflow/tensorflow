@@ -115,6 +115,17 @@ void NeonSparseMatrixBatchVectorMultiplyAccumulate(
     int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,
     float* __restrict__ result);
 
+// Multiplies a symmetric quantized matrix by a quantized batch vector. The
+// matrix is stored in sparse format.
+void NeonSparseMatrixBatchVectorMultiplyAccumulate1x16(
+    const int8_t* __restrict__ matrix, const int32_t* __restrict__ segments,
+    const int32_t* __restrict__ indices, int m_rows, int m_cols,
+    const int8_t* __restrict__ vector, const int32_t* __restrict__ bias_vector,
+    int n_batch, const int32_t input_offset, const int32_t output_multiplier,
+    const int32_t output_shift, const int32_t output_offset,
+    const int32_t output_activation_min, const int32_t output_activation_max,
+    int8_t* __restrict__ result);
+
 // Matrix multiplication for quantized values using symmetric quantization.
 // Sparse version.
 void NeonSparseMatrixBatchVectorMultiplyAccumulate(
@@ -171,6 +182,11 @@ void NeonReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
 void NeonVectorBatchVectorCwiseProductAccumulate(
     const int16_t* vector, int v_size, const int16_t* batch_vector, int n_batch,
     int32_t multiplier, int shift, int16_t* result);
+
+// Layer norm for each batch.
+void NeonMeanStddevNormalization(const float* __restrict__ input_vector,
+                                 float* __restrict__ output_vector, int v_size,
+                                 int n_batch);
 
 #endif  // USE_NEON
 

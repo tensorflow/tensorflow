@@ -15,22 +15,30 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_PROFILER_FACTORY_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_PROFILER_FACTORY_H_
 
+#include <functional>
 #include <memory>
 #include <vector>
 
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
-#include "tensorflow/core/profiler/profiler_options.pb.h"
+#include "tsl/profiler/lib/profiler_factory.h"
+#include "tsl/profiler/protobuf/profiler_options.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 
-using ProfilerFactory =
-    std::unique_ptr<ProfilerInterface> (*)(const ProfileOptions&);
+// A ProfilerFactory returns an instance of ProfilerInterface if ProfileOptions
+// require it. Otherwise, it might return nullptr.
+using tsl::profiler::ProfilerFactory;  // NOLINT
 
-void RegisterProfilerFactory(ProfilerFactory factory);
+// Registers a profiler factory. Should be invoked at most once per factory.
+using tsl::profiler::RegisterProfilerFactory;  // NOLINT
 
-void CreateProfilers(const ProfileOptions& options,
-                     std::vector<std::unique_ptr<ProfilerInterface>>* result);
+// Invokes all registered profiler factories with the given options, and
+// returns the instantiated (non-null) profiler interfaces.
+using tsl::profiler::CreateProfilers;  // NOLINT
+
+// For testing only.
+using tsl::profiler::ClearRegisteredProfilersForTest;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

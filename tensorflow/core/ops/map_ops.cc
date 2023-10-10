@@ -25,7 +25,7 @@ REGISTER_OP("EmptyTensorMap")
     .Output("handle: variant")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TensorMapSize")
@@ -41,7 +41,7 @@ REGISTER_OP("TensorMapLookup")
     .Attr("value_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->UnknownShape());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TensorMapInsert")
@@ -53,7 +53,7 @@ REGISTER_OP("TensorMapInsert")
     .Attr("value_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TensorMapErase")
@@ -64,7 +64,7 @@ REGISTER_OP("TensorMapErase")
     .Attr("value_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());  // output map
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TensorMapHasKey")
@@ -80,7 +80,7 @@ REGISTER_OP("TensorMapStackKeys")
     .Attr("key_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->UnknownShape());  // output keys
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace

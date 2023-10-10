@@ -14,20 +14,24 @@
 # ==============================================================================
 """Tests for where op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
+from tensorflow.python.tpu import tpu
 # pylint: enable=g-direct-tensorflow-import
 
 
 class WhereOpTest(xla_test.XLATestCase):
+
+  def __init__(self, method_name="runTest"):
+    super(WhereOpTest, self).__init__(method_name)
+    if config.list_logical_devices("TPU"):
+      with self.session() as sess:
+        sess.run(tpu.initialize_system())
 
   def testWhere(self):
     """Test first form of where (return indices)."""
@@ -85,6 +89,44 @@ class WhereOpTest(xla_test.XLATestCase):
       feed = [True, False, True]
       self.assertAllEqual([[0], [2]], sess.run(result, {x: feed}))
 
+  def testWhereInt(self):
+    """Test Where with integers."""
+
+    with self.session() as sess:
+      with self.test_scope():
+        x = array_ops.placeholder(dtypes.int32)
+        result = array_ops.where(x)
+
+      # Output of the computation is dynamic.
+      feed = [-1, 0, 1]
+      self.assertAllEqual([[0], [2]], sess.run(result, {x: feed}))
+
+  def testWhereFloat(self):
+    """Test Where with floats."""
+
+    with self.session() as sess:
+      with self.test_scope():
+        x = array_ops.placeholder(dtypes.float32)
+        result = array_ops.where(x)
+
+      # Output of the computation is dynamic.
+      feed = [-1.0, -0.0, 0.0, 1.0]
+      self.assertAllEqual([[0], [3]], sess.run(result, {x: feed}))
+
+  def testWhereComplex(self):
+    """Test Where with floats."""
+
+    with self.session() as sess:
+      with self.test_scope():
+        x = array_ops.placeholder(dtypes.complex64)
+        result = array_ops.where(x)
+
+      # Output of the computation is dynamic.
+      feed = [
+          -1.0 + 0.0j, -0.0 + 0.0j, 0.0 - 0.0j, 1.0 - 1.0j, 1.0 + 0.0j,
+          0.0 + 1.0j
+      ]
+      self.assertAllEqual([[0], [3], [4], [5]], sess.run(result, {x: feed}))
 
 if __name__ == "__main__":
   test.main()

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/autotune_buffer_sizes.h"
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
@@ -30,14 +32,17 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-constexpr char kLegacyAutotune[] = "legacy_autotune";
 constexpr char kBufferSizeMin[] = "buffer_size_min";
 constexpr char kPrefetchDataset[] = "PrefetchDataset";
 
-constexpr std::array<const char*, 7> kAsyncDatasetOps = {
-    "ExperimentalMapAndBatchDataset", "MapAndBatchDataset",
-    "ParallelInterleaveDatasetV2",    "ParallelInterleaveDatasetV3",
-    "ParallelInterleaveDatasetV4",    "ParallelMapDataset",
+constexpr std::array<const char*, 8> kAsyncDatasetOps = {
+    "ExperimentalMapAndBatchDataset",
+    "MapAndBatchDataset",
+    "ParallelBatchDataset",
+    "ParallelInterleaveDatasetV2",
+    "ParallelInterleaveDatasetV3",
+    "ParallelInterleaveDatasetV4",
+    "ParallelMapDataset",
     "ParallelMapDatasetV2",
 };
 
@@ -51,11 +56,11 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
   if (!autotune_) {
     VLOG(1) << "The optimization autotune_buffer_sizes is not applied if "
                "autotune is off.";
-    return Status::OK();
+    return OkStatus();
   }
   MutableGraphView graph(output);
 
-  // Add a const node with value kAutotune
+  // Add a const node with value kAutotune.
   NodeDef* autotune_value =
       graph_utils::AddScalarConstNode(data::model::kAutotune, &graph);
 
@@ -68,7 +73,7 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
       NodeDef* buffer_size_node = graph.GetNode(node.input(1));
       // We only consider to rewrite if `buffer_size` is constant.
       if (buffer_size_node->op() == "Const") {
-        int64 initial_buffer_size =
+        int64_t initial_buffer_size =
             buffer_size_node->attr().at("value").tensor().int64_val(0);
         if (initial_buffer_size != data::model::kAutotune) {
           TF_RETURN_IF_ERROR(graph.UpdateFanin(node.name(),
@@ -78,7 +83,7 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
           stats->num_changes++;
         }
       } else {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(
             "The autotune_buffer_sizes rewrite does not currently support "
             "non-constant buffer_size input.");
       }
@@ -105,7 +110,7 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
     }
   }
 
-  if (async_datasets.empty()) return Status::OK();
+  if (async_datasets.empty()) return OkStatus();
 
   for (const NodeDef* async_dataset_node : async_datasets) {
     NodeDef prefetch_node;
@@ -118,23 +123,14 @@ Status AutotuneBufferSizes::OptimizeAndCollectStats(Cluster* cluster,
     // `buffer_size` input
     *prefetch_node.mutable_input()->Add() = autotune_value->name();
 
-    for (const auto& attr_name : {"output_types", "output_shapes"}) {
-      graph_utils::CopyAttribute(attr_name, *async_dataset_node,
-                                 &prefetch_node);
-    }
+    graph_utils::CopyShapesAndTypesAttrs(*async_dataset_node, &prefetch_node);
 
     auto* added_node = graph.AddNode(std::move(prefetch_node));
     TF_RETURN_IF_ERROR(
         graph.UpdateFanouts(async_dataset_node->name(), added_node->name()));
   }
 
-  return Status::OK();
-}
-
-void AutotuneBufferSizes::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                   const GraphDef& optimize_output,
-                                   double result) {
-  // no-op
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(AutotuneBufferSizes, "autotune_buffer_sizes");

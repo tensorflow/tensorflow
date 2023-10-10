@@ -39,7 +39,7 @@ class SessionState {
   // Delete a tensor from the session state.
   Status DeleteTensor(const std::string& handle);
 
-  int64 GetNewId();
+  int64_t GetNewId();
 
   static const char* kTensorHandleResourceTypeName;
 
@@ -47,7 +47,7 @@ class SessionState {
   mutex state_lock_;
 
   // For generating unique ids for tensors stored in the session.
-  int64 tensor_id_ = 0;
+  int64_t tensor_id_ = 0;
 
   // The live tensors in the session. A map from tensor handle to tensor.
   std::unordered_map<string, Tensor> tensors_;
@@ -59,7 +59,7 @@ class TensorStore {
  public:
   struct TensorAndKey {
     Tensor tensor;
-    int64 id;
+    int64_t id;
     std::string device_name;
 
     std::string GetHandle(const std::string& tensor_name) {

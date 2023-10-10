@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for make_template."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import traceback
 
@@ -150,6 +146,67 @@ class TemplateTest(test.TestCase):
 
       # Parameters are tied, so the loss should have gone down after training.
       self.assertLess(final_test_loss.numpy(), initial_test_loss.numpy())
+
+  def test_eager_delayed_store_pickup(self):
+    """This test shows a very simple line model with test_loss in eager mode.
+
+    The template is used to share parameters between a training and test model.
+
+    This test also shows that it can pick up explicitly set variable stores
+    even if they are only set before the first template usage.
+    """
+    with context.eager_mode():
+      training_input, training_output = ([1., 2., 3., 4.], [2.8, 5.1, 7.2, 8.7])
+      test_input, test_output = ([5., 6., 7., 8.], [11, 13, 15, 17])
+
+      random_seed.set_random_seed(1234)
+
+      def test_line(x):
+        m = variable_scope.get_variable(
+            "w", shape=[], initializer=init_ops.truncated_normal_initializer())
+        b = variable_scope.get_variable(
+            "b", shape=[], initializer=init_ops.truncated_normal_initializer())
+        return x * m + b
+
+      line_template = template.make_template("line", test_line)
+
+      def train_loss():
+        train_prediction = line_template(training_input)
+        return math_ops.reduce_mean(
+            math_ops.square(train_prediction - training_output))
+
+      def test_loss():
+        test_prediction = line_template(test_input)
+        return math_ops.reduce_mean(
+            math_ops.square(test_prediction - test_output))
+
+      store = variable_scope._VariableStore()
+      store._store_eager_variables = True
+
+      with variable_scope.with_variable_store(store):
+        optimizer = gradient_descent.GradientDescentOptimizer(0.1)
+        initial_test_loss = test_loss()
+        optimizer.minimize(train_loss)
+        final_test_loss = test_loss()
+
+        # Parameters are tied, so the loss should have gone down after training.
+        self.assertLess(final_test_loss.numpy(), initial_test_loss.numpy())
+
+      # Verify that the explicitly set store is not empty
+      # and the make_template picked it up
+      self.assertEqual(set(store._vars.keys()), {"line/w", "line/b"})
+
+      # But the store should only get picked up once, so a second
+      # store will go unused:
+      second_store = variable_scope._VariableStore()
+      second_store._store_eager_variables = True
+
+      with variable_scope.with_variable_store(second_store):
+        optimizer = gradient_descent.GradientDescentOptimizer(0.1)
+        test_loss()
+        optimizer.minimize(train_loss)
+        test_loss()
+      self.assertEmpty(second_store._vars)
 
   @test_util.run_in_graph_and_eager_modes
   def test_skip_stack_frames(self):
@@ -385,68 +442,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual("s1_1/nested/dummy:0", v5.name)
     self.assertEqual("s1_1/nested_1/dummy:0", v6.name)
 
-    self.assertEqual(2, len(tmpl1._checkpoint_dependencies))
-    self.assertEqual("nested", tmpl1._checkpoint_dependencies[0].name)
-    self.assertEqual("nested_1", tmpl1._checkpoint_dependencies[1].name)
-
-  @test_util.run_in_graph_and_eager_modes
-  def test_nested_templates_with_defun(self):
-
-    def variable_scoped_function_no_return_value(trainable=True):
-      # defun cannot compile functions that return non-Tensor objects
-      _ = variable_scope.get_variable(
-          "dummy",
-          shape=[1],
-          trainable=trainable,
-          initializer=init_ops.zeros_initializer())
-
-    def nested_template():
-      nested1 = template.make_template_internal(
-          "nested",
-          variable_scoped_function_no_return_value,
-          create_graph_function_=True)
-      nested2 = template.make_template_internal(
-          "nested",
-          variable_scoped_function_no_return_value,
-          create_graph_function_=True)
-      nested1()
-      nested2()
-      v1 = nested1.variables
-      v2 = nested2.variables
-
-      self.assertEqual(len(v1), 1)
-      self.assertEqual(len(v2), 1)
-
-      # nested1 and nested2 should not share variables
-      self.assertIsNot(v1[0], v2[0])
-      self.assertIs(nested1.trainable_variables[0], v1[0])
-      self.assertIs(nested2.trainable_variables[0], v2[0])
-      self.assertEqual(len(nested1.non_trainable_variables), 0)
-      self.assertEqual(len(nested2.non_trainable_variables), 0)
-
-    tmpl1 = template.make_template("s1", nested_template)
-    tmpl2 = template.make_template("s1", nested_template)
-
-    tmpl1()
-    v1 = tmpl1.variables
-    tmpl1()
-    v2 = tmpl1.variables
-    tmpl2()
-    v3 = tmpl2.variables
-
-    # The second invocation of tmpl1 should reuse the variables
-    # created in the first invocation.
-    for v, w in zip(v1, v2):
-      self.assertIs(v, w)
-
-    # tmpl1 and tmpl2 should not share variables.
-    for v, w in zip(v1, v3):
-      self.assertIsNot(v, w)
-
-    self.assertEqual("s1/nested/dummy:0", v1[0].name)
-    self.assertEqual("s1/nested_1/dummy:0", v1[1].name)
-    self.assertEqual("s1_1/nested/dummy:0", v3[0].name)
-    self.assertEqual("s1_1/nested_1/dummy:0", v3[1].name)
+    self.assertEqual(["nested", "nested_1"], list(tmpl1._trackable_children()))
 
   def test_graph_function_no_name(self):
     with context.eager_mode():
@@ -716,7 +712,9 @@ class TemplateTest(test.TestCase):
 
     def variable_scoped_function_no_return_value(scope_name):
       # defun cannot compile functions that return non-Tensor objects
-      with variable_scope.variable_scope(scope_name):
+      with variable_scope.variable_scope(
+          scope_name,
+          reuse=variable_scope.AUTO_REUSE):
         _ = variable_scope.get_variable(
             "dummy", shape=[1], initializer=init_ops.zeros_initializer())
 

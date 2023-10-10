@@ -14,15 +14,10 @@
 # ==============================================================================
 """Tests for tensorflow.python.ops.special_math_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 import numpy as np
 import opt_einsum
-import six
 
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
@@ -48,7 +43,7 @@ class LBetaTest(test.TestCase):
     # Should evaluate to 1 and 1/2.
     x_one = [1, 1.]
     x_one_half = [2, 1.]
-    with self.session(use_gpu=True):
+    with self.session():
       self.assertAllClose(
           1, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_one))))
       self.assertAllClose(
@@ -60,7 +55,7 @@ class LBetaTest(test.TestCase):
     # Should evaluate to 1 and 1/2.
     x_one = [1, 1.]
     x_one_half = [2, 1.]
-    with self.session(use_gpu=True):
+    with self.session():
       ph = array_ops.placeholder(dtypes.float32)
       beta_ph = math_ops.exp(special_math_ops.lbeta(ph))
       self.assertAllClose(1, beta_ph.eval(feed_dict={ph: x_one}))
@@ -76,7 +71,7 @@ class LBetaTest(test.TestCase):
     #     = Gamma(1) * Gamma(1) * Gamma(1) * Gamma(1) / Gamma(1 + 1 + 1 + 1)
     #     = 1 / 6
     expected_beta_x = 1 / 6 * np.ones((3, 2, 3))
-    with self.session(use_gpu=True):
+    with self.session():
       x_ph = array_ops.placeholder(dtypes.float32, [3, 2, 3, None])
       beta_ph = math_ops.exp(special_math_ops.lbeta(x_ph))
       self.assertAllClose(expected_beta_x,
@@ -86,7 +81,7 @@ class LBetaTest(test.TestCase):
   def test_two_dimensional_arg(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
-    with self.session(use_gpu=True):
+    with self.session():
       self.assertAllClose(
           [0.5, 0.5],
           self.evaluate(math_ops.exp(special_math_ops.lbeta(x_one_half))))
@@ -96,7 +91,7 @@ class LBetaTest(test.TestCase):
   def test_two_dimensional_arg_dynamic(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
-    with self.session(use_gpu=True):
+    with self.session():
       ph = array_ops.placeholder(dtypes.float32)
       beta_ph = math_ops.exp(special_math_ops.lbeta(ph))
       self.assertAllClose([0.5, 0.5],
@@ -106,7 +101,7 @@ class LBetaTest(test.TestCase):
   def test_two_dimensional_proper_shape(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
-    with self.session(use_gpu=True):
+    with self.session():
       self.assertAllClose(
           [0.5, 0.5],
           self.evaluate(math_ops.exp(special_math_ops.lbeta(x_one_half))))
@@ -119,7 +114,7 @@ class LBetaTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_complicated_shape(self):
-    with self.session(use_gpu=True):
+    with self.session():
       x = ops.convert_to_tensor(np.random.rand(3, 2, 2))
       self.assertAllEqual(
           (3, 2), self.evaluate(array_ops.shape(special_math_ops.lbeta(x))))
@@ -133,7 +128,7 @@ class LBetaTest(test.TestCase):
     # as the answer, always.
     x_a = [5.5]
     x_b = [0.1]
-    with self.session(use_gpu=True):
+    with self.session():
       self.assertAllClose(
           1,
           self.evaluate(math_ops.exp(special_math_ops.lbeta(x_a))),
@@ -144,7 +139,7 @@ class LBetaTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_empty_rank1_returns_negative_infinity(self):
-    with self.session(use_gpu=True):
+    with self.session():
       x = constant_op.constant([], shape=[0])
       lbeta_x = special_math_ops.lbeta(x)
       expected_result = constant_op.constant(-np.inf, shape=())
@@ -155,7 +150,7 @@ class LBetaTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_empty_rank2_with_zero_last_dim_returns_negative_infinity(self):
-    with self.session(use_gpu=True):
+    with self.session():
       event_size = 0
       for batch_size in [0, 1, 2]:
         x = constant_op.constant([], shape=[batch_size, event_size])
@@ -168,7 +163,7 @@ class LBetaTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_empty_rank2_with_zero_batch_dim_returns_empty(self):
-    with self.session(use_gpu=True):
+    with self.session():
       batch_size = 0
       for event_size in [0, 1, 2]:
         x = constant_op.constant([], shape=[batch_size, event_size])
@@ -858,8 +853,7 @@ class EinsumTest(test.TestCase):
       # with the same input args (as input_1 and input_2 above), and if
       # those tests run before this test, then the call_count for the method
       # mock_contract_path will not increment.
-      if not six.PY2:
-        special_math_ops._get_opt_einsum_contract_path.cache_clear()
+      special_math_ops._get_opt_einsum_contract_path.cache_clear()
 
       self.assertEqual(mock_contract_path.call_count, 0)
       self._check(*input_1)
@@ -867,15 +861,15 @@ class EinsumTest(test.TestCase):
       # The same input results in no extra call if we're caching the
       # opt_einsum.contract_path call. We only cache in Python3.
       self._check(*input_1)
-      self.assertEqual(mock_contract_path.call_count, 2 if six.PY2 else 1)
+      self.assertEqual(mock_contract_path.call_count, 1)
       # New input results in another call to opt_einsum.
       self._check(*input_2)
-      self.assertEqual(mock_contract_path.call_count, 3 if six.PY2 else 2)
+      self.assertEqual(mock_contract_path.call_count, 2)
       # No more extra calls as the inputs should be cached.
       self._check(*input_1)
       self._check(*input_2)
       self._check(*input_1)
-      self.assertEqual(mock_contract_path.call_count, 6 if six.PY2 else 2)
+      self.assertEqual(mock_contract_path.call_count, 2)
 
   @test_util.disable_xla('b/131919749')
   def test_long_cases_with_repeated_labels(self):

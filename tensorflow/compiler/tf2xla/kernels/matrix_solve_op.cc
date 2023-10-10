@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "tensorflow/compiler/xla/client/lib/matrix.h"
-#include "tensorflow/compiler/xla/client/lib/qr.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/lib/matrix.h"
+#include "xla/client/lib/qr.h"
+#include "xla/client/xla_builder.h"
+#include "xla/xla_data.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -30,7 +30,7 @@ class MatrixSolveOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape matrix_shape = ctx->InputShape(0);
-    int64 matrix_ndims = matrix_shape.dims();
+    int64_t matrix_ndims = matrix_shape.dims();
     OP_REQUIRES(ctx, matrix_ndims >= 2,
                 errors::InvalidArgument(
                     "Input matrix must have rank >= 2, got ", matrix_ndims));
@@ -46,15 +46,15 @@ class MatrixSolveOp : public XlaOpKernel {
     xla::XlaOp rhs = ctx->Input(1);
 
     // TODO(b/111271662): Using LU decomposition instead of QR should be faster.
-    auto qr = xla::QRDecomposition(matrix, /*full_matrices=*/false);
-    OP_REQUIRES_OK(ctx, qr.status());
+    xla::XlaOp q, r;
+    xla::QrExplicit(matrix, /*full_matrices=*/false, q, r);
 
-    xla::XlaOp inv = xla::TriangularSolve(
-        qr.ValueOrDie().r, xla::TransposeInMinorDims(qr.ValueOrDie().q),
-        /*left_side=*/true,
-        /*lower=*/false, /*unit_diagonal=*/false,
-        /*transpose_a=*/
-        xla::TriangularSolveOptions::NO_TRANSPOSE);
+    xla::XlaOp inv =
+        xla::TriangularSolve(r, xla::TransposeInMinorDims(q),
+                             /*left_side=*/true,
+                             /*lower=*/false, /*unit_diagonal=*/false,
+                             /*transpose_a=*/
+                             xla::TriangularSolveOptions::NO_TRANSPOSE);
 
     xla::XlaOp output =
         xla::BatchDot(inv, adjoint_, rhs,
@@ -65,7 +65,8 @@ class MatrixSolveOp : public XlaOpKernel {
  private:
   bool adjoint_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixSolveOp);
+  MatrixSolveOp(const MatrixSolveOp&) = delete;
+  void operator=(const MatrixSolveOp&) = delete;
 };
 
 // TODO(b/111271662): Support integer and complex types.

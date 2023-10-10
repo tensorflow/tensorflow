@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for control_flow module."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import collections
 
@@ -46,7 +41,7 @@ class ControlFlowTestBase(converter_testing.TestCase):
 
   def assertValuesEqual(self, actual, expected):
     values = nest.map_structure(
-        lambda x: self.evaluate(x) if tensor_util.is_tensor(x) else x,
+        lambda x: self.evaluate(x) if tensor_util.is_tf_type(x) else x,
         actual)
     self.assertAllEqual(values, expected)
 

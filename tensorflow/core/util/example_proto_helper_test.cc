@@ -14,13 +14,55 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/util/example_proto_helper.h"
 
+#include <cstdint>
+#include <vector>
+
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/tstring.h"
 
 namespace tensorflow {
 namespace {
+
+TEST(CopyIntoSparseTensorTest, String) {
+  Tensor in_tensor(DT_STRING, TensorShape({2}));
+  in_tensor.flat<tstring>()(0) = "hello";
+  in_tensor.flat<tstring>()(1) = "world";
+  int n_values = 5;
+  Tensor ix_tensor(DT_INT64, TensorShape({n_values, 2}));
+  auto ix_matrix = ix_tensor.matrix<int64_t>();
+  for (int i = 0; i < n_values; ++i) {
+    for (int j = 0; j < 2; ++j) {
+      ix_matrix(i, j) = 0;
+    }
+  }
+  Tensor value_tensor(DT_STRING, TensorShape({n_values}));
+  int batch = 67;
+  int64_t offset = 1;
+  auto n_elems =
+      CopyIntoSparseTensor(in_tensor, batch, offset, &ix_tensor, &value_tensor);
+  EXPECT_EQ(2, n_elems);
+
+  EXPECT_EQ(0, ix_matrix(0, 0));
+  EXPECT_EQ(0, ix_matrix(0, 1));
+  EXPECT_EQ(batch, ix_matrix(1, 0));
+  EXPECT_EQ(0, ix_matrix(1, 1));
+  EXPECT_EQ(batch, ix_matrix(2, 0));
+  EXPECT_EQ(1, ix_matrix(2, 1));
+  EXPECT_EQ(0, ix_matrix(3, 0));
+  EXPECT_EQ(0, ix_matrix(3, 1));
+  EXPECT_EQ(0, ix_matrix(4, 0));
+  EXPECT_EQ(0, ix_matrix(4, 1));
+  auto values = value_tensor.flat<tstring>();
+  EXPECT_EQ("", values(0));
+  EXPECT_EQ("hello", values(1));
+  EXPECT_EQ("world", values(2));
+  EXPECT_EQ("", values(3));
+  EXPECT_EQ("", values(4));
+}
 
 constexpr char kDenseInt64Key[] = "dense_int64";
 constexpr char kDenseFloatKey[] = "dense_float";
@@ -41,7 +83,7 @@ class SingleExampleProtoToTensorsTest : public ::testing::Test {
     int64_dense_config.dtype = DT_INT64;
     int64_dense_config.shape = TensorShape({1});
     int64_dense_config.default_value = Tensor(DT_INT64, TensorShape({1}));
-    int64_dense_config.default_value.scalar<int64>()() = 0;
+    int64_dense_config.default_value.scalar<int64_t>()() = 0;
     dense_vec_.push_back(int64_dense_config);
 
     FixedLenFeature float_dense_config;
@@ -107,7 +149,7 @@ TEST_F(SingleExampleProtoToTensorsTest, SparseOnlyTrivial) {
 
   const std::vector<Tensor>& int64_tensor_vec = output_sparse_values_tmp[0];
   EXPECT_EQ(1, int64_tensor_vec.size());
-  EXPECT_EQ(42, int64_tensor_vec[0].vec<int64>()(0));
+  EXPECT_EQ(42, int64_tensor_vec[0].vec<int64_t>()(0));
 
   const std::vector<Tensor>& float_tensor_vec = output_sparse_values_tmp[1];
   EXPECT_EQ(1, float_tensor_vec.size());
@@ -135,7 +177,7 @@ TEST_F(SingleExampleProtoToTensorsTest, SparseOnlyEmpty) {
   // in the vector will be empty.
   const std::vector<Tensor>& int64_tensor_vec = output_sparse_values_tmp[0];
   EXPECT_EQ(1, int64_tensor_vec.size());
-  EXPECT_EQ(0, int64_tensor_vec[0].vec<int64>().size());
+  EXPECT_EQ(0, int64_tensor_vec[0].vec<int64_t>().size());
 
   const std::vector<Tensor>& float_tensor_vec = output_sparse_values_tmp[1];
   EXPECT_EQ(1, float_tensor_vec.size());
@@ -176,8 +218,8 @@ TEST_F(SingleExampleProtoToTensorsTest, DenseOnlyTrivial) {
       &output_sparse_values_tmp));
   EXPECT_TRUE(output_sparse_values_tmp.empty());
 
-  EXPECT_EQ(1, int64_dense_output.matrix<int64>().size());
-  EXPECT_EQ(42, int64_dense_output.matrix<int64>()(0, 0));
+  EXPECT_EQ(1, int64_dense_output.matrix<int64_t>().size());
+  EXPECT_EQ(42, int64_dense_output.matrix<int64_t>()(0, 0));
 
   EXPECT_EQ(1, float_dense_output.matrix<float>().size());
   EXPECT_NEAR(4.2, float_dense_output.matrix<float>()(0, 0), 0.001);
@@ -205,8 +247,8 @@ TEST_F(SingleExampleProtoToTensorsTest, DenseOnlyDefaults) {
       empty, "", 0, dense_vec_, empty_sparse_vec, &output_dense_values,
       &output_sparse_values_tmp));
 
-  EXPECT_EQ(1, int64_dense_output.matrix<int64>().size());
-  EXPECT_EQ(0, int64_dense_output.matrix<int64>()(0, 0));
+  EXPECT_EQ(1, int64_dense_output.matrix<int64_t>().size());
+  EXPECT_EQ(0, int64_dense_output.matrix<int64_t>()(0, 0));
 
   EXPECT_EQ(1, float_dense_output.matrix<float>().size());
   EXPECT_NEAR(0.0, float_dense_output.matrix<float>()(0, 0), 0.001);

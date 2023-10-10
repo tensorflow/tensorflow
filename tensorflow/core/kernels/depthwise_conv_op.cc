@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <type_traits>
+#include <vector>
 
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/conv_ops.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/padding.h"
@@ -39,14 +41,9 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
 #endif
-
-#include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -59,6 +56,20 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+
+bool UseCudnnWith16BitFloat(OpKernelContext* ctx, DataType dtype) {
+#if GOOGLE_CUDA
+  if (dtype == DT_HALF) {
+    return true;
+  } else if (dtype == DT_BFLOAT16) {
+    auto* stream = ctx->op_device_context()->stream();
+    if (!stream) return false;
+    return stream->GetCudaComputeCapability().IsAtLeast(
+        se::CudaComputeCapability::AMPERE);
+  }
+#endif
+  return false;
+}
 
 // Computes the vectorized product of 'input_buffer' and 'filter' and stores
 // result in 'output' at location specified by 'out_r' and 'out_c'.
@@ -85,25 +96,26 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename T>
 struct DepthwiseConv2DKernel {
   static void Run(const DepthwiseArgs& args,
-                  const int64 padded_filter_inner_dim_size, const int64 out_r,
-                  const int64 out_c, const T* filter, const T* input_buffer,
-                  T* output, TensorFormat data_format) {
+                  const int64_t padded_filter_inner_dim_size,
+                  const int64_t out_r, const int64_t out_c, const T* filter,
+                  const T* input_buffer, T* output, TensorFormat data_format) {
     typedef typename Eigen::internal::packet_traits<T>::type Packet;
-    static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
+    static const int64_t kPacketSize = (sizeof(Packet) / sizeof(T));
 
-    const int64 out_depth = args.out_depth;
-    const int64 filter_spatial_size = args.filter_rows * args.filter_cols;
-    const int64 output_scalar_size = out_depth % kPacketSize;
-    const int64 output_vectorized_size =
+    const int64_t out_depth = args.out_depth;
+    const int64_t filter_spatial_size = args.filter_rows * args.filter_cols;
+    const int64_t output_scalar_size = out_depth % kPacketSize;
+    const int64_t output_vectorized_size =
         (out_depth / kPacketSize) * kPacketSize;
-    const int64 base_output_index = (out_r * args.out_cols + out_c) * out_depth;
+    const int64_t base_output_index =
+        (out_r * args.out_cols + out_c) * out_depth;
 
     for (int i = 0; i < output_vectorized_size; i += kPacketSize) {
       // Reset accumulator.
       auto vaccum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
       for (int j = 0; j < filter_spatial_size; ++j) {
         // Calculate index.
-        const int64 index = i + j * padded_filter_inner_dim_size;
+        const int64_t index = i + j * padded_filter_inner_dim_size;
         // Load filter.
         // TODO(andydavis) Unroll 'out_c' loop in caller so we can load
         // multiple inputs here to amortize the cost of each filter block load.
@@ -123,7 +135,7 @@ struct DepthwiseConv2DKernel {
     if (output_scalar_size > 0) {
       auto vaccum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
       for (int j = 0; j < filter_spatial_size; ++j) {
-        const int64 index =
+        const int64_t index =
             output_vectorized_size + j * padded_filter_inner_dim_size;
         const auto filter_block =
             Eigen::internal::ploadu<Packet>(filter + index);
@@ -135,7 +147,7 @@ struct DepthwiseConv2DKernel {
       // Load accumulator into an array and loop through output.
       T out_buf[kPacketSize];
       Eigen::internal::pstoreu<T>(out_buf, vaccum);
-      const int64 last_output_index =
+      const int64_t last_output_index =
           base_output_index + output_vectorized_size;
       for (int j = 0; j < output_scalar_size; ++j) {
         output[last_output_index + j] = out_buf[j];
@@ -166,15 +178,15 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
         ctx, data_format == FORMAT_NHWC,
         errors::Unimplemented(
             "Depthwise convolution on CPU is only supported for NHWC format"));
-    static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
+    static const int64_t kPacketSize = (sizeof(Packet) / sizeof(T));
 
     // Pad 'depthwise_filter' to vector register width (if needed).
     const bool pad_filter = (args.out_depth % kPacketSize) == 0 ? false : true;
     Tensor padded_filter;
     if (pad_filter) {
       // Allocate space for padded filter.
-      const int64 filter_spatial_size = args.filter_rows * args.filter_cols;
-      const int64 padded_filter_inner_dim_size =
+      const int64_t filter_spatial_size = args.filter_rows * args.filter_cols;
+      const int64_t padded_filter_inner_dim_size =
           ((args.out_depth + kPacketSize - 1) / kPacketSize) * kPacketSize;
       OP_REQUIRES_OK(
           ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
@@ -190,14 +202,14 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
 
     // Computes one shard of depthwise conv2d output.
     auto shard = [&ctx, &args, &input, &filter_data, &output, data_format](
-                     int64 start, int64 limit) {
-      static const int64 kPacketSize = (sizeof(Packet) / sizeof(T));
-      const int64 input_image_size =
+                     int64_t start, int64_t limit) {
+      static const int64_t kPacketSize = (sizeof(Packet) / sizeof(T));
+      const int64_t input_image_size =
           args.in_rows * args.in_cols * args.in_depth;
-      const int64 output_image_size =
+      const int64_t output_image_size =
           args.out_rows * args.out_cols * args.out_depth;
-      const int64 filter_spatial_size = args.filter_rows * args.filter_cols;
-      const int64 padded_filter_inner_dim_size =
+      const int64_t filter_spatial_size = args.filter_rows * args.filter_cols;
+      const int64_t padded_filter_inner_dim_size =
           ((args.out_depth + kPacketSize - 1) / kPacketSize) * kPacketSize;
 
       // Allocate buffer for local input regions.
@@ -209,14 +221,14 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
                                   &input_buffer));
       T* input_buffer_data = input_buffer.template flat<T>().data();
 
-      for (int64 i = start; i < limit; ++i) {
-        const int64 b = i / args.out_rows;
-        const int64 in_base = b * input_image_size;
-        const int64 out_base = b * output_image_size;
+      for (int64_t i = start; i < limit; ++i) {
+        const int64_t b = i / args.out_rows;
+        const int64_t in_base = b * input_image_size;
+        const int64_t out_base = b * output_image_size;
 
-        const int64 out_r = i % args.out_rows;
+        const int64_t out_r = i % args.out_rows;
 
-        for (int64 out_c = 0; out_c < args.out_cols; ++out_c) {
+        for (int64_t out_c = 0; out_c < args.out_cols; ++out_c) {
           // Populate 'input_buffer_data' with data from local input region.
           functor::DepthwiseInputCopyOp<T>()(args, padded_filter_inner_dim_size,
                                              out_r, out_c, input + in_base,
@@ -230,7 +242,7 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
       }
     };
 
-    const int64 total_shards = args.batch * args.out_rows;
+    const int64_t total_shards = args.batch * args.out_rows;
 
     // Empirically tested to give reasonable performance boosts at batch size 1
     // without reducing throughput at batch size 32.
@@ -238,7 +250,7 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
 
     // TODO(andydavis): Estimate shard cost (in cycles) based on the number of
     // flops/loads/stores required to compute one shard.
-    const int64 shard_cost = kCostMultiplier * args.out_cols * args.out_depth;
+    const int64_t shard_cost = kCostMultiplier * args.out_cols * args.out_depth;
 
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, total_shards,
@@ -247,6 +259,7 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
 };
 
 // Extern template instantiated in conv_ops.cc.
+extern template struct LaunchConv2DOp<CPUDevice, bfloat16>;
 extern template struct LaunchConv2DOp<CPUDevice, Eigen::half>;
 extern template struct LaunchConv2DOp<CPUDevice, float>;
 extern template struct LaunchConv2DOp<CPUDevice, double>;
@@ -254,16 +267,18 @@ extern template struct LaunchConv2DOp<CPUDevice, double>;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Extern template instantiated in conv_ops.cc.
+extern template struct LaunchConv2DOp<GPUDevice, Eigen::bfloat16>;
 extern template struct LaunchConv2DOp<GPUDevice, Eigen::half>;
 extern template struct LaunchConv2DOp<GPUDevice, float>;
 extern template struct LaunchConv2DOp<GPUDevice, double>;
 
 // Extern template instantiated in depthwise_conv_op_gpu.cc.
+extern template struct LaunchDepthwiseConvOp<GPUDevice, Eigen::bfloat16>;
 extern template struct LaunchDepthwiseConvOp<GPUDevice, Eigen::half>;
 extern template struct LaunchDepthwiseConvOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvOp<GPUDevice, double>;
 
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename Device, typename T>
 class DepthwiseConv2dNativeOp : public BinaryOp<T> {
@@ -280,9 +295,9 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
                 errors::InvalidArgument("Sliding window strides field must "
                                         "specify 4 dimensions"));
     stride_ = GetTensorDim(strides_, data_format_, 'H');
-    const int64 stride_w = GetTensorDim(strides_, data_format_, 'W');
-    const int64 stride_n = GetTensorDim(strides_, data_format_, 'N');
-    const int64 stride_c = GetTensorDim(strides_, data_format_, 'C');
+    const int64_t stride_w = GetTensorDim(strides_, data_format_, 'W');
+    const int64_t stride_n = GetTensorDim(strides_, data_format_, 'N');
+    const int64_t stride_c = GetTensorDim(strides_, data_format_, 'C');
 
     OP_REQUIRES(context, stride_ == stride_w,
                 errors::InvalidArgument(
@@ -298,6 +313,23 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings_,
                                               /*num_dims=*/4, data_format_));
 
+    // CPU/GPU kernel currently ignores dilations, so all must be 1.
+    std::vector<int32_t> dilations;
+    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations));
+    bool unit_dilations = true;
+    for (int32_t dilation : dilations) {
+      if (dilation != 1) {
+        unit_dilations = false;
+      }
+    }
+    OP_REQUIRES(context, unit_dilations,
+                errors::Unimplemented(
+                    "Current kernel implementation does not support "
+                    "dilations, received [",
+                    Eigen::Map<Eigen::Matrix<int32_t, 1, Eigen::Dynamic>>(
+                        dilations.data(), dilations.size()),
+                    "]"));
+
     cudnn_use_autotune_ = CudnnUseAutotune();
     dtype_ = DataTypeToEnum<T>::value;
 #if CUDNN_VERSION >= 8000
@@ -308,7 +340,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     // good performance. (https://docs.nvidia.com/deeplearning/sdk/cudnn-
     // release-notes/rel_8.html#rel_8)
     use_cudnn_grouped_conv_ =
-        dtype_ == DT_HALF &&
+        (dtype_ == DT_HALF || dtype_ == DT_BFLOAT16) &&
         (data_format_ == FORMAT_NCHW ||
          (data_format_ == FORMAT_NHWC && stride_ == stride_w &&
           (stride_ == 1 || stride_ == 2)));
@@ -340,53 +372,57 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
                                         filter.shape().DebugString()));
 
     // in_depth for input and filter must match.
-    const int64 in_depth = GetTensorDim(input, data_format_, 'C');
+    const int64_t in_depth = GetTensorDim(input, data_format_, 'C');
     OP_REQUIRES(context, in_depth == filter.dim_size(2),
                 errors::InvalidArgument(
                     "input and filter must have the same depth: ", in_depth,
                     " vs ", filter.dim_size(2)));
 
     // The last dimension for filter is depth multiplier.
-    const int32 depth_multiplier = filter.dim_size(3);
+    const int32_t depth_multiplier = filter.dim_size(3);
 
     // The output depth is input depth x depth multiplier
-    const int32 out_depth = in_depth * depth_multiplier;
+    const int32_t out_depth = in_depth * depth_multiplier;
 
-    const int64 input_rows_raw = GetTensorDim(input, data_format_, 'H');
+    const int64_t input_rows_raw = GetTensorDim(input, data_format_, 'H');
     OP_REQUIRES(
         context,
         FastBoundsCheck(input_rows_raw, std::numeric_limits<int32>::max()),
         errors::InvalidArgument("Input rows too large"));
-    const int32 input_rows = static_cast<int32>(input_rows_raw);
-    const int32 filter_rows = filter.dim_size(0);
+    const int32_t input_rows = static_cast<int32>(input_rows_raw);
+    const int32_t filter_rows = filter.dim_size(0);
 
-    const int64 input_cols_raw = GetTensorDim(input, data_format_, 'W');
+    const int64_t input_cols_raw = GetTensorDim(input, data_format_, 'W');
     OP_REQUIRES(
         context,
         FastBoundsCheck(input_cols_raw, std::numeric_limits<int32>::max()),
         errors::InvalidArgument("Input cols too large"));
-    const int32 input_cols = static_cast<int32>(input_cols_raw);
-    const int32 filter_cols = filter.dim_size(1);
+    const int32_t input_cols = static_cast<int32>(input_cols_raw);
+    const int32_t filter_cols = filter.dim_size(1);
 
     // The first dimension for input is batch.
-    const int32 batch = input.dim_size(0);
+    const int32_t batch = input.dim_size(0);
 
-    int64 out_rows = 0, out_cols = 0, pad_top = 0, pad_bottom = 0, pad_left = 0,
-          pad_right = 0;
+    int64_t out_rows = 0, out_cols = 0, pad_top = 0, pad_bottom = 0,
+            pad_left = 0, pad_right = 0;
     if (padding_ == Padding::EXPLICIT) {
       GetExplicitPaddingForDim(explicit_paddings_, data_format_, 'H', &pad_top,
                                &pad_bottom);
       GetExplicitPaddingForDim(explicit_paddings_, data_format_, 'W', &pad_left,
                                &pad_right);
     }
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                input_rows, filter_rows, stride_, padding_,
-                                &out_rows, &pad_top, &pad_bottom));
-    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
-                                input_cols, filter_cols, stride_, padding_,
-                                &out_cols, &pad_left, &pad_right));
-    TensorShape out_shape =
-        ShapeFromFormat(data_format_, batch, out_rows, out_cols, out_depth);
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSizeVerbose(
+                       input_rows, filter_rows, /*dilation_rate=*/1, stride_,
+                       padding_, &out_rows, &pad_top, &pad_bottom));
+    OP_REQUIRES_OK(context,
+                   GetWindowedOutputSizeVerbose(
+                       input_cols, filter_cols, /*dilation_rate=*/1, stride_,
+                       padding_, &out_cols, &pad_left, &pad_right));
+    TensorShape out_shape;
+    OP_REQUIRES_OK(context,
+                   ShapeFromFormatWithStatus(data_format_, batch, out_rows,
+                                             out_cols, out_depth, &out_shape));
     OP_REQUIRES(
         context,
         (!std::is_same<Device, GPUDevice>::value ||
@@ -405,13 +441,12 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     // TODO(csigg): Have autotune decide if native is faster than cuDNN.
     // If in_depth==1, this operation is just a standard convolution.
     // Depthwise convolution is a special case of cuDNN's grouped convolution.
-    bool use_cudnn = std::is_same<Device, GPUDevice>::value &&
-                     (in_depth == 1 ||
-                      (use_cudnn_grouped_conv_ &&
-                       IsCudnnSupportedFilterSize(/*filter_rows=*/filter_rows,
-                                                  /*filter_cols=*/filter_cols,
-                                                  /*in_depth=*/in_depth,
-                                                  /*out_depth=*/out_depth)));
+    bool use_cudnn =
+        std::is_same<Device, GPUDevice>::value &&
+        (in_depth == 1 ||
+         (use_cudnn_grouped_conv_ && UseCudnnWith16BitFloat(context, dtype_) &&
+          ShouldCudnnGroupedConvolutionBeUsed(filter_rows, filter_cols,
+                                              in_depth, out_depth)));
 
     VLOG(2) << "DepthwiseConv2dNative: "
             << " Input: [" << batch << ", " << input_rows << ", " << input_cols
@@ -431,7 +466,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
       // filter_in_depth  | in_depth         | in_depth / group_count
       //
       // For depthwise convolution, we have group_count == in_depth.
-      int32 filter_in_depth = 1;
+      int32_t filter_in_depth = 1;
       TensorShape shape =
           TensorShape{filter_rows, filter_cols, filter_in_depth, out_depth};
       Tensor reshaped_filter(/*type=*/dtype_);
@@ -474,19 +509,20 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
   bool use_cudnn_grouped_conv_;
 
  private:
-  std::vector<int32> strides_;
+  std::vector<int32_t> strides_;
   Padding padding_;
-  std::vector<int64> explicit_paddings_;
+  std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
 
-  int64 stride_;  // in height/width dimension.
+  int64_t stride_;  // in height/width dimension.
 
   // For in_depth == 1 and grouped convolutions.
   LaunchConv2DOp<Device, T> launcher_;
   bool cudnn_use_autotune_;
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeOp);
+  DepthwiseConv2dNativeOp(const DepthwiseConv2dNativeOp&) = delete;
+  void operator=(const DepthwiseConv2dNativeOp&) = delete;
 };
 
 #define REGISTER_CPU_KERNEL(T)                                                 \
@@ -494,6 +530,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
       Name("DepthwiseConv2dNative").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       DepthwiseConv2dNativeOp<CPUDevice, T>)
 
+TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
 TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 #if !defined(PLATFORM_WINDOWS) || !defined(_DEBUG)
@@ -507,6 +544,7 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
       Name("DepthwiseConv2dNative").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       DepthwiseConv2dNativeOp<GPUDevice, T>)
 
+TF_CALL_bfloat16(REGISTER_GPU_KERNEL);
 TF_CALL_half(REGISTER_GPU_KERNEL);
 TF_CALL_float(REGISTER_GPU_KERNEL);
 TF_CALL_double(REGISTER_GPU_KERNEL);
@@ -529,6 +567,7 @@ class DepthwiseConv2dGroupedConvOp
                               .Label("cudnn_grouped_convolution"), \
                           DepthwiseConv2dGroupedConvOp<T>)
 
+TF_CALL_bfloat16(REGISTER_GROUPED_CONV_KERNEL);
 TF_CALL_half(REGISTER_GROUPED_CONV_KERNEL);
 TF_CALL_float(REGISTER_GROUPED_CONV_KERNEL);
 TF_CALL_double(REGISTER_GROUPED_CONV_KERNEL);

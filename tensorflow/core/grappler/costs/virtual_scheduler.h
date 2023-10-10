@@ -16,8 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_SCHEDULER_H_
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_SCHEDULER_H_
 
+#include <functional>
 #include <list>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -125,25 +127,33 @@ struct DeviceState {
   std::unordered_set<std::pair<const NodeDef*, int>, NodePairHash>
       mem_usage_snapshot_at_peak;
 
+  // Vector of temporary memory usage trace in execution order.
+  // Each pair represents the current node name and current (accumulated)
+  // temporary memory usage of the device when the node is scheduled.
+  // Only enabled when mem_usage_tracking is enabled.
+  // Note: CPU uses an inter-op threadpool, so the execution order on CPU may
+  // not be deterministic.
+  std::vector<std::pair<std::string, int64_t>> temporary_memory_usage_trace;
+
   Costs device_costs;
   std::map<string, Costs> op_to_cost;  // Per-op cost.
 
-  int64 memory_usage;      // Current temporary memory usage
-  int64 max_memory_usage;  // Max temporary memory usage
+  int64_t memory_usage;      // Current temporary memory usage
+  int64_t max_memory_usage;  // Max temporary memory usage
 
   // Shape annotation statistics.
   struct ShapeAnnotationStats {
     // Number of ops with shape annotated.
-    int64 num_ops_annotated = 0;
+    int64_t num_ops_annotated = 0;
     // Number of ops executed multiple times (e.g. in a loop).
-    int64 num_ops_executed_more_than_once = 0;
+    int64_t num_ops_executed_more_than_once = 0;
     // Number of ops executed: account for execution count.
-    int64 num_ops_executed = 0;
+    int64_t num_ops_executed = 0;
     // Number of ops with dynamic shapes (e.g. shape changes in a loop).
-    int64 num_ops_with_dynamic_shapes = 0;
+    int64_t num_ops_with_dynamic_shapes = 0;
     // Number of ops with incompatible shapes between annotation and shape
     // inference.
-    int64 num_ops_with_incompatible_shapes = 0;
+    int64_t num_ops_with_incompatible_shapes = 0;
   } shape_annotation_stats;
 
   DeviceState() {
@@ -164,7 +174,7 @@ class ReadyNodeManager {
   virtual ~ReadyNodeManager() {}
   virtual Status Init(
       const std::unordered_map<const NodeDef*, NodeState>* node_map) {
-    return Status::OK();
+    return OkStatus();
   }
   virtual void AddNode(const NodeDef* node) = 0;
   virtual const NodeDef* GetCurrNode() = 0;
@@ -219,23 +229,18 @@ class HeapReadyManager : public ReadyNodeManager {
   Status Init(
       const std::unordered_map<const NodeDef*, NodeState>* node_map) override;
   ~HeapReadyManager() override {}
-  void AddNode(const NodeDef* node) override { waiting_queue_.push_back(node); }
+  void AddNode(const NodeDef* node) override;
   const NodeDef* GetCurrNode() override;
   void RemoveCurrNode() override;
   bool Empty() const override;
 
  protected:
   virtual std::function<bool(const NodeDef*, const NodeDef*)> Greater() = 0;
-  // Move all the nodes in the waiting_queue_ to nodes_.
-  void DrainWaitingQueue();
 
   // nodes_ is the main queue, where we construct heap, and the front is the
   // current node.
   std::vector<const NodeDef*> nodes_;
-  // Newly added nodes are added to waiting_queue_. That way, GetCurrNode(),
-  // which returns the front of the nodes_, always returns the same node,
-  // even if any of new nodes has time_ready smaller than the current node's.
-  std::vector<const NodeDef*> waiting_queue_;
+
   // Comparator functor for heap; stl heap is max heap, so we use "greater than"
   // functor for keeping the smallest time_ready node at the front of heap.
   std::function<bool(const NodeDef*, const NodeDef*)> greater_;
@@ -243,6 +248,9 @@ class HeapReadyManager : public ReadyNodeManager {
   // NodeState structure from SchedulerState to get time_ready of ready nodes.
   // Not owned by FirstReadyManager.
   const std::unordered_map<const NodeDef*, NodeState>* node_map_;
+
+  // Cached curr node. Set back to nullptr from RemoveCurrNode().
+  const NodeDef* curr_node_;
 };
 
 // FirstReadyManager picks a node with the minimum time_ready value.
@@ -359,8 +367,8 @@ class SchedulerState {
   void GenerateRunMetadata(RunMetadata* metadata);
 
   // Returns per device memory usage.
-  const std::unordered_map<string, int64> GetPeakMemoryUsage() const;
-  const std::unordered_map<string, int64> GetPersistentMemoryUsage() const;
+  const std::unordered_map<string, int64_t> GetPeakMemoryUsage() const;
+  const std::unordered_map<string, int64_t> GetPersistentMemoryUsage() const;
   void enable_mem_usage_tracking() { track_mem_usage_snapshot_ = true; }
   // Returns (read only) device and node states.
   const std::unordered_map<string, DeviceState>* GetDeviceStates() const {
@@ -371,10 +379,11 @@ class SchedulerState {
     return &node_map_;
   }
 
-  OpContext CreateOpContext(const NodeDef* node) const;
-  std::vector<const NodeDef*> MarkNodeExecuted(const NodeDef* node,
-                                               const Costs& node_costs,
-                                               const OpContext& op_context);
+  virtual OpContext CreateOpContext(const NodeDef* node) const;
+  std::vector<const NodeDef*> MarkNodeExecuted(
+      const NodeDef* node, const Costs& node_costs, const OpContext& op_context,
+      bool extract_execution_count_attr = true,
+      const std::string& override_device_name = "");
 
   // Some getter functions.
   const GrapplerItem* GetGrapplerItem() { return grappler_item_; }
@@ -417,6 +426,10 @@ class SchedulerState {
   // Helper methods.
   void GetOutputNodes(const NodeDef* node, const Costs::Duration& curr_time,
                       std::vector<const NodeDef*>* output_nodes);
+  // Retrieves output size from node_cost at a port_num.  If the output size has
+  // not been set, defaults back to CalculateOutputSize.
+  int64_t GetOrCalculateOutputSize(const NodeState& node_state,
+                                   int port_num) const;
 
   std::unordered_map<const NodeDef*, NodeState> node_map_;
   std::unordered_map<string, DeviceState> device_;
@@ -498,10 +511,10 @@ class VirtualScheduler {
     scheduler_state_->GenerateRunMetadata(metadata);
   }
   // Returns per device memory usage.
-  const std::unordered_map<string, int64> GetPeakMemoryUsage() const {
+  const std::unordered_map<string, int64_t> GetPeakMemoryUsage() const {
     return scheduler_state_->GetPeakMemoryUsage();
   }
-  const std::unordered_map<string, int64> GetPersistentMemoryUsage() const {
+  const std::unordered_map<string, int64_t> GetPersistentMemoryUsage() const {
     return scheduler_state_->GetPersistentMemoryUsage();
   }
   // Returns VirtualScheduler (read only) device and node states.

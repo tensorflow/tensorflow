@@ -108,15 +108,15 @@ static Graph* UnaryOpsChain(int tensor_size, int repeat_graph,
   return g;
 }
 
-#define BM_UnaryOpsChain(N, R, F, type)                                      \
-  static void BM_UnaryOpsChain##_##type##_##N##_##R##_##F(                   \
-      ::testing::benchmark::State& state) {                                  \
-    test::Benchmark(#type, UnaryOpsChain(N, R, F),                           \
-                    /*old_benchmark_api*/ false)                             \
-        .Run(state);                                                         \
-    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * N * R * \
-                            F);                                              \
-  }                                                                          \
+#define BM_UnaryOpsChain(N, R, F, type)                                        \
+  static void BM_UnaryOpsChain##_##type##_##N##_##R##_##F(                     \
+      ::testing::benchmark::State& state) {                                    \
+    test::Benchmark(#type, UnaryOpsChain(N, R, F),                             \
+                    /*old_benchmark_api*/ false)                               \
+        .Run(state);                                                           \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * N * R * \
+                            F);                                                \
+  }                                                                            \
   BENCHMARK(BM_UnaryOpsChain##_##type##_##N##_##R##_##F);
 
 // Unary ops fused together.
@@ -144,15 +144,15 @@ static Graph* UnaryOpsCompo(int tensor_size, int repeat_graph,
   return g;
 }
 
-#define BM_UnaryOpsCompo(N, R, F, type)                                      \
-  static void BM_UnaryOpsCompo##_##type##_##N##_##R##_##F(                   \
-      ::testing::benchmark::State& state) {                                  \
-    test::Benchmark(#type, UnaryOpsCompo(N, R, F),                           \
-                    /*old_benchmark_api*/ false)                             \
-        .Run(state);                                                         \
-    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * N * R * \
-                            F);                                              \
-  }                                                                          \
+#define BM_UnaryOpsCompo(N, R, F, type)                                        \
+  static void BM_UnaryOpsCompo##_##type##_##N##_##R##_##F(                     \
+      ::testing::benchmark::State& state) {                                    \
+    test::Benchmark(#type, UnaryOpsCompo(N, R, F),                             \
+                    /*old_benchmark_api*/ false)                               \
+        .Run(state);                                                           \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * N * R * \
+                            F);                                                \
+  }                                                                            \
   BENCHMARK(BM_UnaryOpsCompo##_##type##_##N##_##R##_##F);
 
 // BenchmarkName(tensor_size, repeat_graph, num_ops, type)

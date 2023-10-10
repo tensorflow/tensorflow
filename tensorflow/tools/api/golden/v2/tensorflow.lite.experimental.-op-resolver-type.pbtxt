@@ -1,0 +1,20 @@
+path: "tensorflow.lite.experimental.OpResolverType"
+tf_class {
+  is_instance: "<enum \'OpResolverType\'>"
+  member {
+    name: "AUTO"
+    mtype: "<enum \'OpResolverType\'>"
+  }
+  member {
+    name: "BUILTIN"
+    mtype: "<enum \'OpResolverType\'>"
+  }
+  member {
+    name: "BUILTIN_REF"
+    mtype: "<enum \'OpResolverType\'>"
+  }
+  member {
+    name: "BUILTIN_WITHOUT_DEFAULT_DELEGATES"
+    mtype: "<enum \'OpResolverType\'>"
+  }
+}

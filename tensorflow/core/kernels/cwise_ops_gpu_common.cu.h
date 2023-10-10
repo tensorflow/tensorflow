@@ -41,7 +41,11 @@ template <typename Functor>
 struct UnaryFunctor<GPUDevice, Functor> {
   void operator()(const GPUDevice& d, typename Functor::tout_type out,
                   typename Functor::tin_type in) {
-    To32Bit(out).device(d) = To32Bit(in).unaryExpr(typename Functor::func());
+    MaybeWith32BitIndexing<GPUDevice>(
+        [&](auto out32, auto in32) {
+          out32.device(d) = in32.unaryExpr(typename Functor::func());
+        },
+        out, in);
   }
 };
 
@@ -51,8 +55,11 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS, has_errors> {
   void operator()(const GPUDevice& d, typename Functor::tout_type out,
                   typename Functor::tin_type in0,
                   typename Functor::tin_type in1, bool* error) {
-    To32Bit(out).device(d) =
-        To32Bit(in0).binaryExpr(in1, typename Functor::func());
+    MaybeWith32BitIndexing<GPUDevice>(
+        [&](auto out32, auto in0_32, auto in1_32) {
+          out32.device(d) = in0_32.binaryExpr(in1_32, typename Functor::func());
+        },
+        out, in0, in1);
   }
 
   void Left(const GPUDevice& d, typename Functor::tout_type out,
@@ -62,7 +69,11 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS, has_errors> {
     typedef typename Functor::in_type Tin;
     typedef typename Functor::func Binary;
     typedef typename Eigen::internal::scalar_left<Tout, Tin, Binary> Unary;
-    To32Bit(out).device(d) = To32Bit(in).unaryExpr(Unary(scalar.data()));
+    MaybeWith32BitIndexing<GPUDevice>(
+        [&](auto out32, auto in32) {
+          out32.device(d) = in32.unaryExpr(Unary(scalar.data()));
+        },
+        out, in);
   }
 
   void Right(const GPUDevice& d, typename Functor::tout_type out,
@@ -72,7 +83,11 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS, has_errors> {
     typedef typename Functor::in_type Tin;
     typedef typename Functor::func Binary;
     typedef typename Eigen::internal::scalar_right<Tout, Tin, Binary> Unary;
-    To32Bit(out).device(d) = To32Bit(in).unaryExpr(Unary(scalar.data()));
+    MaybeWith32BitIndexing<GPUDevice>(
+        [&](auto out32, auto in32) {
+          out32.device(d) = in32.unaryExpr(Unary(scalar.data()));
+        },
+        out, in);
   }
 
   void BCast(const GPUDevice& d,
@@ -89,18 +104,30 @@ struct BinaryFunctor<GPUDevice, Functor, NDIMS, has_errors> {
       const bool bcast0_all_one = AllOne<NDIMS>(bcast0);
       const bool bcast1_all_one = AllOne<NDIMS>(bcast1);
       if (bcast0_all_one && !bcast1_all_one) {
-        To32Bit(out).device(d) =
-            To32Bit(in0).binaryExpr(To32Bit(in1).broadcast(bcast1), func);
+        MaybeWith32BitIndexing<GPUDevice>(
+            [&](auto out32, auto in0_32, auto in1_32) {
+              out32.device(d) =
+                  in0_32.binaryExpr(in1_32.broadcast(bcast1), func);
+            },
+            out, in0, in1);
         return;
       }
       if (!bcast0_all_one && bcast1_all_one) {
-        To32Bit(out).device(d) =
-            To32Bit(in0).broadcast(bcast0).binaryExpr(To32Bit(in1), func);
+        MaybeWith32BitIndexing<GPUDevice>(
+            [&](auto out32, auto in0_32, auto in1_32) {
+              out32.device(d) =
+                  in0_32.broadcast(bcast0).binaryExpr(in1_32, func);
+            },
+            out, in0, in1);
         return;
       }
     }
-    To32Bit(out).device(d) = To32Bit(in0).broadcast(bcast0).binaryExpr(
-        To32Bit(in1).broadcast(bcast1), func);
+    MaybeWith32BitIndexing<GPUDevice>(
+        [&](auto out32, auto in0_32, auto in1_32) {
+          out32.device(d) = in0_32.broadcast(bcast0).binaryExpr(
+              in1_32.broadcast(bcast1), func);
+        },
+        out, in0, in1);
   }
 };
 

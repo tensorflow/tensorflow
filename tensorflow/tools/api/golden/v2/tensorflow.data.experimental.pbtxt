@@ -9,11 +9,23 @@ tf_module {
     mtype: "<class \'enum.EnumMeta\'>"
   }
   member {
+    name: "AutotuneAlgorithm"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "AutotuneOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CheckpointInputPipelineHook"
     mtype: "<type \'type\'>"
   }
   member {
     name: "CsvDataset"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DatasetInitializer"
     mtype: "<type \'type\'>"
   }
   member {
@@ -27,10 +39,6 @@ tf_module {
   member {
     name: "INFINITE_CARDINALITY"
     mtype: "<type \'int\'>"
-  }
-  member {
-    name: "MapVectorizationOptions"
-    mtype: "<type \'type\'>"
   }
   member {
     name: "OptimizationOptions"
@@ -49,15 +57,11 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "SHARD_HINT"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "SqlDataset"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "StatsAggregator"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "StatsOptions"
     mtype: "<type \'type\'>"
   }
   member {
@@ -85,12 +89,12 @@ tf_module {
     argspec: "args=[\'expected_cardinality\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "bucket_by_sequence_length"
-    argspec: "args=[\'element_length_func\', \'bucket_boundaries\', \'bucket_batch_sizes\', \'padded_shapes\', \'padding_values\', \'pad_to_bucket_boundary\', \'no_padding\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'False\'], "
+    name: "at"
+    argspec: "args=[\'dataset\', \'index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "bytes_produced_stats"
-    argspec: "args=[\'tag\'], varargs=None, keywords=None, defaults=None"
+    name: "bucket_by_sequence_length"
+    argspec: "args=[\'element_length_func\', \'bucket_boundaries\', \'bucket_batch_sizes\', \'padded_shapes\', \'padding_values\', \'pad_to_bucket_boundary\', \'no_padding\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'False\'], "
   }
   member_method {
     name: "cardinality"
@@ -98,7 +102,7 @@ tf_module {
   }
   member_method {
     name: "choose_from_datasets"
-    argspec: "args=[\'datasets\', \'choice_dataset\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'datasets\', \'choice_dataset\', \'stop_on_empty_dataset\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "copy_to_device"
@@ -113,8 +117,16 @@ tf_module {
     argspec: "args=[\'batch_size\', \'row_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "enable_debug_mode"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "enumerate_dataset"
     argspec: "args=[\'start\'], varargs=None, keywords=None, defaults=[\'0\'], "
+  }
+  member_method {
+    name: "from_list"
+    argspec: "args=[\'elements\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "from_variant"
@@ -145,12 +157,12 @@ tf_module {
     argspec: "args=[\'log_warning\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
-    name: "latency_stats"
-    argspec: "args=[\'tag\'], varargs=None, keywords=None, defaults=None"
+    name: "index_table_from_dataset"
+    argspec: "args=[\'dataset\', \'num_oov_buckets\', \'vocab_size\', \'default_value\', \'hasher_spec\', \'key_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\', \'-1\', \"HasherSpec(hasher=\'fasthash\', key=None)\", \"<dtype: \'string\'>\", \'None\'], "
   }
   member_method {
     name: "load"
-    argspec: "args=[\'path\', \'element_spec\', \'compression\', \'reader_func\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'path\', \'element_spec\', \'compression\', \'reader_func\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "make_batched_features_dataset"
@@ -158,15 +170,19 @@ tf_module {
   }
   member_method {
     name: "make_csv_dataset"
-    argspec: "args=[\'file_pattern\', \'batch_size\', \'column_names\', \'column_defaults\', \'label_name\', \'select_columns\', \'field_delim\', \'use_quote_delim\', \'na_value\', \'header\', \'num_epochs\', \'shuffle\', \'shuffle_buffer_size\', \'shuffle_seed\', \'prefetch_buffer_size\', \'num_parallel_reads\', \'sloppy\', \'num_rows_for_inference\', \'compression_type\', \'ignore_errors\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \',\', \'True\', \'\', \'True\', \'None\', \'True\', \'10000\', \'None\', \'None\', \'None\', \'False\', \'100\', \'None\', \'False\'], "
+    argspec: "args=[\'file_pattern\', \'batch_size\', \'column_names\', \'column_defaults\', \'label_name\', \'select_columns\', \'field_delim\', \'use_quote_delim\', \'na_value\', \'header\', \'num_epochs\', \'shuffle\', \'shuffle_buffer_size\', \'shuffle_seed\', \'prefetch_buffer_size\', \'num_parallel_reads\', \'sloppy\', \'num_rows_for_inference\', \'compression_type\', \'ignore_errors\', \'encoding\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \',\', \'True\', \'\', \'True\', \'None\', \'True\', \'10000\', \'None\', \'None\', \'None\', \'False\', \'100\', \'None\', \'False\', \'utf-8\'], "
   }
   member_method {
     name: "make_saveable_from_iterator"
-    argspec: "args=[\'iterator\', \'external_state_policy\'], varargs=None, keywords=None, defaults=[\'fail\'], "
+    argspec: "args=[\'iterator\', \'external_state_policy\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "map_and_batch"
     argspec: "args=[\'map_func\', \'batch_size\', \'num_parallel_batches\', \'drop_remainder\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "pad_to_cardinality"
+    argspec: "args=[\'cardinality\', \'mask_key\'], varargs=None, keywords=None, defaults=[\'valid\'], "
   }
   member_method {
     name: "parallel_interleave"
@@ -186,11 +202,11 @@ tf_module {
   }
   member_method {
     name: "sample_from_datasets"
-    argspec: "args=[\'datasets\', \'weights\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'datasets\', \'weights\', \'seed\', \'stop_on_empty_dataset\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "save"
-    argspec: "args=[\'dataset\', \'path\', \'compression\', \'shard_func\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'dataset\', \'path\', \'compression\', \'shard_func\', \'checkpoint_args\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "scan"
@@ -203,6 +219,10 @@ tf_module {
   member_method {
     name: "snapshot"
     argspec: "args=[\'path\', \'compression\', \'reader_func\', \'shard_func\'], varargs=None, keywords=None, defaults=[\'AUTO\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "table_from_dataset"
+    argspec: "args=[\'dataset\', \'num_oov_buckets\', \'vocab_size\', \'default_value\', \'hasher_spec\', \'key_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\', \'None\', \"HasherSpec(hasher=\'fasthash\', key=None)\", \"<dtype: \'string\'>\", \'None\'], "
   }
   member_method {
     name: "take_while"

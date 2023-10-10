@@ -25,7 +25,7 @@
 # Required environment variable(s):
 #   CONTAINER_TYPE:      (CPU | GPU)
 #   OS_TYPE:             (UBUNTU | MACOS)
-#   TF_PYTHON_VERSION:   (python2 | python2.7 | python3.5 | python3.7)
+#   TF_PYTHON_VERSION:   ( python3.6 | python3.7 | python3.8 )
 #   TF_BUILD_FLAGS:      Bazel build flags.
 #                          e.g. TF_BUILD_FLAGS="--config=opt"
 #   TF_TEST_FLAGS:       Bazel test flags.
@@ -67,6 +67,10 @@
 #                                  automatically handle adding/removing of _cpu
 #                                  suffix depending on what project name was
 #                                  passed. Only work for MacOS
+#   AUDITWHEEL_TARGET_PLAT:    Manylinux platform tag that is to be used for
+#                              tagging the linux wheel files. By default, it is
+#                              set to `manylinux2010` . For manylinux2014
+#                              builds, change to `manylinux2014`.
 #
 # To-be-deprecated variable(s).
 #   GIT_TAG_OVERRIDE:    Values for `--git_tag_override`. This flag gets passed
@@ -181,8 +185,8 @@ update_test_filter_tags() {
   add_test_filter_tag -no_pip -nopip
   # MacOS filter tags
   if [[ ${OS_TYPE} == "macos" ]]; then
-    remove_test_filter_tag nomac no_mac
-    add_test_filter_tag -nomac -no_mac
+    remove_test_filter_tag nomac no_mac mac_excluded
+    add_test_filter_tag -nomac -no_mac -mac_excluded
   fi
   echo "Final test filter tags: ${TF_TEST_FILTER_TAGS}"
 }
@@ -192,7 +196,7 @@ check_python_pip_version() {
   # Check if only the major version of python is provided by the user.
   MAJOR_VER_ONLY=0
   if [[ ${#PYTHON_VER} -lt 9 ]]; then
-    # User only provided major version (e.g. 'python2' instead of 'python2.7')
+    # User only provided major version (e.g. 'python3' instead of 'python3.7')
     MAJOR_VER_ONLY=1
   fi
 
@@ -223,6 +227,14 @@ check_python_pip_version() {
   fi
 }
 
+# Write an entry to the sponge key-value store for this job.
+write_to_sponge() {
+  # The location of the key-value CSV file sponge imports.
+  TF_SPONGE_CSV="${KOKORO_ARTIFACTS_DIR}/custom_sponge_config.csv"
+  echo "$1","$2" >> "${TF_SPONGE_CSV}"
+}
+
+
 ###########################################################################
 # Setup: directories, local/global variables
 ###########################################################################
@@ -248,21 +260,26 @@ DEFAULT_PROJECT_NAME="tensorflow"
 DEFAULT_PIP_TEST_ROOT="pip_test"
 DEFAULT_BUILD_BOTH_GPU_PACKAGES=0
 DEFAULT_BUILD_BOTH_CPU_PACKAGES=0
+DEFAULT_AUDITWHEEL_TARGET_PLAT="manylinux2010"
 # Take in optional global variables
 PIP_TESTS=${TF_PIP_TESTS:-$DEFAULT_PIP_TESTS}
 PROJECT_NAME=${TF_PROJECT_NAME:-$DEFAULT_PROJECT_NAME}
 PIP_TEST_ROOT=${TF_PIP_TEST_ROOT:-$DEFAULT_PIP_TEST_ROOT}
 BUILD_BOTH_GPU_PACKAGES=${TF_BUILD_BOTH_GPU_PACKAGES:-$DEFAULT_BUILD_BOTH_GPU_PACKAGES}
 BUILD_BOTH_CPU_PACKAGES=${TF_BUILD_BOTH_CPU_PACKAGES:-$DEFAULT_BUILD_BOTH_CPU_PACKAGES}
+AUDITWHEEL_TARGET_PLAT=${TF_AUDITWHEEL_TARGET_PLAT:-$DEFAULT_AUDITWHEEL_TARGET_PLAT}
+
+# Override breaking change in setuptools v60 (https://github.com/pypa/setuptools/pull/2896)
+export SETUPTOOLS_USE_DISTUTILS=stdlib
 
 # Local variables
 PIP_WHL_DIR="${KOKORO_ARTIFACTS_DIR}/tensorflow/${PIP_TEST_ROOT}/whl"
 mkdir -p "${PIP_WHL_DIR}"
 PIP_WHL_DIR=$(realpath "${PIP_WHL_DIR}") # Get absolute path
 WHL_PATH=""
-# Determine the major.minor versions of python being used (e.g., 2.7).
+# Determine the major.minor versions of python being used (e.g., 3.7).
 # Useful for determining the directory of the local pip installation.
-PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -c "print(__import__('sys').version)" 2>&1 | awk '{ print $1 }' | head -n 1 | cut -c1-3)
+PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -c "print(__import__('sys').version)" 2>&1 | awk '{ print $1 }' | head -n 1 | cut -d. -f1-2)
 
 if [[ -z "${PY_MAJOR_MINOR_VER}" ]]; then
   die "ERROR: Unable to determine the major.minor version of Python."
@@ -289,17 +306,34 @@ fi
 check_global_vars
 
 # Check if in a virtualenv and exit if yes.
-IN_VENV=$(python -c 'import sys; print("1" if hasattr(sys, "real_prefix") else "0")')
-if [[ "$IN_VENV" == "1" ]]; then
-  echo "It appears that we are already in a virtualenv. Deactivating..."
-  deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
+# TODO(rameshsampath): Python 3.10 has pip conflicts when using global env, so build in virtualenv
+# Once confirmed to work, run builds for all python env in a virtualenv
+if [[ "x${PY_MAJOR_MINOR_VER}x" != "x3.10x" ]]; then
+  IN_VENV=$(python -c 'import sys; print("1" if sys.version_info.major == 3 and sys.prefix != sys.base_prefix else "0")')
+  if [[ "$IN_VENV" == "1" ]]; then
+    echo "It appears that we are already in a virtualenv. Deactivating..."
+    deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
+  fi
 fi
 
-# Configure python. Obtain the path to python binary.
-source tools/python_bin_path.sh
-# Assume PYTHON_BIN_PATH is exported by the script above.
+# Obtain the path to python binary as written by ./configure if it was run.
+if [[ -e tools/python_bin_path.sh ]]; then
+  source tools/python_bin_path.sh
+fi
+# Assume PYTHON_BIN_PATH is exported by the script above or the caller.
 if [[ -z "$PYTHON_BIN_PATH" ]]; then
   die "PYTHON_BIN_PATH was not provided. Did you run configure?"
+fi
+
+if [[ "$IS_NIGHTLY" == 1 ]]; then
+  ${PYTHON_BIN_PATH} -m pip install tb-nightly
+else
+  ${PYTHON_BIN_PATH} -m pip install tensorboard
+fi
+
+if [[ "x${PY_MAJOR_MINOR_VER}x" == "x3.8x" ]]; then
+  ${PYTHON_BIN_PATH} -m pip uninstall -y protobuf
+  ${PYTHON_BIN_PATH} -m pip install "protobuf < 4"
 fi
 
 # Bazel build the file.
@@ -309,8 +343,11 @@ bazel clean
 # Clean up and update bazel flags
 update_bazel_flags
 # Build. This outputs the file `build_pip_package`.
-bazel build ${TF_BUILD_FLAGS} ${PIP_BUILD_TARGET} || \
-  die "Error: Bazel build failed for target: '${PIP_BUILD_TARGET}'"
+bazel build \
+  --action_env=PYTHON_BIN_PATH=${PYTHON_BIN_PATH} \
+  ${TF_BUILD_FLAGS} \
+  ${PIP_BUILD_TARGET} \
+  || die "Error: Bazel build failed for target: '${PIP_BUILD_TARGET}'"
 
 ###########################################################################
 # Test function(s)
@@ -318,6 +355,8 @@ bazel build ${TF_BUILD_FLAGS} ${PIP_BUILD_TARGET} || \
 
 test_pip_virtualenv() {
   # Get args
+  WHL_PATH=$1
+  shift
   VENV_DIR_NAME=$1
   shift
   TEST_TYPE_FLAG=$1
@@ -415,6 +454,7 @@ create_activate_virtualenv() {
   # to create the virtualenv directory for testing. Use the -p flag to specify
   # the python version inside the to-be-created virtualenv directory.
   ${PYTHON_BIN_PATH_INIT} -m virtualenv -p ${PYTHON_BIN_PATH_INIT} ${VIRTUALENV_FLAGS} ${VIRTUALENV_DIR} || \
+    ${PYTHON_BIN_PATH_INIT} -m venv ${VIRTUALENV_DIR} || \
     die "FAILED: Unable to create virtualenv"
 
   source "${VIRTUALENV_DIR}/bin/activate" || \
@@ -448,10 +488,9 @@ install_tensorflow_pip() {
   # Check that requested python version matches configured one.
   check_python_pip_version
 
-  # Force upgrade of setuptools. We need it to install pips using
-  # `install_requires` notation introduced in setuptools >=20.5. The default
-  # version of setuptools is 5.5.1.
-  ${PIP_BIN_PATH} install --upgrade setuptools || \
+  # setuptools v60.0.0 introduced a breaking change on how distutils is linked
+  # https://github.com/pypa/setuptools/blob/main/CHANGES.rst#v6000
+  ${PIP_BIN_PATH} install --upgrade "setuptools" || \
     die "Error: setuptools install, upgrade FAILED"
 
   # Force tensorflow reinstallation. Otherwise it may not get installed from
@@ -469,7 +508,7 @@ install_tensorflow_pip() {
 
   # Install the gast package in the virtualenv. Installing it in user system
   # packages does not appear to port it over when creating a virtualenv.
-  ${PIP_BIN_PATH} install --upgrade "gast==0.3.3" || \
+  ${PIP_BIN_PATH} install --upgrade "gast==0.4.0" || \
     die "Error: gast install, upgrade FAILED"
 
 }
@@ -491,6 +530,8 @@ run_test_with_bazel() {
 
   if [[ "${IS_OSS_SERIAL}" == "1" ]]; then
     remove_test_filter_tag -no_oss
+    remove_test_filter_tag -oss_excluded
+    remove_test_filter_tag -oss_serial
     add_test_filter_tag oss_serial
   else
     add_test_filter_tag -oss_serial
@@ -505,7 +546,7 @@ run_test_with_bazel() {
 
   # Figure out how many concurrent tests we can run and do run the tests.
   BAZEL_PARALLEL_TEST_FLAGS=""
-  if [[ $CONTAINER_TYPE == "gpu" ]]; then
+  if [[ $CONTAINER_TYPE == "gpu" ]] || [[ $CONTAINER_TYPE == "rocm" ]]; then
     # Number of test threads is the number of GPU cards available.
     if [[ $OS_TYPE == "macos" ]]; then
       BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=1"
@@ -540,6 +581,8 @@ run_test_with_bazel() {
 }
 
 run_all_tests() {
+  WHL_PATH=$1
+
   if [[ -z "${PIP_TESTS}" ]]; then
     echo "No test was specified to run. Skipping all tests."
     return 0
@@ -551,13 +594,13 @@ run_all_tests() {
     # Run tests.
     case "${TEST}" in
     "test_pip_virtualenv_clean")
-      test_pip_virtualenv venv_clean --clean
+      test_pip_virtualenv ${WHL_PATH} venv_clean --clean
       ;;
     "test_pip_virtualenv_non_clean")
-      test_pip_virtualenv venv
+      test_pip_virtualenv ${WHL_PATH} venv
       ;;
     "test_pip_virtualenv_oss_serial")
-      test_pip_virtualenv venv_oss --oss_serial
+      test_pip_virtualenv ${WHL_PATH} venv_oss --oss_serial
       ;;
     *)
       die "No matching test ${TEST} was found. Stopping test."
@@ -620,6 +663,18 @@ if [[ ${CONTAINER_TYPE} == "gpu" ]]; then
   fi
 fi
 
+if [[ ${CONTAINER_TYPE} == "rocm" ]]; then
+  GPU_FLAG="--rocm"
+  if ! [[ $PROJECT_NAME == *"rocm"* ]]; then
+    # Only update PROJECT_NAME if TF_PROJECT_NAME is not set
+    if [[ -z "${TF_PROJECT_NAME}" ]]; then
+      echo "WARNING: ROCM is specified but requested project name (PROJECT_NAME=${PROJECT_NAME}) \
+      does not include 'rocm'. Appending '_rocm' to the project name."
+      PROJECT_NAME="${PROJECT_NAME}_rocm"
+    fi
+  fi
+fi
+
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${GPU_FLAG} ${NIGHTLY_FLAG} "--project_name" ${PROJECT_NAME} || die "build_pip_package FAILED"
 
 PY_DOTLESS_MAJOR_MINOR_VER=$(echo $PY_MAJOR_MINOR_VER | tr -d '.')
@@ -636,8 +691,10 @@ fi
 
 WHL_DIR=$(dirname "${WHL_PATH}")
 
-# Print the size of the wheel file.
-echo "Size of the PIP wheel file built: $(ls -l ${WHL_PATH} | awk '{print $5}')"
+# Print the size of the wheel file and log to sponge.
+WHL_SIZE=$(ls -l ${WHL_PATH} | awk '{print $5}')
+echo "Size of the PIP wheel file built: ${WHL_SIZE}"
+write_to_sponge TF_INFO_WHL_SIZE ${WHL_SIZE}
 
 # Build the other GPU package.
 if [[ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]] || [[ "$BUILD_BOTH_CPU_PACKAGES" -eq "1" ]]; then
@@ -677,30 +734,48 @@ if [[ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]] || [[ "$BUILD_BOTH_CPU_PACKAGES" -eq
   ./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${GPU_FLAG} ${NIGHTLY_FLAG} "--project_name" ${NEW_PROJECT_NAME} || die "build_pip_package FAILED"
 fi
 
+# On MacOS we not have to rename the wheel because it is generated with the
+# wrong tag.
+if [[ ${OS_TYPE} == "macos" ]] ; then
+  for WHL_PATH in $(ls ${PIP_WHL_DIR}/*macosx_10_15_x86_64.whl); do
+    # change 10_15 to 10_14
+    NEW_WHL_PATH=${WHL_PATH/macosx_10_15/macosx_10_14}
+    mv ${WHL_PATH} ${NEW_WHL_PATH}
+  done
+
+  # Also change global WHL_PATH. Ignore above shadow and everywhere else
+  NEW_WHL_PATH=${WHL_PATH/macosx_10_15/macosx_10_14}
+  WHL_PATH=${NEW_WHL_PATH}
+fi
+
 # Run tests (if any is specified).
-run_all_tests
+run_all_tests ${WHL_PATH}
 
 
-if [[ ${OS_TYPE} == "ubuntu" ]]; then
+if [[ ${OS_TYPE} == "ubuntu" ]] && \
+   ! [[ ${CONTAINER_TYPE} == "rocm" ]] ; then
   # Avoid Python3.6 abnormality by installing auditwheel here.
-  set +e
-  pip3 show auditwheel || "pip${PY_MAJOR_MINOR_VER}" show auditwheel
-  pip3 install auditwheel==2.0.0 || "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
-  sudo pip3 install auditwheel==2.0.0 || \
-    sudo "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
-  set -e
+  # TODO(rameshsampath) - Cleanup and remove the need for auditwheel install
+  # Python 3.10 requires auditwheel > 2 and its already installed in common.sh
+  if [[ $PY_MAJOR_MINOR_VER -ne "3.10" ]]; then
+    set +e
+    pip3 show auditwheel || "pip${PY_MAJOR_MINOR_VER}" show auditwheel
+    # For tagging wheels as manylinux2014, auditwheel needs to >= 3.0.0
+    pip3 install auditwheel==3.3.1 || "pip${PY_MAJOR_MINOR_VER}" install auditwheel==3.3.1
+    sudo pip3 install auditwheel==3.3.1 || \
+      sudo "pip${PY_MAJOR_MINOR_VER}" install auditwheel==3.3.1
+    set -e
+  fi
   auditwheel --version
 
   for WHL_PATH in $(ls ${PIP_WHL_DIR}/*.whl); do
-    # Repair the wheels for cpu manylinux2010
+    # Repair the wheels for cpu manylinux2010/manylinux2014
     echo "auditwheel repairing ${WHL_PATH}"
-    auditwheel repair --plat manylinux2010_x86_64 -w "${WHL_DIR}" "${WHL_PATH}"
+    auditwheel repair --plat ${AUDITWHEEL_TARGET_PLAT}_$(uname -m) -w "${WHL_DIR}" "${WHL_PATH}"
 
-    WHL_BASE_NAME=$(basename "${WHL_PATH}")
-    AUDITED_WHL_NAME="${WHL_DIR}"/$(echo "${WHL_BASE_NAME//linux/manylinux2010}")
-    if [[ -f ${AUDITED_WHL_NAME} ]]; then
-      WHL_PATH=${AUDITED_WHL_NAME}
-      echo "Repaired manylinux2010 wheel file at: ${WHL_PATH}"
+    if [[ $(ls ${WHL_DIR} | grep ${AUDITWHEEL_TARGET_PLAT} | wc -l) == 1 ]] ; then
+      WHL_PATH=${WHL_DIR}/$(ls ${WHL_DIR} | grep ${AUDITWHEEL_TARGET_PLAT})
+      echo "Repaired ${AUDITWHEEL_TARGET_PLAT} wheel file at: ${WHL_PATH}"
     else
       die "WARNING: Cannot find repaired wheel."
     fi

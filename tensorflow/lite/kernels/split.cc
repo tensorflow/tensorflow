@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -60,6 +60,7 @@ TfLiteStatus ResizeOutputTensors(TfLiteContext* context, TfLiteNode* node,
   TF_LITE_ENSURE(context, axis_value < NumDimensions(input));
 
   const int input_size = SizeOfDimension(input, axis_value);
+  TF_LITE_ENSURE(context, num_splits != 0);
   TF_LITE_ENSURE_MSG(context, input_size % num_splits == 0,
                      "Not an even split");
   const int slice_size = input_size / num_splits;
@@ -95,7 +96,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // If we know the contents of the 'axis' tensor, resize all outputs.
   // Otherwise, wait until Eval().
-  if (IsConstantTensor(op_context.axis)) {
+  if (IsConstantOrPersistentTensor(op_context.axis)) {
     return ResizeOutputTensors(context, node, op_context.axis, op_context.input,
                                op_context.params->num_splits);
   } else {
@@ -158,8 +159,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     default:
-      context->ReportError(context, "Type %s currently not supported.",
-                           TfLiteTypeGetName(op_context.input->type));
+      TF_LITE_KERNEL_LOG(context, "Type %s currently not supported.",
+                         TfLiteTypeGetName(op_context.input->type));
       return kTfLiteError;
   }
 #undef TF_LITE_SPLIT

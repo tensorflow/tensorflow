@@ -41,7 +41,8 @@ diff -ru a/icu4c/source/common/udata.cpp b/icu4c/source/common/udata.cpp
          }
 -        */
 +
- #if U_PLATFORM_HAS_WINUWP_API == 0 // Windows UWP Platform does not support dll icu data at this time
+ #if !defined(ICU_DATA_DIR_WINDOWS)
+ // When using the Windows system data, we expect only a single data file.
          setCommonICUDataPointer(&U_ICUDATA_ENTRY_POINT, FALSE, pErrorCode);
          {
 diff -ru a/icu4c/source/common/unicode/uconfig.h b/icu4c/source/common/unicode/uconfig.h

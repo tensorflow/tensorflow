@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Utilities for building profiler options."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 
 from tensorflow.python.profiler import tfprof_logger

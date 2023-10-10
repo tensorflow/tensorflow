@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Training-related utilities."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import abc
 import atexit
@@ -26,25 +23,23 @@ import threading
 import time
 
 import numpy as np
-import six
-from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import cardinality
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
@@ -59,6 +54,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import data as data_types
 from tensorflow.python.util import nest
 
 
@@ -72,8 +68,7 @@ def is_composite_or_composite_value(tensor):
        ragged_tensor_value.RaggedTensorValue))
 
 
-@six.add_metaclass(abc.ABCMeta)
-class Aggregator(object):
+class Aggregator(object, metaclass=abc.ABCMeta):
   """Abstract base class used to aggregate batch-level outputs of a loop.
 
   Attributes:
@@ -96,7 +91,7 @@ class Aggregator(object):
   def create(self, batch_outs):
     """Creates the initial results from the first batch outputs.
 
-    Arguments:
+    Args:
       batch_outs: A list of batch-level outputs.
     """
     raise NotImplementedError('Must be implemented in subclasses.')
@@ -105,7 +100,7 @@ class Aggregator(object):
   def aggregate(self, batch_outs, batch_start=None, batch_end=None):
     """Aggregates batch-level results into total results.
 
-    Arguments:
+    Args:
       batch_outs: A list of batch-level outputs.
       batch_start: The start index of this batch. Always `None` if `use_steps`
         is `True`.
@@ -227,7 +222,7 @@ def _append_composite_tensor(target, to_append):
   working with CompositeTensor Value objects that have no connection with the
   CompositeTensors that created them.
 
-  Arguments:
+  Args:
     target: CompositeTensor or CompositeTensor value object that will be
       appended to.
     to_append: CompositeTensor or CompositeTensor value object to append to.
@@ -377,7 +372,7 @@ class SliceAggregator(Aggregator):
   def aggregate(self, batch_element, batch_start, batch_end):
     # Fail early.
     if self._errors:
-      six.reraise(type(self._errors[0]), self._errors[0])
+      raise self._errors[0]
 
     # In the special case of single batch inference, no copy is needed.
     if batch_end - batch_start == self.num_samples:
@@ -425,7 +420,7 @@ class SliceAggregator(Aggregator):
         raise ValueError('Timed out waiting for copy to complete.')
 
     if self._errors:
-      six.reraise(self._errors[0].__class__, self._errors[0])
+      raise self._errors[0]
 
 
 class OutputsAggregator(Aggregator):
@@ -487,7 +482,7 @@ def check_num_samples(ins, batch_size=None, steps=None, steps_name='steps'):
   The number of samples is not defined when running with `steps`,
   in which case the number of samples is set to `None`.
 
-  Arguments:
+  Args:
       ins: List of tensors to be fed to the Keras function.
       batch_size: Integer batch size or `None` if not defined.
       steps: Total number of steps (batches of samples) before declaring
@@ -531,7 +526,7 @@ def standardize_single_array(x, expected_shape=None):
 
   if (x.shape is not None and len(x.shape) == 1 and
       (expected_shape is None or len(expected_shape) != 1)):
-    if tensor_util.is_tensor(x):
+    if tensor_util.is_tf_type(x):
       x = array_ops.expand_dims(x, axis=1)
     else:
       x = np.expand_dims(x, 1)
@@ -559,7 +554,7 @@ def standardize_input_data(data,
   arrays (same order as `names`), while checking that the provided
   arrays have shapes that match the network's expectations.
 
-  Arguments:
+  Args:
       data: User-provided input data (polymorphic).
       names: List of expected array names.
       shapes: Optional list of expected array shapes.
@@ -644,7 +639,7 @@ def standardize_input_data(data,
   if shapes:
     for i in range(len(names)):
       if shapes[i] is not None:
-        if tensor_util.is_tensor(data[i]):
+        if tensor_util.is_tf_type(data[i]):
           tensorshape = data[i].shape
           if not tensorshape:
             continue
@@ -676,7 +671,7 @@ def standardize_input_data(data,
 def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
   """Maps `sample_weight` or `class_weight` to model outputs.
 
-  Arguments:
+  Args:
       x_weight: User-provided `sample_weight` or `class_weight` argument.
       output_names: List of output names (strings) in the model.
       weight_type: A string used purely for exception printing.
@@ -732,7 +727,7 @@ def standardize_sample_weights(sample_weight, output_names):
 def check_array_lengths(inputs, targets, weights=None):
   """Does user input validation for numpy arrays.
 
-  Arguments:
+  Args:
       inputs: list of Numpy arrays of inputs.
       targets: list of Numpy arrays of targets.
       weights: list of Numpy arrays of sample weights.
@@ -742,7 +737,7 @@ def check_array_lengths(inputs, targets, weights=None):
   """
 
   def is_tensor_or_composite_tensor(x):
-    return tensor_util.is_tensor(x) or is_composite_or_composite_value(x)
+    return tensor_util.is_tf_type(x) or is_composite_or_composite_value(x)
 
   def set_of_lengths(x):
     # Returns a set with the variation between
@@ -789,7 +784,7 @@ def check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
   This helps prevent users from using loss functions incorrectly. This check
   is purely for UX purposes.
 
-  Arguments:
+  Args:
       targets: list of Numpy arrays of targets.
       loss_fns: list of loss functions.
       output_shapes: list of shapes of model outputs.
@@ -805,7 +800,7 @@ def check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
   key_loss_classes = (losses.MeanSquaredError, losses.BinaryCrossentropy,
                       losses.CategoricalCrossentropy)
   for y, loss, shape in zip(targets, loss_fns, output_shapes):
-    if y is None or loss is None or tensor_util.is_tensor(y):
+    if y is None or loss is None or tensor_util.is_tf_type(y):
       continue
     if losses.is_categorical_crossentropy(loss):
       if y.shape[-1] == 1:
@@ -846,14 +841,17 @@ def collect_per_output_metric_info(metrics,
                                    output_names,
                                    output_shapes,
                                    loss_fns,
+                                   from_serialized=False,
                                    is_weighted=False):
   """Maps metric names and functions to model outputs.
 
-  Arguments:
+  Args:
       metrics: a list or a list of lists or a dict of metric functions.
       output_names: a list of the names (strings) of model outputs.
       output_shapes: a list of the shapes (strings) of model outputs.
       loss_fns: a list of the loss functions corresponding to the model outputs.
+      from_serialized: whether the model the metrics are being sourced from is
+        being initialized from a serialized format.
       is_weighted: Boolean indicating whether the given metrics are weighted.
 
   Returns:
@@ -910,11 +908,16 @@ def collect_per_output_metric_info(metrics,
       metric_name = get_metric_name(metric, is_weighted)
       metric_fn = get_metric_function(
           metric, output_shape=output_shapes[i], loss_fn=loss_fns[i])
+      metric_fn._from_serialized = from_serialized  # pylint: disable=protected-access
 
       # If the metric function is not stateful, we create a stateful version.
       if not isinstance(metric_fn, metrics_module.Metric):
         metric_fn = metrics_module.MeanMetricWrapper(
             metric_fn, name=metric_name)
+        # If the metric is being revived from something stateless, such as a
+        # string (e.g. "accuracy"), we may need to later reapply transformations
+        # such as renaming.
+        metric_fn._from_serialized = False  # pylint: disable=protected-access
       metrics_dict[metric_name] = metric_fn
     per_output_metrics.append(metrics_dict)
 
@@ -927,7 +930,7 @@ def batch_shuffle(index_array, batch_size):
   Useful for shuffling HDF5 arrays
   (where one cannot access arbitrary indices).
 
-  Arguments:
+  Args:
       index_array: array of indices to be shuffled.
       batch_size: integer.
 
@@ -955,7 +958,7 @@ def standardize_weights(y,
   weight array. If both `sample_weight` and `class_weight` are provided,
   the weights are multiplied.
 
-  Arguments:
+  Args:
       y: Numpy array or Tensor of model targets to be weighted.
       sample_weight: User-provided `sample_weight` argument.
       class_weight: User-provided `class_weight` argument.
@@ -1007,7 +1010,7 @@ def standardize_weights(y,
                        'Expected sample_weight with rank '
                        'less than or equal to ' + str(len(y.shape)))
 
-    if (not tensor_util.is_tensor(sample_weight) and
+    if (not tensor_util.is_tf_type(sample_weight) and
         y.shape[:sample_weight.ndim] != sample_weight.shape):
       raise ValueError('Found a sample_weight array with shape ' +
                        str(sample_weight.shape) + ' for an input with shape ' +
@@ -1021,7 +1024,7 @@ def standardize_weights(y,
       raise ValueError('`class_weight` not supported for '
                        '3+ dimensional targets.')
 
-    if tensor_util.is_tensor(y):
+    if tensor_util.is_tf_type(y):
       # Few classes are expected, so densifying is reasonable.
       keys = np.array(sorted(class_weight.keys()))
       values = np.array([class_weight[i] for i in keys])
@@ -1030,18 +1033,20 @@ def standardize_weights(y,
       weight_vector[keys] = values
 
       y_classes = smart_cond.smart_cond(
-          len(y.shape.as_list()) == 2 and K.shape(y)[1] > 1,
-          lambda: K.argmax(y, axis=1),
-          lambda: math_ops.cast(K.reshape(y, (-1,)), dtypes.int64))
+          len(y.shape.as_list()) == 2 and backend.shape(y)[1] > 1,
+          lambda: backend.argmax(y, axis=1),
+          lambda: math_ops.cast(backend.reshape(y, (-1,)), dtypes.int64))
       class_sample_weight = array_ops.gather(weight_vector, y_classes)
       gen_array_ops.check_numerics(
           class_sample_weight,
           'Invalid classes or class weights detected. NaN values indicate that '
           'an appropriate class weight could not be determined.')
-      class_sample_weight = math_ops.cast(class_sample_weight, K.floatx())
+      class_sample_weight = math_ops.cast(class_sample_weight, backend.floatx())
       if sample_weight is not None:
         sample_weight = math_ops.cast(
-            ops.convert_to_tensor_v2_with_dispatch(sample_weight), K.floatx())
+            tensor_conversion.convert_to_tensor_v2_with_dispatch(sample_weight),
+            backend.floatx(),
+        )
     else:
       y_classes = y
       if len(y.shape) == 2:
@@ -1085,21 +1090,21 @@ def has_tensors(ls):
   # which would then require a steps_per_epoch argument.
   if isinstance(ls, (list, tuple)):
     return any(
-        tensor_util.is_tensor(v) and
+        tensor_util.is_tf_type(v) and
         not isinstance(v, ragged_tensor.RaggedTensor) for v in ls)
   if isinstance(ls, dict):
     return any(
-        tensor_util.is_tensor(v) and
+        tensor_util.is_tf_type(v) and
         not isinstance(v, ragged_tensor.RaggedTensor)
-        for _, v in six.iteritems(ls))
-  return tensor_util.is_tensor(ls) and not isinstance(
+        for _, v in ls.items())
+  return tensor_util.is_tf_type(ls) and not isinstance(
       ls, ragged_tensor.RaggedTensor)
 
 
 def get_metric_name(metric, weighted=False):
   """Returns the name corresponding to the given metric input.
 
-  Arguments:
+  Args:
     metric: Metric function name or reference.
     weighted: Boolean indicating if the given metric is weighted.
 
@@ -1108,7 +1113,7 @@ def get_metric_name(metric, weighted=False):
   """
   if tf2.enabled():
     # We keep the string that the user has set in compile as the metric name.
-    if isinstance(metric, six.string_types):
+    if isinstance(metric, str):
       return metric
 
     metric = metrics_module.get(metric)
@@ -1134,7 +1139,7 @@ def get_metric_name(metric, weighted=False):
 def get_metric_function(metric, output_shape=None, loss_fn=None):
   """Returns the metric function corresponding to the given metric input.
 
-  Arguments:
+  Args:
       metric: Metric function name or reference.
       output_shape: The shape of the output that this metric will be calculated
         for.
@@ -1232,7 +1237,7 @@ def get_loss_function(loss):
 def validate_dataset_input(x, y, sample_weight, validation_split=None):
   """Validates user input arguments when a dataset iterator is passed.
 
-  Arguments:
+  Args:
     x: Input data. A `tf.data` dataset or iterator.
     y: Target data. It could be either Numpy array(s) or TensorFlow tensor(s).
       Expected to be `None` when `x` is a dataset iterator.
@@ -1271,7 +1276,7 @@ def validate_input_types(inp, orig_inp, allow_dict=True, field_name='inputs'):
   """Helper function to validate either inputs or targets."""
   if isinstance(inp, (list, tuple)):
     if not all(isinstance(v, np.ndarray) or
-               tensor_util.is_tensor(v) for v in inp):
+               tensor_util.is_tf_type(v) for v in inp):
       raise ValueError(
           'Please provide as model inputs either a single array or a list of '
           'arrays. You passed: {}={}'.format(field_name, str(orig_inp)))
@@ -1279,7 +1284,7 @@ def validate_input_types(inp, orig_inp, allow_dict=True, field_name='inputs'):
     if not allow_dict:
       raise ValueError(
           'You cannot pass a dictionary as model {}.'.format(field_name))
-  elif not isinstance(inp, np.ndarray) and not tensor_util.is_tensor(inp):
+  elif not isinstance(inp, np.ndarray) and not tensor_util.is_tf_type(inp):
     raise ValueError(
         'Please provide as model inputs either a single array or a list of '
         'arrays. You passed: {}={}'.format(field_name, orig_inp))
@@ -1310,7 +1315,7 @@ def check_steps_argument(input_data, steps, steps_name):
        required and is `None`.
     3. input data passed is a symbolic tensor.
 
-  Arguments:
+  Args:
       input_data: Input data. Can be Numpy array(s) or TensorFlow tensor(s) or
         tf.data.Dataset iterator or `None`.
       steps: Integer or `None`. Total number of steps (batches of samples) to
@@ -1335,7 +1340,7 @@ def check_steps_argument(input_data, steps, steps_name):
                            input_type=input_type_str, steps_name=steps_name))
     return True
 
-  if isinstance(input_data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
+  if isinstance(input_data, (data_types.DatasetV1, data_types.DatasetV2)):
     return True
 
   if steps is not None:
@@ -1351,8 +1356,8 @@ def check_steps_argument(input_data, steps, steps_name):
 
 def cast_single_tensor(x, dtype=None):
   if isinstance(x, np.ndarray):
-    x = ops.convert_to_tensor_v2_with_dispatch(x)
-  dtype = dtype or K.floatx()
+    x = tensor_conversion.convert_to_tensor_v2_with_dispatch(x)
+  dtype = dtype or backend.floatx()
   if x.dtype.is_floating:
     return math_ops.cast(x, dtype=dtype)
   return x
@@ -1371,13 +1376,13 @@ def cast_if_floating_dtype_and_mismatch(targets, outputs):
   Returns:
     Targets in appropriate datatype.
   """
-  if tensor_util.is_tensor(targets):
+  if tensor_util.is_tf_type(targets):
     # There is one target, so output[0] should be the only output.
     return cast_single_tensor(targets, dtype=outputs[0].dtype)
   new_targets = []
   for target, out in zip(targets, outputs):
     if isinstance(target, np.ndarray):
-      target = ops.convert_to_tensor_v2_with_dispatch(target)
+      target = tensor_conversion.convert_to_tensor_v2_with_dispatch(target)
     if target.dtype != out.dtype:
       new_targets.append(cast_single_tensor(target, dtype=out.dtype))
     else:
@@ -1458,7 +1463,7 @@ def prepare_sample_weight_modes(training_endpoints, sample_weight_mode):
 def prepare_loss_functions(loss, output_names):
   """Converts loss to a list of loss functions.
 
-  Arguments:
+  Args:
       loss: String (name of objective function), objective function or
         `tf.losses.Loss` instance. See `tf.losses`. If the model has multiple
         outputs, you can use a different loss on each output by passing a
@@ -1483,7 +1488,7 @@ def prepare_loss_functions(loss, output_names):
             'this was done on purpose. The fit and evaluate APIs will not be '
             'expecting any data to be passed to {0}.'.format(name))
       loss_functions.append(get_loss_function(loss.get(name, None)))
-  elif isinstance(loss, six.string_types):
+  elif isinstance(loss, str):
     loss_functions = [get_loss_function(loss) for _ in output_names]
   elif isinstance(loss, collections.abc.Sequence):
     if len(loss) != len(output_names):
@@ -1502,7 +1507,7 @@ def prepare_loss_weights(training_endpoints, loss_weights=None):
 
   The result loss weights will be populated on the training endpoint.
 
-  Arguments:
+  Args:
       training_endpoints: List of model training endpoints.
       loss_weights: Optional list or dictionary specifying scalar coefficients
         (Python floats) to weight the loss contributions of different model
@@ -1548,7 +1553,7 @@ def is_feature_layer(layer):
 
 def is_eager_dataset_or_iterator(data):
   return context.executing_eagerly() and isinstance(
-      data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
+      data, (data_types.DatasetV1, data_types.DatasetV2,
              iterator_ops.IteratorBase))
 
 
@@ -1557,7 +1562,7 @@ def get_dataset_graph_def(dataset):
   if context.executing_eagerly():
     graph_def_str = dataset._as_serialized_graph().numpy()
   else:
-    graph_def_str = K.get_value(dataset._as_serialized_graph())
+    graph_def_str = backend.get_value(dataset._as_serialized_graph())
   return graph_pb2.GraphDef().FromString(graph_def_str)
 
 
@@ -1570,7 +1575,7 @@ def verify_dataset_shuffled(x):
   Returns:
     boolean, whether the input dataset is shuffled or not.
   """
-  assert isinstance(x, dataset_ops.DatasetV2)
+  assert isinstance(x, data_types.DatasetV2)
   graph_def = get_dataset_graph_def(x)
   for node in graph_def.node:
     if node.op.startswith('ShuffleDataset'):
@@ -1586,7 +1591,7 @@ def verify_dataset_shuffled(x):
 
 
 def is_dataset_or_iterator(data):
-  return isinstance(data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
+  return isinstance(data, (data_types.DatasetV1, data_types.DatasetV2,
                            iterator_ops.Iterator, iterator_ops.IteratorBase))
 
 
@@ -1603,13 +1608,13 @@ def get_iterator(dataset):
 def initialize_iterator(iterator):
   if not context.executing_eagerly():
     init_op = iterator.initializer
-    K.get_session((init_op,)).run(init_op)
+    backend.get_session((init_op,)).run(init_op)
 
 
 def extract_tensors_from_dataset(dataset):
   """Extract a tuple of tensors `inputs, targets, sample_weight` from a dataset.
 
-  Arguments:
+  Args:
     dataset: Dataset instance.
 
   Returns:
@@ -1623,7 +1628,7 @@ def extract_tensors_from_dataset(dataset):
 def unpack_iterator_input(iterator):
   """Convert a dataset iterator to a tuple of tensors `x, y, sample_weights`.
 
-  Arguments:
+  Args:
     iterator: Instance of a dataset iterator.
 
   Returns:
@@ -1661,7 +1666,7 @@ def infer_steps_for_dataset(model,
                             steps_name='steps'):
   """Infers steps_per_epoch needed to loop through a dataset.
 
-  Arguments:
+  Args:
       model: Keras model instance.
       dataset: Input data of type tf.data.Dataset.
       steps: Number of steps to draw from the dataset (may be None if unknown).
@@ -1679,15 +1684,15 @@ def infer_steps_for_dataset(model,
   Raises:
     ValueError: In case of invalid argument values.
   """
-  assert isinstance(dataset, dataset_ops.DatasetV2)
+  assert isinstance(dataset, data_types.DatasetV2)
   if (model._in_multi_worker_mode() and
       (dataset.options().experimental_distribute.auto_shard_policy !=
-       distribute_options.AutoShardPolicy.OFF)):
+       options_lib.AutoShardPolicy.OFF)):
     # If the dataset would be auto-sharded, we should not infer a local
     # steps_per_epoch due to the possible inbalanced sharding between workers.
     return None
 
-  size = K.get_value(cardinality.cardinality(dataset))
+  size = backend.get_value(cardinality.cardinality(dataset))
   if size == cardinality.INFINITE and steps is None:
     raise ValueError('When passing an infinitely repeating dataset, you '
                      'must specify the `%s` argument.' % (steps_name,))
@@ -1765,13 +1770,13 @@ class ModelInputs(object):
           shape = (None, 1)
         dtype = dtypes.as_dtype(v.dtype)
         if dtype.is_floating:
-          dtype = K.floatx()
-        v = K.placeholder(shape=shape, name=k, dtype=dtype)
+          dtype = backend.floatx()
+        v = backend.placeholder(shape=shape, name=k, dtype=dtype)
       elif isinstance(v, tensor_spec.TensorSpec):
         shape = (None,) + tuple(v.shape.as_list()[1:])
         if shape == (None,):
           shape = (None, 1)
-        v = K.placeholder(shape=shape, name=k, dtype=v.dtype)
+        v = backend.placeholder(shape=shape, name=k, dtype=v.dtype)
 
       self._flattened_inputs[i] = v
 
@@ -1805,7 +1810,7 @@ def generic_output_names(outputs_list):
 def should_run_validation(validation_freq, epoch):
   """Checks if validation should be run this epoch.
 
-  Arguments:
+  Args:
     validation_freq: Integer or list. If an integer, specifies how many training
       epochs to run before a new validation run is performed. If a list,
       specifies the epochs on which to run validation.
@@ -1873,7 +1878,7 @@ def unpack_validation_data(validation_data, raise_if_ambiguous=True):
   """
   if (isinstance(validation_data, (iterator_ops.Iterator,
                                    iterator_ops.IteratorBase,
-                                   dataset_ops.DatasetV2,
+                                   data_types.DatasetV2,
                                    data_utils.Sequence))
       or not hasattr(validation_data, '__len__')):
     val_x = validation_data

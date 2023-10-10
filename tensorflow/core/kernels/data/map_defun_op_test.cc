@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/map_defun_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -59,7 +59,7 @@ class MapDefunOpParams : public DatasetParams {
       input_names->emplace_back(
           strings::StrCat(MapDefunOp::kCapturedInputs, "_", i));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -70,7 +70,7 @@ class MapDefunOpParams : public DatasetParams {
         {MapDefunOp::kOutputTypes, output_dtypes_},
         {MapDefunOp::kFunc, func_},
         {MapDefunOp::kMaxIntraOpParallelism, max_intra_op_parallelism_}};
-    return Status::OK();
+    return OkStatus();
   }
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }
@@ -100,7 +100,7 @@ class MapDefunOpTest : public DatasetOpsTestBase {
     NodeDef node_def =
         test::function::NDef(kNodeName, kOpName, input_namess, attributes);
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, map_defun_kernel));
-    return Status::OK();
+    return OkStatus();
   }
 
   // Creates a new `MapDefun` op kernel context.
@@ -109,7 +109,7 @@ class MapDefunOpTest : public DatasetOpsTestBase {
                                std::unique_ptr<OpKernelContext>* context) {
     TF_RETURN_IF_ERROR(CheckOpKernelInput(*op_kernel, *inputs));
     TF_RETURN_IF_ERROR(CreateOpKernelContext(op_kernel, inputs, context));
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -122,8 +122,8 @@ struct TestCase {
 TestCase TestCase1() {
   return {/*map_defun_op_params=*/
           MapDefunOpParams(
-              /*arguments=*/{CreateTensor<int64>(TensorShape({3, 2}),
-                                                 {0, 1, 2, 3, 4, 5})},
+              /*arguments=*/{CreateTensor<int64_t>(TensorShape({3, 2}),
+                                                   {0, 1, 2, 3, 4, 5})},
               /*captured_inputs=*/{},
               /*type_arguments=*/{DT_INT64},
               /*type_captured=*/{},
@@ -134,41 +134,21 @@ TestCase TestCase1() {
               /*func_lib=*/{test::function::XTimesTwo()},
               /*max_intra_op_parallelism=*/2, /*node_name=*/kNodeName),
           /*expected_outputs=*/
-          {CreateTensor<int64>(TensorShape({3, 2}), {0, 2, 4, 6, 8, 10})}};
+          {CreateTensor<int64_t>(TensorShape({3, 2}), {0, 2, 4, 6, 8, 10})}};
 }
 
 // Test case 2: two inputs for the map function with no captured inputs.
 TestCase TestCase2() {
-  return {/*map_defun_op_params=*/
-          MapDefunOpParams(
-              /*arguments=*/{CreateTensor<int64>(TensorShape({3, 2}),
-                                                 {0, 1, 2, 3, 4, 5}),
-                             CreateTensor<int64>(TensorShape({3, 2}),
-                                                 {0, 10, 20, 30, 40, 50})},
-              /*captured_inputs=*/{},
-              /*type_arguments=*/{DT_INT64, DT_INT64},
-              /*type_captured=*/{},
-              /*output_dtypes=*/{DT_INT64},
-              /*output_shapes=*/{PartialTensorShape({2})},
-              /*func=*/
-              {FunctionDefHelper::FunctionRef("XAddY", {{"T", DT_INT64}})},
-              /*func_lib=*/{test::function::XAddY()},
-              /*max_intra_op_parallelism=*/2, /*node_name=*/kNodeName),
-          /*expected_outputs=*/
-          {CreateTensor<int64>(TensorShape({3, 2}), {0, 11, 22, 33, 44, 55})}};
-}
-
-// Test case 3: two inputs for the map function with one captured input.
-TestCase TestCase3() {
   return {
       /*map_defun_op_params=*/
       MapDefunOpParams(
-          /*arguments=*/{CreateTensor<int64>(TensorShape({3, 2}),
-                                             {0, 1, 2, 3, 4, 5})},
-          /*captured_inputs=*/
-          {CreateTensor<int64>(TensorShape({2}), {10, 100})},
-          /*type_arguments=*/{DT_INT64},
-          /*type_captured=*/{DT_INT64},
+          /*arguments=*/{CreateTensor<int64_t>(TensorShape({3, 2}),
+                                               {0, 1, 2, 3, 4, 5}),
+                         CreateTensor<int64_t>(TensorShape({3, 2}),
+                                               {0, 10, 20, 30, 40, 50})},
+          /*captured_inputs=*/{},
+          /*type_arguments=*/{DT_INT64, DT_INT64},
+          /*type_captured=*/{},
           /*output_dtypes=*/{DT_INT64},
           /*output_shapes=*/{PartialTensorShape({2})},
           /*func=*/
@@ -176,16 +156,37 @@ TestCase TestCase3() {
           /*func_lib=*/{test::function::XAddY()},
           /*max_intra_op_parallelism=*/2, /*node_name=*/kNodeName),
       /*expected_outputs=*/
-      {CreateTensor<int64>(TensorShape({3, 2}), {10, 101, 12, 103, 14, 105})}};
+      {CreateTensor<int64_t>(TensorShape({3, 2}), {0, 11, 22, 33, 44, 55})}};
+}
+
+// Test case 3: two inputs for the map function with one captured input.
+TestCase TestCase3() {
+  return {/*map_defun_op_params=*/
+          MapDefunOpParams(
+              /*arguments=*/{CreateTensor<int64_t>(TensorShape({3, 2}),
+                                                   {0, 1, 2, 3, 4, 5})},
+              /*captured_inputs=*/
+              {CreateTensor<int64_t>(TensorShape({2}), {10, 100})},
+              /*type_arguments=*/{DT_INT64},
+              /*type_captured=*/{DT_INT64},
+              /*output_dtypes=*/{DT_INT64},
+              /*output_shapes=*/{PartialTensorShape({2})},
+              /*func=*/
+              {FunctionDefHelper::FunctionRef("XAddY", {{"T", DT_INT64}})},
+              /*func_lib=*/{test::function::XAddY()},
+              /*max_intra_op_parallelism=*/2, /*node_name=*/kNodeName),
+          /*expected_outputs=*/
+          {CreateTensor<int64_t>(TensorShape({3, 2}),
+                                 {10, 101, 12, 103, 14, 105})}};
 }
 
 TestCase InvalidOutputTypes() {
   return {/*map_defun_op_params=*/
           MapDefunOpParams(
-              /*arguments=*/{CreateTensor<int64>(TensorShape({3, 2}),
-                                                 {0, 1, 2, 3, 4, 5})},
+              /*arguments=*/{CreateTensor<int64_t>(TensorShape({3, 2}),
+                                                   {0, 1, 2, 3, 4, 5})},
               /*captured_inputs=*/
-              {CreateTensor<int64>(TensorShape({2}), {10, 100})},
+              {CreateTensor<int64_t>(TensorShape({2}), {10, 100})},
               /*type_arguments=*/{DT_INT64},
               /*type_captured=*/{DT_INT64},
               /*output_dtypes=*/{DT_FLOAT},
@@ -200,10 +201,10 @@ TestCase InvalidOutputTypes() {
 TestCase InvalidOutputShapes() {
   return {/*map_defun_op_params=*/
           MapDefunOpParams(
-              /*arguments=*/{CreateTensor<int64>(TensorShape({3, 2}),
-                                                 {0, 1, 2, 3, 4, 5})},
+              /*arguments=*/{CreateTensor<int64_t>(TensorShape({3, 2}),
+                                                   {0, 1, 2, 3, 4, 5})},
               /*captured_inputs=*/
-              {CreateTensor<int64>(TensorShape({2}), {10, 100})},
+              {CreateTensor<int64_t>(TensorShape({2}), {10, 100})},
               /*type_arguments=*/{DT_INT64},
               /*type_captured=*/{DT_INT64},
               /*output_dtypes=*/{DT_INT64},
@@ -218,10 +219,10 @@ TestCase InvalidOutputShapes() {
 TestCase InvalidInputs() {
   return {/*map_defun_op_params=*/
           MapDefunOpParams(
-              /*arguments=*/{CreateTensor<int64>(TensorShape({3, 2}),
-                                                 {0, 1, 2, 3, 4, 5}),
-                             CreateTensor<int64>(TensorShape({2, 2}),
-                                                 {0, 1, 2, 3})},
+              /*arguments=*/{CreateTensor<int64_t>(TensorShape({3, 2}),
+                                                   {0, 1, 2, 3, 4, 5}),
+                             CreateTensor<int64_t>(TensorShape({2, 2}),
+                                                   {0, 1, 2, 3})},
               /*captured_inputs=*/{},
               /*type_arguments=*/{DT_INT64, DT_INT64},
               /*type_captured=*/{},
@@ -282,7 +283,7 @@ TEST_F(MapDefunOpTest, InvalidArguments) {
     TF_ASSERT_OK(
         CreateMapDefunContext(map_defun_kernel.get(), &input_values, &context));
     EXPECT_EQ(RunOpKernel(map_defun_kernel.get(), context.get()).code(),
-              tensorflow::error::INVALID_ARGUMENT);
+              absl::StatusCode::kInvalidArgument);
   }
 }
 

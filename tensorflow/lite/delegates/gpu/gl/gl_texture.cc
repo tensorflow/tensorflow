@@ -20,73 +20,11 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_call.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_errors.h"
+#include "tensorflow/lite/delegates/gpu/gl/gl_texture_helper.h"
 
 namespace tflite {
 namespace gpu {
 namespace gl {
-
-GLenum ToTextureFormat(DataType type) {
-  switch (type) {
-    case DataType::INT8:
-    case DataType::UINT16:
-    case DataType::UINT32:
-    case DataType::INT16:
-    case DataType::INT32:
-      return GL_RGBA_INTEGER;
-    case DataType::FLOAT16:
-    case DataType::FLOAT32:
-    case DataType::UINT8:  // this requires GL_RGBA8 internal format
-      return GL_RGBA;
-    default:
-      return 0;
-  }
-}
-
-GLenum ToTextureInternalFormat(DataType type) {
-  switch (type) {
-    case DataType::UINT8:
-      return GL_RGBA8;  // this requires GL_RGBA format
-    case DataType::INT8:
-      return GL_RGBA8I;
-    case DataType::UINT16:
-      return GL_RGBA16UI;
-    case DataType::UINT32:
-      return GL_RGBA32UI;
-    case DataType::INT16:
-      return GL_RGBA16I;
-    case DataType::INT32:
-      return GL_RGBA32I;
-    case DataType::FLOAT16:
-      return GL_RGBA16F;
-    case DataType::FLOAT32:
-      return GL_RGBA32F;
-    default:
-      return 0;
-  }
-}
-
-GLenum ToTextureDataType(DataType type) {
-  switch (type) {
-    case DataType::UINT8:
-      return GL_UNSIGNED_BYTE;
-    case DataType::INT8:
-      return GL_BYTE;
-    case DataType::UINT16:
-      return GL_UNSIGNED_SHORT;
-    case DataType::UINT32:
-      return GL_UNSIGNED_INT;
-    case DataType::INT16:
-      return GL_SHORT;
-    case DataType::INT32:
-      return GL_INT;
-    case DataType::FLOAT16:
-      return GL_HALF_FLOAT;
-    case DataType::FLOAT32:
-      return GL_FLOAT;
-    default:
-      return 0;
-  }
-}
 
 GlTexture::GlTexture(GlTexture&& texture)
     : GlTexture(texture.target_, texture.id_, texture.format_,
@@ -191,8 +129,9 @@ absl::Status CreateReadOnlyRgba2dImageTexture(DataType data_type,
         "expected dimensions.");
   }
   const GLenum kTarget = GL_TEXTURE_2D;
-  GLenum internal_format = ToTextureInternalFormat(data_type);
-  GLenum format = ToTextureFormat(data_type);
+  const bool normalized = data_type == DataType::UINT8;
+  GLenum internal_format = ToTextureInternalFormat(data_type, normalized);
+  GLenum format = ToTextureFormat(data_type, normalized);
   GLenum type = ToTextureDataType(data_type);
   gl_texture_internal::TextureId id;
   gl_texture_internal::TextureBinder binder(kTarget, id.id());
@@ -218,8 +157,9 @@ absl::Status CreateReadOnlyRgba3dImageTexture(DataType data_type,
         "product.");
   }
   const GLenum kTarget = GL_TEXTURE_2D_ARRAY;
-  GLenum internal_format = ToTextureInternalFormat(data_type);
-  GLenum format = ToTextureFormat(data_type);
+  const bool normalized = data_type == DataType::UINT8;
+  GLenum internal_format = ToTextureInternalFormat(data_type, normalized);
+  GLenum format = ToTextureFormat(data_type, normalized);
   GLenum type = ToTextureDataType(data_type);
   gl_texture_internal::TextureId id;
   gl_texture_internal::TextureBinder binder(kTarget, id.id());
@@ -281,7 +221,8 @@ absl::Status CreateReadWriteRgbaImageTexture(DataType data_type,
                                              const uint2& size,
                                              GlTexture* gl_texture) {
   const GLenum kTarget = GL_TEXTURE_2D;
-  const GLenum internal_format = ToTextureInternalFormat(data_type);
+  const bool normalized = data_type == DataType::UINT8;
+  const GLenum internal_format = ToTextureInternalFormat(data_type, normalized);
   gl_texture_internal::TextureId id;
   gl_texture_internal::TextureBinder binder(kTarget, id.id());
   RETURN_IF_ERROR(SetTextureWrapAndFilter(kTarget, internal_format));
@@ -299,7 +240,8 @@ absl::Status CreateReadWriteRgbaImageTexture(DataType data_type,
                                              const uint3& size,
                                              GlTexture* gl_texture) {
   const GLenum kTarget = GL_TEXTURE_2D_ARRAY;
-  GLenum internal_format = ToTextureInternalFormat(data_type);
+  const bool normalized = data_type == DataType::UINT8;
+  GLenum internal_format = ToTextureInternalFormat(data_type, normalized);
   gl_texture_internal::TextureId id;
   gl_texture_internal::TextureBinder binder(kTarget, id.id());
   RETURN_IF_ERROR(SetTextureWrapAndFilter(kTarget, internal_format));

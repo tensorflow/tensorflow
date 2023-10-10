@@ -33,7 +33,7 @@ TEST_F(TpuTest, NotTpuGraph) {
     FunctionDefLibrary* library = tpu_graph.mutable_library();
     FunctionDef* function_def = library->add_function();
     function_def->add_node_def()->set_op("Mul");
-    EXPECT_FALSE(IsTPUGraphDef(tpu_graph));
+    EXPECT_FALSE(IsLegacyTPUBridgeGraphDef(tpu_graph));
   }
 }
 
@@ -42,7 +42,7 @@ TEST_F(TpuTest, TpuMainGraph) {
   {
     GraphDef tpu_graph;
     tpu_graph.add_node()->set_op("TPUPartitionedCall");
-    EXPECT_TRUE(IsTPUGraphDef(tpu_graph));
+    EXPECT_TRUE(IsLegacyTPUBridgeGraphDef(tpu_graph));
   }
 }
 
@@ -54,7 +54,7 @@ TEST_F(TpuTest, TpuLibraryGraph) {
     FunctionDefLibrary* library = tpu_graph.mutable_library();
     FunctionDef* function_def = library->add_function();
     function_def->add_node_def()->set_op("TPUPartitionedCall");
-    EXPECT_TRUE(IsTPUGraphDef(tpu_graph));
+    EXPECT_TRUE(IsLegacyTPUBridgeGraphDef(tpu_graph));
   }
 }
 

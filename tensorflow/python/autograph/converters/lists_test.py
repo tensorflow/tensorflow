@@ -14,18 +14,14 @@
 # ==============================================================================
 """Tests for lists module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.autograph.converters import directives as directives_converter
 from tensorflow.python.autograph.converters import lists
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.autograph.lang import directives
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
+from tensorflow.python.framework import tensor
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import list_ops
 from tensorflow.python.platform import test
 
@@ -41,7 +37,7 @@ class ListTest(converter_testing.TestCase):
 
     tl = tr()
     # Empty tensor lists cannot be evaluated or stacked.
-    self.assertIsInstance(tl, ops.Tensor)
+    self.assertIsInstance(tl, tensor.Tensor)
     self.assertEqual(tl.dtype, dtypes.variant)
 
   def test_initialized_list(self):
@@ -100,7 +96,7 @@ class ListTest(converter_testing.TestCase):
 
     def f():
       l = [1, 2, 3]
-      return array_ops.stack(l)
+      return array_ops_stack.stack(l)
 
     tr = self.transform(f, lists)
 

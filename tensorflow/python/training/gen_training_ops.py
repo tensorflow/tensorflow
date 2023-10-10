@@ -19,10 +19,6 @@
 # training/ became a module, and this is an alias to avoid breaking existing
 # imports.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_training_ops import *

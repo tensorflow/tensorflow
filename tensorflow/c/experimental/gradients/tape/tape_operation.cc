@@ -53,7 +53,7 @@ Status TapeOperation::SetDeviceName(const char* name) {
 Status TapeOperation::AddInput(AbstractTensorHandle* input) {
   TF_RETURN_IF_ERROR(parent_op_->AddInput(input));
   forward_op_.inputs.push_back(input);
-  return Status::OK();
+  return OkStatus();
 }
 Status TapeOperation::AddInputList(
     absl::Span<AbstractTensorHandle* const> inputs) {
@@ -61,7 +61,7 @@ Status TapeOperation::AddInputList(
   for (auto input : inputs) {
     forward_op_.inputs.push_back(input);
   }
-  return Status::OK();
+  return OkStatus();
 }
 Status TapeOperation::SetAttrString(const char* attr_name, const char* data,
                                     size_t length) {
@@ -69,7 +69,7 @@ Status TapeOperation::SetAttrString(const char* attr_name, const char* data,
   return parent_op_->SetAttrString(attr_name, data, length);
 }
 Status TapeOperation::SetAttrInt(const char* attr_name, int64_t value) {
-  forward_op_.attrs.Set(attr_name, static_cast<int64>(value));
+  forward_op_.attrs.Set(attr_name, static_cast<int64_t>(value));
   return parent_op_->SetAttrInt(attr_name, value);
 }
 Status TapeOperation::SetAttrFloat(const char* attr_name, float value) {
@@ -139,8 +139,8 @@ Status TapeOperation::SetAttrFloatList(const char* attr_name,
 Status TapeOperation::SetAttrIntList(const char* attr_name,
                                      const int64_t* values, int num_values) {
   forward_op_.attrs.Set(
-      attr_name, gtl::ArraySlice<const int64>(
-                     reinterpret_cast<const int64*>(values), num_values));
+      attr_name, gtl::ArraySlice<const int64_t>(
+                     reinterpret_cast<const int64_t*>(values), num_values));
   return parent_op_->SetAttrIntList(attr_name, values, num_values);
 }
 Status TapeOperation::SetAttrTypeList(const char* attr_name,
@@ -211,7 +211,7 @@ Status TapeOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
   TF_RETURN_IF_ERROR(registry_.Lookup(forward_op_, &backward_fn));
   tape_->RecordOperation(forward_op_.inputs, forward_op_.outputs,
                          backward_fn.release(), parent_op_->Name());
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace gradients

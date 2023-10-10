@@ -14,14 +14,13 @@
 # ==============================================================================
 """CTC (Connectionist Temporal Classification) Operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import uuid
 
+# TODO(b/280454072) Remove compat and inplace_ops when foward compatibility
+# window expires.
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function as function_eager
+from tensorflow.python.eager import def_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device
@@ -32,8 +31,10 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_ctc_ops
 from tensorflow.python.ops import inplace_ops
 from tensorflow.python.ops import linalg_ops
@@ -54,7 +55,7 @@ _GPU_DEVICE_NAME = "GPU"
 
 
 def _get_context_device_type():
-  """Parse the current context and return the device type, eg CPU/GPU."""
+  """Parses the current context and returns the device type, eg CPU/GPU."""
   current_device = context.context().device_name
   if current_device is None:
     return None
@@ -66,8 +67,8 @@ def _generate_defun_backend(unique_api_name, preferred_device, func):
       _DEFUN_API_NAME_ATTRIBUTE: unique_api_name,
       _DEFUN_DEVICE_ATTRIBUTE: preferred_device,
   }
-  return function_eager.defun_with_attributes(
-      func=func, attributes=function_attributes, autograph=False)
+  return def_function.function(
+      func=func, experimental_attributes=function_attributes, autograph=False)
 
 # pylint: disable=protected-access, invalid-name
 @tf_export(v1=["nn.ctc_loss"])
@@ -211,13 +212,21 @@ def _ctc_loss_impl(labels,
   # The second, third, etc output tensors contain the gradients.  We use it in
   # _CTCLossGrad() below.
   if not isinstance(labels, sparse_tensor.SparseTensor):
-    raise TypeError("Expected labels (first argument) to be a SparseTensor")
+    raise TypeError("Expected argument `labels` to be a SparseTensor. "
+                    f"Received labels={labels} of type: "
+                    f"{type(labels).__name__}")
 
   # For internal calculations, we transpose to [time, batch, num_classes]
   inputs = deprecation.deprecated_argument_lookup("logits", logits, "inputs",
                                                   inputs)
+
+  inputs = ops.convert_to_tensor(inputs, name="logits")
   if not time_major:
     inputs = array_ops.transpose(inputs, [1, 0, 2])  # (B,T,N) => (T,B,N)
+
+  orig_dtype = inputs.dtype
+  if orig_dtype in (dtypes.float16, dtypes.bfloat16):
+    inputs = math_ops.cast(inputs, dtypes.float32)
 
   # gen_ctc_ops.ctc_loss_v2 differs from gen_ctc_ops.ctc_loss. v2 assumes the
   # blank index to be 0, but v1 views it as the last index.
@@ -234,6 +243,9 @@ def _ctc_loss_impl(labels,
       preprocess_collapse_repeated=preprocess_collapse_repeated,
       ctc_merge_repeated=ctc_merge_repeated,
       ignore_longer_outputs_than_inputs=ignore_longer_outputs_than_inputs)
+
+  if orig_dtype in (dtypes.float16, dtypes.bfloat16):
+    loss = math_ops.cast(loss, orig_dtype)
 
   return loss
 
@@ -287,12 +299,37 @@ def _CTCLossV2Grad(op, grad_loss, _):
 
 @tf_export("nn.ctc_greedy_decoder")
 @dispatch.add_dispatch_support
-def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
+def ctc_greedy_decoder(inputs,
+                       sequence_length,
+                       merge_repeated=True,
+                       blank_index=None):
   """Performs greedy decoding on the logits given in input (best path).
 
-  Note: Regardless of the value of merge_repeated, if the maximum index of a
-  given time and batch corresponds to the blank index `(num_classes - 1)`, no
-  new element is emitted.
+  Given a tensor as `inputs`, the `blank_index` parameter defines the class
+  index of the blank symbol.
+
+  For example:
+
+  If `blank_index` is equal to 1:
+
+  >>> inf = float("inf")
+  >>> logits = tf.constant([[[   0., -inf, -inf],
+  ...                        [ -2.3, -inf, -0.1]],
+  ...                       [[ -inf, -0.5, -inf],
+  ...                        [ -inf, -inf, -0.1]],
+  ...                       [[ -inf, -inf, -inf],
+  ...                        [ -0.1, -inf, -2.3]]])
+  >>> seq_lens = tf.constant([2, 3])
+  >>> outputs = tf.nn.ctc_greedy_decoder(
+  ...     logits,
+  ...     seq_lens,
+  ...     blank_index=1)
+
+  Notes:
+
+  - Unlike `ctc_beam_search_decoder`, `ctc_greedy_decoder` considers blanks
+    as regular elements when computing the probability of a sequence.
+  - Default `blank_index` is `(num_classes - 1)`, unless overriden.
 
   If `merge_repeated` is `True`, merge repeated classes in output.
   This means that if consecutive logits' maximum indices are the same,
@@ -308,6 +345,10 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
     sequence_length: 1-D `int32` vector containing sequence lengths, having size
       `[batch_size]`.
     merge_repeated: Boolean.  Default: True.
+    blank_index: (Optional). Default: `num_classes - 1`. Define the class index
+      to use for the blank label. Negative values will start from num_classes,
+      ie, -1 will reproduce the ctc_greedy_decoder behavior of using
+      num_classes - 1 for the blank symbol, which corresponds to the default.
 
   Returns:
     A tuple `(decoded, neg_sum_logits)` where
@@ -328,8 +369,12 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
         sequence found, the negative of the sum of the greatest logit at each
         timeframe.
   """
+
   outputs = gen_ctc_ops.ctc_greedy_decoder(
-      inputs, sequence_length, merge_repeated=merge_repeated)
+      inputs,
+      sequence_length,
+      merge_repeated=merge_repeated,
+      blank_index=blank_index)
   (decoded_ix, decoded_val, decoded_shape, log_probabilities) = outputs
   return ([sparse_tensor.SparseTensor(decoded_ix, decoded_val,
                                       decoded_shape)], log_probabilities)
@@ -344,9 +389,12 @@ def ctc_beam_search_decoder(inputs,
                             merge_repeated=True):
   """Performs beam search decoding on the logits given in input.
 
-  **Note** The `ctc_greedy_decoder` is a special case of the
-  `ctc_beam_search_decoder` with `top_paths=1` and `beam_width=1` (but
-  that decoder is faster for this special case).
+  **Note** Although in general greedy search is a special case of beam-search
+  with `top_paths=1` and `beam_width=1`, `ctc_beam_search_decoder` differs
+  from `ctc_greedy_decoder` in the treatment of blanks when computing the
+  probability of a sequence:
+    - `ctc_beam_search_decoder` treats blanks as sequence termination
+    - `ctc_greedy_decoder` treats blanks as regular elements
 
   If `merge_repeated` is `True`, merge repeated classes in the output beams.
   This means that if consecutive entries in a beam are the same,
@@ -406,9 +454,12 @@ def ctc_beam_search_decoder_v2(inputs,
                                top_paths=1):
   """Performs beam search decoding on the logits given in input.
 
-  **Note** The `ctc_greedy_decoder` is a special case of the
-  `ctc_beam_search_decoder` with `top_paths=1` and `beam_width=1` (but
-  that decoder is faster for this special case).
+  **Note** Although in general greedy search is a special case of beam-search
+  with `top_paths=1` and `beam_width=1`, `ctc_beam_search_decoder` differs
+  from `ctc_greedy_decoder` in the treatment of blanks when computing the
+  probability of a sequence:
+    - `ctc_beam_search_decoder` treats blanks as sequence termination
+    - `ctc_greedy_decoder` treats blanks as regular elements
 
   Args:
     inputs: 3-D `float` `Tensor`, size `[max_time, batch_size, num_classes]`.
@@ -452,7 +503,7 @@ ops.NotDifferentiable("CTCBeamSearchDecoder")
 
 
 def _ctc_state_trans(label_seq):
-  """Compute CTC alignment model transition matrix.
+  """Computes CTC alignment model transition matrix.
 
   Args:
     label_seq: tensor of shape [batch_size, max_seq_length]
@@ -477,10 +528,11 @@ def _ctc_state_trans(label_seq):
     start_to_label = [[1, 0]]
 
     # Blank to label transitions.
-    blank_to_label = array_ops.stack([label_states[1:], blank_states[:-1]], 1)
+    blank_to_label = array_ops_stack.stack(
+        [label_states[1:], blank_states[:-1]], 1)
 
     # Label to blank transitions.
-    label_to_blank = array_ops.stack([blank_states, label_states], 1)
+    label_to_blank = array_ops_stack.stack([blank_states, label_states], 1)
 
     # Scatter transitions that don't depend on sequence.
     indices = array_ops.concat([start_to_label, blank_to_label, label_to_blank],
@@ -493,8 +545,8 @@ def _ctc_state_trans(label_seq):
     # Label to label transitions. Disallow transitions between repeated labels
     # with no blank state in between.
     batch_idx = array_ops.zeros_like(label_states[2:])
-    indices = array_ops.stack([batch_idx, label_states[2:], label_states[1:-1]],
-                              1)
+    indices = array_ops_stack.stack(
+        [batch_idx, label_states[2:], label_states[1:-1]], 1)
     indices = array_ops.tile(
         array_ops.expand_dims(indices, 0), [batch_size, 1, 1])
     batch_idx = array_ops.expand_dims(math_ops.range(batch_size), 1) * [1, 0, 0]
@@ -592,8 +644,8 @@ def _state_to_olabel_unique(labels, num_labels, states, unique):
   unique_y, unique_idx = unique
   mul_reduce = _sum_states(unique_idx, label_states)
 
-  num_frames = states.shape[0]
-  batch_size = states.shape[1]
+  num_frames = _get_dim(states, 0)
+  batch_size = _get_dim(states, 1)
   num_states = num_label_states - 1
   batch_state_major = array_ops.transpose(mul_reduce, perm=[1, 2, 0])
   batch_state_major = array_ops.reshape(batch_state_major,
@@ -793,7 +845,8 @@ def ctc_loss_v2(labels,
   if isinstance(labels, sparse_tensor.SparseTensor):
     if blank_index is None:
       raise ValueError(
-          "blank_index must be given when using SparseTensor labels.")
+          "Argument `blank_index` must be provided when labels is a "
+          "SparseTensor.")
 
     if blank_index < 0:
       blank_index += _get_dim(logits, 2)
@@ -842,56 +895,104 @@ def ctc_loss_v3(labels,
                 name=None):
   """Computes CTC (Connectionist Temporal Classification) loss.
 
-  This op implements the CTC loss as presented in (Graves et al., 2006).
+  This op implements the CTC loss as presented in
+  [Graves et al., 2006](https://www.cs.toronto.edu/~graves/icml_2006.pdf)
+
+  Connectionist temporal classification (CTC) is a type of neural network output
+  and associated scoring function, for training recurrent neural networks (RNNs)
+  such as LSTM networks to tackle sequence problems where the timing is
+  variable. It can be used for tasks like on-line handwriting recognition or
+  recognizing phones in speech audio. CTC refers to the outputs and scoring, and
+  is independent of the underlying neural network structure.
 
   Notes:
 
-  - Same as the "Classic CTC" in TensorFlow 1.x's tf.compat.v1.nn.ctc_loss
-    setting of preprocess_collapse_repeated=False, ctc_merge_repeated=True
-  - Labels may be supplied as either a dense, zero-padded tensor with a
-    vector of label sequence lengths OR as a SparseTensor.
-  - On TPU and GPU: Only dense padded labels are supported.
-  - On CPU: Caller may use SparseTensor or dense padded labels but calling with
-    a SparseTensor will be significantly faster.
-  - Default blank label is 0 rather num_classes - 1, unless overridden by
-    blank_index.
+  - This class performs the softmax operation for you, so `logits` should be
+    e.g. linear projections of outputs by an LSTM.
+  - Outputs true repeated classes with blanks in between, and can also output
+    repeated classes with no blanks in between that need to be collapsed by the
+    decoder.
+  - `labels` may be supplied as either a dense, zero-padded `Tensor` with a
+    vector of label sequence lengths OR as a `SparseTensor`.
+  - On TPU: Only dense padded `labels` are supported.
+  - On CPU and GPU: Caller may use `SparseTensor` or dense padded `labels`
+    but calling with a `SparseTensor` will be significantly faster.
+  - Default blank label is `0` instead of `num_labels - 1` (where `num_labels`
+    is the innermost dimension size of `logits`), unless overridden by
+    `blank_index`.
+
+  >>> tf.random.set_seed(50)
+  >>> batch_size = 8
+  >>> num_labels = 6
+  >>> max_label_length = 5
+  >>> num_frames = 12
+  >>> labels = tf.random.uniform([batch_size, max_label_length],
+  ...                            minval=1, maxval=num_labels, dtype=tf.int64)
+  >>> logits = tf.random.uniform([num_frames, batch_size, num_labels])
+  >>> label_length = tf.random.uniform([batch_size], minval=2,
+  ...                                  maxval=max_label_length, dtype=tf.int64)
+  >>> label_mask = tf.sequence_mask(label_length, maxlen=max_label_length,
+  ...                               dtype=label_length.dtype)
+  >>> labels *= label_mask
+  >>> logit_length = [num_frames] * batch_size
+  >>> with tf.GradientTape() as t:
+  ...   t.watch(logits)
+  ...   ref_loss = tf.nn.ctc_loss(
+  ...       labels=labels,
+  ...       logits=logits,
+  ...       label_length=label_length,
+  ...       logit_length=logit_length,
+  ...       blank_index=0)
+  >>> ref_grad = t.gradient(ref_loss, logits)
 
   Args:
-    labels: tensor of shape [batch_size, max_label_seq_length] or SparseTensor
-    logits: tensor of shape [frames, batch_size, num_labels], if
-      logits_time_major == False, shape is [batch_size, frames, num_labels].
-    label_length: tensor of shape [batch_size], None if labels is SparseTensor
-      Length of reference label sequence in labels.
-    logit_length: tensor of shape [batch_size] Length of input sequence in
-      logits.
-    logits_time_major: (optional) If True (default), logits is shaped [time,
-      batch, logits]. If False, shape is [batch, time, logits]
+    labels: `Tensor` of shape `[batch_size, max_label_seq_length]` or
+      `SparseTensor`.
+    logits: `Tensor` of shape `[frames, batch_size, num_labels]`. If
+      `logits_time_major == False`, shape is `[batch_size, frames, num_labels]`.
+    label_length: `Tensor` of shape `[batch_size]`. None, if `labels` is a
+      `SparseTensor`. Length of reference label sequence in `labels`.
+    logit_length: `Tensor` of shape `[batch_size]`. Length of input sequence in
+      `logits`.
+    logits_time_major: (optional) If True (default), `logits` is shaped [frames,
+      batch_size, num_labels]. If False, shape is
+      `[batch_size, frames, num_labels]`.
     unique: (optional) Unique label indices as computed by
-      ctc_unique_labels(labels).  If supplied, enable a faster, memory efficient
-      implementation on TPU.
+      `ctc_unique_labels(labels)`.  If supplied, enable a faster, memory
+      efficient implementation on TPU.
     blank_index: (optional) Set the class index to use for the blank label.
-      Negative values will start from num_classes, ie, -1 will reproduce the
-      ctc_loss behavior of using num_classes - 1 for the blank symbol. There is
+      Negative values will start from `num_labels`, ie, `-1` will reproduce the
+      ctc_loss behavior of using `num_labels - 1` for the blank symbol. There is
       some memory/performance overhead to switching from the default of 0 as an
-      additional shifted copy of the logits may be created.
+      additional shifted copy of `logits` may be created.
     name: A name for this `Op`. Defaults to "ctc_loss_dense".
 
   Returns:
-    loss: tensor of shape [batch_size], negative log probabilities.
+    loss: A 1-D `float Tensor` of shape `[batch_size]`, containing negative log
+    probabilities.
+
+  Raises:
+    ValueError: Argument `blank_index` must be provided when `labels` is a
+    `SparseTensor`.
 
   References:
       Connectionist Temporal Classification - Labeling Unsegmented Sequence Data
       with Recurrent Neural Networks:
         [Graves et al., 2006](https://dl.acm.org/citation.cfm?id=1143891)
         ([pdf](http://www.cs.toronto.edu/~graves/icml_2006.pdf))
+
+      https://en.wikipedia.org/wiki/Connectionist_temporal_classification
   """
   if isinstance(labels, sparse_tensor.SparseTensor):
     if blank_index is None:
       raise ValueError(
-          "blank_index must be given when using SparseTensor labels.")
+          "Argument `blank_index` must be provided when `labels` is a "
+          "`SparseTensor`.")
 
     if blank_index < 0:
       blank_index += _get_dim(logits, 2)
+
+    logits = ops.convert_to_tensor(logits, name="logits")
 
     params = {
         "labels": labels,
@@ -919,7 +1020,9 @@ def ctc_loss_v3(labels,
       ctc_loss_op_cudnn = _generate_defun_backend(api_name, _GPU_DEVICE_NAME,
                                                   _ctc_loss_op_cudnn)
       res = ctc_loss_op_standard(**params)
-      function_eager.register(ctc_loss_op_cudnn, **params)
+      concrete_func = ctc_loss_op_cudnn.get_concrete_function(**params)
+      concrete_func.add_to_graph()
+      concrete_func.add_gradient_functions_to_graph()
     return res
 
   if blank_index is None:
@@ -950,10 +1053,10 @@ def ctc_loss_dense(labels,
   using the batched forward backward algorithm described in (Sim et al., 2017).
 
   Notes:
-    Significant differences from tf.compat.v1.nn.ctc_loss:
-      Supports GPU and TPU (tf.compat.v1.nn.ctc_loss supports CPU only):
+    Significant differences from `tf.compat.v1.nn.ctc_loss`:
+      Supports GPU and TPU (`tf.compat.v1.nn.ctc_loss` supports CPU only):
         For batched operations, GPU and TPU are significantly faster than using
-        ctc_loss on CPU.
+        `ctc_loss` on CPU.
         This implementation runs on CPU, but significantly slower than ctc_loss.
       Blank label is 0 rather num_classes - 1, unless overridden by blank_index.
       Logits and labels are dense arrays with padding rather than SparseTensor.
@@ -1008,6 +1111,10 @@ def ctc_loss_dense(labels,
     label_length = ops.convert_to_tensor(label_length, name="label_length")
     logit_length = ops.convert_to_tensor(logit_length, name="logit_length")
 
+    orig_dtype = logits.dtype
+    if orig_dtype in (dtypes.float16, dtypes.bfloat16):
+      logits = math_ops.cast(logits, dtypes.float32)
+
     if not logits_time_major:
       logits = array_ops.transpose(logits, perm=[1, 0, 2])
 
@@ -1059,7 +1166,10 @@ def ctc_loss_dense(labels,
 
       return result[0], grad
 
-    return compute_ctc_loss(*args)
+    loss = compute_ctc_loss(*args)
+    if orig_dtype in (dtypes.float16, dtypes.bfloat16):
+      loss = math_ops.cast(loss, orig_dtype)
+    return loss
 
 
 @tf_export("nn.collapse_repeated")
@@ -1206,7 +1316,7 @@ def _sum_states(idx, states):
       each label state.
 
   Returns:
-    tensor of shape [frames, batch_size, label_length], log probabilites summed
+    tensor of shape [frames, batch_size, label_length], log probabilities summed
       for each unique label of the sequence.
   """
 
@@ -1237,7 +1347,7 @@ def _forward_backward_log(state_trans_log_probs, initial_state_log_probs,
     sequence_length: tensor of shape [batch_size]
 
   Returns:
-    forward backward log probabilites: tensor of shape [frames, batch, states]
+    forward backward log probabilities: tensor of shape [frames, batch, states]
     log_likelihood: tensor of shape [batch_size]
 
   Raises:
@@ -1250,8 +1360,9 @@ def _forward_backward_log(state_trans_log_probs, initial_state_log_probs,
     perm = [0, 2, 1]
   else:
     raise ValueError(
-        "state_trans_log_probs rank must be known and == 2 or 3, is: %s" %
-        state_trans_log_probs.shape.ndims)
+        "Rank of argument `state_trans_log_probs` must be known and equal to "
+        f"2 or 3. Received state_trans_log_probs={state_trans_log_probs} of "
+        f"rank {state_trans_log_probs.shape.ndims}")
 
   bwd_state_trans_log_probs = array_ops.transpose(state_trans_log_probs, perm)
   batch_size = _get_dim(observed_log_probs, 1)
@@ -1282,7 +1393,7 @@ def _forward_backward_log(state_trans_log_probs, initial_state_log_probs,
         state_log_prob, axis=-1, keepdims=True)
     state_log_prob -= log_prob_sum
 
-    cum_log_sum += array_ops.squeeze(log_prob_sum) * mask
+    cum_log_sum += array_ops.squeeze(log_prob_sum, axis=[-1]) * mask
     batched_mask = array_ops.expand_dims(mask, axis=1)
     out = state_log_prob * batched_mask
     out += final_state_log_probs * (1.0 - batched_mask)
@@ -1386,10 +1497,17 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
       new_out = []
     else:
       update_i = i + 1 if inclusive and not reverse else i
-      new_out = [
-          inplace_ops.alias_inplace_update(x, update_i, y)
-          for x, y in zip(out, flat_accum)
-      ]
+      # TODO(b/280454072) Cleanup when foward compatibility window expires.
+      if compat.forward_compatible(2023, 10, 26):
+        new_out = [
+            gen_array_ops.tensor_scatter_update(x, [[update_i]], [y])
+            for x, y in zip(out, flat_accum)
+        ]
+      else:
+        new_out = [
+            inplace_ops.alias_inplace_update(x, update_i, y)
+            for x, y in zip(out, flat_accum)
+        ]
     i = i - 1 if reverse else i + 1
     return [i, num_elems] + new_out + flat_accum
 
@@ -1404,8 +1522,15 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
           [[num_outputs], array_ops.shape(initial_accum)], 0)
       out = inplace_ops.empty(out_shape, dtype=initial_accum.dtype, init=True)
       if inclusive:
-        out = inplace_ops.alias_inplace_add(out, init_i + (1 if reverse else 0),
-                                            initial_accum)
+        # TODO(b/280454072) Cleanup when foward compatibility window expires.
+        if compat.forward_compatible(2023, 10, 26):
+          out = gen_array_ops.tensor_scatter_add(
+              out, [[init_i + (1 if reverse else 0)]], [initial_accum]
+          )
+        else:
+          out = inplace_ops.alias_inplace_add(
+              out, init_i + (1 if reverse else 0), initial_accum
+          )
       outputs.append(out)
   loop_in = [init_i, num_elems] + outputs + flat_initial
   hostmem = [

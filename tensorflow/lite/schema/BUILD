@@ -1,7 +1,15 @@
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite", "tflite_schema_utils_friends")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],
+)
 
 # This is the package group declaration to which targets for TensorFlow Lite
 # Flatbuffer schema utilities.
@@ -16,21 +24,14 @@ package_group(
     ] + tflite_schema_utils_friends(),
 )
 
-package(
-    default_visibility = [
-        "//visibility:public",
-    ],
-    licenses = ["notice"],  # Apache 2.0
-)
-
-py_binary(
+py_strict_binary(
     name = "upgrade_schema",
     srcs = ["upgrade_schema.py"],
     python_version = "PY3",
     deps = [":upgrade_schema_main_lib"],
 )
 
-py_library(
+py_strict_library(
     name = "upgrade_schema_main_lib",
     srcs = [
         "upgrade_schema.py",
@@ -42,18 +43,19 @@ py_library(
         "schema_v3.fbs",
         "@flatbuffers//:flatc",
     ],
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "upgrade_schema_test",
     size = "small",
     srcs = ["upgrade_schema_test.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = [
         "manual",
         "no_oss",
@@ -62,18 +64,41 @@ py_test(
     ],
     deps = [
         ":upgrade_schema_main_lib",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
+# copybara:uncomment_begin(google-only)
+# py_strict_test(
+#     name = "schema_validation_test",
+#     srcs = ["schema_validation_test.py"],
+#     data = [
+#         ":schema_fbs_srcs",
+#         ":schema_generated.h.oss",
+#     ],
+#     python_version = "PY3",
+#     # TODO(b/235550563): Enable this TAP with FlatBuffer 2.0.6 migration.
+#     tags = [
+#         "manual",
+#         "notap",
+#     ],
+#     deps = [
+#         "//testing/pybase",
+#         "@absl_py//absl/flags",
+#     ],
+# )
+# copybara:uncomment_end
+
 exports_files([
+    "conversion_metadata.fbs",
     "schema.fbs",
     "schema_v0.fbs",
     "schema_v1.fbs",
     "schema_v2.fbs",
     "schema_v3.fbs",
     "schema_v3a.fbs",
+    "schema_v3b.fbs",
 ])
 
 flatbuffer_cc_library(
@@ -116,7 +141,7 @@ cc_test(
     srcs = ["flatbuffer_compatibility_test.cc"],
     data = [
         "schema.fbs",
-        "schema_v3a.fbs",
+        "schema_v3b.fbs",
     ],
     tags = [
         "no_oss",
@@ -125,7 +150,7 @@ cc_test(
     ],
     deps = [
         "//tensorflow/core/platform",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers//:flatc_library",
     ],
 )
@@ -154,6 +179,12 @@ cc_library(
         "//tensorflow/lite/kernels/internal:compatibility",
         "@flatbuffers",
     ],
+)
+
+flatbuffer_cc_library(
+    name = "conversion_metadata_fbs",
+    srcs = ["conversion_metadata.fbs"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 tflite_portable_test_suite()

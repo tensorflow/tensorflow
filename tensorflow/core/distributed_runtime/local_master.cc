@@ -24,13 +24,14 @@ namespace tensorflow {
 
 namespace {
 Status WaitForNotification(CallOptions* call_options,
-                           const int64 default_timeout_in_ms, Notification* n) {
-  int64 timeout_in_ms = call_options->GetTimeout();
+                           const int64_t default_timeout_in_ms,
+                           Notification* n) {
+  int64_t timeout_in_ms = call_options->GetTimeout();
   if (timeout_in_ms == 0) {
     timeout_in_ms = default_timeout_in_ms;
   }
   if (timeout_in_ms > 0) {
-    int64 timeout_in_us = timeout_in_ms * 1000;
+    int64_t timeout_in_us = timeout_in_ms * 1000;
     bool notified = WaitForNotificationWithTimeout(n, timeout_in_us);
     if (!notified) {
       call_options->StartCancel();
@@ -42,11 +43,12 @@ Status WaitForNotification(CallOptions* call_options,
   } else {
     n->WaitForNotification();
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
-LocalMaster::LocalMaster(Master* master_impl, const int64 default_timeout_in_ms)
+LocalMaster::LocalMaster(Master* master_impl,
+                         const int64_t default_timeout_in_ms)
     : master_impl_(master_impl),
       default_timeout_in_ms_(default_timeout_in_ms) {}
 
@@ -206,9 +208,9 @@ mutex* get_local_master_registry_lock() {
 
 struct MasterInfo {
   Master* master;
-  const int64 default_timeout_in_ms;
+  const int64_t default_timeout_in_ms;
 
-  MasterInfo(Master* master, const int64 default_timeout_in_ms)
+  MasterInfo(Master* master, const int64_t default_timeout_in_ms)
       : master(master), default_timeout_in_ms(default_timeout_in_ms) {}
 };
 
@@ -221,7 +223,7 @@ LocalMasterRegistry* local_master_registry() {
 
 /* static */
 void LocalMaster::Register(const string& target, Master* master,
-                           int64 default_timeout_in_ms) {
+                           int64_t default_timeout_in_ms) {
   mutex_lock l(*get_local_master_registry_lock());
   local_master_registry()->insert(
       {target, MasterInfo(master, default_timeout_in_ms)});

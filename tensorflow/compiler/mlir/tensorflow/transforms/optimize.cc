@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <iostream>
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -49,20 +50,20 @@ class SimplifyBroadcastReshape : public OpRewritePattern<BroadcastToOp> {
   LogicalResult matchAndRewrite(BroadcastToOp op,
                                 PatternRewriter &rewriter) const override {
     // Only rewrite if the Broadcast has only one consumer.
-    if (!op.output().hasOneUse()) return failure();
+    if (!op.getOutput().hasOneUse()) return failure();
 
-    Operation *user = *op.output().getUsers().begin();
+    Operation *user = *op.getOutput().getUsers().begin();
 
     auto reshape_op = llvm::dyn_cast_or_null<ReshapeOp>(user);
     if (!reshape_op) return failure();
 
-    auto reshape_type = reshape_op.output().getType().cast<ShapedType>();
+    auto reshape_type = reshape_op.getOutput().getType().cast<ShapedType>();
 
     if (!reshape_type.hasStaticShape()) return failure();
     ArrayRef<int64_t> reshape_shape = reshape_type.getShape();
 
-    auto input_type = op.input().getType().cast<ShapedType>();
-    auto output_type = op.output().getType().cast<ShapedType>();
+    auto input_type = op.getInput().getType().cast<ShapedType>();
+    auto output_type = op.getOutput().getType().cast<ShapedType>();
 
     if (!input_type.hasRank() || !output_type.hasRank()) return failure();
 
@@ -119,45 +120,53 @@ class SimplifyBroadcastReshape : public OpRewritePattern<BroadcastToOp> {
     auto new_reshape_type = RankedTensorType::get(new_reshape_dims, el_ty);
     ReshapeOp new_reshape =
         rewriter.create<ReshapeOp>(new_reshape_shape.getLoc(), new_reshape_type,
-                                   op.input(), new_reshape_shape);
+                                   op.getInput(), new_reshape_shape);
     TF::ConstOp new_broadcast_shape =
         GetI64ConstantTensor(rewriter, reshape_shape, op.getLoc());
     rewriter.replaceOpWithNewOp<BroadcastToOp>(
-        reshape_op, reshape_op.output().getType(), new_reshape,
+        reshape_op, reshape_op.getOutput().getType(), new_reshape,
         new_broadcast_shape);
     return success();
   }
 };
 
+#define GEN_PASS_DEF_TENSORFLOWOPTIMIZEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Canonicalize operations in functions.
-struct TFOptimizePass : public PassWrapper<TFOptimizePass, FunctionPass> {
-  void runOnFunction() override {
-    OwningRewritePatternList patterns;
-    auto func = getFunction();
-    populateWithGenerated(&getContext(), patterns);
-    patterns.insert<SimplifyBroadcastReshape>(&getContext());
-    applyPatternsAndFoldGreedily(func, std::move(patterns));
+struct TensorFlowOptimizePass
+    : public impl::TensorFlowOptimizePassBase<TensorFlowOptimizePass> {
+  LogicalResult initialize(MLIRContext *context) override {
+    RewritePatternSet pattern_list(context);
+    populateWithGenerated(pattern_list);
+    pattern_list.add<SimplifyBroadcastReshape>(context);
+    patterns = std::move(pattern_list);
+    return success();
   }
+
+  void runOnOperation() override {
+    auto func = getOperation();
+    if (failed(applyPatternsAndFoldGreedily(func, patterns)))
+      signalPassFailure();
+  }
+
+  FrozenRewritePatternSet patterns;
 };
 
 }  // namespace
 
-// NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
 void CreateTFStandardPipeline(OpPassManager &pm,
                               const StandardPipelineOptions &options) {
-  OpPassManager &func_pm = pm.nest<FuncOp>();
+  OpPassManager &func_pm = pm.nest<func::FuncOp>();
 
   // First operates on the executor dialect:
-  // - eliminate trivial switch/merge.
   // - remove dead islands.
   // - fuse islands as much as possible.
   // - materialize the eventual "pass-through" ops by inlining their content.
-  func_pm.addPass(tf_executor::CreateSwitchFoldPass());
   func_pm.addPass(tf_executor::CreateTFExecutorGraphPruningPass());
   func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
   func_pm.addPass(CreateMaterializePassthroughOpPass());
-  if (options.form_clusters)
-    func_pm.addPass(TFDevice::CreateClusterFormationPass());
+  if (options.form_clusters) pm.addPass(TFDevice::CreateClusterFormationPass());
 
   // Hopefully there is a single island left, or there wasn't any to begin with.
   // We now run the optimizer which operates mostly inside islands.
@@ -167,22 +176,23 @@ void CreateTFStandardPipeline(OpPassManager &pm,
     pm.addPass(createInlinerPass());
   }
   pm.addPass(createSymbolDCEPass());
-  pm.addNestedPass<FuncOp>(CreateTFOptimizePass());
-  pm.addNestedPass<FuncOp>(createCSEPass());
+  pm.addNestedPass<func::FuncOp>(CreateTFOptimizePass());
+  pm.addNestedPass<func::FuncOp>(createCSEPass());
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTFOptimizePass() {
-  return std::make_unique<TFOptimizePass>();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTFOptimizePass() {
+  return std::make_unique<TensorFlowOptimizePass>();
 }
 
-static PassRegistration<TFOptimizePass> pass("tf-optimize", "Optimizes TF.");
-
-// Registers a pipeline builder function for the default canonicalize/optimizer.
-static mlir::PassPipelineRegistration<StandardPipelineOptions> pipeline(
-    "tf-standard-pipeline",
-    "Run all the passes involved in transforming/optimizing the graph after "
-    "importing into MLIR, without any target specialization.",
-    CreateTFStandardPipeline);
+void RegisterTFOptimizePassPipeline() {
+  // Registers a pipeline builder function for the default
+  // canonicalize/optimizer.
+  static mlir::PassPipelineRegistration<StandardPipelineOptions> pipeline(
+      "tf-standard-pipeline",
+      "Run all the passes involved in transforming/optimizing the graph after "
+      "importing into MLIR, without any target specialization.",
+      CreateTFStandardPipeline);
+}
 
 }  // namespace TF
 }  // namespace mlir

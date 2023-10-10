@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for shape_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -327,7 +323,7 @@ class FrameTest(test.TestCase):
   def test_gradient_numerical(self):
     if context.executing_eagerly():
       return
-    with self.session(use_gpu=True):
+    with self.session():
       signal_shape = (2, 128)
       signal = array_ops.ones(signal_shape)
       frame_length = 33

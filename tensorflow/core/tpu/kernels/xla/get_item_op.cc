@@ -13,16 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <vector>
+
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/core/framework/kernel_def_builder.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor_util.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace {
@@ -51,9 +53,9 @@ class GetItemXlaOp : public XlaOpKernel {
       operands.push_back(const_zero);
     }
 
-    std::vector<int64> dims = {0};
-    std::vector<int64> slice_sizes = {1};
-    std::vector<int64> out_sizes = {};
+    std::vector<int64_t> dims = {0};
+    std::vector<int64_t> slice_sizes = {1};
+    std::vector<int64_t> out_sizes = {};
     for (int i = 1; i < data_shape.dims(); i++) {
       dims.push_back(i);
       auto size = data_shape.dim_size(i);

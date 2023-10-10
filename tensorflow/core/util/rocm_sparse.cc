@@ -24,17 +24,17 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_solvers.h"
 #include "tensorflow/core/util/cuda_sparse.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 
 namespace tensorflow {
 
@@ -67,12 +67,12 @@ class HipSparseHandles {
   ~HipSparseHandles() { Release(); }
 
   Status Initialize() {
-    if (initialized_) return Status::OK();
-    TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreate(&hipsparse_handle_));
+    if (initialized_) return OkStatus();
+    TF_RETURN_IF_GPUSPARSE_ERROR(se::wrap::hipsparseCreate(&hipsparse_handle_));
     TF_RETURN_IF_GPUSPARSE_ERROR(
-        wrap::hipsparseSetStream(hipsparse_handle_, stream_));
+        se::wrap::hipsparseSetStream(hipsparse_handle_, stream_));
     initialized_ = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   hipsparseHandle_t& handle() {
@@ -89,7 +89,7 @@ class HipSparseHandles {
   void Release() {
     if (initialized_) {
       // This should never return anything other than success
-      auto err = wrap::hipsparseDestroy(hipsparse_handle_);
+      auto err = se::wrap::hipsparseDestroy(hipsparse_handle_);
       DCHECK(err == HIPSPARSE_STATUS_SUCCESS)
           << "Failed to destroy hipSPARSE instance.";
       initialized_ = false;
@@ -99,7 +99,8 @@ class HipSparseHandles {
   hipStream_t stream_;
   hipsparseHandle_t hipsparse_handle_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(HipSparseHandles);
+  HipSparseHandles(const HipSparseHandles&) = delete;
+  void operator=(const HipSparseHandles&) = delete;
 };
 
 // TODO(ebrevdo): Replace global mutex guarding CudaSparseHandles
@@ -149,34 +150,43 @@ Status GpuSparse::Initialize() {
   }
   gpusparse_handle_ = &it->second.handle();
   initialized_ = true;
-  return Status::OK();
+  return OkStatus();
 }
+
+#define TF_CALL_HIPSPARSE_DTYPES(m)                                          \
+  m(float, HIP_R_32F) m(double, HIP_R_64F) m(std::complex<float>, HIP_C_32F) \
+      m(std::complex<double>, HIP_C_64F)
 
 // Macro that specializes a sparse method for all 4 standard
 // numeric types.
-#define TF_CALL_HIP_LAPACK_TYPES(m) m(float, S) m(double, D)
+#define TF_CALL_HIP_LAPACK_TYPES(m) \
+  m(float, S) m(double, D) m(std::complex<float>, C) m(std::complex<double>, Z)
 
 // Macros to construct hipsparse method names.
-#define SPARSE_FN(method, sparse_prefix) wrap::hipsparse##sparse_prefix##method
+#define SPARSE_FN(method, sparse_prefix) \
+  se::wrap::hipsparse##sparse_prefix##method
+#define BUFSIZE_FN(method, sparse_prefix) \
+  se::wrap::hipsparse##sparse_prefix##method##_bufferSizeExt
 
 Status GpuSparse::Coo2csr(const int* cooRowInd, int nnz, int m,
                           int* csrRowPtr) const {
   DCHECK(initialized_);
   TF_RETURN_IF_GPUSPARSE_ERROR(
-      wrap::hipsparseXcoo2csr(*gpusparse_handle_, cooRowInd, nnz, m, csrRowPtr,
-                              HIPSPARSE_INDEX_BASE_ZERO));
-  return Status::OK();
+      se::wrap::hipsparseXcoo2csr(*gpusparse_handle_, cooRowInd, nnz, m,
+                                  csrRowPtr, HIPSPARSE_INDEX_BASE_ZERO));
+  return OkStatus();
 }
 
 Status GpuSparse::Csr2coo(const int* csrRowPtr, int nnz, int m,
                           int* cooRowInd) const {
   DCHECK(initialized_);
   TF_RETURN_IF_GPUSPARSE_ERROR(
-      wrap::hipsparseXcsr2coo(*gpusparse_handle_, csrRowPtr, nnz, m, cooRowInd,
-                              HIPSPARSE_INDEX_BASE_ZERO));
-  return Status::OK();
+      se::wrap::hipsparseXcsr2coo(*gpusparse_handle_, csrRowPtr, nnz, m,
+                                  cooRowInd, HIPSPARSE_INDEX_BASE_ZERO));
+  return OkStatus();
 }
 
+#if TF_ROCM_VERSION < 40200
 template <typename Scalar, typename SparseFnT>
 static inline Status CsrmmImpl(
     SparseFnT op, OpKernelContext* context, hipsparseHandle_t hipsparse_handle,
@@ -185,11 +195,11 @@ static inline Status CsrmmImpl(
     const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
     const int* csrSortedColIndA, const Scalar* B, int ldb,
     const Scalar* beta_host, Scalar* C, int ldc) {
-  TF_RETURN_IF_GPUSPARSE_ERROR(op(hipsparse_handle, transA, transB, m, n, k,
-                                  nnz, alpha_host, descrA, csrSortedValA,
-                                  csrSortedRowPtrA, csrSortedColIndA, B, ldb,
-                                  beta_host, C, ldc));
-  return Status::OK();
+  TF_RETURN_IF_GPUSPARSE_ERROR(op(
+      hipsparse_handle, transA, transB, m, n, k, nnz, AsHipComplex(alpha_host),
+      descrA, AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
+      AsHipComplex(B), ldb, AsHipComplex(beta_host), AsHipComplex(C), ldc));
+  return OkStatus();
 }
 
 #define CSRMM_INSTANCE(Scalar, sparse_prefix)                                 \
@@ -210,6 +220,44 @@ static inline Status CsrmmImpl(
 
 TF_CALL_HIP_LAPACK_TYPES(CSRMM_INSTANCE);
 
+#else
+
+#define SPMM_BUFFERSIZE_INSTANCE(Scalar, dtype)                               \
+  template <>                                                                 \
+  Status GpuSparse::SpMMBufferSize<Scalar>(                                   \
+      hipsparseOperation_t transA, hipsparseOperation_t transB,               \
+      const Scalar* alpha, const hipsparseSpMatDescr_t matA,                  \
+      const gpusparseDnMatDescr_t matB, const Scalar* beta,                   \
+      gpusparseDnMatDescr_t matC, hipsparseSpMMAlg_t alg, size_t* bufferSize) \
+      const {                                                                 \
+    DCHECK(initialized_);                                                     \
+    TF_RETURN_IF_GPUSPARSE_ERROR(se::wrap::hipsparseSpMM_bufferSize(          \
+        *gpusparse_handle_, transA, transB, alpha, matA, matB, beta, matC,    \
+        dtype, alg, bufferSize));                                             \
+    return OkStatus();                                                        \
+  }
+
+TF_CALL_HIPSPARSE_DTYPES(SPMM_BUFFERSIZE_INSTANCE);
+
+#define SPMM_INSTANCE(Scalar, dtype)                                          \
+  template <>                                                                 \
+  Status GpuSparse::SpMM<Scalar>(                                             \
+      hipsparseOperation_t transA, hipsparseOperation_t transB,               \
+      const Scalar* alpha, const hipsparseSpMatDescr_t matA,                  \
+      const gpusparseDnMatDescr_t matB, const Scalar* beta,                   \
+      gpusparseDnMatDescr_t matC, hipsparseSpMMAlg_t alg, int8* buffer)       \
+      const {                                                                 \
+    DCHECK(initialized_);                                                     \
+    TF_RETURN_IF_GPUSPARSE_ERROR(                                             \
+        se::wrap::hipsparseSpMM(*gpusparse_handle_, transA, transB, alpha,    \
+                                matA, matB, beta, matC, dtype, alg, buffer)); \
+    return OkStatus();                                                        \
+  }
+
+TF_CALL_HIPSPARSE_DTYPES(SPMM_INSTANCE);
+
+#endif
+
 template <typename Scalar, typename SparseFnT>
 static inline Status CsrmvImpl(SparseFnT op, OpKernelContext* context,
                                hipsparseHandle_t hipsparse_handle,
@@ -221,9 +269,10 @@ static inline Status CsrmvImpl(SparseFnT op, OpKernelContext* context,
                                const int* csrSortedColIndA, const Scalar* x,
                                const Scalar* beta_host, Scalar* y) {
   TF_RETURN_IF_GPUSPARSE_ERROR(
-      op(hipsparse_handle, transA, m, n, nnz, alpha_host, descrA, csrSortedValA,
-         csrSortedRowPtrA, csrSortedColIndA, x, beta_host, y));
-  return Status::OK();
+      op(hipsparse_handle, transA, m, n, nnz, AsHipComplex(alpha_host), descrA,
+         AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
+         AsHipComplex(x), AsHipComplex(beta_host), AsHipComplex(y)));
+  return OkStatus();
 }
 
 // TODO(ebrevdo,rmlarsen): Use csrmv_mp for all cases when available in CUDA 9.
@@ -253,11 +302,11 @@ Status GpuSparse::CsrgemmNnz(
     int* csrSortedRowPtrC, int* nnzTotalDevHostPtr) {
   DCHECK(initialized_);
   DCHECK(nnzTotalDevHostPtr != nullptr);
-  TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseXcsrgemmNnz(
+  TF_RETURN_IF_GPUSPARSE_ERROR(se::wrap::hipsparseXcsrgemmNnz(
       *gpusparse_handle_, transA, transB, m, n, k, descrA, nnzA,
       csrSortedRowPtrA, csrSortedColIndA, descrB, nnzB, csrSortedRowPtrB,
       csrSortedColIndB, descrC, csrSortedRowPtrC, nnzTotalDevHostPtr));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Scalar, typename SparseFnT>
@@ -270,12 +319,12 @@ static inline Status CsrgemmImpl(
     const Scalar* csrSortedValB, const int* csrSortedRowPtrB,
     const int* csrSortedColIndB, const hipsparseMatDescr_t descrC,
     Scalar* csrSortedValC, int* csrSortedRowPtrC, int* csrSortedColIndC) {
-  TF_RETURN_IF_GPUSPARSE_ERROR(
-      op(hipsparse_handle, transA, transB, m, n, k, descrA, nnzA, csrSortedValA,
-         csrSortedRowPtrA, csrSortedColIndA, descrB, nnzB, csrSortedValB,
-         csrSortedRowPtrB, csrSortedColIndB, descrC, csrSortedValC,
-         csrSortedRowPtrC, csrSortedColIndC));
-  return Status::OK();
+  TF_RETURN_IF_GPUSPARSE_ERROR(op(
+      hipsparse_handle, transA, transB, m, n, k, descrA, nnzA,
+      AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA, descrB,
+      nnzB, AsHipComplex(csrSortedValB), csrSortedRowPtrB, csrSortedColIndB,
+      descrC, AsHipComplex(csrSortedValC), csrSortedRowPtrC, csrSortedColIndC));
+  return OkStatus();
 }
 
 #define CSRGEMM_INSTANCE(Scalar, sparse_prefix)                                \
@@ -299,6 +348,54 @@ static inline Status CsrgemmImpl(
 
 TF_CALL_HIP_LAPACK_TYPES(CSRGEMM_INSTANCE);
 
+#if TF_ROCM_VERSION >= 40200
+
+template <typename Scalar, typename BufferSizeFnT, typename SparseFnT>
+static inline Status Csru2csrImpl(SparseFnT op, BufferSizeFnT buffer_size_op,
+                                  OpKernelContext* context,
+                                  hipsparseHandle_t hipsparse_handle, int m,
+                                  int n, int nnz,
+                                  const hipsparseMatDescr_t descrA,
+                                  Scalar* csrVal, const int* csrRowPtr,
+                                  int* csrColInd) {
+  csru2csrInfo_t info;
+
+  size_t pBufferSizeInBytes = 0;
+
+  TF_RETURN_IF_GPUSPARSE_ERROR(
+      buffer_size_op(hipsparse_handle, m, n, nnz, AsHipComplex(csrVal),
+                     csrRowPtr, csrColInd, info, &pBufferSizeInBytes));
+
+  Tensor pBuffer_t;
+  TF_RETURN_IF_ERROR(context->allocate_temp(
+      DT_INT8, TensorShape({static_cast<int64_t>(pBufferSizeInBytes)}),
+      &pBuffer_t));
+  auto pBuffer = pBuffer_t.flat<int8>();
+  DCHECK(pBuffer.data() != nullptr);
+
+  TF_RETURN_IF_GPUSPARSE_ERROR(op(hipsparse_handle, m, n, nnz, descrA,
+                                  AsHipComplex(csrVal), csrRowPtr, csrColInd,
+                                  info, pBuffer.data()));
+
+  return OkStatus();
+}
+
+#define CSRU2CSR_INSTANCE(Scalar, sparse_prefix)                               \
+  template <>                                                                  \
+  Status GpuSparse::Csru2csr<Scalar>(                                          \
+      int m, int n, int nnz, const hipsparseMatDescr_t descrA, Scalar* csrVal, \
+      const int* csrRowPtr, int* csrColInd) {                                  \
+    DCHECK(initialized_);                                                      \
+    return Csru2csrImpl(SPARSE_FN(csru2csr, sparse_prefix),                    \
+                        BUFSIZE_FN(csru2csr, sparse_prefix), context_,         \
+                        *gpusparse_handle_, m, n, nnz, descrA, csrVal,         \
+                        csrRowPtr, csrColInd);                                 \
+  }
+
+TF_CALL_LAPACK_TYPES(CSRU2CSR_INSTANCE);
+
+#endif
+
 template <typename Scalar, typename SparseFnT>
 static inline Status Csr2cscImpl(SparseFnT op, OpKernelContext* context,
                                  hipsparseHandle_t hipsparse_handle, int m,
@@ -306,10 +403,11 @@ static inline Status Csr2cscImpl(SparseFnT op, OpKernelContext* context,
                                  const int* csrRowPtr, const int* csrColInd,
                                  Scalar* cscVal, int* cscRowInd, int* cscColPtr,
                                  const hipsparseAction_t copyValues) {
-  TF_RETURN_IF_GPUSPARSE_ERROR(
-      op(hipsparse_handle, m, n, nnz, csrVal, csrRowPtr, csrColInd, cscVal,
-         cscRowInd, cscColPtr, copyValues, HIPSPARSE_INDEX_BASE_ZERO));
-  return Status::OK();
+  TF_RETURN_IF_GPUSPARSE_ERROR(op(hipsparse_handle, m, n, nnz,
+                                  AsHipComplex(csrVal), csrRowPtr, csrColInd,
+                                  AsHipComplex(cscVal), cscRowInd, cscColPtr,
+                                  copyValues, HIPSPARSE_INDEX_BASE_ZERO));
+  return OkStatus();
 }
 
 #define CSR2CSC_INSTANCE(Scalar, sparse_prefix)                              \
@@ -325,6 +423,101 @@ static inline Status Csr2cscImpl(SparseFnT op, OpKernelContext* context,
   }
 
 TF_CALL_HIP_LAPACK_TYPES(CSR2CSC_INSTANCE);
+
+template <typename Scalar, typename SparseFnT>
+static inline Status CsrgeamBufferSizeExtImpl(
+    SparseFnT op, OpKernelContext* context, hipsparseHandle_t sparse_handle,
+    int m, int n, const Scalar* alpha, const hipsparseMatDescr_t descrA,
+    int nnzA, const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
+    const int* csrSortedColIndA, const Scalar* beta,
+    const hipsparseMatDescr_t descrB, int nnzB, const Scalar* csrSortedValB,
+    const int* csrSortedRowPtrB, const int* csrSortedColIndB,
+    const hipsparseMatDescr_t descrC, Scalar* csrSortedValC,
+    int* csrSortedRowPtrC, int* csrSortedColIndC, size_t* bufferSize) {
+  TF_RETURN_IF_GPUSPARSE_ERROR(op(
+      sparse_handle, m, n, AsHipComplex(alpha), descrA, nnzA,
+      AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
+      AsHipComplex(beta), descrB, nnzB, AsHipComplex(csrSortedValB),
+      csrSortedRowPtrB, csrSortedColIndB, descrC, AsHipComplex(csrSortedValC),
+      csrSortedRowPtrC, csrSortedColIndC, bufferSize));
+  return OkStatus();
+}
+
+#define CSRGEAM_BUFFERSIZE_INSTANCE(Scalar, sparse_prefix)                     \
+  template <>                                                                  \
+  Status GpuSparse::CsrgeamBufferSizeExt<Scalar>(                              \
+      int m, int n, const Scalar* alpha, const hipsparseMatDescr_t descrA,     \
+      int nnzA, const Scalar* csrSortedValA, const int* csrSortedRowPtrA,      \
+      const int* csrSortedColIndA, const Scalar* beta,                         \
+      const hipsparseMatDescr_t descrB, int nnzB, const Scalar* csrSortedValB, \
+      const int* csrSortedRowPtrB, const int* csrSortedColIndB,                \
+      const hipsparseMatDescr_t descrC, Scalar* csrSortedValC,                 \
+      int* csrSortedRowPtrC, int* csrSortedColIndC, size_t* bufferSize) {      \
+    DCHECK(initialized_);                                                      \
+    return CsrgeamBufferSizeExtImpl(                                           \
+        SPARSE_FN(csrgeam2_bufferSizeExt, sparse_prefix), context_,            \
+        *gpusparse_handle_, m, n, alpha, descrA, nnzA, csrSortedValA,          \
+        csrSortedRowPtrA, csrSortedColIndA, beta, descrB, nnzB, csrSortedValB, \
+        csrSortedRowPtrB, csrSortedColIndB, descrC, csrSortedValC,             \
+        csrSortedRowPtrC, csrSortedColIndC, bufferSize);                       \
+  }
+
+TF_CALL_HIP_LAPACK_TYPES(CSRGEAM_BUFFERSIZE_INSTANCE);
+
+Status GpuSparse::CsrgeamNnz(
+    int m, int n, const hipsparseMatDescr_t descrA, int nnzA,
+    const int* csrSortedRowPtrA, const int* csrSortedColIndA,
+    const hipsparseMatDescr_t descrB, int nnzB, const int* csrSortedRowPtrB,
+    const int* csrSortedColIndB, const hipsparseMatDescr_t descrC,
+    int* csrSortedRowPtrC, int* nnzTotalDevHostPtr, void* workspace) {
+  DCHECK(initialized_);
+  DCHECK(nnzTotalDevHostPtr != nullptr);
+  TF_RETURN_IF_GPUSPARSE_ERROR(se::wrap::hipsparseXcsrgeam2Nnz(
+      *gpusparse_handle_, m, n, descrA, nnzA, csrSortedRowPtrA,
+      csrSortedColIndA, descrB, nnzB, csrSortedRowPtrB, csrSortedColIndB,
+      descrC, csrSortedRowPtrC, nnzTotalDevHostPtr, workspace));
+  return OkStatus();
+}
+
+template <typename Scalar, typename SparseFnT>
+static inline Status Csrgeam2Impl(
+    SparseFnT op, OpKernelContext* context, hipsparseHandle_t cusparse_handle,
+    int m, int n, const Scalar* alpha, const hipsparseMatDescr_t descrA,
+    int nnzA, const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
+    const int* csrSortedColIndA, const Scalar* beta,
+    const hipsparseMatDescr_t descrB, int nnzB, const Scalar* csrSortedValB,
+    const int* csrSortedRowPtrB, const int* csrSortedColIndB,
+    const hipsparseMatDescr_t descrC, Scalar* csrSortedValC,
+    int* csrSortedRowPtrC, int* csrSortedColIndC, void* workspace) {
+  TF_RETURN_IF_GPUSPARSE_ERROR(op(
+      cusparse_handle, m, n, AsHipComplex(alpha), descrA, nnzA,
+      AsHipComplex(csrSortedValA), csrSortedRowPtrA, csrSortedColIndA,
+      AsHipComplex(beta), descrB, nnzB, AsHipComplex(csrSortedValB),
+      csrSortedRowPtrB, csrSortedColIndB, descrC, AsHipComplex(csrSortedValC),
+      csrSortedRowPtrC, csrSortedColIndC, workspace));
+  return OkStatus();
+}
+
+#define CSRGEAM_INSTANCE(Scalar, sparse_prefix)                                \
+  template <>                                                                  \
+  Status GpuSparse::Csrgeam<Scalar>(                                           \
+      int m, int n, const Scalar* alpha, const hipsparseMatDescr_t descrA,     \
+      int nnzA, const Scalar* csrSortedValA, const int* csrSortedRowPtrA,      \
+      const int* csrSortedColIndA, const Scalar* beta,                         \
+      const hipsparseMatDescr_t descrB, int nnzB, const Scalar* csrSortedValB, \
+      const int* csrSortedRowPtrB, const int* csrSortedColIndB,                \
+      const hipsparseMatDescr_t descrC, Scalar* csrSortedValC,                 \
+      int* csrSortedRowPtrC, int* csrSortedColIndC, void* workspace) {         \
+    DCHECK(initialized_);                                                      \
+    return Csrgeam2Impl(SPARSE_FN(csrgeam2, sparse_prefix), context_,          \
+                        *gpusparse_handle_, m, n, alpha, descrA, nnzA,         \
+                        csrSortedValA, csrSortedRowPtrA, csrSortedColIndA,     \
+                        beta, descrB, nnzB, csrSortedValB, csrSortedRowPtrB,   \
+                        csrSortedColIndB, descrC, csrSortedValC,               \
+                        csrSortedRowPtrC, csrSortedColIndC, workspace);        \
+  }
+
+TF_CALL_HIP_LAPACK_TYPES(CSRGEAM_INSTANCE);
 
 }  // namespace tensorflow
 

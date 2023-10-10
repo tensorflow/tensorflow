@@ -17,11 +17,10 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 
 namespace tensorflow {
 namespace jit {
-using xla::StatusOr;
 
 void DeviceSet::Insert(DeviceId device_id) {
   int word_index = device_id.id() / kWordSize;
@@ -48,7 +47,7 @@ bool DeviceSet::IsEmpty() const {
   return absl::c_all_of(storage_, [&](uint64 val) { return val == 0; });
 }
 
-xla::StatusOr<DeviceId> DeviceInfoCache::GetIdFor(absl::string_view name) {
+StatusOr<DeviceId> DeviceInfoCache::GetIdFor(absl::string_view name) {
   TF_RET_CHECK(!name.empty());
 
   auto it = name_to_id_.find(name);
@@ -58,7 +57,7 @@ xla::StatusOr<DeviceId> DeviceInfoCache::GetIdFor(absl::string_view name) {
 
   int new_id = names_.size();
   names_.push_back(string(name));
-  id_to_device_type_.push_back(absl::make_unique<DeviceType>(""));
+  id_to_device_type_.push_back(std::make_unique<DeviceType>(""));
   DeviceType* device_type = id_to_device_type_.back().get();
   TF_RETURN_IF_ERROR(DeviceNameToDeviceType(names_.back(), device_type));
 
@@ -94,10 +93,10 @@ Status DeviceNameToDeviceType(const string& device, DeviceType* device_type) {
     return errors::Internal("Malformed assigned device '", device, "'");
   }
   *device_type = DeviceType(parsed.type);
-  return Status::OK();
+  return OkStatus();
 }
 
-xla::StatusOr<absl::optional<jit::DeviceId>> PickDeviceForXlaImpl(
+StatusOr<std::optional<jit::DeviceId>> PickDeviceForXlaImpl(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu,
     bool failure_to_pick_is_error) {
@@ -106,13 +105,13 @@ xla::StatusOr<absl::optional<jit::DeviceId>> PickDeviceForXlaImpl(
     if (failure_to_pick_is_error) {           \
       return failing_status;                  \
     } else {                                  \
-      return {absl::nullopt};                 \
+      return {std::nullopt};                  \
     }                                         \
   } while (false)
 
-  absl::optional<jit::DeviceId> maybe_gpu_device;
-  absl::optional<jit::DeviceId> maybe_cpu_device;
-  absl::optional<jit::DeviceId> maybe_unknown_device;
+  std::optional<jit::DeviceId> maybe_gpu_device;
+  std::optional<jit::DeviceId> maybe_cpu_device;
+  std::optional<jit::DeviceId> maybe_unknown_device;
 
   bool multiple_cpu_devices = false;
   bool multiple_gpu_devices = false;
@@ -122,7 +121,7 @@ xla::StatusOr<absl::optional<jit::DeviceId>> PickDeviceForXlaImpl(
   // compatible, update d1 with a more specific one.
   // TODO(sanjoy): Cache DeviceNameUtils::ParsedName inside device_info_cache.
   const auto is_multiple_devices =
-      [&](const jit::DeviceId& d0, absl::optional<jit::DeviceId>* d1) -> bool {
+      [&](const jit::DeviceId& d0, std::optional<jit::DeviceId>* d1) -> bool {
     const absl::string_view name0 = device_info_cache.GetNameFor(d0);
     const absl::string_view name1 = device_info_cache.GetNameFor(d1->value());
 
@@ -215,17 +214,17 @@ xla::StatusOr<absl::optional<jit::DeviceId>> PickDeviceForXlaImpl(
 #undef FAILED_TO_PICK_DEVICE
 }
 
-xla::StatusOr<jit::DeviceId> PickDeviceForXla(
+StatusOr<jit::DeviceId> PickDeviceForXla(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu) {
-  TF_ASSIGN_OR_RETURN(absl::optional<jit::DeviceId> device_id,
+  TF_ASSIGN_OR_RETURN(std::optional<jit::DeviceId> device_id,
                       PickDeviceForXlaImpl(device_info_cache, devices,
                                            allow_mixing_unknown_and_cpu,
                                            /*failure_to_pick_is_error=*/true));
   return *device_id;
 }
 
-xla::StatusOr<absl::optional<jit::DeviceId>> MaybePickDeviceForXla(
+StatusOr<std::optional<jit::DeviceId>> MaybePickDeviceForXla(
     const jit::DeviceInfoCache& device_info_cache,
     const jit::DeviceSet& devices, bool allow_mixing_unknown_and_cpu) {
   return PickDeviceForXlaImpl(device_info_cache, devices,

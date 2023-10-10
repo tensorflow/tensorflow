@@ -14,13 +14,7 @@
 # ==============================================================================
 """Add one or more `LinearOperators` efficiently."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
-
-import six
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -104,21 +98,17 @@ def add_operators(operators,
   operators = list(reversed(operators))
   if len(operators) < 1:
     raise ValueError(
-        "Argument 'operators' must contain at least one operator.  "
-        "Found: %s" % operators)
+        f"Argument `operators` must contain at least one operator. "
+        f"Received: {operators}.")
   if not all(
       isinstance(op, linear_operator.LinearOperator) for op in operators):
     raise TypeError(
-        "Argument 'operators' must contain only LinearOperator instances.  "
-        "Found: %s" % operators)
+        f"Argument `operators` must contain only LinearOperator instances. "
+        f"Received: {operators}.")
   _static_check_for_same_dimensions(operators)
   _static_check_for_broadcastable_batch_shape(operators)
 
-  graph_parents = []
-  for operator in operators:
-    graph_parents.extend(operator.graph_parents)
-
-  with ops.name_scope(name or "add_operators", values=graph_parents):
+  with ops.name_scope(name or "add_operators"):
 
     # Additions done in one of the tiers.  Try tier 0, 1,...
     ops_to_try_at_next_tier = list(operators)
@@ -200,16 +190,16 @@ def _static_check_for_same_dimensions(operators):
       for op in operators
       if tensor_shape.dimension_value(op.domain_dimension) is not None]
   if len(set(value for name, value in domain_dimensions)) > 1:
-    raise ValueError("Operators must have the same domain dimension. Found: %s"
-                     % domain_dimensions)
+    raise ValueError(f"All `operators` must have the same `domain_dimension`. "
+                     f"Received: {domain_dimensions}.")
 
   range_dimensions = [
       (op.name, tensor_shape.dimension_value(op.range_dimension))
       for op in operators
       if tensor_shape.dimension_value(op.range_dimension) is not None]
   if len(set(value for name, value in range_dimensions)) > 1:
-    raise ValueError("Operators must have the same range dimension. Found: %s" %
-                     range_dimensions)
+    raise ValueError(f"All operators must have the same `range_dimension`. "
+                     f"Received: {range_dimensions}.")
 
 
 def _static_check_for_broadcastable_batch_shape(operators):
@@ -223,7 +213,7 @@ def _static_check_for_broadcastable_batch_shape(operators):
     batch_shape = array_ops.broadcast_static_shape(batch_shape, op.batch_shape)
 
 
-class _Hints(object):
+class _Hints:
   """Holds 'is_X' flags that every LinearOperator is initialized with."""
 
   def __init__(self,
@@ -240,8 +230,7 @@ class _Hints(object):
 ################################################################################
 
 
-@six.add_metaclass(abc.ABCMeta)
-class _Adder(object):
+class _Adder(metaclass=abc.ABCMeta):
   """Abstract base class to add two operators.
 
   Each `Adder` acts independently, adding everything it can, paying no attention
@@ -282,11 +271,10 @@ class _Adder(object):
     if operator_name is None:
       operator_name = "Add/" + op1.name + "__" + op2.name + "/"
 
-    values = op1.graph_parents + op2.graph_parents
     scope_name = self.name
     if scope_name.startswith("_"):
       scope_name = scope_name[1:]
-    with ops.name_scope(scope_name, values=values):
+    with ops.name_scope(scope_name):
       return self._add(op1, op2, operator_name, updated_hints)
 
 
@@ -421,7 +409,10 @@ def _type(operator):
   if isinstance(operator,
                 linear_operator_identity.LinearOperatorScaledIdentity):
     return _SCALED_IDENTITY
-  raise TypeError("Operator type unknown: %s" % operator)
+  raise TypeError(f"Expected operator to be one of [LinearOperatorDiag, "
+                  f"LinearOperatorLowerTriangular, LinearOperatorFullMatrix, "
+                  f"LinearOperatorIdentity, LinearOperatorScaledIdentity]. "
+                  f"Received: {operator}")
 
 
 ################################################################################

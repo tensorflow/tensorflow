@@ -12,17 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Make HTML tables that report where TF and TOCO failed to convert models.
+"""Make HTML tables that report where TF and TFLite failed to convert models.
 
 This is primarily used by generate_examples.py. See it or
 `make_report_table` for more details on usage.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import html
 import json
+import re
 
 FAILED = "FAILED"
 SUCCESS = "SUCCESS"
@@ -37,11 +34,11 @@ def make_report_table(fp, title, reports):
     title: "Title of the zip file this pertains to."
     reports: a list of conversion attempts. (report_args, report_vals) i.e.
       ({"shape": [1,2,3], "type": "tf.float32"},
-       {"tf": "SUCCESS", "toco": "FAILURE", "toco_log": "Unsupported type.",
-        "tf_log": ""})
+       {"tf": "SUCCESS", "tflite_converter": "FAILURE",
+        "tf_log": "", "tflite_converter_log": "Unsupported type."})
   """
-  # sort reports by if TOCO failure and then TF failure (reversed)
-  reports.sort(key=lambda x: x[1]["toco"], reverse=False)
+  # sort reports by if TFLite converter failure and then TF failure (reversed)
+  reports.sort(key=lambda x: x[1]["tflite_converter"], reverse=False)
   reports.sort(key=lambda x: x[1]["tf"], reverse=True)
   def result_cell(x, row, col):
     """Produce a cell with the condition string `x`."""
@@ -76,15 +73,16 @@ log.innerHTML = "<pre>" + data[row][col]  + "</pre>";
 }
 """)
   fp.write("var data = \n")
-  fp.write(json.dumps([[html.escape(x[1]["tf_log"], quote=True),
-                        html.escape(x[1]["toco_log"], quote=True)]
-                       for x in reports]))
+  logs = json.dumps([[escape_and_normalize(x[1]["tf_log"]),
+                      escape_and_normalize(x[1]["tflite_converter_log"])
+                     ] for x in reports])
+  fp.write(logs)
   fp.write(";</script>\n")
 
   # Write the main table and use onclick on the items that have log items.
   fp.write("""
 <body>
-<h1>TOCO Conversion</h1>
+<h1>TensorFlow Lite Conversion</h1>
 <h2>%s</h2>
 """ % title)
 
@@ -102,15 +100,16 @@ log.innerHTML = "<pre>" + data[row][col]  + "</pre>";
   for p in param_keys:
     fp.write("<th>%s</th>\n" % html.escape(p, quote=True))
   fp.write("<th>TensorFlow</th>\n")
-  fp.write("<th>TOCO</th>\n")
+  fp.write("<th>TensorFlow Lite Converter</th>\n")
   fp.write("</tr>\n")
   for idx, (params, vals) in enumerate(reports):
     fp.write("<tr>\n")
     for p in param_keys:
-      fp.write("  <td>%s</td>\n" % html.escape(repr(params[p]), quote=True))
+      fp.write("  <td>%s</td>\n" %
+               html.escape(repr(params.get(p, None)), quote=True))
 
     result_cell(vals["tf"], idx, 0)
-    result_cell(vals["toco"], idx, 1)
+    result_cell(vals["tflite_converter"], idx, 1)
     fp.write("</tr>\n")
   fp.write("</table>\n")
   fp.write("</div>\n")
@@ -123,3 +122,12 @@ log.innerHTML = "<pre>" + data[row][col]  + "</pre>";
     </body>
     </html>
     """)
+
+
+def escape_and_normalize(log):
+  # These logs contain paths like /tmp/tmpgmypg3xa that are inconsistent between
+  # builds. This replaces these inconsistent paths with a consistent placeholder
+  # so the output is deterministic.
+  log = re.sub(r"/tmp/[^ ]+ ", "/NORMALIZED_TMP_FILE_PATH ", log)
+  log = re.sub(r"/build/work/[^/]+", "/NORMALIZED_BUILD_PATH", log)
+  return html.escape(log, quote=True)

@@ -35,8 +35,8 @@ REGISTER_KERNEL_BUILDER(
     Name("RiscShape").Device(DEVICE_CPU).TypeConstraint<int32>("out_type"),
     RiscShapeOp<int32>);
 REGISTER_KERNEL_BUILDER(
-    Name("RiscShape").Device(DEVICE_CPU).TypeConstraint<int64>("out_type"),
-    RiscShapeOp<int64>);
+    Name("RiscShape").Device(DEVICE_CPU).TypeConstraint<int64_t>("out_type"),
+    RiscShapeOp<int64_t>);
 
 }  // namespace experimental
 }  // namespace risc

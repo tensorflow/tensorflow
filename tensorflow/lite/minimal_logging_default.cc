@@ -13,21 +13,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/minimal_logging.h"
+#include <stdarg.h>
 
 #include <cstdio>
+
+#include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite {
 namespace logging_internal {
 
+#ifndef NDEBUG
+// In debug builds, default is VERBOSE.
+LogSeverity MinimalLogger::minimum_log_severity_ = TFLITE_LOG_VERBOSE;
+#else
+// In prod builds, default is INFO.
+LogSeverity MinimalLogger::minimum_log_severity_ = TFLITE_LOG_INFO;
+#endif
+
 void MinimalLogger::LogFormatted(LogSeverity severity, const char* format,
                                  va_list args) {
-  fprintf(stderr, "%s: ", GetSeverityName(severity));
+  if (severity >= MinimalLogger::minimum_log_severity_) {
+    fprintf(stderr, "%s: ", GetSeverityName(severity));
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wformat-nonliteral"
-  vfprintf(stderr, format, args);
+    vfprintf(stderr, format, args);
 #pragma clang diagnostic pop
-  fputc('\n', stderr);
+    fputc('\n', stderr);
+  }
 }
 
 }  // namespace logging_internal

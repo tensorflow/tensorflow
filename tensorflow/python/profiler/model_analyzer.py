@@ -16,13 +16,7 @@
 
 Analyze model, including shape, params, time, memory, structure, etc.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
-
-import six
 
 from google.protobuf import message
 from tensorflow.core.profiler import tfprof_options_pb2
@@ -61,6 +55,7 @@ def _build_options(options):
 
   Args:
     options: A dictionary of options.
+
   Returns:
     tfprof.OptionsProto.
   """
@@ -108,32 +103,32 @@ def _build_advisor_options(options):
 
   Args:
     options: A dictionary of options. See ALL_ADVICE example.
+
   Returns:
     tfprof.AdvisorOptionsProto.
   """
   opts = tfprof_options_pb2.AdvisorOptionsProto()
   if options is None:
     return opts
-  for checker, checker_opts in six.iteritems(options):
+  for checker, checker_opts in options.items():
     checker_ops_pb = tfprof_options_pb2.AdvisorOptionsProto.CheckerOption()
-    for k, v in six.iteritems(checker_opts):
+    for k, v in checker_opts.items():
       checker_ops_pb[k] = v
     opts.checkers[checker].MergeFrom(checker_ops_pb)
   return opts
 
 
 @tf_export(v1=['profiler.Profiler'])
-class Profiler(object):
+class Profiler:
   """TensorFlow multi-step profiler.
 
-  https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/profiler/README.md
 
   ```python
   Typical use case:
     # Currently we are only allowed to create 1 profiler per process.
     profiler = Profiler(sess.graph)
 
-    for i in xrange(total_steps):
+    for i in range(total_steps):
       if i % 10000 == 0:
         run_meta = tf.compat.v1.RunMetadata()
         _ = sess.run(...,
@@ -167,18 +162,17 @@ class Profiler(object):
     """Constructor.
 
     Args:
-      graph: tf.Graph. If None and eager execution is not enabled, use
-          default graph.
+      graph: tf.Graph. If None and eager execution is not enabled, use default
+        graph.
       op_log: optional. tensorflow::tfprof::OpLogProto proto. Used to define
-          extra op types.
+        extra op types.
     """
     if not graph and not context.executing_eagerly():
       graph = ops.get_default_graph()
     self._coverage = 0.0
     self._graph = graph
     # pylint: disable=protected-access
-    op_log = tfprof_logger.merge_default_with_oplog(
-        self._graph, op_log=op_log)
+    op_log = tfprof_logger.merge_default_with_oplog(self._graph, op_log=op_log)
     # pylint: enable=protected-access
     print_mdl.NewProfiler(
         _graph_string(self._graph), op_log.SerializeToString())
@@ -191,8 +185,8 @@ class Profiler(object):
 
     Args:
       step: int, An id used to group one or more different `run_meta` together.
-          When profiling with the profile_xxx APIs, user can use the `step`
-          id in the `options` to profile these `run_meta` together.
+        When profiling with the profile_xxx APIs, user can use the `step` id in
+        the `options` to profile these `run_meta` together.
       run_meta: RunMetadata proto that contains statistics of a session run.
     """
     # pylint: disable=protected-access
@@ -213,6 +207,7 @@ class Profiler(object):
 
     Args:
       options: A dict of options. See core/profiler/g3doc/options.md.
+
     Returns:
       a MultiGraphNodeProto that records the results.
     """
@@ -226,10 +221,13 @@ class Profiler(object):
     return tfprof_node
 
   def profile_operations(self, options):
-    """Profile the statistics of the Operation types (e.g. MatMul, Conv2D).
+    """Profile the statistics of the Operation types (e.g.
+
+    MatMul, Conv2D).
 
     Args:
       options: A dict of options. See core/profiler/g3doc/options.md.
+
     Returns:
       a MultiGraphNodeProto that records the results.
     """
@@ -247,6 +245,7 @@ class Profiler(object):
 
     Args:
       options: A dict of options. See core/profiler/g3doc/options.md.
+
     Returns:
       a GraphNodeProto that records the results.
     """
@@ -264,6 +263,7 @@ class Profiler(object):
 
     Args:
       options: A dict of options. See core/profiler/g3doc/options.md.
+
     Returns:
       a GraphNodeProto that records the results.
     """
@@ -281,6 +281,7 @@ class Profiler(object):
 
     Args:
       options: A dict of options. See ALL_ADVICE example above.
+
     Returns:
       An Advise proto that contains the reports from all checkers.
     """
@@ -318,19 +319,20 @@ def profile(graph=None,
     https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/profiler/g3doc/python_api.md
 
   Args:
-    graph: tf.Graph. If None and eager execution is not enabled, use
-        default graph.
+    graph: tf.Graph. If None and eager execution is not enabled, use default
+      graph.
     run_meta: optional tensorflow.RunMetadata proto. It is necessary to
-        to support run time information profiling, such as time and memory.
-    op_log: tensorflow.tfprof.OpLogProto proto. User can assign "types" to
-        graph nodes with op_log. "types" allow user to flexibly group and
-        account profiles using options['accounted_type_regexes'].
-    cmd: string. Either 'op', 'scope', 'graph' or 'code'.
-        'op' view organizes profile using operation type. (e.g. MatMul)
-        'scope' view organizes profile using graph node name scope.
-        'graph' view organizes profile using graph node inputs/outputs.
-        'code' view organizes profile using Python call stack.
+      support run time information profiling, such as time and memory.
+    op_log: tensorflow.tfprof.OpLogProto proto. User can assign "types" to graph
+      nodes with op_log. "types" allow user to flexibly group and account
+      profiles using options['accounted_type_regexes'].
+    cmd: string. Either 'op', 'scope', 'graph' or 'code'. 'op' view organizes
+      profile using operation type. (e.g. MatMul) 'scope' view organizes profile
+      using graph node name scope. 'graph' view organizes profile using graph
+      node inputs/outputs. 'code' view organizes profile using Python call
+      stack.
     options: A dict of options. See core/profiler/g3doc/options.md.
+
   Returns:
     If cmd is 'scope' or 'graph', returns GraphNodeProto proto.
     If cmd is 'op' or 'code', returns MultiGraphNodeProto proto.
@@ -340,8 +342,8 @@ def profile(graph=None,
     graph = ops.get_default_graph()
 
   if options == _DEFAULT_PROFILE_OPTIONS:
-    options = (option_builder.ProfileOptionBuilder
-               .trainable_variables_parameter())
+    options = (
+        option_builder.ProfileOptionBuilder.trainable_variables_parameter())
   # pylint: disable=protected-access
   op_log = tfprof_logger.merge_default_with_oplog(
       graph, op_log, run_meta, add_trace=cmd == 'code')
@@ -375,8 +377,7 @@ def profile(graph=None,
     except message.DecodeError as e:
       sys.stderr.write('Cannot parse returned proto: %s.\n' % e)
   else:
-    raise errors.InvalidArgumentError(
-        None, None, 'unknown cmd: %s\n' % cmd)
+    raise errors.InvalidArgumentError(None, None, 'unknown cmd: %s\n' % cmd)
 
   return tfprof_node
 
@@ -390,11 +391,12 @@ def advise(graph=None, run_meta=None, options=_DEFAULT_ADVISE_OPTIONS):
     https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/profiler/README.md
 
   Args:
-    graph: tf.Graph. If None and eager execution is not enabled, use
-        default graph.
+    graph: tf.Graph. If None and eager execution is not enabled, use default
+      graph.
     run_meta: optional tensorflow.RunMetadata proto. It is necessary to
-        to support run time information profiling, such as time and memory.
+      support run time information profiling, such as time and memory.
     options: see ALL_ADVICE example above. Default checks everything.
+
   Returns:
     Returns AdviceProto proto
   """

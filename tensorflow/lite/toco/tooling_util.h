@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -24,18 +25,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#if TOCO_SUPPORT_PORTABLE_PROTOS
-#include "third_party/protobuf/include/google/protobuf/text_format.h"
-#endif  // TOCO_SUPPORT_PORTABLE_PROTOS
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/runtime/types.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 
 // TODO(aselle): Replace with using a container specific hash override instead.
 namespace std {
@@ -270,9 +268,9 @@ std::string CreateInt32Array(Model* model, const std::string& param_name,
                              const std::vector<int>& value);
 
 bool EstimateArithmeticOpsCount(const Model& model, const Operator& op,
-                                int64* result);
-bool EstimateArithmeticOpsCount(const Model& model, int64* result);
-std::string FormattedNumber(int64 x);
+                                int64_t* result);
+bool EstimateArithmeticOpsCount(const Model& model, int64_t* result);
+std::string FormattedNumber(int64_t x);
 
 int AxesCount(AxesOrder axes_order);
 
@@ -351,7 +349,7 @@ tensorflow::Status NumElements(const std::vector<T>& shape, U* num_elements) {
     }
     *num_elements *= dim;
   }
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // A model file may have shuffled FC weights.

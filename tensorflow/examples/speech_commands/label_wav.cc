@@ -50,7 +50,7 @@ Status LoadGraph(const string& graph_file_name,
   if (!session_create_status.ok()) {
     return session_create_status;
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Takes a file name, and loads a list of labels from it, one per line, and
@@ -66,7 +66,7 @@ Status ReadLabelsFile(const string& file_name, std::vector<string>* result) {
   while (std::getline(file, line)) {
     result->push_back(line);
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Analyzes the output of the graph to retrieve the highest scores and
@@ -104,7 +104,7 @@ int main(int argc, char* argv[]) {
   string labels = "";
   string input_name = "wav_data";
   string output_name = "labels_softmax";
-  int32 how_many_labels = 3;
+  int32_t how_many_labels = 3;
   std::vector<Flag> flag_list = {
       Flag("wav", &wav, "audio file to be identified"),
       Flag("graph", &graph, "model to be executed"),

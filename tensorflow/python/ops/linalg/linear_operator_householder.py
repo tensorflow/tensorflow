@@ -14,15 +14,13 @@
 # ==============================================================================
 """`LinearOperator` acting like a Householder transformation."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_util
@@ -32,6 +30,7 @@ __all__ = ["LinearOperatorHouseholder",]
 
 
 @tf_export("linalg.LinearOperatorHouseholder")
+@linear_operator.make_composite_tensor
 class LinearOperatorHouseholder(linear_operator.LinearOperator):
   """`LinearOperator` acting like a [batch] of Householder transformations.
 
@@ -155,15 +154,12 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
 
       super(LinearOperatorHouseholder, self).__init__(
           dtype=self._reflection_axis.dtype,
-          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           parameters=parameters,
           name=name)
-      # TODO(b/143910018) Remove graph_parents in V3.
-      self._set_graph_parents([self._reflection_axis])
 
   def _check_reflection_axis(self, reflection_axis):
     """Static check of reflection_axis."""
@@ -194,6 +190,12 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
   def _assert_self_adjoint(self):
     return control_flow_ops.no_op("assert_self_adjoint")
 
+  def _linop_adjoint(self) -> "LinearOperatorHouseholder":
+    return self
+
+  def _linop_inverse(self) -> "LinearOperatorHouseholder":
+    return self
+
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
     # Given a vector `v`, we would like to reflect `x` about the hyperplane
     # orthogonal to `v` going through the origin.  We first project `x` to `v`
@@ -207,11 +209,11 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
 
     # Note that because this is a reflection, it lies in O(n) (for real vector
     # spaces) or U(n) (for complex vector spaces), and thus is its own adjoint.
-    reflection_axis = ops.convert_to_tensor_v2_with_dispatch(
-        self.reflection_axis)
+    reflection_axis = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+        self.reflection_axis
+    )
     x = linalg.adjoint(x) if adjoint_arg else x
-    normalized_axis = reflection_axis / linalg.norm(
-        reflection_axis, axis=-1, keepdims=True)
+    normalized_axis = nn.l2_normalize(reflection_axis, axis=-1)
     mat = normalized_axis[..., array_ops.newaxis]
     x_dot_normalized_v = math_ops.matmul(mat, x, adjoint_a=True)
 
@@ -227,7 +229,7 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
 
   def _determinant(self):
     # For householder transformations, the determinant is -1.
-    return -array_ops.ones(shape=self.batch_shape_tensor(), dtype=self.dtype)
+    return -array_ops.ones(shape=self.batch_shape_tensor(), dtype=self.dtype)  # pylint: disable=invalid-unary-operand-type
 
   def _log_abs_determinant(self):
     # Orthogonal matrix -> log|Q| = 0.
@@ -239,20 +241,20 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
     return self._matmul(rhs, adjoint, adjoint_arg)
 
   def _to_dense(self):
-    reflection_axis = ops.convert_to_tensor_v2_with_dispatch(
-        self.reflection_axis)
-    normalized_axis = reflection_axis / linalg.norm(
-        reflection_axis, axis=-1, keepdims=True)
+    reflection_axis = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+        self.reflection_axis
+    )
+    normalized_axis = nn.l2_normalize(reflection_axis, axis=-1)
     mat = normalized_axis[..., array_ops.newaxis]
     matrix = -2 * math_ops.matmul(mat, mat, adjoint_b=True)
     return array_ops.matrix_set_diag(
         matrix, 1. + array_ops.matrix_diag_part(matrix))
 
   def _diag_part(self):
-    reflection_axis = ops.convert_to_tensor_v2_with_dispatch(
-        self.reflection_axis)
-    normalized_axis = reflection_axis / linalg.norm(
-        reflection_axis, axis=-1, keepdims=True)
+    reflection_axis = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+        self.reflection_axis
+    )
+    normalized_axis = nn.l2_normalize(reflection_axis, axis=-1)
     return 1. - 2 * normalized_axis * math_ops.conj(normalized_axis)
 
   def _eigvals(self):
@@ -263,7 +265,7 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
     neg_shape = array_ops.concat([result_shape[:-1], [1]], axis=-1)
     eigvals = array_ops.ones(shape=ones_shape, dtype=self.dtype)
     eigvals = array_ops.concat(
-        [-array_ops.ones(shape=neg_shape, dtype=self.dtype), eigvals], axis=-1)
+        [-array_ops.ones(shape=neg_shape, dtype=self.dtype), eigvals], axis=-1)  # pylint: disable=invalid-unary-operand-type
     return eigvals
 
   def _cond(self):
@@ -273,3 +275,11 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
   @property
   def reflection_axis(self):
     return self._reflection_axis
+
+  @property
+  def _composite_tensor_fields(self):
+    return ("reflection_axis",)
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    return {"reflection_axis": 1}

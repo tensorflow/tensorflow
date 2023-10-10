@@ -38,7 +38,7 @@ class CustomGradientTest
     TF_StatusPtr status(TF_NewStatus());
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
     Status s = StatusFromTF_Status(status.get());
-    CHECK_EQ(errors::OK, s.code()) << s.error_message();
+    CHECK_EQ(errors::OK, s.code()) << s.message();
   }
 };
 
@@ -53,7 +53,7 @@ class PassThroughGradientFunction : public GradientFunction {
     if (grad_inputs[0]) {
       grad_inputs[0]->Ref();
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -70,20 +70,18 @@ Status ExpWithPassThroughGrad(AbstractContext* ctx,
                               absl::Span<AbstractTensorHandle*> outputs) {
   Tape tape(/*persistent=*/false);
   tape.Watch(inputs[0]);  // Watch x.
-  std::vector<AbstractTensorHandle*> exp_outputs(1);
-  TF_RETURN_IF_ERROR(ops::Exp(ctx, inputs, absl::MakeSpan(exp_outputs), "Exp"));
+  AbstractTensorHandle* exp_output;
+  TF_RETURN_IF_ERROR(ops::Exp(ctx, inputs[0], &exp_output, "Exp"));
   std::unique_ptr<GradientFunction> gradient_function(
       new PassThroughGradientFunction);
-  tape.RecordOperation(inputs, exp_outputs, gradient_function.release());
+  tape.RecordOperation(inputs, {exp_output}, gradient_function.release());
   TF_RETURN_IF_ERROR(tape.ComputeGradient(ctx,
-                                          /*targets*/ exp_outputs,
+                                          /*targets*/ {exp_output},
                                           /*sources=*/inputs,
                                           /*output_gradients=*/{},
                                           /*result=*/outputs));
-  for (auto exp_output : exp_outputs) {
-    exp_output->Unref();
-  }
-  return Status::OK();
+  exp_output->Unref();
+  return OkStatus();
 }
 
 TEST_P(CustomGradientTest, ExpWithPassThroughGrad) {
@@ -94,15 +92,15 @@ TEST_P(CustomGradientTest, ExpWithPassThroughGrad) {
     AbstractContext* ctx_raw = nullptr;
     Status s =
         BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     ctx.reset(ctx_raw);
   }
 
   AbstractTensorHandlePtr x;
   {
     AbstractTensorHandle* x_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx.get(), 1.0f, &x_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    Status s = TestScalarTensorHandle<float, TF_FLOAT>(ctx.get(), 1.0f, &x_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     x.reset(x_raw);
   }
 
@@ -115,11 +113,11 @@ TEST_P(CustomGradientTest, ExpWithPassThroughGrad) {
   Status s = RunModel(ExpWithPassThroughGrad, ctx.get(), {x.get()},
                       absl::MakeSpan(outputs),
                       /*use_function=*/!std::get<2>(GetParam()));
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
 
   TF_Tensor* result_tensor;
   s = GetValue(outputs[0], &result_tensor);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
   auto result_value = static_cast<float*>(TF_TensorData(result_tensor));
   EXPECT_EQ(*result_value, 1.0);
   outputs[0]->Unref();
@@ -127,19 +125,12 @@ TEST_P(CustomGradientTest, ExpWithPassThroughGrad) {
   result_tensor = nullptr;
 }
 
-#ifdef PLATFORM_GOOGLE
-INSTANTIATE_TEST_SUITE_P(
-    CustomGradientTest, CustomGradientTest,
-    ::testing::Combine(::testing::Values("graphdef", "mlir"),
-                       /*tfrt*/ ::testing::Values(true, false),
-                       /*executing_eagerly*/ ::testing::Values(true, false)));
-#else
 INSTANTIATE_TEST_SUITE_P(
     CustomGradientTest, CustomGradientTest,
     ::testing::Combine(::testing::Values("graphdef", "mlir"),
                        /*tfrt*/ ::testing::Values(false),
                        /*executing_eagerly*/ ::testing::Values(true, false)));
-#endif
+
 }  // namespace
 }  // namespace internal
 }  // namespace gradients

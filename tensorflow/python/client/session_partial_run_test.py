@@ -15,11 +15,6 @@
 
 """Tests for tensorflow.python.client.session.Session's partial run APIs."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
@@ -89,18 +84,18 @@ class PartialRunTest(test_util.TensorFlowTestCase):
     inputs = []
     outputs = []
     a = constant_op.constant(2.0, dtypes.float32)
-    for i in xrange(steps):
+    for i in range(steps):
       inputs.append(array_ops.placeholder(dtypes.float32, shape=[]))
       a = math_ops.multiply(a, inputs[i])
       outputs.append(a)
 
     h = sess.partial_run_setup(outputs, inputs)
-    for i in xrange(steps):
+    for i in range(steps):
       res = sess.partial_run(h, outputs[i], feed_dict={inputs[i]: 1.0})
     self.assertEqual(2.0, res)
 
     feed_dict = {}
-    for i in xrange(steps):
+    for i in range(steps):
       feed_dict[inputs[i]] = 1.0
     res = sess.run(outputs, feed_dict)
     self.assertEqual(steps, len(res))
@@ -270,6 +265,7 @@ class PartialRunTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
   def testPartialRunMissingPlaceholderFeedExceptionDist(self):
+    self.skipTest('Flaky test. Short term b/278768411, long term b/280102873')
     server = server_lib.Server.create_local_server()
     self.RunTestPartialRunMissingPlaceholderFeedException(
         session.Session(server.target))

@@ -13,12 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
+
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradient_checker.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/gradients/grad_testutil.h"
+#include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -30,8 +33,14 @@ namespace {
 using ops::Abs;
 using ops::Add;
 using ops::AddN;
+using ops::AddV2;
+using ops::Atan2;
 using ops::BatchMatMul;
+using ops::BatchMatMulV3;
+using ops::Cast;
+using ops::ClipByValue;
 using ops::Const;
+using ops::Cumsum;
 using ops::Div;
 using ops::DivNoNan;
 using ops::MatMul;
@@ -46,9 +55,14 @@ using ops::Pow;
 using ops::Prod;
 using ops::RealDiv;
 using ops::SegmentSum;
+using ops::SelectV2;
 using ops::SquaredDifference;
 using ops::Sub;
 using ops::Sum;
+using ops::UnsortedSegmentMax;
+using ops::UnsortedSegmentMin;
+using ops::UnsortedSegmentSum;
+using ops::Where3;
 
 // TODO(andydavis) Test gradient function against numeric gradients output.
 // TODO(andydavis) As more gradients are added move common test functions
@@ -457,7 +471,7 @@ TEST_F(CWiseUnaryGradTest, Asin_Complex) {
   };
   // TODO(kbsriram)
   // Enable test when the asin kernel supports complex numbers
-  if (false) {
+  if (/* DISABLES CODE */ (false)) {
     TestCWiseGrad<complex64, complex64>(ASIN, x_fn);
   }
 }
@@ -473,7 +487,7 @@ TEST_F(CWiseUnaryGradTest, Acos_Complex) {
   };
   // TODO(kbsriram)
   // Add test when the acos kernel supports complex numbers
-  if (false) {
+  if (/* DISABLES CODE */ (false)) {
     TestCWiseGrad<complex64, complex64>(ACOS, x_fn);
   }
 }
@@ -501,7 +515,7 @@ TEST_F(CWiseUnaryGradTest, Atan_Complex) {
   };
   // TODO(kbsriram)
   // Add test when the atan kernel supports complex numbers
-  if (false) {
+  if (/* DISABLES CODE */ (false)) {
     TestCWiseGrad<complex64, complex64>(ATAN, x_fn);
   }
 }
@@ -552,7 +566,7 @@ TEST_F(CWiseUnaryGradTest, Lgamma_Complex) {
   };
   // TODO(kbsriram)
   // Add test when the lgamma kernel supports complex numbers
-  if (false) {
+  if (/* DISABLES CODE */ (false)) {
     TestCWiseGrad<complex64, complex64>(LGAMMA, x_fn);
   }
 }
@@ -570,7 +584,7 @@ TEST_F(CWiseUnaryGradTest, Erf_Complex) {
   };
   // TODO(kbsriram)
   // Add test when the erf kernel supports complex numbers
-  if (false) {
+  if (/* DISABLES CODE */ (false)) {
     TestCWiseGrad<complex64, complex64>(ERF, x_fn);
   }
 }
@@ -594,11 +608,42 @@ class MathGradTest : public ::testing::Test {
   MathGradTest() : root_(Scope::NewRootScope().WithDevice("/cpu:0")) {}
 
   template <typename T>
-  void TestMatMulGrad(const bool is_batch, const bool t_x, const bool t_y) {
+  void TestMatMulGrad(const bool t_x, const bool t_y) {
+    TestMatMulGradHelper<T>(
+        /*is_x_batch=*/false, /*is_y_batch=*/false, t_x, t_y,
+        [&](Output x, Output y) {
+          return MatMul(root_, x, y, MatMul::TransposeA(t_x).TransposeB(t_y));
+        });
+  }
+
+  template <typename T>
+  void TestBatchMatMulGrad(const bool t_x, const bool t_y) {
+    TestMatMulGradHelper<T>(
+        /*is_x_batch=*/true, /*is_y_batch=*/true, t_x, t_y,
+        [&](Output x, Output y) {
+          return BatchMatMul(root_, x, y, BatchMatMul::AdjX(t_x).AdjY(t_y));
+        });
+  }
+
+  template <typename T>
+  void TestBatchMatMulV3Grad(const bool is_x_batch, const bool is_y_batch,
+                             const bool t_x, const bool t_y) {
+    TestMatMulGradHelper<T>(
+        /*is_x_batch=*/true, /*is_y_batch=*/true, t_x, t_y,
+        [&](Output x, Output y) {
+          return BatchMatMulV3(root_, x, y, DataTypeToEnum<T>::v(),
+                               BatchMatMulV3::AdjX(t_x).AdjY(t_y));
+        });
+  }
+
+  template <typename T>
+  void TestMatMulGradHelper(const bool is_x_batch, const bool is_y_batch,
+                            const bool t_x, const bool t_y,
+                            std::function<Output(Output, Output)> mul_fn) {
     TF_ASSERT_OK(root_.status());
     // Generate random (but compatible) shapes for matrix multiplication.
     std::vector<TensorShape> shapes;
-    RandMatMulShapes(is_batch, t_x, t_y, &shapes);
+    RandMatMulShapes(is_x_batch, is_y_batch, t_x, t_y, &shapes);
     TensorShape x_shape = shapes[0];
     TensorShape y_shape = shapes[1];
     TensorShape z_shape = shapes[2];
@@ -606,12 +651,7 @@ class MathGradTest : public ::testing::Test {
         Placeholder(root_, DataTypeToEnum<T>::v(), Placeholder::Shape(x_shape));
     auto y =
         Placeholder(root_, DataTypeToEnum<T>::v(), Placeholder::Shape(y_shape));
-    Output z;
-    if (is_batch) {
-      z = BatchMatMul(root_, x, y, BatchMatMul::AdjX(t_x).AdjY(t_y));
-    } else {
-      z = MatMul(root_, x, y, MatMul::TransposeA(t_x).TransposeB(t_y));
-    }
+    Output z = mul_fn(x, y);
 
     float max_error;
     TF_ASSERT_OK((ComputeGradientError<T, T, float>(
@@ -619,7 +659,8 @@ class MathGradTest : public ::testing::Test {
     EXPECT_LT(max_error, 1e-3);
   }
 
-  void RandMatMulShapes(const bool is_batch, const bool tx, const bool ty,
+  void RandMatMulShapes(const bool is_x_batch, const bool is_y_batch,
+                        const bool tx, const bool ty,
                         std::vector<TensorShape>* shapes) {
     // Choose a random batch size in [1, 4]
     const int b = 1 + (random::New64() % 4);
@@ -629,7 +670,7 @@ class MathGradTest : public ::testing::Test {
     const int n = Rand();
 
     TensorShape x_shape;
-    if (is_batch) {
+    if (is_x_batch) {
       // x.shape = [b, m, k]
       x_shape = tx ? TensorShape({b, k, m}) : TensorShape({b, m, k});
     } else {
@@ -639,7 +680,7 @@ class MathGradTest : public ::testing::Test {
     shapes->push_back(x_shape);
 
     TensorShape y_shape;
-    if (is_batch) {
+    if (is_y_batch) {
       // y.shape = [b, k, n]
       y_shape = ty ? TensorShape({b, n, k}) : TensorShape({b, k, n});
     } else {
@@ -649,7 +690,7 @@ class MathGradTest : public ::testing::Test {
     shapes->push_back(y_shape);
 
     TensorShape z_shape;
-    if (is_batch) {
+    if (is_x_batch || is_y_batch) {
       // z.shape = [b, m, n]
       z_shape = TensorShape({b, m, n});
     } else {
@@ -665,67 +706,79 @@ class MathGradTest : public ::testing::Test {
 };
 
 TEST_F(MathGradTest, MatMulGrad_NoTranspose) {
-  TestMatMulGrad<float>(false, false, false);
+  TestMatMulGrad<float>(false, false);
 }
 
 TEST_F(MathGradTest, MatMulComplexGrad_NoTranspose) {
-  TestMatMulGrad<complex64>(false, false, false);
+  TestMatMulGrad<complex64>(false, false);
 }
 
 TEST_F(MathGradTest, MatMulGrad_TransposeX) {
-  TestMatMulGrad<float>(false, true, false);
+  TestMatMulGrad<float>(true, false);
 }
 
 TEST_F(MathGradTest, MatMulComplexGrad_TransposeX) {
-  TestMatMulGrad<complex64>(false, true, false);
+  TestMatMulGrad<complex64>(true, false);
 }
 
 TEST_F(MathGradTest, MatMulGrad_TransposeY) {
-  TestMatMulGrad<float>(false, false, true);
+  TestMatMulGrad<float>(false, true);
 }
 
 TEST_F(MathGradTest, MatMulComplexGrad_TransposeY) {
-  TestMatMulGrad<complex64>(false, false, true);
+  TestMatMulGrad<complex64>(false, true);
 }
 
 TEST_F(MathGradTest, MatMulGrad_TransposeX_TransposeY) {
-  TestMatMulGrad<float>(false, true, true);
+  TestMatMulGrad<float>(true, true);
 }
 
 TEST_F(MathGradTest, MatMulComplexGrad_TransposeX_TransposeY) {
-  TestMatMulGrad<complex64>(false, true, true);
+  TestMatMulGrad<complex64>(true, true);
 }
 
 TEST_F(MathGradTest, BatchMatMulGrad_NoTranspose) {
-  TestMatMulGrad<float>(true, false, false);
+  TestBatchMatMulGrad<float>(false, false);
 }
 
 TEST_F(MathGradTest, BatchMatMulComplexGrad_NoTranspose) {
-  TestMatMulGrad<complex64>(true, false, false);
+  TestBatchMatMulGrad<complex64>(false, false);
 }
 
 TEST_F(MathGradTest, BatchMatMulGrad_TransposeX) {
-  TestMatMulGrad<float>(true, true, false);
+  TestBatchMatMulGrad<float>(true, false);
 }
 
 TEST_F(MathGradTest, BatchMatMulComplexGrad_TransposeX) {
-  TestMatMulGrad<complex64>(true, true, false);
+  TestBatchMatMulGrad<complex64>(true, false);
 }
 
 TEST_F(MathGradTest, BatchMatMulGrad_TransposeY) {
-  TestMatMulGrad<float>(true, false, true);
+  TestBatchMatMulGrad<float>(false, true);
 }
 
 TEST_F(MathGradTest, BatchMatMulComplexGrad_TransposeY) {
-  TestMatMulGrad<complex64>(true, false, true);
+  TestBatchMatMulGrad<complex64>(false, true);
 }
 
 TEST_F(MathGradTest, BatchMatMulGrad_TransposeX_TransposeY) {
-  TestMatMulGrad<float>(true, true, true);
+  TestBatchMatMulGrad<float>(true, true);
 }
 
 TEST_F(MathGradTest, BatchMatMulComplexGrad_TransposeX_TransposeY) {
-  TestMatMulGrad<complex64>(true, true, true);
+  TestBatchMatMulGrad<complex64>(true, true);
+}
+
+TEST_F(MathGradTest, BatchMatMulV3Grad_BroadcastX) {
+  TestBatchMatMulV3Grad<float>(false, true, false, false);
+}
+
+TEST_F(MathGradTest, BatchMatMulV3Grad_BroadcastY) {
+  TestBatchMatMulV3Grad<float>(true, false, false, false);
+}
+
+TEST_F(MathGradTest, BatchMatMulV3Grad_BroadcastYTransposeY) {
+  TestBatchMatMulV3Grad<float>(true, false, false, true);
 }
 
 class NaryGradTest : public ::testing::Test {
@@ -836,6 +889,15 @@ TEST_F(NaryGradTest, Add) {
   auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x1_shape));
   auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x2_shape));
   auto y = Add(scope_, x1, x2);
+  RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
+}
+
+TEST_F(NaryGradTest, AddV2) {
+  TensorShape x1_shape({3, 2, 5});
+  TensorShape x2_shape({2, 5});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x1_shape));
+  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x2_shape));
+  auto y = AddV2(scope_, x1, x2);
   RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
 }
 
@@ -961,6 +1023,156 @@ TEST_F(NaryGradTest, SegmentSum) {
   // the sum is always on the first dimension
   TensorShape y_shape({2, 4});
   RunTest({x}, {x_shape}, {y}, {y_shape});
+}
+
+class CumsumGradTest
+    : public NaryGradTest,
+      public ::testing::WithParamInterface<std::tuple<bool, bool, int>> {};
+
+TEST_P(CumsumGradTest, CumsumGrad) {
+  int axis = std::get<2>(GetParam());
+
+  TensorShape shape({2, 3, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  Cumsum::Attrs attrs;
+  attrs.exclusive_ = std::get<0>(GetParam());
+  attrs.reverse_ = std::get<1>(GetParam());
+  auto y = Cumsum(scope_, x, axis, attrs);
+  RunTest({x}, {shape}, {y}, {shape});
+}
+
+INSTANTIATE_TEST_SUITE_P(CumsumGrad, CumsumGradTest,
+                         ::testing::Combine(::testing::Bool(),
+                                            ::testing::Bool(),
+                                            ::testing::Range(0, 2)));
+
+TEST_F(NaryGradTest, CastGrad) {
+  TensorShape shape({2, 3, 2});
+  auto x = Placeholder(scope_, DT_DOUBLE, Placeholder::Shape(shape));
+  auto y = Cast(scope_, x, DT_FLOAT);
+  TF_ASSERT_OK(scope_.status());
+  double max_error;
+  TF_ASSERT_OK((ComputeGradientError<double, float, double>(
+      scope_, {x}, {shape}, {y}, {shape}, &max_error)));
+  EXPECT_LT(max_error, 1e-3);
+}
+
+TEST_F(NaryGradTest, Select) {
+  TensorShape shape({1, 3});
+  auto cond = Const<bool>(scope_, {{false, true, true}});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto z = Where3(scope_, cond, x, y);
+  RunTest({x, y}, {shape, shape}, {z}, {shape});
+}
+
+TEST_F(NaryGradTest, SelectV2_Basic) {
+  TensorShape shape({1, 3});
+  auto cond = Const<bool>(scope_, {{false, true, true}});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto z = SelectV2(scope_, cond, x, y);
+  RunTest({x, y}, {shape, shape}, {z}, {shape});
+}
+
+TEST_F(NaryGradTest, SelectV2_Broadcast) {
+  TensorShape x_shape({2, 3});
+  TensorShape y_shape({});
+  auto cond = Const<bool>(scope_, {{false, true, true}, {true, true, false}});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(y_shape));
+  auto z = SelectV2(scope_, cond, x, y);
+  RunTest({x, y}, {x_shape, y_shape}, {z}, {x_shape});
+}
+
+TEST_F(NaryGradTest, SelectV2_Broadcast2) {
+  TensorShape x_shape({2, 3});
+  auto cond = Const<bool>(scope_, {{false}, {true}});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto z = SelectV2(scope_, cond, x, y);
+  RunTest({x, y}, {x_shape, x_shape}, {z}, {x_shape});
+}
+
+TEST_F(NaryGradTest, Atan2Grad) {
+  TensorShape shape({3, 2, 5});
+  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  // Test with x2 = 1 + |x1| to avoid regions where the gradient
+  // is unstable and might cause problems for the numeric estimator.
+  auto x2 =
+      Div(scope_, x1, Add(scope_, Const<float>(scope_, 1), Abs(scope_, x1)));
+  auto y = Atan2(scope_, x1, x2);
+  RunTest({x1}, {shape}, {y}, {shape});
+}
+
+// Deterministic test value for UnsortedSegmentMin/Max, since the numerical
+// gradient can be wrong if the compared inputs are nearly the same (which can
+// happen with random inputs).
+constexpr float kUnsortedSegmentMinMaxTestValue[] = {
+    0.5f,  0.7f, 0.2f, 1.0f, 1.5f, 10.5f, -0.7f, 1.2f,
+    -1.0f, 2.5f, 4.2f, 3.7f, 1.2f, -5.0f, -1.5f};
+
+TEST_F(NaryGradTest, UnsortedSegmentMaxGrad) {
+  TensorShape shape({3, 1, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto segment_ids = Const(scope_, {0, 0, 1});
+  auto y = UnsortedSegmentMax(scope_, x, segment_ids, /*num_segments=*/2);
+  Tensor x_init_value =
+      test::AsTensor<float>(kUnsortedSegmentMinMaxTestValue, shape);
+  TensorShape y_shape({2, 1, 5});
+  RunTest(x, x_init_value, y, y_shape);
+}
+
+TEST_F(NaryGradTest, UnsortedSegmentMaxGrad_Int64Ids) {
+  TensorShape shape({3, 1, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto segment_ids = Const(scope_, {0ll, 0ll, 1ll});
+  auto y = UnsortedSegmentMax(scope_, x, segment_ids, /*num_segments=*/2);
+  TensorShape y_shape({2, 1, 5});
+  Tensor x_init_value =
+      test::AsTensor<float>(kUnsortedSegmentMinMaxTestValue, shape);
+  RunTest(x, x_init_value, y, y_shape);
+}
+
+TEST_F(NaryGradTest, UnsortedSegmentMaxGrad_NegativeIds) {
+  TensorShape shape({3, 1, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto segment_ids = Const(scope_, {0, 0, -1});
+  auto y = UnsortedSegmentMax(scope_, x, segment_ids, /*num_segments=*/1);
+  TensorShape y_shape({1, 1, 5});
+  Tensor x_init_value =
+      test::AsTensor<float>(kUnsortedSegmentMinMaxTestValue, shape);
+  RunTest(x, x_init_value, y, y_shape);
+}
+
+TEST_F(NaryGradTest, UnsortedSegmentMinGrad) {
+  TensorShape shape({3, 1, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto segment_ids = Const(scope_, {0, 0, 1});
+  auto y = UnsortedSegmentMin(scope_, x, segment_ids, /*num_segments=*/2);
+  TensorShape y_shape({2, 1, 5});
+  Tensor x_init_value =
+      test::AsTensor<float>(kUnsortedSegmentMinMaxTestValue, shape);
+  RunTest(x, x_init_value, y, y_shape);
+}
+
+TEST_F(NaryGradTest, UnsortedSegmentSumGrad) {
+  TensorShape shape({3, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto segment_ids = Const(scope_, {0, 0, 1});
+  auto y = UnsortedSegmentSum(scope_, x, segment_ids, /*num_segments=*/2);
+  TensorShape y_shape({2, 2, 5});
+  RunTest({x}, {shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, ClipByValueGrad) {
+  TensorShape shape({3, 1, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = ClipByValue(scope_, x, 0.0f, 5.0f);
+  Tensor x_init_value =
+      test::AsTensor<float>(kUnsortedSegmentMinMaxTestValue, shape);
+  TensorShape y_shape({3, 1, 5});
+  RunTest(x, x_init_value, y, y_shape);
 }
 
 }  // namespace

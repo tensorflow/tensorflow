@@ -48,13 +48,13 @@ Status ForEachListener(FnTy fn) {
     TF_RETURN_IF_ERROR(fn(listener.get()));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void FlushAllListeners() {
   Status s = ForEachListener([](XlaActivityListener* listener) {
     listener->Flush();
-    return Status::OK();
+    return OkStatus();
   });
   CHECK(s.ok());
 }

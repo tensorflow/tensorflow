@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -29,11 +30,15 @@ limitations under the License.
 namespace mlir {
 namespace TFTPU {
 
+#define GEN_PASS_DEF_TPURESOURCEREADFORWRITEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // A pass that finds TPU clusters with write only resource access and adds an
 // associated resource read, so the resource can later be fused into TPUExecute.
 namespace {
-struct TPUResourceReadForWrite
-    : public PassWrapper<TPUResourceReadForWrite, OperationPass<ModuleOp>> {
+struct TPUResourceReadForWritePass
+    : public impl::TPUResourceReadForWritePassBase<
+          TPUResourceReadForWritePass> {
   void runOnOperation() override;
 };
 
@@ -52,18 +57,18 @@ ResourceValueAndSubtype GetResourceWriteResult(
   auto assign_var = dyn_cast<TF::AssignVariableOp>(result_user);
   if (!assign_var) return resource;
 
-  auto handle = assign_var.resource();
+  auto handle = assign_var.getResource();
   // Skip result if cluster writes to the same variable via multiple results.
   for (Operation* handle_user : handle.getUsers()) {
     if (handle_user == assign_var) continue;
     auto assign_var_user = dyn_cast<TF::AssignVariableOp>(handle_user);
     if (!assign_var_user) continue;
-    if (assign_var_user.value().getDefiningOp() == cluster_func)
+    if (assign_var_user.getValue().getDefiningOp() == cluster_func)
       return resource;
   }
 
-  resource.resource = assign_var.resource();
-  resource.subtype = assign_var.value().getType();
+  resource.resource = assign_var.getResource();
+  resource.subtype = assign_var.getValue().getType();
   return resource;
 }
 
@@ -72,13 +77,13 @@ bool ClusterFuncHasResourceRead(tf_device::ClusterFuncOp cluster_func,
                                 Value resource) {
   for (Operation* resource_user : resource.getUsers())
     if (auto read = dyn_cast<TF::ReadVariableOp>(resource_user))
-      for (Operation* read_user : read.value().getUsers())
+      for (Operation* read_user : read.getValue().getUsers())
         if (read_user == cluster_func) return true;
 
   return false;
 }
 
-void TPUResourceReadForWrite::runOnOperation() {
+void TPUResourceReadForWritePass::runOnOperation() {
   SmallVector<tf_device::ClusterFuncOp, 4> cluster_funcs;
   getOperation().walk([&](tf_device::ClusterFuncOp cluster_func) {
     cluster_funcs.push_back(cluster_func);
@@ -100,7 +105,7 @@ void TPUResourceReadForWrite::runOnOperation() {
       auto new_read = builder.create<TF::ReadVariableOp>(
           resource_and_type.resource.getLoc(), resource_and_type.subtype,
           resource_and_type.resource);
-      read_operands.push_back(new_read.value());
+      read_operands.push_back(new_read.getValue());
     }
 
     if (read_operands.empty()) continue;
@@ -109,17 +114,17 @@ void TPUResourceReadForWrite::runOnOperation() {
     auto operands = llvm::to_vector<4>(cluster_func.getOperands());
     operands.append(read_operands.begin(), read_operands.end());
 
+    auto loc = cluster_func.getLoc();
     auto new_cluster_func = builder.create<tf_device::ClusterFuncOp>(
-        cluster_func.getLoc(), cluster_func.getResultTypes(), operands,
-        cluster_func.getAttrs());
+        loc, cluster_func.getResultTypes(), operands, cluster_func->getAttrs());
     cluster_func.replaceAllUsesWith(new_cluster_func);
-    FuncOp func = cluster_func.getFunc();
+    func::FuncOp func = cluster_func.getFuncOp();
     Block& block = func.front();
     for (Value read_operand : read_operands)
-      block.addArgument(read_operand.getType());
+      block.addArgument(read_operand.getType(), loc);
 
-    func.setType(FunctionType::get(block.getArgumentTypes(),
-                                   func.getCallableResults(), &getContext()));
+    func.setType(FunctionType::get(&getContext(), block.getArgumentTypes(),
+                                   func.getResultTypes()));
     cluster_func.erase();
   }
 }
@@ -127,13 +132,8 @@ void TPUResourceReadForWrite::runOnOperation() {
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUResourceReadForWritePass() {
-  return std::make_unique<TPUResourceReadForWrite>();
+  return std::make_unique<TPUResourceReadForWritePass>();
 }
-
-static PassRegistration<TPUResourceReadForWrite> pass(
-    "tf-tpu-resource-read-for-write",
-    "Inserts tf.ReadVariableOp inputs to a TPU cluster for resource writes "
-    "with no reads");
 
 }  // namespace TFTPU
 }  // namespace mlir

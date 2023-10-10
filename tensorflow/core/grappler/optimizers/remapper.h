@@ -26,7 +26,13 @@ namespace grappler {
 // nodes to decrease the amount of operations needed to perform a computation.
 class Remapper : public GraphOptimizer {
  public:
-  explicit Remapper(RewriterConfig::Toggle opt_level) : opt_level_(opt_level) {}
+  explicit Remapper(RewriterConfig::Toggle opt_level,
+                    RewriterConfig::CpuLayout cpu_layout_conversion =
+                        RewriterConfig::NO_CONVERSION_ON_CPU,
+                    bool xla_auto_clustering_on = false)
+      : opt_level_(opt_level),
+        cpu_layout_conversion_(cpu_layout_conversion),
+        xla_auto_clustering_on_(xla_auto_clustering_on) {}
 
   ~Remapper() override {}
 
@@ -37,11 +43,10 @@ class Remapper : public GraphOptimizer {
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override;
 
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override;
-
  private:
   RewriterConfig::Toggle opt_level_;
+  RewriterConfig::CpuLayout cpu_layout_conversion_;
+  bool xla_auto_clustering_on_;
 };
 
 }  // end namespace grappler

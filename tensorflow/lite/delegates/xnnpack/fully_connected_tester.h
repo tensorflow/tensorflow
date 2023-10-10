@@ -20,7 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -28,6 +29,20 @@ namespace xnnpack {
 
 class FullyConnectedTester {
  public:
+  enum class WeightsType {
+    kFP32,
+    kFP16,
+    kTensorWiseQuantizedInt8,
+    kChannelWiseQuantizedInt8,
+    kDynamic,
+  };
+  enum class BiasType {
+    kNone,
+    kFP32,
+    kFP16,
+    kDynamic,
+  };
+
   FullyConnectedTester() = default;
   FullyConnectedTester(const FullyConnectedTester&) = delete;
   FullyConnectedTester& operator=(const FullyConnectedTester&) = delete;
@@ -72,11 +87,40 @@ class FullyConnectedTester {
   inline bool KeepDims() const { return keep_dims_; }
 
   inline FullyConnectedTester& FP16Weights() {
-    fp16_weights_ = true;
+    weights_type_ = WeightsType::kFP16;
+    bias_type_ = BiasType::kFP16;
     return *this;
   }
 
-  inline bool FP16Weights() const { return fp16_weights_; }
+  inline FullyConnectedTester& TensorWiseQuantizedInt8Weights() {
+    weights_type_ = WeightsType::kTensorWiseQuantizedInt8;
+    // Bias is stored in FP32 even when filter is quantized to INT8
+    bias_type_ = BiasType::kFP32;
+    return *this;
+  }
+
+  inline FullyConnectedTester& ChannelWiseQuantizedInt8Weights() {
+    weights_type_ = WeightsType::kChannelWiseQuantizedInt8;
+    // Bias is stored in FP32 even when filter is quantized to INT8
+    bias_type_ = BiasType::kFP32;
+    return *this;
+  }
+
+  inline FullyConnectedTester& DynamicWeights() {
+    weights_type_ = WeightsType::kDynamic;
+    bias_type_ = BiasType::kFP32;
+    return *this;
+  }
+
+  inline FullyConnectedTester& NoBias() {
+    bias_type_ = BiasType::kNone;
+    return *this;
+  }
+
+  inline FullyConnectedTester& DynamicBias() {
+    bias_type_ = BiasType::kDynamic;
+    return *this;
+  }
 
   inline FullyConnectedTester& ReluActivation() {
     activation_ = ::tflite::ActivationFunctionType_RELU;
@@ -93,10 +137,22 @@ class FullyConnectedTester {
     return *this;
   }
 
+  inline FullyConnectedTester& WeightsCache(
+      TfLiteXNNPackDelegateWeightsCache* weights_cache) {
+    weights_cache_ = weights_cache;
+    return *this;
+  }
+
   void Test(TfLiteDelegate* delegate) const;
 
  private:
   std::vector<char> CreateTfLiteModel() const;
+
+  inline bool HasBias() const { return bias_type_ != BiasType::kNone; }
+
+  inline WeightsType WeightsType() const { return weights_type_; }
+
+  inline BiasType BiasType() const { return bias_type_; }
 
   inline ::tflite::ActivationFunctionType Activation() const {
     return activation_;
@@ -109,9 +165,11 @@ class FullyConnectedTester {
   int32_t input_channels_ = 1;
   int32_t output_channels_ = 1;
   bool keep_dims_ = false;
-  bool fp16_weights_ = false;
+  enum WeightsType weights_type_ { WeightsType::kFP32 };
+  enum BiasType bias_type_ { BiasType::kFP32 };
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
+  TfLiteXNNPackDelegateWeightsCache* weights_cache_ = nullptr;
 };
 
 }  // namespace xnnpack

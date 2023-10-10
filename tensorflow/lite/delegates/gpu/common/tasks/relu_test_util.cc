@@ -15,10 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/relu_test_util.h"
 
+#include <memory>
 #include <vector>
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/testing_util.h"
@@ -27,110 +26,135 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-void ReLUNoClipNoAlphaTest(TestExecutionEnvironment* env) {
+absl::Status ReLUNoClipNoAlphaTest(TestExecutionEnvironment* env) {
   TensorFloat32 src_tensor;
   src_tensor.shape = BHWC(1, 2, 1, 2);
   src_tensor.data = {-0.5f, 0.8f, -0.6f, 3.2f};
 
   ReLUAttributes attr;
   attr.alpha = 0.0f;
-  attr.clip = 0.0f;
+  attr.activation_max = 0.0f;
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateReLU(op_def, attr);
-      ASSERT_TRUE(env->ExecuteGPUOperation(
-                         src_tensor,
-                         absl::make_unique<GPUOperation>(std::move(operation)),
-                         BHWC(1, 2, 1, 2), &dst_tensor)
-                      .ok());
-      EXPECT_THAT(dst_tensor.data,
-                  testing::Pointwise(testing::FloatNear(eps),
-                                     {0.0f, 0.8f, 0.0f, 3.2f}));
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 2), &dst_tensor));
+      RETURN_IF_ERROR(
+          PointWiseNear({0.0f, 0.8f, 0.0f, 3.2f}, dst_tensor.data, eps));
     }
   }
+  return absl::OkStatus();
 }
 
-void ReLUClipTest(TestExecutionEnvironment* env) {
+absl::Status ReLUClipTest(TestExecutionEnvironment* env) {
   TensorFloat32 src_tensor;
   src_tensor.shape = BHWC(1, 2, 1, 2);
   src_tensor.data = {-0.5f, 0.8f, -0.6f, 3.2f};
 
   ReLUAttributes attr;
   attr.alpha = 0.0f;
-  attr.clip = 0.9f;
+  attr.activation_max = 0.9f;
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateReLU(op_def, attr);
-      ASSERT_TRUE(env->ExecuteGPUOperation(
-                         src_tensor,
-                         absl::make_unique<GPUOperation>(std::move(operation)),
-                         BHWC(1, 2, 1, 2), &dst_tensor)
-                      .ok());
-      EXPECT_THAT(dst_tensor.data,
-                  testing::Pointwise(testing::FloatNear(eps),
-                                     {0.0f, 0.8f, 0.0f, 0.9f}));
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 2), &dst_tensor));
+      RETURN_IF_ERROR(
+          PointWiseNear({0.0f, 0.8f, 0.0f, 0.9f}, dst_tensor.data, eps));
     }
   }
+  return absl::OkStatus();
 }
 
-void ReLUAlphaTest(TestExecutionEnvironment* env) {
+absl::Status ReLUAlphaTest(TestExecutionEnvironment* env) {
   TensorFloat32 src_tensor;
   src_tensor.shape = BHWC(1, 2, 1, 2);
   src_tensor.data = {-0.5f, 0.8f, -0.6f, 3.2f};
 
   ReLUAttributes attr;
   attr.alpha = 0.5f;
-  attr.clip = 0.0f;
+  attr.activation_max = 0.0f;
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateReLU(op_def, attr);
-      ASSERT_TRUE(env->ExecuteGPUOperation(
-                         src_tensor,
-                         absl::make_unique<GPUOperation>(std::move(operation)),
-                         BHWC(1, 2, 1, 2), &dst_tensor)
-                      .ok());
-      EXPECT_THAT(dst_tensor.data,
-                  testing::Pointwise(testing::FloatNear(eps),
-                                     {-0.25f, 0.8f, -0.3f, 3.2f}));
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 2), &dst_tensor));
+      RETURN_IF_ERROR(
+          PointWiseNear({-0.25f, 0.8f, -0.3f, 3.2f}, dst_tensor.data, eps));
     }
   }
+  return absl::OkStatus();
 }
 
-void ReLUAlphaClipTest(TestExecutionEnvironment* env) {
+absl::Status ReLUAlphaClipTest(TestExecutionEnvironment* env) {
   TensorFloat32 src_tensor;
   src_tensor.shape = BHWC(1, 2, 1, 2);
   src_tensor.data = {-0.5f, 0.8f, -0.6f, 3.2f};
 
   ReLUAttributes attr;
   attr.alpha = 0.5f;
-  attr.clip = 0.5f;
+  attr.activation_max = 0.5f;
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      GPUOperation operation = CreateReLU(op_def, attr);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 2), &dst_tensor));
+      RETURN_IF_ERROR(
+          PointWiseNear({-0.25f, 0.5f, -0.3f, 0.5f}, dst_tensor.data, eps));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ReLUN1NoClipNoAlphaTest(TestExecutionEnvironment* env) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 2, 1, 4);
+  src_tensor.data = {-12.0f, -1.0f, -0.5f, 0.0f, 0.8f, -0.6f, 1.0f, 3.2f};
+
+  ReLUAttributes attr;
+  attr.alpha = 0.0f;
+  attr.activation_min = -1.0f;
+  attr.activation_max = 0.0f;
+
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
@@ -139,16 +163,111 @@ void ReLUAlphaClipTest(TestExecutionEnvironment* env) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateReLU(op_def, attr);
-      ASSERT_TRUE(env->ExecuteGPUOperation(
-                         src_tensor,
-                         absl::make_unique<GPUOperation>(std::move(operation)),
-                         BHWC(1, 2, 1, 2), &dst_tensor)
-                      .ok());
-      EXPECT_THAT(dst_tensor.data,
-                  testing::Pointwise(testing::FloatNear(eps),
-                                     {-0.25f, 0.5f, -0.3f, 0.5f}));
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 4), &dst_tensor));
+      RETURN_IF_ERROR(
+          PointWiseNear({-1.0f, -1.0f, -0.5f, 0.0f, 0.8f, -0.6f, 1.0f, 3.2f},
+                        dst_tensor.data, eps));
     }
   }
+  return absl::OkStatus();
+}
+
+absl::Status ReLUN1ClipTest(TestExecutionEnvironment* env) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 2, 1, 4);
+  src_tensor.data = {-12.0f, -1.0f, -0.5f, 0.0f, 0.8f, -0.6f, 1.0f, 3.2f};
+
+  ReLUAttributes attr;
+  attr.alpha = 0.0f;
+  attr.activation_min = -1.0f;
+  attr.activation_max = 1.0f;
+
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      GPUOperation operation = CreateReLU(op_def, attr);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 4), &dst_tensor));
+      RETURN_IF_ERROR(
+          PointWiseNear({-1.0f, -1.0f, -0.5f, 0.0f, 0.8f, -0.6f, 1.0f, 1.0f},
+                        dst_tensor.data, eps));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ReLUN1AlphaTest(TestExecutionEnvironment* env) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 2, 1, 4);
+  src_tensor.data = {-12.0f, -1.0f, -0.5f, 0.0f, 0.8f, -0.6f, 1.0f, 3.2f};
+
+  ReLUAttributes attr;
+  attr.alpha = 1.0f;
+  attr.activation_min = -1.0f;  // activation_min ignored if alpha != 0
+  attr.activation_max = 0.0f;
+
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      GPUOperation operation = CreateReLU(op_def, attr);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 4), &dst_tensor));
+      RETURN_IF_ERROR(
+          PointWiseNear({-12.0f, -1.0f, -0.5f, 0.0f, 0.8f, -0.6f, 1.0f, 3.2f},
+                        dst_tensor.data, eps));
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ReLUN1AlphaClipTest(TestExecutionEnvironment* env) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 2, 1, 4);
+  src_tensor.data = {-12.0f, -1.0f, -0.5f, 0.0f, 0.8f, -0.6f, 1.0f, 3.2f};
+
+  ReLUAttributes attr;
+  attr.alpha = 1.0f;
+  attr.activation_min = -1.0f;  // activation_min ignored if alpha != 0
+  attr.activation_max = 3.0f;
+
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      GPUOperation operation = CreateReLU(op_def, attr);
+      RETURN_IF_ERROR(env->ExecuteGPUOperation(
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
+          BHWC(1, 2, 1, 4), &dst_tensor));
+      RETURN_IF_ERROR(
+          PointWiseNear({-12.0f, -1.0f, -0.5f, 0.0f, 0.8f, -0.6f, 1.0f, 3.0f},
+                        dst_tensor.data, eps));
+    }
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

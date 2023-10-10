@@ -13,31 +13,30 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.cache()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
+import os
 from os import path
 import shutil
 import tempfile
 
 from absl.testing import parameterized
 import numpy as np
-
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
+from tensorflow.python.checkpoint import checkpoint_management
+from tensorflow.python.data.experimental.ops import random_access
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class FileCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -182,6 +181,18 @@ class FileCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, expected_output)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testCacheZipped(self):
+    def make_dataset(i):
+      cache_path = self.cache_prefix + "_" + str(i)
+      return dataset_ops.Dataset.range(100).shuffle(100).cache(cache_path)
+
+    datasets = [make_dataset(i) for i in range(3)]
+    dataset = dataset_ops.Dataset.zip(tuple(datasets))
+    first_order = self.getDatasetOutput(dataset)
+    second_order = self.getDatasetOutput(dataset)
+    self.assertEqual(first_order, second_order)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testCleaningUpCacheFiles(self):
 
     def do_test(i):
@@ -209,6 +220,10 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
       repeat_count = variables.Variable(constant_op.constant(10, dtypes.int64))
       dataset = dataset_ops.Dataset.range(3).flat_map(
           lambda x: dataset_ops.Dataset.from_tensors(x).repeat(repeat_count))
+
+      options = options_lib.Options()
+      options.experimental_optimization.inject_prefetch = False
+      dataset = dataset.with_options(options)
 
       cached_dataset = dataset.cache().repeat(2)
       uncached_dataset = dataset.repeat(2)
@@ -295,6 +310,9 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
       return x
 
     dataset = dataset_ops.Dataset.range(10).map(increment_fn).cache().repeat(2)
+    options = options_lib.Options()
+    options.experimental_optimization.inject_prefetch = False
+    dataset = dataset.with_options(options)
     get_next = self.getNext(dataset, requires_initialization=True)
 
     # first epoch
@@ -318,6 +336,9 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
       return x
 
     dataset = dataset_ops.Dataset.range(10).map(increment_fn).cache()
+    options = options_lib.Options()
+    options.experimental_optimization.inject_prefetch = False
+    dataset = dataset.with_options(options)
 
     # first epoch
     i = 0
@@ -384,23 +405,292 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(next(it), results[i])
 
   @combinations.generate(test_base.eager_only_combinations())
-  def testCheckpointLargeCache(self):
-    # Tensor of size 100M
-    dataset = dataset_ops.Dataset.from_tensors(
-        array_ops.ones((25, 1000, 1000), dtype=dtypes.float32))
-    # Repeat 25 times to exceed the 2G proto limit
-    dataset = dataset.repeat(25)
-    dataset = dataset.cache()
+  def testCheckpointFinishedCache(self):
+    num_elements = 10
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = ds.cache()
 
-    # Iterate to fill the cache.
-    iterator = iter(dataset)
-    for _ in range(23):
-      next(iterator)
+    iterator = iter(ds)
+    for i in range(num_elements):
+      self.assertEqual(next(iterator).numpy(), i)
     ckpt = trackable_utils.Checkpoint(iterator=iterator)
     manager = checkpoint_management.CheckpointManager(
         ckpt, self.get_temp_dir(), max_to_keep=1)
     manager.save()
+    manager.restore_or_initialize()
+    with self.assertRaises(StopIteration):
+      next(iterator)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).cache(name="cache")
+    self.assertDatasetProduces(dataset, [42])
+
+
+class CacheCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                          parameterized.TestCase):
+
+  def setUp(self):
+    super(CacheCheckpointTest, self).setUp()
+    self.range_size = 10
+    self.num_repeats = 3
+    self.num_outputs = self.range_size * self.num_repeats
+    self.cache_file_prefix = "test"
+
+  def make_dataset_fn(self, is_memory):
+    if is_memory:
+      filename = ""
+    else:
+      filename = os.path.join(self.get_temp_dir(), self.cache_file_prefix)
+
+    def ds_fn():
+      return dataset_ops.Dataset.range(self.range_size).cache(filename).repeat(
+          self.num_repeats)
+
+    return ds_fn
+
+  def expected_outputs(self):
+    return list(range(self.range_size)) * self.num_repeats
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(is_memory=[True, False])))
+  def testCheckpointBeforeOneEpoch(self, is_memory):
+    ds_fn = self.make_dataset_fn(is_memory)
+
+    # Generate 5 entries from iterator and save checkpoint.
+    outputs = self.gen_outputs(ds_fn, [], 5, verify_exhausted=False)
+    self.assertSequenceEqual(outputs, range(5))
+
+    # Restore from checkpoint and produce the rest of the elements from the
+    # iterator.
+    outputs.extend(
+        self.gen_outputs(
+            ds_fn, [],
+            self.num_outputs - 5,
+            ckpt_saved=True,
+            verify_exhausted=False))
+    self.assertSequenceEqual(outputs, self.expected_outputs())
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(is_memory=[True, False])))
+  def testCheckpointBeforeOneEpochThenRunFewSteps(self, is_memory):
+    ds_fn = self.make_dataset_fn(is_memory)
+
+    # Generate 8 entries from iterator but save checkpoint after producing 5.
+    outputs = self.gen_outputs(
+        ds_fn, [5], 8, verify_exhausted=False, save_checkpoint_at_end=False)
+    self.assertSequenceEqual(outputs, range(8))
+
+    outputs = outputs[:5]
+    outputs.extend(
+        self.gen_outputs(
+            ds_fn, [],
+            self.num_outputs - 5,
+            ckpt_saved=True,
+            verify_exhausted=False))
+    self.assertSequenceEqual(outputs, self.expected_outputs())
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(is_memory=[True, False])))
+  def testCheckpointAfterOneEpoch(self, is_memory):
+    ds_fn = self.make_dataset_fn(is_memory)
+
+    # Generate 15 entries from iterator and save checkpoint.
+    outputs = self.gen_outputs(ds_fn, [], 15, verify_exhausted=False)
+    self.assertSequenceEqual(outputs, list(range(10)) + list(range(5)))
+
+    # Restore from checkpoint and produce the rest of the elements from the
+    # iterator.
+    outputs.extend(
+        self.gen_outputs(
+            ds_fn, [],
+            self.num_outputs - 15,
+            ckpt_saved=True,
+            verify_exhausted=False))
+    self.assertSequenceEqual(outputs, self.expected_outputs())
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(is_memory=[True, False])))
+  def testCheckpointAfterOneEpochThenRunFewSteps(self, is_memory):
+    ds_fn = self.make_dataset_fn(is_memory)
+
+    # Generate 18 entries from iterator but save checkpoint after producing 15.
+    outputs = self.gen_outputs(
+        ds_fn, [15], 18, verify_exhausted=False, save_checkpoint_at_end=False)
+    self.assertSequenceEqual(outputs, list(range(10)) + list(range(8)))
+
+    outputs = list(range(10)) + list(range(5)) + self.gen_outputs(
+        ds_fn, [],
+        self.num_outputs - 15,
+        ckpt_saved=True,
+        verify_exhausted=False)
+    self.assertSequenceEqual(outputs, list(range(10)) * 3)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(is_memory=[True, False])))
+  def testCheckpointBeforeOneEpochButRunCompleteEpoch(self, is_memory):
+    ds_fn = self.make_dataset_fn(is_memory)
+
+    # Generate 13 entries from iterator but save checkpoint after producing 5.
+    outputs = self.gen_outputs(
+        ds_fn, [5], 13, verify_exhausted=False, save_checkpoint_at_end=False)
+    self.assertSequenceEqual(outputs, list(range(10)) + list(range(3)))
+
+    # Since we ran for more than one epoch, the cache was completely written.
+    # The ckpt was saved when the iterator was in cache-write mode. Test that
+    # the iterator falls back to read mode after restoring if the cache has
+    # been completely written.
+
+    outputs = list(range(5)) + self.gen_outputs(
+        ds_fn, [],
+        self.num_outputs - 5,
+        ckpt_saved=True,
+        verify_exhausted=False)
+    self.assertSequenceEqual(outputs, list(range(10)) * 3)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(is_memory=[True, False])))
+  def testCheckpointUnusedWriterIterator(self, is_memory):
+    ds_fn = self.make_dataset_fn(is_memory)
+
+    # Checkpoint before get_next is called even once.
+    outputs = self.gen_outputs(ds_fn, [], 0, verify_exhausted=False)
+    self.assertSequenceEqual(outputs, [])
+
+    outputs = self.gen_outputs(
+        ds_fn, [], self.num_outputs, ckpt_saved=True, verify_exhausted=False)
+    self.assertSequenceEqual(outputs, list(range(10)) * 3)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(is_memory=[True, False])))
+  def testCheckpointUnusedMidwayWriterIterator(self, is_memory):
+    ds_fn = self.make_dataset_fn(is_memory)
+
+    # Produce 5 elements and checkpoint.
+    outputs = self.gen_outputs(ds_fn, [], 5, verify_exhausted=False)
+    self.assertSequenceEqual(outputs, range(5))
+
+    # Restore from checkpoint, then produce no elements and checkpoint.
+    outputs.extend(
+        self.gen_outputs(ds_fn, [], 0, ckpt_saved=True, verify_exhausted=False))
+    self.assertSequenceEqual(outputs, range(5))
+
+    # Restore from checkpoint and produce rest of the elements.
+    outputs.extend(
+        self.gen_outputs(
+            ds_fn, [],
+            self.num_outputs - 5,
+            ckpt_saved=True,
+            verify_exhausted=False))
+    self.assertSequenceEqual(outputs, list(range(10)) * 3)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(is_memory=[True, False])))
+  def testUnusedCheckpointError(self, is_memory):
+    ds_fn = self.make_dataset_fn(is_memory)
+
+    # Produce 5 elements and save ckpt.
+    outputs = self.gen_outputs(ds_fn, [], 5, verify_exhausted=False)
+    self.assertSequenceEqual(outputs, range(5))
+
+    if is_memory:
+      outputs = self.gen_outputs(
+          ds_fn, [], self.num_outputs, verify_exhausted=False)
+      self.assertSequenceEqual(outputs, self.expected_outputs())
+    else:
+      # Since the complete cache has not been written, a new iterator which does
+      # not restore the checkpoint will throw an error since there is a partial
+      # cache shard.
+      with self.assertRaises(errors.AlreadyExistsError):
+        outputs = self.gen_outputs(
+            ds_fn, [], self.num_outputs, verify_exhausted=False)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(is_memory=[True, False])))
+  def testIgnoreCheckpointIfCacheWritten(self, is_memory):
+    ds_fn = self.make_dataset_fn(is_memory)
+
+    # Produce 15 elements and save ckpt. This will write the complete cache.
+    outputs = self.gen_outputs(ds_fn, [], 15, verify_exhausted=False)
+    self.assertSequenceEqual(outputs, list(range(10)) + list(range(5)))
+
+    # Build the iterator again but do not restore from ckpt. Since the cache
+    # has already been written we should be able to use it.
+    outputs = self.gen_outputs(
+        ds_fn, [], self.num_outputs, verify_exhausted=False)
+    self.assertSequenceEqual(outputs, list(range(10)) * 3)
+
+
+class CacheRandomAccessTest(test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(index=[-1, 3, 4])))
+  def testInvalidIndex(self, index):
+    dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3]).cache()
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(random_access.at(dataset, index))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheRangeDataset(self):
+    dataset = dataset_ops.Dataset.range(10).cache()
+    expected_elements = list(range(10))
+    self.verifyRandomAccess(dataset, expected_elements)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheOneDimensionalElements(self):
+    tensor = [1, 2, 3]
+    dataset = dataset_ops.Dataset.from_tensor_slices(tensor).cache()
+    self.verifyRandomAccess(dataset, tensor)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheTwoDimensionalElements(self):
+    tensor = [[1, 2], [3, 4]]
+    dataset = dataset_ops.Dataset.from_tensor_slices(tensor).cache()
+    self.verifyRandomAccess(dataset, tensor)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheThreeComponents(self):
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        ([1, 2], [3, 4], [5, 6])).cache()
+    expected = [(1, 3, 5), (2, 4, 6)]
+    self.verifyRandomAccess(dataset, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheInputDatasetNotRandomlyAccessible(self):
+    dataset = dataset_ops.Dataset.range(10)
+    initial_state = constant_op.constant(0, dtypes.int64)
+    scan_func = lambda state, i: (state + i, state + i)
+    dataset = dataset.scan(
+        initial_state=initial_state, scan_func=scan_func).cache()
+    expected = [0, 1, 3, 6, 10, 15, 21, 28, 36, 45]
+    self.verifyRandomAccess(dataset, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheInputDatasetUnknownCardinality(self):
+    dataset = dataset_ops.Dataset.range(20).filter(
+        lambda x: math_ops.equal(x % 2, 0)).cache()
+    expected = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
+    self.verifyRandomAccess(dataset, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCacheInputDatasetInfiniteCardinality(self):
+    dataset = dataset_ops.Dataset.range(20).filter(
+        lambda x: math_ops.equal(x % 2, 0)).repeat(-1).cache()
+    expected = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 0, 2]
+    # Since the dataset has infinite cardinality, random access with caching
+    # will cache through the requested index. In this case, random access
+    # with caching will cache through index 11.
+    self.verifyRandomAccessInfiniteCardinality(dataset, expected)
 
 if __name__ == "__main__":
   test.main()

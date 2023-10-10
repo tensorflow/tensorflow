@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 
+#include <string>
+#include <vector>
+
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -24,12 +29,12 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
-stream_executor::port::StatusOr<ConstantOp> CreateConstOpWithSingleValue(
+tsl::StatusOr<arith::ConstantOp> CreateConstOpWithSingleValue(
     PatternRewriter* rewriter, Location loc, ShapedType shaped_type,
     int value) {
   Type element_type = shaped_type.getElementType();
   ShapedType scalar_type = RankedTensorType::get({}, element_type);
-  Attribute attr;
+  TypedAttr attr;
   if (element_type.isF16()) {
     auto floatType = mlir::FloatType::getF16(element_type.getContext());
     auto floatAttr = mlir::FloatAttr::get(floatType, static_cast<float>(value));
@@ -46,7 +51,6 @@ stream_executor::port::StatusOr<ConstantOp> CreateConstOpWithSingleValue(
   } else if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
     auto etype = complex_type.getElementType();
     if (etype.isF32()) {
-      auto dialect = etype.getContext()->getLoadedDialect("tf");
       tensorflow::TensorProto repr;
       repr.set_dtype(tensorflow::DT_COMPLEX64);
 
@@ -60,38 +64,63 @@ stream_executor::port::StatusOr<ConstantOp> CreateConstOpWithSingleValue(
       repr.set_tensor_content(content);
       std::string mangled = tensorflow::mangling_util::MangleTensor(repr);
 
-      attr = mlir::OpaqueElementsAttr::get(dialect, scalar_type, mangled);
+      attr = mlir::TF::TensorProtoAttr::get(scalar_type, mangled);
     } else {
-      return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+      return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                                 "Unsupported type");
     }
   } else if (auto itype = element_type.dyn_cast<mlir::IntegerType>()) {
-    switch (itype.getWidth()) {
-      case 8:
-        attr = DenseElementsAttr::get<int8_t>(scalar_type,
-                                              static_cast<int8_t>(value));
-        break;
-      case 16:
-        attr = DenseElementsAttr::get<int16_t>(scalar_type,
-                                               static_cast<int16_t>(value));
-        break;
-      case 32:
-        attr = DenseElementsAttr::get<int32_t>(scalar_type,
-                                               static_cast<int32_t>(value));
-        break;
-      case 64:
-        attr = DenseElementsAttr::get<int64_t>(scalar_type,
-                                               static_cast<int64_t>(value));
-        break;
-      default:
-        return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
-                                  "Unsupported type");
+    if (element_type.isSignedInteger()) {
+      switch (itype.getWidth()) {
+        case 8:
+          attr = DenseElementsAttr::get<int8_t>(scalar_type,
+                                                static_cast<int8_t>(value));
+          break;
+        case 16:
+          attr = DenseElementsAttr::get<int16_t>(scalar_type,
+                                                 static_cast<int16_t>(value));
+          break;
+        case 32:
+          attr = DenseElementsAttr::get<int32_t>(scalar_type,
+                                                 static_cast<int32_t>(value));
+          break;
+        case 64:
+          attr = DenseElementsAttr::get<int64_t>(scalar_type,
+                                                 static_cast<int64_t>(value));
+          break;
+        default:
+          return tensorflow::Status(absl::StatusCode::kInvalidArgument,
+                                    "Unsupported type");
+      }
+    } else {
+      switch (itype.getWidth()) {
+        case 8:
+          attr = DenseElementsAttr::get<uint8_t>(scalar_type,
+                                                 static_cast<uint8_t>(value));
+          break;
+        case 16:
+          attr = DenseElementsAttr::get<uint16_t>(scalar_type,
+                                                  static_cast<uint16_t>(value));
+          break;
+        case 32:
+          attr = DenseElementsAttr::get<uint32_t>(scalar_type,
+                                                  static_cast<uint32_t>(value));
+          break;
+        case 64:
+          attr = DenseElementsAttr::get<uint64_t>(scalar_type,
+                                                  static_cast<uint64_t>(value));
+          break;
+        default:
+          return tensorflow::Status(absl::StatusCode::kInvalidArgument,
+                                    "Unsupported type");
+      }
     }
   } else {
-    return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+    return tensorflow::Status(absl::StatusCode::kInvalidArgument,
                               "Unsupported type");
   }
-  return rewriter->create<ConstantOp>(loc, scalar_type, attr);
+  return rewriter->create<arith::ConstantOp>(loc, scalar_type,
+                                             cast<TypedAttr>(attr));
 }
 
 }  // namespace TFL

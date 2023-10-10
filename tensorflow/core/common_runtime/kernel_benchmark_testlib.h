@@ -24,13 +24,8 @@ limitations under the License.
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
-
-namespace testing {
-namespace benchmark {
-class State;
-}  // namespace benchmark
-}  // namespace testing
 
 namespace tensorflow {
 
@@ -38,7 +33,7 @@ class Device;
 class FunctionLibraryRuntime;
 class ProcessFunctionLibraryRuntime;
 struct SessionOptions;
-class StaticDeviceMgr;
+class DynamicDeviceMgr;
 
 namespace test {
 
@@ -56,48 +51,30 @@ class Benchmark {
   Benchmark(const string& device, Graph* g,
             const SessionOptions* options = nullptr, Graph* init = nullptr,
             Rendezvous* rendez = nullptr, const char* executor_type = "",
-            bool old_benchmark_api = true);
+            bool old_benchmark_api = false);
 
   Benchmark(const string& device, Graph* g, bool old_benchmark_api);
 
   ~Benchmark();
 
-  // Executes the graph for "iters" times.
-  // This function is deprecated. Use the overload that takes
-  // `benchmark::State&`
-  // instead.
-  [[deprecated("use `Run(benchmark::State&)` instead.")]] void Run(int iters);
-
-  void Run(::testing::benchmark::State& state);
-
-  // If "g" contains send/recv nodes, before each execution, we send
-  // inputs to the corresponding recv keys in the graph, after each
-  // execution, we recv outputs from the corresponding send keys in
-  // the graph. In the benchmark, we throw away values returned by the
-  // graph.
-  // This function is deprecated. Use the overload that takes
-  // `benchmark::State&` instead.
-  [[deprecated(
-      "use `RunWithRendezvousArgs(...,benchmark::State&)` instead.")]] void
-  RunWithRendezvousArgs(const std::vector<std::pair<string, Tensor>>& inputs,
-                        const std::vector<string>& outputs, int iters);
+  void Run(benchmark::State& state);
 
   void RunWithRendezvousArgs(
       const std::vector<std::pair<string, Tensor>>& inputs,
-      const std::vector<string>& outputs, ::testing::benchmark::State& state);
+      const std::vector<string>& outputs, benchmark::State& state);
 
  private:
   thread::ThreadPool* pool_ = nullptr;  // Not owned.
   Device* device_ = nullptr;            // Not owned.
   Rendezvous* rendez_ = nullptr;
-  std::unique_ptr<StaticDeviceMgr> device_mgr_;
+  std::unique_ptr<DynamicDeviceMgr> device_mgr_;
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
   FunctionLibraryRuntime* flr_;  // Not owned.
   std::unique_ptr<Executor> exec_;
-  bool old_benchmark_api_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Benchmark);
+  Benchmark(const Benchmark&) = delete;
+  void operator=(const Benchmark&) = delete;
 };
 
 // Returns the rendezvous key associated with the given Send/Recv node.

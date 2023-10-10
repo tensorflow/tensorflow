@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -6,10 +6,13 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
+        "//tensorflow/cc/saved_model:__subpackages__",
         "//tensorflow/core:__subpackages__",
+        "@local_tsl//tsl:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # Todo(bmzhao): Remaining targets to add to this BUILD file are all tests.
@@ -29,21 +32,11 @@ cc_library(
 
 cc_library(
     name = "bitmap",
-    srcs = ["bitmap.cc"],
     hdrs = ["bitmap.h"],
     deps = [
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
+        "@local_tsl//tsl/lib/core:bitmap",
     ],
     alwayslink = 1,
-)
-
-cc_library(
-    name = "blocking_counter",
-    hdrs = ["blocking_counter.h"],
-    deps = [
-        "//tensorflow/core/platform:blocking_counter",
-    ],
 )
 
 cc_library(
@@ -52,6 +45,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
+        "@local_tsl//tsl/lib/core:bits",
     ],
 )
 
@@ -139,20 +133,20 @@ tf_proto_library(
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
-        "//tensorflow/core/protobuf:error_codes_proto_impl",
+        "@local_tsl//tsl/protobuf:error_codes_proto_impl",
     ],
     visibility = [
         "//tensorflow/core:__subpackages__",
         "//tensorflow/core/protobuf:__subpackages__",
+        "@local_tsl//tsl:__subpackages__",
     ],
-    exports = ["//tensorflow/core/protobuf:error_codes_proto_impl"],
+    exports = ["@local_tsl//tsl/protobuf:error_codes_proto_impl"],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "blocking_counter.h",
         "coding.h",
         "errors.h",
         "refcount.h",
@@ -183,7 +177,6 @@ filegroup(
         "arena.h",
         "bitmap.h",
         "bits.h",
-        "blocking_counter.h",
         "coding.h",
         "errors.h",
         "notification.h",
@@ -195,6 +188,7 @@ filegroup(
         "threadpool.h",
         "threadpool_interface.h",
         "threadpool_options.h",
+        "@local_tsl//tsl/lib/core:legacy_lib_core_all_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -203,11 +197,8 @@ filegroup(
     name = "legacy_lib_core_all_tests",
     srcs = [
         "arena_test.cc",
-        "bitmap_test.cc",
-        "blocking_counter_test.cc",
         "coding_test.cc",
         "notification_test.cc",
-        "refcount_test.cc",
         "status_test.cc",
         "threadpool_test.cc",
     ],
@@ -217,7 +208,6 @@ filegroup(
 filegroup(
     name = "legacy_lib_internal_core_headers",
     srcs = [
-        "blocking_counter.h",
         "refcount.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -235,6 +225,7 @@ filegroup(
     name = "legacy_lib_core_status_test_util_header",
     srcs = [
         "status_test_util.h",
+        "@local_tsl//tsl/lib/core:legacy_lib_core_status_test_util_header",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -271,6 +262,7 @@ filegroup(
         "errors.h",
         "notification.h",
         "raw_coding.h",
+        "refcount.h",
         "status.h",
         "stringpiece.h",
         "threadpool.h",

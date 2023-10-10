@@ -1,0 +1,9 @@
+path: "tensorflow.types.experimental.SupportsTracingProtocol"
+tf_class {
+  is_instance: "<class \'tensorflow.python.types.trace.SupportsTracingProtocol\'>"
+  is_instance: "<class \'typing.Protocol\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+}

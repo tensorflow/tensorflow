@@ -13,28 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
+
 #ifdef GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/cuda/cuda_activation.h"
 #endif  // GOOGLE_CUDA
 
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
-#include "tensorflow/core/platform/stream_executor.h"
+#include "xla/stream_executor/device_id_utils.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
+#include "tsl/framework/device_id.h"
+#include "tsl/platform/logging.h"
 
 namespace tensorflow {
 
-GPUcudaMallocAllocator::GPUcudaMallocAllocator(Allocator* allocator,
-                                               PlatformGpuId platform_gpu_id)
-    : base_allocator_(allocator) {
-  stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
-                                                           platform_gpu_id)
-                     .ValueOrDie();
+GPUcudaMallocAllocator::GPUcudaMallocAllocator(
+    tsl::PlatformDeviceId platform_device_id) {
+  stream_exec_ = se::DeviceIdUtil::ExecutorForPlatformDeviceId(
+                     se::GPUMachineManager(), platform_device_id)
+                     .value();
 }
-
-GPUcudaMallocAllocator::~GPUcudaMallocAllocator() { delete base_allocator_; }
 
 void* GPUcudaMallocAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
 #ifdef GOOGLE_CUDA
@@ -43,9 +41,17 @@ void* GPUcudaMallocAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   CUdeviceptr rv = 0;
   CUresult res = cuMemAlloc(&rv, num_bytes);
   if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "cuMemAlloc failed to allocate " << num_bytes;
+    const char* error_name;
+    const char* error_string;
+    cuGetErrorName(res, &error_name);
+    cuGetErrorString(res, &error_string);
+    LOG(ERROR) << "cuMemAlloc failed to allocate " << num_bytes
+               << "\n Error name: " << error_name
+               << "\n Error string: " << error_string;
     return nullptr;
   }
+  VLOG(10) << "AllocateRaw " << Name() << "  " << num_bytes << " "
+           << reinterpret_cast<void*>(rv);
   return reinterpret_cast<void*>(rv);
 #else
   return nullptr;
@@ -55,14 +61,24 @@ void GPUcudaMallocAllocator::DeallocateRaw(void* ptr) {
 #ifdef GOOGLE_CUDA
   // free with cudaFree
   CUresult res = cuMemFree(reinterpret_cast<CUdeviceptr>(ptr));
-  if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "cuMemFree failed to free " << ptr;
+  if (res == CUDA_ERROR_DEINITIALIZED) {
+    // It happens with multi-GPU that TF free the GPU allocation after
+    // the driver is unloaded. It is safe to ignore this error here.
+    // cuGetErrorName and cuGetErrorString doesn't return any useful
+    // information here.
+    // TODO: Find how to fix the shutdown steps in TF.
+    VLOG(1) << "Ignoring CUDA_ERROR_DEINITIALIZED Error";
+  } else if (res != CUDA_SUCCESS) {
+    const char* error_name;
+    const char* error_string;
+    cuGetErrorName(res, &error_name);
+    cuGetErrorString(res, &error_string);
+    LOG(ERROR) << "cuMemFree failed to free " << ptr
+               << "\n Error name: " << error_name
+               << "\n Error string: " << error_string;
   }
+  VLOG(10) << Name() << " Freed ptr: " << ptr;
 #endif  // GOOGLE_CUDA
-}
-
-absl::optional<AllocatorStats> GPUcudaMallocAllocator::GetStats() {
-  return base_allocator_->GetStats();
 }
 
 bool GPUcudaMallocAllocator::TracksAllocationSizes() const { return false; }

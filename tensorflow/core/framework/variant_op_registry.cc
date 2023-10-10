@@ -26,10 +26,40 @@ limitations under the License.
 
 namespace tensorflow {
 
+const char* VariantUnaryOpToString(VariantUnaryOp op) {
+  switch (op) {
+    case INVALID_VARIANT_UNARY_OP:
+      return "INVALID";
+    case ZEROS_LIKE_VARIANT_UNARY_OP:
+      return "ZEROS_LIKE";
+    case CONJ_VARIANT_UNARY_OP:
+      return "CONJ";
+  }
+}
+
+const char* VariantBinaryOpToString(VariantBinaryOp op) {
+  switch (op) {
+    case INVALID_VARIANT_BINARY_OP:
+      return "INVALID";
+    case ADD_VARIANT_BINARY_OP:
+      return "ADD";
+  }
+}
+
 std::unordered_set<string>* UnaryVariantOpRegistry::PersistentStringStorage() {
   static std::unordered_set<string>* string_storage =
       new std::unordered_set<string>();
   return string_storage;
+}
+
+// Get a pointer to a global UnaryVariantOpRegistry object
+UnaryVariantOpRegistry* UnaryVariantOpRegistryGlobal() {
+  static UnaryVariantOpRegistry* global_unary_variant_op_registry = nullptr;
+
+  if (global_unary_variant_op_registry == nullptr) {
+    global_unary_variant_op_registry = new UnaryVariantOpRegistry;
+  }
+  return global_unary_variant_op_registry;
 }
 
 UnaryVariantOpRegistry::VariantDecodeFn* UnaryVariantOpRegistry::GetDecodeFn(
@@ -119,7 +149,7 @@ Status DeviceCopyPrimitiveType(
   // Dummy copy, we don't actually bother copying to the device and back for
   // testing.
   *out = in;
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -147,7 +177,7 @@ template <typename T>
 Status ZerosLikeVariantPrimitiveType(OpKernelContext* ctx, const T& t,
                                      T* t_out) {
   *t_out = T(0);
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -169,7 +199,7 @@ template <typename T>
 Status AddVariantPrimitiveType(OpKernelContext* ctx, const T& a, const T& b,
                                T* out) {
   *out = a + b;
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 

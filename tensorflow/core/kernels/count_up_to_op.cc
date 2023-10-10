@@ -83,12 +83,9 @@ class ResourceCountUpToOp : public OpKernel {
     AllocatorAttributes attr;
     attr.set_gpu_compatible(true);
     attr.set_nic_compatible(true);
-    PersistentTensor unused;
-    Tensor* tmp;
-    OP_REQUIRES_OK(context, context->allocate_persistent(
-                                dtype_, TensorShape({}), &unused, &tmp, attr));
-    *variable->tensor() = *tmp;
-    tmp->scalar<T>()() = before_increment.scalar<T>()() + 1;
+    OP_REQUIRES_OK(context, context->allocate_temp(dtype_, TensorShape({}),
+                                                   variable->tensor(), attr));
+    variable->tensor()->scalar<T>()() = before_increment.scalar<T>()() + 1;
     context->set_output(0, before_increment);
   }
 
@@ -106,7 +103,7 @@ class ResourceCountUpToOp : public OpKernel {
       ResourceCountUpToOp<TYPE>)
 
 REGISTER(int32);
-REGISTER(int64);
+REGISTER(int64_t);
 
 #undef REGISTER
 

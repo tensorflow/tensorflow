@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "ResizeNearestNeighbor"
   input_arg {
     name: "images"

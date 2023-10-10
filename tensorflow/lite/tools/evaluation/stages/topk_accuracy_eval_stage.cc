@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/lite/tools/evaluation/stages/topk_accuracy_eval_stage.h"
 
 #include <stdint.h>
+
+#include <algorithm>
 #include <numeric>
 
 #include "tensorflow/core/platform/logging.h"
@@ -27,8 +29,8 @@ namespace {
 std::vector<int> GetTopKIndices(const std::vector<float>& values, int k) {
   std::vector<int> indices(values.size());
   std::iota(indices.begin(), indices.end(), 0);
-  std::sort(indices.begin(), indices.end(),
-            [&values](int a, int b) { return values[a] > values[b]; });
+  std::stable_sort(indices.begin(), indices.end(),
+                   [&values](int a, int b) { return values[a] > values[b]; });
   indices.resize(k);
   return indices;
 }

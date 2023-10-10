@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/xla_builder.h"
 
 namespace tensorflow {
 namespace {
@@ -47,12 +49,14 @@ class CrossOp : public XlaOpKernel {
     // So slice 1 is: in0[...,:,:,:,1:2]
     // So slice 2 is: in0[...,:,:,:,2:3]
 
-    std::vector<int64> starts(in0_shape.dims(), 0);
-    std::vector<int64> limits;
+    std::vector<int64_t> starts(in0_shape.dims(), 0);
+    std::vector<int64_t> limits;
+    const auto& dim_sizes = in0_shape.dim_sizes();
+    limits.reserve(dim_sizes.size());
     for (auto dim_size : in0_shape.dim_sizes()) {
       limits.push_back(dim_size);
     }
-    std::vector<int64> strides(in0_shape.dims(), 1);
+    std::vector<int64_t> strides(in0_shape.dims(), 1);
 
     xla::XlaBuilder* b = ctx->builder();
     auto in0 = ctx->Input(0);
@@ -79,7 +83,8 @@ class CrossOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CrossOp);
+  CrossOp(const CrossOp&) = delete;
+  void operator=(const CrossOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("Cross"), CrossOp);

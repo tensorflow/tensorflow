@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 
 #include <vector>
+
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
@@ -213,12 +214,12 @@ TEST(TensorUtil, DeepCopySliceVariant) {
 }
 
 TEST(TensorUtil, Concat) {
-  std::vector<int64> sizes = {1, 4, 5};
+  std::vector<int64_t> sizes = {1, 4, 5};
   std::vector<Tensor> to_concat;
-  int64 total_size = 0;
+  int64_t total_size = 0;
   int offset = 0;
   for (size_t entry = 0; entry < sizes.size(); ++entry) {
-    const int64 size = sizes[entry];
+    const int64_t size = sizes[entry];
     Tensor tensor(DT_INT32, TensorShape({size, 2}));
     for (int i = offset; i < offset + size; ++i) {
       for (int j = 0; j < 2; ++j) {
@@ -244,24 +245,24 @@ TEST(TensorUtil, Split) {
   Tensor to_split(DT_INT64, TensorShape({10, 2}));
   for (int i = 0; i < 10; ++i) {
     for (int j = 0; j < 2; ++j) {
-      to_split.matrix<int64>()(i, j) = 2 * i + j;
+      to_split.matrix<int64_t>()(i, j) = 2 * i + j;
     }
   }
 
-  std::vector<int64> sizes = {1, 4, 5};
+  std::vector<int64_t> sizes = {1, 4, 5};
   std::vector<Tensor> splits;
   TF_ASSERT_OK(tensor::Split(to_split, sizes, &splits));
   ASSERT_EQ(sizes.size(), splits.size());
 
   int offset = 0;
   for (size_t entry = 0; entry < splits.size(); ++entry) {
-    const int64 size = sizes[entry];
+    const int64_t size = sizes[entry];
     const Tensor& split = splits[entry];
 
     ASSERT_EQ(TensorShape({size, 2}), split.shape());
     for (int i = offset; i < offset + size; ++i) {
       for (int j = 0; j < 2; ++j) {
-        EXPECT_EQ(2 * i + j, split.matrix<int64>()(i - offset, j));
+        EXPECT_EQ(2 * i + j, split.matrix<int64_t>()(i - offset, j));
       }
     }
 
@@ -299,19 +300,22 @@ TEST(TensorProtoUtil, CreatesStringTensorProto) {
 
   auto proto = tensor::CreateTensorProto(values, shape);
 
-  EXPECT_EQ(proto.DebugString(),
-            "dtype: DT_STRING\n"
-            "tensor_shape {\n"
-            "  dim {\n"
-            "    size: 1\n"
-            "  }\n"
-            "  dim {\n"
-            "    size: 3\n"
-            "  }\n"
-            "}\n"
-            "string_val: \"a\"\n"
-            "string_val: \"b\"\n"
-            "string_val: \"c\"\n");
+  TensorProto expected_tensor_proto;
+  protobuf::TextFormat::ParseFromString(
+      "dtype: DT_STRING\n"
+      "tensor_shape {\n"
+      "  dim {\n"
+      "    size: 1\n"
+      "  }\n"
+      "  dim {\n"
+      "    size: 3\n"
+      "  }\n"
+      "}\n"
+      "string_val: \"a\"\n"
+      "string_val: \"b\"\n"
+      "string_val: \"c\"\n",
+      &expected_tensor_proto);
+  EXPECT_EQ(proto.DebugString(), expected_tensor_proto.DebugString());
 }
 
 TEST(TensorProtoUtil, CreatesInt32TensorProto) {
@@ -320,32 +324,38 @@ TEST(TensorProtoUtil, CreatesInt32TensorProto) {
 
   auto proto = tensor::CreateTensorProto(values, shape);
 
-  EXPECT_EQ(proto.DebugString(),
-            "dtype: DT_INT32\n"
-            "tensor_shape {\n"
-            "  dim {\n"
-            "    size: 2\n"
-            "  }\n"
-            "}\n"
-            "int_val: 1\n"
-            "int_val: 2\n");
+  TensorProto expected_tensor_proto;
+  protobuf::TextFormat::ParseFromString(
+      "dtype: DT_INT32\n"
+      "tensor_shape {\n"
+      "  dim {\n"
+      "    size: 2\n"
+      "  }\n"
+      "}\n"
+      "int_val: 1\n"
+      "int_val: 2\n",
+      &expected_tensor_proto);
+  EXPECT_EQ(proto.DebugString(), expected_tensor_proto.DebugString());
 }
 
 TEST(TensorProtoUtil, CreatesInt64TensorProto) {
-  std::vector<int64> values{1, 2};
+  std::vector<int64_t> values{1, 2};
   std::vector<size_t> shape{2};
 
   auto proto = tensor::CreateTensorProto(values, shape);
 
-  EXPECT_EQ(proto.DebugString(),
-            "dtype: DT_INT64\n"
-            "tensor_shape {\n"
-            "  dim {\n"
-            "    size: 2\n"
-            "  }\n"
-            "}\n"
-            "int64_val: 1\n"
-            "int64_val: 2\n");
+  TensorProto expected_tensor_proto;
+  protobuf::TextFormat::ParseFromString(
+      "dtype: DT_INT64\n"
+      "tensor_shape {\n"
+      "  dim {\n"
+      "    size: 2\n"
+      "  }\n"
+      "}\n"
+      "int64_val: 1\n"
+      "int64_val: 2\n",
+      &expected_tensor_proto);
+  EXPECT_EQ(proto.DebugString(), expected_tensor_proto.DebugString());
 }
 
 TEST(TensorProtoUtil, CreatesUInt32TensorProto) {
@@ -354,15 +364,18 @@ TEST(TensorProtoUtil, CreatesUInt32TensorProto) {
 
   auto proto = tensor::CreateTensorProto(values, shape);
 
-  EXPECT_EQ(proto.DebugString(),
-            "dtype: DT_UINT32\n"
-            "tensor_shape {\n"
-            "  dim {\n"
-            "    size: 2\n"
-            "  }\n"
-            "}\n"
-            "uint32_val: 1\n"
-            "uint32_val: 2\n");
+  TensorProto expected_tensor_proto;
+  protobuf::TextFormat::ParseFromString(
+      "dtype: DT_UINT32\n"
+      "tensor_shape {\n"
+      "  dim {\n"
+      "    size: 2\n"
+      "  }\n"
+      "}\n"
+      "uint32_val: 1\n"
+      "uint32_val: 2\n",
+      &expected_tensor_proto);
+  EXPECT_EQ(proto.DebugString(), expected_tensor_proto.DebugString());
 }
 
 TEST(TensorProtoUtil, CreatesUInt64TensorProto) {
@@ -371,15 +384,18 @@ TEST(TensorProtoUtil, CreatesUInt64TensorProto) {
 
   auto proto = tensor::CreateTensorProto(values, shape);
 
-  EXPECT_EQ(proto.DebugString(),
-            "dtype: DT_UINT64\n"
-            "tensor_shape {\n"
-            "  dim {\n"
-            "    size: 2\n"
-            "  }\n"
-            "}\n"
-            "uint64_val: 1\n"
-            "uint64_val: 2\n");
+  TensorProto expected_tensor_proto;
+  protobuf::TextFormat::ParseFromString(
+      "dtype: DT_UINT64\n"
+      "tensor_shape {\n"
+      "  dim {\n"
+      "    size: 2\n"
+      "  }\n"
+      "}\n"
+      "uint64_val: 1\n"
+      "uint64_val: 2\n",
+      &expected_tensor_proto);
+  EXPECT_EQ(proto.DebugString(), expected_tensor_proto.DebugString());
 }
 
 TEST(TensorProtoUtil, CreatesFloatTensorProto) {
@@ -388,15 +404,18 @@ TEST(TensorProtoUtil, CreatesFloatTensorProto) {
 
   auto proto = tensor::CreateTensorProto(values, shape);
 
-  EXPECT_EQ(proto.DebugString(),
-            "dtype: DT_FLOAT\n"
-            "tensor_shape {\n"
-            "  dim {\n"
-            "    size: 2\n"
-            "  }\n"
-            "}\n"
-            "float_val: 1.1\n"
-            "float_val: 2.2\n");
+  TensorProto expected_tensor_proto;
+  protobuf::TextFormat::ParseFromString(
+      "dtype: DT_FLOAT\n"
+      "tensor_shape {\n"
+      "  dim {\n"
+      "    size: 2\n"
+      "  }\n"
+      "}\n"
+      "float_val: 1.1\n"
+      "float_val: 2.2\n",
+      &expected_tensor_proto);
+  EXPECT_EQ(proto.DebugString(), expected_tensor_proto.DebugString());
 }
 
 TEST(TensorProtoUtil, CreatesDoubleTensorProto) {
@@ -405,15 +424,18 @@ TEST(TensorProtoUtil, CreatesDoubleTensorProto) {
 
   auto proto = tensor::CreateTensorProto(values, shape);
 
-  EXPECT_EQ(proto.DebugString(),
-            "dtype: DT_DOUBLE\n"
-            "tensor_shape {\n"
-            "  dim {\n"
-            "    size: 2\n"
-            "  }\n"
-            "}\n"
-            "double_val: 1.1\n"
-            "double_val: 2.2\n");
+  TensorProto expected_tensor_proto;
+  protobuf::TextFormat::ParseFromString(
+      "dtype: DT_DOUBLE\n"
+      "tensor_shape {\n"
+      "  dim {\n"
+      "    size: 2\n"
+      "  }\n"
+      "}\n"
+      "double_val: 1.1\n"
+      "double_val: 2.2\n",
+      &expected_tensor_proto);
+  EXPECT_EQ(proto.DebugString(), expected_tensor_proto.DebugString());
 }
 
 TEST(TensorProtoUtil, CreatesBoolTensorProto) {
@@ -422,15 +444,18 @@ TEST(TensorProtoUtil, CreatesBoolTensorProto) {
 
   auto proto = tensor::CreateTensorProto(values, shape);
 
-  EXPECT_EQ(proto.DebugString(),
-            "dtype: DT_BOOL\n"
-            "tensor_shape {\n"
-            "  dim {\n"
-            "    size: 2\n"
-            "  }\n"
-            "}\n"
-            "bool_val: true\n"
-            "bool_val: false\n");
+  TensorProto expected_tensor_proto;
+  protobuf::TextFormat::ParseFromString(
+      "dtype: DT_BOOL\n"
+      "tensor_shape {\n"
+      "  dim {\n"
+      "    size: 2\n"
+      "  }\n"
+      "}\n"
+      "bool_val: true\n"
+      "bool_val: false\n",
+      &expected_tensor_proto);
+  EXPECT_EQ(proto.DebugString(), expected_tensor_proto.DebugString());
 }
 
 TEST(TensorProtoUtil, CompressTensorProtoInPlaceTooSmall) {
@@ -461,38 +486,38 @@ TEST(TensorProtoUtil, CompressTensorProtoInPlaceAllEqual) {
       tensor::CreateTensorProto(std::vector<float>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(tensor::internal::TensorProtoHelper<float>::NumValues(tensor_proto),
-            1);
+            0);
 
   tensor_proto =
       tensor::CreateTensorProto(std::vector<int>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(tensor::internal::TensorProtoHelper<int>::NumValues(tensor_proto),
-            1);
+            0);
 
   tensor_proto =
       tensor::CreateTensorProto(std::vector<uint8>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(tensor::internal::TensorProtoHelper<uint8>::NumValues(tensor_proto),
-            1);
+            0);
   tensor_proto =
       tensor::CreateTensorProto(std::vector<bool>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(tensor::internal::TensorProtoHelper<bool>::NumValues(tensor_proto),
-            1);
+            0);
 
   tensor_proto =
       tensor::CreateTensorProto(std::vector<Eigen::half>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(
       tensor::internal::TensorProtoHelper<Eigen::half>::NumValues(tensor_proto),
-      1);
+      0);
 
   tensor_proto = tensor::CreateTensorProto(
       std::vector<std::complex<float>>(kLength), {kLength});
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(tensor::internal::TensorProtoHelper<std::complex<float>>::NumValues(
                 tensor_proto),
-            1);
+            0);
 }
 
 template <typename T>
@@ -549,23 +574,24 @@ void CompareTensorValues(const TensorProto& x, const TensorProto& y) {
 }
 
 template <typename T>
-void ConstantTailTest(int64 length, int64 tail_length, bool as_field) {
+void ConstantTailTest(int64_t length, int64_t tail_length, bool as_field) {
   using TensorProtoHelper = tensor::internal::TensorProtoHelper<T>;
   using FieldType = typename TensorProtoHelper::FieldType;
   const float kMinCompressionRatio = 2.0;
-  const int64 kMinSize = 64;
+  const int64_t kMinSize = 64;
   TensorProto tensor_proto =
       as_field ? CreateAsProtoField<T>(length, tail_length)
                : CreateAsProtoTensorContent<T>(length, tail_length);
   TensorProto original_tensor_proto = tensor_proto;
-  int64 original_size =
+  int64_t original_size =
       length * (as_field ? (is_complex<T>::value ? 2 : 1) * sizeof(FieldType)
                          : sizeof(T));
-  int64 size_as_tensor_content = length * sizeof(T);
-  int64 size_as_field = std::min(length, (length - tail_length + 1)) *
-                        (is_complex<T>::value ? 2 : 1) * sizeof(FieldType);
-  bool will_compress = std::min(size_as_tensor_content, size_as_field) <=
-                       static_cast<int64>(original_size / kMinCompressionRatio);
+  int64_t size_as_tensor_content = length * sizeof(T);
+  int64_t size_as_field = std::min(length, (length - tail_length + 1)) *
+                          (is_complex<T>::value ? 2 : 1) * sizeof(FieldType);
+  bool will_compress =
+      std::min(size_as_tensor_content, size_as_field) <=
+      static_cast<int64_t>(original_size / kMinCompressionRatio);
 
   EXPECT_EQ(tensor::CompressTensorProtoInPlace(kMinSize, kMinCompressionRatio,
                                                &tensor_proto),
@@ -593,7 +619,7 @@ TEST(TensorProtoUtil, CompressTensorProtoConstantTail) {
       ConstantTailTest<complex128>(kLength, tail_length, as_field);
       ConstantTailTest<int32>(kLength, tail_length, as_field);
       ConstantTailTest<uint32>(kLength, tail_length, as_field);
-      ConstantTailTest<int64>(kLength, tail_length, as_field);
+      ConstantTailTest<int64_t>(kLength, tail_length, as_field);
       ConstantTailTest<uint64>(kLength, tail_length, as_field);
       ConstantTailTest<int8>(kLength, tail_length, as_field);
       ConstantTailTest<uint8>(kLength, tail_length, as_field);
@@ -602,6 +628,83 @@ TEST(TensorProtoUtil, CompressTensorProtoConstantTail) {
       ConstantTailTest<Eigen::half>(kLength, tail_length, as_field);
       ConstantTailTest<bfloat16>(kLength, tail_length, as_field);
     }
+  }
+}
+
+TEST(TensorProtoUtil, CompressTensorProtoNegatizeZero) {
+  TensorProto tensor_proto;
+  {
+    // Double
+    Tensor tensor(-0.0);
+    tensor.AsProtoField(&tensor_proto);
+    ASSERT_EQ(tensor_proto.double_val(0), -0.0);
+    ASSERT_TRUE(std::signbit(tensor_proto.double_val(0)));
+    tensor::CompressTensorProtoInPlace(1, 1.0, &tensor_proto);
+    ASSERT_EQ(tensor_proto.double_val(0), -0.0);
+    ASSERT_TRUE(std::signbit(tensor_proto.double_val(0)));
+  }
+  {
+    // Float
+    Tensor tensor(-0.0f);
+    tensor.AsProtoField(&tensor_proto);
+    ASSERT_EQ(tensor_proto.float_val(0), -0.0);
+    ASSERT_TRUE(std::signbit(tensor_proto.float_val(0)));
+    tensor::CompressTensorProtoInPlace(1, 1.0, &tensor_proto);
+    ASSERT_EQ(tensor_proto.float_val(0), -0.0);
+    ASSERT_TRUE(std::signbit(tensor_proto.float_val(0)));
+  }
+  {
+    // Half
+    Tensor tensor(Eigen::half(-0.0f));
+    tensor.AsProtoField(&tensor_proto);
+    ASSERT_EQ(tensor_proto.half_val(0), 0x8000);
+    tensor::CompressTensorProtoInPlace(1, 1.0, &tensor_proto);
+    ASSERT_TRUE(tensor.FromProto(tensor_proto));
+    ASSERT_EQ(tensor.scalar<Eigen::half>()(), static_cast<Eigen::half>(0.0f));
+    ASSERT_TRUE(
+        std::signbit(static_cast<float>(tensor.scalar<Eigen::half>()())));
+  }
+  {
+    // Double Complex -0.0, -0.0
+    Tensor tensor(std::complex<double>(-0.0, -0.0));
+    tensor.AsProtoField(&tensor_proto);
+    ASSERT_EQ(tensor_proto.dcomplex_val(0), -0.0);
+    ASSERT_EQ(tensor_proto.dcomplex_val(1), -0.0);
+    tensor::CompressTensorProtoInPlace(1, 1.0, &tensor_proto);
+    ASSERT_TRUE(tensor.FromProto(tensor_proto));
+    auto value = tensor.scalar<std::complex<double>>()();
+    ASSERT_EQ(value.real(), -0.0f);
+    ASSERT_TRUE(std::signbit(value.real()));
+    ASSERT_EQ(value.imag(), -0.0f);
+    ASSERT_TRUE(std::signbit(value.imag()));
+  }
+  {
+    // Double Complex 0.0, -0.0
+    Tensor tensor(std::complex<double>(0.0, -0.0));
+    tensor.AsProtoField(&tensor_proto);
+    ASSERT_EQ(tensor_proto.dcomplex_val(0), 0.0);
+    ASSERT_EQ(tensor_proto.dcomplex_val(1), -0.0);
+    tensor::CompressTensorProtoInPlace(1, 1.0, &tensor_proto);
+    ASSERT_TRUE(tensor.FromProto(tensor_proto));
+    auto value = tensor.scalar<std::complex<double>>()();
+    ASSERT_EQ(value.real(), 0.0f);
+    ASSERT_FALSE(std::signbit(value.real()));
+    ASSERT_EQ(value.imag(), -0.0f);
+    ASSERT_TRUE(std::signbit(value.imag()));
+  }
+  {
+    // Double Complex -0.0, 0.0
+    Tensor tensor(std::complex<double>(-0.0, 0.0));
+    tensor.AsProtoField(&tensor_proto);
+    ASSERT_EQ(tensor_proto.dcomplex_val(0), -0.0);
+    ASSERT_EQ(tensor_proto.dcomplex_val(1), 0.0);
+    tensor::CompressTensorProtoInPlace(1, 1.0, &tensor_proto);
+    ASSERT_TRUE(tensor.FromProto(tensor_proto));
+    auto value = tensor.scalar<std::complex<double>>()();
+    ASSERT_EQ(value.real(), -0.0f);
+    ASSERT_TRUE(std::signbit(value.real()));
+    ASSERT_EQ(value.imag(), 0.0f);
+    ASSERT_FALSE(std::signbit(value.imag()));
   }
 }
 

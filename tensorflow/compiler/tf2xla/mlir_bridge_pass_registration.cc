@@ -28,6 +28,6 @@ static mlir_pass_registration::MlirOptimizationPassRegistration
 
 static mlir_pass_registration::MlirV1CompatOptimizationPassRegistration
     register_v1_compat_mlir_bridge_pass(
-        kMlirBridgePriority, std::make_unique<MlirBridgeV1CompatPass>());
+        std::make_unique<MlirBridgeV1CompatPass>());
 
 }  // namespace tensorflow

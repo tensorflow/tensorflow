@@ -14,18 +14,13 @@
 # ==============================================================================
 """TensorFlow Debugger: Tools for debugging gradients."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 import uuid
-
-import six
 
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.lib import debug_graphs
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import variables
 
@@ -65,7 +60,7 @@ def _parse_grad_debug_op_name(op_name):
   return grad_debugger_uuid, orig_tensor_name
 
 
-class GradientsDebugger(object):
+class GradientsDebugger:
   """Gradients Debugger.
 
   Allows retrieval of gradient tensors created by TensorFlow's automatic
@@ -338,9 +333,9 @@ class GradientsDebugger(object):
     return self._gradient_tensors
 
   def _get_tensor_name(self, tensor):
-    if isinstance(tensor, (ops.Tensor, variables.Variable)):
+    if isinstance(tensor, (tensor_lib.Tensor, variables.Variable)):
       return tensor.name
-    elif isinstance(tensor, six.string_types):
+    elif isinstance(tensor, str):
       return tensor
     else:
       raise TypeError(

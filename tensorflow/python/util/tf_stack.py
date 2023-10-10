@@ -14,17 +14,11 @@
 # ==============================================================================
 """Functions used to extract and analyze stacks.  Faster than Python libs."""
 # pylint: disable=g-bad-name
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import inspect
 import threading
 
-import six
-
-# TODO(b/138203821): change to from ...util import ... once the bug is fixed.
+from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.python.util import _tf_stack
 
 # Generally such lookups should be done using `threading.local()`. See
@@ -33,15 +27,13 @@ from tensorflow.python.util import _tf_stack
 # when a thread is joined, so reusing the key does not introduce a correctness
 # issue. Moreover, get_ident is faster than storing and retrieving a unique
 # key in a thread local store.
-if six.PY2:
-  import thread  # pylint: disable=g-import-not-at-top
-  _get_thread_key = thread.get_ident
-else:
-  _get_thread_key = threading.get_ident
+_get_thread_key = threading.get_ident
 
 
-_source_mapper_stacks = collections.defaultdict(list)
-_source_filter_stacks = collections.defaultdict(list)
+# TODO(mdan): Move these to C++ as well.
+# Moving to C++ can further avoid extra copies made by get_effective_map.
+_source_mapper_stacks = collections.defaultdict(lambda: [SentinelMapper()])
+_source_filter_stacks = collections.defaultdict(lambda: [SentinelFilter()])
 
 
 class StackTraceTransform(object):
@@ -51,8 +43,6 @@ class StackTraceTransform(object):
   _thread_key = None
 
   def __enter__(self):
-    self.reset()
-
     # Any given instance is assumed to be used by a single thread, which reduces
     # expensive thread local lookups.
     if self._thread_key is None:
@@ -61,48 +51,71 @@ class StackTraceTransform(object):
       assert self._thread_key == _get_thread_key(), 'Shared across threads?'
 
     stack = self._stack_dict[self._thread_key]
-    if stack:
-      self.parent = stack[-1]
-    else:
-      self.parent = None
+    self.parent = stack[-1]
     stack.append(self)
+    self.update()
     return self
 
   def __exit__(self, unused_type, unused_value, unused_traceback):
     top = self._stack_dict[self._thread_key].pop()
     assert top is self, 'Concurrent access?'
 
-  def reset(self):
-    pass
+  def update(self):
+    raise NotImplementedError('subclasses need to override this')
 
 
 class StackTraceMapper(StackTraceTransform):
   """Allows remapping traceback information to different source code."""
   _stack_dict = _source_mapper_stacks
 
-  def reset(self):
-    self._effective_source_map = None
+  def __init__(self):
+    self.internal_map = _tf_stack.PyBindSourceMap()
+
+  def update(self):
+    self.internal_map.update_to(tuple(self.get_effective_source_map().items()))
 
   def get_effective_source_map(self):
     """Returns a map (filename, lineno) -> (filename, lineno, function_name)."""
     raise NotImplementedError('subclasses need to override this')
 
 
+EMPTY_DICT = {}
+
+
+class SentinelMapper(StackTraceMapper):
+
+  def get_effective_source_map(self):
+    return EMPTY_DICT
+
+
 class StackTraceFilter(StackTraceTransform):
   """Allows filtering traceback information by removing superfluous frames."""
   _stack_dict = _source_filter_stacks
 
-  def reset(self):
-    self._filtered_filenames = None
+  def __init__(self):
+    self.internal_set = _tf_stack.PyBindFileSet()
+
+  def update(self):
+    self.internal_set.update_to(set(self.get_filtered_filenames()))
 
   def get_filtered_filenames(self):
     raise NotImplementedError('subclasses need to override this')
+
+
+EMPTY_SET = frozenset()
+
+
+class SentinelFilter(StackTraceFilter):
+
+  def get_filtered_filenames(self):
+    return EMPTY_SET
 
 
 class CurrentModuleFilter(StackTraceFilter):
   """Filters stack frames from the module where this is used (best effort)."""
 
   def __init__(self):
+    super().__init__()
     filter_filename = None
     outer_f = None
     f = inspect.currentframe()
@@ -114,6 +127,9 @@ class CurrentModuleFilter(StackTraceFilter):
         if outer_f is not None:
           filter_filename = inspect.getsourcefile(outer_f)
       self._filename = filter_filename
+      # This may be called repeatedly: once on entry by the superclass, then by
+      # each child context manager.
+      self._cached_set = None
     finally:
       # Avoid reference cycles, see:
       # https://docs.python.org/3.7/library/inspect.html#the-interpreter-stack
@@ -121,59 +137,51 @@ class CurrentModuleFilter(StackTraceFilter):
       del outer_f
 
   def get_filtered_filenames(self):
-    if self._filtered_filenames is None:
-      self._filtered_filenames = frozenset((self._filename,))
-      if self.parent is not None:
-        self._filtered_filenames |= self.parent.get_filtered_filenames()
-    return self._filtered_filenames
+    if self._cached_set is not None:
+      return self._cached_set
+
+    filtered_filenames = frozenset((self._filename,))
+    if self.parent is not None:
+      filtered_filenames |= self.parent.get_filtered_filenames()
+    self._cached_set = filtered_filenames
+    return filtered_filenames
 
 
-def extract_stack(limit=-1):
-  """A lightweight, extensible re-implementation of traceback.extract_stack.
-
-  NOTE(mrry): traceback.extract_stack eagerly retrieves the line of code for
-      each stack frame using linecache, which results in an abundance of stat()
-      calls. This implementation does not retrieve the code, and any consumer
-      should apply _convert_stack to the result to obtain a traceback that can
-      be formatted etc. using traceback methods.
+def extract_stack(stacklevel=1):
+  """An eager-friendly alternative to traceback.extract_stack.
 
   Args:
-    limit: A limit on the number of frames to return.
+    stacklevel: number of initial frames to skip when producing the stack.
 
   Returns:
-    An object wrapping the sequence of StackFrame objects (filename, lineno,
-    name, line) corresponding to the call stack of the current thread. The
-    returned object can be indexed as a Python list.
+    A list-like FrameSummary containing StackFrame-like objects, which are
+    namedtuple-like objects with the following fields: filename, lineno, name,
+    line, meant to masquerade as traceback.FrameSummary objects.
   """
-  # N.B ExtractStack in tf_stack.cc will drop this frame prior to
-  # traversing the stack.
-  # TODO(cheshire): Remove this function, use extract_stack_for_node or Python
-  # traceback module.
   thread_key = _get_thread_key()
-  return _tf_stack.extract_stack(limit, _source_mapper_stacks[thread_key],
-                                 _source_filter_stacks[thread_key])
+  return _tf_stack.extract_stack(
+      _source_mapper_stacks[thread_key][-1].internal_map,
+      _source_filter_stacks[thread_key][-1].internal_set,
+      stacklevel,
+  )
 
 
-def extract_stack_for_node(node, limit=-1):
-  """Same as extract_stack, but also saves the retrieved stack in `node`.
-
-  Args:
-    node: Pointer to the Node object.
-    limit: A limit on the number of frames to return.
-
-  Returns:
-    An object wrapping the sequence of StackFrame objects (filename, lineno,
-    name, line) corresponding to the call stack of the current thread. The
-    returned object can be indexed as a Python list.
-  """
-  # N.B ExtractStack in tf_stack.cc will drop this frame prior to
-  # traversing the stack.
-  thread_key = _get_thread_key()
-  return _tf_stack.extract_stack_for_node(limit,
-                                          _source_mapper_stacks[thread_key],
-                                          _source_filter_stacks[thread_key],
-                                          node)
+def LoadTracesFromDebugInfo(debug_info):
+  return _tf_stack.LoadTracesFromDebugInfo(debug_info.SerializeToString())
 
 
-StackSummary = _tf_stack.StackTraceWrapper
+class GraphDebugInfoBuilder(_tf_stack.GraphDebugInfoBuilder):
+
+  def AppendGraphDebugInfo(self, fn_name, fn_debug_info):
+    debug_info_str = fn_debug_info.SerializeToString()
+    super().AppendGraphDebugInfo(fn_name, debug_info_str)
+
+  def Build(self):
+    debug_info_str = super().Build()
+    debug_info = graph_debug_info_pb2.GraphDebugInfo()
+    debug_info.ParseFromString(debug_info_str)
+    return debug_info
+
+
+StackSummary = _tf_stack.StackTrace
 FrameSummary = _tf_stack.StackFrame

@@ -12,24 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-
+# pylint: disable=g-classes-have-attributes
 """Contains the core layers: Dense, Dropout.
 
 Also contains their functional aliases.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import warnings
 
 from tensorflow.python.keras import layers as keras_layers
 from tensorflow.python.keras.legacy_tf_layers import base
 from tensorflow.python.ops import init_ops
-from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export(v1=['layers.Dense'])
 class Dense(keras_layers.Dense, base.Layer):
   """Densely-connected layer class.
 
@@ -40,7 +34,7 @@ class Dense(keras_layers.Dense, base.Layer):
   and `bias` is a bias vector created by the layer
   (only if `use_bias` is `True`).
 
-  Arguments:
+  Args:
     units: Integer or Long, dimensionality of the output space.
     activation: Activation function (callable). Set it to None to maintain a
       linear activation.
@@ -110,7 +104,6 @@ class Dense(keras_layers.Dense, base.Layer):
                                 **kwargs)
 
 
-@tf_export(v1=['layers.dense'])
 def dense(
     inputs, units,
     activation=None,
@@ -134,7 +127,7 @@ def dense(
   and `bias` is a bias vector created by the layer
   (only if `use_bias` is `True`).
 
-  Arguments:
+  Args:
     inputs: Tensor input.
     units: Integer or Long, dimensionality of the output space.
     activation: Activation function (callable). Set it to None to maintain a
@@ -188,7 +181,6 @@ def dense(
   return layer.apply(inputs)
 
 
-@tf_export(v1=['layers.Dropout'])
 class Dropout(keras_layers.Dropout, base.Layer):
   """Applies Dropout to the input.
 
@@ -197,7 +189,7 @@ class Dropout(keras_layers.Dropout, base.Layer):
   The units that are kept are scaled by `1 / (1 - rate)`, so that their
   sum is unchanged at training time and inference time.
 
-  Arguments:
+  Args:
     rate: The dropout rate, between 0 and 1. E.g. `rate=0.1` would drop out
       10% of input units.
     noise_shape: 1D tensor of type `int32` representing the shape of the
@@ -227,7 +219,6 @@ class Dropout(keras_layers.Dropout, base.Layer):
     return super(Dropout, self).call(inputs, training=training)
 
 
-@tf_export(v1=['layers.dropout'])
 def dropout(inputs,
             rate=0.5,
             noise_shape=None,
@@ -241,7 +232,7 @@ def dropout(inputs,
   The units that are kept are scaled by `1 / (1 - rate)`, so that their
   sum is unchanged at training time and inference time.
 
-  Arguments:
+  Args:
     inputs: Tensor input.
     rate: The dropout rate, between 0 and 1. E.g. "rate=0.1" would drop out
       10% of input units.
@@ -272,11 +263,10 @@ def dropout(inputs,
   return layer.apply(inputs, training=training)
 
 
-@tf_export(v1=['layers.Flatten'])
 class Flatten(keras_layers.Flatten, base.Layer):
   """Flattens an input tensor while preserving the batch axis (axis 0).
 
-  Arguments:
+  Args:
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
       `channels_last` corresponds to inputs with shape
@@ -298,11 +288,10 @@ class Flatten(keras_layers.Flatten, base.Layer):
   pass
 
 
-@tf_export(v1=['layers.flatten'])
 def flatten(inputs, name=None, data_format='channels_last'):
   """Flattens an input tensor while preserving the batch axis (axis 0).
 
-  Arguments:
+  Args:
     inputs: Tensor input.
     name: The name of the layer (string).
     data_format: A string, one of `channels_last` (default) or `channels_first`.

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/util/padding.h"
 
+#include <vector>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -30,11 +32,11 @@ Status GetPaddingFromString(StringPiece str_value, Padding* value) {
   } else {
     return errors::NotFound(str_value, " is not an allowed padding type");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CheckValidPadding(Padding padding_type,
-                         const std::vector<int64>& explicit_paddings,
+                         const std::vector<int64_t>& explicit_paddings,
                          int num_dims, TensorFormat data_format) {
   if (padding_type == Padding::EXPLICIT) {
     const int num_paddings = explicit_paddings.size();
@@ -43,14 +45,14 @@ Status CheckValidPadding(Padding padding_type,
           "explicit_paddings attribute must contain ", 2 * num_dims,
           " values, but got: ", explicit_paddings.size());
     }
-    for (int64 padding_value : explicit_paddings) {
+    for (int64_t padding_value : explicit_paddings) {
       if (padding_value < 0) {
         return errors::InvalidArgument(
             "All elements of explicit_paddings must be nonnegative");
       }
     }
-    const int32 batch_index = GetTensorBatchDimIndex(num_dims, data_format);
-    const int32 depth_index = GetTensorFeatureDimIndex(num_dims, data_format);
+    const int32_t batch_index = GetTensorBatchDimIndex(num_dims, data_format);
+    const int32_t depth_index = GetTensorFeatureDimIndex(num_dims, data_format);
     if (explicit_paddings[2 * batch_index] != 0 ||
         explicit_paddings[2 * batch_index + 1] != 0 ||
         explicit_paddings[2 * depth_index] != 0 ||
@@ -64,7 +66,7 @@ Status CheckValidPadding(Padding padding_type,
         "explicit_paddings attribute must be empty if the padding attribute is "
         "not EXPLICIT");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 string GetPaddingAttrString() { return "padding: {'SAME', 'VALID'}"; }

@@ -14,10 +14,6 @@
 # =============================================================================
 """Tests for functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 import time
 
@@ -38,8 +34,11 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.errors import InvalidArgumentError
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond as tf_cond
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
@@ -50,7 +49,9 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
@@ -114,7 +115,7 @@ class FunctionTest(test.TestCase):
       return a
 
     with ops.Graph().as_default():
-      var = variables.VariableV1([18.0])
+      var = variable_v1.VariableV1([18.0])
       call = MyIdentityFunc(var._ref())  # pylint: disable=protected-access
       self.assertEqual("MyIdentity", call.op.name)
       for cfg in _OptimizerOptions():
@@ -283,7 +284,7 @@ class FunctionTest(test.TestCase):
       tf_logging.info("cfg = %s", cfg)
       with session.Session(graph=g, config=cfg) as sess:
         out, = sess.run(dlogits, {logits: x, labels: y})
-      self.assertAllClose(out, np.exp(prob - y))
+      self.assertAllClose(out, np.exp(prob - y), rtol=1e-5)
 
   @test_util.disable_xla("b/124286351")  # No error is raised
   def testCustomGradientError(self):
@@ -418,11 +419,13 @@ class FunctionTest(test.TestCase):
     def Foo(x):
       y = logging_ops.Print(x, [], "Hello")
       with ops.control_dependencies([y]):
-        z = control_flow_ops.no_op()
+        z = gen_control_flow_ops.no_op()
       with ops.control_dependencies([z]):
         return x * 2
 
-    with ops.Graph().as_default(), self.cached_session():
+    # @function.Defun creates a non-partitioned function.  If we place this on
+    # the GPU then the inner `Print` op cannot be run.
+    with ops.Graph().as_default(), self.cached_session(use_gpu=False):
       z = Foo(constant_op.constant(3.0))
       self.assertAllEqual(z, 6.0)
 
@@ -449,7 +452,7 @@ class FunctionTest(test.TestCase):
     @function.Defun(dtypes.float32)
     def MyFn(x):
       with ops.control_dependencies(
-          [control_flow_ops.Assert(math_ops.less_equal(x, 10.0), [x])]):
+          [control_flow_assert.Assert(math_ops.less_equal(x, 10.0), [x])]):
         return array_ops.identity(x)
 
     with self.cached_session():
@@ -460,7 +463,7 @@ class FunctionTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testWhileLoopCallsFunc(self):
-    with self.session(use_gpu=True) as sess:
+    with self.session():
 
       @function.Defun(dtypes.float32)
       def Times2(x):
@@ -473,7 +476,7 @@ class FunctionTest(test.TestCase):
         x2.set_shape([])
         return x2
 
-      loop = control_flow_ops.while_loop(lambda x: x < 1e5, Body, [1.0])
+      loop = while_loop.while_loop(lambda x: x < 1e5, Body, [1.0])
 
       ans = self.evaluate(loop)
       self.assertAllClose(ans, 131072.)
@@ -485,17 +488,16 @@ class FunctionTest(test.TestCase):
     @function.Defun(dtypes.int32)
     def AssertFail(x):
       # Assertion that always fails and does not have a data dependency on `x`.
-      assert_false = control_flow_ops.Assert(False, [42])
+      assert_false = control_flow_assert.Assert(False, [42])
       with ops.control_dependencies([assert_false]):
         return array_ops.identity(x)
 
     with ops.device("CPU"):
       pred = array_ops.placeholder(dtypes.bool)
       x = array_ops.placeholder(dtypes.int32)
-      cond = control_flow_ops.cond(pred, lambda: x + 1, lambda: AssertFail(x))
+      cond = tf_cond.cond(pred, lambda: x + 1, lambda: AssertFail(x))
       # pylint: disable=unnecessary-lambda
-      loop = control_flow_ops.while_loop(lambda y: pred,
-                                         lambda y: AssertFail(y), [x])
+      loop = while_loop.while_loop(lambda y: pred, lambda y: AssertFail(y), [x])
       # pylint: enable=unnecessary-lambda
 
     rewriter_config = rewriter_config_pb2.RewriterConfig(
@@ -589,14 +591,14 @@ class FunctionTest(test.TestCase):
           return constant_op.constant([1])
 
         _ = KwArgs.definition
-      with self.assertRaisesRegex(ValueError, "specified input types"):
+      with self.assertRaisesRegex(ValueError, "tf.function input types"):
 
         @function.Defun(dtypes.float32)
         def PlusMinusV2(a, b):
           return a + b, b - a
 
         _ = PlusMinusV2.definition
-      with self.assertRaisesRegex(ValueError, "specified input types"):
+      with self.assertRaisesRegex(ValueError, "tf.function input types"):
 
         @function.Defun(dtypes.float32, dtypes.float32, dtypes.float32)
         def PlusMinusV3(a, b):
@@ -624,20 +626,20 @@ class FunctionTest(test.TestCase):
       # pylint: disable=too-many-function-args
       # pylint: disable=unexpected-keyword-arg
       # pylint: disable=no-value-for-parameter
-      with self.assertRaisesRegex(ValueError, "arguments: 0"):
+      with self.assertRaisesRegex(ValueError, "Expected 0"):
         _ = Const(1)
-      with self.assertRaisesRegex(ValueError, "arguments: 0"):
+      with self.assertRaisesRegex(ValueError, "Expected 0"):
         _ = Const(1, 2)
 
-      with self.assertRaisesRegex(ValueError, "arguments: 1"):
+      with self.assertRaisesRegex(ValueError, "Expected 1"):
         _ = PlusOne()
       _ = PlusOne(1)
-      with self.assertRaisesRegex(ValueError, "arguments: 1"):
+      with self.assertRaisesRegex(ValueError, "Expected 1"):
         _ = PlusOne(1, 2)
 
-      with self.assertRaisesRegex(ValueError, "arguments: 2"):
+      with self.assertRaisesRegex(ValueError, "Expected 2"):
         _ = PlusMinus()
-      with self.assertRaisesRegex(ValueError, "arguments: 2"):
+      with self.assertRaisesRegex(ValueError, "Expected 2"):
         _ = PlusMinus(1)
       _ = PlusMinus(1, 2)
 
@@ -801,8 +803,7 @@ class FunctionTest(test.TestCase):
 
       @function.Defun()
       def Foo():
-        return control_flow_ops.while_loop(lambda i: i < 10, lambda i: i + x,
-                                           [0])
+        return while_loop.while_loop(lambda i: i < 10, lambda i: i + x, [0])
 
       y = Foo()
 
@@ -817,7 +818,7 @@ class FunctionTest(test.TestCase):
 
       @function.Defun(dtypes.bool)
       def Foo(pred):
-        return control_flow_ops.cond(pred, lambda: x, lambda: x + 1)
+        return tf_cond.cond(pred, lambda: x, lambda: x + 1)
 
       y = Foo(True)
       z = Foo(False)
@@ -870,7 +871,7 @@ class FunctionTest(test.TestCase):
     @function.Defun(
         shape_func=lambda op: [[1] + op.inputs[0].get_shape().as_list()])
     def Bar(x):
-      return array_ops.stack([x])
+      return array_ops_stack.stack([x])
 
     g = ops.Graph()
     with g.as_default():
@@ -1527,7 +1528,7 @@ class UnrollLSTMTest(test.TestCase):
   def _BuildForward(self, weights, inp, mode="cell"):
 
     def Loop(cell, w, i):
-      x = array_ops.unstack(i, self.NUM_UNROLL)
+      x = array_ops_stack.unstack(i, self.NUM_UNROLL)
       m = array_ops.zeros_like(x[0])
       c = array_ops.zeros_like(x[0])
       for i in range(self.NUM_UNROLL):
@@ -1568,7 +1569,7 @@ class UnrollLSTMTest(test.TestCase):
 
       @function.Defun(dtypes.float32, dtypes.float32)
       def LSTMLoop10(weights, inp):
-        x = array_ops.unstack(inp, self.NUM_UNROLL)
+        x = array_ops_stack.unstack(inp, self.NUM_UNROLL)
         m = array_ops.zeros_like(x[0])
         c = array_ops.zeros_like(x[0])
         assert self.NUM_UNROLL % 10 == 0

@@ -24,8 +24,9 @@ limitations under the License.
 #include <memory>
 
 #include "public/gemmlowp.h"
+#include "pthreadpool.h"  // from @pthreadpool
 #include "ruy/context.h"  // from @ruy
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 
 namespace tflite {
@@ -53,15 +54,17 @@ class CpuBackendContext final : public TfLiteInternalBackendContext {
 
   bool use_caching() const { return use_caching_; }
 
-  void ClearCaches() override { ruy_context_->ClearPrepackedCache(); }
+  pthreadpool_t get_xnnpack_threadpool();
 
-  bool HasAvxOrAbove();
+  void ClearCaches() override { ruy_context_->ClearPrepackedCache(); }
 
   // Gemmlowp on x86 is a deprecated path but some clients may still use
   // this path based on link time dependencies.
   bool PreferGemmlowpOnX86();
 
  private:
+  bool RuyHasAvxOrAbove();
+
   // Copy the wrapper class for cpuinfo from Ruy.
   class CpuInfo final {
    public:
@@ -114,6 +117,11 @@ class CpuBackendContext final : public TfLiteInternalBackendContext {
   // CpuBackendGem operations to a library that permits such an optimization
   // (currently the Ruy library only).
   bool use_caching_;
+
+  // A smart pointer for the xnnpack threadpool. Is created by a call from the
+  // interpreter, and then consumed by xnnpack, possibly via a TFLite kernel.
+  std::unique_ptr<pthreadpool, decltype(&pthreadpool_destroy)>
+      xnnpack_threadpool_{nullptr, &pthreadpool_destroy};
 
   CpuBackendContext(const CpuBackendContext&) = delete;
 };

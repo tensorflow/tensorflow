@@ -45,7 +45,7 @@ NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
   if (status.ok()) {
     Initialize();
   } else {
-    errors_.push_back(status.error_message());
+    errors_.push_back(std::string(status.message()));
     inputs_specified_ = 0;
   }
   if (debug != nullptr) MergeDebugInfo(*debug, &node_def_);
@@ -88,7 +88,7 @@ bool NodeDefBuilder::NextArgAvailable() {
 NodeDefBuilder& NodeDefBuilder::Input(FakeInputFunctor fake_input) {
   if (NextArgAvailable()) {
     Status status = fake_input(*op_def_, inputs_specified_, node_def_, this);
-    if (!status.ok()) errors_.push_back(status.error_message());
+    if (!status.ok()) errors_.push_back(std::string(status.message()));
   }
   return *this;
 }
@@ -140,7 +140,7 @@ void NodeDefBuilder::ListInput(const OpDef::ArgDef* input_arg,
   }
 
   if (!input_arg->number_attr().empty()) {
-    Attr(input_arg->number_attr(), static_cast<int64>(src_list.size()));
+    Attr(input_arg->number_attr(), static_cast<int64_t>(src_list.size()));
     if (input_arg->type() != DT_INVALID) {
       const DataType expected = MaybeAddRef(input_arg, input_arg->type());
       for (const auto& node_out : src_list) {
@@ -235,6 +235,11 @@ Status NodeDefBuilder::Finalize(NodeDef* node_def, bool consume) {
           (*errors_ptr)[0], " while building NodeDef '", node_def_.name(),
           "' using ", SummarizeOpDef(*op_def_));
     } else {
+      if (op_def_ == nullptr) {
+        return errors::InvalidArgument(
+            errors_ptr->size(), " errors while building NodeDef '",
+            node_def_.name(), "':\n", absl::StrJoin(*errors_ptr, "\n"));
+      }
       return errors::InvalidArgument(
           errors_ptr->size(), " errors while building NodeDef '",
           node_def_.name(), "' using ", SummarizeOpDef(*op_def_), ":\n",
@@ -257,7 +262,7 @@ Status NodeDefBuilder::Finalize(NodeDef* node_def, bool consume) {
     // Add default values for unspecified attrs.
     AddDefaultsToNodeDef(*op_def_, node_def);
 
-    return Status::OK();
+    return OkStatus();
   }
 }
 
@@ -296,8 +301,8 @@ NodeDefBuilder& NodeDefBuilder::Attr(StringPiece name, AttrValue&& value) {
   }
 ATTR(StringPiece)
 ATTR(const char*)
-ATTR(int32)
-ATTR(int64)
+ATTR(int32_t)
+ATTR(int64_t)
 ATTR(float)
 ATTR(double)
 ATTR(bool)
@@ -311,7 +316,7 @@ ATTR(gtl::ArraySlice<const char*>)
 ATTR(gtl::ArraySlice<string>)
 ATTR(gtl::ArraySlice<tstring>)
 ATTR(gtl::ArraySlice<int32>)
-ATTR(gtl::ArraySlice<int64>)
+ATTR(gtl::ArraySlice<int64_t>)
 ATTR(gtl::ArraySlice<float>)
 ATTR(gtl::ArraySlice<bool>)
 ATTR(const std::vector<bool>&)

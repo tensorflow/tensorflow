@@ -20,8 +20,8 @@ END
   }
   summary: "Encode strings into web-safe base64 format."
   description: <<END
-Refer to the following article for more information on base64 format:
-en.wikipedia.org/wiki/Base64. Base64 strings may have padding with '=' at the
+Refer to [this article](https://en.wikipedia.org/wiki/Base64) for more information on
+base64 format. Base64 strings may have padding with '=' at the
 end so that the encoded has length multiple of 4. See Padding section of the
 link above.
 

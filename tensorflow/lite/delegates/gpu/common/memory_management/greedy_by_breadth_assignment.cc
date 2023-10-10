@@ -67,7 +67,7 @@ absl::Status GreedyByBreadthAssignment(
   std::vector<SharedObjectSchedule> obj_schedules;
 
   // Iterate through all tasks in non-increasing order of their breadth.
-  std::sort(task_breadth.rbegin(), task_breadth.rend());
+  std::stable_sort(task_breadth.rbegin(), task_breadth.rend());
   for (const auto& task : task_breadth) {
     // Iterate through all tensors, that must be allocated during the execution
     // of task, in non-increasing order of their tensor_size.

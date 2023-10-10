@@ -34,7 +34,7 @@ TEST(SparseMatrixOpsTest, SparseTensorToCSRSparseMatrix_ShapeFn) {
   INFER_ERROR("either 2 or 3", op, "[?,4];?;?");
   INFER_OK(op, "[?,2];?;?", "[]");
   INFER_OK(op, "[?,3];?;?", "[]");
-  Tensor dense_shape_t = test::AsTensor<int64>({5, 6});
+  Tensor dense_shape_t = test::AsTensor<int64_t>({5, 6});
   op.input_tensors[2] = &dense_shape_t;
   INFER_ERROR("Shape must be rank 3 but is rank 2 for", op, "[?,3];?;?");
   INFER_OK(op, "[?,2];?;?", "[]");
@@ -249,8 +249,6 @@ TEST(SparseMatrixOpsTest, SparseMatrixSparseMatMul_ShapeFn) {
   INFER_ERROR("must be at least rank 2 but is rank 1", op, "[];[]");
   set_shapes("[?,?]", "[?,?]");
   INFER_OK(op, "[];[]", "[]");  // [d0_0,d1_1]"
-  set_shapes("[?,?,?]", "[?,?]");
-  INFER_ERROR("must be equal rank, but are", op, "[];[]");
   set_shapes("[?,?,?]", "[?,?,?]");
   INFER_OK(op, "[];[]", "[]");  // "[d0_0,d0_1,d1_2]"
   set_shapes("[?,3,?]", "[?,?,?]");

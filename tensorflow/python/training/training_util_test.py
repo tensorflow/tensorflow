@@ -14,13 +14,9 @@
 # ==============================================================================
 """Tests for training_util."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.platform import test
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import training_util
@@ -36,7 +32,7 @@ class GlobalStepTest(test.TestCase):
   def test_invalid_dtype(self):
     with ops.Graph().as_default() as g:
       self.assertIsNone(training_util.get_global_step())
-      variables.VariableV1(
+      variable_v1.VariableV1(
           0.0,
           trainable=False,
           dtype=dtypes.float32,
@@ -50,12 +46,11 @@ class GlobalStepTest(test.TestCase):
   def test_invalid_shape(self):
     with ops.Graph().as_default() as g:
       self.assertIsNone(training_util.get_global_step())
-      variables.VariableV1(
-          [0],
-          trainable=False,
-          dtype=dtypes.int32,
-          name=ops.GraphKeys.GLOBAL_STEP,
-          collections=[ops.GraphKeys.GLOBAL_STEP])
+      variable_v1.VariableV1([0],
+                             trainable=False,
+                             dtype=dtypes.int32,
+                             name=ops.GraphKeys.GLOBAL_STEP,
+                             collections=[ops.GraphKeys.GLOBAL_STEP])
       self.assertRaisesRegex(TypeError, 'not scalar',
                              training_util.get_global_step)
     self.assertRaisesRegex(TypeError, 'not scalar',
@@ -75,7 +70,7 @@ class GlobalStepTest(test.TestCase):
   def test_get_global_step(self):
     with ops.Graph().as_default() as g:
       self.assertIsNone(training_util.get_global_step())
-      variables.VariableV1(
+      variable_v1.VariableV1(
           0,
           trainable=False,
           dtype=dtypes.int32,

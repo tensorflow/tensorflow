@@ -14,10 +14,9 @@
 # ==============================================================================
 """Functional test for moving_averages.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+import numpy as np
 
+from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -164,7 +163,7 @@ def _Repeat(value, dim):
 
 class ExponentialMovingAverageTest(test.TestCase):
 
-  def _CheckDecay(self, ema, actual_decay, dim):
+  def _CheckDecay(self, ema, actual_decay, dim, dynamic_decay_value=None):
 
     def _Scale(dk, steps):
       if ema._zero_debias:
@@ -180,6 +179,8 @@ class ExponentialMovingAverageTest(test.TestCase):
     # Note that tensor2 is not a Variable but just a plain Tensor resulting
     # from the sum operation.
     tensor2 = var0 + var1
+    if dynamic_decay_value is not None:
+      self.evaluate(ema._decay.assign(dynamic_decay_value))
     update = ema.apply([var0, var1, tensor2])
     avg0 = ema.average(var0)
     avg1 = ema.average(var1)
@@ -191,6 +192,8 @@ class ExponentialMovingAverageTest(test.TestCase):
     self.assertNotIn(avg1, variables.trainable_variables())
     self.assertNotIn(avg2, variables.trainable_variables())
     self.evaluate(variables.global_variables_initializer())
+    if dynamic_decay_value is not None:
+      self.evaluate(ema._decay.assign(dynamic_decay_value))
 
     self.assertEqual("v0/ExponentialMovingAverage:0", avg0.name)
     self.assertEqual("v1/ExponentialMovingAverage:0", avg1.name)
@@ -237,9 +240,21 @@ class ExponentialMovingAverageTest(test.TestCase):
     self._CheckDecay(ema, actual_decay=0.25, dim=1)
 
   @test_util.deprecated_graph_mode_only
+  def testAverageVariablesNoNumUpdates_Scalar_DynamicDecay(self):
+    decay_var = variables.Variable(0.75)
+    ema = moving_averages.ExponentialMovingAverage(decay_var)
+    self._CheckDecay(ema, actual_decay=0.25, dim=1, dynamic_decay_value=0.25)
+
+  @test_util.deprecated_graph_mode_only
   def testAverageVariablesNoNumUpdates_Scalar_Debias(self):
     ema = moving_averages.ExponentialMovingAverage(0.25, zero_debias=True)
     self._CheckDecay(ema, actual_decay=0.25, dim=1)
+
+  @test_util.deprecated_graph_mode_only
+  def testAverageVariablesNoNumUpdates_Scalar_Debias_DynamicDecay(self):
+    decay_var = variables.Variable(0.75)
+    ema = moving_averages.ExponentialMovingAverage(decay_var, zero_debias=True)
+    self._CheckDecay(ema, actual_decay=0.25, dim=1, dynamic_decay_value=0.25)
 
   @test_util.deprecated_graph_mode_only
   def testAverageVariablesNoNumUpdates_Vector(self):
@@ -247,35 +262,81 @@ class ExponentialMovingAverageTest(test.TestCase):
     self._CheckDecay(ema, actual_decay=0.25, dim=5)
 
   @test_util.deprecated_graph_mode_only
+  def testAverageVariablesNoNumUpdates_Vector_DynamicDecay(self):
+    decay_var = variables.Variable(0.75)
+    ema = moving_averages.ExponentialMovingAverage(decay_var)
+    self._CheckDecay(ema, actual_decay=0.25, dim=5, dynamic_decay_value=0.25)
+
+  @test_util.deprecated_graph_mode_only
   def testAverageVariablesNoNumUpdates_Vector_Debias(self):
     ema = moving_averages.ExponentialMovingAverage(0.25, zero_debias=True)
     self._CheckDecay(ema, actual_decay=0.25, dim=5)
 
   @test_util.deprecated_graph_mode_only
+  def testAverageVariablesNoNumUpdates_Vector_Debias_DynamicDecay(self):
+    decay_var = variables.Variable(0.75)
+    ema = moving_averages.ExponentialMovingAverage(decay_var, zero_debias=True)
+    self._CheckDecay(ema, actual_decay=0.25, dim=5, dynamic_decay_value=0.25)
+
+  @test_util.deprecated_graph_mode_only
   def testAverageVariablesNumUpdates_Scalar(self):
-    # With num_updates 1, the decay applied is 0.1818
+    # With num_updates 1, the decay applied is 0.181818.
     ema = moving_averages.ExponentialMovingAverage(0.25, num_updates=1)
     self._CheckDecay(ema, actual_decay=0.181818, dim=1)
+
+  @test_util.deprecated_graph_mode_only
+  def testAverageVariablesNumUpdates_Scalar_DynamicDecay(self):
+    decay_var = variables.Variable(0.75)
+    # With num_updates 1, the decay applied is 0.181818.
+    ema = moving_averages.ExponentialMovingAverage(decay_var, num_updates=1)
+    self._CheckDecay(
+        ema, actual_decay=0.181818, dim=1, dynamic_decay_value=0.25)
 
   @test_util.deprecated_graph_mode_only
   def testAverageVariablesNumUpdates_Scalar_Debias(self):
-    # With num_updates 1, the decay applied is 0.1818
+    # With num_updates 1, the decay applied is 0.181818.
     ema = moving_averages.ExponentialMovingAverage(
         0.25, num_updates=1, zero_debias=True)
     self._CheckDecay(ema, actual_decay=0.181818, dim=1)
 
   @test_util.deprecated_graph_mode_only
+  def testAverageVariablesNumUpdates_Scalar_Debias_DynamicDecay(self):
+    decay_var = variables.Variable(0.75)
+    # With num_updates 1, the decay applied is 0.181818.
+    ema = moving_averages.ExponentialMovingAverage(
+        decay_var, num_updates=1, zero_debias=True)
+    self._CheckDecay(
+        ema, actual_decay=0.181818, dim=1, dynamic_decay_value=0.25)
+
+  @test_util.deprecated_graph_mode_only
   def testAverageVariablesNumUpdates_Vector(self):
-    # With num_updates 1, the decay applied is 0.1818
+    # With num_updates 1, the decay applied is 0.181818.
     ema = moving_averages.ExponentialMovingAverage(0.25, num_updates=1)
     self._CheckDecay(ema, actual_decay=0.181818, dim=5)
 
   @test_util.deprecated_graph_mode_only
+  def testAverageVariablesNumUpdates_Vector_DynamicDecay(self):
+    decay_var = variables.Variable(0.75)
+    # With num_updates 1, the decay applied is 0.181818.
+    ema = moving_averages.ExponentialMovingAverage(decay_var, num_updates=1)
+    self._CheckDecay(
+        ema, actual_decay=0.181818, dim=5, dynamic_decay_value=0.25)
+
+  @test_util.deprecated_graph_mode_only
   def testAverageVariablesNumUpdates_Vector_Debias(self):
-    # With num_updates 1, the decay applied is 0.1818
+    # With num_updates 1, the decay applied is 0.181818.
     ema = moving_averages.ExponentialMovingAverage(
         0.25, num_updates=1, zero_debias=True)
     self._CheckDecay(ema, actual_decay=0.181818, dim=5)
+
+  @test_util.deprecated_graph_mode_only
+  def testAverageVariablesNumUpdates_Vector_Debias_DynamicDecay(self):
+    decay_var = variables.Variable(0.75)
+    # With num_updates 1, the decay applied is 0.181818.
+    ema = moving_averages.ExponentialMovingAverage(
+        decay_var, num_updates=1, zero_debias=True)
+    self._CheckDecay(
+        ema, actual_decay=0.181818, dim=5, dynamic_decay_value=0.25)
 
   @test_util.deprecated_graph_mode_only
   def testAverageVariablesWithControlDeps(self):
@@ -302,10 +363,10 @@ class ExponentialMovingAverageTest(test.TestCase):
     self.assertEqual([17.5], self.evaluate(v1_avg))
 
   def testBasicEager(self):
-    v0 = variables.Variable(1.0)
-    v1 = variables.Variable(2.0)
+    v0 = variables.Variable(1.0, name="v0")
+    v1 = variables.Variable(2.0, name="v1")
 
-    ema = moving_averages.ExponentialMovingAverage(0.25)
+    ema = moving_averages.ExponentialMovingAverage(0.25, name="foo")
     op = ema.apply([v0, v1])
     if not context.executing_eagerly():
       self.evaluate(variables.global_variables_initializer())
@@ -315,6 +376,10 @@ class ExponentialMovingAverageTest(test.TestCase):
     self.evaluate(v1.assign(4.0))
 
     self.evaluate(ema.apply([v0, v1]))
+
+    self.assertEqual("foo", ema.name)
+    self.assertEqual("v0/foo", ema.average_name(v0))
+    self.assertEqual("v1/foo", ema.average_name(v1))
 
     self.assertAllEqual(self.evaluate(ema.average(v0)), 1.75)
     self.assertAllEqual(self.evaluate(ema.average(v1)), 3.5)
@@ -442,6 +507,24 @@ class ExponentialMovingAverageTest(test.TestCase):
     self.assertEqual(ema.average(v1).op.name, ema.average_name(v1))
     self.assertEqual(ema.average(tensor2).op.name, ema.average_name(tensor2))
 
+  def testSubsetAverageVariablesNamesEager(self):
+    v0 = variables.Variable(10.0, name="v0")
+    v1 = variables.Variable(30.0, name="v1")
+    # Add a non-trainable variable.
+    v2 = variables.Variable(20.0, name="v2", trainable=False)
+    ema = moving_averages.ExponentialMovingAverage(0.25, name="foo_avg")
+    self.assertEqual("v0/foo_avg", ema.average_name(v0))
+    self.assertEqual("v1/foo_avg", ema.average_name(v1))
+    vars_to_restore = ema.variables_to_restore([v0, v1, v2])
+    self.assertAllEqual(
+        sorted(vars_to_restore.keys()),
+        sorted([
+            ema.average_name(v0), ema.average_name(v1), ema.average_name(v2)
+        ]))
+    ema.apply([v0, v1])
+    self.assertEqual(ema.average(v0).name[:-len(":0")], ema.average_name(v0))
+    self.assertEqual(ema.average(v1).name[:-len(":0")], ema.average_name(v1))
+
   @test_util.deprecated_graph_mode_only
   def testAverageVariablesDeviceAssignment(self):
     with ops.device("/job:dev_v0"):
@@ -490,6 +573,20 @@ class ExponentialMovingAverageTest(test.TestCase):
       # both get added to vars_to_restore.
       self.assertEqual(len(vars_to_restore), 1)
       self.assertIn("v/foo_avg", vars_to_restore)
+
+  @test_util.deprecated_graph_mode_only
+  def testCopyXlaSharding(self):
+    ema = moving_averages.ExponentialMovingAverage(0.25, name="foo_avg")
+    v = variables.Variable(_Repeat(10.0, 2), name="v")
+    self.assertIsNone(xla_sharding.get_tensor_sharding(v))
+    v = xla_sharding.mesh_split(v, np.array([0, 1]), [0], use_sharding_op=False)
+    self.assertIsNotNone(xla_sharding.get_tensor_sharding(v))
+    self.evaluate(variables.global_variables_initializer())
+    ema.apply([v])
+    avg = ema.average(v)
+    self.assertEqual(
+        xla_sharding.get_tensor_sharding(v),
+        xla_sharding.get_tensor_sharding(avg))
 
 
 if __name__ == "__main__":

@@ -31,14 +31,10 @@ When compiling for Android:
     --crosstool_top=//external:android/crosstool --cpu=armeabi-v7a
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import sys
 
-from tensorflow.python.platform import app
+from absl import app
 from tensorflow.python.tools import selective_registration_header_lib
 
 FLAGS = None

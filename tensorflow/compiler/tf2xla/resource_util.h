@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 class ResourceUsageAnalysis {
@@ -35,13 +34,13 @@ class ResourceUsageAnalysis {
   // and users.
   class NodeInfo {
    public:
-    absl::optional<std::string> function_name_;
+    std::optional<std::string> function_name_;
     std::string node_name_;
     std::string op_;
 
     NodeInfo() {}
 
-    NodeInfo(const absl::optional<std::string>& function_name,
+    NodeInfo(const std::optional<std::string>& function_name,
              std::string node_name, std::string op)
         : function_name_(function_name),
           node_name_(std::move(node_name)),

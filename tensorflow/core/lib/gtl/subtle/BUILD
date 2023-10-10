@@ -1,16 +1,18 @@
 # Description:
 # gtl subtle packages.
 
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
 )
 
 filegroup(
     name = "map_traits",
     srcs = [
         "map_traits.h",
+        "@local_tsl//tsl/lib/gtl/subtle:map_traits",
     ],
     visibility = ["//tensorflow/core/lib/gtl:__pkg__"],
 )

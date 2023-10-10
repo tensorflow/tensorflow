@@ -15,6 +15,35 @@ limitations under the License.
 #ifndef TENSORFLOW_C_TF_TSTRING_H_
 #define TENSORFLOW_C_TF_TSTRING_H_
 
+#include "tensorflow/c/c_api_macros.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/platform/ctstring.h"
 
-#endif  // THIRD_PARTY_TENSORFLOW_C_TF_TSTRING_H_
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+TF_CAPI_EXPORT extern void TF_StringInit(TF_TString *t);
+
+TF_CAPI_EXPORT extern void TF_StringCopy(TF_TString *dst, const char *src,
+                                         size_t size);
+
+TF_CAPI_EXPORT extern void TF_StringAssignView(TF_TString *dst, const char *src,
+                                               size_t size);
+
+TF_CAPI_EXPORT extern const char *TF_StringGetDataPointer(
+    const TF_TString *tstr);
+
+TF_CAPI_EXPORT extern TF_TString_Type TF_StringGetType(const TF_TString *str);
+
+TF_CAPI_EXPORT extern size_t TF_StringGetSize(const TF_TString *tstr);
+
+TF_CAPI_EXPORT extern size_t TF_StringGetCapacity(const TF_TString *str);
+
+TF_CAPI_EXPORT extern void TF_StringDealloc(TF_TString *tstr);
+
+#ifdef __cplusplus
+} /* end extern "C" */
+#endif
+
+#endif  // TENSORFLOW_C_TF_TSTRING_H_

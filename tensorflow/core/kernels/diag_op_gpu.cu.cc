@@ -47,7 +47,7 @@ struct DiagFunctor<GPUDevice, T> {
                                         const int64 size, const T* in, T* out) {
     // Empty tensor couldn't launch the kernel.
     if (size == 0) {
-      return Status::OK();
+      return OkStatus();
     }
 
     // GpuLaunchConfig uses an int for virtual_thread_count,
@@ -66,7 +66,7 @@ struct DiagFunctor<GPUDevice, T> {
         DiagGpuKernel<T>, diag_config.block_count, diag_config.thread_per_block,
         0, device.stream(), diag_config.virtual_thread_count, size, in, out));
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -93,7 +93,7 @@ struct DiagPartFunctor<GPUDevice, T> {
                                         const int64 size, const T* in, T* out) {
     // Empty tensor couldn't launch the kernel.
     if (size == 0) {
-      return Status::OK();
+      return OkStatus();
     }
     const GPUDevice& device = context->eigen_device<GPUDevice>();
 
@@ -104,7 +104,7 @@ struct DiagPartFunctor<GPUDevice, T> {
                         diag_config.thread_per_block, 0, device.stream(),
                         diag_config.virtual_thread_count, size, in, out));
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 

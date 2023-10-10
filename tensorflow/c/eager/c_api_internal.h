@@ -32,10 +32,12 @@ struct TFE_ContextOptions {
   bool async = false;
   TFE_ContextDevicePlacementPolicy device_placement_policy{
       TFE_DEVICE_PLACEMENT_SILENT};
-  // If true, lazily copy the remote inputs of a function to the target devices.
-  bool lazy_remote_inputs_copy = true;
   // If true, use TFRT backend
   bool use_tfrt = false;
+  // Whether to run elementary eager ops wrapped in a call op.
+  bool run_eager_op_as_function = false;
+  // Whether to rewrite jit_compile functions.
+  bool jit_compile_rewrite = false;
 };
 
 #endif  // TENSORFLOW_C_EAGER_C_API_INTERNAL_H_

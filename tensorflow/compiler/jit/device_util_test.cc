@@ -35,7 +35,7 @@ Status PickDeviceHelper(bool allow_mixing_unknown_and_cpu,
       jit::DeviceId result_id,
       PickDeviceForXla(cache, device_set, allow_mixing_unknown_and_cpu));
   *result = string(cache.GetNameFor(result_id));
-  return Status::OK();
+  return OkStatus();
 }
 
 void CheckPickDeviceResult(absl::string_view expected_result,

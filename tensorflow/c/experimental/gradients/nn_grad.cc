@@ -52,9 +52,9 @@ class ReluGradientFunction : public GradientFunction {
 
     // Calculate Grad
     std::string name = "relu_grad";
-    TF_RETURN_IF_ERROR(
-        ReluGrad(ctx, {upstream_grad, activations}, grad_inputs, name.c_str()));
-    return Status::OK();
+    TF_RETURN_IF_ERROR(ReluGrad(ctx, upstream_grad, activations,
+                                &grad_inputs[0], name.c_str()));
+    return OkStatus();
   }
   ~ReluGradientFunction() override {
     for (auto output : forward_outputs_) {
@@ -80,14 +80,13 @@ Status BroadcastMul(AbstractContext* ctx, AbstractTensorHandle* vec,
   auto imm_ctx = dyn_cast<ImmediateExecutionContext>(ctx);
   AbstractTensorPtr minus_1(imm_ctx->CreateInt32Scalar(-1));
   ImmediateTensorHandlePtr dim(imm_ctx->CreateLocalHandle(minus_1.get()));
-  vector<AbstractTensorHandle*> expand_dims_outputs(1);
-  TF_RETURN_IF_ERROR(ops::ExpandDims(ctx, {vec, dim.get()},
-                                     absl::MakeSpan(expand_dims_outputs),
-                                     "ExpandDims"));
+  AbstractTensorHandle* expand_dims_outputs;
   TF_RETURN_IF_ERROR(
-      ops::Mul(ctx, {expand_dims_outputs[0], mat}, outputs, "Mul"));
-  expand_dims_outputs[0]->Unref();
-  return Status::OK();
+      ops::ExpandDims(ctx, vec, dim.get(), &expand_dims_outputs, "ExpandDims"));
+  TF_RETURN_IF_ERROR(
+      ops::Mul(ctx, expand_dims_outputs, mat, &outputs[0], "Mul"));
+  expand_dims_outputs->Unref();
+  return OkStatus();
 }
 
 class SparseSoftmaxCrossEntropyWithLogitsGradientFunction
@@ -107,7 +106,7 @@ class SparseSoftmaxCrossEntropyWithLogitsGradientFunction
 
     // Grad for labels is null
     grad_inputs[1] = nullptr;
-    return Status::OK();
+    return OkStatus();
   }
   ~SparseSoftmaxCrossEntropyWithLogitsGradientFunction() override {}
 
@@ -143,11 +142,10 @@ class BiasAddGradientFunction : public GradientFunction {
 
     // Grad for bias
     std::string name = "bias_add_grad";
-    TF_RETURN_IF_ERROR(BiasAddGrad(ctx, {upstream_grad},
-                                   grad_inputs.subspan(1, 1),
+    TF_RETURN_IF_ERROR(BiasAddGrad(ctx, upstream_grad, &grad_inputs[1],
                                    data_format.c_str(), name.c_str()));
 
-    return Status::OK();
+    return OkStatus();
   }
   ~BiasAddGradientFunction() override {}
 

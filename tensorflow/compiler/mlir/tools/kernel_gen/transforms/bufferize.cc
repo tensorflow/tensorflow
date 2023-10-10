@@ -15,14 +15,20 @@ limitations under the License.
 
 // This file implements logic for translating mixed IR to buffer form.
 
-#include "mlir/Transforms/Bufferize.h"  // from @llvm-project
+#include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"  // from @llvm-project
 
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Complex/IR/Complex.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
 
 namespace mlir {
@@ -30,80 +36,41 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-class BufferizeConstantOp : public OpConversionPattern<ConstantOp> {
- public:
-  using OpConversionPattern<ConstantOp>::OpConversionPattern;
-
-  LogicalResult matchAndRewrite(
-      ConstantOp op, ArrayRef<Value> operands,
-      ConversionPatternRewriter &rewriter) const final {
-    // We only need to bufferize tensor constants.
-    Location loc = op.getLoc();
-    auto result_type = op.getType().dyn_cast<RankedTensorType>();
-    int64_t result_rank = result_type.getRank();
-    if (!result_type || !result_type.hasStaticShape() || result_rank > 1)
-      return failure();
-
-    auto memref_type =
-        MemRefType::get(result_type.getShape(), result_type.getElementType());
-    auto elements_attr = op.value().cast<DenseElementsAttr>();
-
-    if (result_rank == 0) {
-      Value buffer = rewriter.create<AllocOp>(loc, memref_type);
-      Value constant =
-          rewriter.create<ConstantOp>(loc, elements_attr.getValue({}));
-      rewriter.create<StoreOp>(loc, constant, buffer);
-      rewriter.replaceOp(op, {buffer});
-      return success();
-    }
-
-    Value buffer = rewriter.create<AllocaOp>(loc, memref_type);
-
-    bool all_same_elems = elements_attr.isSplat();
-    Value value;
-    if (all_same_elems)
-      value = rewriter.create<ConstantOp>(loc, elements_attr.getSplatValue());
-    for (auto en : llvm::enumerate(elements_attr.getAttributeValues())) {
-      if (!all_same_elems) value = rewriter.create<ConstantOp>(loc, en.value());
-      Value index = rewriter.create<ConstantIndexOp>(loc, en.index());
-      rewriter.create<StoreOp>(loc, value, buffer, index);
-    }
-    rewriter.replaceOp(op, {buffer});
-    return success();
-  }
-};
-
-class BufferizeDimOp : public OpConversionPattern<DimOp> {
- public:
+struct BufferizeJITExecuteOp
+    : public OpConversionPattern<tf_framework::JITExecuteOp> {
   using OpConversionPattern::OpConversionPattern;
+
   LogicalResult matchAndRewrite(
-      DimOp op, ArrayRef<Value> operands,
+      tf_framework::JITExecuteOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    DimOp::Adaptor adaptor(operands);
-    rewriter.replaceOpWithNewOp<DimOp>(op, adaptor.memrefOrTensor(),
-                                       adaptor.index());
+    Type result_ty = getTypeConverter()->convertType(op.getType());
+    rewriter.replaceOpWithNewOp<tf_framework::JITExecuteOp>(
+        op, result_ty, adaptor.getOperands(), op->getAttrs());
     return success();
   }
 };
 
-class BufferizeRankOp : public OpConversionPattern<RankOp> {
- public:
-  using OpConversionPattern::OpConversionPattern;
-  LogicalResult matchAndRewrite(
-      RankOp op, ArrayRef<Value> operands,
-      ConversionPatternRewriter &rewriter) const override {
-    RankOp::Adaptor adaptor(operands);
-    rewriter.replaceOpWithNewOp<RankOp>(op, adaptor.memrefOrTensor());
-    return success();
-  }
-};
 }  // namespace
 
-void populateExtraStdBufferizePattern(MLIRContext *context,
-                                      BufferizeTypeConverter *converter,
-                                      OwningRewritePatternList *patterns) {
-  patterns->insert<BufferizeConstantOp, BufferizeDimOp, BufferizeRankOp>(
-      *converter, context);
+void populateExtraBufferizePatterns(
+    ConversionTarget &target, MLIRContext *context,
+    bufferization::BufferizeTypeConverter *converter,
+    RewritePatternSet *patterns) {
+  target.addLegalDialect<tf_framework::TFFrameworkDialect>();
+  auto typesAreLegal = [converter](Operation *op) {
+    return converter->isLegal(op->getOperandTypes()) &&
+           converter->isLegal(op->getResultTypes());
+  };
+  target.addDynamicallyLegalOp<tf_framework::JITExecuteOp>(typesAreLegal);
+  // clang-format off
+  patterns->add<
+      BufferizeJITExecuteOp
+  >(*converter, context);
+  // clang-format on
+}
+
+void populateExtraBufferizeDialects(DialectRegistry &registry) {
+  registry.insert<tf_framework::TFFrameworkDialect>();
 }
 
 }  // namespace transforms

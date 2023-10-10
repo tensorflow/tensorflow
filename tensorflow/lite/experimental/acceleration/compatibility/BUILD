@@ -13,14 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 
-load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library", "flatbuffer_java_library")
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_android_library", "flatbuffer_cc_library", "flatbuffer_java_library")
+load("//tensorflow/core/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps", "tflite_portable_test_suite")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 flatbuffer_cc_library(
@@ -34,6 +37,31 @@ flatbuffer_java_library(
     name = "database_fbs_java",
     srcs = ["database.fbs"],
     package_prefix = "org.tensorflow",
+)
+
+flatbuffer_android_library(
+    name = "database_fbs_android",
+    srcs = ["database.fbs"],
+    package_prefix = "org.tensorflow",
+)
+
+cc_library(
+    name = "canonicalize_value",
+    srcs = ["canonicalize_value.cc"],
+    hdrs = ["canonicalize_value.h"],
+    deps = [
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_test(
+    name = "canonicalize_value_test",
+    srcs = ["canonicalize_value_test.cc"],
+    deps = [
+        ":canonicalize_value",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(
@@ -75,11 +103,11 @@ genrule(
     tools = [":json_to_fb"],
 )
 
-py_binary(
+py_strict_binary(
     name = "convert_binary_to_cc_source",
     srcs = ["convert_binary_to_cc_source.py"],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
 )
 
@@ -105,7 +133,10 @@ genrule(
 cc_library(
     name = "devicedb_sample",
     srcs = ["devicedb-sample.cc"],
-    hdrs = ["devicedb-sample.h"],
+    hdrs = [
+        "devicedb-sample.h",
+        "variables.h",
+    ],
     deps = [":database_fbs"],
 )
 
@@ -119,12 +150,15 @@ cc_test(
         ":devicedb",
         ":devicedb_sample",
         "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
         "@flatbuffers",
     ],
 )
 
-exports_files(["gpu_compatibility.bin"])
+exports_files([
+    "database.fbs",
+    "gpu_compatibility.bin",
+])
 
 genrule(
     name = "gpu_compatibility_binary",
@@ -155,31 +189,35 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_compatibility_binary_embed",
+    srcs = [":gpu_compatibility_binary.cc"],
+    hdrs = [":gpu_compatibility_binary.h"],
+)
+
+cc_library(
     name = "gpu_compatibility",
-    srcs = [
-        "gpu_compatibility.cc",
-        "gpu_compatibility_binary.cc",
-        "gpu_compatibility_binary.h",
-    ],
-    hdrs = [
-        "gpu_compatibility.h",
-    ],
+    srcs = ["gpu_compatibility.cc"],
+    hdrs = ["gpu_compatibility.h"],
     deps = [
         ":android_info",
+        ":canonicalize_value",
         ":database_fbs",
         ":devicedb",
+        ":gpu_compatibility_binary_embed",
+        "//tensorflow/lite/delegates/gpu:delegate_options",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
-        "//tensorflow/lite/delegates/gpu:delegate",
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
     ] + tflite_extra_gles_deps(),
 )
 
 cc_test(
     name = "gpu_compatibility_test",
     srcs = ["gpu_compatibility_test.cc"],
-    tags = ["no_mac"],  # b/163222453
+    tags = tf_gpu_tests_tags() + [
+        "no_cuda_asan",  # TODO(b/181032551).
+    ],
     deps = [
         ":devicedb_sample",
         ":gpu_compatibility",

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/utils/grappler_test.h"
+
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -120,7 +121,7 @@ TEST_F(GrapplerTestTest, EvaluateNodesInvalidFetch) {
   item.fetch = {"no_such_node"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   EXPECT_DEATH(EvaluateNodes(item.graph, item.fetch),
-               "Invalid argument: Tensor no_such_node:0, specified in either "
+               "Tensor no_such_node:0, specified in either "
                "feed_devices or fetch_devices was not found in the Graph");
 }
 

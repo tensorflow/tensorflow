@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/flat_map_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -36,7 +36,7 @@ class FlatMapDatasetParams : public DatasetParams {
         func_(std::move(func)),
         func_lib_(std::move(func_lib)),
         type_arguments_(std::move(type_arguments)) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
                                    input_dataset_params.iterator_prefix());
@@ -52,15 +52,16 @@ class FlatMapDatasetParams : public DatasetParams {
       input_names->emplace_back(
           absl::StrCat(FlatMapDatasetOp::kOtherArguments, "_", i));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {{FlatMapDatasetOp::kFunc, func_},
-                    {FlatMapDatasetOp::kTarguments, type_arguments_},
-                    {FlatMapDatasetOp::kOutputShapes, output_shapes_},
-                    {FlatMapDatasetOp::kOutputTypes, output_dtypes_}};
-    return Status::OK();
+    *attr_vector = {{"f", func_},
+                    {"Targuments", type_arguments_},
+                    {"output_shapes", output_shapes_},
+                    {"output_types", output_dtypes_},
+                    {"metadata", ""}};
+    return OkStatus();
   }
 
   string dataset_type() const override {
@@ -81,8 +82,8 @@ class FlatMapDatasetOpTest : public DatasetOpsTestBase {};
 // Test case 1: normal case.
 FlatMapDatasetParams FlatMapDatasetParams1() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{3, 3, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{3, 3, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice");
   auto func = FunctionDefHelper::FunctionRef(
       /*name=*/"MakeTensorSliceDataset",
@@ -104,8 +105,8 @@ FlatMapDatasetParams FlatMapDatasetParams1() {
 // of dtype DT_VARIANT.
 FlatMapDatasetParams InvalidFlatMapDatasetParams() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
-      /*components=*/{CreateTensor<int64>(TensorShape{3, 3, 1},
-                                          {0, 1, 2, 3, 4, 5, 6, 7, 8})},
+      /*components=*/{CreateTensor<int64_t>(TensorShape{3, 3, 1},
+                                            {0, 1, 2, 3, 4, 5, 6, 7, 8})},
       /*node_name=*/"tensor_slice");
   auto func = FunctionDefHelper::FunctionRef(/*name*/ "NonZero",
                                              /*attrs*/ {{"T", DT_INT64}});
@@ -123,12 +124,30 @@ std::vector<GetNextTestCase<FlatMapDatasetParams>> GetNextTestCases() {
   return {
       {/*dataset_params=*/FlatMapDatasetParams1(),
        /*expected_outputs=*/
-       CreateTensors<int64>(TensorShape({1}),
-                            {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}})}};
+       CreateTensors<int64_t>(TensorShape({1}),
+                              {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}})}};
 }
 
 ITERATOR_GET_NEXT_TEST_P(FlatMapDatasetOpTest, FlatMapDatasetParams,
                          GetNextTestCases())
+
+std::vector<SkipTestCase<FlatMapDatasetParams>> SkipTestCases() {
+  return {{/*dataset_params=*/FlatMapDatasetParams1(),
+           /*num_to_skip*/ 2, /*expected_num_skipped*/ 2, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<int64_t>(TensorShape({1}), {{2}})},
+          {/*dataset_params=*/FlatMapDatasetParams1(),
+           /*num_to_skip*/ 4, /*expected_num_skipped*/ 4, /*get_next*/ true,
+           /*expected_outputs=*/
+           CreateTensors<int64_t>(TensorShape({1}), {{4}})},
+          {/*dataset_params=*/FlatMapDatasetParams1(),
+           /*num_to_skip*/ 9, /*expected_num_skipped*/ 9, /*get_next*/ false},
+          {/*dataset_params=*/FlatMapDatasetParams1(),
+           /*num_to_skip*/ 10, /*expected_num_skipped*/ 9, /*get_next*/ false}};
+}
+
+ITERATOR_SKIP_TEST_P(FlatMapDatasetOpTest, FlatMapDatasetParams,
+                     SkipTestCases())
 
 TEST_F(FlatMapDatasetOpTest, DatasetNodeName) {
   auto dataset_params = FlatMapDatasetParams1();
@@ -186,8 +205,8 @@ IteratorSaveAndRestoreTestCases() {
       {/*dataset_params=*/FlatMapDatasetParams1(),
        /*breakpoints=*/{0, 4, 11},
        /*expected_outputs=*/
-       CreateTensors<int64>(TensorShape({1}),
-                            {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}})}};
+       CreateTensors<int64_t>(TensorShape({1}),
+                              {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}})}};
 }
 
 ITERATOR_SAVE_AND_RESTORE_TEST_P(FlatMapDatasetOpTest, FlatMapDatasetParams,
@@ -202,7 +221,7 @@ TEST_F(FlatMapDatasetOpTest, InvalidMapFunc) {
   EXPECT_EQ(
       iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence)
           .code(),
-      tensorflow::error::INVALID_ARGUMENT);
+      absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

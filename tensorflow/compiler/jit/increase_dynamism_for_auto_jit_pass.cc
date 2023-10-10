@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/cc/ops/xla_ops.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/public/session_options.h"
@@ -48,11 +48,11 @@ namespace {
 //
 //  - A T to indicate a successful operation.
 template <class T>
-using StatusOrOptional = xla::StatusOr<absl::optional<T>>;
+using StatusOrOptional = StatusOr<std::optional<T>>;
 
 StatusOrOptional<Tensor> TryToGetTensorFromConstOp(Node* n) {
   if (n->type_string() != "Const") {
-    return {absl::nullopt};
+    return {std::nullopt};
   }
 
   const TensorProto* proto = nullptr;
@@ -70,17 +70,17 @@ struct SliceInputs {
 
   // The size of the TF slice operation as a std::vector.  We can always compute
   // this because we only manipulate slices with a Const size.
-  std::vector<int64> size_as_vector;
+  std::vector<int64_t> size_as_vector;
 };
 
-std::vector<int64> IntTensorAsVector(const Tensor& t) {
+std::vector<int64_t> IntTensorAsVector(const Tensor& t) {
   DCHECK(t.dtype() == DT_INT32 || t.dtype() == DT_INT64);
-  std::vector<int64> result;
+  std::vector<int64_t> result;
   result.reserve(t.NumElements());
   for (int i = 0; i < t.NumElements(); i++) {
-    int64 element = t.dtype() == DT_INT32
-                        ? static_cast<int64>(t.flat<int32>()(i))
-                        : t.flat<int64>()(i);
+    int64_t element = t.dtype() == DT_INT32
+                          ? static_cast<int64_t>(t.flat<int32>()(i))
+                          : t.flat<int64_t>()(i);
     result.push_back(element);
   }
   return result;
@@ -108,14 +108,14 @@ StatusOrOptional<SliceInputs> GetSliceInputs(Node* slice) {
   slice_inputs.size =
       Output(slice_size_edge->src(), slice_size_edge->src_output());
 
-  TF_ASSIGN_OR_RETURN(absl::optional<Tensor> tf_slice_size,
+  TF_ASSIGN_OR_RETURN(std::optional<Tensor> tf_slice_size,
                       TryToGetTensorFromConstOp(slice_inputs.size.node()));
   if (!tf_slice_size.has_value()) {
-    return {absl::nullopt};
+    return {std::nullopt};
   }
 
   if (tf_slice_size->dims() != 1) {
-    return {absl::nullopt};
+    return {std::nullopt};
   }
 
   slice_inputs.size_as_vector = IntTensorAsVector(*tf_slice_size);
@@ -149,7 +149,7 @@ class ConstantCache {
                          const std::vector<const Edge*>& control_deps)
       : scope_(s), control_deps_(control_deps) {}
 
-  Output Get1DHostConstant(int64 constant) {
+  Output Get1DHostConstant(int64_t constant) {
     auto it = cache_.find(constant);
     if (it == cache_.end()) {
       Output new_const =
@@ -182,9 +182,9 @@ Status ComputeSliceSize(const Scope& host_scope,
   // IsRewritableSlice.
 
   if (absl::c_all_of(slice_inputs.size_as_vector,
-                     [](int64 i) { return i >= 0; })) {
+                     [](int64_t i) { return i >= 0; })) {
     *size = slice_inputs.size;
-    return Status::OK();
+    return OkStatus();
   }
 
   Output input_shape =
@@ -227,7 +227,7 @@ Status ComputeSliceSize(const Scope& host_scope,
     *size = ops::Concat(host_scope.WithOpName("slice_size"), slice_size,
                         concat_axis);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Terminology: "static sized" slice is a slice with the
@@ -310,12 +310,12 @@ Status RewriteSlice(Graph* g, Node* slice, const SliceInputs& slice_inputs,
   TF_RETURN_IF_ERROR(ConvertTensorFlowSliceToStaticShapedSlice(
       g, slice, slice_inputs, cluster_name, &static_shaped_slice));
   ReplaceTensorFlowSliceWithStaticShapedSlice(g, slice, static_shaped_slice);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Return true if `n` is a slice we should rewrite to have a static shape
 // (i.e. have the output shape only depend on the "size" input).
-xla::StatusOr<bool> ShouldRewriteSlice(Node* n) {
+StatusOr<bool> ShouldRewriteSlice(Node* n) {
   if (n->type_string() != "Slice") {
     return false;
   }
@@ -325,7 +325,7 @@ xla::StatusOr<bool> ShouldRewriteSlice(Node* n) {
     return false;
   }
 
-  TF_ASSIGN_OR_RETURN(absl::optional<SliceInputs> slice_inputs,
+  TF_ASSIGN_OR_RETURN(std::optional<SliceInputs> slice_inputs,
                       GetSliceInputs(n));
   if (!slice_inputs.has_value()) {
     return false;
@@ -333,8 +333,9 @@ xla::StatusOr<bool> ShouldRewriteSlice(Node* n) {
 
   // If slice_size[i] < -1 for any i then executing the slice will throw an
   // error, and we don't do anything here.
-  bool slice_size_has_error = absl::c_all_of(
-      slice_inputs->size_as_vector, [](int64 size_i) { return size_i >= -1; });
+  bool slice_size_has_error =
+      absl::c_all_of(slice_inputs->size_as_vector,
+                     [](int64_t size_i) { return size_i >= -1; });
   if (!slice_size_has_error) {
     return false;
   }
@@ -353,7 +354,7 @@ Status FindAndRewriteSlices(Graph* g, bool* changed) {
   }
 
   for (Node* n : slices_to_rewrite) {
-    TF_ASSIGN_OR_RETURN(absl::optional<SliceInputs> slice_inputs,
+    TF_ASSIGN_OR_RETURN(std::optional<SliceInputs> slice_inputs,
                         GetSliceInputs(n));
     TF_RET_CHECK(slice_inputs.has_value());
     TF_RETURN_IF_ERROR(
@@ -367,7 +368,7 @@ Status FindAndRewriteSlices(Graph* g, bool* changed) {
 
   *changed = !slices_to_rewrite.empty();
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -386,7 +387,7 @@ Status IncreaseDynamismForAutoJitPass::Run(
                     options.flib_def);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

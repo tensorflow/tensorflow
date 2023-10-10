@@ -36,7 +36,7 @@ Status RemoveDevice(const GraphDef& input_graph_def,
     new_node->set_device("");
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("remove_device", RemoveDevice);

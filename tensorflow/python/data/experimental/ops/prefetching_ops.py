@@ -13,14 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 """Python wrapper for prefetching_ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import structure
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import device as framework_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -39,6 +36,15 @@ def prefetch_to_device(device, buffer_size=None):
 
   NOTE: Although the transformation creates a `tf.data.Dataset`, the
   transformation must be the final `Dataset` in the input pipeline.
+
+  For example,
+  >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+  >>> dataset = dataset.apply(tf.data.experimental.prefetch_to_device("/cpu:0"))
+  >>> for element in dataset:
+  ...   print(f'Tensor {element} is on device {element.device}')
+  Tensor 1 is on device /job:localhost/replica:0/task:0/device:CPU:0
+  Tensor 2 is on device /job:localhost/replica:0/task:0/device:CPU:0
+  Tensor 3 is on device /job:localhost/replica:0/task:0/device:CPU:0
 
   Args:
     device: A string. The name of a device to which elements will be prefetched.
@@ -70,12 +76,8 @@ def copy_to_device(target_device, source_device="/cpu:0"):
   """
 
   def _apply_fn(dataset):
-    options = dataset_ops.Options()
-    options.experimental_optimization.apply_default_optimizations = False
-    options.experimental_optimization.autotune = False
     return _CopyToDeviceDataset(
-        dataset, target_device=target_device,
-        source_device=source_device).with_options(options)
+        dataset, target_device=target_device, source_device=source_device)
 
   return _apply_fn
 
@@ -94,7 +96,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
       target_device: The name of the device to which elements would be copied.
       source_device: Device where input_dataset would be placed.
     """
-    self._input_dataset = input_dataset
+    self._input_dataset = input_dataset._apply_debug_options()  # pylint: disable=protected-access
     self._target_device = target_device
     spec = framework_device.DeviceSpec().from_string(self._target_device)
     self._is_gpu_target = (spec.device_type == "GPU")
@@ -104,7 +106,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
     wrap_ds_variant = gen_dataset_ops.wrap_dataset_variant(
         self._input_dataset._variant_tensor)  # pylint: disable=protected-access
 
-    @function.defun()
+    @def_function.function()
     def _init_func():
       """Creates an iterator for the input dataset.
 
@@ -118,9 +120,9 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
           [gen_dataset_ops.make_iterator(ds_variant, resource)]):
         return gen_dataset_ops.iterator_to_string_handle(resource)
 
-    init_func_concrete = _init_func._get_concrete_function_internal()  # pylint: disable=protected-access
+    init_func_concrete = _init_func.get_concrete_function()  # pylint: disable=protected-access
 
-    @function.defun()
+    @def_function.function()
     def _remote_init_func():
       return functional_ops.remote_call(
           target=self._source_device,
@@ -128,10 +130,11 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
           Tout=[dtypes.string],
           f=init_func_concrete)
 
-    self._init_func = _remote_init_func._get_concrete_function_internal()  # pylint: disable=protected-access
+    self._init_func = _remote_init_func.get_concrete_function()  # pylint: disable=protected-access
     self._init_captured_args = self._init_func.captured_inputs
 
-    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _next_func(string_handle):
       """Calls get_next for created iterator.
 
@@ -148,11 +151,11 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
             dataset_ops.get_legacy_output_classes(self))
       return structure.to_tensor_list(self.element_spec, iterator.get_next())
 
-    next_func_concrete = _next_func._get_concrete_function_internal()  # pylint: disable=protected-access
+    next_func_concrete = _next_func.get_concrete_function()  # pylint: disable=protected-access
 
-    @function.defun_with_attributes(
+    @def_function.function(
         input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
-        attributes={"experimental_ints_on_device": True})
+        experimental_attributes={"experimental_ints_on_device": True})
     def _remote_next_func(string_handle):
       return functional_ops.remote_call(
           target=self._source_device,
@@ -160,10 +163,11 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
           Tout=self._input_dataset._flat_types,  # pylint: disable=protected-access
           f=next_func_concrete)
 
-    self._next_func = _remote_next_func._get_concrete_function_internal()  # pylint: disable=protected-access
+    self._next_func = _remote_next_func.get_concrete_function()
     self._next_captured_args = self._next_func.captured_inputs
 
-    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _finalize_func(string_handle):
       """Destroys the iterator resource created.
 
@@ -180,9 +184,10 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
               iterator_resource, ignore_lookup_error=True)]):
         return array_ops.constant(0, dtypes.int64)
 
-    finalize_func_concrete = _finalize_func._get_concrete_function_internal()  # pylint: disable=protected-access
+    finalize_func_concrete = _finalize_func.get_concrete_function()  # pylint: disable=protected-access
 
-    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _remote_finalize_func(string_handle):
       return functional_ops.remote_call(
           target=self._source_device,
@@ -190,7 +195,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
           Tout=[dtypes.int64],
           f=finalize_func_concrete)
 
-    self._finalize_func = _remote_finalize_func._get_concrete_function_internal(  # pylint: disable=protected-access
+    self._finalize_func = _remote_finalize_func.get_concrete_function(  # pylint: disable=protected-access
     )
     self._finalize_captured_args = self._finalize_func.captured_inputs
 
@@ -218,9 +223,10 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
   # GPU
   def make_one_shot_iterator(self):
     if self._is_gpu_target:
-      raise ValueError("Cannot create a one shot iterator when using "
-                       "`tf.data.experimental.copy_to_device()` on GPU. Please "
-                       "use `Dataset.make_initializable_iterator()` instead.")
+      raise ValueError(
+          "`make_one_shot_iterator` is not compatible with GPU execution. "
+          "Please use `Dataset.make_initializable_iterator()` instead."
+      )
     else:
       return super(_CopyToDeviceDataset, self).make_one_shot_iterator()
 
@@ -233,7 +239,7 @@ class _MapOnGpuDataset(dataset_ops.UnaryDataset):
     self._input_dataset = input_dataset
     self._use_inter_op_parallelism = use_inter_op_parallelism
 
-    self._map_func = dataset_ops.StructuredFunctionWrapper(
+    self._map_func = structured_function.StructuredFunctionWrapper(
         map_func,
         self._transformation_name(),
         dataset=input_dataset,

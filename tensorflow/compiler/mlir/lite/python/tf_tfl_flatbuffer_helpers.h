@@ -15,11 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_PYTHON_TF_TFL_FLATBUFFER_HELPERS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_PYTHON_TF_TFL_FLATBUFFER_HELPERS_H_
 
+#include <optional>
 #include <ostream>
+#include <string>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
-#include "llvm/ADT/Optional.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -27,7 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace internal {
@@ -39,19 +42,20 @@ Status RegisterAllCustomOps(const toco::TocoFlags& toco_flags);
 // input arrays.
 Status PopulateQuantizationSpecs(
     const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
-    mlir::TFL::QuantizationSpecs* quant_specs, std::vector<string>* node_names,
-    std::vector<string>* node_dtypes,
-    std::vector<llvm::Optional<std::vector<int>>>* node_shapes,
-    std::vector<llvm::Optional<double>>* node_mins,
-    std::vector<llvm::Optional<double>>* node_maxs);
+    mlir::quant::QuantizationSpecs* quant_specs,
+    std::vector<string>* node_names, std::vector<string>* node_dtypes,
+    std::vector<std::optional<std::vector<int>>>* node_shapes,
+    std::vector<std::optional<double>>* node_mins,
+    std::vector<std::optional<double>>* node_maxs);
 
 // Convert imported MLIR file to TfLite flatbuffer.
 // This will also run relevant passes as well.
 Status ConvertMLIRToTFLiteFlatBuffer(
-    const toco::TocoFlags& toco_flags, mlir::OwningModuleRef module,
+    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
+    mlir::OwningOpRef<mlir::ModuleOp> module,
     const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags, string* result,
-    llvm::Optional<tensorflow::Session*> session);
+    std::optional<tensorflow::Session*> session);
 
 // Give a warning for any unused flags that have been specified.
 void WarningUnusedFlags(const toco::ModelFlags& model_flags,

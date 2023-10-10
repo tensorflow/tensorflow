@@ -12,11 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/record_writer.h"
@@ -43,7 +45,7 @@ class ToTFRecordOp : public AsyncOpKernel {
       return errors::InvalidArgument(argument_name, " must be a scalar");
     }
     *output = argument_t->scalar<T>()();
-    return Status::OK();
+    return OkStatus();
   }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
@@ -59,6 +61,7 @@ class ToTFRecordOp : public AsyncOpKernel {
   Status DoCompute(OpKernelContext* ctx) {
     tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                    ctx->op_kernel().type_string());
+    metrics::RecordTFDataFetchOp("ToTFRecordOp");
     tstring filename;
     TF_RETURN_IF_ERROR(
         ParseScalarArgument<tstring>(ctx, "filename", &filename));
@@ -67,7 +70,7 @@ class ToTFRecordOp : public AsyncOpKernel {
                                                     &compression_type));
     std::unique_ptr<WritableFile> file;
     TF_RETURN_IF_ERROR(ctx->env()->NewWritableFile(filename, &file));
-    auto writer = absl::make_unique<io::RecordWriter>(
+    auto writer = std::make_unique<io::RecordWriter>(
         file.get(),
         io::RecordWriterOptions::CreateRecordWriterOptions(compression_type));
 
@@ -83,12 +86,28 @@ class ToTFRecordOp : public AsyncOpKernel {
     params.cancellation_manager = &cancellation_manager;
 
     IteratorContext iter_ctx(std::move(params));
+    DatasetBase* finalized_dataset;
+    TF_RETURN_IF_ERROR(FinalizeDataset(ctx, dataset, &finalized_dataset));
+    core::ScopedUnref unref(finalized_dataset);
+
     std::unique_ptr<IteratorBase> iterator;
-    TF_RETURN_IF_ERROR(dataset->MakeIterator(
+    TF_RETURN_IF_ERROR(finalized_dataset->MakeIterator(
         &iter_ctx, /*parent=*/nullptr, "ToTFRecordOpIterator", &iterator));
 
+    const int num_output_dtypes = finalized_dataset->output_dtypes().size();
+    if (num_output_dtypes != 1) {
+      return errors::InvalidArgument(
+          "ToTFRecordOp currently only support datasets of 1 single column, ",
+          "but got ", num_output_dtypes);
+    }
+    const DataType dt = finalized_dataset->output_dtypes()[0];
+    if (dt != DT_STRING) {
+      return errors::InvalidArgument(
+          "ToTFRecordOp currently only supports DT_STRING dataypes, but got ",
+          DataTypeString(dt));
+    }
     std::vector<Tensor> components;
-    components.reserve(dataset->output_dtypes().size());
+    components.reserve(num_output_dtypes);
     bool end_of_sequence;
     do {
       TF_RETURN_IF_ERROR(
@@ -100,7 +119,7 @@ class ToTFRecordOp : public AsyncOpKernel {
       }
       components.clear();
     } while (!end_of_sequence);
-    return Status::OK();
+    return OkStatus();
   }
 
   BackgroundWorker background_worker_;

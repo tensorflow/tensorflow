@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "tensorflow/compiler/xla/client/lib/matrix.h"
-#include "tensorflow/compiler/xla/client/lib/qr.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/lib/matrix.h"
+#include "xla/client/lib/qr.h"
+#include "xla/client/xla_builder.h"
 
 namespace tensorflow {
 namespace {
@@ -29,7 +29,7 @@ class MatrixInverseOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape input_shape = ctx->InputShape(0);
-    int64 ndims = input_shape.dims();
+    int64_t ndims = input_shape.dims();
     OP_REQUIRES(
         ctx, ndims >= 2,
         errors::InvalidArgument("Input must have rank >= 2, got ", ndims));
@@ -42,22 +42,23 @@ class MatrixInverseOp : public XlaOpKernel {
     xla::XlaOp input = xla::MaybeTransposeInMinorDims(ctx->Input(0), adjoint_);
 
     // TODO(b/111271662): Using LU decomposition instead of QR should be faster.
-    auto qr = xla::QRDecomposition(input, /*full_matrices=*/false);
-    OP_REQUIRES_OK(ctx, qr.status());
+    xla::XlaOp q, r;
+    QrExplicit(input, /*full_matrices=*/false, q, r);
 
-    xla::XlaOp output = xla::TriangularSolve(
-        qr.ValueOrDie().r, xla::TransposeInMinorDims(qr.ValueOrDie().q),
-        /*left_side=*/true,
-        /*lower=*/false, /*unit_diagonal=*/false,
-        /*transpose_a=*/
-        xla::TriangularSolveOptions::NO_TRANSPOSE);
+    xla::XlaOp output =
+        xla::TriangularSolve(r, xla::TransposeInMinorDims(q),
+                             /*left_side=*/true,
+                             /*lower=*/false, /*unit_diagonal=*/false,
+                             /*transpose_a=*/
+                             xla::TriangularSolveOptions::NO_TRANSPOSE);
     ctx->SetOutput(0, output);
   }
 
  private:
   bool adjoint_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixInverseOp);
+  MatrixInverseOp(const MatrixInverseOp&) = delete;
+  void operator=(const MatrixInverseOp&) = delete;
 };
 
 // TODO(b/135640736): Allow this for integer and complex types.

@@ -22,10 +22,14 @@
 #   INPUT_FRAMEWORK: a zip file containing the iOS static framework.
 #   BUNDLE_NAME: the pod/bundle name of the iOS static framework.
 #   ALLOWLIST_FILE_PATH: contains the allowed symbols.
+#   EXTRACT_SCRIPT_PATH: path to the extract_object_files script.
 #   OUTPUT: the output zip file.
 
 # Halt on any error or any unknown variable.
 set -ue
+
+# mktemp from coreutils has different flags. Make sure we get the iOS one.
+MKTEMP=/usr/bin/mktemp
 
 LD_DEBUGGABLE_FLAGS="-x"
 # Uncomment the below to get debuggable output. This can only be done for one
@@ -43,7 +47,7 @@ if grep -q "^__Z" "${ALLOWLIST_FILE_PATH}"; then
   exit 1 # terminate and indicate error
 fi
 # Unzips the framework zip file into a temp workspace.
-framework=$(mktemp -t framework -d)
+framework=$($MKTEMP -t framework -d)
 unzip "${INPUT_FRAMEWORK}" -d "${framework}"/
 
 # Executable file in the framework.
@@ -59,7 +63,7 @@ merge_cmd=(xcrun lipo)
 
 # Merges object files and hide symbols for each architecture.
 for arch in "${archs[@]}"; do
-    archdir=$(mktemp -t "${arch}" -d)
+    archdir=$($MKTEMP -t "${arch}" -d)
     arch_file="${archdir}/${arch}"
 
     # Handles the binary differently if they are fat or thin.
@@ -81,10 +85,19 @@ for arch in "${archs[@]}"; do
          echo
       fi
     fi
-    xcrun ar -x "${arch_file}"
-    mv *.o "${archdir}"/
+    if [[ ! -z "${EXTRACT_SCRIPT_PATH}" ]]; then
+      "${EXTRACT_SCRIPT_PATH}" "${arch_file}" "${archdir}"
+    else
+      # ar tool extracts the objects in the current working directory. Since the
+      # default working directory for a genrule is always the same, there can be
+      # a race condition when this script is called for multiple targets
+      # simultaneously.
+      pushd "${archdir}" > /dev/null
+      xcrun ar -x "${arch_file}"
+      popd > /dev/null
+    fi
 
-    objects_file_list=$(mktemp)
+    objects_file_list=$($MKTEMP)
     # Hides the symbols except the allowed ones.
     find "${archdir}" -name "*.o" >> "${objects_file_list}"
 

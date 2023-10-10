@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Debugger Wrapper Session Consisting of a Local Curses-based CLI."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import tempfile
 
@@ -58,8 +54,7 @@ class DumpingDebugWrapperDiskUsageLimitTest(test_util.TensorFlowTestCase):
       del fetches, feeds
       return "DebugIdentity", r"(.*delta.*|.*inc_v.*)", r".*"
     sess = dumping_wrapper.DumpingDebugWrapperSession(
-        self.sess, session_root=self.session_root,
-        watch_fn=_watch_fn, log_usage=False)
+        self.sess, session_root=self.session_root, watch_fn=_watch_fn)
     sess.run(self.inc_v)
 
   def testWrapperSessionExceedingLimit(self):
@@ -67,8 +62,7 @@ class DumpingDebugWrapperDiskUsageLimitTest(test_util.TensorFlowTestCase):
       del fetches, feeds
       return "DebugIdentity", r".*delta.*", r".*"
     sess = dumping_wrapper.DumpingDebugWrapperSession(
-        self.sess, session_root=self.session_root,
-        watch_fn=_watch_fn, log_usage=False)
+        self.sess, session_root=self.session_root, watch_fn=_watch_fn)
     # Due to the watch function, each run should dump only 1 tensor,
     # which has a size of 4 bytes, which corresponds to the dumped 'delta:0'
     # tensor of scalar shape and float32 dtype.
@@ -86,7 +80,7 @@ class DumpingDebugWrapperDiskUsageLimitTest(test_util.TensorFlowTestCase):
       del fetches, feeds
       return "DebugIdentity", r".*delta.*", r".*"
     dumping_hook = hooks.DumpingDebugHook(
-        self.session_root, watch_fn=_watch_fn, log_usage=False)
+        self.session_root, watch_fn=_watch_fn)
     mon_sess = monitored_session._HookedSession(self.sess, [dumping_hook])
     mon_sess.run(self.inc_v)
 
@@ -95,7 +89,7 @@ class DumpingDebugWrapperDiskUsageLimitTest(test_util.TensorFlowTestCase):
       del fetches, feeds
       return "DebugIdentity", r".*delta.*", r".*"
     dumping_hook = hooks.DumpingDebugHook(
-        self.session_root, watch_fn=_watch_fn, log_usage=False)
+        self.session_root, watch_fn=_watch_fn)
     mon_sess = monitored_session._HookedSession(self.sess, [dumping_hook])
     # Like in `testWrapperSessionExceedingLimit`, the first two calls
     # should be within the byte limit, but the third one should error

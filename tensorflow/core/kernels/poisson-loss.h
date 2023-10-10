@@ -84,7 +84,7 @@ class PoissonLossUpdater : public DualLossUpdater {
           "Only non-negative labels can be used with the Poisson log loss. "
           "Found example with label: ", *example_label);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

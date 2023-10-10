@@ -52,7 +52,7 @@ and the following optional parameters:
 
 *   `delegate`: `string` \
     If provided, tries to use the specified delegate on the test Interpreter.
-    Valid values: "nnapi", "gpu", "hexagon".
+    Valid values: "nnapi", "gpu", "hexagon", "coreml".
 
     NOTE: Please refer to the
     [Hexagon delegate documentation](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/hexagon_delegate.md)
@@ -69,6 +69,17 @@ This script also supports runtime/delegate arguments introduced by the
 If there is any conflict (for example, `num_threads` vs
 `num_interpreter_threads` here), the parameters of this
 script are given precedence.
+
+When **multiple delegates** are specified to be used in the commandline flags
+via the support of delegate registrar, the order of delegates applied to the
+TfLite runtime will be same as their enabling commandline flag is specified. For
+example, "--use_xnnpack=true --use_gpu=true" means applying the XNNPACK delegate
+first, and then the GPU delegate secondly. In comparison,
+"--use_gpu=true --use_xnnpack=true" means applying the GPU delegate first, and
+then the XNNPACK delegate secondly.
+
+Note, one could specify `--help` when launching the binary to see the full list
+of supported arguments.
 
 ## Running the binary on Android
 
@@ -106,3 +117,9 @@ adb shell /data/local/tmp/run_eval \
 ```
 adb pull /data/local/tmp/inference_diff.txt ~/accuracy_tool
 ```
+
+## Running the binary on iOS
+
+Follow the instructions [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/evaluation/tasks/ios/README.md)
+to run the binary on iOS using the
+[iOS evaluation app](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/evaluation/tasks/ios).

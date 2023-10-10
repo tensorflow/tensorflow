@@ -21,10 +21,10 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/context.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/profiling/buffered_profiler.h"
 #include "tensorflow/lite/version.h"
 
@@ -113,17 +113,18 @@ TEST(ProfileSummarizerTest, Interpreter) {
   interpreter->SetProfiler(&profiler);
   profiler.StartProfiling();
   m.SetInputs(1, 2);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // 3 = 1 + 2
   EXPECT_EQ(m.GetOutput(), 3);
   profiler.StopProfiling();
   ProfileSummarizer summarizer;
   auto events = profiler.GetProfileEvents();
-  EXPECT_EQ(1, events.size());
+  EXPECT_EQ(2, events.size());
   summarizer.ProcessProfiles(profiler.GetProfileEvents(), *interpreter);
   auto output = summarizer.GetOutputString();
   // TODO(shashishekhar): Add a better test here.
   ASSERT_TRUE(output.find("SimpleOpEval") != std::string::npos) << output;
+  ASSERT_TRUE(output.find("Invoke") == std::string::npos) << output;  // NOLINT
 }
 
 TEST(ProfileSummarizerTest, InterpreterPlusProfilingDetails) {
@@ -134,13 +135,13 @@ TEST(ProfileSummarizerTest, InterpreterPlusProfilingDetails) {
   interpreter->SetProfiler(&profiler);
   profiler.StartProfiling();
   m.SetInputs(1, 2);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   // 3 = 1 + 2
   EXPECT_EQ(m.GetOutput(), 3);
   profiler.StopProfiling();
   ProfileSummarizer summarizer;
   auto events = profiler.GetProfileEvents();
-  EXPECT_EQ(1, events.size());
+  EXPECT_EQ(2, events.size());
   summarizer.ProcessProfiles(profiler.GetProfileEvents(), *interpreter);
   auto output = summarizer.GetOutputString();
   // TODO(shashishekhar): Add a better test here.
@@ -153,7 +154,7 @@ TEST(ProfileSummarizerTest, InterpreterPlusProfilingDetails) {
 class ProfileSummarizerIfOpTest : public subgraph_test_util::ControlFlowOpTest {
  protected:
   void SetUp() override {
-    interpreter_->AddSubgraphs(2);
+    AddSubgraphs(2);
     builder_->BuildAddSubgraph(interpreter_->subgraph(1));
     builder_->BuildMulSubgraph(interpreter_->subgraph(2));
     builder_->BuildIfSubgraph(&interpreter_->primary_subgraph());
@@ -182,7 +183,7 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfTrue) {
   subgraph_test_util::CheckIntTensor(output, {1, 2}, {6, 9});
 
   auto events = profiler.GetProfileEvents();
-  EXPECT_EQ(2, events.size());
+  EXPECT_EQ(5, events.size());
   int event_count_of_subgraph_zero = std::count_if(
       events.begin(), events.end(),
       [](auto event) { return event->extra_event_metadata == 0; });
@@ -192,8 +193,8 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfTrue) {
   int event_count_of_subgraph_two = std::count_if(
       events.begin(), events.end(),
       [](auto event) { return event->extra_event_metadata == 2; });
-  EXPECT_EQ(1, event_count_of_subgraph_zero);
-  EXPECT_EQ(1, event_count_of_subgraph_one);
+  EXPECT_EQ(2, event_count_of_subgraph_zero);
+  EXPECT_EQ(3, event_count_of_subgraph_one);
   EXPECT_EQ(0, event_count_of_subgraph_two);
 }
 
@@ -209,7 +210,7 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfFalse) {
   subgraph_test_util::CheckIntTensor(output, {1, 2}, {5, 14});
 
   auto events = profiler.GetProfileEvents();
-  EXPECT_EQ(2, events.size());
+  EXPECT_EQ(5, events.size());
   int event_count_of_subgraph_zero = std::count_if(
       events.begin(), events.end(),
       [](auto event) { return event->extra_event_metadata == 0; });
@@ -219,9 +220,9 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfFalse) {
   int event_count_of_subgraph_two = std::count_if(
       events.begin(), events.end(),
       [](auto event) { return event->extra_event_metadata == 2; });
-  EXPECT_EQ(1, event_count_of_subgraph_zero);
+  EXPECT_EQ(2, event_count_of_subgraph_zero);
   EXPECT_EQ(0, event_count_of_subgraph_one);
-  EXPECT_EQ(1, event_count_of_subgraph_two);
+  EXPECT_EQ(3, event_count_of_subgraph_two);
 }
 
 }  // namespace

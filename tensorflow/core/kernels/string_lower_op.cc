@@ -49,13 +49,13 @@ class StringLowerOp : public OpKernel {
     auto output = output_tensor->flat<tstring>();
 
     if (encoding_.empty()) {
-      for (int64 i = 0; i < input.size(); ++i) {
+      for (int64_t i = 0; i < input.size(); ++i) {
         StringPiece entry(input(i));
         output(i) = absl::AsciiStrToLower(entry);
       }
     } else {
       // The validation of utf-8 has already been done in GetAttr above.
-      for (int64 i = 0; i < input.size(); ++i) {
+      for (int64_t i = 0; i < input.size(); ++i) {
         icu::UnicodeString us(input(i).c_str(), "UTF-8");
         us.toLower();
         us.toUTF8String(output(i));

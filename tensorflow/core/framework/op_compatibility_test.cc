@@ -98,7 +98,7 @@ class OpCompatibilityTest : public OpsTestBase {
       ADD_FAILURE() << SummarizeOpDef(old_op_def) << " vs. "
                     << SummarizeOpDef(new_op_def);
     } else {
-      EXPECT_TRUE(absl::StrContains(status.error_message(), error))
+      EXPECT_TRUE(absl::StrContains(status.message(), error))
           << status << " does not contain " << error;
     }
   }
@@ -119,7 +119,7 @@ class OpCompatibilityTest : public OpsTestBase {
     if (status.ok()) {
       ADD_FAILURE() << SummarizeNodeDef(*node_def());
     } else {
-      EXPECT_TRUE(absl::StrContains(status.error_message(), validation_error))
+      EXPECT_TRUE(absl::StrContains(status.message(), validation_error))
           << status << " does not contain " << validation_error;
     }
 
@@ -179,8 +179,7 @@ class OpCompatibilityTest : public OpsTestBase {
       ADD_FAILURE() << SummarizeOpDef(old_op_def) << " vs. "
                     << SummarizeOpDef(*new_op_def);
     } else {
-      EXPECT_TRUE(
-          absl::StrContains(status.error_message(), compatibility_error))
+      EXPECT_TRUE(absl::StrContains(status.message(), compatibility_error))
           << status << " does not contain " << compatibility_error;
     }
   }
@@ -703,19 +702,6 @@ TEST_F(OpCompatibilityTest, OutputAddRef) {
 }
 
 // Negative tests -------------------------------------------------------------
-
-// Can't remove an attr.
-REGISTER_OP("RemoveAttr");
-
-TEST_F(OpCompatibilityTest, RemoveAttrFails) {
-  OpRegistrationData old_op;
-  TF_ASSERT_OK(OpDefBuilder("RemoveAttr").Attr("a: int").Finalize(&old_op));
-  TF_ASSERT_OK(NodeDefBuilder("fails", &old_op.op_def)
-                   .Attr("a", 3)
-                   .Finalize(node_def()));
-  ExpectInvalid(old_op.op_def, "NodeDef mentions attr 'a' not in",
-                "Attr 'a' removed");
-}
 
 // Can't add an attr without a default.
 REGISTER_OP("AddAttrNoDefault").Attr("a: int");

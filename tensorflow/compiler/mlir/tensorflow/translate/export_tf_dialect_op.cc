@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 
 #include <memory>
+#include <optional>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
@@ -28,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -58,33 +59,34 @@ Status SetTypeAttribute(absl::string_view name, ContainerT types,
   assert(result.second && "cannot have multiple attributes with the same name");
   (void)result;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Sets shape list attribute with the given `name` to the given `shapes`. If the
-// attribute already exists with a different value, returns an error.
+// attribute already exists then this will just retain the set value.
 template <typename ContainerT,
           typename = typename std::enable_if<std::is_same<
-              llvm::Optional<llvm::ArrayRef<int64_t>>,
+              std::optional<llvm::ArrayRef<int64_t>>,
               decltype(*std::declval<ContainerT>().begin())>::value>::type>
-Status SetShapeAttribute(absl::string_view name, ContainerT shapes,
-                         AttrValueMap* values) {
+void SetShapeAttribute(absl::string_view name, ContainerT shapes,
+                       AttrValueMap* values) {
   AttrValue value;
   auto& shape_list = *value.mutable_list();
-  for (const llvm::Optional<llvm::ArrayRef<int64_t>>& shape : shapes) {
+  for (const std::optional<llvm::ArrayRef<int64_t>>& shape : shapes) {
     TensorShapeProto& tshape = *shape_list.add_shape();
-    if (shape.hasValue()) {
-      for (int64_t dim : *shape) tshape.add_dim()->set_size(dim);
+    if (shape.has_value()) {
+      for (int64_t dim : *shape) {
+        tshape.add_dim()->set_size(mlir::ShapedType::isDynamic(dim) ? -1 : dim);
+      }
     } else {
       tshape.set_unknown_rank(true);
     }
   }
 
-  auto result = values->insert({string(name), value});
-  assert(result.second && "cannot have multiple attributes with the same name");
-  (void)result;
-
-  return Status::OK();
+  // If shape is already set, override it. This can happen if we import
+  // without shape inference enabled and so couldn't be removed on import and
+  // are not explicitly dropped later.
+  (*values)[string(name)] = value;
 }
 
 // Collects all the unregistered attributes for an TF dialect operation.
@@ -95,7 +97,7 @@ Status GetUnregisteredAttrs(
     absl::flat_hash_set<absl::string_view>* attrs_to_ignore) {
   if (!op_reg_data) {
     // This is likely a function call node, so we should continue.
-    return Status::OK();
+    return OkStatus();
   }
 
   // Collect all the registered attributes.
@@ -107,12 +109,12 @@ Status GetUnregisteredAttrs(
   }
   // Attributes are not in the registered attributes set will be ignored.
   for (auto& attr : inst->getAttrs()) {
-    auto attr_name = attr.first.c_str();
-    if (registered_attrs.find(attr_name) == registered_attrs.end()) {
-      attrs_to_ignore->insert(attr_name);
+    if (registered_attrs.find(attr.getName()) == registered_attrs.end()) {
+      attrs_to_ignore->insert(
+          absl::string_view(attr.getName().data(), attr.getName().size()));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Collects all attribute names to ignore in an MLIR operation when exporting to
@@ -129,7 +131,7 @@ StatusOr<absl::flat_hash_set<absl::string_view>> GetAttributesToIgnore(
   if (derived_attrs) {
     for (auto derived_attr : derived_attrs) {
       attrs_to_ignore.insert(
-          mlir::StringRefToView(derived_attr.first.strref()));
+          mlir::StringRefToView(derived_attr.getName().strref()));
     }
   }
 
@@ -187,12 +189,31 @@ Status PopulateDerivedAttributes(mlir::Operation* inst, llvm::StringRef name,
       mlir::TF::ResultShapeRange output_shapes = {
           mlir::TF::ResultShapeIterator(begin),
           mlir::TF::ResultShapeIterator(end)};
-      TF_RETURN_IF_ERROR(
-          SetShapeAttribute("_output_shapes", output_shapes, attributes));
+      SetShapeAttribute("_output_shapes", output_shapes, attributes);
     }
   }
 
-  return Status::OK();
+  return OkStatus();
+}
+
+// A `Cast` with DstT == SrcT can be introduced in MLIR as a shape cast. But
+// `Cast` only has shapes in the TF dialect's types, not TF graph, so it is
+// valid to convert a `Cast` to an `Identity`. The `_output_shapes` attribute of
+// the `Cast` will be preserved. This transform is needed for the graph to be
+// executed on TPU or GPU devices, which do not have `Cast` registered as a
+// runtime OpKernel.
+void RemoveIdentityCast(NodeDef* node_def) {
+  auto attr = node_def->mutable_attr();
+  if (node_def->op() == "Cast" && attr->contains("SrcT") &&
+      attr->contains("DstT") &&
+      attr->at("SrcT").type() == attr->at("DstT").type() &&
+      attr->contains("Truncate") && !attr->at("Truncate").b()) {
+    node_def->set_op("Identity");
+    attr->insert({{"T", attr->at("SrcT")}});
+    attr->erase("SrcT");
+    attr->erase("DstT");
+    attr->erase("Truncate");
+  }
 }
 
 }  // namespace
@@ -213,7 +234,26 @@ Status GetAttrValuesFromOperation(
       "while converting attributes for node: ", mlir::StringRefToView(name));
   TF_RETURN_IF_ERROR(PopulateDerivedAttributes(
       inst, name, derived_attrs, ignore_unregistered_attrs, attributes));
-  return Status::OK();
+
+  //  Explicitly handle XlaHostCompute op which has required function attribute
+  //  in TensorFlow op def but it could have an empty value to represent missing
+  //  functions. This value can't be represented using MLIR SymbolRefAttr and
+  //  instead uses optional symbol ref attribute.
+  //
+  // TODO(b/182315488): Remove custom handling by finding a better
+  // representation in MLIR for empty function names. One option could be to use
+  // TensorFlow op defs to figure out function attributes that are missing in
+  // MLIR. This will also require some trait to identify optional attributes in
+  // MLIR.
+  constexpr char kShapeInferenceGraph[] = "shape_inference_graph";
+  if (mlir::isa<mlir::TF::XlaHostComputeOp>(inst) &&
+      !inst->hasAttr(kShapeInferenceGraph) &&
+      !attrs_to_ignore.contains(kShapeInferenceGraph)) {
+    AttrValue value;
+    value.mutable_func()->set_name("");
+    (*attributes)[kShapeInferenceGraph] = value;
+  }
+  return OkStatus();
 }
 
 StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
@@ -227,6 +267,7 @@ StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
   TF_RETURN_IF_ERROR(GetAttrValuesFromOperation(inst, name, op_reg_data,
                                                 ignore_unregistered_attrs,
                                                 node_def->mutable_attr()));
+  RemoveIdentityCast(node_def.get());
   return node_def;
 }
 

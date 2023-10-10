@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package tensorflow;
+
+import "tensorflow/core/framework/versions.proto";
+
+option cc_enable_arenas = true;
+option java_outer_classname = "FingerprintProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
+
+// Protocol buffer representing a SavedModel Fingerprint.
+//
+// If there are multiple MetaGraphDefs in the SavedModel, the FingerprintDef
+// corresponds to the first one.
+message FingerprintDef {
+  // Hash of the saved_model.pb, referred to as a "checksum".
+  uint64 saved_model_checksum = 1;
+  // Hash of regularized graph_def.
+  uint64 graph_def_program_hash = 2;
+  // Hash of the regularized (sorted) SignatureDefs.
+  uint64 signature_def_hash = 3;
+  // Hash of the regularized SavedObjectGraph.
+  uint64 saved_object_graph_hash = 4;
+  // Hash of the checkpoint.
+  uint64 checkpoint_hash = 5;
+  // Version specification of the fingerprint.
+  VersionDef version = 6;
+  // TODO(b/290068219): add USM version when GA
+}

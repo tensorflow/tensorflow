@@ -83,7 +83,7 @@ If `f` executes without error, then the `converted_f` has identical results:
 ### TensorFlow Eager semantics
 
 If a function is called with `Tensor` arguments in Eager execution mode, it has
-certain semantics that are different the Graph execution semantics.
+certain semantics that are different from the Graph execution semantics.
 
 For example, the function below produces different results when executed in
 Eager and Graph modes:
@@ -143,14 +143,14 @@ for example support for list semantics applied to `TensorArray`:
 
 ```
 def f(n):
-  l = tf.TensorArray(...)
+  l = tf.TensorArray(dtype=tf.int32, size=0, dynamic_size=True)
   for i in tf.range(n):
     l.append(i)
   return l
 
 converted_f = tf.autograph.to_graph(f)
 experimental_converted_f = tf.autograph.to_graph(
-    f, experimental_autograph_options=tf.autograph.experimental.Feature.LISTS)
+    f, experimental_optional_features=tf.autograph.experimental.Feature.LISTS)
 ```
 
 ```

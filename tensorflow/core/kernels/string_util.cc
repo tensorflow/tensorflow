@@ -31,7 +31,7 @@ Status ParseUnicodeEncoding(const string& str, UnicodeEncoding* encoding) {
         strings::StrCat("Invalid encoding \"", str,
                         "\": Should be one of: UTF-8, UTF-16-BE, UTF-32-BE"));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Sets unit value based on str.
@@ -44,20 +44,20 @@ Status ParseCharUnit(const string& str, CharUnit* unit) {
     return errors::InvalidArgument(strings::StrCat(
         "Invalid unit \"", str, "\": Should be one of: BYTE, UTF8_CHAR"));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Return the number of Unicode characters in a UTF-8 string.
 // Result may be incorrect if the input string is not valid UTF-8.
 int32 UTF8StrLen(const string& str) {
-  const int32 byte_size = str.size();
+  const int32_t byte_size = str.size();
   const char* const end = str.data() + byte_size;
   const char* ptr = str.data();
-  int32 skipped_count = 0;
+  int32_t skipped_count = 0;
   while (ptr < end) {
     skipped_count += IsTrailByte(*ptr++) ? 1 : 0;
   }
-  const int32 result = byte_size - skipped_count;
+  const int32_t result = byte_size - skipped_count;
   return result;
 }
 

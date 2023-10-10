@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -119,6 +119,19 @@ absl::Status ObjectReader::ReadValueByTensorIdx(uint32_t tensor_idx,
 
 int ObjectReader::GetNumberOfRuntimeInputs() const {
   return GetNumberOfRuntimeInputsForNode(context_, node_);
+}
+
+absl::Status ObjectReader::GetTensorId(uint32_t input_id,
+                                       int* tensor_id) const {
+  if (input_id >= node_->inputs->size) {
+    return absl::OutOfRangeError(
+        absl::StrCat("Input tensor index: ", input_id));
+  }
+  *tensor_id = node_->inputs->data[input_id];
+  if (*tensor_id < 0 || *tensor_id > context_->tensors_size) {
+    return absl::OutOfRangeError(absl::StrCat("Tensor index: ", *tensor_id));
+  }
+  return absl::OkStatus();
 }
 
 absl::Status ObjectReader::GetTensorDims(uint32_t idx,

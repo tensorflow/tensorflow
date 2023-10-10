@@ -14,30 +14,65 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/register_types.h"
 
+#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
-bool DeviceType::operator<(const DeviceType& other) const {
-  return type_ < other.type_;
+struct DataTypeHasher {
+  std::size_t operator()(const DataType& k) const {
+    return std::hash<int>()(static_cast<int>(k));
+  }
+};
+
+// Mapping from some of the DType fields, for backward compatibility. All other
+// dtypes are mapped to TFT_ANY, but can be added here if a counterpart is
+// defined.
+auto* DT_TO_FT = new std::unordered_map<DataType, FullTypeId, DataTypeHasher>({
+    {DT_FLOAT, TFT_FLOAT},
+    {DT_DOUBLE, TFT_DOUBLE},
+    {DT_INT32, TFT_INT32},
+    {DT_UINT8, TFT_UINT8},
+    {DT_INT16, TFT_INT16},
+    {DT_INT8, TFT_INT8},
+    {DT_STRING, TFT_STRING},
+    {DT_COMPLEX64, TFT_COMPLEX64},
+    {DT_INT64, TFT_INT64},
+    {DT_BOOL, TFT_BOOL},
+    {DT_UINT16, TFT_UINT16},
+    {DT_COMPLEX128, TFT_COMPLEX128},
+    {DT_HALF, TFT_HALF},
+    {DT_UINT32, TFT_UINT32},
+    {DT_UINT64, TFT_UINT64},
+    {DT_VARIANT, TFT_LEGACY_VARIANT},
+});
+
+void map_dtype_to_tensor(const DataType& dtype, FullTypeDef& t) {
+  t.Clear();
+
+  const auto& mapped = DT_TO_FT->find(dtype);
+  // Only map known types, everything else remains unset. This is so that we
+  // only set the most specific type when it is fully known. For example, if the
+  // dtype is DT_VARIANT, then we don't know much and opt to assume that
+  // the type is unset, rather than TFT_ANY.
+  if (mapped != DT_TO_FT->end()) {
+    t.set_type_id(mapped->second);
+  }
 }
 
-bool DeviceType::operator==(const DeviceType& other) const {
-  return type_ == other.type_;
-}
-
-std::ostream& operator<<(std::ostream& os, const DeviceType& d) {
-  os << d.type();
-  return os;
+void map_dtype_to_child_of_tensor(const DataType& dtype, FullTypeDef& t) {
+  t.set_type_id(TFT_TENSOR);
+  map_dtype_to_tensor(dtype, *t.add_args());
 }
 
 const char* const DEVICE_DEFAULT = "DEFAULT";
 const char* const DEVICE_CPU = "CPU";
 const char* const DEVICE_GPU = "GPU";
+const char* const DEVICE_TPU = "TPU";
 const char* const DEVICE_TPU_SYSTEM = "TPU_SYSTEM";
 
 const std::string DeviceName<Eigen::ThreadPoolDevice>::value = DEVICE_CPU;
@@ -93,6 +128,14 @@ string DataTypeStringInternal(DataType dtype) {
       return "bfloat16";
     case DT_HALF:
       return "half";
+    case DT_FLOAT8_E5M2:
+      return "float8_e5m2";
+    case DT_FLOAT8_E4M3FN:
+      return "float8_e4m3fn";
+    case DT_INT4:
+      return "int4";
+    case DT_UINT4:
+      return "uint4";
     case DT_RESOURCE:
       return "resource";
     case DT_VARIANT:
@@ -187,6 +230,18 @@ bool DataTypeFromString(StringPiece sp, DataType* dt) {
   } else if (sp == "half" || sp == "float16") {
     *dt = DT_HALF;
     return true;
+  } else if (sp == "float8_e5m2") {
+    *dt = DT_FLOAT8_E5M2;
+    return true;
+  } else if (sp == "float8_e4m3fn") {
+    *dt = DT_FLOAT8_E4M3FN;
+    return true;
+  } else if (sp == "int4") {
+    *dt = DT_INT4;
+    return true;
+  } else if (sp == "uint4") {
+    *dt = DT_UINT4;
+    return true;
   } else if (sp == "resource") {
     *dt = DT_RESOURCE;
     return true;
@@ -234,6 +289,10 @@ int DataTypeSize(DataType dt) {
     // bitcast.
     TF_CALL_qint16(CASE);
     TF_CALL_quint16(CASE);
+    TF_CALL_float8_e5m2(CASE);
+    TF_CALL_float8_e4m3fn(CASE);
+    TF_CALL_int4(CASE);
+    TF_CALL_uint4(CASE);
 
     default:
       return 0;
@@ -256,7 +315,7 @@ DEFINE_DATATYPETOENUM_VALUE(int8);
 DEFINE_DATATYPETOENUM_VALUE(tstring);
 DEFINE_DATATYPETOENUM_VALUE(complex64);
 DEFINE_DATATYPETOENUM_VALUE(complex128);
-DEFINE_DATATYPETOENUM_VALUE(int64);
+DEFINE_DATATYPETOENUM_VALUE(int64_t);
 DEFINE_DATATYPETOENUM_VALUE(uint64);
 DEFINE_DATATYPETOENUM_VALUE(bool);
 DEFINE_DATATYPETOENUM_VALUE(qint8);
@@ -266,6 +325,10 @@ DEFINE_DATATYPETOENUM_VALUE(quint16);
 DEFINE_DATATYPETOENUM_VALUE(qint32);
 DEFINE_DATATYPETOENUM_VALUE(bfloat16);
 DEFINE_DATATYPETOENUM_VALUE(Eigen::half);
+DEFINE_DATATYPETOENUM_VALUE(float8_e5m2);
+DEFINE_DATATYPETOENUM_VALUE(float8_e4m3fn);
+DEFINE_DATATYPETOENUM_VALUE(int4);
+DEFINE_DATATYPETOENUM_VALUE(uint4);
 DEFINE_DATATYPETOENUM_VALUE(ResourceHandle);
 DEFINE_DATATYPETOENUM_VALUE(Variant);
 #undef DEFINE_DATATYPETOENUM_VALUE

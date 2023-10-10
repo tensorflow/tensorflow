@@ -16,10 +16,6 @@
 # pylint: disable=line-too-long
 """This library provides a set of high-level neural networks layers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=g-bad-import-order,unused-import
 
 # Base objects.
@@ -71,10 +67,5 @@ from tensorflow.python.layers.pooling import average_pooling2d
 from tensorflow.python.layers.pooling import max_pooling2d
 from tensorflow.python.layers.pooling import average_pooling3d
 from tensorflow.python.layers.pooling import max_pooling3d
-
-# Normalization layers.
-from tensorflow.python.layers.normalization import BatchNormalization
-
-from tensorflow.python.layers.normalization import batch_normalization
 
 # pylint: enable=g-bad-import-order,unused-import

@@ -1,0 +1,40 @@
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+// Protocol messages for describing autotuning maps. This enables us to easily
+// serialize/deserialize existing autotune maps in the TF runtime.
+//
+// For Google-internal use only.
+syntax = "proto3";
+
+package tensorflow;
+
+import "tensorflow/core/util/autotune_maps/conv_parameters.proto";
+import "tsl/protobuf/dnn.proto";
+
+message ConvMapProto {
+  message Entry {
+    tensorflow.ConvParametersProto key = 1;
+    stream_executor.dnn.AlgorithmConfigProto value = 2;
+  }
+
+  repeated Entry kv_pairs = 1;
+}
+
+// TODO(b/189530096): Support autotune maps for more ops.
+message AutotuneMapsProto {
+  ConvMapProto conv_map = 2;
+  ConvMapProto fused_conv_map = 3;
+}

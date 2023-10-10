@@ -18,7 +18,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/function.h"
@@ -66,7 +66,7 @@ Status InputTypesNeedsRearrange(const std::vector<DataType>& in_types,
   if (first_resource_index == -1) {
     // No resource input. No need to rewrite.
     *need_rewrite = false;
-    return Status::OK();
+    return OkStatus();
   }
 
   *need_rewrite = false;
@@ -77,7 +77,7 @@ Status InputTypesNeedsRearrange(const std::vector<DataType>& in_types,
     }
   }
   if (!*need_rewrite) {
-    return Status::OK();
+    return OkStatus();
   }
 
   *resource_input_count = 0;
@@ -100,7 +100,7 @@ Status InputTypesNeedsRearrange(const std::vector<DataType>& in_types,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Given mapping between original input index and rearranged input index,
@@ -122,7 +122,7 @@ Status ReorderInputEdges(Graph* g, Node* n,
     g->RemoveEdge(e);
     g->AddEdge(src, src_output, n, new_dst_input)->DebugString();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // For While node, given mapping between original input index and rearranged
@@ -154,7 +154,7 @@ Status ReorderOutputEdges(Graph* g, Node* n, int input_count,
       g->AddEdge(input_edge->src(), input_edge->src_output(), dst, dst_input);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Given mapping between original input index and rearranged input index, change
@@ -203,7 +203,7 @@ Status CalculateRetvalRearrange(
     TF_RETURN_IF_ERROR(GetNodeAttr(arg->def(), "index", &src_index));
     resource_retval_to_arg->insert(std::make_pair(i, src_index));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Given original output types and return value index mapping, return the new
@@ -252,7 +252,7 @@ Status RearrangeOutputEdges(Node* n, Graph* g,
       g->AddEdge(n, iter->second, dst, dst_input);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Given mapping between original output index and rearranged output index,
@@ -287,7 +287,7 @@ Status MaybeRewriteWhileNode(
       types, &input_need_rearrange, &resource_input_count, &index_mapping));
   if (!input_need_rearrange) {
     *node_rewritten = false;
-    return Status::OK();
+    return OkStatus();
   }
 
   *node_rewritten = true;
@@ -366,20 +366,27 @@ Status MaybeRewriteWhileNode(
     string new_name =
         fld->UniqueFunctionName(absl::StrCat(attr_value.name(), "_rearrange_"));
     TF_RETURN_IF_ERROR(GraphToFunctionDef(*fbody->graph, new_name, &new_fdef));
-    TF_RETURN_IF_ERROR(fld->AddFunctionDef(new_fdef));
+
+    const StackTracesMap* stack_traces = fld->GetStackTraces(attr_value.name());
+    if (stack_traces != nullptr) {
+      TF_RETURN_IF_ERROR(fld->AddFunctionDef(new_fdef, *stack_traces));
+    } else {
+      TF_RETURN_IF_ERROR(fld->AddFunctionDef(new_fdef, {}));
+    }
 
     // Change node to use rewritten function.
     attr_value.set_name(new_name);
     n->ClearAttr(attr_name);
     n->AddAttr(attr_name, attr_value);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MaybeRewriteIfNode(
     std::function<Status(const NameAttrList&, const FunctionBody**)>
         get_function_body_fn,
-    Graph* g, Node* n, FunctionLibraryDefinition* fld, bool* node_rewritten) {
+    Graph* g, Node* n, FunctionLibraryDefinition* fld, bool* node_rewritten,
+    const FunctionLibraryDefinition* global_fld) {
   // This node needs rewrite when either of these is true:
   // 1) Tin has DT_RESOURCE which requires rearrange;
   // 2) Tout has DT_RESOURCE.
@@ -396,7 +403,7 @@ Status MaybeRewriteIfNode(
                                        DT_RESOURCE) != out_types.end();
   if (!input_need_rearrange && !has_resource_output) {
     *node_rewritten = false;
-    return Status::OK();
+    return OkStatus();
   }
 
   *node_rewritten = true;
@@ -455,7 +462,18 @@ Status MaybeRewriteIfNode(
     string new_name =
         fld->UniqueFunctionName(absl::StrCat(f.name(), "_rearrange_"));
     TF_RETURN_IF_ERROR(GraphToFunctionDef(*fbody->graph, new_name, &new_fdef));
-    TF_RETURN_IF_ERROR(fld->AddFunctionDef(new_fdef));
+
+    const StackTracesMap* global_stack_traces =
+        global_fld ? global_fld->GetStackTraces(f.name()) : nullptr;
+    const StackTracesMap* local_stack_traces = fld->GetStackTraces(f.name());
+
+    if (global_stack_traces != nullptr) {
+      TF_RETURN_IF_ERROR(fld->AddFunctionDef(new_fdef, *global_stack_traces));
+    } else if (local_stack_traces != nullptr) {
+      TF_RETURN_IF_ERROR(fld->AddFunctionDef(new_fdef, *local_stack_traces));
+    } else {
+      TF_RETURN_IF_ERROR(fld->AddFunctionDef(new_fdef, {}));
+    }
 
     // Change node to use rewritten function.
     f.set_name(new_name);
@@ -496,7 +514,7 @@ Status MaybeRewriteIfNode(
     n->ClearAttr("Tout");
     n->AddAttr("Tout", new_out_types);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -504,7 +522,8 @@ Status MaybeRewriteIfNode(
 Status RearrangeFunctionArguments(
     std::function<Status(const NameAttrList&, const FunctionBody**)>
         get_function_body_fn,
-    Graph* g, FunctionLibraryDefinition* fld) {
+    Graph* g, FunctionLibraryDefinition* fld,
+    const FunctionLibraryDefinition* global_fld) {
   // Inline StatefulPartitionedCall nodes.
   std::vector<Node*> call_nodes;
   for (Node* n : g->nodes()) {
@@ -533,12 +552,12 @@ Status RearrangeFunctionArguments(
                                                &node_rewritten));
     } else if (n->IsIfNode()) {
       bool node_rewritten;
-      TF_RETURN_IF_ERROR(
-          MaybeRewriteIfNode(get_function_body_fn, g, n, fld, &node_rewritten));
+      TF_RETURN_IF_ERROR(MaybeRewriteIfNode(get_function_body_fn, g, n, fld,
+                                            &node_rewritten, global_fld));
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

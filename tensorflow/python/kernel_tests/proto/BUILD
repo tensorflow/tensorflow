@@ -1,21 +1,23 @@
 # Tests of tf.io.*proto.
 
+# Placeholder: load py_proto_library
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 exports_files([
-    "LICENSE",
     "test_example.proto",
 ])
 
-tf_py_test(
+tf_py_strict_test(
     name = "decode_proto_op_test",
     size = "small",
     srcs = ["decode_proto_op_test.py"],
@@ -31,11 +33,12 @@ tf_py_test(
     deps = [
         ":decode_proto_op_test_base",
         ":py_test_deps",
-        "//tensorflow/python:proto_ops",
+        "//tensorflow/python/ops:proto_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "encode_proto_op_test",
     size = "small",
     srcs = ["encode_proto_op_test.py"],
@@ -51,45 +54,59 @@ tf_py_test(
     deps = [
         ":encode_proto_op_test_base",
         ":py_test_deps",
-        "//tensorflow/python:proto_ops",
+        "//tensorflow/python/ops:proto_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "proto_op_test_base",
     testonly = 1,
     srcs = ["proto_op_test_base.py"],
+    srcs_version = "PY3",
     deps = [
         ":test_example_proto_py",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "decode_proto_op_test_base",
     testonly = 1,
     srcs = ["decode_proto_op_test_base.py"],
+    srcs_version = "PY3",
     deps = [
         ":proto_op_test_base",
         ":test_example_proto_py",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "encode_proto_op_test_base",
     testonly = 1,
     srcs = ["encode_proto_op_test_base.py"],
+    srcs_version = "PY3",
     deps = [
         ":proto_op_test_base",
         ":test_example_proto_py",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/ops:array_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
 
-py_library(name = "py_test_deps")
+py_strict_library(
+    name = "py_test_deps",
+    srcs_version = "PY3",
+)
 
 tf_proto_library(
     name = "test_example_proto",
@@ -106,19 +123,21 @@ tf_cc_shared_object(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "descriptor_source_test_base",
     testonly = 1,
     srcs = ["descriptor_source_test_base.py"],
+    srcs_version = "PY3",
     deps = [
         ":proto_op_test_base",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
         "@com_google_protobuf//:protobuf_python",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "descriptor_source_test",
     size = "small",
     srcs = ["descriptor_source_test.py"],
@@ -128,7 +147,15 @@ tf_py_test(
     ],
     deps = [
         ":descriptor_source_test_base",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:proto_ops",
+        "//tensorflow/python/ops:proto_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "test_example_proto_py",
+#     api_version = 2,
+#     deps = [":test_example_proto"],
+# )
+# copybara:uncomment_end

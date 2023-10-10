@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for the `NoopElimination` optimization."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 from absl.testing import parameterized
@@ -24,6 +20,7 @@ from absl.testing import parameterized
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -56,7 +53,7 @@ def _test_combinations():
       ("Skip0", lambda ds: ds.skip(0), None),
       ("SkipN", lambda ds: ds.skip(5), "FiniteSkip"),
       ("Repeat1", lambda ds: ds.repeat(1), None),
-      ("RepeatN", lambda ds: ds.repeat(10), "FiniteRepeat"),
+      ("RepeatN", lambda ds: ds.repeat(10), "FiniteRepeat[0]"),
       ("Prefetch0", lambda ds: ds.prefetch(0), None),
       ("PrefetchN", lambda ds: ds.prefetch(1), "Prefetch"),
       ("Take-1", lambda ds: ds.take(-1), None),
@@ -65,14 +62,24 @@ def _test_combinations():
       ("MapNonIdentity", lambda ds: ds.map(lambda x: x * 2), "Map"),
       ("MapWithSideEffect", lambda ds: ds.map(fn_with_side_effect), "Map"),
       ("MapWithCapture", apply_map_with_capture, "Map"),
-      ("MapWithMultipleComponents", apply_map_with_multiple_components,
-       parallel_map_name),
+      (
+          "MapWithMultipleComponents",
+          apply_map_with_multiple_components,
+          parallel_map_name,
+      ),
       ("MapRestructure", lambda ds: ds.map(lambda x: {"value": x}), ""),
-      ("PMapIdentity", lambda ds: ds.map(lambda x: x, num_parallel_calls=2),
-       None),
-      ("PMapNonIdentity",
-       lambda ds: ds.map(lambda x: x * 2, num_parallel_calls=2),
-       parallel_map_name),
+      (
+          "PMapIdentity",
+          lambda ds: ds.map(lambda x: x, num_parallel_calls=2),
+          None,
+      ),
+      (
+          "PMapNonIdentity",
+          lambda ds: ds.map(lambda x: x * 2, num_parallel_calls=2),
+          parallel_map_name,
+      ),
+      ("Shard1", lambda ds: ds.shard(1, 0), None),
+      ("ShardN", lambda ds: ds.shard(2, 0), "Shard"),
   ]
 
   def reduce_fn(result, case):
@@ -110,7 +117,7 @@ class NoopEliminationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset.apply(transformation)
     dataset = dataset.take(1)
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.noop_elimination = True
     dataset = dataset.with_options(options)

@@ -14,20 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/parse_example/parse_example.h"
 
+#include <cstdint>
 #include <initializer_list>
+#include <string>
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/example/feature_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/interpreter_builder.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/interpreter_builder.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
 
@@ -150,10 +152,39 @@ const char* kNodeDefTxt4 = R"pb(
   }
 )pb";
 
+const char* kNodeDefTxt5 = R"pb(
+  name: "ParseExample/ParseExample"
+  op: "ParseExample"
+  input: "serialized"
+  input: "ParseExample/ParseExample/names"
+  input: "ParseExample/ParseExample/dense_keys_0"
+  input: "ParseExample/Const"
+  attr {
+    key: "Ndense"
+    value { i: 1 }
+  }
+  attr {
+    key: "Nsparse"
+    value { i: 0 }
+  }
+  attr {
+    key: "Tdense"
+    value { list { type: DT_FLOAT } }
+  }
+  attr {
+    key: "dense_shapes"
+    value {}
+  }
+  attr {
+    key: "sparse_types"
+    value { list { type: DT_FLOAT } }
+  }
+)pb";
+
 template <typename DefaultType>
 class ParseExampleOpModel : public SingleOpModel {
  public:
-  ParseExampleOpModel(std::string serialized_example,
+  ParseExampleOpModel(std::vector<std::string> serialized_examples,
                       std::vector<std::string> sparse_keys,
                       std::vector<std::string> dense_keys,
                       std::initializer_list<DefaultType> dense_defaults,
@@ -161,7 +192,9 @@ class ParseExampleOpModel : public SingleOpModel {
                       std::vector<TensorType> sparse_types,
                       const char* text_def, int dense_size = 2) {
     // Example
-    string_indices_.push_back(AddInput(TensorData(TensorType_STRING, {1})));
+    const int input_size = serialized_examples.size();
+    auto input_tensor_data = TensorData(TensorType_STRING, {input_size});
+    string_indices_.push_back(AddInput(input_tensor_data));
     // Names
     string_indices_.push_back(
         AddConstInput<std::string>(TensorData(TensorType_STRING, {0}), {""}));
@@ -206,15 +239,25 @@ class ParseExampleOpModel : public SingleOpModel {
     fbb.Finish();
     const auto buffer = fbb.GetBuffer();
     SetCustomOp("ParseExample", buffer, Register_PARSE_EXAMPLE);
-    BuildInterpreter({});
+    BuildInterpreter({{input_size}});
     int idx = 0;
-    PopulateStringTensor(string_indices_[idx++], {serialized_example});
+    PopulateStringTensor(string_indices_[idx++], serialized_examples);
     PopulateStringTensor(string_indices_[idx++], {""});
     for (const auto& key : sparse_keys) {
       PopulateStringTensor(string_indices_[idx++], {key});
     }
     for (const auto& key : dense_keys) {
       PopulateStringTensor(string_indices_[idx++], {key});
+    }
+  }
+
+  void ResizeInputTensor(std::vector<std::vector<int>> input_shapes) {
+    for (size_t i = 0; i < input_shapes.size(); ++i) {
+      const int input_idx = interpreter_->inputs()[i];
+      if (input_idx == kTfLiteOptionalTensor) continue;
+      const auto& shape = input_shapes[i];
+      if (shape.empty()) continue;
+      CHECK(interpreter_->ResizeInputTensor(input_idx, shape) == kTfLiteOk);
     }
   }
 
@@ -267,10 +310,10 @@ TEST(ParseExampleOpsTest, SimpleTest) {
   tf::Example example;
   tf::AppendFeatureValues<float>({1.5f, 1.5f}, "time", &example);
   tf::AppendFeatureValues<float>({1.0f, 1.0f}, "num", &example);
-  ParseExampleOpModel<float> m(example.SerializeAsString(), {}, {"time"},
+  ParseExampleOpModel<float> m({example.SerializeAsString()}, {}, {"time"},
                                {0.f, 0.f}, {TensorType_FLOAT32}, {},
                                kNodeDefTxt);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDenseOutput<float>(0),
               ElementsAreArray(ArrayFloatNear({1.5f, 1.5f})));
 }
@@ -278,9 +321,9 @@ TEST(ParseExampleOpsTest, SimpleTest) {
 TEST(ParseExampleOpsTest, SparseTest) {
   tf::Example example;
   tf::AppendFeatureValues<float>({1.5f}, "time", &example);
-  ParseExampleOpModel<float> m(example.SerializeAsString(), {"time"}, {}, {},
+  ParseExampleOpModel<float> m({example.SerializeAsString()}, {"time"}, {}, {},
                                {}, {TensorType_FLOAT32}, kNodeDefTxt2, 0);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetSparseIndicesOutput<int64_t>(0),
               ElementsAreArray(ArrayFloatNear({0, 0})));
   EXPECT_THAT(m.GetSparseValuesOutput<float>(0),
@@ -295,11 +338,11 @@ TEST(ParseExampleOpsTest, SimpleBytesTest) {
   tf::AppendFeatureValues<tensorflow::tstring>({test_data}, "time", &example);
   tf::AppendFeatureValues<float>({1.0f, 1.0f}, "num", &example);
   std::string default_value = "missing";
-  ParseExampleOpModel<std::string> m(example.SerializeAsString(), {}, {"time"},
-                                     {default_value}, {TensorType_STRING}, {},
-                                     kNodeDefTxt3, 1);
+  ParseExampleOpModel<std::string> m({example.SerializeAsString()}, {},
+                                     {"time"}, {default_value},
+                                     {TensorType_STRING}, {}, kNodeDefTxt3, 1);
   m.PopulateStringTensor(m.DenseDefaults(), {default_value});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   std::vector<string> c = m.GetStringOutput(m.DenseOutputs(0));
   EXPECT_EQ(1, c.size());
   EXPECT_EQ(test_data, c[0]);
@@ -311,10 +354,10 @@ TEST(ParseExampleOpsTest, SparseBytesTest) {
   tf::AppendFeatureValues<tensorflow::tstring>({test_data, test_data}, "time",
                                                &example);
   tf::AppendFeatureValues<float>({1.0f, 1.0f}, "num", &example);
-  ParseExampleOpModel<std::string> m(example.SerializeAsString(), {"time"}, {},
-                                     {}, {}, {TensorType_STRING}, kNodeDefTxt4,
-                                     0);
-  m.Invoke();
+  ParseExampleOpModel<std::string> m({example.SerializeAsString()}, {"time"},
+                                     {}, {}, {}, {TensorType_STRING},
+                                     kNodeDefTxt4, 0);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetSparseIndicesOutput<int64_t>(0),
               testing::ElementsAreArray({0, 0, 0, 1}));
   auto values = m.GetStringOutput(m.SparseValuesOutputs(0));
@@ -323,6 +366,74 @@ TEST(ParseExampleOpsTest, SparseBytesTest) {
   EXPECT_EQ(test_data, values[1]);
   EXPECT_THAT(m.GetSparseShapesOutput<int64_t>(0),
               testing::ElementsAreArray({1, 2}));
+}
+
+TEST(ParseExampleOpsTest, ResizeTest) {
+  const int num_tests = 3;
+  std::vector<tf::Example> examples(num_tests);
+  std::vector<std::vector<float>> expected(num_tests);
+  std::vector<std::vector<std::string>> inputs(num_tests);
+  std::vector<int> sizes;
+  for (int i = 0; i < num_tests; ++i) {
+    float val = i;
+    std::initializer_list<float> floats = {val + val / 10.f, -val - val / 10.f};
+    tf::AppendFeatureValues<float>({val, val}, "num", &examples[i]);
+    tf::AppendFeatureValues<float>(floats, "time", &examples[i]);
+    sizes.push_back((num_tests - i) * 2);
+    for (int j = 0; j < sizes.back(); ++j) {
+      inputs[i].push_back(examples[i].SerializeAsString());
+      expected[i].insert(expected[i].end(), floats.begin(), floats.end());
+    }
+  }
+
+  ParseExampleOpModel<float> m(inputs[0], {}, {"time"}, {0.f, 0.f},
+                               {TensorType_FLOAT32}, {}, kNodeDefTxt);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetDenseOutput<float>(0),
+              ElementsAreArray(ArrayFloatNear(expected[0])));
+
+  for (int i = 1; i < num_tests; ++i) {
+    m.ResizeInputTensor({{sizes[i]}});
+    m.AllocateAndDelegate(false);
+    m.PopulateStringTensor(0, inputs[i]);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetDenseOutput<float>(0),
+                ElementsAreArray(ArrayFloatNear(expected[i])));
+  }
+}
+
+TEST(ParseExampleOpsTest, ResizeMissingInfoTest) {
+  const int num_tests = 3;
+  std::vector<tf::Example> examples(num_tests);
+  std::vector<std::vector<float>> expected(num_tests);
+  std::vector<std::vector<std::string>> inputs(num_tests);
+  std::vector<int> sizes;
+  for (int i = 0; i < num_tests; ++i) {
+    float val = i;
+    std::initializer_list<float> floats = {val + val / 10.f, -val - val / 10.f};
+    tf::AppendFeatureValues<float>({val, val}, "num", &examples[i]);
+    tf::AppendFeatureValues<float>(floats, "time", &examples[i]);
+    sizes.push_back((num_tests - i) * 2);
+    for (int j = 0; j < sizes.back(); ++j) {
+      inputs[i].push_back(examples[i].SerializeAsString());
+      expected[i].insert(expected[i].end(), floats.begin(), floats.end());
+    }
+  }
+
+  ParseExampleOpModel<float> m(inputs[0], {}, {"time"}, {0.f, 0.f},
+                               {TensorType_FLOAT32}, {}, kNodeDefTxt5);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetDenseOutput<float>(0),
+              ElementsAreArray(ArrayFloatNear(expected[0])));
+
+  for (int i = 1; i < num_tests; ++i) {
+    m.ResizeInputTensor({{sizes[i]}});
+    m.AllocateAndDelegate(false);
+    m.PopulateStringTensor(0, inputs[i]);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetDenseOutput<float>(0),
+                ElementsAreArray(ArrayFloatNear(expected[i])));
+  }
 }
 
 }  // namespace custom

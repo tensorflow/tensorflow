@@ -17,45 +17,18 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_DENORMAL_H_
 
 #include "tensorflow/core/platform/macros.h"
+#include "tsl/platform/denormal.h"
 
 namespace tensorflow {
 namespace port {
-
-// Remembers the flush denormal state on construction and restores that same
-// state on destruction.
-class ScopedRestoreFlushDenormalState {
- public:
-  ScopedRestoreFlushDenormalState();
-  ~ScopedRestoreFlushDenormalState();
-
- private:
-  bool flush_zero_mode_;
-  bool denormals_zero_mode_;
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedRestoreFlushDenormalState);
-};
-
-// While this class is active, denormal floating point numbers are flushed
-// to zero.  The destructor restores the original flags.
-class ScopedFlushDenormal {
- public:
-  ScopedFlushDenormal();
-
- private:
-  ScopedRestoreFlushDenormalState restore_;
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedFlushDenormal);
-};
-
-// While this class is active, denormal floating point numbers are not flushed
-// to zero.  The destructor restores the original flags.
-class ScopedDontFlushDenormal {
- public:
-  ScopedDontFlushDenormal();
-
- private:
-  ScopedRestoreFlushDenormalState restore_;
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedDontFlushDenormal);
-};
-
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::port::DenormalState;
+using tsl::port::GetDenormalState;
+using tsl::port::ScopedDontFlushDenormal;
+using tsl::port::ScopedFlushDenormal;
+using tsl::port::ScopedRestoreFlushDenormalState;
+using tsl::port::SetDenormalState;
+// NOLINTEND(misc-unused-using-decls)
 }  // namespace port
 }  // namespace tensorflow
 

@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "CollectiveInitializeCommunicator"
+  summary: "Initializes a group for collective operations."
+  visibility: HIDDEN
+}

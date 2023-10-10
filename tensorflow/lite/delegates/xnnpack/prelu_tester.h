@@ -20,7 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 namespace tflite {
 namespace xnnpack {
@@ -62,12 +63,34 @@ class PreluTester {
 
   inline bool FP16Weights() const { return fp16_weights_; }
 
+  inline PreluTester& INT8Weights() {
+    int8_weights_ = true;
+    return *this;
+  }
+
+  inline bool INT8Weights() const { return int8_weights_; }
+
+  inline PreluTester& INT8ChannelWiseWeights() {
+    int8_channel_wise_weights_ = true;
+    return *this;
+  }
+
+  inline bool INT8ChannelWiseWeights() const {
+    return int8_channel_wise_weights_;
+  }
+
   inline PreluTester& SparseWeights() {
     sparse_weights_ = true;
     return *this;
   }
 
   inline bool SparseWeights() const { return sparse_weights_; }
+
+  inline PreluTester& WeightsCache(
+      TfLiteXNNPackDelegateWeightsCache* weights_cache) {
+    weights_cache_ = weights_cache;
+    return *this;
+  }
 
   void Test(TfLiteDelegate* delegate) const;
 
@@ -79,7 +102,10 @@ class PreluTester {
   std::vector<int32_t> input_shape_;
   std::vector<int32_t> slope_shape_;
   bool fp16_weights_ = false;
+  bool int8_weights_ = false;
+  bool int8_channel_wise_weights_ = false;
   bool sparse_weights_ = false;
+  TfLiteXNNPackDelegateWeightsCache* weights_cache_ = nullptr;
 };
 
 }  // namespace xnnpack

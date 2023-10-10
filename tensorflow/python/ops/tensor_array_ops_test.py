@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensor_array_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.eager import def_function
@@ -85,6 +81,12 @@ class TensorArrayOpsTest(test.TestCase):
       values = values.write(0, np.ones((2, 3)))
       return values.concat()
     self.assertAllEqual(fn(), [[1., 1., 1.], [1., 1., 1.]])
+
+  def test_shape_inference_stack_concat(self):
+    arr = tensor_array_ops.TensorArray(size=4, dtype=dtypes.float32)
+    new_arr = arr.write(0, np.ones((2, 3)))
+    self.assertEqual(new_arr.stack().shape, (4, 2, 3))
+    self.assertEqual(new_arr.concat().shape, (8, 3))
 
 
 if __name__ == '__main__':

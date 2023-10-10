@@ -36,8 +36,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-class SavedVariableLoadingTest : public ::testing::TestWithParam<
-                                     std::tuple<DataType, std::vector<int64>>> {
+class SavedVariableLoadingTest
+    : public ::testing::TestWithParam<
+          std::tuple<DataType, std::vector<int64_t>>> {
  public:
   SavedVariableLoadingTest() {
     SessionOptions options;
@@ -103,7 +104,7 @@ TEST_P(SavedVariableLoadingTest, LoadSavedVariableWithInvalidDevice) {
       shape.AsProto(saved_variable.mutable_shape());
 
   std::unique_ptr<Variable> var;
-  ASSERT_NE(Status::OK(),
+  ASSERT_NE(OkStatus(),
             internal::LoadSavedVariable(context(), saved_variable, &var));
 }
 
@@ -112,7 +113,7 @@ TEST_P(SavedVariableLoadingTest, LoadSavedVariableWithInvalidDevice) {
 TEST_P(SavedVariableLoadingTest, AssignAndReadVariableSuccesful) {
   auto& test_params = GetParam();
   DataType dtype = std::get<0>(test_params);
-  std::vector<int64> shape_vector = std::get<1>(test_params);
+  std::vector<int64_t> shape_vector = std::get<1>(test_params);
   TensorShape shape(shape_vector);
 
   // Create the variable.
@@ -125,7 +126,7 @@ TEST_P(SavedVariableLoadingTest, AssignAndReadVariableSuccesful) {
   ImmediateTensorHandlePtr expected_handle =
       testing::CreateTensorHandle(context(), dtype, shape_vector, 42);
   AbstractTensorPtr expected_tensor(expected_handle->Resolve(&status));
-  TF_EXPECT_OK(status) << status.error_message();
+  TF_EXPECT_OK(status) << status.message();
 
   // Assign the tensorhandle to the variable.
   TF_EXPECT_OK(var->Assign(expected_handle.get()));
@@ -134,7 +135,7 @@ TEST_P(SavedVariableLoadingTest, AssignAndReadVariableSuccesful) {
   ImmediateTensorHandlePtr output_handle;
   TF_EXPECT_OK(var->ReadValue(&output_handle));
   AbstractTensorPtr output_tensor(output_handle->Resolve(&status));
-  TF_EXPECT_OK(status) << status.error_message();
+  TF_EXPECT_OK(status) << status.message();
 
   // Check that output_tensor == expected_tensor
   EXPECT_EQ(output_tensor->Type(), expected_tensor->Type());

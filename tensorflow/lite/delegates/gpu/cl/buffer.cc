@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -36,14 +37,38 @@ absl::Status CreateBuffer(size_t size_in_bytes, bool gpu_read_only,
 
   return absl::OkStatus();
 }
+
+absl::Status CreateSubBuffer(const Buffer& parent, size_t origin_in_bytes,
+                             size_t size_in_bytes, bool gpu_read_only,
+                             CLContext* context, Buffer* result) {
+  cl_mem buffer;
+  if (parent.IsSubBuffer()) {
+    return absl::InvalidArgumentError(
+        "Cannot create a sub-buffer from a sub-buffer!");
+  }
+  RETURN_IF_ERROR(CreateCLSubBuffer(context->context(), parent.GetMemoryPtr(),
+                                    origin_in_bytes, size_in_bytes,
+                                    gpu_read_only, &buffer));
+  *result = Buffer(buffer, size_in_bytes, /*is_sub_buffer=*/true);
+
+  return absl::OkStatus();
+}
 }  // namespace
 
-Buffer::Buffer(cl_mem buffer, size_t size_in_bytes)
-    : buffer_(buffer), size_(size_in_bytes) {}
+Buffer::Buffer(cl_mem buffer, size_t size_in_bytes, bool is_sub_buffer)
+    : buffer_(buffer), size_(size_in_bytes), is_sub_buffer_(is_sub_buffer) {}
 
-Buffer::Buffer(Buffer&& buffer) : buffer_(buffer.buffer_), size_(buffer.size_) {
+Buffer::Buffer(cl_mem buffer)
+    : buffer_(buffer), size_(0), is_sub_buffer_(false), owner_(false) {}
+
+Buffer::Buffer(Buffer&& buffer)
+    : buffer_(buffer.buffer_),
+      size_(buffer.size_),
+      is_sub_buffer_(buffer.is_sub_buffer_),
+      owner_(buffer.owner_) {
   buffer.buffer_ = nullptr;
   buffer.size_ = 0;
+  buffer.is_sub_buffer_ = false;
 }
 
 Buffer& Buffer::operator=(Buffer&& buffer) {
@@ -51,15 +76,18 @@ Buffer& Buffer::operator=(Buffer&& buffer) {
     Release();
     std::swap(size_, buffer.size_);
     std::swap(buffer_, buffer.buffer_);
+    std::swap(is_sub_buffer_, buffer.is_sub_buffer_);
+    std::swap(owner_, buffer.owner_);
   }
   return *this;
 }
 
 void Buffer::Release() {
-  if (buffer_) {
+  if (owner_ && buffer_) {
     clReleaseMemObject(buffer_);
     buffer_ = nullptr;
     size_ = 0;
+    is_sub_buffer_ = false;
   }
 }
 
@@ -85,6 +113,8 @@ absl::Status Buffer::CreateFromBufferDescriptor(const BufferDescriptor& desc,
                         &buffer_);
 }
 
+Buffer CreateBufferShared(cl_mem buffer) { return Buffer(buffer); }
+
 absl::Status CreateReadOnlyBuffer(size_t size_in_bytes, CLContext* context,
                                   Buffer* result) {
   return CreateBuffer(size_in_bytes, true, nullptr, context, result);
@@ -98,6 +128,14 @@ absl::Status CreateReadOnlyBuffer(size_t size_in_bytes, const void* data,
 absl::Status CreateReadWriteBuffer(size_t size_in_bytes, CLContext* context,
                                    Buffer* result) {
   return CreateBuffer(size_in_bytes, false, nullptr, context, result);
+}
+
+absl::Status CreateReadWriteSubBuffer(const Buffer& parent,
+                                      size_t origin_in_bytes,
+                                      size_t size_in_bytes, CLContext* context,
+                                      Buffer* result) {
+  return CreateSubBuffer(parent, origin_in_bytes, size_in_bytes,
+                         /*gpu_read_only=*/false, context, result);
 }
 
 }  // namespace cl

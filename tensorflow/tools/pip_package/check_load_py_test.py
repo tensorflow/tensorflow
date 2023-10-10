@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests to check that py_test are properly loaded in BUILD files."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import subprocess
 

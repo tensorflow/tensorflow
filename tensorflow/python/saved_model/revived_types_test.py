@@ -14,18 +14,14 @@
 # ==============================================================================
 """Tests for revived type matching."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import revived_types
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 
 
-class CustomTestClass(tracking.AutoTrackable):
+class CustomTestClass(autotrackable.AutoTrackable):
 
   def __init__(self, version):
     self.version = version
@@ -56,7 +52,7 @@ revived_types.register_revived_type(
 class RegistrationMatchingTest(test.TestCase):
 
   def test_save_typecheck(self):
-    self.assertIs(revived_types.serialize(tracking.AutoTrackable()), None)
+    self.assertIs(revived_types.serialize(autotrackable.AutoTrackable()), None)
 
   def test_load_identifier_not_found(self):
     nothing_matches = revived_types.deserialize(

@@ -14,25 +14,19 @@
 # ==============================================================================
 """Writes events to disk in a logdir."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import os.path
 import sys
 import threading
 import time
 
-import six
-
-from tensorflow.python import _pywrap_events_writer
+from tensorflow.python.client import _pywrap_events_writer
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 
 
-class EventFileWriter(object):
+class EventFileWriter:
   """Writes `Event` protocol buffers to an event file.
 
   The `EventFileWriter` class creates an event file in the specified directory,
@@ -67,8 +61,7 @@ class EventFileWriter(object):
         `filename_suffix`.
     """
     self._logdir = str(logdir)
-    if not gfile.IsDirectory(self._logdir):
-      gfile.MakeDirs(self._logdir)
+    gfile.MakeDirs(self._logdir)
     self._max_queue = max_queue
     self._flush_secs = flush_secs
     self._flush_complete = threading.Event()
@@ -134,7 +127,8 @@ class EventFileWriter(object):
     except QueueClosedError:
       self._internal_close()
       if self._worker.failure_exc_info:
-        six.reraise(*self._worker.failure_exc_info)  # pylint: disable=no-value-for-parameter
+        _, exception, _ = self._worker.failure_exc_info
+        raise exception from None
 
   def flush(self):
     """Flushes the event file to disk.
@@ -143,14 +137,15 @@ class EventFileWriter(object):
     disk.
     """
     if not self._closed:
-      # Request a flush operation by enqueing a sentinel and then waiting for
+      # Request a flush operation by enqueuing a sentinel and then waiting for
       # the writer thread to mark the flush as complete.
       self._flush_complete.clear()
       self._try_put(self._flush_sentinel)
       self._flush_complete.wait()
       if self._worker.failure_exc_info:
         self._internal_close()
-        six.reraise(*self._worker.failure_exc_info)  # pylint: disable=no-value-for-parameter
+        _, exception, _ = self._worker.failure_exc_info
+        raise exception
 
   def close(self):
     """Flushes the event file to disk and close the file.
@@ -232,7 +227,7 @@ class _EventLoggerThread(threading.Thread):
       self._queue.close()
 
 
-class CloseableQueue(object):
+class CloseableQueue:
   """Stripped-down fork of the standard library Queue that is closeable."""
 
   def __init__(self, maxsize=0):

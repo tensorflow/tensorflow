@@ -14,10 +14,6 @@
 # ==============================================================================
 """A node transformer that includes utilities for SCT."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import enum
 
@@ -412,7 +408,7 @@ class Base(NodeStateTracker, gast.NodeTransformer):
           if isinstance(values, (gast.Tuple, gast.List)):
             value_el = values.elts[i]
           else:
-            value_el = gast.Subscript(values, gast.Index(i), ctx=gast.Store())
+            value_el = gast.Subscript(values, i, ctx=gast.Store())
           self.apply_to_single_assignments(target_el, value_el, apply_fn)
       else:
         # TODO(mdan): Look into allowing to rewrite the AST here.

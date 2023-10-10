@@ -14,10 +14,6 @@
 # ==============================================================================
 """Double op is a user's defined op for testing purpose."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.lite.python.testdata import double_op_wrapper
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import load_library
@@ -29,6 +25,7 @@ _double_op = load_library.load_op_library(
 
 def double(input_tensor):
   """Double op applies element-wise double to input data."""
-  if input_tensor.dtype != dtypes.int32:
-    raise ValueError('Double op only accept int32 values.')
+  if (input_tensor.dtype != dtypes.int32 and
+      input_tensor.dtype != dtypes.float32):
+    raise ValueError('Double op only accept int32 or float32 values.')
   return double_op_wrapper.double(input_tensor)

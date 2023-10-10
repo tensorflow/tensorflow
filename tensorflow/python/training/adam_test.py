@@ -14,20 +14,19 @@
 # ==============================================================================
 """Tests for Adam."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -68,14 +67,14 @@ class AdamOptimizerTest(test.TestCase):
           var0 = resource_variable_ops.ResourceVariable(var0_np)
           var1 = resource_variable_ops.ResourceVariable(var1_np)
         else:
-          var0 = variables.RefVariable(var0_np)
-          var1 = variables.RefVariable(var1_np)
+          var0 = ref_variable.RefVariable(var0_np)
+          var1 = ref_variable.RefVariable(var1_np)
         grads0_np_indices = np.array([0, 1], dtype=np.int32)
-        grads0 = ops.IndexedSlices(
+        grads0 = indexed_slices.IndexedSlices(
             constant_op.constant(grads0_np),
             constant_op.constant(grads0_np_indices), constant_op.constant([2]))
         grads1_np_indices = np.array([0, 1], dtype=np.int32)
-        grads1 = ops.IndexedSlices(
+        grads1 = indexed_slices.IndexedSlices(
             constant_op.constant(grads1_np),
             constant_op.constant(grads1_np_indices), constant_op.constant([2]))
         opt = adam.AdamOptimizer()
@@ -132,12 +131,12 @@ class AdamOptimizerTest(test.TestCase):
               [[1.0], [2.0]], dtype=dtype)
           aggregated_update_var = variables.Variable(
               [[1.0], [2.0]], dtype=dtype)
-          grad_repeated_index = ops.IndexedSlices(
+          grad_repeated_index = indexed_slices.IndexedSlices(
               constant_op.constant(
                   [0.1, 0.1], shape=[2, 1], dtype=dtype),
               constant_op.constant([1, 1]),
               constant_op.constant([2, 1]))
-          grad_aggregated = ops.IndexedSlices(
+          grad_aggregated = indexed_slices.IndexedSlices(
               constant_op.constant(
                   [0.2], shape=[1, 1], dtype=dtype),
               constant_op.constant([1]),
@@ -174,8 +173,8 @@ class AdamOptimizerTest(test.TestCase):
           var1 = resource_variable_ops.ResourceVariable(
               var1_np, name="var1_%d" % i)
         else:
-          var0 = variables.RefVariable(var0_np)
-          var1 = variables.RefVariable(var1_np)
+          var0 = ref_variable.RefVariable(var0_np)
+          var1 = ref_variable.RefVariable(var1_np)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
 
@@ -376,6 +375,45 @@ class AdamOptimizerTest(test.TestCase):
       # There should be two non-slot variables, and two unique slot variables
       # for v1 and v2 respectively.
       self.assertEqual(6, len({id(v) for v in opt.variables()}))
+
+  @test_util.deprecated_graph_mode_only
+  def testXlaSharding(self):
+    dtype = dtypes.float32
+    with self.session(graph=ops.Graph()):
+      # Initialize variables for numpy implementation.
+      var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
+      grads0_np = np.array([0.1, 0.1], dtype=dtype.as_numpy_dtype)
+      var1_np = np.array([3.0, 4.0], dtype=dtype.as_numpy_dtype)
+      grads1_np = np.array([0.01, 0.01], dtype=dtype.as_numpy_dtype)
+
+      var0 = resource_variable_ops.ResourceVariable(var0_np, name="var0")
+      var1 = resource_variable_ops.ResourceVariable(var1_np, name="var1")
+      var0, var1 = [
+          xla_sharding.mesh_split(
+              v, np.array([0, 1]), [0], use_sharding_op=False)
+          for v in (var0, var1)
+      ]
+      grads0 = constant_op.constant(grads0_np)
+      grads1 = constant_op.constant(grads1_np)
+
+      learning_rate = lambda: 0.001
+
+      opt = adam.AdamOptimizer(learning_rate=learning_rate)
+      update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+
+      self.evaluate(variables.global_variables_initializer())
+      self.evaluate(update)
+      # The beta accumulators are not sharded.
+      beta1_power, beta2_power = opt._get_beta_accumulators()
+      self.assertIsNone(xla_sharding.get_tensor_sharding(beta1_power))
+      self.assertIsNone(xla_sharding.get_tensor_sharding(beta2_power))
+
+      # Variables and slots are sharded.
+      for v in (var0, var1):
+        self.assertIsNotNone(xla_sharding.get_tensor_sharding(v))
+        for slot_name in ("m", "v"):
+          slot = opt.get_slot(v, slot_name)
+          self.assertIsNotNone(xla_sharding.get_tensor_sharding(slot))
 
 
 if __name__ == "__main__":

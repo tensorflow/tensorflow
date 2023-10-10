@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <numeric>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 
@@ -28,7 +31,7 @@ class L2LossOp : public XlaOpKernel {
   explicit L2LossOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    std::vector<int64> dims(ctx->InputShape(0).dims());
+    std::vector<int64_t> dims(ctx->InputShape(0).dims());
     std::iota(dims.begin(), dims.end(), 0);
 
     DataType dtype = ctx->input_type(0);

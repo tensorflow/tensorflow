@@ -16,15 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_RELU_TEST_UTIL_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_RELU_TEST_UTIL_H_
 
+#include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/testing_util.h"
 
 namespace tflite {
 namespace gpu {
 
-void ReLUNoClipNoAlphaTest(TestExecutionEnvironment* env);
-void ReLUClipTest(TestExecutionEnvironment* env);
-void ReLUAlphaTest(TestExecutionEnvironment* env);
-void ReLUAlphaClipTest(TestExecutionEnvironment* env);
+absl::Status ReLUNoClipNoAlphaTest(TestExecutionEnvironment* env);
+absl::Status ReLUClipTest(TestExecutionEnvironment* env);
+absl::Status ReLUAlphaTest(TestExecutionEnvironment* env);
+absl::Status ReLUAlphaClipTest(TestExecutionEnvironment* env);
+absl::Status ReLUN1NoClipNoAlphaTest(TestExecutionEnvironment* env);
+absl::Status ReLUN1ClipTest(TestExecutionEnvironment* env);
+absl::Status ReLUN1AlphaTest(TestExecutionEnvironment* env);
+absl::Status ReLUN1AlphaClipTest(TestExecutionEnvironment* env);
 
 }  // namespace gpu
 }  // namespace tflite

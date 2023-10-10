@@ -188,18 +188,18 @@ static Graph* DynamicPartition(int num_partitions, int dim) {
   return g;
 }
 
-#define BM_DYNAMIC_PARTITION(DEVICE, T, num)                          \
-  static void BM_##DEVICE##_dynpart_##T##_##num(                      \
-      ::testing::benchmark::State& state) {                           \
-    const int dim = state.range(0);                                   \
-                                                                      \
-    const int64 items = ((128 << 20) / sizeof(T));                    \
-    test::Benchmark(#DEVICE, DynamicPartition<T>(num, dim),           \
-                    /*old_benchmark_api=*/false)                      \
-        .Run(state);                                                  \
-    const int64 tot = static_cast<int64>(state.iterations()) * items; \
-    state.SetItemsProcessed(tot);                                     \
-  }                                                                   \
+#define BM_DYNAMIC_PARTITION(DEVICE, T, num)                              \
+  static void BM_##DEVICE##_dynpart_##T##_##num(                          \
+      ::testing::benchmark::State& state) {                               \
+    const int dim = state.range(0);                                       \
+                                                                          \
+    const int64_t items = ((128 << 20) / sizeof(T));                      \
+    test::Benchmark(#DEVICE, DynamicPartition<T>(num, dim),               \
+                    /*old_benchmark_api=*/false)                          \
+        .Run(state);                                                      \
+    const int64_t tot = static_cast<int64_t>(state.iterations()) * items; \
+    state.SetItemsProcessed(tot);                                         \
+  }                                                                       \
   BENCHMARK(BM_##DEVICE##_dynpart_##T##_##num)->UseRealTime()->Arg(1)->Arg(256)
 
 BM_DYNAMIC_PARTITION(cpu, float, 2);
@@ -209,6 +209,10 @@ BM_DYNAMIC_PARTITION(cpu, double, 100);
 BM_DYNAMIC_PARTITION(cpu, complex64, 2);
 BM_DYNAMIC_PARTITION(cpu, complex64, 100);
 
+BM_DYNAMIC_PARTITION(gpu, int32, 2);
+BM_DYNAMIC_PARTITION(gpu, int32, 100);
+BM_DYNAMIC_PARTITION(gpu, int64, 2);
+BM_DYNAMIC_PARTITION(gpu, int64, 100);
 BM_DYNAMIC_PARTITION(gpu, float, 2);
 BM_DYNAMIC_PARTITION(gpu, float, 100);
 BM_DYNAMIC_PARTITION(gpu, double, 2);

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_WHERE_OP_H_
 #define TENSORFLOW_CORE_KERNELS_WHERE_OP_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/macros.h"
@@ -55,7 +55,7 @@ struct Where {
   EIGEN_ALWAYS_INLINE static Status Compute(
       OpKernelContext* ctx, const Device& d,
       typename TTypes<T, NDIM>::ConstTensor input,
-      typename TTypes<int64>::Matrix output, TIndex* found_true);
+      typename TTypes<int64_t>::Matrix output, TIndex* found_true);
 };
 
 }  // namespace functor

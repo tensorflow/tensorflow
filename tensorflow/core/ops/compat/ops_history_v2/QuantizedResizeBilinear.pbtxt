@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "QuantizedResizeBilinear"
   input_arg {
     name: "images"

@@ -17,15 +17,10 @@
 This is a separate file from policy.py to avoid a circular dependency.
 get_layer_policy() relies on base_layer.py, itself which relies on policy.py.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from tensorflow.python.keras.engine import base_layer
-from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.mixed_precision.experimental.get_layer_policy', v1=[])
 def get_layer_policy(layer):
   """Returns the dtype policy of a layer.
 

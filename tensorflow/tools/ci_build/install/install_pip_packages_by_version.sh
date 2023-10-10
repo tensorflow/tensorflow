@@ -14,60 +14,100 @@
 # limitations under the License.
 # ==============================================================================
 
+# Called like install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.10"
 PIP="$1"
 PIP_INSTALL=("${PIP}" "install" "--prefer-binary" --upgrade)
 
-if [[ ! -x "$(which "${PIP}")" ]]; then
-  # Python2 doesn't ship with pip by default.
-  PYTHON="${PIP/pip/python}"
-  wget "https://bootstrap.pypa.io/get-pip.py"
-  "${PYTHON}" "get-pip.py"
-  rm "get-pip.py"
-fi
+PYTHON="${PIP/pip/python}"
+wget "https://bootstrap.pypa.io/get-pip.py"
+"${PYTHON}" "get-pip.py" --force-reinstall
+rm "get-pip.py"
+"${PYTHON}" -m ensurepip --upgrade
 
-PACKAGES=(
-  "auditwheel"
-  "wheel"
+PYTHON_VERSION=$(echo ${PIP##*.})  # only the last number, eg. 10
+
+JAX_PACKAGES=(
   "setuptools"
-  "virtualenv"
-  "six"
-  "future"
+  "wheel"
+  "cloudpickle"
+  "colorama>=0.4.4"
+  "matplotlib"
+  "pillow>=9.1.0"
+  "rich"
   "absl-py"
-  "werkzeug"
-  "bleach"
-  "markdown"
-  "protobuf"
-  "numpy"
-  "scipy"
-  "scikit-learn"
-  "pandas"
-  "psutil"
-  "py-cpuinfo"
-  "lazy-object-proxy"
-  "pylint"
-  "pycodestyle"
   "portpicker"
-  "grpcio"
-  "astor"
-  "gast"
-  "termcolor"
-  "keras_preprocessing"
-  "h5py"
-  "tf-estimator-nightly"
-  "tb-nightly"
-  "argparse"
-  "dm-tree"
-  "dill"
-  "tblib"
+  "six"
+  "opt-einsum"
+  "auditwheel"
+  "typing_extensions"
+  "ml_dtypes>=0.3.0"
+  "importlib_metadata>=4.6"
 )
 
-# tf.mock require the following for python2:
-if [[ "${PIP}" == *pip2* ]]; then
-  PACKAGES+=("mock")
-fi
+PACKAGES=(
+  "absl-py"
+  "argparse"
+  "astor"
+  "auditwheel"
+  "bleach"
+  "dill"
+  "dm-tree"
+  "future"
+  "gast"
+  "grpcio"
+  "h5py"
+  "keras-nightly"
+  "libclang"
+  "markdown"
+  "pandas"
+  "packaging"
+  "portpicker"
+  "protobuf==3.20.3"
+  "psutil"
+  "py-cpuinfo"
+  "pybind11"
+  "pycodestyle"
+  "pylint==2.7.4"
+  "scikit-learn"
+  "scipy"
+  "six"
+  "tb-nightly"
+  "tblib"
+  "termcolor"
+  "tf-estimator-nightly"
+  "werkzeug"
+  "wheel"
+)
 
 # Get the latest version of pip so it recognize manylinux2010
 "${PIP}" "install" "--upgrade" "pip"
+"${PIP}" "install" "--upgrade" "setuptools" "virtualenv"
 
-"${PIP_INSTALL[@]}" "${PACKAGES[@]}"
+if [[ "$2" == "jax" ]]; then
+  "${PIP_INSTALL[@]}" "${JAX_PACKAGES[@]}"
+else
+  "${PIP_INSTALL[@]}" "${PACKAGES[@]}"
+fi
+
+if [[ "$2" == "jax" ]]; then
+  # Special casing by version of Python
+  # E.g., numpy supports py3.11 only from 1.23.4
+  if [[ ${PYTHON_VERSION} -eq 12 ]]; then
+    "${PIP_INSTALL[@]}" "numpy==1.26.0" "scipy==1.11.2"
+  elif [[ ${PYTHON_VERSION} -eq 11 ]]; then
+    "${PIP_INSTALL[@]}" "numpy==1.23.4" "scipy==1.9.3"
+  else
+    "${PIP_INSTALL[@]}" "numpy==1.22.4" "scipy==1.9.3"
+  fi
+else
+  # Special casing by version of Python
+  # E.g., numpy supports py3.10 only from 1.21.3
+  if [[ ${PYTHON_VERSION} -eq 10 ]]; then
+    "${PIP_INSTALL[@]}" "numpy==1.21.3"
+  elif [[ ${PYTHON_VERSION} -eq 11 ]]; then
+    "${PIP_INSTALL[@]}" "numpy==1.23.4"
+  else
+    "${PIP_INSTALL[@]}" "numpy==1.19"
+  fi
+fi
 

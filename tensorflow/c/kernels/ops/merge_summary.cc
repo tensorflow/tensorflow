@@ -12,9 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "tensorflow/c/ops.h"
 #include "tensorflow/c/tf_status.h"
-#include "tensorflow/core/framework/selective_registration.h"
+#include "tensorflow/core/framework/registration/registration.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -44,7 +45,7 @@ void Register_MergeSummaryOp() {
 }
 
 TF_ATTRIBUTE_UNUSED static bool MergeSummaryOpRegistered = []() {
-  if (SHOULD_REGISTER_OP("MergeSummary")) {
+  if ((&TF_NewStatus != nullptr) && SHOULD_REGISTER_OP("MergeSummary")) {
     Register_MergeSummaryOp();
   }
   return true;

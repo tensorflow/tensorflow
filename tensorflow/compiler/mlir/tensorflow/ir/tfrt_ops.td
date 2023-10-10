@@ -22,40 +22,78 @@ limitations under the License.
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 include "mlir/IR/OpBase.td"
 
-def TF__JitFusedMatMulOp : TF_Op<"_JitFusedMatMul", [NoSideEffect, SameOperandsAndResultElementType]> {
-  let summary = [{
-    MatMul operation with an output fusion compiled at runtime via MLIR codegen.
-  }];
+def TF__TfrtSetResourceOp : TF_Op<"_TfrtSetResource", []> {
+  let summary = "Set values as TFRT runtime's static resource.";
 
   let description = [{
-The inputs to the MatMul are specified by `a` and `b`. The series of operations
-that follows is specified by the `fusion` attribute, which is a list of output
-kernel names specified as strings (e.g. "BiasAdd"). They are performed in order,
-where the (first) input to each op is the output of the preceding op. The first
-input and the output of each fused_op must be of type T.
-
-Supported list of fusions is defined by ContractionOutputKernelBuilder
-implementations.
-
-*WARN*: This is a TFRT only operations, and it does not exist in TF. This
-operation is only added by the ContractionFusion pass.
+    Setting a tensor value in TFRT runtime's static resource manager, using
+    index as its identifier. It can be retrieved by _TfrtGetResource using the
+    same index.
   }];
 
   let arguments = (ins
-    TensorOf<[F32]>:$a,
-    TensorOf<[F32]>:$b,
-    Variadic<TensorOf<[F32]>>:$additional_args,
+    TF_Tensor:$arg,
+    I64Attr:$index
+  );
+}
 
-    DefaultValuedAttr<BoolAttr, "false">:$transpose_a,
-    DefaultValuedAttr<BoolAttr, "false">:$transpose_b,
-    DefaultValuedAttr<StrArrayAttr, "{}">:$fusion
+def TF__TfrtGetResourceOp : TF_Op<"_TfrtGetResource",
+    [Pure, TF_NoConstantFold, DeclareOpInterfaceMethods<TF_ResourceHandleAllocatorInterface>]> {
+  let summary = "Get values from TFRT runtime's static resource.";
+
+  let description = [{
+    Getting tensor values from TFRT runtime's static resource manager, using
+    the indices that are previously set in _TfrtSetResource op.
+    `shared_name` and `container` are used to store identifying information for
+    resource tensors that have been hoisted. This is important for resource
+    alias analysis and side effect analysis. These are empty for non-resource
+    type tensors.
+  }];
+
+  let arguments = (ins
+    I64ArrayAttr:$indices,
+    StrArrayAttr:$shared_name,
+    StrArrayAttr:$container
   );
 
   let results = (outs
-    TensorOf<[F32]>:$product
+    Variadic<TF_Tensor>:$results
   );
 
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  let hasVerifier = 1;
+}
+
+// TODO(chky): Consider adding this op to tensorflow core ops.
+def TF_PwStreamResultsOp : TF_Op<"PwStreamResults"> {
+  let summary = "Streams results back to the controller";
+
+  let description = [{
+    This op is a TensorFlow op that represents "streamed outputs", where
+    intermediate results can be returned immediately without waiting for the
+    entire signature computation to complete.
+
+    This op takes `args` with their `names` (their cardinality must match) and
+    sends the given argument tensors back to the serving controller. This
+    triggers a controller-side stream callback (see `ScopedStreamCallback`).
+
+    In addition to the listed attributes, this op has two "hidden" attributes
+    that do not exist in SavedModel but are dynamically populated by the serving
+    runtime:
+
+    * `_controller_address`: Address of the remote instance to which tensors
+      will be sent via e.g. RPC.
+    * `_callback_id`: Identifier for the callback to be called from the
+      controller. See `ScopedStreamCallback`.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor> : $args,
+    StrArrayAttr : $names
+  );
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+
+  let hasVerifier = 1;
 }
 
 #endif // TFRT_OPS

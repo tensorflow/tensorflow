@@ -86,7 +86,7 @@ class UnaryOpsCompositionTest : public OpsTestBase {
     Tensor* input = AddInput(dtype, shape);
 
     DeviceContext* device_context =
-        device_->tensorflow_gpu_device_info()->default_context;
+        device_->tensorflow_accelerator_device_info()->default_context;
 
     TF_CHECK_OK(device_context->CopyCPUTensorToDeviceSync(&input_on_host,
                                                           device_, input));

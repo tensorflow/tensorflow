@@ -37,7 +37,7 @@ namespace tensorflow {
   static ProcessState* instance = new ProcessState;
   static absl::once_flag f;
   absl::call_once(f, []() {
-    AllocatorFactoryRegistry::singleton()->process_state_ = instance;
+    AllocatorFactoryRegistry::singleton()->SetProcessState(instance);
   });
 
   return instance;
@@ -80,7 +80,7 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
     Status status = ReadBoolFromEnvVar(
         "TF_CPU_ALLOCATOR_USE_BFC", alloc_visitors_defined, &use_bfc_allocator);
     if (!status.ok()) {
-      LOG(ERROR) << "GetCPUAllocator: " << status.error_message();
+      LOG(ERROR) << "GetCPUAllocator: " << status.message();
     }
     Allocator* allocator = nullptr;
     SubAllocator* sub_allocator =
@@ -91,24 +91,28 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
             : nullptr;
     if (use_bfc_allocator) {
       // TODO(reedwm): evaluate whether 64GB by default is the best choice.
-      int64 cpu_mem_limit_in_mb = -1;
+      int64_t cpu_mem_limit_in_mb = -1;
       Status status = ReadInt64FromEnvVar("TF_CPU_BFC_MEM_LIMIT_IN_MB",
                                           1LL << 16 /*64GB max by default*/,
                                           &cpu_mem_limit_in_mb);
       if (!status.ok()) {
-        LOG(ERROR) << "GetCPUAllocator: " << status.error_message();
+        LOG(ERROR) << "GetCPUAllocator: " << status.message();
       }
-      int64 cpu_mem_limit = cpu_mem_limit_in_mb * (1LL << 20);
+      int64_t cpu_mem_limit = cpu_mem_limit_in_mb * (1LL << 20);
       DCHECK(sub_allocator);
-      allocator =
-          new BFCAllocator(sub_allocator, cpu_mem_limit, true /*allow_growth*/,
-                           "bfc_cpu_allocator_for_gpu" /*name*/);
+
+      BFCAllocator::Options allocator_opts;
+      allocator_opts.allow_growth = true;
+      allocator = new BFCAllocator(
+          absl::WrapUnique(sub_allocator), cpu_mem_limit,
+          /*name=*/"bfc_cpu_allocator_for_gpu", allocator_opts);
+
       VLOG(2) << "Using BFCAllocator with memory limit of "
               << cpu_mem_limit_in_mb << " MB for ProcessState CPU allocator";
     } else if (sub_allocator) {
       DCHECK(sub_allocator);
       allocator =
-          new PoolAllocator(100 /*pool_size_limit*/, true /*auto_resize*/,
+          new PoolAllocator(/*pool_size_limit=*/100, /*auto_resize=*/true,
                             sub_allocator, new NoopRounder, "cpu_pool");
       VLOG(2) << "Using PoolAllocator for ProcessState CPU allocator "
               << "numa_enabled_=" << numa_enabled_

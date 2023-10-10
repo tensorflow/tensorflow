@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_EXAMPLES_ANDROID_JNI_RGB2YUV_H_
-#define TENSORFLOW_EXAMPLES_ANDROID_JNI_RGB2YUV_H_
+#ifndef TENSORFLOW_TOOLS_ANDROID_TEST_JNI_RGB2YUV_H_
+#define TENSORFLOW_TOOLS_ANDROID_TEST_JNI_RGB2YUV_H_
 
 #include <stdint.h>
 
@@ -32,4 +32,4 @@ void ConvertRGB565ToYUV420SP(const uint16_t* const input, uint8_t* const output,
 }
 #endif
 
-#endif  // TENSORFLOW_EXAMPLES_ANDROID_JNI_RGB2YUV_H_
+#endif  // TENSORFLOW_TOOLS_ANDROID_TEST_JNI_RGB2YUV_H_

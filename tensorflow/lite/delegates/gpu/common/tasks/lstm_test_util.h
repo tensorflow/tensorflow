@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_LSTM_TEST_UTIL_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_LSTM_TEST_UTIL_H_
 
+#include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/testing_util.h"
 
 namespace tflite {
 namespace gpu {
 
-void LstmTest(TestExecutionEnvironment* env);
+absl::Status LstmTest(TestExecutionEnvironment* env);
 
 }  // namespace gpu
 }  // namespace tflite

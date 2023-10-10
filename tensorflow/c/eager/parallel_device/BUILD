@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -6,7 +6,8 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
 )
 
 # Currently pybind extension shared objects must use only C API headers since
@@ -55,12 +56,16 @@ cc_library(
     name = "parallel_device",
     srcs = [":device_sources"],
     hdrs = [":device_headers"],
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
     deps = [
         ":parallel_device_lib",
         "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:variant",
@@ -74,8 +79,13 @@ cc_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/c:c_api",
+        "//tensorflow/c:safe_ptr",
+        "//tensorflow/c:tf_status_internal",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/eager:tfe_cancellation_manager_internal",
+        "//tensorflow/c/eager:tfe_op_internal",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/types:optional",
@@ -89,13 +99,17 @@ tf_cc_test(
     srcs = ["parallel_device_lib_test.cc"],
     deps = [
         ":parallel_device_lib",
+        ":parallel_device_testlib",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/eager:tfe_context_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime/eager:context",
     ],
 )
 
@@ -106,6 +120,7 @@ cc_library(
     hdrs = ["parallel_device_testlib.h"],
     deps = [
         ":parallel_device",
+        ":parallel_device_lib",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c/eager:c_api",
@@ -123,8 +138,11 @@ tf_cc_test(
         ":parallel_device_testlib",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
+        "//tensorflow/c:tf_status_internal",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -136,7 +154,7 @@ tf_cc_test(
     srcs = ["parallel_device_remote_test.cc"],
     # TODO(b/136478427): Enable global heap checking when servers shut down
     # cleanly.
-    args = ["--heap_check=local"],
+    args = ["--heap_check="],
     deps = [
         ":parallel_device",
         ":parallel_device_testlib",

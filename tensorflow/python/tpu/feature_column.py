@@ -13,10 +13,6 @@
 # limitations under the License.
 # ===================================================================
 """TPU Feature Column Library."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 
 from tensorflow.python.feature_column import feature_column as fc
@@ -27,6 +23,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_function
+from tensorflow.python.tpu import tpu_replication
 # pylint: disable=protected-access
 
 
@@ -108,12 +105,12 @@ def embedding_column(categorical_column,
   """
   if isinstance(categorical_column, _DENYLISTED_CATEGORICAL_COLUMNS_V2):
     raise TypeError('categorical_column for tpu '
-                    ' embedding_column was denylisted type %s' %
-                    type(categorical_column))
+                    ' embedding_column was '
+                    f'denylisted type {type(categorical_column)}')
   if not isinstance(categorical_column, _SUPPORTED_CATEGORICAL_COLUMNS):
     raise TypeError(
         'categorical_column for tpu '
-        ' embedding_column must be type %s, got %s.' % (' or '.join([
+        ' embedding_column must be type {}, got {}.'.format(' or '.join([
             cc.__name__ for cc in _SUPPORTED_CATEGORICAL_COLUMNS
         ]), type(categorical_column)))
   if (dimension is None) or (dimension < 1):
@@ -225,14 +222,15 @@ def shared_embedding_columns(categorical_columns,
   for categorical_column in categorical_columns:
     if isinstance(categorical_column, _DENYLISTED_CATEGORICAL_COLUMNS_V2):
       raise TypeError('categorical_column for tpu '
-                      ' embedding_column was denylisted type %s' %
-                      type(categorical_column))
+                      ' embedding_column was denylisted type '
+                      f'{type(categorical_column)}')
     if not isinstance(categorical_column, _SUPPORTED_CATEGORICAL_COLUMNS):
       raise TypeError(
           'categorical_column for tpu '
-          ' shared_embedding_columns must be type %s, got %s.' % (' or '.join([
-              cc.__name__ for cc in _SUPPORTED_CATEGORICAL_COLUMNS
-          ]), type(categorical_column)))
+          ' shared_embedding_columns must be type {}, got {}.'.format(
+              ' or '.join(
+                  [cc.__name__ for cc in _SUPPORTED_CATEGORICAL_COLUMNS]),
+              type(categorical_column)))
 
   if not max_sequence_lengths:
     max_sequence_lengths = [0] * len(categorical_columns)
@@ -378,6 +376,7 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
     # are not supported on TPU. They are solely for matching the signature of
     # __new__ of parent class fc._EmbeddingColumn.
     del bypass_scope_validation
+    # pylint: disable=redundant-keyword-arg
     return fc._EmbeddingColumn.__new__(
         cls,
         categorical_column,
@@ -455,7 +454,8 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
       def host_computation():
         return fc._EmbeddingColumn._get_dense_tensor(
             self, inputs, weight_collections, trainable)
-      return tpu.outside_compilation(host_computation)
+
+      return tpu_replication.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc._EmbeddingColumn._get_dense_tensor(
@@ -479,7 +479,8 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
       def host_computation():
         return fc._EmbeddingColumn._get_sequence_dense_tensor(
             self, inputs, weight_collections, trainable)
-      return tpu.outside_compilation(host_computation)
+
+      return tpu_replication.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc._EmbeddingColumn._get_sequence_dense_tensor(
@@ -594,7 +595,8 @@ class _TPUSharedEmbeddingColumn(_TPUBaseEmbeddingColumn,
       def host_computation():
         return fc._SharedEmbeddingColumn._get_dense_tensor(
             self, inputs, weight_collections, trainable)
-      return tpu.outside_compilation(host_computation)
+
+      return tpu_replication.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc._SharedEmbeddingColumn._get_dense_tensor(
@@ -617,7 +619,8 @@ class _TPUSharedEmbeddingColumn(_TPUBaseEmbeddingColumn,
       def host_computation():
         return fc._SharedEmbeddingColumn._get_sequence_dense_tensor(
             self, inputs, weight_collections, trainable)
-      return tpu.outside_compilation(host_computation)
+
+      return tpu_replication.outside_compilation(host_computation)
 
     if _is_running_on_cpu():
       return fc._SharedEmbeddingColumn._get_sequence_dense_tensor(
@@ -714,7 +717,7 @@ def split_sequence_columns(feature_columns):
     if not isinstance(column, (_TPUEmbeddingColumn, _TPUSharedEmbeddingColumn)):
       raise TypeError(
           'column must be a _TPUEmbeddingColumn or  _TPUSharedEmbeddingColumn '
-          'but got %s instead.' % (type(column)))
+          f'but got {type(column)} instead.')
     if column.is_sequence_column():
       sequence_columns.append(column)
     else:

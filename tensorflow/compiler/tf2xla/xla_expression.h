@@ -18,11 +18,12 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
-#include "tensorflow/compiler/xla/client/client.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/client/client.h"
+#include "xla/client/value_inference.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -86,38 +87,57 @@ class XlaExpression {
 
   // Return a constant value associated with this expression. Always set for
   // constants, might be set for resources.
-  absl::optional<Tensor> constant_value() const {
+  std::optional<Tensor> constant_value() const {
     if (kind_ == Kind::kResource && resource_->IsOverwritten()) {
       // The constant is no longer available if the value was overwritten.
-      return absl::nullopt;
+      return std::nullopt;
     }
     return constant_value_;
   }
+
+  // Set the bound of the expression.
+  void set_value_bound(Tensor tensor) {
+    value_bound_.emplace(std::move(tensor));
+  }
+
+  // Return the bound of the expression, if available.
+  std::optional<Tensor> value_bound() const { return value_bound_; }
+
+  // Set the dynamism of the expression, indicating whether or not each value in
+  // this expression is dynamic.
+  void set_value_dynamism(Tensor tensor) {
+    value_dynamism_.emplace(std::move(tensor));
+  }
+
+  // Return the dynamism of the expression, if available.
+  std::optional<Tensor> value_dynamism() const { return value_dynamism_; }
 
   XlaResource* resource() const { return resource_; }
 
   // Returns a human-readable summary of the expression.
   string HumanString() const;
 
-  // Returns the value of a kConstant or kXlaOp as an xla::XlaOp. Returns
+  // Returns the value of a kValue or kXlaOp as an xla::XlaOp. Returns
   // an erroneous XlaOp if the expression is not a constant or an expression.
   xla::XlaOp AsXlaOp(xla::XlaBuilder* builder) const;
 
-  // If a kXlaOp or kConstant expression can be resolved to a compile-time
+  // If a kXlaOp or kValue expression can be resolved to a compile-time
   // constant, returns the value as a host-memory Tensor. Returns an empty
   // optional if it cannot be resolved. Returns an error if passed a resource
   // expression.
-  xla::StatusOr<absl::optional<Tensor>> ResolveConstant(
-      xla::Client* client, bool dynamic_dimension_is_minus_one = false) const;
+  StatusOr<std::optional<Tensor>> ResolveConstant(
+      xla::Client* client, bool dynamic_dimension_is_minus_one = false,
+      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue) const;
 
   // ResolveDynamism computes where a value inside this op is dynamic or can be
   // inferred at compile time.
-  xla::StatusOr<Tensor> ResolveDynamism(xla::Client* client) const;
+  StatusOr<Tensor> ResolveDynamism() const;
 
   // Returns the shape of the tensor.
   // The shape of a resource is the shape of a resource handle (i.e., a scalar),
   // not the shape of the resource's value.
-  xla::StatusOr<TensorShape> GetShape() const;
+  StatusOr<TensorShape> GetShape() const;
+  StatusOr<xla::Shape> GetXlaShape() const;
 
   // Retrieves an XlaExpression that was allocated by a previous Op.
   static const XlaExpression* CastExpressionFromTensor(const Tensor& tensor);
@@ -136,7 +156,13 @@ class XlaExpression {
   xla::XlaOp handle_;
 
   // The value of the constant, if available.
-  absl::optional<Tensor> constant_value_;
+  std::optional<Tensor> constant_value_;
+
+  // The bound of the expression, if available.
+  std::optional<Tensor> value_bound_;
+
+  // Indicate whether each value inside a tensor is dynamic or not.
+  std::optional<Tensor> value_dynamism_;
 
   // The resource, if kind_ == kResource. Not owned.
   XlaResource* resource_ = nullptr;

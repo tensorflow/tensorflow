@@ -27,6 +27,18 @@ tf_class {
     name: "work_dir"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "worker_addresses"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "worker_max_concurrent_snapshots"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "worker_timeout_ms"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
   }

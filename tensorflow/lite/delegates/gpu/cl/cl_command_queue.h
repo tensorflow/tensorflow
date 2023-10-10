@@ -20,43 +20,18 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/time/time.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_event.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_kernel.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/profiling_info.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-struct ProfilingInfo {
-  struct DispatchInfo {
-    std::string label;
-    absl::Duration duration;
-  };
-
-  std::vector<DispatchInfo> dispatches;
-
-  absl::Duration GetTotalTime() const;
-
-  // Returns report (string of lines delimited by \n)
-  // This method uses GPU counters and measure GPU time only.
-  // Report has next structure:
-  // Per kernel timing(K kernels):
-  //   conv2d 3.2ms
-  //   ...
-  // --------------------
-  // Accumulated time per operation type:
-  //   conv2d - 14.5ms
-  //   ....
-  // --------------------
-  // Ideal total time: 23.4ms // Total time for all kernels
-  std::string GetDetailedReport() const;
-};
 
 // A wrapper around opencl command queue
 class CLCommandQueue {
@@ -83,13 +58,15 @@ class CLCommandQueue {
 
   absl::Status EnqueueEvent(CLEvent* event);
 
-  absl::Status EnqueueWriteImage(cl_mem memory, int3 region, const void* data);
-  absl::Status EnqueueReadImage(cl_mem memory, int3 region, void* data);
+  absl::Status EnqueueWriteImage(cl_mem memory, int3 region, const void* data,
+                                 bool async = false);
+  absl::Status EnqueueReadImage(cl_mem memory, int3 region, void* data,
+                                bool async = false);
 
   absl::Status EnqueueWriteBuffer(cl_mem memory, size_t size_in_bytes,
-                                  const void* data);
+                                  const void* data, bool async = false);
   absl::Status EnqueueReadBuffer(cl_mem memory, size_t size_in_bytes,
-                                 void* data);
+                                 void* data, bool async = false);
 
   absl::Status WaitForCompletion();
 
@@ -113,6 +90,12 @@ class ProfilingCommandQueue : public CLCommandQueue {
 
   absl::Status Dispatch(const CLKernel& kernel, const int3& work_groups_count,
                         const int3& work_group_size) override;
+
+  // for better profiling
+  absl::Status DispatchNTimes(const CLKernel& kernel,
+                              const int3& work_groups_count,
+                              const int3& work_group_size, int n,
+                              int flush_period = 0);
 
   // will write index for fastest work_group among work_group_sizes
   absl::Status GetBestWorkGroupIndex(const CLKernel& kernel,
@@ -139,6 +122,7 @@ class ProfilingCommandQueue : public CLCommandQueue {
 
  private:
   std::vector<CLEvent> events_;
+  std::vector<int> number_of_dispatches_;
   std::string current_label_;
 };
 

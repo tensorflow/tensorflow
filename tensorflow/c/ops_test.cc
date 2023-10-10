@@ -188,7 +188,7 @@ static OpDef MakeOpDef(int num_inputs, int num_outputs) {
 
 // Tests for shape inference
 
-PartialTensorShape S(std::initializer_list<int64> dims) {
+PartialTensorShape S(std::initializer_list<int64_t> dims) {
   return PartialTensorShape(dims);
 }
 

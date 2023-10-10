@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
+#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -24,7 +24,7 @@ namespace profiler {
 namespace {
 
 // Returns the timespan in this step (across all cores).
-Timespan StepTimespan(const PerCoreStepInfo& percore_stepinfo) {
+tsl::profiler::Timespan StepTimespan(const PerCoreStepInfo& percore_stepinfo) {
   uint64 min_ps = kuint64max;
   uint64 max_ps = 0;
   for (const auto& core_stepinfo : percore_stepinfo.step_info_per_core()) {
@@ -34,23 +34,25 @@ Timespan StepTimespan(const PerCoreStepInfo& percore_stepinfo) {
     min_ps = std::min(min_ps, begin_ps);
     max_ps = std::max(max_ps, end_ps);
   }
-  return (min_ps < max_ps) ? Timespan::FromEndPoints(min_ps, max_ps)
-                           : Timespan();
+  return (min_ps < max_ps)
+             ? tsl::profiler::Timespan::FromEndPoints(min_ps, max_ps)
+             : tsl::profiler::Timespan();
 }
 
 // Returns the timespan across all steps in the given step_db.
-Timespan AllStepsTimespan(const StepDatabaseResult& step_db) {
+tsl::profiler::Timespan AllStepsTimespan(const StepDatabaseResult& step_db) {
   uint64 min_ps = kuint64max;
   uint64 max_ps = 0;
   for (const auto& step : step_db.step_sequence()) {
-    Timespan timespan = StepTimespan(step);
+    tsl::profiler::Timespan timespan = StepTimespan(step);
     uint64 begin_ps = timespan.begin_ps();
     uint64 end_ps = timespan.end_ps();
     min_ps = std::min(min_ps, begin_ps);
     max_ps = std::max(max_ps, end_ps);
   }
-  return (min_ps < max_ps) ? Timespan::FromEndPoints(min_ps, max_ps)
-                           : Timespan();
+  return (min_ps < max_ps)
+             ? tsl::profiler::Timespan::FromEndPoints(min_ps, max_ps)
+             : tsl::profiler::Timespan();
 }
 
 struct AlignmentInfo {
@@ -62,8 +64,8 @@ struct AlignmentInfo {
 // timespans are, the larger is the similarity.
 double StepSimilarity(const PerCoreStepInfo& subordinate_step,
                       const PerCoreStepInfo& chief_step) {
-  Timespan subordinate_timespan = StepTimespan(subordinate_step);
-  Timespan chief_timespan = StepTimespan(chief_step);
+  tsl::profiler::Timespan subordinate_timespan = StepTimespan(subordinate_step);
+  tsl::profiler::Timespan chief_timespan = StepTimespan(chief_step);
   return chief_timespan.OverlappedDurationPs(subordinate_timespan);
 }
 
@@ -168,6 +170,8 @@ StepIntersection::StepIntersection(
     uint32 max_steps,
     const absl::flat_hash_map<uint32, const StepDatabaseResult*>&
         perhost_stepdb) {
+  empty_intersect_ = false;
+
   // Figures out the host with the shortest timespan among their steps (called
   // this host the "chief").
   chief_host_id_ = kuint32max;
@@ -176,7 +180,7 @@ StepIntersection::StepIntersection(
   for (const auto& hostid_stepdb : perhost_stepdb) {
     auto host_id = hostid_stepdb.first;
     const auto& step_db = hostid_stepdb.second;
-    Timespan timespan = AllStepsTimespan(*step_db);
+    tsl::profiler::Timespan timespan = AllStepsTimespan(*step_db);
     if (timespan.duration_ps() < min_duration_ps) {
       chief_host_id_ = host_id;
       chief_step_db = step_db;
@@ -213,7 +217,14 @@ StepIntersection::StepIntersection(
                                 perhost_alignment_[host_id].num_steps;
     min_end_chief_idx = std::min(min_end_chief_idx, host_end_chief_idx);
   }
-  DCHECK(max_begin_chief_idx <= min_end_chief_idx);
+  if (max_begin_chief_idx > min_end_chief_idx) {
+    // The intersection is empty.
+    steps_dropped_ = 0;
+    begin_chief_idx_ = 0;
+    end_chief_idx_ = 0;
+    empty_intersect_ = true;
+    return;
+  }
 
   begin_chief_idx_ = max_begin_chief_idx;
 

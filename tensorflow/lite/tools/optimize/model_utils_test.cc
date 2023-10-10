@@ -15,13 +15,11 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/model_utils.h"
 
 #include <memory>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/util/command_line_flags.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/test_util.h"
 
@@ -32,7 +30,7 @@ namespace {
 
 TEST(ModelUtilsTest, QuantizationParametersExist) {
   TensorT tensor;
-  tensor.quantization = absl::make_unique<QuantizationParametersT>();
+  tensor.quantization = std::make_unique<QuantizationParametersT>();
   tensor.quantization->scale.push_back(0.5);
   tensor.quantization->scale.push_back(1.5);
   EXPECT_FALSE(QuantizationParametersExist(&tensor));
@@ -43,12 +41,12 @@ TEST(ModelUtilsTest, QuantizationParametersExist) {
 
 TEST(ModelUtilsTest, HasBuffer) {
   tflite::ModelT model;
-  auto subgraph = absl::make_unique<tflite::SubGraphT>();
-  auto tensor = absl::make_unique<tflite::TensorT>();
+  auto subgraph = std::make_unique<tflite::SubGraphT>();
+  auto tensor = std::make_unique<tflite::TensorT>();
   tensor->buffer = 0;
   subgraph->tensors.push_back(std::move(tensor));
   model.subgraphs.push_back(std::move(subgraph));
-  auto buffer = absl::make_unique<tflite::BufferT>();
+  auto buffer = std::make_unique<tflite::BufferT>();
   model.buffers.push_back(std::move(buffer));
   EXPECT_FALSE(HasBuffer(&model, model.subgraphs[0].get(), 0));
   model.buffers[0]->data = {0, 1, 2, 3};
@@ -57,7 +55,7 @@ TEST(ModelUtilsTest, HasBuffer) {
 
 TEST(ModelUtilsTest, HasMinMax) {
   TensorT tensor;
-  tensor.quantization = absl::make_unique<QuantizationParametersT>();
+  tensor.quantization = std::make_unique<QuantizationParametersT>();
   tensor.quantization->min.push_back(0.5);
   EXPECT_FALSE(HasMinMax(&tensor));
   tensor.quantization->max.push_back(1.5);
@@ -68,5 +66,3 @@ TEST(ModelUtilsTest, HasMinMax) {
 }  // namespace utils
 }  // namespace optimize
 }  // namespace tflite
-
-int main(int argc, char** argv) { return RUN_ALL_TESTS(); }

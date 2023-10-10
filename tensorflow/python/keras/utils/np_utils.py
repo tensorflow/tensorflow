@@ -13,21 +13,16 @@
 # limitations under the License.
 # ==============================================================================
 """Numpy-related utilities."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
-from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.utils.to_categorical')
 def to_categorical(y, num_classes=None, dtype='float32'):
   """Converts a class vector (integers) to binary class matrix.
 
   E.g. for use with categorical_crossentropy.
 
-  Arguments:
+  Args:
       y: class vector to be converted into a matrix
           (integers from 0 to num_classes).
       num_classes: total number of classes. If `None`, this would be inferred
@@ -81,11 +76,10 @@ def to_categorical(y, num_classes=None, dtype='float32'):
   return categorical
 
 
-@keras_export('keras.utils.normalize')
 def normalize(x, axis=-1, order=2):
   """Normalizes a Numpy array.
 
-  Arguments:
+  Args:
       x: Numpy array to normalize.
       axis: axis along which to normalize.
       order: Normalization order (e.g. `order=2` for L2 norm).

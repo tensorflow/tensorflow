@@ -1,8 +1,10 @@
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -10,18 +12,26 @@ cc_library(
     srcs = ["calibration_wrapper.cc"],
     hdrs = ["calibration_wrapper.h"],
     deps = [
+        "//tensorflow/compiler/mlir/lite:offset_buffer",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite:shared_library",
+        "//tensorflow/lite:string_util",
+        "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/lite/python/interpreter_wrapper:python_error_reporter",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
+        "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/tools/optimize:quantization_wrapper_utils",
         "//tensorflow/lite/tools/optimize:quantize_model",
         "//tensorflow/lite/tools/optimize/calibration:calibration_reader",
         "//tensorflow/lite/tools/optimize/calibration:calibrator_lib",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
-        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -31,33 +41,42 @@ pybind_extension(
         "calibration_wrapper_pybind11.cc",
     ],
     hdrs = ["calibration_wrapper.h"],
+    additional_stubgen_deps = [
+        "//third_party/py/numpy:numpy",
+    ],
+    enable_stub_generation = True,
     link_in_framework = True,
-    module_name = "_pywrap_tensorflow_lite_calibration_wrapper",
+    pytype_srcs = [
+        "_pywrap_tensorflow_lite_calibration_wrapper.pyi",
+    ],
     deps = [
         ":calibration_wrapper_lib",
-        "//tensorflow/lite:framework_lib",
-        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "calibrator",
     srcs = [
         "calibrator.py",
     ],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tensorflow_lite_calibration_wrapper",  # buildcleaner: keep
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:util",
+        "//tensorflow/lite/python:convert_phase",
+        "//tensorflow/lite/python:interpreter",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/util:lazy_loader",
         "//third_party/py/numpy",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "calibrator_test",
     srcs = ["calibrator_test.py"],
     data = [
@@ -65,16 +84,19 @@ py_test(
         "//tensorflow/lite:testdata/multi_add.bin",
     ],
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     tags = ["no_oss"],
     deps = [
         ":calibrator",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/lite/python:lite",
+        "//tensorflow/lite/python:schema_py",
+        "//tensorflow/lite/tools:flatbuffer_utils",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:resource_loader",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
     ],
 )

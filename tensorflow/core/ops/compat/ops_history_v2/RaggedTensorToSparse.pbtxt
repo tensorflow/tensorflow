@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "RaggedTensorToSparse"
   input_arg {
     name: "rt_nested_splits"

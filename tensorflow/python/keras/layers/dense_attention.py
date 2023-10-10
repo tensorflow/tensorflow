@@ -18,21 +18,16 @@ This file follows the terminology of https://arxiv.org/abs/1706.03762 Figure 2.
 Attention is formed by three tensors: Query, Key and Value.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.util.tf_export import keras_export
 
 
 class BaseDenseAttention(Layer):
@@ -50,7 +45,7 @@ class BaseDenseAttention(Layer):
     dropout: Float between 0 and 1. Fraction of the units to drop for the
       attention scores.
 
-  Call Arguments:
+  Call Args:
 
     inputs: List of the following tensors:
       * query: Query `Tensor` of shape `[batch_size, Tq, dim]`.
@@ -126,9 +121,13 @@ class BaseDenseAttention(Layer):
     if scores_mask is not None:
       padding_mask = math_ops.logical_not(scores_mask)
       # Bias so padding positions do not contribute to attention distribution.
-      scores -= 1.e9 * math_ops.cast(padding_mask, dtype=K.floatx())
+      # Note 65504. is the max float16 value.
+      if scores.dtype is dtypes.float16:
+        scores -= 65504. * math_ops.cast(padding_mask, dtype=scores.dtype)
+      else:
+        scores -= 1.e9 * math_ops.cast(padding_mask, dtype=scores.dtype)
     if training is None:
-      training = K.learning_phase()
+      training = backend.learning_phase()
     weights = nn.softmax(scores)
 
     def dropped_weights():
@@ -183,7 +182,7 @@ class BaseDenseAttention(Layer):
       q_mask = mask[0]
       if q_mask is None:
         return None
-      return ops.convert_to_tensor_v2_with_dispatch(q_mask)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(q_mask)
     return None
 
   def _validate_call_args(self, inputs, mask):
@@ -217,7 +216,6 @@ class BaseDenseAttention(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.Attention')
 class Attention(BaseDenseAttention):
   """Dot-product attention layer, a.k.a. Luong-style attention.
 
@@ -242,7 +240,7 @@ class Attention(BaseDenseAttention):
     dropout: Float between 0 and 1. Fraction of the units to drop for the
       attention scores.
 
-  Call Arguments:
+  Call Args:
 
     inputs: List of the following tensors:
       * query: Query `Tensor` of shape `[batch_size, Tq, dim]`.
@@ -355,7 +353,6 @@ class Attention(BaseDenseAttention):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.AdditiveAttention')
 class AdditiveAttention(BaseDenseAttention):
   """Additive attention layer, a.k.a. Bahdanau-style attention.
 
@@ -381,7 +378,7 @@ class AdditiveAttention(BaseDenseAttention):
     dropout: Float between 0 and 1. Fraction of the units to drop for the
       attention scores.
 
-  Call Arguments:
+  Call Args:
 
     inputs: List of the following tensors:
       * query: Query `Tensor` of shape `[batch_size, Tq, dim]`.

@@ -19,12 +19,16 @@ if(TARGET neon2sse OR neon2sse_POPULATED)
   return()
 endif()
 
+set(NEON2SSE_URL
+  https://storage.googleapis.com/mirror.tensorflow.org/github.com/intel/ARM_NEON_2_x86_SSE/archive/a15b489e1222b2087007546b4912e21293ea86ff.tar.gz
+)
 OverridableFetchContent_Declare(
   neon2sse
-  GIT_REPOSITORY https://github.com/intel/ARM_NEON_2_x86_SSE
-  GIT_TAG master
-  GIT_SHALLOW TRUE
-  GIT_PROGRESS TRUE
+  URL "${NEON2SSE_URL}"
+  # Sync with tensorflow/workspace2.bzl
+  URL_HASH SHA256=019fbc7ec25860070a1d90e12686fc160cfb33e22aa063c80f52b363f1361e9d
+  LICENSE_FILE LICENSE
+  LICENSE_URL "${NEON2SSE_URL}"
   SOURCE_DIR "${CMAKE_BINARY_DIR}/neon2sse"
 )
 
@@ -36,5 +40,4 @@ endif()
 add_subdirectory(
   "${neon2sse_SOURCE_DIR}"
   "${neon2sse_BINARY_DIR}"
-  EXCLUDE_FROM_ALL
 )

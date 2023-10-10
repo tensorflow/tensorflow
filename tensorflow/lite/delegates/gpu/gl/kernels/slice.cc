@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/slice.h"
 
 #include <algorithm>
+#include <any>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -35,7 +38,7 @@ class Slice : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
-    const auto& attr = absl::any_cast<const SliceAttributes&>(ctx.op_attr);
+    const auto& attr = std::any_cast<const SliceAttributes&>(ctx.op_attr);
 
     const int4 channels(attr.starts.c, attr.strides.c, attr.ends.c, 0);
     const int4 heights(attr.starts.h, attr.strides.h, attr.ends.h, 0);
@@ -49,7 +52,7 @@ class Slice : public NodeShader {
     };
 
     std::string code;
-    code += "      ivec2 offset;\n";
+    code += "      ivec3 offset;\n";
     if (attr.strides.w > 0) {
       code += "      offset.x = $widths.x$;\n";
     } else {
@@ -68,31 +71,37 @@ class Slice : public NodeShader {
         code += "      offset.y = src_height + $heights.z$;\n";
       }
     }
-    code += "      ivec2 stride = ivec2($widths.y$, $heights.y$);\n";
-    code += "      ivec2 coord = offset + ivec2(gid.xy) * stride;\n";
-    code += "      bool outside = false;\n";
-    code += "      int step = gid.z * 4;\n";
-    code += "      int buffer_index = 0;\n";
-    code += "      int addr = 0;\n";
-    for (int i = 0; i < 4; i++) {
-      code += "      addr = step * $channels.y$;\n";
-      if (attr.strides.c > 0) {
-        code += "      addr += $channels.x$;\n";
+    if (attr.strides.c > 0) {
+      code += "      offset.z = $channels.x$;\n";
+    } else {
+      if (attr.ends.c > 0) {
+        code += "      offset.z = $channels.z$;\n";
       } else {
-        if (attr.ends.c > 0) {
-          code += "      addr += $channels.z$;\n";
-        } else {
-          code += "      addr += src_channels + $channels.z$;\n";
-        }
-      }
-      code += "      if (step < $dst_size$) {\n        value_0[" +
-              std::to_string(i) +
-              "] = $input_data_0[coord.x, coord.y, addr / 4]$[addr % 4];\n     "
-              " }\n";
-      if (i != 3) {
-        code += "      step++;\n";
+        code += "      offset.z = src_channels + $channels.z$;\n";
       }
     }
+    code +=
+        "      ivec3 stride = "
+        "ivec3($widths.y$, $heights.y$, $channels.y$);\n";
+    code += "      ivec3 coord;\n";
+    code += "      coord.xy = offset.xy + ivec2(gid.xy) * stride.xy;\n";
+    code += "      int step = gid.z * 4;\n";
+    code += "      coord.z = offset.z + step * stride.z;\n";
+    code +=
+        "      if(step++ < $dst_size$) value_0[0] = "
+        "$input_data_0[coord.x, coord.y, coord.z / 4]$[coord.z % 4];\n";
+    code += "      coord.z += $channels.y$;\n";
+    code +=
+        "      if(step++ < $dst_size$) value_0[1] = "
+        "$input_data_0[coord.x, coord.y, coord.z / 4]$[coord.z % 4];\n";
+    code += "      coord.z += $channels.y$;\n";
+    code +=
+        "      if(step++ < $dst_size$) value_0[2] = "
+        "$input_data_0[coord.x, coord.y, coord.z / 4]$[coord.z % 4];\n";
+    code += "      coord.z += $channels.y$;\n";
+    code +=
+        "      if(step++ < $dst_size$) value_0[3] = "
+        "$input_data_0[coord.x, coord.y, coord.z / 4]$[coord.z % 4];\n";
 
     *generated_code = {
         /*parameters=*/std::move(parameters),
@@ -111,7 +120,7 @@ class Slice : public NodeShader {
 }  // namespace
 
 std::unique_ptr<NodeShader> NewSliceNodeShader() {
-  return absl::make_unique<Slice>();
+  return std::make_unique<Slice>();
 }
 
 }  // namespace gl

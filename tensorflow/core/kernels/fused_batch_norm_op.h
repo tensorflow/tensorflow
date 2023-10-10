@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_FUSED_BATCH_NORM_OP_H_
 #define TENSORFLOW_CORE_KERNELS_FUSED_BATCH_NORM_OP_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -36,12 +36,6 @@ Status ParseActivationMode(OpKernelConstruction* context,
                            FusedBatchNormActivationMode* activation_mode);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-// This function sets a GPU tensor to NaNs.
-template <class T>
-struct SetNanFunctor {
-  void operator()(const Eigen::GpuDevice& d, typename TTypes<T>::Flat out);
-};
 
 // This is a functor to launch custom CUDA kernel for FusedBatchNorm with side
 // input and activation when 'is_training=False'. In training we rely on cuDNN.

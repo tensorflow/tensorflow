@@ -14,17 +14,14 @@
 # ==============================================================================
 """Shapes & broadcasting for RaggedTensors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
 from tensorflow.python.ops.ragged import ragged_config
@@ -32,7 +29,7 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
 
 
-class RaggedTensorDynamicShape(object):
+class RaggedTensorDynamicShape:
   """A collection of tensors encoding the shape of a potentially ragged tensor.
 
   Each `RaggedTensorDynamicShape` consists of an ordered list of dimension
@@ -183,7 +180,7 @@ class RaggedTensorDynamicShape(object):
     with ops.name_scope(None, 'RaggedTensorDynamicShapeFromTensor', [rt_input]):
       rt_input = ragged_tensor.convert_to_tensor_or_ragged_tensor(rt_input)
       if not ragged_tensor.is_ragged(rt_input):
-        return cls([], array_ops.shape(rt_input))
+        return cls([], array_ops.shape(rt_input), dim_size_dtype=dim_size_dtype)
       else:
         partitioned_dim_sizes = (
             (rt_input.nrows(),) + rt_input.nested_row_lengths())
@@ -283,13 +280,14 @@ class RaggedTensorDynamicShape(object):
       return self
     elif self._partitioned_dim_sizes:
       partitioned_dims = (1,) * dims_to_add + self._partitioned_dim_sizes
-      return RaggedTensorDynamicShape(partitioned_dims, self._inner_dim_sizes)
+      return RaggedTensorDynamicShape(partitioned_dims, self.inner_dim_sizes,
+                                      self.dim_size_dtype)
     else:
       inner_dims = array_ops.concat(
           [array_ops.ones([dims_to_add], self.dim_size_dtype),
            self.inner_dim_sizes],
           axis=0)
-      return RaggedTensorDynamicShape([], inner_dims)
+      return RaggedTensorDynamicShape([], inner_dims, self.dim_size_dtype)
 
   def broadcast_dimension(self, axis, lengths):
     """Returns a shape that is broadcast-compatible with self & lengths.
@@ -347,7 +345,7 @@ class RaggedTensorDynamicShape(object):
         'lengths=', lengths, 'dim_size=',
         self.dimension_size(axis)
     ]
-    broadcast_check = control_flow_ops.Assert(
+    broadcast_check = control_flow_assert.Assert(
         condition, data=broadcast_err, summarize=10)
 
     with ops.control_dependencies([broadcast_check]):
@@ -357,7 +355,7 @@ class RaggedTensorDynamicShape(object):
           # Use an identity op to make sure the check actually gets run.
           return RaggedTensorDynamicShape(
               self._partitioned_dim_sizes,
-              array_ops.identity(self.inner_dim_sizes))
+              array_ops.identity(self.inner_dim_sizes), self.dim_size_dtype)
         else:
           return self._broadcast_uniform_partitioned_dimension(axis, lengths)
 
@@ -389,7 +387,7 @@ class RaggedTensorDynamicShape(object):
       lengths = array_ops.where(
           math_ops.equal(axis_dim_size, 1), lengths, axis_dim_size)
       repeats = array_ops.where(math_ops.equal(axis_dim_size, 1), lengths, 1)
-      splits = array_ops.stack([0, self.num_slices_in_dimension(axis)])
+      splits = array_ops_stack.stack([0, self.num_slices_in_dimension(axis)])
     else:
       splits = math_ops.range(
           array_ops.size(lengths, out_type=self.dim_size_dtype) + 1)
@@ -407,7 +405,8 @@ class RaggedTensorDynamicShape(object):
         splits = array_ops.gather(
             ragged_util.lengths_to_splits(dim_size), splits)
     inner_sizes = self._inner_dim_sizes
-    return RaggedTensorDynamicShape(partitioned_sizes, inner_sizes)
+    return RaggedTensorDynamicShape(partitioned_sizes, inner_sizes,
+                                    self.dim_size_dtype)
 
   def _broadcast_inner_dimension_to_uniform(self, axis, length):
     """Broadcasts the inner dimension `axis` to match `lengths`."""
@@ -420,7 +419,8 @@ class RaggedTensorDynamicShape(object):
         self._inner_dim_sizes[axis_in_inner_dims + 1:]
     ],
                                    axis=0)
-    return RaggedTensorDynamicShape(partitioned_sizes, inner_sizes)
+    return RaggedTensorDynamicShape(partitioned_sizes, inner_sizes,
+                                    self.dim_size_dtype)
 
   def _broadcast_inner_dimension_to_ragged(self, axis, lengths):
     axis_in_inner_dims = axis - self.num_partitioned_dimensions
@@ -578,7 +578,7 @@ def _broadcast_to_ragged_shape(rt_input, dst_shape, broadcast_inner_dimensions):
         multiples[axis] = array_ops.where(
             math_ops.equal(src_size, 1), dst_size, 1)
   if not all(isinstance(v, int) and v == 1 for v in multiples):
-    multiples = array_ops.stack(multiples, axis=0)
+    multiples = array_ops_stack.stack(multiples, axis=0)
     rt_input = ragged_array_ops.tile(rt_input, multiples)
 
   if broadcast_inner_dimensions:

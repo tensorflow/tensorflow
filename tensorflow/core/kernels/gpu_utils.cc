@@ -22,15 +22,20 @@ limitations under the License.
 #include "google/protobuf/any.pb.h"
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "xla/stream_executor/gpu/asm_compiler.h"
+#include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/protobuf/conv_autotuning.pb.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
-#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 
 namespace tensorflow {
+
+using xla::AutotuningLog;
+using xla::ComputeCapability;
+using xla::CudnnVersion;
 
 bool RedzoneCheckDisabled() {
   const char* disable_rz_str = std::getenv("TF_DISABLE_RZ_CHECK");
@@ -53,29 +58,29 @@ se::DeviceMemoryBase WrapRedzoneBestEffort(se::RedzoneAllocator* rz_allocator,
     });
     return buffer;
   }
-  return se::DeviceMemoryBase(output_rz_or.ValueOrDie());
+  return se::DeviceMemoryBase(output_rz_or.value());
 }
 
 void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
-                   tensorflow::AutotuneResult* autotune_result) {
+                   xla::AutotuneResult* autotune_result) {
   if (RedzoneCheckDisabled()) {
     return;
   }
-  se::port::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> rz_status =
+  tsl::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> rz_status =
       rz_allocator.CheckRedzones();
   if (!rz_status.ok()) {
     static absl::once_flag failure_logged;
     absl::call_once(failure_logged, [&]() {
       LOG(WARNING) << "Failed to check cudnn convolutions for out-of-bounds "
                    << "reads and writes with an error message: '"
-                   << rz_status.status().error_message()
+                   << rz_status.status().message()
                    << "'; skipping this check. This only means that we won't "
                    << "check cudnn for out-of-bounds reads and writes. This "
                    << "message will only be printed once.";
     });
     return;
   }
-  auto rz_check_status = rz_status.ValueOrDie();
+  auto rz_check_status = rz_status.value();
   if (!rz_check_status.ok()) {
     auto* fail = autotune_result->mutable_failure();
     fail->set_msg(rz_check_status.RedzoneFailureMsg());
@@ -94,14 +99,25 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
   }
 }
 
+bool EnableCublasLtGemm() {
+  static const bool enable_cublaslt_gemm = [] {
+    bool cublaslt_gemm = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_USE_CUBLASLT",
+                                               /*default_val=*/false,
+                                               &cublaslt_gemm));
+    return cublaslt_gemm;
+  }();
+  return enable_cublaslt_gemm;
+}
+
 namespace {
 
-tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
-  tensorflow::CudnnVersion cudnn_version;
+CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
+  CudnnVersion cudnn_version;
   if (auto* dnn = stream_executor->AsDnn()) {
-    se::port::StatusOr<se::dnn::VersionInfo> version_or = dnn->GetVersion();
+    tsl::StatusOr<se::dnn::VersionInfo> version_or = dnn->GetVersion();
     if (version_or.ok()) {
-      const auto& version = version_or.ValueOrDie();
+      const auto& version = version_or.value();
       cudnn_version.set_major(version.major_version());
       cudnn_version.set_minor(version.minor_version());
       cudnn_version.set_patch(version.patch());
@@ -110,15 +126,13 @@ tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
   return cudnn_version;
 }
 
-tensorflow::ComputeCapability GetComputeCapability(
-    se::StreamExecutor* stream_executor) {
-  tensorflow::ComputeCapability cc;
-  int cc_major, cc_minor;
-  stream_executor->GetDeviceDescription().cuda_compute_capability(&cc_major,
-                                                                  &cc_minor);
-  cc.set_major(cc_major);
-  cc.set_minor(cc_minor);
-  return cc;
+ComputeCapability GetComputeCapability(se::StreamExecutor* stream_executor) {
+  ComputeCapability cc_proto;
+  se::CudaComputeCapability cc =
+      stream_executor->GetDeviceDescription().cuda_compute_capability();
+  cc_proto.set_major(cc.major);
+  cc_proto.set_minor(cc.minor);
+  return cc_proto;
 }
 
 }  // namespace
@@ -133,7 +147,7 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
                             const se::dnn::BatchDescriptor& output_desc,
                             const se::dnn::ConvolutionDescriptor& conv_desc,
                             se::StreamExecutor* stream_exec,
-                            absl::Span<const AutotuneResult> results) {
+                            absl::Span<const xla::AutotuneResult> results) {
   AutotuningLog log;
   {
     ConvolutionProto instr;
@@ -176,7 +190,8 @@ void LogFusedConvForwardAutotuneResults(
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc, double conv_scale,
     double side_value_scale, se::dnn::ActivationMode activation_mode,
-    se::StreamExecutor* stream_exec, absl::Span<const AutotuneResult> results) {
+    se::StreamExecutor* stream_exec,
+    absl::Span<const xla::AutotuneResult> results) {
   AutotuningLog log;
   {
     ConvolutionProto instr;
@@ -214,73 +229,161 @@ void LogFusedConvForwardAutotuneResults(
   Logger::GetSingleton()->LogProto(log);
 }
 
-// The following function allows deterministic ops to be implemented relatively
-// quickly using environment variables. It is intended to be temporary. The
-// longer-term intention is to enable deterministic ops via tf.config and
-// appropriate plumbing. See the discussion on PR 34951 for more information:
-// https://github.com/tensorflow/tensorflow/pull/34951#discussion_r355682316
-// This function and associated comment are replicated in the following three
-// places:
-//   1. tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.cc
-//   2. tensorflow/core/kernels/gpu_utils.cc
-//   3. tensorflow/stream_executor/cuda/cuda_dnn.cc
-// When implementing the plumbing, you should also search for the use of
-// TF_DETERMINISTIC_OPS on its own.
-// TODO(duncanriach): move to an API that uses tf.config and implement the first
-//                    phase of plumbing.
-bool RequireCudnnDeterminism() {
-  static bool require_cudnn_determinism = [] {
-    bool deterministic_ops = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                               /*default_val=*/false,
-                                               &deterministic_ops));
-    bool cudnn_deterministic = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
-                                               /*default_val=*/false,
-                                               &cudnn_deterministic));
-    return deterministic_ops || cudnn_deterministic;
-  }();
-  return require_cudnn_determinism;
+void LogFusedMatmulAutotuneResults(
+    se::dnn::DataType ab_dtype, se::dnn::DataType c_dtype,
+    se::DeviceMemoryBase a_buffer, se::DeviceMemoryBase b_buffer,
+    se::DeviceMemoryBase c_buffer, se::DeviceMemoryBase bias_buffer,
+    bool trans_a, bool trans_b, uint32_t m, uint32_t n, uint32_t k, int32_t lda,
+    int32_t ldb, int32_t ldc, se::dnn::ActivationMode activation_mode,
+    se::StreamExecutor* stream_exec,
+    absl::Span<const xla::AutotuneResult> results) {
+  AutotuningLog log;
+  {
+    MatmulProto instr;
+    instr.set_ab_dtype(ab_dtype);
+    instr.set_c_dtype(c_dtype);
+    instr.set_trans_a(trans_a);
+    instr.set_trans_b(trans_b);
+    instr.set_m(m);
+    instr.set_n(n);
+    instr.set_k(k);
+    instr.set_lda(lda);
+    instr.set_ldb(ldb);
+    instr.set_ldc(ldc);
+    instr.set_activation(activation_mode);
+    instr.set_a_address(reinterpret_cast<uint64>(a_buffer.opaque()));
+    instr.set_b_address(reinterpret_cast<uint64>(b_buffer.opaque()));
+    instr.set_c_address(reinterpret_cast<uint64>(c_buffer.opaque()));
+    instr.set_bias_address(reinterpret_cast<uint64>(bias_buffer.opaque()));
+    log.mutable_instr()->PackFrom(std::move(instr));
+  }
+  *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
+  *log.mutable_compute_capability() = GetComputeCapability(stream_exec);
+  log.set_device_pci_bus_id(stream_exec->GetDeviceDescription().pci_bus_id());
+  {
+    string blas_version;
+    if (auto* blas = stream_exec->AsBlas()) {
+      if (blas->GetVersion(&blas_version).ok()) {
+        log.set_blas_version(blas_version);
+      }
+    }
+  }
+  for (const auto& result : results) {
+    *log.add_results() = result;
+  }
+  VLOG(2) << log.DebugString();
+  Logger::GetSingleton()->LogProto(log);
 }
 
-Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
-                              se::dnn::AlgorithmConfig* algo) {
-  std::vector<AutotuneResult> filtered_results;
-  absl::c_copy_if(
-      results, std::back_inserter(filtered_results),
-      [](const AutotuneResult& result) { return !result.has_failure(); });
-  if (filtered_results.empty()) {
-    return errors::NotFound("No algorithm worked!");
-  }
-  std::vector<AutotuneResult> filtered_results_no_scratch;
-  absl::c_copy_if(
-      filtered_results, std::back_inserter(filtered_results_no_scratch),
-      [](const AutotuneResult& result) { return result.scratch_bytes() == 0; });
-
-  auto selected_result = filtered_results.begin();
-  auto selected_result_no_scratch = filtered_results_no_scratch.begin();
-  if (!RequireCudnnDeterminism()) {
-    auto compare_run_times = [](const AutotuneResult& lhs,
-                                const AutotuneResult& rhs) {
-      return proto_utils::FromDurationProto(lhs.run_time()) <
-             proto_utils::FromDurationProto(rhs.run_time());
-    };
-    selected_result = absl::c_min_element(filtered_results, compare_run_times);
-    selected_result_no_scratch =
-        absl::c_min_element(filtered_results_no_scratch, compare_run_times);
-  }
-
-  algo->set_algorithm({selected_result->conv().algorithm(),
-                       selected_result->conv().tensor_ops_enabled()});
-  algo->set_scratch_size(selected_result->scratch_bytes());
-  if (selected_result_no_scratch != filtered_results_no_scratch.end()) {
-    algo->set_algorithm_no_scratch(
-        {selected_result_no_scratch->conv().algorithm(),
-         selected_result_no_scratch->conv().tensor_ops_enabled()});
+namespace {
+StatusOr<std::tuple<int, int>> BestCudnnConvAlgorithmIndices(
+    absl::Span<const xla::AutotuneResult> results) {
+  auto compare_run_times = [](const xla::AutotuneResult& lhs,
+                              const xla::AutotuneResult& rhs) {
+    return proto_utils::FromDurationProto(lhs.run_time()) <
+           proto_utils::FromDurationProto(rhs.run_time());
+  };
+  int idx = -1;
+  int idx_no_scratch = -1;
+  for (int i = 0; i < results.size(); i++) {
+    if (!results[i].has_failure()) {
+      if (OpDeterminismRequired()) {
+        // When determinism is enabled, choose first working algorithm, and
+        // don't choose a no_scratch algorithm.
+        idx = i;
+        break;
+      }
+      if (idx == -1 || compare_run_times(results[i], results[idx])) {
+        idx = i;
+      }
+      if (results[i].scratch_bytes() == 0 &&
+          (idx_no_scratch == -1 ||
+           compare_run_times(results[i], results[idx_no_scratch]))) {
+        idx_no_scratch = i;
+      }
+    }
   }
 
-  return Status::OK();
+  if (idx == -1) {
+    std::ostringstream msg;
+    msg << "No algorithm worked!  Error messages:";
+    // TODO(awpr): identify the algorithm as part of this error message, too.
+    for (const auto& result : results) {
+      msg << "\n  " << result.failure().msg();
+    }
+    return errors::NotFound(msg.str());
+  }
+
+  return std::make_tuple(idx, idx_no_scratch);
 }
+}  // namespace
+
+StatusOr<se::dnn::AlgorithmConfig> BestCudnnConvAlgorithm(
+    absl::Span<const xla::AutotuneResult> results) {
+  int idx;
+  int idx_no_scratch;
+  TF_ASSIGN_OR_RETURN(std::tie(idx, idx_no_scratch),
+                      BestCudnnConvAlgorithmIndices(results));
+  VLOG(2) << "fastest algorithm: "
+          << proto_utils::FromDurationProto(results[idx].run_time())
+          << " with algo " << results[idx].algorithm().algo_id()
+          << ", workspace bytes " << results[idx].scratch_bytes();
+
+  se::dnn::AlgorithmConfig result(
+      se::dnn::AlgorithmDesc(results[idx].algorithm()),
+      results[idx].scratch_bytes());
+
+  if (idx_no_scratch != -1) {
+    result.set_algorithm_no_scratch(
+        se::dnn::AlgorithmDesc(results[idx_no_scratch].algorithm()));
+  }
+  return result;
+}
+
+template <typename Op>
+StatusOr<AutotuneEntry<Op>> BestCudnnConvAlgorithm(
+    absl::Span<const xla::AutotuneResult> results,
+    std::vector<
+        std::unique_ptr<const se::dnn::OpRunner<typename Op::Signature>>>
+        runners) {
+  if (runners.size() != results.size()) {
+    return errors::Internal(
+        "Mismatched size of autotune results and runners vectors.");
+  }
+  int idx;
+  int idx_no_scratch;
+  TF_ASSIGN_OR_RETURN(std::tie(idx, idx_no_scratch),
+                      BestCudnnConvAlgorithmIndices(results));
+  VLOG(2) << "fastest algorithm: "
+          << proto_utils::FromDurationProto(results[idx].run_time())
+          << " with algo " << runners[idx]->ToString() << ", workspace bytes "
+          << results[idx].scratch_bytes();
+  return AutotuneEntry<Op>::FromOpRunners(
+      std::move(runners[idx]), idx_no_scratch == -1 || idx_no_scratch == idx
+                                   ? nullptr
+                                   : std::move(runners[idx_no_scratch]));
+}
+
+template StatusOr<AutotuneEntry<se::dnn::ConvOp>>
+BestCudnnConvAlgorithm<se::dnn::ConvOp>(
+    absl::Span<const xla::AutotuneResult> results,
+    std::vector<
+        std::unique_ptr<const se::dnn::OpRunner<se::dnn::ConvSignature>>>
+        runners);
+
+template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>>
+BestCudnnConvAlgorithm<se::dnn::FusedConvOp>(
+    absl::Span<const xla::AutotuneResult> results,
+    std::vector<
+        std::unique_ptr<const se::dnn::OpRunner<se::dnn::FusedConvSignature>>>
+        runners);
+
+template StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>>
+BestCudnnConvAlgorithm<se::dnn::FusedMatmulOp>(
+    absl::Span<const xla::AutotuneResult> results,
+    std::vector<
+        std::unique_ptr<const se::dnn::OpRunner<se::dnn::FusedMatmulSignature>>>
+        runners);
 
 }  // namespace tensorflow
 

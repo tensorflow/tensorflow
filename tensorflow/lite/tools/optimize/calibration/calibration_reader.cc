@@ -14,14 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
 
+#include <memory>
+#include <tuple>
+#include <utility>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 
 namespace tflite {
 namespace optimize {
 namespace calibration {
+
 TfLiteStatus CalibrationReader::GetTensorStatsAsMap(
-    absl::flat_hash_map<int, CalibrationStats>* tensor_id_to_stats_map) const {
+    absl::flat_hash_map<std::tuple<int, int>, CalibrationStats>*
+        tensor_id_to_stats_map) const {
   tensor_id_to_stats_map->clear();
   for (const auto& tensorid_stat : logger_->GetCalibrationValues()) {
     auto minmax = tensorid_stat.second;
@@ -34,29 +41,35 @@ TfLiteStatus CalibrationReader::GetTensorStatsAsMap(
 }
 
 TfLiteStatus CalibrationReader::AddCalibrationToModel(ModelT* model,
-                                                      bool update) const {
+                                                      const bool update) const {
   if (!model || model->subgraphs.empty()) {
     return kTfLiteError;
   }
-  const auto& subgraph = model->subgraphs[0];
   for (const auto& tensorid_stat : logger_->GetCalibrationValues()) {
+    int subgraph_index, tensor_index;
+    std::tie(subgraph_index, tensor_index) = tensorid_stat.first;
+    const auto& subgraph = model->subgraphs[subgraph_index];
     auto minmax = tensorid_stat.second;
     float min, max;
-    TF_LITE_ENSURE_STATUS(minmax.Get(&min, &max));
+    TfLiteStatus status = minmax.Get(&min, &max);
+    if (status != kTfLiteOk) continue;
     if (update) {
-      auto tensor = subgraph->tensors[tensorid_stat.first].get();
+      auto tensor = subgraph->tensors[tensor_index].get();
       if (tensor->quantization) {
-        const float existing_min = tensor->quantization->min[0];
-        const float existing_max = tensor->quantization->max[0];
-        min = min < existing_min ? min : existing_min;
-        max = max > existing_max ? max : existing_max;
+        if (!tensor->quantization->min.empty()) {
+          const float existing_min = tensor->quantization->min[0];
+          min = min < existing_min ? min : existing_min;
+        }
+        if (!tensor->quantization->max.empty()) {
+          const float existing_max = tensor->quantization->max[0];
+          max = max > existing_max ? max : existing_max;
+        }
       }
     }
-    auto quant_params = absl::make_unique<tflite::QuantizationParametersT>();
+    auto quant_params = std::make_unique<tflite::QuantizationParametersT>();
     quant_params->min.push_back(min);
     quant_params->max.push_back(max);
-    subgraph->tensors[tensorid_stat.first]->quantization =
-        std::move(quant_params);
+    subgraph->tensors[tensor_index]->quantization = std::move(quant_params);
   }
 
   return kTfLiteOk;

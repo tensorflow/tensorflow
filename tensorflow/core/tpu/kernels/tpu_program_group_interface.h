@@ -15,17 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_PROGRAM_GROUP_INTERFACE_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_PROGRAM_GROUP_INTERFACE_H_
 
-#include <stdint.h>
-
-#include <memory>
+#include <cstddef>
+#include <cstdint>
+#include <string>
 #include <vector>
 
-#include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -51,9 +49,8 @@ class TpuProgramGroupInterface {
   // Logs program memory summary.
   virtual bool LogProgramMemorySummary() = 0;
 
-  // Logs TPU Compilation statistics.
-  virtual Status LogCompilationStats(const TpuCompilationCacheKey& key,
-                                     absl::Duration duration) = 0;
+  // Program fingerprints.
+  virtual const std::string& fingerprint(int index) const = 0;
 
   // Hlo metadatas. The pointers can only be used as long as the cache entry is
   // referenced.
@@ -66,6 +63,16 @@ class TpuProgramGroupInterface {
   // Gets may modify variables value of the TPU program for the given core
   // `index`.
   virtual bool may_modify_variables(int index) const = 0;
+
+  // Get Executable Info Proto
+  virtual const TPUExecutableInfoProto& executable_info(int index) const = 0;
+
+  // Get HostTransferInfo Proto
+  virtual const TPUHostTransferInfoProto& host_transfer_info(
+      int index) const = 0;
+
+  // Get XLA_TpuProgram Proto
+  virtual const XLA_TpuProgram* tpu_program(int index) const = 0;
 };
 
 }  // namespace tpu

@@ -13,7 +13,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DeviceOrderMode"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
     name: "FtrlParameters"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "HardwareFeature"
     mtype: "<type \'type\'>"
   }
   member {

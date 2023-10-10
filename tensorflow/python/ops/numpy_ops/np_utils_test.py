@@ -14,12 +14,9 @@
 # ==============================================================================
 """Tests for utils.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops.numpy_ops import np_utils
 from tensorflow.python.platform import test
 
@@ -38,17 +35,17 @@ class UtilsTest(test.TestCase, parameterized.TestCase):
 
   # pylint: disable=unused-argument
   def testNpDocInlined(self):
-    def np_fun(x):
+    def np_fun(x, y, z):
       """np_fun docstring."""
       return
     np_utils.set_np_doc_form('inlined')
-    @np_utils.np_doc(None, np_fun=np_fun)
-    def f():
+    @np_utils.np_doc(None, np_fun=np_fun, unsupported_params=['x'])
+    def f(x, z):
       """f docstring."""
       return
     expected = """TensorFlow variant of NumPy's `np_fun`.
 
-Unsupported arguments: `x`.
+Unsupported arguments: `x`, `y`.
 
 f docstring.
 
@@ -67,17 +64,17 @@ np_fun docstring."""
         'https://numpy.org/doc/1.16/reference/generated/numpy.np_fun.html')
       ]])
   def testNpDocLink(self, version, link):
-    def np_fun(x):
+    def np_fun(x, y, z):
       """np_fun docstring."""
       return
     np_utils.set_np_doc_form(version)
-    @np_utils.np_doc(None, np_fun=np_fun)
-    def f():
+    @np_utils.np_doc(None, np_fun=np_fun, unsupported_params=['x'])
+    def f(x, z):
       """f docstring."""
       return
     expected = """TensorFlow variant of NumPy's `np_fun`.
 
-Unsupported arguments: `x`.
+Unsupported arguments: `x`, `y`.
 
 f docstring.
 
@@ -87,17 +84,17 @@ See the NumPy documentation for [`numpy.np_fun`](%s)."""
 
   @parameterized.parameters([None, 1, 'a', '1a', '1.1a', '1.1.1a'])
   def testNpDocInvalid(self, invalid_flag):
-    def np_fun(x):
+    def np_fun(x, y, z):
       """np_fun docstring."""
       return
     np_utils.set_np_doc_form(invalid_flag)
-    @np_utils.np_doc(None, np_fun=np_fun)
-    def f():
+    @np_utils.np_doc(None, np_fun=np_fun, unsupported_params=['x'])
+    def f(x, z):
       """f docstring."""
       return
     expected = """TensorFlow variant of NumPy's `np_fun`.
 
-Unsupported arguments: `x`.
+Unsupported arguments: `x`, `y`.
 
 f docstring.
 
@@ -116,6 +113,24 @@ f docstring.
 
 """
     self.assertEqual(expected, f.__doc__)
+
+  def testDtypeOfTensorLikeClass(self):
+
+    class TensorLike:
+
+      def __init__(self, dtype):
+        self._dtype = dtype
+
+      @property
+      def is_tensor_like(self):
+        return True
+
+      @property
+      def dtype(self):
+        return self._dtype
+
+    t = TensorLike(dtypes.float32)
+    self.assertEqual(np_utils._maybe_get_dtype(t), dtypes.float32)
 
   # pylint: disable=unused-variable
   def testSigMismatchIsError(self):
@@ -139,7 +154,7 @@ f docstring.
         return
 
     with self.assertRaisesRegex(
-        TypeError, 'Parameter "y" should have a default value'):
+        TypeError, 'Parameter y should have a default value'):
       @np_utils.np_doc(None, np_fun=np_fun)
       def f3(x, y):
         return

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for special_functions module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.autograph.lang import special_functions
@@ -35,7 +31,7 @@ class SpecialFunctionsTest(test.TestCase):
     tensor_one = special_functions.match_staging_level(1, some_tensor)
     python_one = special_functions.match_staging_level(1, 1)
     with self.cached_session() as sess:
-      self.assertTrue(tensor_util.is_tensor(tensor_one))
+      self.assertTrue(tensor_util.is_tf_type(tensor_one))
       self.assertAllEqual(self.evaluate(tensor_one), 1)
       self.assertEqual(python_one, 1)
 
@@ -104,7 +100,7 @@ class SpecialFunctionsTest(test.TestCase):
     l = list_ops.tensor_list_from_tensor(
         t, element_shape=constant_op.constant([], dtype=dtypes.int32))
     self.assertTrue(
-        tensor_util.is_tensor(
+        tensor_util.is_tf_type(
             special_functions.stack(l, element_dtype=dtypes.float32)))
 
 

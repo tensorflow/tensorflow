@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "DebugGradientRefIdentity"
   input_arg {
     name: "input"

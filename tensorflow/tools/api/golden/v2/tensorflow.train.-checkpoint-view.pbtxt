@@ -1,0 +1,25 @@
+path: "tensorflow.train.CheckpointView"
+tf_class {
+  is_instance: "<class \'tensorflow.python.checkpoint.checkpoint_view.CheckpointView\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'save_path\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "children"
+    argspec: "args=[\'self\', \'node_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "descendants"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "diff"
+    argspec: "args=[\'self\', \'obj\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "match"
+    argspec: "args=[\'self\', \'obj\'], varargs=None, keywords=None, defaults=None"
+  }
+}

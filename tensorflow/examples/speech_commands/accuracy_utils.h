@@ -40,16 +40,16 @@ struct StreamingAccuracyStats {
 // Takes a file name, and loads a list of expected word labels and times from
 // it, as comma-separated variables.
 Status ReadGroundTruthFile(const string& file_name,
-                           std::vector<std::pair<string, int64>>* result);
+                           std::vector<std::pair<string, int64_t>>* result);
 
 // Given ground truth labels and corresponding predictions found by a model,
 // figure out how many were correct. Takes a time limit, so that only
 // predictions up to a point in time are considered, in case we're evaluating
 // accuracy when the model has only been run on part of the stream.
 void CalculateAccuracyStats(
-    const std::vector<std::pair<string, int64>>& ground_truth_list,
-    const std::vector<std::pair<string, int64>>& found_words,
-    int64 up_to_time_ms, int64 time_tolerance_ms,
+    const std::vector<std::pair<string, int64_t>>& ground_truth_list,
+    const std::vector<std::pair<string, int64_t>>& found_words,
+    int64_t up_to_time_ms, int64_t time_tolerance_ms,
     StreamingAccuracyStats* stats);
 
 // Writes a human-readable description of the statistics to stdout.

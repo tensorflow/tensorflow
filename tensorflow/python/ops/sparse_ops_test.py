@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for sparse ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -235,6 +231,18 @@ class SparseOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual([b'a', b'b', b'a', b'b', b'a'], result.values)
     self.assertAllEqual([5], result.dense_shape)
 
+  def testSparseTensorToDenseQint(self):
+    x = np.asarray([1, 2])
+    y = np.asarray([[1, 0, 0], [0, 0, 2]])
+    for dtype in [dtypes.qint8, dtypes.qint16, dtypes.quint8, dtypes.quint16]:
+      sp = sparse_tensor.SparseTensor(
+          indices=[[0, 0], [1, 2]],
+          values=x.astype(dtype.as_numpy_dtype),
+          dense_shape=[2, 3])
+      v = self.evaluate(sparse_ops.sparse_tensor_to_dense(sp))
+      self.assertAllEqual(
+          y.astype(dtype.as_numpy_dtype), v.astype(dtype.as_numpy_dtype))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RawOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -286,6 +294,15 @@ class RawOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         self.evaluate(
             gen_sparse_ops.SparseFillEmptyRowsGrad(
                 reverse_index_map=reverse_index_map, grad_values=grad_values))
+
+  def testSparseConcatStaticShape(self):
+    if context.executing_eagerly():
+      self.skipTest('sparse_spaceholder is only available in graph context.')
+    input_a = array_ops.sparse_placeholder(dtypes.float32, shape=(2, 1))
+    input_b = array_ops.sparse_placeholder(dtypes.float32, shape=(2, 2))
+
+    result = sparse_ops.sparse_concat_v2(axis=1, sp_inputs=[input_a, input_b])
+    self.assertEqual(result.shape, [2, 3])
 
 
 if __name__ == '__main__':

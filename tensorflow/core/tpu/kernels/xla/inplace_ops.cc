@@ -13,18 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
+#include <cstdint>
+#include <vector>
 
-#include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
-
-#include "tensorflow/compiler/tf2xla/lib/scatter.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 namespace {
@@ -39,7 +41,7 @@ class InplaceUpdateOp : public XlaOpKernel {
 
     DataType index_type = input_type(1);
     OP_REQUIRES(ctx, index_type == DT_INT32 || index_type == DT_INT64,
-                errors::InvalidArgument("index must be int32 or int64"));
+                absl::InvalidArgumentError("index must be int32 or int64"));
 
     // TF Args are X, I, V
     const TensorShape x_shape = ctx->InputShape(0);
@@ -49,18 +51,19 @@ class InplaceUpdateOp : public XlaOpKernel {
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(i_shape) ||
                     TensorShapeUtils::IsVector(i_shape),
-                errors::InvalidArgument("index must be Rank 0 or 1"));
-    OP_REQUIRES(ctx, (x_shape.dims() == v_shape.dims()),
-                errors::InvalidArgument("X and V must have the same Rank,"
-                                        " X.shape=",
-                                        x_shape.DebugString(),
-                                        " V.shape=", v_shape.DebugString()));
+                absl::InvalidArgumentError("index must be Rank 0 or 1"));
+    OP_REQUIRES(
+        ctx, (x_shape.dims() == v_shape.dims()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "X and V must have the same Rank,"
+            " X.shape=",
+            x_shape.DebugString(), " V.shape=", v_shape.DebugString())));
 
     auto* builder = ctx->builder();
     auto const_zero = xla::ConstantR0(builder, 0);
     auto current = ctx->Input(0);
 
-    for (int64 i = 0; i < i_shape.num_elements(); i++) {
+    for (int64_t i = 0; i < i_shape.num_elements(); i++) {
       std::vector<xla::XlaOp> update_indices;
       update_indices.push_back(
           xla::Reshape(xla::SliceInDim(ctx->Input(1), i, i + 1, 1, 0), {}));
@@ -84,7 +87,7 @@ class InplaceUpdateOp : public XlaOpKernel {
     //         [](xla::XlaOp, xla::XlaOp second, xla::XlaBuilder*) { return
     //         second; }, builder);
     //     OP_REQUIRES_OK(ctx, result.status());
-    //     ctx->SetOutput(0, result.ValueOrDie());
+    //     ctx->SetOutput(0, result.value());
   }
 };
 
@@ -99,7 +102,7 @@ class InplaceAddOp : public XlaOpKernel {
 
     DataType index_type = input_type(1);
     OP_REQUIRES(ctx, index_type == DT_INT32 || index_type == DT_INT64,
-                errors::InvalidArgument("index must be int32 or int64"));
+                absl::InvalidArgumentError("index must be int32 or int64"));
 
     // TF Args are X, I, V
     const TensorShape x_shape = ctx->InputShape(0);
@@ -108,12 +111,13 @@ class InplaceAddOp : public XlaOpKernel {
     OP_REQUIRES(ctx,
                 (TensorShapeUtils::IsScalar(i_shape) ||
                  ((i_shape.dims() == 1) && (i_shape.num_elements() == 1))),
-                errors::InvalidArgument("index must be Rank 1 and size 1"));
-    OP_REQUIRES(ctx, (x_shape.dims() == v_shape.dims()),
-                errors::InvalidArgument("X and V must have the same Rank,"
-                                        " X.shape=",
-                                        x_shape.DebugString(),
-                                        " V.shape=", v_shape.DebugString()));
+                absl::InvalidArgumentError("index must be Rank 1 and size 1"));
+    OP_REQUIRES(
+        ctx, (x_shape.dims() == v_shape.dims()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "X and V must have the same Rank,"
+            " X.shape=",
+            x_shape.DebugString(), " V.shape=", v_shape.DebugString())));
     // Pad the indices out to the match the rank of params.
     auto* builder = ctx->builder();
     std::vector<xla::XlaOp> padded_indices;
@@ -122,7 +126,7 @@ class InplaceAddOp : public XlaOpKernel {
       padded_indices.push_back(XlaHelpers::Zero(builder, index_type));
     }
 
-    std::vector<int64> sizes;
+    std::vector<int64_t> sizes;
     sizes.push_back(1);
     for (int i = 1; i < x_shape.dims(); i++) {
       sizes.push_back(x_shape.dim_size(i));

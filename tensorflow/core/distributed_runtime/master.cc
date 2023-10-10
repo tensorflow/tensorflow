@@ -48,17 +48,19 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/protobuf/rpc_options.pb.h"
 
 namespace tensorflow {
 
 namespace {
-const char* const kGrpcProtocol = "grpc://";
+constexpr char kGrpcPrefixRegex[] = "^grpc.*://";
 }  // namespace
 
 Master::Master(MasterEnv* env, double session_gc_seconds)
@@ -66,10 +68,11 @@ Master::Master(MasterEnv* env, double session_gc_seconds)
       last_1000_steps_(1000),
       step_count_(0),
       session_gc_seconds_(session_gc_seconds),
-      recent_request_ids_(10000) {
+      recent_request_ids_(10000, env_->experimental_num_shards) {
   // Right now, a master service must be co-located with a device.
   // Otherwise, fetches do not work.
   CHECK(!env->local_devices.empty());
+  DCHECK_GT(env_->experimental_num_shards, 0);
 
   if (session_gc_seconds_ > 0.0) {
     gc_thread_ = env_->env->StartThread(ThreadOptions(), "TF_master_GC",
@@ -98,10 +101,11 @@ void Master::GC() {
       break;
     }
     std::vector<string> handles;
-    const int64 num_micros = static_cast<int64>(session_gc_seconds_ * 1000000);
+    const int64_t num_micros =
+        static_cast<int64_t>(session_gc_seconds_ * 1000000);
     for (const auto& entry : sessions_) {
-      int64 lat = entry.second->last_access_time_usec();
-      if (static_cast<int64>(env->NowMicros()) - lat > num_micros) {
+      int64_t lat = entry.second->last_access_time_usec();
+      if (static_cast<int64_t>(env->NowMicros()) - lat > num_micros) {
         handles.push_back(entry.first);
         auto* sess = entry.second;
         SchedClosure([this, sess]() {
@@ -140,7 +144,7 @@ class DeviceFinder {
     finder.Start();
     TF_RETURN_IF_ERROR(finder.Wait());
     finder.GetRemoteDevices(env->local_devices, out_remote);
-    return Status::OK();
+    return OkStatus();
   }
 
   static void GetRemoteWorkers(
@@ -233,6 +237,8 @@ class DeviceFinder {
   }
 
   void Start() {
+    LOG(INFO) << "Scanning workers for devices: " << targets_.size()
+              << " total workers";
     {
       mutex_lock l(mu_);
       num_pending_ = targets_.size();
@@ -241,13 +247,14 @@ class DeviceFinder {
       }
     }
     // Talk to all workers to get the list of available devices.
-    using std::placeholders::_1;
-    using std::placeholders::_2;
     for (size_t i = 0; i < targets_.size(); ++i) {
       // TODO(mrry): Propagate a timeout here, since `this->WhenFound()` may
       // never be called.
-      NewRemoteDevices(env_->env, worker_cache_, targets_[i],
-                       std::bind(&ME::WhenFound, this, i, _1, _2));
+      NewRemoteDevices(
+          env_->env, worker_cache_, targets_[i],
+          [this, i](const Status& s, std::vector<Device*>* devices) {
+            WhenFound(i, s, devices);
+          });
     }
   }
 
@@ -349,7 +356,8 @@ class DeviceFinder {
     return false;
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DeviceFinder);
+  DeviceFinder(const DeviceFinder&) = delete;
+  void operator=(const DeviceFinder&) = delete;
 };
 
 void Master::CreateSession(const CreateSessionRequest* req,
@@ -357,8 +365,6 @@ void Master::CreateSession(const CreateSessionRequest* req,
   SchedClosure([this, req, resp, done]() {
     Status status;
     WorkerCacheFactoryOptions worker_cache_factory_options;
-    string grpc_protocol("grpc");
-    worker_cache_factory_options.protocol = &grpc_protocol;
     auto call_done = gtl::MakeCleanup([&status, &done] { done(status); });
     status = ValidateExternalGraphDefSyntax(req->graph_def());
     if (!status.ok()) return;
@@ -374,28 +380,23 @@ void Master::CreateSession(const CreateSessionRequest* req,
     std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devices(
         new std::vector<std::unique_ptr<Device>>());
 
-    if (req->config().has_cluster_def()) {
-      worker_cache_factory_options.cluster_def = &req->config().cluster_def();
+    const ClusterDef& cluster_def = req->config().cluster_def();
+    if (!cluster_def.job().empty()) {
+      worker_cache_factory_options.cluster_def = cluster_def;
+      // If the target starts with gRPC protocol prefix, remove the prefix
+      string normalized_string(req->target());
+      RE2::Replace(&normalized_string, kGrpcPrefixRegex, "");
 
       // Set the server_def's job_name and task_index fields.
-      string normalized_string;
-      string grpc_protocol(kGrpcProtocol);
-      if (req->target().compare(0, grpc_protocol.length(), grpc_protocol) ==
-          0) {
-        normalized_string =
-            req->target().substr(grpc_protocol.length(), string::npos);
-      } else {
-        normalized_string = req->target();
-      }
-      for (auto&& job : req->config().cluster_def().job()) {
+      for (auto&& job : cluster_def.job()) {
         for (auto&& task : job.tasks()) {
           if (task.second == normalized_string) {
-            if (worker_cache_factory_options.job_name != nullptr) {
+            if (!worker_cache_factory_options.job_name.empty()) {
               status = errors::InvalidArgument(
                   "Found multiple matching tasks that correspond to "
                   "to the master. Master target: '",
-                  req->target(), "'. ClusterDef: ",
-                  req->config().cluster_def().ShortDebugString());
+                  req->target(),
+                  "'. ClusterDef: ", cluster_def.ShortDebugString());
               LOG(ERROR) << status;
               return;
             }
@@ -409,12 +410,12 @@ void Master::CreateSession(const CreateSessionRequest* req,
                   job.name(), ", task index: ", task.first);
               return;
             }
-            worker_cache_factory_options.job_name = &job.name();
+            worker_cache_factory_options.job_name = job.name();
             worker_cache_factory_options.task_index = task.first;
           }
         }
       }
-
+      worker_cache_factory_options.rpc_options = req->config().rpc_options();
       // Create the worker cache from the computed server_def.
       status = env_->worker_cache_factory(worker_cache_factory_options,
                                           &worker_cache);
@@ -430,7 +431,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
       for (auto&& d : *remote_devices) {
         device_set->AddDevice(d.get());
         DeviceNameUtils::ParsedName name = d->parsed_name();
-        if (name.job == *worker_cache_factory_options.job_name &&
+        if (name.job == worker_cache_factory_options.job_name &&
             name.task == worker_cache_factory_options.task_index &&
             name.type == "CPU" && name.id == 0) {
           device_set->set_client_device(d.get());
@@ -444,7 +445,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
           DeviceFinder::GetRemoteDevices(req->config().device_filters(), env_,
                                          worker_cache, remote_devices.get());
       if (!status.ok()) return;
-      device_set.reset(new DeviceSet);
+      device_set = std::make_unique<DeviceSet>();
       for (auto&& d : *remote_devices) {
         device_set->AddDevice(d.get());
       }
@@ -463,7 +464,11 @@ void Master::CreateSession(const CreateSessionRequest* req,
                                        << "CPU:0 device?";
 
     SessionOptions options;
+    options.target = req->target();
     options.config = req->config();
+    // Disable optimizations for static graph to allow calls to Session::Extend.
+    options.config.mutable_experimental()
+        ->set_disable_optimize_for_static_graph(true);
 
     std::vector<string> filtered_worker_list;
     DeviceFinder::GetRemoteWorkers(req->config().device_filters(), env_,
@@ -476,7 +481,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
     GraphDef* gdef =
         const_cast<CreateSessionRequest*>(req)->mutable_graph_def();
 
-    status = session->Create(std::move(*gdef), worker_cache_factory_options);
+    status = session->Create(std::move(*gdef), cluster_def);
     if (!status.ok()) {
       session->Close().IgnoreError();
       session->Unref();
@@ -633,7 +638,9 @@ void Master::CleanupWorkers(const ResetRequest& reset) {
       if (worker) {
         worker->CleanupAllAsync(
             &req, &resp[i], [this, &n, worker_name, worker, c](Status s) {
-              TF_CHECK_OK(s);
+              if (!s.ok()) {
+                LOG(ERROR) << "Worker CleanupAll failed: " << s;
+              }
               env_->worker_cache->ReleaseWorker(worker_name, worker);
               n[c].Notify();
             });

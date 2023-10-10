@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/string_type.h"
 
 namespace tflite {
@@ -51,6 +52,16 @@ inline std::vector<string> Split(const string& s, const string& delimiter) {
 template <>
 inline std::vector<int> Split(const string& s, const string& delimiter) {
   std::vector<int> fields;
+  for (const auto& p : SplitToPos(s, delimiter)) {
+    // NOLINTNEXTLINE(runtime/deprecated_fn)
+    fields.push_back(strtol(s.data() + p.first, nullptr, 10));
+  }
+  return fields;
+}
+
+template <>
+inline std::vector<uint32_t> Split(const string& s, const string& delimiter) {
+  std::vector<uint32_t> fields;
   for (const auto& p : SplitToPos(s, delimiter)) {
     // NOLINTNEXTLINE(runtime/deprecated_fn)
     fields.push_back(strtol(s.data() + p.first, nullptr, 10));
@@ -88,6 +99,15 @@ inline std::vector<float> Split(const string& s, const string& delimiter) {
 }
 
 template <>
+inline std::vector<double> Split(const string& s, const string& delimiter) {
+  std::vector<double> fields;
+  for (const auto& p : SplitToPos(s, delimiter)) {
+    fields.push_back(strtod(s.data() + p.first, nullptr));
+  }
+  return fields;
+}
+
+template <>
 inline std::vector<uint8_t> Split(const string& s, const string& delimiter) {
   std::vector<uint8_t> fields;
   for (const auto& p : SplitToPos(s, delimiter)) {
@@ -110,6 +130,16 @@ inline std::vector<int8_t> Split(const string& s, const string& delimiter) {
 template <>
 inline std::vector<int16_t> Split(const string& s, const string& delimiter) {
   std::vector<int16_t> fields;
+  for (const auto& p : SplitToPos(s, delimiter)) {
+    // NOLINTNEXTLINE(runtime/deprecated_fn)
+    fields.push_back(strtol(s.data() + p.first, nullptr, 10));
+  }
+  return fields;
+}
+
+template <>
+inline std::vector<uint16_t> Split(const string& s, const string& delimiter) {
+  std::vector<uint16_t> fields;
   for (const auto& p : SplitToPos(s, delimiter)) {
     // NOLINTNEXTLINE(runtime/deprecated_fn)
     fields.push_back(strtol(s.data() + p.first, nullptr, 10));
@@ -164,6 +194,17 @@ inline std::vector<std::complex<double>> Split(const string& s,
     }
     std::complex<double> c(real, img);
     fields.push_back(c);
+  }
+  return fields;
+}
+
+template <>
+inline std::vector<Eigen::half> Split(const string& s,
+                                      const string& delimiter) {
+  std::vector<Eigen::half> fields;
+  for (const auto& p : SplitToPos(s, delimiter)) {
+    fields.push_back(Eigen::half_impl::float_to_half_rtne(
+        strtof(s.data() + p.first, nullptr)));
   }
   return fields;
 }

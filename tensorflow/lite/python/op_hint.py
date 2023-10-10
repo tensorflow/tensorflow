@@ -65,18 +65,10 @@ contain a custom operator called "cool_activation". Developer needs to implement
 and register this operator in TensorFlow Lite in order to do inference.
 """
 
-# TODO(aselle): Make this use generic graph transformations.
-# TODO(aselle): _tensor_name_base should be called _tensor_name_to_op_name.
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections as _collections
 import copy as _copy
 import json as _json
 import uuid as _uuid
-import six as _six
 
 from tensorflow.core.framework import attr_value_pb2 as _attr_value_pb2
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
@@ -84,7 +76,6 @@ from tensorflow.core.framework import node_def_pb2 as _node_def_pb2
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework import tensor_util as _tensor_util
-# TODO(aselle): publicize these apis if we continue to use these.
 from tensorflow.python.framework.graph_util_impl import _bfs_for_reachable_nodes
 from tensorflow.python.framework.graph_util_impl import _extract_graph_summary
 from tensorflow.python.ops import array_ops as _array_ops
@@ -101,7 +92,7 @@ from tensorflow.python.util.tf_export import tf_export as _tf_export
     "https://www.tensorflow.org/lite/convert/operation_fusion for operation"
     "fusion in tflite."
 )
-class OpHint(object):
+class OpHint:
   """A class that helps build tflite function invocations.
 
   It allows you to take a bunch of TensorFlow ops and annotate the construction
@@ -116,9 +107,6 @@ class OpHint(object):
   is to be exported from the current op.
 
   """
-  # TODO(aselle): When TensorFlow functions functionality works for arbitrary
-  # constructs, this mechanism can be retired and changed to use python defun's.
-
   # Attr constants that are used for representation in the GraphDef. These
   # will be used on every Identity op that is involved in a total OpHint.
 
@@ -166,7 +154,7 @@ class OpHint(object):
   # static rnn.
   AGGREGATE_LAST = "last"
 
-  class OpHintArgumentTracker(object):
+  class OpHintArgumentTracker:
     """Conceptually tracks indices of arguments of "OpHint functions".
 
     The inputs and arguments of these functions both use an instance
@@ -345,7 +333,7 @@ class OpHint(object):
     self._children_inputs_mappings = children_inputs_mappings
     if self._children_inputs_mappings is not None:
       self._validate_children_inputs_mappings(self._children_inputs_mappings)
-    self._unique_function_id = _uuid.uuid1().hex  # TODO(aselle): Unique enough?
+    self._unique_function_id = _uuid.uuid1().hex
     self._attrs_to_store_later = kwargs
     self._stored_attrs = False
     self._inputs = OpHint.OpHintArgumentTracker(
@@ -475,7 +463,7 @@ class OpHint(object):
       return [self._outputs.add(arg) for arg in args]
 
 
-class _LiteOperand(object):
+class _LiteOperand:
   """Abstract operand for a tflite hint function._dynamic_rnn_loop.
 
   This is a base class that handles representing arguments to an OpHint.
@@ -571,7 +559,7 @@ class _LiteAggregateOperand(_LiteOperand):
     """Return a list of all the node protos in aggregation sorted order."""
     if not self.flattened:
       self.flattened = [None] * len(self.nodes)
-      for idx, node in _six.iteritems(self.nodes):
+      for idx, node in self.nodes.items():
         self.flattened[idx] = node
       for n in self.nodes:
         if n is None:
@@ -674,7 +662,7 @@ class _LiteAggregateOperand(_LiteOperand):
     return s
 
 
-class _LiteFuncCall(object):
+class _LiteFuncCall:
   """Represent a TensorFlow Lite custom function.
 
   This is uses to accumulate found hints in the graphdef into a single
@@ -826,7 +814,7 @@ def _find_children_hints_in_while_loop(function_def, nodes_mapping):
   children_hints = _find_all_hints_in_nodes(new_nodes)
   children_hints_q = []
   # Ordered by the outputs.
-  for hint in _six.itervalues(children_hints):
+  for hint in children_hints.values():
     _, output_names = hint.flattened_inputs_and_outputs()
     seq = name_to_seq_num[output_names[0]]
     for output_name in output_names:
@@ -880,7 +868,6 @@ def _find_children_hints(call, graph_def):
               nodes_mapping = {}
               for i, function_input in enumerate(function_inputs):
                 nodes_mapping[function_input.name] = inputs_outside_loop[i]
-              # TODO(b/123050804): Consider use grappler.
               (children_hints_in_loop,
                new_nodes) = _find_children_hints_in_while_loop(
                    function_def, nodes_mapping)
@@ -913,7 +900,6 @@ def _tensorflow_output_name(tensor_name, output_index):
                                                           output_index)
 
 
-# TODO(aselle): This should be converted to grappler in the future.
 def _check_subgraph_closed(n, reachable_by_input, input_nodes_set,
                            name_to_input_name):
   """Checks to make sure node only connects to predecessor graph through inputs.
@@ -943,7 +929,6 @@ def _check_subgraph_closed(n, reachable_by_input, input_nodes_set,
       ]
 
 
-# TODO(aselle): This should be converted to grappler in the future.
 def _convert_single_op_hint_to_stub(call,
                                     graph_def,
                                     function_def_nodes=None,
@@ -1004,7 +989,6 @@ def _convert_single_op_hint_to_stub(call,
 
   # Create any stacks to aggregate arguments into to a single input
   # i.e. for static_rnn's.
-  # TODO(aselle): Check that the inputs are complete i.e. 0 to n-1
   sorted_input_indices = list(call.inputs.keys())
   sorted_input_indices.sort()
   sorted_output_indices = list(call.outputs.keys())
@@ -1054,7 +1038,6 @@ def _convert_single_op_hint_to_stub(call,
       output_dtype = optional_input_node.attr["type"].i
     output_dtypes.append(output_dtype)
   new_node.attr["_output_types"].list.type[:] = output_dtypes
-  # TODO(aselle): what is right here?
   new_node.attr["_output_quantized"].b = False
 
   # Add post output nodes that do not depend on the outputs
@@ -1073,7 +1056,6 @@ def _convert_single_op_hint_to_stub(call,
   return out
 
 
-# TODO(aselle): This should be converted to grappler in the future.
 def _remove_one_redundant_stack_unstack(in_graph_def):
   """Removes a stack->unstack pattern from in_graph_def in a returned graph.
 
@@ -1088,7 +1070,6 @@ def _remove_one_redundant_stack_unstack(in_graph_def):
       in_graph_def)
   del name_to_seq_num
 
-  # TODO(aselle): Make this not hardcoded.
   do_generic_pack_unpack = True
 
   out = _graph_pb2.GraphDef()
@@ -1199,7 +1180,7 @@ def _convert_op_hints_to_stubs_helper(
   hints = _find_all_hints_in_nodes(graph_def.node)
 
   hints_q = []
-  for hint in _six.itervalues(hints):
+  for hint in hints.values():
     hints_q.append((hint.level, hint.uuid))
 
   hints_q.sort(key=lambda tup: tup[0])
@@ -1290,7 +1271,7 @@ def find_all_hinted_output_nodes(session=None, graph_def=None):
     hints = _find_all_hints_in_nodes(session.graph_def.node)
   elif graph_def is not None:
     hints = _find_all_hints_in_nodes(graph_def.node)
-  for hint in _six.itervalues(hints):
+  for hint in hints.values():
     _, output_nodes = hint.flattened_inputs_and_outputs()
     hinted_outputs_nodes.extend(output_nodes)
   return hinted_outputs_nodes

@@ -15,14 +15,23 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 
+#include <algorithm>
+#include <functional>
+#include <string>
+#include <type_traits>
+#include <utility>
+
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -53,9 +62,16 @@ limitations under the License.
 #include "tensorflow/core/grappler/verifiers/structure_verifier.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tensorflow/core/util/ptr_util.h"
+#include "tensorflow/core/util/util.h"
 #include "tensorflow/core/util/xla_config_registry.h"
+
+// #TODO(b/200087693): LLVM does not build on Fuchsia.
+#if !NO_LLVM_SUPPORT
+#include "tensorflow/core/grappler/optimizers/tfg_optimizer_hook.h"
+#include "tensorflow/core/grappler/optimizers/tfg_passes_builder.h"
+#endif
 
 namespace tensorflow {
 namespace grappler {
@@ -64,9 +80,10 @@ namespace {
 
 constexpr int kDefaultNumberOfIterations = 2;
 constexpr int kDefaultMinGraphNodes = 4;
+constexpr char kGrapplerCategory[] = "Grappler";
 
-int64 NumEdges(const GraphDef& graph) {
-  int64 num_edges = 0;
+int64_t NumEdges(const GraphDef& graph) {
+  int64_t num_edges = 0;
   for (const auto& node : graph.node()) {
     num_edges += node.input_size();
   }
@@ -89,8 +106,8 @@ int NumIterations(const RewriterConfig& cfg) {
 // Check if optimizer is allowed to run only once.
 bool IsRunOnceOptimizer(const string& name) {
   return name == "layout" || name == "memory_optimizer" ||
-         name == "loop_optimizer" || name == "auto_mixed_precision" ||
-         name == "auto_mixed_precision_mkl";
+         name == "loop_optimizer" ||
+         absl::StartsWith(name, "auto_mixed_precision");
 }
 
 // Creates a function library stub from a real function library: copy only
@@ -112,15 +129,8 @@ FunctionDefLibrary GetFunctionDefLibraryStub(
 }
 
 uint64 DeadlineMicroSeconds(const RewriterConfig& cfg) {
-  const uint64 kTwentyMinutesInUsec = 20 * 60 * 1000 * 1000;
-  if (cfg.meta_optimizer_timeout_ms() < 0) {
-    return 0;
-  } else {
-    return cfg.meta_optimizer_timeout_ms() == 0
-               ? Env::Default()->NowMicros() + kTwentyMinutesInUsec
-               : Env::Default()->NowMicros() +
-                     cfg.meta_optimizer_timeout_ms() * 1000;
-  }
+  if (cfg.meta_optimizer_timeout_ms() <= 0) return 0;  // no deadline
+  return Env::Default()->NowMicros() + cfg.meta_optimizer_timeout_ms() * 1000;
 }
 
 // A helper function to decide whether to enable the automatic mixed precision
@@ -129,6 +139,9 @@ bool AutoMixedPrecisionEnabled(RewriterConfig::Toggle opt_level) {
   if (opt_level == RewriterConfig::ON ||
       opt_level == RewriterConfig::AGGRESSIVE) {
     return true;
+  } else if (opt_level == RewriterConfig::EXPERIMENTAL_MLIR ||
+             opt_level == RewriterConfig::EXPERIMENTAL_BOTH) {
+    VLOG(2) << "auto_mixed_precision is not implemented in TFG yet";
   }
   return false;
 }
@@ -140,17 +153,13 @@ bool IsXlaGlobalJitOn(
   // Return true only if XLA JIT is ON for both single-gpu and multi-gpu
   // graphs. This is a conservative approach that turns off the memory optimizer
   // when we are sure that all graphs will be processed by XLA JIT.
-  bool is_on = (xla_global_jit_level.single_gpu == OptimizerOptions::ON_1 ||
-                xla_global_jit_level.single_gpu == OptimizerOptions::ON_2) &&
-               (xla_global_jit_level.general == OptimizerOptions::ON_1 ||
-                xla_global_jit_level.general == OptimizerOptions::ON_2);
-  return is_on;
+  return xla_global_jit_level.single_gpu >= OptimizerOptions::ON_1 &&
+         xla_global_jit_level.general >= OptimizerOptions::ON_1;
 }
 
 // A helper function to decide whether to enable the memory optimizer.
-bool MemoryOptimizerEnabled(
-    RewriterConfig::MemOptType mem_opt_type,
-    OptimizerOptions::GlobalJitLevel jit_level_in_session_opts) {
+bool MemoryOptimizerEnabled(RewriterConfig::MemOptType mem_opt_type,
+                            bool xla_auto_clustering_on) {
   // Disable the default memory optimizer when XLA JIT is ON as it hurts the
   // XLA JIT performance. The (current) XLA clustering can result in loss of
   // concurrency between kernel compute and memory copies. As such, it usually
@@ -158,17 +167,33 @@ bool MemoryOptimizerEnabled(
   // and swap-outs and incurs great performance overhead. Remove this check when
   // the XLA JIT can better deal with the concurrency.
   if (mem_opt_type == RewriterConfig::DEFAULT_MEM_OPT &&
-      IsXlaGlobalJitOn(jit_level_in_session_opts)) {
+      xla_auto_clustering_on) {
     return false;
   }
 
   return mem_opt_type != RewriterConfig::NO_MEM_OPT;
 }
 
+Status GetGraphDevice(const GraphDef& g_def, std::set<std::string>* devices) {
+  for (auto& node : g_def.node()) {
+    DeviceNameUtils::ParsedName parsed_name;
+    if (!DeviceNameUtils::ParseFullName(node.device(), &parsed_name)) {
+      return errors::InvalidArgument("Unable to parse ", node.device(),
+                                     " as a device name");
+    }
+    devices->insert(parsed_name.type);
+  }
+  return OkStatus();
+}
+
 }  // namespace
 
-#define MK_OPT(NAME, VALUE) \
-  if (optimizer == NAME) return std::unique_ptr<GraphOptimizer>(VALUE)
+#define MK_OPT(NAME, CONFIG, VALUE)                                    \
+  if (optimizer == NAME) {                                             \
+    if (plugin_configs.toggle_config[CONFIG] != RewriterConfig::OFF) { \
+      return std::unique_ptr<GraphOptimizer>(VALUE);                   \
+    }                                                                  \
+  }
 
 bool MetaOptimizer::LowerControlFlow() const {
   if (config_proto_.experimental().executor_type() ==
@@ -181,36 +206,57 @@ bool MetaOptimizer::LowerControlFlow() const {
 }
 
 std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
-    const string& optimizer) const {
-  MK_OPT("pruning", new ModelPruner());
-  MK_OPT("function",
+    const string& optimizer, const std::set<string>& device_types) const {
+  ConfigList plugin_configs = PluginGraphOptimizerRegistry::GetPluginConfigs(
+      cfg_.use_plugin_optimizers() != RewriterConfig::OFF, device_types);
+  if (optimizer == "pruning" && !plugin_configs.disable_model_pruning)
+    return std::unique_ptr<GraphOptimizer>(new ModelPruner());
+  MK_OPT("function", "function_optimization",
          new FunctionOptimizer(cfg_.function_optimization(),
                                /*lower_control_flow=*/LowerControlFlow()));
-  MK_OPT("constfold",
+  MK_OPT("constfold", "constant_folding",
          new ConstantFolding(
              cpu_device_,
-             cfg_.experimental_disable_compressed_tensor_optimization()));
-  MK_OPT("shape", new ShapeOptimizer());
-  MK_OPT("remap", new Remapper(cfg_.remapping()));
-  MK_OPT("layout", new GenericLayoutOptimizer(
-                       /*optimization level*/ cfg_.layout_optimizer(),
-                       /*CPU layout conversion*/ cfg_.cpu_layout_conversion()));
-  MK_OPT("auto_mixed_precision",
+             cfg_.experimental_disable_compressed_tensor_optimization(),
+             !cfg_.experimental_disable_folding_quantization_emulation()));
+  MK_OPT("shape", "shape_optimization", new ShapeOptimizer());
+  MK_OPT("remap", "remapping",
+         new Remapper(cfg_.remapping(), cfg_.cpu_layout_conversion(),
+                      xla_auto_clustering_on_));
+  MK_OPT("layout", "layout_optimizer",
+         new GenericLayoutOptimizer(
+             /*optimization level*/ cfg_.layout_optimizer(),
+             /*CPU layout conversion*/ cfg_.cpu_layout_conversion()));
+  MK_OPT("auto_mixed_precision", "auto_mixed_precision",
          new AutoMixedPrecision(AutoMixedPrecisionMode::CUDA));
-  MK_OPT("auto_mixed_precision_mkl",
-         new AutoMixedPrecision(AutoMixedPrecisionMode::MKL));
-  MK_OPT("memory", new MemoryOptimizer(RewriterConfig::MANUAL));
-  MK_OPT("common_subgraph_elimination",
+#ifdef INTEL_MKL
+  if (IsMKLEnabled()) {
+    MK_OPT("auto_mixed_precision_mkl", "auto_mixed_precision_mkl",
+           new AutoMixedPrecision(AutoMixedPrecisionMode::BF16));
+    MK_OPT("auto_mixed_precision_onednn_bfloat16",
+           "auto_mixed_precision_onednn_bfloat16",
+           new AutoMixedPrecision(AutoMixedPrecisionMode::BF16));
+  }
+#endif
+  MK_OPT("auto_mixed_precision_cpu", "auto_mixed_precision_cpu",
+         new AutoMixedPrecision(AutoMixedPrecisionMode::CPU));
+  MK_OPT("memory", "memory_optimization",
+         new MemoryOptimizer(RewriterConfig::MANUAL));
+  MK_OPT("common_subgraph_elimination", "common_subgraph_elimination",
          new CommonSubgraphElimination(cfg_.common_subgraph_elimination()));
-  MK_OPT("arithmetic", new ArithmeticOptimizer(cfg_.arithmetic_optimization()));
-  MK_OPT("autoparallel", new AutoParallel(cfg_.auto_parallel().num_replicas()));
-  MK_OPT("loop", new LoopOptimizer(cfg_.loop_optimization(), cpu_device_));
-  MK_OPT("dependency", new DependencyOptimizer(cfg_.dependency_optimization()));
-  MK_OPT("debug_stripper", new DebugStripper());
-  MK_OPT("scoped_allocator",
+  MK_OPT("arithmetic", "arithmetic_optimization",
+         new ArithmeticOptimizer(cfg_.arithmetic_optimization()));
+  MK_OPT("autoparallel", "auto_parallel",
+         new AutoParallel(cfg_.auto_parallel().num_replicas()));
+  MK_OPT("loop", "loop_optimization",
+         new LoopOptimizer(cfg_.loop_optimization(), cpu_device_));
+  MK_OPT("dependency", "dependency_optimization",
+         new DependencyOptimizer(cfg_.dependency_optimization()));
+  MK_OPT("debug_stripper", "debug_stripper", new DebugStripper());
+  MK_OPT("scoped_allocator", "scoped_allocator_optimization",
          new ScopedAllocatorOptimizer(cfg_.scoped_allocator_optimization(),
                                       cfg_.scoped_allocator_opts()));
-  MK_OPT("pin_to_host",
+  MK_OPT("pin_to_host", "pin_to_host_optimization",
          new PinToHostOptimizer(cfg_.pin_to_host_optimization()));
 
   return std::unique_ptr<GraphOptimizer>();
@@ -224,100 +270,247 @@ MetaOptimizer::MetaOptimizer(DeviceBase* cpu_device, const ConfigProto& cfg)
       cfg_(*config_proto_.mutable_graph_options()->mutable_rewrite_options()) {
   DCHECK(cpu_device_ == nullptr ||
          cpu_device_->attributes().device_type() == "CPU");
+  auto global_jit_level =
+      cfg.graph_options().optimizer_options().global_jit_level();
+  xla_auto_clustering_on_ = IsXlaGlobalJitOn(global_jit_level);
 }
 
 Status MetaOptimizer::InitializeOptimizers(
+    const std::set<string>& device_types,
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
   if (cfg_.disable_meta_optimizer()) {
-    return Status::OK();
+    return OkStatus();
   }
-  if (!cfg_.disable_model_pruning()) {
-    optimizers->push_back(MakeUnique<ModelPruner>());
+
+  ConfigList plugin_configs = PluginGraphOptimizerRegistry::GetPluginConfigs(
+      cfg_.use_plugin_optimizers() != RewriterConfig::OFF, device_types);
+  if (!cfg_.disable_model_pruning() && !plugin_configs.disable_model_pruning) {
+    optimizers->push_back(std::make_unique<ModelPruner>());
   }
-  if (cfg_.implementation_selector() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<ImplementationSelector>());
+
+  // #TODO(b/200087693): LLVM does not build on Fuchsia.
+#if !NO_LLVM_SUPPORT
+  if (!cfg_.disable_tfg_optimizer()) {
+    // Hooks the MLIR optimizer, it won't run any optimizations right now. This
+    // optimizer instance runs on functions one at a time; don't use any
+    // threads.
+    optimizers->push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(
+        mlir::tfg::DefaultGrapplerPipeline));
   }
-  if (cfg_.function_optimization() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<FunctionOptimizer>(
-        cfg_.function_optimization(),
-        /*lower_control_flow=*/LowerControlFlow()));
+#endif
+
+// A set of macro utilities which check if the toggle of an optimization.
+// Support both user and plugin configurations.
+#define USER_IS_ON(CFG) cfg_.CFG() == RewriterConfig::ON
+#define USER_IS_EXPERIMENTAL_MLIR(CFG) \
+  cfg_.CFG() == RewriterConfig::EXPERIMENTAL_MLIR
+#define USER_IS_EXPERIMENTAL_BOTH(CFG) \
+  cfg_.CFG() == RewriterConfig::EXPERIMENTAL_BOTH
+#define USER_NOT_OFF(CFG) cfg_.CFG() != RewriterConfig::OFF
+#define PLUGIN_IS_ON(CFG) \
+  plugin_configs.toggle_config[#CFG] == RewriterConfig::ON
+#define PLUGIN_IS_EXPERIMENTAL_MLIR(CFG) \
+  plugin_configs.toggle_config[#CFG] == RewriterConfig::EXPERIMENTAL_MLIR
+#define PLUGIN_IS_EXPERIMENTAL_BOTH(CFG) \
+  plugin_configs.toggle_config[#CFG] == RewriterConfig::EXPERIMENTAL_BOTH
+#define PLUGIN_NOT_OFF(CFG) \
+  plugin_configs.toggle_config[#CFG] != RewriterConfig::OFF
+#define BOTH_ARE_ON(CFG) (USER_IS_ON(CFG) && PLUGIN_IS_ON(CFG))
+#define BOTH_NOT_OFF(CFG) (USER_NOT_OFF(CFG) && PLUGIN_NOT_OFF(CFG))
+#define BOTH_ARE_EXPERIMENTAL_MLIR(CFG) \
+  (USER_IS_EXPERIMENTAL_MLIR(CFG) && PLUGIN_IS_EXPERIMENTAL_MLIR(CFG))
+#define BOTH_ARE_EXPERIMENTAL_BOTH(CFG) \
+  (USER_IS_EXPERIMENTAL_BOTH(CFG) && PLUGIN_IS_EXPERIMENTAL_BOTH(CFG))
+  if (BOTH_NOT_OFF(implementation_selector)) {
+    if (USER_IS_EXPERIMENTAL_MLIR(implementation_selector) ||
+        USER_IS_EXPERIMENTAL_BOTH(implementation_selector))
+      VLOG(2) << "implementation_selector is not implemented in TFG yet";
+    else
+      optimizers->push_back(std::make_unique<ImplementationSelector>());
   }
-  if (cfg_.common_subgraph_elimination() != RewriterConfig::OFF &&
-      cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<CommonSubgraphElimination>(
-        cfg_.common_subgraph_elimination()));
+  if (BOTH_NOT_OFF(function_optimization)) {
+    if (USER_IS_EXPERIMENTAL_MLIR(function_optimization) ||
+        USER_IS_EXPERIMENTAL_BOTH(function_optimization)) {
+      VLOG(2) << "function_optimization is not implemented in TFG yet";
+    } else {
+      optimizers->push_back(std::make_unique<FunctionOptimizer>(
+          cfg_.function_optimization(),
+          /*lower_control_flow=*/LowerControlFlow()));
+    }
   }
-  if (cfg_.debug_stripper() == RewriterConfig::ON) {
-    optimizers->push_back(MakeUnique<DebugStripper>());
+  if (BOTH_NOT_OFF(common_subgraph_elimination) &&
+      BOTH_NOT_OFF(arithmetic_optimization)) {
+    if (USER_IS_EXPERIMENTAL_MLIR(common_subgraph_elimination) ||
+        USER_IS_EXPERIMENTAL_BOTH(common_subgraph_elimination)) {
+      VLOG(2) << "common_subgraph_elimination is not implemented in TFG yet";
+    } else {
+      optimizers->push_back(std::make_unique<CommonSubgraphElimination>(
+          cfg_.common_subgraph_elimination()));
+    }
   }
-  if (cfg_.constant_folding() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<ConstantFolding>(
-        cfg_.constant_folding(), cpu_device_,
-        cfg_.experimental_disable_compressed_tensor_optimization()));
+  if (BOTH_ARE_ON(debug_stripper))
+    optimizers->push_back(std::make_unique<DebugStripper>());
+  else if (BOTH_ARE_EXPERIMENTAL_MLIR(debug_stripper) ||
+           BOTH_ARE_EXPERIMENTAL_BOTH(debug_stripper))
+    VLOG(2) << "debug_stripper is not implemented in TFG yet";
+  if (BOTH_NOT_OFF(constant_folding)) {
+    if (USER_IS_EXPERIMENTAL_MLIR(constant_folding) ||
+        USER_IS_EXPERIMENTAL_BOTH(constant_folding)) {
+      VLOG(2) << "constant_folding is not implemented in TFG yet";
+    } else {
+      optimizers->push_back(std::make_unique<ConstantFolding>(
+          cfg_.constant_folding(), cpu_device_,
+          cfg_.experimental_disable_compressed_tensor_optimization(),
+          !cfg_.experimental_disable_folding_quantization_emulation()));
+    }
   }
-  if (cfg_.shape_optimization() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<ShapeOptimizer>());
+  if (BOTH_NOT_OFF(shape_optimization)) {
+    if (USER_IS_EXPERIMENTAL_MLIR(shape_optimization) ||
+        USER_IS_EXPERIMENTAL_BOTH(shape_optimization))
+      VLOG(2) << "shape_optimization is not implemented in TFG yet";
+    else
+      optimizers->push_back(std::make_unique<ShapeOptimizer>());
   }
-  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())) {
+  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision()) &&
+      AutoMixedPrecisionEnabled(
+          plugin_configs.toggle_config["auto_mixed_precision"])) {
     optimizers->push_back(
-        MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::CUDA));
+        std::make_unique<AutoMixedPrecision>(AutoMixedPrecisionMode::CUDA));
   }
-  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_mkl())) {
+#ifdef INTEL_MKL
+  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_onednn_bfloat16()) &&
+      AutoMixedPrecisionEnabled(
+          plugin_configs
+              .toggle_config["auto_mixed_precision_onednn_bfloat16"]) &&
+      IsMKLEnabled()) {
     optimizers->push_back(
-        MakeUnique<AutoMixedPrecision>(AutoMixedPrecisionMode::MKL));
+        std::make_unique<AutoMixedPrecision>(AutoMixedPrecisionMode::BF16));
   }
-  if (cfg_.pin_to_host_optimization() == RewriterConfig::ON) {
-    optimizers->push_back(MakeUnique<PinToHostOptimizer>());
-  }
-  if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
+  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_mkl()) &&
+      AutoMixedPrecisionEnabled(
+          plugin_configs.toggle_config["auto_mixed_precision_mkl"]) &&
+      IsMKLEnabled()) {
+    LOG_FIRST_N(WARNING, 1)
+        << "NOTE: auto_mixed_precision_mkl is deprecated."
+           " Please use auto_mixed_precision_onednn_bfloat16 instead";
     optimizers->push_back(
-        MakeUnique<ArithmeticOptimizer>(cfg_.arithmetic_optimization()));
+        std::make_unique<AutoMixedPrecision>(AutoMixedPrecisionMode::BF16));
   }
-  if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<GenericLayoutOptimizer>(
-        /*optimization level*/ cfg_.layout_optimizer(),
-        /*CPU layout conversion*/ cfg_.cpu_layout_conversion()));
-  }
-  if (cfg_.remapping() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
-  }
-  if (cfg_.loop_optimization() != RewriterConfig::OFF) {
+#endif
+  if (AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_cpu()) &&
+      AutoMixedPrecisionEnabled(
+          plugin_configs.toggle_config["auto_mixed_precision_cpu"])) {
     optimizers->push_back(
-        MakeUnique<LoopOptimizer>(cfg_.loop_optimization(), cpu_device_));
+        std::make_unique<AutoMixedPrecision>(AutoMixedPrecisionMode::CPU));
   }
-  if (cfg_.dependency_optimization() != RewriterConfig::OFF) {
-    optimizers->push_back(
-        MakeUnique<DependencyOptimizer>(cfg_.dependency_optimization()));
+  if (BOTH_ARE_ON(pin_to_host_optimization))
+    optimizers->push_back(std::make_unique<PinToHostOptimizer>());
+  else if (BOTH_ARE_EXPERIMENTAL_MLIR(pin_to_host_optimization) ||
+           BOTH_ARE_EXPERIMENTAL_BOTH(pin_to_host_optimization))
+    VLOG(2) << "pin_to_host_optimization is not implemented in TFG yet";
+  if (BOTH_NOT_OFF(arithmetic_optimization)) {
+    if (USER_IS_EXPERIMENTAL_MLIR(arithmetic_optimization) ||
+        USER_IS_EXPERIMENTAL_BOTH(arithmetic_optimization)) {
+      VLOG(2) << "arithmetic_optimization is not implemented in TFG yet";
+    } else {
+      optimizers->push_back(std::make_unique<ArithmeticOptimizer>(
+          cfg_.arithmetic_optimization()));
+    }
   }
-  auto global_jit_level =
-      config_proto_.graph_options().optimizer_options().global_jit_level();
-  if (MemoryOptimizerEnabled(cfg_.memory_optimization(), global_jit_level)) {
+  if (BOTH_NOT_OFF(layout_optimizer)) {
+    if (USER_IS_EXPERIMENTAL_MLIR(layout_optimizer) ||
+        USER_IS_EXPERIMENTAL_BOTH(layout_optimizer)) {
+      VLOG(2) << "layout_optimizer is not implemented in TFG yet";
+    } else {
+      optimizers->push_back(std::make_unique<GenericLayoutOptimizer>(
+          /*optimization level*/ cfg_.layout_optimizer(),
+          /*CPU layout conversion*/ cfg_.cpu_layout_conversion()));
+    }
+  }
+  if (BOTH_NOT_OFF(remapping)) {
+    bool enable_mlir_pass = USER_IS_EXPERIMENTAL_MLIR(remapping) ||
+                            USER_IS_EXPERIMENTAL_BOTH(remapping);
+    bool enable_grappler_pass =
+        !enable_mlir_pass || USER_IS_EXPERIMENTAL_BOTH(remapping);
+    if (enable_mlir_pass) {
+// #TODO(b/200087693): LLVM does not build on Fuchsia.
+#if !NO_LLVM_SUPPORT
+      optimizers->push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(
+          mlir::tfg::RemapperPassBuilder));
+#else
+      VLOG(2) << "mlir Remapper pass is not supported on this platform";
+#endif
+    }
+    if (enable_grappler_pass) {
+      optimizers->push_back(std::make_unique<Remapper>(
+          cfg_.remapping(), cfg_.cpu_layout_conversion(),
+          xla_auto_clustering_on_));
+    }
+  }
+  if (BOTH_NOT_OFF(loop_optimization)) {
+    if (USER_IS_EXPERIMENTAL_MLIR(loop_optimization) ||
+        USER_IS_EXPERIMENTAL_BOTH(loop_optimization)) {
+      VLOG(2) << "loop_optimization is not implemented in TFG yet";
+    } else {
+      optimizers->push_back(std::make_unique<LoopOptimizer>(
+          cfg_.loop_optimization(), cpu_device_));
+    }
+  }
+  if (BOTH_NOT_OFF(dependency_optimization)) {
+    if (USER_IS_EXPERIMENTAL_MLIR(dependency_optimization) ||
+        USER_IS_EXPERIMENTAL_BOTH(dependency_optimization)) {
+      VLOG(2) << "dependency_optimization is not implemented in TFG yet";
+    } else {
+      optimizers->push_back(std::make_unique<DependencyOptimizer>(
+          cfg_.dependency_optimization()));
+    }
+  }
+  if (MemoryOptimizerEnabled(cfg_.memory_optimization(),
+                             xla_auto_clustering_on_) &&
+      PLUGIN_NOT_OFF(memory_optimization)) {
     if (cfg_.memory_optimizer_target_node_name_scope().empty()) {
       optimizers->push_back(
           // Use the default target node name prefix "gradients/"
-          MakeUnique<MemoryOptimizer>(cfg_.memory_optimization()));
+          std::make_unique<MemoryOptimizer>(cfg_.memory_optimization()));
     } else {
-      optimizers->push_back(MakeUnique<MemoryOptimizer>(
+      optimizers->push_back(std::make_unique<MemoryOptimizer>(
           cfg_.memory_optimization(),
           cfg_.memory_optimizer_target_node_name_scope()));
     }
   }
-  if (cfg_.auto_parallel().enable()) {
+  if (cfg_.auto_parallel().enable() && PLUGIN_IS_ON(auto_parallel)) {
     optimizers->push_back(
-        MakeUnique<AutoParallel>(cfg_.auto_parallel().num_replicas()));
+        std::make_unique<AutoParallel>(cfg_.auto_parallel().num_replicas()));
   }
-  if (cfg_.scoped_allocator_optimization()) {
-    optimizers->push_back(MakeUnique<ScopedAllocatorOptimizer>(
+
+#ifndef ENABLE_MKL
+  if (BOTH_ARE_ON(scoped_allocator_optimization)) {
+    optimizers->push_back(std::make_unique<ScopedAllocatorOptimizer>(
         cfg_.scoped_allocator_optimization(), cfg_.scoped_allocator_opts()));
+  } else if (BOTH_ARE_EXPERIMENTAL_MLIR(scoped_allocator_optimization) ||
+             BOTH_ARE_EXPERIMENTAL_BOTH(scoped_allocator_optimization)) {
+    VLOG(2) << "scoped_allocator_optimization is not implemented in TFG yet";
   }
-  return InitializeCustomGraphOptimizers(std::set<string>(), optimizers);
+#endif
+
+#undef USER_IS_ON
+#undef USER_IS_EXPERIMENTAL_MLIR
+#undef USER_IS_EXPERIMENTAL_BOTH
+#undef USER_NOT_OFF
+#undef PLUGIN_IS_ON
+#undef PLUGIN_NOT_OFF
+#undef BOTH_ARE_ON
+#undef BOTH_NOT_OFF
+  return InitializeCustomGraphOptimizers(device_types, std::set<string>(),
+                                         optimizers);
 }
 
 Status MetaOptimizer::InitializeOptimizersByName(
+    const std::set<string>& device_types,
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
   std::set<string> initialized_custom_optimizers;
   for (const string& optimizer_name : cfg_.optimizers()) {
-    auto optimizer = MakeNewOptimizer(optimizer_name);
+    auto optimizer = MakeNewOptimizer(optimizer_name, device_types);
     if (optimizer) {
       VLOG(2) << "Registered default graph optimizer: " << optimizer_name;
       optimizers->push_back(std::move(optimizer));
@@ -337,11 +530,12 @@ Status MetaOptimizer::InitializeOptimizersByName(
       VLOG(2) << "Can't register an optimizer by name: " << optimizer_name;
     }
   }
-  return InitializeCustomGraphOptimizers(initialized_custom_optimizers,
-                                         optimizers);
+  return InitializeCustomGraphOptimizers(
+      device_types, initialized_custom_optimizers, optimizers);
 }
 
 Status MetaOptimizer::InitializeCustomGraphOptimizers(
+    const std::set<string>& device_types,
     const std::set<string>& pre_initialized_optimizers,
     std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
   for (const auto& optimizer_config : cfg_.custom_optimizers()) {
@@ -363,7 +557,7 @@ Status MetaOptimizer::InitializeCustomGraphOptimizers(
       // If there are no custom optimizers with given name, try to initialize a
       // default optimizer. This way, custom configurable optimizers can be
       // mixed with default optimizers in any order.
-      auto optimizer = MakeNewOptimizer(optimizer_config.name());
+      auto optimizer = MakeNewOptimizer(optimizer_config.name(), device_types);
       if (optimizer) {
         VLOG(2) << "Registered default graph optimizer: "
                 << optimizer_config.name();
@@ -374,7 +568,19 @@ Status MetaOptimizer::InitializeCustomGraphOptimizers(
               << optimizer_config.name();
     }
   }
-  return Status::OK();
+  return InitializePluginGraphOptimizers(device_types, optimizers);
+}
+
+Status MetaOptimizer::InitializePluginGraphOptimizers(
+    const std::set<string>& device_types,
+    std::vector<std::unique_ptr<GraphOptimizer>>* optimizers) const {
+  if (cfg_.use_plugin_optimizers() == RewriterConfig::OFF) return OkStatus();
+  auto plugin_optimizers =
+      PluginGraphOptimizerRegistry::CreateOptimizers(device_types);
+  for (auto& plugin_optimizer : plugin_optimizers) {
+    optimizers->push_back(std::move(plugin_optimizer));
+  }
+  return OkStatus();
 }
 
 const RewriterConfig::CustomGraphOptimizer*
@@ -393,33 +599,171 @@ void MetaOptimizer::InitializeVerifiers(
     const {
   if (cfg_.inter_optimizer_verifier_config().structure_verifier() ==
       VerifierConfig::ON) {
-    inter_optimizer_verifiers->push_back(MakeUnique<StructureVerifier>());
+    inter_optimizer_verifiers->push_back(std::make_unique<StructureVerifier>());
   }
   if (cfg_.post_optimization_verifier_config().structure_verifier() ==
       VerifierConfig::ON) {
-    post_optimization_verifiers->push_back(MakeUnique<StructureVerifier>());
+    post_optimization_verifiers->push_back(
+        std::make_unique<StructureVerifier>());
   }
 }
 
-Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
-                                    GraphDef* optimized_graph) {
+void MetaOptimizer::PrintUserAndPluginConfigs(
+    const std::set<string>& device_types) const {
+  if (cfg_.use_plugin_optimizers() == RewriterConfig::OFF) return;
+  ConfigList plugin_cfg = PluginGraphOptimizerRegistry::GetPluginConfigs(
+      cfg_.use_plugin_optimizers() != RewriterConfig::OFF, device_types);
+  PluginGraphOptimizerRegistry::PrintPluginConfigsIfConflict(device_types);
+
+  ConfigList user_cfg;
+  // Print user's and plugin's configs.
+  if (cfg_.optimizers().empty()) {
+    if (cfg_.disable_meta_optimizer()) {
+      return;
+    }
+    user_cfg.disable_model_pruning = cfg_.disable_model_pruning();
+#define PRINT_CFG(CFG) user_cfg.toggle_config[#CFG] = cfg_.CFG();
+    PRINT_CFG(implementation_selector)
+    PRINT_CFG(function_optimization)
+    PRINT_CFG(common_subgraph_elimination)
+    PRINT_CFG(arithmetic_optimization)
+    PRINT_CFG(debug_stripper)
+    PRINT_CFG(constant_folding)
+    PRINT_CFG(shape_optimization)
+    PRINT_CFG(pin_to_host_optimization)
+    PRINT_CFG(layout_optimizer)
+    PRINT_CFG(remapping)
+    PRINT_CFG(loop_optimization)
+    PRINT_CFG(dependency_optimization)
+    PRINT_CFG(scoped_allocator_optimization)
+#undef PRINT_CFG
+    user_cfg.toggle_config["auto_mixed_precision"] =
+        AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())
+            ? RewriterConfig::ON
+            : RewriterConfig::OFF;
+    user_cfg.toggle_config["auto_mixed_precision_onednn_bfloat16"] =
+        AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_onednn_bfloat16())
+            ? RewriterConfig::ON
+            : RewriterConfig::OFF;
+    user_cfg.toggle_config["auto_mixed_precision_mkl"] =
+        AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_mkl())
+            ? RewriterConfig::ON
+            : RewriterConfig::OFF;
+    user_cfg.toggle_config["auto_mixed_precision_cpu"] =
+        AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision_cpu())
+            ? RewriterConfig::ON
+            : RewriterConfig::OFF;
+    user_cfg.toggle_config["memory_optimization"] =
+        MemoryOptimizerEnabled(cfg_.memory_optimization(),
+                               config_proto_.graph_options()
+                                   .optimizer_options()
+                                   .global_jit_level())
+            ? RewriterConfig::ON
+            : RewriterConfig::OFF;
+    user_cfg.toggle_config["auto_parallel"] = cfg_.auto_parallel().enable()
+                                                  ? RewriterConfig::ON
+                                                  : RewriterConfig::OFF;
+  } else {
+    for (const string& optimizer_name : cfg_.optimizers()) {
+      if (optimizer_name == "pruning") user_cfg.disable_model_pruning = true;
+
+#define PRINT_CFG(NAME, CONFIG) \
+  if (optimizer_name == NAME)   \
+    user_cfg.toggle_config[CONFIG] = RewriterConfig::ON;
+
+      PRINT_CFG("implementation_selector", "implementation_selector")
+      PRINT_CFG("function", "function_optimization")
+      PRINT_CFG("common_subgraph_elimination", "common_subgraph_elimination")
+      PRINT_CFG("arithmetic", "arithmetic_optimization")
+      PRINT_CFG("debug_stripper", "debug_stripper")
+      PRINT_CFG("constfold", "constant_folding")
+      PRINT_CFG("shape", "shape_optimization")
+      PRINT_CFG("auto_mixed_precision", "auto_mixed_precision")
+      PRINT_CFG("auto_mixed_precision_onednn_bfloat16",
+                "auto_mixed_precision_onednn_bfloat16")
+      PRINT_CFG("auto_mixed_precision_mkl", "auto_mixed_precision_mkl")
+      PRINT_CFG("auto_mixed_precision_cpu", "auto_mixed_precision_cpu")
+      PRINT_CFG("pin_to_host", "pin_to_host_optimization")
+      PRINT_CFG("layout", "layout_optimizer")
+      PRINT_CFG("remap", "remapping")
+      PRINT_CFG("loop", "loop_optimization")
+      PRINT_CFG("dependency", "dependency_optimization")
+      PRINT_CFG("memory", "memory_optimization")
+      PRINT_CFG("autoparallel", "auto_parallel")
+      PRINT_CFG("scoped_allocator", "scoped_allocator_optimization")
+#undef PRINT_CFG
+    }
+  }
+
+  // Print logs only when plugin config has conflict with user config.
+  if (!PluginGraphOptimizerRegistry::IsConfigsConflict(user_cfg, plugin_cfg))
+    return;
+
+  ConfigList final_cfg = user_cfg;
+  // If plugin turns on `disable_model_pruning`, then `disable_model_pruning`
+  // should be true;
+  if (plugin_cfg.disable_model_pruning == true)
+    final_cfg.disable_model_pruning = true;
+  // If plugin turns off a certain optimizer, then the optimizer should be
+  // turned off;
+  for (auto& pair : plugin_cfg.toggle_config) {
+    if (plugin_cfg.toggle_config[pair.first] == RewriterConfig::OFF)
+      final_cfg.toggle_config[pair.first] = RewriterConfig::OFF;
+  }
+
+  string logs =
+      "\nConfig of optimizers\t\tUser's config\tPlugin's config\tFinal "
+      "config(User & Plugin)\n";
+  strings::StrAppend(&logs, "disable_model_pruning\t\t",
+                     user_cfg.disable_model_pruning, "\t\t",
+                     plugin_cfg.disable_model_pruning, "\t\t",
+                     final_cfg.disable_model_pruning, "\n");
+  for (auto& pair : user_cfg.toggle_config) {
+    if (pair.first == "debug_stripper" ||
+        pair.first == "auto_mixed_precision" ||
+        pair.first == "auto_mixed_precision_onednn_bfloat16" ||
+        pair.first == "auto_mixed_precision_mkl" ||
+        pair.first == "auto_mixed_precision_cpu" ||
+        pair.first == "pin_to_host_optimization" ||
+        pair.first == "scoped_allocator_optimization") {
+      // These optimizers are turned off by default.
+      // TODO(penporn): Remove the hard-coded length and change it to max length
+      // of all option strings.
+      strings::StrAppend(
+          &logs, pair.first, string(40 - pair.first.size(), ' '),
+          (pair.second == RewriterConfig::ON), "\t\t",
+          (plugin_cfg.toggle_config[pair.first] == RewriterConfig::ON), "\t\t",
+          (final_cfg.toggle_config[pair.first] == RewriterConfig::ON), "\n");
+    } else {
+      // These optimizers are turned on by default.
+      // TODO(penporn): Remove the hard-coded length and change it to max length
+      // of all option strings.
+      strings::StrAppend(
+          &logs, pair.first, string(40 - pair.first.size(), ' '),
+          (pair.second != RewriterConfig::OFF), "\t\t",
+          (plugin_cfg.toggle_config[pair.first] != RewriterConfig::OFF), "\t\t",
+          (final_cfg.toggle_config[pair.first] != RewriterConfig::OFF), "\n");
+    }
+  }
+  LOG(WARNING) << "User's config has been changed based on plugin's config.";
+  LOG(WARNING) << logs;
+}
+
+Status MetaOptimizer::OptimizeGraph(
+    const std::vector<std::unique_ptr<GraphOptimizer>>& optimizers,
+    Cluster* cluster, GrapplerItem&& item, GraphDef* optimized_graph) {
   int min_graph_nodes = cfg_.min_graph_nodes() == 0 ? kDefaultMinGraphNodes
                                                     : cfg_.min_graph_nodes();
   if (item.graph.node_size() < min_graph_nodes) {
     VLOG(3) << "Skipping optimization, graph has less than " << min_graph_nodes
             << " nodes.";
     *optimized_graph = item.graph;
-    return Status::OK();
+    return OkStatus();
   }
 
-  const uint64 start_us = Env::Default()->NowMicros();
-
-  std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
-  if (cfg_.optimizers().empty()) {
-    TF_RETURN_IF_ERROR(InitializeOptimizers(&optimizers));
-  } else {
-    TF_RETURN_IF_ERROR(InitializeOptimizersByName(&optimizers));
-  }
+  tensorflow::metrics::ScopedCounter<2> timings(
+      tensorflow::metrics::GetGraphOptimizationCounter(),
+      {kGrapplerCategory, "OptimizeMainGraph"});
 
   // Initialize the configured verifiers.
   std::vector<std::unique_ptr<GraphVerifier>> inter_optimizer_verifiers;
@@ -445,16 +789,18 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
   if (optimizers.empty()) {
     VLOG(3) << "Skipping graph optimization, no optimizers registered";
     *optimized_graph = item.graph;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Invariant: optimized_graph contains the most recently optimized version of
   // the graph.
   auto original_producer = item.graph.versions().producer();
-  optimized_graph->Swap(&item.graph);
+  *optimized_graph = std::move(item.graph);
 
   GraphOptimizationResult optimization_result(item.id);
+#ifndef ENABLE_MKL
   GraphOptimizer* sa_optimizer = nullptr;
+#endif
 
   // Constants in the graph are normally compressed after model_pruner.
   // Do it here if model pruner is disabled.
@@ -483,11 +829,13 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
       GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
       // Some optimizers can run only once.
       if (iteration > 0 && IsRunOnceOptimizer(optimizer->name())) continue;
+#ifndef ENABLE_MKL
       // Some must run only on the last iteration.
       if (optimizer->name() == "scoped_allocator_optimizer") {
         if (sa_optimizer == nullptr) sa_optimizer = optimizer.get();
         continue;
       }
+#endif
 
       TF_RETURN_IF_ERROR(RunOptimizer(optimizer.get(), cluster, &item,
                                       optimized_graph, &optimization_result));
@@ -519,13 +867,14 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
       TF_RETURN_IF_ERROR(verifier->Verify(*optimized_graph));
     }
   }
-
+#ifndef ENABLE_MKL
   // ScopedAllocatorOptimizer must run last.
   if (sa_optimizer != nullptr) {
     TF_RETURN_IF_ERROR(RunOptimizer(sa_optimizer, cluster, &item,
                                     optimized_graph, &optimization_result));
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
   }
+#endif
 
   bool is_optimized = std::find_if(optimization_result.results.begin(),
                                    optimization_result.results.end(),
@@ -543,58 +892,73 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
     DCHECK_EQ(optimized_graph->versions().producer(), original_producer);
   }
 
-  const uint64 end_us = Env::Default()->NowMicros();
-  metrics::UpdateGrapplerPassTime("OptimizeMainGraph", end_us - start_us);
+  return OkStatus();
+}
 
-  return Status::OK();
+Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
+                                    GraphDef* optimized_graph) {
+  std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
+  std::set<std::string> device_types;
+  TF_RETURN_IF_ERROR(GetGraphDevice(item.graph, &device_types));
+  if (cfg_.optimizers().empty()) {
+    TF_RETURN_IF_ERROR(InitializeOptimizers(device_types, &optimizers));
+  } else {
+    TF_RETURN_IF_ERROR(InitializeOptimizersByName(device_types, &optimizers));
+  }
+  PrintUserAndPluginConfigs(device_types);
+
+  return OptimizeGraph(std::move(optimizers), cluster, std::move(item),
+                       optimized_graph);
 }
 
 Status MetaOptimizer::RunOptimizer(
     GraphOptimizer* optimizer, Cluster* cluster, GrapplerItem* optimized_item,
     GraphDef* optimized_graph, GraphOptimizationResult* optimization_result) {
-  const uint64 start_us = Env::Default()->NowMicros();
-
   // If optimizer doesn't need a function library, we will replace it with a
   // stub before running optimization, and will put it back at the end.
-  FunctionDefLibrary optimized_graph_function_library;
+  std::unique_ptr<FunctionDefLibrary> optimized_graph_function_library;
   const bool is_function_library_aware = optimizer->UsesFunctionLibrary();
 
   // Replace function library in optimized graph with a stub.
   if (!is_function_library_aware) {
     VLOG(3) << "Replace function library with a stub for " << optimizer->name();
-    optimized_graph_function_library.Swap(optimized_graph->mutable_library());
+    optimized_graph_function_library =
+        absl::WrapUnique(optimized_graph->release_library());
     *optimized_graph->mutable_library() =
-        GetFunctionDefLibraryStub(optimized_graph_function_library);
+        GetFunctionDefLibraryStub(*optimized_graph_function_library);
   }
 
   // This swaps the current optimized_graph into optimized item and
   // resets optimized_graph to an empty graph.
-  optimized_graph->Swap(&optimized_item->graph);
+  optimized_item->graph = std::move(*optimized_graph);
   *optimized_graph = GraphDef();
   optimizer->set_deadline_usec(this->deadline_usec());
+  tensorflow::metrics::ScopedCounter<2> timings(
+      tensorflow::metrics::GetGraphOptimizationCounter(),
+      {kGrapplerCategory, optimizer->name()});
   Status status =
       optimizer->Optimize(cluster, *optimized_item, optimized_graph);
-  const uint64 end_us = Env::Default()->NowMicros();
-  const float duration_ms = (end_us - start_us) / 1000.0f;
-  metrics::UpdateGrapplerPassTime(optimizer->name(), end_us - start_us);
+  auto duration_ms = timings.DurationMicroSec().value() / 1000.0f;
+  timings.ReportAndStop();
 
   string message;
   if (!status.ok()) {
-    optimized_graph->Swap(&optimized_item->graph);
-    if (errors::IsAborted(status)) {
+    *optimized_graph = std::move(optimized_item->graph);
+    if (absl::IsAborted(status)) {
       // By convention we (ab-)use the Aborted error code to signal that the
       // optimizer returned without performing any changes to the graph.
       message = strings::StrCat(optimizer->name(),
                                 " did nothing. time = ", duration_ms, "ms.");
       // Swallow the non-critical error.
-      status = Status::OK();
-    } else if (errors::IsDeadlineExceeded(status)) {
+      status = OkStatus();
+    } else if (absl::IsDeadlineExceeded(status)) {
       message =
           strings::StrCat(status.ToString(), ", time = ", duration_ms, "ms.");
-      LOG(WARNING) << optimizer->name() << " failed: " << message;
+      LOG_EVERY_N_SEC(WARNING, 60)
+          << optimizer->name() << " failed: " << message;
     } else {
       message = status.ToString();
-      LOG(ERROR) << optimizer->name() << " failed: " << message;
+      LOG_EVERY_N_SEC(ERROR, 60) << optimizer->name() << " failed: " << message;
     }
   } else {
     message = strings::StrCat(
@@ -605,15 +969,21 @@ Status MetaOptimizer::RunOptimizer(
 
   // Swap function library back into the main graph.
   if (!is_function_library_aware) {
-    optimized_graph->mutable_library()->Swap(&optimized_graph_function_library);
+    optimized_graph->set_allocated_library(
+        optimized_graph_function_library.release());
   }
 
   OptimizerResult optimizer_result{optimizer->name(), message, status};
   optimization_result->results.push_back(optimizer_result);
 
-  if (!status.ok() && cfg_.fail_on_optimizer_errors()) return status;
+  if (!status.ok()) {
+    if (cfg_.fail_on_optimizer_errors()) return status;
 
-  return Status::OK();
+    // Non-aborted failures in the TFG optimizer are always fatal.
+    if (absl::StartsWith(optimizer->name(), "tfg_optimizer")) return status;
+  }
+
+  return OkStatus();
 }
 
 // Propagates `_tf_data_function` attributes from functions to their callees.
@@ -675,7 +1045,9 @@ void PropagateTFDataAttrs(const FunctionLibraryDefinition& flib,
 
 Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
                                           GraphDef* optimized_graph) {
-  const uint64 start_us = Env::Default()->NowMicros();
+  tensorflow::metrics::ScopedCounter<2> timings(
+      tensorflow::metrics::GetGraphOptimizationCounter(),
+      {kGrapplerCategory, "*"});
 
   VLOG(1) << "Starting optimization for grappler item: " << item.id;
   optimization_results_.clear();
@@ -708,7 +1080,8 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
   const auto producer = item.graph.versions().producer();
 
   // 1. Optimize main graph
-  TF_RETURN_IF_ERROR(OptimizeGraph(cluster, std::move(item), optimized_graph));
+  TF_RETURN_IF_ERROR(
+      OptimizeGraph(cluster, GrapplerItem(item), optimized_graph));
   VLOG(1) << "Optimized main graph.";
   GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
@@ -754,7 +1127,7 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
     xla_compiled_functions.insert(func);
     // Depth first search through the func for transitively called funcs
     for (const NodeDef& node : func_def->node_def()) {
-      for (const auto attr : node.attr()) {
+      for (const auto& attr : node.attr()) {
         const AttrValue& attr_value = attr.second;
         if (attr_value.has_func()) {
           find_all_functions(attr_value.func().name());
@@ -782,6 +1155,9 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
   }
   // Propagate `_tf_data_function` attributes from functions to their callees.
   PropagateTFDataAttrs(flib, *optimized_graph->mutable_library());
+
+  // True if this is a TPU graph using the old bridge.
+  bool is_tpu_graph = IsLegacyTPUBridgeGraphDef(*optimized_graph);
 
   // Optimize each function only once.
   absl::flat_hash_set<string> optimized_funcs;
@@ -847,7 +1223,7 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
 
       // Optimize function body graph.
       GraphDef optimized_func_graph;
-      if (IsTPUGraphDef(*optimized_graph)) {
+      if (is_tpu_graph) {
         // Skip optimizing functions if this is a TPU graph. Currently, Grappler
         // passes do not handle TPU functions correctly in a variety of ways
         // (Note that due to the pre-placement TPU graph rewriting passes, the
@@ -863,10 +1239,10 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
 
         // Implementation selector needs to have access to valid function
         // signature and attributes, and it doesn't need actual function body.
-        FunctionDefLibrary func_item_function_library;
-        func_item_function_library.Swap(func_item.graph.mutable_library());
+        std::unique_ptr<FunctionDefLibrary> func_item_function_library(
+            func_item.graph.release_library());
         *func_item.graph.mutable_library() =
-            GetFunctionDefLibraryStub(func_item_function_library);
+            GetFunctionDefLibraryStub(*func_item_function_library);
 
         TF_RETURN_IF_ERROR(implementation_selector.Optimize(
             cluster, func_item, &optimized_func_graph));
@@ -900,6 +1276,31 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
     }
   }
 
+  // Run module-level TFG optimizations at the end of the meta-optimizer.
+  // TODO(jeffniu): None of the TFG optimizations are meant to create new
+  // opportunities for other optimizers; they could, but it's unclear whether
+  // re-running all the other optimizers is worthwhile.
+#if !NO_LLVM_SUPPORT
+  if (!cfg_.disable_tfg_optimizer()) {
+    // Create a Grappler optimization pipeline with only the TFG optimizer.
+    std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
+    optimizers.push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(
+        // For module-level optimizations, use multithreading to process
+        // functions in parallel.
+        [&](mlir::PassManager& manager) {
+          mlir::tfg::DefaultModuleGrapplerPipeline(manager, cfg_);
+        },
+        /*num_tfg_threads=*/4));
+    // Wrap the optimized GraphDef in a new GrapplerItem with copied
+    // configuration options from the provided item.
+    GrapplerItem tfg_item = item.WithGraph(std::move(*optimized_graph));
+    // Invoke the optimizers.
+    *optimized_graph = GraphDef();
+    TF_RETURN_IF_ERROR(OptimizeGraph(optimizers, cluster, std::move(tfg_item),
+                                     optimized_graph));
+  }
+#endif
+
   VLOG(1) << "Optimized " << optimized_funcs.size()
           << " functions: " << absl::StrJoin(optimized_funcs, ", ");
   VLOG(3) << "Optimized graph =\n" << optimized_graph->DebugString();
@@ -910,10 +1311,7 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
         *optimized_graph);
   }
 
-  const uint64 end_us = Env::Default()->NowMicros();
-  metrics::UpdateGrapplerPassTime("*", end_us - start_us);
-
-  return Status::OK();
+  return OkStatus();
 }
 
 string MetaOptimizer::GetResultString() const {
@@ -930,7 +1328,7 @@ string MetaOptimizer::GetResultString() const {
   return result_string;
 }
 
-void MetaOptimizer::PrintResult() { LOG(INFO) << GetResultString(); }
+void MetaOptimizer::PrintResult() { VLOG(1) << GetResultString(); }
 
 bool MetaOptimizerEnabled(const ConfigProto& cfg) {
   const auto& rewrite_cfg = cfg.graph_options().rewrite_options();
@@ -950,10 +1348,15 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg) {
          rewrite_cfg.auto_parallel().enable() ||
          rewrite_cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          rewrite_cfg.debug_stripper() == RewriterConfig::ON ||
+#ifndef ENABLE_MKL
          rewrite_cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
+#endif
          rewrite_cfg.pin_to_host_optimization() == RewriterConfig::ON ||
          AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision()) ||
+         AutoMixedPrecisionEnabled(
+             rewrite_cfg.auto_mixed_precision_onednn_bfloat16()) ||
          AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision_mkl()) ||
+         AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision_cpu()) ||
          !rewrite_cfg.optimizers().empty() ||
          !rewrite_cfg.custom_optimizers().empty();
 }
@@ -976,17 +1379,24 @@ Status OptimizeGraph(
     const GrapplerItem::OptimizationOptions& optimization_options,
     std::unique_ptr<tensorflow::Graph>* g) {
   if (!tensorflow::grappler::MetaOptimizerEnabled(config_proto)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   tensorflow::grappler::GrapplerItem item;
   item.id = grappler_item_id;
   item.optimization_options() = optimization_options;
+  if (cpu_device && std::is_same<decltype(cpu_device), LocalDevice>::value &&
+      cpu_device->tensorflow_cpu_worker_threads() != nullptr) {
+    // Forward to the optimisation pass number of intra threads that are used to
+    // parallelise operations.
+    item.optimization_options().intra_op_parallelism_threads =
+        cpu_device->tensorflow_cpu_worker_threads()->num_threads;
+  }
 
   // Add all available devices so that inlined function can be placed.
   for (const Device* d : device_set.devices()) {
     Status added_device = item.AddDevice(d->name());
-    if (!added_device.ok()) VLOG(3) << added_device.error_message();
+    if (!added_device.ok()) VLOG(3) << added_device.message();
   }
   VLOG(3) << "Grappler available devices: "
           << absl::StrJoin(item.devices(), ", ");
@@ -1018,7 +1428,9 @@ Status OptimizeGraph(
     for (const FunctionDef& fdef : out_graph.library().function()) {
       const string& func_name = fdef.signature().name();
       if (flib->Contains(func_name)) {
-        TF_RETURN_IF_ERROR(flib->ReplaceFunction(func_name, fdef));
+        StackTracesMap stack_traces = *flib->GetStackTraces(func_name);
+        TF_RETURN_IF_ERROR(
+            flib->ReplaceFunction(func_name, fdef, stack_traces));
       } else {
         TF_RETURN_IF_ERROR(flib->AddFunctionDef(fdef));
       }
@@ -1047,7 +1459,7 @@ Status OptimizeGraph(
   }
 
   *g = std::move(optimized_graph);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace grappler

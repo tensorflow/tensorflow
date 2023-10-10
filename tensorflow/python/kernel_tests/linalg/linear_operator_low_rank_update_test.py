@@ -13,12 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -172,6 +169,24 @@ class BaseLinearOperatorLowRankUpdatetest(object):
         is_diag_update_positive=self._is_diag_update_positive)
     self.check_tape_safe(operator)
 
+  def test_convert_variables_to_tensors(self):
+    base_operator = linalg.LinearOperatorDiag(
+        variables_module.Variable([1.], name="diag"),
+        is_positive_definite=True,
+        is_self_adjoint=True)
+
+    operator = linalg.LinearOperatorLowRankUpdate(
+        base_operator,
+        u=variables_module.Variable([[2.]], name="u"),
+        v=variables_module.Variable([[1.25]], name="v")
+        if self._use_v else None,
+        diag_update=variables_module.Variable([1.25], name="diag_update")
+        if self._use_diag_update else None,
+        is_diag_update_positive=self._is_diag_update_positive)
+    with self.cached_session() as sess:
+      sess.run([x.initializer for x in operator.variables])
+      self.check_convert_variables_to_tensors(operator)
+
 
 class LinearOperatorLowRankUpdatetestWithDiagUseCholesky(
     BaseLinearOperatorLowRankUpdatetest,
@@ -182,7 +197,12 @@ class LinearOperatorLowRankUpdatetestWithDiagUseCholesky(
   _is_diag_update_positive = True
   _use_v = False
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
   def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
     # Decrease tolerance since we are testing with condition numbers as high as
     # 1e4.
     self._atol[dtypes.float32] = 1e-5
@@ -205,7 +225,12 @@ class LinearOperatorLowRankUpdatetestWithDiagCannotUseCholesky(
   _is_diag_update_positive = False
   _use_v = False
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
   def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
     # Decrease tolerance since we are testing with condition numbers as high as
     # 1e4.  This class does not use Cholesky, and thus needs even looser
     # tolerance.
@@ -225,7 +250,12 @@ class LinearOperatorLowRankUpdatetestNoDiagUseCholesky(
   _is_diag_update_positive = None
   _use_v = False
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
   def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
     # Decrease tolerance since we are testing with condition numbers as high as
     # 1e4.
     self._atol[dtypes.float32] = 1e-5
@@ -248,7 +278,12 @@ class LinearOperatorLowRankUpdatetestNoDiagCannotUseCholesky(
   _is_diag_update_positive = None
   _use_v = True
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
   def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
     # Decrease tolerance since we are testing with condition numbers as high as
     # 1e4.  This class does not use Cholesky, and thus needs even looser
     # tolerance.
@@ -269,7 +304,16 @@ class LinearOperatorLowRankUpdatetestWithDiagNotSquare(
   _is_diag_update_positive = True
   _use_v = True
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
 
+  def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
+
+
+@test_util.run_all_without_tensor_float_32(
+    "Linear op calls matmul which uses TensorFloat-32.")
 class LinearOperatorLowRankUpdateBroadcastsShape(test.TestCase):
   """Test that the operator's shape is the broadcast of arguments."""
 
@@ -287,24 +331,34 @@ class LinearOperatorLowRankUpdateBroadcastsShape(test.TestCase):
   @test_util.run_deprecated_v1
   def test_dynamic_shape_broadcasts_up_from_operator_to_other_args(self):
     num_rows_ph = array_ops.placeholder(dtypes.int32)
-
     base_operator = linalg.LinearOperatorIdentity(num_rows=num_rows_ph)
 
     u_shape_ph = array_ops.placeholder(dtypes.int32)
     u = array_ops.ones(shape=u_shape_ph)
 
-    operator = linalg.LinearOperatorLowRankUpdate(base_operator, u)
+    v_shape_ph = array_ops.placeholder(dtypes.int32)
+    v = array_ops.ones(shape=v_shape_ph)
+
+    diag_shape_ph = array_ops.placeholder(dtypes.int32)
+    diag_update = array_ops.ones(shape=diag_shape_ph)
+
+    operator = linalg.LinearOperatorLowRankUpdate(base_operator,
+                                                  u=u,
+                                                  diag_update=diag_update,
+                                                  v=v)
 
     feed_dict = {
         num_rows_ph: 3,
-        u_shape_ph: [2, 3, 2],  # batch_shape = [2]
+        u_shape_ph: [1, 1, 2, 3, 2],  # batch_shape = [1, 1, 2]
+        v_shape_ph: [1, 2, 1, 3, 2],  # batch_shape = [1, 2, 1]
+        diag_shape_ph: [2, 1, 1, 2]  # batch_shape = [2, 1, 1]
     }
 
     with self.cached_session():
       shape_tensor = operator.shape_tensor().eval(feed_dict=feed_dict)
-      self.assertAllEqual([2, 3, 3], shape_tensor)
+      self.assertAllEqual([2, 2, 2, 3, 3], shape_tensor)
       dense = operator.to_dense().eval(feed_dict=feed_dict)
-      self.assertAllEqual([2, 3, 3], dense.shape)
+      self.assertAllEqual([2, 2, 2, 3, 3], dense.shape)
 
   def test_u_and_v_incompatible_batch_shape_raises(self):
     base_operator = linalg.LinearOperatorIdentity(num_rows=3, dtype=np.float64)

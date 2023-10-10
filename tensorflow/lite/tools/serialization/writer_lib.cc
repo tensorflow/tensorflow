@@ -16,16 +16,27 @@ limitations under the License.
 
 #include <cstdlib>
 #include <cstring>
+#include <memory>
+#include <set>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/c/common.h"
+#if FLATBUFFERS_LITTLEENDIAN == 0
+#include "tensorflow/lite/core/model_builder.h"
+#endif
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/schema/reflection/schema_generated.h"
-#include "tensorflow/lite/schema/schema_utils.h"
+#include "tensorflow/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/tools/serialization/enum_mapping.h"
+#include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -37,8 +48,12 @@ CreateOpCodeTableImpl(flatbuffers::FlatBufferBuilder* fbb,
   std::vector<flatbuffers::Offset<OperatorCode>> codes;
   for (const auto& it : *opcodes) {
     const char* custom_name = it.custom.empty() ? nullptr : it.custom.c_str();
-    codes.push_back(CreateOperatorCodeDirect(
-        *fbb, static_cast<BuiltinOperator>(it.builtin), custom_name));
+    // Use version 0 for builtin op. This is a way to serialize version field to
+    // flatbuffer (since 0 is non default) and it will be corrected later.
+    int32_t op_version = it.builtin != tflite::BuiltinOperator_CUSTOM ? 0 : 1;
+    codes.push_back(
+        CreateOperatorCodeDirect(*fbb, static_cast<BuiltinOperator>(it.builtin),
+                                 custom_name, op_version));
   }
   return fbb->template CreateVector<flatbuffers::Offset<OperatorCode>>(codes);
 }
@@ -58,6 +73,11 @@ TfLiteStatus WriteImpl(const std::string& filename, void* data, size_t size) {
   FILE* fp = fopen(filename.c_str(), "wb");
   if (!fp) return kTfLiteError;
 
+#if FLATBUFFERS_LITTLEENDIAN == 0
+  const tflite::Model* input_model = tflite::GetModel(data);
+  tflite::FlatBufferModel::ByteSwapTFLiteModel(input_model);
+#endif
+
   const int result_size = fwrite(data, 1, size, fp);
   fclose(fp);
   if (result_size != size) return kTfLiteError;
@@ -67,7 +87,7 @@ TfLiteStatus WriteImpl(const std::string& filename, void* data, size_t size) {
 
 std::pair<BuiltinOptions, flatbuffers::Offset<void>> CreateBuiltinUnion(
     flatbuffers::FlatBufferBuilder* fbb, enum BuiltinOperator op,
-    void* builtin_op_data, const TfLiteNode& node) {
+    void* builtin_op_data, int node_inputs_size) {
   switch (op) {
 #include "tensorflow/lite/tools/serialization/option_writer_generated.h"
   }
@@ -120,7 +140,7 @@ SubgraphWriter::ExportOperators(flatbuffers::FlatBufferBuilder* fbb) {
       // builtin
       auto builtin_options_and_type = CreateBuiltinUnion(
           fbb, static_cast<enum BuiltinOperator>(registration.builtin_code),
-          node.builtin_data, node);
+          node.builtin_data, node.inputs->size);
       builtin_options = builtin_options_and_type.second;
       builtin_options_type = builtin_options_and_type.first;
     } else {
@@ -188,11 +208,6 @@ SubgraphWriter::ExportTensors(flatbuffers::FlatBufferBuilder* fbb) {
     if (tensor_to_written_tensor_[tensor_index] == -1) continue;
 
     if (TfLiteTensor* tensor = subgraph_->tensor(tensor_index)) {
-      // We only need to convert non temporaries
-      if (tensor->allocation_type != kTfLiteArenaRw &&
-          tensor->allocation_type != kTfLiteMmapRo &&
-          tensor->allocation_type != kTfLiteArenaRwPersistent)
-        continue;
       // Allocate a buffer index
       int buffer_index = 0;  // This is null
       if (tensor->allocation_type == kTfLiteMmapRo) {
@@ -236,14 +251,39 @@ SubgraphWriter::ExportTensors(flatbuffers::FlatBufferBuilder* fbb) {
       }
 
       // Shape
-      TfLiteIntArrayView shape_view(tensor->dims);
-      std::vector<int> shape =
-          std::vector<int>(shape_view.begin(), shape_view.end());
+      // Some tensors added during op init are not registered formally as
+      // node temporaries. Some didn't get memory allocated for them, and we
+      // should avoid serializing those tensors.
+      if (tensor->dims) {
+        TfLiteIntArrayView shape_view(tensor->dims);
+        std::vector<int> shape =
+            std::vector<int>(shape_view.begin(), shape_view.end());
 
-      tensors.push_back(CreateTensor(*fbb, ExportVector<int32_t>(fbb, shape),
-                                     type, buffer_index,
-                                     fbb->CreateString(tensor->name),
-                                     quantization_params, tensor->is_variable));
+        Offset<flatbuffers::String> tensor_name_offset = 0;
+        if (tensor->name != nullptr) {
+          tensor_name_offset = fbb->CreateString(tensor->name);
+        }
+
+        flatbuffers::Offset<flatbuffers::Vector<int32_t>>
+            shape_signature_offset = 0;
+
+        if (serialize_dims_signature_ && tensor->dims_signature != nullptr) {
+          TfLiteIntArrayView shape_signature_view(tensor->dims_signature);
+          std::vector<int32_t> shape_signature(shape_signature_view.begin(),
+                                               shape_signature_view.end());
+          shape_signature_offset = ExportVector<int32_t>(fbb, shape_signature);
+        }
+
+        // TFLite runtime does not differentiate between unranked and scalar
+        // tensors. Assume shapeless tensors are scalars when serializing.
+        // TODO(b/255826755): Remove workaround when runtime can differentiate
+        // between scalar and unranked tensors.
+        bool has_rank = true;
+        tensors.push_back(CreateTensor(
+            *fbb, ExportVector<int32_t>(fbb, shape), type, buffer_index,
+            tensor_name_offset, quantization_params, tensor->is_variable,
+            /*sparsity=*/0, shape_signature_offset, has_rank));
+      }
     }
   }
   return fbb->template CreateVector<flatbuffers::Offset<Tensor>>(tensors);
@@ -281,7 +321,8 @@ TfLiteStatus SubgraphWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
   if (!out || !size) return kTfLiteError;
   flatbuffers::FlatBufferBuilder builder(/*initial_size=*/10240);
   std::vector<flatbuffers::Offset<SubGraph>> subgraphs_as_vector;
-  subgraphs_as_vector.push_back(PopulateAndGetOffset(&builder));
+  subgraphs_as_vector.push_back(
+      PopulateAndGetOffset(&builder, subgraph_->GetName()));
 
   flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Buffer>>>
       buffers = ExportBuffers(&builder);
@@ -293,6 +334,7 @@ TfLiteStatus SubgraphWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
                            builder.CreateVector(subgraphs_as_vector),
                            description, buffers);
   ::tflite::FinishModelBuffer(builder, model);
+  ::tflite::UpdateOpVersion(builder.GetBufferPointer());
   const uint8_t* buffer = builder.GetBufferPointer();
   *size = builder.GetSize();
   (*out).reset(new uint8_t[*size]);
@@ -301,7 +343,7 @@ TfLiteStatus SubgraphWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
 }
 
 flatbuffers::Offset<SubGraph> SubgraphWriter::PopulateAndGetOffset(
-    flatbuffers::FlatBufferBuilder* builder) {
+    flatbuffers::FlatBufferBuilder* builder, const std::string& subgraph_name) {
   auto tensors = ExportTensors(builder);
   std::vector<int> written_inputs = RemapTensorIndicesToWritten(inputs_);
   std::vector<int> written_outputs = RemapTensorIndicesToWritten(outputs_);
@@ -309,7 +351,8 @@ flatbuffers::Offset<SubGraph> SubgraphWriter::PopulateAndGetOffset(
   auto outputs = ExportVector<int32_t>(builder, written_outputs);
 
   auto ops = ExportOperators(builder);
-  return CreateSubGraph(*builder, tensors, inputs, outputs, ops, /* name */ 0);
+  auto name = builder->CreateString(subgraph_name);
+  return CreateSubGraph(*builder, tensors, inputs, outputs, ops, name);
 }
 
 TfLiteStatus SubgraphWriter::Write(const std::string& filename) {
@@ -331,7 +374,9 @@ TfLiteStatus SubgraphWriter::RegisterCustomWriter(
 TfLiteStatus SubgraphWriter::CheckInputOutput(
     const std::vector<int>& inputs, const std::vector<int>& outputs,
     const std::vector<int>& execution_plan) {
-  std::unordered_set<int> known_tensors(inputs.begin(), inputs.end());
+  absl::flat_hash_set<int> known_tensors(inputs.begin(), inputs.end());
+  known_tensors.insert(subgraph_->variables().begin(),
+                       subgraph_->variables().end());
   // Scan execution plan and confirm input tensors are known before each node
   // executes. Then append output tensors to known tensors.
   for (int op_index : execution_plan) {
@@ -395,6 +440,52 @@ TfLiteStatus SubgraphWriter::SetCustomInputOutput(
   return kTfLiteOk;
 }
 
+ModelWriter::ModelWriter(Interpreter* interpreter,
+                         bool serialize_dims_signature) {
+  std::vector<Subgraph*> subgraphs;
+
+  // Retrieves the list of the subgraphs from the interpreter for constructing
+  // a list of SubgraphWriters.
+  subgraphs.reserve(interpreter->subgraphs_size());
+  for (int i = 0; i < interpreter->subgraphs_size(); ++i) {
+    subgraphs.push_back(interpreter->subgraph(i));
+  }
+
+  Init(subgraphs, serialize_dims_signature);
+}
+
+ModelWriter::ModelWriter(const std::vector<Subgraph*>& subgraphs,
+                         bool serialize_dims_signature) {
+  Init(subgraphs, serialize_dims_signature);
+}
+
+void ModelWriter::Init(const std::vector<Subgraph*>& subgraphs,
+                       bool serialize_dims_signature) {
+  buffers_.push_back(std::make_pair(nullptr, 0));
+  subgraph_writers_.reserve(subgraphs.size());
+  for (auto* subgraph : subgraphs) {
+    SubgraphWriter writer(subgraph, &buffers_, &opcodes_,
+                          &builtin_op_to_opcode_, serialize_dims_signature);
+    subgraph_writers_.push_back(writer);
+  }
+
+  // Populate subgraph_index_mapper_.
+  if (!subgraphs.empty()) {
+    absl::flat_hash_map<Subgraph*, int> subgraph_to_new_subgraph_index;
+    for (int i = 0; i < subgraphs.size(); ++i) {
+      subgraph_to_new_subgraph_index[subgraphs[i]] = i;
+    }
+
+    auto* all_subgraphs = subgraphs[0]->GetSubgraphs();
+    for (int i = 0; i < all_subgraphs->size(); ++i) {
+      auto it = subgraph_to_new_subgraph_index.find(all_subgraphs->at(i));
+      if (it != subgraph_to_new_subgraph_index.end()) {
+        subgraph_index_mapper_[i] = it->second;
+      }
+    }
+  }
+}
+
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Buffer>>>
 ModelWriter::ExportBuffers(flatbuffers::FlatBufferBuilder* fbb) {
   return ExportBuffersImpl(fbb, &buffers_);
@@ -411,10 +502,10 @@ TfLiteStatus ModelWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
   flatbuffers::FlatBufferBuilder builder(/*initial_size=*/10240);
 
   std::vector<flatbuffers::Offset<SubGraph>> subgraphs_as_vector;
-  for (int i = 0; i < interpreter_->subgraphs_size(); ++i) {
-    SubgraphWriter writer(interpreter_->subgraph(i), &buffers_, &opcodes_,
-                          &builtin_op_to_opcode_);
-    subgraphs_as_vector.push_back(writer.PopulateAndGetOffset(&builder));
+  subgraphs_as_vector.reserve(subgraph_writers_.size());
+  for (auto& subgraph_writer : subgraph_writers_) {
+    subgraphs_as_vector.push_back(subgraph_writer.PopulateAndGetOffset(
+        &builder, subgraph_writer.subgraph_->GetName()));
   }
 
   flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Buffer>>>
@@ -427,6 +518,8 @@ TfLiteStatus ModelWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
                            builder.CreateVector(subgraphs_as_vector),
                            description, buffers);
   ::tflite::FinishModelBuffer(builder, model);
+  ::tflite::UpdateOpVersion(builder.GetBufferPointer());
+  UpdateSubgraphReferences(&builder);
   const uint8_t* buffer = builder.GetBufferPointer();
   *size = builder.GetSize();
   (*out).reset(new uint8_t[*size]);
@@ -439,6 +532,67 @@ TfLiteStatus ModelWriter::Write(const std::string& filename) {
   size_t size;
   TF_LITE_ENSURE_STATUS(GetBuffer(&buffer, &size));
   return WriteImpl(filename, buffer.get(), size);
+}
+
+void ModelWriter::SetUnusedTensors(int subgraph_index,
+                                   const std::set<int>& unused_tensors) {
+  subgraph_writers_[subgraph_index].SetUnusedTensors(unused_tensors);
+}
+
+TfLiteStatus ModelWriter::SetCustomInputOutput(
+    int subgraph_index, const std::vector<int>& inputs,
+    const std::vector<int>& outputs, const std::vector<int>& execution_plan) {
+  return subgraph_writers_[subgraph_index].SetCustomInputOutput(inputs, outputs,
+                                                                execution_plan);
+}
+
+TfLiteStatus ModelWriter::RegisterCustomWriter(const std::string& custom_name,
+                                               CustomWriter custom_writer) {
+  for (auto& subgraph_writer : subgraph_writers_) {
+    subgraph_writer.RegisterCustomWriter(custom_name, custom_writer);
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus ModelWriter::UpdateSubgraphReferences(
+    flatbuffers::FlatBufferBuilder* fbb) {
+  auto model = tflite::GetMutableModel(fbb->GetBufferPointer());
+
+  for (SubGraph* subgraph : *model->mutable_subgraphs()) {
+    for (Operator* op : *subgraph->mutable_operators()) {
+      if (op->builtin_options_type() == BuiltinOptions_WhileOptions) {
+        auto while_options =
+            static_cast<tflite::WhileOptions*>(op->mutable_builtin_options());
+        auto new_cond_index =
+            subgraph_index_mapper_.find(while_options->cond_subgraph_index());
+        auto new_body_index =
+            subgraph_index_mapper_.find(while_options->body_subgraph_index());
+        if (new_cond_index == subgraph_index_mapper_.end() ||
+            new_body_index == subgraph_index_mapper_.end()) {
+          // Subgraph not found in the map.
+          return kTfLiteError;
+        }
+        while_options->mutate_cond_subgraph_index(new_cond_index->second);
+        while_options->mutate_body_subgraph_index(new_body_index->second);
+      } else if (op->builtin_options_type() == BuiltinOptions_IfOptions) {
+        auto if_options =
+            static_cast<tflite::IfOptions*>(op->mutable_builtin_options());
+        auto new_then_index =
+            subgraph_index_mapper_.find(if_options->then_subgraph_index());
+        auto new_else_index =
+            subgraph_index_mapper_.find(if_options->else_subgraph_index());
+        if (new_then_index == subgraph_index_mapper_.end() ||
+            new_else_index == subgraph_index_mapper_.end()) {
+          // Subgraph not found in the map.
+          return kTfLiteError;
+        }
+        if_options->mutate_then_subgraph_index(new_then_index->second);
+        if_options->mutate_else_subgraph_index(new_else_index->second);
+      }
+    }
+  }
+
+  return kTfLiteOk;
 }
 
 }  // namespace tflite

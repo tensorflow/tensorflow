@@ -14,10 +14,6 @@
 # ==============================================================================
 """Operators specific to slicing operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 from tensorflow.python.framework import dtypes
@@ -56,7 +52,7 @@ def get_item(target, i, opts):
 
   if isinstance(target, tensor_array_ops.TensorArray):
     return _tf_tensorarray_get_item(target, i)
-  elif tensor_util.is_tensor(target):
+  elif tensor_util.is_tf_type(target):
     if target.dtype == dtypes.variant:
       return _tf_tensor_list_get_item(target, i, opts)
     elif target.dtype == dtypes.string and target.shape.ndims == 0:
@@ -116,7 +112,7 @@ def set_item(target, i, x):
   """
   if isinstance(target, tensor_array_ops.TensorArray):
     return _tf_tensorarray_set_item(target, i, x)
-  elif tensor_util.is_tensor(target):
+  elif tensor_util.is_tf_type(target):
     if target.dtype == dtypes.variant:
       return _tf_tensor_list_set_item(target, i, x)
     else:

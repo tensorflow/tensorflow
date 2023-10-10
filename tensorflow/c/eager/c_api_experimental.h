@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_C_API_EXPERIMENTAL_H_
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/eager/c_api.h"
 
 #ifdef __cplusplus
@@ -140,7 +141,7 @@ TFE_MonitoringGetCellIntGauge2(TFE_MonitoringIntGauge2* gauge,
 typedef struct TFE_MonitoringStringGaugeCell TFE_MonitoringStringGaugeCell;
 TF_CAPI_EXPORT extern void TFE_MonitoringStringGaugeCellSet(
     TFE_MonitoringStringGaugeCell* cell, const char* value);
-// Retrieves the string value and saves it in buffer.
+// Retrieves the string value and saves it in the buffer.
 TF_CAPI_EXPORT extern const void TFE_MonitoringStringGaugeCellValue(
     TFE_MonitoringStringGaugeCell* cell, TF_Buffer* buf);
 
@@ -174,6 +175,31 @@ TF_CAPI_EXPORT extern void TFE_MonitoringDeleteStringGauge2(
 TF_CAPI_EXPORT extern TFE_MonitoringStringGaugeCell*
 TFE_MonitoringGetCellStringGauge2(TFE_MonitoringStringGauge2* gauge,
                                   const char* label1, const char* label2);
+
+// APIs for String Gauge with 3 labels.
+typedef struct TFE_MonitoringStringGauge3 TFE_MonitoringStringGauge3;
+TF_CAPI_EXPORT extern TFE_MonitoringStringGauge3* TFE_MonitoringNewStringGauge3(
+    const char* name, TF_Status* out_status, const char* description,
+    const char* label1, const char* label2, const char* label3);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteStringGauge3(
+    TFE_MonitoringStringGauge3* gauge);
+TF_CAPI_EXPORT extern TFE_MonitoringStringGaugeCell*
+TFE_MonitoringGetCellStringGauge3(TFE_MonitoringStringGauge3* gauge,
+                                  const char* label1, const char* label2,
+                                  const char* label3);
+
+// APIs for String Gauge with 4 labels.
+typedef struct TFE_MonitoringStringGauge4 TFE_MonitoringStringGauge4;
+TF_CAPI_EXPORT extern TFE_MonitoringStringGauge4* TFE_MonitoringNewStringGauge4(
+    const char* name, TF_Status* out_status, const char* description,
+    const char* label1, const char* label2, const char* label3,
+    const char* label4);
+TF_CAPI_EXPORT extern void TFE_MonitoringDeleteStringGauge4(
+    TFE_MonitoringStringGauge4* gauge);
+TF_CAPI_EXPORT extern TFE_MonitoringStringGaugeCell*
+TFE_MonitoringGetCellStringGauge4(TFE_MonitoringStringGauge4* gauge,
+                                  const char* label1, const char* label2,
+                                  const char* label3, const char* label4);
 
 typedef struct TFE_MonitoringBoolGaugeCell TFE_MonitoringBoolGaugeCell;
 TF_CAPI_EXPORT extern void TFE_MonitoringBoolGaugeCellSet(
@@ -223,7 +249,7 @@ TF_CAPI_EXPORT extern void TFE_MonitoringSamplerCellAdd(
     TFE_MonitoringSamplerCell* cell, double value);
 
 // Retrieves the current value of the cell. The return value is a HistogramProto
-// saved in buffer.
+// saved in the buffer.
 TF_CAPI_EXPORT extern void TFE_MonitoringSamplerCellValue(
     TFE_MonitoringSamplerCell* cell, TF_Buffer* buf);
 
@@ -265,10 +291,6 @@ TF_CAPI_EXPORT extern void TFE_MonitoringDeleteSampler2(
 TF_CAPI_EXPORT extern TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
     TFE_MonitoringSampler2* sampler, const char* label1, const char* label2);
 
-// Sets whether to copy the remote inputs of a function lazily.
-TF_CAPI_EXPORT extern void TFE_ContextOptionsSetLazyRemoteInputsCopy(
-    TFE_ContextOptions*, bool lazy_copy);
-
 // Sets whether to use TFRT
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrt(TFE_ContextOptions*,
                                                      bool use_tfrt);
@@ -285,11 +307,27 @@ TF_CAPI_EXPORT extern uint64_t TFE_GetContextId(TFE_Context* ctx);
 // Cancellation APIs.
 
 typedef struct TFE_CancellationManager TFE_CancellationManager;
+typedef int64_t TFE_CancellationToken;
+typedef struct TFE_CancelCallback {
+  void (*callback)(void* context);
+  void* context;
+} TFE_CancelCallback;
 TF_CAPI_EXPORT extern TFE_CancellationManager* TFE_NewCancellationManager();
 TF_CAPI_EXPORT extern bool TFE_CancellationManagerIsCancelled(
     TFE_CancellationManager*);
+TF_CAPI_EXPORT extern bool TFE_CancellationManagerIsCancelling(
+    TFE_CancellationManager*);
 TF_CAPI_EXPORT extern void TFE_CancellationManagerStartCancel(
     TFE_CancellationManager*);
+TF_CAPI_EXPORT extern TFE_CancellationToken TFE_CancellationManagerGetToken(
+    TFE_CancellationManager*);
+TF_CAPI_EXPORT extern bool TFE_CancellationManagerRegisterCallback(
+    TFE_CancellationManager*, TFE_CancellationToken token,
+    const TFE_CancelCallback* c_callback, const char* callback_name);
+TF_CAPI_EXPORT extern bool TFE_CancellationManagerDeregisterCallback(
+    TFE_CancellationManager*, TFE_CancellationToken token);
+TF_CAPI_EXPORT extern bool TFE_CancellationManagerTryDeregisterCallback(
+    TFE_CancellationManager*, TFE_CancellationToken token);
 TF_CAPI_EXPORT extern void TFE_DeleteCancellationManager(
     TFE_CancellationManager*);
 
@@ -308,7 +346,16 @@ typedef struct TFE_Executor TFE_Executor;
 // Creates a new eager Executor. Nodes in one executor are guaranteed to be
 // executed in sequence. Assigning nodes to different executors allows executing
 // nodes in parallel.
-TF_CAPI_EXPORT extern TFE_Executor* TFE_NewExecutor(bool is_async);
+// in_flight_nodes_limit: when is_async is true, this value controls the
+// maximum number of in flight async nodes. Enqueuing of additional async ops
+// after the limit is reached blocks until some inflight nodes finishes.
+// The effect is bounding the memory held by inflight TensorHandles that are
+// referenced by the inflight nodes.
+// A recommended value has not been established.
+// A value of 0 removes the limit, which is the behavior of TensorFlow 2.11.
+// When is_async is false, the value is ignored.
+TF_CAPI_EXPORT extern TFE_Executor* TFE_NewExecutor(
+    bool is_async, bool enable_streaming_enqueue, int in_flight_nodes_limit);
 
 // Deletes the eager Executor without waiting for enqueued nodes. Please call
 // TFE_ExecutorWaitForAllPendingNodes before calling this API if you want to
@@ -328,7 +375,7 @@ TF_CAPI_EXPORT extern bool TFE_ExecutorIsAsync(TFE_Executor*);
 TF_CAPI_EXPORT extern void TFE_ExecutorWaitForAllPendingNodes(
     TFE_Executor*, TF_Status* status);
 
-// When an error happens, any pending operations are discarded and newly issued
+// When an error happens, any pending operations are discarded, and newly issued
 // ops return an error. This call clears the error state and re-enables
 // execution of newly issued ops.
 //
@@ -337,12 +384,12 @@ TF_CAPI_EXPORT extern void TFE_ExecutorWaitForAllPendingNodes(
 // TODO(agarwal): mark the affected handles and raise errors if they are used.
 TF_CAPI_EXPORT extern void TFE_ExecutorClearError(TFE_Executor*);
 
-// Sets a custom Executor for current thread. All nodes created by this thread
-// will be added to this Executor. It will override current executor.
+// Sets a custom Executor for the current thread. All nodes created by this
+// thread will be added to this Executor. It will override the current executor.
 TF_CAPI_EXPORT extern void TFE_ContextSetExecutorForThread(TFE_Context*,
                                                            TFE_Executor*);
 
-// Returns the Executor for current thread.
+// Returns the Executor for the current thread.
 TF_CAPI_EXPORT extern TFE_Executor* TFE_ContextGetExecutorForThread(
     TFE_Context*);
 
@@ -351,7 +398,7 @@ TF_CAPI_EXPORT extern TFE_Executor* TFE_ContextGetExecutorForThread(
 
 // Update an existing context with a new set of servers defined in a ServerDef
 // proto. Servers can be added to and removed from the list of remote workers
-// in the context. New set of servers identified by the ServerDef must be up
+// in the context. A New set of servers identified by the ServerDef must be up
 // when the context is updated.
 //
 // This API is for experimental usage and may be subject to change.
@@ -360,6 +407,24 @@ TF_CAPI_EXPORT extern void TFE_ContextUpdateServerDef(TFE_Context* ctx,
                                                       const void* proto,
                                                       size_t proto_len,
                                                       TF_Status* status);
+
+// This API is for experimental usage and may be subject to change.
+TF_CAPI_EXPORT extern void TFE_ContextUpdateServerDefWithTimeout(
+    TFE_Context* ctx, int keep_alive_secs, const void* proto, size_t proto_len,
+    int64_t init_timeout_in_ms, TF_Status* status);
+
+// This API is for experimental usage and may be subject to change.
+TF_CAPI_EXPORT extern void TFE_ContextSetServerDefWithTimeout(
+    TFE_Context* ctx, int keep_alive_secs, const void* proto, size_t proto_len,
+    int64_t init_timeout_in_ms, TF_Status* status);
+
+// Set server def with retries and timeout. This is helpful for fault-tolerant
+// initial connection in high-preemption environments, such as
+// ParameterServerStrategy training.
+// This API is for experimental usage and may be subject to change.
+TF_CAPI_EXPORT extern void TFE_ContextSetServerDefWithTimeoutAndRetries(
+    TFE_Context* ctx, int keep_alive_secs, const void* proto, size_t proto_len,
+    int64_t init_timeout_in_ms, int retries, TF_Status* status);
 
 // Checks whether a remote worker is alive or not. This will return true even if
 // the context doesn't exist on the remote worker.
@@ -388,9 +453,11 @@ TF_CAPI_EXPORT extern void* TFE_TensorHandleDevicePointer(TFE_TensorHandle*,
 TF_CAPI_EXPORT extern size_t TFE_TensorHandleDeviceMemorySize(TFE_TensorHandle*,
                                                               TF_Status*);
 
-// Creates a new TensorHandle from memory residing in device_name. Takes
-// ownership of the memory, and will call deleter to release it after TF
-// no longer needs it or in case of error.
+// Creates a new TensorHandle from memory residing in the physical device
+// device_name. Takes ownership of the memory, and will call deleter to release
+// it after TF no longer needs it or in case of error.
+//
+// Custom devices must use TFE_NewCustomDeviceTensorHandle instead.
 TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
     TFE_Context* ctx, const char* device_name, TF_DataType, const int64_t* dims,
     int num_dims, void* data, size_t len,
@@ -439,16 +506,16 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrValueProto(const TFE_Op* op,
 // to have a non-string representation of devices (TF_Device) extracted from
 // tensors/ops/etc. and usable in APIs like OpSetDevice/ResetOp/etc.
 
-#define TFE_CUSTOM_DEVICE_VERSION 3
+#define TFE_CUSTOM_DEVICE_VERSION 4
 
-// Struct to be filled in
+// Struct to be filled in. Functions are required except where indicated.
 typedef struct TFE_CustomDevice {
   int version = TFE_CUSTOM_DEVICE_VERSION;
   // Method to copy a tensor to the custom device.
   TFE_TensorHandle* (*copy_tensor_to_device)(TFE_Context* context,
                                              TFE_TensorHandle* tensor,
                                              TF_Status* status,
-                                             void* device_info) = nullptr;
+                                             void* device_info);
 
   // Method to copy a tensor from the custom device to a target device.
   TFE_TensorHandle* (*copy_tensor_from_device)(TFE_Context* context,
@@ -472,6 +539,24 @@ typedef struct TFE_CustomDevice {
 
   // Method to delete a device.
   void (*delete_device)(void* device_info);
+
+  // Implements TFE_CreatePackedTensorHandle when one of `handles` is on this
+  // custom device.
+  //
+  // Many devices will want to simply return an "unimplemented" status
+  // here. This is the default behavior if `pack` is null when passed to
+  // TFE_RegisterCustomDevice.
+  TFE_TensorHandle* (*pack)(TFE_Context* context, TFE_TensorHandle** handles,
+                            int num_handles, TF_Status* s,
+                            void* device_info) = nullptr;
+
+  // Pins the op to `device` based on inputs to `op`. Returns true
+  // signifying to pin to the current custom device. Returns false
+  // to pin to the physical device.
+  //
+  // This function is guaranteed to be called only when all of the custom-device
+  // inputs are on this device.
+  bool (*shall_pin_to_this_device)(const TFE_Op* op, TF_Status* s) = nullptr;
 } TFE_CustomDevice;
 
 // Registers a custom device for use with eager execution.
@@ -490,8 +575,8 @@ typedef struct TFE_CustomDevice {
 // names of wrapped devices.
 //
 // There are currently no graph semantics implemented for registered custom
-// devices, so executing tf.functions which contain operations placed on custom
-// devices will fail.
+// devices, so executing tf.functions which contain operations placed on the
+// custom devices will fail.
 //
 // `device_name` must not name an existing physical or custom device. It must
 // follow the format:
@@ -511,10 +596,67 @@ TF_CAPI_EXPORT extern void TFE_RegisterCustomDevice(TFE_Context* ctx,
                                                     void* device_info,
                                                     TF_Status* status);
 
+// Returns whether `device_name` maps to a registered custom device.
+TF_CAPI_EXPORT extern bool TFE_IsCustomDevice(TFE_Context* ctx,
+                                              const char* device_name);
+
+// Struct to be filled in to define a custom device tensor handle. Fields are
+// required except where indicated.
+typedef struct TFE_CustomDeviceTensorHandleMethods {
+  int version = TFE_CUSTOM_DEVICE_VERSION;
+
+  // Computes the rank of the tensor handle.
+  //
+  // Shapes are specified via callbacks because retrieving the shape of a tensor
+  // is a blocking operation for async eager; custom devices should avoid
+  // retrieving shapes of tensors they wrap until the custom device tensor's
+  // shape is explicitly requested where possible.
+  int (*num_dims)(void* data, TF_Status* status);
+
+  // Computes the axis length at `dim_index`.
+  int64_t (*dim)(void* data, int dim_index, TF_Status* status);
+
+  void (*deallocator)(void* data);
+
+  // Summarizes the value of this tensor. The caller takes ownership of the
+  // returned buffer. If `status` is not TF_OK, instead returns a null pointer.
+  //
+  // Does not include the shape and dtype of the tensor (which is generally
+  // appended later), but should include any information specific to this custom
+  // device which would be useful for debugging.
+  //
+  // Optional. If null, defaults to resolving the TFE_TensorHandle into a
+  // TF_Tensor and summarizing that.
+  TF_Buffer* (*summarize)(void* data, TF_Status* status) = nullptr;
+} TFE_CustomDeviceTensorHandle;
+
+// Creates a new TensorHandle from memory residing in a custom device. Takes
+// ownership of the memory pointed to by `tensor_handle_data`, and calls
+// `methods.deallocator` to release it after TF no longer needs it or in case of
+// an error.
+//
+// This call is similar to `TFE_NewTensorHandleFromDeviceMemory`, but supports
+// custom devices instead of physical devices and does not require blocking
+// waiting for exact shapes.
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewCustomDeviceTensorHandle(
+    TFE_Context*, const char* device_name, TF_DataType, void* data,
+    TFE_CustomDeviceTensorHandle methods, TF_Status* status);
+
 TF_CAPI_EXPORT extern void TFE_ContextGetFunctionDef(TFE_Context* ctx,
                                                      const char* function_name,
                                                      TF_Buffer* buf,
                                                      TF_Status* status);
+
+// Get GraphDebugInfo containing stack traces mapping to node names
+TF_CAPI_EXPORT extern void TFE_ContextGetGraphDebugInfo(
+    TFE_Context* ctx, const char* function_name, TF_Buffer* buf,
+    TF_Status* status);
+
+// Extracts a TF_Function from the context.
+// Must call TF_DeleteFunction on the returned value.
+TF_CAPI_EXPORT extern TF_Function* TFE_ContextGetFunction(TFE_Context* ctx,
+                                                          const char* name,
+                                                          TF_Status* status);
 
 // Allocate and return a new Tensor on the host.
 //
@@ -553,6 +695,16 @@ TF_CAPI_EXPORT void TFE_ContextSetLogDevicePlacement(TFE_Context* ctx,
                                                      unsigned char enable,
                                                      TF_Status* status);
 
+// Enables running eager ops as function.
+TF_CAPI_EXPORT void TFE_ContextSetRunEagerOpAsFunction(TFE_Context* ctx,
+                                                       unsigned char enable,
+                                                       TF_Status* status);
+
+// Enables rewrite jit_compile functions.
+TF_CAPI_EXPORT void TFE_ContextSetJitCompileRewrite(TFE_Context* ctx,
+                                                    unsigned char enable,
+                                                    TF_Status* status);
+
 // Returns the device type of the operation that produced `h`.
 TF_CAPI_EXPORT extern const char* TFE_TensorHandleDeviceType(
     TFE_TensorHandle* h, TF_Status* status);
@@ -560,6 +712,81 @@ TF_CAPI_EXPORT extern const char* TFE_TensorHandleDeviceType(
 // Returns the device ID of the operation that produced `h`.
 TF_CAPI_EXPORT extern int TFE_TensorHandleDeviceID(TFE_TensorHandle* h,
                                                    TF_Status* status);
+
+// Returns the status for the tensor handle. In TFRT, a tensor handle can carry
+// error info if error happens. If so, the status will be set with the error
+// info. If not, status will be set as OK.
+TF_CAPI_EXPORT extern void TFE_TensorHandleGetStatus(TFE_TensorHandle* h,
+                                                     TF_Status* status);
+
+// Get a comma-separated list of op names executed in graph functions dispatched
+// to `ctx`. This feature is currently only enabled for TFRT debug builds, for
+// performance and simplicity reasons.
+TF_CAPI_EXPORT extern void TFE_GetExecutedOpNames(TFE_Context* ctx,
+                                                  TF_Buffer* buf,
+                                                  TF_Status* status);
+
+// Set logical devices to the context's device manager.
+// If logical devices are already configured at context initialization
+// through TFE_ContextOptions, this method should not be called.
+TF_CAPI_EXPORT extern void TFE_SetLogicalCpuDevices(TFE_Context* ctx,
+                                                    int num_cpus,
+                                                    const char* prefix,
+                                                    TF_Status* status);
+
+// Set configuration key and value using coordination service.
+// If coordination service is enabled, the key-value will be stored on the
+// leader and become accessible to all workers in the cluster.
+// Currently, a config key can only be set with one value, and subsequently
+// setting the same key will lead to errors.
+//
+// Note that the key-values are only expected to be used for cluster
+// configuration data, and should not be used for storing a large amount of data
+// or being accessed very frequently.
+TF_CAPI_EXPORT extern void TFE_InsertConfigKeyValue(TFE_Context* ctx,
+                                                    const char* key,
+                                                    const char* value,
+                                                    TF_Status* status);
+
+// Get configuration key and value using coordination service.
+// The config key must be set before getting its value. Getting value of
+// non-existing config keys will result in errors.
+// If `timeout_in_ms=0`, this call will block until the key-value is set or the
+// worker shuts down.
+TF_CAPI_EXPORT extern void TFE_GetConfigKeyValue(TFE_Context* ctx,
+                                                 const char* key,
+                                                 int64_t timeout_in_ms,
+                                                 TF_Buffer* value_buf,
+                                                 TF_Status* status);
+
+// Delete configuration key-value. If `key` is a directory, recursively clean up
+// all key-values under the path specified by `key`.
+TF_CAPI_EXPORT extern void TFE_DeleteConfigKeyValue(TFE_Context* ctx,
+                                                    const char* key,
+                                                    TF_Status* status);
+
+// Report error (specified by error_code and error_message) to other tasks in
+// the cluster.
+TF_CAPI_EXPORT extern void TFE_ReportErrorToCluster(TFE_Context* ctx,
+                                                    int error_code,
+                                                    const char* error_message,
+                                                    TF_Status* status);
+
+// Get task states from the Coordination Service.
+TF_CAPI_EXPORT extern void TFE_GetTaskStates(TFE_Context* ctx,
+                                             const TF_Buffer& tasks,
+                                             void* states, TF_Status* status);
+
+TF_CAPI_EXPORT extern void TFE_WaitAtBarrier(TFE_Context* ctx,
+                                             const char* barrier_id,
+                                             int64_t barrier_timeout_in_ms,
+                                             TF_Status* status);
+
+TF_CAPI_EXPORT extern void TFE_InitializeLocalOnlyContext(TFE_Context* ctx,
+                                                          int keep_alive_secs,
+                                                          const void* proto,
+                                                          size_t proto_len,
+                                                          TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

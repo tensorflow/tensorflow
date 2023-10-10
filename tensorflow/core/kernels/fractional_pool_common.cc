@@ -17,10 +17,10 @@ limitations under the License.
 #include "tensorflow/core/lib/random/simple_philox.h"
 
 namespace tensorflow {
-static std::vector<int64> GeneratePoolingSequencePseudoRandom(
+static std::vector<int64_t> GeneratePoolingSequencePseudoRandom(
     int input_length, int output_length, GuardedPhiloxRandom* generator) {
-  std::vector<int64> cum_seq(output_length + 1, 0);
-  std::vector<int64> diff(output_length, 0);
+  std::vector<int64_t> cum_seq(output_length + 1, 0);
+  std::vector<int64_t> diff(output_length, 0);
 
   double alpha = static_cast<double>(input_length) / output_length;
   int k = input_length / output_length;
@@ -78,11 +78,11 @@ static std::vector<int64> GeneratePoolingSequencePseudoRandom(
   return diff;
 }
 
-static std::vector<int64> GeneratePoolingSequenceRandom(
+static std::vector<int64_t> GeneratePoolingSequenceRandom(
     int input_length, int output_length, GuardedPhiloxRandom* generator) {
   int k = input_length / output_length;
   int num_random_spot = input_length % output_length;
-  std::vector<int64> diff(output_length, k);
+  std::vector<int64_t> diff(output_length, k);
 
   for (int i = 0; i < num_random_spot; ++i) {
     diff[i] += 1;
@@ -97,14 +97,15 @@ static std::vector<int64> GeneratePoolingSequenceRandom(
   return diff;
 }
 
-std::vector<int64> GeneratePoolingSequence(int input_length, int output_length,
-                                           GuardedPhiloxRandom* generator,
-                                           bool pseudo_random) {
-  std::vector<int64> diff;
+std::vector<int64_t> GeneratePoolingSequence(int input_length,
+                                             int output_length,
+                                             GuardedPhiloxRandom* generator,
+                                             bool pseudo_random) {
+  std::vector<int64_t> diff;
   // This is a case that regular pooling can handle, just return diff with
   // each element input_length/output_length.
   if (input_length % output_length == 0) {
-    diff = std::vector<int64>(output_length, input_length / output_length);
+    diff = std::vector<int64_t>(output_length, input_length / output_length);
   }
 
   if (pseudo_random) {
@@ -124,7 +125,7 @@ std::vector<int64> GeneratePoolingSequence(int input_length, int output_length,
   }
 
   // Return cumulative sequence.
-  std::vector<int64> cum_seq(output_length + 1, 0);
+  std::vector<int64_t> cum_seq(output_length + 1, 0);
   for (int i = 1; i < cum_seq.size(); ++i) {
     cum_seq[i] = cum_seq[i - 1] + diff[i - 1];
   }

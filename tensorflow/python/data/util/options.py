@@ -14,10 +14,6 @@
 # ==============================================================================
 """Utilities for tf.data options."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 from absl import logging
@@ -27,7 +23,7 @@ def _internal_attr_name(name):
   return "_" + name
 
 
-class OptionsBase(object):
+class OptionsBase:
   """Base class for representing a set of tf.data options.
 
   Attributes:
@@ -37,6 +33,7 @@ class OptionsBase(object):
   def __init__(self):
     # NOTE: Cannot use `self._options` here as we override `__setattr__`
     object.__setattr__(self, "_options", {})
+    object.__setattr__(self, "_mutable", True)
 
   def __eq__(self, other):
     if not isinstance(other, self.__class__):
@@ -53,11 +50,29 @@ class OptionsBase(object):
       return NotImplemented
 
   def __setattr__(self, name, value):
+    if not self._mutable:
+      raise ValueError("Mutating `tf.data.Options()` returned by "
+                       "`tf.data.Dataset.options()` has no effect. Use "
+                       "`tf.data.Dataset.with_options(options)` to set or "
+                       "update dataset options.")
     if hasattr(self, name):
       object.__setattr__(self, name, value)
     else:
-      raise AttributeError(
-          "Cannot set the property %s on %s." % (name, type(self).__name__))
+      raise AttributeError("Cannot set the property {} on {}.".format(
+          name,
+          type(self).__name__))
+
+  def _set_mutable(self, mutable):
+    """Change the mutability property to `mutable`."""
+    object.__setattr__(self, "_mutable", mutable)
+
+  def _to_proto(self):
+    """Convert options to protocol buffer."""
+    raise NotImplementedError("{}._to_proto()".format(type(self).__name__))
+
+  def _from_proto(self, pb):
+    """Convert protocol buffer to options."""
+    raise NotImplementedError("{}._from_proto()".format(type(self).__name__))
 
 
 # Creates a namedtuple with three keys for optimization graph rewrites settings.
@@ -89,8 +104,9 @@ def create_option(name, ty, docstring, default_factory=lambda: None):
 
   def set_fn(option, value):
     if not isinstance(value, ty):
-      raise TypeError("Property \"%s\" must be of type %s, got: %r (type: %r)" %
-                      (name, ty, value, type(value)))
+      raise TypeError(
+          "Property \"{}\" must be of type {}, got: {} (type: {})".format(
+              name, ty, value, type(value)))
     option._options[name] = value  # pylint: disable=protected-access
 
   return property(get_fn, set_fn, None, docstring)
@@ -127,11 +143,14 @@ def merge_options(*options_list):
 
   for options in options_list:
     if not isinstance(options, result_type):
-      raise TypeError("Incompatible options type: %r vs %r" % (type(options),
-                                                               result_type))
+      raise TypeError(
+          "Could not merge incompatible options of type {} and {}.".format(
+              type(options), result_type))
 
   if not isinstance(options_list[0], OptionsBase):
-    raise TypeError("The inputs should inherit from `OptionsBase`")
+    raise TypeError(
+        "All options to be merged should inherit from `OptionsBase` but found "
+        "option of type {} which does not.".format(type(options_list[0])))
 
   default_options = result_type()
   result = result_type()

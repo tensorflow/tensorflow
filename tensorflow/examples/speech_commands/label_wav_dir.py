@@ -27,10 +27,6 @@ python tensorflow/examples/speech_commands/label_wav_dir.py \
 --wav_dir=/tmp/speech_dataset/left
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import glob
 import sys

@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -28,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -51,38 +53,20 @@ constexpr char kDeviceAttr[] = "device";
 constexpr char kDeviceCPU[] = "CPU";
 constexpr char kFuncDeviceAttr[] = "tf.device";
 
-// A pass that allows TPU input layout to be determined after JIT compilation.
-// This is done by adding run-time ops that interpret compilation result and
-// copy the input to device with that layout.
-//
-// Example: original program:
-//
-//   %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"}
-//   %compile:2 = "tf._TPUCompileMlir"(...)
-//   %execute = "tf.TPUExecute"(%input, ..., %compile#1) {device = "/TPU:0"}
-//
-// Without this pass, later TF graph partitioning passes will insert send/recv
-// between %input and %execute and data will be copied to device in a fixed
-// layout. With this pass, the program will be transformed into:
-//
-//   %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"}
-//   %compile:2 = "tf._TPUCompileMlir"(...)
-//   %get_layout = "tf.TPUGetLayoutOp"(%compile#1) {...}
-//   %copy_to_device = "tf.TPUCopyWithLayout"(%input, %get_layout)
-//       {device = "/TPU:0"}
-//   %execute = "tf.TPUExecute"(%copy_to_device, ..., %compile#1)
-//       {device = "/TPU:0"}
-//
-// This way, %compile will determine the layout, which will be respected by
-// %copy_to_device. There will not be send/recv ops added by later passes,
-// because tf.TPUCopyWithLayout accepts a host input and produces a device
-// output.
 struct TPUDynamicLayoutPass
     : public TF::PerFunctionAggregateAnalysisConsumerPass<
           TPUDynamicLayoutPass, TF::ResourceAliasAnalysis> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TPUDynamicLayoutPass)
+
   void runOnFunction(
-      FuncOp func,
+      func::FuncOp func,
       const TF::ResourceAliasAnalysis::Info& resource_alias_analysis);
+
+  StringRef getArgument() const final { return "tf-tpu-dynamic-layout-pass"; }
+
+  StringRef getDescription() const final {
+    return "Inserts TPU layout ops to determine layout at run time.";
+  }
 };
 
 // Checks if the input producer op is supported in this transform. Right now, we
@@ -94,7 +78,7 @@ bool IsSupportedInputOp(
   TF::IteratorGetNextOp iterator_op = llvm::dyn_cast<TF::IteratorGetNextOp>(op);
   if (!iterator_op) return false;
 
-  Value resource_iterator = iterator_op.iterator();
+  Value resource_iterator = iterator_op.getIterator();
 
   if (resource_alias_analysis.IsUnknownResource(resource_iterator))
     return false;
@@ -109,7 +93,7 @@ bool IsSupportedInputOp(
   };
 
   // Check all generator aliases (ops or function argument) are on CPU.
-  FuncOp func = iterator_op->getParentOfType<FuncOp>();
+  func::FuncOp func = iterator_op->getParentOfType<func::FuncOp>();
   return llvm::all_of(aliases, [&](Value alias) {
     // Ignore non-generator aliases.
     if (!is_generator(alias)) return true;
@@ -143,7 +127,7 @@ TF::TPUGetLayoutOp BuildGetLayout(const int64_t execute_arg_index,
                                   OpBuilder* builder) {
   return builder->create<TF::TPUGetLayoutOp>(
       compile_launch.getLoc(),
-      llvm::ArrayRef<Type>{RankedTensorType::get({ShapedType::kDynamicSize},
+      llvm::ArrayRef<Type>{RankedTensorType::get({ShapedType::kDynamic},
                                                  builder->getIntegerType(64))},
       llvm::ArrayRef<Value>{compilation_key},
       llvm::ArrayRef<NamedAttribute>{
@@ -159,7 +143,7 @@ TF::TPUCopyWithLayoutOp BuildCopyWithLayout(tf_device::LaunchOp execute_launch,
                                             Value input, OpBuilder* builder) {
   return builder->create<TF::TPUCopyWithLayoutOp>(
       execute_launch.getLoc(), llvm::ArrayRef<Type>{input.getType()},
-      llvm::ArrayRef<Value>{input, get_layout.layout()});
+      llvm::ArrayRef<Value>{input, get_layout.getLayout()});
 }
 
 // Performs transformation for a non-replicated input.
@@ -167,12 +151,12 @@ void HandleInput(Value input, const int64_t execute_arg_index,
                  TF::TPUExecuteOp execute, tf_device::LaunchOp execute_launch,
                  tf_device::LaunchOp compile_launch) {
   OpBuilder builder = CreateBuilderAfterOp(compile_launch);
-  auto get_layout = BuildGetLayout(execute_arg_index, execute.key(),
+  auto get_layout = BuildGetLayout(execute_arg_index, execute.getKey(),
                                    compile_launch, &builder);
   builder.setInsertionPoint(execute_launch);
   auto copy_with_layout = BuildCopyWithLayout(execute_launch, compile_launch,
                                               get_layout, input, &builder);
-  copy_with_layout->setAttr(kDeviceAttr, execute_launch.deviceAttr());
+  copy_with_layout->setAttr(kDeviceAttr, execute_launch.getDeviceAttr());
   execute.setOperand(execute_arg_index, copy_with_layout);
 }
 
@@ -181,16 +165,15 @@ void HandleInput(Value input, const int64_t execute_arg_index,
 bool HandleReplicatedInputs(
     const int64_t execute_arg_index, Value compilation_key,
     tf_device::LaunchOp execute_launch, tf_device::LaunchOp compile_launch,
-    const int64_t replicate_arg_index, tf_device::ReplicateOp replicate,
+    mlir::BlockArgument replicate_arg, tf_device::ReplicateOp replicate,
     const TF::ResourceAliasAnalysis::Info& resource_alias_analysis) {
   // We need to know the devices to copy to.
-  if (!replicate.devices()) return false;
-  int64_t num_replicas = replicate.n();
-  auto inputs = replicate.getOperands()
-                    .drop_front(replicate_arg_index * num_replicas)
-                    .take_front(num_replicas);
-  for (auto entry : llvm::enumerate(inputs)) {
-    auto input_op = entry.value().getDefiningOp();
+  if (!replicate.getDevices()) return false;
+
+  MutableArrayRef<OpOperand> inputs =
+      replicate.GetOperandsForBlockArgument(replicate_arg);
+  for (const auto& entry : llvm::enumerate(inputs)) {
+    auto input_op = entry.value().get().getDefiningOp();
     if (!input_op || !IsSupportedInputOp(input_op, resource_alias_analysis))
       return false;
   }
@@ -198,19 +181,19 @@ bool HandleReplicatedInputs(
   auto get_layout = BuildGetLayout(execute_arg_index, compilation_key,
                                    compile_launch, &builder);
   builder.setInsertionPoint(replicate);
-  for (auto entry : llvm::enumerate(inputs)) {
-    auto copy_with_layout = BuildCopyWithLayout(
-        execute_launch, compile_launch, get_layout, entry.value(), &builder);
+  for (const auto& entry : llvm::enumerate(inputs)) {
+    auto copy_with_layout =
+        BuildCopyWithLayout(execute_launch, compile_launch, get_layout,
+                            entry.value().get(), &builder);
 
-    auto device_list = replicate.devices()
-                           .getValue()
+    auto device_list = replicate.getDevices()
+                           .value()
                            .get(execute_launch.getDevice())
                            .cast<ArrayAttr>();
     copy_with_layout->setAttr(kDeviceAttr,
                               device_list.getValue()[entry.index()]);
 
-    replicate.setOperand(num_replicas * replicate_arg_index + entry.index(),
-                         copy_with_layout);
+    entry.value().set(copy_with_layout);
   }
   return true;
 }
@@ -224,7 +207,7 @@ void HandleCompileAndExecutes(
   auto compile =
       llvm::cast<TF::_TPUCompileMlirOp>(compile_launch.GetBody().front());
   tensorflow::tpu::TPUCompileMetadataProto metadata;
-  metadata.ParseFromString(compile.metadata().str());
+  metadata.ParseFromString(compile.getMetadata().str());
   llvm::SmallVector<llvm::SmallVector<int64_t, 4>, 4> input_mappings =
       tensorflow::GetMetadataArgumentMapping(metadata);
 
@@ -239,17 +222,16 @@ void HandleCompileAndExecutes(
         llvm::cast<TF::TPUExecuteOp>(execute_launch.GetBody().front());
     const auto& input_mapping = std::get<1>(execute_and_input_mapping);
 
-    for (auto& input_and_idx : llvm::enumerate(execute.args())) {
+    for (const auto& input_and_idx : llvm::enumerate(execute.getArgs())) {
       Value input = input_and_idx.value();
       const int64_t execute_arg_index = input_and_idx.index();
       if (auto block_arg = input.dyn_cast<BlockArgument>()) {
         // For a block argument, consider transforms only when it is a
         // replicated input (defining ops will be outside the replicate node).
         if (maybe_replicate != block_arg.getParentRegion()->getParentOp() ||
-            !HandleReplicatedInputs(execute_arg_index, execute.key(),
-                                    execute_launch, compile_launch,
-                                    block_arg.getArgNumber(), maybe_replicate,
-                                    resource_alias_analysis)) {
+            !HandleReplicatedInputs(execute_arg_index, execute.getKey(),
+                                    execute_launch, compile_launch, block_arg,
+                                    maybe_replicate, resource_alias_analysis)) {
           continue;
         }
       } else {
@@ -259,7 +241,7 @@ void HandleCompileAndExecutes(
         // not on the host.)
         auto* input_op = input.getDefiningOp();
         if (maybe_replicate &&
-            maybe_replicate.body().isAncestor(input_op->getParentRegion())) {
+            maybe_replicate.getBody().isAncestor(input_op->getParentRegion())) {
           continue;
         }
         if (!IsSupportedInputOp(input_op, resource_alias_analysis)) continue;
@@ -274,12 +256,12 @@ void HandleCompileAndExecutes(
   }
 
   if (metadata_updated)
-    compile->setAttr("metadata", StringAttr::get(metadata.SerializeAsString(),
-                                                 compile.getContext()));
+    compile->setAttr("metadata", StringAttr::get(compile.getContext(),
+                                                 metadata.SerializeAsString()));
 }
 
 void TPUDynamicLayoutPass::runOnFunction(
-    FuncOp func,
+    func::FuncOp func,
     const TF::ResourceAliasAnalysis::Info& resource_alias_analysis) {
   func.walk([&](TF::_TPUCompileMlirOp compile) {
     // Detect tf._TPUCompileMlir -> tf.TPUExecute(s).
@@ -289,7 +271,8 @@ void TPUDynamicLayoutPass::runOnFunction(
 
     llvm::SmallVector<tf_device::LaunchOp, 4> execute_launches;
     execute_launches.reserve(compile_launch.getNumResults() - 1);
-    for (Value program_result : llvm::drop_begin(compile_launch.results(), 1)) {
+    for (Value program_result :
+         llvm::drop_begin(compile_launch.getResults(), 1)) {
       if (!program_result.hasOneUse()) return;
       Operation* user = *program_result.user_begin();
       auto execute = llvm::dyn_cast<TF::TPUExecuteOp>(user);
@@ -310,11 +293,6 @@ void TPUDynamicLayoutPass::runOnFunction(
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDynamicLayoutPass() {
   return std::make_unique<TPUDynamicLayoutPass>();
 }
-
-static PassRegistration<TPUDynamicLayoutPass> pass(
-    "tf-tpu-dynamic-layout-pass",
-    "Adds ops that allow TPU program inputs to have layouts determined at JIT "
-    "compile time.");
 
 }  // namespace TFTPU
 }  // namespace mlir

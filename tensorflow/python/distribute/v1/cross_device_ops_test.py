@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for CrossDeviceOps in v1 graph mode."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 import os
 import threading
@@ -42,8 +38,10 @@ from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import indexed_slices as indexed_slices_lib
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import math_ops
@@ -55,7 +53,7 @@ def _get_devices(devices):
     return tuple(device_util.resolve(d) for d in devices)
   elif isinstance(devices, value_lib.DistributedValues):
     return devices._devices
-  elif isinstance(devices, ops.Tensor):
+  elif isinstance(devices, tensor_lib.Tensor):
     return (device_util.resolve(devices.device),)
   return (device_util.resolve(devices),)
 
@@ -98,7 +96,7 @@ def _fake_mirrored(value, devices):
 
 def _make_indexed_slices(values, indices, dense_shape, device):
   with ops.device(device):
-    tensor = ops.IndexedSlices(
+    tensor = indexed_slices_lib.IndexedSlices(
         values=constant_op.constant(values),
         indices=constant_op.constant(indices),
         dense_shape=constant_op.constant(dense_shape))
@@ -119,8 +117,8 @@ _cpu_device = "/device:CPU:0"
 class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
 
   def _assert_indexed_slices_equal(self, left, right):
-    self.assertIsInstance(left, ops.IndexedSlices)
-    self.assertIsInstance(right, ops.IndexedSlices)
+    self.assertIsInstance(left, indexed_slices_lib.IndexedSlices)
+    self.assertIsInstance(right, indexed_slices_lib.IndexedSlices)
     self.assertEqual(
         device_util.resolve(left.device), device_util.resolve(right.device))
     self.assertAllEqual(
@@ -425,7 +423,7 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
     else:
       result = cross_device_ops_instance.reduce(reduce_util.ReduceOp.MEAN, v, v)
     for v in result.values:
-      self.assertIsInstance(v, ops.Tensor)
+      self.assertIsInstance(v, tensor_lib.Tensor)
     self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual(self.evaluate(result.values), [1.0, 1.0])
 
@@ -469,8 +467,8 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
       else:
         devices = ["/device:CPU:0"]
 
+      comm_options = collective_util.Options(implementation=communication)
       if use_strategy_object:
-        comm_options = collective_util.Options(implementation=communication)
         strategy = (mwms_lib.CollectiveAllReduceStrategy
                     ._from_local_devices(devices, comm_options))  # pylint: disable=protected-access
         return strategy, devices, ""
@@ -478,6 +476,7 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
             devices=devices,
             group_size=len(devices),
+            options=comm_options,
             collective_keys=collective_keys)
         return collective_all_reduce_ops, devices, ""
     else:
@@ -494,6 +493,7 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
             "/job:%s/task:%d/replica:0/device:CPU:0" % (task_type, task_id)
         ]
 
+      comm_options = collective_util.Options(implementation=communication)
       if use_strategy_object:
         resolver = cluster_resolver.SimpleClusterResolver(
             cluster_spec=multi_worker_util.normalize_cluster_spec(
@@ -501,7 +501,6 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
             task_type=task_type,
             task_id=task_id,
             num_accelerators={"GPU": num_gpus})
-        comm_options = collective_util.Options(implementation=communication)
         strategy = mwms_lib.CollectiveAllReduceStrategy(
             communication_options=comm_options, cluster_resolver=resolver)
         return (strategy, devices,
@@ -510,6 +509,7 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
         collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
             devices=devices,
             group_size=len(devices) * NUM_WORKERS,
+            options=comm_options,
             collective_keys=collective_keys)
         return (collective_all_reduce_ops, devices,
                 "grpc://" + self._cluster_spec[task_type][task_id])
@@ -685,9 +685,14 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
       num_workers = len(self._cluster_spec.get("chief", [])) + len(
           self._cluster_spec.get("worker", []))
       worker_device = "/job:%s/task:%d" % (task_type, task_id)
+      config = config_pb2.ConfigProto()
+      # Disable coordination service for all tasks except task 0 to avoid
+      # parallel init of the service singleton.
+      if task_id != 0:
+        config.experimental.coordination_config.service_type = ""
     with ops.Graph().as_default(), \
          ops.device(worker_device), \
-         self.cached_session(target=master_target) as sess:
+         self.cached_session(target=master_target, config=config) as sess:
       per_replica = self._get_indexed_slices(devices,
                                              (task_id or 0) * max(num_gpus, 1),
                                              variable_length)

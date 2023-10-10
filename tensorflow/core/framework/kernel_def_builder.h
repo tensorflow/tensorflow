@@ -63,7 +63,7 @@ class KernelDefBuilder {
   // Like TypeConstraint, but (a) gets the type from a template parameter
   // and (b) only supports a constraint to a single type.
   template <class T>
-  KernelDefBuilder& TypeConstraint(const char* attr_name);
+  KernelDefBuilder& TypeConstraint(const char* attr_name) TF_ATTRIBUTE_NOINLINE;
   // TODO(josh11b): Support other types of attr constraints as needed.
 
   // Specify that this kernel requires/provides an input/output arg
@@ -76,7 +76,7 @@ class KernelDefBuilder {
   KernelDefBuilder& Label(const char* label);
 
   // Specify a priority number for this kernel.
-  KernelDefBuilder& Priority(int32 priority);
+  KernelDefBuilder& Priority(int32_t priority);
 
   // Returns a pointer to a KernelDef with fields set based on the
   // above calls to this instance.
@@ -86,7 +86,8 @@ class KernelDefBuilder {
  private:
   KernelDef* kernel_def_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(KernelDefBuilder);
+  KernelDefBuilder(const KernelDefBuilder&) = delete;
+  void operator=(const KernelDefBuilder&) = delete;
 };
 
 // IMPLEMENTATION

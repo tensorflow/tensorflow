@@ -13,12 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """File IO methods that wrap the C++ FileSystem API."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import binascii
 import os
+from posixpath import join as urljoin
 import uuid
 
 import six
@@ -48,9 +45,10 @@ class FileIO(object):
   the file line by line is 1024 * 512 bytes.
   """
 
-  def __init__(self, name, mode):
+  def __init__(self, name, mode, encoding="utf-8"):
     self.__name = name
     self.__mode = mode
+    self.__encoding = encoding
     self._read_buf = None
     self._writable_file = None
     self._binary_mode = "b" in mode
@@ -89,9 +87,9 @@ class FileIO(object):
 
   def _prepare_value(self, val):
     if self._binary_mode:
-      return compat.as_bytes(val)
+      return compat.as_bytes(val, encoding=self.__encoding)
     else:
-      return compat.as_str_any(val)
+      return compat.as_str_any(val, encoding=self.__encoding)
 
   def size(self):
     """Returns the size of the file."""
@@ -100,7 +98,8 @@ class FileIO(object):
   def write(self, file_content):
     """Writes file_content to the file. Appends to the end of the file."""
     self._prewrite_check()
-    self._writable_file.append(compat.as_bytes(file_content))
+    self._writable_file.append(
+        compat.as_bytes(file_content, encoding=self.__encoding))
 
   def read(self, n=-1):
     """Returns the contents of a file as a string.
@@ -222,7 +221,21 @@ class FileIO(object):
       self._writable_file.flush()
 
   def close(self):
-    """Closes FileIO. Should be called for the WritableFile to be flushed."""
+    r"""Closes the file.
+
+    Should be called for the WritableFile to be flushed.
+
+    In general, if you use the context manager pattern, you don't need to call
+    this directly.
+
+    >>> with tf.io.gfile.GFile("/tmp/x", "w") as f:
+    ...   f.write("asdf\n")
+    ...   f.write("qwer\n")
+    >>> # implicit f.close() at the end of the block
+
+    For cloud filesystems, forgetting to call `close()` might result in data
+    loss as last write might not have been replicated.
+    """
     self._read_buf = None
     if self._writable_file:
       self._writable_file.close()
@@ -233,26 +246,35 @@ class FileIO(object):
     return True
 
 
-@tf_export(v1=["gfile.Exists"])
-def file_exists(filename):
-  """Determines whether a path exists or not.
-
-  Args:
-    filename: string, a path
-
-  Returns:
-    True if the path exists, whether it's a file or a directory.
-    False if the path does not exist and there are no filesystem errors.
-
-  Raises:
-    errors.OpError: Propagates any errors reported by the FileSystem API.
-  """
-  return file_exists_v2(filename)
-
-
 @tf_export("io.gfile.exists")
 def file_exists_v2(path):
   """Determines whether a path exists or not.
+
+  >>> with open("/tmp/x", "w") as f:
+  ...   f.write("asdf")
+  ...
+  4
+  >>> tf.io.gfile.exists("/tmp/x")
+  True
+
+  You can also specify the URI scheme for selecting a different filesystem:
+
+  >>> # for a GCS filesystem path:
+  >>> # tf.io.gfile.exists("gs://bucket/file")
+  >>> # for a local filesystem:
+  >>> with open("/tmp/x", "w") as f:
+  ...   f.write("asdf")
+  ...
+  4
+  >>> tf.io.gfile.exists("file:///tmp/x")
+  True
+
+  This currently returns `True` for existing directories but don't rely on this
+  behavior, especially if you are using cloud filesystems (e.g., GCS, S3,
+  Hadoop):
+
+  >>> tf.io.gfile.exists("/tmp")
+  True
 
   Args:
     path: string, a path
@@ -269,6 +291,14 @@ def file_exists_v2(path):
   except errors.NotFoundError:
     return False
   return True
+
+
+@tf_export(v1=["gfile.Exists"])
+def file_exists(filename):
+  return file_exists_v2(filename)
+
+
+file_exists.__doc__ = file_exists_v2.__doc__
 
 
 @tf_export(v1=["gfile.Remove"])
@@ -483,25 +513,61 @@ def recursive_create_dir_v2(path):
   _pywrap_file_io.RecursivelyCreateDir(compat.path_to_bytes(path))
 
 
-@tf_export(v1=["gfile.Copy"])
-def copy(oldpath, newpath, overwrite=False):
-  """Copies data from `oldpath` to `newpath`.
-
-  Args:
-    oldpath: string, name of the file who's contents need to be copied
-    newpath: string, name of the file to which to copy to
-    overwrite: boolean, if false it's an error for `newpath` to be occupied by
-      an existing file.
-
-  Raises:
-    errors.OpError: If the operation fails.
-  """
-  copy_v2(oldpath, newpath, overwrite)
-
-
 @tf_export("io.gfile.copy")
 def copy_v2(src, dst, overwrite=False):
   """Copies data from `src` to `dst`.
+
+  >>> with open("/tmp/x", "w") as f:
+  ...   f.write("asdf")
+  ...
+  4
+  >>> tf.io.gfile.exists("/tmp/x")
+  True
+  >>> tf.io.gfile.copy("/tmp/x", "/tmp/y")
+  >>> tf.io.gfile.exists("/tmp/y")
+  True
+  >>> tf.io.gfile.remove("/tmp/y")
+
+  You can also specify the URI scheme for selecting a different filesystem:
+
+  >>> with open("/tmp/x", "w") as f:
+  ...   f.write("asdf")
+  ...
+  4
+  >>> tf.io.gfile.copy("/tmp/x", "file:///tmp/y")
+  >>> tf.io.gfile.exists("/tmp/y")
+  True
+  >>> tf.io.gfile.remove("/tmp/y")
+
+  Note that you need to always specify a file name, even if moving into a new
+  directory. This is because some cloud filesystems don't have the concept of a
+  directory.
+
+  >>> with open("/tmp/x", "w") as f:
+  ...   f.write("asdf")
+  ...
+  4
+  >>> tf.io.gfile.mkdir("/tmp/new_dir")
+  >>> tf.io.gfile.copy("/tmp/x", "/tmp/new_dir/y")
+  >>> tf.io.gfile.exists("/tmp/new_dir/y")
+  True
+  >>> tf.io.gfile.rmtree("/tmp/new_dir")
+
+  If you want to prevent errors if the path already exists, you can use
+  `overwrite` argument:
+
+  >>> with open("/tmp/x", "w") as f:
+  ...   f.write("asdf")
+  ...
+  4
+  >>> tf.io.gfile.copy("/tmp/x", "file:///tmp/y")
+  >>> tf.io.gfile.copy("/tmp/x", "file:///tmp/y", overwrite=True)
+  >>> tf.io.gfile.remove("/tmp/y")
+
+  Note that the above will still result in an error if you try to overwrite a
+  directory with a file.
+
+  Note that you cannot copy a directory, only file arguments are supported.
 
   Args:
     src: string, name of the file whose contents need to be copied
@@ -514,6 +580,14 @@ def copy_v2(src, dst, overwrite=False):
   """
   _pywrap_file_io.CopyFile(
       compat.path_to_bytes(src), compat.path_to_bytes(dst), overwrite)
+
+
+@tf_export(v1=["gfile.Copy"])
+def copy(oldpath, newpath, overwrite=False):
+  copy_v2(oldpath, newpath, overwrite)
+
+
+copy.__doc__ = copy_v2.__doc__
 
 
 @tf_export(v1=["gfile.Rename"])
@@ -704,6 +778,44 @@ def list_directory_v2(path):
   ]
 
 
+@tf_export("io.gfile.join")
+def join(path, *paths):
+  r"""Join one or more path components intelligently.
+
+  TensorFlow specific filesystems will be joined
+  like a url (using "/" as the path seperator) on all platforms:
+
+  On Windows or Linux/Unix-like:
+  >>> tf.io.gfile.join("gcs://folder", "file.py")
+  'gcs://folder/file.py'
+
+  >>> tf.io.gfile.join("ram://folder", "file.py")
+  'ram://folder/file.py'
+
+  But the native filesystem is handled just like os.path.join:
+
+  >>> path = tf.io.gfile.join("folder", "file.py")
+  >>> if os.name == "nt":
+  ...   expected = "folder\\file.py"  # Windows
+  ... else:
+  ...   expected = "folder/file.py"  # Linux/Unix-like
+  >>> path == expected
+  True
+
+  Args:
+    path: string, path to a directory
+    paths: string, additional paths to concatenate
+
+  Returns:
+    path: the joined path.
+  """
+  # os.path.join won't take mixed bytes/str, so don't overwrite the incoming `path` var
+  path_ = compat.as_str_any(compat.path_to_str(path))
+  if "://" in path_[1:]:
+    return urljoin(path, *paths)
+  return os.path.join(path, *paths)
+
+
 @tf_export(v1=["gfile.Walk"])
 def walk(top, in_order=True):
   """Recursive directory tree generator for directories.
@@ -741,12 +853,12 @@ def walk_v2(top, topdown=True, onerror=None):
   """
 
   def _make_full_path(parent, item):
-    # Since `os.path.join` discards paths before one that starts with the path
-    # separator (https://docs.python.org/3/library/os.path.html#os.path.join),
+    # Since `join` discards paths before one that starts with the path
+    # separator (https://docs.python.org/3/library/os.path.html#join),
     # we have to manually handle that case as `/` is a valid character on GCS.
     if item[0] == os.sep:
-      return "".join([os.path.join(parent, ""), item])
-    return os.path.join(parent, item)
+      return "".join([join(parent, ""), item])
+    return join(parent, item)
 
   top = compat.as_str_any(compat.path_to_str(top))
   try:
@@ -863,3 +975,30 @@ def file_crc32(filename, block_size=_DEFAULT_BLOCK_SIZE):
       crc = binascii.crc32(chunk, crc)
       chunk = f.read(n=block_size)
   return hex(crc & 0xFFFFFFFF)
+
+
+@tf_export("io.gfile.get_registered_schemes")
+def get_registered_schemes():
+  """Returns the currently registered filesystem schemes.
+
+  The `tf.io.gfile` APIs, in addition to accepting traditional filesystem paths,
+  also accept file URIs that begin with a scheme. For example, the local
+  filesystem path `/tmp/tf` can also be addressed as `file:///tmp/tf`. In this
+  case, the scheme is `file`, followed by `://` and then the path, according to
+  [URI syntax](https://datatracker.ietf.org/doc/html/rfc3986#section-3).
+
+  This function returns the currently registered schemes that will be recognized
+  by `tf.io.gfile` APIs. This includes both built-in schemes and those
+  registered by other TensorFlow filesystem implementations, for example those
+  provided by [TensorFlow I/O](https://github.com/tensorflow/io).
+
+  The empty string is always included, and represents the "scheme" for regular
+  local filesystem paths.
+
+  Returns:
+    List of string schemes, e.g. `['', 'file', 'ram']`, in arbitrary order.
+
+  Raises:
+    errors.OpError: If the operation fails.
+  """
+  return _pywrap_file_io.GetRegisteredSchemes()

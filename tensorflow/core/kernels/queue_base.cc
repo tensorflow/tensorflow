@@ -29,7 +29,7 @@ namespace {
 
 template <DataType DT>
 Status HandleSliceToElement(const Tensor& parent, Tensor* element,
-                            int64 index) {
+                            int64_t index) {
   typedef typename EnumToDataType<DT>::Type T;
   DCHECK_NE(parent.dim_size(0), 0);
   DCHECK_GE(index, 0);
@@ -44,12 +44,12 @@ Status HandleSliceToElement(const Tensor& parent, Tensor* element,
   }
   auto parent_as_matrix = parent.flat_outer_dims<T>();
   element->flat<T>() = parent_as_matrix.chip(index, 0);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
 
-QueueBase::QueueBase(int32 capacity, const DataTypeVector& component_dtypes,
+QueueBase::QueueBase(int32_t capacity, const DataTypeVector& component_dtypes,
                      const std::vector<TensorShape>& component_shapes,
                      const string& name)
     : capacity_(capacity),
@@ -74,7 +74,7 @@ Status QueueBase::ValidateTupleCommon(const Tuple& tuple) const {
           DataTypeString(tuple[i].dtype()));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // static
@@ -96,12 +96,12 @@ Status QueueBase::MatchesNodeDefOp(const NodeDef& node_def,
                                    "' that does not match type of Node '",
                                    node_def.name(), "': ", node_def.op());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status QueueBase::MatchesNodeDefCapacity(const NodeDef& node_def,
-                                         int32 capacity) const {
-  int32 requested_capacity = -1;
+                                         int32_t capacity) const {
+  int32_t requested_capacity = -1;
   TF_RETURN_IF_ERROR(GetNodeAttr(node_def, "capacity", &requested_capacity));
   if (requested_capacity < 0) requested_capacity = kUnbounded;
   if (requested_capacity != capacity) {
@@ -109,7 +109,7 @@ Status QueueBase::MatchesNodeDefCapacity(const NodeDef& node_def,
                                    capacity, " but requested capacity was ",
                                    requested_capacity);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status QueueBase::MatchesNodeDefTypes(const NodeDef& node_def) const {
@@ -123,7 +123,7 @@ Status QueueBase::MatchesNodeDefTypes(const NodeDef& node_def) const {
                                    " but requested component types were ",
                                    DataTypeSliceString(requested_dtypes));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status QueueBase::MatchesNodeDefShapes(const NodeDef& node_def) const {
@@ -136,7 +136,7 @@ Status QueueBase::MatchesNodeDefShapes(const NodeDef& node_def) const {
                                    " but requested component shapes were ",
                                    ShapeListString(requested_shapes));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(mrry): If these checks become a bottleneck, find a way to
@@ -153,14 +153,14 @@ Status QueueBase::ValidateTuple(const Tuple& tuple) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(mrry): If these checks become a bottleneck, find a way to
 //   reduce the number of times that they are called.
 Status QueueBase::ValidateManyTuple(const Tuple& tuple) {
   TF_RETURN_IF_ERROR(ValidateTupleCommon(tuple));
-  const int64 batch_size = tuple[0].dim_size(0);
+  const int64_t batch_size = tuple[0].dim_size(0);
   if (specified_shapes()) {
     for (size_t i = 0; i < tuple.size(); ++i) {
       // Expected shape is [batch_size] + component_shapes_[i]
@@ -182,7 +182,7 @@ Status QueueBase::ValidateManyTuple(const Tuple& tuple) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void QueueBase::Cancel(Action action, CancellationManager* cancellation_manager,
@@ -335,13 +335,13 @@ void QueueBase::FlushUnlocked() {
 }
 
 Status QueueBase::CopySliceToElement(const Tensor& parent, Tensor* element,
-                                     int64 index) {
+                                     int64_t index) {
   return batch_util::CopySliceToElement(parent, element, index);
 }
 
 /* static */
 Status QueueBase::CopyElementToSlice(const Tensor& element, Tensor* parent,
-                                     int64 index) {
+                                     int64_t index) {
   return batch_util::CopyElementToSlice(element, parent, index);
 }
 

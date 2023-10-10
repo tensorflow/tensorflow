@@ -14,40 +14,83 @@
 # ==============================================================================
 """Base class for linear operators."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import contextlib
 
 import numpy as np
-import six
 
+from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linalg_impl as linalg
-from tensorflow.python.ops.linalg import linear_operator_algebra
 from tensorflow.python.ops.linalg import linear_operator_util
+from tensorflow.python.ops.linalg import property_hint_util
+from tensorflow.python.ops.linalg import slicing
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.trackable import data_structures
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
+from tensorflow.python.util import nest
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
+
 
 __all__ = ["LinearOperator"]
 
 
+# pylint: disable=protected-access
+class _LinearOperatorGradient(
+    composite_tensor_gradient.CompositeTensorGradient):
+  """Composite tensor gradient for `LinearOperator`."""
+
+  def get_gradient_components(self, value):
+    return value._type_spec._to_components(value)
+
+  def replace_gradient_components(self, value, components):
+    flat_components = nest.flatten(components)
+
+    # If all component gradients are disconnected, return None.
+    if all(c is None for c in flat_components):
+      return None
+
+    # TODO(b/286565628): Update this once `CompositeTensorGradient` fully
+    # supports `tf.UnconnectedGradients.ZERO`.
+    # Replace individual disconnected component gradients with zeros.
+    value_components = value._type_spec._to_components(value)
+    flat_grad_components = []
+    for gc, vc in zip(flat_components, nest.flatten(value_components)):
+      if gc is None:
+        flat_grad_components.append(
+            nest.map_structure(
+                lambda x: array_ops.zeros_like(x, dtype=value.dtype),
+                vc,
+                expand_composites=True))
+      else:
+        flat_grad_components.append(gc)
+    grad_components = nest.pack_sequence_as(
+        value_components, flat_grad_components)
+    return value._type_spec._from_components(grad_components)
+# pylint: enable=protected-access
+
+
 # TODO(langmore) Use matrix_solve_ls for singular or non-square matrices.
 @tf_export("linalg.LinearOperator")
-@six.add_metaclass(abc.ABCMeta)
-class LinearOperator(module.Module):
+class LinearOperator(
+    module.Module, composite_tensor.CompositeTensor, metaclass=abc.ABCMeta):
   """Base class defining a [batch of] linear operator[s].
 
   Subclasses of `LinearOperator` provide access to common methods on a
@@ -163,7 +206,7 @@ class LinearOperator(module.Module):
      )
      ...
      super().__init__(..., parameters=parameters)
-   ```
+  ```
 
    Users can then access `my_linear_operator.parameters` to see all arguments
    passed to its initializer.
@@ -181,7 +224,7 @@ class LinearOperator(module.Module):
                is_square=None,
                name=None,
                parameters=None):
-    r"""Initialize the `LinearOperator`.
+    """Initialize the `LinearOperator`.
 
     **This is a private method for subclass use.**
     **Subclasses should copy-paste this `__init__` documentation.**
@@ -239,7 +282,7 @@ class LinearOperator(module.Module):
     self._name = name or type(self).__name__
 
   @contextlib.contextmanager
-  def _name_scope(self, name=None):
+  def _name_scope(self, name=None):  # pylint: disable=method-hidden
     """Helper function to standardize op scope."""
     full_name = self.name
     if name is not None:
@@ -331,7 +374,7 @@ class LinearOperator(module.Module):
     Returns:
       `int32` `Tensor`
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       # Prefer to use statically defined shape if available.
       if self.shape.is_fully_defined():
         return linear_operator_util.shape_tensor(self.shape.as_list())
@@ -366,7 +409,7 @@ class LinearOperator(module.Module):
       `int32` `Tensor`
     """
     # Derived classes get this "for free" once .shape() is implemented.
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._batch_shape_tensor()
 
   def _batch_shape_tensor(self, shape=None):
@@ -393,7 +436,7 @@ class LinearOperator(module.Module):
       Python integer, or None if the tensor rank is undefined.
     """
     # Derived classes get this "for free" once .shape() is implemented.
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self.shape.ndims
 
   def tensor_rank_tensor(self, name="tensor_rank_tensor"):
@@ -409,14 +452,16 @@ class LinearOperator(module.Module):
       `int32` `Tensor`, determined at runtime.
     """
     # Derived classes get this "for free" once .shape() is implemented.
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._tensor_rank_tensor()
 
   def _tensor_rank_tensor(self, shape=None):
     # `shape` may be passed in if this can be pre-computed in a
     # more efficient manner, e.g. without excessive Tensor conversions.
     if self.tensor_rank is not None:
-      return ops.convert_to_tensor_v2_with_dispatch(self.tensor_rank)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          self.tensor_rank
+      )
     else:
       shape = self.shape_tensor() if shape is None else shape
       return array_ops.size(shape)
@@ -452,7 +497,7 @@ class LinearOperator(module.Module):
       `int32` `Tensor`
     """
     # Derived classes get this "for free" once .shape() is implemented.
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._domain_dimension_tensor()
 
   def _domain_dimension_tensor(self, shape=None):
@@ -460,7 +505,7 @@ class LinearOperator(module.Module):
     # more efficient manner, e.g. without excessive Tensor conversions.
     dim_value = tensor_shape.dimension_value(self.domain_dimension)
     if dim_value is not None:
-      return ops.convert_to_tensor_v2_with_dispatch(dim_value)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(dim_value)
     else:
       shape = self.shape_tensor() if shape is None else shape
       return shape[-1]
@@ -496,7 +541,7 @@ class LinearOperator(module.Module):
       `int32` `Tensor`
     """
     # Derived classes get this "for free" once .shape() is implemented.
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._range_dimension_tensor()
 
   def _range_dimension_tensor(self, shape=None):
@@ -504,7 +549,7 @@ class LinearOperator(module.Module):
     # more efficient manner, e.g. without excessive Tensor conversions.
     dim_value = tensor_shape.dimension_value(self.range_dimension)
     if dim_value is not None:
-      return ops.convert_to_tensor_v2_with_dispatch(dim_value)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(dim_value)
     else:
       shape = self.shape_tensor() if shape is None else shape
       return shape[-2]
@@ -555,7 +600,7 @@ class LinearOperator(module.Module):
       An `Assert` `Op`, that, when run, will raise an `InvalidArgumentError` if
         the operator is singular.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._assert_non_singular()
 
   def _assert_positive_definite(self):
@@ -588,7 +633,7 @@ class LinearOperator(module.Module):
       An `Assert` `Op`, that, when run, will raise an `InvalidArgumentError` if
         the operator is not positive definite.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._assert_positive_definite()
 
   def _assert_self_adjoint(self):
@@ -614,7 +659,7 @@ class LinearOperator(module.Module):
       An `Assert` `Op`, that, when run, will raise an `InvalidArgumentError` if
         the operator is not self-adjoint.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._assert_self_adjoint()
 
   def _check_input_dtype(self, arg):
@@ -628,7 +673,13 @@ class LinearOperator(module.Module):
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
     raise NotImplementedError("_matmul is not implemented.")
 
-  def matmul(self, x, adjoint=False, adjoint_arg=False, name="matmul"):
+  def matmul(
+      self,
+      x,
+      adjoint=False,
+      adjoint_arg=False,
+      name="matmul",
+  ):
     """Transform [batch] matrix `x` with left multiplication:  `x --> Ax`.
 
     ```python
@@ -668,11 +719,12 @@ class LinearOperator(module.Module):
             "Operators are incompatible. Expected `x` to have dimension"
             " {} but got {}.".format(
                 left_operator.domain_dimension, right_operator.range_dimension))
-      with self._name_scope(name):
-        return linear_operator_algebra.matmul(left_operator, right_operator)
 
-    with self._name_scope(name):
-      x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
+      with self._name_scope(name):  # pylint: disable=not-callable
+        return self._linop_matmul(left_operator, right_operator)
+
+    with self._name_scope(name):  # pylint: disable=not-callable
+      x = tensor_conversion.convert_to_tensor_v2_with_dispatch(x, name="x")
       self._check_input_dtype(x)
 
       self_dim = -2 if adjoint else -1
@@ -682,6 +734,54 @@ class LinearOperator(module.Module):
               x.shape[arg_dim])
 
       return self._matmul(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
+
+  def _linop_matmul(
+      self, left_operator: "LinearOperator", right_operator: "LinearOperator"
+  ) -> "LinearOperator":
+    # instance of linear_operator_identity.LinearOperatorIdentity
+    if hasattr(right_operator, "_ones_diag") and not hasattr(
+        right_operator, "multiplier"
+    ):
+      return left_operator
+
+    # instance of linear_operator_zeros.LinearOperatorZeros
+    elif hasattr(right_operator, "_zeros_diag"):
+      if not right_operator.is_square or not left_operator.is_square:
+        raise ValueError(
+            "Matmul with non-square `LinearOperator`s or "
+            "non-square `LinearOperatorZeros` not supported at this time."
+        )
+      return right_operator
+
+    else:
+      # Generic matmul of two `LinearOperator`s.
+      is_square = property_hint_util.is_square(left_operator, right_operator)
+      is_non_singular = None
+      is_self_adjoint = None
+      is_positive_definite = None
+
+      if is_square:
+        is_non_singular = property_hint_util.combined_non_singular_hint(
+            left_operator, right_operator
+        )
+      # is_square can be None, so the explicit check for False is needed.
+      elif is_square is False:  # pylint:disable=g-bool-id-comparison
+        is_non_singular = False
+        is_self_adjoint = False
+        is_positive_definite = False
+
+      # LinearOperator outputs a LinearOperatorComposition instance, which
+      # inherits from LinearOperator. The inline import is necessary to avoid
+      # errors due to this cyclic dependency.
+      from tensorflow.python.ops.linalg import linear_operator_composition  # pylint: disable=g-import-not-at-top
+
+      return linear_operator_composition.LinearOperatorComposition(
+          operators=[left_operator, right_operator],
+          is_non_singular=is_non_singular,
+          is_self_adjoint=is_self_adjoint,
+          is_positive_definite=is_positive_definite,
+          is_square=is_square,
+      )
 
   def __matmul__(self, other):
     return self.matmul(other)
@@ -718,8 +818,8 @@ class LinearOperator(module.Module):
     Returns:
       A `Tensor` with shape `[..., M]` and same `dtype` as `self`.
     """
-    with self._name_scope(name):
-      x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
+    with self._name_scope(name):  # pylint: disable=not-callable
+      x = tensor_conversion.convert_to_tensor_v2_with_dispatch(x, name="x")
       self._check_input_dtype(x)
       self_dim = -2 if adjoint else -1
       tensor_shape.dimension_at_index(
@@ -750,7 +850,7 @@ class LinearOperator(module.Module):
       raise NotImplementedError(
           "Determinant not implemented for an operator that is expected to "
           "not be square.")
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._determinant()
 
   def _log_abs_determinant(self):
@@ -779,7 +879,7 @@ class LinearOperator(module.Module):
       raise NotImplementedError(
           "Determinant not implemented for an operator that is expected to "
           "not be square.")
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._log_abs_determinant()
 
   def _dense_solve(self, rhs, adjoint=False, adjoint_arg=False):
@@ -861,11 +961,13 @@ class LinearOperator(module.Module):
             "Operators are incompatible. Expected `rhs` to have dimension"
             " {} but got {}.".format(
                 left_operator.domain_dimension, right_operator.range_dimension))
-      with self._name_scope(name):
-        return linear_operator_algebra.solve(left_operator, right_operator)
+      with self._name_scope(name):  # pylint: disable=not-callable
+        return self._linop_solve(left_operator, right_operator)
 
-    with self._name_scope(name):
-      rhs = ops.convert_to_tensor_v2_with_dispatch(rhs, name="rhs")
+    with self._name_scope(name):  # pylint: disable=not-callable
+      rhs = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          rhs, name="rhs"
+      )
       self._check_input_dtype(rhs)
 
       self_dim = -1 if adjoint else -2
@@ -875,6 +977,48 @@ class LinearOperator(module.Module):
               rhs.shape[arg_dim])
 
       return self._solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
+
+  def _linop_solve(
+      self, left_operator: "LinearOperator", right_operator: "LinearOperator"
+    ) -> "LinearOperator":
+    # instance of linear_operator_identity.LinearOperatorIdentity
+    if hasattr(right_operator, "_ones_diag") and not hasattr(
+        right_operator, "multiplier"
+    ):
+      return left_operator.inverse()
+
+    # Generic solve of two `LinearOperator`s.
+    is_square = property_hint_util.is_square(left_operator, right_operator)
+    is_non_singular = None
+    is_self_adjoint = None
+    is_positive_definite = None
+
+    if is_square:
+      is_non_singular = property_hint_util.combined_non_singular_hint(
+          left_operator, right_operator
+      )
+    elif is_square is False:  # pylint:disable=g-bool-id-comparison
+      is_non_singular = False
+      is_self_adjoint = False
+      is_positive_definite = False
+
+    # LinearOperator outputs a LinearOperatorComposition instance that contains
+    # a LinearOperatorInversion instance, both of which
+    # inherit from LinearOperator. The inline import is necessary to avoid
+    # errors due to this cyclic dependency.
+    from tensorflow.python.ops.linalg import linear_operator_composition  # pylint: disable=g-import-not-at-top
+    from tensorflow.python.ops.linalg import linear_operator_inversion  # pylint: disable=g-import-not-at-top
+
+    return linear_operator_composition.LinearOperatorComposition(
+        operators=[
+            linear_operator_inversion.LinearOperatorInversion(left_operator),
+            right_operator,
+        ],
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+    )
 
   def _solvevec(self, rhs, adjoint=False):
     """Default implementation of _solvevec."""
@@ -921,8 +1065,10 @@ class LinearOperator(module.Module):
     Raises:
       NotImplementedError:  If `self.is_non_singular` or `is_square` is False.
     """
-    with self._name_scope(name):
-      rhs = ops.convert_to_tensor_v2_with_dispatch(rhs, name="rhs")
+    with self._name_scope(name):  # pylint: disable=not-callable
+      rhs = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          rhs, name="rhs"
+      )
       self._check_input_dtype(rhs)
       self_dim = -1 if adjoint else -2
       tensor_shape.dimension_at_index(
@@ -930,7 +1076,7 @@ class LinearOperator(module.Module):
 
       return self._solvevec(rhs, adjoint=adjoint)
 
-  def adjoint(self, name="adjoint"):
+  def adjoint(self, name: str = "adjoint") -> "LinearOperator":
     """Returns the adjoint of the current `LinearOperator`.
 
     Given `A` representing this `LinearOperator`, return `A*`.
@@ -944,13 +1090,22 @@ class LinearOperator(module.Module):
     """
     if self.is_self_adjoint is True:  # pylint: disable=g-bool-id-comparison
       return self
-    with self._name_scope(name):
-      return linear_operator_algebra.adjoint(self)
+    with self._name_scope(name):  # pylint: disable=not-callable
+      return self._linop_adjoint()
 
   # self.H is equivalent to self.adjoint().
   H = property(adjoint, None)
 
-  def inverse(self, name="inverse"):
+  def _linop_adjoint(self) -> "LinearOperator":
+    from tensorflow.python.ops.linalg import linear_operator_adjoint  # pylint: disable=g-import-not-at-top
+    return linear_operator_adjoint.LinearOperatorAdjoint(
+        self,
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=self.is_square)
+
+  def inverse(self, name: str = "inverse") -> "LinearOperator":
     """Returns the Inverse of this `LinearOperator`.
 
     Given `A` representing this `LinearOperator`, return a `LinearOperator`
@@ -972,10 +1127,24 @@ class LinearOperator(module.Module):
       raise ValueError("Cannot take the Inverse: This operator represents "
                        "a singular matrix.")
 
-    with self._name_scope(name):
-      return linear_operator_algebra.inverse(self)
+    with self._name_scope(name):  # pylint: disable=not-callable
+      return self._linop_inverse()
 
-  def cholesky(self, name="cholesky"):
+  def _linop_inverse(self) -> "LinearOperator":
+    # The in-line import is necessary because linear_operator_inversion.py
+    # depends on linear_operator.py. The in-line import works because the two
+    # files are now in the same build target, but if the import were at the top
+    # of the file there would be a partially-initialized module error caused by
+    # the code cycle.
+    from tensorflow.python.ops.linalg import linear_operator_inversion  # pylint: disable=g-import-not-at-top
+    return linear_operator_inversion.LinearOperatorInversion(
+        self,
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=self.is_square)
+
+  def cholesky(self, name: str = "cholesky") -> "LinearOperator":
     """Returns a Cholesky factor as a `LinearOperator`.
 
     Given `A` representing this `LinearOperator`, if `A` is positive definite
@@ -997,8 +1166,16 @@ class LinearOperator(module.Module):
     if not self._can_use_cholesky():
       raise ValueError("Cannot take the Cholesky decomposition: "
                        "Not a positive definite self adjoint matrix.")
-    with self._name_scope(name):
-      return linear_operator_algebra.cholesky(self)
+    with self._name_scope(name):  # pylint: disable=not-callable
+      return self._linop_cholesky()
+
+  def _linop_cholesky(self) -> "LinearOperator":
+    from tensorflow.python.ops.linalg import linear_operator_lower_triangular  # pylint: disable=g-import-not-at-top
+    return linear_operator_lower_triangular.LinearOperatorLowerTriangular(
+        linalg_ops.cholesky(self.to_dense()),
+        is_non_singular=True,
+        is_self_adjoint=False,
+        is_square=True)
 
   def _to_dense(self):
     """Generic and often inefficient implementation.  Override often."""
@@ -1018,7 +1195,7 @@ class LinearOperator(module.Module):
 
   def to_dense(self, name="to_dense"):
     """Return a dense (batch) matrix representing this operator."""
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._to_dense()
 
   def _diag_part(self):
@@ -1050,7 +1227,7 @@ class LinearOperator(module.Module):
     Returns:
       diag_part:  A `Tensor` of same `dtype` as self.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._diag_part()
 
   def _trace(self):
@@ -1067,7 +1244,7 @@ class LinearOperator(module.Module):
     Returns:
       Shape `[B1,...,Bb]` `Tensor` of same `dtype` as `self`.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._trace()
 
   def _add_to_tensor(self, x):
@@ -1084,8 +1261,8 @@ class LinearOperator(module.Module):
     Returns:
       A `Tensor` with broadcast shape and same `dtype` as `self`.
     """
-    with self._name_scope(name):
-      x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
+    with self._name_scope(name):  # pylint: disable=not-callable
+      x = tensor_conversion.convert_to_tensor_v2_with_dispatch(x, name="x")
       self._check_input_dtype(x)
       return self._add_to_tensor(x)
 
@@ -1108,7 +1285,7 @@ class LinearOperator(module.Module):
     """
     if not self.is_self_adjoint:
       raise NotImplementedError("Only self-adjoint matrices are supported.")
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._eigvals()
 
   def _cond(self):
@@ -1133,7 +1310,7 @@ class LinearOperator(module.Module):
     Returns:
       Shape `[B1,...,Bb]` `Tensor` of same `dtype` as `self`.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       return self._cond()
 
   def _can_use_cholesky(self):
@@ -1153,9 +1330,270 @@ class LinearOperator(module.Module):
     graph_parents = [] if graph_parents is None else graph_parents
     for i, t in enumerate(graph_parents):
       if t is None or not (linear_operator_util.is_ref(t) or
-                           tensor_util.is_tensor(t)):
+                           tensor_util.is_tf_type(t)):
         raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
     self._graph_parents = graph_parents
+
+  @property
+  def _composite_tensor_fields(self):
+    """A tuple of parameter names to rebuild the `LinearOperator`.
+
+    The tuple contains the names of kwargs to the `LinearOperator`'s constructor
+    that the `TypeSpec` needs to rebuild the `LinearOperator` instance.
+
+    "is_non_singular", "is_self_adjoint", "is_positive_definite", and
+    "is_square" are common to all `LinearOperator` subclasses and may be
+    omitted.
+    """
+    return ()
+
+  @property
+  def _composite_tensor_prefer_static_fields(self):
+    """A tuple of names referring to parameters that may be treated statically.
+
+    This is a subset of `_composite_tensor_fields`, and contains the names of
+    of `Tensor`-like args to the `LinearOperator`s constructor that may be
+    stored as static values, if they are statically known. These are typically
+    shapes or axis values.
+    """
+    return ()
+
+  @property
+  def _type_spec(self):
+    # This property will be overwritten by the `@make_composite_tensor`
+    # decorator. However, we need it so that a valid subclass of the `ABCMeta`
+    # class `CompositeTensor` can be constructed and passed to the
+    # `@make_composite_tensor` decorator.
+    pass
+
+  def _convert_variables_to_tensors(self):
+    """Recursively converts ResourceVariables in the LinearOperator to Tensors.
+
+    The usage of `self._type_spec._from_components` violates the contract of
+    `CompositeTensor`, since it is called on a different nested structure
+    (one containing only `Tensor`s) than `self.type_spec` specifies (one that
+    may contain `ResourceVariable`s). Since `LinearOperator`'s
+    `_from_components` method just passes the contents of the nested structure
+    to `__init__` to rebuild the operator, and any `LinearOperator` that may be
+    instantiated with `ResourceVariables` may also be instantiated with
+    `Tensor`s, this usage is valid.
+
+    Returns:
+      tensor_operator: `self` with all internal Variables converted to Tensors.
+    """
+    # pylint: disable=protected-access
+    components = self._type_spec._to_components(self)
+    tensor_components = variable_utils.convert_variables_to_tensors(
+        components)
+    return self._type_spec._from_components(tensor_components)
+    # pylint: enable=protected-access
+
+  def __getitem__(self, slices):
+    return slicing.batch_slice(self, params_overrides={}, slices=slices)
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    """A dict of names to number of dimensions contributing to an operator.
+
+    This is a dictionary of parameter names to `int`s specifying the
+    number of right-most dimensions contributing to the **matrix** shape of the
+    densified operator.
+    If the parameter is a `Tensor`, this is mapped to an `int`.
+    If the parameter is a `LinearOperator` (called `A`), this specifies the
+    number of batch dimensions of `A` contributing to this `LinearOperator`s
+    matrix shape.
+    If the parameter is a structure, this is a structure of the same type of
+    `int`s.
+    """
+    return ()
+
+  __composite_gradient__ = _LinearOperatorGradient()
+
+
+class _LinearOperatorSpec(type_spec.BatchableTypeSpec):
+  """A tf.TypeSpec for `LinearOperator` objects."""
+
+  __slots__ = ("_param_specs", "_non_tensor_params", "_prefer_static_fields")
+
+  def __init__(self, param_specs, non_tensor_params, prefer_static_fields):
+    """Initializes a new `_LinearOperatorSpec`.
+
+    Args:
+      param_specs: Python `dict` of `tf.TypeSpec` instances that describe
+        kwargs to the `LinearOperator`'s constructor that are `Tensor`-like or
+        `CompositeTensor` subclasses.
+      non_tensor_params: Python `dict` containing non-`Tensor` and non-
+        `CompositeTensor` kwargs to the `LinearOperator`'s constructor.
+      prefer_static_fields: Python `tuple` of strings corresponding to the names
+        of `Tensor`-like args to the `LinearOperator`s constructor that may be
+        stored as static values, if known. These are typically shapes, indices,
+        or axis values.
+    """
+    self._param_specs = param_specs
+    self._non_tensor_params = non_tensor_params
+    self._prefer_static_fields = prefer_static_fields
+
+  @classmethod
+  def from_operator(cls, operator):
+    """Builds a `_LinearOperatorSpec` from a `LinearOperator` instance.
+
+    Args:
+      operator: An instance of `LinearOperator`.
+
+    Returns:
+      linear_operator_spec: An instance of `_LinearOperatorSpec` to be used as
+        the `TypeSpec` of `operator`.
+    """
+    validation_fields = ("is_non_singular", "is_self_adjoint",
+                         "is_positive_definite", "is_square")
+    kwargs = _extract_attrs(
+        operator,
+        keys=set(operator._composite_tensor_fields + validation_fields))  # pylint: disable=protected-access
+
+    non_tensor_params = {}
+    param_specs = {}
+    for k, v in list(kwargs.items()):
+      type_spec_or_v = _extract_type_spec_recursively(v)
+      is_tensor = [isinstance(x, type_spec.TypeSpec)
+                   for x in nest.flatten(type_spec_or_v)]
+      if all(is_tensor):
+        param_specs[k] = type_spec_or_v
+      elif not any(is_tensor):
+        non_tensor_params[k] = v
+      else:
+        raise NotImplementedError(f"Field {k} contains a mix of `Tensor` and "
+                                  f" non-`Tensor` values.")
+
+    return cls(
+        param_specs=param_specs,
+        non_tensor_params=non_tensor_params,
+        prefer_static_fields=operator._composite_tensor_prefer_static_fields)  # pylint: disable=protected-access
+
+  def _to_components(self, obj):
+    return _extract_attrs(obj, keys=list(self._param_specs))
+
+  def _from_components(self, components):
+    kwargs = dict(self._non_tensor_params, **components)
+    return self.value_type(**kwargs)
+
+  @property
+  def _component_specs(self):
+    return self._param_specs
+
+  def _serialize(self):
+    return (self._param_specs,
+            self._non_tensor_params,
+            self._prefer_static_fields)
+
+  def _copy(self, **overrides):
+    kwargs = {
+        "param_specs": self._param_specs,
+        "non_tensor_params": self._non_tensor_params,
+        "prefer_static_fields": self._prefer_static_fields
+    }
+    kwargs.update(overrides)
+    return type(self)(**kwargs)
+
+  def _batch(self, batch_size):
+    """Returns a TypeSpec representing a batch of objects with this TypeSpec."""
+    return self._copy(
+        param_specs=nest.map_structure(
+            lambda spec: spec._batch(batch_size),  # pylint: disable=protected-access
+            self._param_specs))
+
+  def _unbatch(self, batch_size):
+    """Returns a TypeSpec representing a single element of this TypeSpec."""
+    return self._copy(
+        param_specs=nest.map_structure(
+            lambda spec: spec._unbatch(),  # pylint: disable=protected-access
+            self._param_specs))
+
+
+def make_composite_tensor(cls, module_name="tf.linalg"):
+  """Class decorator to convert `LinearOperator`s to `CompositeTensor`."""
+
+  spec_name = "{}Spec".format(cls.__name__)
+  spec_type = type(spec_name, (_LinearOperatorSpec,), {"value_type": cls})
+  type_spec_registry.register("{}.{}".format(module_name, spec_name))(spec_type)
+  cls._type_spec = property(spec_type.from_operator)  # pylint: disable=protected-access
+  return cls
+
+
+def _extract_attrs(op, keys):
+  """Extract constructor kwargs to reconstruct `op`.
+
+  Args:
+    op: A `LinearOperator` instance.
+    keys: A Python `tuple` of strings indicating the names of the constructor
+      kwargs to extract from `op`.
+
+  Returns:
+    kwargs: A Python `dict` of kwargs to `op`'s constructor, keyed by `keys`.
+  """
+
+  kwargs = {}
+  not_found = object()
+  for k in keys:
+    srcs = [
+        getattr(op, k, not_found), getattr(op, "_" + k, not_found),
+        getattr(op, "parameters", {}).get(k, not_found),
+    ]
+    if any(v is not not_found for v in srcs):
+      kwargs[k] = [v for v in srcs if v is not not_found][0]
+    else:
+      raise ValueError(
+          f"Could not determine an appropriate value for field `{k}` in object "
+          f" `{op}`. Looked for \n"
+          f" 1. an attr called `{k}`,\n"
+          f" 2. an attr called `_{k}`,\n"
+          f" 3. an entry in `op.parameters` with key '{k}'.")
+    if k in op._composite_tensor_prefer_static_fields and kwargs[k] is not None:  # pylint: disable=protected-access
+      if tensor_util.is_tensor(kwargs[k]):
+        static_val = tensor_util.constant_value(kwargs[k])
+        if static_val is not None:
+          kwargs[k] = static_val
+    if isinstance(kwargs[k], (np.ndarray, np.generic)):
+      kwargs[k] = kwargs[k].tolist()
+  return kwargs
+
+
+def _extract_type_spec_recursively(value):
+  """Return (collection of) `TypeSpec`(s) for `value` if it includes `Tensor`s.
+
+  If `value` is a `Tensor` or `CompositeTensor`, return its `TypeSpec`. If
+  `value` is a collection containing `Tensor` values, recursively supplant them
+  with their respective `TypeSpec`s in a collection of parallel stucture.
+
+  If `value` is none of the above, return it unchanged.
+
+  Args:
+    value: a Python `object` to (possibly) turn into a (collection of)
+    `tf.TypeSpec`(s).
+
+  Returns:
+    spec: the `TypeSpec` or collection of `TypeSpec`s corresponding to `value`
+    or `value`, if no `Tensor`s are found.
+  """
+  if isinstance(value, composite_tensor.CompositeTensor):
+    return value._type_spec  # pylint: disable=protected-access
+  if isinstance(value, variables.Variable):
+    return resource_variable_ops.VariableSpec(
+        value.shape, dtype=value.dtype, trainable=value.trainable)
+  if tensor_util.is_tensor(value):
+    return tensor_spec.TensorSpec(value.shape, value.dtype)
+  # Unwrap trackable data structures to comply with `Type_Spec._serialize`
+  # requirements. `ListWrapper`s are converted to `list`s, and for other
+  # trackable data structures, the `__wrapped__` attribute is used.
+  if isinstance(value, list):
+    return list(_extract_type_spec_recursively(v) for v in value)
+  if isinstance(value, data_structures.TrackableDataStructure):
+    return _extract_type_spec_recursively(value.__wrapped__)
+  if isinstance(value, tuple):
+    return type(value)(_extract_type_spec_recursively(x) for x in value)
+  if isinstance(value, dict):
+    return type(value)((k, _extract_type_spec_recursively(v))
+                       for k, v in value.items())
+  return value
 
 
 # Overrides for tf.linalg functions. This allows a LinearOperator to be used in
@@ -1217,6 +1655,7 @@ def _matmul(  # pylint:disable=missing-docstring
     adjoint_b=False,
     a_is_sparse=False,
     b_is_sparse=False,
+    output_type=None,  # pylint: disable=unused-argument
     name=None):
   if transpose_a or transpose_b:
     raise ValueError("Transposing not supported at this time.")

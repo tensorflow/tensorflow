@@ -16,10 +16,6 @@
 """Tests for encode_proto op."""
 
 # Python3 readiness boilerplate
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.kernel_tests.proto import encode_proto_op_test_base as test_base
 from tensorflow.python.ops import proto_ops
 from tensorflow.python.platform import test

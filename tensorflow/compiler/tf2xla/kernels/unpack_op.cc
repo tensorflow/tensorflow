@@ -22,8 +22,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal.h"
+#include "xla/client/xla_builder.h"
+#include "xla/literal.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -64,9 +64,9 @@ class UnpackOp : public XlaOpKernel {
 
     auto input = ctx->Input(0);
 
-    std::vector<int64> start_indices(input_shape.dims(), 0);
-    std::vector<int64> limit_indices(input_shape.dims());
-    std::vector<int64> strides(input_shape.dims(), 1);
+    std::vector<int64_t> start_indices(input_shape.dims(), 0);
+    std::vector<int64_t> limit_indices(input_shape.dims());
+    std::vector<int64_t> strides(input_shape.dims(), 1);
     for (int i = 0; i < input_shape.dims(); ++i) {
       limit_indices[i] = input_shape.dim_size(i);
     }

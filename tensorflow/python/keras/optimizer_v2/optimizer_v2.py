@@ -15,26 +15,22 @@
 """Version 2 of class Optimizer."""
 # pylint: disable=g-bad-name
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import contextlib
 import functools
-
-import six
+import warnings
 
 from tensorflow.python.distribute import central_storage_strategy
-from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
@@ -52,13 +48,9 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.saved_model import revived_types
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
 
-
-keras_optimizers_gauge = monitoring.BoolGauge(
-    "/tensorflow/api/keras/optimizers", "keras optimizer usage", "method")
 
 _DEFAULT_VALID_DTYPES = frozenset([
     dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64,
@@ -116,8 +108,6 @@ def name_scope_only_in_function_or_graph(name):
     return NullContextmanager()
 
 
-@six.add_metaclass(abc.ABCMeta)
-@keras_export("keras.optimizers.Optimizer")
 class OptimizerV2(trackable.Trackable):
   """Base class for Keras optimizers.
 
@@ -365,9 +355,6 @@ class OptimizerV2(trackable.Trackable):
     Raises:
       ValueError: in case of any invalid argument.
     """
-    # Instrument optimizer usages
-    keras_optimizers_gauge.get_cell(self.__class__.__name__).set(True)
-
     allowed_kwargs = {"clipnorm", "clipvalue", "lr", "decay", "global_clipnorm"}
     for k in kwargs:
       if k not in allowed_kwargs:
@@ -376,6 +363,9 @@ class OptimizerV2(trackable.Trackable):
       # checks that all keyword arguments are non-negative.
       if kwargs[k] is not None and kwargs[k] < 0:
         raise ValueError("Expected {} >= 0, received: {}".format(k, kwargs[k]))
+      if k == "lr":
+        warnings.warn(
+            "The `lr` argument is deprecated, use `learning_rate` instead.")
 
     self._use_locking = True
     self._init_set_name(name)
@@ -402,8 +392,8 @@ class OptimizerV2(trackable.Trackable):
     self._hypers_created = False
     # Store the distribution strategy object if the optimizer is created inside
     # strategy scope, so it could be used to create variables later.
-    if distribute_ctx.has_strategy():
-      self._distribution_strategy = distribute_ctx.get_strategy()
+    if distribute_lib.has_strategy():
+      self._distribution_strategy = distribute_lib.get_strategy()
     else:
       self._distribution_strategy = None
 
@@ -481,7 +471,18 @@ class OptimizerV2(trackable.Trackable):
     return grads_and_vars
 
   def _aggregate_gradients(self, grads_and_vars):
-    """Called in `apply_gradients` to aggregate gradients across devices."""
+    """Called in `apply_gradients` to aggregate gradients across devices.
+
+    Note that user subclasses may override this, so the interface should not be
+    changed.
+
+    Args:
+      grads_and_vars: List of (gradient, variable) pairs.
+
+    Returns:
+      A list of (aggregrated_gradient, variable) pairs. By default, this calls
+      `self.gradient_aggregator`.
+    """
     return self.gradient_aggregator(grads_and_vars)
 
   def _transform_gradients(self, grads_and_vars):
@@ -643,13 +644,13 @@ class OptimizerV2(trackable.Trackable):
         # gradients
         return control_flow_ops.no_op()
 
-      if distribute_ctx.in_cross_replica_context():
+      if distribute_lib.in_cross_replica_context():
         raise RuntimeError(
             "`apply_gradients() cannot be called in cross-replica context. "
             "Use `tf.distribute.Strategy.run` to enter replica "
             "context.")
 
-      strategy = distribute_ctx.get_strategy()
+      strategy = distribute_lib.get_strategy()
       if (not experimental_aggregate_gradients and strategy and
           isinstance(strategy,
                      (parameter_server_strategy.ParameterServerStrategyV1,
@@ -666,23 +667,27 @@ class OptimizerV2(trackable.Trackable):
         grads_and_vars = self._aggregate_gradients(grads_and_vars)
       grads_and_vars = self._transform_gradients(grads_and_vars)
 
-      return distribute_ctx.get_replica_context().merge_call(
-          functools.partial(self._distributed_apply, apply_state=apply_state),
-          args=(grads_and_vars,),
-          kwargs={
-              "name": name,
-          })
+      if optimizer_utils.strategy_supports_no_merge_call():
+        return self._distributed_apply(strategy, grads_and_vars, name,
+                                       apply_state)
+      else:
+        return distribute_lib.get_replica_context().merge_call(
+            functools.partial(self._distributed_apply, apply_state=apply_state),
+            args=(grads_and_vars,),
+            kwargs={
+                "name": name,
+            })
 
   def _distributed_apply(self, distribution, grads_and_vars, name, apply_state):
     """`apply_gradients` using a `DistributionStrategy`."""
 
     def apply_grad_to_update_var(var, grad):
       """Apply gradient to variable."""
-      if isinstance(var, ops.Tensor):
+      if isinstance(var, tensor.Tensor):
         raise NotImplementedError("Trying to update a Tensor ", var)
 
       apply_kwargs = {}
-      if isinstance(grad, ops.IndexedSlices):
+      if isinstance(grad, indexed_slices.IndexedSlices):
         if var.constraint is not None:
           raise RuntimeError(
               "Cannot use a constraint function on a sparse variable.")
@@ -704,22 +709,22 @@ class OptimizerV2(trackable.Trackable):
     update_ops = []
     with name_scope_only_in_function_or_graph(name or self._name):
       for grad, var in grads_and_vars:
-        # TODO(crccw): It's not allowed to assign PerReplica value to
-        # MirroredVariable.  Remove this after we relax this restriction.
-        def _assume_mirrored(grad):
-          if isinstance(grad, ds_values.PerReplica):
-            return ds_values.Mirrored(grad.values)
-          return grad
-
-        grad = nest.map_structure(_assume_mirrored, grad)
         # Colocate the update with variables to avoid unnecessary communication
         # delays. See b/136304694.
         with distribution.extended.colocate_vars_with(var):
           with name_scope_only_in_function_or_graph(
               "update" if eagerly_outside_functions else "update_" +
               var.op.name):
-            update_ops.extend(distribution.extended.update(
-                var, apply_grad_to_update_var, args=(grad,), group=False))
+            update_op = distribution.extended.update(
+                var, apply_grad_to_update_var, args=(grad,), group=False)
+            if distribute_lib.in_cross_replica_context():
+              # In cross-replica context, extended.update returns a list of
+              # update ops from all replicas (group=False).
+              update_ops.extend(update_op)
+            else:
+              # In replica context, extended.update return the single update op
+              # of current replica.
+              update_ops.append(update_op)
 
       any_symbolic = any(isinstance(i, ops.Operation) or
                          tf_utils.is_symbolic_tensor(i) for i in update_ops)
@@ -738,7 +743,7 @@ class OptimizerV2(trackable.Trackable):
 
     Should be used only in legacy v1 graph mode.
 
-    Arguments:
+    Args:
       loss: Loss tensor.
       params: List of variables.
 
@@ -781,7 +786,7 @@ class OptimizerV2(trackable.Trackable):
       prev_value = self._hyper[name]
       if (callable(prev_value)
           or isinstance(prev_value,
-                        (ops.Tensor, int, float,
+                        (tensor.Tensor, int, float,
                          learning_rate_schedule.LearningRateSchedule))
           or isinstance(value, learning_rate_schedule.LearningRateSchedule)):
         self._hyper[name] = value
@@ -880,7 +885,7 @@ class OptimizerV2(trackable.Trackable):
     slot_dict = self._slots.setdefault(var_key, {})
     weight = slot_dict.get(slot_name, None)
     if weight is None:
-      if isinstance(initializer, six.string_types) or callable(initializer):
+      if isinstance(initializer, str) or callable(initializer):
         initializer = initializers.get(initializer)
         if isinstance(
             initializer,
@@ -894,7 +899,7 @@ class OptimizerV2(trackable.Trackable):
         initial_value = initializer
 
       with self._distribution_strategy_scope():
-        strategy = distribute_ctx.get_strategy()
+        strategy = distribute_lib.get_strategy()
         if not strategy.extended.variable_created_in_scope(var):
           raise ValueError(
               "Trying to create optimizer slot variable under the scope for "
@@ -959,8 +964,8 @@ class OptimizerV2(trackable.Trackable):
     with self._distribution_strategy_scope():
       # Iterate hyper values deterministically.
       for name, value in sorted(self._hyper.items()):
-        if isinstance(value,
-                      (ops.Tensor, tf_variables.Variable)) or callable(value):
+        if isinstance(
+            value, (tensor.Tensor, tf_variables.Variable)) or callable(value):
           # The check for `callable` covers the usage when `value` is a
           # `LearningRateSchedule`, in which case it does not need to create a
           # variable.
@@ -1037,7 +1042,7 @@ class OptimizerV2(trackable.Trackable):
     capable of instantiating the same optimizer from the config
     dictionary.
 
-    Arguments:
+    Args:
         config: A Python dictionary, typically the output of get_config.
         custom_objects: A Python dictionary mapping names to additional Python
           objects used to create this optimizer, such as a function used for a
@@ -1061,7 +1066,7 @@ class OptimizerV2(trackable.Trackable):
       return learning_rate_schedule.serialize(value)
     if callable(value):
       return value()
-    if tensor_util.is_tensor(value):
+    if tensor_util.is_tf_type(value):
       return backend.get_value(value)
     return value
 
@@ -1093,8 +1098,7 @@ class OptimizerV2(trackable.Trackable):
     >>> m.compile(opt, loss='mse')
     >>> data = np.arange(100).reshape(5, 20)
     >>> labels = np.zeros(5)
-    >>> print('Training'); results = m.fit(data, labels)
-    Training ...
+    >>> results = m.fit(data, labels)  # Training.
     >>> len(opt.get_weights())
     3
 
@@ -1124,14 +1128,13 @@ class OptimizerV2(trackable.Trackable):
     >>> m.compile(opt, loss='mse')
     >>> data = np.arange(100).reshape(5, 20)
     >>> labels = np.zeros(5)
-    >>> print('Training'); results = m.fit(data, labels)
-    Training ...
+    >>> results = m.fit(data, labels)  # Training.
     >>> new_weights = [np.array(10), np.ones([20, 10]), np.zeros([10])]
     >>> opt.set_weights(new_weights)
     >>> opt.iterations
     <tf.Variable 'RMSprop/iter:0' shape=() dtype=int64, numpy=10>
 
-    Arguments:
+    Args:
         weights: weight values as a list of numpy arrays.
     """
     params = self.weights
@@ -1164,7 +1167,7 @@ class OptimizerV2(trackable.Trackable):
 
     if dtype is None:
       dtype = dtypes.float32
-    if isinstance(initializer, six.string_types) or callable(initializer):
+    if isinstance(initializer, str) or callable(initializer):
       initializer = initializers.get(initializer)
 
     if synchronization == tf_variables.VariableSynchronization.ON_READ:
@@ -1378,11 +1381,11 @@ class OptimizerV2(trackable.Trackable):
              self._distribution_strategy)):
       initializer = trackable.CheckpointInitialValueCallable(
           checkpoint_position=slot_variable_position)
-      # Shape is unknown until we read the checkpoint value.
       slot_variable = self.add_slot(
           var=variable,
           initializer=initializer,
-          slot_name=slot_name)
+          slot_name=slot_name,
+          shape=slot_variable_position.value_shape())
       # Slot variables are not owned by any one object (because we don't want to
       # save the slot variable if the optimizer is saved without the non-slot
       # variable, or if the non-slot variable is saved without the optimizer;
@@ -1406,7 +1409,7 @@ class OptimizerV2(trackable.Trackable):
   @contextlib.contextmanager
   def _distribution_strategy_scope(self):
     """Returns the `tf.distribute.Strategy` this optimizer was created under."""
-    if self._distribution_strategy and not distribute_ctx.has_strategy():
+    if self._distribution_strategy and not distribute_lib.has_strategy():
       with self._distribution_strategy.scope():
         yield self._distribution_strategy.scope()
     else:
@@ -1466,7 +1469,7 @@ class RestoredOptimizer(OptimizerV2):
         "you.")
 
 revived_types.register_revived_type(
-    "optimizer",
+    "tf_deprecated_optimizer",
     lambda obj: isinstance(obj, OptimizerV2),
     versions=[revived_types.VersionedTypeRegistration(
         object_factory=lambda proto: RestoredOptimizer(),

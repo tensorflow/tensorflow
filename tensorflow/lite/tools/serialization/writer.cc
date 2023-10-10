@@ -20,8 +20,8 @@ limitations under the License.
 
 #include <iostream>
 
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/tools/serialization/writer_lib.h"
 
 int main(int argc, char* argv[]) {
@@ -32,7 +32,8 @@ int main(int argc, char* argv[]) {
   std::unique_ptr<tflite::FlatBufferModel> model =
       tflite::FlatBufferModel::BuildFromFile(argv[1]);
   std::unique_ptr<tflite::Interpreter> interpreter;
-  tflite::ops::builtin::BuiltinOpResolver builtin_op_resolver;
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates
+      builtin_op_resolver;
   tflite::InterpreterBuilder(*model, builtin_op_resolver)(&interpreter);
   tflite::ModelWriter writer(interpreter.get());
   writer.Write(argv[2]);

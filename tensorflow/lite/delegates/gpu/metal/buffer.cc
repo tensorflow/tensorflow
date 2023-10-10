@@ -54,7 +54,7 @@ absl::Status Buffer::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
     return absl::InvalidArgumentError("Expected BufferDescriptor on input.");
   }
 
-  resources->buffers.push_back({"buffer", buffer_});
+  resources->buffers.push_back({"buffer", {buffer_, 0}});
   return absl::OkStatus();
 }
 

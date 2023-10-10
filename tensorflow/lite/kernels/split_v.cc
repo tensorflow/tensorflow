@@ -16,8 +16,8 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -76,7 +76,7 @@ TfLiteStatus ResizeOutputTensors(TfLiteContext* context, TfLiteNode* node,
   } else if (size_splits->type == kTfLiteInt64) {
     GetSizeSplitsVector<int64_t>(size_splits, &size_splits_vector);
   } else {
-    context->ReportError(context, "size_splits only support type int32|int64.");
+    TF_LITE_KERNEL_LOG(context, "size_splits only support type int32|int64.");
     return kTfLiteError;
   }
 
@@ -88,28 +88,33 @@ TfLiteStatus ResizeOutputTensors(TfLiteContext* context, TfLiteNode* node,
       if (minus_one_index == -1) {
         minus_one_index = i;
       } else {
-        context->ReportError(context,
-                             "The size_splits contains more than one -1.");
+        TF_LITE_KERNEL_LOG(context,
+                           "The size_splits contains more than one -1.");
+        return kTfLiteError;
       }
     } else {
       size_splits_sum += size_splits_vector.at(i);
     }
   }
 
+  TF_LITE_ENSURE(context, axis_value >= 0);
+  TF_LITE_ENSURE(context, axis_value < NumDimensions(input));
   const int input_size = SizeOfDimension(input, axis_value);
 
   if (minus_one_index != -1) {
     if (size_splits_sum > input_size) {
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "The sum of size_splits must be less than the dimension of value.");
+      return kTfLiteError;
     } else {
       size_splits_vector[minus_one_index] = input_size - size_splits_sum;
     }
   } else if (size_splits_sum != input_size) {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context,
         "The size_splits must sum to the dimension of value along axis.");
+    return kTfLiteError;
   }
 
   for (int i = 0; i < NumOutputs(node); ++i) {
@@ -147,8 +152,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // If we know the contents of the 'size_splits' tensor and the 'axis' tensor,
   // resize all outputs. Otherwise, wait until Eval().
-  if (IsConstantTensor(op_context.size_splits) &&
-      IsConstantTensor(op_context.axis)) {
+  if (IsConstantOrPersistentTensor(op_context.size_splits) &&
+      IsConstantOrPersistentTensor(op_context.axis)) {
     return ResizeOutputTensors(context, node, op_context.input,
                                op_context.size_splits, op_context.axis);
   } else {
@@ -161,8 +166,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   // When the 'size_splits' and the 'axis' tensor is non-const we can't resize
   // output tensors in Prepare(), and we have to do it now.
-  if (!IsConstantTensor(op_context.axis) ||
-      !IsConstantTensor(op_context.size_splits)) {
+  if (!IsConstantOrPersistentTensor(op_context.axis) ||
+      !IsConstantOrPersistentTensor(op_context.size_splits)) {
     TF_LITE_ENSURE_OK(
         context, ResizeOutputTensors(context, node, op_context.input,
                                      op_context.size_splits, op_context.axis));
@@ -205,8 +210,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     default:
-      context->ReportError(context, "Type %s currently not supported.",
-                           TfLiteTypeGetName(op_context.input->type));
+      TF_LITE_KERNEL_LOG(context, "Type %s currently not supported.",
+                         TfLiteTypeGetName(op_context.input->type));
       return kTfLiteError;
   }
 #undef TF_LITE_SPLIT_V

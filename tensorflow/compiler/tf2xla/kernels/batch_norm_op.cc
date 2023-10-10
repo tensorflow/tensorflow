@@ -14,15 +14,21 @@ limitations under the License.
 ==============================================================================*/
 
 // XLA implementation of BatchNorm operations.
+#include <algorithm>
+#include <numeric>
+#include <string>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/kernels/relu_op.h"
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/math.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/util.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/lib/math.h"
+#include "xla/client/xla_builder.h"
+#include "xla/util.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -111,7 +117,8 @@ class FusedBatchNormOp : public XlaOpKernel {
       // Apply Bessel's correction.
       int total_input_size = ctx->InputShape(0).num_elements();
       int total_scale_size = ctx->InputShape(1).num_elements();
-      int sample_size = total_input_size / total_scale_size;
+      int sample_size =
+          total_scale_size > 0 ? total_input_size / total_scale_size : 0;
       int sample_size_minus_one = std::max(1, sample_size - 1);
       double factor = static_cast<double>(sample_size) /
                       static_cast<double>(sample_size_minus_one);
@@ -127,8 +134,7 @@ class FusedBatchNormOp : public XlaOpKernel {
             kVarianceOutputIndex,
             xla::Broadcast(
                 xla::NanValue(b, ctx->output_xla_type(kVarianceOutputIndex)),
-                xla::AsInt64Slice(
-                    status_or_output_shape.ValueOrDie().dimensions())));
+                status_or_output_shape.value().dimensions()));
 
       } else {
         if (exponential_avg_factor_ == 1.0f) {
@@ -232,7 +238,7 @@ class FusedBatchNormOpEx : public FusedBatchNormOp {
 
 REGISTER_XLA_OP(Name("FusedBatchNorm"), FusedBatchNormOp);
 REGISTER_XLA_OP(Name("FusedBatchNormV2"), FusedBatchNormOp);
-REGISTER_XLA_OP(Name("FusedBatchNormV3"), FusedBatchNormOpV3);
+REGISTER_XLA_OP(Name("FusedBatchNormV3"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("_FusedBatchNormEx"), FusedBatchNormOpEx);
 
 class FusedBatchNormGradOp : public XlaOpKernel {
@@ -297,7 +303,7 @@ class FusedBatchNormGradOp : public XlaOpKernel {
       offset_backprop = xla::GetTupleElement(output, 2);
     } else {
       // Reduce over all dimensions except the feature dim.
-      std::vector<int64> reduction_dims(input_dims - 1);
+      std::vector<int64_t> reduction_dims(input_dims - 1);
       std::iota(reduction_dims.begin(), reduction_dims.begin() + feature_index,
                 0);
       std::iota(reduction_dims.begin() + feature_index, reduction_dims.end(),
@@ -349,7 +355,7 @@ class FusedBatchNormGradOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("FusedBatchNormGrad"), FusedBatchNormGradOp);
 REGISTER_XLA_OP(Name("FusedBatchNormGradV2"), FusedBatchNormGradOp);
-REGISTER_XLA_OP(Name("FusedBatchNormGradV3"), FusedBatchNormGradOp);
+REGISTER_XLA_OP(Name("FusedBatchNormGradV3"), MlirXlaOpKernel);
 
 }  // namespace
 }  // namespace tensorflow

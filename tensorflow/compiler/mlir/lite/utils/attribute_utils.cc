@@ -20,12 +20,11 @@ namespace mlir {
 namespace TFL {
 
 FloatAttr ExtractSingleElementAsFloat(ElementsAttr attr) {
-  if (attr.getType().getNumElements() != 1 ||
-      !attr.getType().getElementType().isa<FloatType>()) {
+  if (attr.getShapedType().getNumElements() != 1 ||
+      !attr.getShapedType().getElementType().isa<FloatType>()) {
     return {};
   }
-  SmallVector<uint64_t, 8> index(attr.getType().getRank(), 0);
-  return attr.getValue<FloatAttr>(index);
+  return attr.getSplatValue<FloatAttr>();
 }
 
 FloatAttr GetSingleElementAsFloatOrSelf(Attribute attr) {
@@ -37,12 +36,11 @@ FloatAttr GetSingleElementAsFloatOrSelf(Attribute attr) {
 }
 
 IntegerAttr ExtractSingleElementAsInteger(ElementsAttr attr) {
-  if (attr.getType().getNumElements() != 1 ||
-      !attr.getType().getElementType().isSignlessInteger()) {
+  if (attr.getShapedType().getNumElements() != 1 ||
+      !attr.getShapedType().getElementType().isSignlessInteger()) {
     return {};
   }
-  SmallVector<uint64_t, 8> index(attr.getType().getRank(), 0);
-  return attr.getValue<IntegerAttr>(index);
+  return attr.getSplatValue<IntegerAttr>();
 }
 
 }  // namespace TFL

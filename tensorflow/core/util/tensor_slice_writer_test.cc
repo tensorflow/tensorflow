@@ -15,17 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_writer.h"
 
+#include <algorithm>
 #include <array>
+#include <memory>
+#include <vector>
 
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/tensor_slice_reader.h"
@@ -104,7 +106,7 @@ TEST(TensorSliceWriteTest, SimpleWrite) {
   {
     TensorShape shape({5, 10});
     TensorSlice slice = TensorSlice::ParseOrDie("-:3,1");
-    const int64 data[] = {10, 11, 12, 13, 14};
+    const int64_t data[] = {10, 11, 12, 13, 14};
     TF_CHECK_OK(writer.Add("int64", shape, slice, data));
   }
 
@@ -168,10 +170,13 @@ void TensorSliceWriteTestHelper::CheckEntries(const string& fname) {
       // The two slices of the "test" tensor
       const SavedSliceMeta& ssm = sts.meta().tensor(0);
       EXPECT_EQ("test", ssm.name());
-      EXPECT_EQ(
+      TensorShapeProto expected_shape_proto;
+      protobuf::TextFormat::ParseFromString(
           "dim { size: 5 } "
           "dim { size: 10 }",
-          ssm.shape().ShortDebugString());
+          &expected_shape_proto);
+      EXPECT_EQ(ssm.shape().ShortDebugString(),
+                expected_shape_proto.ShortDebugString());
       EXPECT_EQ(DT_INT32, ssm.type());
       EXPECT_EQ(2, ssm.slice_size());
       TensorSlice s0(ssm.slice(0));
@@ -183,10 +188,13 @@ void TensorSliceWriteTestHelper::CheckEntries(const string& fname) {
       // The "AA" tensor
       const SavedSliceMeta& ssm = sts.meta().tensor(1);
       EXPECT_EQ("AA", ssm.name());
-      EXPECT_EQ(
+      TensorShapeProto expected_shape_proto;
+      protobuf::TextFormat::ParseFromString(
           "dim { size: 3 } "
           "dim { size: 2 }",
-          ssm.shape().ShortDebugString());
+          &expected_shape_proto);
+      EXPECT_EQ(ssm.shape().ShortDebugString(),
+                expected_shape_proto.ShortDebugString());
       EXPECT_EQ(DT_FLOAT, ssm.type());
       EXPECT_EQ(1, ssm.slice_size());
       TensorSlice s0(ssm.slice(0));
@@ -196,10 +204,13 @@ void TensorSliceWriteTestHelper::CheckEntries(const string& fname) {
       // The "int64" tensor
       const SavedSliceMeta& ssm = sts.meta().tensor(2);
       EXPECT_EQ("int64", ssm.name());
-      EXPECT_EQ(
+      TensorShapeProto expected_shape_proto;
+      protobuf::TextFormat::ParseFromString(
           "dim { size: 5 } "
           "dim { size: 10 }",
-          ssm.shape().ShortDebugString());
+          &expected_shape_proto);
+      EXPECT_EQ(ssm.shape().ShortDebugString(),
+                expected_shape_proto.ShortDebugString());
       EXPECT_EQ(DT_INT64, ssm.type());
       EXPECT_EQ(1, ssm.slice_size());
       TensorSlice s0(ssm.slice(0));
@@ -209,10 +220,13 @@ void TensorSliceWriteTestHelper::CheckEntries(const string& fname) {
       // The "int16" tensor
       const SavedSliceMeta& ssm = sts.meta().tensor(3);
       EXPECT_EQ("int16", ssm.name());
-      EXPECT_EQ(
+      TensorShapeProto expected_shape_proto;
+      protobuf::TextFormat::ParseFromString(
           "dim { size: 5 } "
           "dim { size: 10 }",
-          ssm.shape().ShortDebugString());
+          &expected_shape_proto);
+      EXPECT_EQ(ssm.shape().ShortDebugString(),
+                expected_shape_proto.ShortDebugString());
       EXPECT_EQ(DT_INT16, ssm.type());
       EXPECT_EQ(1, ssm.slice_size());
       TensorSlice s0(ssm.slice(0));
@@ -253,7 +267,7 @@ void TensorSliceWriteTestHelper::CheckEntries(const string& fname) {
     // Block 4: we expect it to be the slice of the "int64" tensor
     SavedSlice ss;
     GetData(table.get(), "int64", TensorSlice({{0, -1}, {3, 1}}), &ss);
-    const int64 data[] = {10, 11, 12, 13, 14};
+    const int64_t data[] = {10, 11, 12, 13, 14};
     EXPECT_EQ(ArraySize(data), ss.data().int64_val_size());
     ExpectIdenticalIntArrays(data, ArraySize(data),
                              ss.data().int64_val().data());
@@ -303,7 +317,7 @@ TEST(TensorSliceWriteTest, CheckpointSize) {
   EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_INT32),
             BytesPerElementHelper<int32>(-1));
   EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_INT64),
-            BytesPerElementHelper<int64>(-1));
+            BytesPerElementHelper<int64_t>(-1));
   EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_UINT16),
             BytesPerElementHelper<uint16>(std::numeric_limits<uint16>::max()));
   EXPECT_EQ(TensorSliceWriter::MaxBytesPerElement(DT_UINT8),
@@ -334,7 +348,7 @@ TEST(TensorSliceWriteTest, SizeErrors) {
     const std::vector<int8> data(300000000, -1);
     Status s = writer.Add("test1", shape, slice, data.data());
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
-    EXPECT_TRUE(absl::StrContains(s.error_message(),
+    EXPECT_TRUE(absl::StrContains(s.message(),
                                   "Tensor slice is too large to serialize"));
   }
 
@@ -345,9 +359,19 @@ TEST(TensorSliceWriteTest, SizeErrors) {
     const std::vector<tstring> data(256 * 1024, std::string(8192, 'f'));
     Status s = writer.Add("test2", shape, slice, data.data());
     EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
-    EXPECT_TRUE(absl::StrContains(s.error_message(),
+    EXPECT_TRUE(absl::StrContains(s.message(),
                                   "Tensor slice is too large to serialize"));
   }
+}
+
+TEST(TensorSliceWriterTest, InvalidInput) {
+  SavedSlice ss;
+  std::array<uint32_t, 1> data;
+  std::fill(data.begin(), data.end(), 1234);
+  Status s = TensorSliceWriter::SaveData(data.data(), data.size(), &ss);
+  EXPECT_EQ(s.code(), error::INVALID_ARGUMENT);
+  EXPECT_TRUE(absl::StrContains(
+      s.message(), "Tensor slice serialization not implemented for dtype"));
 }
 
 }  // namespace checkpoint

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/self_adjoint_eig.h"
+#include "xla/client/lib/self_adjoint_eig.h"
 #include "tensorflow/core/lib/core/bits.h"
 
 namespace tensorflow {
@@ -57,10 +57,8 @@ class SelfAdjointEigV2Op : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("XlaSelfAdjointEig").TypeConstraint("T", kFloatTypes),
-                XlaSelfAdjointEigOp);
-REGISTER_XLA_OP(Name("SelfAdjointEigV2").TypeConstraint("T", kFloatTypes),
-                SelfAdjointEigV2Op);
+REGISTER_XLA_OP(Name("XlaSelfAdjointEig"), XlaSelfAdjointEigOp);
+REGISTER_XLA_OP(Name("SelfAdjointEigV2"), SelfAdjointEigV2Op);
 
 }  // namespace
 }  // namespace tensorflow

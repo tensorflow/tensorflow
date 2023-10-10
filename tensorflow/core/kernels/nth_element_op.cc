@@ -66,7 +66,7 @@ class NthElementOp : public OpKernel {
     // Assume input_shape is [d1,d2,...dk], and output_shape is [d1,d2...dk-1].
     TensorShape out_shape;
     for (int i = 0; i < num_dims - 1; ++i) {
-      out_shape.AddDim(input_in.dim_size(i));
+      OP_REQUIRES_OK(context, out_shape.AddDimWithStatus(input_in.dim_size(i)));
     }
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context,
@@ -95,8 +95,8 @@ struct NthElementFunctor<CPUDevice, T> {
     const int last_dim = input_tensor.dim_size(input_tensor.dims() - 1);
 
     // Allocate each row to different shard.
-    auto SubNthElement = [&, input, output, last_dim, n](int64 start,
-                                                         int64 limit) {
+    auto SubNthElement = [&, input, output, last_dim, n](int64_t start,
+                                                         int64_t limit) {
       // std::nth_element would rearrange the array, so we need a new buffer.
       std::vector<T> buf(last_dim);
 

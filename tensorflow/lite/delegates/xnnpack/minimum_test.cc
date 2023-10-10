@@ -708,6 +708,64 @@ TEST(Minimum, FP16Weights) {
       .Test(BuiltinOperator_MINIMUM, xnnpack_delegate.get());
 }
 
+TEST(Minimum, INT8Weights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  BinaryElementwiseTester()
+      .Input1Shape({batch, height, width, channels})
+      .Input2Shape({batch, height, width, channels})
+      .Input1Static(true)
+      .INT8Weights()
+      .Test(BuiltinOperator_MINIMUM, xnnpack_delegate.get());
+
+  BinaryElementwiseTester()
+      .Input1Shape({batch, height, width, channels})
+      .Input2Shape({batch, height, width, channels})
+      .Input2Static(true)
+      .INT8Weights()
+      .Test(BuiltinOperator_MINIMUM, xnnpack_delegate.get());
+}
+
+TEST(Minimum, INT8ChannelWiseWeights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  BinaryElementwiseTester()
+      .Input1Shape({batch, height, width, channels})
+      .Input2Shape({batch, height, width, channels})
+      .Input1Static(true)
+      .INT8ChannelWiseWeights()
+      .Test(BuiltinOperator_MINIMUM, xnnpack_delegate.get());
+
+  BinaryElementwiseTester()
+      .Input1Shape({batch, height, width, channels})
+      .Input2Shape({batch, height, width, channels})
+      .Input2Static(true)
+      .INT8ChannelWiseWeights()
+      .Test(BuiltinOperator_MINIMUM, xnnpack_delegate.get());
+}
+
 TEST(Minimum, SparseWeights) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),

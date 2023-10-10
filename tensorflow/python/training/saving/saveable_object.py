@@ -13,12 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Types for specifying saving and loading behavior."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 
-class SaveSpec(object):
+class SaveSpec:
   """Class used to describe tensor slices that need to be saved."""
 
   def __init__(self, tensor, slice_spec, name, dtype=None, device=None):
@@ -56,7 +53,7 @@ class SaveSpec(object):
     return self._tensor() if callable(self._tensor) else self._tensor
 
 
-class SaveableObject(object):
+class SaveableObject:
   """Base class for saving and restoring saveable objects."""
 
   def __init__(self, op, specs, name):
@@ -72,11 +69,6 @@ class SaveableObject(object):
     self.op = op
     self.specs = specs
     self.name = name
-
-  @property
-  def optional_restore(self):
-    """A hint to restore assertions that this object is optional."""
-    return False  # Default to required
 
   @property
   def device(self):

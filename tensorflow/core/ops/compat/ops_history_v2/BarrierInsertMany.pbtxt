@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "BarrierInsertMany"
   input_arg {
     name: "handle"

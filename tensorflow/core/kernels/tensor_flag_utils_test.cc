@@ -23,9 +23,9 @@ limitations under the License.
 
 namespace {
 
+using ::int64_t;
 using tensorflow::DataType;
 using tensorflow::int32;
-using tensorflow::int64;
 using tensorflow::Tensor;
 using tensorflow::TTypes;
 using tensorflow::error::INVALID_ARGUMENT;
@@ -254,19 +254,19 @@ TEST(SparseUtils, FindConfigValueForKey) {
   {
     float data[] = {0, 0, 0.7};
     TTypes<float>::ConstMatrix config_mat(data, 1, 3);
-    auto val = FindConfigValueForKey<float, int64>(config_mat, {70, 40});
+    auto val = FindConfigValueForKey<float, int64_t>(config_mat, {70, 40});
     EXPECT_FLOAT_EQ(0.7, val);
-    val = FindConfigValueForKey<float, int64>(config_mat, {60, 50});
+    val = FindConfigValueForKey<float, int64_t>(config_mat, {60, 50});
     EXPECT_FLOAT_EQ(0.7, val);
-    val = FindConfigValueForKey<float, int64>(config_mat, {60, 60});
+    val = FindConfigValueForKey<float, int64_t>(config_mat, {60, 60});
     EXPECT_FLOAT_EQ(0.7, val);
-    val = FindConfigValueForKey<float, int64>(config_mat, {60, 40});
+    val = FindConfigValueForKey<float, int64_t>(config_mat, {60, 40});
     EXPECT_FLOAT_EQ(0.7, val);
-    val = FindConfigValueForKey<float, int64>(config_mat, {50, 60});
+    val = FindConfigValueForKey<float, int64_t>(config_mat, {50, 60});
     EXPECT_FLOAT_EQ(0.7, val);
-    val = FindConfigValueForKey<float, int64>(config_mat, {20, 30});
+    val = FindConfigValueForKey<float, int64_t>(config_mat, {20, 30});
     EXPECT_FLOAT_EQ(0.7, val);
-    val = FindConfigValueForKey<float, int64>(config_mat, {30, 10});
+    val = FindConfigValueForKey<float, int64_t>(config_mat, {30, 10});
     EXPECT_FLOAT_EQ(0.7, val);
   }
   {
@@ -308,15 +308,15 @@ TEST(SparseUtils, FindConfigValueForKey) {
 TEST(SparseUtils, GetLinearBucket) {
   EXPECT_EQ(11, GetLinearBucket(11, 5));
   EXPECT_EQ(11, GetLinearBucket(12, 5));
-  EXPECT_EQ(1, GetLinearBucket(int64{4}, int64{5}));
+  EXPECT_EQ(1, GetLinearBucket(int64_t{4}, int64_t{5}));
 }
 
 TEST(SparseUtils, GetPowerBucket) {
   EXPECT_EQ(6, GetPowerBucket(11, 5));
   EXPECT_EQ(6, GetPowerBucket(12, 5));
   EXPECT_EQ(1332, GetPowerBucket(1335, 11));
-  EXPECT_EQ(5, GetPowerBucket(int64{5}, int64{4}));
-  EXPECT_EQ(1, GetPowerBucket(int64{4}, int64{1}));
+  EXPECT_EQ(5, GetPowerBucket(int64_t{5}, int64_t{4}));
+  EXPECT_EQ(1, GetPowerBucket(int64_t{4}, int64_t{1}));
 }
 
 }  // namespace

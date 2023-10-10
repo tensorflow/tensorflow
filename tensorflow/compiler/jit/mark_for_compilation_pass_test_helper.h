@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_MARK_FOR_COMPILATION_PASS_TEST_HELPER_H_
 #define TENSORFLOW_COMPILER_JIT_MARK_FOR_COMPILATION_PASS_TEST_HELPER_H_
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 
 namespace tensorflow {
@@ -25,11 +29,14 @@ class MarkForCompilationPassTestHelper {
     bool enable_global_jit;
     bool disable_deadness_analysis;
     bool enable_cluster_scoping;
+    bool deterministic_cluster_names;
+    std::string session_name;  // ConfigProto.Experimental.SessionMetadata.name
 
     Options()
         : enable_global_jit(true),
           disable_deadness_analysis(true),
-          enable_cluster_scoping(true) {}
+          enable_cluster_scoping(true),
+          deterministic_cluster_names(false) {}
 
     Options WithNoGlobalJit() {
       Options copy = *this;
@@ -46,6 +53,18 @@ class MarkForCompilationPassTestHelper {
     Options WithNoClusterScoping() {
       Options copy = *this;
       copy.enable_cluster_scoping = false;
+      return copy;
+    }
+
+    Options WithDeterministicClusterNames() {
+      Options copy = *this;
+      copy.deterministic_cluster_names = true;
+      return copy;
+    }
+
+    Options WithSessionName(std::string name) {
+      Options copy = *this;
+      copy.session_name = std::move(name);
       return copy;
     }
   };

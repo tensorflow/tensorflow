@@ -22,10 +22,6 @@ bazel run tensorflow/lite/schema/upgrade_schema -- in.bin out.json
 bazel run tensorflow/lite/schema/upgrade_schema -- in.json out.bin
 bazel run tensorflow/lite/schema/upgrade_schema -- in.tflite out.tflite
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import contextlib
 import json
@@ -62,7 +58,7 @@ def TemporaryDirectoryResource():
     shutil.rmtree(temporary)
 
 
-class Converter(object):
+class Converter:
   """Converts TensorFlow flatbuffer models from old to new version of schema.
 
   This can convert between any version to the latest version. It uses
@@ -234,8 +230,7 @@ class Converter(object):
 
       Args:
         operator_type: String representing the builtin operator data type
-          string.
-        (see :schema.fbs).
+          string. (see :schema.fbs).
       Raises:
         ValueError: When the model has consistency problems.
       Returns:

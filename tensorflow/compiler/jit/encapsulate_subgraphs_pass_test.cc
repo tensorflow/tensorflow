@@ -60,7 +60,7 @@ Status AddGraphDefToFunctionLibrary(const GraphDefBuilder& graphdef_builder,
       *graph,
       absl::StrCat("_outside_compilation_shape_inference_", name_suffix),
       fdef));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <class Tkey, class Tvalue>
@@ -299,14 +299,14 @@ REGISTER_OP("InputTest")
     .Output("o: float")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
       c->set_output(0, c->UnknownShape());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("InputTestShaped")
     .Output("o: float")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
       c->set_output(0, c->Vector(2));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("UnaryTest")
@@ -316,7 +316,7 @@ REGISTER_OP("UnaryTest")
       ::tensorflow::shape_inference::ShapeHandle o;
       TF_RETURN_IF_ERROR(c->Merge(c->UnknownShape(), c->input(0), &o));
       c->set_output(0, o);
-      return Status::OK();
+      return OkStatus();
     });
 REGISTER_OP("BinaryTest")
     .Input("a: float")
@@ -326,7 +326,7 @@ REGISTER_OP("BinaryTest")
       ::tensorflow::shape_inference::ShapeHandle o;
       TF_RETURN_IF_ERROR(c->Merge(c->UnknownShape(), c->input(0), &o));
       c->set_output(0, o);
-      return Status::OK();
+      return OkStatus();
     });
 REGISTER_OP("BinaryTest2")
     .Input("a: float")
@@ -498,8 +498,8 @@ Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library,
   TF_CHECK_OK(DeviceFactory::AddDevices(
       session_options, "/job:localhost/replica:0/task:0", &devices));
   OptimizerOptions opts;
-  auto device_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
-  auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+  auto device_mgr = std::make_unique<StaticDeviceMgr>(std::move(devices));
+  auto pflr = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, lib_def.get(), opts,
       /*default_thread_pool=*/nullptr, /*cluster_flr=*/nullptr);
@@ -807,7 +807,7 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Simple) {
             EXPECT_FALSE(HasGuaranteeConstAttr(*n));
           }
         }
-        return Status::OK();
+        return OkStatus();
       },
       /*reuse_existing_functions=*/false, &graph_after, &library));
   EXPECT_EQ(2, guaranteed_consts);
@@ -852,7 +852,7 @@ TEST(EncapsulateSubgraphsWithGuaranteeConstOpTest, Add) {
             EXPECT_FALSE(HasGuaranteeConstAttr(*n));
           }
         }
-        return Status::OK();
+        return OkStatus();
       },
       /*reuse_existing_functions=*/false, &graph_after, &library));
   // Only 1 runtime const, which is const_guarantee_add1. Add2 has one const
@@ -933,6 +933,8 @@ TEST(EncapsulateSubgraphsTest, OneFunctionOneOutside) {
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
             {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
+            {"send_key", ""},
+            {"recv_key", ""},
             {"shape_inference_graph", shape_inference_graph},
             {"tpu_core", 0},
             {"cost_estimate_ns", 1000000},
@@ -1102,6 +1104,8 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT, DT_FLOAT})},
             {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_F1_O2"},
+            {"send_key", ""},
+            {"recv_key", ""},
             {"shape_inference_graph", shape_inference_graph2},
             {"tpu_core", 0},
             {"cost_estimate_ns", 1000000},
@@ -1120,6 +1124,8 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
             {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
+            {"send_key", ""},
+            {"recv_key", ""},
             {"shape_inference_graph", shape_inference_graph1},
             {"tpu_core", 0},
             {"cost_estimate_ns", 1000000},
@@ -1258,6 +1264,8 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
             {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
+            {"send_key", ""},
+            {"recv_key", ""},
             {"shape_inference_graph", NameAttrList()},
             {"tpu_core", 0},
             {"cost_estimate_ns", 1000000},
@@ -1289,6 +1297,8 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
             {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F2_F2_O1"},
+            {"send_key", ""},
+            {"recv_key", ""},
             {"shape_inference_graph", NameAttrList()},
             {"tpu_core", 0},
             {"cost_estimate_ns", 1000000},
@@ -1424,6 +1434,8 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutsideDependencyFromOutside) {
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
             {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
+            {"send_key", ""},
+            {"recv_key", ""},
             {"shape_inference_graph", NameAttrList()},
             {"tpu_core", 0},
             {"cost_estimate_ns", 1000000},
@@ -1452,6 +1464,8 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutsideDependencyFromOutside) {
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
             {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F2_F2_O1"},
+            {"send_key", ""},
+            {"recv_key", ""},
             {"shape_inference_graph", NameAttrList()},
             {"tpu_core", 0},
             {"cost_estimate_ns", 1000000},
@@ -1566,6 +1580,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputs) {
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
             {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
+            {"send_key", ""},
+            {"recv_key", ""},
             {"shape_inference_graph", NameAttrList()},
             {"tpu_core", 0},
             {"cost_estimate_ns", 1000000},
@@ -1660,6 +1676,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlInput) {
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
             {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
+            {"send_key", ""},
+            {"recv_key", ""},
             {"shape_inference_graph", NameAttrList()},
             {"tpu_core", 0},
             {"cost_estimate_ns", 1000000},
@@ -1769,6 +1787,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoOutputs) {
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
             {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
+            {"send_key", ""},
+            {"recv_key", ""},
             {"shape_inference_graph", shape_inference_graph},
             {"tpu_core", 0},
             {"cost_estimate_ns", 1000000},
@@ -1881,6 +1901,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlOutput) {
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
             {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
+            {"send_key", ""},
+            {"recv_key", ""},
             {"shape_inference_graph", shape_inference_graph},
             {"tpu_core", 0},
             {"cost_estimate_ns", 1000000},
@@ -2017,6 +2039,8 @@ TEST(EncapsulateSubgraphsTest,
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
             {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
+            {"send_key", ""},
+            {"recv_key", ""},
             {"shape_inference_graph", shape_inference_graph1},
             {"tpu_core", 0},
             {"cost_estimate_ns", 1000000},
@@ -2033,6 +2057,8 @@ TEST(EncapsulateSubgraphsTest,
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
             {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_F1_O2"},
+            {"send_key", ""},
+            {"recv_key", ""},
             {"shape_inference_graph", shape_inference_graph2},
             {"tpu_core", 0},
             {"cost_estimate_ns", 1000000},
@@ -2165,6 +2191,8 @@ TEST(EncapsulateSubgraphsTest,
             {"Toutputs", absl::Span<const DataType>({})},
             {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_F1_O2"},
+            {"send_key", ""},
+            {"recv_key", ""},
             {"shape_inference_graph", NameAttrList()},
             {"tpu_core", 0},
             {"cost_estimate_ns", 1000000},
@@ -2183,6 +2211,8 @@ TEST(EncapsulateSubgraphsTest,
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
             {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
+            {"send_key", ""},
+            {"recv_key", ""},
             {"shape_inference_graph", shape_inference_graph},
             {"tpu_core", 0},
             {"cost_estimate_ns", 1000000},
@@ -2312,6 +2342,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationClusterDependency) {
          {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
          {"ancestors", absl::Span<const string>({})},
          {"key", "host_compute_channel_F1_F1_O1"},
+         {"send_key", ""},
+         {"recv_key", ""},
          {"shape_inference_graph", shape_inference_graph},
          {"tpu_core", 0},
          {"cost_estimate_ns", 1000000},
@@ -2328,6 +2360,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationClusterDependency) {
          {"Toutputs", absl::Span<const DataType>({})},
          {"ancestors", absl::Span<const string>({})},
          {"key", "host_compute_channel_F1_F1_O2"},
+         {"send_key", ""},
+         {"recv_key", ""},
          {"shape_inference_graph", NameAttrList()},
          {"tpu_core", 0},
          {"cost_estimate_ns", 1000000},
@@ -2345,6 +2379,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationClusterDependency) {
          {"Toutputs", absl::Span<const DataType>({})},
          {"ancestors", absl::Span<const string>({})},
          {"key", "host_compute_channel_F1_F1_O3"},
+         {"send_key", ""},
+         {"recv_key", ""},
          {"shape_inference_graph", NameAttrList()},
          {"tpu_core", 0},
          {"cost_estimate_ns", 1000000},
@@ -2473,6 +2509,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputsOrOutputs) {
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
             {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
+            {"send_key", ""},
+            {"recv_key", ""},
             {"shape_inference_graph", shape_inference_graph},
             {"tpu_core", 0},
             {"cost_estimate_ns", 1000000},
@@ -2591,6 +2629,8 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationShapeInference) {
             {"Toutputs", absl::Span<const DataType>({DT_FLOAT})},
             {"ancestors", absl::Span<const string>({})},
             {"key", "host_compute_channel_F1_F1_O1"},
+            {"send_key", ""},
+            {"recv_key", ""},
             {"shape_inference_graph", shape_inference_graph},
             {"tpu_core", 0},
             {"cost_estimate_ns", 1000000},
@@ -2661,7 +2701,7 @@ TEST(EncapsulateSubgraphsTest, RefVariablesMarked) {
   Scope root = Scope::NewRootScope().ExitOnError();
   CreateSubgraphTouchingRefVar(root);
 
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(root.ToGraph(graph.get()));
 
   GraphOptimizationPassWrapper wrapper;
@@ -2691,7 +2731,7 @@ TEST(EncapsulateSubgraphsTest, NoRefVarsNoAttr) {
   Scope root = Scope::NewRootScope().ExitOnError();
   CreateSubgraphNotTouchingRefVar(root);
 
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_ASSERT_OK(root.ToGraph(graph.get()));
 
   GraphOptimizationPassWrapper wrapper;

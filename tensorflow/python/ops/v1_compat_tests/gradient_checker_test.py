@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tf.compat.v1.test.compute_gradient and tf.compute_gradient_error."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -65,7 +61,7 @@ class GradientCheckerTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testAddSimpleGPU(self):
     np.random.seed(2)  # Fix seed to avoid flakiness
-    with self.session(use_gpu=True):
+    with self.session():
       # a test case for Add operation
       size = (2, 3)
       x1 = constant_op.constant(2.0, shape=size, name="x1")
@@ -105,7 +101,7 @@ class GradientCheckerTest(test.TestCase):
       index_values = [1, 3]
       y_shape = [2, 2]
       params = constant_op.constant(
-          np.arange(p_size).astype(np.float), shape=p_shape, name="p")
+          np.arange(p_size).astype(np.float64), shape=p_shape, name="p")
       indices = constant_op.constant(index_values, name="i")
       y = array_ops.gather(params, indices, name="y")
 
@@ -125,7 +121,7 @@ class GradientCheckerTest(test.TestCase):
       y2_shape = [2, 2]
 
       params = constant_op.constant(
-          np.arange(p_size).astype(np.float), shape=p_shape, name="p")
+          np.arange(p_size).astype(np.float64), shape=p_shape, name="p")
       indices = constant_op.constant(index_values, name="i")
       y = array_ops.gather(params, indices, name="y")
       indices2 = constant_op.constant(index_values2, name="i2")
@@ -225,7 +221,7 @@ class MiniMNISTTest(test.TestCase):
     s = label_data.sum(axis=1)
     label_data /= s[:, None]
 
-    with self.session(use_gpu=True):
+    with self.session():
       # We treat the inputs as "parameters" here
       inp = constant_op.constant(
           inp_data.tolist(),

@@ -15,9 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_LOCAL_LOOKUP_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_LOCAL_LOOKUP_H_
 
+#include <cstdint>
+#include <memory>
+#include <string>
+
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_entry.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_lookup.h"
 
@@ -32,15 +35,15 @@ class TpuCompilationCacheLocalLookup : public TpuCompilationCacheLookup {
   explicit TpuCompilationCacheLocalLookup(TpuCompilationCacheInterface* cache);
   ~TpuCompilationCacheLocalLookup() override;
 
-  Status Lookup(const string& proto_key,
+  Status Lookup(const std::string& proto_key,
                 std::unique_ptr<CompilationCacheEntryRef>* entry,
                 CompilationCacheFetchTarget fetch_target) override;
 
-  Status Lookup(int64 uid, int proto_index,
+  Status Lookup(int64_t uid, int proto_index,
                 std::unique_ptr<CompilationCacheEntryRef>* entry,
                 CompilationCacheFetchTarget fetch_target) override;
 
-  string DebugString() const override;
+  std::string DebugString() const override;
 
  private:
   // The subgraph compilation cache, in the same process address space where the

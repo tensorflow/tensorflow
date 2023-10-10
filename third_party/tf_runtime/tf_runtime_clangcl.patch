@@ -1,0 +1,14 @@
+diff --git a/include/tfrt/support/std_mutex.h b/include/tfrt/support/std_mutex.h
+index 6238d097..9fb24279 100644
+--- a/include/tfrt/support/std_mutex.h
++++ b/include/tfrt/support/std_mutex.h
+@@ -50,7 +50,7 @@ class TFRT_CAPABILITY("mutex") mutex {
+ 
+  private:
+   friend class mutex_lock;
+-  std::mutex mu_;
++  std::mutex mu_{};
+ };
+
+ // Wrap std::unique_lock<std::mutex> with support for thread annotations.
+ 

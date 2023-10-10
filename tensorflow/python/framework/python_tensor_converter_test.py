@@ -14,21 +14,17 @@
 # ==============================================================================
 """Tests for tensorflow.python.framework.python_tensor_converter."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 import numpy as np
 
 from tensorflow.core.framework import types_pb2
-from tensorflow.python import _pywrap_python_tensor_converter
 from tensorflow.python.eager import context
+from tensorflow.python.framework import _pywrap_python_tensor_converter
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 
@@ -51,7 +47,7 @@ class PythonTensorConverterTest(test_util.TensorFlowTestCase,
   def testConvertIntWithInferredDType(self):
     converter = self.makePythonTensorConverter()
     result, dtype, used_fallback = converter.Convert(12, types_pb2.DT_INVALID)
-    self.assertIsInstance(result, ops.Tensor)
+    self.assertIsInstance(result, tensor.Tensor)
     self.assertAllEqual(result, 12)
     self.assertEqual(dtype, types_pb2.DT_INT32)
     self.assertEqual(used_fallback, not context.executing_eagerly())
@@ -59,7 +55,7 @@ class PythonTensorConverterTest(test_util.TensorFlowTestCase,
   def testConvertIntWithExplicitDtype(self):
     converter = self.makePythonTensorConverter()
     result, dtype, used_fallback = converter.Convert(12, types_pb2.DT_INT64)
-    self.assertIsInstance(result, ops.Tensor)
+    self.assertIsInstance(result, tensor.Tensor)
     self.assertAllEqual(result, 12)
     self.assertEqual(dtype, types_pb2.DT_INT64)
     self.assertEqual(used_fallback, not context.executing_eagerly())
@@ -67,7 +63,7 @@ class PythonTensorConverterTest(test_util.TensorFlowTestCase,
   def testConvertIntWithIncompatibleDtype(self):
     converter = self.makePythonTensorConverter()
     with self.assertRaisesRegex(
-        TypeError, "Expected string, got 3 of type 'int' instead."
+        TypeError, "Expected string, but got 3 of type 'int'"
         "|Cannot convert 3 to EagerTensor of dtype string"):
       converter.Convert(3, types_pb2.DT_STRING)
 
@@ -78,7 +74,7 @@ class PythonTensorConverterTest(test_util.TensorFlowTestCase,
     converter = self.makePythonTensorConverter()
     result, dtype, used_fallback = converter.Convert(
         constant_op.constant([1, 2, 3]), types_pb2.DT_INVALID)
-    self.assertIsInstance(result, ops.Tensor)
+    self.assertIsInstance(result, tensor.Tensor)
     self.assertAllEqual(result, [1, 2, 3])
     self.assertEqual(dtype, types_pb2.DT_INT32)
     self.assertFalse(used_fallback)
@@ -87,7 +83,7 @@ class PythonTensorConverterTest(test_util.TensorFlowTestCase,
     converter = self.makePythonTensorConverter()
     result, dtype, used_fallback = converter.Convert(
         constant_op.constant([1, 2, 3], dtypes.int64), types_pb2.DT_INT64)
-    self.assertIsInstance(result, ops.Tensor)
+    self.assertIsInstance(result, tensor.Tensor)
     self.assertAllEqual(result, [1, 2, 3])
     self.assertEqual(dtype, types_pb2.DT_INT64)
     self.assertFalse(used_fallback)
@@ -105,7 +101,7 @@ class PythonTensorConverterTest(test_util.TensorFlowTestCase,
     converter = self.makePythonTensorConverter()
     result, dtype, used_fallback = converter.Convert([[1, 2, 3], [4, 5, 6]],
                                                      types_pb2.DT_INVALID)
-    self.assertIsInstance(result, ops.Tensor)
+    self.assertIsInstance(result, tensor.Tensor)
     self.assertAllEqual(result, [[1, 2, 3], [4, 5, 6]])
     self.assertEqual(dtype, types_pb2.DT_INT32)
     self.assertEqual(used_fallback, not context.executing_eagerly())
@@ -114,7 +110,7 @@ class PythonTensorConverterTest(test_util.TensorFlowTestCase,
     converter = self.makePythonTensorConverter()
     result, dtype, used_fallback = converter.Convert([[1, 2, 3], [4, 5, 6]],
                                                      types_pb2.DT_INT64)
-    self.assertIsInstance(result, ops.Tensor)
+    self.assertIsInstance(result, tensor.Tensor)
     self.assertAllEqual(result, [[1, 2, 3], [4, 5, 6]])
     self.assertEqual(dtype, types_pb2.DT_INT64)
     self.assertEqual(used_fallback, not context.executing_eagerly())
@@ -122,7 +118,7 @@ class PythonTensorConverterTest(test_util.TensorFlowTestCase,
   def testConvertListWithIncompatibleDtype(self):
     converter = self.makePythonTensorConverter()
     with self.assertRaisesRegex(
-        TypeError, "Expected string, got .* of type 'int' instead."
+        TypeError, "Expected string, but got .* of type 'int'"
         "|Cannot convert .* to EagerTensor of dtype string"):
       converter.Convert([[1, 2, 3], [4, 5, 6]], types_pb2.DT_STRING)
 
@@ -141,7 +137,7 @@ class PythonTensorConverterTest(test_util.TensorFlowTestCase,
     converter = self.makePythonTensorConverter()
     x = np.array([[1, 2, 3], [4, 5, 6]], np.int32)
     result, dtype, used_fallback = converter.Convert(x, types_pb2.DT_INVALID)
-    self.assertIsInstance(result, ops.Tensor)
+    self.assertIsInstance(result, tensor.Tensor)
     self.assertAllEqual(result, [[1, 2, 3], [4, 5, 6]])
     self.assertEqual(dtype, types_pb2.DT_INT32)
     self.assertEqual(used_fallback, not context.executing_eagerly())
@@ -150,7 +146,7 @@ class PythonTensorConverterTest(test_util.TensorFlowTestCase,
     converter = self.makePythonTensorConverter()
     x = np.array([[1, 2, 3], [4, 5, 6]], np.int32)
     result, dtype, used_fallback = converter.Convert(x, types_pb2.DT_INT64)
-    self.assertIsInstance(result, ops.Tensor)
+    self.assertIsInstance(result, tensor.Tensor)
     self.assertAllEqual(result, [[1, 2, 3], [4, 5, 6]])
     self.assertEqual(dtype, types_pb2.DT_INT64)
     self.assertEqual(used_fallback, not context.executing_eagerly())
@@ -163,7 +159,7 @@ class PythonTensorConverterTest(test_util.TensorFlowTestCase,
 
   def testConvertNumpyArrayWithUnsupportedDtype(self):
     converter = self.makePythonTensorConverter()
-    x = np.array([[1, 2], ["a", "b"]], np.object)
+    x = np.array([[1, 2], ["a", "b"]], np.object_)
     with self.assertRaises((ValueError, TypeError)):
       converter.Convert(x, types_pb2.DT_INVALID)
 
@@ -177,7 +173,7 @@ class PythonTensorConverterTest(test_util.TensorFlowTestCase,
         constant_op.constant([1], dtypes.int64, name="x_indices"),
         constant_op.constant([3, 3], dtypes.int64, name="x_shape"))
     result, dtype, used_fallback = converter.Convert(x, types_pb2.DT_INVALID)
-    self.assertIsInstance(result, ops.Tensor)
+    self.assertIsInstance(result, tensor.Tensor)
     self.assertAllEqual(result, [[0, 0, 0], [1, 2, 3], [0, 0, 0]])
     self.assertEqual(dtype, types_pb2.DT_INT32)
     self.assertTrue(used_fallback)
@@ -189,7 +185,7 @@ class PythonTensorConverterTest(test_util.TensorFlowTestCase,
         constant_op.constant([1], dtypes.int64, name="x_indices"),
         constant_op.constant([3, 3], dtypes.int64, name="x_shape"))
     result, dtype, used_fallback = converter.Convert(x, types_pb2.DT_INT32)
-    self.assertIsInstance(result, ops.Tensor)
+    self.assertIsInstance(result, tensor.Tensor)
     self.assertAllEqual(result, [[0, 0, 0], [1, 2, 3], [0, 0, 0]])
     self.assertEqual(dtype, types_pb2.DT_INT32)
     self.assertTrue(used_fallback)

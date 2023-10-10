@@ -15,7 +15,8 @@ limitations under the License.
 
 // Converts DeviceIndex to constant device.
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -28,6 +29,9 @@ namespace mlir {
 namespace TF {
 namespace {
 
+#define GEN_PASS_DEF_DEVICEINDEXSELECTORPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Folds the DeviceIndex op to a constant value. The DeviceIndex return the
 // index of the device the op should run on. The user can use this to provide
 // different op specializations. E.g.,
@@ -36,7 +40,7 @@ namespace {
 //  %1 = "tf.DeviceIndex"()
 //          {device = "", device_names = ["CPU", "GPU"]} : () -> tensor<i32>
 //  %4 = "tf.Case"(%1, %arg0, %arg1)
-//          {branches = [@foo, @baz], output_shapes = [#tf.shape<>]} :
+//          {branches = [@foo, @baz], output_shapes = [#tf_type.shape<>]} :
 //            (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
 // ```
 //
@@ -44,14 +48,14 @@ namespace {
 // executed to produce the same values but with different functions optimized
 // for CPU or GPU.
 struct DeviceIndexSelector
-    : public PassWrapper<DeviceIndexSelector, OperationPass<FuncOp>> {
+    : public impl::DeviceIndexSelectorPassBase<DeviceIndexSelector> {
   void runOnOperation() override;
 };
 
 }  // namespace
 
 void DeviceIndexSelector::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   // Convert all the DeviceIndex ops to constant values.
   func.getBody().walk([](TF::DeviceIndexOp op) {
     // This just selects the default in all cases where DeviceIndex feeds into
@@ -59,7 +63,7 @@ void DeviceIndexSelector::runOnOperation() {
     // future.
     OpBuilder b(op);
     RankedTensorType type = RankedTensorType::get({}, b.getIntegerType(32));
-    int index = op.device_names().size();
+    int index = op.getDeviceNames().size();
     for (auto use : op.getOperation()->getUsers()) {
       // Skip if it doesn't feed into case. Alternatively this could always
       // return the CPU device index if it exists.
@@ -67,19 +71,16 @@ void DeviceIndexSelector::runOnOperation() {
     }
     DenseElementsAttr attr =
         DenseElementsAttr::get(type, b.getI32IntegerAttr(index));
-    auto constant = b.create<ConstantOp>(op.getLoc(), type, attr);
+    auto constant = b.create<arith::ConstantOp>(op.getLoc(), type, attr);
     op.replaceAllUsesWith(constant.getOperation());
     op.erase();
   });
 }
 
 // Creates an instance of the TensorFlow DeviceIndex selector pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateDeviceIndexSelectorPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDeviceIndexSelectorPass() {
   return std::make_unique<DeviceIndexSelector>();
 }
-
-static PassRegistration<DeviceIndexSelector> pass(
-    "tf-device-index-selector", "Fold tf.DeviceIndex to constant");
 
 }  // namespace TF
 }  // namespace mlir

@@ -16,7 +16,9 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/concat_lib_cpu.h"
+
 #include <vector>
+
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/concat_lib.h"
 
@@ -46,7 +48,7 @@ struct MemCpyCopier<ResourceHandle> {
 };
 
 template <typename T>
-int64 EstimateBytesPerElement(
+int64_t EstimateBytesPerElement(
     const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
         inputs) {
   return sizeof(T);
@@ -57,13 +59,13 @@ int64 EstimateBytesPerElement(
 // reshapes all the inputs to matrices), by sampling the lengths of the actual
 // strings in the various tensors.
 template <>
-int64 EstimateBytesPerElement<tstring>(
+int64_t EstimateBytesPerElement<tstring>(
     const std::vector<
         std::unique_ptr<typename TTypes<tstring, 2>::ConstMatrix>>& inputs) {
   // randomly sample a few input strings to get a sense of the average size
   // of each element
   int num_samples = 0;
-  int64 num_bytes_in_samples = 0;
+  int64_t num_bytes_in_samples = 0;
   for (const auto& input : inputs) {
     const auto dim0 = input->dimension(0);
     const auto dim1 = input->dimension(1);
@@ -88,7 +90,7 @@ int64 EstimateBytesPerElement<tstring>(
   }
   // We don't use sizeof(std::string) as the overhead, since that would
   // overestimate the memory touched for copying a string.
-  int64 string_overhead = sizeof(char*) + sizeof(size_t);
+  int64_t string_overhead = sizeof(char*) + sizeof(size_t);
   return string_overhead +
          ((num_samples > 0) ? (num_bytes_in_samples / num_samples) : 0);
 }
@@ -101,7 +103,7 @@ void ConcatCPU(
     const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
         inputs,
     typename TTypes<T, 2>::Matrix* output) {
-  int64 cost_per_unit = EstimateBytesPerElement<T>(inputs);
+  int64_t cost_per_unit = EstimateBytesPerElement<T>(inputs);
   ConcatCPUImpl<T>(d, inputs, cost_per_unit, MemCpyCopier<T>(), output);
 }
 
@@ -111,18 +113,15 @@ void ConcatCPU(
       const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&, \
       typename TTypes<T, 2>::Matrix* output);
 TF_CALL_ALL_TYPES(REGISTER)
-REGISTER(quint8)
-REGISTER(qint8)
-REGISTER(quint16)
-REGISTER(qint16)
-REGISTER(qint32)
+TF_CALL_float8_e5m2(REGISTER) TF_CALL_float8_e4m3fn(REGISTER) REGISTER(quint8)
+    REGISTER(qint8) REGISTER(quint16) REGISTER(qint16) REGISTER(qint32)
 
 #if defined(IS_MOBILE_PLATFORM) && !defined(SUPPORT_SELECTIVE_REGISTRATION) && \
     !defined(__ANDROID_TYPES_FULL__)
-// Primarily used for SavedModel support on mobile. Registering it here only
-// if __ANDROID_TYPES_FULL__ is not defined (which already registers string)
-// to avoid duplicate registration.
-REGISTER(tstring);
+    // Primarily used for SavedModel support on mobile. Registering it here only
+    // if __ANDROID_TYPES_FULL__ is not defined (which already registers string)
+    // to avoid duplicate registration.
+    REGISTER(tstring);
 #endif  // defined(IS_MOBILE_PLATFORM) &&
         // !defined(SUPPORT_SELECTIVE_REGISTRATION) &&
         // !defined(__ANDROID_TYPES_FULL__)

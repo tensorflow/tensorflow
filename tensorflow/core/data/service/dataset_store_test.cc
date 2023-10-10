@@ -14,11 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/dataset_store.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -31,8 +38,8 @@ const char kMemory[] = "memory";
 std::string NewDatasetsDir() {
   std::string dir = io::JoinPath(testing::TmpDir(), "datasets");
   if (Env::Default()->FileExists(dir).ok()) {
-    int64 undeleted_files;
-    int64 undeleted_dirs;
+    int64_t undeleted_files;
+    int64_t undeleted_dirs;
     CHECK(Env::Default()
               ->DeleteRecursively(dir, &undeleted_files, &undeleted_dirs)
               .ok());
@@ -43,15 +50,15 @@ std::string NewDatasetsDir() {
 
 std::unique_ptr<DatasetStore> MakeStore(const std::string& type) {
   if (type == kFileSystem) {
-    return absl::make_unique<FileSystemDatasetStore>(NewDatasetsDir());
+    return std::make_unique<FileSystemDatasetStore>(NewDatasetsDir());
   } else if (type == kMemory) {
-    return absl::make_unique<MemoryDatasetStore>();
+    return std::make_unique<MemoryDatasetStore>();
   } else {
     CHECK(false) << "unexpected type: " << type;
   }
 }
 
-DatasetDef DatasetDefWithVersion(int32 version) {
+DatasetDef DatasetDefWithVersion(int32_t version) {
   DatasetDef def;
   def.mutable_graph()->set_version(version);
   return def;
@@ -74,7 +81,7 @@ TEST_P(DatasetStoreTest, StoreAndGet) {
 
 TEST_P(DatasetStoreTest, StoreAndGetMultiple) {
   std::unique_ptr<DatasetStore> store = MakeStore(GetParam());
-  int64 num_datasets = 10;
+  int64_t num_datasets = 10;
   std::vector<std::string> keys;
   for (int i = 0; i < num_datasets; ++i) {
     std::string key = absl::StrCat("key", i);
@@ -91,7 +98,7 @@ TEST_P(DatasetStoreTest, StoreAndGetMultiple) {
 
 TEST_P(DatasetStoreTest, StoreAlreadyExists) {
   std::unique_ptr<DatasetStore> store = MakeStore(GetParam());
-  int32 version = 1;
+  int32_t version = 1;
   DatasetDef dataset_def = DatasetDefWithVersion(version);
   std::string key = "key";
   TF_ASSERT_OK(store->Put(key, dataset_def));

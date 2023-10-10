@@ -14,18 +14,15 @@
 # ==============================================================================
 
 """Synchronize replicas for training."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from tensorflow.core.framework import types_pb2
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer
@@ -259,9 +256,9 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     # local_anchor op will be placed on this worker task by default.
     local_anchor = control_flow_ops.no_op()
     # Colocating local_step variable prevents it being placed on the PS.
-    distribution_strategy = distribution_strategy_context.get_strategy()
+    distribution_strategy = distribute_lib.get_strategy()
     with distribution_strategy.extended.colocate_vars_with(local_anchor):
-      self._local_step = variable_scope.variable(
+      self._local_step = variable_v1.VariableV1(
           initial_value=0,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -281,7 +278,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           if grad is None:
             aggregated_grad.append(None)  # pass-through.
             continue
-          elif isinstance(grad, ops.Tensor):
+          elif isinstance(grad, tensor.Tensor):
             grad_accum = data_flow_ops.ConditionalAccumulator(
                 grad.dtype,
                 shape=var.get_shape(),
@@ -291,7 +288,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
             aggregated_grad.append(grad_accum.take_grad(
                 self._replicas_to_aggregate))
           else:
-            if not isinstance(grad, ops.IndexedSlices):
+            if not isinstance(grad, indexed_slices.IndexedSlices):
               raise ValueError("Unknown grad type!")
             grad_accum = data_flow_ops.SparseConditionalAccumulator(
                 grad.dtype, shape=(), shared_name=var.name + "/grad_accum")
@@ -319,16 +316,6 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
                                     shared_name="sync_token_q"))
         self._sync_token_queue = sync_token_queue
 
-        # dummy_queue is passed to the queue runner. Don't use the real queues
-        # because the queue runner doesn't automatically reopen it once it
-        # closed queues in PS devices.
-        dummy_queue = (
-            data_flow_ops.FIFOQueue(1,
-                                    types_pb2.DT_INT32,
-                                    shapes=(),
-                                    name="dummy_queue",
-                                    shared_name="dummy_queue"))
-
       with ops.device(global_step.device), ops.name_scope(""):
         # Replicas have to wait until they can get a token from the token queue.
         with ops.control_dependencies(train_ops):
@@ -346,8 +333,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
             sync_op = self._variable_averages.apply(
                 self._variables_to_average)
 
-        self._chief_queue_runner = queue_runner.QueueRunner(dummy_queue,
-                                                            [sync_op])
+        self._chief_queue_runner = queue_runner.QueueRunner(
+            sync_token_queue, [sync_op])
       for accum, dev in self._accumulator_list:
         with ops.device(dev):
           chief_init_ops.append(

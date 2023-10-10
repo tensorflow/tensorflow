@@ -21,9 +21,11 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/kernels/constant_op.h"
+#include "tensorflow/core/kernels/data/finalize_dataset_op.h"
 #include "tensorflow/core/kernels/data/generator_dataset_op.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 #include "tensorflow/core/kernels/data/optional_ops.h"
+#include "tensorflow/core/kernels/data/options_dataset_op.h"
 #include "tensorflow/core/kernels/data/prefetch_dataset_op.h"
 #include "tensorflow/core/kernels/fifo_queue.h"
 #include "tensorflow/core/kernels/function_ops.h"
@@ -102,9 +104,9 @@ class XlaAssignVariableOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("Shape")                                        \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \
-                              .TypeConstraint<int64>("out_type")               \
+                              .TypeConstraint<int64_t>("out_type")             \
                               .TypeConstraint("T", TYPES),                     \
-                          ShapeOp<int64>);                                     \
+                          ShapeOp<int64_t>);                                   \
   REGISTER_KERNEL_BUILDER(Name("ShapeN")                                       \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \
@@ -114,9 +116,21 @@ class XlaAssignVariableOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("ShapeN")                                       \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \
-                              .TypeConstraint<int64>("out_type")               \
+                              .TypeConstraint<int64_t>("out_type")             \
                               .TypeConstraint("T", TYPES),                     \
-                          ShapeNOp<int64>);                                    \
+                          ShapeNOp<int64_t>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("VariableShape")                                \
+                              .Device(DEVICE)                                  \
+                              .TypeConstraint<int32>("out_type")               \
+                              .HostMemory("output")                            \
+                              .HostMemory("input"),                            \
+                          VariableShapeOp<int32>);                             \
+  REGISTER_KERNEL_BUILDER(Name("VariableShape")                                \
+                              .Device(DEVICE)                                  \
+                              .TypeConstraint<int64_t>("out_type")             \
+                              .HostMemory("output")                            \
+                              .HostMemory("input"),                            \
+                          VariableShapeOp<int64_t>);                           \
   REGISTER_KERNEL_BUILDER(Name("Size")                                         \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \
@@ -126,9 +140,9 @@ class XlaAssignVariableOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("Size")                                         \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \
-                              .TypeConstraint<int64>("out_type")               \
+                              .TypeConstraint<int64_t>("out_type")             \
                               .TypeConstraint("T", TYPES),                     \
-                          SizeOp<int64>);                                      \
+                          SizeOp<int64_t>);                                    \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("Rank").Device(DEVICE).HostMemory("output").TypeConstraint("T",     \
                                                                       TYPES),  \
@@ -172,6 +186,16 @@ class XlaAssignVariableOp : public OpKernel {
                               .HostMemory("input_dataset")                     \
                               .HostMemory("handle"),                           \
                           data::PrefetchDatasetOp);                            \
+  REGISTER_KERNEL_BUILDER(Name("OptionsDataset")                               \
+                              .Device(DEVICE)                                  \
+                              .HostMemory("input_dataset")                     \
+                              .HostMemory("handle"),                           \
+                          data::OptionsDatasetOp);                             \
+  REGISTER_KERNEL_BUILDER(Name("FinalizeDataset")                              \
+                              .Device(DEVICE)                                  \
+                              .HostMemory("input_dataset")                     \
+                              .HostMemory("handle"),                           \
+                          data::FinalizeDatasetOp);                            \
                                                                                \
   REGISTER_KERNEL_BUILDER(Name("IteratorV2").Device(DEVICE),                   \
                           data::IteratorHandleOp);                             \
@@ -181,6 +205,8 @@ class XlaAssignVariableOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("AnonymousIterator").Device(DEVICE),            \
                           data::AnonymousIteratorHandleOp);                    \
   REGISTER_KERNEL_BUILDER(Name("AnonymousIteratorV2").Device(DEVICE),          \
+                          data::AnonymousIteratorHandleOp);                    \
+  REGISTER_KERNEL_BUILDER(Name("AnonymousIteratorV3").Device(DEVICE),          \
                           data::AnonymousIteratorHandleOp);                    \
   REGISTER_KERNEL_BUILDER(Name("DeleteIterator").Device(DEVICE),               \
                           data::DeleteIteratorOp);                             \

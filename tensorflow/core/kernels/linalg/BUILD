@@ -1,29 +1,23 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_kernel_library")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
 )
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
-
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    features = ["-layering_check"],
+    licenses = ["notice"],
 )
 
 # TODO(rmlarsen): Remove ASAP.
@@ -34,6 +28,8 @@ package_group(
 
 # Export a few files for use on Android.
 exports_files([
+    "cholesky_op.cc",
+    "determinant_op.cc",
     "einsum_op_impl_half.cc",
     "einsum_op_impl_bfloat16.cc",
     "einsum_op_impl_int32.cc",
@@ -46,11 +42,22 @@ exports_files([
     "einsum_op.h",
     "linalg_ops_common.h",
     "linalg_ops_common.cc",
+    "matrix_band_part_op.h",
+    "matrix_band_part_op.cc",
     "matrix_diag_op.h",
     "matrix_diag_op.cc",
     "matrix_inverse_op.cc",
     "matrix_set_diag_op.h",
     "matrix_set_diag_op.cc",
+    "matrix_triangular_solve_op_complex.cc",
+    "matrix_triangular_solve_op_impl.h",
+    "matrix_triangular_solve_op_real.cc",
+    "qr_op_complex128.cc",
+    "qr_op_complex64.cc",
+    "qr_op_double.cc",
+    "qr_op_float.cc",
+    "qr_op_half.cc",
+    "qr_op_impl.h",
 ])
 
 # Public support libraries ----------------------------------------------------
@@ -86,15 +93,16 @@ cc_library(
 
 LINALG_DEPS = [
     ":linalg_ops_common",
-    "//third_party/eigen3",
+    "@eigen_archive//:eigen3",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core/kernels:cast_op",
     "//tensorflow/core/kernels:fill_functor",
-] + if_cuda([
-    ":eye_functor",
-    "//tensorflow/core/util:cuda_solvers",
     "//tensorflow/core/kernels:transpose_functor",
+] + if_cuda_or_rocm([
+    ":eye_functor",
+]) + if_cuda([
+    "//tensorflow/core/util:cuda_solvers",
 ]) + if_rocm([
     "//tensorflow/core/util:rocm_solvers",
 ])
@@ -120,7 +128,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cholesky_op",
     prefix = "cholesky_op",
-    deps = if_cuda([
+    deps = if_cuda_or_rocm([
         ":matrix_band_part_op",
     ]) + LINALG_DEPS,
 )
@@ -175,7 +183,7 @@ tf_kernel_library(
     name = "matrix_inverse_op",
     prefix = "matrix_inverse_op",
     visibility = [":friends"],
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + [":loose_headers"],
 )
 
 tf_kernel_library(
@@ -204,17 +212,17 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "matrix_triangular_solve_op",
-    hdrs = ["matrix_triangular_solve_op_impl.h"],
     prefix = "matrix_triangular_solve_op",
+    textual_hdrs = ["matrix_triangular_solve_op_impl.h"],
     deps = [
         ":linalg_ops_common",
-        "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:fill_functor",
         "//tensorflow/core/platform:stream_executor",
+        "@eigen_archive//:eigen3",
     ] + if_cuda([
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        "@local_xla//xla/stream_executor/cuda:cublas_plugin",
         "//tensorflow/core/util:cuda_solvers",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
@@ -245,7 +253,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "qr_op",
     prefix = "qr_op",
-    deps = LINALG_DEPS + if_cuda([
+    deps = LINALG_DEPS + if_cuda_or_rocm([
         "//tensorflow/core/kernels:cwise_op",
         ":matrix_band_part_op",
     ]),
@@ -260,13 +268,16 @@ tf_kernel_library(
 tf_kernel_library(
     name = "lu_op",
     prefix = "lu_op",
-    deps = if_cuda([
-        "//tensorflow/core/util:cuda_solvers",
+    deps = if_cuda_or_rocm([
         "//tensorflow/core/kernels:transpose_functor",
+    ]) + if_cuda([
+        "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
     ]) + [
-        "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -281,9 +292,9 @@ tf_kernel_library(
         "//tensorflow/core/kernels:reduction_ops",
         "//tensorflow/core/kernels:transpose_functor",
         "//tensorflow/core/profiler/lib:traceme",
-        "//third_party/eigen3",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -295,8 +306,23 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
+)
+
+# For a more maintainable build this target should not exist and the headers
+# should  be split into the existing cc_library targets, but this change was
+# automatically  done so that we can remove long standing issues and complexity
+# in the build system. It's up to the OWNERS of this package to get rid of it or
+# not. The use of the textual_hdrs attribute is discouraged, use hdrs instead.
+# Here it is used to avoid header parsing errors in packages where the feature
+# parse_headers was enabled since loose headers were not being parsed. See
+# go/loose-lsc-one-target-approach for more details.
+cc_library(
+    name = "loose_headers",
+    tags = ["avoid_dep"],
+    textual_hdrs = ["eye_functor.h"],
+    visibility = [":__pkg__"],
 )
 
 tf_cuda_cc_test(
@@ -329,7 +355,7 @@ tf_kernel_library(
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
         "//tensorflow/core:framework",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
     alwayslink = 0,
 )
@@ -355,7 +381,7 @@ tf_cuda_cc_test(
 
 # A file group which contains all operators which are known to work on mobile.
 filegroup(
-    name = "android_all_op_kernels",
+    name = "portable_all_op_kernels",
     srcs = glob(
         [
             "*.cc",

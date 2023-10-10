@@ -53,7 +53,7 @@ class UtilsTest : public ::testing::Test {
   }
 
   void TearDown() override {
-    int64 undeleted_files, undeleted_dirs;
+    int64_t undeleted_files, undeleted_dirs;
     TF_CHECK_OK(
         env_->DeleteRecursively(BaseDir(), &undeleted_files, &undeleted_dirs));
   }

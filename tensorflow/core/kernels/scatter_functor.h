@@ -18,14 +18,15 @@ limitations under the License.
 
 #include <type_traits>
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -220,8 +221,9 @@ struct ScatterFunctorBase {
     // come up with a rough heuristic and determine whether the updates execute
     // serially or parallelly. Also if 'N' is small, overheads of parallel
     // execution outweigh its benefits and hence we check the value of N.
-    const bool execute_serial =
-        ((N < min_n_threshold) || ((N / limit) > ser_par_ratio));
+    const bool execute_serial = N < min_n_threshold ||
+                                (N / limit) > ser_par_ratio ||
+                                OpDeterminismRequired();
     if (execute_serial)
       return SerialExecute(c, d, params, updates, indices);
     else

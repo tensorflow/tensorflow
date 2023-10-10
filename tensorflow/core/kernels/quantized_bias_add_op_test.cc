@@ -74,10 +74,10 @@ TEST_F(QuantizedBiasAddTest, Small) {
                             input_quantized.flat<quint8>());
   AddInputFromArray<quint8>(bias_quantized.shape(),
                             bias_quantized.flat<quint8>());
-  AddInputFromArray<float>(TensorShape({1}), {input_min});
-  AddInputFromArray<float>(TensorShape({1}), {input_max});
-  AddInputFromArray<float>(TensorShape({1}), {bias_min});
-  AddInputFromArray<float>(TensorShape({1}), {bias_max});
+  AddInputFromArray<float>(TensorShape({}), {input_min});
+  AddInputFromArray<float>(TensorShape({}), {input_max});
+  AddInputFromArray<float>(TensorShape({}), {bias_min});
+  AddInputFromArray<float>(TensorShape({}), {bias_max});
   TF_ASSERT_OK(RunOpKernel());
   const Tensor& output_quantized = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);
@@ -156,10 +156,10 @@ TEST_F(QuantizedBiasAddTest, RealData) {
                             input_quantized.flat<quint8>());
   AddInputFromArray<quint8>(bias_quantized.shape(),
                             bias_quantized.flat<quint8>());
-  AddInputFromArray<float>(TensorShape({1}), {input_min});
-  AddInputFromArray<float>(TensorShape({1}), {input_max});
-  AddInputFromArray<float>(TensorShape({1}), {bias_min});
-  AddInputFromArray<float>(TensorShape({1}), {bias_max});
+  AddInputFromArray<float>(TensorShape({}), {input_min});
+  AddInputFromArray<float>(TensorShape({}), {input_max});
+  AddInputFromArray<float>(TensorShape({}), {bias_min});
+  AddInputFromArray<float>(TensorShape({}), {bias_max});
   TF_ASSERT_OK(RunOpKernel());
   const Tensor& output_quantized = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);

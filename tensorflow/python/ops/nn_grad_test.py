@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Python ops defined in nn_grad.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.eager import backprop
@@ -254,6 +250,20 @@ class SeluGradOpTest(test.TestCase):
           inputs.shape,
           selu_grad,
           selu_grad.shape)
+      self.assertLess(error, 1e-4)
+
+
+class SwishGradOpTest(test.TestCase):
+
+  def testSwishGrad(self):
+    features = constant_op.constant([[-2, -1, 1, 3]],
+                                    dtype=dtypes.float32)
+    beta = constant_op.constant(0.25, dtype=dtypes.float32)
+
+    with self.cached_session():
+      theoretical, numerical = gradient_checker_v2.compute_gradient(
+          nn_impl.swish, [features, beta])
+      error = gradient_checker_v2.max_error(theoretical, numerical)
       self.assertLess(error, 1e-4)
 
 

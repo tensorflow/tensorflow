@@ -37,11 +37,11 @@ Status CostAnalyzer::GenerateReport(std::ostream& os, bool per_node_report,
   PreprocessCosts();
   AnalyzeCosts();
   PrintAnalysis(os, per_node_report, verbose);
-  return Status::OK();
+  return OkStatus();
 }
 
 void CostAnalyzer::PredictCosts(CostEstimator* cost_estimator,
-                                CostGraphDef* cost_graph, int64* total_time) {
+                                CostGraphDef* cost_graph, int64_t* total_time) {
   TF_CHECK_OK(cost_estimator->Initialize(*item_));
   RunMetadata run_metadata;
   Costs costs;
@@ -53,7 +53,7 @@ void CostAnalyzer::PredictCosts(CostEstimator* cost_estimator,
   *total_time = costs.execution_time.count();
   if (!status.ok()) {
     LOG(ERROR) << "Could not estimate the cost for item " << item_->id << ": "
-               << status.error_message();
+               << status.message();
     return;
   }
 }

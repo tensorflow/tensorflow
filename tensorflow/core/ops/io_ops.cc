@@ -34,7 +34,7 @@ Status ScalarInputsAndOutputs(InferenceContext* c) {
   for (int i = 0; i < c->num_outputs(); ++i) {
     c->set_output(i, c->Scalar());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TwoElementVectorAndScalarOutputs(InferenceContext* c) {
@@ -47,12 +47,12 @@ Status TwoElementVectorAndScalarOutputs(InferenceContext* c) {
   for (int i = 0; i < c->num_outputs(); ++i) {
     c->set_output(i, c->Scalar());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TwoElementOutput(InferenceContext* c) {
   c->set_output(0, c->Vector(2));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -80,7 +80,7 @@ REGISTER_OP("SaveV2")
       }
       // TODO(mrry): Attempt to parse the shapes_and_slices values and use
       // them to constrain the shape of the remaining inputs.
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("RestoreV2")
@@ -100,6 +100,11 @@ REGISTER_OP("RestoreV2")
       // Attempt to infer output shapes from its shape_and_slice input.
       const Tensor* shape_and_slices_tensor = c->input_tensor(2);
       if (shape_and_slices_tensor) {
+        if (shape_and_slices_tensor->dtype() != DT_STRING) {
+          return errors::InvalidArgument(
+              "Expected an input tensor of type string.");
+        }
+
         const auto& shape_and_slices_flat =
             shape_and_slices_tensor->flat<tstring>();
         if (shape_and_slices_flat.size() != c->num_outputs()) {
@@ -123,7 +128,7 @@ REGISTER_OP("RestoreV2")
               c->MakeShapeFromTensorShape(parsed_slice_shape, &shape_handle));
           c->set_output(i, shape_handle);
         }
-        return Status::OK();
+        return OkStatus();
       } else {
         return UnknownShape(c);
       }
@@ -133,12 +138,13 @@ REGISTER_OP("MergeV2Checkpoints")
     .Input("checkpoint_prefixes: string")
     .Input("destination_prefix: string")
     .Attr("delete_old_dirs: bool = true")
+    .Attr("allow_missing_files: bool = false")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("Save")
@@ -160,7 +166,7 @@ REGISTER_OP("Save")
       TF_RETURN_IF_ERROR(
           c->WithValue(c->Dim(s, 0), c->num_inputs() - 2, &unused_dim));
 
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SaveSlices")
@@ -186,7 +192,7 @@ REGISTER_OP("SaveSlices")
       }
       // TODO(mrry): Attempt to parse the shapes_and_slices values and use
       // them to constrain the shape of the remaining inputs.
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("Restore")
@@ -201,7 +207,7 @@ REGISTER_OP("Restore")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       c->set_output(0, c->UnknownShape());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("RestoreSlice")
@@ -240,7 +246,7 @@ REGISTER_OP("RestoreSlice")
       } else {
         c->set_output(0, c->UnknownShape());
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ShardedFilename")
@@ -382,7 +388,7 @@ REGISTER_OP("ReaderReadUpTo")
       ShapeHandle out = c->Vector(InferenceContext::kUnknownDim);
       c->set_output(0, out);
       c->set_output(1, out);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ReaderReadUpToV2")
@@ -399,7 +405,7 @@ REGISTER_OP("ReaderReadUpToV2")
       ShapeHandle out = c->Vector(InferenceContext::kUnknownDim);
       c->set_output(0, out);
       c->set_output(1, out);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ReaderNumRecordsProduced")
@@ -443,7 +449,7 @@ REGISTER_OP("ReaderRestoreState")
           c->WithValue(c->Dim(c->input(0), 0), 2, &unused_handle));
 
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ReaderRestoreStateV2")
@@ -453,7 +459,7 @@ REGISTER_OP("ReaderRestoreStateV2")
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ReaderReset")
@@ -479,7 +485,7 @@ REGISTER_OP("WriteFile")
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("MatchingFiles")
@@ -489,7 +495,7 @@ REGISTER_OP("MatchingFiles")
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 1, &unused));
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

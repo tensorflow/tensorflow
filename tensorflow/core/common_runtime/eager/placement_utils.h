@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_PLACEMENT_UTILS_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_PLACEMENT_UTILS_H_
 
+#include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
@@ -27,10 +28,7 @@ bool IsColocationExempt(StringPiece op_name);
 
 bool IsFunction(StringPiece op_name);
 
-bool IsCustomDevice(StringPiece device_name, const EagerContext& ctx);
-
 // TODO(b/154234908): Unify placement logic.
-// TODO(b/159647422): Add C++ unit tests for placement logic.
 
 // Pin the op to cpu if all op inputs are on the CPU, small (<64 elements) and
 // integers (int32/int64). This can be disabled by setting the environment
@@ -43,13 +41,7 @@ Status MaybePinSmallOpsToCpu(
 // If a resource touching input is specified, all resource-touching ops run in
 // the device the resource is, regardless of anything else that has been
 // specified. This is identical to the graph mode behavior.
-Status MaybePinToResourceDevice(VariantDevice* device,
-                                const EagerOperation& op);
-
-// If all the inputs are on the same custom device, use that custom
-// device. Otherwise, it is an error to have a custom device as an input.
-Status MaybePinToCustomDevice(VariantDevice* device, const EagerOperation& op);
-
+Status MaybePinToResourceDevice(Device** device, const EagerOperation& op);
 }  // namespace eager
 }  // namespace tensorflow
 

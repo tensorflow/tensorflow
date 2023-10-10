@@ -16,10 +16,6 @@
 
 # RUN: %p/concrete_function_error | FileCheck %s
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 
 from absl import app
@@ -41,7 +37,7 @@ class TestGraphDebugInfo(object):
       return y + y
 
     func = model.get_concrete_function()
-    converter = tf.lite.TFLiteConverter.from_concrete_functions([func])
+    converter = tf.lite.TFLiteConverter.from_concrete_functions([func], model)
     converter.convert()
 
 # pylint: disable=line-too-long

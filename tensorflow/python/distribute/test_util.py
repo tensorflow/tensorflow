@@ -14,24 +14,55 @@
 # ==============================================================================
 """Test utilities."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import collections
+import dataclasses
 import functools
+import io
 import itertools
+import threading
 
 from absl import app
 
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import multi_process_runner
+from tensorflow.python.distribute import multi_worker_test_base
+from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.util import nest
+
+try:
+  import objgraph  # pylint:disable=g-import-not-at-top
+except ImportError:
+  objgraph = None
+
+
+@dataclasses.dataclass
+class TestClusterParams:
+  cluster: dict
+  max_num_worker: int
+  max_num_ps: int
+
+
+def get_cluster_def(cluster_params, num_workers, num_ps):
+  if (num_workers > cluster_params.max_num_worker or
+      num_ps > cluster_params.max_num_ps):
+    raise ValueError("Requesting more servers than the maximum, adjust"
+                     "cluster params' max_num_ps and max_num_worker")
+  if cluster_params.cluster is None:
+    cluster_params.cluster = multi_worker_test_base.create_in_process_cluster(
+        num_workers=cluster_params.max_num_worker,
+        num_ps=cluster_params.max_num_ps)
+  return {
+      "worker": cluster_params.cluster["worker"][:num_workers],
+      "ps": cluster_params.cluster["ps"][:num_ps],
+  }
 
 
 def gather(strategy, value):
@@ -58,7 +89,7 @@ def _gather(strategy, value):
     value = values.PerReplica([ops.convert_to_tensor(value)])
   if not isinstance(strategy.extended,
                     collective_all_reduce_strategy.CollectiveAllReduceExtended):
-    return array_ops.stack(value._values)
+    return array_ops_stack.stack(value._values)
   assert len(strategy.extended.worker_devices) == len(value._values)
   inputs = [array_ops.expand_dims_v2(v, axis=0) for v in value._values]
   return strategy.gather(values.PerReplica(inputs), axis=0)
@@ -105,7 +136,6 @@ def main(enable_v2_behavior=True, config_logical_devices=True):
     v2_compat.enable_v2_behavior()
   else:
     v2_compat.disable_v2_behavior()
-  # TODO(b/131360402): configure default logical devices.
   multi_process_runner.test_main()
 
 
@@ -113,7 +143,7 @@ def _op_dependencies(op):
   """Returns the data and control dependencies of a tf.Operation combined."""
   deps = []
   for node in itertools.chain(op.inputs, op.control_inputs):
-    if isinstance(node, ops.Tensor):
+    if isinstance(node, tensor.Tensor):
       node = node.op
     assert isinstance(node, ops.Operation)
     deps.append(node)
@@ -127,17 +157,20 @@ def topological_sort_operations(operations):
   both data dependencies and control dependencies. Note that the edge goes from
   an operation to its dependencies.
 
+  The sort is intentionally unstable, reversing orders of operations and
+  dependencies on ties.
+
   Args:
     operations: a list of tf.Operation in the same graph.
 
   Returns:
     A map from a tf.Operation to its topological order.
   """
-  in_degrees = {}
-  for op in operations:
+  in_degrees = collections.OrderedDict()
+  for op in reversed(operations):
     if op not in in_degrees:
       in_degrees[op] = 0
-    for next_op in _op_dependencies(op):
+    for next_op in reversed(_op_dependencies(op)):
       in_degrees[next_op] = in_degrees.get(next_op, 0) + 1
   nexts = []
   for op, in_degree in in_degrees.items():
@@ -149,7 +182,7 @@ def topological_sort_operations(operations):
     op, nexts = nexts[0], nexts[1:]
     order[op] = next_order
     next_order += 1
-    for next_op in _op_dependencies(op):
+    for next_op in reversed(_op_dependencies(op)):
       in_degrees[next_op] -= 1
       if in_degrees[next_op] == 0:
         nexts.append(next_op)
@@ -190,3 +223,79 @@ def assert_sequential_execution(order, operations):
       raise AssertionError(
           "No dependency between {} and {}. Graph is dumped to stdout.".format(
               operations[i].name, operations[i + 1].name))
+
+
+def get_running_threads():
+  """Returns a set of all running thread names."""
+  running_threads = set()
+  for thread in threading.enumerate():
+    if thread.name is not None:
+      running_threads.add(thread.name)
+  return running_threads
+
+
+def has_thread(prefix, running_threads):
+  """Returns whether any 'running_threads' is prefixed with 'prefix'.
+
+  Args:
+    prefix: The prefix of the expected thread name.
+    running_threads: A collection of the running thread names.
+  """
+  for thread in running_threads:
+    if thread.startswith(prefix):
+      return True
+  return False
+
+
+def show_backref(target, max_depth=3):
+  """Returns a dot graph of all the objects that are referencing the target.
+
+  A object referencing graph is useful to debug memory leak like circular
+  reference. objgraph provides a good visualization of the memory graph than
+  most python built-in utilities like gc.get_referrers(), which are not
+  human-readable sometimes.
+
+  The dot graph will be written to a string IO object, and can be rendered with
+  graphviz in operating system.
+  E.g. dot -Tpng {$dot_graph} -o output.png
+  Args:
+    target: The target object for the memory graph.
+    max_depth: The maximum depth of the graph. By default 3 layers of references
+      are used. Increases this a lot may result in the graph growing too big.
+
+  Returns:
+    A string that contains the object reference graph.
+  Raises:
+    NotImplementedError: if objgraph is not installed.
+  """
+  if objgraph is None:
+    raise NotImplementedError("objgraph is not installed.")
+  string_io = io.StringIO()
+  objgraph.show_backrefs(target, max_depth=max_depth, output=string_io)
+  graph = string_io.getvalue()
+  string_io.close()
+  return graph
+
+
+def create_per_replica(strategy, value_list):
+  """Creates a PerReplica of Tensors from the value_list."""
+  if len(strategy.extended.worker_devices) != len(value_list):
+    raise ValueError(
+        "the length of values must be the same as the number of worker devices")
+  tensors = []
+  for device, value in zip(strategy.extended.worker_devices, value_list):
+    with ops.device(device):
+      tensors.append(ops.convert_to_tensor(value))
+  return values.PerReplica(tensors)
+
+
+def is_tpu_strategy(strategy):
+  """Returns whether the strategy is a TPU strategy."""
+  return isinstance(strategy,
+                    (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1,
+                     tpu_strategy.TPUStrategyV2))
+
+
+def reset_context():
+  """Resets eager context."""
+  context._reset_context()  # pylint: disable=protected-access

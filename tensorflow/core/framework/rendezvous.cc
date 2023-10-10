@@ -109,7 +109,7 @@ Status Rendezvous::ParseKey(StringPiece key, ParsedKey* out) {
     out->src_device = StringPiece(parts[0].data(), parts[0].size());
     out->dst_device = StringPiece(parts[2].data(), parts[2].size());
     out->edge_name = StringPiece(parts[3].data(), parts[3].size());
-    return Status::OK();
+    return OkStatus();
   }
   return errors::InvalidArgument("Invalid  rendezvous key: ", key);
 }
@@ -117,7 +117,8 @@ Status Rendezvous::ParseKey(StringPiece key, ParsedKey* out) {
 RendezvousInterface::~RendezvousInterface() {}
 
 Status RendezvousInterface::Recv(const ParsedKey& key, const Args& recv_args,
-                                 Tensor* val, bool* is_dead, int64 timeout_ms) {
+                                 Tensor* val, bool* is_dead,
+                                 int64_t timeout_ms) {
   Status ret;
   Notification n;
   RecvAsync(key, recv_args,
@@ -130,10 +131,10 @@ Status RendezvousInterface::Recv(const ParsedKey& key, const Args& recv_args,
               n.Notify();
             });
   if (timeout_ms > 0) {
-    int64 timeout_us = timeout_ms * 1000;
+    int64_t timeout_us = timeout_ms * 1000;
     bool notified = WaitForNotificationWithTimeout(&n, timeout_us);
     if (!notified) {
-      return Status(error::DEADLINE_EXCEEDED,
+      return Status(absl::StatusCode::kDeadlineExceeded,
                     "Timed out waiting for notification");
     }
   } else {
@@ -144,14 +145,14 @@ Status RendezvousInterface::Recv(const ParsedKey& key, const Args& recv_args,
 
 Status RendezvousInterface::Recv(const ParsedKey& key, const Args& args,
                                  Tensor* val, bool* is_dead) {
-  const int64 no_timeout = 0;
+  const int64_t no_timeout = 0;
   return Recv(key, args, val, is_dead, no_timeout);
 }
 
 namespace {
 class LocalRendezvousWrapper : public Rendezvous {
  public:
-  LocalRendezvousWrapper() : impl_(this) {}
+  LocalRendezvousWrapper(int num_shards) : impl_(this, num_shards) {}
 
   Status Send(const ParsedKey& key, const Args& send_args, const Tensor& val,
               const bool is_dead) override {
@@ -168,10 +169,13 @@ class LocalRendezvousWrapper : public Rendezvous {
  private:
   LocalRendezvous impl_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(LocalRendezvousWrapper);
+  LocalRendezvousWrapper(const LocalRendezvousWrapper&) = delete;
+  void operator=(const LocalRendezvousWrapper&) = delete;
 };
 }  // namespace
 
-Rendezvous* NewLocalRendezvous() { return new LocalRendezvousWrapper; }
+Rendezvous* NewLocalRendezvous(int num_shards) {
+  return new LocalRendezvousWrapper(num_shards);
+}
 
 }  // end namespace tensorflow

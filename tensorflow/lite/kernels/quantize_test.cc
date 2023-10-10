@@ -30,6 +30,8 @@ using ::testing::ElementsAreArray;
 
 class QuantizeOpModel : public SingleOpModel {
  public:
+  explicit QuantizeOpModel() {}
+
   QuantizeOpModel(const TensorData& input, const TensorData& output) {
     input_ = AddInput(input);
     output_ = AddOutput(output);
@@ -53,10 +55,40 @@ class QuantizeOpModel : public SingleOpModel {
     return ExtractVector<T>(output_);
   }
 
- private:
+ protected:
   int input_;
   int output_;
 };
+
+class QuantizePerChannelOpModel : public QuantizeOpModel {
+ public:
+  QuantizePerChannelOpModel(TensorType inputType, TensorType outputType,
+                            std::initializer_list<int> shape,
+                            std::initializer_list<float> scales,
+                            std::initializer_list<int64_t> zero_points,
+                            int channel_dim) {
+    std::vector<float> per_channel_scales(scales);
+    std::vector<int64_t> per_channel_quantization_offsets(zero_points);
+    const TensorData output_tensor_data = {outputType,
+                                           shape,
+                                           0 /*=min*/,
+                                           0 /*=max*/,
+                                           0.0f /*=scale*/,
+                                           0 /*=zero_point*/,
+                                           true /*=per_channel_quantization*/,
+                                           per_channel_scales,
+                                           per_channel_quantization_offsets,
+                                           channel_dim};
+    input_ = AddInput({inputType, shape});
+    output_ = AddOutput(output_tensor_data);
+    SetBuiltinOp(BuiltinOperator_QUANTIZE, BuiltinOptions_QuantizeOptions,
+                 CreateQuantizeOptions(builder_).Union());
+
+    BuildInterpreter({GetShape(input_)});
+  }
+};
+
+// Per-node quantization tests.
 
 TEST(QuantizeOpTest, UINT8) {
   // [-63.5, 64] -> scale=0.5 zero_point=127 for UINT8
@@ -64,7 +96,7 @@ TEST(QuantizeOpTest, UINT8) {
                     {TensorType_UINT8, {2, 5}, 0, 0, 0.5, 127});
 
   m.SetInput({-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<uint8_t>(),
               ElementsAreArray({0, 1, 2, 3, 4, 251, 252, 253, 254, 255}));
 }
@@ -75,7 +107,7 @@ TEST(QuantizeOpTest, INT8) {
                     {TensorType_INT8, {2, 5}, 0, 0, 0.5, -1});
 
   m.SetInput({-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray(
                   {-128, -127, -126, -125, -124, 123, 124, 125, 126, 127}));
@@ -86,10 +118,110 @@ TEST(QuantizeOpTest, INT16) {
                     {TensorType_INT16, {2, 5}, 0, 0, 0.005, 0});
 
   m.SetInput({-63.5, -63, -3, -2, -1, 1, 2, 3, 63.5, 64});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int16_t>(),
               ElementsAreArray({-12700, -12600, -600, -400, -200, 200, 400, 600,
                                 12700, 12800}));
+}
+
+// Per-channel quantization tests.
+
+TEST(QuantizePerChannelOpTest, UINT8) {
+  // [-63.5, 64] -> scale=0.5 zero_point=127 for UINT8
+  QuantizePerChannelOpModel m(TensorType_FLOAT32, TensorType_UINT8, {2, 5},
+                              {0.5, 0.5}, {127, 127}, 0);
+
+  m.SetInput({-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<uint8_t>(),
+              ElementsAreArray({0, 1, 2, 3, 4, 251, 252, 253, 254, 255}));
+}
+
+TEST(QuantizePerChannelOpTest, INT8) {
+  // [-63.5, 64] -> scale=0.5, zero_point=1 for INT8
+  QuantizePerChannelOpModel m(TensorType_FLOAT32, TensorType_INT8, {2, 5},
+                              {0.5, 0.5}, {-1, -1}, 0);
+
+  m.SetInput({-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray(
+                  {-128, -127, -126, -125, -124, 123, 124, 125, 126, 127}));
+}
+
+TEST(QuantizePerChannelOpTest, INT16) {
+  // [-63.5, 64] -> scale=0.005, zero_point=0 for INT16
+  QuantizePerChannelOpModel m(TensorType_FLOAT32, TensorType_INT16, {2, 5},
+                              {0.005, 0.005}, {0, 0}, 0);
+
+  m.SetInput({-63.5, -63, -3, -2, -1, 1, 2, 3, 63.5, 64});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({-12700, -12600, -600, -400, -200, 200, 400, 600,
+                                12700, 12800}));
+}
+
+// Requantization tests.
+// Input scale 1.000000, output scale 0.500000, input zeropoint 0, output
+// zeropoint 0
+TEST(QuantizeOpTest, Int32Int16) {
+  QuantizeOpModel m({TensorType_INT32, {1, 1, 2, 5}, 0, 0, 1.0, 0},
+                    {TensorType_INT16, {1, 1, 2, 5}, 0, 0, 0.5, 0});
+
+  m.SetInputAndQuantize<int32_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({2, 4, 6, 8, 10, 12, 14, 16, 18, 20}));
+}
+
+// Input scale 0.500000, output scale 0.500000, input zeropoint 0, output
+// zeropoint 0
+TEST(QuantizeOpTest, Int32Int16SameScale) {
+  QuantizeOpModel m({TensorType_INT32, {1, 1, 2, 5}, 0, 0, 0.5, 0},
+                    {TensorType_INT16, {1, 1, 2, 5}, 0, 0, 0.5, 0});
+  m.SetInputAndQuantize<int32_t>({0, 1, 2, 3, 4, 5, 6, 7, 8, 37767});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({0, 2, 4, 6, 8, 10, 12, 14, 16, 32767}));
+}
+
+// Input scale 0.500000, output scale 0.500000, input zeropoint 0, output
+// zeropoint -1
+TEST(QuantizeOpTest, Int32Int8SameScale) {
+  QuantizeOpModel m({TensorType_INT32, {1, 1, 2, 5}, 0, 0, 0.5, 0},
+                    {TensorType_INT8, {1, 1, 2, 5}, 0, 0, 0.5, -1});
+
+  // Input will quantized to {1,3,5,7,9,11,13,15,17,19}.
+  m.SetInputAndQuantize<int32_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray({1, 3, 5, 7, 9, 11, 13, 15, 17, 19}));
+}
+
+// Input scale 0.500000, output scale 1.000000, input zeropoint 0, output
+// zeropoint -1
+TEST(QuantizeOpTest, Int32Int8LargerScale) {
+  QuantizeOpModel m({TensorType_INT32, {1, 1, 2, 5}, 0, 0, 0.5, 0},
+                    {TensorType_INT8, {1, 1, 2, 5}, 0, 0, 1.0, -1});
+
+  // Input will quantized to {1,3,5,7,9,11,13,15,17,19}.
+  m.SetInputAndQuantize<int32_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
+}
+
+// Input scale 1.000000, output scale 0.500000, input zeropoint 0, output
+// zeropoint -1
+TEST(QuantizeOpTest, Int32Int8SmallerScale) {
+  QuantizeOpModel m({TensorType_INT32, {1, 1, 2, 5}, 0, 0, 1.0, 0},
+                    {TensorType_INT8, {1, 1, 2, 5}, 0, 0, 0.5, -1});
+
+  // Input will quantized to {0,1,2,3,4,5,6,7,8,9}.
+  m.SetInputAndQuantize<int32_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray({1, 3, 5, 7, 9, 11, 13, 15, 17, 19}));
 }
 
 // Input scale 1.000000, output scale 0.500000, input zeropoint 0, output
@@ -99,7 +231,7 @@ TEST(QuantizeOpTest, Int16Int16) {
                     {TensorType_INT16, {1, 1, 2, 5}, 0, 0, 0.5, 0});
 
   m.SetInputAndQuantize<int16_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int16_t>(),
               ElementsAreArray({2, 4, 6, 8, 10, 12, 14, 16, 18, 20}));
 }
@@ -110,7 +242,7 @@ TEST(QuantizeOpTest, Int16Int16SameScale) {
   QuantizeOpModel m({TensorType_INT16, {1, 1, 2, 5}, 0, 0, 0.5, 0},
                     {TensorType_INT16, {1, 1, 2, 5}, 0, 0, 0.5, 0});
   m.SetInputAndQuantize<int16_t>({0, 1, 2, 3, 4, 5, 6, 7, 8, 37767});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int16_t>(),
               ElementsAreArray({0, 2, 4, 6, 8, 10, 12, 14, 16, 32767}));
 }
@@ -123,7 +255,7 @@ TEST(QuantizeOpTest, Int8Int8SameScale) {
 
   // Input will quantized to {1,3,5,7,9,11,13,15,17,19}.
   m.SetInputAndQuantize<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({1, 3, 5, 7, 9, 11, 13, 15, 17, 19}));
 }
@@ -136,7 +268,7 @@ TEST(QuantizeOpTest, Int8Int8LargerScale) {
 
   // Input will quantized to {1,3,5,7,9,11,13,15,17,19}.
   m.SetInputAndQuantize<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
 }
@@ -149,7 +281,7 @@ TEST(QuantizeOpTest, Int8Int8SmallerScale) {
 
   // Input will quantized to {0,1,2,3,4,5,6,7,8,9}.
   m.SetInputAndQuantize<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({1, 3, 5, 7, 9, 11, 13, 15, 17, 19}));
 }
@@ -162,7 +294,7 @@ TEST(QuantizeOpTest, Int8Int8SmallerScaleNeonPath) {
   // Input will quantized to {0,1,2,3,4,5,6,7,8,9,9,8,7,6,5,4,3,2,1,0}.
   m.SetInputAndQuantize<int8_t>(
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({1,  3,  5,  7,  9,  11, 13, 15, 17, 19,
                                 19, 17, 15, 13, 11, 9,  7,  5,  3,  1}));
@@ -176,7 +308,7 @@ TEST(QuantizeOpTest, UInt8UInt8SameScale) {
 
   // Input will quantized to {129,131,133,135,137,139,141,143,145,147}.
   m.SetInputAndQuantize<uint8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetOutput<uint8_t>(),
       ElementsAreArray({129, 131, 133, 135, 137, 139, 141, 143, 145, 147}));
@@ -190,7 +322,7 @@ TEST(QuantizeOpTest, Uint8Uint8LargerScale) {
 
   // Input will quantized to {129,131,133,135,137,139,141,143,145,147}.
   m.SetInputAndQuantize<uint8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetOutput<uint8_t>(),
       ElementsAreArray({128, 129, 130, 131, 132, 133, 134, 135, 136, 137}));
@@ -204,7 +336,7 @@ TEST(QuantizeOpTest, Uint8Uint8SmallerScale) {
 
   // Input will quantized to {128, 129, 130, 131, 132, 133, 134, 135, 136, 137}.
   m.SetInputAndQuantize<uint8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetOutput<uint8_t>(),
       ElementsAreArray({129, 131, 133, 135, 137, 139, 141, 143, 145, 147}));
@@ -219,7 +351,7 @@ TEST(QuantizeOpTest, Uint8Uint8SmallerScaleNeonPath) {
   // 137, 136, 135, 134, 133, 132, 131, 130, 129, 128}.
   m.SetInputAndQuantize<uint8_t>(
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetOutput<uint8_t>(),
       ElementsAreArray({129, 131, 133, 135, 137, 139, 141, 143, 145, 147,
@@ -234,7 +366,7 @@ TEST(QuantizeOpTest, Int8Uint8SameScale) {
 
   // Input will quantized to {0,1,2,3,4,5,6,7,8,9}.
   m.SetInputAndQuantize<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetOutput<uint8_t>(),
       ElementsAreArray({128, 129, 130, 131, 132, 133, 134, 135, 136, 137}));
@@ -248,7 +380,7 @@ TEST(QuantizeOpTest, Int8UInt8SameScaleNeonPath) {
   // Input will quantized to {0,1,2,3,4,5,6,7,8,9,9,8,7,6,5,4,3,2,1,0}.
   m.SetInputAndQuantize<int8_t>(
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetOutput<uint8_t>(),
       ElementsAreArray({128, 129, 130, 131, 132, 133, 134, 135, 136, 137,
@@ -263,7 +395,7 @@ TEST(QuantizeOpTest, Int8Uint8SmallerScale) {
 
   // Input will quantized to {0,1,2,3,4,5,6,7,8,9}.
   m.SetInputAndQuantize<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetOutput<uint8_t>(),
       ElementsAreArray({129, 131, 133, 135, 137, 139, 141, 143, 145, 147}));
@@ -277,40 +409,41 @@ TEST(QuantizeOpTest, Int8Uint8SmallerScaleNeonPath) {
   // Input will quantized to {0,1,2,3,4,5,6,7,8,9,9,8,7,6,5,4,3,2,1,0}.
   m.SetInputAndQuantize<int8_t>(
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetOutput<uint8_t>(),
       ElementsAreArray({129, 131, 133, 135, 137, 139, 141, 143, 145, 147,
                         147, 145, 143, 141, 139, 137, 135, 133, 131, 129}));
 }
 
-//  Input scale 1.000000, output scale 2.000000, input zeropoint -1, output
-//  zeropoint 127
+//  Input scale 0.500000, output scale 1.000000, input zeropoint -1, output
+//  zeropoint 127.
 TEST(QuantizeOpTest, Int8Uint8LargerScale) {
-  QuantizeOpModel m({TensorType_INT8, {1, 1, 2, 5}, -127, 128},
-                    {TensorType_UINT8, {1, 1, 2, 5}, -254, 256});
+  QuantizeOpModel m({TensorType_INT8, {1, 1, 2, 5}, -63.5, 63},
+                    {TensorType_UINT8, {1, 1, 2, 5}, -127, 128});
 
-  // Input will quantized to {0,1,2,3,4,5,6,7,8,9}.
+  // Input will quantized to {2,4,6,8,10,12,14,16,18,20}.
   m.SetInputAndQuantize<int8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetOutput<uint8_t>(),
-      ElementsAreArray({128, 128, 129, 129, 130, 130, 131, 131, 132, 132}));
+      ElementsAreArray({128, 129, 130, 131, 132, 133, 134, 135, 136, 137}));
 }
 
 // Same as previous test, except more data to hit the neon path.
 TEST(QuantizeOpTest, Int8Uint8LargerScaleNeonPath) {
-  QuantizeOpModel m({TensorType_INT8, {1, 1, 4, 5}, -127, 128},
-                    {TensorType_UINT8, {1, 1, 4, 5}, -254, 256});
+  QuantizeOpModel m({TensorType_INT8, {1, 1, 4, 5}, -63.5, 63},
+                    {TensorType_UINT8, {1, 1, 4, 5}, -127, 128});
 
-  // Input will quantized to {0,1,2,3,4,5,6,7,8,9,9,8,7,6,5,4,3,2,1,0}.
+  // Input will quantized to
+  // {2,4,6,8,10,12,14,16,18,20,20,18,16,14,12,10,8,6,4,2}.
   m.SetInputAndQuantize<int8_t>(
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetOutput<uint8_t>(),
-      ElementsAreArray({128, 128, 129, 129, 130, 130, 131, 131, 132, 132,
-                        132, 132, 131, 131, 130, 130, 129, 129, 128, 128}));
+      ElementsAreArray({128, 129, 130, 131, 132, 133, 134, 135, 136, 137,
+                        137, 136, 135, 134, 133, 132, 131, 130, 129, 128}));
 }
 
 // input scale 0.500000, output scale 0.500000, input zeropoint 127, output
@@ -321,7 +454,7 @@ TEST(QuantizeOpTest, UInt8Int8SameScale128Diff) {
 
   // Input will quantized to {128, 129, 130, 131, 132, 133, 134, 135, 136, 137}.
   m.SetInputAndQuantize<uint8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
 }
@@ -335,7 +468,7 @@ TEST(QuantizeOpTest, UInt8Int8SameScale128DiffNeonPath) {
   // 137, 136, 135, 134, 133, 132, 131, 130, 129, 128}.
   m.SetInputAndQuantize<uint8_t>(
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
                                 9, 8, 7, 6, 5, 4, 3, 2, 1, 0}));
@@ -349,7 +482,7 @@ TEST(QuantizeOpTest, Uint8Int8SameScaleArbitraryDiff) {
 
   // Input will quantized to {2,4,6,8,10,12,14,16,18,20}.
   m.SetInputAndQuantize<uint8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({1, 3, 5, 7, 9, 11, 13, 15, 17, 19}));
 }
@@ -363,7 +496,7 @@ TEST(QuantizeOpTest, Uint8Int8SameScaleArbitraryDiffNeonPath) {
   // {2,4,6,8,10,12,14,16,18,20,20,18,16,14,12,10,8,6,4,2}.
   m.SetInputAndQuantize<uint8_t>(
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({1,  3,  5,  7,  9,  11, 13, 15, 17, 19,
                                 19, 17, 15, 13, 11, 9,  7,  5,  3,  1}));
@@ -377,7 +510,7 @@ TEST(QuantizeOpTest, Uint8Int8LargerScale) {
 
   // Input will quantized to {2,4,6,8,10,12,14,16,18,20}.
   m.SetInputAndQuantize<uint8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
 }
@@ -391,7 +524,7 @@ TEST(QuantizeOpTest, Uint8Int8LargerScaleNeonPath) {
   // {2,4,6,8,10,12,14,16,18,20,20,18,16,14,12,10,8,6,4,2}.
   m.SetInputAndQuantize<uint8_t>(
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
                                 9, 8, 7, 6, 5, 4, 3, 2, 1, 0}));
@@ -405,7 +538,7 @@ TEST(QuantizeOpTest, Uint8Int8SmallerScale) {
 
   // Input will quantized to {1,2,3,4,5,6,7,8,9,10}.
   m.SetInputAndQuantize<uint8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({1, 3, 5, 7, 9, 11, 13, 15, 17, 19}));
 }
@@ -418,7 +551,20 @@ TEST(QuantizeOpTest, Int16Int8SameScale) {
 
   // Input will quantized to {2,4,6,8,10,12,14,16,18,20}.
   m.SetInputAndQuantize<int16_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray({1, 3, 5, 7, 9, 11, 13, 15, 17, 19}));
+}
+
+// Input scale 0.500000, output scale 0.500000, input zeropoint -1, output
+// zeropoint -1.
+TEST(QuantizeOpTest, Int16ZeroPointInt8) {
+  QuantizeOpModel m({TensorType_INT16, {1, 1, 2, 5}, 0, 0, 0.5, -1},
+                    {TensorType_INT8, {1, 1, 2, 5}, 0, 0, 0.5, -1});
+
+  // Input will quantized to {2,4,6,8,10,12,14,16,18,20}.
+  m.SetInputAndQuantize<int16_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({1, 3, 5, 7, 9, 11, 13, 15, 17, 19}));
 }
@@ -430,7 +576,7 @@ TEST(QuantizeOpTest, Int16Int8LargerScale) {
                     {TensorType_INT8, {1, 1, 2, 5}, 0, 0, 1.0, -1});
 
   m.SetInputAndQuantize<int16_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
 }
@@ -442,7 +588,7 @@ TEST(QuantizeOpTest, Int16Int8SmallerScale) {
                     {TensorType_INT8, {1, 1, 2, 5}, 0, 0, 0.5, -1});
 
   m.SetInputAndQuantize<int16_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({1, 3, 5, 7, 9, 11, 13, 15, 17, 19}));
 }
@@ -454,7 +600,7 @@ TEST(QuantizeOpTest, Int16Int8SmallerScaleNeonPath) {
 
   m.SetInputAndQuantize<int16_t>(
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray({1,  3,  5,  7,  9,  11, 13, 15, 17, 19,
                                 19, 17, 15, 13, 11, 9,  7,  5,  3,  1}));
@@ -469,11 +615,11 @@ TEST(QuantizeOpTest, Int16Int32SameScale) {
                     {TensorType_INT32,
                      {1, 1, 2, 5},
                      std::numeric_limits<int32_t>::min(),
-                     std::numeric_limits<int32_t>::max()});
+                     static_cast<float>(std::numeric_limits<int32_t>::max())});
 
   // Input will quantized to {1,3,5,7,9,11,13,15,17,19}.
   m.SetInputAndQuantize<int16_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int32_t>(),
               ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10}));
 }
@@ -488,10 +634,10 @@ TEST(QuantizeOpTest, Int16Int32LargerScale) {
                     {TensorType_INT32,
                      {1, 1, 2, 5},
                      std::numeric_limits<int32_t>::min(),
-                     std::numeric_limits<int32_t>::max()});
+                     static_cast<float>(std::numeric_limits<int32_t>::max())});
 
   m.SetInputAndQuantize<int16_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int32_t>(),
               ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10}));
 }
@@ -509,7 +655,7 @@ TEST(QuantizeOpTest, Int16Int32SmallerScale) {
                      std::numeric_limits<int32_t>::max() / 2.0});
 
   m.SetInputAndQuantize<int16_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int32_t>(),
               ElementsAreArray({2, 4, 6, 8, 10, 12, 14, 16, 18, 20}));
 }

@@ -29,7 +29,7 @@ void NcclReducer::Run(StatusCallback done) {
   Status group_size_status;
   std::unique_ptr<Notification> nccl_done;
   if (col_params_->final_op) {
-    group_size_ready = absl::make_unique<Notification>();
+    group_size_ready = std::make_unique<Notification>();
     // Create an on-device scalar value from group_size_.
     // TODO(ayushd, tucker): avoid this copy by either reusing across
     // invocations or providing the scalar to the kernel in host memory.
@@ -53,7 +53,7 @@ void NcclReducer::Run(StatusCallback done) {
         break;
       case DT_INT64:
         group_size_val =
-            Tensor(static_cast<int64>(col_params_->group.group_size));
+            Tensor(static_cast<int64_t>(col_params_->group.group_size));
         break;
       default:
         done(errors::Internal("Unsupported type ",
@@ -72,7 +72,7 @@ void NcclReducer::Run(StatusCallback done) {
           group_size_status = s;
           copy_note->Notify();
         });
-    nccl_done = absl::make_unique<Notification>();
+    nccl_done = std::make_unique<Notification>();
   }
 
   Status nccl_status;
@@ -88,6 +88,9 @@ void NcclReducer::Run(StatusCallback done) {
   } else {
     done_callback = std::move(done);
   }
+  // Hold a ref to col_params for the rest of this function.
+  col_params_->Ref();
+  core::ScopedUnref unref(col_params_);
   col_ctx_->nccl_communicator->Enqueue(col_ctx_, std::move(done_callback));
 
   // If no final_op, then this OpKernel is non-blocking.
@@ -119,6 +122,7 @@ void NcclReducer::Run(StatusCallback done) {
 }
 
 REGISTER_COLLECTIVE(NcclReduce, NcclReducer);
+REGISTER_COLLECTIVE(NcclReduceScatter, NcclReduceScatterer);
 
 }  // namespace tensorflow
 

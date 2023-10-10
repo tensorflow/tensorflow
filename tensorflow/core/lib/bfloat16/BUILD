@@ -4,17 +4,18 @@
 # )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow:__subpackages__",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 # cc_library(
 #     name = "bfloat16",
 #     hdrs = ["bfloat16.h"],
 #     deps = [
-#         "//third_party/eigen3",
+#         "@eigen_archive//:eigen3",
 #         "//tensorflow/core/platform:byte_order",
 #     ],
 # )

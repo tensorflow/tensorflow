@@ -19,6 +19,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include <utility>
+
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -35,6 +37,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 #include "tensorflow/core/util/tensor_format.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -100,13 +103,20 @@ class CTCLossOp : public OpKernel {
                 errors::InvalidArgument("sequence_length is not a vector"));
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(labels_indices->shape()),
                 errors::InvalidArgument("labels_indices is not a matrix"));
+    OP_REQUIRES(ctx, labels_indices->dim_size(1) > 1,
+                errors::InvalidArgument(
+                    "labels_indices second dimension must be >= 1. Received ",
+                    labels_indices->dim_size(1)));
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(labels_values->shape()),
                 errors::InvalidArgument("labels_values is not a vector"));
 
     const TensorShape& inputs_shape = inputs->shape();
-    const int64 max_time = inputs_shape.dim_size(0);
-    const int64 batch_size = inputs_shape.dim_size(1);
-    const int64 num_classes_raw = inputs_shape.dim_size(2);
+    const int64_t max_time = inputs_shape.dim_size(0);
+    OP_REQUIRES(ctx, max_time != 0,
+                errors::InvalidArgument(
+                    "Max time or first dimension of input cannot be 0."));
+    const int64_t batch_size = inputs_shape.dim_size(1);
+    const int64_t num_classes_raw = inputs_shape.dim_size(2);
     OP_REQUIRES(
         ctx, FastBoundsCheck(num_classes_raw, std::numeric_limits<int>::max()),
         errors::InvalidArgument("num_classes cannot exceed max int"));
@@ -130,14 +140,14 @@ class CTCLossOp : public OpKernel {
                 errors::InvalidArgument("batch_size must not be 0"));
 
     // Figure out the maximum label length to use as sparse tensor dimension.
-    auto labels_indices_t = labels_indices->matrix<int64>();
-    int64 max_label_len = 0;
+    auto labels_indices_t = labels_indices->matrix<int64_t>();
+    int64_t max_label_len = 0;
     for (int i = 0; i < labels_indices->dim_size(0); i++) {
       max_label_len = std::max(max_label_len, labels_indices_t(i, 1) + 1);
     }
 
     TensorShape labels_shape({batch_size, max_label_len});
-    std::vector<int64> order{0, 1};
+    std::vector<int64_t> order{0, 1};
     sparse::SparseTensor labels_sp;
     OP_REQUIRES_OK(
         ctx, sparse::SparseTensor::Create(*labels_indices, *labels_values,
@@ -146,11 +156,11 @@ class CTCLossOp : public OpKernel {
     Status labels_sp_valid = labels_sp.IndicesValid();
     OP_REQUIRES(ctx, labels_sp_valid.ok(),
                 errors::InvalidArgument("label SparseTensor is not valid: ",
-                                        labels_sp_valid.error_message()));
+                                        labels_sp_valid.message()));
 
     typename ctc::CTCLossCalculator<T>::LabelSequences labels_t(batch_size);
     for (const auto& g : labels_sp.group({0})) {  // iterate by batch
-      const int64 batch_indices = g.group()[0];
+      const int64_t batch_indices = g.group()[0];
       OP_REQUIRES(ctx, FastBoundsCheck(batch_indices, batch_size),
                   errors::InvalidArgument("labels batch index must be between ",
                                           0, " and ", batch_size,
@@ -167,7 +177,7 @@ class CTCLossOp : public OpKernel {
                                         "len(labels):  ", labels_t.size(),
                                         " batch_size: ", batch_size));
 
-    for (int64 b = 0; b < batch_size; ++b) {
+    for (int64_t b = 0; b < batch_size; ++b) {
       OP_REQUIRES(
           ctx, seq_len_t(b) <= max_time,
           errors::InvalidArgument("sequence_length(", b, ") <= ", max_time));
@@ -211,7 +221,8 @@ class CTCLossOp : public OpKernel {
   bool ctc_merge_repeated_;
   bool ignore_longer_outputs_than_inputs_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CTCLossOp<T>);
+  CTCLossOp<T>(const CTCLossOp<T>&) = delete;
+  void operator=(const CTCLossOp<T>&) = delete;
 };
 
 #define REGISTER_CPU(T)                                          \
@@ -272,9 +283,9 @@ class CTCLossOpGPU : public OpKernel {
                 errors::InvalidArgument("labels_values is not a vector"));
 
     const TensorShape& inputs_shape = inputs->shape();
-    const int64 max_time_raw = inputs_shape.dim_size(0);
-    const int64 batch_size_raw = inputs_shape.dim_size(1);
-    const int64 num_classes_raw = inputs_shape.dim_size(2);
+    const int64_t max_time_raw = inputs_shape.dim_size(0);
+    const int64_t batch_size_raw = inputs_shape.dim_size(1);
+    const int64_t num_classes_raw = inputs_shape.dim_size(2);
     OP_REQUIRES(ctx,
                 FastBoundsCheck(max_time_raw, std::numeric_limits<int>::max()),
                 errors::InvalidArgument("max_time_ cannot exceed max int"));
@@ -314,8 +325,8 @@ class CTCLossOpGPU : public OpKernel {
 
     // Convert the labels_indices to labels_lengths.
     std::vector<int> labels_lengths(batch_size, 0);
-    DoHistogram<int64>(ctx, labels_indices, num_indices, batch_size,
-                       &labels_lengths);
+    DoHistogram<int64_t>(ctx, labels_indices, num_indices, batch_size,
+                         &labels_lengths);
 
     StreamExecutor* executor = ctx->op_device_context()->stream()->parent();
     se::dnn::DataType data_type = ToDataType<float>::value;
@@ -324,13 +335,13 @@ class CTCLossOpGPU : public OpKernel {
         max_time, batch_size, num_classes, data_type);
     OP_REQUIRES_OK(ctx, probs_desc_s.status());
     std::unique_ptr<RnnStateTensorDescriptor> probs_desc =
-        probs_desc_s.ConsumeValueOrDie();
+        std::move(probs_desc_s).value();
 
     auto grads_desc_s = executor->createRnnStateTensorDescriptor(
         max_time, batch_size, num_classes, data_type);
     OP_REQUIRES_OK(ctx, grads_desc_s.status());
     std::unique_ptr<RnnStateTensorDescriptor> grads_desc =
-        grads_desc_s.ConsumeValueOrDie();
+        std::move(grads_desc_s).value();
 
     absl::Span<const int32> labels_data(labels_values->flat<int32>().data(),
                                         num_indices);
@@ -350,8 +361,9 @@ class CTCLossOpGPU : public OpKernel {
     bool cudnn_launch_status =
         stream
             ->ThenCtcLoss(*probs_desc, probs_data, labels_data,
-                          labels_lengths_data, input_lengths_data, &costs_data,
-                          *grads_desc, &grads_data, &workspace_allocator)
+                          labels_lengths_data, input_lengths_data,
+                          GetNumericOptions(), &costs_data, *grads_desc,
+                          &grads_data, &workspace_allocator)
             .ok();
 
     if (!cudnn_launch_status) {
@@ -360,7 +372,8 @@ class CTCLossOpGPU : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CTCLossOpGPU);
+  CTCLossOpGPU(const CTCLossOpGPU&) = delete;
+  void operator=(const CTCLossOpGPU&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("CTCLossV2")

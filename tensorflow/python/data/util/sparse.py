@@ -13,14 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 """Python dataset sparse tensor utility functions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import sparse_ops
 
@@ -111,7 +107,7 @@ def get_classes(tensors):
   """
   return nest.pack_sequence_as(tensors, [
       sparse_tensor.SparseTensor
-      if isinstance(tensor, sparse_tensor.SparseTensor) else ops.Tensor
+      if isinstance(tensor, sparse_tensor.SparseTensor) else tensor_lib.Tensor
       for tensor in nest.flatten(tensors)
   ])
 

@@ -15,12 +15,14 @@ limitations under the License.
 
 #include <cmath>
 
-#include "tensorflow/cc/ops/array_ops_internal.h"
-#include "tensorflow/cc/ops/math_ops_internal.h"
-#include "tensorflow/cc/ops/standard_ops.h"
-
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradients.h"
+#include "tensorflow/cc/gradients/grad_helper.h"
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/array_ops_internal.h"
+#include "tensorflow/cc/ops/math_ops.h"
+#include "tensorflow/cc/ops/math_ops_internal.h"
+#include "tensorflow/cc/ops/standard_ops.h"
 
 namespace tensorflow {
 namespace ops {
@@ -358,6 +360,19 @@ Status AtanGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Atan", AtanGrad);
 
+Status Atan2Grad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  auto y = op.input(0);
+  auto x = op.input(1);
+  Output grad_inv = Div(scope, grad_inputs[0],
+                        Add(scope, Square(scope, x), Square(scope, y)));
+  grad_outputs->push_back(Mul(scope, x, grad_inv));
+  grad_outputs->push_back(Mul(scope, Neg(scope, y), grad_inv));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Atan2", Atan2Grad);
+
 // BinaryGradCommon handles the setup for binary ops that broadcast
 // their inputs.
 Status BinaryGradCommon(const Scope& scope, const Operation& op,
@@ -383,6 +398,7 @@ Status AddGrad(const Scope& scope, const Operation& op,
   return BinaryGradCommon(scope, op, grad_outputs, gx_1, gx_2);
 }
 REGISTER_GRADIENT_OP("Add", AddGrad);
+REGISTER_GRADIENT_OP("AddV2", AddGrad);
 
 Status SubGrad(const Scope& scope, const Operation& op,
                const std::vector<Output>& grad_inputs,
@@ -481,7 +497,7 @@ Status AddNGrad(const Scope& scope, const Operation& op,
   // So the gradient for AddN just transfers the incoming gradient to
   // all outgoing gradients.
   auto incoming = Identity(scope, grad_inputs[0]);
-  for (int32 i = 0; i < op.num_inputs(); ++i) {
+  for (int32_t i = 0; i < op.num_inputs(); ++i) {
     grad_outputs->push_back(incoming);
   }
   return scope.status();
@@ -497,25 +513,20 @@ Status PowGrad(const Scope& scope, const Operation& op,
   auto grad = grad_inputs[0];
   // grad * y * pow(x, y - 1)
   auto one = Cast(scope, Const(scope, 1.0), y.type());
-  auto gx_1 = Mul(scope,
-                  Mul(scope, grad, y),
-                  Pow(scope, x, Sub(scope, y, one)));
+  auto gx_1 =
+      Mul(scope, Mul(scope, grad, y), Pow(scope, x, Sub(scope, y, one)));
   // Avoid false singularity at x = 0
   DataType x_dtype = x.type();
   auto zero = Cast(scope, Const(scope, 0.0), x_dtype);
   if (x_dtype == DT_COMPLEX64 || x_dtype == DT_COMPLEX128) {
     // real(x) < 0 is fine for the complex case
-    auto log_x = Where3(scope,
-                        NotEqual(scope, x, zero),
-                        Log(scope, x),
+    auto log_x = Where3(scope, NotEqual(scope, x, zero), Log(scope, x),
                         ZerosLike(scope, x));
     auto gy_1 = Mul(scope, Mul(scope, grad, z), log_x);
     return BinaryGradCommon(scope, op, grad_outputs, gx_1, gy_1);
   } else {
     // There's no sensible real value to return if x < 0, so return 0
-    auto log_x = Where3(scope,
-                        Greater(scope, x, zero),
-                        Log(scope, x),
+    auto log_x = Where3(scope, Greater(scope, x, zero), Log(scope, x),
                         ZerosLike(scope, x));
     auto gy_1 = Mul(scope, Mul(scope, grad, z), log_x);
     return BinaryGradCommon(scope, op, grad_outputs, gx_1, gy_1);
@@ -617,61 +628,6 @@ Output SafeDivHelper(const Scope& scope, const Output& x, const Output& y) {
   return Div(scope, x, Maximum(scope, y, Const(scope, 1)));
 }
 
-// Helper function for reduction ops.
-//
-// input_shape: 1-D Tensor, the shape of the Tensor being reduced.
-// axes: 1-D Tensor, the reduction axes.
-//   Note that the reduction indices are in the range
-//   -rank(input_shape), rank(input_shape)
-// returns a 1-D Tensor, the output shape as if keep_dims were set to True.
-Output ReducedShapeHelper(const Scope& scope, const Output& input_shape,
-                          const Output& reduction_axes) {
-  auto zero = Const(scope, 0);
-  auto one = Const(scope, 1);
-
-  // Running example in comments
-  // input_shape = [2, 3, 5, 7]
-  // axes = [1, 2]
-  // The result (a shape after a reduction with keep_dims=True)
-  // [2, 1, 1, 7]
-  //
-  // We can treat each entry in axes as an index into input_shape that
-  // should be replaced by 1.
-  // We use DynamicStitch to do this.
-
-  // input_rank = 4
-  auto input_rank = Size(scope, input_shape);
-
-  // Normalize any negative indices in the reduction_axes to positive
-  // values.
-  auto axes = Mod(scope, Add(scope, reduction_axes, input_rank), input_rank);
-
-  // This [0..input_rank) range of integers is used in DynamicStitch to
-  // first copy input_shape to the result.
-  // input_rank_range = [0, 1, 2, 3]
-  auto input_rank_range = Range(scope, zero, input_rank, one);
-
-  // A 1-filled tensor with the same shape as axes. DynamicStitch will
-  // merge these 1s (using axes for indices) to the correct
-  // position in the result.
-  // axes_ones = [1, 1]
-  auto axes_ones = OnesLike(scope, axes);
-
-  // using DynamicStitch:
-  // indices = { input_rank_range, axes }
-  //         = { [0, 1, 2, 3], [1, 2] }
-  // data = { input_shape, axes_ones }
-  //      = { [2, 3, 5, 7], [1, 1] }
-  // The input_rank_range entry in indices first replicates the
-  // input_shape to the result.
-  // The axes entry in indices then moves a 1 to each of its entries,
-  // resulting in
-  // [2, 1, 1, 7]
-  std::vector<Output> indices = {input_rank_range, axes};
-  std::vector<Output> data = {input_shape, axes_ones};
-  return DynamicStitch(scope, indices, data);
-}
-
 // SumGradHelper returns the gradient for the Sum operator, and is used
 // by SumGrad and MeanGrad.
 Output SumGradHelper(const Scope& scope, const Operation& op,
@@ -753,13 +709,12 @@ Status ErfGrad(const Scope& scope, const Operation& op,
                const std::vector<Output>& grad_inputs,
                std::vector<Output>* grad_outputs) {
   auto grad = grad_inputs[0];
-  auto two_over_root_pi = Cast(scope, Const(scope, 2 / std::sqrt(M_PI)),
-                               grad.type());
+  auto two_over_root_pi =
+      Cast(scope, Const(scope, 2 / std::sqrt(M_PI)), grad.type());
   Scope grad_scope = scope.WithControlDependencies(grad);
   auto x = ConjugateHelper(grad_scope, op.input(0));
   // grad * 2/sqrt(pi) * exp(-x**2)
-  auto dx = Mul(grad_scope,
-                Mul(grad_scope, grad, two_over_root_pi),
+  auto dx = Mul(grad_scope, Mul(grad_scope, grad, two_over_root_pi),
                 Exp(grad_scope, Neg(grad_scope, Square(grad_scope, x))));
   grad_outputs->push_back(dx);
   return grad_scope.status();
@@ -942,9 +897,9 @@ Status ProdGrad(const Scope& scope, const Operation& op,
   // [3]
   auto rank = Rank(cpu_scope, op.input(0));
 
-
   // Normalize any negative indices in the reduction_axes to positive values.
-  auto reduction_indices_pos = Mod(cpu_scope, Add(cpu_scope, reduction_indices, rank), rank);
+  auto reduction_indices_pos =
+      Mod(cpu_scope, Add(cpu_scope, reduction_indices, rank), rank);
 
   // [1]
   auto reduced = Cast(cpu_scope, reduction_indices_pos, DataType::DT_INT32);
@@ -1031,7 +986,7 @@ Status ProdGrad(const Scope& scope, const Operation& op,
   // ]
   auto y = Reshape(scope, Mul(scope, left, right), permuted_shape);
 
-  // out = 
+  // out =
   // [
   //   [
   //     [ 35.,  48.],
@@ -1044,8 +999,8 @@ Status ProdGrad(const Scope& scope, const Operation& op,
   //     [ 0.,  30.]
   //   ]
   // ]
-  auto out =
-      Mul(scope, grad_tiled, Transpose(scope, y, InvertPermutation(scope, perm)));
+  auto out = Mul(scope, grad_tiled,
+                 Transpose(scope, y, InvertPermutation(scope, perm)));
 
   grad_outputs->push_back(Reshape(scope, out, input_shape));
 
@@ -1079,8 +1034,9 @@ REGISTER_GRADIENT_OP("SegmentSum", SegmentSumGrad);
 // based on input matrix transposition combinations.
 Status MatMulGradHelper(const Scope& scope, const bool is_batch,
                         const Output& x0, const bool adj_x0, const Output& x1,
-                        const bool adj_x1, const Output& y0, const bool adj_y0,
-                        const Output& y1, const bool adj_y1,
+                        const bool adj_x1, const DataType x_data_type,
+                        const Output& y0, const bool adj_y0, const Output& y1,
+                        const bool adj_y1, const DataType y_data_type,
                         std::vector<Output>* grad_outputs) {
   if (is_batch == false) {
     auto dx =
@@ -1090,11 +1046,11 @@ Status MatMulGradHelper(const Scope& scope, const bool is_batch,
         MatMul(scope, y0, y1, MatMul::TransposeA(adj_y0).TransposeB(adj_y1));
     grad_outputs->push_back(dy);
   } else {
-    auto dx =
-        BatchMatMul(scope, x0, x1, BatchMatMul::AdjX(adj_x0).AdjY(adj_x1));
+    auto dx = BatchMatMulV3(scope, x0, x1, x_data_type,
+                            BatchMatMulV3::AdjX(adj_x0).AdjY(adj_x1));
     grad_outputs->push_back(dx);
-    auto dy =
-        BatchMatMul(scope, y0, y1, BatchMatMul::AdjX(adj_y0).AdjY(adj_y1));
+    auto dy = BatchMatMulV3(scope, y0, y1, y_data_type,
+                            BatchMatMulV3::AdjX(adj_y0).AdjY(adj_y1));
     grad_outputs->push_back(dy);
   }
   return scope.status();
@@ -1123,17 +1079,21 @@ Status MatMulGradCommon(const Scope& scope, const Operation& op,
   TF_RETURN_IF_ERROR(GetNodeAttr(product.node()->attrs(), attr_adj_y, &tb));
 
   if (!ta && !tb) {
-    return MatMulGradHelper(scope, is_batch, grad_inputs[0], false, b, true, a,
-                            true, grad_inputs[0], false, grad_outputs);
+    return MatMulGradHelper(scope, is_batch, grad_inputs[0], false, b, true,
+                            a.type(), a, true, grad_inputs[0], false, b.type(),
+                            grad_outputs);
   } else if (!ta && tb) {
     return MatMulGradHelper(scope, is_batch, grad_inputs[0], false, b, false,
-                            grad_inputs[0], true, a, false, grad_outputs);
+                            a.type(), grad_inputs[0], true, a, false, b.type(),
+                            grad_outputs);
   } else if (ta && !tb) {
-    return MatMulGradHelper(scope, is_batch, b, false, grad_inputs[0], true, a,
-                            false, grad_inputs[0], false, grad_outputs);
+    return MatMulGradHelper(scope, is_batch, b, false, grad_inputs[0], true,
+                            a.type(), a, false, grad_inputs[0], false, b.type(),
+                            grad_outputs);
   }
   return MatMulGradHelper(scope, is_batch, b, true, grad_inputs[0], true,
-                          grad_inputs[0], true, a, true, grad_outputs);
+                          a.type(), grad_inputs[0], true, a, true, b.type(),
+                          grad_outputs);
 }
 
 Status MatMulGrad(const Scope& scope, const Operation& op,
@@ -1151,6 +1111,284 @@ Status BatchMatMulGrad(const Scope& scope, const Operation& op,
                           grad_outputs);
 }
 REGISTER_GRADIENT_OP("BatchMatMul", BatchMatMulGrad);
+
+Status BatchMatMulV2Grad(const Scope& scope, const Operation& op,
+                         const std::vector<Output>& grad_inputs,
+                         std::vector<Output>* grad_outputs) {
+  TF_RETURN_IF_ERROR(MatMulGradCommon(scope, op, true, grad_inputs, "adj_x",
+                                      "adj_y", grad_outputs));
+
+  // Reduce along the broadcasted batch dimensions.
+  Output sx = Shape(scope, op.input(0));
+  Output sy = Shape(scope, op.input(1));
+
+  Output x_batch_shape = Slice(scope, sx, {0}, Sub(scope, Shape(scope, sx), 2));
+  Output y_batch_shape = Slice(scope, sy, {0}, Sub(scope, Shape(scope, sy), 2));
+
+  auto reduce =
+      internal::BroadcastGradientArgs(scope, x_batch_shape, y_batch_shape);
+  (*grad_outputs)[0] =
+      Reshape(scope, ReduceSum(scope, (*grad_outputs)[0], reduce.r0), sx);
+  (*grad_outputs)[1] =
+      Reshape(scope, ReduceSum(scope, (*grad_outputs)[1], reduce.r1), sy);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("BatchMatMulV2", BatchMatMulV2Grad);
+REGISTER_GRADIENT_OP("BatchMatMulV3", BatchMatMulV2Grad);
+
+Status CumsumGrad(const Scope& scope, const Operation& op,
+                  const std::vector<Output>& grad_inputs,
+                  std::vector<Output>* grad_outputs) {
+  if (op.num_inputs() != 2) {
+    return errors::InvalidArgument("Cumsum requires 2 arguments");
+  }
+  if (grad_inputs.size() != 1) {
+    return errors::InvalidArgument("Cumsum grad requires 1 grad input");
+  }
+
+  Cumsum::Attrs attrs;
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.node()->attrs(), "exclusive", &attrs.exclusive_));
+  bool reverse;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "reverse", &reverse));
+  attrs.reverse_ = !reverse;
+
+  auto axis = op.input(1);
+  auto sum = Cumsum(scope, grad_inputs[0], axis, attrs);
+  grad_outputs->push_back(sum.out);
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Cumsum", CumsumGrad);
+
+bool IsFloatingPointDtype(DataType dtype) {
+  static constexpr DataType valid_dtypes[] = {
+      DT_FLOAT, DT_HALF, DT_DOUBLE, DT_BFLOAT16, DT_COMPLEX64, DT_COMPLEX128};
+  return std::find(std::begin(valid_dtypes), std::end(valid_dtypes), dtype) !=
+         std::end(valid_dtypes);
+}
+
+Status CastGrad(const Scope& scope, const Operation& op,
+                const std::vector<Output>& grad_inputs,
+                std::vector<Output>* grad_outputs) {
+  if (op.num_inputs() != 1) {
+    return errors::InvalidArgument("Cast requires 2 arguments");
+  }
+  if (grad_inputs.size() != 1) {
+    return errors::InvalidArgument("Cast grad requires 1 grad input");
+  }
+
+  auto src_type = op.input_type(0);
+  auto dst_type = grad_inputs[0].type();
+  if (IsFloatingPointDtype(src_type) && IsFloatingPointDtype(dst_type)) {
+    grad_outputs->push_back(Cast(scope, grad_inputs[0], src_type));
+  } else {
+    grad_outputs->push_back(NoGradient());
+  }
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Cast", CastGrad);
+
+Status SelectGrad(const Scope& scope, const Operation& op,
+                  const std::vector<Output>& grad_inputs,
+                  std::vector<Output>* grad_outputs) {
+  if (op.num_inputs() != 3) {
+    return errors::InvalidArgument("Select requires 3 arguments");
+  }
+  if (grad_inputs.size() != 1) {
+    return errors::InvalidArgument("Select grad requires 1 grad input");
+  }
+
+  auto c = op.input(0);
+  auto zeros = ZerosLike(scope, grad_inputs[0]);
+  grad_outputs->push_back(NoGradient());  // Condition
+  grad_outputs->push_back(Where3(scope, c, grad_inputs[0], zeros));
+  grad_outputs->push_back(Where3(scope, c, zeros, grad_inputs[0]));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Select", SelectGrad);
+
+Status SelectV2Grad(const Scope& scope, const Operation& op,
+                    const std::vector<Output>& grad_inputs,
+                    std::vector<Output>* grad_outputs) {
+  if (op.num_inputs() != 3) {
+    return errors::InvalidArgument("Select requires 3 arguments");
+  }
+
+  if (grad_inputs.size() != 1) {
+    return errors::InvalidArgument("Select grad requires 1 grad input");
+  }
+
+  auto c = op.input(0);
+  auto x = op.input(1);
+  auto y = op.input(2);
+
+  auto zeros = ZerosLike(scope, grad_inputs[0]);
+  auto gx = SelectV2(scope, c, grad_inputs[0], zeros);
+  auto x_shape = Shape(scope, x);
+  auto output_shape = Shape(scope, op.output(0));
+
+  // Reduce away broadcasted leading dims.
+  auto reduce_x = internal::BroadcastGradientArgs(scope, x_shape, output_shape);
+  auto gx_sum =
+      ReduceSum(scope, gx, /*axis=*/reduce_x.r0, ReduceSum::KeepDims(true));
+  auto gx_sum_reshape = Reshape(scope, gx_sum, x_shape);
+
+  auto gy = SelectV2(scope, c, zeros, grad_inputs[0]);
+  auto y_shape = Shape(scope, y);
+
+  // Reduce away broadcasted leading dims.
+  auto reduce_y = internal::BroadcastGradientArgs(scope, y_shape, output_shape);
+  auto gy_sum =
+      ReduceSum(scope, gy, /*axis=*/reduce_y.r0, ReduceSum::KeepDims(true));
+  auto gy_sum_reshape = Reshape(scope, gy_sum, y_shape);
+
+  grad_outputs->push_back(NoGradient());  // Condition
+  grad_outputs->push_back(gx_sum_reshape);
+  grad_outputs->push_back(gy_sum_reshape);
+  return scope.status();
+}
+
+REGISTER_GRADIENT_OP("SelectV2", SelectV2Grad);
+
+// Helper function for unsorted segment ops.
+// Returns 'ids' with negative elements replaced by 0.
+Output GetZeroClippedIndices(const Scope& scope, const Output& ids) {
+  return Maximum(scope, ids, ZerosLike(scope, ids));
+}
+
+// Helper function for unsorted segment ops.
+// Returns a mask of where 'ids' are positive, reshaped so that it will be
+// broadcastable to the result shape of gathering params by ids.
+Output GetIsPositive(const Scope& scope, const Output& params,
+                     const Output& ids) {
+  Output is_positive = GreaterEqual(scope, ids, ZerosLike(scope, ids));
+  // tf.where(condition, x, y) requires condition to have the same shape as x
+  // and y.
+  Output is_positive_shape = Shape(scope, is_positive);
+  Output ones =
+      Tile(scope, Const(scope, {1}), Subtract(scope, Rank(scope, params), {1}));
+  auto broadcastable_shape = Concat(scope, {is_positive_shape, ones},
+                                    /*axis=*/0);
+  is_positive = Reshape(scope, is_positive, broadcastable_shape);
+  is_positive = LogicalAnd(scope, is_positive, OnesLike(scope, is_positive));
+  return is_positive;
+}
+
+// Helper function for unsorted segment ops.
+// Gathers params for positive segment ids and gathers 0 for inputs with
+// negative segment id.
+Output GatherDropNegatives(const Scope& scope, const Output& params,
+                           Output& zero_clipped_indices, Output& is_positive) {
+  auto gathered = Gather(scope, params, zero_clipped_indices);
+  // Replace gathered params of negative indices with 0.
+  auto zero_slice = ZerosLike(scope, gathered);
+  return SelectV2(scope, is_positive, gathered, zero_slice);
+}
+
+Status UnsortedSegmentMinOrMaxGrad(const Scope& scope, const Operation& op,
+                                   const std::vector<Output>& grad_inputs,
+                                   std::vector<Output>* grad_outputs) {
+  if (op.num_inputs() != 3) {
+    return errors::InvalidArgument("UnsortedSegmentMax requires 3 arguments");
+  }
+
+  if (grad_inputs.size() != 1) {
+    return errors::InvalidArgument(
+        "UnsortedSegmentMax grad requires 1 grad input");
+  }
+
+  auto grad = grad_inputs[0];
+  // Get the number of selected (minimum or maximum) elements in each segment.
+  auto zero_clipped_indices = GetZeroClippedIndices(scope, op.input(1));
+  auto is_positive = GetIsPositive(scope, op.output(0), op.input(1));
+  Output gathered_outputs = GatherDropNegatives(
+      scope, op.output(0), zero_clipped_indices, is_positive);
+  Output is_selected = Equal(scope, op.input(0), gathered_outputs);
+  is_selected = LogicalAnd(scope, is_selected, is_positive);
+  auto num_selected = UnsortedSegmentSum(
+      scope, Cast(scope, is_selected, grad.type()), op.input(1), op.input(2));
+  // Compute the gradient for each segment.The gradient for the ith segment is
+  // divided evenly among the selected elements in that segment.
+  auto weighted_grads = Div(scope, grad, num_selected);
+  auto gathered_grads = GatherDropNegatives(scope, weighted_grads,
+                                            zero_clipped_indices, is_positive);
+  auto zeros = ZerosLike(scope, gathered_grads);
+  grad_outputs->push_back(SelectV2(scope, is_selected, gathered_grads, zeros));
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+
+REGISTER_GRADIENT_OP("UnsortedSegmentMax", UnsortedSegmentMinOrMaxGrad);
+REGISTER_GRADIENT_OP("UnsortedSegmentMin", UnsortedSegmentMinOrMaxGrad);
+
+Status UnsortedSegmentSumGrad(const Scope& scope, const Operation& op,
+                              const std::vector<Output>& grad_inputs,
+                              std::vector<Output>* grad_outputs) {
+  if (op.num_inputs() != 3) {
+    return errors::InvalidArgument("UnsortedSegmentSum requires 3 arguments");
+  }
+
+  if (grad_inputs.size() != 1) {
+    return errors::InvalidArgument(
+        "UnsortedSegmentSum grad requires 1 grad input");
+  }
+
+  auto zero_clipped_indices = GetZeroClippedIndices(scope, op.input(1));
+  auto is_positive = GetIsPositive(scope, grad_inputs[0], op.input(1));
+  grad_outputs->push_back(GatherDropNegatives(
+      scope, grad_inputs[0], zero_clipped_indices, is_positive));
+  grad_outputs->push_back(NoGradient());
+  grad_outputs->push_back(NoGradient());
+  return scope.status();
+}
+
+REGISTER_GRADIENT_OP("UnsortedSegmentSum", UnsortedSegmentSumGrad);
+
+Status ClipByValueGrad(const Scope& scope, const Operation& op,
+                       const std::vector<Output>& grad_inputs,
+                       std::vector<Output>* grad_outputs) {
+  if (op.num_inputs() != 3) {
+    return absl::InvalidArgumentError("ClipByValue requires 3 arguments");
+  }
+  if (grad_inputs.size() != 1) {
+    return absl::InvalidArgumentError("ClipByValue grad requires 1 grad input");
+  }
+
+  Output x = op.input(0);
+  Output min = op.input(1);
+  Output max = op.input(2);
+
+  Output s_x = Shape(scope, x);
+  Output s_min = Shape(scope, min);
+  Output s_max = Shape(scope, max);
+
+  Output min_mask = Less(scope, x, min);
+  Output max_mask = Greater(scope, x, max);
+
+  auto r_min = internal::BroadcastGradientArgs(scope, s_x, s_min);
+  auto r_max = internal::BroadcastGradientArgs(scope, s_x, s_max);
+
+  Output grad = grad_inputs[0];
+  Output zeros = ZerosLike(scope, grad);
+
+  Output x_grad =
+      Where3(scope, LogicalOr(scope, min_mask, max_mask), zeros, grad);
+  Output min_grad = Reshape(
+      scope, ReduceSum(scope, Where3(scope, min_mask, grad, zeros), r_min.r1),
+      s_min);
+  Output max_grad = Reshape(
+      scope, ReduceSum(scope, Where3(scope, max_mask, grad, zeros), r_max.r1),
+      s_max);
+
+  grad_outputs->push_back(x_grad);
+  grad_outputs->push_back(min_grad);
+  grad_outputs->push_back(max_grad);
+  return scope.status();
+}
+
+REGISTER_GRADIENT_OP("ClipByValue", ClipByValueGrad);
 
 }  // anonymous namespace
 }  // namespace ops

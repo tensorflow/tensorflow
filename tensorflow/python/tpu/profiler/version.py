@@ -14,10 +14,6 @@
 # =============================================================================
 """Cloud TPU profiler version information."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # Cloud TPU profiler uses semantic versioning, see http://semver.org/.
 # A version string consists of
 # major_version.minor_version.patch_version-build_metadata.

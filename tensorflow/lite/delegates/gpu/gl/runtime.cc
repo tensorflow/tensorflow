@@ -17,8 +17,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
+#include <memory>
+#include <utility>
+#include <variant>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
@@ -85,7 +90,7 @@ absl::Status MakeGlTexture(const Object& object, const ObjectData& data,
       if (data.size() % 2 != 0) {
         return absl::InvalidArgumentError("Texture size is not aligned");
       }
-      return absl::visit(
+      return std::visit(
           TextureF16Maker{
               .data = absl::MakeConstSpan(
                   reinterpret_cast<const uint16_t*>(data.data()),
@@ -98,7 +103,7 @@ absl::Status MakeGlTexture(const Object& object, const ObjectData& data,
       if (data.size() % sizeof(float) != 0) {
         return absl::InvalidArgumentError("Texture size is not aligned");
       }
-      return absl::visit(
+      return std::visit(
           TextureF32Maker{
               .data = absl::MakeConstSpan(
                   reinterpret_cast<const float*>(data.data()),
@@ -129,8 +134,7 @@ struct TextureRefMaker {
 
 // Makes read-write gl texture
 absl::Status MakeGlTextureRef(const Object& object, GlTexture* gl_texture) {
-  return absl::visit(TextureRefMaker{object.data_type, gl_texture},
-                     object.size);
+  return std::visit(TextureRefMaker{object.data_type, gl_texture}, object.size);
 }
 
 absl::Status MakeGlBuffer(const Object& object, const ObjectData& data,
@@ -142,20 +146,17 @@ absl::Status MakeGlBuffer(const Object& object, const ObjectData& data,
                                            gl_buffer);
 }
 
-// Looks up an object with the given id. If found, makes a binding function.
 absl::Status MakeBindingFunc(const Object& object, uint32_t id,
-                             const ObjectManager& objects,
+                             const ObjectManager* objects,
                              std::function<absl::Status()>* binding_func) {
   const uint32_t binding = object.binding;
   switch (object.object_type) {
     case ObjectType::BUFFER: {
-      auto ptr = objects.FindBuffer(id);
+      auto ptr = objects->FindBuffer(id);
       if (!ptr) {
         return absl::NotFoundError(
             absl::StrCat("Buffer ", id, " is not found"));
       }
-
-      // Validate buffer.
       size_t size_in_bytes = ByteSizeOf(object);
       // TODO(akulik): make comparison != instead of <
       if (ptr->bytes_size() < size_in_bytes) {
@@ -167,12 +168,68 @@ absl::Status MakeBindingFunc(const Object& object, uint32_t id,
       break;
     }
     case ObjectType::TEXTURE: {
-      auto ptr = objects.FindTexture(id);
+      auto ptr = objects->FindTexture(id);
       if (!ptr) {
         return absl::NotFoundError(
             absl::StrCat("Texture ", id, " is not found"));
       }
       *binding_func = [=]() { return ptr->BindAsReadWriteImage(binding); };
+      break;
+    }
+    case ObjectType::UNKNOWN:
+      return absl::InvalidArgumentError("Unknown object type");
+  }
+  return absl::OkStatus();
+}
+
+// TODO(b/147771327): think about merging this function with MakeBindingFunc()
+absl::Status MakeLateBindingFunc(const Object& object, uint32_t id,
+                                 const ObjectManager* objects,
+                                 std::function<absl::Status()>* binding_func) {
+  const uint32_t binding = object.binding;
+  switch (object.object_type) {
+    case ObjectType::BUFFER: {
+      auto ptr = objects->FindBuffer(id);
+      if (!ptr) {
+        return absl::NotFoundError(
+            absl::StrCat("Buffer ", id, " is not found"));
+      }
+      *binding_func = [=]() {
+        auto ptr = objects->FindBuffer(id);
+        if (!ptr) {
+          return absl::NotFoundError(
+              absl::StrCat("Buffer ", id, " is not found"));
+        }
+        if (!ptr->is_valid()) {
+          return absl::InvalidArgumentError("Buffer is not initialized.");
+        }
+        size_t size_in_bytes = ByteSizeOf(object);
+        if (ptr->bytes_size() < size_in_bytes) {
+          return absl::FailedPreconditionError(
+              absl::StrCat("Buffer ", id, " size in bytes ", ptr->bytes_size(),
+                           " < requested size_in_bytes ", size_in_bytes));
+        }
+        return ptr->BindToIndex(binding);
+      };
+      break;
+    }
+    case ObjectType::TEXTURE: {
+      auto ptr = objects->FindTexture(id);
+      if (!ptr) {
+        return absl::NotFoundError(
+            absl::StrCat("Texture ", id, " is not found"));
+      }
+      *binding_func = [=]() {
+        auto ptr = objects->FindTexture(id);
+        if (!ptr) {
+          return absl::NotFoundError(
+              absl::StrCat("Texture ", id, " is not found"));
+        }
+        if (!ptr->is_valid()) {
+          return absl::InvalidArgumentError("Texture is not initialized.");
+        }
+        return ptr->BindAsReadWriteImage(binding);
+      };
       break;
     }
     case ObjectType::UNKNOWN:
@@ -192,7 +249,7 @@ Runtime::Runtime(const RuntimeOptions& options, const GpuInfo& gpu_info,
       command_queue_(command_queue) {
   programs_.reserve(256);
   if (options_.bundle_readonly_objects) {
-    shared_readonly_buffer_ = absl::make_unique<SharedBufferData>();
+    shared_readonly_buffer_ = std::make_unique<SharedBufferData>();
   }
 }
 
@@ -219,8 +276,8 @@ absl::Status Runtime::AddProgram(const GlShader& shader,
       // Reference object could be provided externally as a model input/output
       // but also for debugging purposes. Otherwise all references are collected
       // and allocated later.
-      absl::Status status = MakeBindingFunc(object, GetRef(object),
-                                            *external_objects_, &binding_func);
+      absl::Status status = MakeLateBindingFunc(
+          object, GetRef(object), external_objects_, &binding_func);
       if (!status.ok()) {
         if (absl::IsNotFound(status)) {
           program.refs.push_back(object);
@@ -233,7 +290,7 @@ absl::Status Runtime::AddProgram(const GlShader& shader,
       uint32_t id;
       RETURN_IF_ERROR(AllocateConstObject(object, &id));
       RETURN_IF_ERROR(
-          MakeBindingFunc(object, id, const_objects_, &binding_func));
+          MakeBindingFunc(object, id, &const_objects_, &binding_func));
     }
     program.bindings.push_back(std::move(binding_func));
   }
@@ -324,12 +381,15 @@ absl::Status Runtime::PrepareForExecution() {
       BindFunc binding;
       ObjectRef ref = GetRef(object);
       absl::Status status =
-          MakeBindingFunc(object, ref, internal_objects_, &binding);
+          MakeBindingFunc(object, ref, &internal_objects_, &binding);
       if (!status.ok()) {
-        if (absl::IsNotFound(status)) return status;
-        RETURN_IF_ERROR(AllocateInternalObject(object));
-        RETURN_IF_ERROR(
-            MakeBindingFunc(object, ref, internal_objects_, &binding));
+        if (absl::IsNotFound(status)) {
+          RETURN_IF_ERROR(AllocateInternalObject(object));
+          RETURN_IF_ERROR(
+              MakeBindingFunc(object, ref, &internal_objects_, &binding));
+        } else {
+          return status;
+        }
       }
       program.bindings.push_back(std::move(binding));
     }
@@ -421,8 +481,8 @@ absl::Status AddUsageRecord(CombinedUsageRecords* usage_records,
     return absl::OkStatus();
   }
   if (object.object_type == ObjectType::TEXTURE) {
-    absl::visit(AddUsageRecordForTextureFunc{usage_records, ref, program_id},
-                object.size);
+    std::visit(AddUsageRecordForTextureFunc{usage_records, ref, program_id},
+               object.size);
     return absl::OkStatus();
   }
   return absl::InternalError("Unexpected object type");
@@ -482,7 +542,7 @@ absl::Status ApplyTexturesAssignment(
     Object* object = global_ref_to_object_ptr[global_ref];
     if (usage_rec_id == kNotAssigned || object == nullptr ||
         object->object_type != ObjectType::TEXTURE ||
-        !absl::holds_alternative<ObjectSizeT>(object->size)) {
+        !std::holds_alternative<ObjectSizeT>(object->size)) {
       // Skip objects with other data type, non-textures and textures with wrong
       // number of dimensions.
       continue;

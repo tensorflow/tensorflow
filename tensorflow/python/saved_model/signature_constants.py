@@ -15,10 +15,6 @@
 """Signature constants for SavedModel save and restore operations.
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -134,6 +130,7 @@ tf_export(
     ]).export_constant(__name__, "REGRESS_OUTPUTS")
 
 ################################################################################
+# LINT.IfChange
 # Train/Eval API constants.
 # Not exported while export_all_saved_models is experimental.
 DEFAULT_TRAIN_SIGNATURE_DEF_KEY = "train"
@@ -143,3 +140,4 @@ DEFAULT_EVAL_SIGNATURE_DEF_KEY = "eval"
 SUPERVISED_TRAIN_METHOD_NAME = "tensorflow/supervised/training"
 
 SUPERVISED_EVAL_METHOD_NAME = "tensorflow/supervised/eval"
+# LINT.ThenChange(//tensorflow/python/keras/saving/utils_v1/unexported_constants.py)

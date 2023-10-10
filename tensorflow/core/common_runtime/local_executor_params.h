@@ -19,15 +19,15 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
-namespace tensorflow {
+#include "tensorflow/core/lib/core/status.h"
 
+namespace tensorflow {
 class Device;
 class StepStatsCollector;
 class SessionMetadata;
 class FunctionLibraryRuntime;
 class NodeProperties;
 class OpKernel;
-class Status;
 
 // LocalExecutorParams provides arguments that will be shared by all invocations
 // of an executor. We expect that different contexts would provide different
@@ -47,6 +47,9 @@ struct LocalExecutorParams {
                        OpKernel**)>
       create_kernel;
   std::function<void(OpKernel*)> delete_kernel;
+
+  // Whether control flow nodes are allowed to be executed synchronously.
+  bool allow_control_flow_sync_execution = false;
 };
 
 }  // end namespace tensorflow

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for variables module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.autograph.converters import variables
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.platform import test

@@ -69,7 +69,7 @@ Status DebuggerStateRegistry::CreateState(
         "It appears that TFDBG is not linked in this TensorFlow build.");
   } else {
     *state = (*factory_)(debug_options);
-    return Status::OK();
+    return OkStatus();
   }
 }
 
@@ -90,7 +90,7 @@ Status DebugGraphDecoratorRegistry::CreateDecorator(
         "It appears that TFDBG is not linked in this TensorFlow build.");
   } else {
     *decorator = (*factory_)(options);
-    return Status::OK();
+    return OkStatus();
   }
 }
 

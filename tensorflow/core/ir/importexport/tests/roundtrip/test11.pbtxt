@@ -1,0 +1,1075 @@
+node {
+  name: "numer/Initializer/zeros"
+  op: "Const"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@numer"
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_DOUBLE
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_DOUBLE
+        tensor_shape {
+        }
+        double_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "numer"
+  op: "VarHandleOp"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@numer"
+      }
+    }
+  }
+  attr {
+    key: "allowed_devices"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_DOUBLE
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: "numer"
+    }
+  }
+}
+node {
+  name: "numer/IsInitialized/VarIsInitializedOp"
+  op: "VarIsInitializedOp"
+  input: "numer"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+}
+node {
+  name: "numer/Assign"
+  op: "AssignVariableOp"
+  input: "numer"
+  input: "numer/Initializer/zeros"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_DOUBLE
+    }
+  }
+}
+node {
+  name: "numer/Read/ReadVariableOp"
+  op: "ReadVariableOp"
+  input: "numer"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_DOUBLE
+    }
+  }
+}
+node {
+  name: "denom/Initializer/zeros"
+  op: "Const"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@denom"
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_DOUBLE
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_DOUBLE
+        tensor_shape {
+        }
+        double_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "denom"
+  op: "VarHandleOp"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@denom"
+      }
+    }
+  }
+  attr {
+    key: "allowed_devices"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_DOUBLE
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: "denom"
+    }
+  }
+}
+node {
+  name: "denom/IsInitialized/VarIsInitializedOp"
+  op: "VarIsInitializedOp"
+  input: "denom"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+}
+node {
+  name: "denom/Assign"
+  op: "AssignVariableOp"
+  input: "denom"
+  input: "denom/Initializer/zeros"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_DOUBLE
+    }
+  }
+}
+node {
+  name: "denom/Read/ReadVariableOp"
+  op: "ReadVariableOp"
+  input: "denom"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_DOUBLE
+    }
+  }
+}
+node {
+  name: "group_deps"
+  op: "NoOp"
+  input: "^denom/Assign"
+  input: "^numer/Assign"
+}
+node {
+  name: "StatefulPartitionedCall"
+  op: "StatefulPartitionedCall"
+  input: "denom"
+  input: "numer"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "Tin"
+    value {
+      list {
+        type: DT_RESOURCE
+        type: DT_RESOURCE
+      }
+    }
+  }
+  attr {
+    key: "Tout"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "_collective_manager_ids"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "_read_only_resource_inputs"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "config"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "config_proto"
+    value {
+      s: "\202\001\0008\0012\002J\000\n\007\n\003CPU\020\001\n\007\n\003GPU\020\000"
+    }
+  }
+  attr {
+    key: "executor_type"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "f"
+    value {
+      func {
+        name: "__inference_call_739"
+      }
+    }
+  }
+}
+node {
+  name: "StatefulPartitionedCall_1"
+  op: "StatefulPartitionedCall"
+  input: "denom"
+  input: "numer"
+  attr {
+    key: "Tin"
+    value {
+      list {
+        type: DT_RESOURCE
+        type: DT_RESOURCE
+      }
+    }
+  }
+  attr {
+    key: "Tout"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "_collective_manager_ids"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "_read_only_resource_inputs"
+    value {
+      list {
+      }
+    }
+  }
+  attr {
+    key: "config"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "config_proto"
+    value {
+      s: "\202\001\0008\0012\002J\000\n\007\n\003CPU\020\001\n\007\n\003GPU\020\000"
+    }
+  }
+  attr {
+    key: "executor_type"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "f"
+    value {
+      func {
+        name: "__inference_call_757"
+      }
+    }
+  }
+}
+library {
+  function {
+    signature {
+      name: "__inference_call_757"
+      input_arg {
+        name: "assignaddvariableop_denom"
+        type: DT_RESOURCE
+      }
+      input_arg {
+        name: "assignaddvariableop_1_numer"
+        type: DT_RESOURCE
+      }
+      output_arg {
+        name: "identity_1"
+        type: DT_FLOAT
+      }
+      is_stateful: true
+      control_output: "AssignAddVariableOp"
+      control_output: "AssignAddVariableOp_1"
+    }
+    node_def {
+      name: "Size/Const"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape {
+            }
+            float_val: 200
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Size/Const"
+      }
+    }
+    node_def {
+      name: "Size"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 1
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Size"
+      }
+    }
+    node_def {
+      name: "Identity"
+      op: "Identity"
+      input: "Size:output:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_INT32
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Identity"
+      }
+    }
+    node_def {
+      name: "Cast"
+      op: "Cast"
+      input: "Identity:output:0"
+      attr {
+        key: "DstT"
+        value {
+          type: DT_DOUBLE
+        }
+      }
+      attr {
+        key: "SrcT"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "Truncate"
+        value {
+          b: false
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Cast"
+      }
+    }
+    node_def {
+      name: "AssignAddVariableOp"
+      op: "AssignAddVariableOp"
+      input: "assignaddvariableop_denom"
+      input: "Cast:y:0"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_DOUBLE
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "AssignAddVariableOp"
+      }
+    }
+    node_def {
+      name: "Rank/Const"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape {
+            }
+            float_val: 200
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Rank/Const"
+      }
+    }
+    node_def {
+      name: "Rank"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 0
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Rank"
+      }
+    }
+    node_def {
+      name: "range/start"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 0
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "range/start"
+      }
+    }
+    node_def {
+      name: "range/delta"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 1
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "range/delta"
+      }
+    }
+    node_def {
+      name: "range"
+      op: "Range"
+      input: "range/start:output:0"
+      input: "Rank:output:0"
+      input: "range/delta:output:0"
+      attr {
+        key: "Tidx"
+        value {
+          type: DT_INT32
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "range"
+      }
+    }
+    node_def {
+      name: "Sum/input"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape {
+            }
+            float_val: 200
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Sum/input"
+      }
+    }
+    node_def {
+      name: "Sum"
+      op: "Sum"
+      input: "Sum/input:output:0"
+      input: "range:output:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "Tidx"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "keep_dims"
+        value {
+          b: false
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Sum"
+      }
+    }
+    node_def {
+      name: "Cast_1"
+      op: "Cast"
+      input: "Sum:output:0"
+      attr {
+        key: "DstT"
+        value {
+          type: DT_DOUBLE
+        }
+      }
+      attr {
+        key: "SrcT"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "Truncate"
+        value {
+          b: false
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Cast_1"
+      }
+    }
+    node_def {
+      name: "AssignAddVariableOp_1"
+      op: "AssignAddVariableOp"
+      input: "assignaddvariableop_1_numer"
+      input: "Cast_1:y:0"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_DOUBLE
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "AssignAddVariableOp_1"
+      }
+    }
+    node_def {
+      name: "Identity_1"
+      op: "Identity"
+      input: "Sum:output:0"
+      input: "^NoOp"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Identity_1"
+      }
+    }
+    node_def {
+      name: "NoOp"
+      op: "NoOp"
+      input: "^AssignAddVariableOp"
+      input: "^AssignAddVariableOp_1"
+      experimental_debug_info {
+        original_node_names: "NoOp"
+      }
+    }
+    ret {
+      key: "identity_1"
+      value: "Identity_1:output:0"
+    }
+    control_ret {
+      key: "AssignAddVariableOp"
+      value: "AssignAddVariableOp"
+    }
+    control_ret {
+      key: "AssignAddVariableOp_1"
+      value: "AssignAddVariableOp_1"
+    }
+  }
+  function {
+    signature {
+      name: "__inference_call_739"
+      input_arg {
+        name: "assignaddvariableop_denom"
+        type: DT_RESOURCE
+      }
+      input_arg {
+        name: "assignaddvariableop_1_numer"
+        type: DT_RESOURCE
+      }
+      output_arg {
+        name: "identity_1"
+        type: DT_FLOAT
+      }
+      is_stateful: true
+      control_output: "AssignAddVariableOp"
+      control_output: "AssignAddVariableOp_1"
+    }
+    node_def {
+      name: "Size/Const"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape {
+            }
+            float_val: 100
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Size/Const"
+      }
+    }
+    node_def {
+      name: "Size"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 1
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Size"
+      }
+    }
+    node_def {
+      name: "Identity"
+      op: "Identity"
+      input: "Size:output:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_INT32
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Identity"
+      }
+    }
+    node_def {
+      name: "Cast"
+      op: "Cast"
+      input: "Identity:output:0"
+      attr {
+        key: "DstT"
+        value {
+          type: DT_DOUBLE
+        }
+      }
+      attr {
+        key: "SrcT"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "Truncate"
+        value {
+          b: false
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Cast"
+      }
+    }
+    node_def {
+      name: "AssignAddVariableOp"
+      op: "AssignAddVariableOp"
+      input: "assignaddvariableop_denom"
+      input: "Cast:y:0"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_DOUBLE
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "AssignAddVariableOp"
+      }
+    }
+    node_def {
+      name: "Rank/Const"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape {
+            }
+            float_val: 100
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Rank/Const"
+      }
+    }
+    node_def {
+      name: "Rank"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 0
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Rank"
+      }
+    }
+    node_def {
+      name: "range/start"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 0
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "range/start"
+      }
+    }
+    node_def {
+      name: "range/delta"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 1
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "range/delta"
+      }
+    }
+    node_def {
+      name: "range"
+      op: "Range"
+      input: "range/start:output:0"
+      input: "Rank:output:0"
+      input: "range/delta:output:0"
+      attr {
+        key: "Tidx"
+        value {
+          type: DT_INT32
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "range"
+      }
+    }
+    node_def {
+      name: "Sum/input"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape {
+            }
+            float_val: 100
+          }
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Sum/input"
+      }
+    }
+    node_def {
+      name: "Sum"
+      op: "Sum"
+      input: "Sum/input:output:0"
+      input: "range:output:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "Tidx"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "keep_dims"
+        value {
+          b: false
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Sum"
+      }
+    }
+    node_def {
+      name: "Cast_1"
+      op: "Cast"
+      input: "Sum:output:0"
+      attr {
+        key: "DstT"
+        value {
+          type: DT_DOUBLE
+        }
+      }
+      attr {
+        key: "SrcT"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "Truncate"
+        value {
+          b: false
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Cast_1"
+      }
+    }
+    node_def {
+      name: "AssignAddVariableOp_1"
+      op: "AssignAddVariableOp"
+      input: "assignaddvariableop_1_numer"
+      input: "Cast_1:y:0"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_DOUBLE
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "AssignAddVariableOp_1"
+      }
+    }
+    node_def {
+      name: "Identity_1"
+      op: "Identity"
+      input: "Sum:output:0"
+      input: "^NoOp"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      experimental_debug_info {
+        original_node_names: "Identity_1"
+      }
+    }
+    node_def {
+      name: "NoOp"
+      op: "NoOp"
+      input: "^AssignAddVariableOp"
+      input: "^AssignAddVariableOp_1"
+      experimental_debug_info {
+        original_node_names: "NoOp"
+      }
+    }
+    ret {
+      key: "identity_1"
+      value: "Identity_1:output:0"
+    }
+    control_ret {
+      key: "AssignAddVariableOp"
+      value: "AssignAddVariableOp"
+    }
+    control_ret {
+      key: "AssignAddVariableOp_1"
+      value: "AssignAddVariableOp_1"
+    }
+  }
+}
+versions {
+  producer: 728
+  min_consumer: 12
+}

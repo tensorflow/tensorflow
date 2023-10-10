@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/kernels/space_to_depth.h"
 
+#include <any>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -34,7 +36,7 @@ class SpaceToDepth : public NodeShader {
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
     const auto& attr =
-        absl::any_cast<const SpaceToDepthAttributes&>(ctx.op_attr);
+        std::any_cast<const SpaceToDepthAttributes&>(ctx.op_attr);
     std::string code = R"(
       for (int i = 0; i < 4; ++i) {
         int dst_c = 4 * gid.z + i;
@@ -62,10 +64,50 @@ class SpaceToDepth : public NodeShader {
     return absl::OkStatus();
   }
 };
+
+class DepthToSpace : public NodeShader {
+ public:
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
+    const auto& attr =
+        std::any_cast<const SpaceToDepthAttributes&>(ctx.op_attr);
+    std::string code = R"(
+      for (int i = 0; i < 4; ++i) {
+        int dst_c = 4 * gid.z + i;
+        int block_x = gid.x % $block_size$;
+        int src_x = gid.x / $block_size$;
+        int block_y = gid.y % $block_size$;
+        int src_y = gid.y / $block_size$;
+        int block_id = block_y * $block_size$ + block_x;
+        int src_c = block_id * $output_channels$ + dst_c;
+        value_0[i] = $input_data_0[src_x, src_y, src_c / 4]$[src_c % 4];
+      }
+    )";
+
+    *generated_code = {
+        /*parameters=*/{
+            {"block_size", attr.block_size},
+            {"output_channels", static_cast<int>(ctx.output_shapes[0][3])},
+        },
+        /*objects=*/{},
+        /*shared_variables=*/{},
+        /*workload=*/uint3(),
+        /*workgroup=*/uint3(),
+        /*source_code=*/std::move(code),
+        /*input=*/IOStructure::ONLY_DEFINITIONS,
+        /*output=*/IOStructure::AUTO,
+    };
+    return absl::OkStatus();
+  }
+};
 }  // namespace
 
 std::unique_ptr<NodeShader> NewSpaceToDepthNodeShader() {
-  return absl::make_unique<SpaceToDepth>();
+  return std::make_unique<SpaceToDepth>();
+}
+
+std::unique_ptr<NodeShader> NewDepthToSpaceNodeShader() {
+  return std::make_unique<DepthToSpace>();
 }
 
 }  // namespace gl

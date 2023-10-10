@@ -22,7 +22,6 @@ import tempfile
 import time
 from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Union
 
-from absl import logging
 import numpy as np
 
 from tensorflow.core.framework import graph_pb2
@@ -37,6 +36,7 @@ from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops as framework_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import load as saved_model_load
 from tensorflow.python.saved_model import loader as saved_model_loader
 from tensorflow.python.saved_model import signature_constants
@@ -80,10 +80,12 @@ def _generate_random_tensor_ops(shape: Sequence[int], dtype: tf_dtypes.DType,
           shape=shape,
           dtype=random_dtype,
           # Limits maximum value as 255 to simulate pixel values, avoid
-          # generating large numbers and casuing overflows.
-          maxval=min(dtype_max, random_dtype.max, 255)),
+          # generating large numbers and causing overflows.
+          maxval=min(dtype_max, random_dtype.max, 255),
+      ),
       dtype=dtype,
-      name=name)
+      name=name,
+  )
 
 
 def _generate_random_tensor_v1(tensor_info: meta_graph_pb2.TensorInfo,
@@ -200,8 +202,10 @@ class TestResultCollection(
 
   @property
   def results(self) -> Iterable[TestResult]:
-    return itertools.chain([self.cpu_base_result, self.gpu_base_result],
-                           self.trt_results)
+    return filter(
+        lambda x: x is not None,
+        itertools.chain([self.cpu_base_result, self.gpu_base_result],
+                        self.trt_results))
 
 
 class _ModelHandlerBase(metaclass=abc.ABCMeta):
@@ -331,11 +335,16 @@ class ModelHandlerV2(_ModelHandlerBase):
 
   @property
   def graph_func(self):
-    graph_func = load_graph_func(
-        saved_model_dir=self.model_config.saved_model_dir,
-        saved_model_tags=self.model_config.saved_model_tags,
-        saved_model_signature_key=self.model_config.saved_model_signature_key)
-    return convert_to_constants.convert_variables_to_constants_v2(graph_func)
+    try:
+      return self._graph_func
+    except:
+      graph_func = load_graph_func(
+          saved_model_dir=self.model_config.saved_model_dir,
+          saved_model_tags=self.model_config.saved_model_tags,
+          saved_model_signature_key=self.model_config.saved_model_signature_key)
+      self._graph_func = convert_to_constants.convert_variables_to_constants_v2(
+          graph_func)
+      return self._graph_func
 
   @property
   def input_tensor_names(self):
@@ -507,7 +516,7 @@ class TrtModelHandlerV2(_TrtModelHandlerBase, ModelHandlerV2):
         input_saved_model_tags=self.model_config.saved_model_tags,
         input_saved_model_signature_key=(
             self.model_config.saved_model_signature_key),
-        conversion_params=trt_convert_params)
+        **trt_convert_params._asdict())
 
   def _check_conversion(self, graph_func):
     graph_def = graph_func.graph.as_graph_def()
@@ -576,13 +585,13 @@ class _ModelHandlerManagerBase(metaclass=abc.ABCMeta):
   @classmethod
   @abc.abstractmethod
   def model_handler_cls(cls):
-    """The modle handler class. ModelHandleV1/ModelHandlerV2."""
+    """The model handler class. ModelHandleV1/ModelHandlerV2."""
 
   @property
   @classmethod
   @abc.abstractmethod
   def trt_model_handler_cls(cls):
-    """The TensorRTmodle handler class. TrtModelHandleV1/TrtModelHandlerV2."""
+    """The TensorRT model handler class. TrtModelHandleV1/TrtModelHandlerV2."""
 
   @property
   def name(self) -> str:
@@ -629,7 +638,13 @@ class _ModelHandlerManagerBase(metaclass=abc.ABCMeta):
       return model.run(inputs, warmup_iterations, benchmark_iterations,
                        **kwargs)
 
-    cpu_base_result = run_model(self._ori_model, enable_gpu=False)
+    # Some models include operations that can only run on GPU.
+    try:
+      cpu_base_result = run_model(self._ori_model, enable_gpu=False)
+    except RuntimeError as err:
+      logging.info("%s cannot run on CPU. Reason: %s.",
+                   self._ori_model.model_config, err)
+      cpu_base_result = None
     gpu_base_result = run_model(self._ori_model, enable_gpu=True)
     trt_results = list(map(run_model, self._trt_models))
 

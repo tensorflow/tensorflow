@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <numeric>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -30,10 +31,11 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/kernels/reshape_util.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
+
+using CPUDevice = Eigen::ThreadPoolDevice;
 
 namespace {
 
@@ -108,14 +110,14 @@ class DeserializeSparseOp : public OpKernel {
                          serialized_sparse_t(i, 0), serialized_sparse_t(i, 1),
                          serialized_sparse_t(i, 2), dtype_, i, &output_indices,
                          &output_values, &output_shape));
-      int64 num_entries = output_indices.dim_size(0);
+      int64_t num_entries = output_indices.dim_size(0);
       int rank = output_indices.dim_size(1);
 
       // Now we expand each SparseTensors' indices and shape by
       // prefixing a dimension
       Tensor expanded_indices(DT_INT64, TensorShape({num_entries, 1 + rank}));
-      const auto& output_indices_t = output_indices.matrix<int64>();
-      auto expanded_indices_t = expanded_indices.matrix<int64>();
+      const auto& output_indices_t = output_indices.matrix<int64_t>();
+      auto expanded_indices_t = expanded_indices.matrix<int64_t>();
       expanded_indices_t.chip<1>(0).setZero();
       if (rank > 0) {
         Eigen::DSizes<Eigen::DenseIndex, 2> indices_start(0, 1);
@@ -124,12 +126,12 @@ class DeserializeSparseOp : public OpKernel {
             output_indices_t;
       }
       Tensor expanded_shape(DT_INT64, TensorShape({1 + rank}));
-      const auto& output_shape_t = output_shape.vec<int64>();
-      auto expanded_shape_t = expanded_shape.vec<int64>();
+      const auto& output_shape_t = output_shape.vec<int64_t>();
+      auto expanded_shape_t = expanded_shape.vec<int64_t>();
       expanded_shape_t(0) = 1;
       std::copy_n(&output_shape_t(0), rank, &expanded_shape_t(1));
 
-      TensorShape expanded_tensor_shape(expanded_shape.vec<int64>());
+      TensorShape expanded_tensor_shape(expanded_shape.vec<int64_t>());
 
       indices.push_back(expanded_indices);
       values.push_back(output_values);
@@ -159,7 +161,7 @@ class DeserializeSparseOp : public OpKernel {
 
     // Dimension 0 is the primary dimension.
     int rank = shape.dims();
-    gtl::InlinedVector<int64, 8> std_order(rank);
+    gtl::InlinedVector<int64_t, 8> std_order(rank);
     std::iota(std_order.begin(), std_order.end(), 0);
 
     std::vector<SparseTensor> tensors;
@@ -171,7 +173,7 @@ class DeserializeSparseOp : public OpKernel {
       tensors.push_back(std::move(tensor));
     }
 
-    gtl::optional<SparseTensor> maybe_output;
+    std::optional<SparseTensor> maybe_output;
 #define HANDLE_TYPE(T)                               \
   case DataTypeToEnum<T>::value: {                   \
     maybe_output = SparseTensor::Concat<T>(tensors); \
@@ -193,20 +195,20 @@ class DeserializeSparseOp : public OpKernel {
     // Compute the input shape for the reshape operation.
     Tensor input_shape(DT_INT64, TensorShape({output.dims()}));
     std::copy_n(output.shape().data(), output.dims(),
-                input_shape.vec<int64>().data());
+                input_shape.vec<int64_t>().data());
 
     // Compute the target shape for the reshape operation.
     Tensor target_shape(DT_INT64, TensorShape({ndims + output.dims() - 2}));
     for (int i = 0; i < ndims - 1; ++i) {
-      target_shape.vec<int64>()(i) = serialized_sparse.shape().dim_size(i);
+      target_shape.vec<int64_t>()(i) = serialized_sparse.shape().dim_size(i);
     }
     for (int i = 0; i < output.dims() - 1; ++i) {
-      target_shape.vec<int64>()(i + ndims - 1) = output.shape().data()[i + 1];
+      target_shape.vec<int64_t>()(i + ndims - 1) = output.shape().data()[i + 1];
     }
 
-    ReshapeSparseTensor(context, output.indices(), input_shape, target_shape,
-                        0 /* output indices index */,
-                        2 /* output shape index */);
+    ReshapeSparseTensor<CPUDevice>(context, output.indices(), input_shape,
+                                   target_shape, 0 /* output indices index */,
+                                   2 /* output shape index */);
     context->set_output(1, output.values());
   }
 
@@ -221,7 +223,7 @@ class DeserializeSparseOp : public OpKernel {
       return errors::InvalidArgument("Could not construct tensor from proto");
     }
     *result = tensor;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAndValidateSparseTensor(
@@ -236,7 +238,7 @@ class DeserializeSparseOp : public OpKernel {
           ", 0] to represent an index matrix but received shape ",
           output_indices->shape().DebugString());
     }
-    int64 num_entries = output_indices->dim_size(0);
+    int64_t num_entries = output_indices->dim_size(0);
     int rank = output_indices->dim_size(1);
 
     // Deserialize and validate the values.
@@ -276,7 +278,7 @@ class DeserializeSparseOp : public OpKernel {
                                      index, "].shape but they do not: ", rank,
                                      " vs. ", output_shape->dim_size(0));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   DataType dtype_;

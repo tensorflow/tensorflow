@@ -20,9 +20,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "pybind11/cast.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "absl/memory/memory.h"
+#include "pybind11/cast.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "xla/python/profiler/internal/python_hooks.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
@@ -30,87 +32,15 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-namespace py = ::pybind11;
+using xla::profiler::PythonHooksOptions;  // NOLINT
 
-struct PythonHooksOptions {
-  bool enable_trace_python_function = false;
-  bool enable_python_traceme = true;
-  bool end_to_end_mode = false;
-  // Incomplete events are defined as those python calls which we only see
-  // either start or end, but not both. If we want to include them in the final
-  // result, profiler start, end time are used respectively to the absent
-  // timestamps.
-  bool include_incomplete_events = true;
-};
+using xla::profiler::PythonTraceEntry;  // NOLINT
 
-struct PythonTraceEntry {
-  PythonTraceEntry(uint64 start, uint64 end, PyCodeObject* code,
-                   PyCFunctionObject* func)
-      : start_time_ns(start),
-        end_time_ns(end),
-        code_object(code),
-        function_object(func) {
-    Py_XINCREF(code_object);
-    Py_XINCREF(function_object);
-  }
-  ~PythonTraceEntry() {
-    Py_XDECREF(code_object);
-    Py_XDECREF(function_object);
-  }
-  PythonTraceEntry(PythonTraceEntry&& other) {
-    start_time_ns = other.start_time_ns;
-    end_time_ns = other.end_time_ns;
-    code_object = other.code_object;
-    function_object = other.function_object;
-    other.code_object = nullptr;
-    other.function_object = nullptr;
-  }
+using xla::profiler::PerThreadEvents;  // NOLINT
 
-  std::string Name() const;
+using xla::profiler::PythonHookContext;  // NOLINT
 
-  uint64 start_time_ns;
-  uint64 end_time_ns;
-  PyCodeObject* code_object;
-  PyCFunctionObject* function_object;
-
-  PythonTraceEntry(const PythonTraceEntry& other) = delete;
-  void operator=(const PythonTraceEntry&) = delete;
-  void operator=(PythonTraceEntry&&) = delete;
-};
-
-struct PerThreadEvents {
-  std::deque<PythonTraceEntry> completed;
-  std::stack<PythonTraceEntry> active;
-};
-
-// Singleton for tracing python function calls.
-class PythonHooks {
- public:
-  static PythonHooks* GetSingleton();
-
-  void Start(const PythonHooksOptions& option);
-  void Stop();
-  void Finalize(XSpace* space);
-  void ProfileSlow(const py::object& frame, const string& event,
-                   const py::object& arg);
-  void ProfileFast(PyFrameObject* frame, int what, PyObject* arg);
-
- private:
-  void EnableTraceMe(bool enable);
-  void CollectData(XPlane* raw_plane);
-
-  void SetProfilerInAllThreads();
-  void ClearProfilerInAllThreads();
-
-  // entries_ are accessed when GIL is held, therefore no race conditions.
-  absl::flat_hash_map<int64, PerThreadEvents> entries_;
-  uint64 start_timestamp_ns_;
-  bool active_session_ = false;
-  PythonHooksOptions options_;
-  // In end to end mode, Python get uninitialized before Stop()/Finalize(), we
-  // need to buffer the result.
-  absl::optional<XPlane> end_to_end_xplane_;
-};
+using xla::profiler::PythonHooks;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

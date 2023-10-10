@@ -17,6 +17,8 @@ limitations under the License.
 
 #import <Metal/Metal.h>
 
+#include <string>
+
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
@@ -42,18 +44,23 @@ using ::tflite::gpu::metal::CreateComputeProgram;
                                     device FLT4* output_buffer [[buffer(1)]],
                                     constant int4& size [[buffer(2)]],
                                     uint3 gid[[thread_position_in_grid]]) {
-          if (int(gid.x) >= size.x || int(gid.y) >= size.y) {
+          int linear_id = static_cast<int>(gid.x);
+          int X = linear_id / size.w;
+          int B = linear_id % size.w;
+          int Y = static_cast<int>(gid.y);
+          int S = static_cast<int>(gid.z);
+          if (X >= size.x || Y >= size.y) {
             return;
           }
           FLT4 value = FLT4(0.0);
           for (int i = 0; i < 4; i++) {
-            int channel = gid.z * 4 + i;
+            int channel = S * 4 + i;
             if (channel >= size.z) break;
-            const int bhwc_index = (gid.y * size.x + gid.x) * size.z + channel;
+            const int bhwc_index = ((B * size.y + Y) * size.x + X) * size.z + channel;
             value[i] = input_buffer[bhwc_index];
           }
-          const int bphwc4_index = (gid.z * size.y + gid.y) * size.x + gid.x;
-          output_buffer[bphwc4_index] = value;
+          const int shwbc4_index = ((S * size.y + Y) * size.x + X) * size.w + B;
+          output_buffer[shwbc4_index] = value;
         }
       )";
     } else {
@@ -64,25 +71,28 @@ using ::tflite::gpu::metal::CreateComputeProgram;
                                     device float* output_buffer [[buffer(1)]],
                                     constant int4& size [[buffer(2)]],
                                     uint3 gid[[thread_position_in_grid]]) {
-          if (int(gid.x) >= size.x || int(gid.y) >= size.y) {
+          int linear_id = static_cast<int>(gid.x);
+          int X = linear_id / size.w;
+          int B = linear_id % size.w;
+          int Y = static_cast<int>(gid.y);
+          int S = static_cast<int>(gid.z);
+          if (X >= size.x || Y >= size.y) {
             return;
           }
-          const int bphwc4_index = (gid.z * size.y + gid.y) * size.x + gid.x;
-          FLT4 value = input_buffer[bphwc4_index];
+          const int shwbc4_index = ((S * size.y + Y) * size.x + X) * size.w + B;
+          FLT4 value = input_buffer[shwbc4_index];
           for (int i = 0; i < 4; i++) {
-            int channel = gid.z * 4 + i;
+            int channel = S * 4 + i;
             if (channel >= size.z) break;
-            const int bhwc_index = (gid.y * size.x + gid.x) * size.z + channel;
+            const int bhwc_index = ((B * size.y + Y) * size.x + X) * size.z + channel;
             output_buffer[bhwc_index] = value[i];
           }
         }
       )";
     }
-    NSDictionary* macros = @{@"FLT4" : (isFloat16 ? @"half4" : @"float4")};
-    NSString* code = [NSString stringWithCString:shaderSource.c_str()
-                                        encoding:[NSString defaultCStringEncoding]];
+    const std::map<std::string, std::string> macros = {{"FLT4", isFloat16 ? "half4" : "float4"}};
     id<MTLComputePipelineState> program;
-    if (CreateComputeProgram(device, code, @"ComputeFunction", macros, &program).ok()) {
+    if (CreateComputeProgram(device, shaderSource, "ComputeFunction", macros, &program).ok()) {
       _program = program;
       return self;
     }
@@ -101,11 +111,11 @@ using ::tflite::gpu::metal::CreateComputeProgram;
   std::vector<int> uniforms = {shape.w, shape.h, shape.c, shape.b};
   [encoder setBytes:uniforms.data() length:uniforms.size() * sizeof(int) atIndex:2];
 
-  MTLSize group_size = MTLSizeMake(16, 16, 1);
-  int layers = DivideRoundUp(shape.c, 4);
-  int groups_x = DivideRoundUp(shape.w, group_size.width);
+  MTLSize group_size = MTLSizeMake(16, 8, 1);
+  int slices = DivideRoundUp(shape.c, 4);
+  int groups_x = DivideRoundUp(shape.w * shape.b, group_size.width);
   int groups_y = DivideRoundUp(shape.h, group_size.height);
-  int groups_z = DivideRoundUp(layers, group_size.depth);
+  int groups_z = DivideRoundUp(slices, group_size.depth);
   MTLSize groups_count = MTLSizeMake(groups_x, groups_y, groups_z);
   [encoder dispatchThreadgroups:groups_count threadsPerThreadgroup:group_size];
 }

@@ -1,17 +1,11 @@
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_gen_op_libs", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 tf_kernel_library(
@@ -39,7 +33,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -53,7 +47,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -177,15 +171,11 @@ tf_cc_test(
     ],
 )
 
-# Changes to the Android srcs here should be replicated in
-# tensorflow/contrib/makefile/tf_op_files.txt.
-#
 # Be aware that this target is included by
-# //third_party/tensorflow/core/kernels:android_core_ops
+# //third_party/tensorflow/core/kernels:portable_core_ops
 #
-# LINT.IfChange
 filegroup(
-    name = "android_all_op_kernels",
+    name = "portable_all_op_kernels",
     srcs = [
         "bitcast_op.cc",
         "histogram_summary_op.cc",
@@ -195,10 +185,9 @@ filegroup(
         "tensor_shape_utils.h",
     ],
 )
-# LINT.ThenChange(//tensorflow/contrib/makefile/tf_op_files.txt)
 
 filegroup(
-    name = "android_all_ops",
+    name = "portable_all_ops",
     srcs = [
         "ops/bitcast.cc",
         "ops/histogram_summary.cc",

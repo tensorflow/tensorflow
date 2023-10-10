@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 
+#include <memory>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -69,7 +72,7 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
     tf_shared_lock l(g_op_name_to_attr_type_map_lock);
     *is_function = false;
     *out = gtl::FindPtrOrNull(*OpNameToAttrTypeMap(), op_name);
-    if (*out != nullptr) return Status::OK();
+    if (*out != nullptr) return OkStatus();
   }
 
   mutex_lock l(g_op_name_to_attr_type_map_lock);
@@ -78,11 +81,11 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
   // may insert this map after the tf_shared_lock is released but before the
   // mutex_lock is acquired.
   *out = gtl::FindPtrOrNull(*OpNameToAttrTypeMap(), op_name);
-  if (*out != nullptr) return Status::OK();
+  if (*out != nullptr) return OkStatus();
 
   const OpDef* op_def = nullptr;
   Status s = OpDefForOp(op_name, &op_def);
-  if (errors::IsNotFound(s)) {
+  if (absl::IsNotFound(s)) {
     // If we did not find the op def, we assume `op_name` is a function.
     // If it is actually a misspelled op, user will get another error when
     // trying to run it.
@@ -91,7 +94,7 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
     // function def to retrieve their types.
     *out = GetDefaultFunctionAttrTypeMap();
     *is_function = true;
-    return Status::OK();
+    return OkStatus();
   } else if (!s.ok()) {
     return s;
   }
@@ -132,7 +135,7 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
   auto r = OpNameToAttrTypeMap()->emplace(op_name, m.release());
   DCHECK(r.second) << "AttrTypeMap already exists for " << op_name;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #define DEFINE_GET_ATTR(TYPE, FIELD, ATTR_TYPE)                         \
@@ -140,25 +143,42 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
   Status AttrBuilder::Get(StringPiece attr_name, TYPE* value) const {   \
     auto it = encoded_attrs_.find(string(attr_name));                   \
     if (it == encoded_attrs_.end()) {                                   \
-      return errors::NotFound("No attr named'", attr_name,              \
+      return errors::NotFound("No attr named '", attr_name,             \
                               "' found in AttrBuilder for ", op_name_); \
     }                                                                   \
     attr_tmp_.ParseFromString(it->second);                              \
     TF_RETURN_IF_ERROR(AttrValueHasType(attr_tmp_, ATTR_TYPE));         \
     *value = attr_tmp_.FIELD();                                         \
-    return Status::OK();                                                \
+    return OkStatus();                                                  \
   }
 
 DEFINE_GET_ATTR(float, f, "float");
 DEFINE_GET_ATTR(int, i, "int");
+DEFINE_GET_ATTR(int64_t, i, "int");
 DEFINE_GET_ATTR(bool, b, "bool");
 DEFINE_GET_ATTR(tensorflow::DataType, type, "type");
 
 #undef DEFINE_GET_ATTR
 
+template <>
+Status AttrBuilder::Get(StringPiece attr_name,
+                        absl::InlinedVector<DataType, 4>* value) const {
+  auto it = encoded_attrs_.find(string(attr_name));
+  if (it == encoded_attrs_.end()) {
+    return errors::NotFound("No attr named '", attr_name,
+                            "' found in AttrBuilder for ", op_name_);
+  }
+  attr_tmp_.ParseFromString(it->second);
+  TF_RETURN_IF_ERROR(AttrValueHasType(attr_tmp_, "list(type)"));
+  for (size_t i = 0; i < attr_tmp_.list().type_size(); i++) {
+    value->push_back(attr_tmp_.list().type(i));
+  }
+  return OkStatus();
+}
+
 AttrBuilder& AttrBuilder::NumInputs(int n) {
-  DCHECK(!node_def_finalized_) << "Calling NumInputs after BuildNodeDef.";
   num_inputs_ = n;
+  node_def_finalized_ = false;
   return *this;
 }
 
@@ -223,9 +243,10 @@ void AttrBuilder::AddAttrIfNotPresent(StringPiece attr_name,
 
 const NodeDef& AttrBuilder::BuildNodeDef() {
   if (node_def_finalized_) return node_def_;
-  if (!node_def_initialized_) {
-    InitializeNodeDef();
-  }
+  node_def_.Clear();
+  node_def_.set_name(op_name_);
+  node_def_.set_op(op_name_);
+
   for (int i = 0; i < num_inputs_; ++i) {
     node_def_.add_input("dummy_input");
   }
@@ -252,15 +273,10 @@ Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
   } else {
     *is_list = 0;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
-inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
-                                               const tensorflow::Fprint128& b) {
-  return {tensorflow::FingerprintCat64(a.low64, b.low64),
-          tensorflow::FingerprintCat64(a.high64, b.high64)};
-}
 
 void CombineUnordered(const tensorflow::Fprint128& a,
                       tensorflow::Fprint128* b) {
@@ -292,7 +308,7 @@ tensorflow::Fprint128 AttrBuilder::CacheKey(const StringPiece device) {
 tensorflow::Fprint128 AttrBuilder::BuildCacheKeyForDevice(
     const StringPiece device) const {
   tensorflow::Fprint128 f = tensorflow::Fingerprint128(op_name());
-  f = tensorflow::FingerprintCat128(f, tensorflow::Fingerprint128(device));
+  f = tsl::FingerprintCat128(f, tensorflow::Fingerprint128(device));
   for (const auto& p : encoded_attrs_) {
     CombineUnordered(
         CacheKeyHelper(p.first, tensorflow::Fingerprint128(p.second)), &f);
@@ -300,12 +316,35 @@ tensorflow::Fprint128 AttrBuilder::BuildCacheKeyForDevice(
   return f;
 }
 
-void AttrBuilder::InitializeNodeDef() {
-  DCHECK(!node_def_initialized_);
-  node_def_.Clear();
-  node_def_.set_name(op_name_);
-  node_def_.set_op(op_name_);
-  node_def_initialized_ = true;
+void AttrBuilder::GetNameAttrList(
+    tensorflow::NameAttrList* name_and_attrs) const {
+  FillAttrValueMap(name_and_attrs->mutable_attr());
+  name_and_attrs->set_name(op_name());
+}
+
+Status AttrBuilder::GetTypeList(
+    absl::string_view attr_name,
+    absl::InlinedVector<DataType, 4>* type_list) const {
+  return Get(attr_name, type_list);
+}
+
+bool AttrBuilder::GetInt(absl::string_view attr_name, int64_t* result) const {
+  Status s = Get(attr_name, result);
+  return s.ok();
+}
+bool AttrBuilder::GetFloat(absl::string_view attr_name, float* result) const {
+  Status s = Get(attr_name, result);
+  return s.ok();
+}
+bool AttrBuilder::GetBool(absl::string_view attr_name, bool* result) const {
+  Status s = Get(attr_name, result);
+  return s.ok();
+}
+
+bool AttrBuilder::GetType(absl::string_view attr_name,
+                          tensorflow::DataType* result) const {
+  Status s = Get(attr_name, result);
+  return s.ok();
 }
 
 }  // namespace tensorflow

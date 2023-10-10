@@ -13,29 +13,55 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/IR/Ops.td"
+include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
-
-// Here, the element type can be any integer or float type. But, note that only
-// 32 bit integers are supported for the values.
-class GetScalarOfType<int value> : NativeCodeCall<
-  "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
+include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.td"
 
 class GetScalarOfFloatType<string value> : NativeCodeCall<
-  "GetScalarOfFloatType(getElementTypeOrSelf($0)," # value # ")">;
+  "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
 
 def GetScalarInfOfType : NativeCodeCall<
-  "GetScalarOfFloatType(getElementTypeOrSelf($0), "
+  "GetScalarOfType(getElementTypeOrSelf($0), "
   "std::numeric_limits<double>::infinity())">;
 
 def GetScalarNanOfType : NativeCodeCall<
-  "GetScalarOfFloatType(getElementTypeOrSelf($0), "
+  "GetScalarOfType(getElementTypeOrSelf($0), "
   "std::numeric_limits<double>::quiet_NaN())">;
 
 class GetI64ScalarElementsAttr<int value> :
   NativeCodeCall<"GetI64ElementsAttr({" # value # "}, &$_builder)">;
 
-def TrueBoolAttr : AttrConstraint<CPred<"$_self.getValue()">>;
+class GetF32Scalar<int value> :
+  NativeCodeCall<"GetF32Scalar(&$_builder, " # value # ")">;
+
+def TrueBoolAttr : AttrConstraint<CPred<"$_self.cast<::mlir::BoolAttr>().getValue()">>;
+
+def CreateTFShapeOp : NativeCodeCall<
+    "$_builder.create<TF::ShapeOp>($0.getLoc(), $1, $2)">;
+
+def IsI32 : NativeCodeCall<
+    "$_builder.getBoolAttr(getElementTypeOrSelf($0.getType()).isInteger(32))">;
+
+def CreateTFCastOpF32 : NativeCodeCall<
+    "CreateTFCastOpF32(&$_builder, $0.getLoc(), $1, $2)">;
+
+def CreateTFCastOpI32 : NativeCodeCall<
+    "CreateTFCastOpI32(&$_builder, $0.getLoc(), $1, $2)">;
+
+def CreateTensorScatterNdOp : NativeCodeCall<
+    "$_builder.create<TF::ScatterNdOp>($0.getLoc(), $0.getType(), $1, $2, $3)">;
+
+//===----------------------------------------------------------------------===//
+// Add op patterns.
+//===----------------------------------------------------------------------===//
+
+// We can lower AddOp to AddV2Op, except for string type. AddOp is defined for
+// TF_NumberNotQuantizedOrStrTensor tensor types. TF_NumberNotQuantizedTensor
+// is the same, except not containing TF_Str.
+
+def LowerAddOp : Pat<(TF_AddOp TF_NumberNotQuantizedTensor:$x,
+                               TF_NumberNotQuantizedTensor:$y),
+                     (TF_AddV2Op $x, $y)>;
 
 //===----------------------------------------------------------------------===//
 // BiasAddGrad op patterns.
@@ -75,8 +101,9 @@ def NonScalarType : Type<Neg<HasAnyRankOfPred<[0]>>, "Non scalar type">;
 def LowerSoftmaxCrossEntropyWithLogitsOp : Pattern<
   (TF_SoftmaxCrossEntropyWithLogitsOp AnyRankedTensor:$features,
                                       AnyRankedTensor:$labels),
-  [(TF_SumOp (TF_MulOp:$sum_input (TF_NegOp $labels),
-                                  (TF_LogSoftmaxOp $features)),
+  [(TF_SumOp (TF_MulNoNanOp:$sum_input
+                     (TF_LogSoftmaxOp $features),
+                     (TF_NegOp $labels)),
              (TF_ConstOp (GetI64ScalarElementsAttr<-1>)),
              /*keep_dims=*/ConstBoolAttrFalse),
    (TF_SubOp (TF_SoftmaxOp $features), $labels)],
@@ -124,19 +151,53 @@ def LowerSparseSoftmaxCrossEntropyWithLogitsOp : Pattern<
   (TF_SoftmaxCrossEntropyWithLogitsOp $features, $adjusted_labels)]>;
 
 //===----------------------------------------------------------------------===//
+// Dequantize op patterns.
+//===----------------------------------------------------------------------===//
+
+def DequantizeHalfRange : NativeCodeCall<
+  "DequantizeHalfRange(&$_builder, $0)">;
+
+// TODO(b/188530181): Generalize to more quantized input types,
+//   allow num_slices > 1, and allow non default arguments for $mode,
+//   $narrow_range, and $axis.
+def LowerDequantizeOp : Pat<
+  (TF_DequantizeOp:$result
+    $input, $min_range, $max_range,
+    TF_AnyStrAttrOf<["MIN_COMBINED"]>:$mode,
+    ConstBoolAttrFalse:$narrow_range,
+    ConstantAttr<I64Attr, "-1">:$axis),
+  (TF_CastOp
+    (TF_AddV2Op
+      (TF_MulOp
+        (TF_AddV2Op
+          (CreateTFCastOpF32 $result, $input, /*truncate=*/ConstBoolAttrFalse),
+          (TF_ConstOp (DequantizeHalfRange $input))),
+        (TF_DivOp
+          (TF_SubOp $max_range, $min_range),
+          (TF_ConstOp (GetF32Scalar<255>)))),
+      $min_range),
+    /*truncate=*/ConstBoolAttrFalse),
+  [(TensorOf<[TF_Qint8, TF_Quint8]> $input),
+   (TF_Float32Tensor $min_range),
+   (TF_Float32Tensor $max_range),
+   (TensorOf<[TF_Float32, TF_Bfloat16]> $result)]>;
+
+//===----------------------------------------------------------------------===//
 // Difference op patterns.
 //===----------------------------------------------------------------------===//
 
-def ComplexTensor   : TensorOf<[AnyComplex]>;
-def RealTensor   : TensorOf<[AnySignlessInteger, AnyFloat]>;
+def ComplexTensor : TensorOf<[AnyComplex]>;
+def RealTensor : TensorOf<[AnySignlessInteger, AnyFloat]>;
 
-def : Pat<(TF_SquareOp $val), (TF_MulOp $val, $val)>;
+def LowerSquareOp : Pat<(TF_SquareOp $val), (TF_MulOp $val, $val)>;
 
-def : Pat<(TF_SquaredDifferenceOp RealTensor: $lhs, RealTensor:$rhs),
-          (TF_SquareOp (TF_SubOp $lhs, $rhs))>;
+def LowerSquaredDifferenceOpOnRealTensors : Pat<
+  (TF_SquaredDifferenceOp RealTensor: $lhs, RealTensor:$rhs),
+  (TF_SquareOp (TF_SubOp $lhs, $rhs))>;
 
-def : Pat<(TF_SquaredDifferenceOp ComplexTensor: $lhs, ComplexTensor:$rhs),
-          (TF_MulOp (TF_SubOp:$diff $lhs, $rhs), (TF_ConjOp $diff))>;
+def LowerSquaredDifferenceOpOneComplexTensors : Pat<
+  (TF_SquaredDifferenceOp ComplexTensor: $lhs, ComplexTensor:$rhs),
+  (TF_MulOp (TF_SubOp:$diff $lhs, $rhs), (TF_ConjOp $diff))>;
 
 //===----------------------------------------------------------------------===//
 // DivNoNan and MulNonNan op patterns.
@@ -149,9 +210,30 @@ class BinaryNoNanPat<Op FromOp, Op ToOp>
                        /*incompatible_shape_error*/ConstBoolAttrTrue),
            $zero, (ToOp $l, $r))>;
 
-foreach fromToBinPair = [[TF_DivNoNanOp, TF_DivOp],
-                         [TF_MulNoNanOp, TF_MulOp]] in
-  def : BinaryNoNanPat<fromToBinPair[0], fromToBinPair[1]>;
+def LowerDivNoNanOp : BinaryNoNanPat<TF_DivNoNanOp, TF_DivOp>;
+
+def LowerMulNoNanOp : BinaryNoNanPat<TF_MulNoNanOp, TF_MulOp>;
+
+//===----------------------------------------------------------------------===//
+// TruncateDiv op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerTruncateDivOpOnIntTensors : Pat<
+  (TF_TruncateDivOp TF_IntTensor:$lhs, $rhs),
+  (TF_DivOp $lhs, $rhs)>;
+
+// Note: truncation could also be implemented as sign(x) * floor(abs(x)) or
+//       (-1 & x) || floor(abs(x)), based on performance benchmarks.
+def LowerTruncateDivOpOnFloatTensors : Pat<
+  (TF_TruncateDivOp TF_FloatTensor:$lhs, $rhs),
+  (TF_SelectV2Op
+    (TF_LessOp
+      (TF_DivOp:$div $lhs, $rhs),
+      (TF_ConstOp:$zero (GetScalarOfFloatType<"0.0"> $lhs))
+    ),
+    (TF_CeilOp $div),
+    (TF_FloorOp $div)
+  )>;
 
 //===----------------------------------------------------------------------===//
 // Fill op patterns.
@@ -168,6 +250,12 @@ def LowerEmptyOp : Pat<(TF_EmptyOp:$result $dims, TrueBoolAttr:$init),
                       (TF_BroadcastToOp
                        (TF_ConstOp (GetScalarOfType<0> $result)), $dims),
                       [(TF_SintOrFpTensor $result)]>;
+
+//===----------------------------------------------------------------------===//
+// Inv op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerInv : Pat<(TF_InvOp $x), (TF_ReciprocalOp $x)>;
 
 //===----------------------------------------------------------------------===//
 // Inf op patterns.
@@ -211,9 +299,13 @@ def LowerL2LossOp :
 // Pad op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_PadOp TensorOf<[AnySignlessInteger, AnyFloat]>:$input, $paddings),
-          (TF_PadV2Op $input, $paddings,
-             (TF_ConstOp (GetScalarOfType<0> $input)))>;
+def LowerPadOp : Pat<
+  (TF_PadOp TensorOf<[AnySignlessInteger, AnyFloat]>:$input, $paddings),
+  (TF_PadV2Op $input, $paddings,
+    (TF_ConstOp
+      (GetScalarOfType<0> $input)
+    )
+  )>;
 
 //===----------------------------------------------------------------------===//
 // Reciprocal op patterns.
@@ -226,31 +318,110 @@ def LowerReciprocal : Pat<(TF_ReciprocalOp $x),
 // Round op patterns.
 //===----------------------------------------------------------------------===//
 
+// Rint is specified as RoundHalfToEven, which happens to be the same behavior
+// as TF_RoundOp, so lower to TF_RoundOp.
+def LowerRintOp : Pat<(TF_RintOp:$res TF_FloatTensor:$input), (TF_RoundOp $input)>;
 
 // Rounds on integers should just be bypassed.
-def : Pat<(TF_RoundOp:$res TF_IntTensor:$input), (TF_IdentityOp $input)>;
+def LowerRoundOpOnIntTensor : Pat<
+  (TF_RoundOp:$res TF_IntTensor:$input),
+  (TF_IdentityOp $input)>;
 
-// Implements TF Round on floats using basic operations.
-def : Pat<(TF_RoundOp:$res TF_FloatTensor:$input),
-          (TF_SelectOp
-           (TF_LessOp
-            (TF_SubOp $input, (TF_FloorOp:$floor $input)),
-            (TF_ConstOp (GetScalarOfFloatType<"0.5"> $input))),
-           $floor,
-           (TF_AddV2Op
-            (TF_ConstOp (GetScalarOfType<1> $input)), $floor))>;
-
+// Implements TF Round on floats using basic operations. TF Round is specified
+// as RoundHalfToEven to be compatible with Numpy.
+def LowerRoundOpOnFloatTensor : Pat<
+  (TF_RoundOp:$res TF_FloatTensor:$input),
+  (TF_SelectV2Op
+    (TF_EqualOp
+      (TF_ConstOp:$zero (GetScalarOfFloatType<"0.0"> $input)),
+      (TF_SelectV2Op:$rounded
+        (TF_LogicalOrOp
+          (TF_GreaterOp
+            (TF_SubOp:$fraction $input, (TF_FloorOp:$round_val $input)),
+            (TF_ConstOp:$half (GetScalarOfFloatType<"0.5"> $input))
+          ),
+          (TF_LogicalAndOp
+            // If the input is equal to 0.5 ...
+            (TF_EqualOp
+              $fraction,
+              $half,
+              /*incompatible_shape_error*/ConstBoolAttrTrue
+            ),
+            // ... check if the value is odd, so we can round up in that case.
+            (TF_EqualOp
+              (TF_SubOp
+                $round_val,
+                (TF_MulOp
+                  (TF_ConstOp (GetScalarOfType<2> $input)),
+                  (TF_FloorOp (TF_MulOp $half, $input))
+                )
+              ),
+              (TF_ConstOp:$one (GetScalarOfType<1> $input)),
+              /*incompatible_shape_error*/ConstBoolAttrTrue
+            )
+          )
+        ),
+        (TF_AddV2Op $round_val, $one),
+        $round_val
+      ),
+      /*incompatible_shape_error*/ConstBoolAttrTrue
+    ),
+    $zero,
+    $rounded
+  )>;
 
 //===----------------------------------------------------------------------===//
 // Rsqrt op patterns.
 //===----------------------------------------------------------------------===//
 
 // RsqrtGrad(lhs, rhs) = (lhs * lhs * lhs) * (rhs / -2)
-def : Pat<(TF_RsqrtGradOp $lhs, $rhs),
-          (TF_MulOp (TF_MulOp (TF_MulOp $lhs, $lhs), $lhs),
-                    (TF_DivOp $rhs,
-                              (TF_ConstOp (GetScalarOfType<-2> $rhs))))>;
+def LowerRsqrtGradOp : Pat<
+  (TF_RsqrtGradOp $lhs, $rhs),
+  (TF_MulOp
+    (TF_MulOp
+      (TF_MulOp $lhs, $lhs),
+      $lhs
+    ),
+    (TF_DivOp
+      $rhs,
+      (TF_ConstOp
+        (GetScalarOfType<-2> $rhs)
+      )
+    )
+  )>;
 
+//===----------------------------------------------------------------------===//
+// Size op patterns.
+//===----------------------------------------------------------------------===//
+
+// Size(x) = Prod(Shape(x), reduction_indices=0, keep_dims=false)
+def LowerSizeOp : Pat<
+  (TF_SizeOp:$res $arg),
+  (TF_ProdOp
+    (CreateTFShapeOp
+      $res,
+      $arg,
+      (IsI32 $res)
+    ),
+    /*reduction_indices=*/
+    (TF_ConstOp
+      (GetScalarOfType<0> $res)
+    ),
+    /*keep_dims=*/
+    ConstBoolAttrFalse
+  )>;
+
+//===----------------------------------------------------------------------===//
+// Sqrt op patterns.
+//===----------------------------------------------------------------------===//
+
+// SqrtGrad(y, dy) = dy * 0.5 / y
+def LowerSqrtGradOp : Pat<
+  (TF_SqrtGradOp $y, $dy),
+  (TF_DivOp
+    (TF_MulOp $dy, (TF_ConstOp (GetScalarOfFloatType<"0.5"> $dy))),
+    $y
+  )>;
 
 //===----------------------------------------------------------------------===//
 // TanhGrad op patterns.
@@ -258,9 +429,8 @@ def : Pat<(TF_RsqrtGradOp $lhs, $rhs),
 
 // grad = dy * (1 - y**2)
 
-// TODO(hinsu): Support complex input types.
 def LowerTanhGradOp :
-  Pat<(TF_TanhGradOp TF_FloatTensor:$y, TF_FloatTensor:$dy),
+  Pat<(TF_TanhGradOp $y, $dy),
       (TF_MulOp $dy,
                 (TF_SubOp (TF_ConstOp (GetScalarOfType<1> $y)),
                           (TF_SquareOp $y)))>;
@@ -279,8 +449,6 @@ def LowerFakeQuantWithMinMaxArgs :
 // ZerosLike op patterns.
 //===----------------------------------------------------------------------===//
 
-def CreateTFShapeOp : NativeCodeCall<
-    "$_builder.create<TF::ShapeOp>($0.getLoc(), $1, $2)">;
 
 class LowerInitializationOp<Op FromOp, int initial_val>
   : Pat<(FromOp:$src_op
@@ -303,14 +471,166 @@ def LowerScatterNdOp :
 // Xdivy, Xlog1p and Xlogy op patterns.
 //===----------------------------------------------------------------------===//
 
-class BinaryXopyPat<dag From, dag To>
-  : Pat<From,
-        (TF_SelectV2Op (TF_EqualOp $x,
-                                   (TF_ConstOp:$zero (GetScalarOfType<0> $x)),
-                       /*incompatible_shape_error*/ConstBoolAttrTrue),
-           $zero, To)>;
+class BinaryXopyPat<dag From, dag To> : Pat<
+  From,
+  (TF_SelectV2Op
+    (TF_EqualOp
+      $x,
+      (TF_ConstOp
+        (GetScalarOfType<0> $x)
+      ),
+      /*incompatible_shape_error*/ConstBoolAttrTrue
+    ),
+    $x,
+    To
+  )>;
 
-foreach fromToPair = [[(TF_XdivyOp $x, $y), (TF_DivOp $x, $y)],
-                      [(TF_Xlog1pyOp $x, $y), (TF_MulOp $x, (TF_Log1pOp $y))],
-                      [(TF_XlogyOp $x, $y), (TF_MulOp $x, (TF_LogOp $y))]] in
-  def : BinaryXopyPat<fromToPair[0], fromToPair[1]>;
+def LowerXdivyOp : BinaryXopyPat<
+  (TF_XdivyOp $x, $y),
+  (TF_DivOp $x, $y)>;
+
+def LowerXlog1pyOp : BinaryXopyPat<
+  (TF_Xlog1pyOp $x, $y),
+  (TF_MulOp $x, (TF_Log1pOp $y))>;
+
+def LowerXlogyOp : BinaryXopyPat<
+  (TF_XlogyOp $x, $y),
+  (TF_MulOp $x, (TF_LogOp $y))>;
+
+//===----------------------------------------------------------------------===//
+// IsFinite op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerIsFiniteOp : Pat<(TF_IsFiniteOp $x),
+                       (TF_EqualOp
+                          (TF_SubOp $x, $x),
+                          (TF_ConstOp (GetScalarOfType<0> $x)),
+                          /*incompatible_shape_error*/ConstBoolAttrTrue)>;
+
+//===----------------------------------------------------------------------===//
+// TensorScatterUpdate op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerTensorScatterUpdate_1 : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
+          (TF_CastOp
+            (TF_TensorScatterUpdateOp
+              (CreateTFCastOpI32
+                $input,
+                $input,
+                /*truncate=*/ConstBoolAttrFalse),
+              $indices,
+              (CreateTFCastOpI32
+                $updates,
+                $updates,
+                /*truncate=*/ConstBoolAttrFalse)),
+             /*truncate=*/ConstBoolAttrFalse),
+          [(TensorOf<[TF_Bool]> $input), (TensorOf<[TF_Bool]> $updates)] >;
+
+def LowerTensorScatterUpdate_2 : Pat<(TF_TensorScatterUpdateOp $input, $indices, $updates),
+          (TF_AddV2Op
+             (TF_MulOp
+                (TF_SubOp (TF_ConstOp (GetScalarOfType<1> $updates)),
+                   (CreateTensorScatterNdOp $input, $indices,
+                      (TF_OnesLikeOp $updates),
+                   (CreateTFShapeOp $input, $input, ConstBoolAttrTrue))),
+             $input),
+           (CreateTensorScatterNdOp $input, $indices, $updates,
+              (CreateTFShapeOp $input, $input, ConstBoolAttrTrue))),
+          [(TensorOf<[TF_Int, TF_Float, TF_Complex]> $updates)]>;
+
+//===----------------------------------------------------------------------===//
+// Selu op patterns.
+//===----------------------------------------------------------------------===//
+
+def getScale : NativeCodeCall<
+  "GetScalarOfType(getElementTypeOrSelf($0), 1.0507009873554804934193349852946)"
+  >;
+
+def getScaledAlpha : NativeCodeCall<
+  "GetScalarOfType(getElementTypeOrSelf($0), 1.7580993408473768599402175208123)"
+  >;
+
+// Selu(x) = scale * x if x > 0 else scaledAlpha * (exp(x) - 1). Here
+// scale is taken as a constant 1.0507009873554804934193349852946 and
+// scaledAlpha  is taken as a constant 1.7580993408473768599402175208123.
+
+def LowerSeluOp : Pat<(TF_SeluOp TF_FloatTensor:$features),
+                  (TF_SelectV2Op
+                    (TF_GreaterOp
+                      $features,
+                      (TF_ConstOp (GetScalarOfType<0> $features))),
+                    (TF_MulOp
+                      (TF_ConstOp (getScale $features)),
+                      $features),
+                    (TF_MulOp
+                      (TF_ConstOp (getScaledAlpha $features)),
+                      (TF_Expm1Op $features)))>;
+
+// SeluGradOp(gradients, outputs) = gradients * scale if outputs > 0
+// else gradients * (outputs + scaledAlpha). Here scale is taken as a
+// constant 1.0507009873554804934193349852946 and scaledAlpha is taken
+// as a constant 1.7580993408473768599402175208123.
+
+def LowerSeluGradOp : Pat<(TF_SeluGradOp AnyStaticShapeTensor:$gradients,
+                          TF_FloatTensor:$features),
+                      (TF_SelectV2Op
+                        (TF_GreaterOp
+                          $features,
+                          (TF_ConstOp (GetScalarOfType<0> $features))),
+                        (TF_MulOp
+                          $gradients,
+                          (TF_ConstOp (getScale $features))),
+                        (TF_MulOp
+                          $gradients,
+                          (TF_AddV2Op
+                            $features,
+                            (TF_ConstOp (getScaledAlpha $features)))))>;
+
+
+
+//===----------------------------------------------------------------------===//
+// Expm1 op patterns.
+//===----------------------------------------------------------------------===//
+
+// Expm1(x) = Exp(x) - 1
+def LowerExp1mOp : Pat<
+  (TF_Expm1Op $x),
+  (TF_SubOp
+    (TF_ExpOp $x),
+    (TF_ConstOp (GetScalarOfType<1> $x))
+  )>;
+
+//===----------------------------------------------------------------------===//
+// MatrixBandPart op patterns.
+//===----------------------------------------------------------------------===//
+
+class GetDimensionSize<int idx> : NativeCodeCall<
+  "GetDimensionSize(&$_builder, $_loc, $0, " # idx # ", $1)">;
+
+// MatrixBandPart(input, num_lower, num_upper) {
+//   m = Shape(input)[-2]
+//   n = Shape(input)[-1]
+//   num_lower_or_m = Select(num_lower < 0, m, num_lower)
+//   num_upper_or_n = Select(num_upper < 0, n, num_upper)
+//   offset = ExpandDims(Range(0, m), -1) - Range(0, n)
+//   indicator = LogicalAnd(offset <= num_lower_or_m, offset >= -num_upper_or_n)
+//   return Select(indicator, input, ZerosLike(Input))
+// }
+def LowerMatrixBandPartOp : Pattern<
+  (TF_MatrixBandPartOp $input, $num_lower, $num_upper),
+  [(TF_ConstOp:$zero (GetScalarOfType<0> $num_lower)),
+   (TF_ConstOp:$one (GetScalarOfType<1> $num_lower)),
+   (TF_ConstOp:$neg_one (GetScalarOfType<-1> $num_lower)),
+   (GetDimensionSize<-2>:$m $input, (IsI32 $num_lower)),
+   (GetDimensionSize<-1>:$n $input, (IsI32 $num_upper)),
+   (TF_SelectV2Op:$num_lower_or_m (TF_LessOp $num_lower, $zero),
+                                  $m, $num_lower),
+   (TF_SelectV2Op:$num_upper_or_n (TF_LessOp $num_upper, $zero),
+                                  $n, $num_upper),
+   (TF_RangeOp:$range_m $zero, $m, $one),
+   (TF_RangeOp:$range_n $zero, $n, $one),
+   (TF_SubOp:$offset (TF_ExpandDimsOp $range_m, $neg_one), $range_n),
+   (TF_LogicalAndOp:$indicator (TF_LessEqualOp $offset, $num_lower_or_m),
+                               (TF_GreaterEqualOp $offset,
+                                                  (TF_NegOp $num_upper_or_n))),
+   (TF_SelectV2Op $indicator, $input, (TF_ZerosLikeOp $input))]>;

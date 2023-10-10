@@ -50,12 +50,15 @@ function build_framework() {
   pushd "${WORKSPACE_ROOT}"
 
 # Build the framework.
-  bazel build --config=ios_fat -c opt ${PROFILING_ARGS} \
+  bazel build --config=ios_arm64 -c opt --cxxopt=-std=c++17 ${PROFILING_ARGS} \
       "//${BENCHMARK_DIR}/experimental/ios:${FRAMEWORK_TARGET}"
+
+# Get the generated framework path.
+BAZEL_OUTPUT_FILE_PATH=$(bazel cquery "//${BENCHMARK_DIR}/experimental/ios:${FRAMEWORK_TARGET}" --config=ios_arm64 --output=starlark --starlark:expr="' '.join([f.path for f in target.files.to_list()])")
 
 # Copy the framework into the destination and unzip.
   mkdir -p "${DEST_DIR}"
-  cp -f "bazel-bin/${BENCHMARK_DIR}/experimental/ios/${FRAMEWORK_TARGET}.zip" \
+  cp -f "${BAZEL_OUTPUT_FILE_PATH}" \
       "${DEST_DIR}"
   pushd "${DEST_DIR}"
   unzip -o "${FRAMEWORK_TARGET}.zip"

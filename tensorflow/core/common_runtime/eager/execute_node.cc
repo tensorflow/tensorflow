@@ -44,8 +44,7 @@ Status ExecuteNodeArgs::InitPackedHandle(const int index, EagerContext* ctx,
     TF_RETURN_IF_ERROR(packed_handle->ExtractPackedHandle(i, &h));
     // We have validated that h->device() is not a CustomDevice when
     // constructing a pack TensorHandle.
-    const Status status =
-        h->TensorValue(absl::get<Device*>(h->device()), &packed_arg_flat[i]);
+    const Status status = h->TensorValue(h->device(), &packed_arg_flat[i]);
     if (!status.ok()) {
 #if !defined(IS_MOBILE_PLATFORM)
       if (IsRemote(ctx, input_device, h)) {
@@ -59,7 +58,7 @@ Status ExecuteNodeArgs::InitPackedHandle(const int index, EagerContext* ctx,
       return status;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ExecuteNodeArgs::Init(
@@ -107,13 +106,7 @@ Status ExecuteNodeArgs::Init(
         TF_RETURN_IF_ERROR(
             op_inputs[index.index]->ExtractPackedHandle(index.sub_index, &h));
       }
-      VariantDevice variant_device = h->device();
-      if (VariantDeviceIsCustom(variant_device)) {
-        return errors::Internal(
-            "Custom devices and remote execution are currently not supported "
-            "together.");
-      }
-      Device* device = absl::get<Device*>(variant_device);
+      Device* device = h->device();
       // For a multi-device function, a remote RunComponentFunction request is
       // not sent through StreamingEnqueueAsync. It could arrive at a remote
       // worker before a remote execution request which produces an input of the
@@ -125,20 +118,20 @@ Status ExecuteNodeArgs::Init(
     };
   }
 #endif  // !IS_MOBILE_PLATFORM
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ExecuteNodeArgs::GetLocalArg(const FunctionArgIndex& index,
                                     Tensor* val) const {
   Status s = EagerKernelArgs::GetLocalArg(index, val);
   if (s.ok()) {
-    return Status::OK();
+    return OkStatus();
   }
   if (packed_args_.contains(index.index)) {
     Tensor* arg = packed_args_.at(index.index).at(index.sub_index).tensor;
     if (arg) {
       *val = *arg;
-      return Status::OK();
+      return OkStatus();
     } else {
       return errors::NotFound("Argument (", index.index, ",", index.sub_index,
                               ") has no local tensor.");

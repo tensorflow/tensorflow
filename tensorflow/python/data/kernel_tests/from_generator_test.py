@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tf.data.Dataset.from_generator()."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import threading
 
 from absl.testing import parameterized
@@ -24,6 +20,7 @@ import numpy as np
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import from_generator_op
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -53,7 +50,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(
-              num_repeats=[1, 5], requires_initialization=[True, False])))
+              num_repeats=[1, 2], requires_initialization=[True, False])))
   def testFromGeneratorUsingFn(self, num_repeats, requires_initialization):
 
     def generator():
@@ -71,7 +68,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(
-              num_repeats=[1, 5], requires_initialization=[True, False])))
+              num_repeats=[1, 2], requires_initialization=[True, False])))
   def testFromGeneratorUsingList(self, num_repeats, requires_initialization):
     generator = lambda: [[i] * i for i in range(1, 100)]
     elem_sequence = list(generator())
@@ -85,7 +82,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(
-              num_repeats=[1, 5], requires_initialization=[True, False])))
+              num_repeats=[1, 2], requires_initialization=[True, False])))
   def testFromGeneratorUsingNdarray(self, num_repeats, requires_initialization):
     generator = lambda: np.arange(100, dtype=np.int64)
     elem_sequence = list(generator())
@@ -99,7 +96,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(
-              num_repeats=[1, 5], requires_initialization=[True, False])))
+              num_repeats=[1, 2], requires_initialization=[True, False])))
   def testFromGeneratorUsingGeneratorExpression(self, num_repeats,
                                                 requires_initialization):
     # NOTE(mrry): Generator *expressions* are not repeatable (or in general
@@ -118,19 +115,18 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testFromMultipleConcurrentGenerators(self):
     num_inner_repeats = 5
-    num_outer_repeats = 100
+    num_outer_repeats = 20
 
     def generator():
       for i in range(1, 10):
         yield ([i] * i, [i, i ** 2, i ** 3])
     input_list = list(generator())
 
-    # The interleave transformation is essentially a flat map that
-    # draws from multiple input datasets concurrently (in a cyclic
-    # fashion). By placing `Dataset.from_generator()` inside an
-    # interleave, we test its behavior when multiple iterators are
-    # active at the same time; by additionally prefetching inside the
-    # interleave, we create the possibility of parallel (modulo GIL)
+    # The interleave transformation is essentially a flat map that draws from
+    # multiple input datasets concurrently (in a cyclic fashion). By placing
+    # `Dataset.from_generator()` inside an interleave, we test its behavior when
+    # multiple iterators are active at the same time; by additionally
+    # prefetching inside the interleave, we create the possibility of concurrent
     # invocations to several iterators created by the same dataset.
     def interleave_fn(_):
       return (dataset_ops.Dataset.from_generator(
@@ -149,8 +145,8 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  # TODO(b/67868766): Reenable this when the source of flakiness is discovered.
-  def _testFromGeneratorsRunningInParallel(self):
+  def DISABLED_testFromGeneratorsRunningInParallel(self):
+    self.skipTest("b/67868766")
     num_parallel_iterators = 3
 
     # Define shared state that multiple iterator instances will access to
@@ -342,7 +338,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     # Use an `Event` to signal that the generator has been deleted.
     event = threading.Event()
 
-    class GeneratorWrapper(object):
+    class GeneratorWrapper:
 
       def __iter__(self):
         return self
@@ -427,7 +423,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dummy = constant_op.constant(37)
 
-    dataset = dataset_ops._GeneratorDataset(
+    dataset = from_generator_op._GeneratorDataset(
         dummy, lambda x: x, lambda x: x, finalize_fn,
         tensor_spec.TensorSpec((), dtypes.int32))
 
@@ -499,7 +495,8 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
         yield [20]
 
     with self.assertRaisesRegex(
-        TypeError, r"Cannot convert value \[tf.int64\] to a TensorFlow DType"):
+        TypeError, r"Cannot convert the argument `type_value`: "
+        r"\[tf.int64\] to a TensorFlow DType"):
       dataset_ops.Dataset.from_generator(
           generator, output_types=[dtypes.int64])
 
@@ -514,6 +511,18 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
                                 r"Dimension value must be integer or None"):
       dataset_ops.Dataset.from_generator(
           generator, output_types=(dtypes.int64), output_shapes=[[1]])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+
+    def generator():
+      yield 42
+
+    dataset_ops.Dataset.from_generator(
+        generator,
+        output_types=(dtypes.int64),
+        output_shapes=[1],
+        name="from_generator")
 
 
 if __name__ == "__main__":

@@ -150,7 +150,7 @@ class GraphOptimizerStage {
   // (TrySimplify), and make virtual implementation protected.
   Status EnsureNodeIsSupported(const NodeDef* node) const {
     return IsSupported(node)
-               ? Status::OK()
+               ? OkStatus()
                : errors::InvalidArgument(
                      "Node ", node->name(), " is not supported by optimizer ",
                      optimizer_name_, " and stage ", stage_name_);
@@ -219,7 +219,7 @@ class GraphOptimizerStage {
   const string optimizer_name_;
   const string stage_name_;
   const GraphOptimizerContext ctx_;
-  std::atomic<int64> optimized_node_name_counter_ = {0};
+  std::atomic<int64_t> optimized_node_name_counter_ = {0};
 };
 
 template <typename Result>
@@ -263,8 +263,7 @@ class GraphOptimizerStagePipeline {
         if (!stage_status.ok()) {
           VLOG(2) << "Failed to run optimizer " << stage->optimizer_name()
                   << ", stage " << stage->stage_name() << " node "
-                  << node->name()
-                  << ". Error: " << stage_status.error_message();
+                  << node->name() << ". Error: " << stage_status.message();
         }
         if (break_predicate_(*result)) return true;
       }
@@ -275,7 +274,7 @@ class GraphOptimizerStagePipeline {
   // Pass a node through all registered optimizer stages, until break predicate
   // is true or a stage fails.
   //
-  // Returns any stage failure status, or else Status::OK().
+  // Returns any stage failure status, or else OkStatus().
   Status PassThroughAllStagesWithStatus(NodeDef* node, Result* result) {
     for (auto& stage : stages_) {
       if (!stage->IsSupported(node)) {
@@ -288,13 +287,14 @@ class GraphOptimizerStagePipeline {
         break;
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   std::size_t NumStages() { return stages_.size(); }
 
   std::vector<string> StageNames() {
     std::vector<string> names;
+    names.reserve(stages_.size());
     for (const auto& stage : stages_) {
       names.push_back(stage->stage_name());
     }
@@ -305,7 +305,8 @@ class GraphOptimizerStagePipeline {
   std::vector<std::unique_ptr<GraphOptimizerStage<Result>>> stages_;
   std::function<bool(const Result&)> break_predicate_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GraphOptimizerStagePipeline);
+  GraphOptimizerStagePipeline(const GraphOptimizerStagePipeline&) = delete;
+  void operator=(const GraphOptimizerStagePipeline&) = delete;
 };
 
 }  // end namespace grappler

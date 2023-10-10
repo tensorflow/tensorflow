@@ -20,7 +20,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/image_resizer_state.h"
 
 namespace tensorflow {
@@ -46,9 +47,8 @@ class ResizeNearestNeighborOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    const Tensor& input = context->input(0);
     ImageResizerState st(align_corners_, half_pixel_centers_);
-    st.ValidateAndCreateOutput(context, input);
+    st.ValidateAndCreateOutput(context);
 
     if (!context->status().ok()) return;
 
@@ -59,7 +59,8 @@ class ResizeNearestNeighborOp : public OpKernel {
     // Return if the output is empty.
     if (st.output->NumElements() == 0) return;
 
-    typename TTypes<T, 4>::ConstTensor input_data(input.tensor<T, 4>());
+    typename TTypes<T, 4>::ConstTensor input_data(
+        context->input(0).tensor<T, 4>());
     typename TTypes<T, 4>::Tensor output_data(st.output->tensor<T, 4>());
 
     bool status;
@@ -109,7 +110,7 @@ struct BoolToScaler {};
 
 struct HalfPixelScalerForNN {
   inline float operator()(const int x, const float scale) const {
-    // All of the nearest neigbor code below immediately follows a call to this
+    // All of the nearest neighbor code below immediately follows a call to this
     // function with a std::floor(), so instead of subtracting the 0.5 as we
     // do in HalfPixelScale, we leave it as is, as the std::floor does the
     // correct thing.
@@ -239,20 +240,28 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
     OP_REQUIRES(context, sizes(0) > 0 && sizes(1) > 0,
                 errors::InvalidArgument("shape_t's elements must be positive"));
 
-    const int64 batch_size = input.dim_size(0);
-    const int64 in_height = input.dim_size(1);
-    const int64 in_width = input.dim_size(2);
-    const int64 channels = input.dim_size(3);
+    if (std::is_same<Device, GPUDevice>::value) {
+      OP_REQUIRES(
+          context, !OpDeterminismRequired(),
+          errors::Unimplemented(
+              "A deterministic GPU implementation of ResizeNearestNeighborGrad"
+              " is not currently available."));
+    }
 
-    const int64 out_height = sizes(0);
-    const int64 out_width = sizes(1);
+    const int64_t batch_size = input.dim_size(0);
+    const int64_t in_height = input.dim_size(1);
+    const int64_t in_width = input.dim_size(2);
+    const int64_t channels = input.dim_size(3);
+
+    const int64_t out_height = sizes(0);
+    const int64_t out_width = sizes(1);
 
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(
-        context,
-        context->allocate_output(
-            0, TensorShape({batch_size, out_height, out_width, channels}),
-            &output));
+    TensorShape shape;
+    OP_REQUIRES_OK(context,
+                   TensorShape::BuildTensorShape(
+                       {batch_size, out_height, out_width, channels}, &shape));
+    OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output));
 
     // Return if the output is empty.
     if (output->NumElements() == 0) return;

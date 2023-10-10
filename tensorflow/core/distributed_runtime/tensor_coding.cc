@@ -82,7 +82,6 @@ void TensorResponse::InitPartial(const RecvTensorResponse& response,
 Status TensorResponse::ParseFrom(Source* source) {
   if (!on_host_) {
     protobuf::io::CodedInputStream input(source->contents());
-    input.SetTotalBytesLimit(INT_MAX, INT_MAX);  // Unlimited
 
     // Pre-parse into local storage, then delegate to device.
     if (!meta_.ParseFromCodedStream(&input) || !input.ConsumedEntireMessage()) {
@@ -102,9 +101,9 @@ Status TensorResponse::ParseFrom(Source* source) {
     ClearTensor();
   }
   already_used_ = true;
-  if (ParseFast(source)) return Status::OK();
+  if (ParseFast(source)) return OkStatus();
   meta_.Clear();
-  if (ParseSlow(source)) return Status::OK();
+  if (ParseSlow(source)) return OkStatus();
   return errors::InvalidArgument("Cannot parse tensor from response");
 }
 
@@ -218,7 +217,6 @@ bool TensorResponse::ParseTensorSubmessage(
 
 bool TensorResponse::ParseFast(Source* source) {
   protobuf::io::CodedInputStream input(source->contents());
-  input.SetTotalBytesLimit(INT_MAX, INT_MAX);  // Unlimited
   while (true) {
     auto p = input.ReadTagWithCutoff(127);
     int tag = GetTagFieldNumber(p.first);
@@ -252,7 +250,7 @@ bool TensorResponse::ParseFast(Source* source) {
       case RecvTensorResponse::kSendStartMicrosFieldNumber: {
         protobuf_uint64 v;
         if ((wt != WIRETYPE_VARINT) || !input.ReadVarint64(&v)) return false;
-        meta_.set_send_start_micros(static_cast<int64>(v));
+        meta_.set_send_start_micros(static_cast<int64_t>(v));
         break;
       }
       case RecvTensorResponse::kTransportOptionsFieldNumber: {

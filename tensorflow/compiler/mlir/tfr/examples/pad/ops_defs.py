@@ -16,20 +16,16 @@
 # pylint: disable=g-direct-tensorflow-import
 # pylint: disable=missing-function-docstring
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import sys
 
+from absl import app
 import tensorflow as tf
 
 from tensorflow.compiler.mlir.tfr.python import composite
 from tensorflow.compiler.mlir.tfr.python.op_reg_gen import gen_register_op
 from tensorflow.compiler.mlir.tfr.python.tfr_gen import tfr_gen_from_module
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 
 Composite = composite.Composite
@@ -107,11 +103,14 @@ def _composite_mirror_pad_grad(input_, paddings, mode):
     left_padding_size = tf.raw_ops.GatherNd(params=paddings, indices=[i, 0])
     right_padding_size = tf.raw_ops.GatherNd(params=paddings, indices=[i, 1])
 
-    left_padding, core, right_padding = tf.raw_ops.SplitV(
+    split_outputs = tf.raw_ops.SplitV(
         value=input_,
         size_splits=[left_padding_size, -1, right_padding_size],
         axis=i,
         num_split=3)
+    left_padding = split_outputs[0]
+    core = split_outputs[1]
+    right_padding = split_outputs[2]
     reversed_left_padding = tf.raw_ops.Reverse(tensor=left_padding, dims=rdims)
     reversed_right_padding = tf.raw_ops.Reverse(
         tensor=right_padding, dims=rdims)

@@ -1,6 +1,6 @@
 path: "tensorflow.train.CheckpointManager"
 tf_class {
-  is_instance: "<class \'tensorflow.python.training.checkpoint_management.CheckpointManager\'>"
+  is_instance: "<class \'tensorflow.python.checkpoint.checkpoint_management.CheckpointManager\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "checkpoint"
@@ -33,5 +33,9 @@ tf_class {
   member_method {
     name: "save"
     argspec: "args=[\'self\', \'checkpoint_number\', \'check_interval\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\'], "
+  }
+  member_method {
+    name: "sync"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
 }

@@ -17,7 +17,11 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <algorithm>
+#include <memory>
+#include <set>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -81,8 +85,7 @@ string FormatAcceleratorExecTime(const ShowMultiNode* node,
 void TFOp::AddNode(TFGraphNode* node) {
   const string& op = node->op();
   if (tfcnodes_map_.find(op) == tfcnodes_map_.end()) {
-    tfcnodes_map_[op] =
-        std::unique_ptr<TFMultiGraphNode>(new TFMultiGraphNode(op));
+    tfcnodes_map_[op] = std::make_unique<TFMultiGraphNode>(op);
   }
   TFMultiGraphNode* tfcnode = tfcnodes_map_[op].get();
   tfcnode->AddGraphNode(node);
@@ -90,13 +93,11 @@ void TFOp::AddNode(TFGraphNode* node) {
 
 void TFOp::Build() {
   for (auto& tn : tfcnodes_map_) {
-    cnodes_map_[tn.first] =
-        std::unique_ptr<OpNode>(new OpNode(tn.second.get()));
+    cnodes_map_[tn.first] = std::make_unique<OpNode>(tn.second.get());
   }
 
-  tfcnodes_map_[kTFProfRoot] =
-      std::unique_ptr<TFMultiGraphNode>(new TFMultiGraphNode(kTFProfRoot));
-  root_.reset(new OpNode(tfcnodes_map_[kTFProfRoot].get()));
+  tfcnodes_map_[kTFProfRoot] = std::make_unique<TFMultiGraphNode>(kTFProfRoot);
+  root_ = std::make_unique<OpNode>(tfcnodes_map_[kTFProfRoot].get());
 }
 
 const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
@@ -143,10 +144,10 @@ const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
   }
 
   // Perform the display and optionally redo accounting.
-  int64 depth = 0;
+  int64_t depth = 0;
   std::vector<OpNode*> show_nodes;
-  int64 start = SearchRoot(account_nodes, opts.start_name_regexes);
-  for (int64 i = start, end = account_nodes.size(); i < end; ++i, ++depth) {
+  int64_t start = SearchRoot(account_nodes, opts.start_name_regexes);
+  for (int64_t i = start, end = account_nodes.size(); i < end; ++i, ++depth) {
     OpNode* n = account_nodes[i];
     if (ShouldTrim(n, opts.trim_name_regexes) || depth > opts.max_depth) {
       break;
@@ -189,13 +190,13 @@ const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
   return root_.get();
 }
 
-int64 TFOp::SearchRoot(const std::vector<OpNode*> nodes,
-                       const std::vector<string>& regexes) {
+int64_t TFOp::SearchRoot(const std::vector<OpNode*> nodes,
+                         const std::vector<string>& regexes) {
   if (regexes.empty() || (regexes.size() == 1 && regexes[0] == ".*")) {
     return 0;
   }
-  int64 i = 0;
-  const int64 nodes_size = nodes.size();
+  int64_t i = 0;
+  const int64_t nodes_size = nodes.size();
   for (; i < nodes_size; ++i) {
     for (const string& regex : regexes) {
       if (RE2::FullMatch(nodes[i]->name(), regex)) {
@@ -206,8 +207,9 @@ int64 TFOp::SearchRoot(const std::vector<OpNode*> nodes,
   return i;
 }
 
-string TFOp::FormatMemoryNode(int64 node_total_bytes, int64 root_total_bytes,
-                              int64 node_bytes) const {
+string TFOp::FormatMemoryNode(int64_t node_total_bytes,
+                              int64_t root_total_bytes,
+                              int64_t node_bytes) const {
   double accu_pct = 0.0;
   double pct = 0.0;
   if (node_bytes > 0) {
@@ -298,7 +300,7 @@ string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) const {
   }
 
   if (opts.select.find(kShown[7]) != opts.select.end()) {
-    int64 total_runs = 0;
+    int64_t total_runs = 0;
     for (const auto& gnode : node->proto().graph_nodes()) {
       total_runs += gnode.run_count();
     }

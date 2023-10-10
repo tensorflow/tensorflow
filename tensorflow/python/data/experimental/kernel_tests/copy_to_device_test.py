@@ -13,17 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.experimental.copy_to_device()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.experimental.ops import prefetching_ops
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
@@ -61,6 +59,24 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.test_session(config=worker_config):
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(next_element)
+
+  @combinations.generate(test_base.graph_only_combinations())
+  def testCopyToDeviceHostOptimizations(self):
+    host_dataset = dataset_ops.Dataset.range(10)
+    host_dataset = host_dataset.apply(testing.assert_next(["MapAndBatch"]))
+    host_dataset = host_dataset.map(lambda x: x*x).batch(10)
+    device_dataset = host_dataset.apply(
+        prefetching_ops.copy_to_device("/cpu:1"))
+
+    with ops.device("/cpu:1"):
+      iterator = dataset_ops.make_one_shot_iterator(device_dataset)
+      next_element = iterator.get_next()
+
+    worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
+    with self.test_session(config=worker_config):
+      self.assertAllEqual([x*x for x in range(10)], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
@@ -297,8 +313,8 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     device_dataset = device_dataset.apply(
         prefetching_ops.map_on_gpu(gpu_map_func))
-    options = dataset_ops.Options()
-    options.experimental_optimization.autotune = False
+    options = options_lib.Options()
+    options.autotune.enabled = False
     device_dataset = device_dataset.with_options(options)
 
     with ops.device("/gpu:0"):

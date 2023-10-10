@@ -15,8 +15,8 @@ limitations under the License.
 
 // Functions to write audio in WAV format.
 
-#ifndef TENSORFLOW_LIB_WAV_WAV_IO_H_
-#define TENSORFLOW_LIB_WAV_WAV_IO_H_
+#ifndef TENSORFLOW_CORE_LIB_WAV_WAV_IO_H_
+#define TENSORFLOW_CORE_LIB_WAV_WAV_IO_H_
 
 #include <string>
 #include <vector>
@@ -47,11 +47,9 @@ Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
                              T* wav_string);
 
 // Explicit instantiations defined in wav_io.cc.
-extern template Status EncodeAudioAsS16LEWav<string>(const float* audio,
-                                                     size_t sample_rate,
-                                                     size_t num_channels,
-                                                     size_t num_frames,
-                                                     string* wav_string);
+extern template Status EncodeAudioAsS16LEWav<std::string>(
+    const float* audio, size_t sample_rate, size_t num_channels,
+    size_t num_frames, std::string* wav_string);
 extern template Status EncodeAudioAsS16LEWav<tstring>(const float* audio,
                                                       size_t sample_rate,
                                                       size_t num_channels,
@@ -65,7 +63,7 @@ extern template Status EncodeAudioAsS16LEWav<tstring>(const float* audio,
 // is read from the file header, and an error is returned if the format is not
 // supported.
 // The results are output as floats within the range -1 to 1,
-Status DecodeLin16WaveAsFloatVector(const string& wav_string,
+Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
                                     std::vector<float>* float_values,
                                     uint32* sample_count, uint16* channel_count,
                                     uint32* sample_rate);
@@ -74,14 +72,14 @@ Status DecodeLin16WaveAsFloatVector(const string& wav_string,
 
 // Handles moving the data index forward, validating the arguments, and avoiding
 // overflow or underflow.
-Status IncrementOffset(int old_offset, size_t increment, size_t max_size,
+Status IncrementOffset(int old_offset, int64_t increment, size_t max_size,
                        int* new_offset);
 
 // This function is only exposed in the header for testing purposes, as a
 // template that needs to be instantiated. Reads a typed numeric value from a
 // stream of data.
 template <class T>
-Status ReadValue(const string& data, T* value, int* offset) {
+Status ReadValue(const std::string& data, T* value, int* offset) {
   int new_offset;
   TF_RETURN_IF_ERROR(
       IncrementOffset(*offset, sizeof(T), data.size(), &new_offset));
@@ -97,10 +95,10 @@ Status ReadValue(const string& data, T* value, int* offset) {
     }
   }
   *offset = new_offset;
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace wav
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_WAV_WAV_IO_H_
+#endif  // TENSORFLOW_CORE_LIB_WAV_WAV_IO_H_

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/python/util/util.h"
 
+#include <Python.h>
+
 #include <functional>
 #include <memory>
 #include <unordered_map>
@@ -95,8 +97,6 @@ PyObject* RegisterPyObject(PyObject* name, PyObject* value) {
 namespace {
 const int kMaxItemsInCache = 1024;
 
-bool WarnedThatSetIsNotSequence = false;
-
 bool IsString(PyObject* o) {
   return PyBytes_Check(o) ||
 #if PY_MAJOR_VERSION < 3
@@ -145,6 +145,7 @@ string PyObjectToString(PyObject* o) {
   }
 }
 
+// FIXME(b/280464631): Consider remove this class.
 class CachedTypeCheck {
  public:
   explicit CachedTypeCheck(std::function<int(PyObject*)> ternary_predicate)
@@ -286,6 +287,23 @@ int IsAttrsHelper(PyObject* o) {
   return check_cache->CachedLookup(o);
 }
 
+// Returns 1 if `o` is an instance that implements the custom nest protocol.
+// Returns 0 otherwise.
+int IsCustomNestProtocolDefined(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    Safe_PyObjectPtr cls(PyObject_GetAttrString(to_check, "__class__"));
+    if (cls) {
+      return PyObject_HasAttrString(cls.get(), "__tf_flatten__") &
+             PyObject_HasAttrString(cls.get(), "__tf_unflatten__");
+    }
+
+    // PyObject_GetAttrString returns null on error
+    PyErr_Clear();
+    return 0;
+  });
+  return check_cache->CachedLookup(o);
+}
+
 // Returns 1 if `o` is an object of type IndexedSlices.
 // Returns 0 otherwise.
 // Returns -1 if an error occurred.
@@ -306,6 +324,16 @@ int IsTensorHelper(PyObject* o) {
   return check_cache->CachedLookup(o);
 }
 
+// Returns 1 if `o` is a TensorSpec.
+// Returns 0 otherwise.
+// Returns -1 if an error occurred.
+int IsTensorSpecHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "TensorSpec");
+  });
+  return check_cache->CachedLookup(o);
+}
+
 // Returns 1 if `o` is an EagerTensor.
 // Returns 0 otherwise.
 // Returns -1 if an error occurred.
@@ -316,12 +344,36 @@ int IsEagerTensorHelper(PyObject* o) {
   return check_cache->CachedLookup(o);
 }
 
+int IsTensorProtocolHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "TensorProtocol");
+  });
+  return check_cache->CachedLookup(o);
+}
+
+int IsCoreTypeValueHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "CoreTypeValue");
+  });
+  return check_cache->CachedLookup(o);
+}
+
 // Returns 1 if `o` is a ResourceVariable.
 // Returns 0 otherwise.
 // Returns -1 if an error occurred.
 int IsResourceVariableHelper(PyObject* o) {
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
     return IsInstanceOfRegisteredType(to_check, "ResourceVariable");
+  });
+  return check_cache->CachedLookup(o);
+}
+
+// Returns 1 if `o` is a OwnedIterator.
+// Returns 0 otherwise.
+// Returns -1 if an error occurred.
+int IsOwnedIteratorHelper(PyObject* o) {
+  static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
+    return IsInstanceOfRegisteredType(to_check, "OwnedIterator");
   });
   return check_cache->CachedLookup(o);
 }
@@ -339,17 +391,13 @@ int IsVariableHelper(PyObject* o) {
 // Returns 1 if `o` is considered a sequence for the purposes of Flatten().
 // Returns 0 otherwise.
 // Returns -1 if an error occurred.
-int IsSequenceHelper(PyObject* o) {
+int IsNestedHelper(PyObject* o) {
   // We treat dicts and other mappings as special cases of sequences.
   if (IsMappingHelper(o)) return true;
   if (IsMappingViewHelper(o)) return true;
   if (IsAttrsHelper(o)) return true;
-  if (PySet_Check(o) && !WarnedThatSetIsNotSequence) {
-    LOG(WARNING) << "Sets are not currently considered sequences, "
-                    "but this may change in the future, "
-                    "so consider avoiding using them.";
-    WarnedThatSetIsNotSequence = true;
-  }
+  if (IsCustomNestProtocolDefined(o)) return true;
+
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
     int is_instance = IsInstanceOfRegisteredType(to_check, "Sequence");
 
@@ -541,6 +589,32 @@ class AttrsValueIterator : public ValueIterator {
   Safe_PyObjectPtr iter_;
 };
 
+class CustomNestedIterator : public ValueIterator {
+ public:
+  explicit CustomNestedIterator(PyObject* nested) : nested_(nested) {
+    Py_INCREF(nested);
+    flattened_.reset(
+        PyObject_CallMethod(nested_.get(), "__tf_flatten__", nullptr));
+    if (flattened_) {
+      Safe_PyObjectPtr seq = make_safe(PySequence_GetItem(flattened_.get(), 1));
+      if (seq) {
+        iter_.reset(PyObject_GetIter(seq.get()));
+      }
+    }
+    if (!iter_ || PyErr_Occurred()) invalidate();
+  }
+
+  Safe_PyObjectPtr next() override {
+    Safe_PyObjectPtr result(PyIter_Next(iter_.get()));
+    return result;
+  }
+
+ private:
+  Safe_PyObjectPtr nested_;
+  Safe_PyObjectPtr flattened_;
+  Safe_PyObjectPtr iter_;
+};
+
 bool IsSparseTensorValueType(PyObject* o) {
   PyObject* sparse_tensor_value_type =
       GetRegisteredPyObject("SparseTensorValue");
@@ -557,7 +631,9 @@ bool IsSparseTensorValueType(PyObject* o) {
 // Returns -1 if an error occurred.
 bool IsCompositeTensorHelper(PyObject* o) {
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
-    return IsInstanceOfRegisteredType(to_check, "CompositeTensor");
+    // TODO(b/246438937): Remove the ResourceVariable test.
+    return IsInstanceOfRegisteredType(to_check, "CompositeTensor") &&
+           !IsResourceVariable(to_check);
   });
   return check_cache->CachedLookup(o);
 }
@@ -569,6 +645,7 @@ bool IsCompositeTensorHelper(PyObject* o) {
 bool IsTypeSpecHelper(PyObject* o) {
   static auto* const check_cache = new CachedTypeCheck([](PyObject* to_check) {
     int is_type_spec = IsInstanceOfRegisteredType(to_check, "TypeSpec");
+    // TODO(b/246438937): Remove the VariableSpec special case.
     int is_dense_spec = (IsInstanceOfRegisteredType(to_check, "TensorSpec") ||
                          IsInstanceOfRegisteredType(to_check, "VariableSpec"));
     if ((is_type_spec == -1) || (is_dense_spec == -1)) return -1;
@@ -581,18 +658,18 @@ bool IsTypeSpecHelper(PyObject* o) {
 // (non-TensorSpec and non-VariableSpec) TypeSpec.
 // Returns 0 otherwise.
 // Returns -1 if an error occurred.
-int IsSequenceOrCompositeHelper(PyObject* o) {
-  int is_sequence = IsSequenceHelper(o);
+int IsNestedOrCompositeHelper(PyObject* o) {
+  int is_nested = IsNestedHelper(o);
   int is_composite = IsCompositeTensorHelper(o);
   int is_type_spec = IsTypeSpecHelper(o);
-  if ((is_sequence == -1) || (is_composite == -1) || (is_type_spec == -1)) {
+  if ((is_nested == -1) || (is_composite == -1) || (is_type_spec == -1)) {
     return -1;
   }
-  return is_sequence || is_composite || is_type_spec;
+  return is_nested || is_composite || is_type_spec;
 }
 
-int IsSequenceForDataHelper(PyObject* o) {
-  return IsSequenceHelper(o) == 1 && !PyList_Check(o) &&
+int IsNestedForDataHelper(PyObject* o) {
+  return IsNestedHelper(o) == 1 && !PyList_Check(o) &&
          !IsSparseTensorValueType(o);
 }
 
@@ -603,6 +680,8 @@ ValueIteratorPtr GetValueIterator(PyObject* nested) {
     return absl::make_unique<MappingValueIterator>(nested);
   } else if (IsAttrsHelper(nested)) {
     return absl::make_unique<AttrsValueIterator>(nested);
+  } else if (IsCustomNestProtocolDefined(nested)) {
+    return std::make_unique<CustomNestedIterator>(nested);
   } else {
     return absl::make_unique<SequenceValueIterator>(nested);
   }
@@ -618,6 +697,8 @@ ValueIteratorPtr GetValueIteratorForData(PyObject* nested) {
     return absl::make_unique<AttrsValueIterator>(nested);
   } else if (IsSparseTensorValueType(nested)) {
     return absl::make_unique<SingleValueIterator>(nested);
+  } else if (IsCustomNestProtocolDefined(nested)) {
+    return std::make_unique<CustomNestedIterator>(nested);
   } else {
     return absl::make_unique<SequenceValueIterator>(nested);
   }
@@ -654,12 +735,12 @@ ValueIteratorPtr GetValueIteratorForComposite(PyObject* nested) {
 
 bool FlattenHelper(
     PyObject* nested, PyObject* list,
-    const std::function<int(PyObject*)>& is_sequence_helper,
+    const std::function<int(PyObject*)>& is_nested_helper,
     const std::function<ValueIteratorPtr(PyObject*)>& value_iterator_getter) {
   // if nested is not a sequence, append itself and exit
-  int is_seq = is_sequence_helper(nested);
-  if (is_seq == -1) return false;
-  if (!is_seq) {
+  int is_nested = is_nested_helper(nested);
+  if (is_nested == -1) return false;
+  if (!is_nested) {
     return PyList_Append(list, nested) != -1;
   }
 
@@ -670,7 +751,7 @@ bool FlattenHelper(
     if (Py_EnterRecursiveCall(" in flatten")) {
       return false;
     }
-    const bool success = FlattenHelper(item.get(), list, is_sequence_helper,
+    const bool success = FlattenHelper(item.get(), list, is_nested_helper,
                                        value_iterator_getter);
     Py_LeaveRecursiveCall();
     if (!success) {
@@ -718,18 +799,18 @@ void SetDifferentKeysError(PyObject* dict1, PyObject* dict2, string* error_msg,
 // the error to be raised should be TypeError.
 bool AssertSameStructureHelper(
     PyObject* o1, PyObject* o2, bool check_types, string* error_msg,
-    bool* is_type_error,
-    const std::function<int(PyObject*)>& is_sequence_helper,
+    bool* is_type_error, const std::function<int(PyObject*)>& is_nested_helper,
     const std::function<ValueIteratorPtr(PyObject*)>& value_iterator_getter,
     bool check_composite_tensor_type_spec) {
   DCHECK(error_msg);
   DCHECK(is_type_error);
-  const bool is_seq1 = is_sequence_helper(o1);
-  const bool is_seq2 = is_sequence_helper(o2);
+  const bool is_nested1 = is_nested_helper(o1);
+  const bool is_nested2 = is_nested_helper(o2);
   if (PyErr_Occurred()) return false;
-  if (is_seq1 != is_seq2) {
-    string seq_str = is_seq1 ? PyObjectToString(o1) : PyObjectToString(o2);
-    string non_seq_str = is_seq1 ? PyObjectToString(o2) : PyObjectToString(o1);
+  if (is_nested1 != is_nested2) {
+    string seq_str = is_nested1 ? PyObjectToString(o1) : PyObjectToString(o2);
+    string non_seq_str =
+        is_nested1 ? PyObjectToString(o2) : PyObjectToString(o1);
     *is_type_error = false;
     *error_msg = tensorflow::strings::StrCat(
         "Substructure \"", seq_str, "\" is a sequence, while substructure \"",
@@ -740,7 +821,7 @@ bool AssertSameStructureHelper(
   // Got to objects that are considered non-sequences. Note that in tf.data
   // use case lists and sparse_tensors are not considered sequences. So finished
   // checking, structures are the same.
-  if (!is_seq1) return true;
+  if (!is_nested1) return true;
 
   if (check_types) {
     // Treat wrapped tuples as tuples.
@@ -796,8 +877,8 @@ bool AssertSameStructureHelper(
                && !(IsMappingHelper(o1) && IsMappingHelper(o2))
                /* For CompositeTensor & TypeSpec, we check below. */
                && !(check_composite_tensor_type_spec &&
-                    (IsCompositeTensor(o1) || IsCompositeTensor(o2)) &&
-                    (IsTypeSpec(o1) || IsTypeSpec(o2)))) {
+                    (IsCompositeTensor(o1) || IsTypeSpec(o1)) &&
+                    (IsCompositeTensor(o2) || IsTypeSpec(o2)))) {
       *is_type_error = true;
       *error_msg = tensorflow::strings::StrCat(
           "The two namedtuples don't have the same sequence type. "
@@ -860,17 +941,25 @@ bool AssertSameStructureHelper(
     }
 
     // Two composite tensors are considered to have the same structure if
-    // there is some type spec that is compatible with both of them.  Thus,
-    // we use most_specific_compatible_type(), and check if it raises an
-    // exception.  We do *not* use is_compatible_with, since that would
-    // prevent us from e.g. using a cond statement where the two sides have
-    // different shapes.
-    static char compatible_type[] = "most_specific_compatible_type";
-    static char argspec[] = "(O)";
-    Safe_PyObjectPtr struct_compatible(PyObject_CallMethod(
-        type_spec_1, compatible_type, argspec, type_spec_2));
-    if (PyErr_Occurred() || struct_compatible == nullptr) {
-      PyErr_Clear();
+    // they share a type spec that is a supertype of both of them. We do *not*
+    // use is_subtype_of, since that would prevent us from e.g. using a
+    // cond statement where the two sides have different shapes.
+
+    // TODO(b/206014848): We have to explicitly remove the names.
+    Safe_PyObjectPtr owned_nameless_type_spec_1(
+        PyObject_CallMethod(type_spec_1, "_without_tensor_names", nullptr));
+    Safe_PyObjectPtr owned_nameless_type_spec_2(
+        PyObject_CallMethod(type_spec_2, "_without_tensor_names", nullptr));
+    // TODO(b/222123181): Reconsider most_specific_common_supertype usage.
+    static char compatible_type[] = "most_specific_common_supertype";
+    static char argspec[] = "([O])";
+    Safe_PyObjectPtr struct_compatible(
+        PyObject_CallMethod(owned_nameless_type_spec_1.get(), compatible_type,
+                            argspec, owned_nameless_type_spec_2.get()));
+    if (PyErr_Occurred()) {
+      return false;
+    }
+    if (struct_compatible.get() == Py_None) {
       *is_type_error = false;
       *error_msg = tensorflow::strings::StrCat(
           "Incompatible CompositeTensor TypeSpecs: ",
@@ -894,7 +983,7 @@ bool AssertSameStructureHelper(
       }
       bool no_internal_errors = AssertSameStructureHelper(
           v1.get(), v2.get(), check_types, error_msg, is_type_error,
-          is_sequence_helper, value_iterator_getter,
+          is_nested_helper, value_iterator_getter,
           check_composite_tensor_type_spec);
       Py_LeaveRecursiveCall();
       if (!no_internal_errors) return false;
@@ -915,19 +1004,23 @@ bool AssertSameStructureHelper(
 
 }  // namespace
 
-bool IsSequence(PyObject* o) { return IsSequenceHelper(o) == 1; }
+bool IsNested(PyObject* o) { return IsNestedHelper(o) == 1; }
 bool IsMapping(PyObject* o) { return IsMappingHelper(o) == 1; }
 bool IsMutableMapping(PyObject* o) { return IsMutableMappingHelper(o) == 1; }
 bool IsMappingView(PyObject* o) { return IsMappingViewHelper(o) == 1; }
 bool IsAttrs(PyObject* o) { return IsAttrsHelper(o) == 1; }
 bool IsTensor(PyObject* o) { return IsTensorHelper(o) == 1; }
+bool IsTensorSpec(PyObject* o) { return IsTensorSpecHelper(o) == 1; }
 bool IsEagerTensorSlow(PyObject* o) { return IsEagerTensorHelper(o) == 1; }
 bool IsResourceVariable(PyObject* o) {
   return IsResourceVariableHelper(o) == 1;
 }
+bool IsOwnedIterator(PyObject* o) { return IsOwnedIteratorHelper(o) == 1; }
 bool IsVariable(PyObject* o) { return IsVariableHelper(o) == 1; }
 bool IsIndexedSlices(PyObject* o) { return IsIndexedSlicesHelper(o) == 1; }
 bool IsDispatchable(PyObject* o) { return IsDispatchableHelper(o) == 1; }
+bool IsTensorProtocol(PyObject* o) { return IsTensorProtocolHelper(o) == 1; }
+bool IsCoreTypeValue(PyObject* o) { return IsCoreTypeValueHelper(o) == 1; }
 
 bool IsTuple(PyObject* o) {
   tensorflow::Safe_PyObjectPtr wrapped;
@@ -962,11 +1055,11 @@ PyObject* MappingKeys(PyObject* o) {
 
 PyObject* Flatten(PyObject* nested, bool expand_composites) {
   PyObject* list = PyList_New(0);
-  const std::function<int(PyObject*)>& is_sequence_helper =
-      expand_composites ? IsSequenceOrCompositeHelper : IsSequenceHelper;
+  const std::function<int(PyObject*)>& is_nested_helper =
+      expand_composites ? IsNestedOrCompositeHelper : IsNestedHelper;
   const std::function<ValueIteratorPtr(PyObject*)>& get_value_iterator =
       expand_composites ? GetValueIteratorForComposite : GetValueIterator;
-  if (FlattenHelper(nested, list, is_sequence_helper, get_value_iterator)) {
+  if (FlattenHelper(nested, list, is_nested_helper, get_value_iterator)) {
     return list;
   } else {
     Py_DECREF(list);
@@ -974,19 +1067,19 @@ PyObject* Flatten(PyObject* nested, bool expand_composites) {
   }
 }
 
-bool IsSequenceOrComposite(PyObject* o) {
-  return IsSequenceOrCompositeHelper(o) == 1;
+bool IsNestedOrComposite(PyObject* o) {
+  return IsNestedOrCompositeHelper(o) == 1;
 }
 
 bool IsCompositeTensor(PyObject* o) { return IsCompositeTensorHelper(o) == 1; }
 
 bool IsTypeSpec(PyObject* o) { return IsTypeSpecHelper(o) == 1; }
 
-bool IsSequenceForData(PyObject* o) { return IsSequenceForDataHelper(o) == 1; }
+bool IsNestedForData(PyObject* o) { return IsNestedForDataHelper(o) == 1; }
 
 PyObject* FlattenForData(PyObject* nested) {
   PyObject* list = PyList_New(0);
-  if (FlattenHelper(nested, list, IsSequenceForDataHelper,
+  if (FlattenHelper(nested, list, IsNestedForDataHelper,
                     GetValueIteratorForData)) {
     return list;
   } else {
@@ -1078,15 +1171,15 @@ PyObject* SameNamedtuples(PyObject* o1, PyObject* o2) {
 
 PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types,
                               bool expand_composites) {
-  const std::function<int(PyObject*)>& is_sequence_helper =
-      expand_composites ? IsSequenceOrCompositeHelper : IsSequenceHelper;
+  const std::function<int(PyObject*)>& is_nested_helper =
+      expand_composites ? IsNestedOrCompositeHelper : IsNestedHelper;
   const std::function<ValueIteratorPtr(PyObject*)>& get_value_iterator =
       expand_composites ? GetValueIteratorForComposite : GetValueIterator;
   const bool check_composite_tensor_type_spec = expand_composites;
   string error_msg;
   bool is_type_error = false;
   AssertSameStructureHelper(o1, o2, check_types, &error_msg, &is_type_error,
-                            is_sequence_helper, get_value_iterator,
+                            is_nested_helper, get_value_iterator,
                             check_composite_tensor_type_spec);
   if (PyErr_Occurred()) {
     // Don't hide Python exceptions while checking (e.g. errors fetching keys
@@ -1111,7 +1204,7 @@ PyObject* AssertSameStructureForData(PyObject* o1, PyObject* o2,
   string error_msg;
   bool is_type_error = false;
   AssertSameStructureHelper(o1, o2, check_types, &error_msg, &is_type_error,
-                            IsSequenceForDataHelper, GetValueIterator, false);
+                            IsNestedForDataHelper, GetValueIterator, false);
   if (PyErr_Occurred()) {
     // Don't hide Python exceptions while checking (e.g. errors fetching keys
     // from custom mappings).

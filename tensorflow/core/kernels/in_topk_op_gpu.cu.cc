@@ -129,14 +129,14 @@ struct InTopKFunctor<GPUDevice, T, TargetT> {
         context, GpuLaunchKernel(ComputePredictionMaskKernel<T, TargetT>,
                                  config.block_count, config.thread_per_block, 0,
                                  d.stream(), predictions.data(), targets.data(),
-                                 predictions_mask.flat<int64>().data(),
+                                 predictions_mask.flat<int64_t>().data(),
                                  num_targets, num_classes));
 
     // Reduce prediction masks to number of predictions larger than the target
     // prediction, or to the negative value if we can't compute an answer.
     {
-      auto in = predictions_mask.matrix<int64>();
-      auto out = num_larger_prediction.flat<int64>();
+      auto in = predictions_mask.matrix<int64_t>();
+      auto out = num_larger_prediction.flat<int64_t>();
 
       ReduceImpl<int64, MaskSum, int64*, int64*, Dims<1>>(
           context, (int64*)out.data(), (int64*)in.data(), in.rank(),
@@ -146,18 +146,18 @@ struct InTopKFunctor<GPUDevice, T, TargetT> {
     }
 
     // Compute if target prediction is in top K predictions.
-    auto cnt = num_larger_prediction.flat<int64>();
+    auto cnt = num_larger_prediction.flat<int64_t>();
 
     if (k.k_tensor != nullptr) {
       if (k.k_tensor->dtype() == DT_INT32) {
         output.device(d) =
             (cnt >= cnt.constant(0)) &&
-            (cnt < k.k_tensor->flat<int32>().template cast<int64>().broadcast(
+            (cnt < k.k_tensor->flat<int32>().template cast<int64_t>().broadcast(
                        Dims<1>(num_targets)));
       } else {
         output.device(d) =
             (cnt >= cnt.constant(0)) &&
-            (cnt < k.k_tensor->flat<int64>().broadcast(Dims<1>(num_targets)));
+            (cnt < k.k_tensor->flat<int64_t>().broadcast(Dims<1>(num_targets)));
       }
     } else {
       output.device(d) =

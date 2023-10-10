@@ -14,17 +14,16 @@
 # ==============================================================================
 """Model script to test TF-TensorRT integration."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import os
 import numpy as np
 
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 
 class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
@@ -59,7 +58,22 @@ class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["TRTEngineOp_%d" % i for i in range(16)]
+    # The final reshape op is converted only in dynamic shape mode. This op is
+    # placed into a new engine due to the preceding trt_incompatible_ops.
+    num_engines = 17 if run_params.dynamic_shape else 16
+    return [f"TRTEngineOp_{i:03d}" for i in range(num_engines)]
+
+  # TODO(b/176540862): remove this routine to disallow native segment execution
+  # for TensorRT 7+.
+  def setUp(self):
+    super().setUp()
+    os.environ["TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION"] = "True"
+    gpus = config.list_physical_devices("GPU")
+
+    logging.info("Found the following GPUs:")
+    for gpu in gpus:
+      logging.info(f"\t- {gpu}")
+      config.set_memory_growth(gpu, True)
 
 
 if __name__ == "__main__":

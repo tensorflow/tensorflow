@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CC_EXPERIMENTAL_BASE_TEST_TENSOR_TYPES_TEST_UTIL_H_
-#define TENSORFLOW_CC_EXPERIMENTAL_BASE_TEST_TENSOR_TYPES_TEST_UTIL_H_
+#ifndef TENSORFLOW_CC_EXPERIMENTAL_BASE_TESTS_TENSOR_TYPES_TEST_UTIL_H_
+#define TENSORFLOW_CC_EXPERIMENTAL_BASE_TESTS_TENSOR_TYPES_TEST_UTIL_H_
 
 #include <stdint.h>
 
@@ -73,4 +73,4 @@ struct UINT64Type {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CC_EXPERIMENTAL_BASE_TEST_TENSOR_TYPES_TEST_UTIL_H_
+#endif  // TENSORFLOW_CC_EXPERIMENTAL_BASE_TESTS_TENSOR_TYPES_TEST_UTIL_H_

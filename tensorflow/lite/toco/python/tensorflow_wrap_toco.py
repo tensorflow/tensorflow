@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Stub to make toco convert accessible."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # TODO(aselle): Remove once no clients internally depend on this.
 
 # pylint: disable=unused-import

@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_SINGLE_THREADED_CPU_DEVICE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_SINGLE_THREADED_CPU_DEVICE_H_
 
+namespace tsl {
+class Env;
+}  // namespace tsl
 namespace tensorflow {
+using Env = tsl::Env;
 
 class Device;
-class Env;
 
 // Returns a simple single-threaded CPU device. This can be used to run
 // inexpensive computations. In particular, using this avoids initializing the

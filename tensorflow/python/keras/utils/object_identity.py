@@ -13,11 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
-import collections.abc as collections_abc
+import collections
+from typing import Any, Set
 import weakref
 
 
@@ -118,7 +116,7 @@ class Reference(_ObjectIdentityWrapper):
     return self._wrapped
 
 
-class ObjectIdentityDictionary(collections_abc.MutableMapping):
+class ObjectIdentityDictionary(collections.abc.MutableMapping):
   """A mutable mapping data structure which compares using "is".
 
   This is necessary because we have trackable objects (_ListWrapper) which
@@ -176,13 +174,33 @@ class ObjectIdentityWeakKeyDictionary(ObjectIdentityDictionary):
         yield unwrapped
 
 
-class ObjectIdentitySet(collections_abc.MutableSet):
+class ObjectIdentitySet(collections.abc.MutableSet):
   """Like the built-in set, but compares objects with "is"."""
 
   __slots__ = ["_storage", "__weakref__"]
 
   def __init__(self, *args):
     self._storage = set(self._wrap_key(obj) for obj in list(*args))
+
+  def __le__(self, other: Set[Any]) -> bool:
+    if not isinstance(other, Set):
+      return NotImplemented
+    if len(self) > len(other):
+      return False
+    for item in self._storage:
+      if item not in other:
+        return False
+    return True
+
+  def __ge__(self, other: Set[Any]) -> bool:
+    if not isinstance(other, Set):
+      return NotImplemented
+    if len(self) < len(other):
+      return False
+    for item in other:
+      if item not in self:
+        return False
+    return True
 
   @staticmethod
   def _from_storage(storage):

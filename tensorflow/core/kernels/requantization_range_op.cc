@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <math.h>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
@@ -46,6 +46,10 @@ class RequantizationRangeOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
+    OP_REQUIRES(ctx, ctx->input(1).NumElements() > 0,
+                errors::InvalidArgument("Input min must not be empty."));
+    OP_REQUIRES(ctx, ctx->input(2).NumElements() > 0,
+                errors::InvalidArgument("Input max must not be empty."));
     const float input_min_float = ctx->input(1).flat<float>()(0);
     const float input_max_float = ctx->input(2).flat<float>()(0);
     Tensor* output_min = nullptr;

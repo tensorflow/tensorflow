@@ -17,7 +17,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/create_op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model.h"
@@ -64,17 +64,12 @@ bool RunWithRandomInputs(const std::string& filename) {
 }
 
 TEST(SelectiveBuiltTest, AddModel) {
-  std::string model = "third_party/tensorflow/lite/testdata/add.bin";
+  std::string model = "tensorflow/lite/testdata/add.bin";
   EXPECT_THAT(RunWithRandomInputs(model), true);
 }
 
 TEST(SelectiveBuiltTest, LSTMModel) {
-  std::string model = "third_party/tensorflow/lite/testdata/lstm.bin";
+  std::string model = "tensorflow/lite/testdata/lstm.bin";
   EXPECT_THAT(RunWithRandomInputs(model), true);
 }
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

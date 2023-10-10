@@ -49,7 +49,7 @@ END
   attr {
     name: "fill_mode"
     description: <<END
-Fill mode, "REFLECT", "WRAP", or "CONSTANT".
+Fill mode, "REFLECT", "WRAP", "CONSTANT", or "NEAREST".
 END
   }
   summary: "Applies the given transform to each of the images."

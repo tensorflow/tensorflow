@@ -1,8 +1,10 @@
+# Placeholder: load py_proto_library
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/core/profiler:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -12,12 +14,30 @@ package_group(
     ],
 )
 
+package_group(
+    name = "memory_viewer_friends",
+    includes = [
+        "//tensorflow/core/profiler:friends",
+    ],
+    packages = [
+        "//learning/deepmind/jax/statix/...",
+        "//platforms/xla/tools/...",
+        "//smartass/brain/tpu_worker/...",
+    ],
+)
+
 tf_proto_library(
     name = "xplane_proto",
     srcs = ["xplane.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = [
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto",
+    ],
     visibility = [":friends"],
+    exports = [
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto",
+    ],
 )
 
 # This is needed because of how tf_android_core_proto_sources parses proto paths.
@@ -29,6 +49,15 @@ exports_files(
 tf_proto_library(
     name = "diagnostics_proto",
     srcs = ["diagnostics.proto"],
+    cc_api_version = 2,
+    visibility = [
+        ":friends",
+    ],
+)
+
+tf_proto_library(
+    name = "topology_proto",
+    srcs = ["topology.proto"],
     cc_api_version = 2,
     visibility = [
         ":friends",
@@ -52,6 +81,7 @@ tf_proto_library(
     protodeps = [
         ":diagnostics_proto",
         ":input_pipeline_proto",
+        ":power_metrics_proto",
     ],
     visibility = [
         ":friends",
@@ -61,6 +91,13 @@ tf_proto_library(
 tf_proto_library(
     name = "op_metrics_proto",
     srcs = ["op_metrics.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
+
+tf_proto_library(
+    name = "power_metrics_proto",
+    srcs = ["power_metrics.proto"],
     cc_api_version = 2,
     visibility = [":friends"],
 )
@@ -82,6 +119,7 @@ tf_proto_library(
     protodeps = [
         ":diagnostics_proto",
         ":pod_stats_proto",
+        ":topology_proto",
     ],
     visibility = [":friends"],
 )
@@ -108,9 +146,11 @@ tf_proto_library(
     srcs = ["op_stats.proto"],
     cc_api_version = 2,
     protodeps = [
+        ":topology_proto",
         ":diagnostics_proto",
         ":kernel_stats_proto",
         ":op_metrics_proto",
+        ":power_metrics_proto",
         ":steps_db_proto",
         ":tf_function_proto",
     ],
@@ -143,13 +183,6 @@ tf_proto_library(
 )
 
 tf_proto_library(
-    name = "trace_events_proto",
-    srcs = ["trace_events.proto"],
-    cc_api_version = 2,
-    visibility = [":friends"],
-)
-
-tf_proto_library(
     name = "hardware_types_proto",
     srcs = ["hardware_types.proto"],
     cc_api_version = 2,
@@ -173,6 +206,67 @@ tf_proto_library(
 tf_proto_library(
     name = "tf_data_stats_proto",
     srcs = ["tf_data_stats.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
+
+tf_proto_library(
+    name = "memory_viewer_preprocess_proto",
+    srcs = ["memory_viewer_preprocess.proto"],
+    cc_api_version = 2,
+    visibility = [":memory_viewer_friends"],
+)
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "xplane_py_pb2",
+#     api_version = 2,
+#     visibility = [":friends"],
+#     deps = [":xplane_proto"],
+# )
+#
+# py_proto_library(
+#     name = "memory_viewer_preprocess_py_pb2",
+#     api_version = 2,
+#     visibility = [":memory_viewer_friends"],
+#     deps = [":memory_viewer_preprocess_proto"],
+# )
+#
+# py_proto_library(
+#     name = "op_profile_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":op_profile_proto"],
+# )
+#
+# copybara:uncomment_end
+tf_proto_library(
+    name = "task_proto",
+    srcs = ["task.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
+
+tf_proto_library(
+    name = "trace_events_proto",
+    srcs = ["trace_events.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        ":task_proto",
+    ],
+    visibility = [":friends"],
+)
+
+tf_proto_library(
+    name = "trace_events_raw_proto",
+    srcs = ["trace_events_raw.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
+
+tf_proto_library(
+    name = "dcn_slack_analysis_proto",
+    srcs = ["dcn_slack_analysis.proto"],
     cc_api_version = 2,
     visibility = [":friends"],
 )

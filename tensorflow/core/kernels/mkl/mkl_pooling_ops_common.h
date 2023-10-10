@@ -22,59 +22,80 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "mkldnn.hpp"
-#include "tensorflow/core/util/mkl_types.h"
+#include "dnnl.hpp"
+#include "tensorflow/core/framework/kernel_shape_util.h"
+#include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
 namespace tensorflow {
 
-using mkldnn::memory;
-using mkldnn::pooling_backward;
-using mkldnn::pooling_forward;
-using mkldnn::prop_kind;
-using mkldnn::stream;
+#ifndef ENABLE_ONEDNN_V3
+#define GET_DIMS data.dims
+#define SET_MKL_LAYOUT(md) SetMklLayout(&md)
+#else
+#define GET_DIMS get_dims()
+#define SET_MKL_LAYOUT(md) SetMklLayout(md)
+#endif  // !ENABLE_ONEDNN_V3
 
-using PoolingFwdPd = mkldnn::pooling_forward::primitive_desc;
-using PoolingBwdPd = mkldnn::pooling_backward::primitive_desc;
+using dnnl::pooling_backward;
+using dnnl::pooling_forward;
+using dnnl::prop_kind;
+using dnnl::stream;
+
+using PoolingFwdPd = dnnl::pooling_forward::primitive_desc;
+using PoolingBwdPd = dnnl::pooling_backward::primitive_desc;
 
 struct MklPoolingParams {
   memory::dims src_dims;
   memory::dims dst_dims;
   memory::dims filter_dims;
   memory::dims strides;
+#ifdef ENABLE_ONEDNN_V3
+  memory::dims dilations;
+#endif  // ENABLE_ONEDNN_V3
   memory::dims padding_left;
   memory::dims padding_right;
-  mkldnn::algorithm alg_kind;
-  mkldnn::prop_kind prop_kind;
-  MEMORY_FORMAT src_format;
+  dnnl::algorithm alg_kind;
+  dnnl::prop_kind prop_kind;
+  memory::format_tag src_format;
   memory::desc src_md;
   bool native_format;
 
   MklPoolingParams(memory::dims src_dims, memory::dims dst_dims,
                    memory::dims filter_dims, memory::dims strides,
+#ifdef ENABLE_ONEDNN_V3
+                   memory::dims dilations,
+#endif  // ENABLE_ONEDNN_V3
                    memory::dims padding_left, memory::dims padding_right,
-                   mkldnn::algorithm alg_kind, mkldnn::prop_kind prop_kind,
-                   MEMORY_FORMAT src_format, memory::desc src_md,
+                   dnnl::algorithm alg_kind, dnnl::prop_kind prop_kind,
+                   memory::format_tag src_format, memory::desc src_md,
                    bool native_format)
       : src_dims(src_dims),
         dst_dims(dst_dims),
         filter_dims(filter_dims),
         strides(strides),
+#ifdef ENABLE_ONEDNN_V3
+        dilations(dilations),
+#endif  // ENABLE_ONEDNN_V3
         padding_left(padding_left),
         padding_right(padding_right),
         alg_kind(alg_kind),
         prop_kind(prop_kind),
         src_format(src_format),
         src_md(src_md),
-        native_format(native_format) {}
+        native_format(native_format) {
+  }
 };
 
 template <typename T>
 class MklPoolingFwdPrimitive : public MklPrimitive {
  public:
   explicit MklPoolingFwdPrimitive(const MklPoolingParams& fwdParams)
-      : MklPrimitive(engine(ENGINE_CPU, 0)) {
+      : MklPrimitive(engine(engine::kind::cpu, 0)) {
     if (context_.fwd == nullptr) Setup(fwdParams);
   }
 
@@ -91,66 +112,74 @@ class MklPoolingFwdPrimitive : public MklPrimitive {
     return context_.fwd_pd;
   }
 
-  MEMORY_FORMAT GetSrcMemoryFormat() const { return context_.src_fmt; }
-  MEMORY_FORMAT GetDstMemoryFormat() const { return context_.dst_fmt; }
+  memory::format_tag GetSrcMemoryFormat() const { return context_.src_fmt; }
+  memory::format_tag GetDstMemoryFormat() const { return context_.dst_fmt; }
 
  private:
   void Setup(const MklPoolingParams& fwdParams);
 
   struct PoolingFwdContext {
     // Algorithm.
-    mkldnn::algorithm alg_kind;
+    dnnl::algorithm alg_kind;
 
     // Kind of propagation, forward or backward.
-    mkldnn::prop_kind prop_kind;
+    dnnl::prop_kind prop_kind;
 
     // Expected memory format.
-    MEMORY_FORMAT src_fmt;
-    MEMORY_FORMAT dst_fmt;
-    MEMORY_FORMAT ws_fmt;
+    memory::format_tag src_fmt;
+    memory::format_tag dst_fmt;
+    memory::format_tag ws_fmt;
 
     // Workspace shape.
-    memory::dims ws_dims;
     memory::data_type ws_dt;
     size_t ws_size;
 
-    // MKL-DNN memory, just dummy data.
-    std::shared_ptr<mkldnn::memory> ws_mem;
-    std::shared_ptr<mkldnn::memory> src_mem;
-    std::shared_ptr<mkldnn::memory> dst_mem;
+    // oneDNN memory, just dummy data.
+    std::shared_ptr<dnnl::memory> ws_mem;
+    std::shared_ptr<dnnl::memory> src_mem;
+    std::shared_ptr<dnnl::memory> dst_mem;
 
     // Pooling forward descriptor and primitive descriptor.
-    std::shared_ptr<mkldnn::pooling_forward::desc> fwd_desc;
+#ifndef ENABLE_ONEDNN_V3
+    std::shared_ptr<dnnl::pooling_forward::desc> fwd_desc;
+#endif  // !ENABLE_ONEDNN_V3
     std::shared_ptr<PoolingFwdPd> fwd_pd;
 
     // Memory descriptor.
-    std::shared_ptr<mkldnn::memory::desc> src_md;
-    std::shared_ptr<mkldnn::memory::desc> dst_md;
+    std::shared_ptr<dnnl::memory::desc> src_md;
+    std::shared_ptr<dnnl::memory::desc> dst_md;
 
     // Pooling primitive
-    std::shared_ptr<mkldnn::pooling_forward> fwd;
-    std::shared_ptr<mkldnn::stream> fwd_stream;
-    std::vector<mkldnn::primitive> fwd_primitives;
+    std::shared_ptr<dnnl::pooling_forward> fwd;
+    std::shared_ptr<dnnl::stream> fwd_stream;
+    std::vector<dnnl::primitive> fwd_primitives;
 
-#ifdef ENABLE_MKLDNN_V1
     std::vector<std::unordered_map<int, memory>> net_args;
-#endif  // ENABLE_MKLDNN_V1
 
     PoolingFwdContext()
-        : src_fmt(MEMORY_FORMAT::any),
-          dst_fmt(MEMORY_FORMAT::any),
-          ws_fmt(MEMORY_FORMAT::any),
+        : src_fmt(memory::format_tag::any),
+          dst_fmt(memory::format_tag::any),
+          ws_fmt(memory::format_tag::any),
+          ws_dt(memory::data_type::u8),
+          ws_size(0),
           ws_mem(nullptr),
           src_mem(nullptr),
           dst_mem(nullptr),
+#ifndef ENABLE_ONEDNN_V3
           fwd_desc(nullptr),
+#endif  // !ENABLE_ONEDNN_V3
           fwd_pd(nullptr),
           src_md(nullptr),
           dst_md(nullptr),
-          fwd(nullptr) {}
+          fwd(nullptr) {
+    }
   };
 
   struct PoolingFwdContext context_;
+
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T>
@@ -158,7 +187,6 @@ class MklPoolingFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
  public:
   static MklPoolingFwdPrimitive<T>* Get(const MklPoolingParams& fwdParams) {
     MklPoolingFwdPrimitive<T>* pooling_forward = nullptr;
-
     // Get pooling primitive from the pool
     pooling_forward = static_cast<MklPoolingFwdPrimitive<T>*>(
         MklPoolingFwdPrimitiveFactory<T>::GetInstance().GetPoolingFwd(
@@ -193,6 +221,9 @@ class MklPoolingFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(fwdParams.dst_dims);
     key_creator.AddAsKey(fwdParams.filter_dims);
     key_creator.AddAsKey(fwdParams.strides);
+#ifdef ENABLE_ONEDNN_V3
+    key_creator.AddAsKey(fwdParams.dilations);
+#endif  // ENABLE_ONEDNN_V3
     key_creator.AddAsKey(fwdParams.padding_left);
     key_creator.AddAsKey(fwdParams.padding_right);
     key_creator.AddAsKey<int>(static_cast<int>(fwdParams.alg_kind));
@@ -215,7 +246,7 @@ template <typename T>
 class MklPoolingBwdPrimitive : public MklPrimitive {
  public:
   explicit MklPoolingBwdPrimitive(const MklPoolingParams& bwdParams)
-      : MklPrimitive(engine(ENGINE_CPU, 0)) {
+      : MklPrimitive(engine(engine::kind::cpu, 0)) {
     if (context_.bwd == nullptr) Setup(bwdParams);
   }
 
@@ -236,12 +267,7 @@ class MklPoolingBwdPrimitive : public MklPrimitive {
     return context_.bwd_pd;
   }
 
-#ifndef ENABLE_MKLDNN_V1
-  MEMORY_FORMAT GetDiffDstMemoryFormat() const { return context_.diff_dst_fmt; }
-  MEMORY_FORMAT GetWorkspaceMemoryFormat() const { return context_.ws_fmt; }
-#endif  // ENABLE_MKLDNN_V1
-
-  mkldnn::memory::data_type GetWorkspaceDataType() const {
+  dnnl::memory::data_type GetWorkspaceDataType() const {
     return context_.ws_dt;
   }
 
@@ -251,61 +277,54 @@ class MklPoolingBwdPrimitive : public MklPrimitive {
   // Primitive reuse context for pooling bwd ops
   struct PoolingBwdContext {
     // Algorithm.
-    mkldnn::algorithm alg_kind;
+    dnnl::algorithm alg_kind;
 
     // Expected memory format.
-    MEMORY_FORMAT diff_src_fmt;
-    MEMORY_FORMAT diff_dst_fmt;
-    MEMORY_FORMAT ws_fmt;
+    memory::format_tag diff_src_fmt;
+    memory::format_tag diff_dst_fmt;
+    memory::format_tag ws_fmt;
 
     // Workspace attribute.
-    mkldnn::memory::dims ws_dims;
-    mkldnn::memory::data_type ws_dt;
+    dnnl::memory::data_type ws_dt;
 
-    // MKL-DNN memory.
-    std::shared_ptr<mkldnn::memory> ws_mem;
-    std::shared_ptr<mkldnn::memory> diff_src_mem;
-    std::shared_ptr<mkldnn::memory> diff_dst_mem;
+    // oneDNN memory.
+    std::shared_ptr<dnnl::memory> ws_mem;
+    std::shared_ptr<dnnl::memory> diff_src_mem;
+    std::shared_ptr<dnnl::memory> diff_dst_mem;
 
     // Memory descriptors.
-    std::shared_ptr<mkldnn::memory::desc> src_md;
-    std::shared_ptr<mkldnn::memory::desc> dst_md;
-#ifndef ENABLE_MKLDNN_V1
-    std::shared_ptr<mkldnn::memory::desc> diff_src_md;
-    std::shared_ptr<mkldnn::memory::desc> diff_dst_md;
-#endif
+    std::shared_ptr<dnnl::memory::desc> src_md;
+    std::shared_ptr<dnnl::memory::desc> dst_md;
 
     // Forward and backward pooling descriptors and primitive descriptors.
-    std::shared_ptr<mkldnn::pooling_forward::desc> fwd_desc;
-    std::shared_ptr<mkldnn::pooling_backward::desc> bwd_desc;
+#ifndef ENABLE_ONEDNN_V3
+    std::shared_ptr<dnnl::pooling_forward::desc> fwd_desc;
+    std::shared_ptr<dnnl::pooling_backward::desc> bwd_desc;
+#endif  // !ENABLE_ONEDNN_V3
     std::shared_ptr<PoolingFwdPd> fwd_pd;
     std::shared_ptr<PoolingBwdPd> bwd_pd;
 
     // Backward pooling primitive.
-    std::shared_ptr<mkldnn::pooling_backward> bwd;
-    std::shared_ptr<mkldnn::stream> bwd_stream;
+    std::shared_ptr<dnnl::pooling_backward> bwd;
+    std::shared_ptr<dnnl::stream> bwd_stream;
 
-    std::vector<mkldnn::primitive> bwd_primitives;
-
-#ifdef ENABLE_MKLDNN_V1
+    std::vector<dnnl::primitive> bwd_primitives;
     std::vector<std::unordered_map<int, memory>> net_args;
-#endif  // ENABLE_MKLDNN_V1
 
     PoolingBwdContext()
-        : diff_src_fmt(MEMORY_FORMAT::any),
-          diff_dst_fmt(MEMORY_FORMAT::any),
-          ws_fmt(MEMORY_FORMAT::any),
+        : diff_src_fmt(memory::format_tag::any),
+          diff_dst_fmt(memory::format_tag::any),
+          ws_fmt(memory::format_tag::any),
+          ws_dt(memory::data_type::u8),
           ws_mem(nullptr),
           diff_src_mem(nullptr),
           diff_dst_mem(nullptr),
           src_md(nullptr),
           dst_md(nullptr),
-#ifndef ENABLE_MKLDNN_V1
-          diff_src_md(nullptr),
-          diff_dst_md(nullptr),
-#endif
+#ifndef ENABLE_ONEDNN_V3
           fwd_desc(nullptr),
           bwd_desc(nullptr),
+#endif  // !ENABLE_ONEDNN_V3
           fwd_pd(nullptr),
           bwd_pd(nullptr),
           bwd(nullptr) {
@@ -313,6 +332,9 @@ class MklPoolingBwdPrimitive : public MklPrimitive {
   };
 
   struct PoolingBwdContext context_;
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T>
@@ -355,6 +377,9 @@ class MklPoolingBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(bwdParams.dst_dims);
     key_creator.AddAsKey(bwdParams.filter_dims);
     key_creator.AddAsKey(bwdParams.strides);
+#ifdef ENABLE_ONEDNN_V3
+    key_creator.AddAsKey(bwdParams.dilations);
+#endif  // ENABLE_ONEDNN_V3
     key_creator.AddAsKey(bwdParams.padding_left);
     key_creator.AddAsKey(bwdParams.padding_right);
     key_creator.AddAsKey<int>(static_cast<int>(bwdParams.alg_kind));
@@ -392,6 +417,12 @@ struct MklPoolParameters {
   int col_stride;
   int depth_stride;
 
+#ifdef ENABLE_ONEDNN_V3
+  int planes_dilation;  // Pool3D
+  int row_dilation;
+  int col_dilation;
+#endif  // ENABLE_ONEDNN_V3
+
   int64 out_planes;  // Pool3D
   int64 out_height;
   int64 out_width;
@@ -420,6 +451,11 @@ struct MklPoolParameters {
         row_stride(0),
         col_stride(0),
         depth_stride(0),
+#ifdef ENABLE_ONEDNN_V3
+        planes_dilation(0),
+        row_dilation(0),
+        col_dilation(0),
+#endif  // ENABLE_ONEDNN_V3
         out_planes(0),
         out_height(0),
         out_width(0),
@@ -431,7 +467,8 @@ struct MklPoolParameters {
         pad_top(0),
         pad_bottom(0),
         pad_depth(0),
-        data_format(TensorFormat::FORMAT_NCHW) {}
+        data_format(TensorFormat::FORMAT_NCHW) {
+  }
 
   // Updates context->status if there is an invalid input.
   void Init(OpKernelContext* context, const std::vector<int32>& ksize,
@@ -461,19 +498,25 @@ class MklPoolingOpBase : public OpKernel {
       OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     }
     OP_REQUIRES(context, FormatFromString(data_format, &this->data_format_tf_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &this->ksize_));
     OP_REQUIRES(context, this->ksize_.size() == 4 || this->ksize_.size() == 5,
-                errors::InvalidArgument("Sliding window ksize field must "
-                                        "specify 4 or 5 dimensions"));
+                absl::InvalidArgumentError("Sliding window ksize field must "
+                                           "specify 4 or 5 dimensions"));
+    for (int i = 0; i < this->ksize_.size(); ++i) {
+      OP_REQUIRES(context, this->ksize_[i] > 0,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Sliding window ksize for dimension ", i, " was zero.")));
+    }
+
     OP_REQUIRES_OK(context, context->GetAttr("strides", &this->stride_));
     OP_REQUIRES(context, this->stride_.size() == 4 || this->stride_.size() == 5,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 or 5 dimensions"));
+                absl::InvalidArgumentError("Sliding window strides field must "
+                                           "specify 4 or 5 dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &this->padding_));
     OP_REQUIRES(context, this->ksize_[0] == 1 && this->stride_[0] == 1,
-                errors::Unimplemented("Pooling is not yet supported on the "
-                                      "batch dimension."));
+                absl::UnimplementedError("Pooling is not yet supported on the "
+                                         "batch dimension."));
     bool is_pool2d = (this->ksize_.size() == 4);
     this->tensor_format_mkldnn_ =
         is_pool2d ? TFDataFormatToMklDnnDataFormat(this->data_format_tf_)
@@ -485,26 +528,28 @@ class MklPoolingOpBase : public OpKernel {
     // We may not get this attribute for this node if it does not go through
     // graph rewrite pass. So we do not check for error while retrieving this
     // attribute value.
-    context->GetAttr("workspace_enabled", &this->workspace_enabled_);
+    auto status =
+        context->GetAttr("workspace_enabled", &this->workspace_enabled_);
+    (void)status;
   }
   void Compute(OpKernelContext* context) override = 0;
 
  protected:
-  // Calculate output shape of pooling op in MKL-DNN and TensorFlow order.
-  // MKL-DNN uses NCHW(Pool2D) or NCDHW(Pool3D) for output order.
+  // Calculate output shape of pooling op in oneDNN and TensorFlow order.
+  // oneDNN uses NCHW(Pool2D) or NCDHW(Pool3D) for output order.
   // But TensorFlow output will be in NHWC/NCHW(Pool2D) or
   // NDHWC/NCDHW(Pool3D) format depending on data format. Function expects
   // output height and width to have already been int32 bounds-checked.
   void GetOutputDims(const MklPoolParameters& mkl_pool_params,
                      memory::dims* output_dims_mkl_order) {
     if (this->ksize_.size() == 4) {
-      // Pooling2D: MKL-DNN always needs output in NCHW format.
+      // Pooling2D: oneDNN always needs output in NCHW format.
       *output_dims_mkl_order = {mkl_pool_params.tensor_in_batch,
                                 mkl_pool_params.out_depth,
                                 static_cast<int>(mkl_pool_params.out_height),
                                 static_cast<int>(mkl_pool_params.out_width)};
     } else {
-      // Pooling3D: MKL-DNN always needs output in NCDHW format.
+      // Pooling3D: oneDNN always needs output in NCDHW format.
       *output_dims_mkl_order = {mkl_pool_params.tensor_in_batch,
                                 mkl_pool_params.out_depth,
                                 static_cast<int>(mkl_pool_params.out_planes),
@@ -528,6 +573,9 @@ class MklPoolingOpBase : public OpKernel {
 
   void PoolParamsToDims(const MklPoolParameters* pool_params,
                         memory::dims* filter_dims, memory::dims* strides,
+#ifdef ENABLE_ONEDNN_V3
+                        memory::dims* dilations,
+#endif  // ENABLE_ONEDNN_V3
                         memory::dims* padding_left, memory::dims* padding_right,
                         bool is_pool2d) {
     if (is_pool2d) {
@@ -536,6 +584,10 @@ class MklPoolingOpBase : public OpKernel {
           memory::dims({pool_params->window_rows, pool_params->window_cols});
       *strides =
           memory::dims({pool_params->row_stride, pool_params->col_stride});
+#ifdef ENABLE_ONEDNN_V3
+      *dilations =
+          memory::dims({pool_params->row_dilation, pool_params->col_dilation});
+#endif  // ENABLE_ONEDNN_V3
       *padding_left = memory::dims({static_cast<int>(pool_params->pad_top),
                                     static_cast<int>(pool_params->pad_left)});
       *padding_right = memory::dims({static_cast<int>(pool_params->pad_bottom),
@@ -548,6 +600,11 @@ class MklPoolingOpBase : public OpKernel {
       *strides =
           memory::dims({pool_params->planes_stride, pool_params->row_stride,
                         pool_params->col_stride});
+#ifdef ENABLE_ONEDNN_V3
+      *dilations =
+          memory::dims({pool_params->planes_dilation, pool_params->row_dilation,
+                        pool_params->col_dilation});
+#endif  // ENABLE_ONEDNN_V3
 
       *padding_left = memory::dims({static_cast<int>(pool_params->pad_P1),
                                     static_cast<int>(pool_params->pad_top),
@@ -594,7 +651,7 @@ class MklPoolingOpBase : public OpKernel {
   // Checks to make sure that the memory we need to allocate
   // is a multiple of sizeof(T)
   // returns the number of elements
-  size_t GetNumTElements(const MEMORY_PRIMITIVE_DESC& pd) {
+  size_t GetNumTElements(const memory::desc& pd) {
     size_t num_bytes = pd.get_size();
     size_t ret_val = num_bytes / sizeof(T);
     if (num_bytes % sizeof(T) != 0) {
@@ -607,10 +664,8 @@ class MklPoolingOpBase : public OpKernel {
   std::vector<int32> stride_;
   Padding padding_;
   TensorFormat data_format_tf_;
-  // Either memory::format (MKL-DNN v-0.x) or MklTensorFormat (MKL-DNN v-1.x)
-  MKL_TENSOR_FORMAT tensor_format_mkldnn_;
-  // Either memory::format (MKL-DNN v-0.x) or memory::format_tag (MKL-DNN v-1.x)
-  MEMORY_FORMAT data_format_mkldnn_;
+  MklTensorFormat tensor_format_mkldnn_;
+  memory::format_tag data_format_mkldnn_;
   bool workspace_enabled_;
   bool native_format_ = false;
 };
@@ -646,13 +701,13 @@ class MklPoolingForwardOpBase : public MklPoolingOpBase<T> {
 
       if (this->ksize_.size() == 5) {
         // Pool3D
-        std::vector<int> mkldnn_sizes(5, -1);
-        mkldnn_sizes[MklDnnDims3D::Dim3d_N] = input_md.data.dims[0];
-        mkldnn_sizes[MklDnnDims3D::Dim3d_C] = input_md.data.dims[1];
-        mkldnn_sizes[MklDnnDims3D::Dim3d_D] = input_md.data.dims[2];
-        mkldnn_sizes[MklDnnDims3D::Dim3d_H] = input_md.data.dims[3];
-        mkldnn_sizes[MklDnnDims3D::Dim3d_W] = input_md.data.dims[4];
-        dnn_data_input->SetOpMemDesc(mkldnn_sizes, this->data_format_mkldnn_);
+        std::vector<dnnl::memory::dim> input_sizes(5, -1);
+        input_sizes[MklDnnDims3D::Dim3d_N] = input_md.GET_DIMS[0];
+        input_sizes[MklDnnDims3D::Dim3d_C] = input_md.GET_DIMS[1];
+        input_sizes[MklDnnDims3D::Dim3d_D] = input_md.GET_DIMS[2];
+        input_sizes[MklDnnDims3D::Dim3d_H] = input_md.GET_DIMS[3];
+        input_sizes[MklDnnDims3D::Dim3d_W] = input_md.GET_DIMS[4];
+        dnn_data_input->SetOpMemDesc(input_sizes, this->data_format_mkldnn_);
       }
     }
     this->InitMklPoolParameters(context, pool_params, input_mkl_shape,
@@ -662,15 +717,15 @@ class MklPoolingForwardOpBase : public MklPoolingOpBase<T> {
   void AllocateOutputTensor(OpKernelContext* context,
                             const PoolingFwdPd& pool_fwd_prim_desc,
                             const memory::dims output_dims_mkl_order,
-                            const MKL_TENSOR_FORMAT& output_tf_format,
+                            const MklTensorFormat& output_tf_format,
                             Tensor** output_tensor) {
     TensorShape output_tf_shape;
     DCHECK(output_tensor);
-    MEMORY_PRIMITIVE_DESC dst_pd = pool_fwd_prim_desc.PRIMITIVE_DESC_DST;
+    memory::desc dst_pd = pool_fwd_prim_desc.dst_desc();
 
     MklDnnShape output_mkl_shape;
     output_mkl_shape.SetMklTensor(true);
-    output_mkl_shape.SetMklLayout(&dst_pd);
+    output_mkl_shape.SET_MKL_LAYOUT(dst_pd);
     output_mkl_shape.SetElemType(MklDnnType<T>());
     output_mkl_shape.SetTfLayout(output_dims_mkl_order.size(),
                                  output_dims_mkl_order, output_tf_format);
@@ -689,14 +744,15 @@ class MklPoolingForwardOpBase : public MklPoolingOpBase<T> {
   void SanityCheckInput(OpKernelContext* context, const Tensor& input_tensor,
                         const MklDnnShape& input_mkl_shape) {
     if (!input_mkl_shape.IsMklTensor()) {
-      OP_REQUIRES(context, input_tensor.dims() == 4 || input_tensor.dims() == 5,
-                  errors::InvalidArgument("Input must be 4 or 5-dimensional"));
+      OP_REQUIRES(
+          context, input_tensor.dims() == 4 || input_tensor.dims() == 5,
+          absl::InvalidArgumentError("Input must be 4 or 5-dimensional"));
     } else {
       OP_REQUIRES(
           context,
           input_mkl_shape.GetDimension() == 4 ||
               input_mkl_shape.GetDimension() == 5,
-          errors::InvalidArgument("Input shape must be 4 or 5-dimensional"));
+          absl::InvalidArgumentError("Input shape must be 4 or 5-dimensional"));
     }
   }
   const int kInputTensorIndexInput = 0;
@@ -716,13 +772,13 @@ class MklPoolingBackwardOpBase : public MklPoolingOpBase<T> {
   void AllocateOutputTensor(OpKernelContext* context,
                             const PoolingBwdPd& pool_bkwd_prim_desc,
                             const memory::dims output_dims_mkl_order,
-                            const MKL_TENSOR_FORMAT& output_tf_format,
+                            const MklTensorFormat& output_tf_format,
                             Tensor** output_tensor) {
     DCHECK(output_tensor);
-    MEMORY_PRIMITIVE_DESC dst_pd = pool_bkwd_prim_desc.PRIMITIVE_DESC_DIFF_SRC;
+    memory::desc dst_pd = pool_bkwd_prim_desc.diff_src_desc();
     MklDnnShape output_mkl_shape;
     output_mkl_shape.SetMklTensor(true);
-    output_mkl_shape.SetMklLayout(&dst_pd);
+    output_mkl_shape.SET_MKL_LAYOUT(dst_pd);
     output_mkl_shape.SetElemType(MklDnnType<T>());
     output_mkl_shape.SetTfLayout(output_dims_mkl_order.size(),
                                  output_dims_mkl_order, output_tf_format);
@@ -738,6 +794,9 @@ class MklPoolingBackwardOpBase : public MklPoolingOpBase<T> {
     DCHECK(*output_tensor);
   }
 };
+
+#undef GET_DIMS
+#undef SET_MKL_LAYOUT
 
 }  // namespace tensorflow
 

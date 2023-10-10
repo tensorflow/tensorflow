@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "FlushSummaryWriter"
   input_arg {
     name: "writer"

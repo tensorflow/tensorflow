@@ -14,10 +14,6 @@
 # ==============================================================================
 """Utility to retrieve function args."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 import six
@@ -81,8 +77,8 @@ def has_kwargs(fn):
     fn = fn.__call__
   elif not callable(fn):
     raise TypeError(
-        'fn should be a function-like object, but is of type {}.'.format(
-            type(fn)))
+        'Argument `fn` should be a callable. '
+        f'Received: fn={fn} (of type {type(fn)})')
   return tf_inspect.getfullargspec(fn).varkw is not None
 
 
@@ -98,7 +94,9 @@ def get_func_name(func):
     else:  # Probably a class instance with __call__
       return str(type(func))
   else:
-    raise ValueError('Argument must be callable')
+    raise ValueError(
+        'Argument `func` must be a callable. '
+        f'Received func={func} (of type {type(func)})')
 
 
 def get_func_code(func):
@@ -116,7 +114,9 @@ def get_func_code(func):
     except AttributeError:
       return None
   else:
-    raise ValueError('Argument must be callable')
+    raise ValueError(
+        'Argument `func` must be a callable. '
+        f'Received func={func} (of type {type(func)})')
 
 
 _rewriter_config_optimizer_disabled = None

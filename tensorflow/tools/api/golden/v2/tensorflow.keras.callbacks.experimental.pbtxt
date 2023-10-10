@@ -1,7 +1,0 @@
-path: "tensorflow.keras.callbacks.experimental"
-tf_module {
-  member {
-    name: "BackupAndRestore"
-    mtype: "<type \'type\'>"
-  }
-}

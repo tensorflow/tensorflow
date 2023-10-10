@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_IM2COL_UTILS_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_IM2COL_UTILS_H_
 
+#include <algorithm>
 #include <cassert>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
@@ -51,7 +52,7 @@ inline void ExtractPatchIntoBufferColumn(const RuntimeShape& input_shape, int w,
   const int ih_start = std::max(0, ih_ungated_start);
   const int iw_start = std::max(0, iw_ungated_start);
   const int single_row_num =
-      std::min(kwidth - w_offset, in_width - iw_start) * in_depth;
+      std::max(0, std::min(kwidth - w_offset, in_width - iw_start)) * in_depth;
   const int output_row_offset = (buffer_id * single_buffer_length);
   int out_offset =
       output_row_offset + (h_offset * kwidth + w_offset) * in_depth;
@@ -277,6 +278,229 @@ void Im2col(const ConvParams& params, int kheight, int kwidth,
             pad_width, pad_height, input_width, input_height, input_depth,
             output_depth, buffer_id, input_data, output_data, zero_byte);
         ++buffer_id;
+      }
+    }
+  }
+}
+
+template <typename T>
+inline void ExtractPatchIntoBufferColumn3D(
+    int b, int d, int h, int w,                             // Output indexes.
+    int kdepth, int kheight, int kwidth,                    // Kernel params.
+    int stride_depth, int stride_height, int stride_width,  // Stride params.
+    int pad_depth, int pad_height, int pad_width,           // Padding params.
+    int in_depth, int in_height, int in_width, int in_channel,  // Input shape.
+    int output_row_offset, const T* in_data, T* conv_buffer_data,
+    uint8 zero_byte) {
+  ruy::profiler::ScopeLabel label("ExtractPatchIntoBufferColumn3D");
+
+  // This chunk of code reshapes all the inputs corresponding to
+  // output (b, d, h, w) to a column vector in conv_buffer(:, buffer_id).
+  const int id_ungated_start = d * stride_depth - pad_depth;
+  const int id_start = std::max(0, id_ungated_start);
+  const int id_ungated_end = (id_ungated_start + kdepth);
+  const int id_end = std::min(id_ungated_end, in_depth);
+
+  const int ih_ungated_start = h * stride_height - pad_height;
+  const int ih_start = std::max(0, ih_ungated_start);
+  const int ih_ungated_end = (ih_ungated_start + kheight);
+  const int ih_end = std::min(ih_ungated_end, in_height);
+
+  const int iw_ungated_start = w * stride_width - pad_width;
+  const int iw_start = std::max(0, iw_ungated_start);
+  const int iw_ungated_end = (iw_ungated_start + kwidth);
+  const int iw_end = std::min(iw_ungated_end, in_width);
+
+  // Calculate the padding sizes.
+  const int d_padding_before = std::max(0, -id_ungated_start);
+  const int d_padding_after = (id_ungated_end - id_end);
+  const int h_padding_before = std::max(0, -ih_ungated_start);
+  const int h_padding_after = (ih_ungated_end - ih_end);
+  const int w_padding_before = std::max(0, -iw_ungated_start);
+  const int w_padding_after = (iw_ungated_end - iw_end);
+
+  // Memset if there are paddings in the depth dimension.
+  const int kd_stride_size = kheight * kwidth * in_channel;
+  const int id_stride_size = in_height * in_width * in_channel;
+
+  if (d_padding_before > 0) {
+    const int d_padding_before_elements = (d_padding_before * kd_stride_size);
+    memset(conv_buffer_data + output_row_offset, zero_byte,
+           (d_padding_before_elements * sizeof(T)));
+  }
+
+  if (d_padding_after > 0) {
+    const int d_padding_after_elements = (d_padding_after * kd_stride_size);
+    const int bottom_start =
+        output_row_offset + (kdepth - d_padding_after) * kd_stride_size;
+    memset(conv_buffer_data + bottom_start, zero_byte,
+           (d_padding_after_elements * sizeof(T)));
+  }
+
+  // If there are paddings in height or width dimension, menset the entire area
+  // to take advantage of sequential memory handling performance.
+  int out_offset = output_row_offset + d_padding_before * kd_stride_size;
+  if (h_padding_before > 0 || h_padding_after > 0 || w_padding_before > 0 ||
+      w_padding_after > 0) {
+    const int middle_elements = (id_end - id_start) * kd_stride_size;
+    memset(conv_buffer_data + out_offset, zero_byte,
+           (middle_elements * sizeof(T)));
+  }
+
+  // Copy the valid data from the input tensor.
+  const int kh_stride_size = kwidth * in_channel;
+  const int ih_stride_size = in_width * in_channel;
+  const int h_padding = h_padding_before + h_padding_after;
+  const int w_padding = w_padding_before + w_padding_after;
+  const int single_row_num = (kwidth - w_padding) * in_channel;
+  out_offset +=
+      h_padding_before * kh_stride_size + w_padding_before * in_channel;
+  const int in_offset_without_d = b * in_depth * id_stride_size +
+                                  ih_start * ih_stride_size +
+                                  iw_start * in_channel;
+  for (int id = id_start; id < id_end; ++id) {
+    int in_offset = in_offset_without_d + id * id_stride_size;
+    for (int ih = ih_start; ih < ih_end; ++ih) {
+      memcpy(conv_buffer_data + out_offset, in_data + in_offset,
+             single_row_num * sizeof(T));
+      out_offset += kh_stride_size;
+      in_offset += ih_stride_size;
+    }
+    out_offset += h_padding * kh_stride_size;
+  }
+}
+
+template <typename T>
+void Im2col3D(const Conv3DParams& params, int kdepth, int kheight, int kwidth,
+              uint8 zero_byte, const RuntimeShape& input_shape,
+              const T* input_data, const RuntimeShape& im2col_shape,
+              T* im2col_data) {
+  ruy::profiler::ScopeLabel label("Im2col3D");
+  const int stride_depth = params.stride_depth;
+  const int stride_width = params.stride_width;
+  const int stride_height = params.stride_height;
+  const int pad_depth = params.padding_values.depth;
+  const int pad_width = params.padding_values.width;
+  const int pad_height = params.padding_values.height;
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 5);
+  TFLITE_DCHECK_EQ(im2col_shape.DimensionsCount(), 5);
+
+  const int batches = MatchingDim(input_shape, 0, im2col_shape, 0);
+  const int input_depth = input_shape.Dims(1);
+  const int input_height = input_shape.Dims(2);
+  const int input_width = input_shape.Dims(3);
+  const int input_channel = input_shape.Dims(4);
+
+  const int output_depth = im2col_shape.Dims(1);
+  const int output_height = im2col_shape.Dims(2);
+  const int output_width = im2col_shape.Dims(3);
+  const int output_channel = im2col_shape.Dims(4);
+
+  int buffer_id = 0;
+  // Loop over the output nodes.
+  for (int b = 0; b < batches; ++b) {
+    for (int d = 0; d < output_depth; ++d) {
+      for (int h = 0; h < output_height; ++h) {
+        for (int w = 0; w < output_width; ++w) {
+          ExtractPatchIntoBufferColumn3D(
+              b, d, h, w, kdepth, kheight, kwidth, stride_depth, stride_height,
+              stride_width, pad_depth, pad_height, pad_width, input_depth,
+              input_height, input_width, input_channel, buffer_id, input_data,
+              im2col_data, zero_byte);
+          buffer_id += output_channel;
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
+inline void DilatedIm2col3D(const Conv3DParams& params, int filter_depth,
+                            int filter_height, int filter_width,
+                            uint8 zero_byte, const RuntimeShape& input_shape,
+                            const T* input_data,
+                            const RuntimeShape& im2col_shape, T* im2col_data) {
+  ruy::profiler::ScopeLabel label("DilatedIm2col3D");
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 5);
+  TFLITE_DCHECK_EQ(im2col_shape.DimensionsCount(), 5);
+
+  // Only NDHWC format is currently supported.
+  const int batches = MatchingDim(input_shape, 0, im2col_shape, 0);
+  const int input_channels = input_shape.Dims(4);
+  const int input_width = input_shape.Dims(3);
+  const int input_height = input_shape.Dims(2);
+  const int input_depth = input_shape.Dims(1);
+
+  const int output_width = im2col_shape.Dims(3);
+  const int output_height = im2col_shape.Dims(2);
+  const int output_depth = im2col_shape.Dims(1);
+
+  const int pad_width = params.padding_values.width;
+  const int pad_height = params.padding_values.height;
+  const int pad_depth = params.padding_values.depth;
+
+  // Construct the MxN sized im2col matrix.
+  // The rows M, are sub-ordered B x D x H x W.
+  const RuntimeShape row_shape(
+      {1, batches, output_depth, output_height, output_width});
+  // The columns, N, are sub-ordered Kd x Kh x Kw x Din.
+  const RuntimeShape col_shape(
+      {1, filter_depth, filter_height, filter_width, input_channels});
+  // Use dimensions M and N to construct dims for indexing directly into im2col.
+  const RuntimeShape im2col_reshaped(
+      {1, 1, row_shape.FlatSize(), col_shape.FlatSize()});
+
+  for (int batch = 0; batch < batches; ++batch) {
+    for (int out_d = 0; out_d < output_depth; ++out_d) {
+      const int in_d_origin = (out_d * params.stride_depth) - pad_depth;
+      for (int out_y = 0; out_y < output_height; ++out_y) {
+        const int in_y_origin = (out_y * params.stride_height) - pad_height;
+        for (int out_x = 0; out_x < output_width; ++out_x) {
+          const int in_x_origin = (out_x * params.stride_width) - pad_width;
+          const int row_offset =
+              Offset(row_shape, 0, batch, out_d, out_y, out_x);
+          for (int filter_d = 0; filter_d < filter_depth; ++filter_d) {
+            const int in_d = in_d_origin + params.dilation_depth * filter_d;
+            if ((in_d >= 0) && (in_d < input_depth)) {
+              for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
+                const int in_y =
+                    in_y_origin + params.dilation_height * filter_y;
+                if ((in_y >= 0) && (in_y < input_height)) {
+                  for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
+                    const int in_x =
+                        in_x_origin + params.dilation_width * filter_x;
+                    int col_offset =
+                        Offset(col_shape, 0, filter_d, filter_y, filter_x, 0);
+                    T* dst = im2col_data + Offset(im2col_reshaped, 0, 0,
+                                                  row_offset, col_offset);
+                    if ((in_x >= 0) && (in_x < input_width)) {
+                      // Filter pixel is within the input, copy the input data.
+                      T const* src = input_data + Offset(input_shape, batch,
+                                                         in_d, in_y, in_x, 0);
+                      memcpy(dst, src, input_depth * sizeof(T));
+                    } else {
+                      // Filter pixel is outside the input, zero it out.
+                      memset(dst, zero_byte, input_depth * sizeof(T));
+                    }
+                  }
+                } else {
+                  const int col_offset =
+                      Offset(col_shape, 0, filter_d, filter_y, 0, 0);
+                  T* dst = im2col_data + Offset(im2col_reshaped, 0, 0,
+                                                row_offset, col_offset);
+                  memset(dst, zero_byte,
+                         filter_width * input_depth * sizeof(T));
+                }
+              }
+            } else {
+              const int col_offset = Offset(col_shape, 0, filter_d, 0, 0, 0);
+              T* dst = im2col_data +
+                       Offset(im2col_reshaped, 0, 0, row_offset, col_offset);
+              memset(dst, zero_byte,
+                     filter_height * filter_width * input_depth * sizeof(T));
+            }
+          }
+        }
       }
     }
   }

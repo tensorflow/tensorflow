@@ -1,8 +1,9 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["benchmark"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 package_group(
@@ -22,14 +23,14 @@ cc_library(
     srcs = ["benchmark_c_api.cc"],
     hdrs = [
         "benchmark_c_api.h",
-        "c_api_types.h",
     ],
     copts = tflite_copts(),
     visibility = [
         "benchmark",
     ],
     deps = [
-        "//tensorflow/core/util:stats_calculator_portable",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/tools/benchmark:benchmark_tflite_model_lib",
+        "@local_tsl//tsl/util:stats_calculator_portable",
     ],
 )

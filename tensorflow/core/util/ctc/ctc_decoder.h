@@ -20,7 +20,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -110,7 +110,7 @@ class CTCGreedyDecoder : public CTCDecoder<T> {
         prev_class_ix = max_class_ix;
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -118,4 +118,4 @@ class CTCGreedyDecoder : public CTCDecoder<T> {
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_CTC_CTC_DECODER_H_
-// LINT.ThenChange(//tensorflow/lite/experimental/kernels/ctc_decoder.h)
+// LINT.ThenChange(//tensorflow/lite/kernels/ctc/ctc_decoder.h)

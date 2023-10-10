@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DEBUG_DEBUG_IO_UTILS_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/event.pb.h"
 
 namespace tensorflow {
@@ -60,8 +62,8 @@ class DebugIO {
   static const char* const kMemoryURLScheme;
 
   static Status PublishDebugMetadata(
-      const int64 global_step, const int64 session_run_index,
-      const int64 executor_step_index, const std::vector<string>& input_names,
+      const int64_t global_step, const int64_t session_run_index,
+      const int64_t executor_step_index, const std::vector<string>& input_names,
       const std::vector<string>& output_names,
       const std::vector<string>& target_nodes,
       const std::unordered_set<string>& debug_urls);
@@ -69,17 +71,20 @@ class DebugIO {
   // Publishes a tensor to a debug target URL.
   //
   // Args:
-  //   debug_node_key: A DebugNodeKey identifying the debug node.
+  //   debug_node_key: A DebugNodeKey identifying the debug node. If
+  //     `debug_node_key.io_of_node` is non-empty, publish for node
+  //     inputs/outputs dumping feature.
   //   tensor: The Tensor object being published.
   //   wall_time_us: Time stamp for the Tensor. Unit: microseconds (us).
   //   debug_urls: An array of debug target URLs, e.g.,
   //     "file:///foo/tfdbg_dump", "grpc://localhost:11011"
   //   gated_grpc: Whether this call is subject to gRPC gating.
+  //   step_id: Step ID associated with the tensor.
   static Status PublishDebugTensor(const DebugNodeKey& debug_node_key,
                                    const Tensor& tensor,
                                    const uint64 wall_time_us,
                                    const gtl::ArraySlice<string> debug_urls,
-                                   const bool gated_grpc);
+                                   bool gated_grpc, int64_t step_id = -1);
 
   // Convenience overload of the method above for no gated_grpc by default.
   static Status PublishDebugTensor(const DebugNodeKey& debug_node_key,
@@ -170,6 +175,12 @@ class DebugFileIO {
                                 const string& dump_root_dir,
                                 string* dump_file_path);
 
+  // Similar to the above, but for node inputs/outputs dumping feature.
+  static Status DumpTensorToDirForNodeDumping(
+      const DebugNodeKey& debug_node_key, const Tensor& tensor,
+      uint64 wall_time_us, const string& dump_root_dir, string* dump_file_path,
+      int64_t step_id);
+
   // Get the full path to the dump file.
   //
   // Args:
@@ -182,6 +193,11 @@ class DebugFileIO {
   static string GetDumpFilePath(const string& dump_root_dir,
                                 const DebugNodeKey& debug_node_key,
                                 const uint64 wall_time_us);
+
+  // Similar to the above, but for node inputs/outputs dumping feature.
+  static string GetDumpFilePathForNodeDumping(
+      const string& dump_root_dir, const DebugNodeKey& debug_node_key,
+      uint64 wall_time_us, int64_t step_id);
 
   // Dumps an Event proto to a file.
   //
@@ -279,7 +295,7 @@ class DebugGrpcChannel {
   // Returns:
   //   OK Status iff connection is successfully established before timeout,
   //   otherwise return an error Status.
-  Status Connect(const int64 timeout_micros);
+  Status Connect(const int64_t timeout_micros);
 
   // Write an Event proto to the debug gRPC stream.
   //
@@ -325,7 +341,7 @@ class DebugGrpcChannel {
   string url_;
   ::grpc::ClientContext ctx_;
   std::shared_ptr<::grpc::Channel> channel_;
-  std::unique_ptr<EventListener::Stub> stub_;
+  std::unique_ptr<grpc::EventListener::Stub> stub_;
   std::unique_ptr<::grpc::ClientReaderWriterInterface<Event, EventReply>>
       reader_writer_;
 
@@ -419,7 +435,7 @@ class DebugGrpcIO {
   static void ClearEnabledWatchKeys();
 
   static mutex streams_mu_;
-  static int64 channel_connection_timeout_micros_;
+  static int64_t channel_connection_timeout_micros_;
 
   friend class GrpcDebugTest;
   friend class DebugNumericSummaryOpTest;

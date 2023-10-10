@@ -34,7 +34,7 @@ limitations under the License.
 #include "{{TFCOMPILE_HEADER}}"  // NOLINT(whitespace/braces)
 // clang-format on
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/test.h"
@@ -70,9 +70,7 @@ TEST(TEST_NAME, NoCrash) {
 }
 
 // Simple benchmark that repeatedly runs the generated function.
-void BM_NAME(int iters) {
-  testing::StopTiming();
-
+void BM_NAME(benchmark::State& state) {
   Eigen::ThreadPool pool(port::MaxParallelism());
   Eigen::ThreadPoolDevice device(&pool, pool.NumThreads());
 
@@ -80,11 +78,9 @@ void BM_NAME(int iters) {
   computation.set_thread_pool(&device);
   zero_buffers(&computation);
 
-  testing::StartTiming();
-  while (--iters) {
+  for (auto s : state) {
     computation.Run();
   }
-  testing::StopTiming();
 }
 BENCHMARK(BM_NAME);
 

@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "SoftmaxCrossEntropyWithLogits"
   input_arg {
     name: "features"

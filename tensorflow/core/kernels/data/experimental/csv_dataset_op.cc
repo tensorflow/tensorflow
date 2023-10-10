@@ -64,7 +64,7 @@ class CSVDatasetOp : public DatasetOpKernel {
     OP_REQUIRES(ctx, select_cols_tensor->dims() == 1,
                 errors::InvalidArgument("`select_cols` must be a vector."));
 
-    std::vector<int64> exclude_cols;
+    std::vector<int64_t> exclude_cols;
     if (op_version_ > 1) {
       const Tensor* exclude_cols_tensor;
       OP_REQUIRES_OK(ctx, ctx->input("exclude_cols", &exclude_cols_tensor));
@@ -72,13 +72,13 @@ class CSVDatasetOp : public DatasetOpKernel {
                   errors::InvalidArgument("`exclude_cols` must be a vector"));
       exclude_cols.reserve(exclude_cols_tensor->NumElements());
       for (int i = 0; i < exclude_cols_tensor->NumElements(); ++i) {
-        exclude_cols.push_back(exclude_cols_tensor->flat<int64>()(i));
+        exclude_cols.push_back(exclude_cols_tensor->flat<int64_t>()(i));
       }
     }
 
-    int64 buffer_size = 0;
+    int64_t buffer_size = 0;
     OP_REQUIRES_OK(
-        ctx, ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
+        ctx, ParseScalarArgument<int64_t>(ctx, "buffer_size", &buffer_size));
     OP_REQUIRES(ctx, buffer_size > 0,
                 errors::InvalidArgument("buffer_size should be positive"));
 
@@ -123,10 +123,10 @@ class CSVDatasetOp : public DatasetOpKernel {
     }
     zlib_compression_options.input_buffer_size = buffer_size;
 
-    std::vector<int64> select_cols;
+    std::vector<int64_t> select_cols;
     select_cols.reserve(select_cols_tensor->NumElements());
     for (int i = 0; i < select_cols_tensor->NumElements(); ++i) {
-      select_cols.push_back(select_cols_tensor->flat<int64>()(i));
+      select_cols.push_back(select_cols_tensor->flat<int64_t>()(i));
     }
     OP_REQUIRES(
         ctx, output_types_.size() == select_cols.size() || select_cols.empty(),
@@ -167,9 +167,9 @@ class CSVDatasetOp : public DatasetOpKernel {
             string compression_type, io::ZlibCompressionOptions options,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
-            std::vector<Tensor> record_defaults, std::vector<int64> select_cols,
-            std::vector<int64> exclude_cols, bool use_quote_delim, char delim,
-            string na_value, int op_version)
+            std::vector<Tensor> record_defaults,
+            std::vector<int64_t> select_cols, std::vector<int64_t> exclude_cols,
+            bool use_quote_delim, char delim, string na_value, int op_version)
         : DatasetBase(DatasetContext(ctx)),
           filenames_(std::move(filenames)),
           header_(header),
@@ -188,7 +188,7 @@ class CSVDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return absl::make_unique<Iterator>(
+      return std::make_unique<Iterator>(
           Iterator::Params{this, strings::StrCat(prefix, "::CSV")});
     }
 
@@ -200,7 +200,13 @@ class CSVDatasetOp : public DatasetOpKernel {
 
     string DebugString() const override { return "CSVDatasetOp::Dataset"; }
 
-    Status CheckExternalState() const override { return Status::OK(); }
+    Status CheckExternalState() const override { return OkStatus(); }
+
+    Status InputDatasets(
+        std::vector<const DatasetBase*>* inputs) const override {
+      inputs->clear();
+      return OkStatus();
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -263,7 +269,7 @@ class CSVDatasetOp : public DatasetOpKernel {
             {std::make_pair(8, record_defaults)},  // Tensor list inputs
             {}, output));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
    private:
@@ -308,7 +314,7 @@ class CSVDatasetOp : public DatasetOpKernel {
           // Iteration ends when there are no more files to process.
           if (current_file_index_ == dataset()->filenames_.size()) {
             *end_of_sequence = true;
-            return Status::OK();
+            return OkStatus();
           }
           TF_RETURN_IF_ERROR(SetupStreamsLocked(ctx->env()));
         } while (true);
@@ -334,21 +340,21 @@ class CSVDatasetOp : public DatasetOpKernel {
           TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("num_buffer_reads"),
                                                  num_buffer_reads_));
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         ResetStreamsLocked();
-        int64 current_file_index;
+        int64_t current_file_index;
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("current_file_index"),
                                               &current_file_index));
         current_file_index_ = size_t(current_file_index);
         // The keys "pos" and "num_buffer_reads" are written only if
         // the iterator was saved with an open, partially read file.
         if (reader->Contains(full_name("pos"))) {
-          int64 pos, num_buffer_reads;
+          int64_t pos, num_buffer_reads;
           TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("pos"), &pos));
           TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("num_buffer_reads"),
                                                 &num_buffer_reads));
@@ -374,7 +380,7 @@ class CSVDatasetOp : public DatasetOpKernel {
           }
           pos_ = size_t(pos);
         }
-        return Status::OK();
+        return OkStatus();
       }
 
      private:
@@ -387,8 +393,8 @@ class CSVDatasetOp : public DatasetOpKernel {
       // Note: ctx and out_tensors are only used in this function
       // when fields are included in the record.
       Status ReadRecord(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                        bool select_all, const std::vector<int64>& selected,
-                        const std::vector<int64>& excluded)
+                        bool select_all, const std::vector<int64_t>& selected,
+                        const std::vector<int64_t>& excluded)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (pos_ >= buffer_.size()) {
           // At the end of the file, this will return errors::OutOfRange
@@ -445,7 +451,7 @@ class CSVDatasetOp : public DatasetOpKernel {
             if (include) {
               return FieldToOutput(ctx, StringPiece(), out_tensors);
             } else {
-              return Status::OK();
+              return OkStatus();
             }
           } else if (!s.ok()) {
             return s;  // Surface other errors back to caller
@@ -569,7 +575,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                                  const std::vector<Piece>& earlier_pieces,
                                  bool include)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        if (!include) return Status::OK();
+        if (!include) return OkStatus();
 
         if (earlier_pieces.empty()) {
           if (field.find('\"', 1) == field.size() - 1) {
@@ -689,7 +695,7 @@ class CSVDatasetOp : public DatasetOpKernel {
 
         if (errors::IsOutOfRange(s) && !result->empty()) {
           // Ignore OutOfRange error when ReadNBytes read < N bytes.
-          return Status::OK();
+          return OkStatus();
         }
         return s;
       }
@@ -723,7 +729,7 @@ class CSVDatasetOp : public DatasetOpKernel {
               component.scalar<int32>()() =
                   dataset()->record_defaults_[output_idx].flat<int32>()(0);
             } else {
-              int32 value;
+              int32_t value;
               if (!strings::safe_strto32(field, &value)) {
                 return errors::InvalidArgument(
                     "Field ", output_idx,
@@ -735,16 +741,16 @@ class CSVDatasetOp : public DatasetOpKernel {
           }
           case DT_INT64: {
             if (field.empty() || field == dataset()->na_value_) {
-              component.scalar<int64>()() =
-                  dataset()->record_defaults_[output_idx].flat<int64>()(0);
+              component.scalar<int64_t>()() =
+                  dataset()->record_defaults_[output_idx].flat<int64_t>()(0);
             } else {
-              int64 value;
+              int64_t value;
               if (!strings::safe_strto64(field, &value)) {
                 return errors::InvalidArgument(
                     "Field ", output_idx,
                     " in record is not a valid int64: ", field);
               }
-              component.scalar<int64>()() = value;
+              component.scalar<int64_t>()() = value;
             }
             break;
           }
@@ -792,7 +798,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                                            " not supported in field ",
                                            output_idx);
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       // Records can be delimited by "\r\n" line breaks. When we encounter a
@@ -819,7 +825,7 @@ class CSVDatasetOp : public DatasetOpKernel {
                                    const std::vector<Piece>& earlier_pieces,
                                    bool include)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        if (!include) return Status::OK();
+        if (!include) return OkStatus();
 
         if (earlier_pieces.empty()) {
           return FieldToOutput(ctx, field, out_tensors);
@@ -871,13 +877,13 @@ class CSVDatasetOp : public DatasetOpKernel {
           // We need to process this as a record here instead of just finding
           // the first newline because it might contain quoted fields with
           // newlines in the header as well
-          std::vector<int64> empty;
+          std::vector<int64_t> empty;
           Status s = ReadRecord(nullptr, nullptr, false, empty, empty);
           if (!s.ok()) {
             return errors::InvalidArgument("Can't read header of file");
           }
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       // Resets all reader streams.
@@ -898,15 +904,15 @@ class CSVDatasetOp : public DatasetOpKernel {
       size_t current_file_index_ TF_GUARDED_BY(mu_) = 0;
       std::unique_ptr<RandomAccessFile> file_
           TF_GUARDED_BY(mu_);  // must outlive input_stream_
-    };                      // class Iterator
+    };                         // class Iterator
 
     const std::vector<string> filenames_;
     const bool header_;
     const DataTypeVector out_type_;
     const std::vector<PartialTensorShape> output_shapes_;
     const std::vector<Tensor> record_defaults_;
-    const std::vector<int64> select_cols_;
-    const std::vector<int64> exclude_cols_;
+    const std::vector<int64_t> select_cols_;
+    const std::vector<int64_t> exclude_cols_;
     const bool use_quote_delim_;
     const char delim_;
     const tstring na_value_;

@@ -14,9 +14,7 @@
 # ==============================================================================
 """Tests for sorting operators."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+import unittest
 
 from absl.testing import parameterized
 import numpy as np
@@ -24,15 +22,25 @@ import numpy as np
 from tensorflow.compiler.tests import xla_test
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import function
+from tensorflow.python.framework import tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import sort_ops
 from tensorflow.python.platform import test
+
+ALL_KEY_TYPES = [
+    dtypes.bfloat16.as_numpy_dtype, np.float16, np.float32, np.float64,
+    np.int32, np.uint32, np.int16, np.uint16, np.int8, np.uint8
+]
 
 
 class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def _assertOpOutputMatchesExpected(self, op, args, expected):
+    """Tests that op(*args) == expected."""
     with self.session() as session:
       with self.test_scope():
         placeholders = [
@@ -41,44 +49,38 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
         ]
         feeds = {placeholders[i]: args[i] for i in range(0, len(args))}
         output = op(*placeholders)
-        if isinstance(output, ops.Tensor):
+        if isinstance(output, tensor.Tensor):
           output = [output]
 
       results = session.run(output, feeds)
       for result, v in zip(results, expected):
         self.assertAllClose(v, result, rtol=1e-3)
 
+  def _shuffled_arange(self, shape, dtype):
+    x = np.arange(np.prod(shape), dtype=dtype)
+    np.random.shuffle(x)
+    return x.reshape(shape)
+
+  def _supported_key_types(self):
+    supported_key_types = set(ALL_KEY_TYPES)
+    res = supported_key_types.intersection(self.numeric_types)
+    assert res
+    return res
+
   def testSort(self):
-    supported_types = set(
-        [dtypes.bfloat16.as_numpy_dtype, np.float16, np.float32, np.float64])
-    for dtype in supported_types.intersection(self.numeric_types):
-      # TPU implementation is not supported for double precision
-      if (dtype == np.float64 or dtype == np.float16) and self.device == "TPU":
-        continue
-      x = np.arange(101, dtype=dtype)
-      np.random.shuffle(x)
+    for dtype in self._supported_key_types():
+      x = self._shuffled_arange((101,), dtype)
       self._assertOpOutputMatchesExpected(
           xla.sort, [x], expected=[np.arange(101, dtype=dtype)])
 
   def testKeyValueSort(self):
-    supported_key_types = set([
-        dtypes.bfloat16.as_numpy_dtype, np.float16, np.float32, np.float64,
-        np.int32, np.uint32
-    ])
-    supported_value_types = set([
-        dtypes.bfloat16.as_numpy_dtype, np.float16, np.float32, np.float64,
-        np.int32, np.uint32, dtypes.int64.as_numpy_dtype,
-        dtypes.uint64.as_numpy_dtype
-    ])
-    for key_type in supported_key_types.intersection(self.numeric_types):
-      for value_type in supported_value_types.intersection(self.numeric_types):
-        if key_type == np.float64 or value_type == np.float64 or \
-            key_type == np.float16 or value_type == np.float16:
-          # TPU implementation is not supported for double precision
-          if self.device == "TPU":
-            continue
-        x = np.arange(101, dtype=key_type)
-        np.random.shuffle(x)
+    for key_type in self._supported_key_types():
+      for value_type in self._supported_key_types():
+        if key_type == np.uint8 or value_type == np.uint8:
+          # I do not understand why the test fails on uint8. We plan to
+          # deprecate xla.key_value_sort in favor of xla.variadic_sort anyway.
+          continue
+        x = self._shuffled_arange((101,), key_type)
         y = (-x).astype(value_type)
         self._assertOpOutputMatchesExpected(
             xla.key_value_sort, [x, y],
@@ -87,80 +89,224 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
                 -np.arange(101, dtype=value_type)
             ])
 
-  def testTopK(self):
-    supported_types = set([
-        dtypes.bfloat16.as_numpy_dtype, np.float16, np.float32, np.float64,
-        np.int32, np.uint32
-    ])
-    for dtype in supported_types.intersection(self.numeric_types):
-      if dtype == np.float64 and self.device == "TPU":
-        continue
+  @parameterized.parameters(0, 1, 2)
+  def testVariadicSortDimension(self, dimension):
+    shape = (2, 3, 4)
+    for key_type in self._supported_key_types():
+      x = self._shuffled_arange(shape, key_type)
+      expected = np.sort(x, axis=dimension)
+
+      @function.Defun(key_type, key_type)
+      def compare_lt(x1, x2):
+        return x1 < x2
+
+      def wrap_sort(x):
+        return xla.variadic_sort([x],
+                                 dimension=dimension,
+                                 is_stable=False,
+                                 comparator=compare_lt)
+
+      self._assertOpOutputMatchesExpected(wrap_sort, [x], expected=[expected])
+
+  def testVariadicSortReverse(self):
+    shape = (100,)
+    for key_type in self._supported_key_types():
+      x = self._shuffled_arange(shape, key_type)
+      expected = np.sort(x, axis=0)[::-1]
+
+      @function.Defun(key_type, key_type)
+      def compare_gt(x1, x2):
+        return x1 > x2
+
+      def wrap_sort(x):
+        return xla.variadic_sort([x],
+                                 dimension=0,
+                                 is_stable=False,
+                                 comparator=compare_gt)
+
+      self._assertOpOutputMatchesExpected(wrap_sort, [x], expected=[expected])
+
+  @parameterized.product(dimension=[0, 1, 2], key_type=ALL_KEY_TYPES)
+  def testVariadicSortSeveral(self, dimension, key_type):
+    if np.__version__ < "1.15":
+      raise unittest.SkipTest("np.take_along_axis was added in 1.15")
+    if key_type not in self._supported_key_types():
+      return
+    shape = (2, 3, 4)
+    for value_type_1 in self._supported_key_types():
+      for value_type_2 in self._supported_key_types():
+        inputs = [
+            self._shuffled_arange(shape, key_type),
+            self._shuffled_arange(shape, value_type_1),
+            self._shuffled_arange(shape, value_type_2)
+        ]
+
+        # The first array is sorted, and the others are shuffled the same way
+        sorted_indices = np.argsort(inputs[0], axis=dimension)
+        expected = [
+            np.take_along_axis(inp, sorted_indices, axis=dimension)
+            for inp in inputs
+        ]
+        self.assertAllEqual(np.sort(inputs[0], axis=dimension), expected[0])
+
+        @function.Defun(key_type, key_type, value_type_1, value_type_1,
+                        value_type_2, value_type_2)
+        def compare_lt(x1, x2, y1, y2, z1, z2):
+          del y1, y2, z1, z2
+          return x1 < x2
+
+        def wrap_sort(*args):
+          return xla.variadic_sort(
+              args,  # Pass the arguments as a tuple
+              comparator=compare_lt,
+              dimension=dimension,
+              is_stable=False)
+
+        self._assertOpOutputMatchesExpected(
+            wrap_sort, inputs, expected=expected)
+
+  @parameterized.parameters(ALL_KEY_TYPES)
+  @test_util.disable_mlir_bridge("Not supported yet")
+  def testVariadicSortLexicographic(self, key_type_2):
+    # Three inputs: the first two are used for lexicographic sort, and the
+    # third is just swapped accordingly.
+    # The first array will contain only 0 and 1, to test lexicographic order
+    if np.__version__ < "1.15":
+      raise unittest.SkipTest("np.take_along_axis was added in 1.15")
+    shape = (20,)
+    if key_type_2 not in self._supported_key_types():
+      return
+    for key_type_1 in [np.int16, np.uint16, np.int32, np.uint32]:
+      for value_type in self._supported_key_types():
+        inputs = [
+            # Ensure that some keys in the first input are equal
+            np.random.uniform(0, 2, shape).astype(key_type_1),
+            self._shuffled_arange(shape, key_type_2),
+            self._shuffled_arange(shape, value_type)
+        ]
+        # The first two arrays are sorted lexicographically, and the third
+        # is shuffled the same way
+        sorted_indices = np.argsort(100 * inputs[0] + inputs[1])
+        expected = [
+            np.take_along_axis(inp, sorted_indices, axis=0) for inp in inputs
+        ]
+
+        @function.Defun(key_type_1, key_type_1, key_type_2, key_type_2,
+                        value_type, value_type)
+        def compare_lexicographic(x1, x2, y1, y2, z1, z2):
+          del z1, z2
+          return math_ops.logical_or(
+              x1 < x2, math_ops.logical_and(math_ops.equal(x1, x2), y1 < y2))
+
+        def wrap_sort(*args):
+          return xla.variadic_sort(
+              args,  # Pass the arguments as a tuple
+              comparator=compare_lexicographic,
+              dimension=0,
+              is_stable=False)
+
+        self._assertOpOutputMatchesExpected(
+            wrap_sort, inputs, expected=expected)
+
+  @parameterized.product(dimension=[0, 1, 2], key_type=ALL_KEY_TYPES)
+  def testVariadicSortSeveralStable(self, dimension, key_type):
+    shape = (2, 3, 4)
+    if key_type not in self._supported_key_types():
+      return
+    for value_type_1 in self._supported_key_types():
+      for value_type_2 in self._supported_key_types():
+        # The first input is all 0s, there should be no changes for
+        # stable sort.
+        inputs = [
+            np.zeros(shape, key_type),
+            self._shuffled_arange(shape, value_type_1),
+            self._shuffled_arange(shape, value_type_2)
+        ]
+
+        @function.Defun(key_type, key_type, value_type_1, value_type_1,
+                        value_type_2, value_type_2)
+        def compare_lt(x1, x2, y1, y2, z1, z2):
+          del y1, y2, z1, z2
+          return x1 < x2
+
+        def wrap_sort(*args):
+          return xla.variadic_sort(
+              args,  # Pass the arguments as a tuple
+              comparator=compare_lt,
+              dimension=dimension,
+              is_stable=True)
+
+        self._assertOpOutputMatchesExpected(wrap_sort, inputs, expected=inputs)
+
+  @parameterized.product(dimension=[0, 1, 2], dtype=ALL_KEY_TYPES)
+  def testArgsort(self, dimension, dtype):
+    shape = (2, 3, 4)
+    if dtype not in self._supported_key_types():
+      return
+
+    def argsort(v, axis=dimension):
+      return sort_ops.argsort(v, axis, stable=True)
+
+    x = self._shuffled_arange(shape, dtype)
+    self._assertOpOutputMatchesExpected(
+        argsort, [x], expected=[np.argsort(x, axis=dimension, kind="stable")]
+    )
+
+  @parameterized.product(
+      dtype=[
+          dtypes.bfloat16.as_numpy_dtype,
+          np.float16,
+          np.float32,
+          np.float64,
+          np.int32,
+          np.uint32,
+          np.int64,
+          np.uint64,
+          np.uint8,
+          np.int8,
+      ],
+      rank=[1, 2, 3],
+  )
+  def testTopK(self, dtype, rank):
+    if dtype in self.numeric_types:
       # Use small input size for bfloat16. Otherwise, we'll get duplicate values
       # after conversion to bfloat16, so the possible resulting index array is
       # no longer unique.
       if dtype in (dtypes.bfloat16.as_numpy_dtype, np.float16):
         array_size = 20
         k_options = [0, 1, 2, 10, 20]
+      elif dtype in (dtypes.uint8.as_numpy_dtype, dtypes.int8.as_numpy_dtype):
+        array_size = 111
+        k_options = [0, 1, 2, 10, 20]
       else:
         array_size = 200 * 1000
         k_options = [0, 1, 2, 10, 20, 100, 1000, 200 * 1000]
-      for x in [np.arange(array_size)]:
-        np.random.shuffle(x)
-        for k in k_options:
-          indices = x.argsort()[::-1][:k]
 
-          def topk(v, k=k):
-            return nn_ops.top_k(v, k=k, sorted=True)
+      # Tile array to tensor of specified rank, then shuffle along the last dim
+      x = np.arange(array_size)
+      x = np.tile(x, (2,) * (rank - 1) + (1,))
+      np.apply_along_axis(np.random.shuffle, -1, x)
 
-          self._assertOpOutputMatchesExpected(
-              topk, [x.astype(dtype)],
-              expected=[x[indices].astype(dtype), indices])
+      sorted_indices = x.argsort(axis=-1)[..., ::-1]
+      sorted_values = np.sort(x, axis=-1)[..., ::-1]
+      for k in k_options:
+        indices = sorted_indices[..., :k]
+        expected = sorted_values[..., :k]
 
-  @parameterized.named_parameters(
-      ("HalfPrecision", dtypes.bfloat16.as_numpy_dtype),
-      ("HalfFloatPrecision", np.float16),
-      ("SinglePrecision", np.float32),
-      ("DoublePrecision", np.float64),
-      ("Int", np.int32),
-      ("UnsignedInt", np.uint32),
-  )
-  def testTopK2D(self, dtype):
-    if dtype in self.numeric_types:
-      # TPU implementation is not supported for double precision
-      if (dtype == np.float64 or dtype == np.float16) and self.device == "TPU":
-        return
-      # Use small input size for bfloat16. Otherwise, we'll get duplicate values
-      # after conversion to bfloat16, so the possible resulting index array is
-      # no longer unique.
-      if dtype in (dtypes.bfloat16.as_numpy_dtype, np.float16):
-        array_size = 10
-        k_options = [0, 1, 2, 10]
-      else:
-        array_size = 200 * 1000
-        k_options = [0, 1, 2, 10, 20, 100, 1000, 200 * 1000]
-      batch = 16
-      for x in [np.arange(batch * array_size)]:
-        np.random.shuffle(x)
-        x = np.reshape(x, [batch, array_size])
-        for k in k_options:
-          indices = x.argsort(axis=1)[::, -1:-k - 1:-1]
-          expected = np.sort(x, axis=1)[::, -1:-k - 1:-1]
+        def topk(v, k=k):
+          return nn_ops.top_k(v, k=k, sorted=True)
 
-          def topk(v, k=k):
-            return nn_ops.top_k(v, k=k, sorted=True)
-
-          self._assertOpOutputMatchesExpected(
-              topk, [x.astype(dtype)],
-              expected=[expected.astype(dtype), indices])
+        self._assertOpOutputMatchesExpected(
+            topk,
+            [x.astype(dtype)],
+            expected=[expected.astype(dtype), indices],
+        )
 
   def testTopKZeros(self):
     """Tests that positive and negative zeros sort correctly."""
     supported_types = set(
         [dtypes.bfloat16.as_numpy_dtype, np.float16, np.float32, np.float64])
     for dtype in supported_types.intersection(self.numeric_types):
-      # TPU implementation is not supported for double precision
-      if (dtype == np.float64 or dtype == np.float16) and self.device == "TPU":
-        continue
       with self.session() as sess:
         p = array_ops.placeholder(dtype)
         with self.test_scope():
@@ -176,9 +322,6 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
     supported_types = set(
         [dtypes.bfloat16.as_numpy_dtype, np.float16, np.float32, np.float64])
     for dtype in supported_types.intersection(self.numeric_types):
-      # TPU implementation is not supported for double precision
-      if (dtype == np.float64 or dtype == np.float16) and self.device == "TPU":
-        continue
       with self.session() as sess:
         p = array_ops.placeholder(dtype)
         with self.test_scope():

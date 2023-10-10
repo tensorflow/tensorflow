@@ -14,15 +14,13 @@
 # ==============================================================================
 """Options for saving SavedModels."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import enum
-import six
 
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
+
+
+is_oss = True  # Updated by copybara.
 
 
 @tf_export("saved_model.experimental.VariablePolicy")
@@ -88,11 +86,11 @@ class VariablePolicy(enum.Enum):
     for policy in VariablePolicy:
       if key == policy.value:
         return policy
-    raise ValueError('Invalid VariablePolicy value "%s".' % obj)
+    raise ValueError(f"Received invalid VariablePolicy value: {obj}.")
 
 
 @tf_export("saved_model.SaveOptions")
-class SaveOptions(object):
+class SaveOptions:
   """Options for saving to SavedModel.
 
   This function may be used in the `options` argument in functions that
@@ -100,22 +98,36 @@ class SaveOptions(object):
   """
 
   # Define object attributes in __slots__ for improved memory and performance.
-  __slots__ = ("namespace_whitelist", "save_debug_info", "function_aliases",
-               "experimental_io_device", "experimental_variable_policy")
+  __slots__ = (
+      "namespace_whitelist",
+      "save_debug_info",
+      "function_aliases",
+      "experimental_io_device",
+      "experimental_variable_policy",
+      "experimental_custom_gradients",
+      "experimental_image_format",
+      "experimental_skip_saver",
+  )
 
-  def __init__(self,
-               namespace_whitelist=None,
-               save_debug_info=False,
-               function_aliases=None,
-               experimental_io_device=None,
-               experimental_variable_policy=None):
+  def __init__(
+      self,
+      namespace_whitelist=None,
+      save_debug_info=False,
+      function_aliases=None,
+      experimental_io_device=None,
+      experimental_variable_policy=None,
+      experimental_custom_gradients=True,
+      experimental_image_format=False,
+      experimental_skip_saver=False,
+  ):
     """Creates an object that stores options for SavedModel saving.
 
     Args:
       namespace_whitelist: List of strings containing op namespaces to whitelist
         when saving a model. Saving an object that uses namespaced ops must
         explicitly add all namespaces to the whitelist. The namespaced ops must
-        be registered into the framework when loading the SavedModel.
+        be registered into the framework when loading the SavedModel. If no
+        whitelist is provided, all namespaced ops will be allowed.
       save_debug_info: Boolean indicating whether debug information is saved. If
         True, then a debug/saved_model_debug_info.pb file will be written with
         the contents of a GraphDebugInfo binary protocol buffer containing stack
@@ -124,59 +136,79 @@ class SaveOptions(object):
         @tf.function. A single tf.function can generate many ConcreteFunctions.
         If a downstream tool wants to refer to all concrete functions generated
         by a single tf.function you can use the `function_aliases` argument to
-        store a map from the alias name to all concrete function names.
-        E.g.
-
-        >>> class Adder(tf.Module):
-        ...   @tf.function
-        ...   def double(self, x):
-        ...     return x + x
-
-        >>> model = Adder()
-        >>> model.double.get_concrete_function(
-        ...   tf.TensorSpec(shape=[], dtype=tf.float32, name="float_input"))
-        >>> model.double.get_concrete_function(
-        ...   tf.TensorSpec(shape=[], dtype=tf.string, name="string_input"))
-
-        >>> options = tf.saved_model.SaveOptions(
-        ...   function_aliases={'double': model.double})
-        >>> tf.saved_model.save(model, '/tmp/adder', options=options)
-
+        store a map from the alias name to all concrete function names. E.g. >>>
+        class Adder(tf.Module): ...   @tf.function ...   def double(self, x):
+        ...     return x + x  >>> model = Adder() >>>
+        model.double.get_concrete_function( ...   tf.TensorSpec(shape=[],
+        dtype=tf.float32, name="float_input")) >>>
+        model.double.get_concrete_function( ...   tf.TensorSpec(shape=[],
+        dtype=tf.string, name="string_input"))  >>> options =
+        tf.saved_model.SaveOptions( ...   function_aliases={'double':
+        model.double}) >>> tf.saved_model.save(model, '/tmp/adder',
+        options=options)
       experimental_io_device: string. Applies in a distributed setting.
         Tensorflow device to use to access the filesystem. If `None` (default)
         then for each variable the filesystem is accessed from the CPU:0 device
         of the host where that variable is assigned. If specified, the
-        filesystem is instead accessed from that device for all variables.
-
-        This is for example useful if you want to save to a local directory,
-        such as "/tmp" when running in a distributed setting. In that case pass
-        a device for the host where the "/tmp" directory is accessible.
+        filesystem is instead accessed from that device for all variables.  This
+        is for example useful if you want to save to a local directory, such as
+        "/tmp" when running in a distributed setting. In that case pass a device
+        for the host where the "/tmp" directory is accessible.
       experimental_variable_policy: The policy to apply to variables when
         saving. This is either a `saved_model.experimental.VariablePolicy` enum
         instance or one of its value strings (case is not important). See that
         enum documentation for details. A value of `None` corresponds to the
         default policy.
+      experimental_custom_gradients: Boolean. When True, will save traced
+        gradient functions for the functions decorated by `tf.custom_gradient`.
+        Defaults to `True`.
+      experimental_image_format: New (highly) experimental format that is
+        capable of saving models larger than the 2GB protobuf limit. Enabling
+        this option will likely break compatibility with downstream consumers.
+        This option is currently disabled in OSS.
+      experimental_skip_saver: If True, will prevent SavedModel from creating
+        its native checkpointing ops - this is for models that do not use
+        SavedModel's native checkpointing functionality to avoid the costs
+        associated with creating and serializing those ops.
     """
     self.namespace_whitelist = _validate_namespace_whitelist(
-        namespace_whitelist)
+        namespace_whitelist
+    )
     self.save_debug_info = save_debug_info
     self.function_aliases = function_aliases if function_aliases else dict()
+    self.experimental_custom_gradients = experimental_custom_gradients
     self.experimental_io_device = experimental_io_device
-    self.experimental_variable_policy = (
-        VariablePolicy.from_obj(experimental_variable_policy))
+    self.experimental_variable_policy = VariablePolicy.from_obj(
+        experimental_variable_policy
+    )
+    self.experimental_skip_saver = experimental_skip_saver
+
+    # TODO(b/277279153): Enable image format in OSS after proto splitter is
+    #  public.
+    if experimental_image_format and is_oss:
+      raise ValueError(
+          "The option `experimental_image_format` is disabled in OSS."
+      )
+    self.experimental_image_format = experimental_image_format
 
 
 def _validate_namespace_whitelist(namespace_whitelist):
   """Validates namespace whitelist argument."""
   if namespace_whitelist is None:
-    return []
+    return None
   if not isinstance(namespace_whitelist, list):
-    raise TypeError("Namespace whitelist must be a list of strings.")
+    raise TypeError(
+        "`namespace_whitelist` must be a list of strings. Got: "
+        f"{namespace_whitelist} with type "
+        f"{type(namespace_whitelist)}."
+    )
 
   processed = []
   for namespace in namespace_whitelist:
-    if not isinstance(namespace, six.string_types):
-      raise ValueError("Whitelisted namespace must be a string. Got: {} of type"
-                       " {}.".format(namespace, type(namespace)))
+    if not isinstance(namespace, str):
+      raise ValueError(
+          "Whitelisted namespace must be a string. Got: "
+          f"{namespace} of type {type(namespace)}."
+      )
     processed.append(compat.as_str(namespace))
   return processed

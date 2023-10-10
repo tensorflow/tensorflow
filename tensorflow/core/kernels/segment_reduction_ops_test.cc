@@ -38,6 +38,74 @@ limitations under the License.
 
 namespace tensorflow {
 
+static void BM_UnsortedSegmentReduction(::testing::benchmark::State& state,
+                                        const string& reduction, int num_rows,
+                                        int num_cols, int segment_size) {
+  std::unique_ptr<Device> device(
+      DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
+
+  // Create inputs
+  gtl::InlinedVector<TensorValue, 4> reduction_inputs;
+  TensorShape shape1({num_rows, num_cols});
+  Tensor input(DT_FLOAT, shape1);
+  // input.flat<float>().setRandom();
+  reduction_inputs.push_back({nullptr, &input});
+
+  TensorShape shape2({num_rows});
+  Tensor indices(DT_INT32, shape2);
+  test::FillFn<int>(&indices,
+                    [&segment_size](int i) -> int { return i % segment_size; });
+  reduction_inputs.push_back({nullptr, &indices});
+
+  Tensor num_segments(DT_INT32, TensorShape({}));
+  num_segments.scalar<int>()() = segment_size;
+  reduction_inputs.push_back({nullptr, &num_segments});
+
+  NodeDef reduction_node_def;
+  TF_CHECK_OK(NodeDefBuilder(reduction, reduction)
+                  .Input(FakeInput(DT_FLOAT))
+                  .Input(FakeInput(DT_INT32))
+                  .Input(FakeInput(DT_INT32))
+                  .Finalize(&reduction_node_def));
+  Status status;
+  std::unique_ptr<OpKernel> reduction_op(
+      CreateOpKernel(DEVICE_CPU, device.get(), cpu_allocator(),
+                     reduction_node_def, TF_GRAPH_DEF_VERSION, &status));
+
+  OpKernelContext::Params params;
+  params.device = device.get();
+  params.frame_iter = FrameAndIter(0, 0);
+  params.inputs = reduction_inputs;
+  params.op_kernel = reduction_op.get();
+  std::vector<AllocatorAttributes> attrs;
+  test::SetOutputAttrs(&params, &attrs);
+
+  std::unique_ptr<OpKernelContext> reduction_context(
+      new OpKernelContext(&params));
+
+  reduction_op->Compute(reduction_context.get());
+  TF_CHECK_OK(reduction_context->status());
+  for (auto s : state) {
+    delete reduction_context->release_output(0).tensor;
+    reduction_op->Compute(reduction_context.get());
+  }
+  int64_t bytes_per_iter =
+      static_cast<int64_t>(num_rows * num_cols * sizeof(float));
+  state.SetBytesProcessed(bytes_per_iter * state.iterations());
+}
+
+#define BM_UnsortedReduce(O, R, C, S)                                        \
+  static void BM_##O##_##R##_##C##_##S(::testing::benchmark::State& state) { \
+    BM_UnsortedSegmentReduction(state, #O, R, C, S);                         \
+  }                                                                          \
+  BENCHMARK(BM_##O##_##R##_##C##_##S);
+
+#define BM_UnsortedReduce_Arg(R, C, S) \
+  BM_UnsortedReduce(UnsortedSegmentSum, R, C, S);
+
+BM_UnsortedReduce_Arg(4096, 1024, 1);
+BM_UnsortedReduce_Arg(4096, 1024, 128);
+
 template <typename Index>
 static void BM_SegmentReduction(::testing::benchmark::State& state,
                                 const string& reduction, Index num_rows,
@@ -70,7 +138,7 @@ static void BM_SegmentReduction(::testing::benchmark::State& state,
   OpKernelContext::Params params;
   params.device = device.get();
   params.frame_iter = FrameAndIter(0, 0);
-  params.inputs = &reduction_inputs;
+  params.inputs = reduction_inputs;
   params.op_kernel = reduction_op.get();
   std::vector<AllocatorAttributes> attrs;
   test::SetOutputAttrs(&params, &attrs);
@@ -84,8 +152,8 @@ static void BM_SegmentReduction(::testing::benchmark::State& state,
     delete reduction_context->release_output(0).tensor;
     reduction_op->Compute(reduction_context.get());
   }
-  int64 bytes_per_iter =
-      static_cast<int64>(num_rows * num_cols * sizeof(float));
+  int64_t bytes_per_iter =
+      static_cast<int64_t>(num_rows * num_cols * sizeof(float));
   state.SetBytesProcessed(bytes_per_iter * state.iterations());
 }
 
@@ -96,7 +164,7 @@ static void BM_SegmentReduction(::testing::benchmark::State& state,
   }                                                    \
   static void BM_Reduce_##O##_##R##_##C##_##S##_int64( \
       ::testing::benchmark::State & state) {           \
-    BM_SegmentReduction<int64>(state, #O, R, C, S);    \
+    BM_SegmentReduction<int64_t>(state, #O, R, C, S);  \
   }                                                    \
   BENCHMARK(BM_Reduce_##O##_##R##_##C##_##S##_int32);  \
   BENCHMARK(BM_Reduce_##O##_##R##_##C##_##S##_int64);
@@ -113,8 +181,10 @@ BM_Reduce_Arg(64, 32, 2);
 BM_Reduce_Arg(4096, 32, 2);
 BM_Reduce_Arg(4096, 128, 2);
 
+template <DataType T>
 static void SparseSegmentMeanGradHelper(::testing::benchmark::State& state,
                                         float uniqueness, int size) {
+  typedef typename EnumToDataType<T>::Type DT;
   Graph* g = new Graph(OpRegistry::Global());
   CHECK_LE(uniqueness, 1.0);
   CHECK_GT(uniqueness, 0.0);
@@ -136,8 +206,8 @@ static void SparseSegmentMeanGradHelper(::testing::benchmark::State& state,
 
   const int kDim1 = segments_flat(kNumIndices - 1) + 1;
   const int kDim2 = 128;
-  Tensor input(DT_FLOAT, TensorShape({kDim1, kDim2}));
-  input.flat<float>().setRandom();
+  Tensor input(T, TensorShape({kDim1, kDim2}));
+  input.flat<DT>().setRandom();
 
   Node* node;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "SparseSegmentMeanGrad")
@@ -145,27 +215,79 @@ static void SparseSegmentMeanGradHelper(::testing::benchmark::State& state,
                   .Input(test::graph::Constant(g, indices))
                   .Input(test::graph::Constant(g, segments))
                   .Input(test::graph::Constant(g, output_dim0))
-                  .Attr("T", DT_FLOAT)
+                  .Attr("T", T)
                   .Finalize(g, &node));
 
   test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) *
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) *
                           (kDim1 * kDim2) * sizeof(float));
 }
 
-static void BM_SparseSegmentMeanGrad_Low(::testing::benchmark::State& state) {
+static void BM_SparseSegmentMeanGrad_Low_FP32(
+    ::testing::benchmark::State& state) {
   const int size = state.range(0);
 
-  return SparseSegmentMeanGradHelper(state, 1.0, size);
+  return SparseSegmentMeanGradHelper<DT_FLOAT>(state, 1.0, size);
 }
 
-static void BM_SparseSegmentMeanGrad_High(::testing::benchmark::State& state) {
+static void BM_SparseSegmentMeanGrad_High_FP32(
+    ::testing::benchmark::State& state) {
   const int size = state.range(0);
 
-  return SparseSegmentMeanGradHelper(state, 0.01, size);
+  return SparseSegmentMeanGradHelper<DT_FLOAT>(state, 0.01, size);
 }
 
-BENCHMARK(BM_SparseSegmentMeanGrad_Low)->UseRealTime()->Arg(1000)->Arg(100000);
-BENCHMARK(BM_SparseSegmentMeanGrad_High)->UseRealTime()->Arg(1000)->Arg(100000);
+static void BM_SparseSegmentMeanGrad_Low_BF16(
+    ::testing::benchmark::State& state) {
+  const int size = state.range(0);
+
+  return SparseSegmentMeanGradHelper<DT_BFLOAT16>(state, 1.0, size);
+}
+
+static void BM_SparseSegmentMeanGrad_High_BF16(
+    ::testing::benchmark::State& state) {
+  const int size = state.range(0);
+
+  return SparseSegmentMeanGradHelper<DT_BFLOAT16>(state, 0.01, size);
+}
+
+static void BM_SparseSegmentMeanGrad_Low_FP16(
+    ::testing::benchmark::State& state) {
+  const int size = state.range(0);
+
+  return SparseSegmentMeanGradHelper<DT_HALF>(state, 1.0, size);
+}
+
+static void BM_SparseSegmentMeanGrad_High_FP16(
+    ::testing::benchmark::State& state) {
+  const int size = state.range(0);
+
+  return SparseSegmentMeanGradHelper<DT_HALF>(state, 0.01, size);
+}
+
+BENCHMARK(BM_SparseSegmentMeanGrad_Low_FP32)
+    ->UseRealTime()
+    ->Arg(1000)
+    ->Arg(100000);
+BENCHMARK(BM_SparseSegmentMeanGrad_High_FP32)
+    ->UseRealTime()
+    ->Arg(1000)
+    ->Arg(100000);
+BENCHMARK(BM_SparseSegmentMeanGrad_Low_BF16)
+    ->UseRealTime()
+    ->Arg(1000)
+    ->Arg(100000);
+BENCHMARK(BM_SparseSegmentMeanGrad_High_BF16)
+    ->UseRealTime()
+    ->Arg(1000)
+    ->Arg(100000);
+BENCHMARK(BM_SparseSegmentMeanGrad_Low_FP16)
+    ->UseRealTime()
+    ->Arg(1000)
+    ->Arg(100000);
+BENCHMARK(BM_SparseSegmentMeanGrad_High_FP16)
+    ->UseRealTime()
+    ->Arg(1000)
+    ->Arg(100000);
 
 }  // namespace tensorflow

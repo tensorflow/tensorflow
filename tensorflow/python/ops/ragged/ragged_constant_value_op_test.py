@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for ragged_factory_ops.constant_value."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -74,6 +70,11 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
           ragged_rank=1,
           expected_shape=(3, None, 2)),
       dict(
+          pylist=[[np.array([3, np.array(4)]), [1, 2]],
+                  np.array([]), [[5, 6], [7, 8], [9, 0]]],
+          ragged_rank=1,
+          expected_shape=(3, None, 2)),
+      dict(
           pylist=[[[1, 2], np.array([3, np.array(4)])],
                   np.array([]), [[5, 6], [7, 8], [9, 0]]],
           inner_shape=(2,),
@@ -120,7 +121,7 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
           expected_shape=(3, None, None, None)),
       dict(
           pylist=np.array([np.array([[], []]),
-                           np.array([]), [[], [[]]]]),
+                           np.array([]), [[], [[]]]], dtype=object),
           expected_shape=(3, None, None, None)),
 
       #=========================================================================
@@ -159,7 +160,7 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
       dict(pylist=[[1., 2.], [], [4., 5., 6.]], expected_dtype=np.float64),
       dict(pylist=[[1, 2], [3.], [4, 5, 6]], expected_dtype=np.float64),
       dict(pylist=[[b'a', b'b'], [b'c']], expected_dtype=np.dtype('S1')),
-      dict(pylist=[[True]], expected_dtype=np.bool),
+      dict(pylist=[[True]], expected_dtype=np.bool_),
       dict(
           pylist=[np.array([1, 2]), np.array([3.]), [4, 5, 6]],
           expected_dtype=np.float64),
@@ -319,10 +320,11 @@ class RaggedConstantValueOpTest(test_util.TensorFlowTestCase,
 def _normalize_pylist(item):
   """Convert all (possibly nested) np.arrays contained in item to list."""
   # convert np.arrays in current level to list
-  if np.ndim(item) == 0:
+  if not isinstance(item, (list, np.ndarray)):
     return item
   level = (x.tolist() if isinstance(x, np.ndarray) else x for x in item)
-  return [_normalize_pylist(el) if np.ndim(el) != 0 else el for el in level]
+  return [_normalize_pylist(el) if isinstance(item, (list, np.ndarray))
+          else el for el in level]
 
 
 if __name__ == '__main__':

@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tensorflow set operations."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Tensorflow set operations.
 
+API docstring: tensorflow.sets
+"""
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import

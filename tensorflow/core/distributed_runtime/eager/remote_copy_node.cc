@@ -16,17 +16,18 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_copy_node.h"
 
 #include <functional>
+#include <memory>
+#include <optional>
+#include <utility>
+#include <variant>
+#include <vector>
 
 #include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/framework/cancellation.h"
-#include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 namespace eager {
@@ -37,13 +38,13 @@ void PrepareRemoteOp(eager::Operation* remote_op, EagerOperation* op) {
   remote_op->set_name(op->Name());
 
   op->Attrs().FillAttrValueMap(remote_op->mutable_attrs());
-  remote_op->set_device(VariantDeviceName(op->Device()));
+  remote_op->set_device(op->DeviceName());
 }
 
 Status CreateUncachedKernelAndDeviceOp(
     EagerOperation* op, core::RefCountPtr<KernelAndDevice>* kernel) {
   EagerContext& ctx = op->EagerContext();
-  Device* device = absl::get<Device*>(op->Device());
+  Device* device = std::get<Device*>(op->Device());
 
   FunctionLibraryRuntime* flr = ctx.func_lib(device);
   if (flr == nullptr) {
@@ -58,7 +59,7 @@ Status CreateUncachedKernelAndDeviceOp(
                                       ctx.HostCPU()));
 
   const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
-  return kernel->get()->Init({ctx.LogDevicePlacement()}, ndef,
+  return kernel->get()->Init(ctx.LogDevicePlacement(), ndef,
                              /*graph_collector=*/nullptr);
 }
 
@@ -80,7 +81,7 @@ RemoteCopyNode::RemoteCopyNode(EagerContext* ctx, EagerExecutor* executor,
       src_(src),
       ctx_(ctx),
       executor_(executor),
-      send_device_(absl::get<Device*>(src->DeviceOrHostCPU(*ctx))),
+      send_device_(src->DeviceOrHostCPU(*ctx)),
       recv_device_(recv_device),
       wire_id_(GetUniqueWireID()),
       recv_op_id_(recv_op_id),
@@ -105,19 +106,23 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));
 
   EagerKernelArgs args(1);
-  Device* d = ctx_->CanonicalDevice(absl::get<Device*>(op->Device()));
+  Device* d = ctx_->CanonicalDevice(std::get<Device*>(op->Device()));
   TF_RETURN_IF_ERROR(src_->TensorValue(d, args.MutableInput(0)));
+  tsl::CoordinationServiceAgent* coord_agent = nullptr;
+  if (ctx_->GetDistributedManager() != nullptr)
+    coord_agent = ctx_->GetDistributedManager()->GetCoordinationServiceAgent();
 
   return kernel->Run(/*step_container=*/nullptr, args, /*outputs=*/nullptr,
                      /*cancellation_manager=*/nullptr,
-                     /*remote_func_params=*/absl::nullopt);
+                     /*eager_func_params=*/std::nullopt,
+                     /*stack_trace=*/std::nullopt, coord_agent);
 }
 
 void RemoteCopyNode::StartSend() {
   // TODO(gjn): We should consider just using the low-level SendOp::Compute()
   // functionality here instead of constructing an Op.
   EagerOperation op(ctx_);
-  Status status = op.Reset("_Send", /*raw_device_name=*/nullptr,
+  Status status = op.Reset("_Send", /*device_name=*/nullptr,
                            /*remote=*/false, /*executor=*/nullptr);
   if (!status.ok()) {
     captured_state_->SetSendStatus(status);
@@ -130,7 +135,7 @@ void RemoteCopyNode::StartSend() {
   op.MutableAttrs()->Set("send_device", send_device_->name());
   op.MutableAttrs()->Set(
       "send_device_incarnation",
-      static_cast<int64>(send_device_->attributes().incarnation()));
+      static_cast<int64_t>(send_device_->attributes().incarnation()));
   op.MutableAttrs()->Set("recv_device", recv_device_->name());
   op.MutableAttrs()->Set("client_terminated", false);
 
@@ -149,9 +154,8 @@ void RemoteCopyNode::StartSend() {
     auto* remote_op = request.add_queue()->mutable_operation();
     status = ctx_->RemoteMgr()->SerializeRemoteTensorHandle(
         src_, /*wait_until_ready=*/false,
-        remote_op->add_op_inputs()->mutable_remote_handle(),
-        absl::get<Device*>(src_->device()),
-        absl::get<Device*>(src_->DeviceOrHostCPU(*ctx_))->name());
+        remote_op->add_op_inputs()->mutable_remote_handle(), src_->device(),
+        src_->DeviceOrHostCPU(*ctx_)->name());
     if (!status.ok()) {
       captured_state_->SetSendStatus(status);
       return;
@@ -174,6 +178,7 @@ void RemoteCopyNode::StartSend() {
     // If StartRecv fails very quickly, `this` can be destroyed before the
     // callback below is executed. So, we can't capture `this`.
     eager_client->StreamingEnqueueAsync(
+        ctx_->Executor().StreamingEnqueue(),
         /*call_opts=*/nullptr, &request, response,
         [response, captured_state](const Status& s) {
           captured_state->SetSendStatus(s);
@@ -194,19 +199,23 @@ Status RemoteCopyNode::RunLocalRecv(EagerOperation* op,
 
   EagerKernelArgs args;
   std::vector<EagerKernelRet> rets;
+  tsl::CoordinationServiceAgent* coord_agent = nullptr;
+  if (ctx_->GetDistributedManager() != nullptr)
+    coord_agent = ctx_->GetDistributedManager()->GetCoordinationServiceAgent();
   TF_RETURN_IF_ERROR(kernel->Run(/*step_container*/ nullptr, args, &rets,
                                  captured_state_->recv_cancellation(),
-                                 /*remote_func_params=*/absl::nullopt));
+                                 /*eager_func_params=*/std::nullopt,
+                                 /*stack_trace=*/std::nullopt, coord_agent));
   outputs->clear();
   for (const auto& ret : rets) {
     if (ret.index() == 0) {
-      outputs->push_back(absl::get<Tensor>(ret));
+      outputs->push_back(std::get<Tensor>(ret));
     } else {
       return errors::Internal(
           "Expect to receive a Tensor but got a TensorShape.");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
@@ -242,6 +251,7 @@ void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
   const std::shared_ptr<CapturedSharedState>& captured_state = captured_state_;
   Device* recv_device = recv_device_;
   eager_client->StreamingEnqueueAsync(
+      ctx_->Executor().StreamingEnqueue(),
       /*call_opts=*/nullptr, &request, response,
       [captured_state, response, recv_device, context_view_id,
        done](const Status& s) {
@@ -268,7 +278,7 @@ void RemoteCopyNode::StartRecv(StatusCallback done) {
   // TODO(gjn): We should consider just using the low-level RecvOp::Compute()
   // functionality here instead of constructing an Op.
   EagerOperation op(ctx_);
-  Status status = op.Reset("_Recv", /*raw_device_name=*/nullptr,
+  Status status = op.Reset("_Recv", /*device_name=*/nullptr,
                            /*remote=*/false, /*executor=*/nullptr);
   Device* recv_device = ctx_->CanonicalDevice(recv_device_);
   if (!status.ok()) {
@@ -283,7 +293,7 @@ void RemoteCopyNode::StartRecv(StatusCallback done) {
   op.MutableAttrs()->Set("send_device", send_device_->name());
   op.MutableAttrs()->Set(
       "send_device_incarnation",
-      static_cast<int64>(send_device_->attributes().incarnation()));
+      static_cast<int64_t>(send_device_->attributes().incarnation()));
   op.MutableAttrs()->Set("recv_device", recv_device_->name());
   op.MutableAttrs()->Set("client_terminated", false);
 
@@ -310,7 +320,7 @@ Status SerializePackedHandle(const uint64 op_id, TensorHandle* packed_handle,
                              const Device* target_device, EagerContext* ctx,
                              SendPackedHandleOp* op) {
   op->set_op_id(op_id);
-  op->set_device_name(VariantDeviceName(packed_handle->DeviceOrHostCPU(*ctx)));
+  op->set_device_name(packed_handle->DeviceOrHostCPU(*ctx)->name());
   for (int i = 0; i < packed_handle->NumPackedHandles(); ++i) {
     TensorHandle* h = nullptr;
     TF_RETURN_IF_ERROR(packed_handle->ExtractPackedHandle(i, &h));
@@ -329,7 +339,7 @@ Status SerializePackedHandle(const uint64 op_id, TensorHandle* packed_handle,
       // If src_device is on the same task of target_device, the handle is a
       // local handle on the target device, which means the resource dtype and
       // shape are known on the target device.
-      Device* src_device = absl::get<Device*>(h->device());
+      Device* src_device = h->device();
       const bool serialize_resource_dtype_and_shape =
           (i == 0) && (h->dtype == DT_RESOURCE) &&
           (!ctx->OnSameTask(src_device, target_device));
@@ -341,13 +351,13 @@ Status SerializePackedHandle(const uint64 op_id, TensorHandle* packed_handle,
       TF_RETURN_IF_ERROR(ctx->RemoteMgr()->SerializeRemoteTensorHandle(
           h, /*wait_until_ready=*/true,
           op->add_handles()->mutable_remote_handle(), src_device,
-          absl::get<Device*>(h->DeviceOrHostCPU(*ctx))->name(),
+          h->DeviceOrHostCPU(*ctx)->name(),
           serialize_resource_dtype_and_shape));
     } else {
       return errors::InvalidArgument("Nested packed handles are not supported");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void RemoteCopyNode::StartSendPackedHandle(StatusCallback done) {
@@ -393,6 +403,7 @@ void RemoteCopyNode::StartSendPackedHandle(StatusCallback done) {
   Device* recv_device = recv_device_;
   const std::shared_ptr<CapturedSharedState>& captured_state = captured_state_;
   eager_client->StreamingEnqueueAsync(
+      ctx_->Executor().StreamingEnqueue(),
       /*call_opts=*/nullptr, &request, response,
       [captured_state, response, recv_device, context_view_id,
        done](const Status& s) {
@@ -424,8 +435,6 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
 
   // AsProtoTensorContent doesn't work when the tensor is on the GPU, hence
   // copy it to the CPU before copying it out.
-  // TODO(b/110044833): this is currently slow, but can be fixed by making
-  // tensor handles aware of more than one device.
   // TODO(fishx): Make CopyToDevice asynchronous.
   Tensor tensor;
   s = src_->CopyToDevice(*ctx_, ctx_->HostCPU(), &tensor);
@@ -447,6 +456,7 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
   captured_state->SetSrcShape(tensor.shape());
   Device* recv_device = recv_device_;
   eager_client->StreamingEnqueueAsync(
+      ctx_->Executor().StreamingEnqueue(),
       /*call_opts=*/nullptr, &request, response,
       [captured_state, response, recv_device, context_view_id,
        done](const Status& s) {
@@ -468,7 +478,7 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
 
 Status RemoteCopyNode::Prepare() {
   TF_RETURN_IF_ERROR(captured_state_->dst()->CopyInferenceShape(src_));
-  return Status::OK();
+  return OkStatus();
 }
 
 void RemoteCopyNode::RunAsync(StatusCallback done) {

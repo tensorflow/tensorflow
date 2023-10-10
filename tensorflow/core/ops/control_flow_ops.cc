@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <vector>
+
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -38,7 +40,7 @@ Status SwitchShape(InferenceContext* c) {
     c->set_output_handle_shapes_and_types(0, *handle_data);
     c->set_output_handle_shapes_and_types(1, *handle_data);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SwitchNShape(InferenceContext* c) {
@@ -58,7 +60,7 @@ Status SwitchNShape(InferenceContext* c) {
       c->set_output_handle_shapes_and_types(i, *handle_data);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -69,6 +71,7 @@ REGISTER_OP("Switch")
     .Output("output_false: T")
     .Output("output_true: T")
     .Attr("T: type")
+    .SetForwardTypeFn(full_type::ReplicateInput(0, 2))
     .SetShapeFn(SwitchShape);
 
 REGISTER_OP("RefSwitch")
@@ -101,7 +104,7 @@ REGISTER_OP("RefSelect")
       ShapeHandle first_input = c->input(1);
       if (!c->FullyDefined(first_input)) {
         c->set_output(0, c->UnknownShape());
-        return Status::OK();
+        return OkStatus();
       }
       // If any inputs aren't fully defined or don't match, we return unknown.
       for (int i = 2; i < c->num_inputs(); ++i) {
@@ -109,11 +112,11 @@ REGISTER_OP("RefSelect")
         if (!c->FullyDefined(input) ||
             !c->Merge(first_input, input, &unused).ok()) {
           c->set_output(0, c->UnknownShape());
-          return Status::OK();
+          return OkStatus();
         }
       }
       c->set_output(0, first_input);
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -123,7 +126,7 @@ Status MergeShape(InferenceContext* c) {
   if (!c->RankKnown(out)) {
     out = c->UnknownShape();
   } else {
-    int32 rank = c->Rank(out);
+    int32_t rank = c->Rank(out);
     for (int i = 1; i < c->num_inputs(); ++i) {
       ShapeHandle input = c->input(i);
       if (!c->RankKnown(input) || c->Rank(input) != rank) {
@@ -140,8 +143,15 @@ Status MergeShape(InferenceContext* c) {
   }
   c->set_output(0, out);
   c->set_output(1, c->Scalar());
-  return Status::OK();
+  return OkStatus();
 }
+
+TypeInferenceFn MergeTypeFn() {
+  std::vector<TypeInferenceFn> func_list{full_type::Merge(),
+                                         full_type::Tensor(TFT_INT32)};
+  return full_type::Tuple(func_list);
+}
+
 }  // namespace
 
 REGISTER_OP("Merge")
@@ -150,6 +160,7 @@ REGISTER_OP("Merge")
     .Output("value_index: int32")
     .Attr("T: type")
     .Attr("N: int >= 1")
+    .SetForwardTypeFn(MergeTypeFn())
     .SetShapeFn(MergeShape);
 
 REGISTER_OP("RefMerge")
@@ -168,6 +179,7 @@ REGISTER_OP("Enter")
     .Attr("frame_name: string")
     .Attr("is_constant: bool = false")
     .Attr("parallel_iterations: int = 10")
+    .SetForwardTypeFn(full_type::ReplicateInput())
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->UnknownShape());
 
@@ -183,7 +195,7 @@ REGISTER_OP("Enter")
         c->set_output(0, c->input(0));
       }
 
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -201,6 +213,7 @@ REGISTER_OP("Exit")
     .Input("data: T")
     .Output("output: T")
     .Attr("T: type")
+    .SetForwardTypeFn(full_type::ReplicateInput())
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("RefExit")
@@ -214,6 +227,7 @@ REGISTER_OP("NextIteration")
     .Input("data: T")
     .Output("output: T")
     .Attr("T: type")
+    .SetForwardTypeFn(full_type::ReplicateInput())
     .SetShapeFn(shape_inference::UnchangedShape);
 
 REGISTER_OP("RefNextIteration")

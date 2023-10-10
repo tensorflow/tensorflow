@@ -20,11 +20,14 @@ limitations under the License.
 #define GEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK
 #include "public/gemmlowp.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/meta_support.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/kernels/reference_gemm.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -75,9 +78,21 @@ class QuantizedMatMulOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& a = context->input(0);
     const Tensor& b = context->input(1);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(context->input(2).shape()),
+                errors::InvalidArgument("min_a must be a scalar, but got shape",
+                                        context->input(2).shape()));
     const float min_a = context->input(2).flat<float>()(0);
+    OP_REQUIRES(context, context->input(3).NumElements() == 1,
+                errors::InvalidArgument("max_a must be a scalar, but got shape",
+                                        context->input(3).shape()));
     const float max_a = context->input(3).flat<float>()(0);
+    OP_REQUIRES(context, context->input(4).NumElements() == 1,
+                errors::InvalidArgument("min_b must be a scalar, but got shape",
+                                        context->input(4).shape()));
     const float min_b = context->input(4).flat<float>()(0);
+    OP_REQUIRES(context, context->input(5).NumElements() == 1,
+                errors::InvalidArgument("max_b must be a scalar, but got shape",
+                                        context->input(5).shape()));
     const float max_b = context->input(5).flat<float>()(0);
 
     // Make sure that we have valid quantization ranges for the input buffers.
@@ -87,11 +102,11 @@ class QuantizedMatMulOp : public OpKernel {
                 errors::InvalidArgument("max_a must be larger than min_a."));
     OP_REQUIRES(context, (max_b > min_b),
                 errors::InvalidArgument("max_b must be larger than min_b."));
-    const int32 offset_a = FloatToQuantizedUnclamped<T1>(0.0f, min_a, max_a);
-    const int32 offset_b = FloatToQuantizedUnclamped<T2>(0.0f, min_b, max_b);
-    const int32 offset_c = 0;
-    const int32 mult_c = 1;
-    const int32 shift_c = 0;
+    const int32_t offset_a = FloatToQuantizedUnclamped<T1>(0.0f, min_a, max_a);
+    const int32_t offset_b = FloatToQuantizedUnclamped<T2>(0.0f, min_b, max_b);
+    const int32_t offset_c = 0;
+    const int32_t mult_c = 1;
+    const int32_t shift_c = 0;
 
     // Check that the dimensions of the two matrices are valid.
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(a.shape()),

@@ -16,9 +16,8 @@
 
 #import "TFLErrorUtil.h"
 #import "TFLInterpreter+Internal.h"
+#import "TFLSignatureRunner+Internal.h"
 #import "TFLTensor+Internal.h"
-
-#import "tensorflow/lite/objc/apis/TFLInterpreter.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -31,17 +30,20 @@ static NSString *const kTFLOutputTensorTypeString = @"output";
 // Redefines readonly properties.
 @property(nonatomic) TFLTensorType type;
 @property(nonatomic) NSUInteger index;
+@property(nonatomic, nullable) NSString *nameInSignature;
 @property(nonatomic, copy) NSString *name;
 @property(nonatomic) TFLTensorDataType dataType;
 @property(nonatomic, nullable) TFLQuantizationParameters *quantizationParameters;
 
 /**
- * The backing interpreter. It's a strong reference to ensure that the interpreter is never released
- * before this tensor is released.
+ * The tensor data accessor that could mutate the data on the tensor. It is either an interpreter or
+ * a signature runner. It's a strong reference to ensure that the interpreter or the signature
+ * runner is never released before this tensor is released.
  *
- * @warning Never let the interpreter hold a strong reference to the tensor to avoid retain cycles.
+ * @warning Never let the interpreter or the signature runner hold a strong reference to the tensor
+ * to avoid retain cycles.
  */
-@property(nonatomic) TFLInterpreter *interpreter;
+@property(nonatomic, strong) id<TFLTensorDataAccessor> tensorDataAccessor;
 
 @end
 
@@ -50,23 +52,15 @@ static NSString *const kTFLOutputTensorTypeString = @"output";
 #pragma mark - Public
 
 - (BOOL)copyData:(NSData *)data error:(NSError **)error {
-  if (self.type == TFLTensorTypeOutput) {
-    [TFLErrorUtil
-        saveInterpreterErrorWithCode:TFLInterpreterErrorCodeCopyDataToOutputTensorNotAllowed
-                         description:@"Cannot copy data into an output tensor."
-                               error:error];
-    return NO;
-  }
-
-  return [self.interpreter copyData:data toInputTensorAtIndex:self.index error:error];
+  return [self.tensorDataAccessor copyData:data toInputTensor:self error:error];
 }
 
 - (nullable NSData *)dataWithError:(NSError **)error {
-  return [self.interpreter dataFromTensor:self error:error];
+  return [self.tensorDataAccessor dataFromTensor:self error:error];
 }
 
 - (nullable NSArray<NSNumber *> *)shapeWithError:(NSError **)error {
-  return [self.interpreter shapeOfTensor:self error:error];
+  return [self.tensorDataAccessor shapeOfTensor:self error:error];
 }
 
 #pragma mark - TFLTensor (Internal)
@@ -79,9 +73,28 @@ static NSString *const kTFLOutputTensorTypeString = @"output";
              quantizationParameters:(nullable TFLQuantizationParameters *)quantizationParameters {
   self = [super init];
   if (self != nil) {
-    _interpreter = interpreter;
+    _tensorDataAccessor = interpreter;
     _type = type;
     _index = index;
+    _name = [name copy];
+    _dataType = dataType;
+    _quantizationParameters = quantizationParameters;
+  }
+  return self;
+}
+
+- (instancetype)initWithSignatureRunner:(TFLSignatureRunner *)signatureRunner
+                                   type:(TFLTensorType)type
+                        nameInSignature:(NSString *)nameInSignature
+                                   name:(NSString *)name
+                               dataType:(TFLTensorDataType)dataType
+                 quantizationParameters:
+                     (nullable TFLQuantizationParameters *)quantizationParameters {
+  self = [super init];
+  if (self != nil) {
+    _tensorDataAccessor = signatureRunner;
+    _type = type;
+    _nameInSignature = [nameInSignature copy];
     _name = [name copy];
     _dataType = dataType;
     _quantizationParameters = quantizationParameters;

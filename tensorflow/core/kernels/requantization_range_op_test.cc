@@ -78,8 +78,8 @@ static void BM_RequantizationRange(::testing::benchmark::State& state) {
   for (auto s : state) {
     CalculateUsedRange(quantized_tensor, &actual_min, &actual_max);
   }
-  state.SetItemsProcessed(static_cast<int64>(state.iterations()) * size);
-  state.SetBytesProcessed(static_cast<int64>(state.iterations()) * size * 4);
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * size);
+  state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * size * 4);
 }
 
 BENCHMARK(BM_RequantizationRange)

@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <utility>
+#include <variant>
+
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/abstract_function.h"
 #include "tensorflow/c/tf_tensor_internal.h"
@@ -24,12 +27,8 @@ limitations under the License.
 
 namespace {
 
-bool IsCPU(tensorflow::VariantDevice variant) {
-  if (VariantDeviceIsCustom(variant)) {
-    return false;
-  }
-  tensorflow::Device* d = absl::get<tensorflow::Device*>(variant);
-  return d == nullptr || d->tensorflow_gpu_device_info() == nullptr;
+bool IsCPU(tensorflow::Device* d) {
+  return d == nullptr || d->tensorflow_accelerator_device_info() == nullptr;
 }
 
 }  // namespace
@@ -43,20 +42,6 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
   if (!status->ok()) {
     return nullptr;
   }
-  if (VariantDeviceIsCustom(device())) {
-    auto* custom_device = absl::get<CustomDevice*>(device());
-    TensorHandle* copy;
-    *status = custom_device->CopyTensorFromDevice(this, ctx_->HostCPU()->name(),
-                                                  &copy);
-    if (status->ok()) {
-      auto result = copy->Resolve(status);
-      copy->Unref();
-      return result;
-    } else {
-      return nullptr;
-    }
-  }
-
   if (Type() == REMOTE) {
     const tensorflow::Tensor* t = nullptr;
     TensorHandle* h_cpu = nullptr;
@@ -70,12 +55,9 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
       h_cpu->Unref();
       return nullptr;
     }
-    // TODO(b/153052876): Change TF_TensorFromTensor to just return an
-    // AbstractTensorInterface
-    TF_Tensor* tf_tensor = TF_TensorFromTensor(*t, status);
-    AbstractTensorInterface* retval = tf_tensor->tensor;
+
+    AbstractTensorInterface* retval = TensorInterfaceFromTensor(*t, status);
     h_cpu->Unref();
-    delete tf_tensor;
     return retval;
   } else if (Type() == LOCAL) {
     tensorflow::Tensor tensor;
@@ -108,15 +90,12 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
         tensor = *src;
       }
     }
-    // TODO(b/153052876): Change TF_TensorFromTensor to just return an
-    // AbstractTensorInterface
-    TF_Tensor* tf_tensor = TF_TensorFromTensor(tensor, status);
-    AbstractTensorInterface* retval = tf_tensor->tensor;
-    delete tf_tensor;
+
+    AbstractTensorInterface* retval = TensorInterfaceFromTensor(tensor, status);
     return retval;
   } else {
     *status = errors::InvalidArgument(
-        "Resolve() is not supoorted on packed TensorHandles.");
+        "Resolve() is not supported on packed TensorHandles.");
     return nullptr;
   }
 }
@@ -124,40 +103,19 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
 ImmediateExecutionTensorHandle* EagerContext::CopyTensorHandleToDevice(
     ImmediateExecutionTensorHandle* handle, const char* device_name,
     Status* status) {
-  TensorHandle* input = TensorHandleFromInterface(handle);
-  TensorHandle* result = nullptr;
+  ImmediateExecutionTensorHandle* result = nullptr;
   Device* device;
   *status = this->FindDeviceFromName(device_name, &device);
   if (!status->ok()) {
-    tensorflow::CustomDevice* dev;
-    if (this->FindCustomDeviceFromName(device_name, &dev)) {
-      *status = dev->CopyTensorToDevice(input, &result);
-      if (status->ok()) {
-        return result;
-      }
-    } else {
-      *status =
-          tensorflow::errors::InvalidArgument(device_name, " unknown device.");
-    }
-    return nullptr;
-  }
-  // Handle tensor handles currently in custom devices
-  const char* handle_device_name = input->DeviceName(status);
-  if (!status->ok()) {
-    return nullptr;
-  }
-  tensorflow::CustomDevice* dev;
-  if (this->FindCustomDeviceFromName(handle_device_name, &dev)) {
-    *status = dev->CopyTensorFromDevice(input, device_name, &result);
-    if (status->ok()) {
-      return result;
-    }
+    *status =
+        tensorflow::errors::InvalidArgument(device_name, " unknown device.");
     return nullptr;
   }
 
-  // Handle regular case.
+  TensorHandle* input = TensorHandleFromInterface(handle);
   *status =
-      EagerCopyToDevice(input, this, &this->Executor(), device, false, &result);
+      EagerCopyToDevice(input, this, &this->Executor(), device, false,
+                        reinterpret_cast<tensorflow::TensorHandle**>(&result));
   if (status->ok()) {
     return result;
   }
@@ -188,11 +146,6 @@ ImmediateExecutionTensorHandle* EagerContext::CreateLocalHandleFromTFTensor(
                                          /*op_device=*/nullptr, this);
 }
 
-ImmediateExecutionTensorHandle* EagerContext::TFTensorHandleFromInterface(
-    ImmediateExecutionTensorHandle* handle) {
-  return handle;
-}
-
 // TODO(b/152902651): We have to keep this function here since EagerOperation
 // depends on EagerContext. Thus, the context build target can't depend on
 // EagerOperation.
@@ -200,29 +153,22 @@ ImmediateExecutionOperation* EagerContext::CreateOperation() {
   return new EagerOperation(this);
 }
 
-Status EagerContext::RegisterFunction(AbstractFunction* f) {
-  FunctionDef* fdef;
-  TF_RETURN_IF_ERROR(f->GetFunctionDef(&fdef));
-  if (!fdef) {
-    return errors::InvalidArgument("GetFunctionDef returned nullptr.");
-  }
-  return AddFunctionDef(*fdef);
-}
-
 // TODO(b/152902651): Once we move many execute.cc functions into
 // eager_operation.cc we can avoid a circular dependency between them.
 Status EagerOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
                                int* num_retvals) {
-  for (int i = 0; i < Inputs().size(); ++i) {
-    TF_RETURN_IF_ERROR(Inputs()[i]->WaitUnknownDevice());
+  for (ImmediateExecutionTensorHandle* handle : inputs_) {
+    if (TensorHandle::classof(handle)) {
+      TF_RETURN_IF_ERROR(down_cast<TensorHandle*>(handle)->WaitUnknownDevice());
+    }
   }
+
   // Run eager placement logic.
-  VariantDevice device;
-  TF_RETURN_IF_ERROR(eager::MaybePinToCustomDevice(&device, *this));
-  if (device == kVariantDeviceNull) {
+  class Device* device = std::get<class Device*>(Device());
+  if (device == nullptr) {
     TF_RETURN_IF_ERROR(eager::MaybePinToResourceDevice(&device, *this));
   }
-  if (device == kVariantDeviceNull && ctx_.PinSmallOpsToCPU()) {
+  if (device == nullptr && ctx_.PinSmallOpsToCPU()) {
     bool pin_to_cpu;
     TF_RETURN_IF_ERROR(eager::MaybePinSmallOpsToCpu(
         &pin_to_cpu, Name(), GetInputs(), ctx_.HostCPU()->name()));
@@ -231,16 +177,13 @@ Status EagerOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
     }
   }
 
-  tensorflow::TensorHandle** retval_array =
-      reinterpret_cast<tensorflow::TensorHandle**>(retvals.data());
-  if (VariantDeviceIsCustom(device)) {
-    return absl::get<CustomDevice*>(device)->Execute(this, retval_array,
-                                                     num_retvals);
-  }
-
-  if (device != kVariantDeviceNull) {
+  if (device != nullptr) {
     SetDevice(device);
   }
+  // At this point all inputs and outputs are TensorHandles associated with
+  // physical devices.
+  tensorflow::TensorHandle** retval_array =
+      reinterpret_cast<tensorflow::TensorHandle**>(retvals.data());
   return EagerExecute(this, retval_array, num_retvals);
 }
 

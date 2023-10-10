@@ -67,6 +67,7 @@ GraphDefBuilder::Options GraphDefBuilder::Options::WithControlInputsImpl(
 Status GraphDefBuilder::ToGraphDef(GraphDef* graph_def) const {
   if (status_.ok()) {
     graph_.ToGraphDef(graph_def);
+    *graph_def->mutable_library() = flib_def_.ToProto();
   }
   return status_;
 }
@@ -120,6 +121,15 @@ Node* BinaryOp(const string& op_name, NodeOut a, NodeOut b,
   NodeBuilder node_builder(opts.GetNameForOp(op_name), op_name,
                            opts.op_registry());
   node_builder.Input(std::move(a)).Input(std::move(b));
+  return opts.FinalizeBuilder(&node_builder);
+}
+
+Node* TernaryOp(const string& op_name, NodeOut a, NodeOut b, NodeOut c,
+                const GraphDefBuilder::Options& opts) {
+  if (opts.HaveError()) return nullptr;
+  NodeBuilder node_builder(opts.GetNameForOp(op_name), op_name,
+                           opts.op_registry());
+  node_builder.Input(std::move(a)).Input(std::move(b)).Input(std::move(c));
   return opts.FinalizeBuilder(&node_builder);
 }
 

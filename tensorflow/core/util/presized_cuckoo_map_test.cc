@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/util/presized_cuckoo_map.h"
+
 #include <array>
+#include <vector>
 
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/util/presized_cuckoo_map.h"
 
 namespace tensorflow {
 namespace {
@@ -52,7 +54,7 @@ TEST(PresizedCuckooMapTest, Basic) {
 }
 
 TEST(PresizedCuckooMapTest, Prefetch) {
-  PresizedCuckooMap<int64> pscm(2);
+  PresizedCuckooMap<int64_t> pscm(2);
   EXPECT_TRUE(pscm.InsertUnique(1, 2));
   // Works for both present and absent keys.
   pscm.PrefetchKey(1);
@@ -64,7 +66,7 @@ TEST(PresizedCuckooMapTest, TooManyItems) {
   PresizedCuckooMap<int> pscm(kTableSize);
   for (uint64 i = 0; i < kTableSize; i++) {
     uint64 key =
-        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64)));
+        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64_t)));
     ASSERT_TRUE(pscm.InsertUnique(key, i));
   }
   // Try to over-fill the table.  A few of these
@@ -72,7 +74,7 @@ TEST(PresizedCuckooMapTest, TooManyItems) {
   uint64 failed_at = 0;
   for (uint64 i = kTableSize; i < (2 * kTableSize); i++) {
     uint64 key =
-        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64)));
+        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64_t)));
     if (!pscm.InsertUnique(key, i)) {
       failed_at = i;
       break;
@@ -86,7 +88,7 @@ TEST(PresizedCuckooMapTest, TooManyItems) {
   for (uint64 i = 0; i < failed_at; i++) {
     int out;
     uint64 key =
-        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64)));
+        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64_t)));
     EXPECT_TRUE(pscm.Find(key, &out));
     EXPECT_EQ(out, i);
   }
@@ -116,16 +118,16 @@ TEST(PresizedCuckooMapTest, RepeatedClear) {
   }
 }
 
-void RunFill(int64 table_size) {
+void RunFill(int64_t table_size) {
   PresizedCuckooMap<int> pscm(table_size);
-  for (int64 i = 0; i < table_size; i++) {
+  for (int64_t i = 0; i < table_size; i++) {
     uint64 key =
-        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64)));
+        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64_t)));
     EXPECT_TRUE(pscm.InsertUnique(key, i));
   }
-  for (int64 i = 0; i < table_size; i++) {
+  for (int64_t i = 0; i < table_size; i++) {
     uint64 key =
-        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64)));
+        Fingerprint64(string(reinterpret_cast<char *>(&i), sizeof(int64_t)));
     int out;
     EXPECT_TRUE(pscm.Find(key, &out));
     EXPECT_EQ(out, i);
@@ -133,7 +135,7 @@ void RunFill(int64 table_size) {
 }
 
 TEST(PresizedCuckooMapTest, Fill) {
-  for (int64 table_size = 10; table_size <= 5000000; table_size *= 71) {
+  for (int64_t table_size = 10; table_size <= 5000000; table_size *= 71) {
     RunFill(table_size);
   }
 }

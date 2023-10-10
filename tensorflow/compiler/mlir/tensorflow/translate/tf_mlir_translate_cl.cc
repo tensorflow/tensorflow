@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
 
+#include "llvm/Support/CommandLine.h"
+
 // These command-line options are following LLVM conventions because we also
 // need to register the TF Graph(Def) to MLIR conversion with mlir-translate,
 // which expects command-line options of such style.
 
 using llvm::cl::opt;
 
+// Import options.
 // NOLINTNEXTLINE
 opt<std::string> input_arrays(
     "tf-input-arrays", llvm::cl::desc("Input tensor names, separated by ','"),
@@ -85,6 +88,12 @@ opt<std::string> debug_info_file(
     llvm::cl::desc("Path to the debug info file of the input graph def"),
     llvm::cl::init(""));
 
+// NOLINTNEXTLINE
+opt<std::string> xla_compile_device_type(
+    "tf-xla-compile-device-type",
+    llvm::cl::desc("Sets the compilation device type of the input graph def"),
+    llvm::cl::init(""));
+
 // TODO(b/134792656): If pruning is moved into TF dialect as a pass
 // we should remove this.
 // NOLINTNEXTLINE
@@ -114,4 +123,37 @@ opt<bool> upgrade_legacy("tf-upgrade-legacy",
 opt<bool> enable_shape_inference(
     "tf-enable-shape-inference-on-import",
     llvm::cl::desc("Enable shape inference on import (temporary)"),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> unconditionally_use_set_output_shapes(
+    "tf-enable-unconditionally-use-set-output-shapes-on-import",
+    llvm::cl::desc("Enable using the _output_shapes unconditionally on import "
+                   "(temporary)"),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> enable_soft_placement(
+    "tf-enable-soft-placement-on-import",
+    llvm::cl::desc("Enable soft device placement on import."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> set_original_tf_func_name(
+    "tf-set-original-tf-func-name-on-import",
+    llvm::cl::desc("Set original TF function name on importi."),
+    llvm::cl::init(false));
+
+// Export options.
+// NOLINTNEXTLINE
+opt<bool> export_entry_func_to_flib(
+    "tf-export-entry-func-to-flib",
+    llvm::cl::desc(
+        "Export entry function to function library instead of graph"),
+    llvm::cl::init(false));
+// NOLINTNEXTLINE
+opt<bool> export_original_tf_func_name(
+    "tf-export-original-func-name",
+    llvm::cl::desc("Export functions using the name set in the attribute "
+                   "'tf._original_func_name' if it exists."),
     llvm::cl::init(false));

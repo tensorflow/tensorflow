@@ -1,0 +1,7 @@
+path: "tensorflow.__internal__.smart_cond"
+tf_module {
+  member_method {
+    name: "smart_cond"
+    argspec: "args=[\'pred\', \'true_fn\', \'false_fn\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+}

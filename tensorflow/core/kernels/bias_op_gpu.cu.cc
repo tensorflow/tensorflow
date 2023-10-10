@@ -17,6 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "tensorflow/core/kernels/bias_op_gpu.h"
+
 #include <algorithm>
 
 #include "tensorflow/core/framework/register_types.h"
@@ -24,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/bias_op.h"
-#include "tensorflow/core/kernels/bias_op_gpu.h"
 #include "tensorflow/core/kernels/reduction_gpu_kernels.cu.h"
 #include "tensorflow/core/kernels/reduction_ops_common.h"
 #include "tensorflow/core/platform/types.h"
@@ -45,6 +46,11 @@ struct AccumulatorType {
 
 template <>
 struct AccumulatorType<Eigen::half> {
+  typedef float type;
+};
+
+template <>
+struct AccumulatorType<Eigen::bfloat16> {
   typedef float type;
 };
 
@@ -84,13 +90,16 @@ void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
   if (total_count == 0) {
     return;
   }
-  GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
   if (data_format == FORMAT_NHWC) {
+    GpuLaunchConfig config =
+        GetGpuLaunchConfig(total_count, d, BiasNHWCKernel<T>, 0, 0);
     TF_CHECK_OK(GpuLaunchKernel(BiasNHWCKernel<T>, config.block_count,
                                 config.thread_per_block, 0, d.stream(),
                                 config.virtual_thread_count, input, bias,
                                 output, bias_size));
   } else {
+    GpuLaunchConfig config =
+        GetGpuLaunchConfig(total_count, d, BiasNCHWKernel<T>, 0, 0);
     TF_CHECK_OK(GpuLaunchKernel(BiasNCHWKernel<T>, config.block_count,
                                 config.thread_per_block, 0, d.stream(),
                                 config.virtual_thread_count, input, bias,

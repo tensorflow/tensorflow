@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CUSTOM_LOGGING_OPS_LSTM_H_
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CUSTOM_LOGGING_OPS_LSTM_H_
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_logger.h"
 
 namespace tflite {
@@ -23,7 +23,8 @@ namespace optimize {
 namespace calibration {
 namespace custom {
 
-TfLiteStatus lstm_logging_kernel(TfLiteContext* context, TfLiteNode* node,
+TfLiteStatus lstm_logging_kernel(TfLiteContext* context,
+                                 const int subgraph_index, TfLiteNode* node,
                                  Logger* logger, ErrorReporter* error_reporter);
 
 }  // namespace custom

@@ -54,6 +54,10 @@ def tf_java_op_gen_srcjar(
         srcs = srcs,
         outs = [gen_srcjar],
         tools = [
+            # copybara:uncomment_begin(using system-provided in OSS build)
+            # "//third_party/java/jdk/jar:jar",
+            # "//third_party/java/jdk:jdk",
+            # copybara:uncomment_end
             gen_tool,
         ] + tf_binary_additional_srcs(),
         toolchains = ["@bazel_tools//tools/jdk:current_host_java_runtime"],

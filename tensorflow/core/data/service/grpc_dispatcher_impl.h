@@ -19,6 +19,7 @@ limitations under the License.
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher_impl.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
@@ -35,6 +36,10 @@ class GrpcDispatcherImpl : public DispatcherService::Service {
 
   Status Start();
 
+  size_t NumActiveIterations();
+
+  DispatcherStateExport ExportState() const;
+
 #define HANDLER(method)                                 \
   ::grpc::Status method(::grpc::ServerContext* context, \
                         const method##Request* request, \
@@ -43,17 +48,27 @@ class GrpcDispatcherImpl : public DispatcherService::Service {
   HANDLER(WorkerUpdate);
   HANDLER(GetDatasetDef);
   HANDLER(GetSplit);
+  HANDLER(GetVersion);
   HANDLER(GetOrRegisterDataset);
-  HANDLER(ReleaseJobClient);
+  HANDLER(ReleaseIterationClient);
+  HANDLER(MaybeRemoveTask);
   HANDLER(GetOrCreateJob);
-  HANDLER(GetTasks);
+  HANDLER(GetOrCreateIteration);
+  HANDLER(ClientHeartbeat);
   HANDLER(GetWorkers);
+  HANDLER(GetDataServiceMetadata);
+  HANDLER(GetDataServiceConfig);
+  HANDLER(Snapshot);
+  HANDLER(GetSnapshotSplit);
+  HANDLER(GetSnapshotStreams);
+  HANDLER(DisableCompressionAtRuntime);
 #undef HANDLER
 
  private:
   DataServiceDispatcherImpl impl_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GrpcDispatcherImpl);
+  GrpcDispatcherImpl(const GrpcDispatcherImpl&) = delete;
+  void operator=(const GrpcDispatcherImpl&) = delete;
 };
 
 }  // namespace data

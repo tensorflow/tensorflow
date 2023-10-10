@@ -15,164 +15,201 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_tools_data.h"
 
-#include <utility>
-#include <vector>
+#include <memory>
+#include <optional>
+#include <string>
 
+#include "absl/status/status.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/profiler/convert/hlo_to_tools_data.h"
+#include "tensorflow/core/profiler/convert/multi_xplanes_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
+#include "tensorflow/core/profiler/convert/op_stats_to_op_profile.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_viewer.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
+#include "tensorflow/core/profiler/convert/preprocess_single_host_xplane.h"
+#include "tensorflow/core/profiler/convert/process_megascale_dcn.h"
+#include "tensorflow/core/profiler/convert/repository.h"
+#include "tensorflow/core/profiler/convert/tool_options.h"
+#include "tensorflow/core/profiler/convert/trace_viewer/trace_events_to_json.h"
+#include "tensorflow/core/profiler/convert/xplane_to_dcn_collective_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tf_data_stats.h"
-#include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
+#include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
+#include "tensorflow/core/profiler/convert/xplane_to_tool_names.h"
+#include "tensorflow/core/profiler/convert/xplane_to_trace_container.h"
+#include "tensorflow/core/profiler/protobuf/dcn_slack_analysis.pb.h"
+#include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/op_profile.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
-#include "tensorflow/core/profiler/protobuf/pod_viewer.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/profiler/convert/xplane_to_trace_events.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 
 namespace {
 
-std::pair<std::string, bool> ConvertXSpaceToTraceEvents(
-    const std::vector<std::string>& xspace_paths) {
-  if (xspace_paths.size() != 1) {
-    LOG(WARNING) << "Trace events tool expects only 1 XSpace path but gets "
-                 << xspace_paths.size();
-    return std::make_pair("", false);
+struct TraceViewOption {
+  uint64_t resolution = 0;
+  double start_time_ms = 0.0;
+  double end_time_ms = 0.0;
+};
+
+absl::StatusOr<TraceViewOption> GetTraceViewOption(const ToolOptions& options) {
+  TraceViewOption trace_options;
+  auto start_time_ms_opt =
+      GetParamWithDefault<std::string>(options, "start_time_ms", "0.0");
+  auto end_time_ms_opt =
+      GetParamWithDefault<std::string>(options, "end_time_ms", "0.0");
+  auto resolution_opt =
+      GetParamWithDefault<std::string>(options, "resolution", "0");
+
+  if (!absl::SimpleAtoi(resolution_opt, &trace_options.resolution) ||
+      !absl::SimpleAtod(start_time_ms_opt, &trace_options.start_time_ms) ||
+      !absl::SimpleAtod(end_time_ms_opt, &trace_options.end_time_ms)) {
+    return errors::InvalidArgument("wrong arguments");
+  }
+  return trace_options;
+}
+
+StatusOr<std::string> ConvertXSpaceToTraceEvents(
+    const SessionSnapshot& session_snapshot, const absl::string_view tool_name,
+    const ToolOptions& options) {
+  if (session_snapshot.XSpaceSize() != 1) {
+    return errors::InvalidArgument(
+        "Trace events tool expects only 1 XSpace path but gets ",
+        session_snapshot.XSpaceSize());
   }
 
-  XSpace xspace;
-  Status status = ReadBinaryProto(Env::Default(), xspace_paths[0], &xspace);
-  if (!status.ok()) {
-    LOG(WARNING) << "Could not read XSpace for trace events: "
-                 << xspace_paths[0];
-    return std::make_pair("", false);
-  }
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
+                      session_snapshot.GetXSpace(0));
+  PreprocessSingleHostXSpace(xspace.get(), /*step_grouping=*/true,
+                             /*derived_timeline=*/true);
   std::string content;
-  ConvertXSpaceToTraceEventsString(xspace, &content);
-  return std::make_pair(content, true);
+  if (tool_name == "trace_viewer") {
+    tsl::profiler::ConvertXSpaceToTraceEventsString(*xspace, &content);
+    return content;
+  } else {  // streaming trace viewer.
+    std::string host_name = session_snapshot.GetHostname(0);
+    auto sstable_path = session_snapshot.GetFilePath(tool_name, host_name);
+    if (!sstable_path) {
+      return errors::Unimplemented(
+          "streaming trace viewer hasn't been supported in Cloud AI");
+    }
+    if (!Env::Default()->FileExists(*sstable_path).ok()) {
+      ProcessMegascaleDcn(xspace.get());
+      TraceEventsContainer trace_container;
+      ConvertXSpaceToTraceEventsContainer(host_name, *xspace, &trace_container);
+      TF_RETURN_IF_ERROR(trace_container.StoreAsLevelDbTable(*sstable_path));
+    }
+    TF_ASSIGN_OR_RETURN(TraceViewOption trace_option,
+                        GetTraceViewOption(options));
+    auto visibility_filter = std::make_unique<TraceVisibilityFilter>(
+        tsl::profiler::MilliSpan(trace_option.start_time_ms,
+                                 trace_option.end_time_ms),
+        trace_option.resolution);
+    TraceEventsContainer trace_container;
+    // Trace smaller than threshold will be disabled from streaming.
+    constexpr int64_t kDisableStreamingThreshold = 500000;
+    TF_RETURN_IF_ERROR(trace_container.LoadFromLevelDbTable(
+        *sstable_path, /*filter=*/nullptr, std::move(visibility_filter),
+        kDisableStreamingThreshold));
+    JsonTraceOptions options;
+    IOBufferAdapter adapter(&content);
+    TraceEventsToJson<IOBufferAdapter, TraceEventsContainer, RawData>(
+        options, trace_container, &adapter);
+    return content;
+  }
 }
 
-std::pair<std::string, bool> ConvertMultiXSpacesToOverviewPage(
-    const std::vector<std::string>& xspace_paths) {
+StatusOr<std::string> ConvertMultiXSpacesToOverviewPage(
+    const SessionSnapshot& session_snapshot) {
   OpStatsOptions options;
   options.generate_kernel_stats_db = true;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
   OpStats combined_op_stats;
-  Status status = ConvertMultiXSpacesToCombinedOpStats(xspace_paths, options,
-                                                       &combined_op_stats);
-  if (!status.ok()) {
-    LOG(WARNING) << "Could not generate OpStats for overview page. Error: "
-                 << status.error_message();
-    return std::make_pair("", false);
-  }
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
+      session_snapshot, options, &combined_op_stats));
   // TODO(profiler): xspace should tell whether this is sampling mode.
-  return std::make_pair(
-      ConvertOpStatsToOverviewPage(combined_op_stats).SerializeAsString(),
-      true);
+  return ConvertOpStatsToOverviewPage(combined_op_stats).SerializeAsString();
 }
 
-std::pair<std::string, bool> ConvertMultiXSpacesToInputPipeline(
-    const std::vector<std::string>& xspace_paths) {
+StatusOr<std::string> ConvertMultiXSpacesToInputPipeline(
+    const SessionSnapshot& session_snapshot) {
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
   OpStats combined_op_stats;
-  Status status = ConvertMultiXSpacesToCombinedOpStats(xspace_paths, options,
-                                                       &combined_op_stats);
-  if (!status.ok()) {
-    LOG(WARNING) << "Could not generate OpStats for input pipeline. Error: "
-                 << status.error_message();
-    return std::make_pair("", false);
-  }
-  return std::make_pair(ConvertOpStatsToInputPipelineAnalysis(combined_op_stats)
-                            .SerializeAsString(),
-                        true);
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
+      session_snapshot, options, &combined_op_stats));
+  return ConvertOpStatsToInputPipelineAnalysis(combined_op_stats)
+      .SerializeAsString();
 }
 
-std::pair<std::string, bool> ConvertMultiXSpacesToTfStats(
-    const std::vector<std::string>& xspace_paths) {
+StatusOr<std::string> ConvertMultiXSpacesToTfStats(
+    const SessionSnapshot& session_snapshot) {
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   options.generate_kernel_stats_db = true;
   OpStats combined_op_stats;
-  Status status = ConvertMultiXSpacesToCombinedOpStats(xspace_paths, options,
-                                                       &combined_op_stats);
-  if (!status.ok()) {
-    LOG(WARNING) << "Could not generate OpStats for tensorflow stats. Error: "
-                 << status.error_message();
-    return std::make_pair("", false);
-  }
-  return std::make_pair(
-      ConvertOpStatsToTfStats(combined_op_stats).SerializeAsString(), true);
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
+      session_snapshot, options, &combined_op_stats));
+  return ConvertOpStatsToTfStats(combined_op_stats).SerializeAsString();
 }
 
-std::pair<std::string, bool> ConvertMultiXSpacesToKernelStats(
-    const std::vector<std::string>& xspace_paths) {
+StatusOr<std::string> ConvertMultiXSpacesToKernelStats(
+    const SessionSnapshot& session_snapshot) {
   OpStatsOptions options;
   options.generate_kernel_stats_db = true;
   OpStats combined_op_stats;
-  Status status = ConvertMultiXSpacesToCombinedOpStats(xspace_paths, options,
-                                                       &combined_op_stats);
-  if (!status.ok()) {
-    LOG(WARNING) << "Could not generate OpStats for kernel stats. Error: "
-                 << status.error_message();
-    return std::make_pair("", false);
-  }
-  return std::make_pair(combined_op_stats.kernel_stats_db().SerializeAsString(),
-                        true);
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
+      session_snapshot, options, &combined_op_stats));
+  return combined_op_stats.kernel_stats_db().SerializeAsString();
 }
 
-std::pair<std::string, bool> ConvertXSpaceToMemoryProfile(
-    const std::vector<std::string>& xspace_paths) {
-  if (xspace_paths.size() != 1) {
-    LOG(WARNING) << "Memory profile tool expects only 1 XSpace path but gets "
-                 << xspace_paths.size();
-    return std::make_pair("", false);
+StatusOr<std::string> ConvertXSpaceToMemoryProfile(
+    const SessionSnapshot& session_snapshot) {
+  if (session_snapshot.XSpaceSize() != 1) {
+    return errors::InvalidArgument(
+        "Memory profile tool expects only 1 XSpace path but gets ",
+        session_snapshot.XSpaceSize());
   }
-  XSpace xspace;
-  Status status = ReadBinaryProto(Env::Default(), xspace_paths[0], &xspace);
-  if (!status.ok()) {
-    LOG(WARNING) << "Could not read XSpace for memory profile: "
-                 << xspace_paths[0];
-    return std::make_pair("", false);
-  }
+
   std::string json_output;
-  status = ConvertXSpaceToMemoryProfileJson(xspace, &json_output);
-  if (!status.ok()) {
-    LOG(WARNING) << "Could not generate memory profile. Error: "
-                 << status.error_message();
-    return std::make_pair("", false);
-  }
-  return std::make_pair(json_output, true);
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
+                      session_snapshot.GetXSpace(0));
+  PreprocessSingleHostXSpace(xspace.get(), /*step_grouping=*/true,
+                             /*derived_timeline=*/false);
+  TF_RETURN_IF_ERROR(ConvertXSpaceToMemoryProfileJson(*xspace, &json_output));
+  return json_output;
 }
 
-std::pair<std::string, bool> ConvertMultiXSpacesToPodViewer(
-    const std::vector<std::string>& xspace_paths) {
+StatusOr<std::string> ConvertMultiXSpacesToPodViewer(
+    const SessionSnapshot& session_snapshot) {
   OpStatsOptions options;
   options.generate_op_metrics_db = true;
   options.generate_step_db = true;
   OpStats combined_op_stats;
-  Status status = ConvertMultiXSpacesToCombinedOpStats(xspace_paths, options,
-                                                       &combined_op_stats);
-  if (!status.ok()) {
-    LOG(WARNING) << "Could not generate OpStats for pod_viewer. Error: "
-                 << status.error_message();
-    return std::make_pair("", false);
-  }
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
+      session_snapshot, options, &combined_op_stats));
 
   std::string json_output;
   protobuf::util::JsonPrintOptions opts;
@@ -180,65 +217,139 @@ std::pair<std::string, bool> ConvertMultiXSpacesToPodViewer(
   auto encode_status = protobuf::util::MessageToJsonString(
       ConvertOpStatsToPodViewer(combined_op_stats), &json_output, opts);
   if (!encode_status.ok()) {
-    LOG(WARNING) << "Could not convert pod viewer proto to json. Error: "
-                 << encode_status.message();
-    return std::make_pair("", false);
+    const auto& error_message = encode_status.message();
+    return errors::Internal(
+        "Could not convert pod viewer to json. Error: ",
+        absl::string_view(error_message.data(), error_message.length()));
   }
-  return std::make_pair(json_output, true);
+  return json_output;
 }
 
-std::pair<std::string, bool> ConvertMultiXSpacesToTfDataBottleneckAnalysis(
-    const std::vector<std::string>& xspace_paths) {
+StatusOr<std::string> ConvertMultiXSpacesToTfDataBottleneckAnalysis(
+    const SessionSnapshot& session_snapshot) {
   CombinedTfDataStats combined_tf_data_stats;
   CombinedTfDataStatsBuilder builder(&combined_tf_data_stats);
-  for (const std::string& xspace_path : xspace_paths) {
-    XSpace xspace;
-    Status status = ReadBinaryProto(Env::Default(), xspace_path, &xspace);
-    if (!status.ok()) {
-      LOG(WARNING) << "Could not read XSpace for tf data stats: "
-                   << xspace_path;
-      return std::make_pair("", false);
-    }
+
+  for (int idx = 0; idx < session_snapshot.XSpaceSize(); ++idx) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
+                        session_snapshot.GetXSpace(idx));
+
+    PreprocessSingleHostXSpace(xspace.get(), /*step_grouping=*/true,
+                               /*derived_timeline=*/false);
     XPlane* host_plane =
-        FindMutablePlaneWithName(&xspace, kHostThreadsPlaneName);
+        FindMutablePlaneWithName(xspace.get(), kHostThreadsPlaneName);
+    std::string host_name_from_file = session_snapshot.GetHostname(idx);
     if (host_plane == nullptr) {
-      LOG(WARNING) << "Could not find host XPlane for tf data stats: "
-                   << xspace_path;
-      return std::make_pair("", false);
+      return errors::InvalidArgument(
+          "Could not find host XPlane for tf data stats: ",
+          host_name_from_file);
     }
     absl::string_view host_name =
-        xspace.hostnames_size() ? xspace.hostnames(0) : xspace_path;
+        xspace->hostnames_size() ? xspace->hostnames(0) : host_name_from_file;
     builder.Add(host_name, host_plane);
   }
   builder.Finalize();
-  return std::make_pair(combined_tf_data_stats.SerializeAsString(), true);
+  return combined_tf_data_stats.SerializeAsString();
+}
+
+StatusOr<std::string> ConvertMultiXSpacesToOpProfileViewer(
+    const SessionSnapshot& session_snapshot) {
+  OpStatsOptions options;
+  options.generate_op_metrics_db = true;
+  OpStats combined_op_stats;
+  TF_RETURN_IF_ERROR(ConvertMultiXSpacesToCombinedOpStats(
+      session_snapshot, options, &combined_op_stats));
+
+  tensorflow::profiler::op_profile::Profile profile;
+  ConvertOpStatsToOpProfile(
+      combined_op_stats,
+      ParseHardwareType(combined_op_stats.run_environment().device_type()),
+      profile);
+  std::string json_output;
+  protobuf::util::JsonPrintOptions opts;
+  opts.always_print_primitive_fields = true;
+
+  auto encode_status =
+      protobuf::util::MessageToJsonString(profile, &json_output, opts);
+  if (!encode_status.ok()) {
+    const auto& error_message = encode_status.message();
+    return errors::Internal(
+        "Could not convert op profile proto to json. Error: ",
+        absl::string_view(error_message.data(), error_message.length()));
+  }
+  return json_output;
+}
+
+StatusOr<std::string> PreprocessXSpace(
+    const SessionSnapshot& session_snapshot) {
+  if (session_snapshot.XSpaceSize() != 1) {
+    return errors::InvalidArgument(
+        "PreprocessXSpace tool expects only 1 XSpace path but gets ",
+        session_snapshot.XSpaceSize());
+  }
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
+                      session_snapshot.GetXSpace(0));
+  PreprocessSingleHostXSpace(xspace.get(), /*step_grouping=*/true,
+                             /*derived_timeline=*/true);
+  return xspace->SerializeAsString();
+}
+
+StatusOr<std::string> ConvertDcnCollectiveStatsToToolData(
+    const SessionSnapshot& session_snapshot, const ToolOptions& options) {
+  // <options> must provide a host_name field.
+  std::optional<std::string> hostname =
+      GetParam<std::string>(options, "host_name");
+  if (!hostname.has_value() || hostname->empty()) {
+    return absl::InvalidArgumentError(
+        "Cannot find host_name from options for dcn_collective_stats tool.");
+  }
+
+  // Load DcnSlackAnalysis for a host.
+  TF_ASSIGN_OR_RETURN(
+      DcnSlackAnalysis dcnSlackAnalysis,
+      GetDcnSlackAnalysisByHostName(session_snapshot, hostname.value()));
+
+  return dcnSlackAnalysis.SerializeAsString();
 }
 
 }  // namespace
 
-std::pair<std::string, bool> ConvertMultiXSpacesToToolData(
-    const std::vector<std::string>& xspace_paths,
-    const absl::string_view tool_name) {
-  if (tool_name == "trace_viewer") {
-    return ConvertXSpaceToTraceEvents(xspace_paths);
+StatusOr<std::string> ConvertMultiXSpacesToToolData(
+    const SessionSnapshot& session_snapshot, const absl::string_view tool_name,
+    const ToolOptions& options) {
+  LOG(INFO) << "serving tool: " << tool_name
+            << " with options: " << DebugString(options);
+  if (tool_name == "trace_viewer" || tool_name == "trace_viewer@") {
+    return ConvertXSpaceToTraceEvents(session_snapshot, tool_name, options);
   } else if (tool_name == "overview_page") {
-    return ConvertMultiXSpacesToOverviewPage(xspace_paths);
+    return ConvertMultiXSpacesToOverviewPage(session_snapshot);
   } else if (tool_name == "input_pipeline_analyzer") {
-    return ConvertMultiXSpacesToInputPipeline(xspace_paths);
+    return ConvertMultiXSpacesToInputPipeline(session_snapshot);
   } else if (tool_name == "tensorflow_stats") {
-    return ConvertMultiXSpacesToTfStats(xspace_paths);
+    return ConvertMultiXSpacesToTfStats(session_snapshot);
   } else if (tool_name == "kernel_stats") {
-    return ConvertMultiXSpacesToKernelStats(xspace_paths);
+    return ConvertMultiXSpacesToKernelStats(session_snapshot);
   } else if (tool_name == "memory_profile") {
-    return ConvertXSpaceToMemoryProfile(xspace_paths);
+    return ConvertXSpaceToMemoryProfile(session_snapshot);
   } else if (tool_name == "pod_viewer") {
-    return ConvertMultiXSpacesToPodViewer(xspace_paths);
+    return ConvertMultiXSpacesToPodViewer(session_snapshot);
   } else if (tool_name == "tf_data_bottleneck_analysis") {
-    return ConvertMultiXSpacesToTfDataBottleneckAnalysis(xspace_paths);
+    return ConvertMultiXSpacesToTfDataBottleneckAnalysis(session_snapshot);
+  } else if (tool_name == "op_profile") {
+    return ConvertMultiXSpacesToOpProfileViewer(session_snapshot);
+  } else if (tool_name == "memory_viewer" || tool_name == "graph_viewer") {
+    return ConvertHloProtoToToolData(session_snapshot, tool_name, options);
+  } else if (tool_name == "dcn_collective_stats") {
+    return ConvertDcnCollectiveStatsToToolData(session_snapshot, options);
+  } else if (tool_name == "tool_names") {
+    return GetAvailableToolNames(session_snapshot);
+  } else if (tool_name == "_xplane.pb") {  // internal test only.
+    return PreprocessXSpace(session_snapshot);
   } else {
-    LOG(WARNING) << "Can not find tool: " << tool_name << ". Please update to "
-                 << "the latest version of Tensorflow.";
-    return std::make_pair("", false);
+    return errors::InvalidArgument(
+        "Can not find tool: ", tool_name,
+        ". Please update to the latest version of Tensorflow.");
   }
 }
 

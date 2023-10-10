@@ -20,6 +20,7 @@ limitations under the License.
 #include <initializer_list>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
@@ -103,7 +104,7 @@ class OpsTestBase : public ::testing::Test {
   // Like AddInput but takes in an explicit arrayslice of data.
   template <typename T>
   void AddInputFromArray(const TensorShape& shape,
-                         const gtl::ArraySlice<T>& data) {
+                         const gtl::ArraySlice<T> data) {
     test::FillValues<T>(AddInput(DataTypeToEnum<T>::v(), shape), data);
   }
 
@@ -148,9 +149,18 @@ class OpsTestBase : public ::testing::Test {
 
   Allocator* allocator();
 
+  OpKernel* op_kernel();
+
   const DataTypeVector& output_types() const;
 
+  void set_session_metadata(SessionMetadata session_metadata) {
+    session_metadata_ = std::move(session_metadata);
+  }
+
+  const SessionMetadata& session_metadata() const { return session_metadata_; }
+
  protected:
+  void CreateContext();
   Tensor* AddInput(DataType dtype, const TensorShape& shape);
   void AddResourceInputInternal(const std::string& container_name,
                                 const std::string& name,
@@ -177,6 +187,10 @@ class OpsTestBase : public ::testing::Test {
   // Copies of the outputs in unified memory (host and device accessible).
   std::vector<Tensor*> managed_outputs_;
 
+  // AllocatorAttributes for the allocators of the outputs.
+  std::vector<AllocatorAttributes> out_alloc_attrs_;
+  checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper_;
+  CancellationManager default_cancellation_manager_;
   std::unique_ptr<OpKernelContext::Params> params_;
   std::unique_ptr<OpKernelContext> context_;
   // Unified memory allocator, only used when running on GPU.
@@ -186,8 +200,11 @@ class OpsTestBase : public ::testing::Test {
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
+  SessionMetadata session_metadata_;
+
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(OpsTestBase);
+  OpsTestBase(const OpsTestBase&) = delete;
+  void operator=(const OpsTestBase&) = delete;
 };
 
 }  // namespace tensorflow

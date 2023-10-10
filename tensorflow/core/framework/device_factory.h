@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -30,9 +31,21 @@ struct SessionOptions;
 class DeviceFactory {
  public:
   virtual ~DeviceFactory() {}
+  static void Register(const std::string& device_type,
+                       std::unique_ptr<DeviceFactory> factory, int priority,
+                       bool is_pluggable_device);
+  ABSL_DEPRECATED("Use the `Register` function above instead")
   static void Register(const std::string& device_type, DeviceFactory* factory,
-                       int priority);
+                       int priority, bool is_pluggable_device) {
+    Register(device_type, std::unique_ptr<DeviceFactory>(factory), priority,
+             is_pluggable_device);
+  }
   static DeviceFactory* GetFactory(const std::string& device_type);
+
+  // Append to "*devices" CPU devices.
+  static Status AddCpuDevices(const SessionOptions& options,
+                              const std::string& name_prefix,
+                              std::vector<std::unique_ptr<Device>>* devices);
 
   // Append to "*devices" all suitable devices, respecting
   // any device type specific properties/counts listed in "options".
@@ -55,6 +68,10 @@ class DeviceFactory {
   // CPU is are added first.
   static Status ListAllPhysicalDevices(std::vector<string>* devices);
 
+  // Iterate through all device factories and build a list of all of the
+  // possible pluggable physical devices.
+  static Status ListPluggablePhysicalDevices(std::vector<string>* devices);
+
   // Get details for a specific device among all device factories.
   // 'device_index' indexes into devices from ListAllPhysicalDevices.
   static Status GetAnyDeviceDetails(
@@ -68,7 +85,7 @@ class DeviceFactory {
   // into devices from ListPhysicalDevices.
   virtual Status GetDeviceDetails(int device_index,
                                   std::unordered_map<string, string>* details) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Most clients should call AddDevices() instead.
@@ -89,6 +106,10 @@ class DeviceFactory {
   // REGISTER_LOCAL_DEVICE_FACTORY to see the existing priorities used
   // for built-in devices.
   static int32 DevicePriority(const std::string& device_type);
+
+  // Returns true if 'device_type' is registered from plugin. Returns false if
+  // 'device_type' is a first-party device.
+  static bool IsPluggableDevice(const std::string& device_type);
 };
 
 namespace dfactory {
@@ -127,7 +148,8 @@ class Registrar {
   // ThreadPoolDevice: 60
   // Default: 50
   explicit Registrar(const std::string& device_type, int priority = 50) {
-    DeviceFactory::Register(device_type, new Factory(), priority);
+    DeviceFactory::Register(device_type, std::make_unique<Factory>(), priority,
+                            /*is_pluggable_device*/ false);
   }
 };
 
@@ -140,8 +162,7 @@ class Registrar {
 #define INTERNAL_REGISTER_LOCAL_DEVICE_FACTORY(device_type, device_factory, \
                                                ctr, ...)                    \
   static ::tensorflow::dfactory::Registrar<device_factory>                  \
-      INTERNAL_REGISTER_LOCAL_DEVICE_FACTORY_NAME(ctr)(device_type,         \
-                                                       ##__VA_ARGS__)
+  INTERNAL_REGISTER_LOCAL_DEVICE_FACTORY_NAME(ctr)(device_type, ##__VA_ARGS__)
 
 // __COUNTER__ must go through another macro to be properly expanded
 #define INTERNAL_REGISTER_LOCAL_DEVICE_FACTORY_NAME(ctr) ___##ctr##__object_

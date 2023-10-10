@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for templates module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import imp
 
 from absl.testing import parameterized
@@ -221,7 +217,7 @@ class TemplatesTest(test.TestCase, parameterized.TestCase):
         template, foo=parser.parse_expression('foo(a[b]).bar'))[0]
     function_call_arg = node.body[0].targets[0].value.args[0]
     self.assertIsInstance(function_call_arg.ctx, gast.Load)
-    self.assertIsInstance(function_call_arg.slice.value.ctx, gast.Load)
+    self.assertIsInstance(function_call_arg.slice.ctx, gast.Load)
 
   def test_replace_call_keyword(self):
     template = """

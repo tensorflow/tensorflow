@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
+namespace {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // These tests are copied from non_max_suppression_op_test.cc file and modified
@@ -41,17 +42,18 @@ namespace tensorflow {
 
 class NonMaxSuppressionV2GPUOpTest : public OpsTestBase {
  protected:
-  void MakeOp() {
+  void MakeOp(DataType input_dtype = DT_FLOAT,
+              DataType threshold_dtype = DT_FLOAT) {
     SetDevice(DEVICE_GPU,
               std::unique_ptr<tensorflow::Device>(DeviceFactory::NewDevice(
                   "GPU", {}, "/job:a/replica:0/task:0")));
 
     TF_EXPECT_OK(
         NodeDefBuilder("non_max_suppression_op_gpu", "NonMaxSuppressionV2")
-            .Input(FakeInput(DT_FLOAT))
-            .Input(FakeInput(DT_FLOAT))
+            .Input(FakeInput(input_dtype))
+            .Input(FakeInput(input_dtype))
             .Input(FakeInput(DT_INT32))
-            .Input(FakeInput(DT_FLOAT))
+            .Input(FakeInput(threshold_dtype))
             .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
   }
@@ -66,6 +68,22 @@ TEST_F(NonMaxSuppressionV2GPUOpTest, TestSelectFromThreeClusters) {
   AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
   AddInputFromArray<int>(TensorShape({}), {3});
   AddInputFromArray<float>(TensorShape({}), {.5f});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_INT32, TensorShape({3}));
+  test::FillValues<int>(&expected, {3, 0, 5});
+  test::ExpectTensorEqual<int>(expected, *GetOutput(0));
+}
+
+TEST_F(NonMaxSuppressionV2GPUOpTest, DifferentInputAndThresholdTypesWorks) {
+  MakeOp(/*input_dtype=*/DT_FLOAT, /*threshold_dtype=*/DT_HALF);
+  AddInputFromArray<float>(
+      TensorShape({6, 4}),
+      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
+       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
+  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
+  AddInputFromArray<int>(TensorShape({}), {3});
+  AddInputFromArray<Eigen::half>(TensorShape({}), {Eigen::half(0.5)});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_INT32, TensorShape({3}));
@@ -215,18 +233,18 @@ TEST_F(NonMaxSuppressionV2GPUOpTest, TestEmptyInput) {
 
 class NonMaxSuppressionV3GPUOpTest : public OpsTestBase {
  protected:
-  void MakeOp() {
-    // TODO(laigd): enable the op once b/140816449 is fixed.
-    // SetDevice(DEVICE_GPU,
-    //           std::unique_ptr<tensorflow::Device>(DeviceFactory::NewDevice(
-    //               "GPU", {}, "/job:a/replica:0/task:0")));
+  void MakeOp(DataType input_dtype = DT_FLOAT,
+              DataType threshold_dtype = DT_FLOAT) {
+    SetDevice(DEVICE_GPU,
+              std::unique_ptr<tensorflow::Device>(DeviceFactory::NewDevice(
+                  "GPU", {}, "/job:a/replica:0/task:0")));
 
     TF_EXPECT_OK(NodeDefBuilder("non_max_suppression_op", "NonMaxSuppressionV3")
-                     .Input(FakeInput(DT_FLOAT))
-                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(input_dtype))
+                     .Input(FakeInput(input_dtype))
                      .Input(FakeInput(DT_INT32))
-                     .Input(FakeInput(DT_FLOAT))
-                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(threshold_dtype))
+                     .Input(FakeInput(threshold_dtype))
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
   }
@@ -260,6 +278,23 @@ TEST_F(NonMaxSuppressionV3GPUOpTest,
   AddInputFromArray<int>(TensorShape({}), {3});
   AddInputFromArray<float>(TensorShape({}), {0.5f});
   AddInputFromArray<float>(TensorShape({}), {0.4f});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_INT32, TensorShape({2}));
+  test::FillValues<int>(&expected, {3, 0});
+  test::ExpectTensorEqual<int>(expected, *GetOutput(0));
+}
+
+TEST_F(NonMaxSuppressionV3GPUOpTest, DifferentInputAndThresholdTypesWorks) {
+  MakeOp(/*input_dtype=*/DT_FLOAT, /*threshold_dtype=*/DT_HALF);
+  AddInputFromArray<float>(
+      TensorShape({6, 4}),
+      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
+       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
+  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
+  AddInputFromArray<int>(TensorShape({}), {3});
+  AddInputFromArray<Eigen::half>(TensorShape({}), {Eigen::half(0.5)});
+  AddInputFromArray<Eigen::half>(TensorShape({}), {Eigen::half(0.4)});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected(allocator(), DT_INT32, TensorShape({2}));
@@ -432,18 +467,18 @@ TEST_F(NonMaxSuppressionV3GPUOpTest, TestEmptyInput) {
 
 class NonMaxSuppressionV4GPUOpTest : public OpsTestBase {
  protected:
-  void MakeOp() {
-    // TODO(b/143610288): reenable this once the bug is fixed.
-    // SetDevice(DEVICE_GPU,
-    //           std::unique_ptr<tensorflow::Device>(DeviceFactory::NewDevice(
-    //               "GPU", {}, "/job:a/replica:0/task:0")));
+  void MakeOp(DataType input_dtype = DT_FLOAT,
+              DataType threshold_dtype = DT_FLOAT) {
+    SetDevice(DEVICE_GPU,
+              std::unique_ptr<tensorflow::Device>(DeviceFactory::NewDevice(
+                  "GPU", {}, "/job:a/replica:0/task:0")));
 
     TF_EXPECT_OK(NodeDefBuilder("non_max_suppression_op", "NonMaxSuppressionV4")
-                     .Input(FakeInput(DT_FLOAT))
-                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(input_dtype))
+                     .Input(FakeInput(input_dtype))
                      .Input(FakeInput(DT_INT32))
-                     .Input(FakeInput(DT_FLOAT))
-                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(threshold_dtype))
+                     .Input(FakeInput(threshold_dtype))
                      .Attr("pad_to_max_output_size", true)
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
@@ -487,6 +522,25 @@ TEST_F(NonMaxSuppressionV4GPUOpTest,
   test::ExpectTensorEqual<int>(expected_num_valid, *GetOutput(1));
 }
 
+TEST_F(NonMaxSuppressionV4GPUOpTest, DifferentInputAndThresholdTypesWorks) {
+  MakeOp(/*input_dtype=*/DT_FLOAT, /*threshold_dtype=*/DT_HALF);
+  AddInputFromArray<float>(
+      TensorShape({6, 4}),
+      {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
+       0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
+  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
+  AddInputFromArray<int>(TensorShape({}), {6});
+  AddInputFromArray<Eigen::half>(TensorShape({}), {Eigen::half(0.5)});
+  AddInputFromArray<Eigen::half>(TensorShape({}), {Eigen::half(0.4)});
+  TF_ASSERT_OK(RunOpKernel());
+
+  const auto expected_indices = test::AsTensor<int>({3, 0, 0, 0, 0, 0});
+  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(0));
+  Tensor expected_num_valid = test::AsScalar<int>(2);
+  test::ExpectTensorEqual<int>(expected_num_valid, *GetOutput(1));
+}
+
 #endif
 
+}  // namespace
 }  // namespace tensorflow

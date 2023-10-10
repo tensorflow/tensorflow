@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "hexagon/hexagon_nn_ops.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/hexagon/builders/op_factory.h"
 #include <farmhash.h>
 
@@ -159,6 +159,10 @@ OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type,
       return CreatePackBuilder(this, OP_QuantizedPack_8);
     case kTfLiteBuiltinStridedSlice:
       return CreateStridedSliceBuilder(this, OP_QuantizedStridedSlice_8);
+    case kTfLiteBuiltinSquaredDifference:
+      return CreateSquaredDifferenceOpBuilder(this, OP_QuantizedSub_8p8to8);
+    case kTfLiteBuiltinRsqrt:
+      return CreateRSqrtOpBuilder(this, OP_QuantizedSqrt_8);
     default:
       context_->ReportError(context_, "Op not supported: %d", op_type);
       return nullptr;

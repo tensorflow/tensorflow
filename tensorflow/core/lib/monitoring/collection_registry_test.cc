@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
 
+#include <memory>
+
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/percentile_sampler.h"
@@ -45,7 +47,7 @@ void EmptyCollectionFunction(MetricCollectorGetter getter) {}
 
 TEST(CollectionRegistryTest, RegistrationUnregistration) {
   auto* collection_registry = CollectionRegistry::Default();
-  const MetricDef<MetricKind::kCumulative, int64, 0> metric_def0(
+  const MetricDef<MetricKind::kCumulative, int64_t, 0> metric_def0(
       "/tensorflow/metric0", "An example metric with no labels.");
   const MetricDef<MetricKind::kGauge, HistogramProto, 1> metric_def1(
       "/tensorflow/metric1", "An example metric with one label.", "LabelName");
@@ -69,14 +71,14 @@ TEST(CollectionRegistryTest, RegistrationUnregistration) {
 
 TEST(CollectionRegistryDeathTest, DuplicateRegistration) {
   auto* collection_registry = CollectionRegistry::Default();
-  const MetricDef<MetricKind::kCumulative, int64, 0> metric_def(
+  const MetricDef<MetricKind::kCumulative, int64_t, 0> metric_def(
       "/tensorflow/metric", "An example metric with no labels.");
 
   auto handle =
       collection_registry->Register(&metric_def, EmptyCollectionFunction);
   auto duplicate_handle =
       collection_registry->Register(&metric_def, EmptyCollectionFunction);
-  EXPECT_EQ(duplicate_handle, nullptr);
+  EXPECT_NE(duplicate_handle, nullptr);
 }
 
 TEST(CollectMetricsTest, Counter) {
@@ -172,9 +174,9 @@ TEST(CollectMetricsTest, Gauge) {
       std::unique_ptr<Gauge<string, 2>>(Gauge<string, 2>::New(
           "/tensorflow/test/string_gauge_with_labels",
           "String gauge with labels.", "MyLabel0", "MyLabel1"));
-  auto inteter_gauge_without_labels = std::unique_ptr<Gauge<int64, 0>>(
-      Gauge<int64, 0>::New("/tensorflow/test/integer_gauge_without_labels",
-                           "Integer gauge without labels."));
+  auto inteter_gauge_without_labels = std::unique_ptr<Gauge<int64_t, 0>>(
+      Gauge<int64_t, 0>::New("/tensorflow/test/integer_gauge_without_labels",
+                             "Integer gauge without labels."));
 
   string_gauge_with_labels->GetCell("Label00", "Label10")->Set("test1");
   string_gauge_with_labels->GetCell("Label01", "Label11")->Set("test2");
@@ -477,7 +479,7 @@ TEST(CollectionRegistryTest, WriteTimestamps) {
 
   fake_clock_env.AdvanceByMillis(25);
   {
-    const MetricDef<MetricKind::kCumulative, int64, 0> cumulative_metric(
+    const MetricDef<MetricKind::kCumulative, int64_t, 0> cumulative_metric(
         "/tensorflow/cumulative/metric", "An example metric with no labels.");
     auto handle = collection_registry->Register(
         &cumulative_metric, [&](MetricCollectorGetter getter) {
@@ -494,7 +496,7 @@ TEST(CollectionRegistryTest, WriteTimestamps) {
     EXPECT_EQ(100, point_set.points[0]->end_timestamp_millis);
   }
   {
-    const MetricDef<MetricKind::kGauge, int64, 0> gauge_metric(
+    const MetricDef<MetricKind::kGauge, int64_t, 0> gauge_metric(
         "/tensorflow/gauge/metric", "An example metric with no labels.");
     auto handle = collection_registry->Register(
         &gauge_metric, [&](MetricCollectorGetter getter) {

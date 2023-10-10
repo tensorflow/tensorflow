@@ -32,8 +32,8 @@ namespace {
 constexpr char kAlgorithm[] = "algorithm";
 constexpr char kModelDataset[] = "ModelDataset";
 
-constexpr int64 HILL_CLIMB = 0;
-constexpr int64 GRADIENT_DESCENT = 1;
+constexpr int64_t HILL_CLIMB = 0;
+constexpr int64_t GRADIENT_DESCENT = 1;
 
 }  // namespace
 
@@ -44,15 +44,14 @@ Status EnableGradientDescent::OptimizeAndCollectStats(
   if (!autotune_) {
     VLOG(1) << "The optimization enable_gradient_descent is not applied if "
                "autotune is off.";
-    return Status::OK();
+    return OkStatus();
   }
   MutableGraphView graph(output);
 
   // If the GrapplerItem is derived from a FunctionDef, we don't optimize it,
   // because we only want to enable gradient descent on the main dataset
   // pipeline.
-  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph))
-    return Status::OK();
+  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph)) return OkStatus();
 
   int index = graph_utils::FindGraphNodeWithOp(kModelDataset, *output);
   NodeDef& model_node = *(output->mutable_node(index));
@@ -62,13 +61,7 @@ Status EnableGradientDescent::OptimizeAndCollectStats(
     stats->num_changes++;
   }
 
-  return Status::OK();
-}
-
-void EnableGradientDescent::Feedback(Cluster* cluster, const GrapplerItem& item,
-                                     const GraphDef& optimize_output,
-                                     double result) {
-  // no-op
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(EnableGradientDescent, "enable_gradient_descent");

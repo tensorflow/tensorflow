@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/optimize_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
 
@@ -34,7 +34,7 @@ class OptimizeDatasetParams : public DatasetParams {
                       std::move(node_name)),
         optimizations_(std::move(optimizations)),
         optimization_configs_(std::move(optimization_configs)) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
                                    input_dataset_params.iterator_prefix());
@@ -47,7 +47,7 @@ class OptimizeDatasetParams : public DatasetParams {
   Status GetInputNames(std::vector<string>* input_names) const override {
     *input_names = {OptimizeDatasetOp::kInputDataset,
                     OptimizeDatasetOp::kOptimizations};
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -55,7 +55,7 @@ class OptimizeDatasetParams : public DatasetParams {
         {OptimizeDatasetOp::kOutputShapes, output_shapes_},
         {OptimizeDatasetOp::kOutputTypes, output_dtypes_},
         {OptimizeDatasetOp::kOptimizationConfigs, optimization_configs_}};
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override {
@@ -83,8 +83,8 @@ TEST_F(OptimizeDatasetOpTest, NoopElimination) {
                             /*output_shapes=*/{PartialTensorShape({})},
                             /*optimization_configs=*/{},
                             /*node_name=*/kNodeName);
-  std::vector<Tensor> expected_outputs =
-      CreateTensors<int64>(TensorShape({}), {{-3}, {-2}, {-1}, {0}, {1}, {2}});
+  std::vector<Tensor> expected_outputs = CreateTensors<int64_t>(
+      TensorShape({}), {{-3}, {-2}, {-1}, {0}, {1}, {2}});
 
   TF_ASSERT_OK(Initialize(optimize_dataset_params));
   TF_EXPECT_OK(CheckIteratorGetNext(expected_outputs, /*compare_order=*/true));

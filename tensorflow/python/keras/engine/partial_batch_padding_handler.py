@@ -14,15 +14,11 @@
 # ==============================================================================
 """Utility object to handler partial batches for TPUStrategy."""
 # pylint: disable=protected-access
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
-import six
 
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
 from tensorflow.python.util import nest
 
@@ -44,22 +40,22 @@ class PartialBatchPaddingHandler(object):
 
     def _find_any_tensor(batch_features):
       tensors = [
-          x for x in nest.flatten(batch_features) if tensor_util.is_tensor(x)
+          x for x in nest.flatten(batch_features) if tensor_util.is_tf_type(x)
       ]
       if not tensors:
         raise ValueError('Cannot find any Tensor in features dict.')
       return tensors[0]
 
-    return K.cast(K.shape(_find_any_tensor(dataset_batch))[0],
-                  dtype='int64')
+    return backend.cast(backend.shape(_find_any_tensor(dataset_batch))[0],
+                        dtype='int64')
 
   def update_mask(self, padding_mask, dataset_batch):
     """Calculate and cache the amount of padding required for a batch."""
     original_batch_size = self.get_real_batch_size(dataset_batch)
     missing_count = self.padded_batch_size - original_batch_size
-    mask = K.concatenate([array_ops.ones(original_batch_size),
-                          array_ops.zeros(missing_count)], axis=0)
-    return K.concatenate([padding_mask, mask], axis=0)
+    mask = backend.concatenate([array_ops.ones(original_batch_size),
+                                array_ops.zeros(missing_count)], axis=0)
+    return backend.concatenate([padding_mask, mask], axis=0)
 
   def pad_batch(self, *dataset_batch_elements):
     """Pads out the batch dimension of a tensor to the complete batch size."""
@@ -67,7 +63,7 @@ class PartialBatchPaddingHandler(object):
       """Helper function to pad nested data within each batch elements."""
       padded_dict_batch = {}
       if isinstance(batch, dict):
-        for key, value in six.iteritems(batch):
+        for key, value in batch.items():
           padded_dict_batch[key] = _pad(value)
         return padded_dict_batch
 
@@ -75,7 +71,7 @@ class PartialBatchPaddingHandler(object):
       assert rank > 0
       missing_count = (self.padded_batch_size -
                        self.get_real_batch_size(batch))
-      padding = K.stack([[0, missing_count]] + [[0, 0]] * (rank - 1))
+      padding = backend.stack([[0, missing_count]] + [[0, 0]] * (rank - 1))
       return array_ops.pad(batch, padding, 'constant')
 
     if len(dataset_batch_elements) == 1:
@@ -88,7 +84,7 @@ class PartialBatchPaddingHandler(object):
 
   def apply_mask(self, prediction_result):
     """Removes prediction output that corresponds to padded input."""
-    padding_mask = K.get_value(self.padding_mask)
+    padding_mask = backend.get_value(self.padding_mask)
     assert len(padding_mask.shape) == 1
 
     if len(self.output_shape) == 1:

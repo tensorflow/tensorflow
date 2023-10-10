@@ -14,28 +14,30 @@
 # ==============================================================================
 """Create a blockwise lower-triangular operator from `LinearOperators`."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
-from tensorflow.python.ops.linalg import linear_operator_algebra
+from tensorflow.python.ops.linalg import linear_operator_addition
+from tensorflow.python.ops.linalg import linear_operator_full_matrix
+from tensorflow.python.ops.linalg import linear_operator_identity
 from tensorflow.python.ops.linalg import linear_operator_util
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = ["LinearOperatorBlockLowerTriangular"]
 
 
 @tf_export("linalg.LinearOperatorBlockLowerTriangular")
+@linear_operator.make_composite_tensor
 class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
   """Combines `LinearOperators` into a blockwise lower-triangular matrix.
 
@@ -247,8 +249,8 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
     operators = [list(row) for row in operators]
 
     if not operators:
-      raise ValueError(
-          "Expected a non-empty list of operators. Found: {}".format(operators))
+      raise ValueError(f"Argument `operators` must be a list of >=1 operators. "
+                       f"Received: {operators}.")
     self._operators = operators
     self._diagonal_operators = [row[-1] for row in operators]
 
@@ -272,9 +274,8 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
     for i, row in enumerate(self.operators):
       if len(row) != i + 1:
         raise ValueError(
-            "The `i`th row-partition (`i`th element of `operators`) must "
-            "contain `i` blocks (`LinearOperator` instances). Row {} contains "
-            "{} blocks.".format(i + 1, len(row)))
+            f"Argument `operators[{i}]` must contain `{i + 1}` blocks. "
+            f"Received: {len(row)} blocks.")
 
   def _validate_operator_dimensions(self):
     """Check that `operators` have compatible dimensions."""
@@ -295,40 +296,48 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
         if (op.domain_dimension is not None and
             above_op.domain_dimension is not None):
           if op.domain_dimension != above_op.domain_dimension:
-            raise ValueError(
-                "Operator domain dimensions {} and {} must be equal to fit a "
-                "blockwise structure.".format(
-                    op.domain_dimension, above_op.domain_dimension))
+            raise ValueError(f"Argument `operators[{i}][{j}].domain_dimension` "
+                             f"({op.domain_dimension}) must be the same as "
+                             f"`operators[{i-1}][{j}].domain_dimension` "
+                             f"({above_op.domain_dimension}).")
         if (op.range_dimension is not None and
             right_op.range_dimension is not None):
           if op.range_dimension != right_op.range_dimension:
-            raise ValueError(
-                "Operator range dimensions {} and {} must be equal to fit a "
-                "blockwise structure.".format(
-                    op.range_dimension, right_op.range_dimension))
+            raise ValueError(f"Argument `operators[{i}][{j}].range_dimension` "
+                             f"({op.range_dimension}) must be the same as "
+                             f"`operators[{i}][{j + 1}].range_dimension` "
+                             f"({right_op.range_dimension}).")
 
   # pylint: disable=g-bool-id-comparison
   def _validate_non_singular(self, is_non_singular):
     if all(op.is_non_singular for op in self._diagonal_operators):
       if is_non_singular is False:
         raise ValueError(
-            "A blockwise lower-triangular operator with non-singular operators "
-            " on the main diagonal is always non-singular.")
+            f"A blockwise lower-triangular operator with non-singular "
+            f"operators on the main diagonal is always non-singular. "
+            f"Expected argument `is_non_singular` to be True. "
+            f"Received: {is_non_singular}.")
       return True
     if any(op.is_non_singular is False for op in self._diagonal_operators):
       if is_non_singular is True:
         raise ValueError(
-            "A blockwise lower-triangular operator with a singular operator on "
-            "the main diagonal is always singular.")
+            f"A blockwise lower-triangular operator with a singular operator "
+            f"on the main diagonal is always singular. Expected argument "
+            f"`is_non_singular` to be True. Received: {is_non_singular}.")
       return False
 
   def _validate_square(self, is_square):
     if is_square is False:
-      raise ValueError("`LinearOperatorBlockLowerTriangular` must be square.")
-    if any(op.is_square is False for op in self._diagonal_operators):
-      raise ValueError(
-          "Matrices on the diagonal (the final elements of each row-partition "
-          "in the `operators` list) must be square.")
+      raise ValueError(f"`LinearOperatorBlockLowerTriangular` must be square. "
+                       f"Expected argument `is_square` to be True. "
+                       f"Received: {is_square}.")
+    for i, op in enumerate(self._diagonal_operators):
+      if op.is_square is False:
+        raise ValueError(
+            f"Matrices on the diagonal (the final elements of each "
+            f"row-partition in the `operators` list) must be square. Expected "
+            f"argument `operators[{i}][-1].is_square` to be True. "
+            f"Received: {op.is_square}.")
     return True
   # pylint: enable=g-bool-id-comparison
 
@@ -376,12 +385,13 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
   def _shape_tensor(self):
     # Avoid messy broadcasting if possible.
     if self.shape.is_fully_defined():
-      return ops.convert_to_tensor_v2_with_dispatch(
-          self.shape.as_list(), dtype=dtypes.int32, name="shape")
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          self.shape.as_list(), dtype=dtypes.int32, name="shape"
+      )
 
     domain_dimension = sum(self._block_domain_dimension_tensors())
     range_dimension = sum(self._block_range_dimension_tensors())
-    matrix_shape = array_ops.stack([domain_dimension, range_dimension])
+    matrix_shape = array_ops_stack.stack([domain_dimension, range_dimension])
 
     batch_shape = self.operators[0][0].batch_shape_tensor()
     for row in self.operators[1:]:
@@ -390,6 +400,94 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
             batch_shape, operator.batch_shape_tensor())
 
     return array_ops.concat((batch_shape, matrix_shape), 0)
+
+  def _linop_inverse(self) -> "LinearOperatorBlockLowerTriangular":
+    """Inverse of LinearOperatorBlockLowerTriangular.
+
+     We recursively apply the identity:
+
+     ```none
+     |A 0|'  =  |    A'  0|
+     |B C|      |-C'BA' C'|
+     ```
+
+     where `A` is n-by-n, `B` is m-by-n,
+     `C` is m-by-m, and `'` denotes inverse.
+
+     This identity can be verified through multiplication:
+
+     ```none
+     |A 0||    A'  0|
+     |B C||-C'BA' C'|
+
+      = |       AA'   0|
+       |BA'-CC'BA' CC'|
+
+     = |I 0|
+       |0 I|
+    ```
+    Returns:
+      A 'LinearOperatorBlockLowerTriangular'.
+    """
+    if len(self.operators) == 1:
+      return (LinearOperatorBlockLowerTriangular(
+          [[self.operators[0][0].inverse()]],
+          is_non_singular=self.is_non_singular,
+          is_self_adjoint=self.is_self_adjoint,
+          is_positive_definite=(self.
+                                is_positive_definite),
+          is_square=True))
+
+    blockwise_dim = len(self.operators)
+
+    # Calculate the inverse of the `LinearOperatorBlockLowerTriangular`
+    # representing all but the last row of `self` with
+    # a recursive call (the matrix `A'` in the docstring definition).
+    upper_left_inverse = (
+        LinearOperatorBlockLowerTriangular(self.operators[:-1]).inverse())
+
+    bottom_row = self.operators[-1]
+    bottom_right_inverse = bottom_row[-1].inverse()
+
+    # Find the bottom row of the inverse (equal to `[-C'BA', C']`
+    # in the docstring definition, where `C` is the bottom-right operator of
+    # `self` and `B` is the set of operators in the
+    # bottom row excluding `C`). To find `-C'BA'`, we first iterate over the
+    # column partitions of `A'`.
+    inverse_bottom_row = []
+    for i in range(blockwise_dim - 1):
+      # Find the `i`-th block of `BA'`.
+      blocks = []
+      for j in range(i, blockwise_dim - 1):
+        result = bottom_row[j].matmul(upper_left_inverse.operators[j][i])
+        if not any(
+            isinstance(result, op_type)
+            for op_type in linear_operator_addition.SUPPORTED_OPERATORS
+        ):
+          result = linear_operator_full_matrix.LinearOperatorFullMatrix(
+              result.to_dense())
+        blocks.append(result)
+
+      summed_blocks = linear_operator_addition.add_operators(blocks)
+      assert len(summed_blocks) == 1
+      block = summed_blocks[0]
+
+      # Find the `i`-th block of `-C'BA'`.
+      block = bottom_right_inverse.matmul(block)
+      block = linear_operator_identity.LinearOperatorScaledIdentity(
+          num_rows=bottom_right_inverse.domain_dimension_tensor(),
+          multiplier=math_ops.cast(-1, dtype=block.dtype)).matmul(block)
+      inverse_bottom_row.append(block)
+
+    # `C'` is the last block of the inverted linear operator.
+    inverse_bottom_row.append(bottom_right_inverse)
+
+    return (LinearOperatorBlockLowerTriangular(
+        upper_left_inverse.operators + [inverse_bottom_row],
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=(self.is_positive_definite),
+        is_square=True))
 
   def matmul(self, x, adjoint=False, adjoint_arg=False, name="matmul"):
     """Transform [batch] matrix `x` with left multiplication:  `x --> Ax`.
@@ -433,22 +531,22 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
             "Operators are incompatible. Expected `x` to have dimension"
             " {} but got {}.".format(
                 left_operator.domain_dimension, right_operator.range_dimension))
-      with self._name_scope(name):
-        return linear_operator_algebra.matmul(left_operator, right_operator)
+      with self._name_scope(name):  # pylint: disable=not-callable
+        return self._linop_matmul(left_operator, right_operator)
 
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       arg_dim = -1 if adjoint_arg else -2
       block_dimensions = (self._block_range_dimensions() if adjoint
                           else self._block_domain_dimensions())
       if linear_operator_util.arg_is_blockwise(block_dimensions, x, arg_dim):
         for i, block in enumerate(x):
           if not isinstance(block, linear_operator.LinearOperator):
-            block = ops.convert_to_tensor_v2_with_dispatch(block)
+            block = tensor_conversion.convert_to_tensor_v2_with_dispatch(block)
             self._check_input_dtype(block)
             block_dimensions[i].assert_is_compatible_with(block.shape[arg_dim])
             x[i] = block
       else:
-        x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
+        x = tensor_conversion.convert_to_tensor_v2_with_dispatch(x, name="x")
         self._check_input_dtype(x)
         op_dimension = (self.range_dimension if adjoint
                         else self.domain_dimension)
@@ -547,13 +645,13 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
     Returns:
       A `Tensor` with shape `[..., M]` and same `dtype` as `self`.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       block_dimensions = (self._block_range_dimensions() if adjoint
                           else self._block_domain_dimensions())
       if linear_operator_util.arg_is_blockwise(block_dimensions, x, -1):
         for i, block in enumerate(x):
           if not isinstance(block, linear_operator.LinearOperator):
-            block = ops.convert_to_tensor_v2_with_dispatch(block)
+            block = tensor_conversion.convert_to_tensor_v2_with_dispatch(block)
             self._check_input_dtype(block)
             block_dimensions[i].assert_is_compatible_with(block.shape[-1])
             x[i] = block
@@ -561,7 +659,7 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
         y_mat = self.matmul(x_mat, adjoint=adjoint)
         return [array_ops.squeeze(y, axis=-1) for y in y_mat]
 
-      x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
+      x = tensor_conversion.convert_to_tensor_v2_with_dispatch(x, name="x")
       self._check_input_dtype(x)
       op_dimension = (self.range_dimension if adjoint
                       else self.domain_dimension)
@@ -672,10 +770,10 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
             "Operators are incompatible. Expected `rhs` to have dimension"
             " {} but got {}.".format(
                 left_operator.domain_dimension, right_operator.range_dimension))
-      with self._name_scope(name):
-        return linear_operator_algebra.solve(left_operator, right_operator)
+      with self._name_scope(name):  # pylint: disable=not-callable
+        return self._linop_solve(left_operator, right_operator)
 
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       block_dimensions = (self._block_domain_dimensions() if adjoint
                           else self._block_range_dimensions())
       arg_dim = -1 if adjoint_arg else -2
@@ -684,7 +782,7 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
       if blockwise_arg:
         for i, block in enumerate(rhs):
           if not isinstance(block, linear_operator.LinearOperator):
-            block = ops.convert_to_tensor_v2_with_dispatch(block)
+            block = tensor_conversion.convert_to_tensor_v2_with_dispatch(block)
             self._check_input_dtype(block)
             block_dimensions[i].assert_is_compatible_with(block.shape[arg_dim])
             rhs[i] = block
@@ -694,7 +792,9 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
           split_rhs = rhs
 
       else:
-        rhs = ops.convert_to_tensor_v2_with_dispatch(rhs, name="rhs")
+        rhs = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+            rhs, name="rhs"
+        )
         self._check_input_dtype(rhs)
         op_dimension = (self.domain_dimension if adjoint
                         else self.range_dimension)
@@ -799,20 +899,22 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
     Raises:
       NotImplementedError:  If `self.is_non_singular` or `is_square` is False.
     """
-    with self._name_scope(name):
+    with self._name_scope(name):  # pylint: disable=not-callable
       block_dimensions = (self._block_domain_dimensions() if adjoint
                           else self._block_range_dimensions())
       if linear_operator_util.arg_is_blockwise(block_dimensions, rhs, -1):
         for i, block in enumerate(rhs):
           if not isinstance(block, linear_operator.LinearOperator):
-            block = ops.convert_to_tensor_v2_with_dispatch(block)
+            block = tensor_conversion.convert_to_tensor_v2_with_dispatch(block)
             self._check_input_dtype(block)
             block_dimensions[i].assert_is_compatible_with(block.shape[-1])
             rhs[i] = block
         rhs_mat = [array_ops.expand_dims(block, axis=-1) for block in rhs]
         solution_mat = self.solve(rhs_mat, adjoint=adjoint)
         return [array_ops.squeeze(x, axis=-1) for x in solution_mat]
-      rhs = ops.convert_to_tensor_v2_with_dispatch(rhs, name="rhs")
+      rhs = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          rhs, name="rhs"
+      )
       self._check_input_dtype(rhs)
       op_dimension = (self.domain_dimension if adjoint
                       else self.range_dimension)
@@ -873,3 +975,12 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
     eig_list = linear_operator_util.broadcast_matrix_batch_dims(eig_list)
     eigs = array_ops.concat(eig_list, axis=-2)
     return array_ops.squeeze(eigs, axis=-1)
+
+  @property
+  def _composite_tensor_fields(self):
+    return ("operators",)
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    # None of the operators contribute to the matrix shape.
+    return {"operators": nest.map_structure(lambda _: 0, self.operators)}

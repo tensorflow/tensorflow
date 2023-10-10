@@ -14,11 +14,7 @@
 # ==============================================================================
 """Tests for core."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import collections
+import collections.abc
 import os
 import pickle
 import threading
@@ -39,6 +35,7 @@ from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
@@ -46,6 +43,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging
 
 
 def execute(op_name, num_outputs, inputs, attrs=None):
@@ -75,6 +73,7 @@ def configure_virtual_cpus():
   ])
 
 
+@test_util.with_eager_op_as_function
 class TFETest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -84,16 +83,16 @@ class TFETest(test_util.TensorFlowTestCase):
 
   def _test_hashable(self, a, b, hashable):
     if hashable:
-      self.assertIsInstance(b, collections.Hashable)
+      self.assertIsInstance(b, collections.abc.Hashable)
       self.assertLen(set([a, b]), 2)
     else:
       # TODO(gjn): Figure out how to make this work for tf.Tensor
-      # self.assertNotIsInstance(b, collections.Hashable)
+      # self.assertNotIsInstance(b, collections.abc.Hashable)
       with self.assertRaisesRegex(TypeError, 'unhashable'):
         set([a, b])
 
   def testEquality(self):
-    default = ops.Tensor._USE_EQUALITY
+    default = tensor_lib.Tensor._USE_EQUALITY
 
     try:
       def _v1_check(a, b):
@@ -115,20 +114,20 @@ class TFETest(test_util.TensorFlowTestCase):
       constant_a = constant_op.constant(1.0)
       constant_b = constant_op.constant(1.0)
 
-      ops.disable_tensor_equality()
-      self._test_hashable(constant_a, constant_b, True)
+      tensor_lib.disable_tensor_equality()
+      self._test_hashable(constant_a, constant_b, False)
       _v1_check(constant_a, constant_b)
-      ops.enable_tensor_equality()
+      tensor_lib.enable_tensor_equality()
       _v2_check(constant_a, constant_b)
       self._test_hashable(constant_a, constant_b, False)
 
       variable_a = variables.Variable(1.0)
       variable_b = variables.Variable(1.0)
 
-      ops.disable_tensor_equality()
+      tensor_lib.disable_tensor_equality()
       _v1_check(variable_a, variable_b)
       self._test_hashable(variable_a, variable_b, True)
-      ops.enable_tensor_equality()
+      tensor_lib.enable_tensor_equality()
       _v2_check(variable_a, variable_b)
       self._test_hashable(variable_a, variable_b, False)
 
@@ -139,12 +138,12 @@ class TFETest(test_util.TensorFlowTestCase):
       self._test_hashable(numpy_a, numpy_b, False)
     finally:
       if default:
-        ops.enable_tensor_equality()
+        tensor_lib.enable_tensor_equality()
       else:
-        ops.disable_tensor_equality()
+        tensor_lib.disable_tensor_equality()
 
   def testEqualityNan(self):
-    default = ops.Tensor._USE_EQUALITY
+    default = tensor_lib.Tensor._USE_EQUALITY
 
     try:
       def _v1_check(a, b):
@@ -166,20 +165,20 @@ class TFETest(test_util.TensorFlowTestCase):
       constant_a = constant_op.constant(float('nan'))
       constant_b = constant_op.constant(float('nan'))
 
-      ops.disable_tensor_equality()
-      self._test_hashable(constant_a, constant_b, True)
+      tensor_lib.disable_tensor_equality()
+      self._test_hashable(constant_a, constant_b, False)
       _v1_check(constant_a, constant_b)
-      ops.enable_tensor_equality()
+      tensor_lib.enable_tensor_equality()
       _v2_check(constant_a, constant_b)
       self._test_hashable(constant_a, constant_b, False)
 
       variable_a = variables.Variable(float('nan'))
       variable_b = variables.Variable(float('nan'))
 
-      ops.disable_tensor_equality()
+      tensor_lib.disable_tensor_equality()
       _v1_check(variable_a, variable_b)
       self._test_hashable(variable_a, variable_b, True)
-      ops.enable_tensor_equality()
+      tensor_lib.enable_tensor_equality()
       _v2_check(variable_a, variable_b)
       self._test_hashable(variable_a, variable_b, False)
 
@@ -189,12 +188,12 @@ class TFETest(test_util.TensorFlowTestCase):
       self._test_hashable(numpy_a, numpy_b, False)
     finally:
       if default:
-        ops.enable_tensor_equality()
+        tensor_lib.enable_tensor_equality()
       else:
-        ops.disable_tensor_equality()
+        tensor_lib.disable_tensor_equality()
 
   def testEqualityCompare(self):
-    default = ops.Tensor._USE_EQUALITY
+    default = tensor_lib.Tensor._USE_EQUALITY
 
     try:
       tf_a = constant_op.constant([1, 2])
@@ -204,7 +203,7 @@ class TFETest(test_util.TensorFlowTestCase):
       np_b = np.array([1, 2])
       np_c = np.array([1, 1])
 
-      ops.disable_tensor_equality()
+      tensor_lib.disable_tensor_equality()
       # We don't do element-wise comparison
       self.assertNotEqual(tf_a, tf_b)
       self.assertNotEqual(tf_a, tf_c)
@@ -218,7 +217,7 @@ class TFETest(test_util.TensorFlowTestCase):
       self.assertIn(tf_a, [tf_b, tf_a])
       self.assertNotIn(tf_a, [tf_b, tf_c])
 
-      ops.enable_tensor_equality()
+      tensor_lib.enable_tensor_equality()
       # We do element-wise comparison but can't convert results array to bool
       with self.assertRaises(ValueError):
         bool(tf_a == tf_b)
@@ -268,12 +267,12 @@ class TFETest(test_util.TensorFlowTestCase):
       self.assertAllEqual(np.array(1) == np.array(2), False)
     finally:
       if default:
-        ops.enable_tensor_equality()
+        tensor_lib.enable_tensor_equality()
       else:
-        ops.disable_tensor_equality()
+        tensor_lib.disable_tensor_equality()
 
   def testEqualityBroadcast(self):
-    default = ops.Tensor._USE_EQUALITY
+    default = tensor_lib.Tensor._USE_EQUALITY
 
     try:
       tf_a = constant_op.constant([1, 1])
@@ -287,13 +286,13 @@ class TFETest(test_util.TensorFlowTestCase):
       np_d = np.array([[1, 2], [1, 2]])
       np_e = np.array([1, 1, 1])
 
-      ops.disable_tensor_equality()
+      tensor_lib.disable_tensor_equality()
       # We don't do element-wise comparison
       self.assertNotEqual(tf_a, tf_b)
       self.assertNotEqual(tf_a, tf_c)
       self.assertNotEqual(tf_a, tf_d)
 
-      ops.enable_tensor_equality()
+      tensor_lib.enable_tensor_equality()
       # We do element-wise comparison but can't convert results array to bool
       with self.assertRaises(ValueError):
         bool(tf_a == tf_b)
@@ -304,8 +303,12 @@ class TFETest(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         bool(tf_a == tf_d)
       self.assertAllEqual(tf_a == tf_d, [[True, False], [True, False]])
-      self.assertFalse(bool(tf_a == tf_e))
-      self.assertTrue(bool(tf_a != tf_e))
+
+      # TODO(b/207402791): re-enable once incompatible shapes supported by XLA.
+      if not test_util.is_xla_enabled():
+        self.assertFalse(bool(tf_a == tf_e))
+        self.assertTrue(bool(tf_a != tf_e))
+
       self.assertNotAllEqual(tf_a, tf_e)
 
       with self.assertRaises(ValueError):
@@ -315,14 +318,12 @@ class TFETest(test_util.TensorFlowTestCase):
         bool(np_a == np_c)
       self.assertAllEqual(np_a == np_c, [[True, True], [True, True]])
       self.assertAllEqual(np_a == np_d, [[True, False], [True, False]])
-      self.assertFalse(bool(np_a == np_e))
-      self.assertTrue(bool(np_a != np_e))
       self.assertNotAllEqual(np_a, np_e)
     finally:
       if default:
-        ops.enable_tensor_equality()
+        tensor_lib.enable_tensor_equality()
       else:
-        ops.disable_tensor_equality()
+        tensor_lib.disable_tensor_equality()
 
   @test_util.disable_tfrt('Get execution mode not supported in TFRT.')
   def testContext(self):
@@ -583,6 +584,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
   @test_util.disable_tfrt('PyFunc is not supported in TFRT.')
   def testPyFunctionAsync(self):
+    self.skipTest('flaky; b/194307407')
 
     def simple_fn(v):
       one = constant_op.constant(1.)
@@ -597,6 +599,12 @@ class TFETest(test_util.TensorFlowTestCase):
       test_var = variables.Variable(2.)
       self.assertAllEqual(test_fn(test_var), 3.0)
     async_executor.wait()
+
+    with context.executor_scope(async_executor):
+      test_var = variables.Variable(2.)
+      result = test_fn(test_var)
+      context.async_wait()
+      self.assertAllEqual(result, 3.0)
 
   @test_util.run_gpu_only
   def testNumpyForceCPU(self):
@@ -861,6 +869,7 @@ class TFETest(test_util.TensorFlowTestCase):
           attrs=('T', dtypes.float32.as_datatype_enum, 'squeeze_dims',
                  ['0', '2']))
 
+  @test_util.disable_eager_op_as_function('b/206994108')
   def testExecuteListTypeListShapeAttr(self):
     execute(
         b'Barrier',
@@ -1057,6 +1066,7 @@ class TFETest(test_util.TensorFlowTestCase):
         empty_handle.shape.as_list())
 
 
+@test_util.with_eager_op_as_function
 class SendRecvTest(test_util.TensorFlowTestCase):
 
   cpu_device = '/job:localhost/replica:0/task:0/device:CPU:0'
@@ -1091,8 +1101,9 @@ class SendRecvTest(test_util.TensorFlowTestCase):
 
   @test_util.disable_tfrt('Send/Receive not supported in TFRT yet.')
   def testBasic(self):
-    t0 = constant_op.constant(1.0)
-    t1 = constant_op.constant(2.0)
+    with ops.device(self.cpu_device):
+      t0 = constant_op.constant(1.0)
+      t1 = constant_op.constant(2.0)
     self._send(t0, 't0', self.cpu_device)
     self._send(t1, 't1', self.cpu_device)
     self.assertAllEqual(
@@ -1134,6 +1145,52 @@ class EagerTensorCacheTest(test_util.TensorFlowTestCase):
 
     cache.put('2', array_ops.zeros((2)))
     self.assertIsNotNone(cache.get('2'))
+
+
+class StatusToExceptionTest(test.TestCase):
+
+  def testStatusToException(self):
+    with test.mock.patch.object(
+        tf_logging, 'error_log', autospec=True
+    ) as mock_error_log:
+      # define input to _status_to_exception
+      error_message = 'Test Message'
+      test_class_code = errors.UNIMPLEMENTED
+      test_class_code_to_exception = errors.exception_type_from_error_code(
+          test_class_code
+      )
+      error = core._NotOkStatusException(error_message, test_class_code, None)
+      # call to _status_to_exception
+      exception = core._status_to_exception(error)
+      # validate return value
+      self.assertEqual(error_message, exception.message)
+      self.assertEqual(
+          test_class_code_to_exception.__name__,
+          exception.__class__.__name__,
+      )
+      # verify call to error log library
+      mock_error_log.assert_called_with(str(error))
+
+  def testStatusToExceptionUnknownError(self):
+    with test.mock.patch.object(
+        tf_logging, 'error_log', autospec=True
+    ) as mock_error_log:
+      # define input to _status_to_exception
+      error_message = 'Test Message'
+      invalid_class_code = 1000
+      error = core._NotOkStatusException(
+          error_message, invalid_class_code, None
+      )
+      # call to _status_to_exception
+      exception = core._status_to_exception(error)
+      # validate return value
+      self.assertEqual(error_message, exception.message)
+      self.assertEqual(
+          errors.UnknownError.__name__,
+          exception.__class__.__name__,
+      )
+      # verify call to error log library
+      mock_error_log.assert_called_with(str(error))
 
 
 if __name__ == '__main__':

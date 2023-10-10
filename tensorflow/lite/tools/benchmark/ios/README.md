@@ -20,8 +20,8 @@ Mobilenet_1.0_224 model ([paper][mobilenet-paper],
     workspace and `.bazelrc` file correctly.
 
 *   Run `build_benchmark_framework.sh` script to build the benchmark framework.
-    This script will build the benchmark framework for iOS and put it under
-    `TFLiteBenchmark/TFLiteBenchmark/Frameworks` directory.
+    This script will build the benchmark framework targeting iOS arm64 and put
+    it under `TFLiteBenchmark/TFLiteBenchmark/Frameworks` directory.
 
 *   If you want more detailed profiling, run the build script with `-p` option:
     `build_benchmark_framework.sh -p`.

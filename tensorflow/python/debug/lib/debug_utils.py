@@ -14,13 +14,8 @@
 # ==============================================================================
 """TensorFlow Debugger (tfdbg) Utilities."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 
 def add_debug_tensor_watch(run_options,
@@ -165,7 +160,7 @@ def watch_graph(run_options,
     if op_type_pattern and not op_type_pattern.match(op_type):
       continue
 
-    for slot in xrange(len(op.outputs)):
+    for slot in range(len(op.outputs)):
       if (tensor_dtype_pattern and
           not tensor_dtype_pattern.match(op.outputs[slot].dtype.name)):
         continue
@@ -274,7 +269,7 @@ def watch_graph_with_denylists(run_options,
     if op_type_pattern and op_type_pattern.match(op_type):
       continue
 
-    for slot in xrange(len(op.outputs)):
+    for slot in range(len(op.outputs)):
       if (tensor_dtype_pattern and
           tensor_dtype_pattern.match(op.outputs[slot].dtype.name)):
         continue

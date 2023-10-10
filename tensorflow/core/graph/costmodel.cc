@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/graph/costmodel.h"
 
+#include <algorithm>
 #include <vector>
+
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
@@ -41,7 +43,7 @@ void CostModel::SuppressInfrequent() {
   if (sz > 0) {
     std::nth_element(non_zero.begin(), non_zero.begin() + sz / 2,
                      non_zero.end());
-    int32 median_value = non_zero[sz / 2];
+    int32_t median_value = non_zero[sz / 2];
     min_count_ = median_value / 2;
     VLOG(1) << "num non_zero vals: " << non_zero.size() << " median_value "
             << median_value;
@@ -68,7 +70,13 @@ void CostModel::MergeFromLocal(const Graph& g, const CostModel& cm) {
         CHECK_EQ(num_slots, slot_bytes_[global_id].size());
       }
       for (int s = 0; s < num_slots; ++s) {
-        slot_bytes_[global_id][s] += cm.slot_bytes_[local_id][s];
+        auto& current_v = slot_bytes_[global_id][s];
+        auto other_v = cm.slot_bytes_[local_id][s];
+        if (current_v < 0) {
+          current_v = other_v;
+        } else if (other_v > 0) {
+          current_v += other_v;
+        }
       }
     }
   }
@@ -79,10 +87,10 @@ void CostModel::MergeFromGlobal(const CostModel& cm) {
   CHECK_EQ(true, cm.is_global());
   const int num_nodes = cm.count_.size();
   for (int i = num_nodes - 1; i >= 0; --i) {
-    count_[i] += cm.count_[i];
-    time_[i] += cm.time_[i];
     int num_slots = cm.slot_bytes_[i].size();
     Ensure(i, num_slots);
+    count_[i] += cm.count_[i];
+    time_[i] += cm.time_[i];
     if (num_slots > 0) {
       if (slot_bytes_[i].empty()) {
         slot_bytes_[i].resize(num_slots);
@@ -90,7 +98,13 @@ void CostModel::MergeFromGlobal(const CostModel& cm) {
         CHECK_EQ(num_slots, slot_bytes_[i].size());
       }
       for (int s = 0; s < num_slots; ++s) {
-        slot_bytes_[i][s] += cm.slot_bytes_[i][s];
+        auto& current_v = slot_bytes_[i][s];
+        auto other_v = cm.slot_bytes_[i][s];
+        if (current_v < 0) {
+          current_v = other_v;
+        } else if (other_v > 0) {
+          current_v += other_v;
+        }
       }
     }
   }
@@ -105,9 +119,10 @@ void CostModel::MergeFromStats(const NodeNameToCostIdMap& map,
       // We don't keep stats for nodes not in the global graph, i.e.
       // copy/send/recv nodes, feed/fetch, etc.
       if (iter == map.end()) continue;
-      int32 global_id = iter->second;
+      int32_t global_id = iter->second;
       Ensure(global_id, ns.output_size());
-      int64 elapsed_micros = ns.op_end_rel_micros() - ns.op_start_rel_micros();
+      int64_t elapsed_micros =
+          ns.op_end_rel_micros() - ns.op_start_rel_micros();
       count_[global_id]++;
       time_[global_id] += elapsed_micros;
       for (auto& no : ns.output()) {
@@ -115,8 +130,14 @@ void CostModel::MergeFromStats(const NodeNameToCostIdMap& map,
         if (static_cast<size_t>(si) >= slot_bytes_[global_id].size()) {
           slot_bytes_[global_id].resize(1 + si);
         }
-        slot_bytes_[global_id][si] +=
+        auto& current_v = slot_bytes_[global_id][si];
+        auto other_v =
             no.tensor_description().allocation_description().requested_bytes();
+        if (current_v < 0) {
+          current_v = other_v;
+        } else if (other_v > 0) {
+          current_v += other_v;
+        }
       }
     }
   }
@@ -201,7 +222,7 @@ Bytes CostModel::TotalBytes(const Node* node, int slot) const {
 }
 
 Bytes CostModel::SizeEstimate(const Node* node, int slot) const {
-  int32 count = TotalCount(node);
+  int32_t count = TotalCount(node);
   if (count < min_count_) return Bytes(0);
   return TotalBytes(node, slot) / std::max(1, TotalCount(node));
 }
@@ -225,7 +246,7 @@ Microseconds CostModel::TotalTime(const Node* node) const {
 }
 
 Microseconds CostModel::TimeEstimate(const Node* node) const {
-  int32 count = TotalCount(node);
+  int32_t count = TotalCount(node);
   if (count <= min_count_) return kMinTimeEstimate;
   return std::max(kMinTimeEstimate, TotalTime(node) / std::max(1, count));
 }
@@ -303,7 +324,7 @@ DataType CostModel::MaxMemoryType(const Node* node, int slot) const {
 
 Bytes CostModel::TempMemorySize(const Node* node) const {
   const int id = Id(node);
-  if (id < 0) {
+  if (id < 0 || static_cast<size_t>(id) >= max_mem_usage_.size()) {
     return Bytes(0);
   }
   return max_mem_usage_[id].temp_memory_size;
@@ -311,7 +332,7 @@ Bytes CostModel::TempMemorySize(const Node* node) const {
 
 Bytes CostModel::PersistentMemorySize(const Node* node) const {
   const int id = Id(node);
-  if (id < 0) {
+  if (id < 0 || static_cast<size_t>(id) >= max_mem_usage_.size()) {
     return Bytes(0);
   }
   return max_mem_usage_[id].persistent_memory_size;
@@ -321,10 +342,11 @@ void CostModel::RecordMemoryStats(const Node* node,
                                   const MemoryStats& memory_stats) {
   const int id = Id(node);
   if (id < 0) return;
+  Ensure(id, node->num_outputs());
   max_mem_usage_[id].temp_memory_size = memory_stats.temp_memory_size();
   max_mem_usage_[id].persistent_memory_size =
       memory_stats.persistent_memory_size();
-  for (int64 alloc_id : memory_stats.persistent_tensor_alloc_ids()) {
+  for (int64_t alloc_id : memory_stats.persistent_tensor_alloc_ids()) {
     if (alloc_id > 0) {
       persistent_alloc_ids_.insert(alloc_id);
     }
@@ -347,14 +369,14 @@ Microseconds CostModel::MaxExecutionTime(const Node* node) const {
 }
 
 void CostModel::RecordAllocationId(const Node* node, int output_slot,
-                                   int64 alloc_id) {
+                                   int64_t alloc_id) {
   const int id = Id(node);
   if (id < 0) return;
   Ensure(id, node->num_outputs());
   output_port_alloc_ids_[id][output_slot] = alloc_id;
 }
 
-int64 CostModel::AllocationId(const Node* node, int slot) const {
+int64_t CostModel::AllocationId(const Node* node, int slot) const {
   const int id = Id(node);
   if (id < 0 || static_cast<size_t>(id) >= output_port_alloc_ids_.size() ||
       output_port_alloc_ids_[id].size() <= static_cast<size_t>(slot)) {
@@ -363,16 +385,11 @@ int64 CostModel::AllocationId(const Node* node, int slot) const {
   return output_port_alloc_ids_[id][slot];
 }
 
-bool CostModel::IsPersistentTensor(const Node* node, int64 alloc_id) const {
+bool CostModel::IsPersistentTensor(const Node* node, int64_t alloc_id) const {
   if (persistent_alloc_ids_.count(alloc_id) > 0) {
     return true;
   }
-  if (persistent_alloc_ids_by_devices_.find(node->assigned_device_name()) ==
-      persistent_alloc_ids_by_devices_.end()) {
-    return false;
-  }
-  return persistent_alloc_ids_by_devices_.at(node->assigned_device_name())
-      .count(alloc_id);
+  return false;
 }
 
 Microseconds CostModel::CopyTimeEstimate(Bytes b, double network_latency_millis,
@@ -383,14 +400,14 @@ Microseconds CostModel::CopyTimeEstimate(Bytes b, double network_latency_millis,
   //
   // We assume the copy time follows a linear model:
   //    copy_time = copy_bytes / rate + min_time
-  int64 copy_bytes = b.value();
+  int64_t copy_bytes = b.value();
   const double bytes_per_usec = estimated_gbps * 1000.0 / 8;
   const double min_micros = network_latency_millis * 1000.0;
   return Microseconds(
-      static_cast<int64>(copy_bytes / bytes_per_usec + min_micros));
+      static_cast<int64_t>(copy_bytes / bytes_per_usec + min_micros));
 }
 
-Microseconds CostModel::ComputationTimeEstimate(int64 math_ops) {
+Microseconds CostModel::ComputationTimeEstimate(int64_t math_ops) {
   // TODO(jeff,sanjay): Eventually we should pass in the type of device
   // (GPU vs. CPU) and use that to affect the estimate.
 
@@ -479,11 +496,12 @@ void CostModel::AddToCostGraphDef(const Graph* graph,
                                   CostGraphDef* cost_graph) const {
   std::vector<const Edge*> inputs;
   std::vector<const Edge*> control_inputs;
+  int offset = cost_graph->node_size();
   for (const Node* n : graph->nodes()) {
     CostGraphDef::Node* cnode = cost_graph->add_node();
     cnode->set_name(n->name());
     cnode->set_device(n->assigned_device_name());
-    cnode->set_id(Id(n));
+    cnode->set_id(GlobalId(n, offset));
 
     inputs.clear();
     inputs.resize(n->num_inputs(), nullptr);
@@ -502,16 +520,16 @@ void CostModel::AddToCostGraphDef(const Graph* graph,
 
     for (const Edge* e : inputs) {
       CostGraphDef::Node::InputInfo* input_info = cnode->add_input_info();
-      input_info->set_preceding_node(Id(e->src()));
+      input_info->set_preceding_node(GlobalId(e->src(), offset));
       input_info->set_preceding_port(e->src_output());
     }
 
     for (int i = 0; i < n->num_outputs(); i++) {
       CostGraphDef::Node::OutputInfo* output_info = cnode->add_output_info();
-      int64 alloc_id = AllocationId(n, i);
-      int64 alias_to_input = -1;
+      int64_t alloc_id = AllocationId(n, i);
+      int64_t alias_to_input = -1;
       for (const Edge* e : inputs) {
-        int64 input_alloc_id = AllocationId(e->src(), e->src_output());
+        int64_t input_alloc_id = AllocationId(e->src(), e->src_output());
         if (input_alloc_id == alloc_id) {
           alias_to_input = e->dst_input();
           break;
@@ -528,7 +546,7 @@ void CostModel::AddToCostGraphDef(const Graph* graph,
     }
 
     for (const Edge* e : control_inputs) {
-      cnode->add_control_input(Id(e->src()));
+      cnode->add_control_input(GlobalId(e->src(), offset));
     }
 
     cnode->set_temporary_memory_size(TempMemorySize(n).value());

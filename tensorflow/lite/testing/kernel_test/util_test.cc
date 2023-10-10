@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <fstream>
 #include <memory>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -30,13 +31,13 @@ TEST(UtilTest, SimpleE2ETest) {
   TestOptions options;
   options.tflite_model = "tensorflow/lite/testdata/add.bin";
   options.read_input_from_file =
-      "tensorflow/lite/testdata/test_input.csv";
+      "tensorflow/lite/testing/kernel_test/testdata/test_input.csv";
   options.dump_output_to_file = ::testing::TempDir() + "/test_out.csv";
   options.kernel_type = "REFERENCE";
   std::unique_ptr<TestRunner> runner(new TfLiteDriver(
       TfLiteDriver::DelegateType::kNone, /*reference_kernel=*/true));
   RunKernelTest(options, runner.get());
-  std::string expected = "3";
+  std::string expected = "x:3";
   for (int i = 0; i < 1 * 8 * 8 * 3 - 1; i++) {
     expected.append(",3");
   }

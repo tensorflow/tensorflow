@@ -17,15 +17,19 @@ if(TARGET egl_headers OR egl_headers_POPULATED)
   return()
 endif()
 
-include(FetchContent)
+include(OverridableFetchContent)
 
 OverridableFetchContent_Declare(
   egl_headers
   GIT_REPOSITORY https://github.com/KhronosGroup/EGL-Registry.git
+  # No reference in TensorFlow Bazel rule since it's used for GPU Delegate
+  # build without using Android NDK.
   GIT_TAG 649981109e263b737e7735933c90626c29a306f2
   GIT_PROGRESS TRUE
   PREFIX "${CMAKE_BINARY_DIR}"
   SOURCE_DIR "${CMAKE_BINARY_DIR}/egl_headers"
+  # Per https://www.khronos.org/legal/Khronos_Apache_2.0_CLA
+  LICENSE_URL "https://www.apache.org/licenses/LICENSE-2.0.txt"
 )
 
 OverridableFetchContent_GetProperties(egl_headers)

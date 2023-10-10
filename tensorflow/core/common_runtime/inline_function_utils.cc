@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
@@ -219,6 +220,7 @@ class MultiDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
     return caller_device_;
   }
   absl::optional<string> BodyNodeDevice(const NodeDef& ndef) const override {
+    // LINT.IfChange
     // TODO(ezhulenev): If function would have been instantiated as a
     // multi-device function and executed via FunctionLibraryRuntime, it could
     // be potentially placed on any available device. However there are multiple
@@ -231,23 +233,10 @@ class MultiDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
     if (!DeviceNameUtils::ParseFullName(ndef.device(), &ndef_parsed_device))
       return ndef.device();
 
-    // Nodes with explicit device placements in the function body have those
-    // respected, but otherwise the function's placement provides a default.
-    if (caller_parsed_device_.has_job && !ndef_parsed_device.has_job) {
-      ndef_parsed_device.has_job = caller_parsed_device_.has_job;
-      ndef_parsed_device.job = caller_parsed_device_.job;
-    }
-
-    if (caller_parsed_device_.has_replica && !ndef_parsed_device.has_replica) {
-      ndef_parsed_device.has_replica = caller_parsed_device_.has_replica;
-      ndef_parsed_device.replica = caller_parsed_device_.replica;
-    }
-
-    if (caller_parsed_device_.has_task && !ndef_parsed_device.has_task) {
-      ndef_parsed_device.has_task = caller_parsed_device_.has_task;
-      ndef_parsed_device.task = caller_parsed_device_.task;
-    }
+    DeviceNameUtils::MergeUnsetDevNames(&ndef_parsed_device,
+                                        caller_parsed_device_);
     return DeviceNameUtils::ParsedNameToString(ndef_parsed_device);
+    // LINT.ThenChange(../../compiler/mlir/tensorflow/ir/tf_ops.cc)
   }
 
  private:
@@ -263,21 +252,21 @@ std::unique_ptr<InlinedFunctionBodyPlacer>
 InlinedFunctionBodyPlacer::DefaultPlacer(const Graph& graph,
                                          const Node& caller) {
   VLOG(3) << "Create default placer for inlined function body.";
-  return absl::make_unique<DefaultFunctionBodyPlacer>(caller);
+  return std::make_unique<DefaultFunctionBodyPlacer>(caller);
 }
 
 std::unique_ptr<InlinedFunctionBodyPlacer>
 InlinedFunctionBodyPlacer::SingleDevicePlacer(const Graph& graph,
                                               const Node& caller) {
   VLOG(3) << "Create single device placer for inlined function body.";
-  return absl::make_unique<SingleDeviceFunctionBodyPlacer>(caller);
+  return std::make_unique<SingleDeviceFunctionBodyPlacer>(caller);
 }
 
 std::unique_ptr<InlinedFunctionBodyPlacer>
 InlinedFunctionBodyPlacer::MultiDevicePlacer(const Graph& graph,
                                              const Node& caller) {
   VLOG(3) << "Create multi device placer for inlined function body.";
-  return absl::make_unique<MultiDeviceFunctionBodyPlacer>(caller);
+  return std::make_unique<MultiDeviceFunctionBodyPlacer>(caller);
 }
 
 namespace {
@@ -289,7 +278,7 @@ Status ValidateNoInline(const FunctionBody* fbody) {
     return errors::InvalidArgument(
         "Can't inline function marked with '_noinline'");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
@@ -404,7 +393,7 @@ Status ValidateInlining(const Node* node, const FunctionBody* fbody,
     TF_RETURN_IF_ERROR(ValidateNoInline(fbody));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Function inlining must preserve function execution semantics with regards to
@@ -491,10 +480,13 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
                           const InlineFunctionBodyOptions& options) {
   VLOG(3) << "Inline function call: " << SummarizeNode(*caller) << " ["
           << options.DebugString() << "]";
+  VLOG(4) << "Inlining function: " << fbody->fdef.DebugString();
+  VLOG(4) << "Current graphdef: " << g->ToGraphDefDebug().DebugString();
+  VLOG(4) << "Caller: " << caller->DebugString();
 
   Status validation = ValidateInlining(caller, fbody, options);
   if (!validation.ok()) {
-    return errors::Internal("Inlining mismatch: ", validation.error_message());
+    return errors::Internal("Inlining mismatch: ", validation.message());
   }
 
   // Placer is responsible for assigning devices for all nodes that we will add
@@ -582,6 +574,19 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     VLOG(3) << "Created input control node: " << input_control_node->name();
   }
 
+  // We create one Identity node for each input.
+  std::vector<Node*> input_nodes;
+  std::map<absl::string_view, absl::string_view> input_node_name_map;
+  for (std::size_t i = 0; i < fbody->arg_nodes.size(); ++i) {
+    if (inputs[i].node == nullptr)
+      return errors::Internal("Null node found for input ", i);
+
+    Node* n = input_identity("input", inputs[i], i);
+    input_node_name_map[arg_name(fbody->fdef.signature().input_arg(), i)] =
+        n->name();
+    input_nodes.push_back(n);
+  }
+
   // ------------------------------------------------------------------------ //
   // Duplicate fbody->graph into 'g'.  First, we copy the nodes of
   // fbody->graph into 'g' except the source and sink nodes.  We copy
@@ -611,11 +616,17 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     const string prefix = strings::StrCat(caller->name(), "/");
     TF_RETURN_IF_ERROR(AddPrefixAndSuffixToNode(prefix, /*suffix=*/"", &ndef,
                                                 options.uniquify_frame_names));
+
+    // If the colocation attribute is an input arg, we need to change it to the
+    // new input (Identity) node now.
+    TF_RETURN_IF_ERROR(
+        MaybeUpdateColocationConstraintsWithMap(input_node_name_map, &ndef));
+
     TF_RETURN_IF_ERROR(
         MaybeAddPrefixToColocationConstraints(fn_nodes, prefix, &ndef));
 
     Status added_node;
-    Node* clone = g->AddNode(ndef, &added_node);
+    Node* clone = g->AddNode(std::move(ndef), &added_node);
     TF_CHECK_OK(added_node);
     node_map[n->id()] = clone;
     clone->SetStackTrace(n->GetStackTrace());
@@ -679,17 +690,16 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   // ------------------------------------------------------------------------ //
   // Connect input edges.
   //
-  // We create one Identity node for each input. Then, we connect inputs[i] to
-  // the i-th identity node added. The nodes that previously connected
-  // to the j-th output of i-th arg node are reconnected to the i-th
-  // identity node.
+  // Then, we connect inputs[i] to the i-th identity node added. The nodes that
+  // previously connected to the j-th output of i-th arg node are reconnected
+  // to the i-th identity node.
   //
   // The added identity nodes depend on "input_control_node".
   VLOG(4) << "Add input Identity nodes for each function argument:";
 
   for (std::size_t i = 0; i < fbody->arg_nodes.size(); ++i) {
     Node* arg = node_map[fbody->arg_nodes[i]->id()];
-    Node* n = input_identity("input", inputs[i], i);
+    Node* n = input_nodes[i];
     VLOG(4) << "    [index " << i << "] "
             << arg_name(fbody->fdef.signature().input_arg(), i) << " as "
             << n->name() << " (input: " << inputs[i].name()
@@ -841,7 +851,9 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   VLOG(3) << "Successfully inlined function call node: " << caller->name();
   g->RemoveNode(caller);
 
-  return Status::OK();
+  VLOG(4) << "Final graph: " << g->ToGraphDefDebug().DebugString();
+
+  return OkStatus();
 }
 
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
@@ -864,7 +876,7 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
     FunctionLibraryRuntime::Handle handle;
     Status s = InstantiateFunctionCall(node->def(), lib, &handle);
     if (!s.ok()) {
-      LOG(ERROR) << "Failed to instantiate a function:  " << s.error_message();
+      LOG(ERROR) << "Failed to instantiate a function:  " << s.message();
       continue;
     }
     const FunctionBody* fbody = lib->GetFunctionBody(handle);
@@ -882,7 +894,7 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
       inlined_any = true;
     } else {
       VLOG(1) << "Failed to inline function call: node=" << p.first->name()
-              << " error=" << inlined.error_message();
+              << " error=" << inlined.message();
     }
   }
 

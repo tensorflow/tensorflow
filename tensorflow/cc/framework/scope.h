@@ -125,8 +125,7 @@ class Scope {
   /// Return a new scope. All ops created within the returned scope will have as
   /// control dependencies the union of operations in the control_deps vector
   /// and the control dependencies of the current scope.
-  Scope WithControlDependencies(
-      const gtl::ArraySlice<Operation>& control_deps) const;
+  Scope WithControlDependencies(gtl::ArraySlice<Operation> control_deps) const;
   /// Same as above, but convenient to add control dependency on the operation
   /// producing the control_dep output.
   Scope WithControlDependencies(const Output& control_dep) const;
@@ -175,7 +174,7 @@ class Scope {
 
   /// Update the status on this scope.
   /// Note: The status object is shared between all children of this scope.
-  /// If the resulting status is not Status::OK() and exit_on_error_ is set on
+  /// If the resulting status is not OkStatus() and exit_on_error_ is set on
   /// this scope, this function exits by calling LOG(FATAL).
   void UpdateStatus(const Status& s) const;
 
@@ -199,14 +198,16 @@ class Scope {
 
   Status status() const;
 
-  /// If status() is Status::OK(), convert the Graph object stored in this scope
-  /// to a GraphDef proto and return Status::OK(). Otherwise, return the error
-  /// status as is without performing GraphDef conversion.
-  Status ToGraphDef(GraphDef* gdef) const;
+  /// If status() is ok, convert the Graph object stored in this scope
+  /// to a GraphDef proto and return an ok Status. Otherwise, return the error
+  /// status as is without performing GraphDef conversion. If
+  /// `include_debug_info` is true, populate the `debug_info` field of the
+  /// GraphDef from stack traces in this Graph.
+  Status ToGraphDef(GraphDef* gdef, bool include_debug_info = false) const;
 
   // START_SKIP_DOXYGEN
 
-  /// If status() is Status::OK(), construct a Graph object using `opts` as the
+  /// If status() is OkStatus(), construct a Graph object using `opts` as the
   /// GraphConstructorOptions, and return Status::OK if graph construction was
   /// successful. Otherwise, return the error status.
   // TODO(josh11b, keveman): Make this faster; right now it converts
@@ -223,7 +224,7 @@ class Scope {
   Status DoShapeInference(Node* node) const;
 
   // Creates a new root scope that causes all DoShapeInference() calls to return
-  // Status::OK() (on the returned scope and any subscopes). Used for testing.
+  // OkStatus() (on the returned scope and any subscopes). Used for testing.
   // TODO(skyewm): fix tests that still require this and eventually remove, or
   // at least remove from public API
   static Scope DisabledShapeInferenceScope();

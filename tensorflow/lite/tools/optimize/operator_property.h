@@ -15,7 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_OPERATOR_PROPERTY_H_
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_OPERATOR_PROPERTY_H_
 
-#include "tensorflow/lite/model.h"
+#include <functional>
+#include <initializer_list>
+
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -105,14 +108,15 @@ struct OperatorProperty {
   // Intermediate indexes -> intermediate tensor property.
   std::vector<std::pair<int, TensorProperty>> intermediates = {};
 
-  // Force output to reuse the same scale and zero point of input.
-  bool restrict_same_input_output_scale = false;
+  // Force output to reuse the same scale and zero point of input when the
+  // certain type support must require the same scale and zero point
+  // requirement.
+  std::function<bool(TensorType)> restrict_same_input_output_scale =
+      [](TensorType) { return false; };
 
   // Use same min of min and max of max for each group.
   // Incompatible with restrict_same_input_output_scale and restricted_value.
   // Currently it only supports scale pair of {input_index, output_index}.
-  // TODO(b/174534943): make it compatible with other restrictions when there
-  // is a use case.
   std::vector<std::vector<int>> restrict_scale = {};
 
   // Op version.
@@ -127,7 +131,6 @@ struct OperatorProperty {
 };
 
 // The op as well as it variants.
-// TODO(b/174283888): extend it to support ops that has multiple variants.
 struct OpVariant {
   BuiltinOperator op_code;
   bool use_layer_norm = false;
@@ -141,8 +144,9 @@ struct OpVariant {
 };
 
 OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
-                                     int op_index);
-OperatorProperty GetOperatorProperty(OpVariant op_variant);
+                                     int op_index, int number_of_bits = 8);
+OperatorProperty GetOperatorProperty(OpVariant op_variant,
+                                     int number_of_bits = 8);
 
 }  // namespace operator_property
 }  // namespace optimize

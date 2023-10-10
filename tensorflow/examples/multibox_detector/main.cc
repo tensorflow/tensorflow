@@ -17,8 +17,11 @@ limitations under the License.
 #include <stdio.h>
 #include <string.h>
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "tensorflow/cc/ops/const_op.h"
@@ -70,7 +73,7 @@ Status ReadLocationsFile(const string& file_name, std::vector<float>* result,
     }
   }
   *found_label_count = result->size();
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Given an image file name, read in the data, try to decode it as an image,
@@ -119,8 +122,8 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
       root, dims_expander,
       Const(root.WithOpName("size"), {input_height, input_width}));
   // Subtract the mean and divide by the scale.
-  Div(root.WithOpName(output_name), Sub(root, resized, {input_mean}),
-      {input_std});
+  Div give_me_a_name(root.WithOpName(output_name),
+                     Sub(root, resized, {input_mean}), {input_std});
 
   // This runs the GraphDef network definition that we've just constructed, and
   // returns the results in the output tensor.
@@ -132,7 +135,7 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
   TF_RETURN_IF_ERROR(session->Create(graph));
   TF_RETURN_IF_ERROR(
       session->Run({}, {output_name, original_name}, {}, out_tensors));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status SaveImage(const Tensor& tensor, const string& file_path) {
@@ -160,7 +163,7 @@ Status SaveImage(const Tensor& tensor, const string& file_path) {
   std::vector<Tensor> outputs;
   TF_RETURN_IF_ERROR(session->Run({}, {}, {output_name}, &outputs));
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Reads a model graph definition from disk, and creates a session object you
@@ -179,7 +182,7 @@ Status LoadGraph(const string& graph_file_name,
   if (!session_create_status.ok()) {
     return session_create_status;
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Analyzes the output of the MultiBox graph to retrieve the highest scores and
@@ -190,7 +193,8 @@ Status GetTopDetections(const std::vector<Tensor>& outputs, int how_many_labels,
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
   string output_name = "top_k";
-  TopK(root.WithOpName(output_name), outputs[0], how_many_labels);
+  TopK give_me_a_name(root.WithOpName(output_name), outputs[0],
+                      how_many_labels);
   // This runs the GraphDef network definition that we've just constructed, and
   // returns the results in the output tensors.
   tensorflow::GraphDef graph;
@@ -206,7 +210,7 @@ Status GetTopDetections(const std::vector<Tensor>& outputs, int how_many_labels,
                                   {}, &out_tensors));
   *scores = out_tensors[0];
   *indices = out_tensors[1];
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Converts an encoded location to an actual box placement with the provided
@@ -325,7 +329,7 @@ Status PrintTopDetections(const std::vector<Tensor>& outputs,
   if (!image_file_name.empty()) {
     return SaveImage(*original_tensor, image_file_name);
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 int main(int argc, char* argv[]) {
@@ -341,12 +345,12 @@ int main(int argc, char* argv[]) {
   string box_priors =
       "tensorflow/examples/multibox_detector/data/"
       "multibox_location_priors.txt";
-  int32 input_width = 224;
-  int32 input_height = 224;
-  int32 input_mean = 128;
-  int32 input_std = 128;
-  int32 num_detections = 5;
-  int32 num_boxes = 784;
+  int32_t input_width = 224;
+  int32_t input_height = 224;
+  int32_t input_mean = 128;
+  int32_t input_std = 128;
+  int32_t num_detections = 5;
+  int32_t num_boxes = 784;
   string input_layer = "ResizeBilinear";
   string output_location_layer = "output_locations/Reshape";
   string output_score_layer = "output_scores/Reshape";

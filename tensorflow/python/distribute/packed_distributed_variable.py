@@ -14,13 +14,10 @@
 # ==============================================================================
 """A variable which packs a list of variables distributed across devices."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.distribute import device_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 
@@ -252,7 +249,23 @@ class PackedVarAndDevice(object):
     self._device = device
 
   def __getattr__(self, name):
-    return getattr(self._var, name)
+    # Exceptions raised inside the contextmanager can cause a reference
+    # cycle.[1] The cycle involves the current frame, which holds the reference
+    # to the outer frame. Tensorflow, e.g. iterators, relies on object
+    # finalizers to clean up resources. Such references prevents the resource
+    # from being deleted and can cause leaks and errors. One corner the case is
+    # that iterators are kept alive and the garbage collector happens to run
+    # after auto control dependencies; this causes the deletion to lose the
+    # control dependencies to operations that uses such resources.
+    #
+    # Catch and re-raise the exception seems to workaround the issue.
+    #
+    # [1] https://bugs.python.org/issue43533
+    try:
+      with ops.device(self._device):
+        return getattr(self._var, name)
+    except:  # pylint: disable=try-except-raise
+      raise
 
   def var(self):
     return self._var
@@ -287,7 +300,7 @@ class PackedVarAndDevice(object):
       return self._var.get_var_on_current_device().handle
 
   @property
-  def op(self):
+  def op(self) -> ops.Operation:
     with ops.device(self._device):
       return self._var.op
 
@@ -349,5 +362,5 @@ def _tensor_conversion_packed_var_and_device(var,
   return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
 
-ops.register_tensor_conversion_function(
+tensor_conversion_registry.register_tensor_conversion_function(
     PackedVarAndDevice, _tensor_conversion_packed_var_and_device)

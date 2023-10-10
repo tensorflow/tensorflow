@@ -13,21 +13,20 @@
 # limitations under the License.
 # ==============================================================================
 """Python wrapper for prefetching_ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import options as options_lib
+from tensorflow.python.data.ops import prefetch_op
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -39,7 +38,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
   """A `dummy` generator dataset."""
 
   def __init__(self, shard_num, multi_device_iterator_resource, incarnation_id,
-               source_device, element_spec):
+               source_device, element_spec, iterator_is_anonymous):
     self._element_spec = element_spec
 
     multi_device_iterator_string_handle = (
@@ -47,14 +46,14 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
             multi_device_iterator_resource))
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
-    @function.defun(autograph=False)  # Pure graph code.
+    @def_function.function(autograph=False)  # Pure graph code.
     def _init_func():
       return multi_device_iterator_string_handle
 
     init_func_concrete = _init_func.get_concrete_function()
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
-    @function.defun(autograph=False)  # Pure graph code.
+    @def_function.function(autograph=False)  # Pure graph code.
     def _remote_init_func():
       return functional_ops.remote_call(
           target=source_device,
@@ -66,7 +65,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     self._init_captured_args = self._init_func.captured_inputs
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
-    @function.defun(
+    @def_function.function(
         input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
         autograph=False)  # Pure graph code.
     def _next_func(string_handle):
@@ -87,19 +86,35 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     next_func_concrete = _next_func.get_concrete_function()
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
-    @function.defun_with_attributes(
+    @def_function.function(
         input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
-        attributes={"experimental_ints_on_device": True},
+        experimental_attributes={"experimental_ints_on_device": True},
         autograph=False)  # Pure graph code.
     def _remote_next_func(string_handle):
-      return functional_ops.remote_call(
+      return_values = functional_ops.remote_call(
           target=source_device,
           args=[string_handle] + next_func_concrete.captured_inputs,
           Tout=structure.get_flat_tensor_types(self._element_spec),
           f=next_func_concrete)
+      # Add full type information to the graph so that the RemoteCall op
+      # can determine for each of its outputs whether or not they are ragged
+      # tensors (or other types that use variants) that contain strings
+      # (or other host memory types). Then RemoteCall can
+      # appropriately set AllocatorAttributes to control copies so
+      # strings/host memory types stay on CPU.
+      fulltype_list = type_utils.fulltypes_for_flat_tensors(self._element_spec)
+      fulltype = type_utils.fulltype_list_to_product(fulltype_list)
+      for return_value in return_values:
+        return_value.op.experimental_set_type(fulltype)
+      return return_values
 
     self._next_func = _remote_next_func.get_concrete_function()
     self._next_captured_args = self._next_func.captured_inputs
+
+    if iterator_is_anonymous:
+      self._next_captured_args = self._next_captured_args + [
+          multi_device_iterator_resource
+      ]
 
     self._incarnation_id_index = -1
     for i, arg in enumerate(self._next_captured_args):
@@ -107,7 +122,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
         self._incarnation_id_index = i
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
-    @function.defun(
+    @def_function.function(
         input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
         autograph=False)  # Pure graph code.
     def _finalize_func(unused_string_handle):
@@ -116,7 +131,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     finalize_func_concrete = _finalize_func.get_concrete_function()
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
-    @function.defun(
+    @def_function.function(
         input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
         autograph=False)  # Pure graph code.
     def _remote_finalize_func(string_handle):
@@ -196,19 +211,14 @@ def _create_device_dataset(prototype_ds, incarnation_id, prefetch_buffer_size,
   ds = _ReincarnatedPerDeviceGenerator(prototype_ds, incarnation_id)
   if prefetch_buffer_size > 0:
     if experimental_slack:
-      ds = dataset_ops.PrefetchDataset(ds, prefetch_buffer_size, slack_period=1)
+      ds = prefetch_op._PrefetchDataset(  # pylint: disable=protected-access
+          ds, prefetch_buffer_size, slack_period=1)
     else:
       ds = ds.prefetch(prefetch_buffer_size)
-  # TODO(jsimsa): Enable auto-tuning and optimizations when supported for
-  # non-CPU devices.
-  options = dataset_ops.Options()
-  options.experimental_optimization.apply_default_optimizations = False
-  options.experimental_optimization.autotune = False
-  ds = ds.with_options(options)
   return ds
 
 
-class MultiDeviceIterator(object):
+class MultiDeviceIterator:
   """An iterator over multiple devices."""
 
   def __init__(self,
@@ -229,10 +239,14 @@ class MultiDeviceIterator(object):
         prevent deadlocks, if the prefetch_buffer_size is greater than the
         max_buffer_size, we set the max_buffer_size to prefetch_buffer_size.
     """
-    options = dataset_ops.Options()
+    options = options_lib.Options()
     options.experimental_distribute.num_devices = len(devices)
+    # If `prefetch_buffer_size` is 0, we turn off the `inject_prefetch`
+    # optimization to prevent potentially introducing asynchrony.
+    if prefetch_buffer_size == 0:
+      options.experimental_optimization.inject_prefetch = False
     dataset = dataset.with_options(options)
-    self._dataset = dataset._apply_options()  # pylint: disable=protected-access
+    self._dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
     self._experimental_slack = dataset.options().experimental_slack
     self._devices = devices
     self._source_device = source_device
@@ -248,7 +262,7 @@ class MultiDeviceIterator(object):
       # TODO(b/121378567): Get rid of this shared_name hack.
       shared_name = ""
       if context.executing_eagerly():
-        shared_name = context.shared_name()
+        shared_name = context.anonymous_name()
       self._multi_device_iterator_resource = (
           gen_dataset_ops.multi_device_iterator(
               devices=self._devices,
@@ -271,10 +285,13 @@ class MultiDeviceIterator(object):
     self._prototype_device_datasets = []
     for i, device in enumerate(self._devices):
       with ops.device(device):
-        ds = _PerDeviceGenerator(i, self._multi_device_iterator_resource,
-                                 self._incarnation_id,
-                                 self._source_device_tensor,
-                                 self._dataset.element_spec)
+        ds = _PerDeviceGenerator(
+            i,
+            self._multi_device_iterator_resource,
+            self._incarnation_id,
+            self._source_device_tensor,
+            self._dataset.element_spec,
+            iterator_is_anonymous=False)
         self._prototype_device_datasets.append(ds)
 
     # TODO(rohanj): Explore the possibility of the MultiDeviceIterator to
@@ -300,24 +317,6 @@ class MultiDeviceIterator(object):
           iterator.initializer for iterator in self._device_iterators
       ]
       self._initializer = control_flow_ops.group(*device_iterator_initializers)
-
-  def _create_device_dataset(self, i):
-    """Uses _prototype_device_datasets[i] to build a dataset for the device."""
-    ds = self._prototype_device_datasets[i]
-    ds = _ReincarnatedPerDeviceGenerator(ds, self._incarnation_id)
-    if self._prefetch_buffer_size > 0:
-      if self._experimental_slack:
-        ds = dataset_ops.PrefetchDataset(
-            ds, self._prefetch_buffer_size, slack_period=1)
-      else:
-        ds = ds.prefetch(self._prefetch_buffer_size)
-    # TODO(jsimsa): Enable auto-tuning and optimizations when supported for
-    # non-CPU devices.
-    options = dataset_ops.Options()
-    options.experimental_optimization.apply_default_optimizations = False
-    options.experimental_optimization.autotune = False
-    ds = ds.with_options(options)
-    return ds
 
   def get_next(self, device=None):
     """Returns the next element given a `device`, else returns all in a list."""
@@ -347,7 +346,9 @@ class MultiDeviceIterator(object):
   def _eager_reset(self):
     """Resets the MultiDeviceIterator in eager mode."""
     if not ops.executing_eagerly_outside_functions():
-      raise ValueError("Eager reset is only supported in eager mode.")
+      raise ValueError(
+          "Resetting a multi-device iterator is only supported in the eager "
+          "mode.")
     # pylint: disable=protected-access
     self._incarnation_id = gen_dataset_ops.multi_device_iterator_init(
         self._dataset._variant_tensor,
@@ -367,44 +368,6 @@ class MultiDeviceIterator(object):
   @property
   def element_spec(self):
     return self._dataset.element_spec
-
-
-class MultiDeviceIteratorResourceDeleter(object):
-  """An object which cleans up a Multi Device Iterator resource.
-
-  An alternative to defining a __del__ method on an object. Even if the parent
-  object is part of a reference cycle, the cycle will be collectible.
-  """
-
-  __slots__ = [
-      "_deleter", "_multi_device_iterator", "_iterators", "_device",
-      "_eager_mode"
-  ]
-
-  def __init__(self, multi_device_iterator, iterators, device, deleter):
-    self._deleter = deleter
-    self._multi_device_iterator = multi_device_iterator
-    self._iterators = iterators
-    self._device = device
-    self._eager_mode = context.executing_eagerly()
-
-  def __del__(self):
-    with ops.device(self._device):
-      # Make sure the resource is deleted in the same mode as it was created in.
-      # We pass in the iterator handles as inputs to the op to make sure that
-      # this op runs after all the iterators are deleted.
-      if self._eager_mode:
-        with context.eager_mode():
-          gen_dataset_ops.delete_multi_device_iterator(
-              multi_device_iterator=self._multi_device_iterator,
-              iterators=self._iterators,
-              deleter=self._deleter)
-      else:
-        with context.graph_mode():
-          gen_dataset_ops.delete_multi_device_iterator(
-              multi_device_iterator=self._multi_device_iterator,
-              iterators=self._iterators,
-              deleter=self._deleter)
 
 
 class MultiDeviceIteratorSpec(type_spec.TypeSpec):
@@ -428,7 +391,6 @@ class MultiDeviceIteratorSpec(type_spec.TypeSpec):
   def _component_specs(self):
     specs = [
         tensor_spec.TensorSpec([], dtypes.resource),
-        tensor_spec.TensorSpec([], dtypes.variant)
     ]
     for _ in range(len(self._devices)):
       specs.append(iterator_ops.IteratorSpec(self._element_spec))
@@ -436,7 +398,7 @@ class MultiDeviceIteratorSpec(type_spec.TypeSpec):
 
   def _to_components(self, value):
     # pylint: disable=protected-access
-    c = [value._multi_device_iterator_resource, value._deleter]
+    c = [value._multi_device_iterator_resource]
     c.extend(value._device_iterators)
     return c
 
@@ -479,7 +441,7 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
 
     Args:
       dataset: The input dataset to be iterated over.
-      devices: The list of devices to fetch data to.
+      devices: (Required.) The list of devices to fetch data to.
       max_buffer_size: Maximum size of the host side per device buffer to keep.
       prefetch_buffer_size: if > 0, then we setup a buffer on each device to
         prefetch into.
@@ -487,40 +449,48 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
         prevent deadlocks, if the prefetch_buffer_size is greater than the
         max_buffer_size, we set the max_buffer_size to prefetch_buffer_size.
       components: Tensor components to construct the MultiDeviceIterator from.
-      element_spec: A nested structure of `TypeSpec` objects that
+      element_spec: A (nested) structure of `tf.TypeSpec` objects that
         represents the type specification of elements of the iterator.
 
     Raises:
       RuntimeError: If executed in graph mode or outside of function building
-      mode.
+        mode.
+      ValueError: If any of the following happens:
+        - `devices` is `None`
+        - `dataset` is `None` and either `components` or `element_spec` is
+          `None`
+        - `dataset` is not None and either `components` or `element_spec` is
+          provided
     """
     if not context.executing_eagerly() and not ops.inside_function():
       raise RuntimeError("OwnedMultiDeviceIterator is only supported inside of "
                          "tf.function or when eager execution is enabled.")
     if devices is None:
-      raise ValueError("`devices` must be provided")
-    error_message = "Either `dataset` or both `components` and "
-    "`element_spec` need to be provided."
+      raise ValueError("`devices` must be provided.")
 
     if dataset is None:
       if (components is None or element_spec is None):
-        raise ValueError(error_message)
+        raise ValueError(
+            "When `dataset` is not provided, both `components` and "
+            "`element_spec` must be specified.")
       self._element_spec = element_spec
       self._devices = devices
       self._source_device = source_device
       self._multi_device_iterator_resource = components[0]
-      self._deleter = components[1]
-      self._device_iterators = components[2:]
-      iterator_handles = []
-      for it in self._device_iterators:
-        iterator_handles.append(it._iterator_resource)  # pylint: disable=protected-access
+      self._device_iterators = components[1:]
     else:
       if (components is not None or element_spec is not None):
-        raise ValueError(error_message)
-      options = dataset_ops.Options()
+        raise ValueError(
+            "When `dataset` is provided, `element_spec` and `components` must "
+            "not be specified.")
+      options = options_lib.Options()
       options.experimental_distribute.num_devices = len(devices)
+      # If `prefetch_buffer_size` is 0, we turn off the `inject_prefetch`
+      # optimization to prevent potentially introducing asynchrony.
+      if prefetch_buffer_size == 0:
+        options.experimental_optimization.inject_prefetch = False
       dataset = dataset.with_options(options)
-      dataset = dataset._apply_options()  # pylint: disable=protected-access
+      dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
       self._element_spec = dataset.element_spec
       experimental_slack = dataset.options().experimental_slack
       self._devices = devices
@@ -532,8 +502,8 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
 
       # Create the MultiDeviceIterator.
       with ops.device(self._source_device):
-        self._multi_device_iterator_resource, self._deleter = (
-            gen_dataset_ops.anonymous_multi_device_iterator(
+        self._multi_device_iterator_resource = (
+            gen_dataset_ops.anonymous_multi_device_iterator_v3(
                 devices=self._devices, **dataset._flat_structure))  # pylint: disable=protected-access
 
         # The incarnation ID is used to ensure consistency between the
@@ -546,9 +516,14 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
       prototype_device_datasets = []
       for i, device in enumerate(self._devices):
         with ops.device(device):
-          ds = _PerDeviceGenerator(i, self._multi_device_iterator_resource,
-                                   incarnation_id, source_device_tensor,
-                                   dataset.element_spec)
+          ds = _PerDeviceGenerator(
+              i,
+              self._multi_device_iterator_resource,
+              incarnation_id,
+              source_device_tensor,
+              dataset.element_spec,
+              iterator_is_anonymous=True,
+          )
           prototype_device_datasets.append(ds)
 
       # TODO(rohanj): Explore the possibility of the MultiDeviceIterator to
@@ -557,7 +532,7 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
       # into the device side from its input. It might be useful in rewriting.
       # Create the per device iterators.
       self._device_iterators = []
-      iterator_handles = []
+
       for i, device in enumerate(self._devices):
         with ops.device(device):
           ds = _create_device_dataset(prototype_device_datasets[i],
@@ -565,13 +540,6 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
                                       experimental_slack)
           iterator = iter(ds)
           self._device_iterators.append(iterator)
-          iterator_handles.append(iterator._iterator_resource)  # pylint: disable=protected-access
-
-      self._resource_deleter = MultiDeviceIteratorResourceDeleter(
-          multi_device_iterator=self._multi_device_iterator_resource,
-          iterators=iterator_handles,
-          device=self._source_device,
-          deleter=self._deleter)
 
   def get_next(self, device=None):
     """Returns the next element given a `device`, else returns all in a list."""

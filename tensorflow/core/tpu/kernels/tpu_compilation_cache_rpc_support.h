@@ -12,16 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_SUPPORT_H_
-#define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_SUPPORT_H_
-
-#include <grpcpp/security/credentials.h>
+#ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_RPC_SUPPORT_H_
+#define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_RPC_SUPPORT_H_
 
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "grpcpp/security/credentials.h"
 #include "grpcpp/support/slice.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/status.h"
@@ -43,13 +43,13 @@ struct CacheEntry {
   }
   std::unique_ptr<TpuProgramGroupInterface> tpu_program_group;
   std::string key;
-  int64 size;
+  int64_t size;
 
   // An integer-based monotonically increasing counter used by the TPU
   // compilation cache to sort and evict the least recently used entry when the
   // cache size exceeded the maximum size limit. The value is initialized to
   // `-1` as an initial value.
-  int64 last_use;
+  int64_t last_use;
 };
 
 // Implementation of `CompilationCacheEntryRef` that holds a shared_ptr to the
@@ -85,7 +85,7 @@ std::shared_ptr<::grpc::ChannelCredentials> CreateChannelCredentials();
 // `cache_entry` will be instantiated by the function.
 template <typename ResponseType>
 Status DeserializeRpcResponseToCacheEntry(
-    const absl::string_view local_proto_key, ResponseType* response,
+    absl::string_view local_proto_key, ResponseType* response,
     std::shared_ptr<CacheEntry>* cache_entry);
 
 // Serializes `TpuCompilationCacheEntry` to gRPC bufer slices.
@@ -94,4 +94,4 @@ xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(
 }  // namespace tpu
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_SUPPORT_H_
+#endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_RPC_SUPPORT_H_

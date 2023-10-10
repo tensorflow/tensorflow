@@ -14,10 +14,6 @@
 # ==============================================================================
 """tfdbg example: debugging tf.keras models training on tf.data.Dataset."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import sys
 import tempfile
@@ -44,9 +40,10 @@ def main(_):
   sess = tf.Session()
   if FLAGS.debug:
     # Use the command-line interface (CLI) of tfdbg.
-    config_file_path = (
-        tempfile.mktemp(".tfdbg_config")
-        if FLAGS.use_random_config_path else None)
+    if FLAGS.use_random_config_path:
+      _, config_file_path = tempfile.mkstemp(".tfdbg_config")
+    else:
+      config_file_path = None
     sess = tf_debug.LocalCLIDebugWrapperSession(
         sess, ui_type=FLAGS.ui_type, config_file_path=config_file_path)
   elif FLAGS.tensorboard_debug_address:
@@ -78,8 +75,8 @@ if __name__ == "__main__":
   parser.add_argument(
       "--ui_type",
       type=str,
-      default="curses",
-      help="Command-line user interface type (curses | readline).")
+      default="readline",
+      help="Command-line user interface type (only readline is supported).")
   parser.add_argument(
       "--use_random_config_path",
       type="bool",

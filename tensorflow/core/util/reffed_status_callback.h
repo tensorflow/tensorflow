@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_REFFED_STATUS_CALLBACK_H_
 #define TENSORFLOW_CORE_UTIL_REFFED_STATUS_CALLBACK_H_
 
+#include <utility>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -26,7 +28,7 @@ namespace tensorflow {
 // The ReffedStatusCallback is a refcounted object that accepts a
 // StatusCallback.  When it is destroyed (its refcount goes to 0), the
 // StatusCallback is called with the first non-OK status passed to
-// UpdateStatus(), or Status::OK() if no non-OK status was set.
+// UpdateStatus(), or OkStatus() if no non-OK status was set.
 class ReffedStatusCallback : public core::RefCounted {
  public:
   explicit ReffedStatusCallback(StatusCallback done) : done_(std::move(done)) {}
@@ -47,7 +49,7 @@ class ReffedStatusCallback : public core::RefCounted {
     return status_group_.as_summary_status();
   }
 
-  ~ReffedStatusCallback() { done_(status_group_.as_summary_status()); }
+  ~ReffedStatusCallback() override { done_(status_group_.as_summary_status()); }
 
  private:
   StatusCallback done_;

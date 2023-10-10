@@ -14,17 +14,14 @@
 # ================================
 """Imports a protobuf model as a graph in Tensorboard."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import sys
+
+from absl import app
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import app
 from tensorflow.python.summary import summary
 from tensorflow.python.tools import saved_model_utils
 

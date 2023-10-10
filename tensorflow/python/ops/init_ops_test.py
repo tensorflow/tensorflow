@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for initializers in init_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
@@ -176,12 +172,11 @@ class InitializersTest(test.TestCase):
         self._runner(
             init_ops.Orthogonal(seed=123), tensor_shape, target_mean=0.)
 
+  @test.disable_with_predicate(
+      pred=test.is_built_with_rocm,
+      skip_message='Disable subtest on ROCm due to missing QR op support')
   @test_util.run_gpu_only
   def testVariablePlacementWithOrthogonalInitializer(self):
-
-    if test.is_built_with_rocm():
-      self.skipTest('Disable subtest on ROCm due to missing QR op support')
-
     with ops.Graph().as_default() as g:
       with ops.device('gpu:0'):
         variable_scope.get_variable(

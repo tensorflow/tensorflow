@@ -48,8 +48,7 @@ Status DisableIntraOpParallelism::OptimizeAndCollectStats(
   // If the GrapplerItem is derived from a FunctionDef, we don't optimize it,
   // because we only want to disable intra op parallelism on the main dataset
   // pipeline.
-  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph))
-    return Status::OK();
+  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph)) return OkStatus();
 
   if (item.fetch.size() != 1) {
     return errors::InvalidArgument(
@@ -62,7 +61,7 @@ Status DisableIntraOpParallelism::OptimizeAndCollectStats(
       if (node.op() == target_dataset_op) {
         // If parallelism is set by the user, we keep the user setting instead
         // of disabling it.
-        return Status::OK();
+        return OkStatus();
       }
     }
   }
@@ -82,7 +81,7 @@ Status DisableIntraOpParallelism::OptimizeAndCollectStats(
 
   // Add a const node with value 1
   NodeDef* max_parallelism_value =
-      graph_utils::AddScalarConstNode(int64{1}, &graph);
+      graph_utils::AddScalarConstNode(int64_t{1}, &graph);
 
   NodeDef insert_node;
   graph_utils::SetUniqueGraphNodeName("intra_op_parallelism", graph.graph(),
@@ -97,27 +96,15 @@ Status DisableIntraOpParallelism::OptimizeAndCollectStats(
   // Set `output_types` and `output_shapes` attributes by copying the relevant
   // attrs from the input node. If we fail to set the attributes, we abort the
   // rewrite.
-  for (auto attr : {"output_shapes", "output_types"}) {
-    if (last_node->attr().find(attr) != last_node->attr().end()) {
-      graph_utils::CopyAttribute(attr, *last_node, &insert_node);
-    } else {
-      return Status::OK();
-    }
-  }
+  if (!graph_utils::CopyShapesAndTypesAttrs(*last_node, &insert_node))
+    return OkStatus();
 
   auto* added_node = graph.AddNode(std::move(insert_node));
   TF_RETURN_IF_ERROR(
       graph.UpdateFanouts(last_node->name(), added_node->name()));
 
   stats->num_changes++;
-  return Status::OK();
-}
-
-void DisableIntraOpParallelism::Feedback(Cluster* cluster,
-                                         const GrapplerItem& item,
-                                         const GraphDef& optimize_output,
-                                         double result) {
-  // no-op
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(DisableIntraOpParallelism,

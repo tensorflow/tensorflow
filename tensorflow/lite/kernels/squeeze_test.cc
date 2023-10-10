@@ -15,6 +15,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <initializer_list>
+#include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -73,6 +74,27 @@ class SqueezeOpTest : public ::testing::Test {};
 using DataTypes = ::testing::Types<float, int8_t, int16_t, int32_t>;
 TYPED_TEST_SUITE(SqueezeOpTest, DataTypes);
 
+TYPED_TEST(SqueezeOpTest, SqueezeAllInplace) {
+  std::initializer_list<TypeParam> data = {1,  2,  3,  4,  5,  6,  7,  8,
+                                           9,  10, 11, 12, 13, 14, 15, 16,
+                                           17, 18, 19, 20, 21, 22, 23, 24};
+  SqueezeOpModel<TypeParam> m({GetTensorType<TypeParam>(), {1, 24, 1}},
+                              {GetTensorType<TypeParam>(), {24}}, {});
+  m.SetInput(data);
+  const int kInplaceInputTensorIdx = 0;
+  const int kInplaceOutputTensorIdx = 0;
+  const TfLiteTensor* input_tensor = m.GetInputTensor(kInplaceInputTensorIdx);
+  TfLiteTensor* output_tensor = m.GetOutputTensor(kInplaceOutputTensorIdx);
+  output_tensor->data.data = input_tensor->data.data;
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({24}));
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                        13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}));
+  EXPECT_EQ(output_tensor->data.data, input_tensor->data.data);
+}
+
 TYPED_TEST(SqueezeOpTest, SqueezeAll) {
   std::initializer_list<TypeParam> data = {1,  2,  3,  4,  5,  6,  7,  8,
                                            9,  10, 11, 12, 13, 14, 15, 16,
@@ -80,7 +102,7 @@ TYPED_TEST(SqueezeOpTest, SqueezeAll) {
   SqueezeOpModel<TypeParam> m({GetTensorType<TypeParam>(), {1, 24, 1}},
                               {GetTensorType<TypeParam>(), {24}}, {});
   m.SetInput(data);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({24}));
   EXPECT_THAT(
       m.GetOutput(),
@@ -95,7 +117,7 @@ TYPED_TEST(SqueezeOpTest, SqueezeSelectedAxis) {
   SqueezeOpModel<TypeParam> m({GetTensorType<TypeParam>(), {1, 24, 1}},
                               {GetTensorType<TypeParam>(), {24}}, {2});
   m.SetInput(data);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 24}));
   EXPECT_THAT(
       m.GetOutput(),
@@ -110,7 +132,7 @@ TYPED_TEST(SqueezeOpTest, SqueezeNegativeAxis) {
   SqueezeOpModel<TypeParam> m({GetTensorType<TypeParam>(), {1, 24, 1}},
                               {GetTensorType<TypeParam>(), {24}}, {-1, 0});
   m.SetInput(data);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({24}));
   EXPECT_THAT(
       m.GetOutput(),
@@ -124,7 +146,7 @@ TYPED_TEST(SqueezeOpTest, SqueezeAllDims) {
       {GetTensorType<TypeParam>(), {1, 1, 1, 1, 1, 1, 1}},
       {GetTensorType<TypeParam>(), {1}}, {});
   m.SetInput(data);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), IsEmpty());
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3}));
 }
@@ -134,7 +156,7 @@ TEST(SqueezeOpTest, SqueezeAllString) {
   SqueezeOpModel<std::string> m({GetTensorType<std::string>(), {1, 2, 1}},
                                 {GetTensorType<std::string>(), {2}}, {});
   m.SetStringInput(data);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetStringOutput(), ElementsAreArray({"a", "b"}));
 }
@@ -144,7 +166,7 @@ TEST(SqueezeOpTest, SqueezeNegativeAxisString) {
   SqueezeOpModel<std::string> m({GetTensorType<std::string>(), {1, 2, 1}},
                                 {GetTensorType<std::string>(), {24}}, {-1});
   m.SetStringInput(data);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
   EXPECT_THAT(m.GetStringOutput(), ElementsAreArray({"a", "b"}));
 }
@@ -155,7 +177,7 @@ TEST(SqueezeOpTest, SqueezeAllDimsString) {
       {GetTensorType<std::string>(), {1, 1, 1, 1, 1, 1, 1}},
       {GetTensorType<std::string>(), {1}}, {});
   m.SetStringInput(data);
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), IsEmpty());
   EXPECT_THAT(m.GetStringOutput(), ElementsAreArray({"a"}));
 }

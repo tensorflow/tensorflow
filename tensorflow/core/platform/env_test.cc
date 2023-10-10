@@ -17,9 +17,10 @@ limitations under the License.
 
 #include <sys/stat.h>
 
+#include <memory>
+
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/null_file_system.h"
 #include "tensorflow/core/platform/path.h"
@@ -28,8 +29,9 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/test.h"
+#include "tsl/lib/core/status_test_util.h"
 
-namespace tensorflow {
+namespace tsl {
 
 namespace {
 
@@ -40,9 +42,9 @@ string CreateTestFile(Env* env, const string& filename, int length) {
   return input;
 }
 
-GraphDef CreateTestProto() {
-  GraphDef g;
-  NodeDef* node = g.add_node();
+tensorflow::GraphDef CreateTestProto() {
+  tensorflow::GraphDef g;
+  tensorflow::NodeDef* node = g.add_node();
   node->set_name("name1");
   node->set_op("op1");
   node = g.add_node();
@@ -65,7 +67,7 @@ class DefaultEnvTest : public ::testing::Test {
   void SetUp() override { TF_CHECK_OK(env_->CreateDir(BaseDir())); }
 
   void TearDown() override {
-    int64 undeleted_files, undeleted_dirs;
+    int64_t undeleted_files, undeleted_dirs;
     TF_CHECK_OK(
         env_->DeleteRecursively(BaseDir(), &undeleted_files, &undeleted_dirs));
   }
@@ -114,25 +116,25 @@ TEST_F(DefaultEnvTest, ReadFileToString) {
 }
 
 TEST_F(DefaultEnvTest, ReadWriteBinaryProto) {
-  const GraphDef proto = CreateTestProto();
+  const tensorflow::GraphDef proto = CreateTestProto();
   const string filename = strings::StrCat(BaseDir(), "binary_proto");
 
   // Write the binary proto
   TF_EXPECT_OK(WriteBinaryProto(env_, filename, proto));
 
   // Read the binary proto back in and make sure it's the same.
-  GraphDef result;
+  tensorflow::GraphDef result;
   TF_EXPECT_OK(ReadBinaryProto(env_, filename, &result));
   EXPECT_EQ(result.DebugString(), proto.DebugString());
 
   // Reading as text or binary proto should also work.
-  GraphDef result2;
+  tensorflow::GraphDef result2;
   TF_EXPECT_OK(ReadTextOrBinaryProto(env_, filename, &result2));
   EXPECT_EQ(result2.DebugString(), proto.DebugString());
 }
 
 TEST_F(DefaultEnvTest, ReadWriteTextProto) {
-  const GraphDef proto = CreateTestProto();
+  const tensorflow::GraphDef proto = CreateTestProto();
   const string filename = strings::StrCat(BaseDir(), "text_proto");
 
   // Write the text proto
@@ -141,12 +143,12 @@ TEST_F(DefaultEnvTest, ReadWriteTextProto) {
   TF_EXPECT_OK(WriteStringToFile(env_, filename, as_text));
 
   // Read the text proto back in and make sure it's the same.
-  GraphDef result;
+  tensorflow::GraphDef result;
   TF_EXPECT_OK(ReadTextProto(env_, filename, &result));
   EXPECT_EQ(result.DebugString(), proto.DebugString());
 
   // Reading as text or binary proto should also work.
-  GraphDef result2;
+  tensorflow::GraphDef result2;
   TF_EXPECT_OK(ReadTextOrBinaryProto(env_, filename, &result2));
   EXPECT_EQ(result2.DebugString(), proto.DebugString());
 }
@@ -194,7 +196,7 @@ TEST_F(DefaultEnvTest, DeleteRecursively) {
   CreateTestFile(env_, child1_file1, 100);
   TF_EXPECT_OK(env_->CreateDir(child_dir2));
 
-  int64 undeleted_files, undeleted_dirs;
+  int64_t undeleted_files, undeleted_dirs;
   TF_EXPECT_OK(
       env_->DeleteRecursively(parent_dir, &undeleted_files, &undeleted_dirs));
   EXPECT_EQ(0, undeleted_files);
@@ -209,7 +211,7 @@ TEST_F(DefaultEnvTest, DeleteRecursivelyFail) {
   // Try to delete a non-existent directory.
   const string parent_dir = io::JoinPath(BaseDir(), "root_dir");
 
-  int64 undeleted_files, undeleted_dirs;
+  int64_t undeleted_files, undeleted_dirs;
   Status s =
       env_->DeleteRecursively(parent_dir, &undeleted_files, &undeleted_dirs);
   EXPECT_EQ(error::Code::NOT_FOUND, s.code());
@@ -282,10 +284,10 @@ TEST_F(DefaultEnvTest, LocalFileSystem) {
 }
 
 TEST_F(DefaultEnvTest, SleepForMicroseconds) {
-  const int64 start = env_->NowMicros();
-  const int64 sleep_time = 1e6 + 5e5;
+  const int64_t start = env_->NowMicros();
+  const int64_t sleep_time = 1e6 + 5e5;
   env_->SleepForMicroseconds(sleep_time);
-  const int64 delta = env_->NowMicros() - start;
+  const int64_t delta = env_->NowMicros() - start;
 
   // Subtract 200 from the sleep_time for this check because NowMicros can
   // sometimes give slightly inconsistent values between the start and the
@@ -305,7 +307,7 @@ class TmpDirFileSystem : public NullFileSystem {
     // been flushed.
     if (path == "/flushed") {
       if (flushed_) {
-        return Status::OK();
+        return OkStatus();
       } else {
         return errors::NotFound("FlushCaches() not called yet");
       }
@@ -334,7 +336,7 @@ class TmpDirFileSystem : public NullFileSystem {
     StringPiece scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
     for (const auto& existing_dir : created_directories_)
-      if (existing_dir == path) return Status::OK();
+      if (existing_dir == path) return OkStatus();
     return errors::NotFound(dir, " not found");
   }
 
@@ -394,7 +396,7 @@ TEST_F(DefaultEnvTest, LocalTempFilename) {
   // offset.
   std::unique_ptr<WritableFile> file_to_append;
   TF_CHECK_OK(env->NewAppendableFile(filename, &file_to_append));
-  int64 pos;
+  int64_t pos;
   TF_CHECK_OK(file_to_append->Tell(&pos));
   ASSERT_EQ(4, pos);
 
@@ -424,6 +426,11 @@ TEST_F(DefaultEnvTest, CreateUniqueFileName) {
 
   EXPECT_TRUE(absl::StartsWith(filename, prefix));
   EXPECT_TRUE(str_util::EndsWith(filename, suffix));
+}
+
+TEST_F(DefaultEnvTest, GetProcessId) {
+  Env* env = Env::Default();
+  EXPECT_NE(env->GetProcessId(), 0);
 }
 
 TEST_F(DefaultEnvTest, GetThreadInformation) {
@@ -457,4 +464,4 @@ TEST_F(DefaultEnvTest, GetChildThreadInformation) {
   delete child_thread;
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

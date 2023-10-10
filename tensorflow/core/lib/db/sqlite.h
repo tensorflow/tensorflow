@@ -60,7 +60,7 @@ class SqliteTransaction;
 class TF_LOCKABLE Sqlite : public core::RefCounted {
  public:
   /// \brief Closes SQLite connection, which can take milliseconds.
-  virtual ~Sqlite();
+  ~Sqlite() override;
 
   /// \brief Opens SQLite database file.
   ///
@@ -105,12 +105,12 @@ class TF_LOCKABLE Sqlite : public core::RefCounted {
   }
 
   /// \brief Returns rowid assigned to last successful insert.
-  int64 last_insert_rowid() const TF_EXCLUSIVE_LOCKS_REQUIRED(this) {
+  int64_t last_insert_rowid() const TF_EXCLUSIVE_LOCKS_REQUIRED(this) {
     return sqlite3_last_insert_rowid(db_);
   }
 
   /// \brief Returns number of rows directly changed by last write.
-  int64 changes() const TF_EXCLUSIVE_LOCKS_REQUIRED(this) {
+  int64_t changes() const TF_EXCLUSIVE_LOCKS_REQUIRED(this) {
     return sqlite3_changes(db_);
   }
 
@@ -129,7 +129,8 @@ class TF_LOCKABLE Sqlite : public core::RefCounted {
   sqlite3_stmt* const rollback_;
   bool is_in_transaction_ = false;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Sqlite);
+  Sqlite(const Sqlite&) = delete;
+  void operator=(const Sqlite&) = delete;
 };
 
 /// \brief SQLite prepared statement.
@@ -203,11 +204,11 @@ class SqliteStatement {
   void Reset();
 
   /// \brief Binds signed 64-bit integer to 1-indexed query parameter.
-  void BindInt(int parameter, int64 value) {
+  void BindInt(int parameter, int64_t value) {
     Update(sqlite3_bind_int64(stmt_, parameter, value), parameter);
-    size_ += sizeof(int64);
+    size_ += sizeof(int64_t);
   }
-  void BindInt(const char* parameter, int64 value) {
+  void BindInt(const char* parameter, int64_t value) {
     BindInt(GetParameterIndex(parameter), value);
   }
 
@@ -284,7 +285,7 @@ class SqliteStatement {
   }
 
   /// \brief Returns 0-indexed column from row result coerced as an integer.
-  int64 ColumnInt(int column) const TF_MUST_USE_RESULT {
+  int64_t ColumnInt(int column) const TF_MUST_USE_RESULT {
     return sqlite3_column_int64(stmt_, column);
   }
 
@@ -374,7 +375,8 @@ class SqliteStatement {
   int bind_error_parameter_ = 0;
   uint64 size_ = 0;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SqliteStatement);
+  SqliteStatement(const SqliteStatement&) = delete;
+  void operator=(const SqliteStatement&) = delete;
 };
 
 /// \brief Reentrant SQLite connection object lock
@@ -400,7 +402,8 @@ class TF_SCOPED_LOCKABLE SqliteLock {
  private:
   sqlite3_mutex* const mutex_;
   bool is_locked_ = true;
-  TF_DISALLOW_COPY_AND_ASSIGN(SqliteLock);
+  SqliteLock(const SqliteLock&) = delete;
+  void operator=(const SqliteLock&) = delete;
 };
 #define SqliteLock(x) static_assert(0, "sqlite_lock_decl_missing_name");
 
@@ -431,7 +434,8 @@ class TF_SCOPED_LOCKABLE SqliteTransaction {
   void Begin();
   Sqlite* const db_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SqliteTransaction);
+  SqliteTransaction(const SqliteTransaction&) = delete;
+  void operator=(const SqliteTransaction&) = delete;
 };
 
 #define SQLITE_EXCLUSIVE_TRANSACTIONS_REQUIRED(...) \

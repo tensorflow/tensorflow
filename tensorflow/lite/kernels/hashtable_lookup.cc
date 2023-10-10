@@ -36,7 +36,7 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/string_util.h"
@@ -112,6 +112,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 2, &value));
 
   const int num_rows = SizeOfDimension(value, 0);
+  TF_LITE_ENSURE(context, num_rows != 0);
   const int row_bytes = value->bytes / num_rows;
   void* pointer = nullptr;
   DynamicBuffer buf;

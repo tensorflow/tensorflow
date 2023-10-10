@@ -44,6 +44,10 @@ struct MainFlags {
   string mlir_components;
   bool experimental_quantize = false;
 
+  // Sanitizer pass options
+  bool sanitize_dataflow = false;
+  string sanitize_abilists_dataflow;
+
   // C++ codegen options
   bool gen_name_to_index = false;
   bool gen_program_shape = false;

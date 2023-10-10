@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_DEBUG_OPS_H_
 
+#include <cstdint>
+#include <memory>
 #include <numeric>
 
 #include "tensorflow/core/platform/bfloat16.h"
@@ -23,6 +25,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
+#include "tensorflow/core/util/determinism.h"
 #endif
 
 #if GOOGLE_CUDA
@@ -130,7 +133,7 @@ class BaseDebugOp : public OpKernel {
 
     std::vector<string> name_items = str_util::Split(tensor_name, ':');
     string node_name;
-    int32 output_slot = 0;
+    int32_t output_slot = 0;
     OP_REQUIRES(context, name_items.size() == 1 || name_items.size() == 2,
                 errors::InvalidArgument("Failed to parse tensor name: \"",
                                         tensor_name, "\""));
@@ -176,22 +179,30 @@ class BaseDebugOp : public OpKernel {
 
   // Publish a tensor to all debug URLs of the debug op.
   // Log an error if the publishing failed.
-  Status PublishTensor(const Tensor& tensor) {
+  Status PublishTensor(const Tensor& tensor, int64_t step_id = -1) {
     if (debug_urls_.empty()) {
-      return Status::OK();
+      return OkStatus();
     } else {
-      Status status = DebugIO::PublishDebugTensor(*debug_watch_key_, tensor,
-                                                  Env::Default()->NowMicros(),
-                                                  debug_urls_, gated_grpc_);
+      Status status = DebugIO::PublishDebugTensor(
+          *debug_watch_key_, tensor, Env::Default()->NowMicros(), debug_urls_,
+          gated_grpc_, step_id);
       if (!status.ok()) {
         LOG(ERROR) << "Debug node of watch key "
                    << debug_watch_key_->debug_node_name
                    << " failed to publish debug tensor data to all URLs "
                    << str_util::Join(debug_urls_, ", ")
-                   << ", due to: " << status.error_message();
+                   << ", due to: " << status.message();
       }
       return status;
     }
+  }
+
+  void CompleteDebugNodeKey(const string& io_of_node, bool is_input,
+                            int io_index) {
+    debug_watch_key_ = std::make_unique<DebugNodeKey>(
+        debug_watch_key_->device_name, debug_watch_key_->node_name,
+        debug_watch_key_->output_slot, debug_op_name_, io_of_node, is_input,
+        io_index);
   }
 
  private:
@@ -220,6 +231,36 @@ class DebugIdentityOp : public BaseDebugOp {
   }
 };
 
+// Identity op for debugging.
+//   Output slot 0 carries the debug signal and is always allocated on the
+//   host (CPU) as a non-Ref tensor. In the case of DebugIdentityOp,
+//   the debug signal is equal to the input tensor.
+class DebugIdentityV3Op : public BaseDebugOp {
+ public:
+  explicit DebugIdentityV3Op(OpKernelConstruction* context)
+      : BaseDebugOp("DebugIdentityV3", context) {
+    string io_of_node;
+    bool is_input;
+    int io_index;
+    OP_REQUIRES_OK(context, context->GetAttr("io_of_node", &io_of_node));
+    OP_REQUIRES_OK(context, context->GetAttr("is_input", &is_input));
+    OP_REQUIRES_OK(context, context->GetAttr("io_index", &io_index));
+    if (!io_of_node.empty()) {
+      CompleteDebugNodeKey(io_of_node, is_input, io_index);
+    }
+  }
+
+  void Compute(OpKernelContext* context) override {
+    if (!ApplyGrpcGating(context)) {
+      return;
+    }
+
+    OP_REQUIRES_OK(context,
+                   PublishTensor(context->input(0), context->step_id()));
+    context->set_output(0, context->input(0));
+  }
+};
+
 // NaN-counter op for debugging.
 template <typename T>
 class DebugNanCountOp : public BaseDebugOp {
@@ -236,7 +277,7 @@ class DebugNanCountOp : public BaseDebugOp {
     const Tensor& input = context->input(0);
 
     // Use DT_INT64/int64 to be consistent with TensorShape::num_elements().
-    int64 nan_count = 0;
+    int64_t nan_count = 0;
 
     // If the input is an uninitialized tensor, let nan_count be 0.
     if (input.IsInitialized()) {
@@ -244,7 +285,7 @@ class DebugNanCountOp : public BaseDebugOp {
       const TensorShape& input_shape = input.shape();
       const T* input_flat = input.template flat<T>().data();
 
-      for (int64 i = 0; i < input_shape.num_elements(); ++i) {
+      for (int64_t i = 0; i < input_shape.num_elements(); ++i) {
         if (Eigen::numext::isnan(static_cast<double>(input_flat[i]))) {
           nan_count++;
         }
@@ -253,7 +294,7 @@ class DebugNanCountOp : public BaseDebugOp {
 
     TensorShape shape({1});
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output_tensor));
-    output_tensor->vec<int64>()(0) = nan_count;
+    output_tensor->vec<int64_t>()(0) = nan_count;
     OP_REQUIRES_OK(context, PublishTensor(*output_tensor));
   }
 };
@@ -278,14 +319,14 @@ class DebugNumericSummaryOp : public BaseDebugOp {
     Tensor* output_tensor;
     const Tensor& input = context->input(0);
 
-    int64 is_initialized = 0;
-    int64 element_count = 0;
-    int64 negative_inf_count = 0;
-    int64 negative_count = 0;
-    int64 zero_count = 0;
-    int64 positive_count = 0;
-    int64 positive_inf_count = 0;
-    int64 nan_count = 0;
+    int64_t is_initialized = 0;
+    int64_t element_count = 0;
+    int64_t negative_inf_count = 0;
+    int64_t negative_count = 0;
+    int64_t zero_count = 0;
+    int64_t positive_count = 0;
+    int64_t positive_inf_count = 0;
+    int64_t nan_count = 0;
     double min = std::numeric_limits<double>::infinity();
     double max = -std::numeric_limits<double>::infinity();
     double sum = 0.0;
@@ -293,7 +334,7 @@ class DebugNumericSummaryOp : public BaseDebugOp {
     double variance = std::numeric_limits<double>::quiet_NaN();
 
     // Equal to negative_count + zero_count + positive_count.
-    int64 non_inf_nan_count = 0;
+    int64_t non_inf_nan_count = 0;
 
     const TensorShape& input_shape = input.shape();
     if (input.IsInitialized()) {
@@ -304,7 +345,7 @@ class DebugNumericSummaryOp : public BaseDebugOp {
       const bool is_lower_bound_custom = !Eigen::numext::isinf(lower_bound_);
       const bool is_upper_bound_custom = !Eigen::numext::isinf(upper_bound_);
 
-      for (int64 i = 0; i < element_count; ++i) {
+      for (int64_t i = 0; i < element_count; ++i) {
         const double x = static_cast<double>(input_flat[i]);
         if (Eigen::numext::isnan(x)) {
           nan_count++;
@@ -344,7 +385,7 @@ class DebugNumericSummaryOp : public BaseDebugOp {
 
         // Do a second pass to compute variance.
         variance = 0.0;
-        for (int64 i = 0; i < element_count; ++i) {
+        for (int64_t i = 0; i < element_count; ++i) {
           const double x = static_cast<double>(input_flat[i]);
           if (!Eigen::numext::isnan(x) && !Eigen::numext::isinf(x)) {
             variance += (x - mean) * (x - mean);
@@ -447,7 +488,7 @@ class DebugIdentityV2Op : public OpKernel {
   string op_name_;
   int32 output_slot_;
   int32 tensor_debug_mode_;
-  int64 circular_buffer_size_;
+  int64_t circular_buffer_size_;
   string tfdbg_run_id_;
 };
 
@@ -523,7 +564,7 @@ class DebugNumericSummaryV2Op<CPUDevice, Tin, Tout> : public OpKernel {
     const Tensor& tensor = context->input(0);
     auto in = tensor.flat<Tin>();
     const Tin* data = in.data();
-    const int64 size = in.size();
+    const int64_t size = in.size();
     Tensor* output_tensor;
     Tout tensor_id = static_cast<Tout>(tensor_id_);
     const Tout num_elem = static_cast<Tout>(context->input(0).NumElements());
@@ -681,13 +722,13 @@ class DebugNumericSummaryV2Op<CPUDevice, Tin, Tout> : public OpKernel {
 
  private:
   int tensor_debug_mode_;
-  int64 tensor_id_;
+  int64_t tensor_id_;
   static constexpr int kShapeDims = 6;
   static constexpr int kNegInfBit = 0x01;
   static constexpr int kPosInfBit = 0x02;
   static constexpr int kNaNBit = 0x04;
-  static constexpr int64 kMaxTensorId = 1LL
-                                        << std::numeric_limits<Tout>::digits;
+  static constexpr int64_t kMaxTensorId = 1LL
+                                          << std::numeric_limits<Tout>::digits;
 };
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -750,12 +791,19 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       CurtHealthLaunch<Tin, Tout>().Run(d, input.data(), input.size(),
                                         output_tensor->flat<Tout>().data() + 1);
 
-      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-          stream, std::move(check_cb));
+      context->device()
+          ->tensorflow_accelerator_device_info()
+          ->event_mgr->ThenExecute(stream, std::move(check_cb));
     } else if (tensor_debug_mode_ == 3) {  // CONCISE_HEALTH.
       TensorShape shape({5});
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, shape, &output_tensor));
+      OP_REQUIRES_ASYNC(context, !tensorflow::OpDeterminismRequired(),
+                        errors::Unimplemented(
+                            "Determinism is not yet supported for "
+                            "DebugNumericSummaryV2 when tensor_debug_mode is "
+                            "CONCISE_HEALTH."),
+                        done);
 
       auto* stream = context->op_device_context()->stream();
       OP_REQUIRES_ASYNC(context, stream != nullptr,
@@ -777,8 +825,9 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
           d, input.data(), input.size(),
           output_tensor->flat<Tout>().data() + 2);
 
-      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-          stream, std::move(check_cb));
+      context->device()
+          ->tensorflow_accelerator_device_info()
+          ->event_mgr->ThenExecute(stream, std::move(check_cb));
     } else if (tensor_debug_mode_ == 4) {  // FULL HEALTH
       TensorShape shape({11});
       OP_REQUIRES_OK(context,
@@ -787,6 +836,12 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       auto* stream = context->op_device_context()->stream();
       OP_REQUIRES_ASYNC(context, stream != nullptr,
                         errors::Internal("No GPU stream available."), done);
+      OP_REQUIRES_ASYNC(context, !tensorflow::OpDeterminismRequired(),
+                        errors::Unimplemented(
+                            "Determinism is not yet supported for "
+                            "DebugNumericSummaryV2 when tensor_debug_mode is "
+                            "FULL_HEALTH."),
+                        done);
 
       se::DeviceMemoryBase output_tensor_ptr(
           output_tensor->flat<Tout>().data(),
@@ -809,8 +864,9 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       FullHealthLaunch<Tin, Tout>().Run(d, input.data(), input.size(),
                                         output_tensor->flat<Tout>().data() + 5);
 
-      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-          stream, std::move(check_cb));
+      context->device()
+          ->tensorflow_accelerator_device_info()
+          ->event_mgr->ThenExecute(stream, std::move(check_cb));
     } else if (tensor_debug_mode_ == 5) {  // SHAPE
       TensorShape shape({10});
       OP_REQUIRES_OK(context,
@@ -842,8 +898,9 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       }
       // Write to device stream
       stream->ThenMemcpy(&output_tensor_ptr, &static_output, sizeof(Tout) * 10);
-      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-          stream, std::move(check_cb));
+      context->device()
+          ->tensorflow_accelerator_device_info()
+          ->event_mgr->ThenExecute(stream, std::move(check_cb));
     } else if (tensor_debug_mode_ == 8) {  // REDUCE_INF_NAN_THREE_SLOTS.
       TensorShape shape({3});
       OP_REQUIRES_OK(context,
@@ -868,8 +925,9 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
       ReduceInfNanThreeSlotsLaunch<Tin, Tout>().Run(
           d, input.data(), input.size(), output_tensor->flat<Tout>().data());
 
-      context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-          stream, std::move(check_cb));
+      context->device()
+          ->tensorflow_accelerator_device_info()
+          ->event_mgr->ThenExecute(stream, std::move(check_cb));
     } else {
       // TODO(cais): Implement other tensor debug modes in debug_event.proto.
       context->SetStatus(errors::Unimplemented(
@@ -880,8 +938,9 @@ class DebugNumericSummaryV2Op<GPUDevice, Tin, Tout> : public AsyncOpKernel {
 
  private:
   int tensor_debug_mode_;
-  int64 tensor_id_;
-  static constexpr int64 kMaxTensorId = 1L << std::numeric_limits<Tout>::digits;
+  int64_t tensor_id_;
+  static constexpr int64_t kMaxTensorId = 1L
+                                          << std::numeric_limits<Tout>::digits;
 };
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

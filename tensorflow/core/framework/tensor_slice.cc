@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/tensor_slice.h"
+
+#include <limits>
 #include <vector>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -35,7 +38,7 @@ TensorSlice::TensorSlice(const TensorSliceProto& proto) {
 }
 
 TensorSlice::TensorSlice(
-    std::initializer_list<std::pair<int64, int64>> extents) {
+    std::initializer_list<std::pair<int64_t, int64_t>> extents) {
   starts_.reserve(extents.size());
   lengths_.reserve(extents.size());
   for (const auto& e : extents) {
@@ -44,12 +47,40 @@ TensorSlice::TensorSlice(
   }
 }
 
+Status TensorSlice::BuildTensorSlice(const TensorSliceProto& proto,
+                                     TensorSlice* output) {
+  output->Clear();
+  output->starts_.reserve(proto.extent_size());
+  output->lengths_.reserve(proto.extent_size());
+  for (const auto& e : proto.extent()) {
+    int64_t l = GetExtentLength(e);
+    if (e.start() != 0 || l != kFullExtent) {
+      if (e.start() < 0 || l <= 0) {
+        return errors::InvalidArgument(
+            "Expected non-negative start and positive length but got start = ",
+            e.start(), ", length = ", l, ": extent = ", e.ShortDebugString());
+      }
+      // Calculating the extent end must not cause signed integer overflow.
+      if (static_cast<uint64_t>(e.start()) + static_cast<uint64_t>(e.length()) >
+          std::numeric_limits<int64_t>::max()) {
+        return errors::InvalidArgument(
+            "Extent end exceeds the maximum possible size: extent = ",
+            e.ShortDebugString());
+      }
+    }
+    output->starts_.push_back(e.start());
+    output->lengths_.push_back(l);
+  }
+
+  return OkStatus();
+}
+
 Status TensorSlice::Parse(const string& str, TensorSlice* slice) {
   std::vector<string> items = str_util::Split(str, ':', str_util::SkipEmpty());
   slice->starts_.reserve(items.size());
   slice->lengths_.reserve(items.size());
   for (const string& x : items) {
-    int64 s, l;
+    int64_t s, l;
     if (x == "-") {
       // "everything"
       s = 0;
@@ -74,7 +105,7 @@ Status TensorSlice::Parse(const string& str, TensorSlice* slice) {
     slice->lengths_.push_back(l);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void TensorSlice::Clear() {
@@ -165,8 +196,8 @@ bool TensorSlice::Intersect(const TensorSlice& other,
     } else {
       // If we have an intersection here, it should have a start that is the
       // max of the two starts and an end that is the min of the two ends.
-      int64 s = std::max(start(d), other.start(d));
-      int64 l = std::min(end(d), other.end(d)) - s;
+      int64_t s = std::max(start(d), other.start(d));
+      int64_t l = std::min(end(d), other.end(d)) - s;
       if (l > 0) {
         // We have a real intersection
         if (result) {
@@ -231,7 +262,7 @@ bool TensorSlice::HasExtentLength(const TensorSliceProto::Extent& extent) {
 }
 
 // static
-int64 TensorSlice::GetExtentLength(const TensorSliceProto::Extent& extent) {
+int64_t TensorSlice::GetExtentLength(const TensorSliceProto::Extent& extent) {
   if (!HasExtentLength(extent)) return -1;
   return extent.length();
 }
@@ -264,9 +295,9 @@ Status TensorSlice::SliceTensorShape(const TensorShape& shape,
     }
   }
   // If we are here, we have successfully applied the shape.
-  return Status::OK();
+  return OkStatus();
 }
 
-const int64 TensorSlice::kFullExtent = -1;
+const int64_t TensorSlice::kFullExtent = -1;
 
 }  // namespace tensorflow

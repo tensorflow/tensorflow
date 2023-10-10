@@ -15,34 +15,47 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/infeed_ops.h"
 
-#include <algorithm>
+#include <cstdint>
+#include <deque>
+#include <iterator>
+#include <memory>
+#include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/jit/xla_device.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/common_runtime/dma_helper.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
+#include "xla/literal.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/stream_executor/tpu/c_api_conversions.h"
+#include "xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/stream_executor/tpu/noncopyable_buffer.h"
+#include "xla/stream_executor/tpu/tpu_executor_api.h"
+#include "xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/function_handle_cache.h"
-#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
-#include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/framework/variant_encode_decode.h"  // IWYU pragma: keep
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/stream_executor/multi_platform_manager.h"
-#include "tensorflow/stream_executor/tpu/tpu_transfer_manager.h"
-#include "tensorflow/stream_executor/tpu/tpu_transfer_manager_interface.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -60,11 +73,11 @@ xla::Shape GetTPUInfeedLayout(const xla::Shape& shape) {
 
   ApiConverter::ToC(shape, &c_shape);
 
-  tpu::ExecutorApiFn()->TpuTransferManager_GetInfeedLayoutFn(&c_shape,
-                                                             &c_infeed_shape);
+  stream_executor::tpu::ExecutorApiFn()->TpuTransferManager_GetInfeedLayoutFn(
+      &c_shape, &c_infeed_shape);
   xla::Shape infeed_shape = ApiConverter::FromC(&c_infeed_shape);
-  ApiConverter::Free(&c_shape);
-  ApiConverter::Free(&c_infeed_shape);
+  ApiConverter::Destroy(&c_shape);
+  ApiConverter::Destroy(&c_infeed_shape);
   return infeed_shape;
 }
 
@@ -72,14 +85,14 @@ xla::Shape GetTPUInfeedLayout(const xla::Shape& shape) {
 // to obtain a XLA literal for the host tensor laid out as the given layout. The
 // returned tensor is normalized to the dim0major layout -- F32[10,20,30]{2,0,1}
 // is returned as F32[20,10,30]{2,1,0}.
-xla::StatusOr<Tensor> TransposeTensor(OpKernelContext* ctx,
+tsl::StatusOr<Tensor> TransposeTensor(OpKernelContext* ctx,
                                       const Tensor& input_tensor,
                                       const xla::Shape& xla_shape) {
   profiler::TraceMe trace_me("TransposeTensor", /*level=*/2);
-  const int64 rank = xla_shape.rank();
-  std::vector<int32> permutation(rank);
-  std::vector<int64> transposed_shapes(rank);
-  for (int64 i = 0; i < rank; ++i) {
+  const int64_t rank = xla_shape.rank();
+  std::vector<int32_t> permutation(rank);
+  std::vector<int64_t> transposed_shapes(rank);
+  for (int64_t i = 0; i < rank; ++i) {
     permutation[i] = xla_shape.layout().minor_to_major(rank - 1 - i);
     transposed_shapes[i] = xla_shape.dimensions(permutation[i]);
   }
@@ -111,9 +124,9 @@ xla::StatusOr<Tensor> TransposeTensor(OpKernelContext* ctx,
   return transposed_tensor;
 }
 
-xla::StatusOr<bool> GetLayoutOverride(OpKernelConstruction* ctx,
+tsl::StatusOr<bool> GetLayoutOverride(OpKernelConstruction* ctx,
                                       const char* attrn_name,
-                                      std::vector<int64>* minor_to_major) {
+                                      std::vector<int64_t>* minor_to_major) {
   if (!ctx->HasAttr(attrn_name)) {
     return false;
   }
@@ -125,14 +138,14 @@ Status GetInfeedShapeWithLayout(OpKernelConstruction* ctx,
                                 const char* attrn_name,
                                 const xla::Shape& input_shape,
                                 xla::Shape* output_shape) {
-  std::vector<int64> minor_to_major;
+  std::vector<int64_t> minor_to_major;
   TF_ASSIGN_OR_RETURN(bool has_override,
                       GetLayoutOverride(ctx, attrn_name, &minor_to_major));
   if (!has_override) {
     *output_shape = input_shape;
     if (output_shape->IsTuple()) {
-      int64 tuple_elements = xla::ShapeUtil::TupleElementCount(*output_shape);
-      for (int64 i = 0; i < tuple_elements; ++i) {
+      int64_t tuple_elements = xla::ShapeUtil::TupleElementCount(*output_shape);
+      for (int64_t i = 0; i < tuple_elements; ++i) {
         xla::Shape* sub_shape =
             xla::ShapeUtil::GetMutableSubshape(output_shape, {i});
         *sub_shape->mutable_layout() = GetTPUInfeedLayout(*sub_shape).layout();
@@ -141,7 +154,7 @@ Status GetInfeedShapeWithLayout(OpKernelConstruction* ctx,
       *output_shape->mutable_layout() =
           GetTPUInfeedLayout(*output_shape).layout();
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   auto layout_func = [](const xla::Shape& shape) -> xla::Layout {
@@ -160,7 +173,7 @@ Status GetInfeedShapeWithLayout(OpKernelConstruction* ctx,
 // `LinearizerBufferList` (aka `std::deque<LinearizerBuffer>`)
 // object, so the `Encode()` and `Decode()` methods are not implemented.
 struct LinearizedBuffersWrapper {
-  explicit LinearizedBuffersWrapper() {}
+  explicit LinearizedBuffersWrapper() = default;
   explicit LinearizedBuffersWrapper(LinearizerBufferList bufs,
                                     std::vector<tensorflow::Tensor> ts)
       : buffers(std::move(bufs)), tensors(std::move(ts)) {}
@@ -198,7 +211,7 @@ Status AutoTransposeAndLinearize(OpKernelContext* ctx,
                                  LinearizerBufferList* linearized_buffers,
                                  std::vector<Tensor>* saved_input_tensors) {
   const Tensor* tensor = &input_tensor;
-  // If the given layout is not in dim0major layout, tranposes the tensor.
+  // If the given layout is not in dim0major layout, transposes the tensor.
   bool has_transposed = false;
   Tensor transposed_tensor;
   if (!xla::LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
@@ -212,9 +225,11 @@ Status AutoTransposeAndLinearize(OpKernelContext* ctx,
   xla::BorrowingLiteral literal;
   TF_RETURN_IF_ERROR(HostTensorToBorrowingLiteral(*tensor, &literal));
 
-  TF_RETURN_IF_ERROR(
-      xla::TpuTransferManagerInterface::GetRegisteredTpuTransferManager()
-          ->LinearizeToBuffers(literal, linearized_buffers));
+  auto* transfer_manager =
+      xla::TpuTransferManagerInterface::GetRegisteredTpuTransferManager();
+  TF_RETURN_IF_ERROR(transfer_manager->LinearizeToBuffers(
+      literal, transfer_manager->HostShapeToDeviceShape(literal.shape()),
+      linearized_buffers));
 
   // The input tensor is ref-counted. Save a handle on the input tensor if
   // its underlying storage is shared with linearized buffers to prevent
@@ -232,7 +247,7 @@ Status AutoTransposeAndLinearize(OpKernelContext* ctx,
       break;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // PrelinearizeOp is used to linearize one tensor to the device format.
@@ -252,15 +267,14 @@ class PrelinearizeOp : public OpKernel {
     // Validate input.
     OP_REQUIRES(
         ctx, input_tensor.dtype() == dtype_,
-        errors::InvalidArgument("Prelinearize dtype mismatch; expected ",
-                                DataType_Name(dtype_), ", got ",
-                                DataType_Name(input_tensor.dtype())));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Prelinearize dtype mismatch; expected ", DataType_Name(dtype_),
+            ", got ", DataType_Name(input_tensor.dtype()))));
     OP_REQUIRES(
         ctx, input_tensor.shape() == shape_,
-        errors::InvalidArgument("Prelinearize shape mismatch; expected ",
-                                shape_.DebugString(), ", got ",
-                                input_tensor.shape().DebugString()));
-
+        absl::InvalidArgumentError(absl::StrCat(
+            "Prelinearize shape mismatch; expected ", shape_.DebugString(),
+            ", got ", input_tensor.shape().DebugString())));
     // Auto-transpose and prelinearize.
     LinearizerBufferList linearized_buffers;
     std::vector<Tensor> saved_input_tensors;
@@ -298,9 +312,9 @@ class PrelinearizeTupleOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dtypes", &dtypes_));
     OP_REQUIRES(
         ctx, shapes_.size() == dtypes_.size(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "shapes and dtypes must be the same length. shapes length = ",
-            shapes_.size(), ", dtypes length = ", dtypes_.size()));
+            shapes_.size(), ", dtypes length = ", dtypes_.size())));
 
     std::vector<xla::Shape> xla_shapes;
     for (int i = 0; i < shapes_.size(); i++) {
@@ -319,7 +333,7 @@ class PrelinearizeTupleOp : public OpKernel {
     OpInputList values;
     OP_REQUIRES_OK(ctx, ctx->input_list("inputs", &values));
     OP_REQUIRES(ctx, values.size() == shapes_.size(),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Wrong number of inputs to PrelinearizeTuple."));
 
     LinearizerBufferList all_linearized_buffers;
@@ -328,15 +342,15 @@ class PrelinearizeTupleOp : public OpKernel {
       // Validate input.
       const Tensor& input_tensor = values[i];
       OP_REQUIRES(ctx, input_tensor.dtype() == dtypes_[i],
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "PrelinearizeTuple dtype mismatch at tuple element ", i,
                       "; expected ", DataType_Name(dtypes_[i]), ", got ",
-                      DataType_Name(input_tensor.dtype())));
+                      DataType_Name(input_tensor.dtype()))));
       OP_REQUIRES(ctx, input_tensor.shape() == shapes_[i],
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "PrelinearizeTuple shape mismatch at tuple element ", i,
                       "; expected ", shapes_[i].DebugString(), ", got ",
-                      input_tensor.shape().DebugString()));
+                      input_tensor.shape().DebugString())));
 
       // Auto-transpose and prelinearize.
       LinearizerBufferList linearized_buffers;
@@ -374,38 +388,53 @@ class PrelinearizeTupleOp : public OpKernel {
   PrelinearizeTupleOp& operator=(const PrelinearizeTupleOp&) = delete;
 };
 
-// The InfeedEnqueuePrelinearizedBufferOp op is used to transfer prelinearized
-// buffers to the device infeed queue.
-class InfeedEnqueuePrelinearizedBufferOp : public TpuTransferAsyncOpKernel {
+class StreamExecutorInfeedEnqueueOp : public TpuInfeedEnqueueOp {
  public:
-  explicit InfeedEnqueuePrelinearizedBufferOp(OpKernelConstruction* ctx)
-      : TpuTransferAsyncOpKernel(ctx, "prelinearized_buffers_to_infeed", 8) {}
+  explicit StreamExecutorInfeedEnqueueOp(OpKernelConstruction* ctx)
+      : TpuInfeedEnqueueOp(ctx,
+                           std::make_unique<StreamExecutorTransferOpImpl>()) {}
 
-  Status DoWork(OpKernelContext* ctx,
-                xla::TpuTransferManagerInterface* transfer_manager,
-                stream_executor::StreamExecutor* stream_executor) override {
-    const Tensor& input_tensor = ctx->input(0);
-    const LinearizedBuffersWrapper* wrapper =
-        input_tensor.scalar<tensorflow::Variant>()()
-            .get<LinearizedBuffersWrapper>();
-    TF_RETURN_IF_ERROR(transfer_manager->TransferBuffersToInfeed(
-        stream_executor, wrapper->buffers));
+ private:
+  StreamExecutorInfeedEnqueueOp(const StreamExecutorInfeedEnqueueOp&) = delete;
+  StreamExecutorInfeedEnqueueOp& operator=(
+      const StreamExecutorInfeedEnqueueOp&) = delete;
+};
 
-    return Status::OK();
-  }
+class StreamExecutorInfeedEnqueueTupleOp : public TpuInfeedEnqueueTupleOp {
+ public:
+  explicit StreamExecutorInfeedEnqueueTupleOp(OpKernelConstruction* ctx)
+      : TpuInfeedEnqueueTupleOp(
+            ctx, std::make_unique<StreamExecutorTransferOpImpl>()) {}
+
+ private:
+  StreamExecutorInfeedEnqueueTupleOp(
+      const StreamExecutorInfeedEnqueueTupleOp&) = delete;
+  StreamExecutorInfeedEnqueueTupleOp& operator=(
+      const StreamExecutorInfeedEnqueueTupleOp&) = delete;
+};
+
+class StreamExecutorInfeedEnqueuePrelinearizedBufferOp
+    : public InfeedEnqueuePrelinearizedBufferOp {
+ public:
+  explicit StreamExecutorInfeedEnqueuePrelinearizedBufferOp(
+      OpKernelConstruction* ctx)
+      : InfeedEnqueuePrelinearizedBufferOp(
+            ctx, std::make_unique<StreamExecutorTransferOpImpl>()) {}
 
  private:
   // InfeedEnqueuePrelinearizedBufferOp is neither copyable nor movable.
-  InfeedEnqueuePrelinearizedBufferOp(
-      const InfeedEnqueuePrelinearizedBufferOp&) = delete;
-  InfeedEnqueuePrelinearizedBufferOp& operator=(
-      const InfeedEnqueuePrelinearizedBufferOp&) = delete;
+  StreamExecutorInfeedEnqueuePrelinearizedBufferOp(
+      const StreamExecutorInfeedEnqueuePrelinearizedBufferOp&) = delete;
+  StreamExecutorInfeedEnqueuePrelinearizedBufferOp& operator=(
+      const StreamExecutorInfeedEnqueuePrelinearizedBufferOp&) = delete;
 };
-
 }  // anonymous namespace
 
-TpuInfeedEnqueueOp::TpuInfeedEnqueueOp(OpKernelConstruction* ctx)
-    : TpuTransferAsyncOpKernel(ctx, "infeed_enqueue", 8) {
+TpuInfeedEnqueueOp::TpuInfeedEnqueueOp(
+    OpKernelConstruction* ctx,
+    std::unique_ptr<TpuTransferOpInterface> transfer_op)
+    : TpuTransferAsyncOpKernel(ctx, "infeed_enqueue", 8,
+                               std::move(transfer_op)) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &shape_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
   xla::Shape shape;
@@ -414,19 +443,19 @@ TpuInfeedEnqueueOp::TpuInfeedEnqueueOp(OpKernelConstruction* ctx)
                  GetInfeedShapeWithLayout(ctx, "layout", shape, &xla_shape_));
 }
 
-Status TpuInfeedEnqueueOp::DoWork(
-    OpKernelContext* ctx, xla::TpuTransferManagerInterface* transfer_manager,
-    stream_executor::StreamExecutor* stream_executor) {
+Status TpuInfeedEnqueueOp::DoWork(OpKernelContext* ctx, int device_ordinal) {
+  VLOG(1) << "TpuInfeedEnqueueOp::DoWork. iter_id=" << ctx->frame_iter().iter_id
+          << " device_ordinal=" << device_ordinal;
   const Tensor& input_tensor = ctx->input(0);
 
   // Validate runtime shape and fail if it doesn't match the contract.
   if (input_tensor.dtype() != dtype_) {
-    return errors::InvalidArgument("Infeed dtype mismatch.");
+    return absl::InvalidArgumentError("Infeed dtype mismatch.");
   }
   if (input_tensor.shape() != shape_) {
-    return errors::InvalidArgument("Infeed shape mismatch; expected ",
-                                   shape_.DebugString(), ", got ",
-                                   input_tensor.shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Infeed shape mismatch; expected ", shape_.DebugString(),
+                     ", got ", input_tensor.shape().DebugString()));
   }
 
   const Tensor* tensor = &input_tensor;
@@ -443,17 +472,22 @@ Status TpuInfeedEnqueueOp::DoWork(
 
   // Transfer the given literal to the Infeed interface of the device.
   TF_RETURN_IF_ERROR(
-      transfer_manager->TransferLiteralToInfeed(stream_executor, literal));
-  return Status::OK();
+      transfer_op_->TransferLiteralToInfeed(device_ordinal, literal));
+  VLOG(1) << "TpuInfeedEnqueueOp completes. iter_id="
+          << ctx->frame_iter().iter_id << " device_ordinal=" << device_ordinal;
+  return OkStatus();
 }
 
-TpuInfeedEnqueueTupleOp::TpuInfeedEnqueueTupleOp(OpKernelConstruction* ctx)
-    : TpuTransferAsyncOpKernel(ctx, "infeed_enqueue", 8) {
+TpuInfeedEnqueueTupleOp::TpuInfeedEnqueueTupleOp(
+    OpKernelConstruction* ctx,
+    std::unique_ptr<TpuTransferOpInterface> transfer_op)
+    : TpuTransferAsyncOpKernel(ctx, "infeed_enqueue", 8,
+                               std::move(transfer_op)) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("shapes", &shapes_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("dtypes", &dtypes_));
   OP_REQUIRES(
       ctx, shapes_.size() == dtypes_.size(),
-      errors::InvalidArgument("shapes and dtypes must be the same length."));
+      absl::InvalidArgumentError("shapes and dtypes must be the same length."));
 
   std::vector<xla::Shape> xla_shapes;
   for (int i = 0; i < shapes_.size(); i++) {
@@ -468,18 +502,19 @@ TpuInfeedEnqueueTupleOp::TpuInfeedEnqueueTupleOp(OpKernelConstruction* ctx)
                                     &tuple_shape_));
 }
 
-Status TpuInfeedEnqueueTupleOp::DoWork(
-    OpKernelContext* ctx, xla::TpuTransferManagerInterface* transfer_manager,
-    stream_executor::StreamExecutor* stream_executor) {
+Status TpuInfeedEnqueueTupleOp::DoWork(OpKernelContext* ctx,
+                                       int device_ordinal) {
+  VLOG(1) << "TpuInfeedEnqueueTupleOp::DoWork. iter_id="
+          << ctx->frame_iter().iter_id << " device_ordinal=" << device_ordinal;
   OpInputList values;
   TF_RETURN_IF_ERROR(ctx->input_list("inputs", &values));
   if (values.size() != shapes_.size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Wrong number of inputs to InfeedEnqueueTuple.");
   }
 
   for (const auto& shapes : shapes_) {
-    VLOG(1) << "TransferLiteralToInfeed " << shapes.DebugString();
+    VLOG(2) << "TransferLiteralToInfeed " << shapes.DebugString();
   }
 
   std::vector<Tensor> maybe_transposed_tensors;
@@ -488,9 +523,9 @@ Status TpuInfeedEnqueueTupleOp::DoWork(
     // Validate runtime shapes and fail if it doesn't match the contract.
     const Tensor* tensor = &values[i];
     if (tensor->shape() != shapes_[i]) {
-      return errors::InvalidArgument("Infeed shape mismatch for tuple element ",
-                                     i, "; expected ", shapes_[i].DebugString(),
-                                     ", got ", tensor->shape().DebugString());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Infeed shape mismatch for tuple element ", i, "; expected ",
+          shapes_[i].DebugString(), ", got ", tensor->shape().DebugString()));
     }
     if (!xla::LayoutUtil::IsMonotonicWithDim0Major(
             tuple_shape_.tuple_shapes(i).layout())) {
@@ -511,11 +546,29 @@ Status TpuInfeedEnqueueTupleOp::DoWork(
 
   // Transfer the given literal to the Infeed interface of the device.
   TF_RETURN_IF_ERROR(
-      transfer_manager->TransferLiteralToInfeed(stream_executor, tuple));
+      transfer_op_->TransferLiteralToInfeed(device_ordinal, tuple));
 
-  VLOG(1) << "TransferLiteralToInfeed complete.";
+  VLOG(1) << "TpuInfeedEnqueueTupleOp completes. iter_id="
+          << ctx->frame_iter().iter_id << " device_ordinal=" << device_ordinal;
 
-  return Status::OK();
+  return OkStatus();
+}
+
+InfeedEnqueuePrelinearizedBufferOp::InfeedEnqueuePrelinearizedBufferOp(
+    OpKernelConstruction* ctx,
+    std::unique_ptr<TpuTransferOpInterface> transfer_op)
+    : TpuTransferAsyncOpKernel(ctx, "prelinearized_buffers_to_infeed", 8,
+                               std::move(transfer_op)) {}
+Status InfeedEnqueuePrelinearizedBufferOp::DoWork(OpKernelContext* ctx,
+                                                  int device_ordinal) {
+  const Tensor& input_tensor = ctx->input(0);
+  const LinearizedBuffersWrapper* wrapper =
+      input_tensor.scalar<tensorflow::Variant>()()
+          .get<LinearizedBuffersWrapper>();
+  TF_RETURN_IF_ERROR(
+      transfer_op_->TransferBuffersToInfeed(device_ordinal, wrapper->buffers));
+
+  return OkStatus();
 }
 
 // These ops execute on either the TPU device or the CPU device. When running on
@@ -523,15 +576,15 @@ Status TpuInfeedEnqueueTupleOp::DoWork(
 // which TPU to send infeed to.
 REGISTER_KERNEL_BUILDER(
     Name("InfeedEnqueue").Device(DEVICE_TPU_NODE).HostMemory("input"),
-    TpuInfeedEnqueueOp);
+    StreamExecutorInfeedEnqueueOp);
 REGISTER_KERNEL_BUILDER(Name("InfeedEnqueue").Device(DEVICE_CPU),
-                        TpuInfeedEnqueueOp);
+                        StreamExecutorInfeedEnqueueOp);
 
 REGISTER_KERNEL_BUILDER(
     Name("InfeedEnqueueTuple").Device(DEVICE_TPU_NODE).HostMemory("inputs"),
-    TpuInfeedEnqueueTupleOp);
+    StreamExecutorInfeedEnqueueTupleOp);
 REGISTER_KERNEL_BUILDER(Name("InfeedEnqueueTuple").Device(DEVICE_CPU),
-                        TpuInfeedEnqueueTupleOp);
+                        StreamExecutorInfeedEnqueueTupleOp);
 
 // Prelinearize ops run on CPU as part of tf.data input pipeline.
 REGISTER_KERNEL_BUILDER(Name("Prelinearize").Device(DEVICE_CPU),
@@ -543,6 +596,6 @@ REGISTER_KERNEL_BUILDER(Name("PrelinearizeTuple").Device(DEVICE_CPU),
 // select the right device to infeed.
 REGISTER_KERNEL_BUILDER(
     Name("InfeedEnqueuePrelinearizedBuffer").Device(DEVICE_CPU),
-    InfeedEnqueuePrelinearizedBufferOp);
+    StreamExecutorInfeedEnqueuePrelinearizedBufferOp);
 
 }  // namespace tensorflow

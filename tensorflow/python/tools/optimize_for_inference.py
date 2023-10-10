@@ -53,20 +53,16 @@ bazel-bin/tensorflow/python/tools/optimize_for_inference \
 
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import os
 import sys
 
-from google.protobuf import text_format
+from absl import app
 
+from google.protobuf import text_format
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
-from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile
 from tensorflow.python.tools import optimize_for_inference_lib
 

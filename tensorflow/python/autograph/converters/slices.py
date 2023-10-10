@@ -14,10 +14,6 @@
 # ==============================================================================
 """Converter for slice operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gast
 
 from tensorflow.python.autograph.core import converter
@@ -36,14 +32,15 @@ class SliceTransformer(converter.Base):
   def _process_single_assignment(self, target, value):
     if not isinstance(target, gast.Subscript):
       return None
-    if not isinstance(target.slice, gast.Index):
+    s = target.slice
+    if isinstance(s, (gast.Tuple, gast.Slice)):
       return None
 
     template = """
       target = ag__.set_item(target, key, item)
     """
     return templates.replace(
-        template, target=target.value, key=target.slice.value, item=value)
+        template, target=target.value, key=target.slice, item=value)
 
   def visit_Assign(self, node):
     node = self.generic_visit(node)
@@ -57,7 +54,8 @@ class SliceTransformer(converter.Base):
 
   def visit_Subscript(self, node):
     node = self.generic_visit(node)
-    if not isinstance(node.slice, gast.Index):
+    s = node.slice
+    if isinstance(s, (gast.Tuple, gast.Slice)):
       return node
 
     if not isinstance(node.ctx, gast.Load):
@@ -78,7 +76,7 @@ class SliceTransformer(converter.Base):
           opts=ag__.GetItemOpts(element_dtype=dtype))
     """
     return templates.replace_as_expression(
-        template, target=node.value, key=node.slice.value, dtype=dtype)
+        template, target=node.value, key=s, dtype=dtype)
 
 
 def transform(node, ctx):

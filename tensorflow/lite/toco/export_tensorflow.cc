@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "google/protobuf/map.h"
@@ -41,6 +42,7 @@ using tensorflow::DT_FLOAT;
 using tensorflow::DT_INT16;
 using tensorflow::DT_INT32;
 using tensorflow::DT_INT64;
+using tensorflow::DT_UINT32;
 using tensorflow::DT_UINT8;
 using tensorflow::GraphDef;
 using tensorflow::TensorProto;
@@ -57,8 +59,14 @@ tensorflow::DataType GetTensorFlowDataType(ArrayDataType data_type,
       return tensorflow::DT_FLOAT;
     case ArrayDataType::kUint8:
       return tensorflow::DT_UINT8;
+    case ArrayDataType::kInt16:
+      return tensorflow::DT_INT16;
+    case ArrayDataType::kUint16:
+      return tensorflow::DT_UINT16;
     case ArrayDataType::kInt32:
       return tensorflow::DT_INT32;
+    case ArrayDataType::kUint32:
+      return tensorflow::DT_UINT32;
     case ArrayDataType::kInt64:
       return tensorflow::DT_INT64;
     case ArrayDataType::kString:
@@ -830,7 +838,7 @@ void ConvertSoftmaxOperator(const Model& model, const SoftmaxOperator& src_op,
     (*reshape_op->mutable_attr())["T"].set_type(DT_FLOAT);
 
     const auto& input_shape = model.GetArray(src_op.inputs[0]).shape();
-    int32 flattened_size = 1;
+    int32_t flattened_size = 1;
     for (int i = 0; i < input_shape.dimensions_count() - 1; ++i) {
       flattened_size *= input_shape.dims(i);
     }
@@ -872,7 +880,7 @@ void ConvertLogSoftmaxOperator(const Model& model,
     (*reshape_op->mutable_attr())["T"].set_type(DT_FLOAT);
 
     const auto& input_shape = model.GetArray(src_op.inputs[0]).shape();
-    int32 flattened_size = 1;
+    int32_t flattened_size = 1;
     for (int i = 0; i < input_shape.dimensions_count() - 1; ++i) {
       flattened_size *= input_shape.dims(i);
     }
@@ -2438,6 +2446,9 @@ void AddPlaceholder(const std::string& name, ArrayDataType type,
     case ArrayDataType::kInt32:
       (*placeholder->mutable_attr())["dtype"].set_type(DT_INT32);
       break;
+    case ArrayDataType::kUint32:
+      (*placeholder->mutable_attr())["dtype"].set_type(DT_UINT32);
+      break;
     case ArrayDataType::kInt64:
       (*placeholder->mutable_attr())["dtype"].set_type(DT_INT64);
       break;
@@ -2533,7 +2544,7 @@ void EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(Model* model) {
     FakeQuantOperator* fakequant_op = new FakeQuantOperator;
     fakequant_op->inputs = {wrapped_array_name};
     fakequant_op->outputs = {array_name};
-    fakequant_op->minmax.reset(new MinMax);
+    fakequant_op->minmax = std::make_unique<MinMax>();
     *fakequant_op->minmax = *array.minmax;
     const auto& it = FindOpWithInput(*model, array_name);
     model->operators.emplace(it, fakequant_op);

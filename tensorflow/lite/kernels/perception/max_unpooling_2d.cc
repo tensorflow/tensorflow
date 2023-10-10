@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -125,6 +125,11 @@ TfLiteRegistration* RegisterMaxUnpooling2D() {
                                    /*free=*/nullptr, max_unpooling_2d::Prepare,
                                    max_unpooling_2d::Eval};
   return &reg;
+}
+
+// Alias for selective build.
+TfLiteRegistration* Register_MAX_UNPOOLING2D() {
+  return RegisterMaxUnpooling2D();
 }
 
 }  // namespace custom

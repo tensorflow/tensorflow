@@ -1,8 +1,9 @@
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -31,10 +32,12 @@ cc_library(
         "reshape_builder.cc",
         "resize_bilinear_builder.cc",
         "resize_nearest_neighbor_builder.cc",
+        "rsqrt_builder.cc",
         "slice_builder.cc",
         "softmax_builder.cc",
         "space_to_depth_builder.cc",
         "split_builder.cc",
+        "squared_difference.cc",
         "strided_slice_builder.cc",
         "transpose_builder.cc",
         "transpose_conv_2d_builder.cc",
@@ -78,13 +81,14 @@ cc_library(
         ":op_factory",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/hexagon:hexagon_implementation",
         "//tensorflow/lite/delegates/hexagon/hexagon_nn:hexagon_nn_header",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/kernels/internal:types",
         "@farmhash_archive//:farmhash",
         "@hexagon_nn//:hexagon_nn_ops",
     ],
@@ -97,5 +101,7 @@ cc_library(
         "manual",
         "nobuilder",
     ],
-    deps = ["//tensorflow/lite/c:common"],
+    deps = [
+        "//tensorflow/lite/core/c:common",
+    ],
 )

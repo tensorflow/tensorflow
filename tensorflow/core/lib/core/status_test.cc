@@ -24,11 +24,11 @@ limitations under the License.
 namespace tensorflow {
 
 TEST(Status, OK) {
-  EXPECT_EQ(Status::OK().code(), error::OK);
-  EXPECT_EQ(Status::OK().error_message(), "");
-  TF_EXPECT_OK(Status::OK());
-  TF_ASSERT_OK(Status::OK());
-  EXPECT_EQ(Status::OK(), Status());
+  EXPECT_EQ(OkStatus().code(), error::OK);
+  EXPECT_EQ(OkStatus().message(), "");
+  TF_EXPECT_OK(OkStatus());
+  TF_ASSERT_OK(OkStatus());
+  EXPECT_EQ(OkStatus(), Status());
   Status s;
   EXPECT_TRUE(s.ok());
 }
@@ -40,9 +40,9 @@ TEST(DeathStatus, CheckOK) {
 
 TEST(Status, Set) {
   Status status;
-  status = Status(error::CANCELLED, "Error message");
-  EXPECT_EQ(status.code(), error::CANCELLED);
-  EXPECT_EQ(status.error_message(), "Error message");
+  status = Status(absl::StatusCode::kCancelled, "Error message");
+  EXPECT_EQ(status.code(), absl::StatusCode::kCancelled);
+  EXPECT_EQ(status.message(), "Error message");
 }
 
 TEST(Status, Copy) {
@@ -61,19 +61,19 @@ TEST(Status, Assign) {
 TEST(Status, Move) {
   Status a(errors::InvalidArgument("Invalid"));
   Status b(std::move(a));
-  ASSERT_EQ("Invalid argument: Invalid", b.ToString());
+  ASSERT_EQ("INVALID_ARGUMENT: Invalid", b.ToString());
 }
 
 TEST(Status, MoveAssign) {
   Status a(errors::InvalidArgument("Invalid"));
   Status b;
   b = std::move(a);
-  ASSERT_EQ("Invalid argument: Invalid", b.ToString());
+  ASSERT_EQ("INVALID_ARGUMENT: Invalid", b.ToString());
 }
 
 TEST(Status, Update) {
   Status s;
-  s.Update(Status::OK());
+  s.Update(OkStatus());
   ASSERT_TRUE(s.ok());
   Status a(errors::InvalidArgument("Invalid"));
   s.Update(a);
@@ -81,12 +81,12 @@ TEST(Status, Update) {
   Status b(errors::Internal("Internal"));
   s.Update(b);
   ASSERT_EQ(s.ToString(), a.ToString());
-  s.Update(Status::OK());
+  s.Update(OkStatus());
   ASSERT_EQ(s.ToString(), a.ToString());
   ASSERT_FALSE(s.ok());
 }
 
-TEST(Status, EqualsOK) { ASSERT_EQ(Status::OK(), Status()); }
+TEST(Status, EqualsOK) { ASSERT_EQ(OkStatus(), Status()); }
 
 TEST(Status, EqualsSame) {
   Status a(errors::InvalidArgument("Invalid"));
@@ -114,10 +114,10 @@ TEST(Status, EqualsDifferentMessage) {
 
 TEST(StatusGroup, OKStatusGroup) {
   StatusGroup c;
-  c.Update(Status::OK());
-  c.Update(Status::OK());
-  ASSERT_EQ(c.as_summary_status(), Status::OK());
-  ASSERT_EQ(c.as_concatenated_status(), Status::OK());
+  c.Update(OkStatus());
+  c.Update(OkStatus());
+  ASSERT_EQ(c.as_summary_status(), OkStatus());
+  ASSERT_EQ(c.as_concatenated_status(), OkStatus());
 }
 
 TEST(StatusGroup, AggregateWithSingleErrorStatus) {
@@ -129,8 +129,7 @@ TEST(StatusGroup, AggregateWithSingleErrorStatus) {
 
   Status concat_status = c.as_concatenated_status();
   ASSERT_EQ(concat_status.code(), internal.code());
-  ASSERT_TRUE(absl::StrContains(concat_status.error_message(),
-                                internal.error_message()));
+  ASSERT_TRUE(absl::StrContains(concat_status.message(), internal.message()));
 
   // Add derived error status
   const Status derived =
@@ -141,8 +140,7 @@ TEST(StatusGroup, AggregateWithSingleErrorStatus) {
 
   concat_status = c.as_concatenated_status();
   ASSERT_EQ(concat_status.code(), internal.code());
-  ASSERT_TRUE(absl::StrContains(concat_status.error_message(),
-                                internal.error_message()));
+  ASSERT_TRUE(absl::StrContains(concat_status.message(), internal.message()));
 }
 
 TEST(StatusGroup, AggregateWithMultipleErrorStatus) {
@@ -158,54 +156,49 @@ TEST(StatusGroup, AggregateWithMultipleErrorStatus) {
   Status summary = c.as_summary_status();
 
   ASSERT_EQ(summary.code(), internal.code());
-  ASSERT_TRUE(
-      absl::StrContains(summary.error_message(), internal.error_message()));
-  ASSERT_TRUE(
-      absl::StrContains(summary.error_message(), cancelled.error_message()));
-  ASSERT_TRUE(
-      absl::StrContains(summary.error_message(), aborted.error_message()));
+  ASSERT_TRUE(absl::StrContains(summary.message(), internal.message()));
+  ASSERT_TRUE(absl::StrContains(summary.message(), cancelled.message()));
+  ASSERT_TRUE(absl::StrContains(summary.message(), aborted.message()));
 
   Status concat_status = c.as_concatenated_status();
   ASSERT_EQ(concat_status.code(), internal.code());
-  ASSERT_TRUE(absl::StrContains(concat_status.error_message(),
-                                internal.error_message()));
-  ASSERT_TRUE(absl::StrContains(concat_status.error_message(),
-                                cancelled.error_message()));
-  ASSERT_TRUE(absl::StrContains(concat_status.error_message(),
-                                aborted.error_message()));
+  ASSERT_TRUE(absl::StrContains(concat_status.message(), internal.message()));
+  ASSERT_TRUE(absl::StrContains(concat_status.message(), cancelled.message()));
+  ASSERT_TRUE(absl::StrContains(concat_status.message(), aborted.message()));
 }
 
 TEST(Status, InvalidPayloadGetsIgnored) {
   Status s = Status();
-  s.SetPayload("Invalid", "Invalid Val");
-  ASSERT_EQ(s.GetPayload("Invalid"), tensorflow::StringPiece());
+  s.SetPayload("Invalid", absl::Cord("Invalid Val"));
+  ASSERT_FALSE(s.GetPayload("Invalid").has_value());
   bool is_err_erased = s.ErasePayload("Invalid");
   ASSERT_EQ(is_err_erased, false);
 }
 
 TEST(Status, SetPayloadSetsOrUpdatesIt) {
-  Status s(error::INTERNAL, "Error message");
-  s.SetPayload("Error key", "Original");
-  ASSERT_EQ(s.GetPayload("Error key"), tensorflow::StringPiece("Original"));
-  s.SetPayload("Error key", "Updated");
-  ASSERT_EQ(s.GetPayload("Error key"), tensorflow::StringPiece("Updated"));
+  Status s(absl::StatusCode::kInternal, "Error message");
+  s.SetPayload("Error key", absl::Cord("Original"));
+  ASSERT_EQ(s.GetPayload("Error key"), absl::Cord("Original"));
+  s.SetPayload("Error key", absl::Cord("Updated"));
+  ASSERT_EQ(s.GetPayload("Error key"), absl::Cord("Updated"));
 }
 
 TEST(Status, ErasePayloadRemovesIt) {
-  Status s(error::INTERNAL, "Error message");
-  s.SetPayload("Error key", "Original");
+  Status s(absl::StatusCode::kInternal, "Error message");
+  s.SetPayload("Error key", absl::Cord("Original"));
 
   bool is_err_erased = s.ErasePayload("Error key");
   ASSERT_EQ(is_err_erased, true);
   is_err_erased = s.ErasePayload("Error key");
   ASSERT_EQ(is_err_erased, false);
-  ASSERT_EQ(s.GetPayload("Error key"), tensorflow::StringPiece());
+  ASSERT_FALSE(s.GetPayload("Error key").has_value());
 }
 
-static void BM_TF_CHECK_OK(int iters) {
-  tensorflow::Status s =
-      (iters < 0) ? errors::InvalidArgument("Invalid") : Status::OK();
-  for (int i = 0; i < iters; i++) {
+static void BM_TF_CHECK_OK(::testing::benchmark::State& state) {
+  tensorflow::Status s = (state.max_iterations < 0)
+                             ? errors::InvalidArgument("Invalid")
+                             : OkStatus();
+  for (auto i : state) {
     TF_CHECK_OK(s);
   }
 }

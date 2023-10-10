@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // GRPC utilities
 
-#ifndef TENSORFLOW_CORE_PROFILER_COMMON_GRPC_GRPC_H_
-#define TENSORFLOW_CORE_PROFILER_COMMON_GRPC_GRPC_H_
+#ifndef TENSORFLOW_CORE_PROFILER_RPC_GRPC_H_
+#define TENSORFLOW_CORE_PROFILER_RPC_GRPC_H_
 
 #include <memory>
 
@@ -34,4 +34,4 @@ std::shared_ptr<::grpc::ChannelCredentials> GetDefaultChannelCredentials();
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PROFILER_COMMON_GRPC_GRPC_H_
+#endif  // TENSORFLOW_CORE_PROFILER_RPC_GRPC_H_

@@ -13,17 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+from typing import Any, Set
 import weakref
 
 from tensorflow.python.util.compat import collections_abc
 
 
 # LINT.IfChange
-class _ObjectIdentityWrapper(object):
+class _ObjectIdentityWrapper:
   """Wraps an object, mapping __eq__ on wrapper to "is" on wrapped.
 
   Since __eq__ is based on object identity, it's safe to also define __hash__
@@ -184,6 +181,26 @@ class ObjectIdentitySet(collections_abc.MutableSet):
 
   def __init__(self, *args):
     self._storage = set(self._wrap_key(obj) for obj in list(*args))
+
+  def __le__(self, other: Set[Any]) -> bool:
+    if not isinstance(other, Set):
+      return NotImplemented
+    if len(self) > len(other):
+      return False
+    for item in self._storage:
+      if item not in other:
+        return False
+    return True
+
+  def __ge__(self, other: Set[Any]) -> bool:
+    if not isinstance(other, Set):
+      return NotImplemented
+    if len(self) < len(other):
+      return False
+    for item in other:
+      if item not in self:
+        return False
+    return True
 
   @staticmethod
   def _from_storage(storage):

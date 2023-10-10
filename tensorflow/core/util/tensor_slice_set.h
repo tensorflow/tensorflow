@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <string>  // for string
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -40,7 +41,7 @@ class TensorSliceSet {
   virtual ~TensorSliceSet();
 
   const TensorShape& shape() const { return shape_; }
-  const DataType type() const { return type_; }
+  DataType type() const { return type_; }
 
   // Register a new slice for the tensor. The "tag" is an arbitrary string
   // associated with the slice (in one application it denotes the name of the
@@ -58,7 +59,7 @@ class TensorSliceSet {
   struct SliceInfo {
     TensorSlice slice;
     const string tag;
-    int64 num_floats;
+    int64_t num_floats;
   };
 
   // Returns the map from slice string to SliceInfo.

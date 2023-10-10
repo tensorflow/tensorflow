@@ -146,8 +146,6 @@ class GrpcRemoteMaster : public MasterInterface {
         // an RPC just before the deadline is exceeded, we will still set the
         // timeout to the original value. This leads to the overall timeout
         // being double what was expected.
-        // TODO(b/117162170): investigate fixing this behavior for legacy and
-        // gRPC RPC layers.
         ctx.set_deadline(absl::ToChronoTime(absl::Now() + timeout));
       }
       s = FromGrpcStatus((stub_.get()->*pfunc)(&ctx, *request, response));

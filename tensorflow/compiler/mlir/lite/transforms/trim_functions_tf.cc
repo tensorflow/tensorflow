@@ -20,9 +20,9 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/CommandLine.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -31,32 +31,28 @@ limitations under the License.
 
 // The cmd line flag to specify the allowlist of functions. Rest are trimmed
 // after this pass is run.
-// NOLINTNEXTLINE
-static llvm::cl::list<std::string> trim_funcs_allowlist(
-    "tfl-trim-funcs-allowlist", llvm::cl::value_desc("list"),
-    llvm::cl::desc("comma separated list of allowlisted functions. The first "
-                   "function specified will be used as main."),
-    llvm::cl::CommaSeparated);
-
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_DEF_TRIMFUNCTIONSPASS
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // The pass to trim functions before we legalize to TFL
 // dialect using the specified allowlist.
 class TrimFunctionsPass
-    : public mlir::PassWrapper<TrimFunctionsPass, OperationPass<ModuleOp>> {
+    : public impl::TrimFunctionsPassBase<TrimFunctionsPass> {
  public:
-  explicit TrimFunctionsPass() : trim_funcs_allowlist_(trim_funcs_allowlist) {}
-  explicit TrimFunctionsPass(llvm::ArrayRef<std::string> trim_funcs_allowlist)
-      : trim_funcs_allowlist_(trim_funcs_allowlist) {}
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TrimFunctionsPass)
+
+  explicit TrimFunctionsPass() {}
+  explicit TrimFunctionsPass(llvm::ArrayRef<std::string> trim_funcs_allowlist) {
+    this->trim_funcs_allowlist_ = trim_funcs_allowlist;
+  }
 
  private:
   void runOnOperation() override;
   bool TrimModule();
   void Verify();
-
-  llvm::ArrayRef<std::string> trim_funcs_allowlist_;
 };
 
 void TrimFunctionsPass::runOnOperation() {
@@ -73,8 +69,8 @@ bool TrimFunctionsPass::TrimModule() {
   // if no trim_funcs_allowlist_ is specified, this pass is a no-op.
   if (trim_funcs_allowlist_.empty()) return false;
 
-  llvm::SmallVector<FuncOp, 4> funcs_to_trim;
-  for (auto func : getOperation().getOps<FuncOp>()) {
+  llvm::SmallVector<func::FuncOp, 4> funcs_to_trim;
+  for (auto func : getOperation().getOps<func::FuncOp>()) {
     if (llvm::is_contained(trim_funcs_allowlist_, func.getName())) {
       // If no main is specified in the allowlist, use the 1st func
       // in trim_funcs_allowlist as the main.
@@ -84,7 +80,7 @@ bool TrimFunctionsPass::TrimModule() {
       // tensorflow function in MLIR TF import using an entry_point attr.
       if (!llvm::is_contained(trim_funcs_allowlist_, "main") &&
           func.getName() == trim_funcs_allowlist_[0]) {
-        func.setName("main");
+        func.setName(StringAttr::get(func.getContext(), "main"));
       }
     } else {
       funcs_to_trim.push_back(func);
@@ -104,10 +100,10 @@ void TrimFunctionsPass::Verify() {
   // TODO(ashwinm): Instead, we should make sure that references to all
   // SymbolRefAttrs of all ops are present.
   SymbolTable symbol_table = SymbolTable(getOperation());
-  llvm::SetVector<FuncOp> reachable_funcs;
-  for (auto func : getOperation().getOps<FuncOp>()) {
-    auto walk_result = func.walk([&](CallOp op) -> WalkResult {
-      if (!symbol_table.lookup<FuncOp>(op.getCallee()))
+  llvm::SetVector<func::FuncOp> reachable_funcs;
+  for (auto func : getOperation().getOps<func::FuncOp>()) {
+    auto walk_result = func.walk([&](func::CallOp op) -> WalkResult {
+      if (!symbol_table.lookup<func::FuncOp>(op.getCallee()))
         return getOperation().emitError()
                << func.getName() << " is not in the funcs allowlist";
       return WalkResult::advance();
@@ -120,15 +116,14 @@ void TrimFunctionsPass::Verify() {
 
 // Creates an instance of the TensorFlow Lite dialect TrimFunctions
 /// pass.
+std::unique_ptr<OperationPass<ModuleOp>> CreateTrimFunctionsPass() {
+  return std::make_unique<TrimFunctionsPass>();
+}
+
 std::unique_ptr<OperationPass<ModuleOp>> CreateTrimFunctionsPass(
     llvm::ArrayRef<std::string> trim_funcs_allowlist) {
   return std::make_unique<TrimFunctionsPass>(trim_funcs_allowlist);
 }
-
-static PassRegistration<TrimFunctionsPass> pass(
-    "tfl-trim-funcs-tf",
-    "Trim functions to restrict them to a specified allowlist prior to "
-    "legalization to TensorFlow lite dialect");
 
 }  // namespace TFL
 }  // namespace mlir

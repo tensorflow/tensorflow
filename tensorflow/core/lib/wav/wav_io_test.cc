@@ -38,6 +38,8 @@ TEST(WavIO, BadArguments) {
 
   EXPECT_EQ(error::INVALID_ARGUMENT,
             EncodeAudioAsS16LEWav(nullptr, 44100, 2, 3, &result).code());
+  TF_EXPECT_OK(EncodeAudioAsS16LEWav(nullptr, 44100, 2, 0, &result));
+
   EXPECT_EQ(
       error::INVALID_ARGUMENT,
       EncodeAudioAsS16LEWav(audio, 44100, 2, 3, (tstring*)nullptr).code());
@@ -50,8 +52,6 @@ TEST(WavIO, BadArguments) {
             EncodeAudioAsS16LEWav(audio, 0, 2, 3, &result).code());
   EXPECT_EQ(error::INVALID_ARGUMENT,
             EncodeAudioAsS16LEWav(audio, 44100, 0, 3, &result).code());
-  EXPECT_EQ(error::INVALID_ARGUMENT,
-            EncodeAudioAsS16LEWav(audio, 44100, 2, 0, &result).code());
 
   // Sample rates 2^32 and greater are invalid.
   EXPECT_EQ(
@@ -205,8 +205,8 @@ TEST(WavIO, ChunkSizeOverflow) {
       wav_data_string, &decoded_audio, &decoded_sample_count,
       &decoded_channel_count, &decoded_sample_rate);
   EXPECT_FALSE(decode_status.ok());
-  EXPECT_TRUE(absl::StrContains(decode_status.error_message(), "too large"))
-      << decode_status.error_message();
+  EXPECT_TRUE(absl::StrContains(decode_status.message(), "too large"))
+      << decode_status.message();
 }
 
 TEST(WavIO, IncrementOffset) {
@@ -285,7 +285,7 @@ TEST(WavIO, ReadValueInt8) {
   string test_string(test_data.begin(), test_data.end());
 
   int offset = 0;
-  int8 read_value;
+  int8_t read_value;
   TF_EXPECT_OK(ReadValue(test_string, &read_value, &offset));
   EXPECT_EQ(0, read_value);
   EXPECT_EQ(1, offset);
@@ -343,7 +343,7 @@ TEST(WavIO, ReadValueInt16) {
   string test_string(test_data.begin(), test_data.end());
 
   int offset = 0;
-  int16 read_value;
+  int16_t read_value;
   TF_EXPECT_OK(ReadValue(test_string, &read_value, &offset));
   EXPECT_EQ(0, read_value);
   EXPECT_EQ(2, offset);
@@ -415,7 +415,7 @@ TEST(WavIO, ReadValueInt32) {
   string test_string(test_data.begin(), test_data.end());
 
   int offset = 0;
-  int32 read_value;
+  int32_t read_value;
   TF_EXPECT_OK(ReadValue(test_string, &read_value, &offset));
   EXPECT_EQ(0, read_value);
   EXPECT_EQ(4, offset);

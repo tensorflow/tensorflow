@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019-2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,8 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MODEL_BUILDER_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MODEL_BUILDER_H_
 
+#include <limits>
+
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/lite/c/common.h"
+#include "absl/container/flat_hash_set.h"
+#include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -31,9 +37,14 @@ namespace gpu {
 // 'max_delegated_partitions' limits the maximum number of partitions to
 // delegate as a graph could possibly have multiple partitions (each partition
 // consists of a subset of ops) to be replaced.
-TfLiteIntArray* GetOpsToReplace(TfLiteContext* context,
-                                bool allow_quant_ops = false,
-                                int max_delegated_partitions = 1);
+// 'excluded_ops', if not null, specifies a set of ops that should not be
+// replaced with GPU kernels.
+TfLiteIntArray* GetOpsToReplace(
+    TfLiteContext* context, bool allow_quant_ops = false,
+    int max_delegated_partitions = 1,
+    const absl::flat_hash_set<TfLiteBuiltinOperator>* excluded_ops = nullptr,
+    int start_node_index = 0,
+    int end_node_index = std::numeric_limits<int>::max());
 
 // Extracts TFLite delegate execution plan from the input TFLite context and
 // converts it into generic graph format.
@@ -46,6 +57,15 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context,
 // TfLiteNode->temporaries.
 absl::Status BuildModel(
     TfLiteContext* context, const TfLiteDelegateParams* delegate_params,
+    GraphFloat32* graph,
+    absl::flat_hash_map<int, int>* quant_conversion_map = nullptr);
+
+// Same as BuildModel, but enforces user-provided input/output indices instead
+// of using delegate_params->inputs and delegate_params->outputs for
+// inputs/outputs preallocating.
+absl::Status BuildModelEnforceIO(
+    TfLiteContext* context, const TfLiteDelegateParams* delegate_params,
+    const std::vector<int>& input_ids, const std::vector<int>& output_ids,
     GraphFloat32* graph,
     absl::flat_hash_map<int, int>* quant_conversion_map = nullptr);
 
@@ -62,6 +82,13 @@ absl::Status BuildFinalModel(
     TfLiteContext* context, const TfLiteDelegateParams* delegate_params,
     GraphFloat32* graph,
     absl::flat_hash_map<int, int>* quant_conversion_map = nullptr);
+
+// Convenience wrapper that builds a GraphFloat32 from the provided
+// FlatBufferModel.
+absl::Status BuildFromFlatBuffer(const FlatBufferModel& flatbuffer,
+                                 const OpResolver& op_resolver,
+                                 GraphFloat32* graph,
+                                 bool allow_quant_ops = false);
 
 // Module-internal converter, exposed for unit testing purpose only.
 absl::Status ConvertTfLiteTensorToTensorRef(const TfLiteTensor& tflite_tensor,

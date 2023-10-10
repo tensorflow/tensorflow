@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Categorical distribution."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -150,8 +146,7 @@ class CategoricalTest(test.TestCase, parameterized.TestCase):
     dist = categorical.Categorical(probs=histograms)
     cdf_op = dist.cdf(event)
 
-    # Feed values into the placeholder with different shapes
-    # three classes.
+    # Feed values into the placeholder with different shapes three classes.
     event_feed_one = [0, 1]
     histograms_feed_one = [[0.5, 0.3, 0.2], [1.0, 0.0, 0.0]]
     expected_cdf_one = [0.0, 1.0]

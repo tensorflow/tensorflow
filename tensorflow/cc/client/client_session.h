@@ -25,12 +25,16 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/public/session_options.h"
 
+namespace tsl {
+namespace thread {
+struct ThreadPoolOptions;
+}
+}  // namespace tsl
+
 namespace tensorflow {
 
 namespace thread {
-
-struct ThreadPoolOptions;
-
+using tsl::thread::ThreadPoolOptions;
 }
 
 /// @addtogroup core
@@ -103,7 +107,7 @@ class ClientSession {
 
   /// \brief A handle to a subgraph, created with
   /// `ClientSession::MakeCallable()`.
-  typedef int64 CallableHandle;
+  typedef int64_t CallableHandle;
 
   /// \brief Creates a `handle` for invoking the subgraph defined by
   /// `callable_options`.

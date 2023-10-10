@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_TRAINING_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_TRAINING_OPS_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -44,6 +44,18 @@ struct ApplyAdadelta {
                   typename TTypes<T>::ConstScalar rho,
                   typename TTypes<T>::ConstScalar epsilon,
                   typename TTypes<T>::ConstFlat grad);
+};
+
+template <typename Device, typename T, typename Tindex>
+struct SparseApplyAdadelta {
+  void operator()(const Device& d, typename TTypes<T>::Matrix var,
+                  typename TTypes<T>::Matrix accum,
+                  typename TTypes<T>::Matrix accum_update,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar rho,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstMatrix grad,
+                  typename TTypes<Tindex>::ConstFlat indices);
 };
 
 template <typename Device, typename T>
@@ -86,7 +98,7 @@ struct ApplyAdagradDA {
   void operator()(const Device& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat gradient_accum,
                   typename TTypes<T>::Flat gradient_squared_accum,
-                  typename TTypes<T>::ConstScalar lr, int64 global_step,
+                  typename TTypes<T>::ConstScalar lr, int64_t global_step,
                   typename TTypes<T>::ConstScalar l1,
                   typename TTypes<T>::ConstScalar l2,
                   typename TTypes<T>::ConstFlat grad);
@@ -100,8 +112,8 @@ struct SparseApplyAdagrad {
                     typename TTypes<T>::ConstScalar lr,
                     typename TTypes<T>::ConstScalar epsilon,
                     typename TTypes<T>::ConstMatrix grad,
-                    typename TTypes<Tindex>::ConstVec indices, int64 inner_dim,
-                    bool update_slots);
+                    typename TTypes<Tindex>::ConstVec indices,
+                    int64_t inner_dim, bool update_slots);
 };
 
 template <typename Device, typename T>
@@ -122,7 +134,8 @@ struct SparseApplyProximalAdagrad {
                     typename TTypes<T>::ConstScalar l1,
                     typename TTypes<T>::ConstScalar l2,
                     typename TTypes<T>::ConstMatrix grad,
-                    typename TTypes<Tindex>::ConstVec indices, int64 inner_dim);
+                    typename TTypes<Tindex>::ConstVec indices,
+                    int64_t inner_dim);
 };
 
 template <typename Device, typename T>
@@ -187,7 +200,7 @@ struct SparseApplyFtrl {
                     typename TTypes<T>::ConstScalar lr_power,
                     typename TTypes<T>::ConstMatrix grad_flat,
                     typename TTypes<Tindex>::ConstVec indices_vec,
-                    int64 inner_dim, bool multiply_linear_by_lr);
+                    int64_t inner_dim, bool multiply_linear_by_lr);
 };
 
 template <typename Device, typename T>

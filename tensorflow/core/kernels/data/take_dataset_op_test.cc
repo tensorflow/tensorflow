@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 
 namespace tensorflow {
 namespace data {
@@ -60,15 +60,15 @@ TakeDatasetParams TakeNothingTakeDatasetParams() {
 std::vector<GetNextTestCase<TakeDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/TakeLessTakeDatasetParams(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {1}, {2}, {3}})},
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {1}, {2}, {3}})},
           {/*dataset_params=*/TakeMoreTakeDatasetParams(),
            /*expected_outputs=*/
-           CreateTensors<int64>(
+           CreateTensors<int64_t>(
                TensorShape({}),
                {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}})},
           {/*dataset_params=*/TakeAllTakeDatasetParams(),
            /*expected_outputs=*/
-           CreateTensors<int64>(
+           CreateTensors<int64_t>(
                TensorShape({}),
                {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}})},
           {/*dataset_params=*/TakeNothingTakeDatasetParams(),
@@ -171,17 +171,17 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/TakeLessTakeDatasetParams(),
            /*breakpoints=*/{0, 2, 5, 11},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {1}, {2}, {3}})},
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {1}, {2}, {3}})},
           {/*dataset_params=*/TakeMoreTakeDatasetParams(),
            /*breakpoints=*/{0, 2, 5, 11},
            /*expected_outputs=*/
-           CreateTensors<int64>(
+           CreateTensors<int64_t>(
                TensorShape({}),
                {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}})},
           {/*dataset_params=*/TakeAllTakeDatasetParams(),
            /*breakpoints=*/{0, 2, 5, 11},
            /*expected_outputs=*/
-           CreateTensors<int64>(
+           CreateTensors<int64_t>(
                TensorShape({}),
                {{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}})},
           {/*dataset_params=*/TakeNothingTakeDatasetParams(),

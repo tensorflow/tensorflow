@@ -13,14 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <string>
+
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -28,39 +35,67 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_DEF_RAISECUSTOMOPSPASS
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
+
 // This transformation pass takes an operation with unknown op properties and
 // wrap it by a TFL::CustomTfOp.
 struct RaiseCustomOpsPass
-    : public PassWrapper<RaiseCustomOpsPass, FunctionPass> {
-  void runOnFunction() override;
+    : public impl::RaiseCustomOpsPassBase<RaiseCustomOpsPass> {
+ public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RaiseCustomOpsPass)
+
+  explicit RaiseCustomOpsPass() {}
+  explicit RaiseCustomOpsPass(const std::vector<std::string> &target_ops) {
+    this->target_ops_ = target_ops;
+  }
+
+  void runOnOperation() override;
 };
 
-void RaiseCustomOpsPass::runOnFunction() {
-  auto fn = getFunction();
+void RaiseCustomOpsPass::runOnOperation() {
+  auto fn = getOperation();
   OpBuilder builder(fn.getContext());
 
+  absl::flat_hash_set<std::string> target_op_names(target_ops_.begin(),
+                                                   target_ops_.end());
+
   llvm::SmallVector<Operation *, 4> custom_ops;
-  for (Operation &op : fn.getOps()) {
-    // Skips the ops with known op property.
-    if (op.getAbstractOperation()) continue;
+  fn.walk([&](Operation *op) {
     // Skips already imported ops that are imported as CustomTfOp.
-    if (op.getParentOfType<CustomTfOp>()) continue;
-    if (llvm::isa<TFL::CustomTfOp>(op) || llvm::isa<TFL::CustomOp>(op))
-      continue;
-    custom_ops.push_back(&op);
-  }
+    if (op->getParentOfType<CustomTfOp>()) return;
+    if (llvm::isa<TFL::CustomTfOp>(op) || llvm::isa<TFL::CustomOp>(op)) return;
+
+    std::string op_name = op->getName().getIdentifier().str();
+    // Wrap the operation, if
+    // - the op is targeted explicitly, or
+    // - the op isn't registered when there are no target list.
+    if (target_op_names.contains(op_name) ||
+        (target_op_names.empty() && !op->isRegistered())) {
+      custom_ops.push_back(op);
+    }
+  });
 
   for (auto *op : custom_ops) {
     builder.setInsertionPoint(op);
-    auto custom_op = builder.create<CustomTfOp>(
-        op->getLoc(), op->getResultTypes(), op->getOperands());
+    Location loc = op->getLoc();
+    auto custom_op = builder.create<CustomTfOp>(loc, op->getResultTypes(),
+                                                op->getOperands());
     Region region;
-    region.push_back(new Block);
+    Block *new_block = new Block;
+    region.push_back(new_block);
 
     builder.setInsertionPointToEnd(&region.front());
     Operation *inner_op = builder.clone(*op);
-    builder.create<YieldOp>(op->getLoc(), inner_op->getResults());
-    custom_op.body().takeBody(region);
+
+    new_block->addArguments(op->getOperandTypes(),
+                            SmallVector<Location>(op->getNumOperands(), loc));
+    for (const auto &idx_args : llvm::enumerate(new_block->getArguments())) {
+      inner_op->setOperand(idx_args.index(), idx_args.value());
+    }
+    custom_op->setAttrs(inner_op->getAttrs());
+    builder.create<YieldOp>(loc, inner_op->getResults());
+    custom_op.getBody().takeBody(region);
 
     op->replaceAllUsesWith(custom_op);
     op->erase();
@@ -68,13 +103,17 @@ void RaiseCustomOpsPass::runOnFunction() {
 }
 }  // namespace
 
-// Creates an instance of the TensorFlow Lite dialect raise custom op pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateRaiseCustomOpsPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateRaiseCustomOpsPass() {
   return std::make_unique<RaiseCustomOpsPass>();
 }
 
-static PassRegistration<RaiseCustomOpsPass> pass(
-    "tfl-raise-custom-ops", "Raise custom ops into tflite dialect.");
+// Creates an instance of the TensorFlow Lite dialect raise custom op pass.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateRaiseCustomOpsPass(
+    const std::vector<std::string> &target_ops) {
+  return std::make_unique<RaiseCustomOpsPass>(target_ops);
+}
+
+static PassRegistration<RaiseCustomOpsPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

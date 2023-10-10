@@ -14,23 +14,21 @@
 # ==============================================================================
 """smart_cond and related utilities."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from tensorflow.python.client import pywrap_tf_session as c_api
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import control_flow_case
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("__internal__.smart_cond.smart_cond", v1=[])
 def smart_cond(pred, true_fn=None, false_fn=None, name=None):
   """Return either `true_fn()` if predicate `pred` is true else `false_fn()`.
 
   If `pred` is a bool or has a constant value, we return either `true_fn()`
   or `false_fn()`, otherwise we use `tf.cond` to dynamically route to both.
 
-  Arguments:
+  Args:
     pred: A scalar determining whether to return the result of `true_fn` or
       `false_fn`.
     true_fn: The callable to be performed if pred is true.
@@ -44,9 +42,10 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):
     TypeError: If `true_fn` or `false_fn` is not callable.
   """
   if not callable(true_fn):
-    raise TypeError("`true_fn` must be callable.")
+    raise TypeError(f"Argument `true_fn` must be callable. Received {true_fn}")
   if not callable(false_fn):
-    raise TypeError("`false_fn` must be callable.")
+    raise TypeError(
+        f"Argument `false_fn` must be callable. Received {false_fn}")
 
   pred_value = smart_constant_value(pred)
   if pred_value is not None:
@@ -55,14 +54,14 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):
     else:
       return false_fn()
   else:
-    return control_flow_ops.cond(pred, true_fn=true_fn, false_fn=false_fn,
-                                 name=name)
+    return cond.cond(pred, true_fn=true_fn, false_fn=false_fn,
+                     name=name)
 
 
 def smart_constant_value(pred):
   """Return the bool value for `pred`, or None if `pred` had a dynamic value.
 
-  Arguments:
+  Args:
     pred: A scalar, either a Python bool or tensor.
 
   Returns:
@@ -71,21 +70,21 @@ def smart_constant_value(pred):
   Raises:
     TypeError: If `pred` is not a Tensor or bool.
   """
-  if isinstance(pred, ops.Tensor):
+  if isinstance(pred, tensor.Tensor):
     pred_value = tensor_util.constant_value(pred)
     # TODO(skyewm): consider folding this into tensor_util.constant_value.
     # pylint: disable=protected-access
     if pred_value is None:
-      pred_value = c_api.TF_TryEvaluateConstant_wrapper(pred.graph._c_graph,
-                                                        pred._as_tf_output())
+      pred_value = tensor_util.try_evaluate_constant(pred)
     # pylint: enable=protected-access
   elif pred in {0, 1}:  # Accept 1/0 as valid boolean values
     pred_value = bool(pred)
   elif isinstance(pred, bool):
     pred_value = pred
   else:
-    raise TypeError("`pred` must be a Tensor, or a Python bool, or 1 or 0. "
-                    "Found instead: %s" % type(pred))
+    raise TypeError("Argument `pred` must be a Tensor, or a Python bool, or 1 "
+                    f"or 0. Received: pred={pred} of type "
+                    f"{type(pred).__name__}")
 
   return pred_value
 
@@ -114,6 +113,10 @@ def smart_case(pred_fn_pairs, default=None, exclusive=False, name="smart_case"):
     TypeError: If `fns[i]` is not callable for any i, or `default` is not
                callable.
   """
-  return control_flow_ops._case_helper(  # pylint: disable=protected-access
-      smart_cond, pred_fn_pairs, default, exclusive, name,
+  return control_flow_case._case_helper(  # pylint: disable=protected-access
+      smart_cond,
+      pred_fn_pairs,
+      default,
+      exclusive,
+      name,
       allow_python_preds=True)

@@ -1,0 +1,14 @@
+path: "tensorflow.__internal__.monitoring.BoolGauge"
+tf_class {
+  is_instance: "<class \'tensorflow.python.eager.monitoring.BoolGauge\'>"
+  is_instance: "<class \'tensorflow.python.eager.monitoring.Metric\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'name\', \'description\'], varargs=labels, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_cell"
+    argspec: "args=[\'self\'], varargs=labels, keywords=None, defaults=None"
+  }
+}

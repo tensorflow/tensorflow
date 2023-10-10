@@ -97,6 +97,17 @@ If there is any conflict (for example, `num_threads` vs
 `num_interpreter_threads` here), the parameters of this
 script are given precedence.
 
+When **multiple delegates** are specified to be used in the commandline flags
+via the support of delegate registrar, the order of delegates applied to the
+TfLite runtime will be same as their enabling commandline flag is specified. For
+example, "--use_xnnpack=true --use_gpu=true" means applying the XNNPACK delegate
+first, and then the GPU delegate secondly. In comparison,
+"--use_gpu=true --use_xnnpack=true" means applying the GPU delegate first, and
+then the XNNPACK delegate secondly.
+
+Note, one could specify `--help` when launching the binary to see the full list
+of supported arguments.
+
 ## Downloading ILSVRC
 
 In order to use this tool to run evaluation on the full 50K ImageNet dataset,
@@ -115,7 +126,7 @@ the following steps:
 ILSVRC_2012_DEVKIT_DIR=[set to path to ILSVRC 2012 devkit]
 VALIDATION_LABELS=[set to  path to output]
 
-python third_party/tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification/generate_validation_labels.py \
+python tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification/generate_validation_labels.py \
 --ilsvrc_devkit_dir=${ILSVRC_2012_DEVKIT_DIR} \
 --validation_labels_output=${VALIDATION_LABELS}
 ```

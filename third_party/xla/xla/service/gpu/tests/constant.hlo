@@ -1,0 +1,17 @@
+// RUN: hlo_to_llvm_ir %s | FileCheck %s
+
+HloModule Test, is_scheduled=true
+
+fused_computation {
+  param_0 = pred[2,2]{1,0} parameter(0)
+  param_1 = pred[2,2]{1,0} parameter(1)
+  ROOT xor.1 = pred[2,2]{1,0} xor(pred[2,2]{1,0} param_0, pred[2,2]{1,0} param_1)
+}
+
+ENTRY main {
+// CHECK: %{{.*}} = getelementptr inbounds i8, ptr %arg0, i32 %{{.*}}
+// CHECK: %{{.*}} = getelementptr inbounds i8, ptr %arg1, i32 %{{.*}}
+  a = pred[2, 2]{1,0} constant({{false, true}, {true, false}})
+  b = pred[2, 2]{1,0} constant({{false, true}, {false, true}})
+  ROOT wrapped_xor = pred[2,2]{1,0} fusion(pred[2,2]{1,0} a, pred[2,2]{1,0} b), kind=kLoop, calls=fused_computation
+}

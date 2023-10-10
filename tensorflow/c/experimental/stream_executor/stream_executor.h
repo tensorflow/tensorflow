@@ -76,7 +76,7 @@ limitations under the License.
 //     // Values such as `name` and `type` must outlive SE_InitPlugin call.
 //     params->platform->name = DEVICE_NAME;
 //     params->platform->type = DEVICE_TYPE;
-//     params->platform->visible_device_count = 2;
+//     params->platform_fns->get_device_count = get_device_count;
 //     params->platform_fns->create_device = create_device;
 //     params->platform_fns->destroy_device = destroy_device;
 //     ...
@@ -137,7 +137,7 @@ typedef enum SE_EventStatus {
 
 // Memory allocation information.
 // This matches DeviceMemoryBase defined here:
-// https://cs.opensource.google/tensorflow/tensorflow/+/refs/tags/v2.3.0:tensorflow/stream_executor/device_memory.h;l=57
+// https://cs.opensource.google/tensorflow/tensorflow/+/refs/tags/v2.3.0:tensorflow/compiler/xla/stream_executor/device_memory.h;l=57
 typedef struct SP_DeviceMemoryBase {
   size_t struct_size;
   void* ext;  // Reserved for future use
@@ -393,6 +393,21 @@ typedef struct SP_StreamExecutor {
   // likely a whole device).
   void (*synchronize_all_activity)(const SP_Device* device, TF_Status* status);
 
+  // Zero out `size` bytes starting at the location.
+  void (*mem_zero)(const SP_Device* device, SP_Stream stream,
+                   SP_DeviceMemoryBase* location, uint64_t size,
+                   TF_Status* status);
+
+  // Set the 8-bit patterns starting at the location with `size` bytes.
+  void (*memset)(const SP_Device* device, SP_Stream stream,
+                 SP_DeviceMemoryBase* location, uint8_t pattern, uint64_t size,
+                 TF_Status* status);
+
+  // Set the 32-bit patterns starting at the location with `size` bytes.
+  void (*memset32)(const SP_Device* device, SP_Stream stream,
+                   SP_DeviceMemoryBase* location, uint32_t pattern,
+                   uint64_t size, TF_Status* status);
+
   // Enqueues on a stream a user-specified function to be run on the host.
   // `callback_arg` should be passed as the first argument to `callback_fn`.
   TF_Bool (*host_callback)(const SP_Device* device, SP_Stream stream,
@@ -428,22 +443,31 @@ typedef struct SP_Platform {
   // capital letters and underscores.
   const char* type;
 
-  // Number of visible devices
-  size_t visible_device_count;
-
   // Whether this platform supports unified memory.
   // Unified memory is a single memory address space accessible from any device.
   TF_Bool supports_unified_memory;
+
+  // Whether to wrap allocator for this device with an allocator that uses BFC
+  // (best-fit with coalescing) strategy.
+  TF_Bool use_bfc_allocator;
+
+  // Whether to force the memory allocations to grow over time instead of
+  // allocating it all at once. When this is set to true, the value of
+  // allow_growth is ignored.
+  TF_Bool force_memory_growth;
 } SP_Platform;
 
 #define SP_PLATFORM_STRUCT_SIZE \
-  TF_OFFSET_OF_END(SP_Platform, supports_unified_memory)
+  TF_OFFSET_OF_END(SP_Platform, force_memory_growth)
 
 typedef struct SP_PlatformFns {
   size_t struct_size;
 
   void* ext;  // reserved for future use
 
+  // Callbacks for getting device count
+  void (*get_device_count)(const SP_Platform* platform, int* device_count,
+                           TF_Status* status);
   // Callbacks for creating/destroying SP_Device.
   void (*create_device)(const SP_Platform* platform,
                         SE_CreateDeviceParams* params, TF_Status* status);

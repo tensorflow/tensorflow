@@ -15,8 +15,10 @@ limitations under the License.
 #include "tensorflow/lite/toco/tensorflow_util.h"
 
 #include <string.h>
+
 #include <memory>
 #include <set>
+#include <string>
 
 #ifdef GOOGLE_PLATFORM
 #include "file/logging/log_lines.h"

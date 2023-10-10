@@ -19,8 +19,8 @@ limitations under the License.
 #include <GLES3/gl31.h>
 #include <stdint.h>
 
-#include "absl/base/macros.h"
-#include "tensorflow/lite/c/common.h"
+#include "absl/base/attributes.h"
+#include "tensorflow/lite/core/c/common.h"
 
 #ifdef __cplusplus
 extern "C" {

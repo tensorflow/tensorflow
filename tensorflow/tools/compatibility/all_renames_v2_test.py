@@ -14,12 +14,6 @@
 # ==============================================================================
 """Tests for all_renames_v2."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import six
-
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test as test_lib
 from tensorflow.tools.compatibility import all_renames_v2
@@ -30,7 +24,7 @@ class AllRenamesV2Test(test_util.TensorFlowTestCase):
   def test_no_identity_renames(self):
     identity_renames = [
         old_name
-        for old_name, new_name in six.iteritems(all_renames_v2.symbol_renames)
+        for old_name, new_name in all_renames_v2.symbol_renames.items()
         if old_name == new_name
     ]
     self.assertEmpty(identity_renames)

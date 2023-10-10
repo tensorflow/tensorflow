@@ -59,7 +59,7 @@ Status RemoveAttribute(const GraphDef& input_graph_def,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("remove_attribute", RemoveAttribute);

@@ -14,19 +14,16 @@
 # ==============================================================================
 """Inverts a non-singular `LinearOperator`."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import ops
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.util.tf_export import tf_export
 
-__all__ = []
+__all__ = ["LinearOperatorInversion"]
 
 
 @tf_export("linalg.LinearOperatorInversion")
+@linear_operator.make_composite_tensor
 class LinearOperatorInversion(linear_operator.LinearOperator):
   """`LinearOperator` representing the inverse of another operator.
 
@@ -127,13 +124,16 @@ class LinearOperatorInversion(linear_operator.LinearOperator):
     # Auto-set and check hints.
     if operator.is_non_singular is False or is_non_singular is False:
       raise ValueError(
-          "operator and supplied hints must have `is_non_singular` equal to "
-          "`True` or `None`.  Found %s, %s" % (operator.is_non_singular,
-                                               is_non_singular))
+          f"Argument `is_non_singular` or argument `operator` must have "
+          f"supplied hint `is_non_singular` equal to `True` or `None`. "
+          f"Found `operator.is_non_singular`: {operator.is_non_singular}, "
+          f"`is_non_singular`: {is_non_singular}.")
     if operator.is_square is False or is_square is False:
       raise ValueError(
-          "operator and supplied hints must have `is_square` equal to "
-          "`True` or `None`.  Found %s, %s" % (operator.is_square, is_square))
+          f"Argument `is_square` or argument `operator` must have supplied "
+          f"hint `is_square` equal to `True` or `None`. Found "
+          f"`operator.is_square`: {operator.is_square}, "
+          f"`is_square`: {is_square}.")
 
     # The congruency of is_non_singular and is_self_adjoint was checked in the
     # base operator.  Other hints are, in this special case of inversion, ones
@@ -163,23 +163,31 @@ class LinearOperatorInversion(linear_operator.LinearOperator):
     # Initialization.
     if name is None:
       name = operator.name + "_inv"
-    with ops.name_scope(name, values=operator.graph_parents):
+    with ops.name_scope(name):
       super(LinearOperatorInversion, self).__init__(
           dtype=operator.dtype,
-          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           parameters=parameters,
           name=name)
-    # TODO(b/143910018) Remove graph_parents in V3.
-    self._set_graph_parents(operator.graph_parents)
 
   @property
-  def operator(self):
+  def operator(self) -> "LinearOperatorInversion":
     """The operator before inversion."""
     return self._operator
+
+  def _linop_inverse(self) -> linear_operator.LinearOperator:
+    return self.operator
+
+  def _linop_solve(
+      self,
+      left_operator: "LinearOperatorInversion",
+      right_operator: linear_operator.LinearOperator,
+  ) -> linear_operator.LinearOperator:
+    """Solve inverse of generic `LinearOperator`s."""
+    return left_operator.operator.matmul(right_operator)
 
   def _assert_non_singular(self):
     return self.operator.assert_non_singular()
@@ -213,3 +221,11 @@ class LinearOperatorInversion(linear_operator.LinearOperator):
 
   def _cond(self):
     return self.operator.cond()
+
+  @property
+  def _composite_tensor_fields(self):
+    return ("operator",)
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    return {"operator": 0}

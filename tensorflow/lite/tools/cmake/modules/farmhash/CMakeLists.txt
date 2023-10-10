@@ -33,7 +33,18 @@ add_library(farmhash
   "${FARMHASH_SOURCE_DIR}/src/farmhash.cc"
   "${FARMHASH_SOURCE_DIR}/src/farmhash.h"
 )
-target_include_directories(farmhash PUBLIC "${FARMHASH_SOURCE_DIR}/src")
+set_target_properties(farmhash PROPERTIES PUBLIC_HEADER "${FARMHASH_SOURCE_DIR}/src/farmhash.h")
+target_include_directories(farmhash PUBLIC $<BUILD_INTERFACE:${FARMHASH_SOURCE_DIR}/src> $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 if(NOT FARMHASH_HAS_BUILTIN_EXPECT)
   target_compile_definitions(farmhash PUBLIC -DFARMHASH_NO_BUILTIN_EXPECT)
+endif()
+
+if(TFLITE_ENABLE_INSTALL)
+  install(
+    TARGETS farmhash
+    EXPORT tensorflow-liteTargets
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+  )
 endif()

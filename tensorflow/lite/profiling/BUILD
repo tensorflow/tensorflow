@@ -1,14 +1,19 @@
-load("//tensorflow:tensorflow.bzl", "if_not_windows")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow:tensorflow.bzl", "clean_dep")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 
+# copybara:uncomment_begin(google-only)
+# load("//tensorflow/lite/experimental/perfetto_profiling:build_def.bzl", "tflite_perfetto_copts")
+# copybara:uncomment_end
+
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
-common_copts = tflite_copts() + if_not_windows(["-Wall"])
+common_copts = tflite_copts() + tflite_copts_warnings()
 
 cc_library(
     name = "profiler",
@@ -17,6 +22,7 @@ cc_library(
         "noop_profiler.h",
         "profiler.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
     deps = [
         ":profile_buffer",
@@ -29,8 +35,7 @@ cc_test(
     srcs = ["profiler_test.cc"],
     deps = [
         ":profiler",
-        ":test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -42,7 +47,6 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/lite/core/api",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -51,8 +55,18 @@ cc_test(
     srcs = ["atrace_profiler_test.cc"],
     deps = [
         ":atrace_profiler",
-        ":test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+objc_library(
+    name = "signpost_profiler",
+    hdrs = ["signpost_profiler.h"],
+    copts = common_copts,
+    non_arc_srcs = ["signpost_profiler.mm"],
+    tags = ["apple"],
+    deps = [
+        "//tensorflow/lite/core/api",
     ],
 )
 
@@ -61,22 +75,37 @@ cc_library(
     srcs = ["platform_profiler.cc"],
     hdrs = ["platform_profiler.h"],
     compatible_with = get_compatible_with_portable(),
-    copts = common_copts,
+    copts =
+        # copybara:uncomment_begin(google-only)
+        # tflite_perfetto_copts() +
+        # copybara:uncomment_end
+        common_copts,
     deps = [
         "//tensorflow/lite/core/api",
     ] + select({
+        # copybara:uncomment_begin(google-only)
+        # clean_dep("//tensorflow/lite/experimental/perfetto_profiling:enable_tflite_perfetto_profiler_explicit_true"): [
+        # "//tensorflow/lite/experimental/perfetto_profiling:perfetto_profiler",
+        # ],
+        # copybara:uncomment_end
         "//tensorflow:android": [":atrace_profiler"],
+        "//tensorflow:ios": [":signpost_profiler"],
         "//conditions:default": [],
     }),
 )
 
 cc_library(
     name = "profile_buffer",
+    srcs = [
+        "profile_buffer.cc",
+    ],
     hdrs = ["profile_buffer.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
     deps = [
         ":memory_info",
         ":time",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/core/api",
     ],
 )
@@ -86,8 +115,7 @@ cc_test(
     srcs = ["profile_buffer_test.cc"],
     deps = [
         ":profile_buffer",
-        ":test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -95,6 +123,7 @@ cc_library(
     name = "time",
     srcs = ["time.cc"],
     hdrs = ["time.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
 )
 
@@ -102,9 +131,8 @@ cc_test(
     name = "time_test",
     srcs = ["time_test.cc"],
     deps = [
-        ":test_main",
         ":time",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -112,6 +140,7 @@ cc_library(
     name = "memory_info",
     srcs = ["memory_info.cc"],
     hdrs = ["memory_info.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
 )
 
@@ -129,8 +158,31 @@ cc_test(
     ],
     deps = [
         ":memory_info",
-        ":test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "memory_usage_monitor",
+    srcs = ["memory_usage_monitor.cc"],
+    hdrs = ["memory_usage_monitor.h"],
+    copts = common_copts,
+    deps = [
+        ":memory_info",
+        "//tensorflow/lite:minimal_logging",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+cc_test(
+    name = "memory_usage_monitor_test",
+    srcs = ["memory_usage_monitor_test.cc"],
+    deps = [
+        ":memory_info",
+        ":memory_usage_monitor",
+        "@com_google_absl//absl/time",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -138,6 +190,7 @@ cc_library(
     name = "profile_summary_formatter",
     srcs = ["profile_summary_formatter.cc"],
     hdrs = ["profile_summary_formatter.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
     deps = [
         "//tensorflow/core/util:stats_calculator_portable",
@@ -149,8 +202,8 @@ cc_test(
     srcs = ["profile_summary_formatter_test.cc"],
     deps = [
         ":profile_summary_formatter",
-        ":test_main",
-        "@com_google_googletest//:gtest",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -158,6 +211,7 @@ cc_library(
     name = "profile_summarizer",
     srcs = ["profile_summarizer.cc"],
     hdrs = ["profile_summarizer.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
     deps = [
         ":memory_info",
@@ -165,35 +219,73 @@ cc_library(
         ":profile_summary_formatter",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
+cc_library(
+    name = "root_profiler",
+    srcs = ["root_profiler.cc"],
+    hdrs = ["root_profiler.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = common_copts,
+    deps = ["//tensorflow/lite/core/api"],
+)
+
+cc_test(
+    name = "root_profiler_test",
+    srcs = ["root_profiler_test.cc"],
+    deps = [
+        ":root_profiler",
+        "//tensorflow/lite/core/api",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "subgraph_tensor_profiler",
+    srcs = ["subgraph_tensor_profiler.cc"],
+    hdrs = ["subgraph_tensor_profiler.h"],
+    copts = common_copts,
+    deps = [
+        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:common",
+        "@local_tsl//tsl/platform:path",
+    ],
+)
+
+cc_test(
+    name = "subgraph_tensor_profiler_test",
+    srcs = ["subgraph_tensor_profiler_test.cc"],
+    deps = [
+        ":subgraph_tensor_profiler",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:subgraph_test_util",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
 cc_test(
     name = "profile_summarizer_test",
     srcs = ["profile_summarizer_test.cc"],
+    copts = common_copts,
     deps = [
         ":profile_summarizer",
         ":profiler",
-        ":test_main",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
-cc_library(
-    name = "test_main",
-    testonly = 1,
-    srcs = ["test_main.cc"],
-    visibility = ["//visibility:private"],
-    deps = [
-        "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
-    ],
+tflite_portable_test_suite_combined(
+    combine_conditions = {"deps": ["@com_google_googletest//:gtest_main"]},
+    enable_ios_test_suite = True,
 )
-
-tflite_portable_test_suite_combined(combine_conditions = {"deps": [":test_main"]})

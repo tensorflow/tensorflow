@@ -13,16 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/kernels/mlir_generated/gpu_ops_base.h"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "tensorflow/core/kernels/mlir_generated/base_gpu_op.h"
 
 namespace tensorflow {
 
-GENERATE_AND_REGISTER_UNARY_KERNEL(Sign, f16, DT_HALF, Eigen::half);
-GENERATE_AND_REGISTER_UNARY_KERNEL(Sign, f32, DT_FLOAT, float);
-GENERATE_AND_REGISTER_UNARY_KERNEL(Sign, f64, DT_DOUBLE, double);
-GENERATE_AND_REGISTER_UNARY_KERNEL(Sign, i32, DT_INT32, int32);
-GENERATE_AND_REGISTER_UNARY_KERNEL(Sign, i64, DT_INT64, int64);
-// TODO(b/162577610): Register the kernel for complex types and bfloat.
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Sign, DT_HALF);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Sign, DT_FLOAT);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Sign, DT_DOUBLE);
+// TODO(b/25387198): We cannot use a regular GPU kernel for int32.
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Sign, DT_INT64);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Sign, DT_COMPLEX64);
+GENERATE_AND_REGISTER_UNARY_GPU_KERNEL(Sign, DT_COMPLEX128);
+
+// These kernels are JIT-compiled.
+GENERATE_AND_REGISTER_UNARY_JIT_GPU_KERNEL(Sign, DT_INT8);
+GENERATE_AND_REGISTER_UNARY_JIT_GPU_KERNEL(Sign, DT_INT16);
 
 }  // namespace tensorflow

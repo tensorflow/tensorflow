@@ -41,11 +41,6 @@ inline absl::Span<const T> ArrayRefToSpan(llvm::ArrayRef<T> ref) {
   return absl::Span<const T>(ref.data(), ref.size());
 }
 
-template <typename T>
-inline absl::Span<T> MutableArrayRefToSpan(llvm::MutableArrayRef<T> ref) {
-  return absl::Span<T>(ref.data(), ref.size());
-}
-
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_UTILS_ARRAY_CONTAINER_UTILS_H_

@@ -21,6 +21,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/match.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_test.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 
@@ -35,7 +36,7 @@ TEST(CLArgumentsTest, TestSelectorResolve) {
 
   Arguments args;
   args.AddObjectRef("weights", AccessType::READ,
-                    absl::make_unique<BufferDescriptor>(std::move(desc)));
+                    std::make_unique<BufferDescriptor>(std::move(desc)));
   std::string sample_code = R"(
 __kernel void main_function($0) {
   if (a < 3) {
@@ -45,7 +46,7 @@ __kernel void main_function($0) {
 
   CLArguments cl_args;
   GpuInfo gpu_info;
-  ASSERT_OK(cl_args.Init(gpu_info, {}, nullptr, &args, &sample_code));
+  ASSERT_OK(cl_args.Init(gpu_info, nullptr, &args, &sample_code));
   EXPECT_TRUE(absl::StrContains(sample_code, "value = weights_buffer[id];"));
   EXPECT_TRUE(
       absl::StrContains(sample_code, "__global float4* weights_buffer"));
@@ -59,7 +60,7 @@ TEST(CLArgumentsTest, TestNoSelector) {
 
   Arguments args;
   args.AddObjectRef("weights", AccessType::READ,
-                    absl::make_unique<BufferDescriptor>(std::move(desc)));
+                    std::make_unique<BufferDescriptor>(std::move(desc)));
   std::string sample_code = R"(
   if (a < 3) {
     value = args.weights.UnknownSelector(id);
@@ -67,7 +68,7 @@ TEST(CLArgumentsTest, TestNoSelector) {
 )";
   CLArguments cl_args;
   GpuInfo gpu_info;
-  EXPECT_FALSE(cl_args.Init(gpu_info, {}, nullptr, &args, &sample_code).ok());
+  EXPECT_FALSE(cl_args.Init(gpu_info, nullptr, &args, &sample_code).ok());
 }
 
 }  // namespace cl

@@ -38,10 +38,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPH_GRAPH_H_
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -54,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -61,14 +64,16 @@ namespace tensorflow {
 class Edge;
 class EdgeSetTest;
 class Graph;
+class GraphDebugInfo;
 class GraphDef;
+class GraphTest;
 class Node;
 struct OutputTensor;
 class VersionDef;
 class WhileContext;
 
-class NeighborIter;     // Declared below
-class NodeIter;         // Declared below
+class NeighborIter;  // Declared below
+class NodeIter;      // Declared below
 
 // Indicates where the graph instance is originated from.
 enum class ConstructionContext {
@@ -99,13 +104,15 @@ class Node {
   const NodeDef& def() const;
   const OpDef& op_def() const;
 
+  NodeDef* mutable_def();
+
   // input and output types
   int32 num_inputs() const;
-  DataType input_type(int32 i) const;
+  DataType input_type(int32_t i) const;
   const DataTypeVector& input_types() const;
 
   int32 num_outputs() const;
-  DataType output_type(int32 o) const;
+  DataType output_type(int32_t o) const;
   const DataTypeVector& output_types() const;
 
   // The device requested by the user.  For the actual assigned device,
@@ -133,6 +140,7 @@ class Node {
   // Sets 'original_node_names' field of this node's DebugInfo proto to
   // 'names'.
   void set_original_node_names(const std::vector<string>& names);
+  void set_original_func_names(const std::vector<string>& names);
 
   // Read only access to attributes
   AttrSlice attrs() const;
@@ -202,6 +210,10 @@ class Node {
   // Is this node a function output
   bool IsRetval() const { return class_ == NC_RETVAL; }
 
+  bool IsDistributedCommunication() const {
+    return op_def().is_distributed_communication();
+  }
+
   template <typename T>
   void AddAttr(const std::string& name, const T& val) {
     SetAttrValue(val, AddAttrHelper(name));
@@ -251,7 +263,28 @@ class Node {
     return stack_trace_;
   }
 
+  // Called after an attr has changed. Decides whether we need to update some
+  // property of the node (stored in props_).
+  void UpdateProperties();
+
+  // Erases type information from the node.
+  void ClearTypeInfo();
+
+  // Update type information for a node with a list of inputs and/or outputs
+  // described by its TYPE_ATTR_NAME attr when removing some of these. The keys
+  // of INDEX_MAPPING are the indexes of the inputs/outputs that are not
+  // removed. dtype information in the TYPE_ATTR_NAME attr is always updated.
+  // Use UPDATE_FULL_TYPE=true when this changes the node's outputs to also
+  // update the node's full type information (if present).
+  Status ShrinkTypeInfo(const absl::flat_hash_map<int, int>& index_mapping,
+                        const string& type_attr_name, bool update_full_type);
+
+  // Called after an incident non-control edge has changed. Does nothing if not
+  // all input edges are defined.
+  void RunForwardTypeInference();
+
  private:
+  // TODO(mdan): Drop this.
   friend class Graph;
   Node();
 
@@ -267,10 +300,6 @@ class Node {
   // other nodes. This must be called before mutating properties,
   // e.g. in AddAttr.
   void MaybeCopyOnWrite();
-
-  // Called after an attr has changed. Decides whether we need to update some
-  // property of the node (stored in props_).
-  void UpdateProperties();
 
   AttrValue* AddAttrHelper(const std::string& name);
 
@@ -346,13 +375,15 @@ class Node {
   // this set.)
   WhileContext* while_ctx_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Node);
+  Node(const Node&) = delete;
+  void operator=(const Node&) = delete;
 };
 
 // Stores debug information associated with the Node.
 struct NodeDebugInfo {
   const std::string name;
   std::vector<string> original_node_names;
+  std::vector<string> original_func_names;
 
   NodeDebugInfo(const Node& n);
   NodeDebugInfo(const NodeDef& ndef);
@@ -426,6 +457,7 @@ class Edge {
   Edge() {}
 
   friend class EdgeSetTest;
+  friend class GraphTest;
   friend class Graph;
   Node* src_;
   Node* dst_;
@@ -516,7 +548,10 @@ class Graph {
 
   ~Graph();
 
-  static const int kControlSlot;
+  // Clone the current graph into a new one.
+  std::unique_ptr<Graph> Clone();
+
+  static constexpr int kControlSlot = -1;
 
   // The GraphDef version range of this graph (see graph.proto).
   const VersionDef& versions() const;
@@ -527,6 +562,9 @@ class Graph {
   // Returns nullptr and sets *status on error.
   Node* AddNode(NodeDef node_def, Status* status);
 
+  // Same as above, but using StatusOr. This method is always preferred.
+  StatusOr<Node*> AddNode(NodeDef node_def);
+
   // Copies *node, which may belong to another graph, to a new node,
   // which is returned.  Does not copy any edges.  *this owns the
   // returned instance.
@@ -536,6 +574,12 @@ class Graph {
   // *node should not be accessed after calling this function.
   // REQUIRES: node->IsOp()
   void RemoveNode(Node* node);
+
+  void Copy(const Graph& src);
+
+  // Removes all nodes from this graph, including all edges from or to them.
+  // No Node* references to the Graph are valid post.
+  void Clear();
 
   // Adds an edge that connects the xth output of `source` to the yth input of
   // `dest` and returns it. Does not update dest's NodeDef.
@@ -555,7 +599,9 @@ class Graph {
                              bool allow_duplicates = false);
 
   // Removes edge from the graph. Does not update the destination node's
-  // NodeDef.
+  // NodeDef. Does not update the full type information of the source node's
+  // NodeDef. (See ShrinkTypeInfo for an example of updating full type
+  // information when removing some outputs from a node.)
   // REQUIRES: The edge must exist.
   void RemoveEdge(const Edge* edge);
 
@@ -569,6 +615,10 @@ class Graph {
   // is also updated.
   Status UpdateEdge(Node* new_src, int new_src_index, Node* dst, int dst_index);
 
+  // Add an input to dst that comes from the "src_slot" output of the
+  // node named by "src_name".
+  static void AddInput(NodeDef* dst, StringPiece src_name, int src_slot);
+
   // Like AddEdge but updates dst's NodeDef. Used to add an input edge to a
   // "While" op during gradient construction, see AddInputWhileHack in
   // python_api.h for more details.
@@ -577,8 +627,30 @@ class Graph {
   // Adds the function and gradient definitions in `fdef_lib` to this graph's op
   // registry. Ignores duplicate functions, and returns a bad status if an
   // imported function differs from an existing function or op with the same
-  // name.
+  // name. This overload adds the function definitions with no stack traces.
   Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib);
+  Status AddFunctionLibrary(FunctionDefLibrary&& fdef_lib);
+
+  // Adds the function and gradient definitions in `fdef_lib` to this graph's op
+  // registry. Ignores duplicate functions, and returns a bad status if an
+  // imported function differs from an existing function or op with the same
+  // name.
+  Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib,
+                            const FunctionDefLibraryStackTraces& stack_traces);
+  Status AddFunctionLibrary(FunctionDefLibrary&& fdef_lib,
+                            const FunctionDefLibraryStackTraces& stack_traces);
+
+  // Adds the function definition and its stacktraces to this graph's op
+  // registry. Ignores duplicate functions, and returns a bad status if an
+  // imported function differs from an existing function or op with the same
+  // name.
+  Status AddFunctionDef(const FunctionDef& fdef,
+                        const StackTracesMap& stack_traces);
+
+  // Adds the gradient definition to this graph's op registry. Ignores duplicate
+  // gradients of the same function, and returns a bad status if an imported
+  // gradient differs from an existing gradient of the same function name.
+  Status AddGradientDef(const GradientDef& gdef);
 
   // The number of live nodes in the graph.
   //
@@ -603,10 +675,36 @@ class Graph {
   int num_edges() const { return num_edges_; }
 
   // Serialize the nodes starting at `from_node_id` to a GraphDef.
-  void ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const;
+  // `include_flib_def` indicates whether the function library will be populated
+  // in the `graph_def`. `include_flib_def` should be usually set to true so
+  // that the populated `graph_def` will be complete. Setting `include_flib_def`
+  // to false would mean that the returned `graph_def` is incomplete and may
+  // contain references to functions whose definition is not included. It can
+  // make sense to do this in cases where the caller already has a copy of the
+  // function library.
+  // If `include_debug_info` is true, the `debug_info` field of the GraphDef
+  // will be populated with stack traces from the nodes and the function
+  // library. Note that if `include_debug_info` is true and `include_flib_def`
+  // is false, then `debug_info` will contain stack traces for nodes in the
+  // function library, which will not itself be included in the GraphDef.
+  void ToGraphDefSubRange(GraphDef* graph_def, int from_node_id,
+                          bool include_flib_def = true,
+                          bool include_debug_info = false) const;
 
-  // Serialize to a GraphDef.
-  void ToGraphDef(GraphDef* graph_def) const;
+  // Serialize to a GraphDef. `include_flib_def` indicates whether the function
+  // library will be populated in the `graph_def`. `include_flib_def` should be
+  // usually set to true so that the populated `graph_def` will be complete.
+  // Setting `include_flib_def` to false would mean that the returned
+  // `graph_def` is incomplete and may contain references to functions whose
+  // definition is not included. It can make sense to do this in cases where the
+  // caller already has a copy of the function library.
+  // If `include_debug_info` is true, the `debug_info` field of the GraphDef
+  // will be populated with stack traces from the nodes and the function
+  // library. Note that if `include_debug_info` is true and `include_flib_def`
+  // is false, then `debug_info` will contain stack traces for nodes in the
+  // function library, which will not itself be included in the GraphDef.
+  void ToGraphDef(GraphDef* graph_def, bool include_flib_def = true,
+                  bool include_debug_info = false) const;
 
   // This version can be called from debugger to inspect the graph content.
   // Use the previous version outside debug context for efficiency reasons.
@@ -655,6 +753,8 @@ class Graph {
 
   const OpRegistryInterface* op_registry() const { return &ops_; }
   const FunctionLibraryDefinition& flib_def() const { return ops_; }
+
+  FunctionLibraryDefinition* mutable_flib_def() { return &ops_; }
 
   void CheckDeviceNameIndex(int index) {
     DCHECK_GE(index, 0);
@@ -717,6 +817,28 @@ class Graph {
     return construction_context_;
   }
 
+  // Set full type information for a node given its name.
+  // Note that if this is called in a loop iterating over all the nodes
+  // elsewhere it would be O(n^2) complexity. If this case was important in the
+  // future, an alternative method could be added that takes in a flat_hash_map
+  // of name: type and simply iterates through the graph once and annotates all
+  // nodes.
+  void SetNodeType(StringPiece name, const FullTypeDef& type);
+
+  // Get full type information for a node given its name.
+  // Note that if this is called in a loop iterating over all the nodes
+  // elsewhere it would be O(n^2) complexity. If this case was important in the
+  // future, an alternative method could be added that takes in flat_hash_map of
+  // name: type and simply iterates through the graph once and stores all the
+  // information in the map.
+  void NodeType(StringPiece name, const FullTypeDef** result);
+
+  // Builds a GraphDebugInfo from the functions and nodes in this graph. Stack
+  // traces associated with function definitions will have a key of the form
+  // <node_name> '@' <function_name>. Stack traces associated with other Nodes
+  // will use the node name as the key.
+  GraphDebugInfo BuildDebugInfo() const;
+
   // TODO(josh11b): uint64 hash() const;
 
  private:
@@ -744,7 +866,7 @@ class Graph {
   std::vector<Node*> nodes_;
 
   // Number of nodes alive.
-  int64 num_nodes_ = 0;
+  int64_t num_nodes_ = 0;
 
   // Map from edge ids to allocated edges.  edges_[id] may be nullptr if
   // the edge with that id was removed from the graph.
@@ -797,7 +919,8 @@ class Graph {
   // Indicates the context that this Graph instance is constructed.
   ConstructionContext construction_context_ = ConstructionContext::kNotTracked;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Graph);
+  Graph(const Graph&) = delete;
+  void operator=(const Graph&) = delete;
 };
 
 // TODO(josh11b): We may want to support keeping an index on various
@@ -837,6 +960,10 @@ inline bool IsScopedAllocator(const Node* n) { return n->IsScopedAllocator(); }
 
 inline bool IsHostMemoryPreserving(const Node* node) {
   return IsIdentity(node) || IsControlFlow(node);
+}
+
+inline bool IsDistributedCommunication(const Node* n) {
+  return n->IsDistributedCommunication();
 }
 
 // NOTE: We declare Reference type of NodeIter and NeighborIter as Node* (see

@@ -15,10 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOCO_MODEL_H_
 #define TENSORFLOW_LITE_TOCO_MODEL_H_
 
+#include <algorithm>
 #include <complex>
 #include <functional>
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -280,7 +282,7 @@ struct DataTypeImpl<ArrayDataType::kUint32> {
 };
 template <>
 struct DataTypeImpl<ArrayDataType::kInt64> {
-  typedef int64 Type;
+  typedef int64_t Type;
 };
 template <>
 struct DataTypeImpl<ArrayDataType::kUint64> {
@@ -1301,8 +1303,8 @@ struct FloorModOperator : Operator {
 struct RandomUniformOperator : Operator {
   RandomUniformOperator() : Operator(OperatorType::kRandomUniform) {}
   ArrayDataType dtype = ArrayDataType::kNone;
-  int64 seed;
-  int64 seed2;
+  int64_t seed;
+  int64_t seed2;
 };
 
 // Creates a sequence of numbers that begins at start and extends by increments
@@ -1792,7 +1794,7 @@ struct GatherOperator : Operator {
   // Axis is populated explicitly or implicitly from the axis input by
   // ResolveGatherAttributes. An empty axis indicates that the axis has not yet
   // be resolved.
-  absl::optional<int> axis;
+  std::optional<int> axis;
 
   // This field is not used by the standard TF Lite export but it is still need
   // for legacy Gather implementations.
@@ -2212,8 +2214,8 @@ struct SegmentSumOperator : Operator {
 // be used for the transient array at hand. The 'start' and 'end' values are
 // offsets from the start of the workspace buffer, expressed in bytes.
 struct Alloc {
-  int64 start = 0;
-  int64 end = 0;
+  int64_t start = 0;
+  int64_t end = 0;
 };
 
 inline bool operator<(const Alloc& a, const Alloc& b) {
@@ -2241,13 +2243,13 @@ struct Array {
   }
   Alloc& GetOrCreateAlloc() {
     if (!alloc) {
-      alloc = std::unique_ptr<Alloc>(new Alloc);
+      alloc = std::make_unique<Alloc>();
     }
     return *alloc;
   }
   MinMax& GetOrCreateMinMax() {
     if (!minmax) {
-      minmax = std::unique_ptr<MinMax>(new MinMax);
+      minmax = std::make_unique<MinMax>();
     }
     return *minmax;
   }
@@ -2257,8 +2259,7 @@ struct Array {
   }
   QuantizationParams& GetOrCreateQuantizationParams() {
     if (!quantization_params) {
-      quantization_params =
-          std::unique_ptr<QuantizationParams>(new QuantizationParams);
+      quantization_params = std::make_unique<QuantizationParams>();
     }
     return *quantization_params;
   }
@@ -2306,7 +2307,7 @@ struct Array {
   }
   Shape* mutable_shape() {
     if (!array_shape) {
-      array_shape.reset(new Shape);
+      array_shape = std::make_unique<Shape>();
     }
     return array_shape.get();
   }
@@ -2435,7 +2436,7 @@ class Model {
   const ArrayMap& GetArrayMap() const { return arrays; }
   ArrayMap& GetMutableArrayMap() { return arrays; }
 
-  int64 ArithmeticOpsCount() const { return ops_count; }
+  int64_t ArithmeticOpsCount() const { return ops_count; }
 
   void AddInvalidInputArray(std::string invalid_input_array) {
     invalid_input_arrays_.insert(invalid_input_array);
@@ -2462,7 +2463,7 @@ class Model {
   // For code-generation only: required alignment of the transient_data buffer
   std::size_t transient_data_alignment = 0;
   // Arithmetic operations performed in the model.
-  int64 ops_count = 0;
+  int64_t ops_count = 0;
 
  private:
   // The associative array mapping names to Array's.

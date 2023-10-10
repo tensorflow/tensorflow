@@ -32,10 +32,6 @@ class NcclBase : public CollectiveImplementationInterface {
   Status InitializeCollectiveContext(
       std::shared_ptr<CollectiveContext> col_ctx) override;
 
-  // Initialize nccl communicator key.
-  Status InitializeCollectiveGroupRuntimeDetails(
-      CollGroupRuntimeDetails* col_group_runtime_details) override;
-
  protected:
   const CollectiveType type_;
   const string name_;

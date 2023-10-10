@@ -14,14 +14,10 @@
 # ==============================================================================
 """Tests for tensorflow.python.framework.python_api_info."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
-from tensorflow.python import _pywrap_python_api_info
 from tensorflow.python.eager import context
+from tensorflow.python.framework import _pywrap_python_api_info
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -96,7 +92,8 @@ class PythonAPIInfoTest(test_util.TensorFlowTestCase, parameterized.TestCase):
        "    {index=1, name=y, is_list=0},]\n"
        "  inputs_with_type_attr=[\n"
        "    {type_attr=T, tensor_params=[0, 1], ok_dtypes=[DT_BFLOAT16, "
-       "DT_HALF, DT_FLOAT, DT_DOUBLE, DT_UINT8, DT_INT8, DT_INT16, DT_UINT32, "
+       "DT_HALF, DT_FLOAT, DT_DOUBLE, DT_UINT8, DT_UINT16, DT_UINT32, "
+       "DT_UINT64, DT_INT8, DT_INT16, "
        "DT_INT32, DT_INT64, DT_COMPLEX64, DT_COMPLEX128]},]\n"
        "  inferred_type_attrs=[T]\n"),
       # An op with an int attribute.
@@ -115,7 +112,7 @@ class PythonAPIInfoTest(test_util.TensorFlowTestCase, parameterized.TestCase):
        "  inputs_with_type_attr=[\n"
        "    {type_attr=Tparams, tensor_params=[0]},\n"
        "    {type_attr=Tindices, tensor_params=[1], "
-       "ok_dtypes=[DT_INT32, DT_INT64]},\n"
+       "ok_dtypes=[DT_INT16, DT_INT32, DT_INT64]},\n"
        "    {type_attr=Taxis, tensor_params=[2], "
        "ok_dtypes=[DT_INT32, DT_INT64]},]\n"
        "  inferred_type_attrs=[Tparams, Tindices, Taxis]\n"),

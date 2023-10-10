@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package tensorflow.rpc;
+
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/protobuf/struct.proto";
+
+message CallRequest {
+  string method = 1;
+  repeated TensorProto input_tensors = 2;
+}
+
+message CallResponse {
+  repeated TensorProto output_tensors = 1;
+}
+
+message ListRequest {}
+
+message RegisteredMethod {
+  string method = 1;
+  StructuredValue input_specs = 2;
+  StructuredValue output_specs = 3;
+}
+
+message ListResponse {
+  repeated RegisteredMethod registered_methods = 1;
+}
+
+service RpcService {
+  // RPC for invoking a registered function on remote server.
+  rpc Call(CallRequest) returns (CallResponse) {}
+
+  // RPC for listing available methods in a server.
+  rpc List(ListRequest) returns (ListResponse) {}
+}

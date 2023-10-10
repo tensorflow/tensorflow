@@ -13,12 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for depthwiseconv."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -70,6 +66,19 @@ def make_depthwiseconv_tests(options):
           "quant_16x8": [False]
       },
       {
+          "input_shape": [[1, 3, 3, 3000]],
+          "filter_size": [[3, 3]],
+          "strides": [[1, 1, 1, 1]],
+          "dilations": [[1, 1, 1, 1]],
+          "channel_multiplier": [1],
+          "rate": [[1, 1]],
+          "padding": ["VALID"],
+          "data_format": ["NHWC"],
+          "constant_filter": [True],
+          "fully_quantize": [True],
+          "quant_16x8": [False]
+      },
+      {
           "input_shape": [[1, 3, 4, 3]],
           "filter_size": [[1, 2]],
           "strides": [[1, 3, 3, 1]],
@@ -109,10 +118,10 @@ def make_depthwiseconv_tests(options):
       input_tensors = [input_tensor, filter_input]
 
     out = tf.nn.depthwise_conv2d(
-        input_tensor,
-        filter_input,
+        input=input_tensor,
+        filter=filter_input,
         strides=parameters["strides"],
-        rate=parameters["rate"],
+        dilations=parameters["rate"],
         padding=parameters["padding"],
         data_format=parameters["data_format"])
     return input_tensors, [out]

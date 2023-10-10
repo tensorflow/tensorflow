@@ -14,9 +14,6 @@
 # ==============================================================================
 """Tests for the swig wrapper tf_optimizer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
@@ -28,9 +25,9 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import item as gitem
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 
 
@@ -62,7 +59,7 @@ class PyWrapOptimizeGraphTest(test.TestCase):
   def testKeepNodes(self):
     g = ops.Graph()
     with g.as_default():
-      a1 = variables.VariableV1(
+      a1 = variable_v1.VariableV1(
           1.0)  # Must be preserved since it's in the collection 'variables'.
       a2 = constant_op.constant(0, shape=[50, 50], name='keep')
       ops.add_to_collection('a2', a2)  # Explicitly add to collection.
@@ -111,9 +108,9 @@ class PyWrapOptimizeGraphTest(test.TestCase):
           tensor_shape.TensorShape([None]),
           tensor_shape.TensorShape([])
       ]
-      buf, _ = control_flow_ops.while_loop(_Cond, _Body, loop_vars, shape_inv)
+      buf, _ = while_loop.while_loop(_Cond, _Body, loop_vars, shape_inv)
 
-      f = -array_ops.ones_like(buf, optimize=False)
+      f = -array_ops.ones_like(buf, optimize=False)  # pylint: disable=invalid-unary-operand-type
       buf_shape = array_ops.shape(buf)
       f_shape = array_ops.shape(f)
       ops.add_to_collection('train_op', buf_shape)

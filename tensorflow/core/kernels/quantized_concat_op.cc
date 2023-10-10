@@ -15,15 +15,18 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <limits>
+#include <utility>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/concat_lib_cpu.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
@@ -75,7 +78,7 @@ class QuantizedConcatOp : public OpKernel {
 
   explicit QuantizedConcatOp(OpKernelConstruction* c) : OpKernel(c) {}
 
-  void CalculateInputAndOutputRange(
+  Status CalculateInputAndOutputRange(
       const OpInputList& input_mins, const OpInputList& input_maxes,
       const size_t N,
       std::vector<std::pair<float, float>>* input_mins_and_maxes,
@@ -84,6 +87,18 @@ class QuantizedConcatOp : public OpKernel {
     float overall_min = std::numeric_limits<float>::max();
     float overall_max = std::numeric_limits<float>::lowest();
     for (int i = 0; i < N; ++i) {
+      if (input_mins[i].NumElements() != 1) {
+        return errors::InvalidArgument(
+            "input_mins each tensor's num elements must be 1, given num "
+            "elements ",
+            input_mins[i].NumElements(), " in index ", i);
+      }
+      if (input_maxes[i].NumElements() != 1) {
+        return errors::InvalidArgument(
+            "input_maxes each tensor's num elements must be 1, given num "
+            "elements ",
+            input_maxes[i].NumElements(), " in index ", i);
+      }
       const float input_min = input_mins[i].flat<float>()(0);
       const float input_max = input_maxes[i].flat<float>()(0);
       input_mins_and_maxes->emplace_back(input_min, input_max);
@@ -103,23 +118,24 @@ class QuantizedConcatOp : public OpKernel {
       *output_min = overall_min;
       *output_max = overall_max;
     }
+    return OkStatus();
   }
 
-  int64 CalculateInputsDim(const TensorShape& input_shape,
-                           const int32 concat_dim) {
-    int64 inputs_flat_dim0 = 1;
+  int64_t CalculateInputsDim(const TensorShape& input_shape,
+                             const int32_t concat_dim) {
+    int64_t inputs_flat_dim0 = 1;
     for (int d = 0; d < concat_dim; ++d) {
       inputs_flat_dim0 *= input_shape.dim_size(d);
     }
     return inputs_flat_dim0;
   }
 
-  void CalculateConcatDims(const size_t N, const TensorShape& input_shape,
-                           int input_dims, const OpInputList& values,
-                           OpKernelContext* context, const int32 concat_dim,
-                           const int64 inputs_flat_dim0,
-                           ConstMatrixVector* inputs_flat,
-                           int* output_concat_dim) {
+  Status CalculateConcatDims(const size_t N, const TensorShape& input_shape,
+                             int input_dims, const OpInputList& values,
+                             const int32_t concat_dim,
+                             const int64_t inputs_flat_dim0,
+                             ConstMatrixVector* inputs_flat,
+                             int* output_concat_dim) {
     // Note that we reduce the concat of n-dimensional tensors into a two
     // dimensional concat. Assuming the dimensions of any input/output
     // tensor are {x0, x1,...,xn-1, y0, y1,...,ym-1}, where the concat is along
@@ -131,30 +147,31 @@ class QuantizedConcatOp : public OpKernel {
     for (int i = 0; i < N; ++i) {
       const auto in = values[i];
       const bool in_is_scalar = TensorShapeUtils::IsScalar(in.shape());
-      OP_REQUIRES(
-          context, in.dims() == input_dims || (input_is_scalar && in_is_scalar),
-          errors::InvalidArgument(
-              "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
-              input_shape.DebugString(), " vs. shape[", i,
-              "] = ", in.shape().DebugString()));
+      if (!(in.dims() == input_dims || (input_is_scalar && in_is_scalar))) {
+        return errors::InvalidArgument(
+            "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
+            input_shape.DebugString(), " vs. shape[", i,
+            "] = ", in.shape().DebugString());
+      }
       for (int j = 0; j < input_dims; ++j) {
         if (j == concat_dim) {
           continue;
         }
-        OP_REQUIRES(
-            context, in.dim_size(j) == input_shape.dim_size(j),
-            errors::InvalidArgument(
-                "ConcatOp : Dimensions of inputs should match: shape[0] = ",
-                input_shape.DebugString(), " vs. shape[", i,
-                "] = ", in.shape().DebugString()));
+        if (in.dim_size(j) != input_shape.dim_size(j)) {
+          return errors::InvalidArgument(
+              "ConcatOp : Dimensions of inputs should match: shape[0] = ",
+              input_shape.DebugString(), " vs. shape[", i,
+              "] = ", in.shape().DebugString());
+        }
       }
       if (in.NumElements() > 0) {
-        int64 inputs_flat_dim1 = in.NumElements() / inputs_flat_dim0;
+        int64_t inputs_flat_dim1 = in.NumElements() / inputs_flat_dim0;
         inputs_flat->emplace_back(new typename TTypes<T, 2>::ConstMatrix(
             in.shaped<T, 2>({inputs_flat_dim0, inputs_flat_dim1})));
       }
       *output_concat_dim += in.dims() > 0 ? in.dim_size(concat_dim) : 1;
     }
+    return OkStatus();
   }
 
   void Compute(OpKernelContext* context) override {
@@ -165,7 +182,7 @@ class QuantizedConcatOp : public OpKernel {
         errors::InvalidArgument(
             "Concat dim tensor should be a scalar integer, but got shape ",
             concat_dim_tensor->shape().DebugString()));
-    const int32 concat_dim = concat_dim_tensor->scalar<int32>()();
+    const int32_t concat_dim = concat_dim_tensor->scalar<int32>()();
     OpInputList values;
     OP_REQUIRES_OK(context, context->input_list("values", &values));
     const size_t N = values.size();
@@ -192,14 +209,18 @@ class QuantizedConcatOp : public OpKernel {
     float output_min = std::numeric_limits<float>::max();
     float output_max = std::numeric_limits<float>::lowest();
     std::vector<std::pair<float, float>> input_mins_and_maxes;
-    CalculateInputAndOutputRange(input_mins, input_maxes, N,
-                                 &input_mins_and_maxes, &output_min,
-                                 &output_max);
-    const int64 inputs_flat_dim0 = CalculateInputsDim(input_shape, concat_dim);
+    OP_REQUIRES_OK(context,
+                   CalculateInputAndOutputRange(input_mins, input_maxes, N,
+                                                &input_mins_and_maxes,
+                                                &output_min, &output_max));
+    const int64_t inputs_flat_dim0 =
+        CalculateInputsDim(input_shape, concat_dim);
     ConstMatrixVector inputs_flat;
     int output_concat_dim;
-    CalculateConcatDims(N, input_shape, input_dims, values, context, concat_dim,
-                        inputs_flat_dim0, &inputs_flat, &output_concat_dim);
+    OP_REQUIRES_OK(
+        context, CalculateConcatDims(N, input_shape, input_dims, values,
+                                     concat_dim, inputs_flat_dim0, &inputs_flat,
+                                     &output_concat_dim));
 
     TensorShape output_shape(input_shape);
     // TODO(irving): Remove rank 0 case once !kAllowLegacyScalars
@@ -212,7 +233,7 @@ class QuantizedConcatOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
     if (output->NumElements() > 0) {
-      int64 output_dim1 = output->NumElements() / inputs_flat_dim0;
+      int64_t output_dim1 = output->NumElements() / inputs_flat_dim0;
       auto output_flat = output->shaped<T, 2>({inputs_flat_dim0, output_dim1});
       ConcatCPUImpl<T>(
           context->device(), inputs_flat, sizeof(T) /* cost_per_unit */,
@@ -243,17 +264,5 @@ REGISTER_QUANTIZED_CONCAT(quint8);
 REGISTER_QUANTIZED_CONCAT(qint32);
 
 #undef REGISTER_QUANTIZED_CONCAT
-
-#ifdef INTEL_MKL
-#define REGISTER_QUANTIZED_CONCATV2(type)                \
-  REGISTER_KERNEL_BUILDER(Name("QuantizedConcatV2")      \
-                              .Device(DEVICE_CPU)        \
-                              .TypeConstraint<type>("T") \
-                              .HostMemory("axis"),       \
-                          QuantizedConcatOp<type>)
-
-REGISTER_QUANTIZED_CONCATV2(quint8);
-REGISTER_QUANTIZED_CONCATV2(qint32);
-#endif
 
 }  // namespace tensorflow

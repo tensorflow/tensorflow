@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/util/debug_events_writer.h"
 
+#include <deque>
+#include <memory>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -42,7 +48,7 @@ Status SingleDebugEventFileWriter::Init() {
   if (record_writer_ != nullptr) {
     // TODO(cais): We currently don't check for file deletion. When the need
     // arises, check and fix it.
-    return Status::OK();
+    return OkStatus();
   }
 
   // Reset recordio_writer (which has a reference to writable_file_) so final
@@ -52,14 +58,14 @@ Status SingleDebugEventFileWriter::Init() {
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       env_->NewWritableFile(file_path_, &writable_file_),
       "Creating writable file ", file_path_);
-  record_writer_.reset(new io::RecordWriter(writable_file_.get()));
+  record_writer_ = std::make_unique<io::RecordWriter>(writable_file_.get());
   if (record_writer_ == nullptr) {
     return errors::Unknown("Could not create record writer at path: ",
                            file_path_);
   }
   num_outstanding_events_.store(0);
   VLOG(1) << "Successfully opened debug events file: " << file_path_;
-  return Status::OK();
+  return OkStatus();
 }
 
 void SingleDebugEventFileWriter::WriteSerializedDebugEvent(
@@ -80,7 +86,7 @@ void SingleDebugEventFileWriter::WriteSerializedDebugEvent(
 Status SingleDebugEventFileWriter::Flush() {
   const int num_outstanding = num_outstanding_events_.load();
   if (num_outstanding == 0) {
-    return Status::OK();
+    return OkStatus();
   }
   if (writable_file_ == nullptr) {
     return errors::Unknown("Unexpected NULL file for path: ", file_path_);
@@ -97,7 +103,7 @@ Status SingleDebugEventFileWriter::Flush() {
                                   num_outstanding, " debug events to ",
                                   file_path_);
   num_outstanding_events_.store(0);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SingleDebugEventFileWriter::Close() {
@@ -123,7 +129,7 @@ DebugEventsWriter::~DebugEventsWriter() { Close().IgnoreError(); }
 // static
 DebugEventsWriter* DebugEventsWriter::GetDebugEventsWriter(
     const string& dump_root, const string& tfdbg_run_id,
-    int64 circular_buffer_size) {
+    int64_t circular_buffer_size) {
   mutex_lock l(DebugEventsWriter::factory_mu_);
   std::unordered_map<string, std::unique_ptr<DebugEventsWriter>>* writer_pool =
       DebugEventsWriter::GetDebugEventsWriterMap();
@@ -146,7 +152,7 @@ Status DebugEventsWriter::LookUpDebugEventsWriter(
         "No DebugEventsWriter has been created at dump root ", dump_root);
   }
   *debug_events_writer = (*writer_pool)[dump_root].get();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DebugEventsWriter::Init() {
@@ -155,7 +161,7 @@ Status DebugEventsWriter::Init() {
   // TODO(cais): We currently don't check for file deletion. When the need
   // arises, check and fix file deletion.
   if (is_initialized_) {
-    return Status::OK();
+    return OkStatus();
   }
 
   if (!env_->IsDirectory(dump_root_).ok()) {
@@ -163,7 +169,7 @@ Status DebugEventsWriter::Init() {
                                     "Failed to create directory ", dump_root_);
   }
 
-  int64 time_in_seconds = env_->NowMicros() / 1e6;
+  int64_t time_in_seconds = env_->NowMicros() / 1e6;
   file_prefix_ = io::JoinPath(
       dump_root_, strings::Printf("%s.%010lld.%s", kFileNamePrefix,
                                   static_cast<long long>(time_in_seconds),
@@ -177,7 +183,8 @@ Status DebugEventsWriter::Init() {
 
   // The metadata file should be created.
   string metadata_filename = GetFileNameInternal(METADATA);
-  metadata_writer_.reset(new SingleDebugEventFileWriter(metadata_filename));
+  metadata_writer_ =
+      std::make_unique<SingleDebugEventFileWriter>(metadata_filename);
   if (metadata_writer_ == nullptr) {
     return errors::Unknown("Could not create debug event metadata file writer");
   }
@@ -195,7 +202,7 @@ Status DebugEventsWriter::Init() {
   TF_RETURN_IF_ERROR(InitNonMetadataFile(EXECUTION));
   TF_RETURN_IF_ERROR(InitNonMetadataFile(GRAPH_EXECUTION_TRACES));
   is_initialized_ = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DebugEventsWriter::WriteSourceFile(SourceFile* source_file) {
@@ -243,7 +250,7 @@ Status DebugEventsWriter::WriteExecution(Execution* execution) {
     if (execution_buffer_.size() > circular_buffer_size_) {
       execution_buffer_.pop_front();
     }
-    return Status::OK();
+    return OkStatus();
   }
 }
 
@@ -268,13 +275,13 @@ Status DebugEventsWriter::WriteGraphExecutionTrace(
     if (graph_execution_trace_buffer_.size() > circular_buffer_size_) {
       graph_execution_trace_buffer_.pop_front();
     }
-    return Status::OK();
+    return OkStatus();
   }
 }
 
 Status DebugEventsWriter::WriteGraphExecutionTrace(
     const string& tfdbg_context_id, const string& device_name,
-    const string& op_name, int32 output_slot, int32 tensor_debug_mode,
+    const string& op_name, int32_t output_slot, int32_t tensor_debug_mode,
     const Tensor& tensor_value) {
   std::unique_ptr<GraphExecutionTrace> trace(new GraphExecutionTrace());
   trace->set_tfdbg_context_id(tfdbg_context_id);
@@ -360,7 +367,7 @@ Status DebugEventsWriter::FlushNonExecutionFiles() {
   if (graphs_writer_ != nullptr) {
     TF_RETURN_IF_ERROR(graphs_writer_->Flush());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DebugEventsWriter::FlushExecutionFiles() {
@@ -392,7 +399,7 @@ Status DebugEventsWriter::FlushExecutionFiles() {
     TF_RETURN_IF_ERROR(graph_execution_traces_writer_->Flush());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 string DebugEventsWriter::FileName(DebugEventFileType type) {
@@ -403,6 +410,13 @@ string DebugEventsWriter::FileName(DebugEventFileType type) {
 }
 
 Status DebugEventsWriter::Close() {
+  {
+    mutex_lock l(initialization_mu_);
+    if (!is_initialized_) {
+      return OkStatus();
+    }
+  }
+
   std::vector<string> failed_to_close_files;
 
   if (metadata_writer_ != nullptr) {
@@ -448,7 +462,7 @@ Status DebugEventsWriter::Close() {
   }
 
   if (failed_to_close_files.empty()) {
-    return Status::OK();
+    return OkStatus();
   } else {
     return errors::FailedPrecondition(
         "Failed to close %d debug-events files associated with tfdbg",
@@ -467,7 +481,7 @@ DebugEventsWriter::GetDebugEventsWriterMap() {
 
 DebugEventsWriter::DebugEventsWriter(const string& dump_root,
                                      const string& tfdbg_run_id,
-                                     int64 circular_buffer_size)
+                                     int64_t circular_buffer_size)
     : env_(Env::Default()),
       dump_root_(dump_root),
       tfdbg_run_id_(tfdbg_run_id),
@@ -487,7 +501,7 @@ Status DebugEventsWriter::InitNonMetadataFile(DebugEventFileType type) {
   const string filename = GetFileNameInternal(type);
   writer->reset();
 
-  writer->reset(new SingleDebugEventFileWriter(filename));
+  *writer = std::make_unique<SingleDebugEventFileWriter>(filename);
   if (*writer == nullptr) {
     return errors::Unknown("Could not create debug event file writer for ",
                            filename);
@@ -496,7 +510,7 @@ Status DebugEventsWriter::InitNonMetadataFile(DebugEventFileType type) {
       (*writer)->Init(), "Initializing debug event writer at path ", filename);
   VLOG(1) << "Successfully opened debug event file: " << filename;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DebugEventsWriter::SerializeAndWriteDebugEvent(DebugEvent* debug_event,
@@ -509,7 +523,7 @@ Status DebugEventsWriter::SerializeAndWriteDebugEvent(DebugEvent* debug_event,
     string str;
     debug_event->AppendToString(&str);
     (*writer)->WriteSerializedDebugEvent(str);
-    return Status::OK();
+    return OkStatus();
   } else {
     return errors::Internal(
         "Unable to find debug events file writer for DebugEventsFileType ",

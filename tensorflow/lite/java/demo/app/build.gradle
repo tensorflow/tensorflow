@@ -31,8 +31,10 @@ android {
 }
 
 repositories {
-    maven {
-        url 'https://google.bintray.com/tensorflow'
+    mavenCentral()
+    maven {  // Only for snapshot artifacts
+        name 'ossrh-snapshot'
+        url 'https://oss.sonatype.org/content/repositories/snapshots'
     }
 }
 
@@ -40,7 +42,11 @@ allprojects {
     repositories {
         // Uncomment if you want to use a local repo.
         // mavenLocal()
-        jcenter()
+        mavenCentral()
+        maven {  // Only for snapshot artifacts
+            name 'ossrh-snapshot'
+            url 'http://oss.sonatype.org/content/repositories/snapshots'
+        }
     }
 }
 
@@ -53,8 +59,8 @@ dependencies {
     implementation 'com.android.support:support-v13:25.2.0'
 
     // Build off of nightly TensorFlow Lite
-    implementation('org.tensorflow:tensorflow-lite:0.0.0-nightly') { changing = true }
-    implementation('org.tensorflow:tensorflow-lite-gpu:0.0.0-nightly') { changing = true }
+    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly-SNAPSHOT'
+    implementation 'org.tensorflow:tensorflow-lite-gpu:0.0.0-nightly-SNAPSHOT'
     // Use local TensorFlow library
     // implementation 'org.tensorflow:tensorflow-lite-local:0.0.0'
 }

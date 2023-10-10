@@ -24,6 +24,9 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
+ElementwiseDescriptor CreateReLU(const ReLUAttributes& attr,
+                                 CalculationsPrecision precision);
+
 GPUOperation CreateReLU(const OperationDef& definition,
                         const ReLUAttributes& attr);
 

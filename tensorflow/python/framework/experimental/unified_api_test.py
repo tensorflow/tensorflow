@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Unified APIs' python bindings."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import timeit
 
 from absl.testing import parameterized
@@ -45,6 +41,7 @@ TensorCastHelper = _unified_api.EagerTensorToImmediateExecutionTensorHandle
 
 
 def get_immediate_execution_context():
+  context._reset_context()
   context.context().ensure_initialized()
   return _unified_api.EagerContextToImmediateExecutionContext(
       context.context()._handle)

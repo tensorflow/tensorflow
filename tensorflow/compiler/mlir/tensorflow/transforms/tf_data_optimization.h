@@ -24,7 +24,7 @@ namespace TF {
 
 // Populates patterns to perform optimizations specific to tf.data operations.
 void PopulateTFDataOptimizationPatterns(MLIRContext *context,
-                                        OwningRewritePatternList *patterns);
+                                        RewritePatternSet *patterns);
 
 }  // namespace TF
 }  // namespace mlir

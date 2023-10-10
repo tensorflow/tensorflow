@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/placement_utils.h"
 
+#include <variant>
+
+#include "absl/status/status.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
+#include "tensorflow/core/common_runtime/eager/custom_device.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -48,9 +52,9 @@ static bool IsPinnableOp(StringPiece op_name) {
 // Validate if the remote device with the given incarnation is valid in the
 // remote device manager of the current eager context.
 static Status ValidateTensorHandleRemoteDevice(EagerContext* ctx,
-                                               int64 device_incarnation) {
+                                               int64_t device_incarnation) {
   if (ctx->remote_device_mgr()->ContainsDevice(device_incarnation)) {
-    return Status::OK();
+    return OkStatus();
   }
   return errors::InvalidArgument(
       "Resource input tensor contains an invalid device. This might happen "
@@ -67,18 +71,13 @@ bool IsFunction(StringPiece op_name) {
   const OpDef* op_def = nullptr;
   Status s = OpDefForOp(string(op_name), &op_def);
   if (!s.ok()) {
-    if (!errors::IsNotFound(s)) {
-      LOG(WARNING) << "Looking up OpDef failed with error: " << s.ToString();
+    if (!absl::IsNotFound(s)) {
+      LOG(WARNING) << "Looking up OpDef failed with error: " << s;
     }
     // Cannot find OpDef, it is a function.
     return true;
   }
   return false;
-}
-
-bool IsCustomDevice(StringPiece device_name, const EagerContext& ctx) {
-  CustomDevice* custom_device;
-  return ctx.FindCustomDeviceFromName(string(device_name), &custom_device);
 }
 
 Status MaybePinSmallOpsToCpu(
@@ -88,7 +87,7 @@ Status MaybePinSmallOpsToCpu(
   if (IsFunction(op_name) || IsColocationExempt(op_name) ||
       !IsPinnableOp(op_name)) {
     *result = false;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Ops without inputs are usually ops that generate a tensor in some way and
@@ -96,7 +95,7 @@ Status MaybePinSmallOpsToCpu(
   // - for e.g. VarHandleOp or _Recv).
   if (args.empty()) {
     *result = false;
-    return Status::OK();
+    return OkStatus();
   }
 
   int i = 0;
@@ -112,19 +111,19 @@ Status MaybePinSmallOpsToCpu(
     // Input is on CPU.
     if (device_name != cpu_device_name) {
       *result = false;
-      return Status::OK();
+      return OkStatus();
     }
 
     if (dtype != DataType::DT_INT32 && dtype != DataType::DT_INT64) {
       *result = false;
-      return Status::OK();
+      return OkStatus();
     }
 
-    int64 num_elements;
+    int64_t num_elements;
     TF_RETURN_IF_ERROR(arg->NumElements(&num_elements));
     if (num_elements > 64) {
       *result = false;
-      return Status::OK();
+      return OkStatus();
     }
     i++;
   }
@@ -135,20 +134,21 @@ Status MaybePinSmallOpsToCpu(
            << " to be on the CPU since all input tensors have an "
               "int32/int64 dtype, and are small (less than 64 elements).";
   *result = true;
-  return Status::OK();
+  return OkStatus();
 }
 
-Status MaybePinToResourceDevice(VariantDevice* device,
-                                const EagerOperation& op) {
+Status MaybePinToResourceDevice(Device** device, const EagerOperation& op) {
   if (op.colocation_exempt()) {
-    return Status::OK();
+    return OkStatus();
   }
   EagerContext& ctx = op.EagerContext();
+  const absl::InlinedVector<TensorHandle*, 4>* inputs;
+  TF_RETURN_IF_ERROR(op.TensorHandleInputs(&inputs));
   Device* op_device = op.Device() == kVariantDeviceNull
                           ? ctx.HostCPU()
-                          : absl::get<Device*>(op.Device());
-  for (int i = 0; i < op.Inputs().size(); ++i) {
-    TensorHandle* tensor_handle = op.Inputs()[i];
+                          : std::get<Device*>(op.Device());
+  for (int i = 0; i < inputs->size(); ++i) {
+    TensorHandle* tensor_handle = (*inputs)[i];
     if (tensor_handle->dtype == DT_RESOURCE) {
       if (tensor_handle->resource_remote_device_incarnation() != 0) {
         TF_RETURN_IF_ERROR(ValidateTensorHandleRemoteDevice(
@@ -170,56 +170,14 @@ Status MaybePinToResourceDevice(VariantDevice* device,
                  << resource_device->name() << " because input #" << i
                  << " is a resource in this device.";
         *device = resource_device;
-        return Status::OK();
+        return OkStatus();
         // No point in looking at other inputs. If there are other resources,
         // they must have the same device and we already declared the op to be
         // ineligible for CPU pinning.
       }
     }
   }
-  return Status::OK();
-}
-
-Status MaybePinToCustomDevice(VariantDevice* device, const EagerOperation& op) {
-  // If operation was already placed on a custom device, use it.
-  if (VariantDeviceIsCustom(op.Device())) {
-    *device = op.Device();
-    return Status::OK();
-  } else if (!op.DeviceName().empty()) {
-    // Don't override explicit placements.
-    return Status::OK();
-  }
-
-  // Ops are placed on a custom device if there's no other explicit requested
-  // placement and there is only one custom device in the op inputs.
-  if (!op.Inputs().empty()) {
-    CustomDevice* first = nullptr;
-    for (const TensorHandle* input : op.Inputs()) {
-      if (VariantDeviceIsCustom(input->device())) {
-        CustomDevice* current = absl::get<CustomDevice*>(input->device());
-        if (first == nullptr) {
-          first = current;
-        } else if (first != current) {
-          return errors::InvalidArgument(absl::StrCat(
-              "If an operation has one of its inputs in a custom device, then "
-              "all inputs should be on that same custom device or another "
-              "physical device. Operation ",
-              op.Name(),
-              " has one input in custom "
-              "device ",
-              VariantDeviceName(first),
-              " and at least one input in a different custom device ",
-              VariantDeviceName(current)));
-        }
-      }
-    }
-    if (first != nullptr) {
-      *device = first;
-      return Status::OK();
-    }
-  }
-
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace eager

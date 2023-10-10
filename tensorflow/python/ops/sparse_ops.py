@@ -17,26 +17,30 @@
 """Sparse Tensor Representation.
 
 See also `tf.sparse.SparseTensor`.
-"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+API docstring: tensorflow.sparse
+"""
 
 import numbers
 
 import numpy as np
 
-from tensorflow.python.compat import compat as tf_compat
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_count_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
@@ -97,7 +101,7 @@ def _convert_to_sparse_tensors(sp_inputs):
 def _make_int64_tensor(value, name):
   if isinstance(value, compat.integral_types):
     return ops.convert_to_tensor(value, name=name, dtype=dtypes.int64)
-  if not isinstance(value, ops.Tensor):
+  if not isinstance(value, tensor_lib.Tensor):
     raise TypeError("{} must be an integer value".format(name))
   if value.dtype == dtypes.int64:
     return value
@@ -214,7 +218,7 @@ def sparse_expand_dims(sp_input, axis=None, name=None):
   with ops.name_scope(name, default_name="expand_dims", values=[sp_input]):
     if isinstance(axis, compat.integral_types):
       axis = ops.convert_to_tensor(axis, name="axis", dtype=dtypes.int32)
-    elif not isinstance(axis, ops.Tensor):
+    elif not isinstance(axis, tensor_lib.Tensor):
       raise TypeError("axis must be an integer value in range [-rank(sp_input)"
                       " - 1, rank(sp_input)]")
 
@@ -271,7 +275,7 @@ def sparse_eye(num_rows,
     diag_range = math_ops.range(diag_size, dtype=dtypes.int64)
 
     return sparse_tensor.SparseTensor(
-        indices=array_ops.stack([diag_range, diag_range], axis=1),
+        indices=array_ops_stack.stack([diag_range, diag_range], axis=1),
         values=array_ops.ones(diag_size, dtype=dtype),
         dense_shape=[num_rows, num_columns])
 
@@ -419,17 +423,38 @@ def sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dims=False, name=None):  
   output_ind, output_val, output_shape = (
       gen_sparse_ops.sparse_concat(inds, vals, shapes, axis, name=name))
 
-  shapes_value = [tensor_util.constant_value(shape) for shape in shapes]
-  if shapes_value and all(shape is not None for shape in shapes_value):
-    dim = sum(shape[axis] for shape in shapes_value)
-    output_shape = shapes_value[0]
-    output_shape[axis] = dim
-    output_shape = ops.convert_to_tensor(output_shape)
-  return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
+  input_shapes = [inp.shape for inp in sp_inputs]
+  if all(shape.rank is not None for shape in input_shapes):
+    if expand_nonconcat_dims:
+      static_output_shape = []
+      for dim in range(input_shapes[0].rank):
+        static_output_shape.append(
+            max(tensor_shape.dimension_at_index(shape, dim)
+                for shape in input_shapes))
+    else:
+      static_output_shape = input_shapes[0].as_list()
+    static_output_shape[axis] = sum(
+        tensor_shape.dimension_at_index(shape, axis)
+        for shape in input_shapes)
+  else:
+    static_output_shape = tensor_shape.unknown_shape()
+  if all(shape.is_fully_defined() for shape in input_shapes):
+    output_shape = ops.convert_to_tensor(static_output_shape,
+                                         dtype=dtypes.int64)
+    return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
+  else:
+    # In case there are partially defined shape, we couldn't update the
+    # output_shape tensor value. We update the output._dense_shape_default,
+    # which populate output.shape as the best effort.
+    output = sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
+    output.set_shape(tensor_shape.TensorShape(static_output_shape))
+    return output
 
 
 sparse_concat_v2.__doc__ = sparse_concat.__doc__.replace(
-    "    concat_dim: The old (deprecated) name for axis.\n", "")
+    "    concat_dim: The old (deprecated) name for axis.\n",
+    "").replace("    expand_nonconcat_dims: alias for expand_nonconcat_dim\n",
+                "")
 
 
 @tf_export(v1=["sparse.add", "sparse_add"])
@@ -621,12 +646,10 @@ def sparse_cross(inputs, name=None, separator=None):
   Returns:
     A `SparseTensor` of type `string`.
   """
-  if separator is None and not tf_compat.forward_compatible(2020, 6, 14):
-    return _sparse_cross_internal(inputs=inputs, hashed_output=False, name=name)
   if separator is None:
     separator = "_X_"
   separator = ops.convert_to_tensor(separator, dtypes.string)
-  indices, values, shapes, dense_inputs = _sparse_cross_internval_v2(inputs)
+  indices, values, shapes, dense_inputs = _sparse_cross_internal_v2(inputs)
   indices_out, values_out, shape_out = gen_sparse_ops.sparse_cross_v2(
       indices=indices,
       values=values,
@@ -692,12 +715,13 @@ _sparse_cross_hashed = sparse_cross_hashed
 _DEFAULT_HASH_KEY = 0xDECAFCAFFE
 
 
-def _sparse_cross_internval_v2(inputs):
+def _sparse_cross_internal_v2(inputs):
   """See gen_sparse_ops.sparse_cross_v2."""
   if not isinstance(inputs, (tuple, list)):
     raise TypeError("Inputs must be a list")
   if not all(
-      isinstance(i, sparse_tensor.SparseTensor) or isinstance(i, ops.Tensor)
+      isinstance(
+          i, sparse_tensor.SparseTensor) or isinstance(i, tensor_lib.Tensor)
       for i in inputs):
     raise TypeError("All inputs must be Tensor or SparseTensor.")
   sparse_inputs = [
@@ -727,7 +751,8 @@ def _sparse_cross_internal(inputs,
   if not isinstance(inputs, (tuple, list)):
     raise TypeError("Inputs must be a list")
   if not all(
-      isinstance(i, sparse_tensor.SparseTensor) or isinstance(i, ops.Tensor)
+      isinstance(
+          i, sparse_tensor.SparseTensor) or isinstance(i, tensor_lib.Tensor)
       for i in inputs):
     raise TypeError("All inputs must be SparseTensors")
 
@@ -838,14 +863,19 @@ def sparse_reorder(sp_input, name=None):
 
   if sp_input.get_shape().is_fully_defined():
     dense_shape = sp_input.get_shape().as_list()
+    return sparse_tensor.SparseTensor(reordered_ind, reordered_val, dense_shape)
   else:
     dense_shape = array_ops.identity(sp_input.dense_shape)
-
-  return sparse_tensor.SparseTensor(reordered_ind, reordered_val, dense_shape)
+    sp_output = sparse_tensor.SparseTensor(reordered_ind, reordered_val,
+                                           dense_shape)
+    # propagate the static shape
+    sp_output.set_shape(sp_input.shape)
+    return sp_output
 
 
 @tf_export("sparse.reshape", v1=["sparse.reshape", "sparse_reshape"])
 @deprecation.deprecated_endpoints("sparse_reshape")
+@dispatch.add_dispatch_support
 def sparse_reshape(sp_input, shape, name=None):
   """Reshapes a `SparseTensor` to represent values in a new dense shape.
 
@@ -951,7 +981,7 @@ def sparse_reshape(sp_input, shape, name=None):
 
 
 # TODO(aselle): Remove keyword required once for 1.0 final
-class KeywordRequired(object):
+class KeywordRequired:
 
   def __repr__(self):
     # This is needed to make documentation without fully qualified module paths
@@ -1047,7 +1077,8 @@ def sparse_split_v2(sp_input=None,
 
   >>> indices = [[0, 2], [0, 4], [0, 5], [1, 0], [1, 1]]
   >>> values = [1, 2, 3, 4, 5]
-  >>> t = tf.SparseTensor(indices=indices, values=values, dense_shape=[2, 7])
+  >>> t = tf.sparse.SparseTensor(indices=indices, values=values,
+  ...                            dense_shape=[2, 7])
   >>> tf.sparse.to_dense(t)
   <tf.Tensor: shape=(2, 7), dtype=int32, numpy=
   array([[0, 0, 1, 0, 2, 3, 0],
@@ -1105,7 +1136,7 @@ def sparse_split_v2(sp_input=None,
 @tf_export("sparse.slice", v1=["sparse.slice", "sparse_slice"])
 @deprecation.deprecated_endpoints("sparse_slice")
 def sparse_slice(sp_input, start, size, name=None):
-  """Slice a `SparseTensor` based on the `start` and `size.
+  """Slice a `SparseTensor` based on the `start` and `size`.
 
   For example, if the input is
 
@@ -1657,7 +1688,7 @@ def sparse_tensor_to_dense(sp_input,
 
   For this sparse tensor with three non-empty values:
 
-  >>> sp_input = tf.SparseTensor(
+  >>> sp_input = tf.sparse.SparseTensor(
   ...   dense_shape=[3, 5],
   ...   values=[7, 8, 9],
   ...   indices =[[0, 1],
@@ -1875,7 +1906,7 @@ def sparse_merge_impl(sp_ids,
   if isinstance(sp_ids, sparse_tensor.SparseTensorValue) or isinstance(
       sp_ids, sparse_tensor.SparseTensor):
     sp_ids = [sp_ids]
-    if not (isinstance(vocab_size, ops.Tensor) or
+    if not (isinstance(vocab_size, tensor_lib.Tensor) or
             isinstance(vocab_size, numbers.Integral)):
       raise TypeError("vocab_size has to be a Tensor or Python int. Found %s" %
                       type(vocab_size))
@@ -1888,7 +1919,8 @@ def sparse_merge_impl(sp_ids,
       raise TypeError("vocab_size has to be a list of Tensors or Python ints. "
                       "Found %s" % type(vocab_size))
     for dim in vocab_size:
-      if not (isinstance(dim, ops.Tensor) or isinstance(dim, numbers.Integral)):
+      if not (isinstance(
+          dim, tensor_lib.Tensor) or isinstance(dim, numbers.Integral)):
         raise TypeError(
             "vocab_size has to be a list of Tensors or Python ints. Found %s" %
             type(dim))
@@ -2014,9 +2046,9 @@ def sparse_reset_shape(sp_input, new_shape=None):
       `SparseTensor`.
 
   Returns:
-    A `SparseTensor` indices and values unchanged from `input_sp`. Its shape is
+    A `SparseTensor` indices and values unchanged from `sp_input`. Its shape is
       `new_shape` if that is set. Otherwise it is the tight bounding box of
-       `input_sp`
+       `sp_input`
 
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
@@ -2410,13 +2442,30 @@ def sparse_tensor_dense_matmul(sp_a,
   (or SparseTensor) "B". Please note that one and only one of the inputs MUST
   be a SparseTensor and the other MUST be a dense matrix.
 
-  No validity checking is performed on the indices of `A`.  However, the
-  following input format is recommended for optimal behavior:
+  The following input format is recommended (but not required) for optimal
+  performance:
 
   * If `adjoint_a == false`: `A` should be sorted in lexicographically
     increasing order.  Use `sparse.reorder` if you're not sure.
   * If `adjoint_a == true`: `A` should be sorted in order of increasing
     dimension 1 (i.e., "column major" order instead of "row major" order).
+
+  Args:
+    sp_a: SparseTensor (or dense Matrix) A, of rank 2.
+    b: dense Matrix (or SparseTensor) B, with the same dtype as sp_a.
+    adjoint_a: Use the adjoint of A in the matrix multiply.  If A is complex,
+      this is transpose(conj(A)).  Otherwise it's transpose(A).
+    adjoint_b: Use the adjoint of B in the matrix multiply.  If B is complex,
+      this is transpose(conj(B)).  Otherwise it's transpose(B).
+    name: A name prefix for the returned tensors (optional)
+
+  Returns:
+    A dense matrix (pseudo-code in dense np.matrix notation):
+      `A = A.H if adjoint_a else A`
+      `B = B.H if adjoint_b else B`
+      `return A*B`
+
+  Notes:
 
   Using `tf.nn.embedding_lookup_sparse` for sparse multiplication:
 
@@ -2589,20 +2638,6 @@ def sparse_tensor_dense_matmul(sp_a,
   0.8    25  False 1000  1000  0.00211448    0.00752736   3.55992
   ```
 
-  Args:
-    sp_a: SparseTensor (or dense Matrix) A, of rank 2.
-    b: dense Matrix (or SparseTensor) B, with the same dtype as sp_a.
-    adjoint_a: Use the adjoint of A in the matrix multiply.  If A is complex,
-      this is transpose(conj(A)).  Otherwise it's transpose(A).
-    adjoint_b: Use the adjoint of B in the matrix multiply.  If B is complex,
-      this is transpose(conj(B)).  Otherwise it's transpose(B).
-    name: A name prefix for the returned tensors (optional)
-
-  Returns:
-    A dense matrix (pseudo-code in dense np.matrix notation):
-      `A = A.H if adjoint_a else A`
-      `B = B.H if adjoint_b else B`
-      `return A*B`
   """
   # pylint: enable=line-too-long
 
@@ -2655,25 +2690,32 @@ def sparse_softmax(sp_input, name=None):
   Hence, the `SparseTensor` result has exactly the same non-zero indices and
   shape.
 
-  Example:
+  Example using a 3-D SparseTensor:
 
-  ```python
-  # First batch:
-  # [?   e.]
-  # [1.  ? ]
-  # Second batch:
-  # [e   ? ]
-  # [e   e ]
-  shape = [2, 2, 2]  # 3-D SparseTensor
-  values = np.asarray([[[0., np.e], [1., 0.]], [[np.e, 0.], [np.e, np.e]]])
-  indices = np.vstack(np.where(values)).astype(np.int64).T
-
-  result = tf.sparse.softmax(tf.sparse.SparseTensor(indices, values, shape))
-  # ...returning a 3-D SparseTensor, equivalent to:
-  # [?   1.]     [1    ?]
-  # [1.  ? ] and [.5  .5]
-  # where ? means implicitly zero.
-  ```
+    >>> st = tf.sparse.from_dense(
+    ...   [[[0., np.e],
+    ...     [1., 0.]],
+    ...
+    ...    [[np.e, 0.],
+    ...     [np.e, np.e]]])
+    >>> res = tf.sparse.softmax(st)
+    >>> res.indices
+    <tf.Tensor: shape=(5, 3), dtype=int64, numpy=
+    array([[0, 0, 1],
+           [0, 1, 0],
+           [1, 0, 0],
+           [1, 1, 0],
+           [1, 1, 1]])>
+    >>> res.values
+    <tf.Tensor: ... numpy=array([1. , 1. , 1. , 0.5, 0.5], dtype=float32)>
+    >>> res.dense_shape
+    <tf.Tensor: shape=(3,), dtype=int64, numpy=array([2, 2, 2])>
+    >>> tf.sparse.to_dense(res)
+    <tf.Tensor: shape=(2, 2, 2), dtype=float32, numpy=
+    array([[[0. , 1. ],
+            [1. , 0. ]],
+           [[1. , 0. ],
+            [0.5, 0.5]]], dtype=float32)>
 
   Args:
     sp_input: N-D `SparseTensor`, where `N >= 2`.
@@ -2782,32 +2824,78 @@ def sparse_minimum(sp_a, sp_b, name=None):
 @tf_export("sparse.transpose", v1=["sparse.transpose", "sparse_transpose"])
 @deprecation.deprecated_endpoints("sparse_transpose")
 def sparse_transpose(sp_input, perm=None, name=None):
-  """Transposes a `SparseTensor`
+  """Transposes a `SparseTensor`.
 
-  The returned tensor's dimension i will correspond to the input dimension
-  `perm[i]`. If `perm` is not given, it is set to (n-1...0), where n is
-  the rank of the input tensor. Hence by default, this operation performs a
-  regular matrix transpose on 2-D input Tensors.
+  Permutes the dimensions according to the value of `perm`.  This is the sparse
+  version of `tf.transpose`.
 
-  For example, if `sp_input` has shape `[4, 5]` and `indices` / `values`:
+  The returned tensor's dimension `i` will correspond to the input dimension
+  `perm[i]`. If `perm` is not given, it is set to (n-1...0), where n is the rank
+  of the input tensor. Hence, by default, this operation performs a regular
+  matrix transpose on 2-D input Tensors.
 
-      [0, 3]: b
-      [0, 1]: a
-      [3, 1]: d
-      [2, 0]: c
+  For example:
 
-  then the output will be a `SparseTensor` of shape `[5, 4]` and
-  `indices` / `values`:
+  >>> x = tf.SparseTensor(indices=[[0, 1], [0, 3], [2, 3], [3, 1]],
+  ...                     values=[1.1, 2.2, 3.3, 4.4],
+  ...                     dense_shape=[4, 5])
+  >>> print('x =', tf.sparse.to_dense(x))
+  x = tf.Tensor(
+  [[0.  1.1 0.  2.2 0. ]
+  [0.  0.  0.  0.  0. ]
+  [0.  0.  0.  3.3 0. ]
+  [0.  4.4 0.  0.  0. ]], shape=(4, 5), dtype=float32)
 
-      [0, 2]: c
-      [1, 0]: a
-      [1, 3]: d
-      [3, 0]: b
+  >>> x_transpose = tf.sparse.transpose(x)
+  >>> print('x_transpose =', tf.sparse.to_dense(x_transpose))
+  x_transpose = tf.Tensor(
+  [[0.  0.  0.  0. ]
+  [1.1 0.  0.  4.4]
+  [0.  0.  0.  0. ]
+  [2.2 0.  3.3 0. ]
+  [0.  0.  0.  0. ]], shape=(5, 4), dtype=float32)
+
+  Equivalently, you could call `tf.sparse.transpose(x, perm=[1, 0])`.  The
+  `perm` argument is more useful for n-dimensional tensors where n > 2.
+
+  >>> x = tf.SparseTensor(indices=[[0, 0, 1], [0, 0, 3], [1, 2, 3], [1, 3, 1]],
+  ...                     values=[1.1, 2.2, 3.3, 4.4],
+  ...                     dense_shape=[2, 4, 5])
+  >>> print('x =', tf.sparse.to_dense(x))
+  x = tf.Tensor(
+  [[[0.  1.1 0.  2.2 0. ]
+    [0.  0.  0.  0.  0. ]
+    [0.  0.  0.  0.  0. ]
+    [0.  0.  0.  0.  0. ]]
+  [[0.  0.  0.  0.  0. ]
+    [0.  0.  0.  0.  0. ]
+    [0.  0.  0.  3.3 0. ]
+    [0.  4.4 0.  0.  0. ]]], shape=(2, 4, 5), dtype=float32)
+
+  As above, simply calling `tf.sparse.transpose` will default to `perm=[2,1,0]`.
+
+  To take the transpose of a batch of sparse matrices, where 0 is the batch
+  dimension, you would set `perm=[0,2,1]`.
+
+  >>> x_transpose = tf.sparse.transpose(x, perm=[0, 2, 1])
+  >>> print('x_transpose =', tf.sparse.to_dense(x_transpose))
+  x_transpose = tf.Tensor(
+  [[[0.  0.  0.  0. ]
+    [1.1 0.  0.  0. ]
+    [0.  0.  0.  0. ]
+    [2.2 0.  0.  0. ]
+    [0.  0.  0.  0. ]]
+  [[0.  0.  0.  0. ]
+    [0.  0.  0.  4.4]
+    [0.  0.  0.  0. ]
+    [0.  0.  3.3 0. ]
+    [0.  0.  0.  0. ]]], shape=(2, 5, 4), dtype=float32)
 
   Args:
     sp_input: The input `SparseTensor`.
-    perm: A permutation of the dimensions of `sp_input`.
-    name: A name prefix for the returned tensors (optional)
+    perm: A permutation vector of the dimensions of `sp_input`.
+    name: A name prefix for the returned tensors (optional).
+
   Returns:
     A transposed `SparseTensor`.
 
@@ -2876,7 +2964,7 @@ def map_values(op, *args, **kwargs):
          [6, 0, 0]], dtype=int32)
 
   Note: even though `tf.add(0, 5) != 0`, implicit zeros
-  will remain unchanged. However, if the sparse tensor contains any explict
+  will remain unchanged. However, if the sparse tensor contains any explicit
   zeros, these will be affected by the mapping!
 
   Args:
@@ -2906,6 +2994,458 @@ def map_values(op, *args, **kwargs):
     return sparse_tensor.SparseTensor(sparse_list[0].indices,
                                       op(*inner_args, **inner_kwargs),
                                       sparse_list[0].dense_shape)
+
+
+@dispatch.dispatch_for_api(bincount_ops.bincount)
+def bincount(arr: sparse_tensor.SparseTensor,
+             weights=None,
+             minlength=None,
+             maxlength=None,
+             dtype=dtypes.int32,
+             name=None,
+             axis=None,
+             binary_output=False):
+  """Counts the number of occurrences of each value in an integer array.
+
+  Only the values in the SparseTensor's `values` tensor are counted,
+  missing zeros are ignored.
+
+  If `minlength` and `maxlength` are not given, returns a vector with length
+  `tf.reduce_max(arr) + 1` if `arr` is non-empty, and length 0 otherwise.
+
+  >>> data = tf.sparse.SparseTensor(
+  ...     indices=[[0, 3], [1, 7], [2, 4], [3, 0],
+  ...              [4, 9], [5, 1], [6, 8], [7, 2]],
+  ...     values=[1,1,2,3,2,4,4,5],
+  ...     dense_shape=[8, 10])
+  >>> tf.math.bincount(data)
+  <tf.Tensor: ... numpy=array([0, 2, 2, 1, 2, 1], dtype=int32)>
+
+  Vector length = Maximum element in vector `values` is 5. Adding 1, which is 6
+                  will be the vector length.
+
+  Each bin value in the output indicates number of occurrences of the particular
+  index. Here, index 1 in output has a value 2. This indicates value 1 occurs
+  two times in `values`.
+
+  **Bin-counting with weights**
+
+  >>> indices=[[0, 3], [1, 7], [2, 4], [3, 0], [4, 9], [5, 1], [6, 8], [7, 2]]
+  >>> data = tf.sparse.SparseTensor(
+  ...     indices=indices,
+  ...     values=[1,1,2,3,2,4,4,5],
+  ...     dense_shape=[8, 10])
+  >>> weights = tf.sparse.SparseTensor(
+  ...     indices=indices,
+  ...     values=[1,5,0,1,0,5,4,5],
+  ...     dense_shape=[8, 10])
+  >>> tf.math.bincount(data, weights=weights)
+  <tf.Tensor: ... numpy=array([0, 6, 0, 1, 9, 5], dtype=int32)>
+
+  When `weights` is specified, bins will be incremented by the corresponding
+  weight instead of 1. Here, index 1 in output has a value 6. This is the
+  summation of `weights` corresponding to the value in `values` (i.e. for index
+  1, the first two data values are 1 so the first two weights, 1 and 5, are
+  summed).
+
+  On GPU, `bincount` with weights is only supported when `axis=0` and XLA is
+  enabled (typically when a function decorated with
+  `@tf.function(jit_compile=True)`).
+
+  **Bin-counting matrix rows independently**
+
+  This example uses `axis=-1` with a 2 dimensional input and returns a
+  `Tensor` with bincounting where axis 0 is **not** flattened, i.e. an
+  independent bincount for each matrix row.
+
+  >>> data = tf.sparse.SparseTensor(
+  ...     indices=[[0, 3], [0, 7], [1, 4], [1, 0],
+  ...              [1, 9], [2, 1], [2, 8], [2, 2]],
+  ...     values=[1,1,2,3,2,4,4,5],
+  ...     dense_shape=[3, 10])
+  >>> tf.math.bincount(data, axis=-1)
+    <tf.Tensor: shape=(3, 6), dtype=int32, numpy=
+    array([[0, 2, 0, 0, 0, 0],
+           [0, 0, 2, 1, 0, 0],
+           [0, 0, 0, 0, 2, 1]], dtype=int32)>
+
+  **Bin-counting with binary_output**
+
+  This example gives binary output instead of counting the occurrence.
+
+  >>> data = tf.sparse.SparseTensor(
+  ...     indices=[[0, 3], [0, 7], [1, 4], [1, 0],
+  ...              [1, 9], [2, 1], [2, 8], [2, 2]],
+  ...     values=[1,1,2,3,2,4,4,5],
+  ...     dense_shape=[3, 10])
+  >>> tf.math.bincount(data, axis=-1, binary_output=True)
+    <tf.Tensor: shape=(3, 6), dtype=int32, numpy=
+    array([[0, 1, 0, 0, 0, 0],
+           [0, 0, 1, 1, 0, 0],
+           [0, 0, 0, 0, 1, 1]], dtype=int32)>
+
+  **Missing zeros in SparseTensor**
+
+  Note that missing zeros (implict zeros) in SparseTensor are **NOT** counted.
+  This supports cases such as `0` in the values tensor indicates that index/id
+  `0`is present and a missing zero indicates that no index/id is present.
+
+  If counting missing zeros is desired, there are workarounds.
+  For the `axis=0` case, the number of missing zeros can computed by subtracting
+  the number of elements in the SparseTensor's `values` tensor from the
+  number of elements in the dense shape, and this difference can be added to the
+  first element of the output of `bincount`. For all cases, the SparseTensor
+  can be converted to a dense Tensor with `tf.sparse.to_dense` before calling
+  `tf.math.bincount`.
+
+  >>> data = tf.sparse.SparseTensor(
+  ...     indices=[[0, 3], [1, 7], [2, 4], [3, 0],
+  ...              [4, 9], [5, 1], [6, 8], [7, 2]],
+  ...     values=[1,1,2,3,2,4,4,5],
+  ...     dense_shape=[8, 10])
+  >>> counts = tf.math.bincount(data, dtype=tf.int64)
+  >>> dense_size = tf.math.reduce_prod(data.dense_shape)
+  >>> missing_zeros = dense_size - tf.size(data.values, out_type=tf.int64)
+  >>> tf.concat([[counts[0] + missing_zeros], counts[1:]], 0)
+  <tf.Tensor: ... numpy=array([72, 2, 2, 1, 2, 1])>
+
+  >>> data = tf.sparse.SparseTensor(
+  ...     indices=[[0, 3], [1, 7], [2, 4], [3, 0],
+  ...              [4, 9], [5, 1], [6, 8], [7, 2]],
+  ...     values=[1,1,2,3,2,4,4,5],
+  ...     dense_shape=[8, 10])
+  >>> tf.math.bincount(tf.sparse.to_dense(data), dtype=tf.int64)
+  <tf.Tensor: ... numpy=array([72, 2, 2, 1, 2, 1])>
+
+
+  Args:
+    arr: A SparseTensor whose values should be counted.
+      These tensors must have a rank of 2 if `axis=-1`.
+    weights: If non-None, must be a SparseTensor with the same dense shape and
+      same indices as `arr`. For each value in `arr`, the bin will be
+      incremented by the corresponding weight instead of 1. If non-None,
+      `binary_output` must be False.
+    minlength: If given, ensures the output has length at least `minlength`,
+      padding with zeros at the end if necessary.
+    maxlength: If given, skips values in `arr` that are equal or greater than
+      `maxlength`, ensuring that the output has length at most `maxlength`.
+    dtype: If `weights` is None, determines the type of the output bins.
+    name: A name scope for the associated operations (optional).
+    axis: The axis to slice over. Axes at and below `axis` will be flattened
+      before bin counting. Currently, only `0`, and `-1` are supported. If None,
+      all axes will be flattened (identical to passing `0`). XLA does not
+      support `axis=-1`.
+    binary_output: If True, this op will output 1 instead of the number of times
+      a token appears (equivalent to one_hot + reduce_any instead of one_hot +
+      reduce_add). Defaults to False.
+
+  Returns:
+    A vector with the same dtype as `weights` or the given `dtype` containing
+    the bincount values.
+
+  Raises:
+    `InvalidArgumentError` if negative values are provided as an input.
+
+  """
+  name = "bincount" if name is None else name
+  with ops.name_scope(name):
+    if weights is not None and binary_output:
+      raise ValueError("Arguments `binary_output` and `weights` are mutually "
+                       "exclusive. Please specify only one.")
+
+    if not arr.dtype.is_integer:
+      arr = math_ops.cast(arr, dtypes.int32)
+    if axis is None:
+      axis = 0
+
+    if axis not in [0, -1]:
+      raise ValueError(f"Unsupported value for argument axis={axis}. Only 0 and"
+                       " -1 are currently supported.")
+
+    total_size = array_ops.size(arr)
+    array_is_nonempty = total_size > 0
+    # For the case where all values are implicit zeros, reduce_max
+    # returns the integer closest to negative infinity.
+    max_value = math_ops.maximum(math_ops.reduce_max(arr.values), -1)
+    output_size = math_ops.cast(array_is_nonempty, arr.dtype) * (max_value + 1)
+    if minlength is not None:
+      minlength = ops.convert_to_tensor(
+          minlength, name="minlength", dtype=arr.dtype)
+      output_size = gen_math_ops.maximum(minlength, output_size)
+    if maxlength is not None:
+      maxlength = ops.convert_to_tensor(
+          maxlength, name="maxlength", dtype=arr.dtype)
+      output_size = gen_math_ops.minimum(maxlength, output_size)
+
+    if axis == 0:
+      if weights is not None:
+        weights = validate_sparse_weights(arr, weights, dtype)
+      arr = arr.values
+
+    if isinstance(arr, sparse_tensor.SparseTensor):
+      # axis != 0 case
+      weights = validate_sparse_weights(arr, weights, dtype)
+      return gen_math_ops.sparse_bincount(
+          indices=arr.indices,
+          values=arr.values,
+          dense_shape=arr.dense_shape,
+          size=output_size,
+          weights=weights,
+          binary_output=binary_output)
+    else:
+      # axis == 0 case
+      weights = bincount_ops.validate_dense_weights(arr, weights, dtype)
+      return gen_math_ops.dense_bincount(
+          input=arr,
+          size=output_size,
+          weights=weights,
+          binary_output=binary_output)
+
+
+@tf_export("sparse.bincount")
+@dispatch.add_dispatch_support
+def sparse_bincount(values,
+                    weights=None,
+                    axis=0,
+                    minlength=None,
+                    maxlength=None,
+                    binary_output=False,
+                    name=None):
+  """Count the number of times an integer value appears in a tensor.
+
+  This op takes an N-dimensional `Tensor`, `RaggedTensor`, or `SparseTensor`,
+  and returns an N-dimensional int64 SparseTensor where element
+  `[i0...i[axis], j]` contains the number of times the value `j` appears in
+  slice `[i0...i[axis], :]` of the input tensor.  Currently, only N=0 and
+  N=-1 are supported.
+
+  Args:
+    values: A Tensor, RaggedTensor, or SparseTensor whose values should be
+      counted. These tensors must have a rank of 2 if `axis=-1`.
+    weights: If non-None, must be the same shape as `arr`. If `arr` is a
+      SparseTensor, `weights` must be a SparseTensor with the same dense shape
+      and same indices as `arr`. For each value in `value`, the bin will be
+      incremented by the corresponding weight instead of 1.
+    axis: The axis to slice over. Axes at and below `axis` will be flattened
+      before bin counting. Currently, only `0`, and `-1` are supported. If None,
+      all axes will be flattened (identical to passing `0`).
+    minlength: If given, ensures the output has length at least `minlength`,
+      padding with zeros at the end if necessary.
+    maxlength: If given, skips values in `values` that are equal or greater than
+      `maxlength`, ensuring that the output has length at most `maxlength`.
+    binary_output: If True, this op will output 1 instead of the number of times
+      a token appears (equivalent to one_hot + reduce_any instead of one_hot +
+      reduce_add). Defaults to False.
+    name: A name for this op.
+
+  Returns:
+    A SparseTensor with `output.shape = values.shape[:axis] + [N]`, where `N` is
+      * `maxlength` (if set);
+      * `minlength` (if set, and `minlength > reduce_max(values)`);
+      * `0` (if `values` is empty);
+      * `reduce_max(values) + 1` otherwise.
+
+  Raises:
+    `InvalidArgumentError` if negative values are provided as an input.
+
+  Examples:
+
+  **Bin-counting every item in individual batches**
+
+  This example takes an input (which could be a Tensor, RaggedTensor, or
+  SparseTensor) and returns a SparseTensor where the value of (i,j) is the
+  number of times value j appears in batch i.
+
+  >>> data = np.array([[10, 20, 30, 20], [11, 101, 11, 10001]], dtype=np.int64)
+  >>> tf.sparse.bincount(data, axis=-1)
+  SparseTensor(indices=tf.Tensor(
+  [[    0    10]
+   [    0    20]
+   [    0    30]
+   [    1    11]
+   [    1   101]
+   [    1 10001]], shape=(6, 2), dtype=int64),
+   values=tf.Tensor([1 2 1 2 1 1], shape=(6,), dtype=int64),
+   dense_shape=tf.Tensor([    2 10002], shape=(2,), dtype=int64))
+
+  This example shows a sparse tensor input. Missing zeros are not counted.
+
+  >>> data = tf.sparse.SparseTensor(
+  ...     indices=[[0, 3], [0, 7], [0, 8], [0, 11],
+  ...              [1, 9], [1, 11], [1, 18], [1, 27]],
+  ...     values=[10, 20, 30, 20, 11, 101, 11, 10001],
+  ...     dense_shape=[2, 30])
+  >>> tf.sparse.bincount(data, axis=-1)
+  SparseTensor(indices=tf.Tensor(
+  [[    0    10]
+   [    0    20]
+   [    0    30]
+   [    1    11]
+   [    1   101]
+   [    1 10001]], shape=(6, 2), dtype=int64),
+   values=tf.Tensor([1 2 1 2 1 1], shape=(6,), dtype=int32),
+   dense_shape=tf.Tensor([    2 10002], shape=(2,), dtype=int64))
+
+  **Bin-counting with defined output shape**
+
+  This example takes an input (which could be a Tensor, RaggedTensor, or
+  SparseTensor) and returns a SparseTensor where the value of (i,j) is the
+  number of times value j appears in batch i. However, all values of j
+  above 'maxlength' are ignored. The dense_shape of the output sparse tensor
+  is set to 'minlength'. Note that, while the input is identical to the
+  example above, the value '10001' in batch item 2 is dropped, and the
+  dense shape is [2, 500] instead of [2,10002] or [2, 102].
+
+  >>> minlength = maxlength = 500
+  >>> data = np.array([[10, 20, 30, 20], [11, 101, 11, 10001]], dtype=np.int64)
+  >>> tf.sparse.bincount(
+  ...    data, axis=-1, minlength=minlength, maxlength=maxlength)
+  SparseTensor(indices=tf.Tensor(
+  [[  0  10]
+   [  0  20]
+   [  0  30]
+   [  1  11]
+   [  1 101]], shape=(5, 2), dtype=int64),
+   values=tf.Tensor([1 2 1 2 1], shape=(5,), dtype=int64),
+   dense_shape=tf.Tensor([  2 500], shape=(2,), dtype=int64))
+
+  **Binary bin-counting**
+
+  This example takes an input (which could be a Tensor, RaggedTensor, or
+  SparseTensor) and returns a SparseTensor where (i,j) is 1 if the value j
+  appears in batch i at least once and is 0 otherwise. Note that, even though
+  some values (like 20 in batch 1 and 11 in batch 2) appear more than once,
+  the 'values' tensor is all 1s.
+
+  >>> data = np.array([[10, 20, 30, 20], [11, 101, 11, 10001]], dtype=np.int64)
+  >>> tf.sparse.bincount(data, binary_output=True, axis=-1)
+  SparseTensor(indices=tf.Tensor(
+  [[    0    10]
+   [    0    20]
+   [    0    30]
+   [    1    11]
+   [    1   101]
+   [    1 10001]], shape=(6, 2), dtype=int64),
+   values=tf.Tensor([1 1 1 1 1 1], shape=(6,), dtype=int64),
+   dense_shape=tf.Tensor([    2 10002], shape=(2,), dtype=int64))
+
+  **Weighted bin-counting**
+
+  This example takes two inputs - a values tensor and a weights tensor. These
+  tensors must be identically shaped, and have the same row splits or indices
+  in the case of RaggedTensors or SparseTensors. When performing a weighted
+  count, the op will output a SparseTensor where the value of (i, j) is the
+  sum of the values in the weight tensor's batch i in the locations where
+  the values tensor has the value j. In this case, the output dtype is the
+  same as the dtype of the weights tensor.
+
+  >>> data = np.array([[10, 20, 30, 20], [11, 101, 11, 10001]], dtype=np.int64)
+  >>> weights = [[2, 0.25, 15, 0.5], [2, 17, 3, 0.9]]
+  >>> tf.sparse.bincount(data, weights=weights, axis=-1)
+  SparseTensor(indices=tf.Tensor(
+  [[    0    10]
+   [    0    20]
+   [    0    30]
+   [    1    11]
+   [    1   101]
+   [    1 10001]], shape=(6, 2), dtype=int64),
+   values=tf.Tensor([2. 0.75 15. 5. 17. 0.9], shape=(6,), dtype=float32),
+   dense_shape=tf.Tensor([    2 10002], shape=(2,), dtype=int64))
+
+  """
+  with ops.name_scope(name, "count", [values, weights]):
+    if not isinstance(values, sparse_tensor.SparseTensor):
+      values = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          values, name="values")
+    if weights is not None:
+      # Note that `weights` is not used for dispatch and if there is a type
+      # mismatch between `values` and `weights`, `weights` can be a RaggedTensor
+      # (or potentially some other kind of CompositeTensor) where conversion
+      # to a dense tensor fails.
+      if not isinstance(weights, composite_tensor.CompositeTensor):
+        weights = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+            weights, name="weights")
+
+    if weights is not None and binary_output:
+      raise ValueError("Arguments `binary_output` and `weights` are mutually "
+                       "exclusive. Please specify only one.")
+
+    if axis is None:
+      axis = 0
+
+    if axis not in [0, -1]:
+      raise ValueError(f"Unsupported value for argument axis={axis}. Only 0 and"
+                       " -1 are currently supported.")
+
+    minlength_value = minlength if minlength is not None else -1
+    maxlength_value = maxlength if maxlength is not None else -1
+
+    if axis == 0:
+      if isinstance(values, sparse_tensor.SparseTensor):
+        if weights is not None:
+          weights = validate_sparse_weights(values, weights)
+        values = values.values
+      else:
+        if weights is not None:
+          weights = array_ops.reshape(weights, [-1])
+        values = array_ops.reshape(values, [-1])
+
+    if isinstance(values, sparse_tensor.SparseTensor):
+      weights = validate_sparse_weights(values, weights)
+      c_ind, c_val, c_shape = gen_count_ops.sparse_count_sparse_output(
+          values.indices,
+          values.values,
+          values.dense_shape,
+          weights,
+          minlength=minlength_value,
+          maxlength=maxlength_value,
+          binary_output=binary_output)
+    else:
+      weights = bincount_ops.validate_dense_weights(values, weights)
+      c_ind, c_val, c_shape = gen_count_ops.dense_count_sparse_output(
+          values,
+          weights=weights,
+          minlength=minlength_value,
+          maxlength=maxlength_value,
+          binary_output=binary_output)
+
+    return sparse_tensor.SparseTensor(c_ind, c_val, c_shape)
+
+
+def validate_sparse_weights(values, weights, dtype=None):
+  """Validates the passed weight tensor or creates an empty one."""
+  if weights is None:
+    if dtype:
+      return array_ops.constant([], dtype=dtype)
+    return array_ops.constant([], dtype=values.values.dtype)
+
+  if not isinstance(weights, sparse_tensor.SparseTensor):
+    raise ValueError(
+        "Argument `weights` must be a SparseTensor if `values` is a "
+        f"SparseTensor. Received weights={weights} of type: "
+        f"{type(weights).__name__}")
+
+  checks = []
+  if weights.dense_shape is not values.dense_shape:
+    checks.append(
+        check_ops.assert_equal(
+            weights.dense_shape,
+            values.dense_shape,
+            message="'weights' and 'values' must have the same dense shape."))
+  if weights.indices is not values.indices:
+    checks.append(
+        check_ops.assert_equal(
+            weights.indices,
+            values.indices,
+            message="'weights' and 'values' must have the same indices.")
+    )
+  if checks:
+    with ops.control_dependencies(checks):
+      weights = array_ops.identity(weights.values)
+  else:
+    weights = weights.values
+
+  return weights
 
 
 def _assert_sparse_compatible(sparse_tensors):

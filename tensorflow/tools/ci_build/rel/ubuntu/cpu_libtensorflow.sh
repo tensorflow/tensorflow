@@ -23,24 +23,28 @@ source tensorflow/tools/ci_build/release/common.sh
 install_bazelisk
 which bazel
 
-# Install realpath
-sudo apt-get install realpath
-
 # Update the version string to nightly
-if [ -n "${IS_NIGHTLY_BUILD}" ]; then
+if [ -n "${IS_NIGHTLY}" ]; then
   ./tensorflow/tools/ci_build/update_version.py --nightly
 fi
 
 ./tensorflow/tools/ci_build/linux/libtensorflow.sh
 
 # Copy the nightly version update script
-if [ -n "${IS_NIGHTLY_BUILD}" ]; then
+if [ -n "${IS_NIGHTLY}" ]; then
   cp tensorflow/tools/ci_build/builds/libtensorflow_nightly_symlink.sh lib_package
+
+  echo "This package was built on $(date)" >> lib_package/build_time.txt
+
+  tar -zcvf ubuntu_cpu_libtensorflow_binaries.tar.gz lib_package
+
+  gsutil cp ubuntu_cpu_libtensorflow_binaries.tar.gz gs://libtensorflow-nightly/prod/tensorflow/release/ubuntu_16/latest/cpu
 fi
 
 # Upload to go/tf-sizetracker
-python3 ./tensorflow/tools/ci_build/sizetrack_helper.py \
-  --team tensorflow_libtensorflow \
-  --artifact_id ubuntu_cpu_nightly \
-  --upload \
-  --artifact "$(find lib_package -iname "libtensorflow*.tar.gz" -not -iname "*jni*" | head -n 1)"
+# TODO(191668861): Re-enable once issue is resolved.
+# python3 ./tensorflow/tools/ci_build/sizetrack_helper.py \
+#   --team tensorflow_libtensorflow \
+#   --artifact_id ubuntu_cpu_nightly \
+#   --upload \
+#   --artifact "$(find lib_package -iname "libtensorflow*.tar.gz" -not -iname "*jni*" | head -n 1)"

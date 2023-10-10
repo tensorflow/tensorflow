@@ -22,13 +22,15 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -219,7 +221,7 @@ class CSRSparseMatrix {
   inline TTypes<int32>::UnalignedVec row_pointers_vec(int batch) {
     DCHECK(valid());
     DCHECK_LT(batch, batch_size());
-    const int64 rows = dense_shape().vec<int64>()((dims() == 2) ? 0 : 1);
+    const int64_t rows = dense_shape().vec<int64_t>()((dims() == 2) ? 0 : 1);
     const int offset = batch * (rows + 1);
     return TTypes<int32>::UnalignedVec(row_pointers_vec_->data() + offset,
                                        rows + 1);
@@ -228,7 +230,7 @@ class CSRSparseMatrix {
   inline TTypes<int32>::UnalignedConstVec row_pointers_vec(int batch) const {
     DCHECK(valid());
     DCHECK_LT(batch, batch_size());
-    const int64 rows = dense_shape().vec<int64>()((dims() == 2) ? 0 : 1);
+    const int64_t rows = dense_shape().vec<int64_t>()((dims() == 2) ? 0 : 1);
     const int offset = batch * (rows + 1);
     return TTypes<int32>::UnalignedConstVec(row_pointers_vec_->data() + offset,
                                             rows + 1);
@@ -258,7 +260,7 @@ class CSRSparseMatrix {
     DCHECK_LT(batch, batch_size());
     const int offset = (*batch_pointers_vec_)(batch);
     const int nnz_in_batch = nnz(batch);
-    return typename TTypes<T>::UnalignedVec(&(values().vec<T>()(offset)),
+    return typename TTypes<T>::UnalignedVec(values().vec<T>().data() + offset,
                                             nnz_in_batch);
   }
 
@@ -268,8 +270,8 @@ class CSRSparseMatrix {
     DCHECK_LT(batch, batch_size());
     const int offset = (*batch_pointers_vec_)(batch);
     const int nnz_in_batch = nnz(batch);
-    return typename TTypes<T>::UnalignedConstVec(&(values().vec<T>()(offset)),
-                                                 nnz_in_batch);
+    return typename TTypes<T>::UnalignedConstVec(
+        values().vec<T>().data() + offset, nnz_in_batch);
   }
 
   inline Tensor& row_pointers() {
@@ -454,9 +456,9 @@ class CSRSparseMatrix {
           "but saw: ",
           dense_shape.SummarizeValue(5));
     }
-    auto dense_shape_t = dense_shape.vec<int64>();
-    const int64 batch_size = (rank == 2) ? 1 : dense_shape_t(0);
-    const int64 num_rows = (rank == 2) ? dense_shape_t(0) : dense_shape_t(1);
+    auto dense_shape_t = dense_shape.vec<int64_t>();
+    const int64_t batch_size = (rank == 2) ? 1 : dense_shape_t(0);
+    const int64_t num_rows = (rank == 2) ? dense_shape_t(0) : dense_shape_t(1);
 
     if (batch_pointers.dtype() != DT_INT32) {
       return errors::InvalidArgument(
@@ -523,7 +525,7 @@ class CSRSparseMatrix {
           "CSRSparseMatrix::Validate: size(col_indices) = ",
           col_indices.dim_size(0), " != size(values) = ", values.dim_size(0));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   struct Metadata {
@@ -618,7 +620,7 @@ struct ConstCSRComponent {
   TTypes<int32>::UnalignedConstVec row_ptr;
   TTypes<int32>::UnalignedConstVec col_ind;
   typename TTypes<T>::UnalignedConstVec values;
-  TTypes<int64>::ConstVec dense_shape_host;
+  TTypes<int64_t>::ConstVec dense_shape_host;
 };
 
 template <typename T>
@@ -626,13 +628,18 @@ struct CSRComponent {
   TTypes<int32>::UnalignedVec row_ptr;
   TTypes<int32>::UnalignedVec col_ind;
   typename TTypes<T>::UnalignedVec values;
-  TTypes<int64>::Vec dense_shape_host;
+  TTypes<int64_t>::Vec dense_shape_host;
 };
 
 template <typename T>
 Status ExtractVariantFromInput(OpKernelContext* ctx, int index,
                                const T** value) {
   const Tensor& input_t = ctx->input(index);
+  if (!TensorShapeUtils::IsScalar(input_t.shape())) {
+    return errors::InvalidArgument(
+        "Invalid input matrix: Shape must be rank 0 but is rank ",
+        input_t.dims());
+  }
   const Variant& input_variant = input_t.scalar<Variant>()();
   *value = input_variant.get<T>();
   if (*value == nullptr) {
@@ -641,7 +648,7 @@ Status ExtractVariantFromInput(OpKernelContext* ctx, int index,
   if (!(*value)->valid()) {
     return errors::InvalidArgument("Variant input ", index, " is not valid.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

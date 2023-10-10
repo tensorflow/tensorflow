@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TESTING_TFLITE_DIFF_FLAGS_H_
 
 #include <cstring>
+#include <string>
 
 #include "absl/strings/match.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -26,7 +27,7 @@ limitations under the License.
 namespace tflite {
 namespace testing {
 
-DiffOptions ParseTfliteDiffFlags(int* argc, char** argv) {
+inline DiffOptions ParseTfliteDiffFlags(int* argc, char** argv) {
   struct {
     string tensorflow_model;
     string tflite_model;
@@ -36,6 +37,7 @@ DiffOptions ParseTfliteDiffFlags(int* argc, char** argv) {
     string output_layer;
     int32_t num_runs_per_pass = 100;
     string delegate_name;
+    string reference_tflite_model;
   } values;
 
   std::string delegate_name;
@@ -61,6 +63,10 @@ DiffOptions ParseTfliteDiffFlags(int* argc, char** argv) {
       tensorflow::Flag("delegate", &values.delegate_name,
                        "[optional] Delegate to use for executing ops. Must be "
                        "`{\"\", NNAPI, GPU, FLEX}`"),
+      tensorflow::Flag("reference_tflite_model", &values.reference_tflite_model,
+                       "[optional] Path of the TensorFlow Lite model to "
+                       "compare inference results against the model given in "
+                       "`tflite_model`."),
   };
 
   bool no_inputs = *argc == 1;
@@ -96,7 +102,8 @@ DiffOptions ParseTfliteDiffFlags(int* argc, char** argv) {
           Split<string>(values.input_layer_shape, ":"),
           Split<string>(values.output_layer, ","),
           values.num_runs_per_pass,
-          delegate};
+          delegate,
+          values.reference_tflite_model};
 }
 
 }  // namespace testing

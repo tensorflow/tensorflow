@@ -31,9 +31,12 @@ namespace {
 
 constexpr const char *kDeviceAttr = "device";
 
+#define GEN_PASS_DEF_CONSTANTOPDEVICEASSIGNMENTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct ConstantOpDeviceAssignmentPass
-    : public PassWrapper<ConstantOpDeviceAssignmentPass,
-                         OperationPass<ModuleOp>> {
+    : public impl::ConstantOpDeviceAssignmentPassBase<
+          ConstantOpDeviceAssignmentPass> {
   void runOnOperation() override;
 };
 
@@ -83,9 +86,6 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateConstantOpDeviceAssignmentPass() {
   return std::make_unique<ConstantOpDeviceAssignmentPass>();
 }
-
-static PassRegistration<ConstantOpDeviceAssignmentPass> pass(
-    "constant-op-device-assignment", "Assign device for tf.Const ops.");
 
 }  // namespace TF
 }  // namespace mlir

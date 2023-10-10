@@ -57,7 +57,7 @@ class GrpcTensorCodingTest : public ::testing::Test {
     gtl::InlinedVector<T, 4> v;
     for (int elems = 0; elems <= 10000; elems++) {
       if (elems < 100 || (elems % 1000 == 0)) {
-        Tensor a(dt, TensorShape({1, static_cast<int64>(v.size())}));
+        Tensor a(dt, TensorShape({1, static_cast<int64_t>(v.size())}));
         test::FillValues<T>(&a, v);
         Validate(a, (elems == 0));
       }
@@ -68,7 +68,7 @@ class GrpcTensorCodingTest : public ::testing::Test {
     gtl::InlinedVector<tstring, 4> v;
     for (int elems = 0; elems <= 10000; elems++) {
       if (elems < 100 || (elems % 1000 == 0)) {
-        Tensor a(dt, TensorShape({1, static_cast<int64>(v.size())}));
+        Tensor a(dt, TensorShape({1, static_cast<int64_t>(v.size())}));
         test::FillValues<tstring>(&a, v);
         Validate(a, (elems == 0));
       }
@@ -87,7 +87,7 @@ TEST_F(GrpcTensorCodingTest, Simple) {
   DoTest<int8>(DT_INT8);
   DoTest<complex64>(DT_COMPLEX64);
   DoTest<complex128>(DT_COMPLEX128);
-  DoTest<int64>(DT_INT64);
+  DoTest<int64_t>(DT_INT64);
   DoTest<bool>(DT_BOOL);
   DoTest<qint8>(DT_QINT8);
   DoTest<quint8>(DT_QUINT8);

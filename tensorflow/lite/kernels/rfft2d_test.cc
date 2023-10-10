@@ -68,7 +68,7 @@ TEST(Rfft2dOpTest, FftLengthMatchesInputSize) {
                                9, 5, 8, 3});
   // clang-format on
   model.PopulateTensor<int32_t>(model.fft_lengths(), {4, 4});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   std::complex<float> expected_result[12] = {
       {75, 0},  {-6, -1}, {9, 0},  {-10, 5},  {-3, 2}, {-6, 11},
@@ -86,7 +86,7 @@ TEST(Rfft2dOpTest, FftLengthSmallerThanInputSize) {
                                9, 5, 8, 3, 0});
   // clang-format on
   model.PopulateTensor<int32_t>(model.fft_lengths(), {4, 4});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   std::complex<float> expected_result[12] = {
       {75, 0},  {-6, -1}, {9, 0},  {-10, 5},  {-3, 2}, {-6, 11},
@@ -103,7 +103,7 @@ TEST(Rfft2dOpTest, FftLengthGreaterThanInputSize) {
                                5, 2, 7, 6});
   // clang-format on
   model.PopulateTensor<int32_t>(model.fft_lengths(), {4, 8});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   // clang-format off
   std::complex<float> expected_result[20] = {
@@ -129,7 +129,7 @@ TEST(Rfft2dOpTest, InputDimsGreaterThan2) {
                                7., 3., 23., 5.});
   // clang-format on
   model.PopulateTensor<int32_t>(model.fft_lengths(), {2, 4});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   // clang-format off
   std::complex<float> expected_result[12] = {

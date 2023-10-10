@@ -14,12 +14,9 @@
 # ==============================================================================
 """mel conversion ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -79,7 +76,7 @@ def _validate_arguments(num_mel_bins, sample_rate,
   if lower_edge_hertz >= upper_edge_hertz:
     raise ValueError('lower_edge_hertz %.1f >= upper_edge_hertz %.1f' %
                      (lower_edge_hertz, upper_edge_hertz))
-  if not isinstance(sample_rate, ops.Tensor):
+  if not isinstance(sample_rate, tensor.Tensor):
     if sample_rate <= 0.0:
       raise ValueError('sample_rate must be positive. Got: %s' % sample_rate)
     if upper_edge_hertz > sample_rate / 2:
@@ -99,7 +96,7 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
                                 upper_edge_hertz=3800.0,
                                 dtype=dtypes.float32,
                                 name=None):
-  """Returns a matrix to warp linear scale spectrograms to the [mel scale][mel].
+  r"""Returns a matrix to warp linear scale spectrograms to the [mel scale][mel].
 
   Returns a weight matrix that can be used to re-weight a `Tensor` containing
   `num_spectrogram_bins` linearly sampled frequency information from
@@ -160,7 +157,7 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
   """
   with ops.name_scope(name, 'linear_to_mel_weight_matrix') as name:
     # Convert Tensor `sample_rate` to float, if possible.
-    if isinstance(sample_rate, ops.Tensor):
+    if isinstance(sample_rate, tensor.Tensor):
       maybe_const_val = tensor_util.constant_value(sample_rate)
       if maybe_const_val is not None:
         sample_rate = maybe_const_val

@@ -37,21 +37,22 @@ class ConditionalAccumulatorOp : public ConditionalAccumulatorBaseOp {
           new ConditionalAccumulator<Device, T>(dtype_, shape_, cinfo_.name(),
                                                 reduction_type_);
       *ret = accumulator;
-      return Status::OK();
+      return OkStatus();
     };
   }
 
   Status CheckSignature(OpKernelContext* ctx) override {
     TF_RETURN_IF_ERROR(ctx->MatchSignature({}, {DT_STRING_REF}));
-    return Status::OK();
+    return OkStatus();
   }
 
   void SetHandleToOutput(OpKernelContext* ctx)
       TF_SHARED_LOCKS_REQUIRED(mu_) override {
-    ctx->set_output_ref(0, &mu_, accumulator_handle_.AccessTensor(ctx));
+    ctx->set_output_ref(0, &mu_, &accumulator_);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ConditionalAccumulatorOp);
+  ConditionalAccumulatorOp(const ConditionalAccumulatorOp&) = delete;
+  void operator=(const ConditionalAccumulatorOp&) = delete;
 };
 
 #define REGISTER_KERNELS(type, dev)                           \
@@ -74,18 +75,18 @@ class ResourceConditionalAccumulatorOp : public ConditionalAccumulatorBaseOp {
           new ConditionalAccumulator<Device, T>(dtype_, shape_, cinfo_.name(),
                                                 reduction_type_);
       *ret = accumulator;
-      return Status::OK();
+      return OkStatus();
     };
   }
 
   Status CheckSignature(OpKernelContext* ctx) override {
     TF_RETURN_IF_ERROR(ctx->MatchSignature({}, {DT_RESOURCE}));
-    return Status::OK();
+    return OkStatus();
   }
 
   void SetHandleToOutput(OpKernelContext* ctx)
       TF_SHARED_LOCKS_REQUIRED(mu_) override {
-    auto h = accumulator_handle_.AccessTensor(ctx)->template flat<tstring>();
+    auto h = accumulator_.template flat<tstring>();
     h(0) = cinfo_.container();
     h(1) = cinfo_.name();
     OP_REQUIRES_OK(ctx, MakeResourceHandleToOutput(
@@ -93,7 +94,9 @@ class ResourceConditionalAccumulatorOp : public ConditionalAccumulatorBaseOp {
                             TypeIndex::Make<ConditionalAccumulatorBase>()));
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ResourceConditionalAccumulatorOp);
+  ResourceConditionalAccumulatorOp(const ResourceConditionalAccumulatorOp&) =
+      delete;
+  void operator=(const ResourceConditionalAccumulatorOp&) = delete;
 };
 
 #define REGISTER_RESOURCE_KERNELS(type, dev)                     \
@@ -141,7 +144,8 @@ class AccumulatorApplyGradientOp
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(AccumulatorApplyGradientOp);
+  AccumulatorApplyGradientOp(const AccumulatorApplyGradientOp&) = delete;
+  void operator=(const AccumulatorApplyGradientOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("AccumulatorApplyGradient").Device(DEVICE_CPU),
@@ -162,7 +166,9 @@ class ResourceAccumulatorApplyGradientOp
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ResourceAccumulatorApplyGradientOp);
+  ResourceAccumulatorApplyGradientOp(
+      const ResourceAccumulatorApplyGradientOp&) = delete;
+  void operator=(const ResourceAccumulatorApplyGradientOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(
@@ -185,7 +191,8 @@ class AccumulatorTakeGradientOp
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(AccumulatorTakeGradientOp);
+  AccumulatorTakeGradientOp(const AccumulatorTakeGradientOp&) = delete;
+  void operator=(const AccumulatorTakeGradientOp&) = delete;
 };
 REGISTER_KERNEL_BUILDER(Name("AccumulatorTakeGradient").Device(DEVICE_CPU),
                         AccumulatorTakeGradientOp);
@@ -202,7 +209,9 @@ class ResourceAccumulatorTakeGradientOp
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ResourceAccumulatorTakeGradientOp);
+  ResourceAccumulatorTakeGradientOp(const ResourceAccumulatorTakeGradientOp&) =
+      delete;
+  void operator=(const ResourceAccumulatorTakeGradientOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(

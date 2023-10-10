@@ -19,8 +19,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOCO_FORMAT_PORT_H_
 #define TENSORFLOW_LITE_TOCO_FORMAT_PORT_H_
 
-#include "tensorflow/lite/toco/toco_types.h"
+#include <string>
+
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/lite/toco/toco_types.h"
 
 namespace toco {
 namespace port {

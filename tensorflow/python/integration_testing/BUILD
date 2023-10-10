@@ -2,8 +2,6 @@
 #   This directory is only for tests that should be run on a pip whl.
 
 package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])

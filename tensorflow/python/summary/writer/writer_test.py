@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.python.summary.writer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import glob
 import os.path
 import shutil
@@ -34,6 +30,7 @@ from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -47,7 +44,7 @@ from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.util import compat
 
 
-class FileWriterTestBase(object):
+class FileWriterTestBase:
 
   def _FileWriter(self, *args, **kwargs):
     return writer.FileWriter(*args, **kwargs)
@@ -69,10 +66,14 @@ class FileWriterTestBase(object):
     self.assertTrue(event_paths)
     return summary_iterator.summary_iterator(event_paths[-1])
 
-  def _assertRecent(self, t):
-    self.assertTrue(abs(t - time.time()) < 5)
+  def assertRecent(self, t):
+    # We want to ensure the timestamp is something plausible, and aren't able
+    # to mock out the actual clock used through many layers of the stack, so
+    # just assert that it's within the past hour, which should always be true.
+    self.assertLessEqual(t, time.time())
+    self.assertLess(abs(t - time.time()), 3600)
 
-  def _assertEventsWithGraph(self, test_dir, g, has_shapes):
+  def assertEventsWithGraph(self, test_dir, g, has_shapes):
     meta_graph_def = meta_graph.create_meta_graph_def(
         graph_def=g.as_graph_def(add_shapes=has_shapes))
 
@@ -80,12 +81,12 @@ class FileWriterTestBase(object):
 
     # The first event should list the file_version.
     ev = next(rr)
-    self._assertRecent(ev.wall_time)
+    self.assertRecent(ev.wall_time)
     self.assertEqual("brain.Event:2", ev.file_version)
 
     # The next event should have the graph.
     ev = next(rr)
-    self._assertRecent(ev.wall_time)
+    self.assertRecent(ev.wall_time)
     self.assertEqual(0, ev.step)
     ev_graph = graph_pb2.GraphDef()
     ev_graph.ParseFromString(ev.graph_def)
@@ -93,7 +94,7 @@ class FileWriterTestBase(object):
 
     # The next event should have the metagraph.
     ev = next(rr)
-    self._assertRecent(ev.wall_time)
+    self.assertRecent(ev.wall_time)
     self.assertEqual(0, ev.step)
     ev_meta_graph = meta_graph_pb2.MetaGraphDef()
     ev_meta_graph.ParseFromString(ev.meta_graph_def)
@@ -131,18 +132,18 @@ class FileWriterTestBase(object):
 
     # The first event should list the file_version.
     ev = next(rr)
-    self._assertRecent(ev.wall_time)
+    self.assertRecent(ev.wall_time)
     self.assertEqual("brain.Event:2", ev.file_version)
 
     # The next event should be the START message.
     ev = next(rr)
-    self._assertRecent(ev.wall_time)
+    self.assertRecent(ev.wall_time)
     self.assertEqual(1, ev.step)
     self.assertEqual(SessionLog.START, ev.session_log.status)
 
     # The next event should have the value 'mee=10.0'.
     ev = next(rr)
-    self._assertRecent(ev.wall_time)
+    self.assertRecent(ev.wall_time)
     self.assertEqual(10, ev.step)
     self.assertProtoEquals("""
       value { tag: 'mee' simple_value: 10.0 }
@@ -150,7 +151,7 @@ class FileWriterTestBase(object):
 
     # The next event should have the value 'boo=20.0'.
     ev = next(rr)
-    self._assertRecent(ev.wall_time)
+    self.assertRecent(ev.wall_time)
     self.assertEqual(20, ev.step)
     self.assertProtoEquals("""
       value { tag: 'boo' simple_value: 20.0 }
@@ -158,7 +159,7 @@ class FileWriterTestBase(object):
 
     # The next event should have the graph_def.
     ev = next(rr)
-    self._assertRecent(ev.wall_time)
+    self.assertRecent(ev.wall_time)
     self.assertEqual(30, ev.step)
     ev_graph = graph_pb2.GraphDef()
     ev_graph.ParseFromString(ev.graph_def)
@@ -166,7 +167,7 @@ class FileWriterTestBase(object):
 
     # The next event should have metadata for the run.
     ev = next(rr)
-    self._assertRecent(ev.wall_time)
+    self.assertRecent(ev.wall_time)
     self.assertEqual(40, ev.step)
     self.assertEqual("test run", ev.tagged_run_metadata.tag)
     parsed_run_metadata = config_pb2.RunMetadata()
@@ -183,7 +184,7 @@ class FileWriterTestBase(object):
       constant_op.constant([12], name="douze")
     sw = self._FileWriter(test_dir, graph=g)
     sw.close()
-    self._assertEventsWithGraph(test_dir, g, True)
+    self.assertEventsWithGraph(test_dir, g, True)
 
   @test_util.run_deprecated_v1
   def testGraphAsPositional(self):
@@ -192,7 +193,7 @@ class FileWriterTestBase(object):
       constant_op.constant([12], name="douze")
     sw = self._FileWriter(test_dir, g)
     sw.close()
-    self._assertEventsWithGraph(test_dir, g, True)
+    self.assertEventsWithGraph(test_dir, g, True)
 
   @test_util.run_deprecated_v1
   def testGraphDefAsNamed(self):
@@ -202,7 +203,7 @@ class FileWriterTestBase(object):
     gd = g.as_graph_def()
     sw = self._FileWriter(test_dir, graph_def=gd)
     sw.close()
-    self._assertEventsWithGraph(test_dir, g, False)
+    self.assertEventsWithGraph(test_dir, g, False)
 
   @test_util.run_deprecated_v1
   def testGraphDefAsPositional(self):
@@ -212,7 +213,7 @@ class FileWriterTestBase(object):
     gd = g.as_graph_def()
     sw = self._FileWriter(test_dir, gd)
     sw.close()
-    self._assertEventsWithGraph(test_dir, g, False)
+    self.assertEventsWithGraph(test_dir, g, False)
 
   @test_util.run_deprecated_v1
   def testGraphAndGraphDef(self):
@@ -251,11 +252,11 @@ class FileWriterTestBase(object):
     rr = summary_iterator.summary_iterator(event_paths[0])
     # The first event should list the file_version.
     ev = next(rr)
-    self._assertRecent(ev.wall_time)
+    self.assertRecent(ev.wall_time)
     self.assertEqual("brain.Event:2", ev.file_version)
     # The next event should be the START message.
     ev = next(rr)
-    self._assertRecent(ev.wall_time)
+    self.assertRecent(ev.wall_time)
     self.assertEqual(1, ev.step)
     self.assertEqual(SessionLog.START, ev.session_log.status)
     # We should be done.
@@ -265,11 +266,11 @@ class FileWriterTestBase(object):
     rr = summary_iterator.summary_iterator(event_paths[1])
     # The first event should list the file_version.
     ev = next(rr)
-    self._assertRecent(ev.wall_time)
+    self.assertRecent(ev.wall_time)
     self.assertEqual("brain.Event:2", ev.file_version)
     # The next event should be the START message.
     ev = next(rr)
-    self._assertRecent(ev.wall_time)
+    self.assertRecent(ev.wall_time)
     self.assertEqual(2, ev.step)
     self.assertEqual(SessionLog.START, ev.session_log.status)
     # We should be done.
@@ -283,7 +284,7 @@ class FileWriterTestBase(object):
     time.sleep(1.2)
     time_before_close = time.time()
     sw.close()
-    self._assertRecent(time_before_close)
+    self.assertRecent(time_before_close)
 
   @test_util.run_deprecated_v1
   def testUseAfterClose(self):
@@ -335,13 +336,13 @@ class FileWriterTestBase(object):
     # File_version.
     ev = next(rr)
     self.assertTrue(ev)
-    self._assertRecent(ev.wall_time)
+    self.assertRecent(ev.wall_time)
     self.assertEqual("brain.Event:2", ev.file_version)
 
     # Summary passed serialized.
     ev = next(rr)
     self.assertTrue(ev)
-    self._assertRecent(ev.wall_time)
+    self.assertRecent(ev.wall_time)
     self.assertEqual(1, ev.step)
     self.assertProtoEquals("""
       value { tag: 'i' simple_value: 1.0 }
@@ -350,7 +351,7 @@ class FileWriterTestBase(object):
     # Summary passed as SummaryObject.
     ev = next(rr)
     self.assertTrue(ev)
-    self._assertRecent(ev.wall_time)
+    self.assertRecent(ev.wall_time)
     self.assertEqual(2, ev.step)
     self.assertProtoEquals("""
       value { tag: 'l' simple_value: 2.0 }
@@ -382,12 +383,12 @@ class FileWriterTestBase(object):
 
     # The first event should list the file_version.
     ev = next(rr)
-    self._assertRecent(ev.wall_time)
+    self.assertRecent(ev.wall_time)
     self.assertEqual("brain.Event:2", ev.file_version)
 
     # The next event should be the START message.
     ev = next(rr)
-    self._assertRecent(ev.wall_time)
+    self.assertRecent(ev.wall_time)
     self.assertEqual(1, ev.step)
     self.assertEqual(SessionLog.START, ev.session_log.status)
 
@@ -684,6 +685,16 @@ class SessionBasedFileWriterTestCase(FileWriterTestBase, test.TestCase):
 
     # No more files
     self.assertRaises(StopIteration, lambda: next(event_paths))
+
+  def testSummaryFileWritersInvalidInput(self):
+    # Test case for GitHub issue 46909
+    logdir = self.get_temp_dir()
+    with session.Session() as sess:
+      with self.assertRaises(errors_impl.InvalidArgumentError):
+        writer = summary_ops_v2.create_file_writer(
+            logdir=logdir, flush_millis=[1, 2])
+        sess.run(writer.init())
+        sess.run(writer.flush())
 
 
 class FileWriterCacheTest(test.TestCase):

@@ -13,11 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """A library of common shape functions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import six
+import itertools
 
 from tensorflow.python.framework import tensor_shape
 
@@ -35,10 +31,12 @@ def _broadcast_shape_helper(shape_x, shape_y):
   """
   # To compute the broadcasted dimensions, we zip together shape_x and shape_y,
   # and pad with 1 to make them the same length.
-  broadcasted_dims = reversed(list(six.moves.zip_longest(
-      reversed(shape_x.dims),
-      reversed(shape_y.dims),
-      fillvalue=tensor_shape.Dimension(1))))
+  broadcasted_dims = reversed(
+      list(
+          itertools.zip_longest(
+              reversed(shape_x.dims),
+              reversed(shape_y.dims),
+              fillvalue=tensor_shape.Dimension(1))))
   # Next we combine the dimensions according to the numpy broadcasting rules.
   # http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html
   return_dims = []
@@ -103,6 +101,8 @@ def broadcast_shape(shape_x, shape_y):
     return tensor_shape.unknown_shape()
   return_dims = _broadcast_shape_helper(shape_x, shape_y)
   if return_dims is None:
-    raise ValueError("Incompatible shapes for broadcasting: %s and %s"
-                     % (shape_x, shape_y))
+    raise ValueError('Incompatible shapes for broadcasting. Two shapes are '
+                     'compatible if for each dimension pair they are either '
+                     'equal or one of them is 1. '
+                     f'Received: {shape_x} and {shape_y}.')
   return tensor_shape.TensorShape(return_dims)

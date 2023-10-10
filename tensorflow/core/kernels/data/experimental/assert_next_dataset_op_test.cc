@@ -11,7 +11,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/experimental/assert_next_dataset_op.h"
 
-#include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
 
@@ -33,7 +33,7 @@ class AssertNextDatasetParams : public DatasetParams {
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         transformations_(transformations) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
                                    input_dataset_params.iterator_prefix());
@@ -49,13 +49,13 @@ class AssertNextDatasetParams : public DatasetParams {
     input_names->reserve(input_dataset_params_.size() + 1);
     input_names->emplace_back(AssertNextDatasetOp::kInputDataset);
     input_names->emplace_back(AssertNextDatasetOp::kTransformations);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     *attr_vector = {{AssertNextDatasetOp::kOutputShapes, output_shapes_},
                     {AssertNextDatasetOp::kOutputTypes, output_dtypes_}};
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override {
@@ -132,10 +132,10 @@ AssertNextDatasetParams ShortAssertNextDatasetParams() {
 std::vector<GetNextTestCase<AssertNextDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/AssertNextDatasetParams1(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {1}, {2}})},
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {1}, {2}})},
           {/*dataset_params=*/AssertNextDatasetParams2(),
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {1}, {2}})}};
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {1}, {2}})}};
 }
 
 ITERATOR_GET_NEXT_TEST_P(AssertNextDatasetOpTest, AssertNextDatasetParams,
@@ -196,11 +196,11 @@ IteratorSaveAndRestoreTestCases() {
   return {{/*dataset_params=*/AssertNextDatasetParams1(),
            /*breakpoints*/ {0, 2, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {1}, {2}})},
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {1}, {2}})},
           {/*dataset_params=*/AssertNextDatasetParams2(),
            /*breakpoints*/ {0, 2, 5},
            /*expected_outputs=*/
-           CreateTensors<int64>(TensorShape({}), {{0}, {1}, {2}})}};
+           CreateTensors<int64_t>(TensorShape({}), {{0}, {1}, {2}})}};
 }
 
 ITERATOR_SAVE_AND_RESTORE_TEST_P(AssertNextDatasetOpTest,
@@ -210,13 +210,13 @@ ITERATOR_SAVE_AND_RESTORE_TEST_P(AssertNextDatasetOpTest,
 TEST_F(AssertNextDatasetOpTest, InvalidArguments) {
   auto dataset_params = InvalidAssertNextDatasetParams();
   EXPECT_EQ(Initialize(dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(AssertNextDatasetOpTest, ShortAssertNext) {
   auto dataset_params = ShortAssertNextDatasetParams();
   EXPECT_EQ(Initialize(dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

@@ -69,7 +69,7 @@ class FreezeTest : public ::testing::Test {
       return saved_model_bundle->session->Run(
           /* inputs */ {}, /* output_tensors */ {}, {init_node}, &outputs);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Adds `graph_def` to `saved_model_bundle` and initializes a session with
@@ -162,7 +162,8 @@ class FreezeTest : public ::testing::Test {
                                          frozen_graph_def, "c:0");
   }
 
-  void TestFreezeGraphWithDependentVariables(bool use_resource) {
+  void TestFreezeGraphWithDependentVariables(bool use_resource,
+                                             bool use_identity = false) {
     // Test freezing a graph with variables that are needed by outputs in the
     // SignatureDef. The variables should be frozen.
     SavedModelBundle saved_model_bundle;
@@ -173,8 +174,16 @@ class FreezeTest : public ::testing::Test {
     if (use_resource) {
       Output var =
           ops::VarHandleOp(scope.WithOpName("var"), DataType::DT_FLOAT, {});
-      read_var = ops::ReadVariableOp(
-          scope.WithOpName("var/Read/ReadVariableOp"), var, DataType::DT_FLOAT);
+      if (use_identity) {
+        Output identity = ops::Identity(scope.WithOpName("identity"), var);
+        read_var =
+            ops::ReadVariableOp(scope.WithOpName("var/Read/ReadVariableOp"),
+                                identity, DataType::DT_FLOAT);
+      } else {
+        read_var =
+            ops::ReadVariableOp(scope.WithOpName("var/Read/ReadVariableOp"),
+                                var, DataType::DT_FLOAT);
+      }
       auto assign = ops::AssignVariableOp(scope.WithOpName("assign"), var, a);
     } else {
       Output read_var =
@@ -195,9 +204,10 @@ class FreezeTest : public ::testing::Test {
 
     // If using normal variables there should be 3 nodes in the resulting
     // graph_def. If using resource variables there should be 4 nodes in the
-    // resulting graph_def.
+    // resulting graph_def if use_identity == false, otherwise 5 variables.
     // In both cases, none should be variables.
-    size_t expected_nodes = use_resource ? 4 : 3;
+    size_t expected_nodes = use_resource ? (use_identity ? 5 : 4) : 3;
+
     EXPECT_EQ(frozen_graph_def.node_size(), expected_nodes);
     for (const NodeDef& node : frozen_graph_def.node()) {
       EXPECT_NE(node.op(), "Variable") << node.name();
@@ -415,6 +425,10 @@ TEST_F(FreezeTest, GraphDefWithDependentVariables) {
 
 TEST_F(FreezeTest, GraphDefWithDependentResourceVariables) {
   TestFreezeGraphWithDependentVariables(true);
+}
+
+TEST_F(FreezeTest, GraphDefWithDependentResourceVariablesAndIdentity) {
+  TestFreezeGraphWithDependentVariables(true, true);
 }
 
 TEST_F(FreezeTest, GraphDefWithAndWithoutDependentVariables) {

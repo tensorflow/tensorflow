@@ -1,0 +1,151 @@
+node {
+  name: "arg0"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 0
+    }
+  }
+  experimental_type {
+    type_id: TFT_TENSOR
+  }
+}
+node {
+  name: "arg1"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_arg1_attr0"
+    value {
+      s: "_arg1_attr0_value"
+    }
+  }
+  attr {
+    key: "_arg1_attr1"
+    value {
+      f: 8.0
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 1
+    }
+  }
+}
+node {
+  name: "arg2"
+  op: "_Arg"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 2
+    }
+  }
+}
+node {
+  name: "ret0"
+  op: "_Retval"
+  input: "arg0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_ret0_attr0"
+    value {
+      i: 8
+    }
+  }
+  attr {
+    key: "_ret0_attr1"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "ret1"
+  op: "_Retval"
+  input: "arg1"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 1
+    }
+  }
+}
+node {
+  name: "ret2"
+  op: "_Retval"
+  input: "arg2"
+  attr {
+    key: "T"
+    value {
+      type: DT_BOOL
+    }
+  }
+  attr {
+    key: "_ret2_attr0"
+    value {
+      type: DT_VARIANT
+    }
+  }
+  attr {
+    key: "_ret2_attr1"
+    value {
+      shape {
+        dim {
+          size: 128
+        }
+        dim {
+          size: 1024
+        }
+      }
+    }
+  }
+  attr {
+    key: "index"
+    value {
+      i: 2
+    }
+  }
+  experimental_type {
+    type_id: TFT_TENSOR
+  }
+}
+versions {
+  producer: 121
+}

@@ -16,17 +16,25 @@ limitations under the License.
 #include "tensorflow/lite/tools/serialization/writer_lib.h"
 
 #include <cstdlib>
+#include <fstream>
+#include <memory>
 #include <numeric>
 #include <sstream>
 #include <string>
 #include <tuple>
+#include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
 
@@ -36,7 +44,8 @@ using subgraph_test_util::CheckIntTensor;
 using subgraph_test_util::FillIntTensor;
 
 std::string CreateFilePath(const std::string& file_name) {
-  return std::string(getenv("TEST_TMPDIR")) + file_name;
+  const char* tmp_dir = getenv("TEST_TMPDIR");
+  return std::string(tmp_dir ? tmp_dir : "./") + file_name;
 }
 
 // The bool param indicates whether we use SubgraphWriter(true) or
@@ -69,7 +78,7 @@ TEST_P(SingleSubgraphTest, InvalidDestinations) {
   interpreter.SetInputs({0, 1});
   interpreter.SetOutputs({2});
   const char* initial_data = "";
-  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
   TfLiteAddParams* builtin_data =
       reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
   builtin_data->activation = kTfLiteActNone;
@@ -112,7 +121,7 @@ TEST_P(SingleSubgraphTest, FloatModelTest) {
   interpreter.SetInputs({0, 1});
   interpreter.SetOutputs({2});
   const char* initial_data = "";
-  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
   TfLiteAddParams* builtin_data =
       reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
   builtin_data->activation = kTfLiteActNone;
@@ -150,7 +159,7 @@ TEST_P(SingleSubgraphTest, CustomInputOutputTest) {
 
   // Add two ops: Add and Relu
   const char* initial_data = "";
-  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
   TfLiteAddParams* builtin_data =
       reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
   builtin_data->activation = kTfLiteActNone;
@@ -199,7 +208,7 @@ TEST_P(SingleSubgraphTest, CustomInputOutputErrorCasesTest) {
 
   // Add three ops.
   const char* initial_data = "";
-  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
   TfLiteAddParams* builtin_data =
       reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
   builtin_data->activation = kTfLiteActNone;
@@ -230,6 +239,50 @@ TEST_P(SingleSubgraphTest, CustomInputOutputErrorCasesTest) {
             kTfLiteOk);
 }
 
+// Tests if SetCustomInputOutput handles variable tensors correctly.
+TEST_P(SingleSubgraphTest, CustomInputOutputVariableTensorTest) {
+  Interpreter interpreter;
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
+
+  // Create tensors.
+  interpreter.AddTensors(3);
+  interpreter.SetTensorParametersReadWrite(0, kTfLiteFloat32, "a", {3},
+                                           TfLiteQuantization());
+  interpreter.SetTensorParametersReadWrite(1, kTfLiteFloat32, "b", {3},
+                                           TfLiteQuantization(),
+                                           /*is_variable=*/true);
+  interpreter.SetTensorParametersReadWrite(2, kTfLiteFloat32, "c", {3},
+                                           TfLiteQuantization());
+  interpreter.SetInputs({0});
+  interpreter.SetOutputs({2});
+  interpreter.SetVariables({1});
+
+  // Create an Add node.
+  TfLiteAddParams* builtin_data =
+      reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
+  builtin_data->activation = kTfLiteActNone;
+  builtin_data->pot_scale_int16 = false;
+  interpreter.AddNodeWithParameters({0, 1}, {2}, nullptr, 0,
+                                    reinterpret_cast<void*>(builtin_data),
+                                    resolver.FindOp(BuiltinOperator_ADD, 1));
+
+  // Write model to file.
+  const std::string test_file = CreateFilePath("test_variables.tflite");
+  SubgraphWriter writer(&interpreter.primary_subgraph());
+  EXPECT_EQ(writer.SetCustomInputOutput(/*inputs=*/{0}, /*outputs=*/{2},
+                                        /*execution_plan=*/{0}),
+            kTfLiteOk);
+  writer.Write(test_file);
+
+  // Read model and test.
+  std::unique_ptr<FlatBufferModel> model =
+      FlatBufferModel::BuildFromFile(test_file.c_str());
+  InterpreterBuilder builder(*model, resolver);
+  std::unique_ptr<Interpreter> new_interpreter;
+  builder(&new_interpreter);
+  CHECK_EQ(new_interpreter->AllocateTensors(), kTfLiteOk);
+}
+
 TEST_P(SingleSubgraphTest, PerTensorQuantizedModelTest) {
   Interpreter interpreter;
   interpreter.AddTensors(3);
@@ -242,7 +295,7 @@ TEST_P(SingleSubgraphTest, PerTensorQuantizedModelTest) {
   interpreter.SetInputs({0, 1});
   interpreter.SetOutputs({2});
   const char* initial_data = "";
-  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
   TfLiteAddParams* builtin_data =
       reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
   builtin_data->activation = kTfLiteActNone;
@@ -261,11 +314,94 @@ TEST_P(SingleSubgraphTest, PerTensorQuantizedModelTest) {
   CHECK_EQ(new_interpreter->AllocateTensors(), kTfLiteOk);
 }
 
+TEST_P(SingleSubgraphTest, OpVersioningTest) {
+  Interpreter interpreter;
+  interpreter.AddTensors(3);
+  interpreter.SetTensorParametersReadWrite(0, kTfLiteFloat32, "a", {1, 4},
+                                           TfLiteQuantization());
+  interpreter.SetTensorParametersReadWrite(1, kTfLiteInt32, "b", {2},
+                                           TfLiteQuantization());
+  interpreter.SetTensorParametersReadWrite(2, kTfLiteFloat32, "c", {4, 4},
+                                           TfLiteQuantization());
+  interpreter.SetInputs({0, 1});
+  interpreter.SetOutputs({2});
+
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
+  const TfLiteRegistration* reg =
+      resolver.FindOp(BuiltinOperator_BROADCAST_TO, 2);
+  interpreter.AddNodeWithParameters(/*inputs=*/{0, 1}, /*outputs=*/{2},
+                                    /*init_data=*/nullptr, /*init_data_size=*/0,
+                                    /*builtin_data=*/nullptr, reg);
+
+  const std::string test_file = CreateFilePath("test_float.tflite");
+  WriteToFile(&interpreter, test_file, GetParam());
+  std::unique_ptr<FlatBufferModel> model =
+      FlatBufferModel::BuildFromFile(test_file.c_str());
+  InterpreterBuilder builder(*model, resolver);
+  std::unique_ptr<Interpreter> new_interpreter;
+  builder(&new_interpreter);
+  CHECK_EQ(new_interpreter->AllocateTensors(), kTfLiteOk);
+
+  ASSERT_EQ(new_interpreter->nodes_size(), 1);
+  TfLiteRegistration output_reg =
+      new_interpreter->node_and_registration(0)->second;
+  ASSERT_EQ(output_reg.builtin_code, BuiltinOperator_BROADCAST_TO);
+  CHECK_EQ(output_reg.version, 2);
+}
+
+TEST_P(SingleSubgraphTest, DynamicShapeTest) {
+  // Build a model with a single Add op.
+  Interpreter interpreter;
+
+  interpreter.AddTensors(3);
+  std::vector<int> dims = {1, 3};
+  std::vector<int> dims_signature = {-1, 3};
+  interpreter.SetTensorParametersReadWrite(
+      0, kTfLiteFloat32, "a", dims, TfLiteQuantizationParams{1.0, 0},
+      /*is_variable=*/false, &dims_signature);
+  interpreter.SetTensorParametersReadWrite(
+      1, kTfLiteFloat32, "b", dims, TfLiteQuantizationParams{1.0, 0},
+      /*is_variable=*/false, &dims_signature);
+  interpreter.SetTensorParametersReadWrite(
+      2, kTfLiteFloat32, "c", dims, TfLiteQuantizationParams{1.0, 0},
+      /*is_variable=*/false, &dims_signature);
+
+  interpreter.SetInputs({0, 1});
+  interpreter.SetOutputs({2});
+  const char* initial_data = "";
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
+  TfLiteAddParams* builtin_data =
+      reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
+  builtin_data->activation = kTfLiteActNone;
+  builtin_data->pot_scale_int16 = false;
+  const TfLiteRegistration* reg = resolver.FindOp(BuiltinOperator_ADD, 1);
+  interpreter.AddNodeWithParameters({0, 1}, {2}, initial_data, 0,
+                                    reinterpret_cast<void*>(builtin_data), reg);
+
+  // Export interpreter and import back.
+  const std::string test_file = CreateFilePath("test_dynamic_shape.tflite");
+  WriteToFile(&interpreter, test_file, GetParam());
+  std::unique_ptr<FlatBufferModel> model =
+      FlatBufferModel::BuildFromFile(test_file.c_str());
+  InterpreterBuilder builder(*model, resolver);
+  std::unique_ptr<Interpreter> new_interpreter;
+  builder(&new_interpreter);
+  CHECK_EQ(new_interpreter->AllocateTensors(), kTfLiteOk);
+
+  // Check shape signature in new interpreter.
+  TfLiteTensor* tensor0 = new_interpreter->tensor(0);
+  CHECK_NOTNULL(tensor0->dims_signature);
+  TfLiteIntArrayView shape_view(tensor0->dims_signature);
+  CHECK_EQ(shape_view.size(), 2);
+  CHECK_EQ(shape_view[0], -1);
+}
+
 INSTANTIATE_TEST_SUITE_P(Writer, SingleSubgraphTest, ::testing::Bool());
 
 struct ReshapeTestPattern {
   int num_inputs;
   bool is_param_valid;
+  bool has_buggy_non_flatten_shape;
 };
 
 class ReshapeLayerTest : public ::testing::TestWithParam<ReshapeTestPattern> {};
@@ -281,10 +417,19 @@ TEST_P(ReshapeLayerTest, ReshapeLayerTest) {
                                            TfLiteQuantization());
   ASSERT_LE(param.num_inputs, 2);
   if (param.num_inputs == 2) {
-    interpreter.SetTensorParametersReadOnly(
-        /*tensor_index=*/1, kTfLiteInt32, /*name=*/"b", /*dims=*/{3},
-        TfLiteQuantization(), reinterpret_cast<char*>(output_shape),
-        sizeof(output_shape));
+    // Some TOCO generated models have buggy shape arguments, which are required
+    // to be flatten, for example, dims={3, 1} instead of dims={3}.
+    if (param.has_buggy_non_flatten_shape) {
+      interpreter.SetTensorParametersReadOnly(
+          /*tensor_index=*/1, kTfLiteInt32, /*name=*/"b", /*dims=*/{3, 1},
+          TfLiteQuantization(), reinterpret_cast<char*>(output_shape),
+          sizeof(output_shape));
+    } else {
+      interpreter.SetTensorParametersReadOnly(
+          /*tensor_index=*/1, kTfLiteInt32, /*name=*/"b", /*dims=*/{3},
+          TfLiteQuantization(), reinterpret_cast<char*>(output_shape),
+          sizeof(output_shape));
+    }
   }
   interpreter.SetTensorParametersReadWrite(/*tensor_index=*/total_tensors - 1,
                                            kTfLiteFloat32, /*name=*/"c",
@@ -296,9 +441,10 @@ TEST_P(ReshapeLayerTest, ReshapeLayerTest) {
   interpreter.SetInputs(input_tensors);
   interpreter.SetOutputs({total_tensors - 1});
   const char* initial_data = "";
-  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
   TfLiteReshapeParams* builtin_data = reinterpret_cast<TfLiteReshapeParams*>(
       malloc(sizeof(TfLiteReshapeParams)));
+  memset(builtin_data, 0, sizeof(TfLiteReshapeParams));
   if (param.is_param_valid) {
     builtin_data->num_dimensions = 3;
     for (int dim = 0; dim < builtin_data->num_dimensions; ++dim) {
@@ -328,20 +474,47 @@ TEST_P(ReshapeLayerTest, ReshapeLayerTest) {
 INSTANTIATE_TEST_SUITE_P(
     Writer, ReshapeLayerTest,
     ::testing::Values(ReshapeTestPattern{/*num_inputs=*/2,
-                                         /*is_param_valid=*/true},
+                                         /*is_param_valid=*/true,
+                                         /*has_buggy_non_flatten_shape=*/false},
                       ReshapeTestPattern{/*num_inputs=*/2,
-                                         /*is_param_valid=*/false},
+                                         /*is_param_valid=*/false,
+                                         /*has_buggy_non_flatten_shape=*/false},
                       ReshapeTestPattern{/*num_inputs=*/1,
-                                         /*is_param_valid=*/true}),
+                                         /*is_param_valid=*/true,
+                                         /*has_buggy_non_flatten_shape=*/false},
+                      ReshapeTestPattern{/*num_inputs=*/2,
+                                         /*is_param_valid=*/true,
+                                         /*has_buggy_non_flatten_shape=*/true}),
     [](const ::testing::TestParamInfo<ReshapeLayerTest::ParamType>& info) {
       std::stringstream ss;
       ss << "num_inputs_" << info.param.num_inputs << "_valid_param_"
-         << info.param.is_param_valid;
+         << info.param.is_param_valid << "_buggy_shape_"
+         << info.param.has_buggy_non_flatten_shape;
       std::string name = ss.str();
       return name;
     });
 
-class WhileTest : public subgraph_test_util::ControlFlowOpTest {};
+class WhileTest : public subgraph_test_util::ControlFlowOpTest {
+ protected:
+  TfLiteCustomAllocation NewCustomAlloc(size_t num_bytes,
+                                        int required_alignment) {
+    // Extra memory to ensure alignment.
+    char* new_alloc = new char[num_bytes + required_alignment];
+    char* new_underlying_buffer_aligned_ptr = reinterpret_cast<char*>(
+        AlignTo(required_alignment, reinterpret_cast<intptr_t>(new_alloc)));
+    custom_alloc_buffers_.emplace_back(new_alloc);
+
+    return TfLiteCustomAllocation(
+        {new_underlying_buffer_aligned_ptr, num_bytes});
+  }
+
+  intptr_t AlignTo(size_t alignment, intptr_t offset) {
+    return offset % alignment == 0 ? offset
+                                   : offset + (alignment - offset % alignment);
+  }
+
+  std::vector<std::unique_ptr<char[]>> custom_alloc_buffers_;
+};
 
 // The test builds a model that produces the i-th number of
 // triangular number sequence: 1, 3, 6, 10, 15, 21, 28.
@@ -349,8 +522,8 @@ TEST_F(WhileTest, TestTriangularNumberSequence) {
   const int kSeqNumber = 4;
   const int kExpectedValue = 15;
 
-  interpreter_.reset(new Interpreter);
-  interpreter_->AddSubgraphs(2);
+  interpreter_ = std::make_unique<Interpreter>();
+  AddSubgraphs(2);
   builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), kSeqNumber);
   builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(2));
   builder_->BuildWhileSubgraph(&interpreter_->primary_subgraph());
@@ -359,7 +532,15 @@ TEST_F(WhileTest, TestTriangularNumberSequence) {
   interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1});
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {1});
-  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]), {1});
+
+  // Use custom allocation for second input, to ensure things work well for
+  // non-traditional allocation types.
+  auto alloc =
+      NewCustomAlloc(interpreter_->tensor(interpreter_->inputs()[1])->bytes,
+                     kDefaultTensorAlignment);
+  auto* input_data = reinterpret_cast<int*>(alloc.data);
+  input_data[0] = 1;
+  interpreter_->SetCustomAllocationForTensor(interpreter_->inputs()[1], alloc);
 
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   TfLiteTensor* output1 = interpreter_->tensor(interpreter_->outputs()[0]);
@@ -373,27 +554,195 @@ TEST_F(WhileTest, TestTriangularNumberSequence) {
   writer.Write(test_file);
   std::unique_ptr<FlatBufferModel> model =
       FlatBufferModel::BuildFromFile(test_file.c_str());
-  tflite::ops::builtin::BuiltinOpResolver resolver;
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
   InterpreterBuilder builder(*model, resolver);
   std::unique_ptr<Interpreter> new_interpreter;
   builder(&new_interpreter);
 
   // Check deserialized model.
-  new_interpreter->ResizeInputTensor(interpreter_->inputs()[0], {1});
-  new_interpreter->ResizeInputTensor(interpreter_->inputs()[1], {1});
+  new_interpreter->ResizeInputTensor(new_interpreter->inputs()[0], {1});
+  new_interpreter->ResizeInputTensor(new_interpreter->inputs()[1], {1});
   ASSERT_EQ(new_interpreter->AllocateTensors(), kTfLiteOk);
-  FillIntTensor(new_interpreter->tensor(interpreter_->inputs()[0]), {1});
-  FillIntTensor(new_interpreter->tensor(interpreter_->inputs()[1]), {1});
+  FillIntTensor(new_interpreter->tensor(new_interpreter->inputs()[0]), {1});
+  FillIntTensor(new_interpreter->tensor(new_interpreter->inputs()[1]), {1});
   ASSERT_EQ(new_interpreter->Invoke(), kTfLiteOk);
-  output1 = new_interpreter->tensor(interpreter_->outputs()[0]);
+  output1 = new_interpreter->tensor(new_interpreter->outputs()[0]);
   CheckIntTensor(output1, {1}, {kSeqNumber + 1});
-  output2 = new_interpreter->tensor(interpreter_->outputs()[1]);
+  output2 = new_interpreter->tensor(new_interpreter->outputs()[1]);
   CheckIntTensor(output2, {1}, {kExpectedValue});
 }
 
-}  // namespace tflite
+// Verifies the ModelWriters constructing from  an interpreter or subgraphs
+// produce the same results.
+TEST_F(WhileTest, TestModelWriterFromSubgraphs) {
+  const int kSeqNumber = 4;
+  const int kExpectedValue = 15;
 
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  interpreter_ = std::make_unique<Interpreter>();
+  AddSubgraphs(2);
+  builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), kSeqNumber);
+  builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(2));
+  builder_->BuildWhileSubgraph(&interpreter_->primary_subgraph());
+
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1});
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1});
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {1});
+
+  // Use custom allocation for second input, to ensure things work well for
+  // non-traditional allocation types.
+  auto alloc =
+      NewCustomAlloc(interpreter_->tensor(interpreter_->inputs()[1])->bytes,
+                     kDefaultTensorAlignment);
+  auto* input_data = reinterpret_cast<int*>(alloc.data);
+  input_data[0] = 1;
+  interpreter_->SetCustomAllocationForTensor(interpreter_->inputs()[1], alloc);
+
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output1 = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output1, {1}, {kSeqNumber + 1});
+  TfLiteTensor* output2 = interpreter_->tensor(interpreter_->outputs()[1]);
+  CheckIntTensor(output2, {1}, {kExpectedValue});
+
+  // Serializes the model using the interpreter.
+  ModelWriter writer_1(interpreter_.get());
+  const std::string test_file_1 = CreateFilePath("test_while_1.tflite");
+  writer_1.Write(test_file_1);
+
+  // Serializes the model using subgraphs.
+  std::vector<Subgraph*> subgraphs;
+  for (int i = 0; i < interpreter_->subgraphs_size(); ++i) {
+    subgraphs.push_back(interpreter_->subgraph(i));
+  }
+  ModelWriter writer_2(subgraphs);
+  const std::string test_file_2 = CreateFilePath("test_while_2.tflite");
+  writer_2.Write(test_file_2);
+
+  // The results from both ModelWriters should be the same.
+  std::ifstream file_ifs_1(test_file_1, std::ios::in);
+  std::ostringstream model_content_1;
+  model_content_1 << file_ifs_1.rdbuf();
+
+  std::ifstream file_ifs_2(test_file_2, std::ios::in);
+  std::ostringstream model_content_2;
+  model_content_2 << file_ifs_2.rdbuf();
+
+  EXPECT_FALSE(model_content_1.str().empty());
+  EXPECT_EQ(model_content_1.str(), model_content_2.str());
 }
+
+// The test builds a model with two while loops and only serializes one.
+// Loops compute the triangular numbers of different sizes.
+TEST_F(WhileTest, TestUpdateSubgraphIndices) {
+  const int kSeqNumber1 = 4;
+  const int kSeqNumber2 = 5;
+  const int kExpectedValue1 = 15;
+  const int kExpectedValue2 = 21;
+
+  interpreter_ = std::make_unique<Interpreter>();
+  AddSubgraphs(4);
+  builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), kSeqNumber1);
+  builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(2));
+  builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(3), kSeqNumber2);
+  builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(4));
+
+  // Build the primary subgraph.
+  // kInput1(0) --> +--------+ --> kUnused1(2)
+  //                | WHILE1 |
+  // kInput2(1) --> +--------+ --> kOutput1(4)
+
+  // kInput1(0) --> +--------+ --> kUnused2(3)
+  //                | WHILE2 |
+  // kInput2(1) --> +--------+ --> kOutput2(5)
+  Subgraph* primary_subgraph = &interpreter_->primary_subgraph();
+
+  const int kInput1 = 0;
+  const int kInput2 = 1;
+  const int kUnused1 = 2;
+  const int kUnused2 = 3;
+  const int kOutput1 = 4;
+  const int kOutput2 = 5;
+  const int kTensorCount = 6;
+
+  int first_new_tensor_index;
+  ASSERT_EQ(primary_subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(primary_subgraph->SetInputs({kInput1, kInput2}), kTfLiteOk);
+  ASSERT_EQ(primary_subgraph->SetOutputs({kOutput1, kOutput2}), kTfLiteOk);
+  for (int i = 0; i < kTensorCount; ++i) {
+    ASSERT_EQ(primary_subgraph->SetTensorParametersReadWrite(
+                  i, kTfLiteInt32, "", 0, nullptr, {}, false),
+              kTfLiteOk);
+  }
+
+  // Register and add while ops.
+  auto* while_reg = ops::builtin::Register_WHILE();
+  while_reg->builtin_code = kTfLiteBuiltinWhile;
+
+  TfLiteWhileParams* params1 =
+      reinterpret_cast<TfLiteWhileParams*>(malloc(sizeof(TfLiteWhileParams)));
+  params1->cond_subgraph_index = 1;
+  params1->body_subgraph_index = 2;
+
+  TfLiteWhileParams* params2 =
+      reinterpret_cast<TfLiteWhileParams*>(malloc(sizeof(TfLiteWhileParams)));
+  params2->cond_subgraph_index = 3;
+  params2->body_subgraph_index = 4;
+
+  int while1_index, while2_index;
+  primary_subgraph->AddNodeWithParameters({kInput1, kInput2},
+                                          {kUnused1, kOutput1}, {}, nullptr, 0,
+                                          params1, while_reg, &while1_index);
+  primary_subgraph->AddNodeWithParameters({kInput1, kInput2},
+                                          {kUnused2, kOutput2}, {}, nullptr, 0,
+                                          params2, while_reg, &while2_index);
+
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1});
+  interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1});
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {1});
+
+  // Use custom allocation for second input, to ensure things work well for
+  // non-traditional allocation types.
+  auto alloc =
+      NewCustomAlloc(interpreter_->tensor(interpreter_->inputs()[1])->bytes,
+                     kDefaultTensorAlignment);
+  auto* input_data = reinterpret_cast<int*>(alloc.data);
+  input_data[0] = 1;
+  interpreter_->SetCustomAllocationForTensor(interpreter_->inputs()[1], alloc);
+
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output1 = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output1, {1}, {kExpectedValue1});
+  TfLiteTensor* output2 = interpreter_->tensor(interpreter_->outputs()[1]);
+  CheckIntTensor(output2, {1}, {kExpectedValue2});
+
+  // Now serialize & deserialize model into a new Interpreter.
+  // Only serialize the second while op and related subgraphs.
+  ModelWriter writer({interpreter_->subgraph(0), interpreter_->subgraph(3),
+                      interpreter_->subgraph(4)});
+  writer.SetCustomInputOutput(/*subgraph_index=*/0, {kInput1, kInput2},
+                              {kOutput2}, {while2_index});
+  const std::string test_file = CreateFilePath("test_while.tflite");
+  writer.Write(test_file);
+  std::unique_ptr<FlatBufferModel> model =
+      FlatBufferModel::BuildFromFile(test_file.c_str());
+  tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates resolver;
+  InterpreterBuilder builder(*model, resolver);
+  std::unique_ptr<Interpreter> new_interpreter;
+  builder(&new_interpreter);
+
+  // Check deserialized model.
+  new_interpreter->ResizeInputTensor(new_interpreter->inputs()[0], {1});
+  new_interpreter->ResizeInputTensor(new_interpreter->inputs()[1], {1});
+  ASSERT_EQ(new_interpreter->AllocateTensors(), kTfLiteOk);
+  FillIntTensor(new_interpreter->tensor(new_interpreter->inputs()[0]), {1});
+  FillIntTensor(new_interpreter->tensor(new_interpreter->inputs()[1]), {1});
+  ASSERT_EQ(new_interpreter->Invoke(), kTfLiteOk);
+  ASSERT_EQ(new_interpreter->outputs().size(), 1);
+  TfLiteTensor* output = new_interpreter->tensor(new_interpreter->outputs()[0]);
+  CheckIntTensor(output, {1}, {kExpectedValue2});
+}
+
+}  // namespace tflite

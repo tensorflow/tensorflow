@@ -14,10 +14,6 @@
 # ==============================================================================
 
 """Utilities to run benchmarks."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 import numbers
 import os
@@ -26,14 +22,13 @@ import sys
 import time
 import types
 
-import six
+from absl import app
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.client import timeline
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
@@ -55,35 +50,8 @@ OVERRIDE_GLOBAL_THREADPOOL = "TF_OVERRIDE_GLOBAL_THREADPOOL"
 
 def _rename_function(f, arg_num, name):
   """Rename the given function's name appears in the stack trace."""
-  func_code = six.get_function_code(f)
-  if six.PY2:
-    new_code = types.CodeType(arg_num, func_code.co_nlocals,
-                              func_code.co_stacksize, func_code.co_flags,
-                              func_code.co_code, func_code.co_consts,
-                              func_code.co_names, func_code.co_varnames,
-                              func_code.co_filename, name,
-                              func_code.co_firstlineno, func_code.co_lnotab,
-                              func_code.co_freevars, func_code.co_cellvars)
-  else:
-    if sys.version_info > (3, 8, 0, "alpha", 3):
-      # Python3.8 / PEP570 added co_posonlyargcount argument to CodeType.
-      new_code = types.CodeType(arg_num, func_code.co_posonlyargcount,
-                                0, func_code.co_nlocals,
-                                func_code.co_stacksize, func_code.co_flags,
-                                func_code.co_code, func_code.co_consts,
-                                func_code.co_names, func_code.co_varnames,
-                                func_code.co_filename, name,
-                                func_code.co_firstlineno, func_code.co_lnotab,
-                                func_code.co_freevars, func_code.co_cellvars)
-    else:
-      new_code = types.CodeType(arg_num, 0, func_code.co_nlocals,
-                                func_code.co_stacksize, func_code.co_flags,
-                                func_code.co_code, func_code.co_consts,
-                                func_code.co_names, func_code.co_varnames,
-                                func_code.co_filename, name,
-                                func_code.co_firstlineno, func_code.co_lnotab,
-                                func_code.co_freevars, func_code.co_cellvars)
-
+  func_code = f.__code__
+  new_code = func_code.replace(co_argcount=arg_num, co_name=name)
   return types.FunctionType(new_code, f.__globals__, name, f.__defaults__,
                             f.__closure__)
 
@@ -229,10 +197,10 @@ class ParameterizedBenchmark(_BenchmarkRegistrar):
         # function name in the stack trace.
         attrs[benchmark_name] = _rename_function(benchmark, 1, benchmark_name)
 
-    return super(mcs, ParameterizedBenchmark).__new__(mcs, clsname, base, attrs)
+    return super().__new__(mcs, clsname, base, attrs)
 
 
-class Benchmark(six.with_metaclass(_BenchmarkRegistrar, object)):
+class Benchmark(metaclass=_BenchmarkRegistrar):
   """Abstract class that provides helper functions for running benchmarks.
 
   Any class subclassing this one is immediately registered in the global
@@ -324,7 +292,7 @@ class TensorFlowBenchmark(Benchmark):
     # Allow TensorFlow runtime to allocate a new threadpool with different
     # number of threads for each new benchmark.
     os.environ[OVERRIDE_GLOBAL_THREADPOOL] = "1"
-    super(TensorFlowBenchmark, self).__init__()
+    super().__init__()
 
   @classmethod
   def is_abstract(cls):
@@ -505,11 +473,14 @@ def benchmarks_main(true_main, argv=None):
   """
   if argv is None:
     argv = sys.argv
-  found_arg = [arg for arg in argv
-               if arg.startswith("--benchmarks=")
-               or arg.startswith("-benchmarks=")]
+  found_arg = [
+      arg
+      for arg in argv
+      if arg.startswith("--benchmark_filter=")
+      or arg.startswith("-benchmark_filter=")
+  ]
   if found_arg:
-    # Remove --benchmarks arg from sys.argv
+    # Remove --benchmark_filter arg from sys.argv
     argv.remove(found_arg[0])
 
     regex = found_arg[0].split("=")[1]

@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_MEAN_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_MEAN_H_
 
+#include <algorithm>
+
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -204,9 +206,9 @@ inline void Mean(const tflite::MeanParams& op_params,
   const int input_width = input_shape.Dims(2);
   const float num_elements_in_axis = input_width * input_height;
 
-  int32 bias =
-      output_zero_point -
-      static_cast<int32>(input_zero_point * input_scale / output_scale);
+  float temp = input_zero_point * input_scale / output_scale;
+  temp = temp > 0 ? temp + 0.5f : temp - 0.5f;
+  int32_t bias = output_zero_point - static_cast<int32_t>(temp);
   float real_scale = input_scale / (num_elements_in_axis * output_scale);
 
   int32 multiplier, shift;

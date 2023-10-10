@@ -57,14 +57,6 @@ message Variable {
   bool readonly = 5;
 }
 
-// Options used during the conversion and compilation process.
-message ConversionOptions {
-  // When true tf.fake_quant_* ops will be emitted as custom calls to a
-  // 'fake_quant_with_min_max_vars' function accepting the input, min, max,
-  // num_bits, and narrow_range values as runtime arguments.
-  bool custom_fake_quant_op_calls = 1;
-}
-
 // Config represents configuration information for tf2xla conversion.
 message Config {
   // Each feed is a positional input argument for the generated computation.
@@ -75,6 +67,4 @@ message Config {
   repeated Fetch fetch = 2;
   // Each variable is a named input and output of the generated computation.
   repeated Variable variable = 3;
-  // Optional conversion options.
-  ConversionOptions conversion_options = 4;
 }

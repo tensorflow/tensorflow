@@ -22,29 +22,30 @@ limitations under the License.
 
 #include "llvm/ADT/Bitfields.h"
 #include "llvm/ADT/DenseMap.h"
-#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
+#include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 
 namespace mlir {
 namespace kernel_gen {
 namespace transforms {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PROPAGATETFABIKNOWLEDGETOKERNELS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 struct PropagateTfAbiKnowledgeToKernelsPass
-    : public PropagateTfAbiKnowledgeToKernelsBase<
+    : public impl::PropagateTfAbiKnowledgeToKernelsBase<
           PropagateTfAbiKnowledgeToKernelsPass> {
-  void runOnFunction() override {
-    FuncOp function = getFunction();
+  void runOnOperation() override {
+    func::FuncOp function = getOperation();
     llvm::SmallVector<Value, 4> worklist;
     // We currently only handle entry functions and do not propagate across
     // functions.
@@ -81,8 +82,8 @@ struct PropagateTfAbiKnowledgeToKernelsPass
 
     // Now look at launches and make use of the knowledge we have.
     function.walk([&](gpu::LaunchFuncOp launch) {
-      auto module = launch.getParentOfType<ModuleOp>();
-      auto kernel = module.lookupSymbol<LLVM::LLVMFuncOp>(launch.kernel());
+      auto module = launch->getParentOfType<ModuleOp>();
+      auto kernel = module.lookupSymbol<LLVM::LLVMFuncOp>(launch.getKernel());
 
       if (!kernel || kernel.isExternal()) return;
 
@@ -90,10 +91,10 @@ struct PropagateTfAbiKnowledgeToKernelsPass
       // coincide with laucnh operands as memref parameters get expanded when
       // lowered to llvm.
       int kernel_p = 0;
-      OpBuilder b = OpBuilder::atBlockBegin(&kernel.body().front());
+      OpBuilder b = OpBuilder::atBlockBegin(&kernel.getBody().front());
       llvm::SmallDenseMap<int64_t, Value> constants;
       auto loc = kernel.getLoc();
-      for (auto operand : launch.operands()) {
+      for (auto operand : launch.getKernelOperands()) {
         auto memref = operand.getType().dyn_cast<MemRefType>();
         if (!memref) {
           // Scalar argument, advance kernel position by one.
@@ -141,7 +142,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
           // Add the no_alias attribute to the corresponding pointer.
           kernel.setArgAttr(kernel_p + 1,
                             LLVM::LLVMDialect::getNoAliasAttrName(),
-                            b.getBoolAttr(true));
+                            b.getUnitAttr());
         }
         // Advance base, aligned, offset, strides and sizes many arguments.
         kernel_p += memref.getRank() * 2 + 3;
@@ -154,7 +155,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
     while (!worklist.empty()) {
       Value candidate = worklist.pop_back_val();
       for (auto user : candidate.getUsers()) {
-        if (isa<MemRefCastOp, MemRefReshapeOp>(user)) {
+        if (isa<memref::CastOp, memref::ReshapeOp>(user)) {
           // Reshape and Cast propagate alignment, offset and innermost stride.
           // TODO(herhut): This should be a trait.
           Value result = user->getResult(0);
@@ -170,9 +171,9 @@ struct PropagateTfAbiKnowledgeToKernelsPass
           }
           worklist.push_back(result);
         }
-        if (auto cast = dyn_cast<MemRefReinterpretCastOp>(user)) {
+        if (auto cast = dyn_cast<memref::ReinterpretCastOp>(user)) {
           // Check that we have offset 0.
-          Value result = cast.result();
+          Value result = cast.getResult();
           if (!cast.isDynamicOffset(0) && cast.getStaticOffset(0) == 0) {
             offset_is_zero.insert(result);
           }
@@ -183,9 +184,9 @@ struct PropagateTfAbiKnowledgeToKernelsPass
           // TODO(herhut): Remove this once canonicalization handles this.
           if (cast.isDynamicStride(last_stride)) {
             auto dyn_stride = cast.getDynamicStride(last_stride)
-                                  .getDefiningOp<ConstantIndexOp>();
+                                  .getDefiningOp<arith::ConstantIndexOp>();
             if (dyn_stride) {
-              inner_stride_is_constant.insert({result, dyn_stride.getValue()});
+              inner_stride_is_constant.insert({result, dyn_stride.value()});
             }
           } else {
             inner_stride_is_constant.insert(
@@ -209,7 +210,8 @@ struct PropagateTfAbiKnowledgeToKernelsPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreatePropagateTfAbiKnowledgeToKernels() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreatePropagateTfAbiKnowledgeToKernels() {
   return std::make_unique<PropagateTfAbiKnowledgeToKernelsPass>();
 }
 

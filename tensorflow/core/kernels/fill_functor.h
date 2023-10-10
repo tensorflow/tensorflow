@@ -18,7 +18,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 
@@ -68,6 +68,24 @@ struct SetOneFunctor<Eigen::ThreadPoolDevice, T> {
 
 template <>
 struct SetOneFunctor<Eigen::ThreadPoolDevice, tstring> {
+  void operator()(const Eigen::ThreadPoolDevice& d,
+                  typename TTypes<tstring>::Flat out);
+};
+
+template <typename Device, typename T>
+struct SetNanFunctor {
+  void operator()(const Device& d, typename TTypes<T>::Flat out);
+};
+
+// Partial specialization of SetNanFunctor<Device=Eigen::ThreadPoolDevice, T>.
+template <typename T>
+struct SetNanFunctor<Eigen::ThreadPoolDevice, T> {
+  void operator()(const Eigen::ThreadPoolDevice& d,
+                  typename TTypes<T>::Flat out);
+};
+
+template <>
+struct SetNanFunctor<Eigen::ThreadPoolDevice, tstring> {
   void operator()(const Eigen::ThreadPoolDevice& d,
                   typename TTypes<tstring>::Flat out);
 };

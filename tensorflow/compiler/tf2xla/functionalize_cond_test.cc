@@ -52,14 +52,13 @@ class FunctionalizeCondTest : public ::testing::Test {
     return fc_->state_map_.CondStateToString(id);
   }
 
-  xla::StatusOr<StateMap::CondId> JoinCondStatesNonMerge(StateMap::CondId src,
-                                                         StateMap::CondId dst) {
+  StatusOr<StateMap::CondId> JoinCondStatesNonMerge(StateMap::CondId src,
+                                                    StateMap::CondId dst) {
     return fc_->JoinCondStatesNonMerge(src, dst);
   }
 
-  xla::StatusOr<StateMap::CondId> JoinCondStatesMerge(Node* n,
-                                                      StateMap::CondId src,
-                                                      StateMap::CondId dst) {
+  StatusOr<StateMap::CondId> JoinCondStatesMerge(Node* n, StateMap::CondId src,
+                                                 StateMap::CondId dst) {
     return fc_->JoinCondStatesMerge(n, src, dst);
   }
 
@@ -100,7 +99,7 @@ TEST_F(FunctionalizeCondTest, JoinCondStates) {
   // Merge between then and else branch.
   auto joined_or = JoinCondStatesMerge(m, then_branch, else_branch);
   TF_EXPECT_OK(joined_or.status());
-  StateMap::CondId joined = joined_or.ValueOrDie();
+  StateMap::CondId joined = joined_or.value();
 
   // Merge between then branch and both branch.
   auto t = JoinCondStatesNonMerge(then_branch, joined);

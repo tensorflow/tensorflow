@@ -1,7 +1,7 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - -strip-debug-info | flatbuffer_to_string - | FileCheck %s --check-prefix=STRIP
 
-func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
+func.func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
   attributes {tf.entry_function = {inputs = "input", outputs = "SameNameAsOutput"}} {
 ^bb0(%arg0: tensor<3x2xi32>):
 // CHECK: {
@@ -23,7 +23,8 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // STRIP-NEXT:       name: "input",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       }
+// CHECK-NEXT:       },
+// CHECK-NEXT:       has_rank: true
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 3, 2 ],
 // CHECK-NEXT:       type: INT32,
@@ -33,7 +34,8 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // STRIP-NEXT:       name: "0",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       }
+// CHECK-NEXT:       },
+// CHECK-NEXT:       has_rank: true
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 3, 2 ],
 // CHECK-NEXT:       type: INT32,
@@ -43,7 +45,8 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // STRIP-NEXT:       name: "1",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       }
+// CHECK-NEXT:       },
+// CHECK-NEXT:       has_rank: true
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ ],
 // CHECK-NEXT:       type: INT32,
@@ -53,7 +56,8 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // STRIP-NEXT:       name: "2",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       }
+// CHECK-NEXT:       },
+// CHECK-NEXT:       has_rank: true
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 3, 2 ],
 // CHECK-NEXT:       type: INT32,
@@ -63,7 +67,8 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // STRIP-NEXT:       name: "SameNameAsOutput",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       }
+// CHECK-NEXT:       },
+// CHECK-NEXT:       has_rank: true
 // CHECK-NEXT:     } ],
 // CHECK-NEXT:     inputs: [ 0 ],
 // CHECK-NEXT:     outputs: [ 4 ],
@@ -110,7 +115,7 @@ func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 
   %0 = "tfl.pseudo_const" () {value = dense<[[1, 2], [3, 4], [5, 6]]> : tensor<3x2xi32>} : () -> tensor<3x2xi32> loc("Const")
   %1 = "tfl.sub" (%arg0, %0) {fused_activation_function = "RELU6"} : (tensor<3x2xi32>, tensor<3x2xi32>) -> tensor<3x2xi32> loc("sub")
-  %2 = "std.constant" () {value = dense<10> : tensor<i32>} : () -> tensor<i32> loc("SameNameAsOutput")
+  %2 = "arith.constant" () {value = dense<10> : tensor<i32>} : () -> tensor<i32> loc("SameNameAsOutput")
   %3 = "tfl.add" (%2, %1) {fused_activation_function = "NONE"} : (tensor<i32>, tensor<3x2xi32>) -> tensor<3x2xi32> loc("add")
-  return %3 : tensor<3x2xi32>
+  func.return %3 : tensor<3x2xi32>
 }

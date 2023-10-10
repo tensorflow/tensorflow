@@ -17,8 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ESTIMATOR_H_
 
 #include <cmath>
+#include <limits>
+#include <string>
 #include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
@@ -29,8 +33,8 @@ class CostGraphDef;
 namespace grappler {
 struct GrapplerItem;
 
-constexpr int64 kMemoryUnknown = -1ll;
-constexpr int64 kZeroMemory = 0ll;
+constexpr uint64_t kMemoryUnknown = std::numeric_limits<uint64_t>::max();
+constexpr uint64_t kZeroMemory = 0ULL;
 
 struct DeviceInfo {
   // Billions of operations executed per second.
@@ -78,7 +82,8 @@ struct Costs {
 
   struct MilliSeconds : std::chrono::milliseconds {
     MilliSeconds() : std::chrono::milliseconds(0) {}
-    MilliSeconds(double d) : std::chrono::milliseconds(static_cast<int64>(d)) {}
+    MilliSeconds(double d)
+        : std::chrono::milliseconds(static_cast<int64_t>(d)) {}
     MilliSeconds(const std::chrono::milliseconds& d)
         : std::chrono::milliseconds(d) {}
     MilliSeconds& operator=(const std::chrono::milliseconds& d) {
@@ -88,7 +93,8 @@ struct Costs {
   };
   struct MicroSeconds : std::chrono::microseconds {
     MicroSeconds() : std::chrono::microseconds(0) {}
-    MicroSeconds(double d) : std::chrono::microseconds(static_cast<int64>(d)) {}
+    MicroSeconds(double d)
+        : std::chrono::microseconds(static_cast<int64_t>(d)) {}
     MicroSeconds(const std::chrono::microseconds& d)
         : std::chrono::microseconds(d) {}
     MicroSeconds& operator=(const std::chrono::microseconds& d) {
@@ -101,7 +107,7 @@ struct Costs {
   };
   struct NanoSeconds : std::chrono::nanoseconds {
     NanoSeconds() : std::chrono::nanoseconds(0) {}
-    NanoSeconds(double d) : std::chrono::nanoseconds(static_cast<int64>(d)) {}
+    NanoSeconds(double d) : std::chrono::nanoseconds(static_cast<int64_t>(d)) {}
     NanoSeconds(const std::chrono::nanoseconds& d)
         : std::chrono::nanoseconds(d) {}
     NanoSeconds& operator=(const std::chrono::nanoseconds& d) {
@@ -137,27 +143,36 @@ struct Costs {
   Duration intermediate_memory_read_time;   // Intermediate memory read cost.
   Duration intermediate_memory_write_time;  // Intermediate memory write cost.
 
+  // Network time (colelctived ops - all gather, all reduce, etc.)
+  Duration network_time;
+
   // This field can be a very pessimistic estimate of the main memory
   // requirements of a graph. For example, it might assume that all activations
   // are live for all of a graph's execution.
-  int64 max_memory;  // Maximum main memory requirement in bytes over all ops.
-  int64 persistent_memory;
-  int64 temporary_memory;
+  uint64_t max_memory;  // Max main memory requirement in bytes over all ops.
+  uint64_t persistent_memory;
+  uint64_t temporary_memory;
+
+  // Output memory usage per port.
+  absl::flat_hash_map<int32_t, int64_t> output_tensor_size_bytes;
+
+  // Track persistent versus temporary memory.
+  absl::flat_hash_set<int32_t> persistent_output_ports;
 
   // These fields are used for TPU-related estimations. They are per-op
   // maximums, so each op is evaluated independently, but we want the maximum of
   // the value over all ops.
-  int64 max_per_op_buffers;    // Sum of all buffers used by the ops.
-  int64 max_per_op_streaming;  // Ignore largest input buffer, assuming it
-                               // streams from main memory.
+  int64_t max_per_op_buffers;    // Sum of all buffers used by the ops.
+  int64_t max_per_op_streaming;  // Ignore largest input buffer, assuming it
+                                 // streams from main memory.
 
   // Number of ops included in this Costs in total.
   // Default initialized to be one.
-  int64 num_ops_total = 1;
+  int64_t num_ops_total = 1;
   // If the time estimation is inaccurate.
   bool inaccurate = false;
   // Number of ops that are estimated with unknown shapes.
-  int64 num_ops_with_unknown_shapes = 0;
+  int64_t num_ops_with_unknown_shapes = 0;
   // TODO(pcma): include a counter for total inaccurate ops and counters for
   // other reasons causing the inaccuracy
 
@@ -183,6 +198,7 @@ Costs::Costs() {
   compute_time = Duration::zero();
   memory_time = Duration::zero();
   intermediate_memory_time = Duration::zero();
+  network_time = Duration::zero();
   max_memory = kMemoryUnknown;
   persistent_memory = kMemoryUnknown;
   temporary_memory = kMemoryUnknown;
@@ -196,6 +212,7 @@ Costs Costs::ZeroCosts(bool inaccurate) {
   costs.compute_time = Duration::zero();
   costs.memory_time = Duration::zero();
   costs.intermediate_memory_time = Duration::zero();
+  costs.network_time = Duration::zero();
   costs.max_memory = kZeroMemory;
   costs.persistent_memory = kZeroMemory;
   costs.temporary_memory = kZeroMemory;

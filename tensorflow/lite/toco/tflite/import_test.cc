@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/tflite/import.h"
 
+#include <initializer_list>
+#include <string>
+
 #include "flatbuffers/flexbuffers.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -54,7 +57,7 @@ class ImportTest : public ::testing::Test {
         /*min=*/builder_.CreateVector<float>({0.1f}),
         /*max=*/builder_.CreateVector<float>({0.2f}),
         /*scale=*/builder_.CreateVector<float>({0.3f}),
-        /*zero_point=*/builder_.CreateVector<int64_t>({100ll}));
+        /*zero_point=*/builder_.CreateVector<int64_t>({100LL}));
     auto t1 =
         ::tflite::CreateTensor(builder_, builder_.CreateVector<int>({1, 2, 2}),
                                ::tflite::TensorType_FLOAT32, 1,

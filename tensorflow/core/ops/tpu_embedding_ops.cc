@@ -13,15 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <vector>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
-#include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
 #include "tensorflow/core/tpu/tpu_embedding_output_layout_utils.h"
 
 namespace tensorflow {
@@ -64,7 +63,7 @@ REGISTER_OP("RecvTPUEmbeddingActivations")
     .Attr("config: string")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
-      string config_string;
+      std::string config_string;
       TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
       tpu::TPUEmbeddingConfiguration config;
       if (!config.ParseFromString(config_string)) {
@@ -81,7 +80,7 @@ REGISTER_OP("RecvTPUEmbeddingActivations")
             c->MakeShapeFromShapeProto(output_shapes[i], &output_shape));
         c->set_output(i, output_shape);
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TPUEmbeddingActivations")
@@ -92,7 +91,7 @@ REGISTER_OP("TPUEmbeddingActivations")
     .Attr("lookup_id: int >= 0")
     .SetShapeFn([](shape_inference::InferenceContext *c) {
       c->set_output(0, c->input(1));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SendTPUEmbeddingGradients")
@@ -114,7 +113,7 @@ REGISTER_OP("SendTPUEmbeddingGradients")
             c->WithRank(learning_rates[i], 0, &learning_rates_shape));
       }
 
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("EnqueueTPUEmbeddingIntegerBatch")
@@ -148,7 +147,7 @@ REGISTER_OP("EnqueueTPUEmbeddingSparseBatch")
                                        n);
       }
 
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("EnqueueTPUEmbeddingSparseTensorBatch")
@@ -164,6 +163,7 @@ REGISTER_OP("EnqueueTPUEmbeddingSparseTensorBatch")
     .Attr("combiners: list(string) = []")
     .Attr("table_ids: list(int)")
     .Attr("max_sequence_lengths: list(int) = []")
+    .Attr("num_features: list(int) = []")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 
@@ -180,6 +180,52 @@ REGISTER_OP("EnqueueTPUEmbeddingRaggedTensorBatch")
     .Attr("combiners: list(string) = []")
     .Attr("table_ids: list(int)")
     .Attr("max_sequence_lengths: list(int) = []")
+    .Attr("num_features: list(int) = []")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("DynamicEnqueueTPUEmbeddingRaggedTensorBatch")
+    .Input("sample_splits: N * T1")
+    .Input("embedding_indices: N * T2")
+    .Input("aggregation_weights: N * T3")
+    .Input("mode_override: string")
+    .Input("device_ordinal: int32")
+    .Attr("T1: {int32,int64} = DT_INT32")
+    .Attr("T2: {int32,int64} = DT_INT32")
+    .Attr("T3: {float32,float64} = DT_FLOAT")
+    .Attr("N: int >= 1")
+    .Attr("combiners: list(string) = []")
+    .Attr("table_ids: list(int)")
+    .Attr("max_sequence_lengths: list(int) = []")
+    .Attr("num_features: list(int) = []")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("EnqueueTPUEmbeddingArbitraryTensorBatch")
+    .Input("sample_indices_or_row_splits: N * T1")
+    .Input("embedding_indices: N * T2")
+    .Input("aggregation_weights: N * T3")
+    .Input("mode_override: string")
+    .Attr("T1: {int32,int64} = DT_INT32")
+    .Attr("T2: {int32,int64} = DT_INT32")
+    .Attr("T3: {float32,float64} = DT_FLOAT")
+    .Attr("N: int >= 1")
+    .Attr("device_ordinal: int = -1")
+    .Attr("combiners: list(string) = []")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape);
+
+REGISTER_OP("DynamicEnqueueTPUEmbeddingArbitraryTensorBatch")
+    .Input("sample_indices_or_row_splits: N * T1")
+    .Input("embedding_indices: N * T2")
+    .Input("aggregation_weights: N * T3")
+    .Input("mode_override: string")
+    .Input("device_ordinal: int32")
+    .Attr("T1: {int32,int64} = DT_INT32")
+    .Attr("T2: {int32,int64} = DT_INT32")
+    .Attr("T3: {float32,float64} = DT_FLOAT")
+    .Attr("N: int >= 1")
+    .Attr("combiners: list(string) = []")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 

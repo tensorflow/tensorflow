@@ -50,10 +50,9 @@ In your `BUILD` file, add the `TensorFlowLite` dependency to your target:
 
 ```python
 objc_library(
-  deps = [
-      "//tensorflow/lite/objc:TensorFlowLite",
-  ],
-)
+    deps=[
+        "//tensorflow/lite/objc:TensorFlowLite",
+    ],)
 ```
 
 In your Objective-C files, import the umbrella header:
@@ -74,10 +73,10 @@ Build the `TensorFlowLite` Objective-C library target:
 bazel build tensorflow/lite/objc:TensorFlowLite
 ```
 
-Build the `Tests` target:
+Build the `tests` target:
 
 ```shell
-bazel test tensorflow/lite/objc:Tests
+bazel test tensorflow/lite/objc:tests
 ```
 
 #### Generate the Xcode project using Tulsi

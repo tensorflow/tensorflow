@@ -75,7 +75,7 @@ FunctionDef NonZero() {
 }
 
 FunctionDef IsZero() {
-  const Tensor kZero = test::AsScalar<int64>(0);
+  const Tensor kZero = test::AsScalar<int64_t>(0);
   return FDH::Define(
       // Name
       "IsZero",
@@ -93,17 +93,18 @@ FunctionDef IsZero() {
 }
 
 FunctionDef RandomUniform() {
-  const Tensor kZero = test::AsScalar<int64>(0);
+  const Tensor kZero = test::AsScalar<int64_t>(0);
 
   return FDH::Define(
       // Name
-      "RandomUniform",
+      "RandomUniformFn",
       // Args
       {"x: T"},
       // Return values
       {"random_uniform: int64"},
       // Attr def
       {"T:{float, double, int32, int64, string}"},
+      // NodeDef
       {{{"random_uniform/shape"},
         "Const",
         {},
@@ -112,13 +113,13 @@ FunctionDef RandomUniform() {
         "RandomUniform",
         {"random_uniform/shape"},
         {{"T", DT_INT32},
-         {"Tout", DT_FLOAT},
+         {"dtype", DT_FLOAT},
          {"seed", 87654321},
          {"seed2", 42}}}});
 }
 
 FunctionDef XTimesTwo() {
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   return FDH::Define(
       // Name
       "XTimesTwo",
@@ -137,8 +138,8 @@ FunctionDef XTimesTwo() {
 }
 
 FunctionDef TwoDeviceMult() {
-  const Tensor kTwo = test::AsScalar<int64>(2);
-  const Tensor kThree = test::AsScalar<int64>(3);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
+  const Tensor kThree = test::AsScalar<int64_t>(3);
   return FDH::Create(
       // Name
       "TwoDeviceMult",
@@ -277,7 +278,7 @@ FunctionDef XAddY() {
 }
 
 FunctionDef XTimesTwoInt32() {
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   return FDH::Define(
       // Name
       "XTimesTwoInt32",
@@ -310,6 +311,24 @@ FunctionDef XTimesFour() {
       {
           {{"x2"}, "XTimesTwo", {"x"}, {{"T", "$T"}}},
           {{"y"}, "XTimesTwo", {"x2:y:0"}, {{"T", "$T"}}},
+      },
+      {{"y", "y:y:0"}});
+}
+
+FunctionDef XTimesFourInt32() {
+  return FDH::Create(
+      // Name
+      "XTimesFourInt32",
+      // Args
+      {"x: int32"},
+      // Return values
+      {"y: int32"},
+      // Attr def
+      {},
+      // Nodes
+      {
+          {{"x2"}, "XTimesTwoInt32", {"x"}},
+          {{"y"}, "XTimesTwoInt32", {"x2:y:0"}},
       },
       {{"y", "y:y:0"}});
 }
@@ -433,6 +452,22 @@ FunctionDef ReadResourceVariable() {
       {{"y", "read:value:0"}});
 }
 
+FunctionDef ControlFlow() {
+  return FDH::Create(
+      // Name
+      "ControlFlow",
+      // Args
+      {"i: float"},
+      // Return values
+      {"o: float"},
+      // Attr def
+      {},
+      // Nodes
+      {{{"enter"}, "Enter", {"i"}, {{"T", DT_FLOAT}, {"frame_name", "while"}}}},
+      // Output mapping
+      {{"o", "enter:output"}});
+}
+
 FunctionDef InvalidControlFlow() {
   return FDH::Create(
       // Name
@@ -450,8 +485,8 @@ FunctionDef InvalidControlFlow() {
       {{"o", "add:z"}});
 }
 
-FunctionDef LessThanOrEqualToN(int64 N) {
-  const Tensor kN = test::AsScalar<int64>(N);
+FunctionDef LessThanOrEqualToN(int64_t N) {
+  const Tensor kN = test::AsScalar<int64_t>(N);
   return FDH::Define(
       // Name
       "LessThanOrEqualToN",
@@ -470,7 +505,7 @@ FunctionDef LessThanOrEqualToN(int64 N) {
 }
 
 FunctionDef XPlusOneXTimesY() {
-  const Tensor kOne = test::AsScalar<int64>(1);
+  const Tensor kOne = test::AsScalar<int64_t>(1);
   return FDH::Define(
       // Name
       "XPlusOneXTimesY",
@@ -487,8 +522,8 @@ FunctionDef XPlusOneXTimesY() {
        {{"t"}, "Mul", {"x", "y"}, {{"T", "$T"}}}});
 }
 
-FunctionDef XYXLessThanOrEqualToN(int64 N) {
-  const Tensor kN = test::AsScalar<int64>(N);
+FunctionDef XYXLessThanOrEqualToN(int64_t N) {
+  const Tensor kN = test::AsScalar<int64_t>(N);
   return FDH::Define(
       // Name
       "XYXLessThanOrEqualToN",

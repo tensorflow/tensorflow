@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for remote eager execution."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -26,7 +22,7 @@ from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -117,7 +113,7 @@ class RemoteExecutionTest(test.TestCase, parameterized.TestCase):
   def testDefunMatmul(self):
     """Basic remote eager execution with defun."""
 
-    mm_defun = function.defun(math_ops.matmul)
+    mm_defun = def_function.function(math_ops.matmul)
     with ops.device("job:%s/replica:0/task:1/device:CPU:0" % JOB_NAME):
       x1 = array_ops.ones([2, 2])
     with ops.device("job:%s/replica:0/task:2/device:CPU:0" % JOB_NAME):
@@ -231,21 +227,6 @@ class RemoteExecutionTest(test.TestCase, parameterized.TestCase):
     # `y` is placed on the local CPU as expected.
     self.assertEqual(y.device,
                      "/job:%s/replica:0/task:0/device:CPU:0" % JOB_NAME)
-
-
-class RemoteExecutionWithoutLazyRemoteInputsCopyTest(RemoteExecutionTest):
-
-  @classmethod
-  def setUpClass(cls):
-    super(RemoteExecutionWithoutLazyRemoteInputsCopyTest, cls).setUpClass()
-    context._reset_context()
-    context.context().lazy_remote_inputs_copy = False
-
-  @classmethod
-  def tearDownClass(cls):
-    super(RemoteExecutionWithoutLazyRemoteInputsCopyTest, cls).tearDownClass()
-    context._reset_context()
-    context.context().lazy_remote_inputs_copy = True
 
 
 if __name__ == "__main__":

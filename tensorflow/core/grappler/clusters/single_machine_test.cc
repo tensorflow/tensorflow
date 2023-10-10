@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/clusters/single_machine.h"
 
+#include <memory>
+
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -27,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
 
 namespace tensorflow {
@@ -49,8 +50,8 @@ class SingleMachineTest : public ::testing::Test {
 #ifdef THREAD_SANITIZER
     timeout_s *= 5;
 #endif
-    cluster_.reset(
-        new SingleMachine(timeout_s, 3 /* num_cpu_cores */, 0 /* num_gpus */));
+    cluster_ = std::make_unique<SingleMachine>(timeout_s, 3 /* num_cpu_cores */,
+                                               0 /* num_gpus */);
     TF_CHECK_OK(cluster_->EnablePeakMemoryStats());
     TF_CHECK_OK(cluster_->Provision());
   }
@@ -79,9 +80,10 @@ TEST_F(SingleMachineTest, CostModel) {
   TF_CHECK_OK(cluster_->Initialize(item));
 
   RunMetadata metadata;
-  const int64 start_micros = Env::Default()->NowMicros();
+  const int64_t start_micros = Env::Default()->NowMicros();
   TF_CHECK_OK(cluster_->Run(item.graph, item.feed, item.fetch, &metadata));
-  const int64 run_duration_micros = Env::Default()->NowMicros() - start_micros;
+  const int64_t run_duration_micros =
+      Env::Default()->NowMicros() - start_micros;
 
   // There should be at least 4 nodes corresponding to the 4 stages we created
   // in the fake input.
@@ -424,8 +426,8 @@ TEST_F(SingleMachineTest, PersistentMemory) {
   keys_node->set_name("table_keys");
   SetNodeAttr("dtype", key_dtype, keys_node);
   Tensor keys(key_dtype, TensorShape{2});
-  keys.vec<int64>()(0) = 123;
-  keys.vec<int64>()(1) = 321;
+  keys.vec<int64_t>()(0) = 123;
+  keys.vec<int64_t>()(1) = 321;
   SetNodeAttr("value", keys, keys_node);
 
   NodeDef* values_node = item.graph.add_node();
@@ -433,8 +435,8 @@ TEST_F(SingleMachineTest, PersistentMemory) {
   values_node->set_name("table_values");
   SetNodeAttr("dtype", data_dtype, values_node);
   Tensor values(data_dtype, TensorShape{2});
-  values.vec<int64>()(0) = 789;
-  values.vec<int64>()(1) = 987;
+  values.vec<int64_t>()(0) = 789;
+  values.vec<int64_t>()(1) = 987;
   SetNodeAttr("value", values, values_node);
 
   // InitializeTable node
@@ -454,7 +456,7 @@ TEST_F(SingleMachineTest, PersistentMemory) {
   query_node->set_name("query");
   SetNodeAttr("dtype", key_dtype, query_node);
   Tensor query(key_dtype, TensorShape({}));
-  query.flat<int64>()(0) = 0;
+  query.flat<int64_t>()(0) = 0;
   SetNodeAttr("value", query, query_node);
 
   // Default return value of hashtable lookup
@@ -463,7 +465,7 @@ TEST_F(SingleMachineTest, PersistentMemory) {
   default_value_node->set_name("default_table_value");
   SetNodeAttr("dtype", data_dtype, default_value_node);
   Tensor dflt(data_dtype, TensorShape({}));
-  dflt.flat<int64>()(0) = 456;
+  dflt.flat<int64_t>()(0) = 456;
   SetNodeAttr("value", dflt, default_value_node);
 
   // HashTable lookup node
@@ -494,7 +496,7 @@ TEST_F(SingleMachineTest, PersistentMemory) {
     } else if (node.name() == "initialize_table") {
       found_table_init = true;
       // Persistent memory should hold 2 keys and 2 values.
-      EXPECT_LE(4 * sizeof(int64), node.persistent_memory_size());
+      EXPECT_LE(4 * sizeof(int64_t), node.persistent_memory_size());
     }
   }
   EXPECT_TRUE(found_table_init);
@@ -629,7 +631,7 @@ TEST_F(SingleMachineTest, PeakMemoryStatsNotEnabled) {
   Status s = cluster.GetPeakMemoryUsage(&device_peak_memory);
   TF_CHECK_OK(cluster.Shutdown());
   ASSERT_FALSE(s.ok());
-  EXPECT_EQ(s.code(), errors::Code::INVALID_ARGUMENT);
+  EXPECT_TRUE(errors::IsInvalidArgument(s));
 }
 #endif
 

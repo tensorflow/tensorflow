@@ -12,35 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras initializers for TF 1.
-"""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Keras initializers for TF 1."""
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import init_ops
-from tensorflow.python.util.tf_export import keras_export
-
-keras_export(v1=['keras.initializers.Zeros', 'keras.initializers.zeros'])(
-    init_ops.Zeros)
-keras_export(v1=['keras.initializers.Ones', 'keras.initializers.ones'])(
-    init_ops.Ones)
-keras_export(v1=['keras.initializers.Constant', 'keras.initializers.constant'])(
-    init_ops.Constant)
-keras_export(v1=['keras.initializers.VarianceScaling'])(
-    init_ops.VarianceScaling)
-keras_export(v1=['keras.initializers.Orthogonal',
-                 'keras.initializers.orthogonal'])(init_ops.Orthogonal)
-keras_export(v1=['keras.initializers.Identity',
-                 'keras.initializers.identity'])(init_ops.Identity)
-keras_export(v1=['keras.initializers.glorot_uniform'])(init_ops.GlorotUniform)
-keras_export(v1=['keras.initializers.glorot_normal'])(init_ops.GlorotNormal)
 
 
-@keras_export(v1=['keras.initializers.RandomNormal',
-                  'keras.initializers.random_normal',
-                  'keras.initializers.normal'])
+_v1_zeros_initializer = init_ops.Zeros
+_v1_ones_initializer = init_ops.Ones
+_v1_constant_initializer = init_ops.Constant
+_v1_variance_scaling_initializer = init_ops.VarianceScaling
+_v1_orthogonal_initializer = init_ops.Orthogonal
+_v1_identity = init_ops.Identity
+_v1_glorot_uniform_initializer = init_ops.GlorotUniform
+_v1_glorot_normal_initializer = init_ops.GlorotNormal
+
+
 class RandomNormal(init_ops.RandomNormal):
 
   def __init__(self, mean=0.0, stddev=0.05, seed=None, dtype=dtypes.float32):
@@ -48,9 +35,6 @@ class RandomNormal(init_ops.RandomNormal):
         mean=mean, stddev=stddev, seed=seed, dtype=dtype)
 
 
-@keras_export(v1=['keras.initializers.RandomUniform',
-                  'keras.initializers.random_uniform',
-                  'keras.initializers.uniform'])
 class RandomUniform(init_ops.RandomUniform):
 
   def __init__(self, minval=-0.05, maxval=0.05, seed=None,
@@ -59,8 +43,6 @@ class RandomUniform(init_ops.RandomUniform):
         minval=minval, maxval=maxval, seed=seed, dtype=dtype)
 
 
-@keras_export(v1=['keras.initializers.TruncatedNormal',
-                  'keras.initializers.truncated_normal'])
 class TruncatedNormal(init_ops.TruncatedNormal):
 
   def __init__(self, mean=0.0, stddev=0.05, seed=None, dtype=dtypes.float32):
@@ -68,7 +50,6 @@ class TruncatedNormal(init_ops.TruncatedNormal):
         mean=mean, stddev=stddev, seed=seed, dtype=dtype)
 
 
-@keras_export(v1=['keras.initializers.lecun_normal'])
 class LecunNormal(init_ops.VarianceScaling):
 
   def __init__(self, seed=None):
@@ -79,7 +60,6 @@ class LecunNormal(init_ops.VarianceScaling):
     return {'seed': self.seed}
 
 
-@keras_export(v1=['keras.initializers.lecun_uniform'])
 class LecunUniform(init_ops.VarianceScaling):
 
   def __init__(self, seed=None):
@@ -90,7 +70,6 @@ class LecunUniform(init_ops.VarianceScaling):
     return {'seed': self.seed}
 
 
-@keras_export(v1=['keras.initializers.he_normal'])
 class HeNormal(init_ops.VarianceScaling):
 
   def __init__(self, seed=None):
@@ -101,7 +80,6 @@ class HeNormal(init_ops.VarianceScaling):
     return {'seed': self.seed}
 
 
-@keras_export(v1=['keras.initializers.he_uniform'])
 class HeUniform(init_ops.VarianceScaling):
 
   def __init__(self, seed=None):

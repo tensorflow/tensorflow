@@ -13,12 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -39,11 +36,26 @@ class LinearOperatorIdentityTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
+  def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
+
   @staticmethod
   def dtypes_to_test():
     # TODO(langmore) Test tf.float16 once tf.linalg.solve works in
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
+
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
+    ]
 
   def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
@@ -282,11 +294,26 @@ class LinearOperatorScaledIdentityTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
+  def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
+
   @staticmethod
   def dtypes_to_test():
     # TODO(langmore) Test tf.float16 once tf.linalg.solve works in
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
+
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
+    ]
 
   def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
@@ -466,6 +493,12 @@ class LinearOperatorScaledIdentityTest(
     self.assertTrue(operator.is_non_singular)
     self.assertTrue(operator.is_self_adjoint)  # Auto-set due to real multiplier
 
+  def test_identity_adjoint_type(self):
+    operator = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows=2, multiplier=1., is_non_singular=True)
+    self.assertIsInstance(
+        operator.adjoint(), linalg_lib.LinearOperatorScaledIdentity)
+
   def test_identity_matmul(self):
     operator1 = linalg_lib.LinearOperatorIdentity(num_rows=2)
     operator2 = linalg_lib.LinearOperatorScaledIdentity(
@@ -549,6 +582,14 @@ class LinearOperatorScaledIdentityTest(
     operator = linalg_lib.LinearOperatorScaledIdentity(
         num_rows=2, multiplier=multiplier)
     self.check_tape_safe(operator)
+
+  def test_convert_variables_to_tensors(self):
+    multiplier = variables_module.Variable(1.23)
+    operator = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows=2, multiplier=multiplier)
+    with self.cached_session() as sess:
+      sess.run([multiplier.initializer])
+      self.check_convert_variables_to_tensors(operator)
 
 
 if __name__ == "__main__":

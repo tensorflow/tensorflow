@@ -48,7 +48,7 @@ void PrintNodeInfo(const NodeDef* node) {
     if (shape_status.ok()) {
       shape_description = PartialTensorShape(shape_proto).DebugString();
     } else {
-      shape_description = shape_status.error_message();
+      shape_description = shape_status.message();
     }
   }
   DataType dtype = DT_INVALID;
@@ -77,7 +77,7 @@ void PrintBenchmarkUsage(const std::vector<const NodeDef*>& placeholders,
       dtype = node->attr().at("dtype").type();
     }
     input_layer_types.push_back(DataTypeString(dtype));
-    std::vector<int64> sizes;
+    std::vector<int64_t> sizes;
     PartialTensorShape shape;
     if (node->attr().count("shape")) {
       TensorShapeProto shape_proto = node->attr().at("shape").shape();
@@ -138,7 +138,7 @@ Status PrintStructure(const GraphDef& graph) {
     }
     std::cout << std::endl;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SummarizeGraph(const GraphDef& graph, const string& graph_path,
@@ -197,8 +197,8 @@ Status SummarizeGraph(const GraphDef& graph, const string& graph_path,
     std::cout << std::endl;
   }
 
-  int64 const_parameter_count = 0;
-  int64 variable_parameter_count = 0;
+  int64_t const_parameter_count = 0;
+  int64_t variable_parameter_count = 0;
   int control_edge_count = 0;
   std::map<string, int> device_counts;
   for (const NodeDef& node : graph.node()) {
@@ -284,7 +284,7 @@ Status SummarizeGraph(const GraphDef& graph, const string& graph_path,
     TF_RETURN_IF_ERROR(PrintStructure(graph));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 int ParseFlagsAndSummarizeGraph(int argc, char* argv[]) {
@@ -318,7 +318,7 @@ int ParseFlagsAndSummarizeGraph(int argc, char* argv[]) {
   Status load_status = LoadTextOrBinaryGraphFile(in_graph, &graph_def);
   if (!load_status.ok()) {
     LOG(ERROR) << "Loading graph '" << in_graph << "' failed with "
-               << load_status.error_message();
+               << load_status.message();
     LOG(ERROR) << usage;
     return -1;
   }
@@ -326,7 +326,7 @@ int ParseFlagsAndSummarizeGraph(int argc, char* argv[]) {
   Status summarize_result =
       SummarizeGraph(graph_def, in_graph, print_structure);
   if (!summarize_result.ok()) {
-    LOG(ERROR) << summarize_result.error_message() << "\n" << usage;
+    LOG(ERROR) << summarize_result.message() << "\n" << usage;
     return -1;
   }
 

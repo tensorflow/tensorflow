@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -77,7 +77,8 @@ void ConcatGPU(
     if (output->NumElements() < std::numeric_limits<int32>::max()) {
       ConcatGPUSlice<T, int32>(c->eigen_gpu_device(), inputs_flat, output_flat);
     } else {
-      ConcatGPUSlice<T, int64>(c->eigen_gpu_device(), inputs_flat, output_flat);
+      ConcatGPUSlice<T, int64_t>(c->eigen_gpu_device(), inputs_flat,
+                                 output_flat);
     }
   } else {
     // Switching indexing to int64 might cause performance issues.
@@ -86,7 +87,7 @@ void ConcatGPU(
     if (output->NumElements() < std::numeric_limits<int32>::max()) {
       ConcatGPUCall<T, int32>(c, inputs_flat, output_flat);
     } else {
-      ConcatGPUCall<T, int64>(c, inputs_flat, output_flat);
+      ConcatGPUCall<T, int64_t>(c, inputs_flat, output_flat);
     }
   }
 }
@@ -99,8 +100,9 @@ void ConcatGPU(
       Tensor* output, typename TTypes<T, 2>::Tensor* output_flat);
 
 TF_CALL_INTEGRAL_TYPES(REGISTER);  // int32 Needed for TensorLists.
-TF_CALL_bfloat16(REGISTER);
 TF_CALL_GPU_ALL_TYPES(REGISTER);
+TF_CALL_float8_e5m2(REGISTER);
+TF_CALL_float8_e4m3fn(REGISTER);
 
 #undef REGISTER
 

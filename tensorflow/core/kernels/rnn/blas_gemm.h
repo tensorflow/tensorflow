@@ -16,13 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_RNN_BLAS_GEMM_H_
 #define TENSORFLOW_CORE_KERNELS_RNN_BLAS_GEMM_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/eigen_activations.h"
 #include "tensorflow/core/platform/types.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#include "tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 namespace tensorflow {
@@ -57,9 +57,9 @@ struct TensorBlasGemm<Device, T, true /* USE_CUBLAS */> {
                       typename TTypes<T>::ConstMatrix b,
                       typename gemm_compute_type<T>::type beta,
                       typename TTypes<T>::Matrix c) {
-    int64 m = c.dimensions()[0];
-    int64 n = c.dimensions()[1];
-    int64 k = transa ? a.dimensions()[0] : a.dimensions()[1];
+    int64_t m = c.dimensions()[0];
+    int64_t n = c.dimensions()[1];
+    int64_t k = transa ? a.dimensions()[0] : a.dimensions()[1];
 
     TensorCuBlasGemm<T>()(ctx, transb, transa, n, m, k, alpha, b.data(),
                           transb ? k : n, a.data(), transa ? m : k, beta,

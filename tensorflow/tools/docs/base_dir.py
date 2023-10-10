@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,43 +13,88 @@
 # limitations under the License.
 # ==============================================================================
 """Opensource base_dir configuration for tensorflow doc-generator."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+import pathlib
 
-import distutils
-from os import path
-
-import keras_preprocessing
+import keras
+from packaging import version
 import tensorboard
 import tensorflow as tf
+from tensorflow_docs.api_generator import public_api
 import tensorflow_estimator
 
 
 def get_base_dirs_and_prefixes(code_url_prefix):
   """Returns the base_dirs and code_prefixes for OSS TensorFlow api gen."""
-  base_dir = path.dirname(tf.__file__)
+  base_dir = pathlib.Path(tf.__file__).parent
 
-  if distutils.version.LooseVersion(tf.__version__) >= "2.2":
+  if "dev" in tf.__version__:
+    keras_url_prefix = "https://github.com/keras-team/keras/tree/master/keras"
+  else:
+    keras_url_prefix = (
+        f"https://github.com/keras-team/keras/tree/v{keras.__version__}/keras"
+    )
+
+  if version.parse(tf.__version__) >= version.parse("2.13"):
+    # First match takes precedence.
+    # Objects are dropped if they have no match.
+    base_dirs = [
+        # The real keras source files are now in `site-packages/keras/src/...`
+        pathlib.Path(keras.__file__).parent / "src",
+        # The generated module files in tensorflow are in keras
+        # under `site-packages/keras/api/_v2/keras/...`.
+        pathlib.Path(tf.keras.__file__).parent,
+        # The generated api-module files are now in `site-packages/keras/...`
+        pathlib.Path(keras.__file__).parent,
+        pathlib.Path(tensorboard.__file__).parent,
+        pathlib.Path(tensorflow_estimator.__file__).parent,
+        # The tensorflow base dir goes last because `tf.keras``
+        base_dir,
+    ]
+
+    code_url_prefixes = (
+        keras_url_prefix,
+        # None -> don't link to the generated keras api-module files.
+        None,
+        None,
+        f"https://github.com/tensorflow/tensorboard/tree/{tensorboard.__version__}/tensorboard",
+        "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator",
+        code_url_prefix,
+    )
+  elif version.parse(tf.__version__) >= version.parse("2.9"):
     base_dirs = [
         base_dir,
-        path.dirname(keras_preprocessing.__file__),
-        path.dirname(tensorboard.__file__),
-        path.dirname(tensorflow_estimator.__file__),
+        pathlib.Path(keras.__file__).parent,
+        pathlib.Path(tensorboard.__file__).parent,
+        pathlib.Path(tensorflow_estimator.__file__).parent,
     ]
+    code_url_prefixes = (
+        code_url_prefix,
+        keras_url_prefix,
+        f"https://github.com/tensorflow/tensorboard/tree/{tensorboard.__version__}/tensorboard",
+        "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator",
+    )
   else:
-    base_dirs = [
-        path.normpath(path.join(base_dir, "../tensorflow_core")),
-        path.dirname(keras_preprocessing.__file__),
-        path.dirname(tensorboard.__file__),
-        path.dirname(tensorflow_estimator.__file__),
-    ]
-
-  code_url_prefixes = (
-      code_url_prefix,
-      "https://github.com/keras-team/keras-preprocessing/tree/master/keras_preprocessing",
-      "https://github.com/tensorflow/tensorboard/tree/master/tensorboard",
-      "https://github.com/tensorflow/estimator/tree/master/tensorflow_estimator",
-  )
+    raise ValueError("Unsupported: version < 2.9")
 
   return base_dirs, code_url_prefixes
+
+
+def explicit_filter_keep_keras(parent_path, parent, children):
+  """Like explicit_package_contents_filter, but keeps keras."""
+  new_children = public_api.explicit_package_contents_filter(
+      parent_path, parent, children)
+
+  if parent_path[-1] not in ["tf", "v1", "v2"]:
+    return new_children
+
+  had_keras = any(name == "keras" for name, child in children)
+  has_keras = any(name == "keras" for name, child in new_children)
+
+  if had_keras and not has_keras:
+    new_children.append(("keras", parent.keras))
+
+  return sorted(new_children, key=lambda x: x[0])
+
+
+def get_callbacks():
+  return [explicit_filter_keep_keras]

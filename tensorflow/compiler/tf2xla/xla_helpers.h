@@ -18,13 +18,20 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
+#include "xla/client/xla_builder.h"
+#include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/service/computation_placer.h"
+#include "xla/translate/mhlo_to_hlo/layout_util.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
+
+using XlaLayoutPreference = mlir::XlaLayoutPreference;
 
 // Helper methods for building XLA computations.
 class XlaHelpers {
@@ -41,7 +48,7 @@ class XlaHelpers {
   // element of data_type.
   // Note that unlike One and Zero, does not work on boolean types.
   static xla::XlaOp IntegerLiteral(xla::XlaBuilder* b, DataType data_type,
-                                   int64 value);
+                                   int64_t value);
 
   // Returns a handle representing the given value of a floating-point scalar
   // element of data_type.
@@ -51,7 +58,7 @@ class XlaHelpers {
   // Reshapes literal 'input' to have 'shape'. Both the original shape and
   // 'shape' must contain the same number of elements.
   static Status ReshapeLiteral(const xla::Literal& input,
-                               absl::Span<const int64> shape,
+                               absl::Span<const int64_t> shape,
                                xla::Literal* output);
 
   // Converts `indices` into a one-hot representation. `depth` is the size
@@ -59,10 +66,10 @@ class XlaHelpers {
   // axis. `indices_shape` is the shape of `indices`. `on_value` and
   // `off_value` represent the values to use for the on and off positions,
   // respectively.
-  static Status OneHot(xla::XlaBuilder* builder, int64 depth, int axis,
+  static Status OneHot(xla::XlaBuilder* builder, int64_t depth, int axis,
                        DataType index_type, const TensorShape& indices_shape,
-                       const xla::XlaOp& indices, const xla::XlaOp& on_value,
-                       const xla::XlaOp& off_value, xla::XlaOp* one_hot);
+                       xla::XlaOp indices, xla::XlaOp on_value,
+                       xla::XlaOp off_value, xla::XlaOp* one_hot);
 
   // Certain DataTypes should use increased precision DataTypes when performing
   // reductions.  This function remaps a given DataType to a higher precision
@@ -71,29 +78,16 @@ class XlaHelpers {
 
   // A helper for creating a ConvertElementType xla op given a DataType rather
   // than the xla::PrimitiveType.
-  static xla::XlaOp ConvertElementType(const xla::XlaOp& operand,
+  static xla::XlaOp ConvertElementType(xla::XlaOp operand,
                                        const DataType new_element_type);
 
-  typedef std::function<xla::StatusOr<xla::Shape>(const TensorShape&, DataType,
-                                                  bool)>
+  typedef std::function<StatusOr<xla::Shape>(const TensorShape&, DataType, bool,
+                                             XlaLayoutPreference)>
       ShapeRepresentationFn;
 };
 
 // Creates an identity shape representation function.
 XlaHelpers::ShapeRepresentationFn IdentityShapeRepresentationFn();
-
-// Rewrites the layout of xla_shape if there is tiled sharding.
-Status RewriteLayoutWithShardedShape(
-    const absl::optional<xla::HloSharding>& sharding, bool use_fast_memory,
-    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
-    xla::Shape* xla_shape);
-
-// Adds reshapes to fix the layout of an output, if a shape_representation_fn or
-// sharding is present.
-xla::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
-    xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
-    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
-    absl::optional<xla::OpSharding> sharding, bool fast_mem);
 
 struct XlaOutputDescription {
   // Type and shape of the output. The shape is the unflattened shape.
@@ -165,7 +159,43 @@ struct XlaCompilationResult {
 
   // The XLA computation built from the tensorflow subgraph.
   std::shared_ptr<xla::XlaComputation> computation;
+
+  // Meta-info about encountered collective ops.
+  struct CollectiveInfo {
+    int group_key;
+    int group_size;
+    int next_id;
+
+    template <typename H>
+    friend H AbslHashValue(H h, const CollectiveInfo& info) {
+      return H::combine(std::move(h), info.group_key, info.group_size,
+                        info.next_id);
+    }
+
+    friend bool operator==(const CollectiveInfo& lhs,
+                           const CollectiveInfo& rhs) {
+      return lhs.group_key == rhs.group_key &&
+             lhs.group_size == rhs.group_size && lhs.next_id == rhs.next_id;
+    }
+  };
+
+  // Information of the collectives encountered during the translation.
+  std::optional<CollectiveInfo> collective_info;
 };
+
+// Resolves the device assignment based on CollectiveInfo.
+// CollectiveInfo records collective ops in the cluster. Note that
+// this relies on a rendezvous and blocks until all replicas are there.
+//
+// Takes several extra configuration objects by reference since
+// xla::ExecutableRunOptions does not take ownership; these are configured and
+// bundled into `run_options` if applicable.
+Status ResolveDeviceAssignment(
+    OpKernelContext* ctx,
+    const XlaCompilationResult::CollectiveInfo& collective_info,
+    xla::ExecutableRunOptions& run_options,
+    xla::DeviceAssignment& device_assignment,
+    xla::gpu::GpuExecutableRunOptions& gpu_options);
 
 }  // end namespace tensorflow
 

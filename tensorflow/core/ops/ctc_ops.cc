@@ -59,7 +59,7 @@ REGISTER_OP("CTCLoss")
 
       c->set_output(0, c->Vector(batch_size));
       c->set_output(1, inputs);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CTCLossV2")
@@ -96,13 +96,14 @@ REGISTER_OP("CTCLossV2")
 
       c->set_output(0, c->Vector(batch_size));
       c->set_output(1, inputs);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CTCGreedyDecoder")
     .Input("inputs: T")
     .Input("sequence_length: int32")
     .Attr("merge_repeated: bool = false")
+    .Attr("blank_index: int = -1")
     .Output("decoded_indices: int64")
     .Output("decoded_values: int64")
     .Output("decoded_shape: int64")
@@ -125,7 +126,7 @@ REGISTER_OP("CTCGreedyDecoder")
       c->set_output(1, c->Vector(total_decoded_outputs));
       c->set_output(2, c->Vector(2));
       c->set_output(3, c->Matrix(batch_size, 1));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CTCBeamSearchDecoder")
@@ -151,7 +152,7 @@ REGISTER_OP("CTCBeamSearchDecoder")
       TF_RETURN_IF_ERROR(
           c->Merge(c->Dim(inputs, 1), c->Dim(sequence_length, 0), &batch_size));
 
-      int32 top_paths;
+      int32_t top_paths;
       TF_RETURN_IF_ERROR(c->GetAttr("top_paths", &top_paths));
 
       // Outputs.
@@ -167,7 +168,7 @@ REGISTER_OP("CTCBeamSearchDecoder")
         c->set_output(out_idx++, shape_v);
       }
       c->set_output(out_idx++, c->Matrix(batch_size, top_paths));
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

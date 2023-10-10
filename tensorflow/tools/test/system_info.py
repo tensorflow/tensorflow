@@ -14,11 +14,7 @@
 # ==============================================================================
 """Library for getting system information during TensorFlow tests."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from tensorflow.python.platform import app
+from absl import app
 from tensorflow.tools.test import system_info_lib
 
 
@@ -28,4 +24,4 @@ def main(unused_args):
 
 
 if __name__ == "__main__":
-  app.run()
+  app.run()  # pylint: disable=no-value-for-parameter

@@ -1,7 +1,0 @@
-path: "tensorflow.keras.datasets.cifar100"
-tf_module {
-  member_method {
-    name: "load_data"
-    argspec: "args=[\'label_mode\'], varargs=None, keywords=None, defaults=[\'fine\'], "
-  }
-}

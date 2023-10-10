@@ -14,14 +14,15 @@
 # =============================================================================
 """Provides a proper python API for the symbols exported through swig."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+import threading
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python import _pywrap_tf_optimizer as tf_opt
+from tensorflow.python.grappler import _pywrap_tf_optimizer as tf_opt
 from tensorflow.python.grappler import cluster as gcluster
+
+_OPTIMIZE_GRAPH_CLUSTER_LOCK = threading.Lock()
+is_oss = True  # Updated by copybara.
 
 
 def OptimizeGraph(config_proto,
@@ -48,12 +49,43 @@ def OptimizeGraph(config_proto,
         process that might not know some of the recently added attributes.
   """
   if not isinstance(config_proto, config_pb2.ConfigProto):
-    raise TypeError('Expected config_proto to be a ConfigProto, saw type %s' %
-                    type(config_proto))
-  if cluster is None:
-    cluster = gcluster.Cluster()
-  out_graph = tf_opt.TF_OptimizeGraph(cluster.tf_cluster,
-                                      config_proto.SerializeToString(),
-                                      metagraph.SerializeToString(), verbose,
-                                      graph_id, strip_default_attributes)
-  return graph_pb2.GraphDef().FromString(out_graph)
+    raise TypeError('Argument `config_proto` should be a tf.ConfigProto, '
+                    f'received type: {type(config_proto).__name__}')
+  if is_oss:
+    optimize_method = tf_opt.TF_OptimizeGraphSerialized
+    metagraph = metagraph.SerializeToString()
+  else:
+    optimize_method = tf_opt.TF_OptimizeGraph
+
+  if cluster is not None:
+    out_graph = optimize_method(
+        cluster.tf_cluster,
+        config_proto.SerializeToString(),
+        metagraph,
+        verbose,
+        graph_id,
+        strip_default_attributes,
+    )
+  else:
+    # Currently Grappler assumes no more than 1 sessions alive globally.
+    # See comments on SingleMachine::Provision(), hence we use the following
+    # lock to prevent concurrent access to the following code.
+    with _OPTIMIZE_GRAPH_CLUSTER_LOCK:
+      cluster = gcluster.Cluster()
+      try:
+        out_graph = optimize_method(
+            cluster.tf_cluster,
+            config_proto.SerializeToString(),
+            metagraph,
+            verbose,
+            graph_id,
+            strip_default_attributes,
+        )
+      finally:
+        # Force the cleanup instead of waiting on python GC to cleanup the
+        # temporary cluster we've created. Otherwise subsequent calls might
+        # not have a clean slate because GC may not have run yet.
+        cluster.Shutdown()
+  if is_oss:
+    out_graph = graph_pb2.GraphDef.FromString(out_graph)
+  return out_graph

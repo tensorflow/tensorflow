@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 
+#include <cstdint>
 #include <limits>
+#include <optional>
+#include <string>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
@@ -26,33 +30,35 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
-#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tsl/platform/ml_dtypes.h"
 
 namespace tensorflow {
 
 using llvm::ArrayRef;
 using llvm::SmallVector;
 using mlir::Builder;
-using mlir::DenseFPElementsAttr;
-using mlir::DenseIntElementsAttr;
 using mlir::DenseStringElementsAttr;
 using mlir::ElementsAttr;
-using mlir::OpaqueElementsAttr;
 using mlir::RankedTensorType;
 using mlir::ShapedType;
 using mlir::Type;
@@ -83,25 +89,15 @@ template <typename T>
 StatusOr<ElementsAttr> ConvertFlatTensor(const Tensor& input_tensor,
                                          ShapedType type) {
   auto arr = input_tensor.flat<T>();
-  return mlir::DenseElementsAttr::get(
-      type, llvm::makeArrayRef(arr.data(), arr.size()));
+  return ElementsAttr(mlir::DenseElementsAttr::get(
+      type, llvm::ArrayRef(arr.data(), arr.size())));
 }
 
-ElementsAttr ConvertBf16Tensor(const Tensor& input_tensor,
-                               RankedTensorType type) {
-  auto buffer = llvm::makeArrayRef(static_cast<char*>(input_tensor.data()),
-                                   input_tensor.TotalBytes());
-  return mlir::DenseElementsAttr::getFromRawBuffer(
-      type, buffer,
-      /*isSplatBuffer=*/type.getNumElements() == 1);
-}
-
-ElementsAttr ConvertHalfTensor(const Tensor& tensor, RankedTensorType type) {
-  auto buffer = llvm::makeArrayRef(static_cast<char*>(tensor.data()),
-                                   tensor.TotalBytes());
-  return mlir::DenseElementsAttr::getFromRawBuffer(
-      type, buffer,
-      /*isSplatBuffer=*/type.getNumElements() == 1);
+ElementsAttr ConvertTensorOfCustomFloatType(const Tensor& tensor,
+                                            RankedTensorType type) {
+  auto buffer =
+      llvm::ArrayRef(static_cast<char*>(tensor.data()), tensor.TotalBytes());
+  return mlir::DenseElementsAttr::getFromRawBuffer(type, buffer);
 }
 
 StatusOr<ElementsAttr> ConvertStringTensor(const Tensor& input_tensor,
@@ -115,7 +111,7 @@ StatusOr<ElementsAttr> ConvertStringTensor(const Tensor& input_tensor,
     string_refs.push_back({val.data(), val.size()});
   }
 
-  return DenseStringElementsAttr::get(type, string_refs);
+  return ElementsAttr(DenseStringElementsAttr::get(type, string_refs));
 }
 
 StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
@@ -132,7 +128,7 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
   case DTYPE:                      \
     return ConvertFlatTensor<CTYPE>(input_tensor, type);
 
-  // TODO(fengliuai): customize the conversions for quantized and string types.
+  // TODO(fengliuai): customize the conversions for quantized types.
   switch (input_dtype) {
     CONVERT_FLAT(DT_BOOL, bool)
     CONVERT_FLAT(DT_FLOAT, float)
@@ -140,7 +136,7 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     CONVERT_FLAT(DT_INT8, int8)
     CONVERT_FLAT(DT_INT16, int16)
     CONVERT_FLAT(DT_INT32, int32)
-    CONVERT_FLAT(DT_INT64, int64)
+    CONVERT_FLAT(DT_INT64, int64_t)
     CONVERT_FLAT(DT_UINT8, uint8)
     CONVERT_FLAT(DT_UINT16, uint16)
     CONVERT_FLAT(DT_UINT32, uint32)
@@ -148,28 +144,89 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     CONVERT_FLAT(DT_COMPLEX64, std::complex<float>)
     CONVERT_FLAT(DT_COMPLEX128, std::complex<double>)
 
-    // BFLOAT16 is a special case that it needs to be cast to double type to
-    // match its storage type.
     case DT_BFLOAT16:
-      return ConvertBf16Tensor(input_tensor, type);
     case DT_HALF:
-      return ConvertHalfTensor(input_tensor, type);
-
+    case DT_FLOAT8_E5M2:
+    case DT_FLOAT8_E4M3FN:
+      return ConvertTensorOfCustomFloatType(input_tensor, type);
     case DT_STRING:
       return ConvertStringTensor(input_tensor, type);
-
     default:
-      // TODO(shpeisman): restructure code to reuse dialect pointer across
-      // calls.
-      auto* dialect = builder->getContext()->getLoadedDialect("tf");
-      return OpaqueElementsAttr::get(dialect, type, MangleTensor(input_tensor));
+      // TODO(hinsu): Remove mangling now that there is a special attribute.
+      return ElementsAttr(
+          mlir::TF::TensorProtoAttr::get(type, MangleTensor(input_tensor)));
   }
 
 #undef CONVERT_FLAT
 }
 
+// Returns the number of elements present in this TensorProto, or -1 if that
+// could not be determined. This might be less than the shape of the proto might
+// indicate, if we're storing a splat tensor.
+int NumberOfMaterializedElements(const TensorProto& tensor) {
+  if (!tensor.tensor_content().empty()) return -1;
+    // We don't know which element type this protocol buffer is storing, and the
+    // metaprogramming facilities for TensorProto are too limited to check their
+    // number without knowing this, so we need to manually dispatch to each
+    // possible member of TensorProto, depening on its dtype.
+#define MATCH(DTYPE, FIELD) \
+  case DTYPE:               \
+    return tensor.FIELD##_val().size()
+
+  switch (tensor.dtype()) {
+    MATCH(DT_FLOAT, float);
+    MATCH(DT_DOUBLE, double);
+    MATCH(DT_INT8, int);
+    MATCH(DT_UINT8, int);
+    MATCH(DT_INT16, int);
+    MATCH(DT_UINT16, int);
+    MATCH(DT_INT32, int);
+    MATCH(DT_UINT32, uint32);
+    MATCH(DT_INT64, int64);
+    MATCH(DT_UINT64, uint64);
+    MATCH(DT_BOOL, bool);
+    MATCH(DT_HALF, half);
+    MATCH(DT_BFLOAT16, half);
+    MATCH(DT_STRING, string);
+
+    // TODO(b/188995810): DenseElementsAttr::get doesn't support complex
+    // Attributes being passed, so we bail out for now. This should just be
+    //   MATCH(DT_COMPLEX64, scomplex) / 2;
+    //   MATCH(DT_COMPLEX128, dcomplex) / 2;
+    // when DenseElementsAttr is updated.
+    case DT_COMPLEX64:
+    case DT_COMPLEX128:
+    default:
+      return -1;
+  }
+}
+
 StatusOr<ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
                                           Builder* builder) {
+  // If there is only one actual element in the proto, but its shape would
+  // indicate there are more values, then this is representing a splat tensor.
+  // We can create an MLIR Attribute more efficiently in this case.
+  TensorShape input_tensor_shape(input_tensor.tensor_shape());
+  if (NumberOfMaterializedElements(input_tensor) == 1 &&
+      input_tensor_shape.num_elements() > 1) {
+    // We first convert this TensorProto to one of shape [1]. We then create an
+    // Attribute for that proto, and finally splat the Attribute.
+
+    TensorProto tensor_copy = input_tensor;
+    auto* shape = tensor_copy.mutable_tensor_shape();
+    shape->clear_dim();
+    shape->add_dim()->set_size(1);
+
+    TF_ASSIGN_OR_RETURN(ElementsAttr single_attr,
+                        ConvertTensorProto(tensor_copy, builder));
+
+    llvm::SmallVector<int64_t> original_dimensions;
+    for (auto dim : input_tensor_shape) original_dimensions.push_back(dim.size);
+    return ElementsAttr(mlir::SplatElementsAttr::get(
+        single_attr.getShapedType().clone(original_dimensions),
+        single_attr.getValues<mlir::Attribute>()[0]));
+  }
+
   Tensor t;
   if (!t.FromProto(input_tensor))
     return InvalidArgument("Failed to parse input_tensor.");
@@ -179,7 +236,8 @@ StatusOr<ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
 void ConvertToTensorShapeProto(ArrayRef<int64_t> shape,
                                TensorShapeProto* output_shape) {
   for (auto d : shape) {
-    output_shape->add_dim()->set_size(d);
+    output_shape->add_dim()->set_size(ShapedType::isDynamic(d) ? kTFDynamicSize
+                                                               : d);
   }
 }
 
@@ -202,7 +260,7 @@ PartialTensorShape ConvertTypeToTensorShape(const mlir::Type& type) {
 
 mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type) {
   if (type.isa<mlir::UnrankedTensorType>()) {
-    return mlir::TF::ShapeAttr::get(type.getContext(), llvm::None);
+    return mlir::TF::ShapeAttr::get(type.getContext(), std::nullopt);
   }
 
   if (auto tensor_type = type.dyn_cast<mlir::RankedTensorType>()) {
@@ -214,18 +272,28 @@ mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type) {
   return mlir::TF::ShapeAttr::get(type.getContext(), ArrayRef<int64_t>());
 }
 
+StatusOr<TensorSpecProto> ConvertTypeToTensorSpecProto(const mlir::Type& type) {
+  DataType dtype;
+  TF_RETURN_IF_ERROR(ConvertToDataType(type, &dtype));
+  TensorSpecProto tensor_spec;
+  tensor_spec.set_dtype(dtype);
+  *tensor_spec.mutable_shape() = ConvertTypeToTensorShape(type).AsProto();
+  return tensor_spec;
+}
+
 // Converts the tensor shape proto into an MLIR shape attribute.
 StatusOr<mlir::Attribute> ConvertTensorShapeProto(const TensorShapeProto& shape,
                                                   mlir::MLIRContext* context) {
   if (shape.unknown_rank())
-    return mlir::TF::ShapeAttr::get(context, llvm::None);
+    return mlir::TF::ShapeAttr::get(context, std::nullopt);
 
   llvm::SmallVector<int64_t, 4> dims;
   dims.reserve(shape.dim().size());
   for (const auto& dim : shape.dim()) {
-    dims.push_back(dim.size());
+    dims.push_back(dim.size() == kTFDynamicSize ? ShapedType::kDynamic
+                                                : dim.size());
   }
-  return mlir::TF::ShapeAttr::get(context, llvm::makeArrayRef(dims));
+  return mlir::TF::ShapeAttr::get(context, llvm::ArrayRef(dims));
 }
 
 // Converts an MLIR dense string elements attribute to a TensorFlow tensor
@@ -246,26 +314,35 @@ void ConvertComplexElementsAttr(const mlir::DenseElementsAttr attr,
   }
 }
 
-// Converts an MLIR opaque elements attribute to a TensorFlow tensor proto.
-Status ConvertOpaqueElementsAttr(const ElementsAttr attr,
-                                 TensorProto* output_tensor) {
-  if (attr.isa<OpaqueElementsAttr>()) {
-    auto mangled_tensor = attr.cast<OpaqueElementsAttr>().getValue();
-    absl::string_view tensor_view(mangled_tensor.data(), mangled_tensor.size());
-    return mangling_util::DemangleTensor(tensor_view, output_tensor);
-  }
-  return InvalidArgument("Unexpected elements attribute type from MLIR.");
+// Converts an Tensor proto attribute to a TensorFlow tensor proto.
+Status ConvertTensorProtoAttr(const mlir::TF::TensorProtoAttr attr,
+                              TensorProto* output_tensor) {
+  auto mangled_tensor = attr.getValue();
+  absl::string_view tensor_view(mangled_tensor.data(), mangled_tensor.size());
+  return mangling_util::DemangleTensor(tensor_view, output_tensor);
 }
 
-// Converts an MLIR elements attribute and adds it to specified repeated field.
 template <typename T>
 void ConvertElementsAttr(const mlir::DenseElementsAttr attr,
                          protobuf::RepeatedField<T>* output) {
   if (attr.isSplat()) {
-    output->Add(attr.getSplatValue<T>());
+    if (attr.getSplatValue<T>() != T(0)) output->Add(attr.getSplatValue<T>());
   } else {
     output->Reserve(attr.getNumElements());
     for (auto value : attr.getValues<T>()) output->AddAlreadyReserved(value);
+  }
+}
+
+// Converts an MLIR elements attribute and adds it to specified repeated field.
+template <typename T, typename Cord>
+void ConvertFloatElementsAttr(const mlir::DenseElementsAttr attr,
+                              protobuf::RepeatedField<T>* output,
+                              Cord* tensor_content) {
+  if (attr.isSplat()) {
+    if (attr.getSplatValue<T>() != T(0)) output->Add(attr.getSplatValue<T>());
+  } else {
+    port::CopyFromArray(tensor_content, attr.getRawData().data(),
+                        attr.getRawData().size());
   }
 }
 
@@ -274,90 +351,93 @@ void ConvertElementsAttr(const mlir::DenseElementsAttr attr,
 void ConvertHalfElementsAttr(const mlir::DenseElementsAttr attr,
                              protobuf::RepeatedField<int>* output) {
   if (attr.isSplat()) {
-    output->Add(attr.getSplatValue<Eigen::half>().x);
+    if (attr.getSplatValue<Eigen::half>() != Eigen::half(0))
+      output->Add(
+          Eigen::numext::bit_cast<uint16_t>(attr.getSplatValue<Eigen::half>()));
   } else {
     output->Reserve(attr.getNumElements());
     for (const Eigen::half value : attr.getValues<Eigen::half>())
-      output->AddAlreadyReserved(value.x);
+      output->AddAlreadyReserved(Eigen::numext::bit_cast<uint16_t>(value));
   }
 }
 
-// Converts an MLIR elements attribute containing int values and adds it to
-// specified repeated field.
-void ConvertIntElementsAttr(const mlir::DenseIntElementsAttr attr,
-                            protobuf::RepeatedField<int>* output) {
+// Converts an MLIR elements attribute containing signed int values and adds it
+// to specified repeated field.
+template <typename T, typename U = T, typename Cord>
+void ConvertIntElementsAttr(const mlir::DenseElementsAttr attr,
+                            protobuf::RepeatedField<T>* output,
+                            Cord* tensor_content) {
   if (attr.isSplat()) {
-    output->Add((*attr.begin()).getSExtValue());
+    if (attr.getSplatValue<U>() != U(0))
+      output->Add(static_cast<T>(attr.getSplatValue<U>()));
   } else {
-    output->Reserve(attr.getNumElements());
-    for (const llvm::APInt val : attr)
-      output->AddAlreadyReserved(val.getSExtValue());
+    port::CopyFromArray(tensor_content, attr.getRawData().data(),
+                        attr.getRawData().size());
+  }
+}
+
+// Converts an MLIR elements attribute containing unsigned int values and adds
+// it to specified repeated field.
+template <typename T, typename U = T, typename Cord>
+void ConvertUIntElementsAttr(const mlir::DenseElementsAttr attr,
+                             protobuf::RepeatedField<T>* output,
+                             Cord* tensor_content) {
+  if (attr.isSplat()) {
+    if (attr.getSplatValue<U>() != U(0))
+      output->Add(static_cast<T>(attr.getSplatValue<U>()));
+  } else {
+    port::CopyFromArray(tensor_content, attr.getRawData().data(),
+                        attr.getRawData().size());
   }
 }
 
 void ConvertBfloat16ElementsAttr(const mlir::DenseElementsAttr attr,
                                  protobuf::RepeatedField<int>* output) {
   if (attr.isSplat()) {
-    output->Add(attr.getSplatValue<bfloat16>().value);
+    if (attr.getSplatValue<bfloat16>() != bfloat16(0))
+      output->Add(
+          Eigen::numext::bit_cast<uint16_t>(attr.getSplatValue<bfloat16>()));
   } else {
     output->Reserve(attr.getNumElements());
     for (const bfloat16 value : attr.getValues<bfloat16>())
-      output->AddAlreadyReserved(value.value);
+      output->AddAlreadyReserved(Eigen::numext::bit_cast<uint16_t>(value));
+  }
+}
+
+template <typename T>
+void ConvertFloat8ElementsAttr(const mlir::DenseElementsAttr attr,
+                               std::string* output) {
+  if (attr.isSplat()) {
+    if (attr.getSplatValue<T>() != T(0))
+      output->push_back(
+          Eigen::numext::bit_cast<uint8_t>(attr.getSplatValue<T>()));
+  } else {
+    output->reserve(attr.getNumElements());
+    for (const T value : attr.getValues<T>())
+      output->push_back(Eigen::numext::bit_cast<uint8_t>(value));
   }
 }
 
 Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
-  auto type = attr.getType();
+  auto type = attr.getShapedType();
   auto shape = type.getShape();
   DataType output_dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(type, &output_dtype));
   output->set_dtype(output_dtype);
   ConvertToTensorShapeProto(shape, output->mutable_tensor_shape());
 
-  if (attr.isa<OpaqueElementsAttr>())
-    return ConvertOpaqueElementsAttr(attr.cast<OpaqueElementsAttr>(), output);
+  if (auto tensor_attr = attr.dyn_cast<mlir::TF::TensorProtoAttr>())
+    return ConvertTensorProtoAttr(tensor_attr, output);
 
   auto dense_attr = attr.dyn_cast<mlir::DenseElementsAttr>();
   if (!dense_attr) return errors::InvalidArgument("Unsupported elements attr");
 
   switch (output_dtype) {
-    case DT_FLOAT:
-      ConvertElementsAttr<float>(dense_attr, output->mutable_float_val());
-      break;
-    case DT_HALF:
-      ConvertHalfElementsAttr(dense_attr, output->mutable_half_val());
-      break;
-    case DT_DOUBLE:
-      ConvertElementsAttr(dense_attr, output->mutable_double_val());
-      break;
-    case DT_QUINT8:
-    case DT_UINT8:
-    case DT_INT8:
-    case DT_QUINT16:
-    case DT_UINT16:
-    case DT_INT16:
-    case DT_INT32:
-      ConvertIntElementsAttr(dense_attr.cast<DenseIntElementsAttr>(),
-                             output->mutable_int_val());
-      break;
-    case DT_UINT32:
-      ConvertElementsAttr(dense_attr, output->mutable_uint32_val());
-      break;
-    case DT_UINT64:
-      ConvertElementsAttr(dense_attr, output->mutable_uint64_val());
-      break;
-    case DT_INT64:
-      ConvertElementsAttr(dense_attr, output->mutable_int64_val());
-      break;
     case DT_BOOL:
       ConvertElementsAttr(dense_attr, output->mutable_bool_val());
       break;
     case DT_BFLOAT16:
       ConvertBfloat16ElementsAttr(dense_attr, output->mutable_half_val());
-      break;
-    case DT_STRING:
-      ConvertStringElementsAttr(dense_attr.cast<DenseStringElementsAttr>(),
-                                output->mutable_string_val());
       break;
     case DT_COMPLEX64:
       ConvertComplexElementsAttr(dense_attr, output->mutable_scomplex_val());
@@ -365,11 +445,82 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
     case DT_COMPLEX128:
       ConvertComplexElementsAttr(dense_attr, output->mutable_dcomplex_val());
       break;
+    case DT_DOUBLE:
+      ConvertFloatElementsAttr(dense_attr, output->mutable_double_val(),
+                               output->mutable_tensor_content());
+      break;
+    case DT_HALF:
+      ConvertHalfElementsAttr(dense_attr, output->mutable_half_val());
+      break;
+    case DT_FLOAT:
+      ConvertFloatElementsAttr(dense_attr, output->mutable_float_val(),
+                               output->mutable_tensor_content());
+      break;
+    case DT_FLOAT8_E5M2:
+      ConvertFloat8ElementsAttr<tsl::float8_e5m2>(dense_attr,
+                                                  output->mutable_float8_val());
+      break;
+    case DT_FLOAT8_E4M3FN:
+      ConvertFloat8ElementsAttr<tsl::float8_e4m3fn>(
+          dense_attr, output->mutable_float8_val());
+      break;
+    case tensorflow::DT_INT4:
+      ConvertIntElementsAttr<int, tsl::int4>(dense_attr,
+                                             output->mutable_int_val(),
+                                             output->mutable_tensor_content());
+      break;
+    case tensorflow::DT_UINT4:
+      ConvertUIntElementsAttr<int, tsl::uint4>(
+          dense_attr, output->mutable_int_val(),
+          output->mutable_tensor_content());
+      break;
+    case DT_QUINT8:
+    case DT_INT8:
+      ConvertUIntElementsAttr<int, int8_t>(dense_attr,
+                                           output->mutable_int_val(),
+                                           output->mutable_tensor_content());
+      break;
+    case DT_QUINT16:
+    case DT_INT16:
+      ConvertIntElementsAttr<int, int16_t>(dense_attr,
+                                           output->mutable_int_val(),
+                                           output->mutable_tensor_content());
+      break;
+    case DT_INT32:
+      ConvertIntElementsAttr(dense_attr, output->mutable_int_val(),
+                             output->mutable_tensor_content());
+      break;
+    case DT_INT64:
+      ConvertIntElementsAttr(dense_attr, output->mutable_int64_val(),
+                             output->mutable_tensor_content());
+      break;
+    case DT_STRING:
+      ConvertStringElementsAttr(dense_attr.cast<DenseStringElementsAttr>(),
+                                output->mutable_string_val());
+      break;
+    case DT_UINT8:
+      ConvertUIntElementsAttr<int, uint8_t>(dense_attr,
+                                            output->mutable_int_val(),
+                                            output->mutable_tensor_content());
+      break;
+    case DT_UINT16:
+      ConvertUIntElementsAttr<int, uint16_t>(dense_attr,
+                                             output->mutable_int_val(),
+                                             output->mutable_tensor_content());
+      break;
+    case DT_UINT32:
+      ConvertUIntElementsAttr(dense_attr, output->mutable_uint32_val(),
+                              output->mutable_tensor_content());
+      break;
+    case DT_UINT64:
+      ConvertUIntElementsAttr(dense_attr, output->mutable_uint64_val(),
+                              output->mutable_tensor_content());
+      break;
     default:
       return errors::Unimplemented(absl::StrCat("Unimplemented data type ",
                                                 DataTypeString(output_dtype)));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvertToTensor(const mlir::ElementsAttr attr, Tensor* output_tensor) {
@@ -378,17 +529,7 @@ Status ConvertToTensor(const mlir::ElementsAttr attr, Tensor* output_tensor) {
   if (!output_tensor->FromProto(tensor_proto)) {
     return InvalidArgument("Couldn't convert tensor proto to tensor.");
   }
-  return Status::OK();
-}
-
-StatusOr<mlir::ElementsAttr> DecodeOpaqueTensor(
-    const mlir::OpaqueElementsAttr input_attr, mlir::Builder builder) {
-  // TODO(antiagainst): The following logic, albeit simple, involves copying the
-  // tensor content multiple times, which is bad. Figure out a better way to
-  // achieve the purpose.
-  Tensor tensor;
-  TF_RETURN_IF_ERROR(ConvertToTensor(input_attr, &tensor));
-  return ConvertTensor(tensor, &builder);
+  return OkStatus();
 }
 
 }  // namespace tensorflow

@@ -47,10 +47,10 @@ Status SparsifyWeights(const Tensor& tensor, Tensor* indices_tensor,
   }
 
   auto flat = tensor.flat<float>();
-  std::vector<int64> indices;
+  std::vector<int64_t> indices;
   std::vector<float> values;
 
-  for (int64 i = 0; i < flat.size(); i++) {
+  for (int64_t i = 0; i < flat.size(); i++) {
     float val = flat(i);
     if (std::abs(val) >= 1.0e-5) {
       indices.push_back(i);
@@ -65,17 +65,17 @@ Status SparsifyWeights(const Tensor& tensor, Tensor* indices_tensor,
     indices.push_back(0);
     values.push_back(0);
   }
-  *indices_tensor = Tensor(DataTypeToEnum<int64>::value,
-                           {static_cast<int64>(indices.size())});
+  *indices_tensor = Tensor(DataTypeToEnum<int64_t>::value,
+                           {static_cast<int64_t>(indices.size())});
   std::copy_n(indices.begin(), indices.size(),
-              indices_tensor->flat<int64>().data());
+              indices_tensor->flat<int64_t>().data());
 
-  *values_tensor =
-      Tensor(DataTypeToEnum<float>::value, {static_cast<int64>(values.size())});
+  *values_tensor = Tensor(DataTypeToEnum<float>::value,
+                          {static_cast<int64_t>(values.size())});
   std::copy_n(values.begin(), values.size(),
               values_tensor->flat<float>().data());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void CreateConstNode(const Tensor& tensor, const string& name,
@@ -146,7 +146,7 @@ Status ObtainTensorSlice(const GraphDef& input_graph_def,
       const auto& shape_and_slices_value =
           shape_and_slices_tensor.flat<tstring>();
       *shape_slice_string = shape_and_slices_value(offset);
-      return Status::OK();
+      return OkStatus();
     }
   }
   return errors::Internal("Unable to find slice for variable: ", target_name);
@@ -174,7 +174,7 @@ Status ReadTensorFromCheckpoint(
       TF_RETURN_IF_ERROR(
           ckpt_reader->Lookup(GetMonolithicTensorKey(tensor_name), tensor));
     }
-    return Status::OK();
+    return OkStatus();
   }
   return errors::Internal("Checkpoint reader was not initialized. ");
 }
@@ -186,7 +186,7 @@ Status InitializeCheckpointReader(const TransformFuncContext& context,
     ckpt_reader->reset(new BundleReader(Env::Default(), input_checkpoint));
     TF_RETURN_IF_ERROR((*ckpt_reader)->status());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ObtainVariableInfo(
@@ -200,7 +200,7 @@ Status ObtainVariableInfo(
       (**shapes_and_slices)[node.name()] = s;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RemoveInputAtIndex(NodeDef* n, int index) {
@@ -208,7 +208,7 @@ Status RemoveInputAtIndex(NodeDef* n, int index) {
     n->mutable_input()->SwapElements(i, i + 1);
   }
   n->mutable_input()->RemoveLast();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RemoveNodeAtIndex(GraphDef* g, int index) {
@@ -216,7 +216,7 @@ Status RemoveNodeAtIndex(GraphDef* g, int index) {
     g->mutable_node()->SwapElements(i, i + 1);
   }
   g->mutable_node()->RemoveLast();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SparsifyGatherInternal(
@@ -301,11 +301,11 @@ Status SparsifyGatherInternal(
 
             Tensor axis_t;
             TF_RETURN_IF_ERROR(GetNodeAttr(axis_node, "value", &axis_t));
-            int64 axis = 0;
+            int64_t axis = 0;
             if (axis_t.dtype() == DT_INT32) {
               axis = axis_t.scalar<int32>()();
             } else if (axis_t.dtype() == DT_INT64) {
-              axis = axis_t.scalar<int64>()();
+              axis = axis_t.scalar<int64_t>()();
             } else {
               return tensorflow::errors::FailedPrecondition(
                   "Gather axis was not int32 or int64.");
@@ -444,7 +444,7 @@ Status SparsifyGatherInternal(
           new_nodes->push_back(dim_idx_node);
           new_nodes->push_back(expand_dims_node);
 
-          return Status::OK();
+          return OkStatus();
         },
         {true}, &replaced_graph_def));
 
@@ -554,7 +554,7 @@ Status SparsifyGatherInternal(
     current_graph_def = replaced_graph_def;
   } while (any_match_found);
   *output_graph_def = current_graph_def;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SparsifyGather(const GraphDef& input_graph_def,
@@ -608,7 +608,7 @@ Status SparsifyGather(const GraphDef& input_graph_def,
                                             context, gather_v2_pattern,
                                             ckpt_reader, output_graph_def));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("sparsify_gather", SparsifyGather);

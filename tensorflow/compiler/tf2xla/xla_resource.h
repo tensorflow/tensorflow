@@ -19,11 +19,12 @@ limitations under the License.
 #include <memory>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/xla_builder.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace tensorflow {
 
@@ -40,18 +41,20 @@ class XlaResource {
 
   // Creates a new Stack resource.
   static std::unique_ptr<XlaResource> CreateStack(string name, DataType type,
-                                                  int64 max_size);
+                                                  int64_t max_size);
 
   // Creates a new TensorArray resource.
   static std::unique_ptr<XlaResource> CreateTensorArray(
       string name, DataType type, TensorShape shape, xla::XlaOp initial_value,
-      int64 max_array_size);
+      int64_t max_array_size);
 
   XlaResource(Kind kind, int arg_num, string name, DataType type,
-              TensorShape shape, const xla::XlaOp& initial_value,
-              int64 max_array_size,
+              TensorShape shape, xla::XlaOp initial_value,
+              int64_t max_array_size,
               const std::set<string>& tensor_array_gradients,
-              bool tensor_array_multiple_writes_aggregate);
+              bool tensor_array_multiple_writes_aggregate,
+              const std::optional<ManagedStackTrace>& definition_stack_trace =
+                  std::nullopt);
 
   XlaResource(const XlaResource&) = delete;
   XlaResource(XlaResource&&) = delete;
@@ -88,7 +91,7 @@ class XlaResource {
 
   // An xla shape that indicates how this resource variable is represented on
   // device.
-  const absl::optional<xla::Shape>& representation_shape() const {
+  const std::optional<xla::Shape>& representation_shape() const {
     return representation_shape_;
   }
 
@@ -145,8 +148,8 @@ class XlaResource {
   // We need to store this since sometimes TensorArrays must be initialized
   // lazily since we do not know the element shape at construction time.
   // Used by both TensorArrays and Stacks.
-  int64 max_array_size() const { return max_array_size_; }
-  void set_max_array_size(int64 size) { max_array_size_ = size; }
+  int64_t max_array_size() const { return max_array_size_; }
+  void set_max_array_size(int64_t size) { max_array_size_ = size; }
 
   bool tensor_array_multiple_writes_aggregate() const {
     return tensor_array_multiple_writes_aggregate_;
@@ -175,13 +178,15 @@ class XlaResource {
 
   // An xla shape that indicates how this resource variable is represented on
   // device.
-  absl::optional<xla::Shape> representation_shape_;
+  std::optional<xla::Shape> representation_shape_;
 
-  int64 max_array_size_ = -1;
+  int64_t max_array_size_ = -1;
   bool tensor_array_multiple_writes_aggregate_ = false;
 
   std::map<string, std::unique_ptr<XlaResource>> tensor_array_gradients_;
   bool is_overwritten_ = false;
+
+  std::optional<ManagedStackTrace> definition_stack_trace_;
 };
 
 }  // namespace tensorflow

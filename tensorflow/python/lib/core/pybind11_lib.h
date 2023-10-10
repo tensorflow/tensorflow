@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 
 #ifndef TENSORFLOW_PYTHON_LIB_CORE_PYBIND11_LIB_H_
 #define TENSORFLOW_PYTHON_LIB_CORE_PYBIND11_LIB_H_
@@ -55,12 +55,12 @@ inline py::object PyoOrThrow(PyObject* ptr) {
   return Pyo(ptr);
 }
 
-[[noreturn]] void ThrowTypeError(const char* error_message) {
+[[noreturn]] inline void ThrowTypeError(const char* error_message) {
   PyErr_SetString(PyExc_TypeError, error_message);
   throw pybind11::error_already_set();
 }
 
-[[noreturn]] void ThrowValueError(const char* error_message) {
+[[noreturn]] inline void ThrowValueError(const char* error_message) {
   PyErr_SetString(PyExc_ValueError, error_message);
   throw pybind11::error_already_set();
 }

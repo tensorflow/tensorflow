@@ -14,15 +14,12 @@
 # ==============================================================================
 """Tests for tensorflow.compiler.tests.unstack."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.platform import test
 
 
@@ -32,7 +29,7 @@ class UnstackOpTest(xla_test.XLATestCase, parameterized.TestCase):
     with self.session() as sess:
       x_tf = array_ops.placeholder(np.float32, shape=[size, 512])
       with self.test_scope():
-        ret = array_ops.unstack(x_tf)
+        ret = array_ops_stack.unstack(x_tf)
       ret_vals = sess.run([ret], feed_dict={x_tf: np.zeros([size, 512])})
       self.assertLen(ret_vals[0], size)
       for ret_val in ret_vals[0]:

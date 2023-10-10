@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/diag_op.h"
 
 #include <algorithm>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -52,10 +52,10 @@ class DiagOp : public OpKernel {
         errors::InvalidArgument("Input must be at least rank 1, got 0"));
     TensorShape out_shape;
     for (int i = 0; i < num_dims; ++i) {
-      out_shape.AddDim(diagonal.dim_size(i));
+      OP_REQUIRES_OK(context, out_shape.AddDimWithStatus(diagonal.dim_size(i)));
     }
     for (int i = 0; i < num_dims; ++i) {
-      out_shape.AddDim(diagonal.dim_size(i));
+      OP_REQUIRES_OK(context, out_shape.AddDimWithStatus(diagonal.dim_size(i)));
     }
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(context,
@@ -92,7 +92,7 @@ class DiagPartOp : public OpKernel {
 
     TensorShape out_shape;
     for (int i = 0; i < out_dims; ++i) {
-      out_shape.AddDim(tensor.dim_size(i));
+      OP_REQUIRES_OK(context, out_shape.AddDimWithStatus(tensor.dim_size(i)));
     }
 
     Tensor* output = nullptr;
@@ -127,12 +127,13 @@ namespace functor {
 template <typename T>
 struct DiagFunctor<CPUDevice, T> {
   EIGEN_ALWAYS_INLINE Status operator()(OpKernelContext* context,
-                                        const int64 size, const T* in, T* out) {
+                                        const int64_t size, const T* in,
+                                        T* out) {
     // This subprocess is responsible for writing values in index range
     // [start*size, limit*size)
-    auto subDiag = [in, out, size](int64 start, int64 limit) {
+    auto subDiag = [in, out, size](int64_t start, int64_t limit) {
       std::fill(out + size * start, out + size * limit, T());
-      for (int64 index = start; index < limit; ++index) {
+      for (int64_t index = start; index < limit; ++index) {
         out[(1 + size) * index] = in[index];
       }
     };
@@ -141,18 +142,19 @@ struct DiagFunctor<CPUDevice, T> {
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, size, 5 * size,
           subDiag);
-    return Status::OK();
+    return OkStatus();
   }
 };
 
 template <typename T>
 struct DiagPartFunctor<CPUDevice, T> {
   EIGEN_ALWAYS_INLINE Status operator()(OpKernelContext* context,
-                                        const int64 size, const T* in, T* out) {
+                                        const int64_t size, const T* in,
+                                        T* out) {
     // This subprocess is responsible for extracting values in index range
     // [start, limit)
-    auto subDiagPart = [in, out, size](int64 start, int64 limit) {
-      for (int64 index = start; index < limit; ++index) {
+    auto subDiagPart = [in, out, size](int64_t start, int64_t limit) {
+      for (int64_t index = start; index < limit; ++index) {
         out[index] = in[(1 + size) * index];
       }
     };
@@ -161,7 +163,7 @@ struct DiagPartFunctor<CPUDevice, T> {
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, size, 5,
           subDiagPart);
-    return Status::OK();
+    return OkStatus();
   }
 };
 }  // namespace functor
@@ -201,7 +203,7 @@ namespace functor {
 extern template struct DiagFunctor<GPUDevice, double>;
 extern template struct DiagFunctor<GPUDevice, float>;
 extern template struct DiagFunctor<GPUDevice, int32>;
-extern template struct DiagFunctor<GPUDevice, int64>;
+extern template struct DiagFunctor<GPUDevice, int64_t>;
 extern template struct DiagFunctor<GPUDevice, complex64>;
 extern template struct DiagFunctor<GPUDevice, complex128>;
 }  // namespace functor
@@ -224,7 +226,7 @@ namespace functor {
 extern template struct DiagPartFunctor<GPUDevice, double>;
 extern template struct DiagPartFunctor<GPUDevice, float>;
 extern template struct DiagPartFunctor<GPUDevice, int32>;
-extern template struct DiagPartFunctor<GPUDevice, int64>;
+extern template struct DiagPartFunctor<GPUDevice, int64_t>;
 extern template struct DiagPartFunctor<GPUDevice, complex64>;
 extern template struct DiagPartFunctor<GPUDevice, complex128>;
 extern template struct DiagPartFunctor<GPUDevice, Eigen::half>;

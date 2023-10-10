@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/kernel_def_builder.h"
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 
@@ -34,24 +35,23 @@ KernelDefBuilder& KernelDefBuilder::Device(const char* device_type) {
 }
 
 template <>
-KernelDefBuilder& KernelDefBuilder::AttrConstraint<int64>(
-    const char* attr_name, gtl::ArraySlice<int64> allowed) {
+KernelDefBuilder& KernelDefBuilder::AttrConstraint<int64_t>(
+    const char* attr_name, gtl::ArraySlice<int64_t> allowed) {
   auto* constraint = kernel_def_->add_constraint();
   constraint->set_name(attr_name);
   auto* allowed_values = constraint->mutable_allowed_values()->mutable_list();
-  for (const int64 integer : allowed) {
-    LOG(INFO) << integer;
+  for (const int64_t integer : allowed) {
     allowed_values->add_i(integer);
   }
   return *this;
 }
 
 template <>
-KernelDefBuilder& KernelDefBuilder::AttrConstraint<int64>(const char* attr_name,
-                                                          int64 allowed) {
+KernelDefBuilder& KernelDefBuilder::AttrConstraint<int64_t>(
+    const char* attr_name, int64_t allowed) {
   return AttrConstraint(
       attr_name,
-      gtl::ArraySlice<int64>(std::initializer_list<int64>({allowed})));
+      gtl::ArraySlice<int64_t>(std::initializer_list<int64_t>({allowed})));
 }
 
 template <>
@@ -136,7 +136,7 @@ KernelDefBuilder& KernelDefBuilder::Label(const char* label) {
   return *this;
 }
 
-KernelDefBuilder& KernelDefBuilder::Priority(int32 priority) {
+KernelDefBuilder& KernelDefBuilder::Priority(int32_t priority) {
   kernel_def_->set_priority(priority);
   return *this;
 }

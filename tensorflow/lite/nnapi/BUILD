@@ -1,11 +1,12 @@
 load("//tensorflow/lite:special_rules.bzl", "if_nnapi")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -19,14 +20,21 @@ cc_library(
 )
 
 cc_library(
+    name = "nnapi_implementation_headers",
+    hdrs = ["nnapi_implementation.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":nnapi_lib",
+    ],
+)
+
+cc_library(
     name = "nnapi_implementation",
     srcs = if_nnapi(
         not_supported = ["nnapi_implementation_disabled.cc"],
         supported = ["nnapi_implementation.cc"],
     ),
-    hdrs = [
-        "nnapi_implementation.h",
-    ],
+    hdrs = ["nnapi_implementation.h"],
     compatible_with = get_compatible_with_portable(),
     linkopts = if_nnapi(["-ldl"]) + if_nnapi(
         supported = ["-lrt"],
@@ -34,7 +42,17 @@ cc_library(
     ),
     deps = [
         ":nnapi_lib",
-    ],
+    ] + if_nnapi(["//tensorflow/lite/nnapi/sl:nnapi_support_library_headers"]),
+)
+
+# This target exists only to verify that nnapi_implementation_disabled.cc compiles.
+cc_library(
+    name = "nnapi_implementation_disabled",
+    testonly = 1,
+    srcs = ["nnapi_implementation_disabled.cc"],
+    hdrs = ["nnapi_implementation.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [":nnapi_lib"],
 )
 
 cc_library(
@@ -43,9 +61,9 @@ cc_library(
     hdrs = ["nnapi_util.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":nnapi_implementation",
+        ":nnapi_implementation_headers",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
 )
 

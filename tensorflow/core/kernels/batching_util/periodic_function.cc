@@ -16,17 +16,19 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
 
 #include <algorithm>
+#include <utility>
 
+#include "absl/functional/any_invocable.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace serving {
 
-PeriodicFunction::PeriodicFunction(const std::function<void()>& function,
-                                   const int64 interval_micros,
+PeriodicFunction::PeriodicFunction(absl::AnyInvocable<void()> function,
+                                   const int64_t interval_micros,
                                    const Options& options)
-    : function_(function),
+    : function_(std::move(function)),
       interval_micros_([interval_micros]() -> int64 {
         if (interval_micros < 0) {
           const string error = strings::StrCat(
@@ -64,25 +66,25 @@ void PeriodicFunction::NotifyStop() {
   }
 }
 
-void PeriodicFunction::RunLoop(const int64 start) {
+void PeriodicFunction::RunLoop(const int64_t start) {
   {
     if (options_.startup_delay_micros > 0) {
-      const int64 deadline = start + options_.startup_delay_micros;
+      const int64_t deadline = start + options_.startup_delay_micros;
       options_.env->SleepForMicroseconds(deadline - start);
     }
 
     while (!stop_thread_.HasBeenNotified()) {
       VLOG(3) << "Running function.";
-      const int64 begin = options_.env->NowMicros();
+      const int64_t begin = options_.env->NowMicros();
       function_();
 
       // Take the max() here to guard against time going backwards which
       // sometimes happens in multiproc machines.
-      const int64 end =
-          std::max(static_cast<int64>(options_.env->NowMicros()), begin);
+      const int64_t end =
+          std::max(static_cast<int64_t>(options_.env->NowMicros()), begin);
 
       // The deadline is relative to when the last function started.
-      const int64 deadline = begin + interval_micros_;
+      const int64_t deadline = begin + interval_micros_;
 
       // We want to sleep until 'deadline'.
       if (deadline > end) {

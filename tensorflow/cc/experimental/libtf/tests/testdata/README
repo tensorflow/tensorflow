@@ -1,0 +1,2 @@
+The models in this directory are generated using
+//third_party/tensorflow/cc/experimental/libtf/tests:generate_testdata

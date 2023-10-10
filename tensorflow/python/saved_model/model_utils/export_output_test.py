@@ -14,18 +14,14 @@
 # ==============================================================================
 """Tests for export."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import metrics as metrics_module
@@ -60,7 +56,8 @@ class ExportOutputTest(test.TestCase):
 
   def test_classify_requires_classes_or_scores(self):
     with self.assertRaisesRegex(
-        ValueError, 'At least one of scores and classes must be set.'):
+        ValueError,
+        'Cannot create a ClassificationOutput with empty arguments'):
       export_output_lib.ClassificationOutput()
 
   def test_build_standardized_signature_def_regression(self):
@@ -388,15 +385,15 @@ class SupervisedOutputTest(test.TestCase):
       self.assertTrue(outputter.metrics['metrics_1/update_op'].name.startswith(
           'mean/update_op'))
       self.assertIsInstance(
-          outputter.metrics['metrics_1/update_op'], ops.Tensor)
-      self.assertIsInstance(outputter.metrics['metrics_1/value'], ops.Tensor)
+          outputter.metrics['metrics_1/update_op'], tensor.Tensor)
+      self.assertIsInstance(outputter.metrics['metrics_1/value'], tensor.Tensor)
 
       self.assertEqual(outputter.metrics['metrics_2/value'],
                        metrics['metrics_2'][0])
       self.assertTrue(outputter.metrics['metrics_2/update_op'].name.startswith(
           'metric_op_wrapper'))
       self.assertIsInstance(
-          outputter.metrics['metrics_2/update_op'], ops.Tensor)
+          outputter.metrics['metrics_2/update_op'], tensor.Tensor)
 
 
 if __name__ == '__main__':

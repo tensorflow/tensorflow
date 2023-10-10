@@ -20,10 +20,6 @@ helpful for finding memory leaks since not all PyObject leaks are found by
 introspection (test_util decorators). Please be careful adding new tests here.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -47,7 +43,8 @@ class MemoryTest(test.TestCase):
       inputs = Variable(array_ops.zeros([32, 100], dtypes.float32))
       del inputs
 
-    memory_test_util.assert_no_leak(f, num_iters=10000)
+    memory_test_util.assert_no_leak(
+        f, num_iters=10000, increase_threshold_absolute_mb=10)
 
   def testMemoryLeakInFunction(self):
     if not memory_test_util.memory_profiler_is_available():

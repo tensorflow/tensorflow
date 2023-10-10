@@ -15,10 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
 
+#include <string>
+#include <vector>
+
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -57,7 +64,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_SimpleFunction) {
   const string arg0 = "Func/y/input/_0";
   const string ret0 = "Func/y/output/_1";
 
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   GraphDef expected = test::function::GDef(
       {NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}),
        NDef(arg0, "Identity", {"x"}, {{"T", DT_FLOAT}}),
@@ -253,7 +260,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_FunctionWithoutInput) {
 
   FunctionOptimizer optimizer(RewriterConfig::DEFAULT, true);
 
-  const Tensor kTwo = test::AsScalar<int64>(2);
+  const Tensor kTwo = test::AsScalar<int64_t>(2);
   FunctionDef func = FunctionDefHelper::Define(
       // Name
       "GenerateTwo",
@@ -833,7 +840,6 @@ TEST_F(FunctionOptimizerTest,
 
   GraphDef optimized_graph;
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &optimized_graph));
-  LOG(ERROR) << "IG: " << optimized_graph.DebugString();
 
   const string input_c_x = "Func/c/input/_0";
   const string input_c_y = "Func/c/input/_1";
@@ -1883,9 +1889,9 @@ TEST_F(FunctionOptimizerTest, SpecializeFunctionForUsedOutputTensors) {
     // And all consumers of specialized function nodes must be mapped to new
     // output ports.
     if (node.name() == "use_fn3_1" && ++found) {
-      EXPECT_EQ("fn3:0", node.input(0));
+      EXPECT_EQ("fn3", node.input(0));
     } else if (node.name() == "use_fn4_2" && ++found) {
-      EXPECT_EQ("fn4:0", node.input(0));
+      EXPECT_EQ("fn4", node.input(0));
     } else if (node.name() == "use_fn5_0" && ++found) {
       EXPECT_EQ("fn5", node.input(0));
     } else if (node.name() == "use_fn5_2" && ++found) {
@@ -2044,9 +2050,9 @@ TEST_F(FunctionOptimizerTest, SpecializeIndirectFunctionForUsedOutputTensors) {
     // And all consumers of specialized function nodes must be mapped to new
     // output ports.
     if (node.name() == "use_fn3_1" && ++found) {
-      EXPECT_EQ("fn3:0", node.input(0));
+      EXPECT_EQ("fn3", node.input(0));
     } else if (node.name() == "use_fn4_2" && ++found) {
-      EXPECT_EQ("fn4:0", node.input(0));
+      EXPECT_EQ("fn4", node.input(0));
     } else if (node.name() == "use_fn5_0" && ++found) {
       EXPECT_EQ("fn5", node.input(0));
     } else if (node.name() == "use_fn5_2" && ++found) {
@@ -2095,6 +2101,54 @@ TEST_F(FunctionOptimizerTest, PruningUselessLibraryFunctions) {
   ASSERT_EQ(output.library().function().size(), 1);
   EXPECT_EQ(output.library().function(0).signature().name(),
             "XTimesTwo_specialized_for_y_at_test_graph");
+}
+
+TEST_F(FunctionOptimizerTest, PreserveSaverDefFunctions) {
+  using test::function::NDef;
+  using FDH = FunctionDefHelper;
+  FunctionOptimizer optimizer(RewriterConfig::DEFAULT, true);
+  auto func = test::function::XTimesTwo();
+  (*func.mutable_attr())["_noinline"].set_b(true);
+  GrapplerItem item;
+  item.id = "test_graph";
+  item.graph = test::function::GDef(
+      {
+          NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}, "/device:CPU:0"),
+          NDef("y", "XTimesTwo", {"x"}, {{"T", DT_FLOAT}}, "/device:CPU:0"),
+          NDef("z", "Identity", {"y"}, {{"T", DT_FLOAT}}, "/device:CPU:0"),
+          NDef("Restore", "StatefulPartitionedCall", {},
+               {{"Tin", {}},
+                {"Tout", {}},
+                {"f", FDH::FunctionRef("RestoreFn", {})}},
+               "/device:CPU:0"),
+          NDef("Save", "StatefulPartitionedCall", {},
+               {{"Tin", {}},
+                {"Tout", {}},
+                {"f", FDH::FunctionRef("SaveFn", {})}},
+               "/device:CPU:0"),
+      },
+      // FunctionLib
+      {
+          func,
+          test::function::XTimesTwoInt32(),
+          test::function::XTimes16(),
+          FDH::Create("RestoreFn", {}, {}, {}, {}, {}),
+          FDH::Create("SaveFn", {}, {}, {}, {}, {}),
+      });
+  item.restore_op = "Restore";
+  item.save_op = "Save";
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  ASSERT_EQ(output.library().function().size(), 3);
+  std::vector<std::string> signature_names;
+  for (const auto& function : output.library().function()) {
+    signature_names.push_back(function.signature().name());
+  }
+  EXPECT_THAT(signature_names, ::testing::UnorderedElementsAre(
+                                   "XTimesTwo_specialized_for_y_at_test_graph",
+                                   "RestoreFn", "SaveFn"));
 }
 
 }  // namespace grappler

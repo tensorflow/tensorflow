@@ -45,18 +45,15 @@ class Slack : public TFDataOptimizerBase {
       return errors::InvalidArgument("Invalid `slack_period` parameter: ",
                                      slack_period_param);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status OptimizeAndCollectStats(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output,
                                  OptimizationStats* stats) override;
 
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimize_output, double result) override;
-
  private:
-  int64 slack_period_ = -1;
+  int64_t slack_period_ = -1;
 
   Status RecursivelyHandleOp(const MutableGraphView& graph,
                              NodeDef* dataset_node);

@@ -19,7 +19,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_VALIDATORS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_VALIDATORS_H_
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 
 namespace mlir {
@@ -35,6 +35,14 @@ inline bool TFDataFormatIsNHWC(Operation *op) {
   return !attr || attr.getValue() == "NHWC";
 }
 
+// Returns true if the given TensorFlow op does not have a `data_format`
+// attribute (then default to "NDHWC"), or its `data_format` attribute is
+// "NDHWC".
+inline bool TFDataFormatIsNDHWC(Operation *op) {
+  auto attr = op->getAttrOfType<StringAttr>("data_format");
+  return !attr || attr.getValue() == "NDHWC";
+}
+
 // Returns true if the given `op`
 //   * has an attribute with the given `name`,
 //   * and the attribute is an integer list of the form [1, X, Y, 1],
@@ -42,12 +50,22 @@ inline bool TFDataFormatIsNHWC(Operation *op) {
 bool TFIntListIs1XY1(Operation *op, StringRef name, IntegerAttr *x,
                      IntegerAttr *y);
 
-// Returns true if the attribute is an integer list of the form [1, X, Y, 1],
-bool TFIntListIs1XY1(const ArrayAttr &attr);
+// Returns true if the attribute is an integer list of the form [1, X, Y, 1].
+bool TFIntListIs1XY1(Attribute attr);
+
+// Returns true if the attribute is an integer list of the form [1, 1, X, Y].
+bool TFIntListIs11XY(Attribute attr);
+
+// Returns true if the given `op`
+//   * has an attribute with the given `name`,
+//   * and the attribute is an integer list of the form [1, X, Y, Z, 1],
+// and writes X, Y as 32-bit integer attribute to `x`, `y`, z.
+bool TFIntListIs1XYZ1(Operation *op, StringRef name, IntegerAttr *x,
+                      IntegerAttr *y, IntegerAttr *z);
 
 // Returns true if every element of the attribute is 1. All elements of `attr`
 // must be `IntegerAttr`.
-bool TFIntListIsAllOnes(const ArrayAttr &attr);
+bool TFIntListIsAllOnes(Attribute attr);
 
 // Returns true iff the given value is a float32 tensor.
 // is "DT_FLOAT".
@@ -64,6 +82,18 @@ inline bool TFTypeIsBFloat16Tensor(Value value) {
   return tensorType.getElementType().isBF16();
 }
 
+// Returns true iff the given value is a f16 tensor.
+inline bool TFTypeIsHalfTensor(Value value) {
+  auto tensorType = value.getType().dyn_cast<TensorType>();
+  if (!tensorType) return false;
+  return tensorType.getElementType().isF16();
+}
+
+// Returns true iff the given value is a f16 or bf16 tensor.
+inline bool TFTypeIsBFloat16OrHalfTensor(Value value) {
+  return TFTypeIsBFloat16Tensor(value) || TFTypeIsHalfTensor(value);
+}
+
 // Returns true iff the given TensorFlow op has a `padding` attribute whose
 // value is "SAME" or "VALID", and writes the attribute to `padding`.
 inline bool TFPaddingIsSameOrValid(Operation *op, StringAttr *padding) {
@@ -76,9 +106,9 @@ inline bool TFPaddingIsSameOrValid(Operation *op, StringAttr *padding) {
 
 /// Returns whether the given `a` and `b` have broadcast-compatible
 /// types.
-bool IsBroadcastableElementsAttrs(mlir::Attribute a, mlir::Attribute b);
+bool IsBroadcastableElementsAttrs(mlir::TypedAttr a, mlir::TypedAttr b);
 // Returns true if every dimension of the attribute is 1 except the last one.
-bool IsDimensionsDegenerateExceptLastOne(mlir::Attribute val);
+bool IsDimensionsDegenerateExceptLastOne(mlir::TypedAttr val);
 // Returns true if every element is 1 except the last one.
 bool IsDimensionsDegenerateExceptLastOne(ArrayRef<int64_t> elements_shape);
 

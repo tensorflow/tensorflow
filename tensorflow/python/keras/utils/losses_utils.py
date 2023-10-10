@@ -14,25 +14,77 @@
 # ==============================================================================
 # pylint: disable=protected-access
 """Utilities related to loss functions."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import ops
-from tensorflow.python.keras import backend as K
+from tensorflow.python.framework import tensor_conversion
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.losses import loss_reduction
-from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.ops.ragged import ragged_tensor
 
 
-# TODO(joshl/psv): Update references to ReductionV2 to point to its
-# new location.
-ReductionV2 = loss_reduction.ReductionV2
-keras_export('keras.losses.Reduction', v1=[])(loss_reduction.ReductionV2)
+class ReductionV2(object):
+  """Types of loss reduction.
+
+  Contains the following values:
+
+  * `AUTO`: Indicates that the reduction option will be determined by the usage
+     context. For almost all cases this defaults to `SUM_OVER_BATCH_SIZE`. When
+     used with `tf.distribute.Strategy`, outside of built-in training loops such
+     as `tf.keras` `compile` and `fit`, we expect reduction value to be
+     `SUM` or `NONE`. Using `AUTO` in that case will raise an error.
+  * `NONE`: No **additional** reduction is applied to the output of the wrapped
+     loss function. When non-scalar losses are returned to Keras functions like
+     `fit`/`evaluate`, the unreduced vector loss is passed to the optimizer
+     but the reported loss will be a scalar value.
+
+     Caution: **Verify the shape of the outputs when using** `Reduction.NONE`.
+     The builtin loss functions wrapped by the loss classes reduce
+     one dimension (`axis=-1`, or `axis` if specified by loss function).
+     `Reduction.NONE` just means that no **additional** reduction is applied by
+     the class wrapper. For categorical losses with an example input shape of
+     `[batch, W, H, n_classes]` the `n_classes` dimension is reduced. For
+     pointwise losses your must include a dummy axis so that `[batch, W, H, 1]`
+     is reduced to `[batch, W, H]`. Without the dummy axis `[batch, W, H]`
+     will be incorrectly reduced to `[batch, W]`.
+
+  * `SUM`: Scalar sum of weighted losses.
+  * `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
+     This reduction type is not supported when used with
+     `tf.distribute.Strategy` outside of built-in training loops like `tf.keras`
+     `compile`/`fit`.
+
+     You can implement 'SUM_OVER_BATCH_SIZE' using global batch size like:
+     ```
+     with strategy.scope():
+       loss_obj = tf.keras.losses.CategoricalCrossentropy(
+           reduction=tf.keras.losses.Reduction.NONE)
+       ....
+       loss = tf.reduce_sum(loss_obj(labels, predictions)) *
+           (1. / global_batch_size)
+     ```
+
+  Please see the [custom training guide](
+  https://www.tensorflow.org/tutorials/distribute/custom_training) for more
+  details on this.
+  """
+
+  AUTO = 'auto'
+  NONE = 'none'
+  SUM = 'sum'
+  SUM_OVER_BATCH_SIZE = 'sum_over_batch_size'
+
+  @classmethod
+  def all(cls):
+    return (cls.AUTO, cls.NONE, cls.SUM, cls.SUM_OVER_BATCH_SIZE)
+
+  @classmethod
+  def validate(cls, key):
+    if key not in cls.all():
+      raise ValueError('Invalid Reduction Key %s.' % key)
 
 
 def remove_squeezable_dimensions(
@@ -61,12 +113,16 @@ def remove_squeezable_dimensions(
   Returns:
     Tuple of `labels` and `predictions`, possibly with last dim squeezed.
   """
-  with K.name_scope(name or 'remove_squeezable_dimensions'):
-    predictions = ops.convert_to_tensor_v2_with_dispatch(predictions)
-    labels = ops.convert_to_tensor_v2_with_dispatch(labels)
-    predictions_shape = predictions.get_shape()
+  with backend.name_scope(name or 'remove_squeezable_dimensions'):
+    if not isinstance(predictions, ragged_tensor.RaggedTensor):
+      predictions = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          predictions
+      )
+    if not isinstance(labels, ragged_tensor.RaggedTensor):
+      labels = tensor_conversion.convert_to_tensor_v2_with_dispatch(labels)
+    predictions_shape = predictions.shape
     predictions_rank = predictions_shape.ndims
-    labels_shape = labels.get_shape()
+    labels_shape = labels.shape
     labels_rank = labels_shape.ndims
     if (labels_rank is not None) and (predictions_rank is not None):
       # Use static rank.
@@ -83,13 +139,13 @@ def remove_squeezable_dimensions(
     rank_diff = array_ops.rank(predictions) - array_ops.rank(labels)
     if (predictions_rank is None) or (
         predictions_shape.dims[-1].is_compatible_with(1)):
-      predictions = control_flow_ops.cond(
+      predictions = cond.cond(
           math_ops.equal(expected_rank_diff + 1, rank_diff),
           lambda: array_ops.squeeze(predictions, [-1]),
           lambda: predictions)
     if (labels_rank is None) or (
         labels_shape.dims[-1].is_compatible_with(1)):
-      labels = control_flow_ops.cond(
+      labels = cond.cond(
           math_ops.equal(expected_rank_diff - 1, rank_diff),
           lambda: array_ops.squeeze(labels, [-1]),
           lambda: labels)
@@ -141,9 +197,9 @@ def squeeze_or_expand_dimensions(y_pred, y_true=None, sample_weight=None):
       squeeze_dims = lambda: remove_squeezable_dimensions(  # pylint: disable=g-long-lambda
           y_true, y_pred)
       is_last_dim_1 = math_ops.equal(1, array_ops.shape(y_pred)[-1])
-      maybe_squeeze_dims = lambda: control_flow_ops.cond(  # pylint: disable=g-long-lambda
+      maybe_squeeze_dims = lambda: cond.cond(  # pylint: disable=g-long-lambda
           is_last_dim_1, squeeze_dims, lambda: (y_true, y_pred))
-      y_true, y_pred = control_flow_ops.cond(
+      y_true, y_pred = cond.cond(
           math_ops.equal(1, rank_diff), maybe_squeeze_dims, squeeze_dims)
 
   if sample_weight is None:
@@ -169,17 +225,17 @@ def squeeze_or_expand_dimensions(y_pred, y_true=None, sample_weight=None):
 
   def _maybe_expand_weights():
     expand_weights = lambda: array_ops.expand_dims(sample_weight, [-1])
-    return control_flow_ops.cond(
+    return cond.cond(
         math_ops.equal(rank_diff, -1), expand_weights, lambda: sample_weight)
 
   def _maybe_adjust_weights():
-    return control_flow_ops.cond(
+    return cond.cond(
         math_ops.equal(rank_diff, 1), maybe_squeeze_weights,
         _maybe_expand_weights)
 
   # squeeze or expand last dim of `sample_weight` if its rank differs by 1
   # from the new rank of `y_pred`.
-  sample_weight = control_flow_ops.cond(
+  sample_weight = cond.cond(
       math_ops.equal(weights_rank_tensor, 0), lambda: sample_weight,
       _maybe_adjust_weights)
   return y_pred, y_true, sample_weight
@@ -202,7 +258,7 @@ def _safe_mean(losses, num_present):
 
 def _num_elements(losses):
   """Computes the number of elements in `losses` tensor."""
-  with K.name_scope('num_elements') as scope:
+  with backend.name_scope('num_elements') as scope:
     return math_ops.cast(array_ops.size(losses, name=scope), dtype=losses.dtype)
 
 
@@ -247,17 +303,20 @@ def compute_weighted_loss(losses,
     reduction = ReductionV2.SUM_OVER_BATCH_SIZE
   if sample_weight is None:
     sample_weight = 1.0
-  with K.name_scope(name or 'weighted_loss'):
+  with backend.name_scope(name or 'weighted_loss'):
     # Save the `reduction` argument for loss normalization when distributing
     # to multiple replicas. Used only for estimator + v1 optimizer flow.
     ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access
 
-    if not isinstance(losses, keras_tensor.KerasTensor):
-      losses = ops.convert_to_tensor_v2_with_dispatch(losses)
+    if not isinstance(losses,
+                      (keras_tensor.KerasTensor, ragged_tensor.RaggedTensor)):
+      losses = tensor_conversion.convert_to_tensor_v2_with_dispatch(losses)
     input_dtype = losses.dtype
 
     if not isinstance(sample_weight, keras_tensor.KerasTensor):
-      sample_weight = ops.convert_to_tensor_v2_with_dispatch(sample_weight)
+      sample_weight = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          sample_weight
+      )
 
     # TODO(psv): Handle casting here in a better way, eg. if losses is float64
     # we do not want to lose precision.
@@ -278,7 +337,7 @@ def compute_weighted_loss(losses,
 def scale_loss_for_distribution(loss_value):
   """Scales and returns the given loss value by the number of replicas."""
   num_replicas = (
-      distribution_strategy_context.get_strategy().num_replicas_in_sync)
+      distribute_lib.get_strategy().num_replicas_in_sync)
   if num_replicas > 1:
     loss_value *= (1. / num_replicas)
   return loss_value

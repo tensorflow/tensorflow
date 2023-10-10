@@ -1,0 +1,46 @@
+diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+index 2b88729d748b..e12d979b4908 100644
+--- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
+@@ -207,13 +207,15 @@ cc_library(
+         "lib/Support/BLAKE3/llvm_blake3_prefix.h",
+     ] + select({
+         "@platforms//cpu:aarch64": [
+-            "lib/Support/BLAKE3/blake3_neon.c",
++            # TODO(b/234415414): temporary disabled
++            #            "lib/Support/BLAKE3/blake3_neon.c",
+         ],
+         "@platforms//cpu:x86_64": [
+-            "lib/Support/BLAKE3/blake3_avx2_x86-64_unix.S",
+-            "lib/Support/BLAKE3/blake3_avx512_x86-64_unix.S",
+-            "lib/Support/BLAKE3/blake3_sse2_x86-64_unix.S",
+-            "lib/Support/BLAKE3/blake3_sse41_x86-64_unix.S",
++            # TODO(b/234415414): temporary disabled
++            # "lib/Support/BLAKE3/blake3_avx2_x86-64_unix.S",
++            # "lib/Support/BLAKE3/blake3_avx512_x86-64_unix.S",
++            # "lib/Support/BLAKE3/blake3_sse2_x86-64_unix.S",
++            # "lib/Support/BLAKE3/blake3_sse41_x86-64_unix.S",
+         ],
+         "//conditions:default": [
+         ],
+@@ -238,14 +240,16 @@ cc_library(
+     ],
+     copts = llvm_copts,
+     defines = select({
+-        "@platforms//cpu:aarch64": [
+-        ],
++        # TODO(b/234415414): temporary disabled
++        #"@platforms//cpu:aarch64": [
++        #],
+         "//conditions:default": [
+             "BLAKE3_USE_NEON=0",
+         ],
+     }) + select({
+-        "@platforms//cpu:x86_64": [
+-        ],
++        # TODO(b/234415414): temporary disabled
++        # "@platforms//cpu:x86_64": [
++        # ],
+         "//conditions:default": [
+             "BLAKE3_NO_AVX2",
+             "BLAKE3_NO_AVX512",

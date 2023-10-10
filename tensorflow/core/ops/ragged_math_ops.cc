@@ -64,7 +64,7 @@ Status RaggedRangeShapeFn(InferenceContext* c) {
   }
 
   // If any input shape is known, then calculate `rt_nested_splits` shape.
-  int64 rt_nested_splits_dim = InferenceContext::kUnknownDim;
+  int64_t rt_nested_splits_dim = InferenceContext::kUnknownDim;
   if (c->ValueKnown(dim)) {
     rt_nested_splits_dim = c->Value(dim) + 1;
   } else if (c->Rank(starts) == 0 && c->Rank(limits) == 0 &&
@@ -75,7 +75,7 @@ Status RaggedRangeShapeFn(InferenceContext* c) {
 
   // `rt_dense_values` is rank 1, but size can't be calculated statically.
   c->set_output(1, c->UnknownShapeOfRank(1));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Helpers to connect to remote servers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 
 from absl import logging
@@ -160,6 +156,19 @@ def connect_to_cluster(cluster_spec_or_resolver,
       raise ValueError("`cluster_device_filters` must be an instance of "
                        "`tf.train.experimental.ClusterDeviceFilters`.")
 
+  # Check whether the server def has changed. We need to do the check before the
+  # local job is added to the cluster.
+  is_server_def_changed = False
+  current_server_def = context.get_server_def()
+  if current_server_def and job_name not in cluster_spec.jobs:
+    for i, job in enumerate(current_server_def.cluster.job):
+      if job.name == job_name:
+        del current_server_def.cluster.job[i]
+  if (current_server_def is None or current_server_def.cluster != cluster_def or
+      current_server_def.job_name != job_name or
+      current_server_def.task_index != task_index):
+    is_server_def_changed = True
+
   # Automatically add local job, if not part of the cluster spec.
   if job_name not in cluster_spec.jobs:
     local_port = pywrap_tfe.TF_PickUnusedPortOrDie()
@@ -169,15 +178,62 @@ def connect_to_cluster(cluster_spec_or_resolver,
     # to connect with local.
     job_def.tasks[0] = "localhost:{}".format(local_port)
 
+  if context.context().coordination_service is None:
+    service_type = remote_utils.coordination_service_type(protocol)
+    service_leader = ""
+    # Maybe enable coordination service for the communication protocol
+    # TODO(b/243839559): Fix UPTC + Coordination service crashing
+    # Check if cluster_spec_or_resolver is an instance of
+    #    tpu_cluster_resolver.TPUClusterResolver
+    if (isinstance(cluster_spec_or_resolver, cluster_resolver.ClusterResolver)
+        and hasattr(cluster_spec_or_resolver, "tpu_hardware_feature")):
+      service_leader = cluster_spec_or_resolver.get_coordination_service_leader(
+      )
+      # Maybe enable coordination service internally.
+      if cluster_spec_or_resolver.environment == "google":
+        is_uptc_sess = ".uptc-worker." in cluster_spec_or_resolver.master()
+        service_type = remote_utils.coordination_service_type(
+            protocol, is_uptc_sess)
+     # Enable coordination service for Cloud TPU.
+      else:
+        service_type = "standalone"
+
+    if service_type:
+      # If `enable_health_check` is true, coordination service agent would
+      # do connecting (and tasks would send heartbeat if connection is set up)
+      # while creating eager contexts. Enabling health check does not mutate
+      # coordination service.
+      context.context().configure_coordination_service(
+          service_type=service_type,
+          service_leader=service_leader,
+          enable_health_check=False)
+
+  default_session_config = copy.deepcopy(context.context().config)
+
+  for name in cluster_spec.jobs:
+    # assuming any of the non-local job is the worker jobs.
+    # should we use cluster_spec_or_resolver.get_job_name() instead when
+    # it is available?
+    # maybe consolicate this with the 'master' logic below
+    if name == job_name:
+      continue
+
+    default_session_config.experimental.collective_group_leader = (
+        f"/job:{name}/replica:0/task:0"
+    )
+
+  logging.info("default session config: %s", default_session_config)
+
   server_def = ServerDef(
       cluster=cluster_def,
       job_name=job_name,
       task_index=task_index,
       protocol=protocol,
-      default_session_config=context.context().config,
-      cluster_device_filters=cluster_device_filters)
+      default_session_config=default_session_config,
+      cluster_device_filters=cluster_device_filters,
+  )
 
-  if context.get_server_def() is None:
+  if is_server_def_changed:
     context.set_server_def(server_def)
   else:
     context.update_server_def(server_def)

@@ -27,10 +27,6 @@ values are also considered static for the purpose of analysis.
 Requires reaching function definitions analysis.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 
 from typing import Any, Callable, Dict, Set
@@ -442,9 +438,6 @@ class StmtInferrer(gast.NodeVisitor):
     return ret_type
 
   def visit_Expr(self, node):
-    return self.visit(node.value)
-
-  def visit_Index(self, node):
     return self.visit(node.value)
 
   def visit_Assign(self, node):

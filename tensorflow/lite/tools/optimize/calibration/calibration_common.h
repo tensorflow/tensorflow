@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CALIBRATION_COMMON_H_
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_CALIBRATION_CALIBRATION_COMMON_H_
 
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -54,6 +55,7 @@ enum class OperatorTensorType { kNone, kInput, kOutput, kIntermediate };
 
 // Information about an operator in the TfLite graph.
 struct OperatorInfo {
+  int subgraph_index;
   int node_index;
   std::string name;
   BuiltinOperator builtin_op_code;

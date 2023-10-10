@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for liveness module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import naming
@@ -242,7 +238,10 @@ class LivenessAnalyzerTest(LivenessAnalyzerTestBase):
     fn_body = node.body
 
     self.assertHasLiveOut(fn_body[0], ('a', 'b'))
+    #TODO(@bhack): replace this after deprecation
+    # https://github.com/tensorflow/tensorflow/issues/56089
     self.assertHasLiveOut(fn_body[2], ('foo',))
+    #self.assertHasLiveOut(fn_body[2], ('a', 'foo'))
 
   def test_live_out_nested_functions_hidden_by_argument(self):
 

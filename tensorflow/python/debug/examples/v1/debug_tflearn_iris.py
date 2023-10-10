@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Debug the tf-learn iris example, based on the tf-learn tutorial."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import sys
 import tempfile
@@ -62,9 +58,10 @@ def main(_):
         "exclusive.")
   hooks = []
   if FLAGS.debug:
-    config_file_path = (
-        tempfile.mktemp(".tfdbg_config")
-        if FLAGS.use_random_config_path else None)
+    if FLAGS.use_random_config_path:
+      _, config_file_path = tempfile.mkstemp(".tfdbg_config")
+    else:
+      config_file_path = None
     hooks.append(
         tf_debug.LocalCLIDebugHook(
             ui_type=FLAGS.ui_type,
@@ -114,8 +111,8 @@ if __name__ == "__main__":
   parser.add_argument(
       "--ui_type",
       type=str,
-      default="curses",
-      help="Command-line user interface type (curses | readline)")
+      default="readline",
+      help="Command-line user interface type (only readline is supported)")
   parser.add_argument(
       "--debug",
       type="bool",

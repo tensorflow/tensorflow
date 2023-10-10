@@ -12,17 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras training and evaluation routines for eager execution.
-"""
+"""Keras training and evaluation routines for eager execution."""
 # pylint: disable=protected-access
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
 
 from tensorflow.python.eager.backprop import GradientTape
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine import training_utils_v1
@@ -42,7 +38,7 @@ def _eager_loss_fn(outputs, targets, loss_fn, output_name):
 def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
   """Calculates the metrics for each output of the given model.
 
-  Arguments:
+  Args:
       model: The model on which metrics are being calculated.
       outputs: The outputs of the given model.
       targets: The predictions or targets of the given model.
@@ -90,7 +86,7 @@ def _model_loss(model,
                 training=False):
   """Calculates the loss for a given model.
 
-  Arguments:
+  Args:
       model: The model on which metrics are being calculated.
       inputs: Either a dictionary of inputs to the model or a list of input
         arrays.
@@ -122,7 +118,9 @@ def _model_loss(model,
   if any(
       isinstance(input_t, (np.ndarray, float, int))
       for input_t in nest.flatten(inputs)):
-    inputs = nest.map_structure(ops.convert_to_tensor_v2_with_dispatch, inputs)
+    inputs = nest.map_structure(
+        tensor_conversion.convert_to_tensor_v2_with_dispatch, inputs
+    )
 
   outs = model(inputs, **kwargs)
   outs = nest.flatten(outs)
@@ -132,11 +130,14 @@ def _model_loss(model,
         targets, outs)
   # TODO(sallymatson/psv): check if we should do same mismatch fix for weights
   if sample_weights:
-    sample_weights = [
-        training_utils_v1.cast_if_floating_dtype(
-            ops.convert_to_tensor_v2_with_dispatch(val))
-        if val is not None else None for val in sample_weights
-    ]
+    new_sample_weights = []
+    for val in sample_weights:
+      if val is not None:
+        new_sample_weights.append(training_utils_v1.cast_if_floating_dtype(
+            tensor_conversion.convert_to_tensor_v2_with_dispatch(val)))
+      else:
+        new_sample_weights.append(None)
+    sample_weights = new_sample_weights
 
   masks = [getattr(t, '_keras_mask', None) for t in outs]
   targets = nest.flatten(targets)
@@ -231,7 +232,7 @@ def _process_single_batch(model,
 
      The model weights are updated if training is set to True.
 
-  Arguments:
+  Args:
       model: Model whose loss has to be calculated.
       inputs: List of input arrays.
       targets: List of target arrays.
@@ -291,7 +292,7 @@ def train_on_batch(model,
                    output_loss_metrics=None):
   """Calculates the loss and gradient updates for one input batch.
 
-  Arguments:
+  Args:
       model: Model whose loss has to be calculated.
       inputs: Input batch data.
       targets: Target batch data.
@@ -332,7 +333,7 @@ def test_on_batch(model,
                   output_loss_metrics=None):
   """Calculates the loss for one input batch.
 
-  Arguments:
+  Args:
       model: Model whose loss has to be calculated.
       inputs: Input batch data.
       targets: Target batch data.

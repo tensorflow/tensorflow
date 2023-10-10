@@ -14,10 +14,6 @@
 # ==============================================================================
 """Critical Section object and execution logic."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import contextlib
 import threading
@@ -109,8 +105,8 @@ def _push_critical_section_stack(signature):
   stack = _get_critical_section_stack()
   if signature in stack:
     raise ValueError(
-        "Attempting to lock a CriticalSection in which we are "
-        "already running.  This is illegal and may cause deadlocks.")
+        f"Attempting to lock a CriticalSection (signature={signature}) in which"
+        " we are already running. This is illegal and may cause deadlocks.")
   stack.append(signature)
   try:
     yield
@@ -119,11 +115,11 @@ def _push_critical_section_stack(signature):
     if received_signature != signature:
       raise RuntimeError(
           "CriticalSection stack inconsistency: expected signature "
-          "{} but saw {}".format(signature, received_signature))
+          f"{signature} but received {received_signature}")
 
 
 @tf_export("CriticalSection")
-class CriticalSection(object):
+class CriticalSection:
   """Critical section.
 
   A `CriticalSection` object is a resource in the graph which executes subgraphs
@@ -197,10 +193,11 @@ class CriticalSection(object):
     """Creates a critical section."""
     context.ensure_initialized()
     if critical_section_def and name is not None:
-      raise ValueError("critical_section_def and shared_name are "
-                       "mutually exclusive.")
+      raise ValueError(f"Arguments critical_section_def={critical_section_def} "
+                       f"and shared_name={shared_name} are mutually exclusive. "
+                       "Please only specify one of them.")
     if critical_section_def:
-      raise ValueError("critical_section_def is not supported.")
+      raise ValueError("Argument `critical_section_def` is not supported.")
     else:
       self._init_from_args(name, shared_name)
 
@@ -302,7 +299,8 @@ class CriticalSection(object):
         if any(self._is_self_handle(x) for x in captured_resources):
           raise ValueError(
               "Attempting to lock a CriticalSection in which we are "
-              "already running.  This is illegal and may cause deadlocks.")
+              f"already running (signature={self._signature}). This is illegal "
+              "and may cause deadlocks.")
 
         self._check_multiple_access_to_resources(
             captured_resources, exclusive_resource_access)
@@ -413,9 +411,9 @@ class CriticalSection(object):
       resource_intersection = captured_resources.intersection(sg.resources)
       if resource_intersection:
         raise ValueError(
-            "This execution would access resources: %s.  Either this "
-            "lock (CriticalSection: %s) or lock '%s' "
-            "(CriticalSection: %s) requested exclusive resource access "
-            "of this resource.  Did you mean to call execute with keyword "
-            "argument exclusive_resource_access=False?" %
-            (list(resource_intersection), self._handle, sg, sg.handle))
+            "This execution would access resources: "
+            f"{list(resource_intersection)}. Either this lock "
+            f"(CriticalSection: {self._handle}) or lock '{sg}' "
+            f"(CriticalSection: {sg.handle}) requested exclusive resource "
+            "access of this resource. Did you mean to call execute with "
+            "keyword argument exclusive_resource_access=False?")

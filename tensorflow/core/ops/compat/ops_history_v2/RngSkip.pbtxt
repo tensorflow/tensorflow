@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "RngSkip"
   input_arg {
     name: "resource"

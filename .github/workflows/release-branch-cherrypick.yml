@@ -1,0 +1,71 @@
+# Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
+# Usage: Go to
+# https://github.com/tensorflow/tensorflow/actions/workflows/release-branch-cherrypick.yml
+# and click "Run Workflow." Leave "Use Workflow From" set to "master", then
+# input the branch name and paste the cherry-pick commit and click Run. A PR
+# will be created.
+
+name: Release Branch Cherrypick
+on:
+  workflow_dispatch:
+    inputs:
+      # We use this instead of the "run on branch" argument because GitHub looks
+      # on that branch for a workflow.yml file, and we'd have to cherry-pick
+      # this file into those branches.
+      release_branch:
+        description: 'Release branch name (e.g. r2.9)'
+        required: true
+        type: string
+      git_commit:
+        description: 'Git commit to cherry-pick'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  cherrypick:
+    name: Cherrypick to ${{ github.event.inputs.release_branch}} - ${{ github.event.inputs.git_commit }}
+    runs-on: ubuntu-latest
+    if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b # v3.2.0
+      with:
+        ref: ${{ github.event.inputs.release_branch }}
+    - name: Get some helpful info for formatting
+      id: cherrypick
+      run: |
+          git config --global user.name "TensorFlow Release Automation"
+          git config --global user.email "jenkins@tensorflow.org"
+          git fetch origin master
+          git cherry-pick ${{ github.event.inputs.git_commit }}
+          echo "SHORTSHA=$(git log -1 ${{ github.event.inputs.git_commit }} --format="%h")" >> "$GITHUB_OUTPUT"
+          echo "TITLE=$(git log -1 ${{ github.event.inputs.git_commit }} --format="%s")" >> "$GITHUB_OUTPUT"
+    - name: Create Pull Request with changes
+      uses: peter-evans/create-pull-request@2b011faafdcbc9ceb11414d64d0573f37c774b04 # v4.2.3
+      with:
+        title: '${{ github.event.inputs.release_branch }} cherry-pick: ${{ steps.cherrypick.outputs.SHORTSHA }} "${{ steps.cherrypick.outputs.TITLE }}"'
+        committer: TensorFlow Release Automation <jenkins@tensorflow.org>
+        token: ${{ secrets.JENKINS_TOKEN }}
+        base: ${{ github.event.inputs.release_branch }}
+        branch: ${{ github.event.inputs.release_branch }}-${{ steps.cherrypick.outputs.SHORTSHA }}
+        reviewers: learning-to-play
+        body: |
+          Refer to the original commit: https://github.com/tensorflow/tensorflow/commit/${{ github.event.inputs.git_commit }}
+

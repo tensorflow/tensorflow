@@ -20,9 +20,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_OP_DEF_UTIL_H_
 
 #include <string>
+
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {

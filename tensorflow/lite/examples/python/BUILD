@@ -1,15 +1,19 @@
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
+
 package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],  # Apache 2.0
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
 )
 
-py_binary(
+py_strict_binary(
     name = "label_image",
     srcs = ["label_image.py"],
     main = "label_image.py",
     python_version = "PY3",
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//third_party/py/PIL:pil",
+        "//third_party/py/numpy",
     ],
 )

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/list_flex_ops.h"
 
 #include <cstdint>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -196,9 +197,3 @@ TEST_F(FlexOpsListTest, TestFlexAddWithSingleOpModel) {
 }
 }  // namespace flex
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  // On Linux, add: FLAGS_logtostderr = true;
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

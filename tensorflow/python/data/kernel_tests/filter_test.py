@@ -13,15 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.filter()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
@@ -157,6 +155,68 @@ class FilterTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual([0 for _ in range(10)],
                      self.evaluate(
                          [next_element() for next_element in next_elements]))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).filter(
+        lambda x: True, name="filter")
+    self.assertDatasetProduces(dataset, [42])
+
+
+class FilterCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                           parameterized.TestCase):
+
+  def _build_filter_range_dataset(self, div, options=None):
+    dataset = dataset_ops.Dataset.range(100).filter(
+        lambda x: math_ops.not_equal(math_ops.mod(x, div), 2))
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, symbolic_checkpoint):
+    div = 3
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    num_outputs = sum(x % 3 != 2 for x in range(100))
+    verify_fn(self, lambda: self._build_filter_range_dataset(div, options),
+              num_outputs)
+
+  def _build_filter_dict_dataset(self):
+    return dataset_ops.Dataset.range(10).map(lambda x: {
+        "foo": x * 2,
+        "bar": x**2
+    }).filter(lambda d: math_ops.equal(d["bar"] % 2, 0)).map(
+        lambda d: d["foo"] + d["bar"])
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testDict(self, verify_fn):
+    num_outputs = sum((x**2) % 2 == 0 for x in range(10))
+    verify_fn(self, self._build_filter_dict_dataset, num_outputs)
+
+  def _build_sparse_filter_dataset(self):
+
+    def _map_fn(i):
+      return sparse_tensor.SparseTensor(
+          indices=[[0, 0]], values=(i * [1]), dense_shape=[1, 1]), i
+
+    def _filter_fn(_, i):
+      return math_ops.equal(i % 2, 0)
+
+    return dataset_ops.Dataset.range(10).map(_map_fn).filter(_filter_fn).map(
+        lambda x, i: x)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testSparse(self, verify_fn):
+    verify_fn(self, self._build_sparse_filter_dataset, num_outputs=5)
 
 
 if __name__ == "__main__":

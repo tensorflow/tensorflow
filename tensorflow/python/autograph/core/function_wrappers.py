@@ -14,10 +14,6 @@
 # ==============================================================================
 """Support for wrapping converted functions bodies with auxiliary logic."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.operators import variables
@@ -103,7 +99,7 @@ class FunctionScope(object):
         return None
 
       def _mark_return_if_tensor(t):
-        if tensor_util.is_tensor(t):
+        if tensor_util.is_tf_type(t):
           return self.autodeps_scope.mark_as_return(t)
         return t
 

@@ -15,76 +15,43 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
+
+#include "absl/strings/ascii.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace tensorrt {
 
-Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name) {
-  switch (mode) {
-    case TrtPrecisionMode::FP32:
-      *name = "FP32";
-      break;
-    case TrtPrecisionMode::FP16:
-      *name = "FP16";
-      break;
-    case TrtPrecisionMode::INT8:
-      *name = "INT8";
-      break;
-    default:
-      return errors::OutOfRange("Unknown precision mode");
-  }
-  return Status::OK();
-}
-
-Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode) {
-  if (name == "FP32") {
-    *mode = TrtPrecisionMode::FP32;
-  } else if (name == "FP16") {
-    *mode = TrtPrecisionMode::FP16;
-  } else if (name == "INT8") {
-    *mode = TrtPrecisionMode::INT8;
-  } else {
-    return errors::InvalidArgument("Invalid precision mode name: ", name);
-  }
-  return Status::OK();
-}
-
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
-using absl::StrAppend;
-using absl::StrCat;
-
-string DebugString(const nvinfer1::DimensionType type) {
-  switch (type) {
-    case nvinfer1::DimensionType::kSPATIAL:
-      return "kSPATIAL";
-    case nvinfer1::DimensionType::kCHANNEL:
-      return "kCHANNEL";
-    case nvinfer1::DimensionType::kINDEX:
-      return "kINDEX";
-    case nvinfer1::DimensionType::kSEQUENCE:
-      return "kSEQUENCE";
-    default:
-      return StrCat(static_cast<int>(type), "=unknown");
-  }
-}
-
 string DebugString(const nvinfer1::Dims& dims) {
   string out = StrCat("nvinfer1::Dims(nbDims=", dims.nbDims, ", d=");
-  for (int i = 0; i < dims.nbDims; ++i) {
+  for (int i = 0; i < std::max(dims.nbDims, 0); ++i) {
     StrAppend(&out, dims.d[i]);
-    if (VLOG_IS_ON(2)) {
-      StrAppend(&out, "[", DebugString(dims.type[i]), "],");
-    } else {
-      StrAppend(&out, ",");
-    }
+    StrAppend(&out, ",");
   }
   StrAppend(&out, ")");
   return out;
+}
+
+string DebugString(const DataType tf_type) {
+  switch (tf_type) {
+    case DT_FLOAT:
+      return "DT_FLOAT";
+    case DT_HALF:
+      return "DT_HALF";
+    case DT_INT32:
+      return "DT_INT32";
+    case DT_INT8:
+      return "DT_INT8";
+    case DT_BOOL:
+      return "DT_BOOL";
+    case DT_UINT8:
+      return "DT_UINT8";
+    default:
+      return "Unknow TF DataType";
+  }
 }
 
 string DebugString(const nvinfer1::DataType trt_dtype) {
@@ -97,6 +64,16 @@ string DebugString(const nvinfer1::DataType trt_dtype) {
       return "kINT8";
     case nvinfer1::DataType::kINT32:
       return "kINT32";
+    case nvinfer1::DataType::kBOOL:
+      return "kBOOL";
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    case nvinfer1::DataType::kUINT8:
+      return "kUINT8";
+#endif
+#if IS_TRT_VERSION_GE(8, 6, 0, 0)
+    case nvinfer1::DataType::kFP8:
+      return "kFP8";
+#endif
     default:
       return "Invalid TRT data type";
   }
@@ -109,6 +86,14 @@ string DebugString(const nvinfer1::Permutation& permutation, int len) {
   }
   StrAppend(&out, ")");
   return out;
+}
+
+string DebugString(const ITensorProxyPtr& tensor) {
+  return StrCat(
+      tensor->is_trt_tensor() ? "nvinfer1::ITensor(@" : "SimpleItensor(@",
+      reinterpret_cast<uintptr_t>(&tensor), ", name=", tensor->getName(),
+      ", dtype=", DebugString(tensor->getType()),
+      ", dims=", DebugString(tensor->getDimensions()), ")");
 }
 
 string DebugString(const nvinfer1::ITensor& tensor) {
@@ -163,27 +148,16 @@ bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
   }
   return true;
 }
-
-Status TrtDimsToTensorShape(const std::vector<int>& trt_dims,
-                            bool use_implicit_batch, int batch_size,
-                            TensorShape& shape) {
-  TF_RETURN_IF_ERROR(
-      TensorShapeUtils::MakeShape(trt_dims.data(), trt_dims.size(), &shape));
-  if (use_implicit_batch) {
-    shape.InsertDim(0, batch_size);
+Status GetNetworkInputShapes(const nvinfer1::INetworkDefinition* network,
+                             std::vector<PartialTensorShape>* input_shapes) {
+  const int n_inputs = network->getNbInputs();
+  input_shapes->resize(n_inputs);
+  for (int i = 0; i < n_inputs; i++) {
+    const ITensorProxyPtr input = network->getInput(i);
+    TF_RETURN_IF_ERROR(DimsAdapter(input->getDimensions())
+                           .PartialTensorShape(&input_shapes->at(i)));
   }
-  return Status::OK();
-}
-
-Status TrtDimsToTensorShape(const nvinfer1::Dims trt_dims,
-                            bool use_implicit_batch, int batch_size,
-                            TensorShape& shape) {
-  TF_RETURN_IF_ERROR(
-      TensorShapeUtils::MakeShape(trt_dims.d, trt_dims.nbDims, &shape));
-  if (use_implicit_batch) {
-    shape.InsertDim(0, batch_size);
-  }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type) {
@@ -197,11 +171,21 @@ Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type) {
     case DT_INT32:
       *trt_type = nvinfer1::DataType::kINT32;
       break;
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+    case DT_BOOL:
+      *trt_type = nvinfer1::DataType::kBOOL;
+      break;
+#endif
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    case DT_UINT8:
+      *trt_type = nvinfer1::DataType::kUINT8;
+      break;
+#endif
     default:
       return errors::InvalidArgument("Unsupported tensorflow data type ",
                                      DataTypeString(tf_type));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type) {
@@ -215,10 +199,25 @@ Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type) {
     case nvinfer1::DataType::kINT32:
       *tf_type = DT_INT32;
       break;
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+    case nvinfer1::DataType::kBOOL:
+      *tf_type = DT_BOOL;
+      break;
+#endif
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    case nvinfer1::DataType::kUINT8:
+      *tf_type = DT_UINT8;
+      break;
+#endif
+#if IS_TRT_VERSION_GE(8, 6, 0, 0)
+    case nvinfer1::DataType::kFP8:
+      *tf_type = DT_FLOAT8_E4M3FN;
+      break;
+#endif
     default:
       return errors::InvalidArgument("Invalid TRT data type");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine) {
@@ -232,15 +231,9 @@ int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine) {
   // following getNbBindings() / K bindings are used by profile number 1 etc."
   // Therefore, to get the number of input tensors, we need to divide by the
   // the number of profiles.
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
   int n_profiles = engine->getNbOptimizationProfiles();
-#else
-  int n_profiles = 1;
-#endif
   return n_input / n_profiles;
 }
-
-#endif
 
 absl::string_view GetDeviceName(const Node* node) {
   if (node->has_assigned_device_name()) {
@@ -249,33 +242,33 @@ absl::string_view GetDeviceName(const Node* node) {
   return node->requested_device();
 }
 
-absl::optional<DeviceNameUtils::ParsedName> GetDeviceParsedName(
+std::optional<DeviceNameUtils::ParsedName> GetDeviceParsedName(
     const Node* node) {
   absl::string_view device_name = GetDeviceName(node);
   DeviceNameUtils::ParsedName parsed_name;
   if (!DeviceNameUtils::ParseFullName(device_name, &parsed_name)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return parsed_name;
 }
 
-absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+std::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
     const DeviceNameUtils::ParsedName& a,
     const DeviceNameUtils::ParsedName& b) {
   DeviceNameUtils::ParsedName merged_name = a;
   if (!DeviceNameUtils::MergeDevNames(&merged_name, b,
                                       /*allow_soft_placement=*/false)
            .ok()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return merged_name;
 }
 
-absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+std::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
     const DeviceNameUtils::ParsedName& a, absl::string_view b) {
   DeviceNameUtils::ParsedName b_parsed_name;
   if (!DeviceNameUtils::ParseFullName(b, &b_parsed_name)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   return MergeIfCompatible(a, b_parsed_name);
@@ -283,3 +276,5 @@ absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
 
 }  // namespace tensorrt
 }  // namespace tensorflow
+
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

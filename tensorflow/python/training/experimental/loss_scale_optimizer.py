@@ -13,12 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Contains LossScale classes."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from tensorflow.python.distribute import distribution_strategy_context
-from tensorflow.python.framework import ops
+from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -148,9 +144,10 @@ class MixedPrecisionLossScaleOptimizer(optimizer.Optimizer):
     ]
 
   def _scale_grad(self, grad, loss_scale_reciprocal):
-    if isinstance(grad, ops.IndexedSlices):
+    if isinstance(grad, indexed_slices.IndexedSlices):
       grad_vals = grad.values * loss_scale_reciprocal
-      return ops.IndexedSlices(grad_vals, grad.indices, grad.dense_shape)
+      return indexed_slices.IndexedSlices(grad_vals, grad.indices,
+                                          grad.dense_shape)
     return grad * loss_scale_reciprocal
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
@@ -175,13 +172,13 @@ class MixedPrecisionLossScaleOptimizer(optimizer.Optimizer):
     Raises:
       RuntimeError: If you should use `_distributed_apply()` instead.
     """
-    if distribution_strategy_context.in_cross_replica_context():
+    if distribute_lib.in_cross_replica_context():
       raise ValueError('apply_gradients() must be called in a replica context.')
 
     if not self._doing_dynamic_loss_scaling():
       return self._optimizer.apply_gradients(grads_and_vars, global_step, name)
 
-    replica_context = distribution_strategy_context.get_replica_context()
+    replica_context = distribute_lib.get_replica_context()
     grads_and_vars = tuple(grads_and_vars)
 
     # TODO(nluehr) cleanup GraphKeys.TRAIN_OP

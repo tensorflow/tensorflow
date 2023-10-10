@@ -15,8 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_METRICS_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_METRICS_H_
 
+#include <cstdint>
+
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -29,7 +30,7 @@ class TpuCompilationMetrics {
                                         absl::string_view session_name);
 
   // Sets the total count of cache entries.
-  static void SetCacheEntryCount(int64 count);
+  static void SetCacheEntryCount(int64_t count);
 
   // Increments number of compilation.
   static void IncrementCompilationCount(absl::string_view session_name);

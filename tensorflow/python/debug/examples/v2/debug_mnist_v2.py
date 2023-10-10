@@ -18,14 +18,10 @@ This demo contains a classical example of a neural network for the mnist
 dataset, but modifications are made so that problematic numerical values (infs
 and nans) appear in nodes of the graph during training.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import sys
 
-import absl
+from absl import app
 import tensorflow.compat.v2 as tf
 
 IMAGE_SIZE = 28
@@ -241,4 +237,4 @@ def main(_):
 
 if __name__ == "__main__":
   FLAGS, unparsed = parse_args()
-  absl.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  app.run(main=main, argv=[sys.argv[0]] + unparsed)

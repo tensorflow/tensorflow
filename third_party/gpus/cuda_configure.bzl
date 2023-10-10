@@ -168,7 +168,7 @@ def _get_win_cuda_defines(repository_ctx):
         ),
     )
 
-    msvc_cl_path = get_python_bin(repository_ctx)
+    msvc_cl_path = "windows/msvc_wrapper_for_nvcc.bat"
     msvc_ml_path = find_msvc_tool(repository_ctx, vc_path, "ml64.exe").replace(
         "\\",
         "/",
@@ -265,6 +265,18 @@ def _normalize_include_path(repository_ctx, path):
         return path[len(crosstool_folder) + 1:]
     return path
 
+def _is_compiler_option_supported(repository_ctx, cc, option):
+    """Checks that `option` is supported by the C compiler. Doesn't %-escape the option."""
+    result = repository_ctx.execute([
+        cc,
+        option,
+        "-o",
+        "/dev/null",
+        "-c",
+        str(repository_ctx.path("tools/cpp/empty.cc")),
+    ])
+    return result.stderr.find(option) == -1
+
 def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
     """Compute the list of default C or C++ include directories."""
     if lang_is_cpp:
@@ -291,6 +303,18 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
         inc_dirs = stderr[index1 + 1:]
     else:
         inc_dirs = stderr[index1 + 1:index2].strip()
+
+    print_resource_dir_supported = _is_compiler_option_supported(
+        repository_ctx,
+        cc,
+        "-print-resource-dir",
+    )
+
+    if print_resource_dir_supported:
+        resource_dir = repository_ctx.execute(
+            [cc, "-print-resource-dir"],
+        ).stdout.strip() + "/share"
+        inc_dirs += "\n" + resource_dir
 
     return [
         _normalize_include_path(repository_ctx, _cxx_inc_convert(p))
@@ -423,6 +447,11 @@ def compute_capabilities(repository_ctx):
     ).split(",")
 
     # Map old 'x.y' capabilities to 'compute_xy'.
+    if len(capabilities) > 0 and all([len(x.split(".")) == 2 for x in capabilities]):
+        # If all capabilities are in 'x.y' format, only include PTX for the
+        # highest capability.
+        cc_list = sorted([x.replace(".", "") for x in capabilities])
+        capabilities = ["sm_%s" % x for x in cc_list[:-1]] + ["compute_%s" % cc_list[-1]]
     for i, capability in enumerate(capabilities):
         parts = capability.split(".")
         if len(parts) != 2:
@@ -590,7 +619,7 @@ def _find_libs(repository_ctx, check_cuda_libs_script, cuda_config):
             "cupti",
             cpu_value,
             cuda_config.config["cupti_library_dir"],
-            cuda_config.cuda_version,
+            cuda_config.cupti_version,
             static = False,
         ),
         "cusparse": _check_cuda_lib_params(
@@ -612,42 +641,19 @@ def _cudart_static_linkopt(cpu_value):
     """Returns additional platform-specific linkopts for cudart."""
     return "" if cpu_value == "Darwin" else "\"-lrt\","
 
-def _exec_find_cuda_config(repository_ctx, script_path, cuda_libraries):
-    python_bin = get_python_bin(repository_ctx)
-
-    # If used with remote execution then repository_ctx.execute() can't
-    # access files from the source tree. A trick is to read the contents
-    # of the file in Starlark and embed them as part of the command. In
-    # this case the trick is not sufficient as the find_cuda_config.py
-    # script has more than 8192 characters. 8192 is the command length
-    # limit of cmd.exe on Windows. Thus we additionally need to compress
-    # the contents locally and decompress them as part of the execute().
-    compressed_contents = repository_ctx.read(script_path)
-    decompress_and_execute_cmd = (
-        "from zlib import decompress;" +
-        "from base64 import b64decode;" +
-        "from os import system;" +
-        "script = decompress(b64decode('%s'));" % compressed_contents +
-        "f = open('script.py', 'wb');" +
-        "f.write(script);" +
-        "f.close();" +
-        "system('\"%s\" script.py %s');" % (python_bin, " ".join(cuda_libraries))
-    )
-
-    return execute(repository_ctx, [python_bin, "-c", decompress_and_execute_cmd])
-
 # TODO(csigg): Only call once instead of from here, tensorrt_configure.bzl,
 # and nccl_configure.bzl.
-def find_cuda_config(repository_ctx, script_path, cuda_libraries):
+def find_cuda_config(repository_ctx, cuda_libraries):
     """Returns CUDA config dictionary from running find_cuda_config.py"""
-    exec_result = _exec_find_cuda_config(repository_ctx, script_path, cuda_libraries)
+    python_bin = get_python_bin(repository_ctx)
+    exec_result = execute(repository_ctx, [python_bin, repository_ctx.attr._find_cuda_config] + cuda_libraries)
     if exec_result.return_code:
         auto_configure_fail("Failed to run find_cuda_config.py: %s" % err_out(exec_result))
 
     # Parse the dict from stdout.
     return dict([tuple(x.split(": ")) for x in exec_result.stdout.splitlines()])
 
-def _get_cuda_config(repository_ctx, find_cuda_config_script):
+def _get_cuda_config(repository_ctx):
     """Detects and returns information about the CUDA installation on the system.
 
       Args:
@@ -663,7 +669,7 @@ def _get_cuda_config(repository_ctx, find_cuda_config_script):
           compute_capabilities: A list of the system's CUDA compute capabilities.
           cpu_value: The name of the host operating system.
       """
-    config = find_cuda_config(repository_ctx, find_cuda_config_script, ["cuda", "cudnn"])
+    config = find_cuda_config(repository_ctx, ["cuda", "cudnn"])
     cpu_value = get_cpu_value(repository_ctx)
     toolkit_path = config["cuda_toolkit_path"]
 
@@ -679,8 +685,10 @@ def _get_cuda_config(repository_ctx, find_cuda_config_script):
         # The libcudart soname in CUDA 11.x is versioned as 11.0 for backward compatability.
         if int(cuda_major) == 11:
             cudart_version = "64_110" if is_windows else "11.0"
+            cupti_version = cuda_version
         else:
             cudart_version = ("64_%s" if is_windows else "%s") % cuda_major
+            cupti_version = cudart_version
         cublas_version = ("64_%s" if is_windows else "%s") % config["cublas_version"].split(".")[0]
         cusolver_version = ("64_%s" if is_windows else "%s") % config["cusolver_version"].split(".")[0]
         curand_version = ("64_%s" if is_windows else "%s") % config["curand_version"].split(".")[0]
@@ -691,6 +699,7 @@ def _get_cuda_config(repository_ctx, find_cuda_config_script):
         # It changed from 'x.y' to just 'x' in CUDA 10.1.
         cuda_lib_version = ("64_%s" if is_windows else "%s") % cuda_major
         cudart_version = cuda_version
+        cupti_version = cuda_version
         cublas_version = cuda_lib_version
         cusolver_version = cuda_lib_version
         curand_version = cuda_lib_version
@@ -698,6 +707,7 @@ def _get_cuda_config(repository_ctx, find_cuda_config_script):
         cusparse_version = cuda_lib_version
     else:
         cudart_version = cuda_version
+        cupti_version = cuda_version
         cublas_version = cuda_version
         cusolver_version = cuda_version
         curand_version = cuda_version
@@ -707,6 +717,7 @@ def _get_cuda_config(repository_ctx, find_cuda_config_script):
     return struct(
         cuda_toolkit_path = toolkit_path,
         cuda_version = cuda_version,
+        cupti_version = cupti_version,
         cuda_version_major = cuda_major,
         cudart_version = cudart_version,
         cublas_version = cublas_version,
@@ -808,7 +819,7 @@ filegroup(name="cudnn-include")
     )
 
     # Create dummy files for the CUDA toolkit since they are still required by
-    # tensorflow/core/platform/default/build_config:cuda.
+    # tensorflow/tsl/platform/default/build_config:cuda.
     repository_ctx.file("cuda/cuda/include/cuda.h")
     repository_ctx.file("cuda/cuda/include/cublas.h")
     repository_ctx.file("cuda/cuda/include/cudnn.h")
@@ -828,13 +839,14 @@ filegroup(name="cudnn-include")
     repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cusparse", cpu_value))
 
     # Set up cuda_config.h, which is used by
-    # tensorflow/stream_executor/dso_loader.cc.
+    # tensorflow/compiler/xla/stream_executor/dso_loader.cc.
     _tpl(
         repository_ctx,
         "cuda:cuda_config.h",
         {
             "%{cuda_version}": "",
             "%{cudart_version}": "",
+            "%{cupti_version}": "",
             "%{cublas_version}": "",
             "%{cusolver_version}": "",
             "%{curand_version}": "",
@@ -842,6 +854,7 @@ filegroup(name="cudnn-include")
             "%{cusparse_version}": "",
             "%{cudnn_version}": "",
             "%{cuda_toolkit_path}": "",
+            "%{cuda_compute_capabilities}": "",
         },
         "cuda/cuda/cuda_config.h",
     )
@@ -927,7 +940,7 @@ def _tf_sysroot(repository_ctx):
     return get_host_environ(repository_ctx, _TF_SYSROOT, "")
 
 def _compute_cuda_extra_copts(repository_ctx, compute_capabilities):
-    copts = []
+    copts = ["--no-cuda-include-ptx=all"] if _use_cuda_clang(repository_ctx) else []
     for capability in compute_capabilities:
         if capability.startswith("compute_"):
             capability = capability.replace("compute_", "sm_")
@@ -972,9 +985,8 @@ def _create_local_cuda_repository(repository_ctx):
         "cuda:cuda_config.py",
     ]}
     tpl_paths["cuda:BUILD"] = _tpl_path(repository_ctx, "cuda:BUILD.windows" if is_windows(repository_ctx) else "cuda:BUILD")
-    find_cuda_config_script = repository_ctx.path(Label("@org_tensorflow//third_party/gpus:find_cuda_config.py.gz.base64"))
 
-    cuda_config = _get_cuda_config(repository_ctx, find_cuda_config_script)
+    cuda_config = _get_cuda_config(repository_ctx)
 
     cuda_include_path = cuda_config.config["cuda_include_dir"]
     cublas_include_path = cuda_config.config["cublas_include_dir"]
@@ -1087,26 +1099,20 @@ def _create_local_cuda_repository(repository_ctx):
 
     # copy files mentioned in third_party/nccl/build_defs.bzl.tpl
     file_ext = ".exe" if is_windows(repository_ctx) else ""
+    bin_files = (
+        ["crt/link.stub"] +
+        [f + file_ext for f in ["bin2c", "fatbinary", "nvlink", "nvprune"]]
+    )
     copy_rules.append(make_copy_files_rule(
         repository_ctx,
         name = "cuda-bin",
-        srcs = [
-            cuda_config.cuda_toolkit_path + "/bin/" + "crt/link.stub",
-            cuda_config.cuda_toolkit_path + "/bin/" + "nvlink" + file_ext,
-            cuda_config.cuda_toolkit_path + "/bin/" + "fatbinary" + file_ext,
-            cuda_config.cuda_toolkit_path + "/bin/" + "bin2c" + file_ext,
-        ],
-        outs = [
-            "cuda/bin/" + "crt/link.stub",
-            "cuda/bin/" + "nvlink" + file_ext,
-            "cuda/bin/" + "fatbinary" + file_ext,
-            "cuda/bin/" + "bin2c" + file_ext,
-        ],
+        srcs = [cuda_config.cuda_toolkit_path + "/bin/" + f for f in bin_files],
+        outs = ["cuda/bin/" + f for f in bin_files],
     ))
 
     # Select the headers based on the cuDNN version (strip '64_' for Windows).
     cudnn_headers = ["cudnn.h"]
-    if cuda_config.cudnn_version.rsplit("_", 1)[0] >= "8":
+    if cuda_config.cudnn_version.rsplit("_", 1)[-1] >= "8":
         cudnn_headers += [
             "cudnn_backend.h",
             "cudnn_adv_infer.h",
@@ -1271,6 +1277,12 @@ def _create_local_cuda_repository(repository_ctx):
             tpl_paths["crosstool:clang/bin/crosstool_wrapper_driver_is_not_gcc"],
             wrapper_defines,
         )
+        repository_ctx.file(
+            "crosstool/windows/msvc_wrapper_for_nvcc.bat",
+            content = "@echo OFF\n{} -B external/local_config_cuda/crosstool/windows/msvc_wrapper_for_nvcc.py %*".format(
+                get_python_bin(repository_ctx),
+            ),
+        )
         repository_ctx.template(
             "crosstool/windows/msvc_wrapper_for_nvcc.py",
             tpl_paths["crosstool:windows/msvc_wrapper_for_nvcc.py"],
@@ -1297,13 +1309,14 @@ def _create_local_cuda_repository(repository_ctx):
     )
 
     # Set up cuda_config.h, which is used by
-    # tensorflow/stream_executor/dso_loader.cc.
+    # tensorflow/compiler/xla/stream_executor/dso_loader.cc.
     repository_ctx.template(
         "cuda/cuda/cuda_config.h",
         tpl_paths["cuda:cuda_config.h"],
         {
             "%{cuda_version}": cuda_config.cuda_version,
             "%{cudart_version}": cuda_config.cudart_version,
+            "%{cupti_version}": cuda_config.cupti_version,
             "%{cublas_version}": cuda_config.cublas_version,
             "%{cusolver_version}": cuda_config.cusolver_version,
             "%{curand_version}": cuda_config.curand_version,
@@ -1311,6 +1324,10 @@ def _create_local_cuda_repository(repository_ctx):
             "%{cusparse_version}": cuda_config.cusparse_version,
             "%{cudnn_version}": cuda_config.cudnn_version,
             "%{cuda_toolkit_path}": cuda_config.cuda_toolkit_path,
+            "%{cuda_compute_capabilities}": ", ".join([
+                cc.split("_")[1]
+                for cc in cuda_config.compute_capabilities
+            ]),
         },
     )
 
@@ -1384,6 +1401,8 @@ def _create_remote_cuda_repository(repository_ctx, remote_config_repo):
 
 def _cuda_autoconf_impl(repository_ctx):
     """Implementation of the cuda_autoconf repository rule."""
+    build_file = Label("//third_party/gpus:local_config_cuda.BUILD")
+
     if not enable_cuda(repository_ctx):
         _create_dummy_repository(repository_ctx)
     elif get_host_environ(repository_ctx, _TF_CUDA_CONFIG_REPO) != None:
@@ -1398,6 +1417,23 @@ def _cuda_autoconf_impl(repository_ctx):
         )
     else:
         _create_local_cuda_repository(repository_ctx)
+
+    repository_ctx.symlink(build_file, "BUILD")
+
+# For @bazel_tools//tools/cpp:windows_cc_configure.bzl
+_MSVC_ENVVARS = [
+    "BAZEL_VC",
+    "BAZEL_VC_FULL_VERSION",
+    "BAZEL_VS",
+    "BAZEL_WINSDK_FULL_VERSION",
+    "VS90COMNTOOLS",
+    "VS100COMNTOOLS",
+    "VS110COMNTOOLS",
+    "VS120COMNTOOLS",
+    "VS140COMNTOOLS",
+    "VS150COMNTOOLS",
+    "VS160COMNTOOLS",
+]
 
 _ENVIRONS = [
     _GCC_HOST_COMPILER_PATH,
@@ -1416,7 +1452,7 @@ _ENVIRONS = [
     "TMP",
     "TMPDIR",
     "TF_CUDA_PATHS",
-]
+] + _MSVC_ENVVARS
 
 remote_cuda_configure = repository_rule(
     implementation = _create_local_cuda_repository,
@@ -1424,12 +1460,20 @@ remote_cuda_configure = repository_rule(
     remotable = True,
     attrs = {
         "environ": attr.string_dict(),
+        "_find_cuda_config": attr.label(
+            default = Label("@org_tensorflow//third_party/gpus:find_cuda_config.py"),
+        ),
     },
 )
 
 cuda_configure = repository_rule(
     implementation = _cuda_autoconf_impl,
     environ = _ENVIRONS + [_TF_CUDA_CONFIG_REPO],
+    attrs = {
+        "_find_cuda_config": attr.label(
+            default = Label("@org_tensorflow//third_party/gpus:find_cuda_config.py"),
+        ),
+    },
 )
 """Detects and configures the local CUDA toolchain.
 

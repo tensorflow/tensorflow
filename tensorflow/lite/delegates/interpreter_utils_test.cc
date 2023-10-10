@@ -29,6 +29,7 @@ limitations under the License.
 namespace tflite {
 namespace delegates {
 
+using test_utils::SimpleDelegate;
 using test_utils::TestDelegate;
 using test_utils::TestFP16Delegation;
 
@@ -101,9 +102,9 @@ TEST_F(TestDelegate, TestFallbackWithMultipleDelegates) {
 }
 
 TEST_P(TestFP16Delegation, DelegateInvokeWithCPUFallback) {
-  delegate_ = std::unique_ptr<FP16Delegate>(new FP16Delegate(
+  delegate_ = std::make_unique<FP16Delegate>(
       /**num_delegated_subsets**/ GetParam(), /**fail_node_prepare**/ false,
-      /**fail_node_invoke**/ true));
+      /**fail_node_invoke**/ true);
   ASSERT_EQ(
       interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
       kTfLiteOk);
@@ -134,9 +135,3 @@ INSTANTIATE_TEST_SUITE_P(TestFP16Delegation, TestFP16Delegation,
 }  // anonymous namespace
 }  // namespace delegates
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

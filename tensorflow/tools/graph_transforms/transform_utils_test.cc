@@ -172,7 +172,7 @@ class TransformUtilsTest : public ::testing::Test {
 
   void TestSetNodeAttr() {
     NodeDef node;
-    int32 value_i = 32;
+    int32_t value_i = 32;
     SetNodeAttr("foo", value_i, &node);
     EXPECT_EQ(32, node.attr().at("foo").i());
     string value_s = "some_value";
@@ -447,7 +447,7 @@ class TransformUtilsTest : public ::testing::Test {
           *(identity_node.mutable_input()->Add()) = original_copy.name();
           new_nodes->push_back(identity_node);
 
-          return Status::OK();
+          return OkStatus();
         },
         {}, &replaced_graph_def));
 
@@ -990,7 +990,7 @@ class TransformUtilsTest : public ::testing::Test {
     context.params.insert({"bar", {"-23"}});
     context.params.insert({"not_a_number", {"not_numerical"}});
     context.params.insert({"float", {"-23.232323"}});
-    int32 value;
+    int32_t value;
     TF_EXPECT_OK(context.GetOneInt32Parameter("bar", 0, &value));
     EXPECT_EQ(-23, value);
     EXPECT_FALSE(context.GetOneInt32Parameter("foo", 0, &value).ok());
@@ -1006,7 +1006,7 @@ class TransformUtilsTest : public ::testing::Test {
     context.params.insert({"bar", {"-23"}});
     context.params.insert({"not_a_number", {"not_numerical"}});
     context.params.insert({"float", {"-23.232323"}});
-    int64 value;
+    int64_t value;
     TF_EXPECT_OK(context.GetOneInt64Parameter("bar", 0, &value));
     EXPECT_EQ(-23, value);
     EXPECT_FALSE(context.GetOneInt64Parameter("foo", 0, &value).ok());

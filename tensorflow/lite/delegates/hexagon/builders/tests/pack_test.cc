@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <initializer_list>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/hexagon/builders/tests/hexagon_delegate_op_model.h"
 
@@ -68,7 +70,7 @@ TYPED_TEST(PackOpTest, ThreeInputs) {
   model.SetInput<typename TestFixture::TypeToTest>(0, {1, 4});
   model.SetInput<typename TestFixture::TypeToTest>(1, {2, 5});
   model.SetInput<typename TestFixture::TypeToTest>(2, {3, 6});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   auto ref_output_shape = model.GetOutputShape();
   auto ref_output =
       model.GetDequantizedOutput<typename TestFixture::TypeToTest>();
@@ -83,7 +85,7 @@ TYPED_TEST(PackOpTest, ThreeInputsDifferentAxis) {
   model.SetInput<typename TestFixture::TypeToTest>(0, {1, 4});
   model.SetInput<typename TestFixture::TypeToTest>(1, {2, 5});
   model.SetInput<typename TestFixture::TypeToTest>(2, {3, 6});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   auto ref_output_shape = model.GetOutputShape();
   auto ref_output =
       model.GetDequantizedOutput<typename TestFixture::TypeToTest>();
@@ -98,7 +100,7 @@ TYPED_TEST(PackOpTest, ThreeInputsNegativeAxis) {
   model.SetInput<typename TestFixture::TypeToTest>(0, {1, 4});
   model.SetInput<typename TestFixture::TypeToTest>(1, {2, 5});
   model.SetInput<typename TestFixture::TypeToTest>(2, {3, 6});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   auto ref_output_shape = model.GetOutputShape();
   auto ref_output =
       model.GetDequantizedOutput<typename TestFixture::TypeToTest>();
@@ -112,7 +114,7 @@ TYPED_TEST(PackOpTest, MultilDimensions) {
   PackOpModel model({TestFixture::TENSOR_TYPE, {2, 3}, -10, 20}, 1, 2);
   model.SetInput<typename TestFixture::TypeToTest>(0, {1, 2, 3, 4, 5, 6});
   model.SetInput<typename TestFixture::TypeToTest>(1, {7, 8, 9, 10, 11, 12});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   auto ref_output_shape = model.GetOutputShape();
   auto ref_output =
       model.GetDequantizedOutput<typename TestFixture::TypeToTest>();

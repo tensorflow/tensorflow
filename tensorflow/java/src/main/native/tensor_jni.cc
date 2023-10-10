@@ -271,6 +271,7 @@ void readNDStringArray(JNIEnv* env, StringTensorReader* reader, int dims_left,
       jbyteArray elem = reader->Next(env, status);
       if (TF_GetCode(status) != TF_OK) return;
       env->SetObjectArrayElement(dst, i, elem);
+      env->DeleteLocalRef(elem);
     }
     return;
   }
@@ -278,6 +279,7 @@ void readNDStringArray(JNIEnv* env, StringTensorReader* reader, int dims_left,
     jobjectArray arr =
         static_cast<jobjectArray>(env->GetObjectArrayElement(dst, i));
     readNDStringArray(env, reader, dims_left - 1, arr, status);
+    env->DeleteLocalRef(arr);
     if (TF_GetCode(status) != TF_OK) return;
   }
 }
@@ -357,6 +359,7 @@ void checkForNullEntries(JNIEnv* env, jarray value, int num_dims) {
                      "null entries in provided array");
       return;
     }
+    env->DeleteLocalRef(elem);
     if (env->ExceptionCheck()) return;
   }
 }
@@ -378,6 +381,7 @@ void fillNonScalarTF_STRINGTensorData(JNIEnv* env, jarray value, int num_dims,
     jarray elem = static_cast<jarray>(
         env->GetObjectArrayElement(static_cast<jobjectArray>(value), i));
     fillNonScalarTF_STRINGTensorData(env, elem, num_dims - 1, writer, status);
+    env->DeleteLocalRef(elem);
     if (TF_GetCode(status) != TF_OK) return;
   }
 }

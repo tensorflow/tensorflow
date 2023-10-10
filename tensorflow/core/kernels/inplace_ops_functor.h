@@ -23,7 +23,7 @@ namespace tensorflow {
 namespace functor {
 
 template <typename Device>
-Status DoParallelConcat(const Device& device, const Tensor& value, int32 loc,
+Status DoParallelConcat(const Device& device, const Tensor& value, int32_t loc,
                         Tensor* output);
 
 // Inplace update/add/sub values in 'y'. It computes

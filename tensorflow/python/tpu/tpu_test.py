@@ -15,10 +15,6 @@
 
 """Tests for tpu_function helpers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -35,7 +31,9 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_feed
+from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.tpu import training_loop
+from tensorflow.python.tpu.ops import tpu_ops
 
 
 class TPUContextTest(test.TestCase):
@@ -45,7 +43,8 @@ class TPUContextTest(test.TestCase):
     with ops.Graph().as_default():
       z1 = array_ops.identity(1)
       pivot = control_flow_ops.no_op()
-      context = tpu.TPUReplicateContext(b"context", 1, pivot=pivot)
+      context = tpu_replication.TPUReplicateContext(
+          b"context", 1, pivot=pivot)
       context.Enter()
       z2 = array_ops.identity(1)
       context.Exit()
@@ -61,7 +60,8 @@ class TPUContextTest(test.TestCase):
       @def_function.function
       def f():
         pivot = control_flow_ops.no_op()
-        context = tpu.TPUReplicateContext(b"context", 1, pivot=pivot)
+        context = tpu_replication.TPUReplicateContext(
+            b"context", 1, pivot=pivot)
         context.Enter()
         array_ops.identity(z)  # Capture z.
         z1 = array_ops.zeros([3, 2], name="a")
@@ -137,7 +137,7 @@ class TPUGraphPruneTest(test.TestCase):
 
       for node in graph_def.node:
         # Attach a TPU_REPLICATE_ATTR to each node.
-        node.attr[tpu._TPU_REPLICATE_ATTR].s = b"0"
+        node.attr[tpu_replication._TPU_REPLICATE_ATTR].s = b"0"
         # Rewire placeholder "a" and variable "y" leaving them unconnected.
         for (input_index, node_input) in enumerate(node.input):
           if node_input == "b":
@@ -152,22 +152,67 @@ class TPUGraphPruneTest(test.TestCase):
 
       # Verify that ops "a" and "x" still have TPU_REPLICATE_ATTR.
       a = graph.get_operation_by_name("import/a").get_attr(
-          tpu._TPU_REPLICATE_ATTR)
+          tpu_replication._TPU_REPLICATE_ATTR)
       self.assertEqual(b"0", a)
       x = graph.get_operation_by_name("import/x").get_attr(
-          tpu._TPU_REPLICATE_ATTR)
+          tpu_replication._TPU_REPLICATE_ATTR)
       self.assertEqual(b"0", x)
       # Verify that ops "b" and "y" have TPU_REPLICATE_ATTR removed.
       with self.assertRaisesRegex(
           ValueError,
           "Operation \'import/b\' has no attr named \'_tpu_replicate\'"):
         graph.get_operation_by_name("import/b").get_attr(
-            tpu._TPU_REPLICATE_ATTR)
+            tpu_replication._TPU_REPLICATE_ATTR)
       with self.assertRaisesRegex(
           ValueError,
           "Operation \'import/y\' has no attr named \'_tpu_replicate\'"):
         graph.get_operation_by_name("import/y").get_attr(
-            tpu._TPU_REPLICATE_ATTR)
+            tpu_replication._TPU_REPLICATE_ATTR)
+
+
+class TPUOpsTest(test.TestCase):
+
+  def test_all_to_all_zero_split_count(self):
+    with self.assertRaisesRegex(
+        ValueError, "split_count 0 must at least be one"):
+      tpu_ops.all_to_all(
+          x=[0.0, 0.1652, 0.6543],
+          group_assignment=[1, -1],
+          concat_dimension=0,
+          split_dimension=0,
+          split_count=0)
+
+  def test_all_to_all_group_assignment_wrong_shape(self):
+    with self.assertRaisesRegex(
+        ValueError, "group_assignment must have rank 2"):
+      tpu_ops.all_to_all(
+          x=[0.0, 0.1652, 0.6543],
+          group_assignment=[1, -1],
+          concat_dimension=0,
+          split_dimension=0,
+          split_count=2)
+
+  def test_all_to_all_split_count_not_equal_to_group_assignment_shape(self):
+    with self.assertRaisesRegex(
+        ValueError, "split_count 1 must equal the size of the second dimension "
+        "of group_assignment 2"):
+      tpu_ops.all_to_all(
+          x=[0.0, 0.1652, 0.6543],
+          group_assignment=[[0, 1], [2, 3]],
+          concat_dimension=0,
+          split_dimension=0,
+          split_count=1)
+
+  def test_all_to_all_split_count_not_divide_input_shape(self):
+    with self.assertRaisesRegex(
+        ValueError, "input dimension 3 not divisible by split_count 2"):
+      tpu_ops.all_to_all(
+          x=[[0.0], [0.1652], [0.6543]],
+          group_assignment=[[0, 1], [2, 3]],
+          concat_dimension=1,
+          split_dimension=0,
+          split_count=2)
+
 
 def do_einsum():
   a = array_ops.placeholder(dtype=dtypes.float32, name="a", shape=[2, 3, 4])

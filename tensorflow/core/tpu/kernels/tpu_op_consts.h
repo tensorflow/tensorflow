@@ -33,6 +33,8 @@ ABSL_CONST_INIT extern const char kCompiledProtoCacheResourceName[];
 // put into TPU_SYSTEM device resource manager. Inference may use it to unload
 // cache entries created during lifetime of a DirectSession.
 ABSL_CONST_INIT extern const char kCompilationCacheUnloaderResourceName[];
+// TBD
+ABSL_CONST_INIT extern const char kFingerprintLookupResourceName[];
 
 }  // namespace tpu
 }  // namespace tensorflow

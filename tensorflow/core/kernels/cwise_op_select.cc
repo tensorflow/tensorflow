@@ -135,7 +135,8 @@ class SelectOp : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(SelectOp);
+  SelectOp(const SelectOp&) = delete;
+  void operator=(const SelectOp&) = delete;
 };
 template <typename Device, typename T>
 class SelectV2Op : public OpKernel {
@@ -239,7 +240,8 @@ class SelectV2Op : public OpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(SelectV2Op);
+  SelectV2Op(const SelectV2Op&) = delete;
+  void operator=(const SelectV2Op&) = delete;
 };
 
 #define REGISTER_SELECT(type)                                        \
@@ -253,6 +255,8 @@ class SelectV2Op : public OpKernel {
 TF_CALL_ALL_TYPES(REGISTER_SELECT);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 
 // Registration of the GPU implementations.
 #define REGISTER_SELECT_GPU(type)                                    \
@@ -273,6 +277,32 @@ REGISTER_SELECT_GPU(complex64);
 REGISTER_SELECT_GPU(complex128);
 
 #undef REGISTER_SELECT_GPU
+
+#else
+
+#define REGISTER_SELECT_GPU(type)                                  \
+  REGISTER_KERNEL_BUILDER(                                         \
+      Name("Select").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      SelectOp<GPUDevice, type>);
+
+REGISTER_SELECT_GPU(bool);
+REGISTER_SELECT_GPU(Eigen::half);
+REGISTER_SELECT_GPU(float);
+REGISTER_SELECT_GPU(double);
+REGISTER_SELECT_GPU(int32);
+REGISTER_SELECT_GPU(int64_t);
+REGISTER_SELECT_GPU(complex64);
+REGISTER_SELECT_GPU(complex128);
+
+#undef REGISTER_SELECT_GPU
+#endif
+
+REGISTER_KERNEL_BUILDER(
+    Name("Select").Device(DEVICE_GPU).TypeConstraint<bfloat16>("T"),
+    SelectOp<GPUDevice, bfloat16>);
+REGISTER_KERNEL_BUILDER(
+    Name("SelectV2").Device(DEVICE_GPU).TypeConstraint<bfloat16>("T"),
+    SelectV2Op<GPUDevice, bfloat16>);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -337,15 +367,10 @@ struct BatchSelectFunctorBase {
     const Eigen::DenseIndex batch = cond_vec.size();
     const Eigen::DenseIndex all_but_batch = then_flat_outer_dims.dimension(1);
 
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::array<Eigen::DenseIndex, 2> broadcast_dims{{1, all_but_batch}};
-    Eigen::Tensor<Eigen::DenseIndex, 2>::Dimensions reshape_dims{{batch, 1}};
-#else
     Eigen::IndexList<Eigen::type2index<1>, Eigen::DenseIndex> broadcast_dims;
     broadcast_dims.set(1, all_but_batch);
     Eigen::IndexList<Eigen::DenseIndex, Eigen::type2index<1> > reshape_dims;
     reshape_dims.set(0, batch);
-#endif
 
     Assign(d, output_flat_outer_dims,
            cond_vec.reshape(reshape_dims)
@@ -369,7 +394,7 @@ struct BatchSelectFunctor<CPUDevice, T> {
     const T* t = then_flat_outer_dims.data();
     const T* e = else_flat_outer_dims.data();
 
-    auto work = [batch_size, output, c, t, e](int64 start, int64 end) {
+    auto work = [batch_size, output, c, t, e](int64_t start, int64_t end) {
       for (size_t i = start; i < end; ++i) {
         size_t offset = i * batch_size;
         port::prefetch<port::PREFETCH_HINT_NTA>(

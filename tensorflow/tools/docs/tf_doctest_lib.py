@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Run doctests for tensorflow."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import doctest
 import re
@@ -102,10 +97,7 @@ class _FloatExtractor(object):
 
 
 class TfDoctestOutputChecker(doctest.OutputChecker, object):
-  """Changes the `want` and `got` strings.
-
-  This allows it to be customized before they are compared.
-  """
+  """Customizes how `want` and `got` are compared, see `check_output`."""
 
   def __init__(self, *args, **kwargs):
     super(TfDoctestOutputChecker, self).__init__(*args, **kwargs)
@@ -114,9 +106,22 @@ class TfDoctestOutputChecker(doctest.OutputChecker, object):
     self.float_size_good = None
 
   _ADDRESS_RE = re.compile(r'\bat 0x[0-9a-f]*?>')
+  # TODO(yashkatariya): Add other tensor's string substitutions too.
+  # tf.RaggedTensor doesn't need one.
+  _NUMPY_OUTPUT_RE = re.compile(r'<tf.Tensor.*?numpy=(.*?)>', re.DOTALL)
 
   def _allclose(self, want, got, rtol=1e-3, atol=1e-3):
     return np.allclose(want, got, rtol=rtol, atol=atol)
+
+  def _tf_tensor_numpy_output(self, string):
+    modified_string = self._NUMPY_OUTPUT_RE.sub(r'\1', string)
+    return modified_string, modified_string != string
+
+  MESSAGE = textwrap.dedent("""\n
+        #############################################################
+        Check the documentation (https://www.tensorflow.org/community/contribute/docs_ref) on how to
+        write testable docstrings.
+        #############################################################""")
 
   def check_output(self, want, got, optionflags):
     """Compares the docstring output to the output gotten by running the code.
@@ -149,17 +154,37 @@ class TfDoctestOutputChecker(doctest.OutputChecker, object):
     # If the docstring's output is empty and there is some output generated
     # after running the snippet, return True. This is because if the user
     # doesn't want to display output, respect that over what the doctest wants.
-    if not want and got:
+    if got and not want:
+      return True
+
+    if want is None:
+      want = ''
+
+    if want == got:
       return True
 
     # Replace python's addresses with ellipsis (`...`) since it can change on
     # each execution.
     want = self._ADDRESS_RE.sub('at ...>', want)
 
+    # Replace tf.Tensor strings with only their numpy field values.
+    want, want_changed = self._tf_tensor_numpy_output(want)
+    if want_changed:
+      got, _ = self._tf_tensor_numpy_output(got)
+
     # Separate out the floats, and replace `want` with the wild-card version
     # "result=7.0" => "result=..."
     want_text_parts, self.want_floats = self.extract_floats(want)
+    # numpy sometimes pads floats in arrays with spaces
+    # got: [1.2345, 2.3456, 3.0   ]  want:  [1.2345, 2.3456, 3.0001]
+    # And "normalize whitespace" only works when there's at least one space,
+    # so strip them and let the wildcard handle it.
+    want_text_parts = [part.strip(' ') for part in want_text_parts]
     want_text_wild = '...'.join(want_text_parts)
+    if '....' in want_text_wild:
+      # If a float comes just after a period you'll end up four dots and the
+      # first three count as the ellipsis. Replace it with three dots.
+      want_text_wild = re.sub(r'\.\.\.\.+', '...', want_text_wild)
 
     # Find the floats in the string returned by the test
     _, self.got_floats = self.extract_floats(got)
@@ -193,13 +218,7 @@ class TfDoctestOutputChecker(doctest.OutputChecker, object):
         got.append("\n\nCAUTION: tf_doctest doesn't work if *some* of the "
                    "*float output* is hidden with a \"...\".")
 
-    message = textwrap.dedent("""\n
-        #############################################################
-        Check the documentation
-        (https://www.tensorflow.org/community/contribute/docs_ref) on how to write testable docstrings.
-        #############################################################""")
-
-    got.append(message)
+    got.append(self.MESSAGE)
     got = '\n'.join(got)
     return (super(TfDoctestOutputChecker,
                   self).output_difference(example, got, optionflags))

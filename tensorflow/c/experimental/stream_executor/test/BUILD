@@ -6,12 +6,16 @@ load(
 )
 
 package(
-    licenses = ["notice"],  # Apache 2.0
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    licenses = ["notice"],
 )
 
 tf_cc_shared_object(
     name = "test_pluggable_device.so",
     srcs = ["test_pluggable_device.cc"],
     visibility = ["//tensorflow/c:__subpackages__"],
-    deps = ["//tensorflow/c/experimental/stream_executor:stream_executor_hdrs"],
+    deps = [
+        "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_test_util",
+    ],
 )

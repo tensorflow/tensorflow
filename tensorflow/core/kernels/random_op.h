@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_RANDOM_OP_H_
 #define TENSORFLOW_CORE_KERNELS_RANDOM_OP_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/lib/random/random_distributions.h"
 
 namespace tensorflow {
@@ -42,7 +42,7 @@ template <class Distribution>
 struct FillPhiloxRandom<CPUDevice, Distribution> {
   void operator()(OpKernelContext* ctx, const CPUDevice& d, const uint64* key,
                   const uint64* counter, random::PhiloxRandom gen,
-                  typename Distribution::ResultElementType* data, int64 size,
+                  typename Distribution::ResultElementType* data, int64_t size,
                   Distribution dist);
 };
 
@@ -53,7 +53,7 @@ template <class Distribution>
 struct FillPhiloxRandom<GPUDevice, Distribution> {
   void operator()(OpKernelContext* ctx, const GPUDevice& d, const uint64* key,
                   const uint64* counter, random::PhiloxRandom gen,
-                  typename Distribution::ResultElementType* data, int64 size,
+                  typename Distribution::ResultElementType* data, int64_t size,
                   Distribution dist);
 };
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

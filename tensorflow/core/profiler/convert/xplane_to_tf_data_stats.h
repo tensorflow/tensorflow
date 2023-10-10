@@ -20,12 +20,12 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 
-TF_CONST_INIT extern const int64 kSlowCallThresholdPs;
+TF_CONST_INIT extern const int64_t kSlowCallThresholdPs;
 
 enum class BottleneckType {
   kSlowSource,

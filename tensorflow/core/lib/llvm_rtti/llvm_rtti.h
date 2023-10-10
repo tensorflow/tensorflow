@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_LIB_CORE_LLVM_RTTI_H_
-#define TENSORFLOW_CORE_LIB_CORE_LLVM_RTTI_H_
+#ifndef TENSORFLOW_CORE_LIB_LLVM_RTTI_LLVM_RTTI_H_
+#define TENSORFLOW_CORE_LIB_LLVM_RTTI_LLVM_RTTI_H_
 
 #include "llvm/Support/Casting.h"
 
@@ -22,4 +22,4 @@ using llvm::dyn_cast;
 using llvm::isa;
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_LIB_CORE_LLVM_RTTI_H_
+#endif  // TENSORFLOW_CORE_LIB_LLVM_RTTI_LLVM_RTTI_H_

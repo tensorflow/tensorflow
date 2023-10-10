@@ -1,4 +1,4 @@
-// Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+// Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,17 +15,19 @@ syntax = "proto2";
 
 package toco;
 
+import "tensorflow/compiler/mlir/lite/debug/debug_options.proto";
+import "tensorflow/compiler/mlir/quantization/stablehlo/quantization_options.proto";
 import "tensorflow/lite/toco/types.proto";
 
 // Supported I/O file formats. Some formats may be input-only or output-only.
 enum FileFormat {
   FILE_FORMAT_UNKNOWN = 0;
 
-  // GraphDef, third_party/tensorflow/core/framework/graph.proto
+  // GraphDef, tensorflow/core/framework/graph.proto
   TENSORFLOW_GRAPHDEF = 1;
 
   // Tensorflow's mobile inference model.
-  // third_party/tensorflow/lite/schema/schema.fbs
+  // tensorflow/lite/schema/schema.fbs
   TFLITE = 2;
 
   // GraphViz
@@ -38,7 +40,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 34.
+// Next ID to use: 60.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -193,8 +195,6 @@ message TocoFlags {
 
   // This flag only works when converting to TensorFlow Lite format.
   // When enabled, unsupported ops will be converted to select TensorFlow ops.
-  // TODO(ycling): Consider to rename the following 2 flags and don't call it
-  // "Flex".
   // `enable_select_tf_ops` should always be used with `allow_custom_ops`.
   // WARNING: Experimental interface, subject to change
   optional bool enable_select_tf_ops = 27 [default = false];
@@ -225,9 +225,117 @@ message TocoFlags {
 
   // String representing the custom ops OpDefs that are included in the
   // GraphDef.
-  repeated string custom_opdefs = 32;
+  // Deprecated do not use.
+  repeated string custom_opdefs = 32 [deprecated = true];
 
   // Name of user's defined Tensorflow ops required in the TensorFlow Lite
   // runtime. These ops will be supported as select TensorFlow ops.
   repeated string select_user_tf_ops = 33;
+
+  // Whether to enable tflite resource variables during conversion or not.
+  // Note: This is an experimental feature.
+  optional bool enable_tflite_resource_variables = 34 [default = true];
+
+  // Whether to unfold tf.BatchMatMul to a set of tfl.fully_connected ops. If
+  // not, translate to tfl.batch_matmul.
+  // WARNING: Experimental interface, subject to change.
+  optional bool unfold_batchmatmul = 35 [default = false];
+
+  // Whether to lower static Tensor List ops to builtin ops. If not, use Flex
+  // tensor list ops.
+  // WARNING: Experimental interface, subject to change.
+  optional bool lower_tensor_list_ops = 36 [default = true];
+
+  // The accumulation type to use when quantize_to_float16 is true. Typical
+  // choices would be either float16 or float32.
+  optional IODataType accumulation_type = 37;
+
+  // Whether this model supports inference in bfloat16.
+  // Note: This is an experimental feature.
+  optional bool allow_bfloat16 = 38 [default = false];
+
+  // If true, automatically adds all tf ops into the model as select Tensorflow
+  // ops.
+  optional bool allow_all_select_tf_ops = 39;
+
+  // Whether to unfold large splat constant tensors in the flatbuffer to reduce
+  // model size.
+  optional bool unfold_large_splat_constant = 40 [default = false];
+
+  // Name of TFLite backends which are needed to check compatibility.
+  // WARNING: Experimental interface, subject to change.
+  repeated string supported_backends = 41;
+
+  // Whether to force to use batch size one when the batch size is None during
+  // lowering tensor list ops.
+  optional bool default_to_single_batch_in_tensor_list_ops = 42
+      [default = false];
+
+  // Disable per_channel quantization for dynamic range quantization.
+  // Note: This is an experimental feature
+  optional bool disable_per_channel_quantization = 43 [default = false];
+
+  // If false, the old TOCO dynamic range quantization is used.
+  // Note: This is an experimental feature
+  optional bool enable_mlir_dynamic_range_quantizer = 44 [default = false];
+
+  // When the output model is used for TF Quantization, this flag indicates the
+  // mode of TF Quantization. Ex: DEFAULT, LEGACY_INTEGER,...
+  optional string tf_quantization_mode = 45;
+
+  // Disable inferring tensor range for quantization.
+  // Note: This is an experimental feature
+  optional bool disable_infer_tensor_range = 46 [default = false];
+
+  // Enable using num bits set in fake quant attributes for quantization.
+  // Note: This is an experimental feature
+  optional bool use_fake_quant_num_bits = 47 [default = false];
+
+  // Enable converting to DynamicUpdateSlice op (for ops like TensorListSetItem)
+  // Note: This is an experimental feature
+  optional bool enable_dynamic_update_slice = 48 [default = false];
+
+  // Whether to preserve `TF::AssertOp`.
+  optional bool preserve_assert_op = 49 [default = false];
+
+  // Whether to ensure each function has a single use.
+  optional bool guarantee_all_funcs_one_use = 50 [default = false];
+
+  // Whether to convert model to stablehlo.
+  optional bool convert_to_stablehlo = 51 [default = false];
+
+  // If false, skip the variable quantization passes.
+  // Note: This is an experimental feature
+  optional bool enable_mlir_variable_quantization = 52 [default = false];
+
+  // If true, disable folding mul->fc as in layer norm during optimize pass.
+  optional bool disable_fuse_mul_and_fc = 53 [default = false];
+
+  // Indicates the quantization specs. Quantization spec can be set to either
+  // a preset method or a custom method.
+  // Note: This is an experimental feature
+  optional stablehlo.quantization.QuantizationOptions quantization_options = 54;
+
+  // Flag to enable hlo to tf conversion.
+  // This is useful to exercise StableHLO -> HLO -> TF -> TFLite path.
+  optional bool enable_hlo_to_tf_conversion = 55
+      [default = false, deprecated = true];
+
+  // Additional parameters for controlling debug facilities.
+  optional tensorflow.converter.DebugOptions debug_options = 56;
+
+  // If true, TFlite will use offsets instead of flatbuffers array to store
+  // buffers and custom options Note: This is an experimental feature
+  optional bool use_buffer_offset = 57 [default = false];
+
+  // Whether to legalize "tf.TensorList*" ops to custom tflite if they
+  // can all be supported.
+  optional bool legalize_custom_tensor_list_ops = 58 [default = false];
+
+  // Whether to convert some tensor types to a lower precision if all values
+  // within that tensor are within the range of the lower precision. This could
+  // have side effects e.g. reduced flatbuffer size. Only certain type
+  // conversions are supported.
+  // WARNING: Experimental interface, subject to change.
+  optional bool reduce_type_precision = 59 [default = false];
 }

@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """A Transformed Distribution class."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -24,6 +20,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -434,7 +431,8 @@ class TransformedDistribution(distribution_lib.Distribution):
     lp_on_fibers = [
         self._finish_log_prob_for_one_fiber(y, x_i, ildj_i, event_ndims)
         for x_i, ildj_i in zip(x, ildj)]
-    return math_ops.reduce_logsumexp(array_ops.stack(lp_on_fibers), axis=0)
+    return math_ops.reduce_logsumexp(
+        array_ops_stack.stack(lp_on_fibers), axis=0)
 
   def _finish_log_prob_for_one_fiber(self, y, x, ildj, event_ndims):
     """Finish computation of log_prob on one element of the inverse image."""

@@ -2,16 +2,76 @@
 
 ## Pull Request Checklist
 
-Before sending your pull requests, make sure you followed this list.
+Before sending your pull requests, make sure you do the following:
 
-- Read [contributing guidelines](CONTRIBUTING.md).
-- Read [Code of Conduct](CODE_OF_CONDUCT.md).
-- Ensure you have signed the [Contributor License Agreement (CLA)](https://cla.developers.google.com/).
-- Check if my changes are consistent with the [guidelines](https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md#general-guidelines-and-philosophy-for-contribution).
-- Changes are consistent with the [Coding Style](https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md#c-coding-style).
-- Run [Unit Tests](https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md#running-unit-tests).
+-   Read the [contributing guidelines](CONTRIBUTING.md).
+-   Read the [Code of Conduct](CODE_OF_CONDUCT.md).
+-   Ensure you have signed the
+    [Contributor License Agreement (CLA)](https://cla.developers.google.com/).
+-   Check if your changes are consistent with the
+    [guidelines](#general-guidelines-and-philosophy-for-contribution).
+-   Changes are consistent with the [Coding Style](#c-coding-style).
+-   Run the [unit tests](#running-unit-tests).
 
 ## How to become a contributor and submit your own code
+
+![Screen Shot 2022-08-30 at 7 27 04 PM](https://user-images.githubusercontent.com/42785357/187579207-9924eb32-da31-47bb-99f9-d8bf1aa238ad.png)
+
+### Typical Pull Request Workflow -
+
+**1. New PR**
+
+- As a contributor, you submit a New PR on GitHub.
+- We inspect every incoming PR and add certain labels to the PR such as `size:`,
+  `comp:` etc.  At this stage we check if the PR is valid and meets certain
+  quality requirements. For example, we check if the CLA is signed, PR has
+  sufficient description, if applicable unit tests are added, if it is a
+  reasonable contribution (meaning it is not a single liner cosmetic PR).
+
+**2. Valid?**
+
+-   If the PR passes all the quality checks then we go ahead and assign a
+    reviewer.
+-   If the PR didn't meet the validation criteria, we request for additional
+    changes to be made to PR to pass quality checks and send it back or on a
+    rare occasion we may reject it.
+
+**3. Review**
+
+-   For a valid PR, reviewer (person familiar with the code/functionality)
+    checks if the PR looks good or needs additional changes.
+-   If all looks good, the reviewer will approve the PR.
+-   If a change is needed, the contributor is requested to make the suggested
+    change.
+-   You make the change and submit it for the review again.
+-   This cycle repeats itself untill the PR gets approved.
+-   Note: As a friendly reminder, we may reach out to you if the PR is awaiting
+    your response for more than 2 weeks.
+
+**4. Approved**
+
+-   Once the PR is approved, it gets `kokoro:force-run` label applied and it
+    initiates CI/CD tests.
+-   We can't move forward if these tests fail.
+-   In such situations, we may request you to make further changes to your PR
+    for the tests to pass.
+-   Once the tests pass, we now bring all the code into the internal code base,
+    using a job called "copybara".
+
+**5. Copy to Google Internal codebase and run internal CI**
+
+-   Once the PR is in the Google codebase, we make sure it integrates well with
+    its dependencies and the rest of the system.
+-   Rarely, If the tests fail at this stage, we cannot merge the code.
+-   If needed, we may come to you to make some changes. At times, it may not be
+    you, it may be us who may have hit a snag. Please be patient while we work
+    to fix this.
+-   Once the internal tests pass, we go ahead and merge the code internally as
+    well as externally on GitHub.
+
+In a graphical form, the entire lifetime of a PR looks like
+
+![image](https://user-images.githubusercontent.com/323199/229561784-0a2f5509-b731-493f-ad88-bad487688c8d.png)
 
 ### Contributor License Agreements
 
@@ -29,8 +89,8 @@ Follow either of the two links above to access the appropriate CLA and instructi
 ### Contributing code
 
 If you have improvements to TensorFlow, send us your pull requests! For those
-just getting started, Github has a
-[how to](https://help.github.com/articles/using-pull-requests/).
+just getting started, GitHub has a
+[how-to](https://help.github.com/articles/using-pull-requests/).
 
 TensorFlow team members will be assigned to review your pull requests. Once the
 pull requests are approved and pass continuous integration checks, a TensorFlow
@@ -41,7 +101,7 @@ automatically on GitHub.
 
 If you want to contribute, start working through the TensorFlow codebase,
 navigate to the
-[Github "issues" tab](https://github.com/tensorflow/tensorflow/issues) and start
+[GitHub "issues" tab](https://github.com/tensorflow/tensorflow/issues) and start
 looking through interesting issues. If you are not sure of where to start, then
 start by trying one of the smaller/easier issues here i.e.
 [issues with the "good first issue" label](https://github.com/tensorflow/tensorflow/labels/good%20first%20issue)
@@ -74,7 +134,8 @@ TensorFlow coding style.
     [tensorflow/python](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python).
     TensorFlow has passed version 1.0 and hence cannot make
     non-backward-compatible API changes without a major release. Reviewers of
-    your pull request will comment on any API compatibility issues.
+    your pull request will comment on any API compatibility issues
+    [following API review practices](https://github.com/tensorflow/community/blob/master/governance/api-reviews.md).
 *   When you contribute a new feature to TensorFlow, the maintenance burden is
     (by default) transferred to the TensorFlow team. This means that the benefit
     of the contribution must be compared against the cost of maintaining the
@@ -87,7 +148,7 @@ TensorFlow coding style.
 *   As every PR requires several CPU/GPU hours of CI testing, we discourage
     submitting PRs to fix one typo, one warning,etc. We recommend fixing the
     same issue at the file level at least (e.g.: fix all typos in a file, fix
-    all compiler warning in a file, etc.)
+    all compiler warnings in a file, etc.)
 *   Tests should follow the
     [testing best practices](https://www.tensorflow.org/community/contribute/tests)
     guide.
@@ -96,13 +157,12 @@ TensorFlow coding style.
 
 Include a license at the top of new files.
 
-* [C/C++ license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/op.cc#L1)
-* [Python license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/nn.py#L1)
-* [Java license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/java/src/main/java/org/tensorflow/Graph.java#L1)
-* [Go license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/go/operation.go#L1)
-* [Bash license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/ci_build/ci_sanity.sh#L2)
-* [HTML license example](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/components/tf_backend/tf-backend.html#L2)
-* [JavaScript/TypeScript license example](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/components/tf_backend/backend.ts#L1)
+*   [C/C++ license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/op.cc#L1)
+*   [Python license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/nn.py#L1)
+*   [Java license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/java/src/main/java/org/tensorflow/Graph.java#L1)
+*   [Go license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/go/operation.go#L1)
+*   [Bash license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/ci_build/ci_build.sh#L2)
+*   [JavaScript/TypeScript license example](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/components/tf_backend/backend.ts#L1)
 
 Bazel BUILD files also need to include a license section, e.g.,
 [BUILD example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/BUILD#L61).
@@ -144,10 +204,10 @@ top level tensorflow directory.
 
 #### Coding style for other languages
 
-* [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html)
-* [Google JavaScript Style Guide](https://google.github.io/styleguide/jsguide.html)
-* [Google Shell Style Guide](https://google.github.io/styleguide/shell.xml)
-* [Google Objective-C Style Guide](https://google.github.io/styleguide/objcguide.html)
+*   [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html)
+*   [Google JavaScript Style Guide](https://google.github.io/styleguide/jsguide.html)
+*   [Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html)
+*   [Google Objective-C Style Guide](https://google.github.io/styleguide/objcguide.html)
 
 #### Running sanity check
 
@@ -175,19 +235,22 @@ There are two ways to run TensorFlow unit tests.
     [Docker images](https://hub.docker.com/r/tensorflow/tensorflow/tags/), e.g.,
     `tensorflow/tensorflow:devel` and `tensorflow/tensorflow:devel-gpu` for
     development to avoid installing the packages directly on your system (in
-    which case remember to change directory from `/root` to `/tensorflow` once
-    you get into the running container so `bazel` can find the `tensorflow`
+    which case remember to change the directory from `/root` to `/tensorflow`
+    once you get into the running container so `bazel` can find the `tensorflow`
     workspace).
 
     Once you have the packages installed, you can run a specific unit test in
     bazel by doing as follows:
 
-    If the tests are to be run on GPU, add CUDA paths to LD_LIBRARY_PATH and add
-    the `cuda` option flag
+    ```bash
+    export flags="--config=opt -k"
+    ```
+
+    If the tests are to be run on the GPU, add CUDA paths to LD_LIBRARY_PATH and
+    add the `cuda` option flag
 
     ```bash
     export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
-
     export flags="--config=opt --config=cuda -k"
     ```
 
@@ -196,6 +259,29 @@ There are two ways to run TensorFlow unit tests.
     ```bash
     bazel test ${flags} //tensorflow/python/...
     ```
+
+    For a single component e.g. softmax op:
+
+    ```bash
+    bazel test ${flags} tensorflow/python/kernel_tests/nn_ops:softmax_op_test
+    ```
+
+    For a single/parameterized test e.g. `test_capture_variables` in
+    `tensorflow/python/saved_model/load_test.py`:
+
+    (Requires `python>=3.7`)
+
+    ```bash
+    bazel test ${flags} //tensorflow/python/saved_model:load_test --test_filter=*LoadTest.test_capture_variables*
+    ```
+
+    **Note:** You can add `--test_sharding_strategy=disabled` to the `flags` to
+    disable the sharding so that all the test outputs are in one file. However,
+    it may slow down the tests for not running in parallel and may cause the
+    test to timeout but it could be useful when you need to execute a single
+    test or more in general your filtered/selected tests have a very low
+    execution time and the sharding
+    [could create an overhead on the test execution](https://github.com/bazelbuild/bazel/issues/2113#issuecomment-264054799).
 
 2.  Using [Docker](https://www.docker.com) and TensorFlow's CI scripts.
 
@@ -207,3 +293,66 @@ There are two ways to run TensorFlow unit tests.
     See
     [TensorFlow Builds](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/ci_build)
     for details.
+
+#### Running doctest for testable docstring
+
+There are two ways to test the code in the docstring locally:
+
+1.  If you are only changing the docstring of a class/function/method, then you
+    can test it by passing that file's path to
+    [tf_doctest.py](https://www.tensorflow.org/code/tensorflow/tools/docs/tf_doctest.py).
+    For example:
+
+    ```bash
+    python tf_doctest.py --file=<file_path>
+    ```
+
+    This will run it using your installed version of TensorFlow. To be sure
+    you're running the same code that you're testing:
+
+    *   Use an up to date [tf-nightly](https://pypi.org/project/tf-nightly/)
+        `pip install -U tf-nightly`
+    *   Rebase your pull request onto a recent pull from
+        [TensorFlow's](https://github.com/tensorflow/tensorflow) master branch.
+
+2.  If you are changing the code and the docstring of a class/function/method,
+    then you will need to
+    [build TensorFlow from source](https://www.tensorflow.org/install/source).
+    Once you are setup to build from source, you can run the tests:
+
+    ```bash
+    bazel run //tensorflow/tools/docs:tf_doctest
+    ```
+
+    or
+
+    ```bash
+    bazel run //tensorflow/tools/docs:tf_doctest -- --module=ops.array_ops
+    ```
+
+    The `--module` is relative to `tensorflow.python`.
+
+#### Debug builds
+
+When [building Tensorflow](https://www.tensorflow.org/install/source), passing
+`--config=dbg` to Bazel will build with debugging information and without
+optimizations, allowing you to use GDB or other debuggers to debug C++ code. For
+example, you can build the pip package with debugging information by running:
+
+```bash
+bazel build --config=dbg //tensorflow/tools/pip_package:build_pip_package
+```
+
+TensorFlow kernels and TensorFlow's dependencies are still not built with
+debugging information with `--config=dbg`, as issues occur on Linux if
+there is too much debug info (see [this GitHub
+issue](https://github.com/tensorflow/tensorflow/issues/48919) for context). If
+you want to debug a kernel, you can compile specific files with `-g` using the
+`--per_file_copt` bazel option. For example, if you want to debug the Identity
+op, which are in files starting with `identity_op`, you can run
+
+```bash
+bazel build --config=dbg --per_file_copt=+tensorflow/core/kernels/identity_op.*@-g //tensorflow/tools/pip_package:build_pip_package
+```
+
+Note that the `--config=dbg` option is not officially supported.

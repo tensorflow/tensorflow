@@ -38,9 +38,13 @@ namespace {
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 constexpr char kTPUEmbeddingAttr[] = "_tpu_embedding_layer";
 
-struct TPUUpdateEmbeddingEnqueueOpInputs
-    : public PassWrapper<TPUUpdateEmbeddingEnqueueOpInputs, FunctionPass> {
-  void runOnFunction() override;
+#define GEN_PASS_DEF_TPUUPDATEEMBEDDINGENQUEUEOPINPUTSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
+struct TPUUpdateEmbeddingEnqueueOpInputsPass
+    : public impl::TPUUpdateEmbeddingEnqueueOpInputsPassBase<
+          TPUUpdateEmbeddingEnqueueOpInputsPass> {
+  void runOnOperation() override;
 };
 
 // Extracts `_tpu_embedding_layer` attribute from TPU embedding ops and
@@ -61,7 +65,7 @@ LogicalResult ExtractEmbeddingAttribute(
 }
 
 LogicalResult FindTPUEmbeddingOps(
-    FuncOp func_op, llvm::StringMap<Operation*>* enqueue_op_map,
+    func::FuncOp func_op, llvm::StringMap<Operation*>* enqueue_op_map,
     llvm::StringMap<Operation*>* recv_activation_op_map,
     llvm::StringMap<Operation*>* send_gradient_op_map) {
   auto walk_result = func_op.walk([&](Operation* op) {
@@ -74,7 +78,8 @@ LogicalResult FindTPUEmbeddingOps(
         return WalkResult::interrupt();
 
     if (llvm::isa<TF::EnqueueTPUEmbeddingSparseTensorBatchOp,
-                  TF::EnqueueTPUEmbeddingRaggedTensorBatchOp>(op))
+                  TF::EnqueueTPUEmbeddingRaggedTensorBatchOp,
+                  TF::EnqueueTPUEmbeddingArbitraryTensorBatchOp>(op))
       if (failed(ExtractEmbeddingAttribute(op, enqueue_op_map)))
         return WalkResult::interrupt();
 
@@ -137,9 +142,9 @@ LogicalResult UpdateEmbeddingEnqueueOpInput(
   return success();
 }
 
-void TPUUpdateEmbeddingEnqueueOpInputs::runOnFunction() {
+void TPUUpdateEmbeddingEnqueueOpInputsPass::runOnOperation() {
   OpBuilder builder(&getContext());
-  auto func_op = getFunction();
+  auto func_op = getOperation();
 
   // All TPU embedding layer related ops are annotated with
   // `_tpu_embedding_layer` attribute along with corresponding string attribute.
@@ -169,15 +174,10 @@ void TPUUpdateEmbeddingEnqueueOpInputs::runOnFunction() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUUpdateEmbeddingEnqueueOpInputsPass() {
-  return std::make_unique<TPUUpdateEmbeddingEnqueueOpInputs>();
+  return std::make_unique<TPUUpdateEmbeddingEnqueueOpInputsPass>();
 }
-
-static PassRegistration<TPUUpdateEmbeddingEnqueueOpInputs> pass(
-    "tf-tpu-update-embedding-enqueue-op-inputs",
-    "Updates inputs to TPU embedding enqueue ops depending on whether graph "
-    "is in training mode or in evaluation mode.");
 
 }  // namespace TFTPU
 }  // namespace mlir

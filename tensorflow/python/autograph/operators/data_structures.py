@@ -14,10 +14,6 @@
 # ==============================================================================
 """Operators specific to data structures: list append, subscripts, etc."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 from tensorflow.python.framework import constant_op
@@ -25,7 +21,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import tensor_array_ops
 
@@ -106,7 +102,7 @@ def tf_tensor_array_new(elements, element_dtype=None, element_shape=None):
 
 def tf_tensor_list_new(elements, element_dtype=None, element_shape=None):
   """Overload of new_list that stages a Tensor list creation."""
-  if tensor_util.is_tensor(elements):
+  if tensor_util.is_tf_type(elements):
     if element_shape is not None:
       raise ValueError(
           'element shape may not be specified when creating list from tensor')
@@ -188,7 +184,7 @@ def list_append(list_, x):
   """
   if isinstance(list_, tensor_array_ops.TensorArray):
     return _tf_tensorarray_append(list_, x)
-  elif tensor_util.is_tensor(list_):
+  elif tensor_util.is_tf_type(list_):
     if list_.dtype == dtypes.variant:
       return _tf_tensor_list_append(list_, x)
     else:
@@ -207,7 +203,7 @@ def _tf_tensor_list_append(list_, x):
         element_shape=array_ops.shape(tensor_x),
         element_dtype=tensor_x.dtype)
 
-  list_ = control_flow_ops.cond(
+  list_ = cond.cond(
       list_ops.tensor_list_length(list_) > 0,
       lambda: list_,
       empty_list_of_elements_like_x,
@@ -258,7 +254,7 @@ def list_pop(list_, i, opts):
 
   if isinstance(list_, tensor_array_ops.TensorArray):
     raise ValueError('TensorArray does not support item removal')
-  elif tensor_util.is_tensor(list_):
+  elif tensor_util.is_tf_type(list_):
     if list_.dtype == dtypes.variant:
       return _tf_tensor_list_pop(list_, i, opts)
     else:
@@ -322,7 +318,7 @@ def list_stack(list_, opts):
 
   if isinstance(list_, tensor_array_ops.TensorArray):
     return _tf_tensorarray_stack(list_)
-  elif tensor_util.is_tensor(list_):
+  elif tensor_util.is_tf_type(list_):
     if list_.dtype == dtypes.variant:
       return _tf_tensor_list_stack(list_, opts)
     else:

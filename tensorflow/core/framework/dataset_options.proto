@@ -1,0 +1,226 @@
+syntax = "proto3";
+
+package tensorflow.data;
+
+import "tensorflow/core/framework/model.proto";
+
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/dataset_options_go_proto";
+
+// Represents the type of auto-sharding we enable.
+enum AutoShardPolicy {
+  // AUTO: Attempts FILE-based sharding, falling back to DATA-based sharding.
+  AUTO = 0;
+  // FILE: Shards by input files (i.e. each worker will get a set of files to
+  // process). When this option is selected, make sure that there is at least as
+  // many files as workers. If there are fewer input files than workers, a
+  // runtime error will be raised.
+  FILE = 1;
+  // DATA: Shards by elements produced by the dataset. Each worker will process
+  // the whole dataset and discard the portion that is not for itself. Note that
+  // for this mode to correctly partitions the dataset elements, the dataset
+  // needs to produce elements in a deterministic order.
+  DATA = 2;
+  // HINT: Looks for the presence of `shard(SHARD_HINT, ...)` which is treated
+  // as a placeholder to replace with `shard(num_workers, worker_index)`.
+  HINT = 3;
+  // OFF: No sharding will be performed.
+  OFF = -1;
+}
+
+// next: 5
+message AutotuneOptions {
+  // Whether to automatically tune performance knobs.
+  oneof optional_enabled {
+    bool enabled = 1;
+  }
+  // When autotuning is enabled (through autotune), determines the CPU budget to
+  // use. Values greater than the number of schedulable CPU cores are allowed
+  // but may result in CPU contention.
+  oneof optional_cpu_budget {
+    int32 cpu_budget = 2;
+  }
+  // When autotuning is enabled (through autotune), determines the RAM budget to
+  // use. Values greater than the available RAM in bytes may result in OOM. If
+  // 0, defaults to half of the available RAM in bytes.
+  oneof optional_ram_budget {
+    int64 ram_budget = 3;
+  }
+
+  // When autotuning is enabled (through autotune), determines the algorithm to
+  // use. If not explicitly set by user, autotuning will follow HILL_CLIMB
+  // algorithm but has more flexibility to tune parameters more aggressively,
+  // in which case the behavior is implementation specific and may change over
+  // time.
+  oneof optional_autotune_algorithm {
+    model.AutotuneAlgorithm autotune_algorithm = 4;
+  }
+}
+
+// next: 2
+message CardinalityOptions {
+  enum ComputeLevel {
+    CARDINALITY_COMPUTE_UNSPECIFIED = 0;
+    // Cardinality will only be computed if it can be determined in a cheap
+    // manner (ie. without reading from file sources). If the cardinality would
+    // be nontrivial to compute, Cardinality() will return UNKNOWN_CARDINALITY.
+    CARDINALITY_COMPUTE_LOW = 1;
+    // Moderate effort will be made to determine cardinality, such as reading
+    // index data from source files. If significant work is needed to compute
+    // cardinality (e.g. reading entire source file contents or executing user
+    // defined functions), Cardinality() will return UNKNOWN_CARDINALITY.
+    CARDINALITY_COMPUTE_MODERATE = 2;
+  }
+  ComputeLevel compute_level = 1;
+}
+
+// next: 3
+message DistributeOptions {
+  AutoShardPolicy auto_shard_policy = 1;
+  // The number of devices attached to this input pipeline.
+  oneof optional_num_devices {
+    int32 num_devices = 2;
+  }
+}
+
+// next: 21
+message OptimizationOptions {
+  // Whether to apply default graph optimizations. If False, only graph
+  // optimizations that have been explicitly enabled will be applied.
+  oneof optional_apply_default_optimizations {
+    bool apply_default_optimizations = 1;
+  }
+  reserved 2;
+  reserved 3;
+  reserved 4;
+  reserved 5;
+  // Whether to fuse filter transformations.
+  oneof optional_filter_fusion {
+    bool filter_fusion = 6;
+  }
+  // NOTE: field id 7 deleted in June 2021.
+  reserved 7;
+  // NOTE: field id 8 deleted in June 2021.
+  reserved 8;
+  // Whether to fuse map and batch transformations.
+  oneof optional_map_and_batch_fusion {
+    bool map_and_batch_fusion = 9;
+  }
+  // Whether to fuse map and filter transformations.
+  oneof optional_map_and_filter_fusion {
+    bool map_and_filter_fusion = 10;
+  }
+  // Whether to fuse map transformations.
+  oneof optional_map_fusion {
+    bool map_fusion = 11;
+  }
+  // Whether to parallelize stateless map transformations.
+  oneof optional_map_parallelization {
+    bool map_parallelization = 12;
+  }
+
+  // NOTE: field id 13 deleted in June 2021.
+  reserved 13;
+
+  // Whether to eliminate no-op transformations.
+  oneof optional_noop_elimination {
+    bool noop_elimination = 14;
+  }
+  // Whether to parallelize copying of batch elements. This optimization is
+  // highly experimental and can cause performance degradation (e.g. when the
+  // parallelization overhead exceeds the benefits of performing the data copies
+  // in parallel). You should only enable this optimization if a) your input
+  // pipeline is bottlenecked on batching and b) you have validated that this
+  // optimization improves performance.
+  oneof optional_parallel_batch {
+    bool parallel_batch = 15;
+  }
+  // Field id 16 was removed in 06/2021.
+  reserved 16;
+  // Whether to fuse shuffle and repeat transformations.
+  oneof optional_shuffle_and_repeat_fusion {
+    bool shuffle_and_repeat_fusion = 17;
+  }
+  // Whether to parallelize stateless filter transformations.
+  oneof optional_filter_parallelization {
+    bool filter_parallelization = 18;
+  }
+  // Whether to inject 'Prefetch' as the last transformation. Only takes effect
+  // if the last transformation is synchronous; otherwise does nothing.
+  oneof optional_inject_prefetch {
+    bool inject_prefetch = 19;
+  }
+  // NOTE: field id 20 was removed in August 2023.
+  reserved 20;
+}
+
+// next: 3
+message ThreadingOptions {
+  // If set, it overrides the maximum degree of intra-op parallelism.
+  oneof optional_max_intra_op_parallelism {
+    int32 max_intra_op_parallelism = 1;
+  }
+  // If set, the dataset will use a private threadpool of the given size.
+  oneof optional_private_threadpool_size {
+    int32 private_threadpool_size = 2;
+  }
+}
+
+// Represents how to handle external state during serialization.
+enum ExternalStatePolicy {
+  POLICY_WARN = 0;
+  POLICY_IGNORE = 1;
+  POLICY_FAIL = 2;
+}
+
+// Message stored with Dataset objects to control how datasets are processed and
+// optimized.
+//
+// next: 10
+message Options {
+  // Whether the outputs need to be produced in deterministic order.
+  oneof optional_deterministic {
+    bool deterministic = 1;
+  }
+  // The autotune options associated with the dataset.
+  AutotuneOptions autotune_options = 7;
+  // The distribution strategy options associated with the dataset.
+  DistributeOptions distribute_options = 2;
+  // The optimization options associated with the dataset.
+  OptimizationOptions optimization_options = 3;
+  // Whether to introduce 'slack' in the last `prefetch` of the input pipeline,
+  // if it exists. This may reduce CPU contention with accelerator host-side
+  // activity at the start of a step. The slack frequency is determined by the
+  // number of devices attached to this input pipeline.
+  oneof optional_slack {
+    bool slack = 4;
+  }
+  // The threading options associated with the dataset.
+  ThreadingOptions threading_options = 5;
+  // This option can be used to override the default policy for how to handle
+  // external state when serializing a dataset or checkpointing its iterator.
+  // There are three settings available - IGNORE: External state is ignored
+  // without a warning; WARN: External state is ignored and a warning is logged;
+  // FAIL: External state results in an error.
+  oneof optional_external_state_policy {
+    ExternalStatePolicy external_state_policy = 6;
+  }
+  // This option indicates whether to checkpoint input pipeline state
+  // "explicitly", by storing the internal state of iterators for each
+  // tf.data operation, (the default), or "symbolically", by storing metadata
+  // that captures the state of each tf.data operation at the time it processed
+  // the last data seen by tf.data consumer.
+  //
+  // Symbolic checkpoints are expected to be much smaller but not all tf.data
+  // operations are compatible with symbolic checkpointing. In particular,
+  // symbolic checkpointing requires that data is processed in-order and
+  // operations that reorder elements, such as `shuffle()` or non-deterministic
+  // `map()`, are not compatible with symbolic checkpointing.
+  oneof optional_symbolic_checkpoint {
+    bool symbolic_checkpoint = 8;
+  }
+  // Whether to start background threads of asynchronous transformations upon
+  // iterator creation (as opposed to upon first call to `GetNext`).
+  oneof optional_warm_start {
+    bool warm_start = 9;
+  }
+}

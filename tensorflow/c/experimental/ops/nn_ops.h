@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,36 +12,48 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+// This file is MACHINE GENERATED! Do not edit.
+
 #ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_NN_OPS_H_
 #define TENSORFLOW_C_EXPERIMENTAL_OPS_NN_OPS_H_
 
-#include "tensorflow/c/eager/abstract_operation.h"
+#include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
-#include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 
 namespace tensorflow {
 namespace ops {
 
+// Computes softmax cross entropy cost and gradients to backpropagate.
 Status SparseSoftmaxCrossEntropyWithLogits(
-    AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
-    absl::Span<AbstractTensorHandle*> outputs, const char* name);
+    AbstractContext* ctx, AbstractTensorHandle* const features,
+    AbstractTensorHandle* const labels, AbstractTensorHandle** loss,
+    AbstractTensorHandle** backprop, const char* name = nullptr,
+    const char* raw_device_name = nullptr);
 
-Status ReluGrad(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, const char* name);
+// Computes rectified linear gradients for a Relu operation.
+Status ReluGrad(AbstractContext* ctx, AbstractTensorHandle* const gradients,
+                AbstractTensorHandle* const features,
+                AbstractTensorHandle** backprops, const char* name = nullptr,
+                const char* raw_device_name = nullptr);
 
-Status Relu(AbstractContext* ctx,
-            absl::Span<AbstractTensorHandle* const> inputs,
-            absl::Span<AbstractTensorHandle*> outputs, const char* name);
+// Computes rectified linear: `max(features, 0)`.
+Status Relu(AbstractContext* ctx, AbstractTensorHandle* const features,
+            AbstractTensorHandle** activations, const char* name = nullptr,
+            const char* raw_device_name = nullptr);
 
-Status BiasAdd(AbstractContext* ctx,
-               absl::Span<AbstractTensorHandle* const> inputs,
-               absl::Span<AbstractTensorHandle*> outputs, const char* name);
+// Adds `bias` to `value`.
+Status BiasAdd(AbstractContext* ctx, AbstractTensorHandle* const value,
+               AbstractTensorHandle* const bias, AbstractTensorHandle** output,
+               const char* data_format = "NHWC", const char* name = nullptr,
+               const char* raw_device_name = nullptr);
 
+// The backward operation for "BiasAdd" on the "bias" tensor.
 Status BiasAddGrad(AbstractContext* ctx,
-                   absl::Span<AbstractTensorHandle* const> inputs,
-                   absl::Span<AbstractTensorHandle*> outputs,
-                   const char* data_format, const char* name);
+                   AbstractTensorHandle* const out_backprop,
+                   AbstractTensorHandle** output,
+                   const char* data_format = "NHWC", const char* name = nullptr,
+                   const char* raw_device_name = nullptr);
 
 }  // namespace ops
 }  // namespace tensorflow

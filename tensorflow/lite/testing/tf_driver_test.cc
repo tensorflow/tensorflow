@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/testing/tf_driver.h"
 
+#include <algorithm>
+#include <string>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/escaping.h"
@@ -22,8 +25,6 @@ limitations under the License.
 namespace tflite {
 namespace testing {
 namespace {
-
-using ::testing::ElementsAre;
 
 class TestDriver : public TfDriver {
  public:
@@ -34,9 +35,8 @@ class TestDriver : public TfDriver {
                           const string& values) {
     tensorflow::Tensor t = {
         type,
-        tensorflow::TensorShape{tensorflow::gtl::ArraySlice<tensorflow::int64>{
-            reinterpret_cast<const tensorflow::int64*>(shape.data()),
-            shape.size()}}};
+        tensorflow::TensorShape{tensorflow::gtl::ArraySlice<int64_t>{
+            reinterpret_cast<const int64_t*>(shape.data()), shape.size()}}};
     SetInput(values, &t);
     return ReadOutput(t);
   }
@@ -92,28 +92,21 @@ TEST(TfDriverTest, SimpleTest) {
       new TfDriver({"a", "b", "c", "d"}, {"float", "float", "float", "float"},
                    {"1,8,8,3", "1,8,8,3", "1,8,8,3", "1,8,8,3"}, {"x", "y"}));
 
-  runner->LoadModel(
-      "tensorflow/lite/testdata/multi_add.pb");
+  runner->LoadModel("tensorflow/lite/testdata/multi_add.pb");
   EXPECT_TRUE(runner->IsValid()) << runner->GetErrorMessage();
 
-  ASSERT_THAT(runner->GetInputs(), ElementsAre(0, 1, 2, 3));
-  ASSERT_THAT(runner->GetOutputs(), ElementsAre(0, 1));
-
-  for (int i : {0, 1, 2, 3}) {
+  for (const auto& i : {"a", "b", "c", "d"}) {
     runner->ReshapeTensor(i, "1,2,2,1");
   }
   ASSERT_TRUE(runner->IsValid());
+  runner->ResetTensor("c");
+  runner->Invoke({{"a", "0.1,0.2,0.3,0.4"},
+                  {"b", "0.001,0.002,0.003,0.004"},
+                  {"d", "0.01,0.02,0.03,0.04"}});
 
-  runner->SetInput(0, "0.1,0.2,0.3,0.4");
-  runner->SetInput(1, "0.001,0.002,0.003,0.004");
-  runner->SetInput(2, "0.001,0.002,0.003,0.004");
-  runner->SetInput(3, "0.01,0.02,0.03,0.04");
-  runner->ResetTensor(2);
-  runner->Invoke();
-
-  ASSERT_EQ(runner->ReadOutput(0),
+  ASSERT_EQ(runner->ReadOutput("x"),
             "0.101000004,0.202000007,0.303000003,0.404000014");
-  ASSERT_EQ(runner->ReadOutput(1),
+  ASSERT_EQ(runner->ReadOutput("y"),
             "0.0109999999,0.0219999999,0.0329999998,0.0439999998");
 }
 

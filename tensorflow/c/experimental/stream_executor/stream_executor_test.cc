@@ -14,217 +14,41 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
+#include <functional>
+#include <utility>
+
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
+#include "tensorflow/c/experimental/stream_executor/stream_executor_test_util.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/multi_platform_manager.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/stream_executor/event.h"
-#include "tensorflow/stream_executor/multi_platform_manager.h"
-#include "tensorflow/stream_executor/stream.h"
-#include "tensorflow/stream_executor/stream_executor_pimpl.h"
-#include "tensorflow/stream_executor/timer.h"
-
-struct SP_Stream_st {
-  explicit SP_Stream_st(int id) : stream_id(id) {}
-  int stream_id;
-};
-
-struct SP_Event_st {
-  explicit SP_Event_st(int id) : event_id(id) {}
-  int event_id;
-};
-
-struct SP_Timer_st {
-  explicit SP_Timer_st(int id) : timer_id(id) {}
-  int timer_id;
-};
 
 namespace stream_executor {
 namespace {
-constexpr int kDeviceCount = 2;
-constexpr char kDeviceName[] = "MY_DEVICE";
-constexpr char kDeviceType[] = "GPU";
-
-/*** Create SP_StreamExecutor (with empty functions) ***/
-void allocate(const SP_Device* const device, uint64_t size,
-              int64_t memory_space, SP_DeviceMemoryBase* const mem) {}
-void deallocate(const SP_Device* const device, SP_DeviceMemoryBase* const mem) {
-}
-void* host_memory_allocate(const SP_Device* const device, uint64_t size) {
-  return nullptr;
-}
-void host_memory_deallocate(const SP_Device* const device, void* mem) {}
-TF_Bool get_allocator_stats(const SP_Device* const device,
-                            SP_AllocatorStats* const stats) {
-  return true;
-}
-TF_Bool device_memory_usage(const SP_Device* const device, int64_t* const free,
-                            int64_t* const total) {
-  return true;
-}
-void create_stream(const SP_Device* const device, SP_Stream* stream,
-                   TF_Status* const status) {
-  stream = nullptr;
-}
-void destroy_stream(const SP_Device* const device, SP_Stream stream) {}
-void create_stream_dependency(const SP_Device* const device,
-                              SP_Stream dependent, SP_Stream other,
-                              TF_Status* const status) {}
-void get_stream_status(const SP_Device* const device, SP_Stream stream,
-                       TF_Status* const status) {}
-void create_event(const SP_Device* const device, SP_Event* event,
-                  TF_Status* const status) {
-  event = nullptr;
-}
-void destroy_event(const SP_Device* const device, SP_Event event) {}
-SE_EventStatus get_event_status(const SP_Device* const device, SP_Event event) {
-  return SE_EVENT_UNKNOWN;
-}
-void record_event(const SP_Device* const device, SP_Stream stream,
-                  SP_Event event, TF_Status* const status) {}
-void wait_for_event(const SP_Device* const device, SP_Stream stream,
-                    SP_Event event, TF_Status* const status) {}
-void create_timer(const SP_Device* const device, SP_Timer* timer,
-                  TF_Status* const status) {}
-void destroy_timer(const SP_Device* const device, SP_Timer timer) {}
-void start_timer(const SP_Device* const device, SP_Stream stream,
-                 SP_Timer timer, TF_Status* const status) {}
-void stop_timer(const SP_Device* const device, SP_Stream stream, SP_Timer timer,
-                TF_Status* const status) {}
-void memcpy_dtoh(const SP_Device* const device, SP_Stream stream,
-                 void* host_dst, const SP_DeviceMemoryBase* const device_src,
-                 uint64_t size, TF_Status* const status) {}
-void memcpy_htod(const SP_Device* const device, SP_Stream stream,
-                 SP_DeviceMemoryBase* const device_dst, const void* host_src,
-                 uint64_t size, TF_Status* const status) {}
-void sync_memcpy_dtoh(const SP_Device* const device, void* host_dst,
-                      const SP_DeviceMemoryBase* const device_src,
-                      uint64_t size, TF_Status* const status) {}
-void sync_memcpy_htod(const SP_Device* const device,
-                      SP_DeviceMemoryBase* const device_dst,
-                      const void* host_src, uint64_t size,
-                      TF_Status* const status) {}
-void block_host_for_event(const SP_Device* const device, SP_Event event,
-                          TF_Status* const status) {}
-void synchronize_all_activity(const SP_Device* const device,
-                              TF_Status* const status) {}
-TF_Bool host_callback(const SP_Device* const device, SP_Stream stream,
-                      SE_StatusCallbackFn const callback_fn,
-                      void* const callback_arg) {
-  return true;
-}
-
-void PopulateDefaultStreamExecutor(SP_StreamExecutor* se) {
-  *se = {SP_STREAMEXECUTOR_STRUCT_SIZE};
-  se->allocate = allocate;
-  se->deallocate = deallocate;
-  se->host_memory_allocate = host_memory_allocate;
-  se->host_memory_deallocate = host_memory_deallocate;
-  se->get_allocator_stats = get_allocator_stats;
-  se->device_memory_usage = device_memory_usage;
-  se->create_stream = create_stream;
-  se->destroy_stream = destroy_stream;
-  se->create_stream_dependency = create_stream_dependency;
-  se->get_stream_status = get_stream_status;
-  se->create_event = create_event;
-  se->destroy_event = destroy_event;
-  se->get_event_status = get_event_status;
-  se->record_event = record_event;
-  se->wait_for_event = wait_for_event;
-  se->create_timer = create_timer;
-  se->destroy_timer = destroy_timer;
-  se->start_timer = start_timer;
-  se->stop_timer = stop_timer;
-  se->memcpy_dtoh = memcpy_dtoh;
-  se->memcpy_htod = memcpy_htod;
-  se->sync_memcpy_dtoh = sync_memcpy_dtoh;
-  se->sync_memcpy_htod = sync_memcpy_htod;
-  se->block_host_for_event = block_host_for_event;
-  se->synchronize_all_activity = synchronize_all_activity;
-  se->host_callback = host_callback;
-}
-
-void PopulateDefaultDeviceFns(SP_DeviceFns* device_fns) {
-  *device_fns = {SP_DEVICE_FNS_STRUCT_SIZE};
-}
-
-/*** Create SP_TimerFns ***/
-uint64_t nanoseconds(SP_Timer timer) { return timer->timer_id; }
-
-void PopulateDefaultTimerFns(SP_TimerFns* timer_fns) {
-  timer_fns->nanoseconds = nanoseconds;
-}
-
-/*** Create SP_Platform ***/
-void create_timer_fns(const SP_Platform* platform, SP_TimerFns* timer_fns,
-                      TF_Status* status) {
-  TF_SetStatus(status, TF_OK, "");
-  PopulateDefaultTimerFns(timer_fns);
-}
-void destroy_timer_fns(const SP_Platform* platform, SP_TimerFns* timer_fns) {}
-
-void create_stream_executor(const SP_Platform* platform,
-                            SE_CreateStreamExecutorParams* params,
-                            TF_Status* status) {
-  TF_SetStatus(status, TF_OK, "");
-  PopulateDefaultStreamExecutor(params->stream_executor);
-}
-void destroy_stream_executor(const SP_Platform* platform,
-                             SP_StreamExecutor* se) {}
-
-void create_device(const SP_Platform* platform, SE_CreateDeviceParams* params,
-                   TF_Status* status) {
-  TF_SetStatus(status, TF_OK, "");
-  params->device->struct_size = {SP_DEVICE_STRUCT_SIZE};
-}
-void destroy_device(const SP_Platform* platform, SP_Device* device) {}
-
-void create_device_fns(const SP_Platform* platform,
-                       SE_CreateDeviceFnsParams* params, TF_Status* status) {
-  TF_SetStatus(status, TF_OK, "");
-  params->device_fns->struct_size = {SP_DEVICE_FNS_STRUCT_SIZE};
-}
-void destroy_device_fns(const SP_Platform* platform, SP_DeviceFns* device_fns) {
-}
-
-void PopulateDefaultPlatform(SP_Platform* platform,
-                             SP_PlatformFns* platform_fns) {
-  *platform = {SP_PLATFORM_STRUCT_SIZE};
-  platform->name = kDeviceName;
-  platform->type = kDeviceType;
-  platform->visible_device_count = kDeviceCount;
-  platform_fns->create_device = create_device;
-  platform_fns->destroy_device = destroy_device;
-  platform_fns->create_device_fns = create_device_fns;
-  platform_fns->destroy_device_fns = destroy_device_fns;
-  platform_fns->create_stream_executor = create_stream_executor;
-  platform_fns->destroy_stream_executor = destroy_stream_executor;
-  platform_fns->create_timer_fns = create_timer_fns;
-  platform_fns->destroy_timer_fns = destroy_timer_fns;
-}
-
-void destroy_platform(SP_Platform* const platform) {}
-void destroy_platform_fns(SP_PlatformFns* const platform_fns) {}
 
 /*** Registration tests ***/
 TEST(StreamExecutor, SuccessfulRegistration) {
   auto plugin_init = [](SE_PlatformRegistrationParams* const params,
                         TF_Status* const status) -> void {
     TF_SetStatus(status, TF_OK, "");
-    PopulateDefaultPlatform(params->platform, params->platform_fns);
-    params->destroy_platform = destroy_platform;
-    params->destroy_platform_fns = destroy_platform_fns;
+    test_util::PopulateDefaultPlatformRegistrationParams(params);
   };
-  port::Status status = InitStreamExecutorPlugin(plugin_init);
+  std::string device_type, platform_name;
+  tsl::Status status =
+      InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   TF_ASSERT_OK(status);
-  port::StatusOr<Platform*> maybe_platform =
+  tsl::StatusOr<Platform*> maybe_platform =
       MultiPlatformManager::PlatformWithName("MY_DEVICE");
   TF_ASSERT_OK(maybe_platform.status());
-  Platform* platform = maybe_platform.ConsumeValueOrDie();
-  ASSERT_EQ(platform->Name(), kDeviceName);
-  ASSERT_EQ(platform->VisibleDeviceCount(), kDeviceCount);
+  Platform* platform = std::move(maybe_platform).value();
+  ASSERT_EQ(platform->Name(), test_util::kDeviceName);
+  ASSERT_EQ(platform->VisibleDeviceCount(), test_util::kDeviceCount);
 
-  port::StatusOr<StreamExecutor*> maybe_executor =
+  tsl::StatusOr<StreamExecutor*> maybe_executor =
       platform->ExecutorForDevice(0);
   TF_ASSERT_OK(maybe_executor.status());
 }
@@ -233,31 +57,31 @@ TEST(StreamExecutor, NameNotSet) {
   auto plugin_init = [](SE_PlatformRegistrationParams* const params,
                         TF_Status* const status) -> void {
     TF_SetStatus(status, TF_OK, "");
-    PopulateDefaultPlatform(params->platform, params->platform_fns);
+    test_util::PopulateDefaultPlatformRegistrationParams(params);
     params->platform->name = nullptr;
-    params->destroy_platform = destroy_platform;
-    params->destroy_platform_fns = destroy_platform_fns;
   };
 
-  port::Status status = InitStreamExecutorPlugin(plugin_init);
+  std::string device_type, platform_name;
+  tsl::Status status =
+      InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
-  ASSERT_EQ(status.error_message(), "'name' field in SP_Platform must be set.");
+  ASSERT_EQ(status.message(), "'name' field in SP_Platform must be set.");
 }
 
 TEST(StreamExecutor, InvalidNameWithSemicolon) {
   auto plugin_init = [](SE_PlatformRegistrationParams* const params,
                         TF_Status* const status) -> void {
     TF_SetStatus(status, TF_OK, "");
-    PopulateDefaultPlatform(params->platform, params->platform_fns);
+    test_util::PopulateDefaultPlatformRegistrationParams(params);
     params->platform->name = "INVALID:NAME";
-    params->destroy_platform = destroy_platform;
-    params->destroy_platform_fns = destroy_platform_fns;
   };
 
-  port::Status status = InitStreamExecutorPlugin(plugin_init);
+  std::string device_type, platform_name;
+  tsl::Status status =
+      InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       testing::ContainsRegex("Device name/type 'INVALID:NAME' must match"));
 }
 
@@ -265,15 +89,15 @@ TEST(StreamExecutor, InvalidNameWithSlash) {
   auto plugin_init = [](SE_PlatformRegistrationParams* const params,
                         TF_Status* const status) -> void {
     TF_SetStatus(status, TF_OK, "");
-    PopulateDefaultPlatform(params->platform, params->platform_fns);
+    test_util::PopulateDefaultPlatformRegistrationParams(params);
     params->platform->name = "INVALID/";
-    params->destroy_platform = destroy_platform;
-    params->destroy_platform_fns = destroy_platform_fns;
   };
 
-  port::Status status = InitStreamExecutorPlugin(plugin_init);
+  std::string device_type, platform_name;
+  tsl::Status status =
+      InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               testing::ContainsRegex("Device name/type 'INVALID/' must match"));
 }
 
@@ -281,15 +105,15 @@ TEST(StreamExecutor, CreateDeviceNotSet) {
   auto plugin_init = [](SE_PlatformRegistrationParams* const params,
                         TF_Status* const status) -> void {
     TF_SetStatus(status, TF_OK, "");
-    PopulateDefaultPlatform(params->platform, params->platform_fns);
+    test_util::PopulateDefaultPlatformRegistrationParams(params);
     params->platform_fns->create_device = nullptr;
-    params->destroy_platform = destroy_platform;
-    params->destroy_platform_fns = destroy_platform_fns;
   };
 
-  port::Status status = InitStreamExecutorPlugin(plugin_init);
+  std::string device_type, platform_name;
+  tsl::Status status =
+      InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
-  ASSERT_EQ(status.error_message(),
+  ASSERT_EQ(status.message(),
             "'create_device' field in SP_PlatformFns must be set.");
 }
 
@@ -297,16 +121,16 @@ TEST(StreamExecutor, UnifiedMemoryAllocateNotSet) {
   auto plugin_init = [](SE_PlatformRegistrationParams* const params,
                         TF_Status* const status) -> void {
     TF_SetStatus(status, TF_OK, "");
-    PopulateDefaultPlatform(params->platform, params->platform_fns);
+    test_util::PopulateDefaultPlatformRegistrationParams(params);
     params->platform->supports_unified_memory = true;
-    params->destroy_platform = destroy_platform;
-    params->destroy_platform_fns = destroy_platform_fns;
   };
 
-  port::Status status = InitStreamExecutorPlugin(plugin_init);
+  std::string device_type, platform_name;
+  tsl::Status status =
+      InitStreamExecutorPlugin(plugin_init, &device_type, &platform_name);
   ASSERT_EQ(status.code(), tensorflow::error::FAILED_PRECONDITION);
   ASSERT_EQ(
-      status.error_message(),
+      status.message(),
       "'unified_memory_allocate' field in SP_StreamExecutor must be set.");
 }
 
@@ -315,23 +139,23 @@ class StreamExecutorTest : public ::testing::Test {
  protected:
   StreamExecutorTest() {}
   void SetUp() override {
-    PopulateDefaultPlatform(&platform_, &platform_fns_);
-    PopulateDefaultDeviceFns(&device_fns_);
-    PopulateDefaultStreamExecutor(&se_);
-    PopulateDefaultTimerFns(&timer_fns_);
+    test_util::PopulateDefaultPlatform(&platform_, &platform_fns_);
+    test_util::PopulateDefaultDeviceFns(&device_fns_);
+    test_util::PopulateDefaultStreamExecutor(&se_);
+    test_util::PopulateDefaultTimerFns(&timer_fns_);
   }
   void TearDown() override {}
 
   StreamExecutor* GetExecutor(int ordinal) {
     if (!cplatform_) {
       cplatform_ = absl::make_unique<CPlatform>(
-          platform_, destroy_platform, platform_fns_, destroy_platform_fns,
-          device_fns_, se_, timer_fns_);
+          platform_, test_util::DestroyPlatform, platform_fns_,
+          test_util::DestroyPlatformFns, device_fns_, se_, timer_fns_);
     }
-    port::StatusOr<StreamExecutor*> maybe_executor =
+    tsl::StatusOr<StreamExecutor*> maybe_executor =
         cplatform_->ExecutorForDevice(ordinal);
     TF_CHECK_OK(maybe_executor.status());
-    return maybe_executor.ConsumeValueOrDie();
+    return std::move(maybe_executor).value();
   }
   SP_Platform platform_;
   SP_PlatformFns platform_fns_;
@@ -431,8 +255,8 @@ TEST_F(StreamExecutorTest, DeviceMemoryUsage) {
   };
 
   StreamExecutor* executor = GetExecutor(0);
-  int64 free = 0;
-  int64 total = 0;
+  int64_t free = 0;
+  int64_t total = 0;
   executor->DeviceMemoryUsage(&free, &total);
   ASSERT_EQ(free, 45);
   ASSERT_EQ(total, 7);
@@ -503,7 +327,7 @@ TEST_F(StreamExecutorTest, StreamStatus) {
   status_ok = false;
   auto updated_status = stream.RefreshStatus();
   ASSERT_FALSE(stream.ok());
-  ASSERT_EQ(updated_status.error_message(), "Test error");
+  ASSERT_EQ(updated_status.message(), "Test error");
 }
 
 TEST_F(StreamExecutorTest, CreateEvent) {
@@ -595,110 +419,6 @@ TEST_F(StreamExecutorTest, RecordAndWaitForEvent) {
   ASSERT_FALSE(wait_called);
   stream.ThenWaitFor(&event);
   ASSERT_TRUE(wait_called);
-}
-
-TEST_F(StreamExecutorTest, CreateTimer) {
-  static bool timer_created = false;
-  static bool timer_deleted = false;
-  se_.create_timer = [](const SP_Device* const device, SP_Timer* timer,
-                        TF_Status* const status) -> void {
-    *timer = new SP_Timer_st(25);
-    timer_created = true;
-  };
-  se_.destroy_timer = [](const SP_Device* const device,
-                         SP_Timer timer) -> void {
-    auto custom_timer = static_cast<SP_Timer_st*>(timer);
-    EXPECT_EQ(custom_timer->timer_id, 25);
-    delete custom_timer;
-    timer_deleted = true;
-  };
-
-  StreamExecutor* executor = GetExecutor(0);
-  ASSERT_FALSE(timer_created);
-  Stream stream(executor);
-  stream.Init();
-  Timer* timer = new Timer(executor);
-  stream.InitTimer(timer);
-  ASSERT_TRUE(stream.ok());
-  ASSERT_TRUE(timer_created);
-  ASSERT_FALSE(timer_deleted);
-  delete timer;
-  ASSERT_TRUE(timer_deleted);
-}
-
-TEST_F(StreamExecutorTest, StartTimer) {
-  static bool start_called = false;
-  static bool stop_called = false;
-  static TF_Code start_timer_status = TF_OK;
-  static TF_Code stop_timer_status = TF_OK;
-  se_.create_timer = [](const SP_Device* const device, SP_Timer* timer,
-                        TF_Status* const status) -> void {
-    *timer = new SP_Timer_st(7);
-  };
-  se_.destroy_timer = [](const SP_Device* const device,
-                         SP_Timer timer) -> void { delete timer; };
-  se_.start_timer = [](const SP_Device* const device, SP_Stream stream,
-                       SP_Timer timer, TF_Status* const status) {
-    TF_SetStatus(status, start_timer_status, "");
-    EXPECT_EQ(timer->timer_id, 7);
-    start_called = true;
-  };
-  se_.stop_timer = [](const SP_Device* const device, SP_Stream stream,
-                      SP_Timer timer, TF_Status* const status) {
-    TF_SetStatus(status, stop_timer_status, "");
-    EXPECT_EQ(timer->timer_id, 7);
-    stop_called = true;
-  };
-  StreamExecutor* executor = GetExecutor(0);
-  Stream stream(executor);
-  stream.Init();
-  Timer timer(executor);
-  stream.InitTimer(&timer);
-
-  // Check both start and stop succeed
-  ASSERT_FALSE(start_called);
-  stream.ThenStartTimer(&timer);
-  ASSERT_TRUE(start_called);
-  ASSERT_FALSE(stop_called);
-  stream.ThenStopTimer(&timer);
-  ASSERT_TRUE(stop_called);
-
-  // Check start timer fails
-  ASSERT_TRUE(stream.ok());
-  start_timer_status = TF_UNKNOWN;
-  stream.ThenStartTimer(&timer);
-  ASSERT_FALSE(stream.ok());
-
-  // Check stop timer fails
-  start_timer_status = TF_OK;
-  stop_timer_status = TF_UNKNOWN;
-  Stream stream2(executor);
-  stream2.Init();
-  Timer timer2(executor);
-  stream2.InitTimer(&timer2);
-  stream2.ThenStartTimer(&timer2);
-  ASSERT_TRUE(stream2.ok());
-  stream2.ThenStopTimer(&timer2);
-  ASSERT_FALSE(stream2.ok());
-}
-
-TEST_F(StreamExecutorTest, TimerFns) {
-  se_.create_timer = [](const SP_Device* const device, SP_Timer* timer,
-                        TF_Status* const status) -> void {
-    *timer = new SP_Timer_st(25000);
-  };
-  se_.destroy_timer = [](const SP_Device* const device,
-                         SP_Timer timer) -> void { delete timer; };
-
-  StreamExecutor* executor = GetExecutor(0);
-  Stream stream(executor);
-  stream.Init();
-  Timer timer(executor);
-  stream.InitTimer(&timer);
-  // Our test nanoseconds function just returns value
-  // passed to SP_Timer_st constructor.
-  ASSERT_EQ(timer.Nanoseconds(), 25000);
-  ASSERT_EQ(timer.Microseconds(), 25);
 }
 
 TEST_F(StreamExecutorTest, MemcpyToHost) {
@@ -900,8 +620,8 @@ TEST_F(StreamExecutorTest, HostCallbackOk) {
   StreamExecutor* executor = GetExecutor(0);
   Stream stream(executor);
   stream.Init();
-  std::function<port::Status()> callback = []() -> port::Status {
-    return port::Status::OK();
+  std::function<absl::Status()> callback = []() -> absl::Status {
+    return absl::OkStatus();
   };
   stream.ThenDoHostCallbackWithStatus(callback);
   ASSERT_TRUE(stream.ok());
@@ -920,8 +640,8 @@ TEST_F(StreamExecutorTest, HostCallbackError) {
   StreamExecutor* executor = GetExecutor(0);
   Stream stream(executor);
   stream.Init();
-  std::function<port::Status()> callback = []() -> port::Status {
-    return port::UnimplementedError("Unimplemented");
+  std::function<tsl::Status()> callback = []() -> tsl::Status {
+    return tsl::errors::Unimplemented("Unimplemented");
   };
   stream.ThenDoHostCallbackWithStatus(callback);
   ASSERT_FALSE(stream.ok());
@@ -978,6 +698,64 @@ TEST_F(StreamExecutorTest, DeviceDescriptionNumaNodeNotSet) {
   ASSERT_EQ(description.pci_bus_id(), "TestPCIBusId");
   ASSERT_EQ(description.numa_node(), -1);
   ASSERT_EQ(description.memory_bandwidth(), 54);
+}
+
+TEST_F(StreamExecutorTest, MemZero) {
+  se_.create_stream = [](const SP_Device* const device, SP_Stream* stream,
+                         TF_Status* const status) -> void {
+    *stream = new SP_Stream_st(14);
+  };
+  se_.destroy_stream = [](const SP_Device* const device,
+                          SP_Stream stream) -> void { delete stream; };
+
+  se_.mem_zero = [](const SP_Device* device, SP_Stream stream,
+                    SP_DeviceMemoryBase* location, uint64_t size,
+                    TF_Status* status) {
+    TF_SetStatus(status, TF_OK, "");
+    EXPECT_EQ(stream->stream_id, 14);
+    std::memset(location->opaque, 0, size);
+  };
+
+  StreamExecutor* executor = GetExecutor(0);
+  Stream stream(executor);
+  stream.Init();
+  size_t size = sizeof(int);
+  int data = 2;
+  DeviceMemoryBase device_data(&data, size);
+  Stream& stream_ref = stream.ThenMemZero(&device_data, size);
+  ASSERT_EQ(data, 0);
+  ASSERT_EQ(stream_ref.implementation(), stream.implementation());
+}
+
+TEST_F(StreamExecutorTest, Memset32) {
+  se_.create_stream = [](const SP_Device* const device, SP_Stream* stream,
+                         TF_Status* const status) -> void {
+    *stream = new SP_Stream_st(14);
+  };
+  se_.destroy_stream = [](const SP_Device* const device,
+                          SP_Stream stream) -> void { delete stream; };
+
+  se_.memset32 = [](const SP_Device* device, SP_Stream stream,
+                    SP_DeviceMemoryBase* location, uint32_t pattern,
+                    uint64_t size, TF_Status* status) {
+    TF_SetStatus(status, TF_OK, "");
+    EXPECT_EQ(stream->stream_id, 14);
+    EXPECT_EQ(size % 4, 0);
+    auto ptr = static_cast<uint32_t*>(location->opaque);
+    for (int i = 0; i < size / 4; i++) {
+      *(ptr + i) = pattern;
+    }
+  };
+
+  StreamExecutor* executor = GetExecutor(0);
+  Stream stream(executor);
+  stream.Init();
+  size_t size = sizeof(int);
+  int data = 2;
+  DeviceMemoryBase device_data(&data, size);
+  Stream& stream_ref = stream.ThenMemset32(&device_data, 18, size);
+  ASSERT_EQ(data, 18);
+  ASSERT_EQ(stream_ref.implementation(), stream.implementation());
 }
 
 }  // namespace

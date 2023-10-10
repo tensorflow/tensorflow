@@ -13,21 +13,23 @@
 # limitations under the License.
 # ==============================================================================
 """Python wrappers for tf.data writers."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import gen_experimental_dataset_ops
+from tensorflow.python.types import data as data_types
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("data.experimental.TFRecordWriter")
-class TFRecordWriter(object):
+@deprecation.deprecated(
+    None, "To write TFRecords to disk, use `tf.io.TFRecordWriter`. To save "
+    "and load the contents of a dataset, use `tf.data.experimental.save` "
+    "and `tf.data.experimental.load`")
+class TFRecordWriter:
   """Writes a dataset to a TFRecord file.
 
   The elements of the dataset must be scalar strings. To serialize dataset
@@ -62,6 +64,10 @@ class TFRecordWriter(object):
   dataset = dataset.apply(tf.data.experimental.group_by_window(
     lambda i, _: i % NUM_SHARDS, reduce_func, tf.int64.max
   ))
+
+  # Iterate through the dataset to trigger data writing.
+  for _ in dataset:
+    pass
   ```
   """
 
@@ -102,14 +108,19 @@ class TFRecordWriter(object):
       TypeError: if `dataset` is not a `tf.data.Dataset`.
       TypeError: if the elements produced by the dataset are not scalar strings.
     """
-    if not isinstance(dataset, dataset_ops.DatasetV2):
-      raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
+    if not isinstance(dataset, data_types.DatasetV2):
+      raise TypeError(
+          f"Invalid `dataset.` Expected a `tf.data.Dataset` object but got "
+          f"{type(dataset)}."
+      )
     if not dataset_ops.get_structure(dataset).is_compatible_with(
         tensor_spec.TensorSpec([], dtypes.string)):
       raise TypeError(
-          "`dataset` must produce scalar `DT_STRING` tensors whereas it "
-          "produces shape {0} and types {1}".format(
-              dataset_ops.get_legacy_output_shapes(dataset),
-              dataset_ops.get_legacy_output_types(dataset)))
+          f"Invalid `dataset`. Expected a`dataset` that produces scalar "
+          f"`tf.string` elements, but got a dataset which produces elements "
+          f"with shapes {dataset_ops.get_legacy_output_shapes(dataset)} and "
+          f"types {dataset_ops.get_legacy_output_types(dataset)}.")
+    # pylint: disable=protected-access
+    dataset = dataset._apply_debug_options()
     return gen_experimental_dataset_ops.dataset_to_tf_record(
-        dataset._variant_tensor, self._filename, self._compression_type)  # pylint: disable=protected-access
+        dataset._variant_tensor, self._filename, self._compression_type)

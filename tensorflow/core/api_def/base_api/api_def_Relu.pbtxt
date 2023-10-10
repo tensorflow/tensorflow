@@ -4,7 +4,7 @@ op {
   description: <<END
 See: https://en.wikipedia.org/wiki/Rectifier_(neural_networks)
 Example usage:
->>> tf.nn.relu([-2., 0., -0., 3.]).numpy()
-array([ 0.,  0., -0.,  3.], dtype=float32)
+>>> tf.nn.relu([-2., 0., 3.]).numpy()
+array([0., 0., 3.], dtype=float32)
 END
 }

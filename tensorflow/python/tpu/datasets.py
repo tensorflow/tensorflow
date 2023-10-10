@@ -14,9 +14,7 @@
 # ======================================
 """Library of Cloud TPU helper functions for data loading."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from typing import Callable, Optional, Text, Union
 
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.ops import dataset_ops
@@ -26,15 +24,16 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.types import data as data_types
 
 
-def _TextLineDataset(filename):
+def _TextLineDataset(filename: Text) -> dataset_ops.Dataset:
   buffer_size = 8 * 1024 * 1024  # 8 MiB per file
   dataset = readers.TextLineDataset(filename, buffer_size=buffer_size)
   return dataset
 
 
-def _TFRecordDataset(filename):
+def _TFRecordDataset(filename: Text) -> dataset_ops.Dataset:
   buffer_size = 8 * 1024 * 1024  # 8 MiB per file
   dataset = readers.TFRecordDataset(filename, buffer_size=buffer_size)
   return dataset
@@ -47,15 +46,17 @@ _FILETYPE_MAP = {
 }
 
 
-def StreamingFilesDataset(files,
-                          filetype=None,
-                          file_reader_job=None,
-                          worker_job=None,
-                          num_epochs=None,
-                          filename_shuffle_buffer_size=None,
-                          num_parallel_reads=None,
-                          batch_transfer_size=None,
-                          sloppy=None):
+def StreamingFilesDataset(
+    files: Union[Text, dataset_ops.Dataset],
+    filetype: Optional[Union[Text, Callable[[Text],
+                                            dataset_ops.Dataset]]] = None,
+    file_reader_job: Optional[Text] = None,
+    worker_job: Optional[Text] = None,
+    num_epochs: Optional[int] = None,
+    filename_shuffle_buffer_size: Optional[Union[int, bool]] = None,
+    num_parallel_reads: Optional[int] = None,
+    batch_transfer_size: Optional[Union[int, bool]] = None,
+    sloppy: bool = True) -> dataset_ops.Dataset:
   """StreamingFilesDataset constructs a dataset to stream from workers (GCE VM).
 
   Because Cloud TPUs are allocated over the network, a Cloud TPU cannot read
@@ -107,12 +108,15 @@ def StreamingFilesDataset(files,
 
   if isinstance(filetype, str):
     if filetype not in _FILETYPE_MAP:
-      raise ValueError('Unexpected filetype: %s' % filetype)
+      raise ValueError(
+          f'Unexpected filetype. Received: {filetype}. Expected one of '
+          f'{list(_FILETYPE_MAP.keys())}')
     reader_fn = _FILETYPE_MAP[filetype]
   elif callable(filetype):
     reader_fn = filetype
   else:
-    raise ValueError('filetype should be a string or a callable')
+    raise ValueError(f'Argument `filetype` should be a string or a callable. '
+                     f'Received: {filetype} of type {type(filetype)}.')
 
   file_reader_job = file_reader_job or 'coordinator'
 
@@ -126,9 +130,6 @@ def StreamingFilesDataset(files,
   if batch_transfer_size is None:
     batch_transfer_size = 256
 
-  if sloppy is None:
-    sloppy = True
-
   if file_reader_job == 'coordinator':
     file_reader_device = '/job:coordinator/task:0'
   else:
@@ -137,10 +138,12 @@ def StreamingFilesDataset(files,
   with ops.device(file_reader_device):
     if isinstance(files, str):
       source_dataset = dataset_ops.Dataset.list_files(files)
-    elif isinstance(files, dataset_ops.DatasetV2):
+    elif isinstance(files, data_types.DatasetV2):
       source_dataset = files
     else:
-      raise ValueError('files was not a string or a dataset: %s' % files)
+      raise ValueError(
+          'Argument `files` should be a string or a `tf.data.Dataset` '
+          f'instance. Received: {files}')
 
     if filename_shuffle_buffer_size:
       source_dataset = source_dataset.shuffle(
@@ -175,7 +178,8 @@ def StreamingFilesDataset(files,
     elif isinstance(source_dataset_output_types, (list, tuple)):
       output_types = source_dataset_output_types
     else:
-      raise ValueError('source dataset has invalid output types')
+      raise ValueError('Source dataset has invalid output types. Only '
+                       'list/tuples or TensorFlow tensor types are accepted.')
     remote_calls = functional_ops.remote_call(
         args=[source_handle],
         Tout=output_types,

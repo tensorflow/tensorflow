@@ -25,8 +25,10 @@ limitations under the License.
 namespace tensorflow {
 
 // Attempts to evaluates an MLIR Operation in TensorFlow eager mode with the
-// specified operands. If successful, this fills in the results vector. If not,
-// results vector is unspecified.
+// specified operands. The op is always executed on the local host CPU
+// irrespective of the device attribute of the given op. If there is a CPU
+// kernel registered for the op and is executed successfully, this fills in the
+// results vector.  If not, results vector is unspecified.
 //
 mlir::LogicalResult EvaluateOperation(
     mlir::Operation* inst, llvm::ArrayRef<mlir::ElementsAttr> operands,

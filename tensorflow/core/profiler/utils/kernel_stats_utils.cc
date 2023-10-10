@@ -37,12 +37,36 @@ namespace {
 // The maximum number of Kernels displayed on Kernel Stats page.
 const int kMaxNumOfKernels = 1000;
 
+// A list of patterns to help determine if a kernel uses Tensor Core.
+// A kernel uses Tensor Core if its kernel name contains any of these patterns.
+// Some examples of kernel names: volta_h884gemm, turing_fp16_s1688cudnn_fp16
+constexpr absl::string_view kTensorCoreKernelNamePatterns[] = {
+    "16816",
+    "c1688",
+    "conv1x1",
+    "conv2d_c1_k1",
+    "dgrad_1x1_stride_2x2",
+    "direct_group",
+    "first_layer_wgrad_kernel",
+    "h1688",
+    "h884",
+    "hmma",
+    "i16832",
+    "i8816",
+    "s884",
+    "s1688",
+    "xmma_gemm",
+    "xmma_implicit_gemm",
+    "xmma_sparse_conv",
+    "xmma_sparse_gemm",
+    "xmma_warp_specialized_implicit_gemm"};
+
 }  // namespace
 
 void ParseKernelLaunchParams(absl::string_view xstat_kernel_details,
                              KernelReport* kernel) {
   const std::vector<absl::string_view> params =
-      absl::StrSplit(xstat_kernel_details, absl::ByAnyChar(" :\n"));
+      absl::StrSplit(xstat_kernel_details, absl::ByAnyChar(" \n"));
 
   constexpr uint32 kNumDimensions = 3;
   for (uint32 dim = 0; dim < kNumDimensions; ++dim) {
@@ -50,68 +74,56 @@ void ParseKernelLaunchParams(absl::string_view xstat_kernel_details,
     kernel->add_grid_dim(1);
   }
 
-  // Process value pairs.
-  for (uint32 ii = 0; ii < params.size(); ii += 2) {
+  // Process tokens.
+  for (const auto& param : params) {
+    const std::vector<absl::string_view> key_value = absl::StrSplit(param, ':');
+    if (key_value.size() != 2) {
+      // Unrecognized token.
+      continue;
+    }
+    absl::string_view key = key_value[0];
+    absl::string_view value_str = key_value[1];
     uint32 value = 0;
     double pct = 0.0;
-    if (params[ii] == "regs" && absl::SimpleAtoi(params[ii + 1], &value)) {
+    // Cases that consume a pair of tokens "key:value".
+    if (key == "regs" && absl::SimpleAtoi(value_str, &value)) {
       kernel->set_registers_per_thread(value);
-    } else if (params[ii] == "static_shared" &&
-               absl::SimpleAtoi(params[ii + 1], &value)) {
+    } else if (key == "static_shared" && absl::SimpleAtoi(value_str, &value)) {
       kernel->set_static_shmem_bytes(value);
-    } else if (params[ii] == "dynamic_shared" &&
-               absl::SimpleAtoi(params[ii + 1], &value)) {
+    } else if (key == "dynamic_shared" && absl::SimpleAtoi(value_str, &value)) {
       kernel->set_dynamic_shmem_bytes(value);
-    } else if (params[ii] == "block") {
+    } else if (key == "block") {
       const std::vector<absl::string_view>& block =
-          absl::StrSplit(params[ii + 1], ',');
+          absl::StrSplit(value_str, ',');
       uint32 tmp[3];
       if (block.size() == 3 && absl::SimpleAtoi(block[0], &tmp[0]) &&
           absl::SimpleAtoi(block[1], &tmp[1]) &&
           absl::SimpleAtoi(block[2], &tmp[2])) {
         std::copy_n(tmp, 3, kernel->mutable_block_dim()->begin());
       }
-    } else if (params[ii] == "grid") {
+    } else if (key == "grid") {
       const std::vector<absl::string_view>& grid =
-          absl::StrSplit(params[ii + 1], ',');
+          absl::StrSplit(value_str, ',');
       uint32 tmp[3];
       if (grid.size() == 3 && absl::SimpleAtoi(grid[0], &tmp[0]) &&
           absl::SimpleAtoi(grid[1], &tmp[1]) &&
           absl::SimpleAtoi(grid[2], &tmp[2])) {
         std::copy_n(tmp, 3, kernel->mutable_grid_dim()->begin());
       }
-    } else if (params[ii] == "occ_pct" &&
-               absl::SimpleAtod(params[ii + 1], &pct)) {
+    } else if (key == "occ_pct" && absl::SimpleAtod(value_str, &pct)) {
       kernel->set_occupancy_pct(pct);
     }
   }
 }
 
 bool IsKernelUsingTensorCore(absl::string_view kernel_name) {
-  // Some examples: volta_h884gemm, volta_fp16_s884gemm,
-  // turing_fp16_s1688cudnn_fp16
-  bool possible_tensor_kernel = absl::StrContains(kernel_name, "884") ||
-                                absl::StrContains(kernel_name, "1688") ||
-                                absl::StrContains(kernel_name, "hmma") ||
-                                absl::StrContains(kernel_name, "xmma");
-  if (possible_tensor_kernel) {
-    VLOG(3) << "Possible tensor kernel: " << kernel_name;
+  VLOG(1) << "kernel name: " << kernel_name;
+  for (absl::string_view pattern : kTensorCoreKernelNamePatterns) {
+    if (absl::StrContains(kernel_name, pattern)) {
+      return true;
+    }
   }
-
-  return (absl::StartsWith(kernel_name, "volta_i884") ||
-          absl::StartsWith(kernel_name, "volta_h884") ||
-          absl::StartsWith(kernel_name, "volta_s884") ||
-          absl::StartsWith(kernel_name, "volta_fp16_i884") ||
-          absl::StartsWith(kernel_name, "volta_fp16_h884") ||
-          absl::StartsWith(kernel_name, "volta_fp16_s884") ||
-          absl::StartsWith(kernel_name, "turing_i1688") ||
-          absl::StartsWith(kernel_name, "turing_h1688") ||
-          absl::StartsWith(kernel_name, "turing_s1688") ||
-          absl::StartsWith(kernel_name, "turing_fp16_i1688") ||
-          absl::StartsWith(kernel_name, "turing_fp16_h1688") ||
-          absl::StartsWith(kernel_name, "turing_fp16_s1688") ||
-          absl::StrContains(kernel_name, "hmma") ||
-          absl::StrContains(kernel_name, "xmma"));
+  return false;
 }
 
 // This list is not exhaustive.
@@ -138,7 +150,8 @@ bool IsOpTensorCoreEligible(absl::string_view tf_op_name) {
       || absl::StrContains(tf_op_name, "CudnnRNNForward")
       || absl::StrContains(tf_op_name, "CudnnRNNBackprop")
       // Special cases.
-      || absl::EndsWith(tf_op_name, "XlaDot");
+      || absl::EndsWith(tf_op_name, "XlaDot")
+      || absl::EndsWith(tf_op_name, "XlaDotV2");
   // clang-format on
 }
 
@@ -292,7 +305,7 @@ void InsertOrUpdateKernelReport(const KernelReport& kernel,
         std::min(element.min_duration_ns, value.min_duration_ns);
     element.max_duration_ns =
         std::max(element.max_duration_ns, value.max_duration_ns);
-    element.occurrences += 1;
+    element.occurrences += value.occurrences;
   }
 }
 

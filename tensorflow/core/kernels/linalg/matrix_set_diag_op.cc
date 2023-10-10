@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/linalg/matrix_set_diag_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -58,8 +58,8 @@ class MatrixSetDiagOp : public OpKernel {
     // MatrixSetDiag and MatrixSetDiagV2 both use this OpKernel. MatrixSetDiag
     // only has two inputs, so we have to check the number of inputs before
     // reading additional parameters in MatrixSetDiagV2.
-    int32 lower_diag_index = 0;
-    int32 upper_diag_index = 0;
+    int32_t lower_diag_index = 0;
+    int32_t upper_diag_index = 0;
 
     // MatrixSetDiagV2-specific.
     if (context->num_inputs() > kNumV1Inputs) {
@@ -70,6 +70,9 @@ class MatrixSetDiagOp : public OpKernel {
                   errors::InvalidArgument(
                       "diag_index must be a scalar or vector, received shape: ",
                       diag_index.shape().DebugString()));
+      OP_REQUIRES(
+          context, diag_index.NumElements() > 0,
+          errors::InvalidArgument("diag_index must have at least one element"));
       lower_diag_index = diag_index.flat<int32>()(0);
       upper_diag_index = lower_diag_index;
       if (TensorShapeUtils::IsVector(diag_index.shape())) {
@@ -133,11 +136,13 @@ class MatrixSetDiagOp : public OpKernel {
 
     TensorShape expected_diag_shape = input_shape;
     expected_diag_shape.RemoveLastDims(2);
-    if (num_diags > 1) expected_diag_shape.AddDim(num_diags);
-    const int32 max_diag_len =
+    if (num_diags > 1) {
+      OP_REQUIRES_OK(context, expected_diag_shape.AddDimWithStatus(num_diags));
+    }
+    const int32_t max_diag_len =
         std::min(num_rows + std::min(upper_diag_index, 0),
                  num_cols - std::max(lower_diag_index, 0));
-    expected_diag_shape.AddDim(max_diag_len);
+    OP_REQUIRES_OK(context, expected_diag_shape.AddDimWithStatus(max_diag_len));
     OP_REQUIRES(
         context, expected_diag_shape == diag_shape,
         errors::InvalidArgument(
@@ -170,7 +175,8 @@ class MatrixSetDiagOp : public OpKernel {
   bool left_align_superdiagonal_ = true;
   bool left_align_subdiagonal_ = true;
   static constexpr int kNumV1Inputs = 2;
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixSetDiagOp);
+  MatrixSetDiagOp(const MatrixSetDiagOp&) = delete;
+  void operator=(const MatrixSetDiagOp&) = delete;
 };
 
 #define REGISTER_MATRIX_SET_DIAG(type)                                      \

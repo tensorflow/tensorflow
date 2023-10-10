@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <unordered_set>
 
+#include "tensorflow/core/framework/types.pb.h"
+
 namespace tensorflow {
 
 namespace {
@@ -30,7 +32,7 @@ class MemmappedTensorAllocator : public Allocator {
     if (!status.ok()) {
       return status;
     }
-    return Status::OK();
+    return OkStatus();
   }
   string Name() override { return "MemmappedTensorAllocator"; }
 
@@ -77,7 +79,8 @@ class MemmappedTensorAllocator : public Allocator {
   // de-allocation.
   bool delete_on_deallocate_ = false;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MemmappedTensorAllocator);
+  MemmappedTensorAllocator(const MemmappedTensorAllocator&) = delete;
+  void operator=(const MemmappedTensorAllocator&) = delete;
 };
 }  // namespace
 
@@ -86,6 +89,9 @@ ImmutableConstantOp::ImmutableConstantOp(OpKernelConstruction* context)
   OP_REQUIRES_OK(context,
                  context->GetAttr(kMemoryRegionNameAttr, &region_name_));
   OP_REQUIRES_OK(context, context->GetAttr(kDTypeAttr, &dtype_));
+  OP_REQUIRES(context, dtype_ != DT_RESOURCE && dtype_ != DT_VARIANT,
+              errors::InvalidArgument(
+                  "Resource and variant dtypes are invalid for this op."));
   OP_REQUIRES_OK(context, context->GetAttr(kShapeAttr, &shape_));
 }
 
@@ -95,6 +101,9 @@ void ImmutableConstantOp::Compute(OpKernelContext* ctx) {
 
   OP_REQUIRES_OK(ctx,
                  allocator->InitializeFromRegion(region_name_, ctx->env()));
+  OP_REQUIRES(ctx, dtype_ != DT_STRING,
+              errors::Unimplemented("Sorry, DT_STRING is not currently "
+                                    "supported for ImmutableConstOp."));
   ctx->set_output(0, Tensor(allocator.get(), dtype_, shape_));
   OP_REQUIRES_OK(ctx, allocator->allocation_status());
   // Allocator is owned by the tensor from this point.

@@ -15,40 +15,51 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/relu.h"
 
+#include <string>
+#include <utility>
+
 #include "absl/strings/str_cat.h"
 
 namespace tflite {
 namespace gpu {
 
-GPUOperation CreateReLU(const OperationDef& definition,
-                        const ReLUAttributes& attr) {
-  GPUOperation op(definition);
-  op.elementwise_ = true;
-
+ElementwiseDescriptor CreateReLU(const ReLUAttributes& attr,
+                                 CalculationsPrecision precision) {
+  ElementwiseDescriptor result;
   std::string min_func;
   if (attr.alpha != 0.0f) {
-    min_func = "min(in_out_value * args.alpha, (FLT)(0.0f))";
-    if (definition.precision == CalculationsPrecision::F32) {
-      op.args_.AddFloat("alpha", attr.alpha);
+    min_func = "min(in_value * args.alpha, INIT_FLT(0.0f))";
+    if (precision == CalculationsPrecision::F32) {
+      result.args.AddFloat("alpha", attr.alpha);
     } else {
-      op.args_.AddHalf("alpha", half(attr.alpha));
+      result.args.AddHalf("alpha", half(attr.alpha));
     }
   } else {
-    min_func = "(FLT)(0.0f)";
-  }
-  if (attr.clip != 0.0f) {
-    if (definition.precision == CalculationsPrecision::F32) {
-      op.args_.AddFloat("clip", attr.clip);
+    min_func = "INIT_FLT4(args.activation_min)";
+    if (precision == CalculationsPrecision::F32) {
+      result.args.AddFloat("activation_min", attr.activation_min);
     } else {
-      op.args_.AddHalf("clip", half(attr.clip));
+      result.args.AddHalf("activation_min", half(attr.activation_min));
     }
-    op.code_ = absl::StrCat("in_out_value = clamp(in_out_value, " + min_func +
-                            ", args.clip);");
-  } else {
-    op.code_ =
-        absl::StrCat("in_out_value = max(in_out_value, ", min_func, ");");
   }
-  return op;
+  if (attr.activation_max != 0.0f) {
+    if (precision == CalculationsPrecision::F32) {
+      result.args.AddFloat("activation_max", attr.activation_max);
+    } else {
+      result.args.AddHalf("activation_max", half(attr.activation_max));
+    }
+    result.code = absl::StrCat("out_value = clamp(in_value, " + min_func +
+                               ", INIT_FLT4(args.activation_max));");
+  } else {
+    result.code = absl::StrCat("out_value = max(in_value, ", min_func, ");");
+  }
+  return result;
+}
+
+GPUOperation CreateReLU(const OperationDef& definition,
+                        const ReLUAttributes& attr) {
+  ElementwiseDescriptor op_desc = CreateReLU(attr, definition.precision);
+  return CreateGpuOperation(definition, std::move(op_desc));
 }
 
 }  // namespace gpu

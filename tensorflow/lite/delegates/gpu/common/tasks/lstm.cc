@@ -25,10 +25,10 @@ namespace gpu {
 namespace {
 std::string GetLSTMCode(const OperationDef& op_def, const GpuInfo& gpu_info) {
   std::string c;
-  c += "__kernel void main_function(\n";
+  c += "MAIN_FUNCTION(\n";
   c += "$0) {\n";
-  c += "  int B = get_global_id(0);\n";
-  c += "  int Z = get_global_id(2);\n";
+  c += "  int B = GLOBAL_ID_0;\n";
+  c += "  int Z = GLOBAL_ID_2;\n";
   c += "  if (Z >= args.activation.Slices() || B >= args.activation.Batch()) "
        "return;\n";
   c += "  FLT4 prev_st = args.prev_state.Read(0, 0, Z, B);\n";
@@ -37,7 +37,8 @@ std::string GetLSTMCode(const OperationDef& op_def, const GpuInfo& gpu_info) {
   c += "  FLT4 r1 = args.intermediate.Read(0, 0, Z + state_stride, B);\n";
   c += "  FLT4 r2 = args.intermediate.Read(0, 0, Z + state_stride * 2, B);\n";
   c += "  FLT4 r3 = args.intermediate.Read(0, 0, Z + state_stride * 3, B);\n";
-  if (op_def.precision != CalculationsPrecision::F32 && gpu_info.IsAdreno()) {
+  if (gpu_info.IsApiOpenCl() &&
+      op_def.precision != CalculationsPrecision::F32 && gpu_info.IsAdreno()) {
     c += "  FLT4 input_gate;\n";
     c += "  FLT4 new_input;\n";
     c += "  FLT4 forget_gate;\n";
@@ -63,16 +64,16 @@ std::string GetLSTMCode(const OperationDef& op_def, const GpuInfo& gpu_info) {
     c += "  output_gate.z = native_recip(1.0h + native_exp(-r3.z));\n";
     c += "  output_gate.w = native_recip(1.0h + native_exp(-r3.w));\n";
   } else {
-    c +=
-        "  FLT4 input_gate  = (FLT4)(1.0f) / ((FLT4)(1.0f) + exp((FLT4)(-1.0f) "
-        "* r0));\n";
+    c += "  FLT4 input_gate  = INIT_FLT4(1.0f) / (INIT_FLT4(1.0f) + "
+         "exp(INIT_FLT4(-1.0f) "
+         "* r0));\n";
     c += "  FLT4 new_input   = tanh(r1);\n";
-    c +=
-        "  FLT4 forget_gate = (FLT4)(1.0f) / ((FLT4)(1.0f) + exp((FLT4)(-1.0f) "
-        "* r2));\n";
-    c +=
-        "  FLT4 output_gate = (FLT4)(1.0f) / ((FLT4)(1.0f) + exp((FLT4)(-1.0f) "
-        "* r3));\n";
+    c += "  FLT4 forget_gate = INIT_FLT4(1.0f) / (INIT_FLT4(1.0f) + "
+         "exp(INIT_FLT4(-1.0f) "
+         "* r2));\n";
+    c += "  FLT4 output_gate = INIT_FLT4(1.0f) / (INIT_FLT4(1.0f) + "
+         "exp(INIT_FLT4(-1.0f) "
+         "* r3));\n";
   }
   c += "  FLT4 new_st = input_gate * new_input + forget_gate * prev_st;\n";
   c += "  FLT4 act_value = output_gate * tanh(new_st);\n";

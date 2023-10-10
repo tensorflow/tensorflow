@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for SignatureDef utils."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.framework import constant_op
@@ -75,8 +71,13 @@ class SignatureDefUtilsTest(test.TestCase):
       outputs = {}
       outputs["foo-output"] = y_tensor_info
 
+      default_tensor = constant_op.constant(1.0, name="w")
+      defaults = {}
+      defaults["w"] = default_tensor
+
     signature_def = signature_def_utils_impl.build_signature_def(
-        inputs, outputs, "foo-method-name")
+        inputs, outputs, "foo-method-name", defaults
+    )
     self.assertEqual("foo-method-name", signature_def.method_name)
 
     # Check inputs in signature def.
@@ -93,6 +94,10 @@ class SignatureDefUtilsTest(test.TestCase):
     self.assertEqual("y:0", y_tensor_info_actual.name)
     self.assertEqual(types_pb2.DT_FLOAT, y_tensor_info_actual.dtype)
     self.assertEqual(0, len(y_tensor_info_actual.tensor_shape.dim))
+
+    self.assertEqual(1, len(signature_def.defaults))
+    self.assertEqual(types_pb2.DT_FLOAT, signature_def.defaults["w"].dtype)
+    self.assertEqual(1.0, signature_def.defaults["w"].float_val[0])
 
   def testRegressionSignatureDef(self):
     # Force the test to run in graph mode.

@@ -1,0 +1,78 @@
+# RUN: not tfg-translate -graphdef-to-mlir %s 2>&1 | FileCheck %s
+
+# CHECK: Expected 'Tout' to be a list of types
+
+node {
+  name: "SaveV/"
+  op: "PartitionedCall"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "N"
+    value {
+      placeholder: ""
+    }
+  }
+  attr {
+    key: "Tin"
+    value {
+      placeholder: ""
+    }
+  }
+  attr {
+    key: "Tout"
+    value {
+      list {
+        shape {
+          dim {
+            size: -1
+          }
+          dim {
+            size: 1
+          }
+        }
+        shape {
+          dim {
+            size: -1
+            name: "T"
+          }
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "config"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "config_proto"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "executor_type"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "f"
+    value {
+      func {
+      }
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      type: DT_STRING
+    }
+  }
+  experimental_debug_info {
+  }
+}

@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <tuple>
+#include <utility>
+
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/xla_builder.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/util/bcast.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
@@ -83,8 +86,8 @@ MatrixTriangularSolveOp::Broadcast(xla::XlaOp lhs, const TensorShape& lhs_shape,
                                    xla::XlaOp rhs, const TensorShape& rhs_shape,
                                    const MatMulBCast& broadcast_helper) {
   // Get the batch shape.
-  int64 m = lhs_shape.dim_size(lhs_shape.dims() - 1);
-  int64 n = rhs_shape.dim_size(rhs_shape.dims() - 1);
+  int64_t m = lhs_shape.dim_size(lhs_shape.dims() - 1);
+  int64_t n = rhs_shape.dim_size(rhs_shape.dims() - 1);
 
   TensorShape lhs_broadcast_shape(broadcast_helper.output_batch_shape());
   lhs_broadcast_shape.AddDim(m);
@@ -103,7 +106,7 @@ MatrixTriangularSolveOp::Broadcast(xla::XlaOp lhs, const TensorShape& lhs_shape,
     xla::XlaOp error = rhs.builder()->ReportError(rhs_output.status());
     return {error, error};
   }
-  return {lhs_output.ValueOrDie(), rhs_output.ValueOrDie()};
+  return {lhs_output.value(), rhs_output.value()};
 }
 
 REGISTER_XLA_OP(Name("MatrixTriangularSolve"), MatrixTriangularSolveOp);

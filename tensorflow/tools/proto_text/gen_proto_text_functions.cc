@@ -14,13 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <stdio.h>
+
 #include <set>
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/protobuf_compiler.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/tools/proto_text/gen_proto_text_functions_lib.h"
+#include "tsl/platform/protobuf_compiler.h"
 
 namespace tensorflow {
 
@@ -105,7 +106,7 @@ int MainImpl(int argc, char** argv) {
     const tensorflow::protobuf::FileDescriptor* fd =
         importer.Import(proto_path);
 
-    const int index = proto_path.find_last_of(".");
+    const int index = proto_path.find_last_of('.');
     string proto_path_no_suffix = proto_path.substr(0, index);
 
     proto_path_no_suffix =

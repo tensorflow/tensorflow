@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for profile_analyzer_cli."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 
 from tensorflow.core.framework import step_stats_pb2
@@ -29,8 +25,8 @@ from tensorflow.python.debug.cli import profile_analyzer_cli
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
@@ -338,7 +334,7 @@ class ProfileAnalyzerPrintSourceTest(test_util.TensorFlowTestCase):
       self.loop_body_lineno = _line_number_above()
       x = constant_op.constant(0, name="x")
       self.x_lineno = _line_number_above()
-      loop = control_flow_ops.while_loop(loop_cond, loop_body, [x])
+      loop = while_loop.while_loop(loop_cond, loop_body, [x])
       self.loop_lineno = _line_number_above()
       self.assertEqual(
           10, sess.run(loop, options=options, run_metadata=run_metadata))

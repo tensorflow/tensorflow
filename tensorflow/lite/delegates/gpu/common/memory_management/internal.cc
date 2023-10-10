@@ -79,7 +79,7 @@ std::vector<TaskProfile> CalculateTaskProfiles(
   // Records in each TaskProfile must be sorted in non-increasing order of
   // corresponding tensors sizes.
   for (auto& task_profile : task_profiles) {
-    std::sort(task_profile.begin(), task_profile.end(), CompareBySize);
+    std::stable_sort(task_profile.begin(), task_profile.end(), CompareBySize);
   }
   return task_profiles;
 }

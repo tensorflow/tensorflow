@@ -15,50 +15,47 @@
 """Indexed slices."""
 
 # pylint: disable=g-bad-name
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import warnings
 
 import numpy as np
 
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.types import internal
 from tensorflow.python.util.compat import collections_abc
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
 
-# Use LazyLoader to avoid circular dependencies.
-#
-# Note: these can all be changed to regular imports once all code has been
-# updated to refer the symbols defined in this module directly, rather than
-# using the backwards-compatible aliases in ops.py.  (E.g.,
-# "indexed_slices.IndexedSlices" rather than "ops.IndexedSlices".)
-math_ops = LazyLoader(
-    "math_ops", globals(),
-    "tensorflow.python.ops.math_ops")
-ops = LazyLoader(
-    "ops", globals(), "tensorflow.python.framework.ops")
-tensor_spec = LazyLoader(
-    "tensor_spec", globals(),
-    "tensorflow.python.framework.tensor_spec")
-tensor_util = LazyLoader(
-    "tensor_util", globals(),
-    "tensorflow.python.framework.tensor_util")
+class IndexedSlicesCompositeTensorGradient(
+    composite_tensor_gradient.CompositeTensorGradient):
+  """CompositeTensorGradient for IndexedSlices."""
+
+  def get_gradient_components(self, value):
+    return value
+
+  def replace_gradient_components(self, value, component_grads):
+    return component_grads
 
 
 # TODO(mdan): Should IndexedSlices be a "tensor"?
 @tf_export("IndexedSlices")
-class IndexedSlices(internal.NativeObject, composite_tensor.CompositeTensor):
+class IndexedSlices(
+    internal.IndexedSlices,
+    internal.NativeObject,
+    composite_tensor.CompositeTensor):
   """A sparse representation of a set of tensor slices at given indices.
 
   This class is a simple wrapper for a pair of `Tensor` objects:
@@ -142,7 +139,7 @@ class IndexedSlices(internal.NativeObject, composite_tensor.CompositeTensor):
     return self.values.device
 
   @property
-  def op(self):
+  def op(self) -> ops.Operation:
     """The `Operation` that produces `values` as an output."""
     return self.values.op
 
@@ -152,7 +149,7 @@ class IndexedSlices(internal.NativeObject, composite_tensor.CompositeTensor):
     return self.values.dtype
 
   @property
-  def graph(self):
+  def graph(self) -> ops.Graph:
     """The `Graph` that contains the values, indices, and shape tensors."""
     return self._values.graph
 
@@ -164,6 +161,8 @@ class IndexedSlices(internal.NativeObject, composite_tensor.CompositeTensor):
 
   def __neg__(self):
     return IndexedSlices(-self.values, self.indices, self.dense_shape)
+
+  __composite_gradient__ = IndexedSlicesCompositeTensorGradient()
 
   @property
   def _type_spec(self):
@@ -268,6 +267,13 @@ class IndexedSlicesSpec(type_spec.TypeSpec):
       return IndexedSlices(*tensor_list)
 
 
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        IndexedSlicesSpec, struct_pb2.TypeSpecProto.INDEXED_SLICES_SPEC
+    )
+)
+
+
 @tf_export(v1=["convert_to_tensor_or_indexed_slices"])
 def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None):
   """Converts the given object to a `Tensor` or an `IndexedSlices`.
@@ -323,8 +329,9 @@ def internal_convert_to_tensor_or_indexed_slices(value,
   elif isinstance(value, internal.NativeObject):
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
       raise ValueError(
-          "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
-          (dtypes.as_dtype(dtype).name, value.dtype.name, str(value)))
+          "Incompatible tensor conversion requested to `dtype` "
+          f"{dtypes.as_dtype(dtype).name} for `value` ({value}) with dtype"
+          f" {value.dtype.name}.")
     return value
   else:
     return ops.convert_to_tensor(value, dtype=dtype, name=name, as_ref=as_ref)
@@ -358,7 +365,7 @@ def internal_convert_n_to_tensor_or_indexed_slices(values,
       value.
   """
   if not isinstance(values, collections_abc.Iterable):
-    raise TypeError("values must be iterable.")
+    raise TypeError("Argument `values` must be iterable.")
   ret = []
   for i, value in enumerate(values):
     if value is None:
@@ -423,12 +430,12 @@ def _indexed_slices_to_tensor(value, dtype=None, name=None, as_ref=False):
   _ = as_ref
   if dtype and not dtype.is_compatible_with(value.dtype):
     raise ValueError(
-        "Tensor conversion requested dtype %s for IndexedSlices with dtype %s" %
-        (dtype.name, value.dtype.name))
+        f"Incompatible tensor conversion requested to `dtype` {dtype.name} for "
+        f"IndexedSlices ({value}) with dtype {value.dtype.name}")
   if value.dense_shape is None:
     raise ValueError(
-        "Tensor conversion requested for IndexedSlices without dense_shape: %s"
-        % str(value))
+        "Tensor conversion requested for IndexedSlices for argument `value` "
+        f"without dense_shape: {value!s}")
   # TODO(mrry): Consider adding static shape information to
   # IndexedSlices, to avoid using numpy here.
   if not context.executing_eagerly():
@@ -440,14 +447,7 @@ def _indexed_slices_to_tensor(value, dtype=None, name=None, as_ref=False):
             "Converting sparse IndexedSlices to a dense Tensor with %d "
             "elements. This may consume a large amount of memory." %
             num_elements)
-    else:
-      if value.dense_shape.op.type != "VariableShape":
-        # VariableShape may hide static shapes behind a resource handle
-        # producing a warning that isn't that useful to users.
-        warnings.warn(
-            "Converting sparse IndexedSlices(%s) to a dense Tensor of unknown "
-            "shape. This may consume a large amount of memory." % value)
-  return math_ops.unsorted_segment_sum(
+  return gen_math_ops.unsorted_segment_sum(
       value.values, value.indices, value.dense_shape[0], name=name)
 
 

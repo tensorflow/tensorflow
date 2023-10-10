@@ -15,13 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_INTEGER_OPS_POOLING_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_INTEGER_OPS_POOLING_H_
 
+#include <algorithm>
 #include <limits>
+
 #include "tensorflow/lite/kernels/internal/common.h"
 
 namespace tflite {
 namespace reference_integer_ops {
 
-inline void AveragePool(const PoolParams& params,
+inline bool AveragePool(const PoolParams& params,
                         const RuntimeShape& input_shape,
                         const int8_t* input_data,
                         const RuntimeShape& output_shape, int8_t* output_data) {
@@ -66,6 +68,7 @@ inline void AveragePool(const PoolParams& params,
               filter_count++;
             }
           }
+          if (filter_count == 0) return false;
           // Round to the closest integer value.
           acc = acc > 0 ? (acc + filter_count / 2) / filter_count
                         : (acc - filter_count / 2) / filter_count;
@@ -77,6 +80,7 @@ inline void AveragePool(const PoolParams& params,
       }
     }
   }
+  return true;
 }
 
 inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
@@ -136,7 +140,7 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
   }
 }
 
-inline void AveragePool(const PoolParams& params,
+inline bool AveragePool(const PoolParams& params,
                         const RuntimeShape& input_shape,
                         const int16_t* input_data,
                         const RuntimeShape& output_shape,
@@ -182,6 +186,7 @@ inline void AveragePool(const PoolParams& params,
               filter_count++;
             }
           }
+          if (filter_count == 0) return false;
           // Round to the closest integer value.
           acc = acc > 0 ? (acc + filter_count / 2) / filter_count
                         : (acc - filter_count / 2) / filter_count;
@@ -193,6 +198,7 @@ inline void AveragePool(const PoolParams& params,
       }
     }
   }
+  return true;
 }
 
 inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,

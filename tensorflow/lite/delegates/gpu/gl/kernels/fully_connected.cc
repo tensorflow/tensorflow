@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/fully_connected.h"
 
 #include <algorithm>
+#include <any>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -37,7 +40,7 @@ class FullyConnectedBuffers : public NodeShader {
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
     const auto& attr =
-        absl::any_cast<const FullyConnectedAttributes&>(ctx.op_attr);
+        std::any_cast<const FullyConnectedAttributes&>(ctx.op_attr);
 
     const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
     const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
@@ -64,9 +67,8 @@ class FullyConnectedBuffers : public NodeShader {
 
   if (gid.x < $dst_depth$) {
     int offset = 4 * gid.x * $src_depth$ + 4 * tid.y;
-    int iterations = ($src_depth$ + threads-1) / threads;
-    for (int d = 0; d < iterations; d++, offset += 4 * threads) {
-      vec4 src = $input_data_0[0, 0, d * threads + tid.y]$;
+    for (int d = tid.y; d < $src_depth$; d += threads, offset += 4 * threads) {
+      vec4 src = $input_data_0[0, 0, d]$;
       value_0.x += dot(src, $weights[offset + 0]$);
       value_0.y += dot(src, $weights[offset + 1]$);
       value_0.z += dot(src, $weights[offset + 2]$);
@@ -120,7 +122,7 @@ class FullyConnectedBuffers : public NodeShader {
 }  // namespace
 
 std::unique_ptr<NodeShader> NewFullyConnectedNodeShader() {
-  return absl::make_unique<FullyConnectedBuffers>();
+  return std::make_unique<FullyConnectedBuffers>();
 }
 
 }  // namespace gl

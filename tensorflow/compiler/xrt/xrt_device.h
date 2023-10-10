@@ -18,10 +18,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XRT_XRT_DEVICE_H_
 #define TENSORFLOW_COMPILER_XRT_XRT_DEVICE_H_
 
-#include "tensorflow/compiler/xla/client/local_client.h"
+#include <memory>
+#include <string>
+
+#include "absl/container/flat_hash_map.h"
+#include "xla/client/local_client.h"
+#include "xla/stream_executor/tf_allocator_adapter.h"
 #include "tensorflow/compiler/xrt/xrt_compilation_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
 
@@ -33,15 +39,15 @@ class XRTGenericDeviceAccessor {
   static Status GetResourceManager(OpKernelContext* ctx, ResourceMgr** rm);
 
   static xla::StatusOr<RefPtr<XRTCompilationCache>> GetOrCreateCompilationCache(
-      OpKernelContext* ctx, int64 max_number_of_entries);
+      OpKernelContext* ctx, int64_t max_number_of_entries);
 
   // We use a ScopedRef pattern here even though it's not strictly necessary,
   // just so that templated uses of this and the TPU accessor class will be as
   // similar as possible.
   class ScopedRef {
    public:
-    ScopedRef() {}
-    ~ScopedRef() {}
+    ScopedRef() = default;
+    ~ScopedRef() = default;
 
     ScopedRef(const ScopedRef&) = delete;
     ScopedRef& operator=(const ScopedRef&) = delete;
@@ -50,19 +56,23 @@ class XRTGenericDeviceAccessor {
     xla::LocalClient* client() const { return client_; }
     xla::Backend* backend() { return client_->mutable_backend(); }
     int device_ordinal() const { return ordinal_; }
+    se::DeviceMemoryAllocator* allocator() { return allocator_; }
 
    private:
     // XRTGenericDeviceAccessor::InitScopedRef is the only way to initialize
     // ScopedRef.
     friend class XRTGenericDeviceAccessor;
 
-    void Acquire(xla::LocalClient* client, int ordinal) {
-      client_ = client;
-      ordinal_ = ordinal;
-    }
+    void Acquire(xla::LocalClient* client, int ordinal,
+                 const std::string& platform_name, OpKernelContext* ctx);
 
     xla::LocalClient* client_ = nullptr;
     int ordinal_ = 0;
+    se::DeviceMemoryAllocator* allocator_ = nullptr;
+    static tensorflow::mutex cuda_allocator_mutex_;
+    static absl::flat_hash_map<stream_executor::Stream*,
+                               std::unique_ptr<se::TfAllocatorAdapter>>*
+        cuda_allocators_;
   };
 
   static Status InitScopedRef(OpKernelContext* ctx, int device_ordinal,

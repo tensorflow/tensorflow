@@ -6,6 +6,8 @@ import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
+
 // Each SnapshotRecord represents one batch of pre-processed input data. A batch
 // consists of a list of tensors that we encode as TensorProtos. This message
 // doesn't store the structure of the batch.
@@ -42,4 +44,15 @@ message TensorMetadata {
 // Metadata for all the tensors in a Snapshot Record.
 message SnapshotTensorMetadata {
   repeated TensorMetadata tensor_metadata = 1;
+}
+
+// Metadata for a `tf.data.Dataset` distributed snapshot.
+message DistributedSnapshotMetadata {
+  // The element spec of the snapshotted dataset.
+  bytes element_spec = 1;
+
+  // Whether and how to compress the snapshot.  Supported values are defined in
+  // `tsl::io::compression`.  In particular, an empty string specifies not to
+  // compress.
+  string compression = 2;
 }

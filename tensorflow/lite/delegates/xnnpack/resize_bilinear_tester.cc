@@ -15,18 +15,20 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/xnnpack/resize_bilinear_tester.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <numeric>
 #include <random>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
@@ -72,27 +74,24 @@ void ResizeBilinearTester::Test(TfLiteDelegate* delegate) const {
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
-  float* default_input_data = default_interpreter->typed_tensor<float>(
-      default_interpreter->inputs()[0]);
-  std::generate(default_input_data,
-                default_input_data +
-                    BatchSize() * InputHeight() * InputWidth() * Channels(),
-                std::ref(input_rng));
+  float* default_input_data = default_interpreter->typed_input_tensor<float>(0);
+  std::generate_n(default_input_data,
+                  BatchSize() * InputHeight() * InputWidth() * Channels(),
+                  std::ref(input_rng));
 
-  float* delegate_input_data = delegate_interpreter->typed_tensor<float>(
-      delegate_interpreter->inputs()[0]);
-  std::copy(default_input_data,
-            default_input_data +
-                BatchSize() * InputHeight() * InputWidth() * Channels(),
-            delegate_input_data);
+  float* delegate_input_data =
+      delegate_interpreter->typed_input_tensor<float>(0);
+  std::copy_n(default_input_data,
+              BatchSize() * InputHeight() * InputWidth() * Channels(),
+              delegate_input_data);
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
 
-  float* default_output_data = default_interpreter->typed_tensor<float>(
-      default_interpreter->outputs()[0]);
-  float* delegate_output_data = delegate_interpreter->typed_tensor<float>(
-      delegate_interpreter->outputs()[0]);
+  float* default_output_data =
+      default_interpreter->typed_output_tensor<float>(0);
+  float* delegate_output_data =
+      delegate_interpreter->typed_output_tensor<float>(0);
 
   for (int i = 0; i < BatchSize(); i++) {
     for (int y = 0; y < OutputHeight(); y++) {

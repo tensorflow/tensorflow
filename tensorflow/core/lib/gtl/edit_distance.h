@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_GTL_EDIT_DISTANCE_H_
-#define TENSORFLOW_LIB_GTL_EDIT_DISTANCE_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_EDIT_DISTANCE_H_
+#define TENSORFLOW_CORE_LIB_GTL_EDIT_DISTANCE_H_
 
 #include <numeric>
 
@@ -44,10 +44,11 @@ namespace gtl {
 //  int64 dist = LevenshteinDistance("hi", "bye", std::equal_to<char>());
 //
 template <typename T, typename Cmp>
-inline int64 LevenshteinDistance(const gtl::ArraySlice<T>& s,
-                                 const gtl::ArraySlice<T>& t, const Cmp& cmp) {
-  const int64 s_size = s.size();
-  const int64 t_size = t.size();
+inline int64_t LevenshteinDistance(const gtl::ArraySlice<T>& s,
+                                   const gtl::ArraySlice<T>& t,
+                                   const Cmp& cmp) {
+  const int64_t s_size = s.size();
+  const int64_t t_size = t.size();
 
   if (t_size > s_size) return LevenshteinDistance(t, s, cmp);
 
@@ -58,9 +59,9 @@ inline int64 LevenshteinDistance(const gtl::ArraySlice<T>& s,
   if (s == t) return 0;
 
   // Create work vector
-  gtl::InlinedVector<int64, 32> scratch_holder(t_size);
+  gtl::InlinedVector<int64_t, 32> scratch_holder(t_size);
 
-  int64* scratch = scratch_holder.data();
+  int64_t* scratch = scratch_holder.data();
 
   // Special case for i = 0: Distance between empty string and string
   // of length j is just j.
@@ -94,8 +95,8 @@ inline int64 LevenshteinDistance(const gtl::ArraySlice<T>& s,
 }
 
 template <typename Container1, typename Container2, typename Cmp>
-inline int64 LevenshteinDistance(const Container1& s, const Container2& t,
-                                 const Cmp& cmp) {
+inline int64_t LevenshteinDistance(const Container1& s, const Container2& t,
+                                   const Cmp& cmp) {
   return LevenshteinDistance(
       gtl::ArraySlice<typename Container1::value_type>(s.data(), s.size()),
       gtl::ArraySlice<typename Container1::value_type>(t.data(), t.size()),
@@ -105,4 +106,4 @@ inline int64 LevenshteinDistance(const Container1& s, const Container2& t,
 }  // namespace gtl
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_GTL_EDIT_DISTANCE_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_EDIT_DISTANCE_H_

@@ -33,13 +33,24 @@ namespace gpu {
 namespace metal {
 
 struct GPUResourcesWithValue {
-  std::vector<std::pair<std::string, int>> ints;
-  std::vector<std::pair<std::string, float>> floats;
-  std::vector<std::pair<std::string, id<MTLBuffer>>> buffers;
+  GenericGPUResourcesWithValue generic;
+
+  struct BufferParameter {
+    id<MTLBuffer> handle;
+    uint64_t offset;
+  };
+  std::vector<std::pair<std::string, BufferParameter>> buffers;
   std::vector<std::pair<std::string, id<MTLTexture>>> images2d;
   std::vector<std::pair<std::string, id<MTLTexture>>> image2d_arrays;
   std::vector<std::pair<std::string, id<MTLTexture>>> images3d;
   std::vector<std::pair<std::string, id<MTLTexture>>> image_buffers;
+
+  void AddFloat(const std::string& name, float value) {
+    generic.AddFloat(name, value);
+  }
+  void AddInt(const std::string& name, int value) {
+    generic.AddInt(name, value);
+  }
 };
 
 class GPUObject {

@@ -8,11 +8,10 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 LINKER_SCRIPT = "jni/version_script.lds"
 
@@ -75,6 +74,7 @@ android_binary(
     assets_dir = "",
     custom_package = "org.tensorflow.demo",
     manifest = "AndroidManifest.xml",
+    multidex = "native",
     resource_files = glob(["res/**"]),
     tags = [
         "manual",

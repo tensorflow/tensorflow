@@ -14,18 +14,21 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <optional>
+#include <vector>
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/slicing.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/client/lib/slicing.h"
+#include "xla/client/xla_builder.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -34,7 +37,7 @@ namespace tensorflow {
 
 Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
                  const xla::XlaOp& indices, const TensorShape& indices_shape,
-                 int64 axis, bool indices_are_nd, DataType dtype,
+                 int64_t axis, bool indices_are_nd, DataType dtype,
                  DataType index_type, xla::XlaBuilder* builder,
                  xla::XlaOp* gather_output) {
   // There is no deep reason why we need this precondition, but this is the only
@@ -49,17 +52,17 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
   //
   // If the indices are N-dimensional, then the minor dimension of indices
   // should be of size N and correspond to the N indices.
-  int64 num_index_dims;
-  int64 num_indices = 1;
+  int64_t num_index_dims;
+  int64_t num_indices = 1;
   if (indices_are_nd) {
     CHECK_GE(indices_shape.dims(), 1);
     num_index_dims = indices_shape.dim_size(indices_shape.dims() - 1);
-    for (int64 i = 0, e = indices_shape.dims() - 1; i < e; i++) {
+    for (int64_t i = 0, e = indices_shape.dims() - 1; i < e; i++) {
       num_indices *= indices_shape.dim_size(i);
     }
   } else {
     num_index_dims = 1;
-    for (int64 i = 0, e = indices_shape.dims(); i < e; i++) {
+    for (int64_t i = 0, e = indices_shape.dims(); i < e; i++) {
       num_indices *= indices_shape.dim_size(i);
     }
   }
@@ -83,10 +86,10 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
 
     *gather_output =
         xla::Broadcast(XlaHelpers::Zero(builder, dtype), out_shape.dim_sizes());
-    return Status::OK();
+    return OkStatus();
   }
 
-  for (int64 i = 0; i < num_index_dims; ++i) {
+  for (int64_t i = 0; i < num_index_dims; ++i) {
     if (input_shape.dim_size(axis + i) == 0) {
       return errors::InvalidArgument("Gather dimension ", axis + i,
                                      " is of size zero in tensor with shape ",
@@ -120,10 +123,10 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
   //       slice_sizes={1,1,2}
 
   xla::GatherDimensionNumbers dim_numbers;
-  std::vector<int64> slice_sizes;
+  std::vector<int64_t> slice_sizes;
   slice_sizes.reserve(input_shape.dims());
-  for (int64 i = 0; i < input_shape.dims(); i++) {
-    int64 window_bound;
+  for (int64_t i = 0; i < input_shape.dims(); i++) {
+    int64_t window_bound;
     if (axis <= i && i < (axis + num_index_dims)) {
       dim_numbers.add_collapsed_slice_dims(i);
       window_bound = 1;
@@ -136,7 +139,7 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
     if (i < axis) {
       dim_numbers.add_offset_dims(i);
     } else if (i >= (axis + num_index_dims)) {
-      int64 indices_rank =
+      int64_t indices_rank =
           indices_are_nd ? (indices_shape.dims() - 1) : indices_shape.dims();
       dim_numbers.add_offset_dims(i + indices_rank - num_index_dims);
     }
@@ -144,12 +147,12 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
 
   dim_numbers.set_index_vector_dim(indices_are_nd ? (indices_shape.dims() - 1)
                                                   : indices_shape.dims());
-  for (int64 i = axis; i < axis + num_index_dims; i++) {
+  for (int64_t i = axis; i < axis + num_index_dims; i++) {
     dim_numbers.add_start_index_map(i);
   }
 
   *gather_output = xla::Gather(input, indices, dim_numbers, slice_sizes);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
@@ -159,7 +162,7 @@ Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
   auto indices = context->Input(1);
   auto indices_shape = context->InputShape(1);
 
-  absl::optional<int64> axis;
+  std::optional<int64_t> axis;
   if (context->num_inputs() == 3) {
     const TensorShape axis_shape = context->InputShape(2);
     if (!TensorShapeUtils::IsScalar(axis_shape)) {
@@ -170,14 +173,17 @@ Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
       return errors::InvalidArgument("axis must be int32 or int64");
     }
 
-    int64 axis_input;
+    int64_t axis_input;
     TF_RETURN_IF_ERROR(context->ConstantInputAsIntScalar(2, &axis_input));
 
     const auto params_dims = input_shape.dims();
     if (-params_dims > axis_input || axis_input >= params_dims) {
-      return errors::InvalidArgument("Expected axis in the range [",
-                                     -params_dims, ", ", params_dims,
-                                     "), but got ", axis_input);
+      // Check that params has rank of at least axis + 1.
+      const auto min_params_rank =
+          axis_input < 0 ? -axis_input : axis_input + 1;
+      return errors::InvalidArgument("Shape must be at least rank ",
+                                     min_params_rank, " but is rank ",
+                                     params_dims);
     }
     if (axis_input < 0) {
       axis_input += params_dims;
@@ -214,8 +220,9 @@ Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
 
   axis = axis.value_or(0);
   DataType index_type = context->input_type(1);
-  if (index_type != DT_INT32 && index_type != DT_INT64) {
-    return errors::InvalidArgument("indices must be int32 or int64");
+  if (index_type != DT_INT16 && index_type != DT_INT32 &&
+      index_type != DT_INT64) {
+    return errors::InvalidArgument("indices must be int16, int32, or int64");
   }
 
   xla::XlaOp gather;
@@ -229,7 +236,7 @@ Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
                   /*indices_are_nd=*/false, context->expected_output_dtype(0),
                   index_type, context->builder(), gather_output));
   }
-  return Status::OK();
+  return OkStatus();
 }
 class GatherOp : public XlaOpKernel {
  public:
@@ -254,14 +261,15 @@ class GatherOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(GatherOp);
+  GatherOp(const GatherOp&) = delete;
+  void operator=(const GatherOp&) = delete;
 
   // The number of batch dimensions, as passed in the batch_dims attribute.
   // It must be less than or equal to rank(indices).
   int32 batch_dims_ = 0;
 };
 
-REGISTER_XLA_OP(Name("Gather"), GatherOp);
+REGISTER_XLA_OP(Name("Gather"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("GatherV2").CompileTimeConstantInput("axis"), GatherOp);
 
 class GatherNdOp : public XlaOpKernel {
@@ -278,7 +286,7 @@ class GatherNdOp : public XlaOpKernel {
                 errors::InvalidArgument("params must be at least a vector"));
     OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(indices_shape),
                 errors::InvalidArgument("indices must be at least a vector"));
-    const int64 num_index_dims =
+    const int64_t num_index_dims =
         indices_shape.dim_size(indices_shape.dims() - 1);
     OP_REQUIRES(
         context, num_index_dims <= params_shape.dims(),

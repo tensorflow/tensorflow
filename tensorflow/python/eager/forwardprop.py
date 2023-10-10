@@ -14,25 +14,19 @@
 # ==============================================================================
 """Utilities for forward-mode automatic differentiation."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import threading
 
+from tensorflow.core.function.polymorphism import function_cache
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
-from tensorflow.python.eager import function
-
+from tensorflow.python.eager.polymorphic_function import tracing_compilation
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.parallel_for import control_flow_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
@@ -179,7 +173,7 @@ def _jvp_helper_wrapper(op_name, attr_tuple, inputs, outputs, tangents,
   return _jvp_helper(op_name, attr_tuple, inputs, outputs, tangents)
 
 
-# TODO(allenl): experimental_relax_shapes for gradients which rely on static
+# TODO(allenl): reduce_retracing for gradients which rely on static
 # shape information are underspecialized. We may want hand-written forward
 # implementations, or a more satisfying story about how we re-specialize
 # gradients which were traced with relaxed shapes (e.g. use conds instead of
@@ -190,10 +184,20 @@ def _jvp_helper_wrapper(op_name, attr_tuple, inputs, outputs, tangents,
 # eagerly (infinite recursion), and even if it did it would use extra memory and
 # run unnecessary computation. The function does not create variables, so the
 # two symbols are otherwise equivalent.
-_jvp_relaxed_shapes = function.defun(
-    _jvp_helper_wrapper, experimental_relax_shapes=True)
-_jvp_exact_shapes = function.defun(
-    _jvp_helper_wrapper, experimental_relax_shapes=False)
+_jvp_function_cache = function_cache.FunctionCache()
+_jvp_relaxed_config = tracing_compilation.TracingOptions(
+    _jvp_helper_wrapper,
+    name="_jvp_relaxed_shapes",
+    reduce_retracing=True,
+    function_cache=_jvp_function_cache,
+)
+
+_jvp_exact_config = tracing_compilation.TracingOptions(
+    _jvp_helper_wrapper,
+    name="_jvp_exact_shapes",
+    reduce_retracing=False,
+    function_cache=_jvp_function_cache,
+)
 
 # The maximum number of exact-shape traces to perform for a single op before
 # switching to shape relaxation.
@@ -210,10 +214,13 @@ def _jvp_dispatch(op_name,
   # Note that this _TRACE_COUNT read races with writes. That's fine, it just
   # means we may trace a few more exact shapes before moving on to relaxation.
   if _TRACE_COUNT.get(op_name, 0) < _TRACE_COUNT_LIMIT:
-    return _jvp_exact_shapes(op_name, attr_tuple, inputs, outputs, tangents,
-                             use_batch)
-  return _jvp_relaxed_shapes(op_name, attr_tuple, inputs, outputs, tangents,
-                             use_batch)
+    config = _jvp_exact_config
+  else:
+    config = _jvp_relaxed_config
+  return tracing_compilation.call_function(
+      (op_name, attr_tuple, inputs, outputs, tangents, use_batch),
+      tracing_options=config,
+  )
 
 
 pywrap_tfe.TFE_Py_RegisterJVPFunction(_jvp_dispatch)
@@ -234,12 +241,13 @@ class ForwardAccumulator():
   Consider a simple linear regression:
 
   >>> x = tf.constant([[2.0, 3.0], [1.0, 4.0]])
+  >>> targets = tf.constant([[1.], [-1.]])
   >>> dense = tf.keras.layers.Dense(1)
   >>> dense.build([None, 2])
   >>> with tf.autodiff.ForwardAccumulator(
   ...    primals=dense.kernel,
   ...    tangents=tf.constant([[1.], [0.]])) as acc:
-  ...   loss = tf.reduce_sum((dense(x) - tf.constant([1., -1.])) ** 2.)
+  ...   loss = tf.reduce_sum((dense(x) - targets) ** 2.)
   >>> acc.jvp(loss)
   <tf.Tensor: shape=(), dtype=float32, numpy=...>
 
@@ -258,9 +266,10 @@ class ForwardAccumulator():
   invocations:
 
   >>> x = tf.constant([[2.0, 3.0], [1.0, 4.0]])
+  >>> targets = tf.constant([[1.], [-1.]])
   >>> dense = tf.keras.layers.Dense(1)
   >>> dense.build([None, 2])
-  >>> loss_fn = lambda: tf.reduce_sum((dense(x) - tf.constant([1., -1.])) ** 2.)
+  >>> loss_fn = lambda: tf.reduce_sum((dense(x) - targets) ** 2.)
   >>> kernel_fprop = []
   >>> with tf.autodiff.ForwardAccumulator(
   ...     dense.kernel, tf.constant([[1.], [0.]])) as acc:
@@ -411,7 +420,7 @@ class ForwardAccumulator():
       pywrap_tfe.TFE_Py_ForwardAccumulatorWatch(self._accumulator, primal,
                                                 tangent)
 
-    nest.map_structure(_watch, primals, tangents, expand_composites=True)
+    nest.map_structure(_watch, primals, tangents)
 
   def jvp(self, primals, unconnected_gradients=UnconnectedGradients.NONE):
     """Fetches the Jacobian-vector product computed for `primals`.
@@ -439,16 +448,11 @@ class ForwardAccumulator():
       if hasattr(tensor, "handle"):
         unwrapped_tensor = ops.convert_to_tensor(tensor.handle)
       else:
-        if isinstance(tensor, np_arrays.ndarray):
-          unwrapped_tensor = tensor.data
-        else:
-          unwrapped_tensor = tensor
+        unwrapped_tensor = tensor
       result = pywrap_tfe.TFE_Py_ForwardAccumulatorJVP(self._accumulator,
                                                        unwrapped_tensor)
       if result is None and unconnected_gradients == UnconnectedGradients.ZERO:
         result = array_ops.zeros_like(tensor)
-      if result is not None and isinstance(tensor, np_arrays.ndarray):
-        return np_arrays.tensor_to_ndarray(result)
       return result
 
     return nest.map_structure(_fetch_jvp, primals)

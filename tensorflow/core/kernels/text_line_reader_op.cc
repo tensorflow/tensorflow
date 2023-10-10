@@ -16,6 +16,8 @@ limitations under the License.
 // See docs in ../ops/io_ops.cc.
 
 #include <memory>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -41,19 +43,19 @@ class TextLineReader : public ReaderBase {
     for (; line_number_ < skip_header_lines_; ++line_number_) {
       string line_contents;
       Status status = input_buffer_->ReadLine(&line_contents);
-      if (errors::IsOutOfRange(status)) {
+      if (absl::IsOutOfRange(status)) {
         // We ignore an end of file error when skipping header lines.
         // We will end up skipping this file.
-        return Status::OK();
+        return OkStatus();
       }
       TF_RETURN_IF_ERROR(status);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status OnWorkFinishedLocked() override {
     input_buffer_.reset(nullptr);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status ReadLocked(tstring* key, tstring* value, bool* produced,
@@ -65,9 +67,9 @@ class TextLineReader : public ReaderBase {
       *produced = true;
       return status;
     }
-    if (errors::IsOutOfRange(status)) {  // End of file, advance to the next.
+    if (absl::IsOutOfRange(status)) {  // End of file, advance to the next.
       *at_end = true;
-      return Status::OK();
+      return OkStatus();
     } else {  // Some other reading error
       return status;
     }
@@ -87,7 +89,7 @@ class TextLineReader : public ReaderBase {
   enum { kBufferSize = 256 << 10 /* 256 kB */ };
   const int skip_header_lines_;
   Env* const env_;
-  int64 line_number_;
+  int64_t line_number_;
   std::unique_ptr<RandomAccessFile> file_;  // must outlive input_buffer_
   std::unique_ptr<io::InputBuffer> input_buffer_;
 };

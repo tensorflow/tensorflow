@@ -35,7 +35,7 @@ Status DequeueManyV2Shape(InferenceContext* c, ShapeHandle n_shape) {
           c->Concatenate(n_shape, (*t)[i].shape, &combined_shape));
       c->set_output(i, combined_shape);
     }
-    return Status::OK();
+    return OkStatus();
   } else {
     return shape_inference::UnknownShape(c);
   }
@@ -52,7 +52,7 @@ REGISTER_OP("DynamicPartition")
     .Attr("num_partitions: int")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
-      int64 num_partitions;
+      int64_t num_partitions;
       TF_RETURN_IF_ERROR(c->GetAttr("num_partitions", &num_partitions));
 
       ShapeHandle data_shape = c->input(0);
@@ -62,7 +62,7 @@ REGISTER_OP("DynamicPartition")
         return shape_inference::UnknownShape(c);
       }
 
-      const int64 rank = c->Rank(partitions_shape);
+      const int64_t rank = c->Rank(partitions_shape);
 
       // data shape must start with partitions_shape
       ShapeHandle unused;
@@ -83,17 +83,17 @@ REGISTER_OP("DynamicPartition")
         c->set_output(i, result_shape);
       }
 
-      return Status::OK();
+      return OkStatus();
     });
 
 namespace {
 
 Status DynamicStitchShapeFunction(InferenceContext* c) {
-  int32 num_partitions;
+  int32_t num_partitions;
   TF_RETURN_IF_ERROR(c->GetAttr("N", &num_partitions));
 
   bool all_indices_constant = true;
-  int32 max_index = -1;
+  int32_t max_index = -1;
   ShapeHandle extra_shape = c->UnknownShape();
   for (int i = 0; i < num_partitions; ++i) {
     const Tensor* indices_t = c->input_tensor(i);
@@ -106,7 +106,7 @@ Status DynamicStitchShapeFunction(InferenceContext* c) {
     if (!c->RankKnown(indices_shape)) {
       continue;
     }
-    const int64 indices_rank = c->Rank(indices_shape);
+    const int64_t indices_rank = c->Rank(indices_shape);
 
     // Assert that data_shape starts with indices_shape.
     ShapeHandle unused;
@@ -121,8 +121,8 @@ Status DynamicStitchShapeFunction(InferenceContext* c) {
     if (indices_t != nullptr) {
       // The length is based on the highest index from flattened indices.
       const int32* indices = indices_t->flat<int32>().data();
-      int64 count = indices_t->NumElements();
-      for (int64 i = 0; i < count; ++i) {
+      int64_t count = indices_t->NumElements();
+      for (int64_t i = 0; i < count; ++i) {
         if (indices[i] > max_index) {
           max_index = indices[i];
         }
@@ -134,7 +134,7 @@ Status DynamicStitchShapeFunction(InferenceContext* c) {
       all_indices_constant ? c->MakeDim(max_index + 1) : c->UnknownDim());
   TF_RETURN_IF_ERROR(c->Concatenate(output_shape, extra_shape, &output_shape));
   c->set_output(0, output_shape);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -168,12 +168,12 @@ Status TwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
   for (int i = 0; i < c->num_outputs(); ++i) {
     c->set_output(i, c->Scalar());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TwoElementOutput(InferenceContext* c) {
   c->set_output(0, c->Vector(2));
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -315,7 +315,7 @@ REGISTER_OP("QueueDequeueV2")
         for (int i = 0; i < c->num_outputs(); ++i) {
           c->set_output(i, (*t)[i].shape);
         }
-        return Status::OK();
+        return OkStatus();
       } else {
         return shape_inference::UnknownShape(c);
       }
@@ -340,7 +340,7 @@ REGISTER_OP("QueueDequeueManyV2")
       if (c->input_tensor(1) == nullptr) {
         n_shape = c->Vector(InferenceContext::kUnknownDim);
       } else {
-        const int32 n = c->input_tensor(1)->scalar<int32>()();
+        const int32_t n = c->input_tensor(1)->scalar<int32>()();
         if (n < 0) {
           return errors::InvalidArgument("Input 'n' must be >= 0, but is ", n);
         }
@@ -410,7 +410,7 @@ REGISTER_OP("AccumulatorSetGlobalStep")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ConditionalAccumulator")
@@ -423,7 +423,7 @@ REGISTER_OP("ConditionalAccumulator")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(2));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("AccumulatorApplyGradient")
@@ -434,7 +434,7 @@ REGISTER_OP("AccumulatorApplyGradient")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("AccumulatorTakeGradient")
@@ -464,7 +464,7 @@ REGISTER_OP("ResourceAccumulatorSetGlobalStep")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ResourceConditionalAccumulator")
@@ -477,7 +477,7 @@ REGISTER_OP("ResourceConditionalAccumulator")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(2));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ResourceAccumulatorApplyGradient")
@@ -488,7 +488,7 @@ REGISTER_OP("ResourceAccumulatorApplyGradient")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ResourceAccumulatorTakeGradient")
@@ -516,7 +516,7 @@ REGISTER_OP("SparseConditionalAccumulator")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(2));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseAccumulatorApplyGradient")
@@ -530,7 +530,7 @@ REGISTER_OP("SparseAccumulatorApplyGradient")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseAccumulatorTakeGradient")
@@ -567,7 +567,7 @@ REGISTER_OP("StackPushV2")
     .Attr("swap_memory: bool = false")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(1));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("StackPopV2")
@@ -597,7 +597,7 @@ REGISTER_OP("StackPush")
     .Attr("swap_memory: bool = false")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(1));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("StackPop")
@@ -641,7 +641,7 @@ REGISTER_OP("TensorArrayV3")
         c->set_output_handle_shapes_and_types(
             0, std::vector<shape_inference::ShapeAndType>{{s, t}});
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TensorArrayGradV3")
@@ -662,7 +662,7 @@ REGISTER_OP("TensorArrayGradV3")
         c->set_output_handle_shapes_and_types(
             0, *c->input_handle_shapes_and_types(0));
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TensorArrayGradWithShape")
@@ -687,10 +687,10 @@ REGISTER_OP("TensorArrayGradWithShape")
         // Note that shape_to_preped is a rank 1 Tensor representing a shape.
         // The size of dimension 0 is the number of dimensions we need to add to
         // output shape.
-        int64 prepend_rank = c->Value(c->Dim(c->input(2), 0));
+        int64_t prepend_rank = c->Value(c->Dim(c->input(2), 0));
         if (c->RankKnown(input_shape) &&
             prepend_rank != InferenceContext::kUnknownDim) {
-          int32 input_rank = c->Rank(input_shape);
+          int32_t input_rank = c->Rank(input_shape);
           std::vector<DimensionHandle> dims;
           dims.reserve(prepend_rank + input_rank);
           for (int i = 0; i < prepend_rank; ++i) {
@@ -706,7 +706,7 @@ REGISTER_OP("TensorArrayGradWithShape")
                                                 {{c->UnknownShape(), dtype}});
         }
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TensorArrayWriteV3")
@@ -755,7 +755,7 @@ REGISTER_OP("TensorArrayReadV3")
       if (shapes != nullptr && !shapes->empty()) {
         ShapeHandle tensor_shape = shapes->at(0).shape;
         c->set_output(0, tensor_shape);
-        return Status::OK();
+        return OkStatus();
       } else {
         return shape_inference::UnknownShape(c);
       }
@@ -783,7 +783,7 @@ REGISTER_OP("TensorArrayGatherV3")
         TF_RETURN_IF_ERROR(
             c->Concatenate(indices, tensor_shape, &output_shape));
         c->set_output(0, output_shape);
-        return Status::OK();
+        return OkStatus();
       } else {
         PartialTensorShape p;
         TF_RETURN_IF_ERROR(c->GetAttr("element_shape", &p));
@@ -792,7 +792,7 @@ REGISTER_OP("TensorArrayGatherV3")
         ShapeHandle output_shape;
         TF_RETURN_IF_ERROR(c->Concatenate(indices, s, &output_shape));
         c->set_output(0, output_shape);
-        return Status::OK();
+        return OkStatus();
       }
     });
 
@@ -842,7 +842,7 @@ REGISTER_OP("TensorArrayConcatV3")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       c->set_output(0, c->UnknownShape());
       c->set_output(1, c->Vector(c->UnknownDim()));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TensorArraySplitV3")
@@ -882,7 +882,7 @@ REGISTER_OP("TensorArrayCloseV3")
       DimensionHandle unused_dim;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -913,7 +913,7 @@ REGISTER_OP("TensorArrayV2")
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       c->set_output(0, c->Vector(2));
-      return Status::OK();
+      return OkStatus();
     })
     .Deprecated(26, "Use TensorArrayV3");
 REGISTER_OP("TensorArrayGrad")
@@ -936,7 +936,7 @@ REGISTER_OP("TensorArrayGradV2")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
       c->set_output(0, c->Vector(2));
-      return Status::OK();
+      return OkStatus();
     })
     .Deprecated(26, "Use TensorArrayGradV3");
 REGISTER_OP("TensorArrayWrite")
@@ -1085,7 +1085,7 @@ REGISTER_OP("TensorArrayConcatV2")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       c->set_output(0, c->UnknownShape());
       c->set_output(1, c->Vector(c->UnknownDim()));
-      return Status::OK();
+      return OkStatus();
     });
 REGISTER_OP("TensorArraySplit")
     .Input("handle: Ref(string)")
@@ -1134,7 +1134,7 @@ REGISTER_OP("TensorArraySizeV2")
     .Deprecated(26, "Use TensorArraySizeV3");
 REGISTER_OP("TensorArrayClose")
     .Input("handle: Ref(string)")
-    .SetShapeFn([](InferenceContext* c) { return Status::OK(); })
+    .SetShapeFn([](InferenceContext* c) { return OkStatus(); })
     .Deprecated(16, "Use TensorArrayCloseV3");
 REGISTER_OP("TensorArrayCloseV2")
     .Input("handle: string")
@@ -1143,7 +1143,7 @@ REGISTER_OP("TensorArrayCloseV2")
       DimensionHandle unused_dim;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &handle));
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_dim));
-      return Status::OK();
+      return OkStatus();
     })
     .Deprecated(26, "Use TensorArrayCloseV3");
 
@@ -1175,7 +1175,7 @@ REGISTER_OP("BarrierInsertMany")
       TF_RETURN_IF_ERROR(c->WithRank(keys, 1, &keys));
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(values, 1, &values));
       TF_RETURN_IF_ERROR(c->Merge(keys, c->Vector(c->Dim(values, 0)), &handle));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BarrierTakeMany")
@@ -1238,7 +1238,7 @@ REGISTER_OP("DeleteSessionTensor")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("Stage")

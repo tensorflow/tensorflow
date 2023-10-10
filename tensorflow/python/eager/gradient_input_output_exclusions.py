@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,19 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-r"""Script to generate inputs/outputs exclusion lists for GradientTape.
+"""Code to generate inputs/outputs exclusion lists for GradientTape."""
 
-To use this script:
-
-bazel run tensorflow/python/eager:gradient_input_output_exclusions -- \
-  $PWD/tensorflow/python/eager/pywrap_gradient_exclusions.cc
-"""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import argparse
 import sys
 
 import gast
@@ -100,10 +88,19 @@ _EXCLUDED_OPS = [
     "While",
     "StatelessWhile",
     "Case",
-
     # TF Lite. These ops only appear in OSS.
     # TODO(srbs): Find a better way to filter these out.
     "AudioMicrofrontend",
+    # DTensor Ops with custom gradient functions.
+    # Note that these ops only appear in OSS, and fails the test in OSS.
+    "CopyToMesh",
+    "CopyToMeshGrad",
+    "Relayout",
+    "RelayoutLike",
+    # Debug ops that similarly only appear in OSS, and fails the test in OSS.
+    "DebugGradientIdentity",
+    "DebugGradientRefIdentity",
+    "DebugIdentityV2",
 ]
 
 
@@ -127,21 +124,20 @@ class _SubscriptUseTracker(transformer.Base):
 
   def visit_Subscript(self, node):
     """Visits nodes with subscript in the AST."""
+    s = node.slice
     if anno.hasanno(node, anno.Basic.QN):
       qn = anno.getanno(node, anno.Basic.QN)
       if isinstance(node.ctx, gast.Load):
         self.reads.add(qn)
-    elif not isinstance(node.slice, gast.Index):
-      if anno.hasanno(node, anno.Basic.QN):
-        self.complex_reads.add(anno.getanno(node, anno.Basic.QN))
-      elif anno.hasanno(node.value, anno.Basic.QN):
+    elif isinstance(s, (gast.Tuple, gast.Slice)):
+      if anno.hasanno(node.value, anno.Basic.QN):
         self.complex_reads.add(anno.getanno(node.value, anno.Basic.QN))
     value_qn = anno.getanno(node.value, anno.Basic.QN, None)
     if value_qn in self.exclude:
       node.value = self.generic_visit(node.value)
     else:
       node.value = self.visit(node.value)
-    node.slice = self.visit(node.slice)
+    node.slice = self.visit(s)
     return node
 
 
@@ -369,15 +365,3 @@ def get_contents():
   contents += get_function("OpGradientUnusedOutputIndices",
                            get_entries("outputs"))
   return contents
-
-
-def main(output_file):
-  with open(output_file, "w") as fp:
-    fp.write(get_contents())
-
-
-if __name__ == "__main__":
-  arg_parser = argparse.ArgumentParser()
-  arg_parser.add_argument("output", metavar="O", type=str, help="Output file.")
-  args = arg_parser.parse_args()
-  main(args.output)

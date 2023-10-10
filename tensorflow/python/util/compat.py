@@ -41,16 +41,15 @@ sets of python types:
 * `complex_types`
 * `integral_types`
 * `real_types`
-"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+API docstring: tensorflow.compat
+"""
 
 import numbers as _numbers
 
 import numpy as _np
 import six as _six
+import codecs
 
 from tensorflow.python.util.tf_export import tf_export
 
@@ -76,6 +75,8 @@ def as_bytes(bytes_or_text, encoding='utf-8'):
   Raises:
     TypeError: If `bytes_or_text` is not a binary or unicode string.
   """
+  # Validate encoding, a LookupError will be raised if invalid.
+  encoding = codecs.lookup(encoding).name
   if isinstance(bytes_or_text, bytearray):
     return bytes(bytes_or_text)
   elif isinstance(bytes_or_text, _six.text_type):
@@ -103,6 +104,8 @@ def as_text(bytes_or_text, encoding='utf-8'):
   Raises:
     TypeError: If `bytes_or_text` is not a binary or unicode string.
   """
+  # Validate encoding, a LookupError will be raised if invalid.
+  encoding = codecs.lookup(encoding).name
   if isinstance(bytes_or_text, _six.text_type):
     return bytes_or_text
   elif isinstance(bytes_or_text, bytes):
@@ -112,10 +115,7 @@ def as_text(bytes_or_text, encoding='utf-8'):
 
 
 def as_str(bytes_or_text, encoding='utf-8'):
-  if _six.PY2:
-    return as_bytes(bytes_or_text, encoding)
-  else:
-    return as_text(bytes_or_text, encoding)
+  return as_text(bytes_or_text, encoding)
 
 tf_export('compat.as_text')(as_text)
 tf_export('compat.as_bytes')(as_bytes)
@@ -123,7 +123,7 @@ tf_export('compat.as_str')(as_str)
 
 
 @tf_export('compat.as_str_any')
-def as_str_any(value):
+def as_str_any(value, encoding='utf-8'):
   """Converts input to `str` type.
 
      Uses `str(value)`, except for `bytes` typed inputs, which are converted
@@ -131,12 +131,13 @@ def as_str_any(value):
 
   Args:
     value: A object that can be converted to `str`.
+    encoding: Encoding for `bytes` typed inputs.
 
   Returns:
     A `str` object.
   """
   if isinstance(value, bytes):
-    return as_str(value)
+    return as_str(value, encoding=encoding)
   else:
     return str(value)
 
@@ -156,7 +157,7 @@ def path_to_str(path):
 
   Usage:
     In case a simplified `str` version of the path is needed from an
-    `os.PathLike` object
+    `os.PathLike` object.
 
   Examples:
   ```python
@@ -194,7 +195,7 @@ def path_to_bytes(path):
 
   Usage:
     In case a simplified `bytes` version of the path is needed from an
-    `os.PathLike` object
+    `os.PathLike` object.
   """
   if hasattr(path, '__fspath__'):
     path = path.__fspath__()

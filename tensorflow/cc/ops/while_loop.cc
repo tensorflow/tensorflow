@@ -84,7 +84,7 @@ Status CreateMerge(const Scope& scope, int loop_var_idx,
   TF_RETURN_IF_ERROR(builder.Finalize(scope.graph(), &merge_node));
   TF_RETURN_IF_ERROR(scope.DoShapeInference(merge_node));
   *merge_output = Output(merge_node, 0);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Creates the condition subgraph defined by `cond`.
@@ -113,7 +113,7 @@ Status CreateCond(const Scope& scope, const CondGraphBuilderFn& cond,
   // TODO(skyewm): check that raw_cond_out is scalar
 
   *output = LoopCond(scope, raw_cond_out).output;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Create the body subgraph defined by `body`. `outputs` must be non-null and
@@ -140,7 +140,7 @@ Status CreateBody(const Scope& scope, const BodyGraphBuilderFn& body,
         scope.graph()->IsValidOutputTensor(output.node(), output.index()));
     // TODO(skyewm): check output types/shapes
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -182,13 +182,13 @@ Status BuildWhileLoop(const Scope& scope, const std::vector<Output>& inputs,
   const size_t num_loop_vars = inputs.size();
 
   std::vector<Output> enter_outputs(num_loop_vars);
-  for (int i = 0; i < num_loop_vars; ++i) {
+  for (size_t i = 0; i < num_loop_vars; ++i) {
     enter_outputs[i] = internal::Enter(scope, inputs[i], frame_name);
   }
   TF_RETURN_IF_ERROR(scope.status());
 
   std::vector<Output> merge_outputs(num_loop_vars);
-  for (int i = 0; i < num_loop_vars; ++i) {
+  for (size_t i = 0; i < num_loop_vars; ++i) {
     TF_RETURN_IF_ERROR(
         CreateMerge(scope, i, enter_outputs[i], &merge_outputs[i]));
   }
@@ -199,7 +199,7 @@ Status BuildWhileLoop(const Scope& scope, const std::vector<Output>& inputs,
 
   std::vector<Output> switch_trues(num_loop_vars);
   std::vector<Output> switch_falses(num_loop_vars);
-  for (int i = 0; i < num_loop_vars; ++i) {
+  for (size_t i = 0; i < num_loop_vars; ++i) {
     auto switch_i = Switch(scope, merge_outputs[i], cond_out);
     switch_trues[i] = switch_i.output_true;
     switch_falses[i] = switch_i.output_false;
@@ -210,14 +210,14 @@ Status BuildWhileLoop(const Scope& scope, const std::vector<Output>& inputs,
   TF_RETURN_IF_ERROR(CreateBody(scope, body, switch_trues, &body_outputs));
 
   std::vector<Output> next_outputs(num_loop_vars);
-  for (int i = 0; i < num_loop_vars; ++i) {
+  for (size_t i = 0; i < num_loop_vars; ++i) {
     next_outputs[i] = NextIteration(scope, body_outputs[i]);
     DCHECK_EQ(next_outputs[i].node()->name(), NextIterationName(scope, i));
   }
   TF_RETURN_IF_ERROR(scope.status());
 
   // Create the backedges from the NextIteration nodes to the Merge nodes.
-  for (int i = 0; i < num_loop_vars; ++i) {
+  for (size_t i = 0; i < num_loop_vars; ++i) {
     const int merge_backedge_output_index = 1;
     scope.graph()->AddEdge(next_outputs[i].node(), next_outputs[i].index(),
                            merge_outputs[i].node(),
@@ -225,7 +225,7 @@ Status BuildWhileLoop(const Scope& scope, const std::vector<Output>& inputs,
   }
 
   outputs->resize(num_loop_vars);
-  for (int i = 0; i < num_loop_vars; ++i) {
+  for (size_t i = 0; i < num_loop_vars; ++i) {
     (*outputs)[i] = internal::Exit(scope, switch_falses[i]);
   }
   TF_RETURN_IF_ERROR(scope.status());
@@ -239,11 +239,11 @@ Status BuildWhileLoop(const Scope& scope, const std::vector<Output>& inputs,
 
     // Set while_ctx for all exit nodes. We currently don't require knowing the
     // while_ctx for any other nodes.
-    for (int i = 0; i < num_loop_vars; ++i) {
+    for (size_t i = 0; i < num_loop_vars; ++i) {
       (*outputs)[i].node()->set_while_ctx(while_ctx);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace ops

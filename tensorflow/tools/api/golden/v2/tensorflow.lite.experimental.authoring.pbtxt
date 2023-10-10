@@ -1,0 +1,7 @@
+path: "tensorflow.lite.experimental.authoring"
+tf_module {
+  member_method {
+    name: "compatible"
+    argspec: "args=[\'target\', \'converter_target_spec\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\'], "
+  }
+}

@@ -42,6 +42,7 @@ class NnApiMock : public ::tflite::nnapi::NnApiHandler {
       : ::tflite::nnapi::NnApiHandler(nnapi) {
     nnapi_->nnapi_exists = true;
     nnapi_->android_sdk_version = android_sdk_version;
+    nnapi_->nnapi_runtime_feature_level = android_sdk_version;
 
     nnapi_->ANeuralNetworksCompilation_free =
         [](ANeuralNetworksCompilation* compilation) {};
@@ -83,7 +84,7 @@ class NnApiDelegateMockTest : public ::testing::Test {
  protected:
   void SetUp() override {
     nnapi_ = *NnApiImplementation();
-    nnapi_mock_ = absl::make_unique<NnApiMock>(&nnapi_);
+    nnapi_mock_ = std::make_unique<NnApiMock>(&nnapi_);
   }
 
   std::unique_ptr<NnApiMock> nnapi_mock_;

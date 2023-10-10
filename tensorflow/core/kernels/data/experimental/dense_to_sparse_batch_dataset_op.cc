@@ -36,9 +36,9 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
         errors::InvalidArgument("DenseToSparseBatchDataset only supports "
                                 "inputs with a single component."));
 
-    int64 batch_size;
-    OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument<int64>(ctx, "batch_size", &batch_size));
+    int64_t batch_size;
+    OP_REQUIRES_OK(
+        ctx, ParseScalarArgument<int64_t>(ctx, "batch_size", &batch_size));
     OP_REQUIRES(
         ctx, batch_size > 0,
         errors::InvalidArgument("Batch size must be greater than zero."));
@@ -49,7 +49,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
                 errors::InvalidArgument("row_shape must be a vector"));
     PartialTensorShape row_shape;
     OP_REQUIRES_OK(ctx, PartialTensorShape::MakePartialShape(
-                            row_shape_t->vec<int64>().data(),
+                            row_shape_t->vec<int64_t>().data(),
                             row_shape_t->NumElements(), &row_shape));
 
     *output = nullptr;
@@ -76,7 +76,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
   template <class T>
   class Dataset : public DatasetBase {
    public:
-    Dataset(OpKernelContext* ctx, int64 batch_size,
+    Dataset(OpKernelContext* ctx, int64_t batch_size,
             const PartialTensorShape& row_shape, const DatasetBase* input)
         : DatasetBase(DatasetContext(ctx)),
           batch_size_(batch_size),
@@ -94,7 +94,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return absl::make_unique<Iterator>(typename Iterator::Params{
+      return std::make_unique<Iterator>(typename Iterator::Params{
           this, strings::StrCat(prefix, "::DenseToSparseBatch")});
     }
 
@@ -112,8 +112,8 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
                              ")::Dataset");
     }
 
-    int64 Cardinality() const override {
-      int64 n = input_->Cardinality();
+    int64_t CardinalityInternal(CardinalityOptions options) const override {
+      int64_t n = input_->Cardinality(options);
       if (n == kInfiniteCardinality || n == kUnknownCardinality) {
         return n;
       }
@@ -123,7 +123,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return Status::OK();
+      return OkStatus();
     }
 
     Status CheckExternalState() const override {
@@ -139,7 +139,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
       Node* batch_size_node;
       TF_RETURN_IF_ERROR(b->AddScalar(batch_size_, &batch_size_node));
       Node* row_shape_node;
-      std::vector<int64> row_shape;
+      std::vector<int64_t> row_shape;
       row_shape.reserve(
           row_shape_.dims());  // not an unknown rank PartialTensorShape
       for (int i = 0; i < row_shape_.dims(); i++)
@@ -147,7 +147,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddVector(row_shape, &row_shape_node));
       TF_RETURN_IF_ERROR(b->AddDataset(
           this, {input_node, batch_size_node, row_shape_node}, output));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:
@@ -167,7 +167,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
         // Each row of the output SparseTensor is an individual tensor
         // from the input iterator.
         std::vector<Tensor> batch_elements;
-        int64 total_elements = 0;
+        int64_t total_elements = 0;
         batch_elements.reserve(
             DatasetIterator<Dataset<T>>::dataset()->batch_size_);
         const PartialTensorShape& row_shape =
@@ -177,7 +177,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
         // Determine the size of the output tensors:
         // * dense_shape will be [`row_shape + 1`].
         Tensor dense_shape(ctx->allocator({}), DT_INT64, {row_ndims + 1});
-        auto dense_shape_vec = dense_shape.vec<int64>();
+        auto dense_shape_vec = dense_shape.vec<int64_t>();
         for (size_t i = 0; i < row_ndims; ++i) {
           if (row_shape.dim_size(i) == -1) {
             dense_shape_vec(i + 1) = 0;
@@ -231,7 +231,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
         if (batch_elements.empty()) {
           DCHECK(*end_of_sequence);
-          return Status::OK();
+          return OkStatus();
         }
 
         // * indices will be [`total_elements`, `row_shape + 1`].
@@ -242,16 +242,16 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
             ctx->allocator({}),
             DatasetIterator<Dataset<T>>::dataset()->input_->output_dtypes()[0],
             {total_elements});
-        auto indices_matrix = indices.matrix<int64>();
+        auto indices_matrix = indices.matrix<int64_t>();
         auto values_flat = values.flat<T>();
 
-        int64 current_position_in_values = 0;
-        for (int64 i = 0; i < batch_elements.size(); ++i) {
+        int64_t current_position_in_values = 0;
+        for (int64_t i = 0; i < batch_elements.size(); ++i) {
           const Tensor& t = batch_elements[i];
           const auto& t_flat = t.flat<T>();
           // TODO(mrry): Replace with a memcpy or something more
           // efficient. (Maybe an Eigen assign op?)
-          gtl::InlinedVector<int64, 4> strides(row_ndims);
+          gtl::InlinedVector<int64_t, 4> strides(row_ndims);
           if (!strides.empty()) {
             strides[row_ndims - 1] = 1;
             for (int64_t row_dim = strides.size() - 2; row_dim >= 0;
@@ -261,10 +261,10 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
             }
           }
 
-          for (int64 j = 0; j < t.NumElements(); ++j) {
+          for (int64_t j = 0; j < t.NumElements(); ++j) {
             values_flat(current_position_in_values) = t_flat(j);
             indices_matrix(current_position_in_values, 0) = i;
-            int64 index = j;
+            int64_t index = j;
             for (size_t k = 0; k < strides.size(); ++k) {
               indices_matrix(current_position_in_values, k + 1) =
                   index / strides[k];
@@ -284,7 +284,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
         out_tensors->push_back(std::move(serialized_sparse));
 
         *end_of_sequence = false;
-        return Status::OK();
+        return OkStatus();
       }
 
      protected:
@@ -299,14 +299,14 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
                           IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(Iterator::SaveInput(ctx, writer, input_impl_));
-        return Status::OK();
+        return OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(Iterator::RestoreInput(ctx, reader, input_impl_));
-        return Status::OK();
+        return OkStatus();
       }
 
      private:
@@ -314,7 +314,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
       std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     };
 
-    const int64 batch_size_;
+    const int64_t batch_size_;
     const PartialTensorShape row_shape_;
     const DatasetBase* const input_;
     std::vector<PartialTensorShape> output_shapes_;

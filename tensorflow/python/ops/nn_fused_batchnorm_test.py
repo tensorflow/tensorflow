@@ -14,21 +14,21 @@
 # ==============================================================================
 """Tests for fused_batch_norm related functionality in tensorflow.ops.nn."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_grad
+from tensorflow.python.ops import nn_fused_batch_norm_grad
 from tensorflow.python.ops import nn_impl
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
 
@@ -95,7 +95,8 @@ class BatchNormalizationTest(test.TestCase):
     # An atol value of 1e-3 is too small for float16's, because some adjacent
     # float16 values that y_val can take are greater than 1e-3 apart, e.g.
     # 2.16602 and 2.16797.
-    atol = 2e-3 if x_dtype == np.float16 else 1e-3
+    atol = 2e-3 if x_dtype in [np.float16, dtypes.bfloat16.as_numpy_dtype
+                              ] else 1e-3
     self.assertAllClose(y_ref, y_val, atol=atol)
 
   def _running_mean(self, old_mean, new_val, factor):
@@ -177,12 +178,17 @@ class BatchNormalizationTest(test.TestCase):
                                                     old_mean_val, old_var_val,
                                                     exponential_avg_factor,
                                                     epsilon, data_format)
-    y_atol = 2e-3 if x_dtype == np.float16 else 1e-3
+    y_atol = 1e-3
+    if x_dtype == np.float16:
+      y_atol = 2e-3
+    elif x_dtype == dtypes.bfloat16.as_numpy_dtype:
+      y_atol = 1e-2
     self.assertAllClose(y_ref, y_val, atol=y_atol)
     self.assertAllClose(mean_ref, mean_val, atol=1e-3)
     self.assertAllClose(var_ref, var_val, atol=1e-3)
 
-  def _compute_gradient_error_float16(self, x, x32, x_shape, y, y32, y_shape):
+  def _compute_gradient_error_float16(self, x, x32, x_shape, y, y32, y_shape,
+                                      x_dtype):
     """Computes the gradient error for float16 inputs and/or outputs.
 
     This returns the same value as gradient_checker.compute_gradient_error. The
@@ -199,12 +205,13 @@ class BatchNormalizationTest(test.TestCase):
       y: The output tensor.
       y32: A float32 version of y. Must be calculated based on x32, not x.
       y_shape: The shape of y.
+      x_dtype: The type of x, float16 or bfloat16.
 
     Returns:
       The maximum error in between the two Jacobians, as in
       gradient_checker.compute_gradient_error.
     """
-    x_init_val = np.random.random_sample(x_shape).astype(np.float16)
+    x_init_val = np.random.random_sample(x_shape).astype(x_dtype)
     x32_init_val = x_init_val.astype(np.float32)
 
     # TODO(reedwm): Do not perform the unnecessary computations in
@@ -252,7 +259,7 @@ class BatchNormalizationTest(test.TestCase):
           exponential_avg_factor=exponential_avg_factor,
           data_format=data_format,
           is_training=is_training)
-      if x_dtype != np.float16:
+      if x_dtype not in [np.float16, dtypes.bfloat16.as_numpy_dtype]:
         err_x = gradient_checker.compute_gradient_error(x, x_shape, y, x_shape)
         err_scale = gradient_checker.compute_gradient_error(
             scale, scale_shape, y, x_shape)
@@ -270,13 +277,17 @@ class BatchNormalizationTest(test.TestCase):
             exponential_avg_factor=exponential_avg_factor,
             is_training=is_training)
         err_x = self._compute_gradient_error_float16(x, x32, x_shape, y, y32,
-                                                     x_shape)
+                                                     x_shape, x_dtype)
         err_scale = self._compute_gradient_error_float16(
-            scale, scale, scale_shape, y, y32, x_shape)
+            scale, scale, scale_shape, y, y32, x_shape, x_dtype)
         err_offset = self._compute_gradient_error_float16(
-            offset, offset, scale_shape, y, y32, x_shape)
+            offset, offset, scale_shape, y, y32, x_shape, x_dtype)
 
-    x_err_tolerance = 2e-3 if x_dtype == np.float16 else 1e-3
+    x_err_tolerance = 1e-3
+    if x_dtype == np.float16:
+      x_err_tolerance = 2e-3
+    elif dtypes.bfloat16.as_numpy_dtype:
+      x_err_tolerance = 2e-2
     scale_err_tolerance = 1e-3
     self.assertLess(err_x, x_err_tolerance)
     self.assertLess(err_scale, scale_err_tolerance)
@@ -325,13 +336,13 @@ class BatchNormalizationTest(test.TestCase):
         epsilon = y.op.get_attr('epsilon')
         data_format = y.op.get_attr('data_format')
         grad_vals = self.evaluate([grad_x, grad_scale, grad_offset])
-        grad_internal = nn_grad._BatchNormGrad(grad_y, x, scale, pop_mean,
-                                               pop_var, epsilon, data_format)
+        grad_internal = nn_fused_batch_norm_grad._BatchNormGrad(
+            grad_y, x, scale, pop_mean, pop_var, epsilon, data_format)
         grad_internal_vals = self.evaluate(list(grad_internal))
         for grad_val, grad_internal_val in zip(grad_vals, grad_internal_vals):
           self.assertAllClose(grad_val, grad_internal_val, atol=err_tolerance)
 
-      if x_dtype != np.float16:
+      if x_dtype not in [np.float16, dtypes.bfloat16.as_numpy_dtype]:
         err_grad_grad_y_1 = gradient_checker.compute_gradient_error(
             grad_y, x_shape, grad_x, x_shape)
         err_grad_grad_y_2 = gradient_checker.compute_gradient_error(
@@ -363,20 +374,22 @@ class BatchNormalizationTest(test.TestCase):
         grad_x32, grad_scale32, grad_offset32 = gradients_impl.gradients(
             y32, [x32, scale, offset], grad_y32)
         err_grad_grad_y_1 = self._compute_gradient_error_float16(
-            grad_y, grad_y32, x_shape, grad_x, grad_x32, x_shape)
+            grad_y, grad_y32, x_shape, grad_x, grad_x32, x_shape, x_dtype)
         err_grad_grad_y_2 = self._compute_gradient_error_float16(
-            grad_y, grad_y32, x_shape, grad_scale, grad_scale32, scale_shape)
+            grad_y, grad_y32, x_shape, grad_scale, grad_scale32, scale_shape,
+            x_dtype)
         err_grad_grad_y_3 = self._compute_gradient_error_float16(
-            grad_y, grad_y32, x_shape, grad_offset, grad_offset32, scale_shape)
+            grad_y, grad_y32, x_shape, grad_offset, grad_offset32, scale_shape,
+            x_dtype)
         # In freeze mode, grad_x is not a function of x.
         if is_training:
           err_grad_x_1 = self._compute_gradient_error_float16(
-              x, x32, x_shape, grad_x, grad_x32, x_shape)
+              x, x32, x_shape, grad_x, grad_x32, x_shape, x_dtype)
         err_grad_x_2 = self._compute_gradient_error_float16(
-            x, x32, x_shape, grad_scale, grad_scale32, scale_shape)
+            x, x32, x_shape, grad_scale, grad_scale32, scale_shape, x_dtype)
 
         err_grad_scale = self._compute_gradient_error_float16(
-            scale, scale, scale_shape, grad_x, grad_x32, x_shape)
+            scale, scale, scale_shape, grad_x, grad_x32, x_shape, x_dtype)
 
     self.assertLess(err_grad_grad_y_1, err_tolerance)
     self.assertLess(err_grad_grad_y_2, err_tolerance)
@@ -396,7 +409,7 @@ class BatchNormalizationTest(test.TestCase):
     if test.is_gpu_available(cuda_only=True) and not cpu_only:
       use_gpu_vals += [True]
     factors = [1.0, 0.6]
-    for dtype in [np.float16, np.float32]:
+    for dtype in [np.float16, np.float32, dtypes.bfloat16.as_numpy_dtype]:
       for use_gpu in use_gpu_vals:
         for data_format in data_format_list:
           if data_format == 'NHWC' or data_format == 'NDHWC':
@@ -668,6 +681,154 @@ class BatchNormalizationTest(test.TestCase):
         'dtype': np.float16,
     }
     self._testBatchNormGradGrad(config)
+
+  def test5dBatchNormFollowedByRelu(self):
+    # The remapper grappler pass previously did not properly handle a 5D
+    # inference FusedBatchNorm followed by Relu. This asserts that this case is
+    # correctly handled.
+    np.random.seed(1)
+    x = np.random.random_sample((2, 3, 2, 2, 3)).astype(np.float32)
+    scale = np.random.random_sample((3,)).astype(np.float32)
+    offset = np.random.random_sample((3,)).astype(np.float32)
+    mean = np.random.random_sample((3,)).astype(np.float32)
+    var = np.random.random_sample((3,)).astype(np.float32)
+
+    epsilon = 0.001
+    y, _, _ = nn_impl.fused_batch_norm(
+        x,
+        scale,
+        offset,
+        mean=mean,
+        variance=var,
+        epsilon=epsilon,
+        data_format='NCDHW',
+        is_training=False)
+    y = nn_ops.relu(y)
+    y_val = self.evaluate(y)
+    y_ref = self._inference_ref(x, scale, offset, mean, var, epsilon,
+                                'NCDHW')
+    y_ref = np.maximum(y_ref, 0.)
+    self.assertAllClose(y_ref, y_val, atol=1e-3)
+
+  def testEagerShapeErrors(self):
+    with context.eager_mode():
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((3,))
+      offset = array_ops.ones((2,))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          'scale must have the same number of elements'):
+        nn_impl.fused_batch_norm(x, scale, offset)
+
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((2,))
+      offset = array_ops.ones((3,))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          'offset must have the same number of elements'):
+        nn_impl.fused_batch_norm(x, scale, offset)
+
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((2,))
+      offset = array_ops.ones((2,))
+      mean = array_ops.ones((0,))
+      variance = array_ops.ones((2,))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          'When is_training=false, mean must have the same number of elements'):
+        nn_impl.fused_batch_norm(
+            x, scale, offset, mean=mean, variance=variance, is_training=False)
+
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((2,))
+      offset = array_ops.ones((2,))
+      mean = array_ops.ones((2,))
+      variance = array_ops.ones((0,))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          'When is_training=false, variance must have the same number of '
+          'elements'):
+        nn_impl.fused_batch_norm(
+            x, scale, offset, mean=mean, variance=variance, is_training=False)
+
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((2,))
+      offset = array_ops.ones((2,))
+      mean = array_ops.ones((0,))
+      variance = array_ops.ones((2,))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          'When exponential_avg_factor != 1, mean must have the same number of '
+          'elements'):
+        nn_impl.fused_batch_norm(
+            x,
+            scale,
+            offset,
+            mean=mean,
+            variance=variance,
+            exponential_avg_factor=0.5)
+
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((2,))
+      offset = array_ops.ones((2,))
+      mean = array_ops.ones((2,))
+      variance = array_ops.ones((0,))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          'When exponential_avg_factor != 1, variance must have the same '
+          'number of elements'):
+        nn_impl.fused_batch_norm(
+            x,
+            scale,
+            offset,
+            mean=mean,
+            variance=variance,
+            exponential_avg_factor=0.5)
+
+  def testEagerShapeGradErrors(self):
+    with context.eager_mode():
+      y_backprop = array_ops.ones((2, 2, 2, 3))
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((2,))
+      reserve_space_1 = array_ops.ones((2,))
+      reserve_space_2 = array_ops.ones((2,))
+      with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                  'x and y_backprop must have same shape,'):
+        gen_nn_ops.fused_batch_norm_grad_v2(y_backprop, x, scale,
+                                            reserve_space_1, reserve_space_2)
+
+      y_backprop = array_ops.ones((2, 2, 2, 2))
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((3,))
+      reserve_space_1 = array_ops.ones((2,))
+      reserve_space_2 = array_ops.ones((2,))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          'scale must have the same number of elements'):
+        gen_nn_ops.fused_batch_norm_grad_v2(y_backprop, x, scale,
+                                            reserve_space_1, reserve_space_2)
+
+      y_backprop = array_ops.ones((2, 2, 2, 2))
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((2,))
+      reserve_space_1 = array_ops.ones((3,))
+      reserve_space_2 = array_ops.ones((2,))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          'reserve_space_1 must have the same number of elements'):
+        gen_nn_ops.fused_batch_norm_grad_v2(y_backprop, x, scale,
+                                            reserve_space_1, reserve_space_2)
+
+      y_backprop = array_ops.ones((2, 2, 2, 2))
+      x = array_ops.ones((2, 2, 2, 2))
+      scale = array_ops.ones((2,))
+      reserve_space_1 = array_ops.ones((2,))
+      reserve_space_2 = array_ops.ones((3,))
+      with self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          'reserve_space_2 must have the same number of elements'):
+        gen_nn_ops.fused_batch_norm_grad_v2(y_backprop, x, scale,
+                                            reserve_space_1, reserve_space_2)
 
 
 if __name__ == '__main__':

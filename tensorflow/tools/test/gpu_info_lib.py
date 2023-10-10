@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,15 +14,9 @@
 # ==============================================================================
 """Library for getting system information during TensorFlow tests."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ctypes as ct
 import platform
 
-import six
-from six.moves import range
 
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.framework import errors
@@ -34,12 +27,11 @@ def _gather_gpu_devices_proc():
   """Try to gather NVidia GPU device information via /proc/driver."""
   dev_info = []
   for f in gfile.Glob("/proc/driver/nvidia/gpus/*/information"):
-    bus_id = six.ensure_str(f).split("/")[5]
+    bus_id = f.split("/")[5]
+    key_values = dict(line.rstrip().replace("\t", "").split(":", 1)
+                      for line in gfile.GFile(f, "r"))
     key_values = dict(
-        six.ensure_str(line.rstrip()).replace("\t", "").split(":", 1)
-        for line in gfile.GFile(f, "r"))
-    key_values = dict((k.lower(), six.ensure_str(v).strip(" ").rstrip(" "))
-                      for (k, v) in key_values.items())
+        (k.lower(), v.strip(" ").rstrip(" ")) for (k, v) in key_values.items())
     info = test_log_pb2.GPUInfo()
     info.model = key_values.get("model", "Unknown")
     info.uuid = key_values.get("gpu uuid", "Unknown")

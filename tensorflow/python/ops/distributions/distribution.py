@@ -14,16 +14,11 @@
 # ==============================================================================
 """Base classes for probability distributions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import contextlib
 import types
 
 import numpy as np
-import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -69,8 +64,7 @@ _DISTRIBUTION_PUBLIC_METHOD_WRAPPERS = [
 ]
 
 
-@six.add_metaclass(abc.ABCMeta)
-class _BaseDistribution(object):
+class _BaseDistribution(metaclass=abc.ABCMeta):
   """Abstract base class needed for resolving subclass hierarchy."""
   pass
 
@@ -213,7 +207,7 @@ class _DistributionMeta(abc.ABCMeta):
 
 
 @tf_export(v1=["distributions.ReparameterizationType"])
-class ReparameterizationType(object):
+class ReparameterizationType:
   """Instances of this class represent how sampling is reparameterized.
 
   Two static instances exist in the distributions library, signifying
@@ -275,9 +269,8 @@ tf_export(v1=["distributions.NOT_REPARAMETERIZED"]).export_constant(
     __name__, "NOT_REPARAMETERIZED")
 
 
-@six.add_metaclass(_DistributionMeta)
 @tf_export(v1=["distributions.Distribution"])
-class Distribution(_BaseDistribution):
+class Distribution(_BaseDistribution, metaclass=_DistributionMeta):
   """A generic probability distribution base class.
 
   `Distribution` is a base class for constructing and organizing properties
@@ -462,7 +455,7 @@ class Distribution(_BaseDistribution):
     """
     graph_parents = [] if graph_parents is None else graph_parents
     for i, t in enumerate(graph_parents):
-      if t is None or not tensor_util.is_tensor(t):
+      if t is None or not tensor_util.is_tf_type(t):
         raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
     if not name or name[-1] != "/":  # `name` is not a name scope
       non_unique_name = name or type(self).__name__

@@ -15,9 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_PARALLEL_MAP_DATASET_OP_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_PARALLEL_MAP_DATASET_OP_H_
 
+#include "tensorflow/core/data/captured_function.h"
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -54,7 +54,18 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
   bool sloppy_;
   bool preserve_cardinality_;
   DeterminismPolicy deterministic_;
+
+  friend std::unique_ptr<DatasetBase> MakeDataServiceUncompressDataset(
+      DatasetBase* input, std::unique_ptr<CapturedFunction> captured_function,
+      const DataTypeVector& output_types,
+      const std::vector<PartialTensorShape>& output_shapes);
 };
+
+// Used by tf.data service to create a map dataset for uncompression.
+std::unique_ptr<DatasetBase> MakeDataServiceUncompressDataset(
+    DatasetBase* input, std::unique_ptr<CapturedFunction> captured_function,
+    const DataTypeVector& output_types,
+    const std::vector<PartialTensorShape>& output_shapes);
 
 }  // namespace data
 }  // namespace tensorflow

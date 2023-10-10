@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/examples/label_image/label_image.h"
+
+#include <string>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-
 #include "tensorflow/lite/examples/label_image/bitmap_helpers.h"
 #include "tensorflow/lite/examples/label_image/get_top_n.h"
-#include "tensorflow/lite/examples/label_image/label_image.h"
 
 namespace tflite {
 namespace label_image {
@@ -53,8 +55,3 @@ TEST(LabelImageTest, GetTopN) {
 
 }  // namespace label_image
 }  // namespace tflite
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

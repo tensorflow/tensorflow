@@ -14,12 +14,8 @@
 # =============================================================================
 
 """Contains layer utilities for input validation and format conversion."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import smart_cond as smart_module
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import variables
 
 
@@ -32,7 +28,8 @@ def convert_data_format(data_format, ndim):
     elif ndim == 5:
       return 'NDHWC'
     else:
-      raise ValueError('Input rank not supported:', ndim)
+      raise ValueError(f'Input rank: {ndim} not supported. We only support '
+                       'input rank 3, 4 or 5.')
   elif data_format == 'channels_first':
     if ndim == 3:
       return 'NCW'
@@ -41,15 +38,17 @@ def convert_data_format(data_format, ndim):
     elif ndim == 5:
       return 'NCDHW'
     else:
-      raise ValueError('Input rank not supported:', ndim)
+      raise ValueError(f'Input rank: {ndim} not supported. We only support '
+                       'input rank 3, 4 or 5.')
   else:
-    raise ValueError('Invalid data_format:', data_format)
+    raise ValueError(f'Invalid data_format: {data_format}. We only support '
+                     '"channels_first" or "channels_last"')
 
 
 def normalize_tuple(value, n, name):
   """Transforms a single integer or iterable of integers into an integer tuple.
 
-  Arguments:
+  Args:
     value: The value to validate and convert. Could an int, or any iterable
       of ints.
     n: The size of the tuple to be returned.
@@ -69,19 +68,19 @@ def normalize_tuple(value, n, name):
     try:
       value_tuple = tuple(value)
     except TypeError:
-      raise ValueError('The `' + name + '` argument must be a tuple of ' +
-                       str(n) + ' integers. Received: ' + str(value))
+      raise ValueError(f'Argument `{name}` must be a tuple of {str(n)} '
+                       f'integers. Received: {str(value)}')
     if len(value_tuple) != n:
-      raise ValueError('The `' + name + '` argument must be a tuple of ' +
-                       str(n) + ' integers. Received: ' + str(value))
+      raise ValueError(f'Argument `{name}` must be a tuple of {str(n)} '
+                       f'integers. Received: {str(value)}')
     for single_value in value_tuple:
       try:
         int(single_value)
       except (ValueError, TypeError):
-        raise ValueError('The `' + name + '` argument must be a tuple of ' +
-                         str(n) + ' integers. Received: ' + str(value) + ' '
-                         'including element ' + str(single_value) + ' of type' +
-                         ' ' + str(type(single_value)))
+        raise ValueError(f'Argument `{name}` must be a tuple of {str(n)} '
+                         f'integers. Received: {str(value)} including element '
+                         f'{str(single_value)} of type '
+                         f'{str(type(single_value))}')
     return value_tuple
 
 
@@ -89,8 +88,8 @@ def normalize_data_format(value):
   data_format = value.lower()
   if data_format not in {'channels_first', 'channels_last'}:
     raise ValueError('The `data_format` argument must be one of '
-                     '"channels_first", "channels_last". Received: ' +
-                     str(value))
+                     '"channels_first", "channels_last". Received: '
+                     f'{str(value)}.')
   return data_format
 
 
@@ -98,14 +97,14 @@ def normalize_padding(value):
   padding = value.lower()
   if padding not in {'valid', 'same'}:
     raise ValueError('The `padding` argument must be one of "valid", "same". '
-                     'Received: ' + str(padding))
+                     f'Received: {str(padding)}.')
   return padding
 
 
 def conv_output_length(input_length, filter_size, padding, stride, dilation=1):
   """Determines output length of a convolution given input length.
 
-  Arguments:
+  Args:
       input_length: integer.
       filter_size: integer.
       padding: one of "same", "valid", "full".
@@ -131,7 +130,7 @@ def conv_output_length(input_length, filter_size, padding, stride, dilation=1):
 def conv_input_length(output_length, filter_size, padding, stride):
   """Determines input length of a convolution given output length.
 
-  Arguments:
+  Args:
       output_length: integer.
       filter_size: integer.
       padding: one of "same", "valid", "full".
@@ -155,7 +154,7 @@ def conv_input_length(output_length, filter_size, padding, stride):
 def deconv_output_length(input_length, filter_size, padding, stride):
   """Determines output length of a transposed convolution given input length.
 
-  Arguments:
+  Args:
       input_length: integer.
       filter_size: integer.
       padding: one of "same", "valid", "full".
@@ -180,7 +179,7 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):
   If `pred` is a bool or has a constant value, we return either `true_fn()`
   or `false_fn()`, otherwise we use `tf.cond` to dynamically route to both.
 
-  Arguments:
+  Args:
     pred: A scalar determining whether to return the result of `true_fn` or
       `false_fn`.
     true_fn: The callable to be performed if pred is true.
@@ -194,7 +193,7 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):
     TypeError: If `true_fn` or `false_fn` is not callable.
   """
   if isinstance(pred, variables.Variable):
-    return control_flow_ops.cond(
+    return cond.cond(
         pred, true_fn=true_fn, false_fn=false_fn, name=name)
   return smart_module.smart_cond(
       pred, true_fn=true_fn, false_fn=false_fn, name=name)
@@ -203,7 +202,7 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):
 def constant_value(pred):
   """Return the bool value for `pred`, or None if `pred` had a dynamic value.
 
-    Arguments:
+    Args:
       pred: A scalar, either a Python bool or a TensorFlow boolean variable
         or tensor, or the Python integer 1 or 0.
 

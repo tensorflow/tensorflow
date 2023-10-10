@@ -19,6 +19,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -61,7 +63,7 @@ void InitializeTensor(DataType type, Tensor* tensor) {
       flat(i) = static_cast<float>(i % period) / 10.0f;
     }
   } else if (type == DT_INT64) {
-    auto flat = tensor->flat<int64>();
+    auto flat = tensor->flat<int64_t>();
     // Populate numbers 0, 1, 2, ..., 5, 6, 0, 1, 2, ...
     for (int i = 0; i < flat.size(); i++) {
       flat(i) = i % period;
@@ -84,7 +86,7 @@ Status PruneGraph(GrapplerItem* item) {
   Cluster* cluster = nullptr;  // ModelPruner doesn't check cluster.
   TF_RETURN_IF_ERROR(pruner.Optimize(cluster, *item, &pruned_graph));
   item->graph = std::move(pruned_graph);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Replace any unknown dimensions in a shape with
@@ -118,16 +120,18 @@ Status UpdatePlaceholderShape(
     const std::unordered_set<string>& signature_feed_nodes,
     GrapplerItem* new_item, NodeDef* node) {
   if (node->attr().count("dtype") == 0) {
-    return errors::Internal("Unknown type for placeholder ", node->name(),
-                            ", skipping this input");
+    return absl::InternalError(absl::StrCat("Unknown type for placeholder ",
+                                            node->name(),
+                                            ", skipping this input"));
   }
   DataType type = node->attr().at("dtype").type();
 
   // TODO(andiryxu): Consider cfg.placeholder_unknown_output_shape_dim >= 0 and
   // _output_shapes is present case.
   if (node->attr().count("shape") == 0) {
-    return errors::Internal("Unknown shape for placeholder ", node->name(),
-                            ", skipping this input");
+    return absl::InternalError(absl::StrCat("Unknown shape for placeholder ",
+                                            node->name(),
+                                            ", skipping this input"));
   }
 
   // Replace all unknown dimensions in the placeholder's tensorshape proto
@@ -139,11 +143,12 @@ Status UpdatePlaceholderShape(
   Status make_shape_status = ReplaceUnknownShapeDim(
       cfg, node->attr().at("shape").shape(), &shape_proto, &shape);
   if (!make_shape_status.ok()) {
-    return errors::Internal("Invalid shape for placeholder ", node->name(),
-                            ": ", make_shape_status, ", skipping this input");
+    return absl::InternalError(
+        absl::StrCat("Invalid shape for placeholder ", node->name(), ": ",
+                     make_shape_status.ToString(), ", skipping this input"));
   }
 
-  // Some placeholder nodes have a mis-match between the node
+  // Some placeholder nodes have a mismatch between the node
   // attribute "shape" and a different node attribute "_output_shapes".
   // Specifically, a shape with shape.dims() == 0 could indicate either
   // a scalar or an unknown shape. In those cases, we check _output_shapes
@@ -166,7 +171,7 @@ Status UpdatePlaceholderShape(
       for (const auto& dim : output_shapes.dim()) {
         auto size = dim.size();
         if (size == -1) size = cfg.placeholder_unknown_output_shape_dim;
-        shape.AddDim(size);
+        TF_RETURN_IF_ERROR(shape.AddDimWithStatus(size));
         shape_proto.add_dim()->set_size(size);
       }
     }
@@ -198,7 +203,7 @@ Status UpdatePlaceholderShape(
   if (!shape_proto.dim().empty())
     *(node->mutable_attr()->at("shape").mutable_shape()) = shape_proto;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -218,7 +223,7 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
     if (output_graph_def != &graph_def_arg) {
       *output_graph_def = graph_def_arg;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Create a session option for a single GPU device.
@@ -245,7 +250,7 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
   TF_RETURN_IF_ERROR(cpu_factory->CreateDevices(
       options, "/job:localhost/replica:0/task:0", &devices));
   Device* cpu_device = devices[0].get();
-  auto dvc_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+  auto dvc_mgr = std::make_unique<StaticDeviceMgr>(std::move(devices));
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              graph_def.library());
   Env* env = Env::Default();
@@ -278,7 +283,8 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
 
   // Optimize the graph.
   ::tensorflow::GraphOptimizer optimizer(*optimizer_opts);
-  optimizer.Optimize(flr, env, cpu_device, &graphptr, /*shape_map=*/nullptr);
+  optimizer.Optimize(flr, env, cpu_device, &graphptr,
+                     tensorflow::GraphOptimizer::Options());
   graphptr->ToGraphDef(output_graph_def);
 
   // The default values of attributes might have been stripped by the optimizer.
@@ -328,7 +334,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
         // Define the shapes following the comment of CooSparse.
         // TODO(yuefengz): we probably want to use different dim values for the
         // three tensors of a SparseTensor.
-        int64 dim = std::max(1, cfg.placeholder_unknown_output_shape_dim);
+        int64_t dim = std::max(1, cfg.placeholder_unknown_output_shape_dim);
         TensorShape shape_1d({dim});
         TensorShape shape_2d({dim, dim});
 
@@ -620,7 +626,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       0, true);
   if (!attr_status.ok()) {
     LOG(ERROR) << "Failed to instantiate default attribute values: "
-               << attr_status.error_message();
+               << attr_status.message();
     return nullptr;
   }
 
@@ -640,7 +646,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     VLOG(1) << "Pruning graph...";
     auto status = PruneGraph(new_item.get());
     if (!status.ok()) {
-      LOG(ERROR) << "Pruning failed: " << status.error_message();
+      LOG(ERROR) << "Pruning failed: " << status.message();
       return nullptr;
     }
     VLOG(1) << "Number of nodes in graph after pruning: "

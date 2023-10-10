@@ -19,9 +19,9 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
-#include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/service/graphcycles/graphcycles.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
@@ -63,22 +63,6 @@ const char* const kXlaNumResourceArgsAttr = "_XlaNumResourceArgs";
 const char* const kXlaHostTransferSequencerAttr =
     "_xla_host_transfer_sequencer";
 const char* const kXlaHasReferenceVarsAttr = "_XlaHasReferenceVars";
-
-void SortControlInputs(GraphDef* gdef) {
-  int64 num_nodes = gdef->node_size();
-  for (int64 i = 0; i < num_nodes; ++i) {
-    NodeDef* node = gdef->mutable_node(i);
-    // Stable sort control inputs and leave the order of data inputs unchanged.
-    std::stable_sort(node->mutable_input()->begin(),
-                     node->mutable_input()->end(),
-                     [](const string& a, const string& b) {
-                       bool a_is_control = absl::StartsWith(a, "^");
-                       bool b_is_control = absl::StartsWith(b, "^");
-                       return (!a_is_control && b_is_control) ||
-                              (a_is_control && b_is_control && a < b);
-                     });
-  }
-}
 
 namespace {
 
@@ -141,9 +125,6 @@ struct OutputInputTensorPairHasher {
 // everything to use it.
 static const char* const kArgOp = "_Arg";
 static const char* const kRetValOp = "_Retval";
-static const char* const kHostComputeOp = "XlaHostCompute";
-static const char* const kSendFromHostOp = "_XlaSendFromHost";
-static const char* const kRecvAtHostOp = "_XlaRecvAtHost";
 
 class Encapsulator {
  public:
@@ -207,7 +188,7 @@ class Encapsulator {
 
     // Adds the function call node to graph_out.
     Status AddFunctionCallNode(
-        const std::unordered_map<const Node*, Node*>& node_images,
+        const absl::flat_hash_map<const Node*, Node*>& node_images,
         Graph* graph_out);
 
     // Returns the Node that the inputs and outputs of the function should be
@@ -225,7 +206,7 @@ class Encapsulator {
     // and adds the edge within the subgraph from the _Arg node to the image of
     // the dst node.
     Status RecordArg(const Edge* edge,
-                     const std::unordered_map<const Node*, Node*>& node_images,
+                     const absl::flat_hash_map<const Node*, Node*>& node_images,
                      std::vector<std::pair<const Node*, Node*>>* src_arg_pairs);
 
     // Records the src of the given edge as a control result of the graph.
@@ -233,14 +214,14 @@ class Encapsulator {
     // the function signature.
     Status RecordControlResult(
         const Edge* edge,
-        const std::unordered_map<const Node*, Node*>& node_images);
+        const absl::flat_hash_map<const Node*, Node*>& node_images);
 
     // Creates a _Retval node for the src node of edge, and add it to results_,
     // if none exists yet. If a new _Retval node is created, also adds the edge
     // within the subgraph from the src to the _Retval node.
     Status RecordResult(
         const Edge* edge,
-        const std::unordered_map<const Node*, Node*>& node_images);
+        const absl::flat_hash_map<const Node*, Node*>& node_images);
 
     // Creates the sequencer node if it doesn't exist, adding it to graph_out.
     Status MakeSequencingNode(const string& subgraph_name, Graph* graph_out);
@@ -279,14 +260,14 @@ class Encapsulator {
     // (consumer node/slot) tensors in the input graph to _Arg numbers in
     // the subgraph. The source map is one-to-one, whereas the dest map may be
     // many-to-one.
-    std::unordered_map<OutputTensor, int, OutputTensor::Hash> args_by_src_;
-    std::unordered_map<InputTensor, int, InputTensor::Hash> args_by_dst_;
+    absl::flat_hash_map<OutputTensor, int, OutputTensor::Hash> args_by_src_;
+    absl::flat_hash_map<InputTensor, int, InputTensor::Hash> args_by_dst_;
 
     // The arguments to the subgraph, in order.
     std::vector<Node*> args_;
 
     // Map from source tensor in the input graph to result #.
-    std::unordered_map<OutputTensor, int, OutputTensor::Hash> results_;
+    absl::flat_hash_map<OutputTensor, int, OutputTensor::Hash> results_;
 
     // Set of node names that are the source of a control output of the
     // subgraph. We store strings here so that we can tolerate nodes being
@@ -304,19 +285,20 @@ class Encapsulator {
   // Copies edges local to a subgraph. Adds _Arg and _Retval nodes to
   // subgraphs for data edges that cross subgraph boundaries.
   Status CopySubgraphEdges(
-      const std::unordered_map<const Node*, Node*>& node_images,
+      const absl::flat_hash_map<const Node*, Node*>& node_images,
       std::vector<std::pair<const Node*, Node*>>* src_arg_pairs);
 
   // Copies all marked nodes to a subgraph. Does nothing for unmarked nodes.
-  Status CopySubgraphNodes(std::unordered_map<const Node*, Node*>* node_images);
+  Status CopySubgraphNodes(
+      absl::flat_hash_map<const Node*, Node*>* node_images);
 
   // Copies all nodes that aren't in a compiled subgraph to the output graph.
   Status CopyNodesToOutputGraph(
-      Graph* graph_out, std::unordered_map<const Node*, Node*>* node_images);
+      Graph* graph_out, absl::flat_hash_map<const Node*, Node*>* node_images);
 
   // Adds function call nodes for each compiled subgraph.
   Status AddFunctionCallNodes(
-      const std::unordered_map<const Node*, Node*>& node_images,
+      const absl::flat_hash_map<const Node*, Node*>& node_images,
       Graph* graph_out);
 
   // Finds the image of an edge source in the output graph. If the edge crosses
@@ -324,7 +306,7 @@ class Encapsulator {
   // in the output graph.
   Status FindOutputImageOfEdgeSrc(
       const string& src_func_id, const string& dst_func_id,
-      const std::unordered_map<const Node*, Node*>& node_images,
+      const absl::flat_hash_map<const Node*, Node*>& node_images,
       const Node* original_src_node, Node** src_image);
 
   // Finds an edge source slot in the output graph. If the edge crosses a
@@ -339,7 +321,7 @@ class Encapsulator {
   // a node in the output graph.
   Status FindOutputImageOfEdgeDst(
       const string& src_func_id, const string& dst_func_id,
-      const std::unordered_map<const Node*, Node*>& node_images,
+      const absl::flat_hash_map<const Node*, Node*>& node_images,
       const Node* original_dst_node, Node** dst_image);
 
   // Finds an edge destination slot in the output graph. If the edge crosses a
@@ -353,14 +335,14 @@ class Encapsulator {
   // within the output graph, or crosses into or out of a compiled subgraph.
   Status CopyEdgeToOutputGraph(
       const Edge* edge, const string& src_func_id, const string& dst_func_id,
-      const std::unordered_map<const Node*, Node*>& node_images,
+      const absl::flat_hash_map<const Node*, Node*>& node_images,
       Graph* graph_out,
-      std::unordered_set<std::pair<OutputTensor, InputTensor>,
-                         OutputInputTensorPairHasher>* edges_added);
+      absl::flat_hash_set<std::pair<OutputTensor, InputTensor>,
+                          OutputInputTensorPairHasher>* edges_added);
 
   // Adds all edges to the output graph.
   Status AddEdgesToOutputGraph(
-      const std::unordered_map<const Node*, Node*>& node_images,
+      const absl::flat_hash_map<const Node*, Node*>& node_images,
       Graph* graph_out);
 
   // Makes a copy of graph containing only nodes that are ancestors of at least
@@ -370,13 +352,13 @@ class Encapsulator {
   Status MakePrunedGraphCopyAndInline(
       const Graph& graph, const std::vector<Node*>& sink_nodes,
       std::unique_ptr<Graph>* pruned_graph,
-      std::unordered_map<const Node*, Node*>* node_images,
+      absl::flat_hash_map<const Node*, Node*>* node_images,
       FunctionLibraryDefinition* library);
 
   const string group_attribute_;
   const Graph* graph_in_;
 
-  std::unordered_map<string, Subgraph> subgraphs_;
+  absl::flat_hash_map<string, Subgraph> subgraphs_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Encapsulator);
 };
@@ -388,9 +370,9 @@ namespace {
 // including clusters that are not present in the ancestors map. has_successors
 // is the set of clusters that are ancestors of some other cluster.
 void TopologicalClusterSort(
-    const std::unordered_set<string>& clusters,
-    const std::unordered_set<string>& has_successors,
-    const std::unordered_map<string, std::unordered_set<string>>& ancestors,
+    const absl::flat_hash_set<string>& clusters,
+    const absl::flat_hash_set<string>& has_successors,
+    const absl::flat_hash_map<string, absl::flat_hash_set<string>>& ancestors,
     std::vector<string>* sorted) {
   // The nodes are placed in 'sorted' in topological order.
   sorted->clear();
@@ -466,11 +448,12 @@ Node* Encapsulator::Subgraph::MakeNodeImage(const Graph* graph_in, Node* node) {
 Graph* Encapsulator::Subgraph::GetGraph() const { return graph_.get(); }
 
 Status Encapsulator::Subgraph::RecordArg(
-    const Edge* edge, const std::unordered_map<const Node*, Node*>& node_images,
+    const Edge* edge,
+    const absl::flat_hash_map<const Node*, Node*>& node_images,
     std::vector<std::pair<const Node*, Node*>>* src_arg_pairs) {
   Node* src_node = edge->src();
   int src_slot = edge->src_output();
-  std::unordered_map<OutputTensor, int, OutputTensor::Hash>::iterator iter;
+  absl::flat_hash_map<OutputTensor, int, OutputTensor::Hash>::iterator iter;
   bool inserted;
   std::tie(iter, inserted) = args_by_src_.emplace(
       OutputTensor(src_node, src_slot), args_by_src_.size());
@@ -486,9 +469,7 @@ Status Encapsulator::Subgraph::RecordArg(
     Status s = builder.Finalize(&arg_def);
     if (!s.ok()) return s;
 
-    Node* arg = graph_->AddNode(arg_def, &s);
-    if (!s.ok()) return s;
-
+    TF_ASSIGN_OR_RETURN(Node * arg, graph_->AddNode(arg_def));
     src_arg_pairs->push_back({src_node, arg});
     args_.push_back(arg);
   }
@@ -497,25 +478,25 @@ Status Encapsulator::Subgraph::RecordArg(
   int dst_slot = edge->dst_input();
   args_by_dst_[InputTensor(dst_node, dst_slot)] = arg_index;
   graph_->AddEdge(args_[arg_index], 0, dst_image, dst_slot);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Encapsulator::Subgraph::RecordControlResult(
     const Edge* edge,
-    const std::unordered_map<const Node*, Node*>& node_images) {
+    const absl::flat_hash_map<const Node*, Node*>& node_images) {
   Node* src_node = edge->src();
   Node* src_image = node_images.at(src_node);
   control_output_nodes_.insert(src_image->name());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Encapsulator::Subgraph::RecordResult(
     const Edge* edge,
-    const std::unordered_map<const Node*, Node*>& node_images) {
+    const absl::flat_hash_map<const Node*, Node*>& node_images) {
   Node* src_node = edge->src();
   Node* src_image = node_images.at(src_node);
   int src_slot = edge->src_output();
-  std::unordered_map<OutputTensor, int, OutputTensor::Hash>::iterator iter;
+  absl::flat_hash_map<OutputTensor, int, OutputTensor::Hash>::iterator iter;
   bool inserted;
   std::tie(iter, inserted) =
       results_.emplace(OutputTensor(src_node, src_slot), results_.size());
@@ -531,12 +512,10 @@ Status Encapsulator::Subgraph::RecordResult(
     builder.Input(src_image->name(), src_slot, dtype);
     Status s = builder.Finalize(&ret_def);
     if (!s.ok()) return s;
-    Node* ret = graph_->AddNode(ret_def, &s);
-    if (!s.ok()) return s;
-
+    TF_ASSIGN_OR_RETURN(Node * ret, graph_->AddNode(ret_def));
     graph_->AddEdge(src_image, src_slot, ret, 0);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Encapsulator::Subgraph::MakeSequencingNode(const string& subgraph_name,
@@ -550,10 +529,9 @@ Status Encapsulator::Subgraph::MakeSequencingNode(const string& subgraph_name,
     Status s = builder.Finalize(&seq_def);
     if (!s.ok()) return s;
 
-    sequencer_ = graph_out->AddNode(seq_def, &s);
-    if (!s.ok()) return s;
+    TF_ASSIGN_OR_RETURN(sequencer_, graph_out->AddNode(seq_def));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void Encapsulator::Subgraph::ConnectSequencerToCallNode(Graph* graph_out) {
@@ -614,11 +592,11 @@ Status Encapsulator::Subgraph::BuildFunctionDef(
   function_def_name_ = name;
 
   FunctionDef fdef;
-  auto lookup = [this](const Node* node) -> absl::optional<string> {
+  auto lookup = [this](const Node* node) -> std::optional<string> {
     if (control_output_nodes_.contains(node->name())) {
-      return absl::make_optional(node->name());
+      return std::make_optional(node->name());
     }
-    return absl::nullopt;
+    return std::nullopt;
   };
   // Verify that the graph has well-formed control flow structure.
   std::vector<ControlFlowInfo> dummy;
@@ -638,7 +616,7 @@ Status Encapsulator::Subgraph::BuildFunctionDef(
   } else if (!FunctionDefsEqual(*original_fdef, fdef)) {
     TF_RETURN_IF_ERROR(library->ReplaceFunction(name, fdef));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Encapsulator::Subgraph::ReplaceFunctionDef(
@@ -657,20 +635,18 @@ Status Encapsulator::Subgraph::ReplaceFunctionDef(
   }
 
   TF_RETURN_IF_ERROR(library->ReplaceFunction(name, fdef));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Encapsulator::Subgraph::AddFunctionCallNode(
-    const std::unordered_map<const Node*, Node*>& node_images,
+    const absl::flat_hash_map<const Node*, Node*>& node_images,
     Graph* graph_out) {
-  Status s;
-  call_node_ = graph_out->AddNode(call_node_def_, &s);
-  if (!s.ok()) return s;
+  TF_ASSIGN_OR_RETURN(call_node_, graph_out->AddNode(call_node_def_));
 
   // Copy the assigned device and the key_annotation over.
   call_node_->set_assigned_device_name(device_);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Encapsulator::GetFunctionNameAttr(Node const* node, string* attr) const {
@@ -683,13 +659,13 @@ Status Encapsulator::GetFunctionNameAttr(Node const* node, string* attr) const {
       break;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool IsInSubgraph(const string& func_id) { return !func_id.empty(); }
 
 Status Encapsulator::CopySubgraphNodes(
-    std::unordered_map<const Node*, Node*>* node_images) {
+    absl::flat_hash_map<const Node*, Node*>* node_images) {
   for (Node* node : graph_in_->op_nodes()) {
     string func_id;
     TF_RETURN_IF_ERROR(GetFunctionNameAttr(node, &func_id));
@@ -700,11 +676,11 @@ Status Encapsulator::CopySubgraphNodes(
     image->ClearAttr(group_attribute_);
     (*node_images)[node] = image;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Encapsulator::CopySubgraphEdges(
-    const std::unordered_map<const Node*, Node*>& node_images,
+    const absl::flat_hash_map<const Node*, Node*>& node_images,
     std::vector<std::pair<const Node*, Node*>>* src_arg_pairs) {
   for (const Edge* edge : graph_in_->edges()) {
     string src_func_id;
@@ -771,14 +747,14 @@ Status Encapsulator::CopySubgraphEdges(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Encapsulator::SplitIntoSubgraphs(FunctionLibraryDefinition* library) {
   Status s;
 
   // Map from input graph nodes to subgraph nodes.
-  std::unordered_map<const Node*, Node*> node_images;
+  absl::flat_hash_map<const Node*, Node*> node_images;
 
   // Each entry of src_arg_pairs is a pair whose first element is a node in the
   // original graph that has an output edge in the subgraph, and whose second
@@ -816,11 +792,11 @@ Status Encapsulator::BuildFunctionDefs(
     TF_RETURN_IF_ERROR(subgraph.BuildFunctionDef(
         name, rewrite_subgraph_fn, reuse_existing_functions, library));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Encapsulator::CopyNodesToOutputGraph(
-    Graph* graph_out, std::unordered_map<const Node*, Node*>* node_images) {
+    Graph* graph_out, absl::flat_hash_map<const Node*, Node*>* node_images) {
   for (Node* node : graph_in_->op_nodes()) {
     string func_id;
     TF_RETURN_IF_ERROR(GetFunctionNameAttr(node, &func_id));
@@ -833,22 +809,22 @@ Status Encapsulator::CopyNodesToOutputGraph(
   }
   (*node_images)[graph_in_->source_node()] = graph_out->source_node();
   (*node_images)[graph_in_->sink_node()] = graph_out->sink_node();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Encapsulator::AddFunctionCallNodes(
-    const std::unordered_map<const Node*, Node*>& node_images,
+    const absl::flat_hash_map<const Node*, Node*>& node_images,
     Graph* graph_out) {
   for (auto& subgraph_entry : subgraphs_) {
     TF_RETURN_IF_ERROR(
         subgraph_entry.second.AddFunctionCallNode(node_images, graph_out));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Encapsulator::FindOutputImageOfEdgeSrc(
     const string& src_func_id, const string& dst_func_id,
-    const std::unordered_map<const Node*, Node*>& node_images,
+    const absl::flat_hash_map<const Node*, Node*>& node_images,
     const Node* original_src_node, Node** src_image) {
   if (IsInSubgraph(src_func_id)) {
     // The edge is from a subgraph to a regular node in the output graph so
@@ -859,7 +835,7 @@ Status Encapsulator::FindOutputImageOfEdgeSrc(
     // the output graph.
     *src_image = node_images.at(original_src_node);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 int Encapsulator::FindOutputSlotOfEdgeSrc(const string& src_func_id,
@@ -879,7 +855,7 @@ int Encapsulator::FindOutputSlotOfEdgeSrc(const string& src_func_id,
 
 Status Encapsulator::FindOutputImageOfEdgeDst(
     const string& src_func_id, const string& dst_func_id,
-    const std::unordered_map<const Node*, Node*>& node_images,
+    const absl::flat_hash_map<const Node*, Node*>& node_images,
     const Node* original_dst_node, Node** dst_image) {
   if (IsInSubgraph(dst_func_id)) {
     // The edge is to a subgraph from a regular node in the output graph so
@@ -890,7 +866,7 @@ Status Encapsulator::FindOutputImageOfEdgeDst(
     // in the output graph.
     *dst_image = node_images.at(original_dst_node);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 int Encapsulator::FindOutputSlotOfEdgeDst(const string& src_func_id,
@@ -910,9 +886,10 @@ int Encapsulator::FindOutputSlotOfEdgeDst(const string& src_func_id,
 
 Status Encapsulator::CopyEdgeToOutputGraph(
     const Edge* edge, const string& src_func_id, const string& dst_func_id,
-    const std::unordered_map<const Node*, Node*>& node_images, Graph* graph_out,
-    std::unordered_set<std::pair<OutputTensor, InputTensor>,
-                       OutputInputTensorPairHasher>* edges_added) {
+    const absl::flat_hash_map<const Node*, Node*>& node_images,
+    Graph* graph_out,
+    absl::flat_hash_set<std::pair<OutputTensor, InputTensor>,
+                        OutputInputTensorPairHasher>* edges_added) {
   Node* src_image;
   TF_RETURN_IF_ERROR(FindOutputImageOfEdgeSrc(
       src_func_id, dst_func_id, node_images, edge->src(), &src_image));
@@ -932,7 +909,7 @@ Status Encapsulator::CopyEdgeToOutputGraph(
                                 /* allow_duplicates= */ true);
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   int src_output = FindOutputSlotOfEdgeSrc(src_func_id, dst_func_id, edge);
@@ -946,17 +923,17 @@ Status Encapsulator::CopyEdgeToOutputGraph(
           .second) {
     graph_out->AddEdge(src_image, src_output, dst_image, dst_input);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Encapsulator::AddEdgesToOutputGraph(
-    const std::unordered_map<const Node*, Node*>& node_images,
+    const absl::flat_hash_map<const Node*, Node*>& node_images,
     Graph* graph_out) {
   // Set of edges already added to the output graph, represented as (src, dst)
   // pairs. We use the set to deduplicate edges; multiple edges in the input
   // graph may map to one edge in the output graph.
-  std::unordered_set<std::pair<OutputTensor, InputTensor>,
-                     OutputInputTensorPairHasher>
+  absl::flat_hash_set<std::pair<OutputTensor, InputTensor>,
+                      OutputInputTensorPairHasher>
       edges_added;
 
   for (const Edge* edge : graph_in_->edges()) {
@@ -983,7 +960,7 @@ Status Encapsulator::AddEdgesToOutputGraph(
     subgraph.ConnectSequencerToCallNode(graph_out);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -1036,7 +1013,7 @@ Node* AddDummyShapedNode(const Node* src_node, int src_port,
 Status Encapsulator::MakePrunedGraphCopyAndInline(
     const Graph& graph, const std::vector<Node*>& sink_nodes,
     std::unique_ptr<Graph>* pruned_graph,
-    std::unordered_map<const Node*, Node*>* node_images,
+    absl::flat_hash_map<const Node*, Node*>* node_images,
     FunctionLibraryDefinition* library) {
   // First copy all ancestor nodes of sink_nodes into a new graph.
   pruned_graph->reset(new Graph(library));
@@ -1090,19 +1067,19 @@ Status Encapsulator::MakePrunedGraphCopyAndInline(
                                           fbody.get(), inline_opts));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Encapsulator::BuildOutputGraph(Graph* graph_out,
                                       FunctionLibraryDefinition* library) {
   // Map from nodes in the input graph to nodes in the output graph.
-  std::unordered_map<const Node*, Node*> node_images;
+  absl::flat_hash_map<const Node*, Node*> node_images;
 
   TF_RETURN_IF_ERROR(CopyNodesToOutputGraph(graph_out, &node_images));
   TF_RETURN_IF_ERROR(AddFunctionCallNodes(node_images, graph_out));
   TF_RETURN_IF_ERROR(AddEdgesToOutputGraph(node_images, graph_out));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // anonymous namespace
@@ -1123,7 +1100,7 @@ Status EncapsulateSubgraphsInFunctions(
   TF_RETURN_IF_ERROR(encapsulator.BuildOutputGraph(out.get(), library));
 
   *graph_out = std::move(out);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Finds the types of the _Arg nodes, indexed by position.
@@ -1139,7 +1116,7 @@ static Status GetArgTypes(const Graph& graph, DataTypeVector* types) {
       (*types)[index] = n->output_type(0);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Renumber the indices of _Arg nodes in a graph, according to
@@ -1157,7 +1134,7 @@ static Status RenumberArguments(Graph* graph,
       n->AddAttr("index", permutation[index]);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status EncapsulateSubgraphsPass::Run(
@@ -1166,6 +1143,18 @@ Status EncapsulateSubgraphsPass::Run(
   if (VLOG_IS_ON(1)) {
     DumpGraphToFile("encapsulate_subgraphs_before", **options.graph,
                     options.flib_def);
+  }
+
+  // TODO(b/195757077): Remove this once there is a better way to disable
+  // GraphOptimizationPasses that are not needed due to MLIR bridge.
+  for (Node* n : (*options.graph)->nodes()) {
+    // Skip the pass if we found TPUExecute or TPUExecuteAndUpdateVariables ops
+    // in the graph, which indicates the graph is produced by TPU TF-XLA bridge
+    // and doesn't require auto clustering.
+    if (n->type_string() == "TPUExecute" ||
+        n->type_string() == "TPUExecuteAndUpdateVariables") {
+      return OkStatus();
+    }
   }
 
   std::unique_ptr<Graph> graph_out;
@@ -1194,7 +1183,7 @@ Status EncapsulateSubgraphsPass::Run(
   }
 
   std::unique_ptr<DeviceMgr> device_mgr =
-      absl::make_unique<StaticDeviceMgr>(std::move(devices));
+      std::make_unique<StaticDeviceMgr>(std::move(devices));
   const auto* config = &options.session_options->config;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
       new ProcessFunctionLibraryRuntime(
@@ -1298,7 +1287,7 @@ Status EncapsulateSubgraphsPass::Run(
         AddNodeAttr(kXlaCompiledKernelAttr, true, node);
         AddNodeAttr(kXlaNumConstantArgsAttr, num_consts, node);
         AddNodeAttr(kXlaNumResourceArgsAttr, num_resources, node);
-        return Status::OK();
+        return OkStatus();
       };
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -1306,22 +1295,22 @@ Status EncapsulateSubgraphsPass::Run(
           kXlaClusterAttr, **options.graph, rewrite_subgraph,
           /*reuse_existing_functions=*/false, &graph_out, library),
       "EncapsulateSubgraphsPass failed");
-
   if (VLOG_IS_ON(1)) {
     DumpGraphToFile("encapsulate_subgraphs_after", *graph_out,
                     options.flib_def);
   }
 
   *options.graph = std::move(graph_out);
+
   TF_ASSIGN_OR_RETURN(absl::flat_hash_set<Node*> ref_related_nodes,
                       GetNodesRelatedToRefVariables(**options.graph, flr));
   for (Node* node : (*options.graph)->nodes()) {
     bool has_ref_vars = ref_related_nodes.contains(node);
     node->AddAttr(kXlaHasReferenceVarsAttr, has_ref_vars);
     VLOG(3) << "Has ref vars = " << has_ref_vars
-            << ", node: " << node->def().SerializeAsString();
+            << ", node: " << node->def().DebugString();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool IsXlaCompiledKernel(const Node& node) {

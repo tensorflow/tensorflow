@@ -14,121 +14,80 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_common.h"
 
+#include <atomic>
+#include <cstdint>
+#include <cstdlib>
+#include <memory>
+#include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/cleanup/cleanup.h"
+#include "absl/status/status.h"
+#include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
-#include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/tpu/tpu_api.h"
+#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/error_payloads.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/protobuf/tpu/compilation_result.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
-#include "tensorflow/core/protobuf/tpu/dynamic_padding.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_entry_unloader.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_metrics.h"
-#include "tensorflow/core/tpu/kernels/tpu_compile_op_options.h"
+#include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
+#include "tensorflow/core/tpu/kernels/tpu_fingerprint_lookup.h"
+#include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_util.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
-#include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/core/tpu/tpu_compile_interface.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
-#include "tensorflow/core/tpu/tpu_defs.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
-
-namespace tensorflow {
-namespace tpu {
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace {
 
-static constexpr char kArgOp[] = "_Arg";
-static constexpr char kRetvalOp[] = "_Retval";
-
-std::string CoreDevice(int core) {
-  return strings::StrCat("/device:", DEVICE_TPU_REPLICATED_CORE, ":", core);
-}
-
-void ConvertGraphShapeInfoToShapeMap(
-    const Graph& graph, const GraphShapeInfo& graph_shape_info,
-    std::unordered_map<string, std::vector<PartialTensorShape>>* shape_map) {
-  // Builds a map from node name to Node* for `graph`.
-  std::unordered_map<string, Node*> index;
-  for (Node* node : graph.nodes()) {
-    index[node->name()] = node;
-  }
-  // Discards the resource handle shape info while converting to the correct map
-  // form.
-  for (const auto& node_shape_info : graph_shape_info) {
-    const string& node_name = node_shape_info.first;
-    const std::vector<InferredShape>& output_shapes = node_shape_info.second;
-    // Gets the vector of partial shapes, first converting node name to Node*
-    // using index. graph is the subgraph of the original graph assigned to a
-    // particular core, and we only add entries to shape_map for nodes in
-    // graph_shape_info that are in the subgraph.
-    const auto& node_iter = index.find(node_name);
-    if (node_iter != index.end()) {
-      auto& partial_shapes = (*shape_map)[node_name];
-      for (const auto& inferred_shape : output_shapes) {
-        partial_shapes.push_back(inferred_shape.shape);
-      }
-    }
-  }
-}
-
-// Sets arg shape, arg core mapping, and per core arg shapes for a given
-// argument, depending on its sharding.
-Status SetPerCoreArgShapes(
-    const tpu::TPUCompileMetadataProto::Arg& proto_arg, const int arg_index,
-    xla::Shape* xla_arg_shape,
-    std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
-    std::vector<std::vector<xla::Shape>>* per_core_arg_shapes) {
-  if (proto_arg.unrestricted_layout()) {
-    xla_arg_shape->clear_layout();
-  }
-
-  (*arg_core_mapping)[arg_index].sharding = proto_arg.sharding();
-  if (proto_arg.sharding().type() == xla::OpSharding::MAXIMAL) {
-    const int core = proto_arg.sharding().tile_assignment_devices(0);
-    TF_RET_CHECK(0 <= core && core < per_core_arg_shapes->size());
-    (*arg_core_mapping)[arg_index].indices.push_back(
-        (*per_core_arg_shapes)[core].size());
-    (*per_core_arg_shapes)[core].push_back(*xla_arg_shape);
-  } else if (proto_arg.sharding().type() == xla::OpSharding::OTHER) {
-    TF_ASSIGN_OR_RETURN(xla::HloSharding hlo_sharding,
-                        xla::HloSharding::FromProto(proto_arg.sharding()));
-    for (int core : proto_arg.sharding().tile_assignment_devices()) {
-      (*arg_core_mapping)[arg_index].indices.push_back(
-          (*per_core_arg_shapes)[core].size());
-      xla::Shape per_core_shape =
-          GetPerDeviceShape(*xla_arg_shape, hlo_sharding, core);
-      if (proto_arg.unrestricted_layout()) {
-        per_core_shape.clear_layout();
-      }
-      (*per_core_arg_shapes)[core].push_back(per_core_shape);
-    }
+std::string TruncateMessage(const std::string& msg, size_t max_len) {
+  if (msg.size() > max_len) {
+    return absl::StrCat(msg.substr(0, max_len), " ... [truncated]");
   } else {
-    TF_RET_CHECK(proto_arg.sharding().type() == xla::OpSharding::REPLICATED)
-        << "Unsupported argument sharding: "
-        << " proto_arg=" << proto_arg.DebugString();
-    for (int core = 0; core < per_core_arg_shapes->size(); ++core) {
-      (*arg_core_mapping)[arg_index].indices.push_back(
-          (*per_core_arg_shapes)[core].size());
-      (*per_core_arg_shapes)[core].push_back(*xla_arg_shape);
-    }
+    return msg;
   }
-
-  return Status::OK();
 }
 
 }  // namespace
+
+namespace tensorflow {
+namespace tpu {
 
 CompileOpImplFactory* CompileOpImplFactory::factory_ = nullptr;
 
@@ -143,249 +102,8 @@ void CompileOpImplFactory::Register(CompileOpImplFactory* factory) {
   factory_ = factory;
 }
 
-Status TpuCompileOpKernelCommon::AssignReturnValueToCore(
-    std::vector<tpu::ShardingAndIndex>* retval_core_mapping) {
-  std::vector<int> per_core_retval_counts(metadata_.num_cores_per_replica(), 0);
-  for (int i = 0; i < metadata_.retvals_size(); ++i) {
-    const tpu::TPUCompileMetadataProto::Retval& proto_retval =
-        metadata_.retvals(i);
-    (*retval_core_mapping)[i].sharding = proto_retval.sharding();
-    if (proto_retval.sharding().type() == xla::OpSharding::MAXIMAL) {
-      int core = proto_retval.sharding().tile_assignment_devices(0);
-      TF_RET_CHECK(0 <= core && core < per_core_retval_counts.size());
-      (*retval_core_mapping)[i].indices.push_back(
-          per_core_retval_counts[core]++);
-    } else if (proto_retval.sharding().type() == xla::OpSharding::OTHER) {
-      for (int64 core : proto_retval.sharding().tile_assignment_devices()) {
-        (*retval_core_mapping)[i].indices.push_back(
-            per_core_retval_counts[core]++);
-      }
-    } else {
-      TF_RET_CHECK(proto_retval.sharding().type() ==
-                   xla::OpSharding::REPLICATED)
-          << "Unsupported return value sharding: "
-          << proto_retval.sharding().DebugString();
-      for (int core = 0; core < per_core_retval_counts.size(); ++core) {
-        (*retval_core_mapping)[i].indices.push_back(
-            per_core_retval_counts[core]++);
-      }
-    }
-  }
-  return Status::OK();
-}
-
-Status TpuCompileOpKernelCommon::BuildComputationArgumentDescriptions(
-    const std::vector<TensorShape>& arg_shapes,
-    const GuaranteedConsts& guaranteed_constants, const XlaCompiler& compiler,
-    std::vector<XlaCompiler::Argument>* args,
-    std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
-    std::vector<std::vector<xla::Shape>>* per_core_arg_shapes) {
-  // Builds a description of the computation's arguments.
-  int constant_count = 0;
-  size_t guaranteed_constants_size = 0;
-  for (int i = 0; i < metadata_.args_size(); ++i) {
-    const tpu::TPUCompileMetadataProto::Arg& proto_arg = metadata_.args(i);
-    args->push_back(XlaCompiler::Argument());
-    XlaCompiler::Argument& arg = args->back();
-    arg.type = proto_arg.dtype();
-    arg.shape = arg_shapes[i];
-    arg.node_name = proto_arg.name();
-    switch (proto_arg.kind()) {
-      case tpu::TPUCompileMetadataProto::Arg::PARAMETER:
-        arg.kind = XlaCompiler::Argument::kParameter;
-        break;
-      case tpu::TPUCompileMetadataProto::Arg::VARIABLE:
-        arg.kind = XlaCompiler::Argument::kResource;
-        arg.resource_kind = XlaResource::kVariable;
-        arg.initialized = true;
-        arg.fast_mem = proto_arg.fast_mem();
-        break;
-      case tpu::TPUCompileMetadataProto::Arg::GUARANTEED_CONSTANT:
-        arg.kind = XlaCompiler::Argument::kConstant;
-        guaranteed_constants_size =
-            guaranteed_constants.index() == 0
-                ? absl::get<0>(guaranteed_constants).size()
-                : absl::get<1>(guaranteed_constants)->size();
-        TF_RET_CHECK(constant_count < guaranteed_constants_size)
-            << "More constant args in TPUCompileMetadataProto than constant "
-               "tensors.";
-        if (guaranteed_constants.index() == 0) {
-          // `guaranteed_constants` is of type `absl::Span<const TensorProto*
-          // const>`.
-          Tensor tensor;
-          CHECK(tensor.FromProto(
-              *absl::get<0>(guaranteed_constants)[constant_count++]))
-              << "Failed to deserialize invalid `TensorProto` into `Tensor`.";
-          arg.constant_value = tensor;
-        } else {
-          // `guaranteed_constants` is of type `const OpInputList* const`.
-          arg.constant_value =
-              (*absl::get<1>(guaranteed_constants))[constant_count++];
-        }
-        break;
-      case tpu::TPUCompileMetadataProto::Arg::INVALID:
-      default:
-        break;
-    }
-    arg.is_same_data_across_replicas = proto_arg.is_same_data_across_replicas();
-    if (arg.kind == XlaCompiler::Argument::kInvalid) {
-      return errors::InvalidArgument("Invalid argument kind");
-    }
-    if (arg.kind == XlaCompiler::Argument::kConstant) {
-      continue;
-    }
-
-    // Assign each argument a sharding.
-    xla::Shape xla_arg_shape;
-    TF_ASSIGN_OR_RETURN(auto arg_sharding,
-                        xla::HloSharding::FromProto(proto_arg.sharding()));
-    TF_RETURN_IF_ERROR(compiler.XLAShapeForArgument(
-        arg, /*is_entry_computation=*/true, arg_sharding, &xla_arg_shape));
-    TF_RETURN_IF_ERROR(SetPerCoreArgShapes(
-        proto_arg, i, &xla_arg_shape, arg_core_mapping, per_core_arg_shapes));
-  }
-  TF_RET_CHECK(constant_count == guaranteed_constants_size)
-      << "Not all of the constant tensors were consumed.";
-
-  return Status::OK();
-}
-
-Status TpuCompileOpKernelCommon::GetShardingInfo(
-    absl::Span<const TensorShape> arg_shapes,
-    const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-    std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
-    std::vector<std::vector<xla::Shape>>* per_core_arg_shapes) {
-  int num_inputs = metadata_.args_size();
-  for (int i = 0; i < num_inputs; ++i) {
-    const auto& proto_arg = metadata_.args(i);
-    TF_ASSIGN_OR_RETURN(auto arg_sharding,
-                        xla::HloSharding::FromProto(proto_arg.sharding()));
-    TF_ASSIGN_OR_RETURN(
-        auto xla_arg_shape,
-        shape_representation_fn(arg_shapes[i], proto_arg.dtype(),
-                                /*use_fast_memory=*/false));
-    TF_RETURN_IF_ERROR(
-        RewriteLayoutWithShardedShape(arg_sharding, /*use_fast_memory=*/false,
-                                      shape_representation_fn, &xla_arg_shape));
-    TF_RETURN_IF_ERROR(SetPerCoreArgShapes(
-        proto_arg, i, &xla_arg_shape, arg_core_mapping, per_core_arg_shapes));
-  }
-  return Status::OK();
-}
-
-Status TpuCompileOpKernelCommon::CompileTFFunctionToHlo(
-    const FunctionLibraryDefinition& flib_def, int graph_def_version,
-    const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-    const std::vector<TensorShape>& arg_shapes,
-    const GuaranteedConsts& guaranteed_constants, const NameAttrList& function,
-    std::function<Status(ResourceMgr*)> populate_resource_manager_fn,
-    xla::CompileOnlyClient* client,
-    std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
-    std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
-    XlaCompiler::CompilationResult* compilation_result) {
-  XlaCompiler::Options compiler_options;
-  compiler_options.device_type = DeviceType(DEVICE_TPU_XLA_JIT);
-  compiler_options.client = client;
-  compiler_options.flib_def = &flib_def;
-  compiler_options.allow_cpu_custom_calls = false;
-  compiler_options.populate_resource_manager = &populate_resource_manager_fn;
-  compiler_options.graph_def_version = graph_def_version;
-  compiler_options.shape_representation_fn = shape_representation_fn;
-
-  auto compiler = absl::make_unique<XlaCompiler>(compiler_options);
-
-  std::vector<XlaCompiler::Argument> args;
-  TF_RETURN_IF_ERROR(BuildComputationArgumentDescriptions(
-      arg_shapes, guaranteed_constants, *compiler, &args, arg_core_mapping,
-      per_core_arg_shapes));
-
-  // Assign each return value to a core.
-  std::vector<tpu::ShardingAndIndex> retval_core_mapping(
-      metadata_.retvals_size());
-  TF_RETURN_IF_ERROR(
-      TpuCompileOpKernelCommon::AssignReturnValueToCore(&retval_core_mapping));
-
-  LOG(INFO) << "Instantiating function:" << function.name();
-  FunctionLibraryRuntime::Handle handle;
-  TF_RETURN_IF_ERROR(compiler->flib_runtime()->Instantiate(
-      function.name(), AttrSlice(&function.attr()), &handle));
-  const FunctionBody* fbody = compiler->flib_runtime()->GetFunctionBody(handle);
-  const string function_id =
-      Canonicalize(function.name(), AttrSlice(&function.attr()));
-
-  std::unique_ptr<Graph> graph(new Graph(&flib_def));
-  CopyGraph(*fbody->graph, graph.get());
-
-  VLOG(2) << "metadata: " << metadata_.DebugString();
-  std::vector<int> parameter_arg_mapping;
-  for (int i = 0; i < args.size(); i++) {
-    XlaCompiler::Argument& arg = args[i];
-    if (arg.kind != XlaCompiler::Argument::kParameter) {
-      continue;
-    }
-    parameter_arg_mapping.push_back(i);
-  }
-  TF_RET_CHECK(fbody->arg_nodes.size() == args.size());
-  for (size_t i = 0; i < fbody->arg_nodes.size(); i++) {
-    args[i].node_name = fbody->arg_nodes[i]->name();
-  }
-
-  std::vector<gtl::InlinedVector<int64, 4>> arg_shape_dims;
-  arg_shape_dims.reserve(arg_shapes.size());
-  std::vector<PartialTensorShape> partial_arg_shapes(arg_shapes.size());
-  for (const TensorShape& shape : arg_shapes) {
-    arg_shape_dims.push_back(shape.dim_sizes());
-  }
-
-  for (const auto& padding_mapping : metadata_.padding_maps()) {
-    if (padding_mapping.padding_arg_index() >= parameter_arg_mapping.size()) {
-      return errors::Internal(absl::StrCat(
-          "TPUCompileMetadataProto `padding_maps` has `padding_arg_index` ",
-          padding_mapping.padding_arg_index(),
-          " which exceeds`parameter_arg_mapping` array bounds ",
-          parameter_arg_mapping.size(),
-          ". this usually indicates there are dynamic shape inputs fed into "
-          "TPUs from outside compilation head extraction, which is not "
-          "supported"));
-    }
-    int padding_arg_index =
-        parameter_arg_mapping.at(padding_mapping.padding_arg_index());
-    args[parameter_arg_mapping.at(padding_mapping.arg_index())]
-        .dynamic_dim_to_arg_num_map[padding_mapping.shape_index()] =
-        padding_arg_index;
-    arg_shape_dims[parameter_arg_mapping.at(padding_mapping.arg_index())]
-                  [padding_mapping.shape_index()] = -1;
-    args[padding_arg_index].is_pad_arg = true;
-  }
-
-  for (int64 i = 0; i < arg_shape_dims.size(); ++i) {
-    auto& dims = arg_shape_dims[i];
-    TF_RETURN_IF_ERROR(PartialTensorShape::MakePartialShape(
-        dims.data(), dims.size(), &partial_arg_shapes[i]));
-  }
-
-  // Adds device assignments to _Arg and _Retval nodes.
-  TF_RETURN_IF_ERROR(AssignDevicesToArgsAndRetvals(
-      absl::MakeSpan(*arg_core_mapping), absl::MakeSpan(retval_core_mapping),
-      graph.get()));
-
-  VLOG(1) << "Optimizing TensorFlow graph";
-  FunctionLibraryDefinition flib_definition(flib_def);
-  TF_RETURN_IF_ERROR(OptimizeGraph(metadata_, partial_arg_shapes, &graph,
-                                   compiler->flib_runtime(), &flib_definition));
-
-  VLOG(1) << "Compiling TensorFlow graph to HLO";
-  XlaCompiler::CompileOptions compile_options;
-  compile_options.return_updated_values_for_all_resources = false;
-  compile_options.use_tuple_arg = true;
-  compile_options.is_entry_computation = true;
-  compile_options.alias_resource_update = true;
-  return compiler->CompileGraph(compile_options, function_id, std::move(graph),
-                                args, compilation_result);
-}
-
 /* static */ void TpuCompileOpKernelCommon::ExitCountdown(
-    Env* env, std::shared_ptr<std::atomic<bool>> done) {
+    tsl::Env* env, std::shared_ptr<std::atomic<bool>> done) {
   const int kSleepSeconds = 300;
   LOG(INFO) << "TpuCompileOp was cancelled. Sleeping for " << kSleepSeconds
             << " seconds to give time for TPUCompileOp to finished.";
@@ -400,7 +118,7 @@ Status TpuCompileOpKernelCommon::CompileTFFunctionToHlo(
   std::exit(42);
 }
 
-/* static */ Status TpuCompileOpKernelCommon::GetDynamicShapes(
+/* static */ absl::Status TpuCompileOpKernelCommon::GetDynamicShapes(
     OpKernelContext* ctx, std::vector<TensorShape>* shapes) {
   OpInputList dynamic_shapes;
   TF_RETURN_IF_ERROR(ctx->input_list("dynamic_shapes", &dynamic_shapes));
@@ -410,128 +128,7 @@ Status TpuCompileOpKernelCommon::CompileTFFunctionToHlo(
     TF_RETURN_IF_ERROR(
         tpu::ShapeTensorToTensorShape(dynamic_shapes[i], &(*shapes)[i]));
   }
-  return Status::OK();
-}
-
-// Function arguments and return values lose their device assignments, so we
-// must recreate them.
-/* static */ Status TpuCompileOpKernelCommon::AssignDevicesToArgsAndRetvals(
-    absl::Span<const tpu::ShardingAndIndex> arg_core_mapping,
-    absl::Span<const tpu::ShardingAndIndex> retval_core_mapping, Graph* graph) {
-  auto assign = [&](Node* node, const xla::OpSharding& sharding) -> Status {
-    if (sharding.type() == xla::OpSharding::MAXIMAL) {
-      const string device = CoreDevice(sharding.tile_assignment_devices(0));
-      node->set_assigned_device_name(device);
-      node->set_requested_device(device);
-    } else {
-      TF_RET_CHECK(sharding.type() == xla::OpSharding::REPLICATED ||
-                   sharding.type() == xla::OpSharding::OTHER)
-          << "Unsupported sharding on parameter/retval: "
-          << sharding.DebugString();
-    }
-    node->AddAttr("_XlaSharding", sharding.SerializeAsString());
-    return Status::OK();
-  };
-  for (Node* node : graph->op_nodes()) {
-    if (node->type_string() == kArgOp) {
-      int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "index", &index));
-      TF_RET_CHECK(index >= 0 && index < arg_core_mapping.size());
-      TF_RETURN_IF_ERROR(assign(node, arg_core_mapping[index].sharding));
-    } else if (node->type_string() == kRetvalOp) {
-      int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "index", &index));
-      TF_RET_CHECK(index >= 0 && index < retval_core_mapping.size());
-      TF_RETURN_IF_ERROR(assign(node, retval_core_mapping[index].sharding));
-    }
-  }
-  return Status::OK();
-}
-
-// Performs shape inference on the body of `graph`. Shapes for arguments
-// are taken from `metadata` and `arg_shapes`.
-/* static */ Status TpuCompileOpKernelCommon::RunShapeInferenceOnComputation(
-    const tpu::TPUCompileMetadataProto& metadata,
-    const std::vector<PartialTensorShape>& arg_shapes, Graph* graph,
-    FunctionLibraryRuntime* flr, GraphShapeInfo* shape_info) {
-  int num_args = arg_shapes.size();
-  CHECK_EQ(num_args, metadata.args_size());
-
-  std::map<int, InferredShape> arg_shapes_for_inference;
-  for (int i = 0; i < num_args; ++i) {
-    const auto& arg = metadata.args(i);
-    InferredShape& shape_for_inference = arg_shapes_for_inference[i];
-    if (arg.kind() == tpu::TPUCompileMetadataProto::Arg::VARIABLE) {
-      // For resource variables, arg_shapes[] contains the shape of the
-      // variable's value.
-      shape_for_inference.handle_type = arg.dtype();
-      shape_for_inference.handle_shape = arg_shapes[i];
-      // The shape of the variable itself is always a scalar.
-      shape_for_inference.shape = TensorShape();
-    } else {
-      if (arg.kind() ==
-          tpu::TPUCompileMetadataProto::Arg::GUARANTEED_CONSTANT) {
-        VLOG(1) << "PromisedConstant shape: " << arg_shapes[i].DebugString();
-      }
-      shape_for_inference.shape = arg_shapes[i];
-    }
-  }
-  return InferShapes(
-      graph, arg_shapes_for_inference,
-      flr != nullptr ? flr->GetFunctionLibraryDefinition() : nullptr,
-      shape_info);
-}
-
-Status TpuCompileOpKernelCommon::OptimizeGraph(
-    const tpu::TPUCompileMetadataProto& metadata,
-    const std::vector<PartialTensorShape>& arg_shapes,
-    std::unique_ptr<Graph>* graph, FunctionLibraryRuntime* flr,
-    FunctionLibraryDefinition* fld) {
-  // Sets up options for the optimization passes that need to be done. Notice
-  // that CSE is not needed as XLA has its own CSE passes later in the
-  // compilation stage.
-  auto flags = GetBuildXlaOpsPassFlags();
-  OptimizerOptions opts;
-  opts.set_opt_level(OptimizerOptions::L0);
-  opts.set_do_common_subexpression_elimination(false);
-  opts.set_do_function_inlining(true);
-  opts.set_do_constant_folding(!flags->tf_xla_disable_constant_folding);
-  GraphOptimizer optimizer(opts);
-  {
-    // Performs a first function inlining pass before shape inference, since
-    // otherwise shape inference can't see inside functions and a comprehensive
-    // shape_map, including function ops, is needed to constant-propagate Shape
-    // Ops below.
-    GraphOptimizer::Options optimizer_opts;
-    optimizer_opts.inline_multi_device_functions = true;
-    optimizer_opts.inline_impl_selection_group_functions = true;
-    optimizer_opts.inline_with_single_device_body_placer = true;
-    // Infer shapes for each node in the computation. Shape inference can help
-    // skip constant folding of large shapes.
-    GraphShapeInfo shape_info;
-    TF_RETURN_IF_ERROR(RunShapeInferenceOnComputation(
-        metadata, arg_shapes, graph->get(), flr, &shape_info));
-    // Converts the GraphShapeInfo into the form needed by the constant-folding
-    // pass of the optimizer.
-    std::unordered_map<string, std::vector<PartialTensorShape>> shape_map;
-    ConvertGraphShapeInfoToShapeMap(**graph, shape_info, &shape_map);
-    optimizer_opts.shape_map = &shape_map;
-    optimizer.Optimize(flr, flr->env(), flr->device(), graph, optimizer_opts);
-  }
-
-  {
-    // Infer shapes for each node in the computation.
-    GraphShapeInfo shape_info;
-    TF_RETURN_IF_ERROR(RunShapeInferenceOnComputation(
-        metadata, arg_shapes, graph->get(), flr, &shape_info));
-    std::unordered_map<string, std::vector<PartialTensorShape>> shape_map;
-    ConvertGraphShapeInfoToShapeMap(**graph, shape_info, &shape_map);
-    optimizer.Optimize(flr, flr->env(), flr->device(), graph, &shape_map);
-  }
-
-  TF_RETURN_IF_ERROR(RewriteTensorListWithConstElement(graph->get(), fld));
-
-  return Status::OK();
+  return absl::OkStatus();
 }
 
 void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
@@ -543,13 +140,14 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
       ctx->cancellation_manager()->get_cancellation_token();
   const bool already_cancelled =
       !ctx->cancellation_manager()->RegisterCallback(token, [ctx, done]() {
-        if (OpsApiFn()->TpuCompile_ShouldTpuCompileOpIgnoreCancellationFn()) {
+        if (stream_executor::tpu::OpsApiFn()
+                ->TpuCompile_ShouldTpuCompileOpIgnoreCancellationFn()) {
           return;
         }
 
         // Sleep and exit in another thread so the cancellation manager can
         // continue running callbacks.
-        Env* env = ctx->env();
+        tsl::Env* env = ctx->env();
         env->SchedClosure([env, done]() { ExitCountdown(env, done); });
       });
 
@@ -563,15 +161,55 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
   // doesn't hurt to also deregister the callback in the failure case; the
   // CancellationManager ensures that already-registered callbacks will be run
   // once cancellation has started.
-  auto cancellation_cleanup = xla::MakeCleanup([ctx, token, done] {
+  auto cancellation_cleanup = absl::MakeCleanup([ctx, token, done] {
     ctx->cancellation_manager()->DeregisterCallback(token);
     done->store(true);
   });
 
-  OP_REQUIRES_OK(ctx, ComputeInternal(ctx));
+  absl::Status compile_status = ComputeInternal(ctx);
+  string status_payload;
+  // Construct payload if compile_status is not ok and there's no payload for
+  // compilation yet.
+  if (!compile_status.ok() &&
+      !compile_status
+           .GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
+           .has_value()) {
+    // TODO(b/237021124): Remove the string insertion once the TF runtime
+    // correctly propagates the status payload set.
+    const std::string new_error_message =
+        absl::StrCat(TpuCompileInterface::kTpuCompileErrorMessage, ". ",
+                     compile_status.message());
+
+    tpu::CompilationResultProto proto;
+    proto.set_status_code(static_cast<error::Code>(compile_status.code()));
+    proto.set_status_error_message(TruncateMessage(new_error_message, 128));
+    status_payload = proto.SerializeAsString();
+
+    // Update compile_status's error message as well.
+    compile_status = tensorflow::errors::CreateWithUpdatedMessage(
+        compile_status, new_error_message);
+  }
+  OP_REQUIRES_OK_OR_SET_PAYLOAD(ctx,
+                                TpuCompileInterface::kTpuCompileErrorPayloadKey,
+                                status_payload, compile_status);
 }
 
-Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
+absl::Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
+    FunctionLibraryRuntime* flib_runtime,
+    const SessionMetadata* session_metadata,
+    const TpuMeshStateInterface* mesh_state,
+    const std::vector<TensorShape>& dynamic_shapes,
+    const OpInputList& guaranteed_constants, const TpuCompilationCacheKey& key,
+    TpuProgramGroupInterface* tpu_program_group) {
+  absl::Status status = CompileLocallyAndFillHostCacheInternal(
+      flib_runtime, session_metadata, mesh_state, dynamic_shapes,
+      guaranteed_constants, key, tpu_program_group);
+  tsl::OkOrSetErrorCounterPayload(
+      tensorflow::core::platform::ErrorSourceProto::TPU_COMPILE_OP, status);
+  return status;
+}
+
+absl::Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCacheInternal(
     FunctionLibraryRuntime* flib_runtime,
     const SessionMetadata* session_metadata,
     const TpuMeshStateInterface* mesh_state,
@@ -582,17 +220,22 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
   std::vector<TensorShape> arg_shapes;
   TF_RETURN_IF_ERROR(
       ComputeArgumentShapes(metadata_, dynamic_shapes, &arg_shapes));
-  Status compile_status;
+  absl::Status compile_status;
   if (use_mlir_) {
-    compile_status = Compile(MlirToHloArgs{mlir_module_}, mesh_state->data(),
-                             arg_shapes, tpu_program_group);
+    const ConfigProto* config = flib_runtime->config_proto();
+    ConfigProto::Experimental::MlirBridgeRollout rollout_state =
+        GetMlirBridgeRolloutState(config ? std::make_optional(*config)
+                                         : std::nullopt);
+    compile_status =
+        Compile(MlirToHloArgs{mlir_module_, rollout_state}, mesh_state->data(),
+                arg_shapes, &key, tpu_program_group);
   } else {
     compile_status =
         Compile(FunctionToHloArgs{&function_,
                                   flib_runtime->GetFunctionLibraryDefinition(),
                                   flib_runtime->graph_def_version(),
                                   {&guaranteed_constants}},
-                mesh_state->data(), arg_shapes, tpu_program_group);
+                mesh_state->data(), arg_shapes, &key, tpu_program_group);
   }
 
   absl::Time end_time = absl::Now();
@@ -603,15 +246,15 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
             << session_name << " took " << duration << " and "
             << (compile_status.ok() ? "succeeded" : "failed");
   tpu_program_group->LogProgramMemorySummary();
+  metrics::UpdateTpuErrorCounter(
+      "TpuCompileOp", absl::StatusCodeToString(compile_status.code()));
   metrics::UpdateXlaCompilationTime(absl::ToInt64Microseconds(duration));
   TpuCompilationMetrics::IncrementCompilationCount(session_name);
-
-  TF_RETURN_IF_ERROR(tpu_program_group->LogCompilationStats(key, duration));
 
   return compile_status;
 }
 
-Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
+absl::Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
   VLOG(1) << "Retrieving mesh state";
   // Retrieve the topology from the resource manager
   ResourceMgr* rm = GetTPUConfigResourceMgr();
@@ -633,10 +276,15 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
         ctx->input_list("guaranteed_constants", &guaranteed_constants));
   }
 
+  ResourceMgr* resource_mgr = ctx->resource_manager();
+
+  // The session_id needs to be unique among live sessions.
+  // Recycled session_id is acceptable if it is unique among live sessions.
+  uint64_t session_id = reinterpret_cast<uint64_t>(resource_mgr);
   const TpuCompilationCacheKey key = CreateCompilationCacheKey(
       function_.name(), metadata_.function_library_fingerprint(),
       mlir_module_fingerprint_, guaranteed_constants, dynamic_shapes, metadata_,
-      *mesh_state);
+      *mesh_state, session_id, resource_mgr);
 
   // Process-wide cache of TPU executables.
   TpuCompilationCacheInterface* cache;
@@ -664,16 +312,16 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
           ctx->resource_manager(), "ref_holder", &ref_holder,
           [cache](CompilationRefHolder** h) {
             *h = cache->MakePerStepRefHolder();
-            return Status::OK();
+            return absl::OkStatus();
           }));
   core::ScopedUnref ref_holder_unref(ref_holder);
 
-  int64 uid;
+  int64_t uid;
   std::vector<std::string> proto_key;
   std::vector<std::string> sharding_key;
   std::vector<bool> may_modify_variables;
   absl::Span<const xla::HloProto* const> hlo_metadatas;
-  Status status = cache->CompileIfKeyAbsent(
+  absl::Status status = cache->CompileIfKeyAbsent(
       key, ctx->session_metadata(), ref_holder, &uid, &proto_key, &sharding_key,
       &may_modify_variables, &hlo_metadatas,
       [&](TpuProgramGroupInterface* tpu_program_group) {
@@ -733,28 +381,32 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
                 kCompilationCacheUnloaderResourceName, &unloader,
                 [cache](TpuCompilationCacheEntryUnloader** new_unloader) {
                   *new_unloader = new TpuCompilationCacheEntryUnloader(cache);
-                  return Status::OK();
+                  return absl::OkStatus();
                 }));
     // Note that LookupOrCreate puts two refcounts on unloader.
     core::ScopedUnref unloader_unref(unloader);
     unloader->AddCacheEntryUid(uid);
   }
 
-  int64 num_cores_with_compiled_programs = proto_key.size();
+  int64_t num_cores_with_compiled_programs = proto_key.size();
   if (proto_key.size() == 1) {
     // SPMD produces 1 program for all cores.
     num_cores_with_compiled_programs = metadata_.num_cores_per_replica();
+    if (may_modify_variables.size() == 1) {
+      may_modify_variables.resize(metadata_.num_cores_per_replica(),
+                                  may_modify_variables[0]);
+    }
   }
   if (status.ok() &&
       num_cores_with_compiled_programs +
               (may_modify_variables.size() * static_cast<int>(!use_mlir_)) !=
           ctx->num_outputs() - 1) {
-    status = errors::Internal(
-        "Number of cores with compiled programs (",
-        num_cores_with_compiled_programs, ") + variable states (",
+    status = absl::InternalError(absl::StrFormat(
+        "Number of cores with compiled programs (%d) + variable states (%d) "
+        "+ compilation status output != number of compile op outputs (%d)",
+        num_cores_with_compiled_programs,
         may_modify_variables.size() * static_cast<int>(!use_mlir_),
-        ") + compilation status output != number of compile op outputs (",
-        ctx->num_outputs(), ")");
+        ctx->num_outputs()));
   }
 
   // TODO(jpienaar): status is not just due to the compilation. At this
@@ -765,19 +417,20 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
   // TODO(misard) the frame id will be wrong if this is ever called from
   // within a function. Consider whether to use the same hack as is
   // present in the rendezvous manager where the function call frame is
-  // cast to a uint64, or do something better all around.
+  // cast to a uint64_t, or do something better all around.
   std::string rendezvous_key_base = strings::StrCat(
       "host_compute_rendezvous:", ctx->op_kernel().name(), ":",
       ctx->frame_iter().frame_id, ":", ctx->frame_iter().iter_id, ":");
 
   // Return compilation status.
-  {
+  if (!status.GetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey)
+           .has_value()) {
     Tensor output(DT_STRING, TensorShape({}));
     tpu::CompilationResultProto proto;
-    proto.set_status_code(status.code());
+    proto.set_status_code(static_cast<error::Code>(status.code()));
     if (!status.ok()) {
-      proto.set_status_error_message(
-          absl::StrCat("Compilation failure: ", status.error_message()));
+      proto.set_status_error_message(TruncateMessage(
+          absl::StrCat("Compilation failure: ", status.message()), 128));
     }
     if (return_hlo_protos_) {
       // Return the HloProtos as part of compilation status.
@@ -788,6 +441,8 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
     }
     SerializeToTString(proto, &output.scalar<tstring>()());
     ctx->set_output(0, output);
+    status.SetPayload(TpuCompileInterface::kTpuCompileErrorPayloadKey,
+                      absl::Cord(output.scalar<tstring>()()));
   }
 
   if (status.ok()) {
@@ -841,7 +496,34 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
       }
     }
   }
-  return Status::OK();
+  return status;
+}
+
+absl::Status TpuCompileOpKernelCommon::RegisterXLAFingerprints(
+    const std::vector<TensorShape>& arg_shapes,
+    TpuProgramGroupInterface* tpu_program_group, uint64_t fingerprint) {
+  // TODO(chiachenc): Support only one program for now.
+  if (tpu_program_group->program_count() != 1) {
+    LOG(INFO) << "Found " << tpu_program_group->program_count()
+              << " programs. Skip fingerprint registration.";
+  } else {
+    ResourceMgr* rm = GetTPUConfigResourceMgr();
+    tpu::TpuFingerprintLookup* fingerprint_lookup;
+    TF_RETURN_IF_ERROR(rm->LookupOrCreate<tpu::TpuFingerprintLookup>(
+        rm->default_container(), tpu::kFingerprintLookupResourceName,
+        &fingerprint_lookup, [&](tpu::TpuFingerprintLookup** new_lookup) {
+          *new_lookup = tpu::TpuFingerprintLookup::Create();
+          return absl::OkStatus();
+        }));
+    uint64_t tf_fingerprint =
+        tpu::CreateFingerprintWithNameAndShapes(fingerprint, arg_shapes);
+    std::string xla_fingerprint = tpu_program_group->fingerprint(0);
+    VLOG(1) << "Registering TF fingerprint: " << tf_fingerprint
+            << " with XLA fingerprint: " << xla_fingerprint;
+    fingerprint_lookup->RegisterIntermediateAndValuePair(
+        tf_fingerprint, std::move(xla_fingerprint));
+  }
+  return absl::OkStatus();
 }
 }  // namespace tpu
 }  // namespace tensorflow

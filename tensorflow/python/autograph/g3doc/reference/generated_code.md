@@ -65,7 +65,7 @@ print(inspect.getsourcefile(converted_f))
 /tmp/tmpm562wlj7.py
 ```
 
-`tf.autograph.to_code` is a shortcut to obtain the generated code, and it's
+`tf.autograph.to_code(f)` is a shortcut to obtain the generated code, and it's
 equivalent with calling `inspect.getsource(tf.autograph.to_graph(f))`.
 
 #### Recording diagnostic information: `tf.autograph.set_verbosity`

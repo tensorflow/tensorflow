@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for ragged_tensor.convert_to_tensor_or_ragged."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -45,8 +41,10 @@ class RaggedConvertToTensorOrRaggedTensorTest(test_util.TensorFlowTestCase,
       dict(
           pylist=[np.array([1, 2]), np.array([3])],
           preferred_dtype=dtypes.string),
-      dict(pylist=np.array([[1, 2], [3]]), preferred_dtype=dtypes.float32),
-      dict(pylist=np.array([[1, 2], [3]]), preferred_dtype=dtypes.string),
+      dict(pylist=np.array([[1, 2], [3]], dtype=object),
+           preferred_dtype=dtypes.float32),
+      dict(pylist=np.array([[1, 2], [3]], dtype=object),
+           preferred_dtype=dtypes.string),
       dict(
           pylist=[np.array([[1], np.array([2])]), [np.array([3])]],
           preferred_dtype=dtypes.float32),

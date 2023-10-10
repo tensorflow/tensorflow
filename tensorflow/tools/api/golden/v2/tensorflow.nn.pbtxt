@@ -12,9 +12,21 @@ tf_module {
     name: "RNNCellResidualWrapper"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "all_candidate_sampler"
     argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "approx_max_k"
+    argspec: "args=[\'operand\', \'k\', \'reduction_dimension\', \'recall_target\', \'reduction_input_size_override\', \'aggregate_to_topk\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'0.95\', \'-1\', \'True\', \'None\'], "
+  }
+  member_method {
+    name: "approx_min_k"
+    argspec: "args=[\'operand\', \'k\', \'reduction_dimension\', \'recall_target\', \'reduction_input_size_override\', \'aggregate_to_topk\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'0.95\', \'-1\', \'True\', \'None\'], "
   }
   member_method {
     name: "atrous_conv2d"
@@ -106,7 +118,7 @@ tf_module {
   }
   member_method {
     name: "ctc_greedy_decoder"
-    argspec: "args=[\'inputs\', \'sequence_length\', \'merge_repeated\'], varargs=None, keywords=None, defaults=[\'True\'], "
+    argspec: "args=[\'inputs\', \'sequence_length\', \'merge_repeated\', \'blank_index\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
   member_method {
     name: "ctc_loss"
@@ -150,7 +162,7 @@ tf_module {
   }
   member_method {
     name: "embedding_lookup_sparse"
-    argspec: "args=[\'params\', \'sp_ids\', \'sp_weights\', \'combiner\', \'max_norm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'params\', \'sp_ids\', \'sp_weights\', \'combiner\', \'max_norm\', \'name\', \'allow_fast_lookup\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "erosion2d"
@@ -186,7 +198,7 @@ tf_module {
   }
   member_method {
     name: "l2_normalize"
-    argspec: "args=[\'x\', \'axis\', \'epsilon\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'1e-12\', \'None\'], "
+    argspec: "args=[\'x\', \'axis\', \'epsilon\', \'name\', \'dim\'], varargs=None, keywords=None, defaults=[\'None\', \'1e-12\', \'None\', \'None\'], "
   }
   member_method {
     name: "leaky_relu"
@@ -258,7 +270,7 @@ tf_module {
   }
   member_method {
     name: "safe_embedding_lookup_sparse"
-    argspec: "args=[\'embedding_weights\', \'sparse_ids\', \'sparse_weights\', \'combiner\', \'default_id\', \'max_norm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'mean\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'embedding_weights\', \'sparse_ids\', \'sparse_weights\', \'combiner\', \'default_id\', \'max_norm\', \'name\', \'allow_fast_lookup\'], varargs=None, keywords=None, defaults=[\'None\', \'mean\', \'None\', \'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "sampled_softmax_loss"
@@ -286,7 +298,7 @@ tf_module {
   }
   member_method {
     name: "silu"
-    argspec: "args=[\'features\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'features\', \'beta\'], varargs=None, keywords=None, defaults=[\'1.0\'], "
   }
   member_method {
     name: "softmax"
@@ -322,7 +334,7 @@ tf_module {
   }
   member_method {
     name: "swish"
-    argspec: "args=[\'features\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'features\', \'beta\'], varargs=None, keywords=None, defaults=[\'1.0\'], "
   }
   member_method {
     name: "tanh"
@@ -330,7 +342,7 @@ tf_module {
   }
   member_method {
     name: "top_k"
-    argspec: "args=[\'input\', \'k\', \'sorted\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'True\', \'None\'], "
+    argspec: "args=[\'input\', \'k\', \'sorted\', \'index_type\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'True\', \"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
     name: "weighted_cross_entropy_with_logits"

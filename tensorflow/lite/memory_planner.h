@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MEMORY_PLANNER_H_
 #define TENSORFLOW_LITE_MEMORY_PLANNER_H_
 
-#include "tensorflow/lite/c/common.h"
+#include <vector>
+
+#include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
 
@@ -59,6 +61,14 @@ class MemoryPlanner {
 
   // Returns true if the non-persistent memory is available.
   virtual bool HasNonPersistentMemory() = 0;
+
+  // Dumps the memory planning information against the specified op node
+  // execution plan (i.e. `execution_plan`) for the purpose of debugging.
+  virtual void DumpDebugInfo(const std::vector<int>& execution_plan) const = 0;
+
+  // Returns a map of allocation information. It's only used for debugging.
+  virtual void GetAllocInfo(size_t *arena_size,
+                            size_t *arena_persist_size) const = 0;
 };
 
 }  // namespace tflite

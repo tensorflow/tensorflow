@@ -9,11 +9,10 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
-
-exports_files(["LICENSE"])
 
 cc_library(
     name = "benchmark_model_lib",
@@ -33,10 +32,10 @@ cc_library(
         ],
         "//conditions:default": [
             "//tensorflow/core:core_cpu",
-            "//tensorflow/core:lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:framework_lite",
+            "//tensorflow/core:lib",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:tensorflow",
             "//tensorflow/core:test",

@@ -32,7 +32,7 @@ extern "C" {
 // -----------------------------------------------------------------------------
 
 // A TF_ExecutionContext stores knowledge about how to execute an operation.
-// E.g. it could know whether we're in eager mode or in graph mode, keeps track
+// E.g. it could know whether we're in eager mode or graph mode, keeps track
 // of gradient tapes, etc.
 typedef struct TF_ExecutionContext TF_ExecutionContext;
 

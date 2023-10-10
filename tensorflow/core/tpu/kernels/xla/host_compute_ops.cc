@@ -13,28 +13,50 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/common_runtime/function.h"
+#include "xla/client/sharding_builder.h"
+#include "xla/client/xla_builder.h"
+#include "xla/primitive_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
+#include "xla/xla_data.pb.h"
+#include "tensorflow/core/common_runtime/function_def_utils.h"
+#include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/lower_function_call_op.h"
 #include "tensorflow/core/common_runtime/lower_if_op.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/tpu/tpu_defs.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 
@@ -63,7 +85,7 @@ Status MakeXlaShapes(gtl::ArraySlice<TensorShape> shapes,
   // Remove the dummy output from the vector that will be used to copy real
   // outputs from host to device.
   xla_shapes->pop_back();
-  return Status::OK();
+  return OkStatus();
 }
 
 // This TensorFlow pseudo-op is used to record host-side computation.
@@ -71,7 +93,18 @@ class HostComputeOp : public XlaOpKernel {
  public:
   explicit HostComputeOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("cost_estimate_ns", &cost_estimate_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("key", &key_));
+
+    std::string key;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("key", &key));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("send_key", &send_key_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("recv_key", &recv_key_));
+
+    // If any of the send or recv keys is set to the default value, use the
+    // `key` attribute for it. Old bridge uses the same key for both send and
+    // recv unlike the MLIR bridge that uses different keys.
+    if (send_key_.empty()) send_key_ = key;
+    if (recv_key_.empty()) recv_key_ = key;
+
     OP_REQUIRES_OK(ctx, ctx->GetAttr("tpu_core", &tpu_core_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("Tinputs", &input_dtypes_));
     OP_REQUIRES(ctx, ctx->num_inputs() == input_dtypes_.size(),
@@ -87,7 +120,8 @@ class HostComputeOp : public XlaOpKernel {
     NameAttrList shape_inference_graph;
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("shape_inference_graph", &shape_inference_graph));
-    if (shape_inference_graph.name().empty()) {
+    const std::string& shape_inference_func_name = shape_inference_graph.name();
+    if (shape_inference_func_name.empty()) {
       OP_REQUIRES_OK(ctx, ctx->GetAttr("shapes", &static_output_shapes_));
       OP_REQUIRES(ctx, static_output_shapes_.size() == output_dtypes_.size(),
                   errors::InvalidArgument(
@@ -104,11 +138,11 @@ class HostComputeOp : public XlaOpKernel {
                       "No function library runtime at kernel construction"));
       const FunctionLibraryDefinition* library =
           flib_runtime->GetFunctionLibraryDefinition();
-      const FunctionDef* fdef = library->Find(shape_inference_graph.name());
-      OP_REQUIRES(ctx, fdef != nullptr,
-                  errors::Internal("Failed to find function ",
-                                   shape_inference_graph.name(),
-                                   " in function library."));
+      const FunctionDef* fdef = library->Find(shape_inference_func_name);
+      OP_REQUIRES(
+          ctx, fdef != nullptr,
+          errors::Internal("Failed to find function ",
+                           shape_inference_func_name, " in function library."));
       OP_REQUIRES_OK(ctx, FunctionDefToBodyHelper(
                               *fdef, AttrSlice(&shape_inference_graph.attr()),
                               library, &shape_inference_graph_function_));
@@ -123,7 +157,7 @@ class HostComputeOp : public XlaOpKernel {
                                      &original_node_name_));
   }
 
-  ~HostComputeOp() override {}
+  ~HostComputeOp() override = default;
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* b = ctx->builder();
@@ -139,23 +173,23 @@ class HostComputeOp : public XlaOpKernel {
     for (auto& token_input_node : token_input_nodes_) {
       auto token_or = compiler->GetNodeToken(token_input_node);
       OP_REQUIRES_OK(ctx, token_or.status());
-      input_tokens.push_back(token_or.ValueOrDie());
+      input_tokens.push_back(token_or.value());
     }
     xla::XlaOp token = xla::AfterAll(b, input_tokens);
 
     // Send values to the host.
     std::vector<xla::XlaOp> send_to_host_tokens;
     for (int i = 0; i < input_handles.size(); ++i) {
-      const string channel_name = absl::StrCat(key_, "_dtoh_", i);
+      const string channel_name = absl::StrCat(send_key_, "_dtoh_", i);
       xla::Shape xla_shape;
       OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(input_dtypes_[i],
                                                 input_shapes[i], &xla_shape));
       // Specify frontend attributes.
       xla::FrontendAttributes attrs;
-      (*attrs.mutable_map())[kXlaHostTransferRendezvousNameAttr] = channel_name;
-      (*attrs.mutable_map())[kXlaHostTransferOriginalTypeAttr] =
-          xla::primitive_util::LowercasePrimitiveTypeName(
-              xla_shape.element_type());
+      (*attrs.mutable_map())[xla::kXlaHostTransferRendezvousNameAttr] =
+          channel_name;
+      (*attrs.mutable_map())[xla::kXlaHostTransferHandlerNameAttr] =
+          xla::kXlaHostTransferTfRendezvousHandlerName;
       b->SetFrontendAttributes(attrs);
       xla::ChannelHandle channel;
       OP_REQUIRES_OK(
@@ -170,7 +204,7 @@ class HostComputeOp : public XlaOpKernel {
     if (!input_handles.empty()) {
       // Register the shapes used in this transfer.
       OP_REQUIRES_OK(ctx, ctx->compiler()->SetDeviceToHostMetadata(
-                              key_, input_dtypes_, input_shapes));
+                              send_key_, input_dtypes_, input_shapes));
     }
     // Compute the shapes of the values to copy to the device, if necessary.
     std::vector<TensorShape>* output_shapes;
@@ -203,18 +237,18 @@ class HostComputeOp : public XlaOpKernel {
     if (ctx->num_outputs() > 0) {
       // Register the shapes used in this transfer.
       OP_REQUIRES_OK(ctx, ctx->compiler()->SetHostToDeviceMetadata(
-                              key_, output_dtypes_, *output_shapes));
+                              recv_key_, output_dtypes_, *output_shapes));
     }
     // Copy results to the device.
     std::vector<xla::XlaOp> recv_from_host_tokens;
     for (int i = 0; i < output_shapes->size(); ++i) {
-      const string channel_name = absl::StrCat(key_, "_htod_", i);
+      const string channel_name = absl::StrCat(recv_key_, "_htod_", i);
       // Specify frontend attributes.
       xla::FrontendAttributes attrs;
-      (*attrs.mutable_map())[kXlaHostTransferRendezvousNameAttr] = channel_name;
-      (*attrs.mutable_map())[kXlaHostTransferOriginalTypeAttr] =
-          xla::primitive_util::LowercasePrimitiveTypeName(
-              xla_output_shapes->at(i).element_type());
+      (*attrs.mutable_map())[xla::kXlaHostTransferRendezvousNameAttr] =
+          channel_name;
+      (*attrs.mutable_map())[xla::kXlaHostTransferHandlerNameAttr] =
+          xla::kXlaHostTransferTfRendezvousHandlerName;
       b->SetFrontendAttributes(attrs);
       xla::ChannelHandle channel;
       OP_REQUIRES_OK(
@@ -277,7 +311,7 @@ class HostComputeOp : public XlaOpKernel {
       }
     } while (modified);
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status InferOutputShapes(XlaOpKernelContext* ctx,
@@ -294,6 +328,11 @@ class HostComputeOp : public XlaOpKernel {
     bool got_output_shapes = false;
     ShapeRefiner shape_refiner{graph->versions().producer(),
                                graph->op_registry()};
+
+    // Make sure all nodes can be reached from source node as
+    // `GetReversePostOrder` would only collect nodes reachable from source.
+    FixupSourceAndSinkEdges(graph);
+
     std::vector<Node*> nodes;
     GetReversePostOrder(*graph, &nodes);
     for (auto node : nodes) {
@@ -333,25 +372,24 @@ class HostComputeOp : public XlaOpKernel {
           return errors::InvalidArgument(
               "Shape inference for HostCompute ", ctx->op_kernel().name(),
               " failed: inference graph has multiple send from host nodes");
-        } else {
-          got_output_shapes = true;
-          // The last input is the dynamic key so don't record its shape.
-          output_shapes->resize(node->num_inputs() - 1);
-          shape_inference::InferenceContext* shape_ctx =
-              shape_refiner.GetContext(node);
-          for (int i = 0; i < node->num_inputs() - 1; ++i) {
-            shape_inference::ShapeHandle handle = shape_ctx->input(i);
-            if (!shape_ctx->FullyDefined(handle)) {
-              return errors::InvalidArgument(
-                  "Shape inference for HostCompute ", ctx->op_kernel().name(),
-                  " failed: send from host node ", node->name(),
-                  " has non-fully defined shape of input index ", i);
-            }
-            TensorShapeProto shape_proto;
-            shape_ctx->ShapeHandleToProto(handle, &shape_proto);
-            (*output_shapes)[i] = TensorShape(shape_proto);
-            VLOG(2) << "Inferred shape " << shape_proto.DebugString();
+        }
+        got_output_shapes = true;
+        // The last input is the dynamic key so don't record its shape.
+        output_shapes->resize(node->num_inputs() - 1);
+        shape_inference::InferenceContext* shape_ctx =
+            shape_refiner.GetContext(node);
+        for (int i = 0; i < node->num_inputs() - 1; ++i) {
+          shape_inference::ShapeHandle handle = shape_ctx->input(i);
+          if (!shape_ctx->FullyDefined(handle)) {
+            return errors::InvalidArgument(
+                "Shape inference for HostCompute ", ctx->op_kernel().name(),
+                " failed: send from host node ", node->name(),
+                " has non-fully defined shape of input index ", i);
           }
+          TensorShapeProto shape_proto;
+          shape_ctx->ShapeHandleToProto(handle, &shape_proto);
+          (*output_shapes)[i] = TensorShape(shape_proto);
+          VLOG(2) << "Inferred shape " << shape_proto.DebugString();
         }
       }
     }
@@ -360,7 +398,7 @@ class HostComputeOp : public XlaOpKernel {
           "Shape inference for HostCompute ", ctx->op_kernel().name(),
           " failed: inference graph has no send from host node");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   DataTypeVector input_dtypes_;
@@ -372,15 +410,17 @@ class HostComputeOp : public XlaOpKernel {
   // If static_xla_output_shapes_.size() == 1 then xla_output_shape_ is the
   // unique output shape, otherwise it is a tuple of all the xla_output_shapes_.
   xla::Shape static_xla_output_shape_;
-  string key_;
+  string send_key_;
+  string recv_key_;
   // If shape inference is performed at runtime, the graph needed to perform
   // shape inference is stored in this function.
   std::unique_ptr<FunctionBody> shape_inference_graph_function_;
-  int64 cost_estimate_;
-  int64 tpu_core_;
+  int64_t cost_estimate_;
+  int64_t tpu_core_;
   std::vector<string> token_input_nodes_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(HostComputeOp);
+  HostComputeOp(const HostComputeOp&) = delete;
+  void operator=(const HostComputeOp&) = delete;
 };
 
 class SendToHostOp : public XlaOpKernel {
@@ -397,7 +437,7 @@ class SendToHostOp : public XlaOpKernel {
                                      &original_node_name_));
   }
 
-  ~SendToHostOp() override {}
+  ~SendToHostOp() override = default;
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* b = ctx->builder();
@@ -408,7 +448,7 @@ class SendToHostOp : public XlaOpKernel {
     for (auto& token_input_node : token_input_nodes_) {
       auto token_or = compiler->GetNodeToken(token_input_node);
       OP_REQUIRES_OK(ctx, token_or.status());
-      input_tokens.push_back(token_or.ValueOrDie());
+      input_tokens.push_back(token_or.value());
     }
     xla::XlaOp token = xla::AfterAll(b, input_tokens);
     xla::Shape xla_shape;
@@ -416,10 +456,9 @@ class SendToHostOp : public XlaOpKernel {
                                               &xla_shape));
     // Specify frontend attributes.
     xla::FrontendAttributes attrs;
-    (*attrs.mutable_map())[kXlaHostTransferRendezvousNameAttr] = key_;
-    (*attrs.mutable_map())[kXlaHostTransferOriginalTypeAttr] =
-        xla::primitive_util::LowercasePrimitiveTypeName(
-            xla_shape.element_type());
+    (*attrs.mutable_map())[xla::kXlaHostTransferRendezvousNameAttr] = key_;
+    (*attrs.mutable_map())[xla::kXlaHostTransferHandlerNameAttr] =
+        xla::kXlaHostTransferTfRendezvousHandlerName;
     b->SetFrontendAttributes(attrs);
     xla::ChannelHandle channel;
     OP_REQUIRES_OK(ctx, compiler->GetDeviceToHostChannelHandle(key_, &channel));
@@ -434,7 +473,8 @@ class SendToHostOp : public XlaOpKernel {
   string key_;
   std::vector<string> token_input_nodes_;
   string original_node_name_;
-  TF_DISALLOW_COPY_AND_ASSIGN(SendToHostOp);
+  SendToHostOp(const SendToHostOp&) = delete;
+  void operator=(const SendToHostOp&) = delete;
 };
 
 class RecvFromHostOp : public XlaOpKernel {
@@ -448,9 +488,13 @@ class RecvFromHostOp : public XlaOpKernel {
     OP_REQUIRES(ctx, !token_input_nodes_.empty(),
                 errors::InvalidArgument("XlaRecvFromHost node does not have ",
                                         kXlaTokenInputNodesAttrName, " attr"));
+    if (!ctx->GetAttr(kXlaOriginalOutsideCompilationNodeName,
+                      &original_node_name_)
+             .ok())
+      original_node_name_ = name();
   }
 
-  ~RecvFromHostOp() override {}
+  ~RecvFromHostOp() override = default;
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* b = ctx->builder();
@@ -460,7 +504,7 @@ class RecvFromHostOp : public XlaOpKernel {
     for (auto& token_input_node : token_input_nodes_) {
       auto token_or = compiler->GetNodeToken(token_input_node);
       OP_REQUIRES_OK(ctx, token_or.status());
-      input_tokens.push_back(token_or.ValueOrDie());
+      input_tokens.push_back(token_or.value());
     }
     xla::XlaOp token = xla::AfterAll(b, input_tokens);
     xla::Shape xla_shape;
@@ -468,10 +512,9 @@ class RecvFromHostOp : public XlaOpKernel {
         ctx, TensorShapeToXLAShape(output_dtype_, output_shape_, &xla_shape));
     // Specify frontend attributes.
     xla::FrontendAttributes attrs;
-    (*attrs.mutable_map())[kXlaHostTransferRendezvousNameAttr] = key_;
-    (*attrs.mutable_map())[kXlaHostTransferOriginalTypeAttr] =
-        xla::primitive_util::LowercasePrimitiveTypeName(
-            xla_shape.element_type());
+    (*attrs.mutable_map())[xla::kXlaHostTransferRendezvousNameAttr] = key_;
+    (*attrs.mutable_map())[xla::kXlaHostTransferHandlerNameAttr] =
+        xla::kXlaHostTransferTfRendezvousHandlerName;
     b->SetFrontendAttributes(attrs);
     xla::ChannelHandle channel;
     OP_REQUIRES_OK(ctx, compiler->GetHostToDeviceChannelHandle(key_, &channel));
@@ -487,7 +530,9 @@ class RecvFromHostOp : public XlaOpKernel {
   TensorShape output_shape_;
   string key_;
   std::vector<string> token_input_nodes_;
-  TF_DISALLOW_COPY_AND_ASSIGN(RecvFromHostOp);
+  string original_node_name_;
+  RecvFromHostOp(const RecvFromHostOp&) = delete;
+  void operator=(const RecvFromHostOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaHostCompute"), HostComputeOp);

@@ -380,6 +380,25 @@ TEST(Model, UInt3Records) {
                           uint3(8, 1, 2)));
 }
 
+TEST(Model, OffsetAssignmentWithAlignment) {
+  std::vector<TensorUsageRecord<size_t>> usage_records{
+      {/*size=*/16, /*first=*/0, /*last=*/1},
+      {/*size=*/8, /*first=*/1, /*last=*/2},
+      {/*size=*/64, /*first=*/2, /*last=*/3},
+      {/*size=*/32, /*first=*/3, /*last=*/4},
+      {/*size=*/8, /*first=*/4, /*last=*/5},
+  };
+
+  OffsetsAssignment offsets_assignment;
+  ASSERT_TRUE(AssignOffsetsToTensors(usage_records,
+                                     MemoryStrategy::GREEDY_BY_SIZE,
+                                     &offsets_assignment,
+                                     /*base_addr_align_bytes=*/128)
+                  .ok());
+  EXPECT_THAT(offsets_assignment.offsets, ElementsAre(0, 128, 0, 128, 0));
+  EXPECT_EQ(offsets_assignment.total_size, 160);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace tflite

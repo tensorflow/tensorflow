@@ -14,10 +14,16 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/shard_dataset_op.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/util/batch_util.h"
 
@@ -40,7 +46,7 @@ constexpr char kNextIndex[] = "next_index";
 
 class ShardDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 num_shards, int64 index,
+  Dataset(OpKernelContext* ctx, int64_t num_shards, int64_t index,
           bool require_non_empty, const DatasetBase* input)
       : DatasetBase(DatasetContext(ctx)),
         num_shards_(num_shards),
@@ -58,7 +64,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
@@ -76,8 +82,8 @@ class ShardDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64 Cardinality() const override {
-    int64 n = input_->Cardinality();
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    int64_t n = input_->Cardinality(options);
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
@@ -86,11 +92,17 @@ class ShardDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
+  }
+
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    return input_->Get(ctx, index_ + (num_shards_ * index), out_tensors);
   }
 
  protected:
@@ -110,7 +122,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {input_graph_node, num_shards, index},
                       {{kRequireNonEmpty, require_non_empty_attr}}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -119,7 +131,18 @@ class ShardDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params), next_index_(0) {}
 
+    bool SymbolicCheckpointCompatible() const override { return true; }
+
     Status Initialize(IteratorContext* ctx) override {
+      if (dataset()->num_shards_ == kShardHint) {
+        return errors::FailedPrecondition(
+            "`tf.data.Dataset.shard(SHARD_HINT, ...)` can only be used in "
+            "`tf.distribute.Strategy.experimental_distribute_dataset()` with "
+            "`tf.data.experimental.AutoShardPolicy.HINT` policy, or tf.data "
+            "service with "
+            "`tf.data.experimental.service.ShardingPolicy.HINT` processing "
+            "mode.");
+      }
       return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
@@ -131,7 +154,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       *end_of_sequence = false;
       if (!input_impl_) {
         *end_of_sequence = true;
-        return Status::OK();
+        return OkStatus();
       }
 
       int num_to_skip =
@@ -145,14 +168,14 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       next_index_ += num_skipped;
       if (*end_of_sequence) {
         input_impl_.reset();
-        return Status::OK();
+        return OkStatus();
       }
 
       std::vector<Tensor> result;
       TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &result, end_of_sequence));
       if (*end_of_sequence) {
         input_impl_.reset();
-        return Status::OK();
+        return OkStatus();
       }
       next_index_++;
 
@@ -184,39 +207,43 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       }
 
       *out_tensors = std::move(result);
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
-      return model::MakeKnownRatioNode(std::move(args), dataset()->num_shards_);
+      return model::MakeKnownRatioNode(
+          std::move(args), 1.0 / static_cast<double>(dataset()->num_shards_));
     }
 
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      if (!input_impl_) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
-      } else {
+      TF_RETURN_IF_ERROR(writer->WriteScalar(
+          prefix(), kInputImplEmpty, static_cast<int64_t>(!input_impl_)));
+      if (input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar(full_name(kNextIndex), next_index_));
+            writer->WriteScalar(prefix(), kNextIndex, next_index_));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      if (!reader->Contains(full_name(kInputImplEmpty))) {
+      int64_t input_empty;
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), kInputImplEmpty, &input_empty));
+      if (!static_cast<bool>(input_empty)) {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         TF_RETURN_IF_ERROR(
-            reader->ReadScalar(full_name(kNextIndex), &next_index_));
+            reader->ReadScalar(prefix(), kNextIndex, &next_index_));
       } else {
         input_impl_.reset();
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -226,11 +253,11 @@ class ShardDatasetOp::Dataset : public DatasetBase {
    private:
     mutex mu_;
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
-    int64 next_index_ TF_GUARDED_BY(mu_);
+    int64_t next_index_ TF_GUARDED_BY(mu_);
   };
 
-  const int64 num_shards_;
-  const int64 index_;
+  const int64_t num_shards_;
+  const int64_t index_;
   const DatasetBase* const input_;
   const bool require_non_empty_;
   const TraceMeMetadata traceme_metadata_;
@@ -243,19 +270,20 @@ ShardDatasetOp::ShardDatasetOp(OpKernelConstruction* ctx)
 
 void ShardDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                  DatasetBase** output) {
-  int64 index = 0;
-  int64 num_shards = 0;
+  int64_t index = 0;
+  int64_t num_shards = 0;
 
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kNumShards, &num_shards));
+  OP_REQUIRES_OK(ctx,
+                 ParseScalarArgument<int64_t>(ctx, kNumShards, &num_shards));
   OP_REQUIRES(
-      ctx, num_shards > 0,
+      ctx, num_shards > 0 || num_shards == kShardHint,
       errors::InvalidArgument("Number of shards must be greater than zero "
                               "(currently num_shards = ",
                               num_shards, ")."));
 
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kIndex, &index));
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kIndex, &index));
   OP_REQUIRES(
-      ctx, index >= 0 && index < num_shards,
+      ctx, (index >= 0 && index < num_shards) || num_shards == kShardHint,
       errors::InvalidArgument("Index must be between 0 and ", num_shards - 1,
                               " (currently index = ", index, ")."));
 

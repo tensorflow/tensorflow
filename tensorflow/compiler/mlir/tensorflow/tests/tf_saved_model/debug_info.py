@@ -16,10 +16,6 @@
 # RUN: %p/debug_info | FileCheck %s
 
 # pylint: disable=missing-docstring,line-too-long
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import tensorflow.compat.v2 as tf
 from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common
 
@@ -34,8 +30,10 @@ class TestModule(tf.Module):
     return x + y
     # Basic check that the debug info file is being correctly saved and loaded.
     #
-    # CHECK: "tf.AddV2"{{.*}}loc(#[[LOC:.*]])
-    # CHECK: #[[LOC]] = loc({{.*}}callsite("{{[^"]*}}/debug_info.py{{.*}}":{{[0-9]+}}:{{[0-9]+}}
+    # CHECK: "tf.AddV2"{{.*}}loc(#loc{{[0-9]+}})
+    # CHECK: "tf.Identity"{{.*}}loc(#loc{{[0-9]+}})
+    # CHECK: #loc{{[0-9]+}} = loc("{{.*}}debug_info.py":{{[0-9]+}}:{{[0-9]+}})
+    # CHECK: #loc{{[0-9]+}} = loc(callsite(#loc{{[0-9]+}} at #loc{{[0-9]+}}))
 
 
 if __name__ == '__main__':

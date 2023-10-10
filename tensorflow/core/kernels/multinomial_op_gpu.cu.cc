@@ -70,7 +70,6 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
         ctx, d, /*key=*/nullptr, /*counter=*/nullptr, gen, noises.data(),
         noises.size(), Dist());
 
-#if defined(EIGEN_HAS_INDEX_LIST)
     Eigen::IndexList<int, int, int> bsc;
     bsc.set(0, batch_size);
     bsc.set(1, num_samples);
@@ -82,11 +81,9 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
 
     Eigen::IndexList<Eigen::type2index<1>, int, Eigen::type2index<1>> oso;
     oso.set(1, num_samples);
-#else
-    Eigen::array<int, 3> bsc{batch_size, num_samples, num_classes};
-    Eigen::array<int, 3> boc{batch_size, 1, num_classes};
-    Eigen::array<int, 3> oso{1, num_samples, 1};
-#endif
+
+    Eigen::IndexList<int> flat_shape;
+    flat_shape.set(0, batch_size * num_samples * num_classes);
 
     // Calculates "scores = logits - log(-log(noises))"; B*C*S elements.
     // NOTE: we don't store back to "noises" because having it appear on both
@@ -95,9 +92,12 @@ struct MultinomialFunctor<GPUDevice, T, OutputType> {
     // not affect any of the other numbers (smallest is ~1e-7), but not so small
     // that log(x) == -inf, which is why it needs to be larger than 0 in the
     // first place.
-    To32Bit(scores).device(d) =
-        To32Bit(logits).reshape(boc).broadcast(oso).template cast<float>() -
-        ((-((To32Bit(noises) + 2e-30f).log())).log());
+    To32Bit(scores).device(d) = To32Bit(logits)
+                                    .reshape(boc)
+                                    .broadcast(oso)
+                                    .template cast<float>()
+                                    .reshape(flat_shape) -
+                                ((-((To32Bit(noises) + 2e-30f).log())).log());
 
     // Max-reduce along classes for each (batch, sample).
     typedef const Eigen::array<TTypes<float>::Tensor::Index, 1>& ReductionAxes;

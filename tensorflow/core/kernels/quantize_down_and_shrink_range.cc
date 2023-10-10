@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <math.h>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
@@ -40,8 +40,20 @@ class QuantizeDownAndShrinkRangeOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
-    const float input_min_float = ctx->input(1).flat<float>()(0);
-    const float input_max_float = ctx->input(2).flat<float>()(0);
+    const Tensor& input_min = ctx->input(1);
+    const Tensor& input_max = ctx->input(2);
+
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(input_min.shape()),
+        errors::InvalidArgument("`input_min` must be rank 0 but is rank ",
+                                input_min.dims()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(input_max.shape()),
+        errors::InvalidArgument("`input_max` must be rank 0 but is rank ",
+                                input_max.dims()));
+
+    const float input_min_float = input_min.scalar<float>()();
+    const float input_max_float = input_max.scalar<float>()();
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
     Tensor* output_min = nullptr;
@@ -51,9 +63,9 @@ class QuantizeDownAndShrinkRangeOp : public OpKernel {
 
     // See QuantizationRangeOp as well, which has a copy of this logic.
     auto input_array = input.flat<T1>();
-    const int32 input_lowest_quantized =
+    const int32_t input_lowest_quantized =
         static_cast<int32>(Eigen::NumTraits<T1>::lowest());
-    const int32 input_highest_quantized =
+    const int32_t input_highest_quantized =
         static_cast<int32>(Eigen::NumTraits<T1>::highest());
     T1 actual_min_quantized = input_highest_quantized;
     T1 actual_max_quantized = input_lowest_quantized;

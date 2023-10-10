@@ -31,15 +31,19 @@ class RecordInputOp : public OpKernel {
   OP_REQUIRES_OK(ctx, ctx->GetAttr(#FIELD, &FIELD));
 
     GETATTR(string, file_pattern);
-    GETATTR(int64, file_random_seed);
+    GETATTR(int64_t, file_random_seed);
     GETATTR(float, file_shuffle_shift_ratio);
-    GETATTR(int64, file_buffer_size);
-    GETATTR(int64, file_parallelism);
-    GETATTR(int64, batch_size);
+    GETATTR(int64_t, file_buffer_size);
+    GETATTR(int64_t, file_parallelism);
+    GETATTR(int64_t, batch_size);
     GETATTR(string, compression_type);
 #undef GETATTR
 
     OP_REQUIRES_OK(ctx, ctx->GetAttr("compression_type", &compression_type));
+
+    OP_REQUIRES(ctx, file_parallelism >= 0,
+                errors::InvalidArgument("file_parallelism should >= 0, got ",
+                                        file_parallelism));
 
     RecordYielder::Options yopts;
     yopts.file_pattern = file_pattern;
@@ -63,7 +67,7 @@ class RecordInputOp : public OpKernel {
   }
 
  private:
-  int64 batch_size_;
+  int64_t batch_size_;
   std::unique_ptr<RecordYielder> yielder_;
 };
 

@@ -16,21 +16,45 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_DIALECT_REGISTRATION_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_DIALECT_REGISTRATION_H_
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/MLProgram/IR/MLProgram.h"  // from @llvm-project
+#include "mlir/Dialect/MLProgram/IR/MLProgramAttributes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
+#include "tensorflow/core/ir/ops.h"
 
 namespace mlir {
 // Inserts all the TensorFlow dialects in the provided registry. This is
 // intended for tools that need to register dialects before parsing .mlir files.
+// If include_extensions is set (default), also registers extensions. Otherwise
+// it is the responsibility of the caller, typically required when the registry
+// is appended to the context in a parallel context, which does not allow for
+// extensions to be added.
+inline void RegisterAllTensorFlowDialectsImpl(DialectRegistry &registry,
+                                              bool include_extensions = true) {
+  registry
+      .insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
+              mlir::ml_program::MLProgramDialect, mlir::TF::TensorFlowDialect,
+              mlir::tf_type::TFTypeDialect, mlir::cf::ControlFlowDialect,
+              mlir::tf_device::TensorFlowDeviceDialect,
+              mlir::tf_executor::TensorFlowExecutorDialect,
+              mlir::tf_saved_model::TensorFlowSavedModelDialect,
+              mlir::tfg::TFGraphDialect>();
+  if (include_extensions) {
+    mlir::func::registerAllExtensions(registry);
+  }
+}
+
+// Inserts all the TensorFlow dialects in the provided registry. This is
+// intended for tools that need to register dialects before parsing .mlir files.
 inline void RegisterAllTensorFlowDialects(DialectRegistry &registry) {
-  registry.insert<mlir::StandardOpsDialect, mlir::TF::TensorFlowDialect,
-                  mlir::tf_device::TensorFlowDeviceDialect,
-                  mlir::tf_executor::TensorFlowExecutorDialect,
-                  mlir::tf_saved_model::TensorFlowSavedModelDialect>();
+  RegisterAllTensorFlowDialectsImpl(registry, true);
 }
 }  // namespace mlir
 

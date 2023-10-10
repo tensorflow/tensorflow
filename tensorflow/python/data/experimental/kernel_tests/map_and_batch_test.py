@@ -13,18 +13,19 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.experimental.map_and_batch()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python import pywrap_sanitizers
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
@@ -32,7 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
@@ -380,7 +381,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     def map_fn(x):
       previous_control_flow_v2_value = control_flow_util.ENABLE_CONTROL_FLOW_V2
       control_flow_util.ENABLE_CONTROL_FLOW_V2 = True
-      return_value = control_flow_ops.cond(x < 50, lambda: x + 1, lambda: x * x)
+      return_value = cond.cond(x < 50, lambda: x + 1, lambda: x * x)
       control_flow_util.ENABLE_CONTROL_FLOW_V2 = previous_control_flow_v2_value
       return return_value
 
@@ -397,6 +398,119 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
             self.evaluate(get_next()))
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testCheckpointLargeBatches(self):
+    if pywrap_sanitizers.is_tsan_enabled():
+      self.skipTest("Creating a large buffer causes OOM when using tsan.")
+    # Batches of size 512M
+    dataset = dataset_ops.Dataset.from_tensors(
+        array_ops.ones((64, 1024, 1024), dtype=dtypes.float32)).repeat()
+    dataset = dataset.map(lambda x: x+1, num_parallel_calls=5)
+    dataset = dataset.batch(2)
+    iterator = iter(dataset)
+    next(iterator)  # request an element to fill the buffer
+    ckpt = trackable_utils.Checkpoint(iterator=iterator)
+    manager = checkpoint_management.CheckpointManager(
+        ckpt, self.get_temp_dir(), max_to_keep=1)
+    manager.save()
+
+
+class MapAndBatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(
+              drop_remainder=[True, False], symbolic_checkpoint=[True, False])))
+  def test(self, verify_fn, drop_remainder, symbolic_checkpoint):
+    range_size = 11
+    num_shards = 3
+    num_repeats = 2
+    batch_size = 5
+    num_parallel_calls = 7
+    total_outputs = (range_size // num_shards) * num_repeats
+    if drop_remainder:
+      num_outputs = total_outputs // batch_size
+    else:
+      num_outputs = int(math.ceil(total_outputs / batch_size))
+
+    def build_ds(range_start, drop_remainder=False, symbolic_checkpoint=False):
+
+      def _map_fn(x):
+        return math_ops.square(x)
+
+      dataset = dataset_ops.Dataset.range(
+          range_start, range_start + range_size)
+      dataset = dataset.shard(num_shards=num_shards, index=0)
+      dataset = dataset.repeat(num_repeats)
+      dataset = dataset.apply(
+          batching.map_and_batch(
+              map_func=_map_fn,
+              batch_size=batch_size,
+              num_parallel_calls=num_parallel_calls,
+              drop_remainder=drop_remainder))
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      return dataset.with_options(options)
+
+    verify_fn(
+        self, lambda: build_ds(
+            10,
+            drop_remainder=drop_remainder,
+            symbolic_checkpoint=symbolic_checkpoint), num_outputs)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(drop_remainder=[True, False])))
+  def testNumParallelBatches(self, verify_fn, drop_remainder):
+    range_size = 11
+    num_shards = 3
+    num_repeats = 2
+    batch_size = 5
+    num_parallel_batches = 2
+    total_outputs = (range_size // num_shards) * num_repeats
+    if drop_remainder:
+      num_outputs = total_outputs // batch_size
+    else:
+      num_outputs = int(math.ceil(total_outputs / batch_size))
+
+    def build_ds(range_start, drop_remainder):
+
+      def _map_fn(x):
+        return math_ops.square(x)
+
+      return dataset_ops.Dataset.range(
+          range_start, range_start + range_size).shard(
+              num_shards=num_shards, index=0).repeat(num_repeats).apply(
+                  batching.map_and_batch(
+                      map_func=_map_fn,
+                      batch_size=batch_size,
+                      num_parallel_batches=num_parallel_batches,
+                      drop_remainder=drop_remainder))
+
+    verify_fn(self, lambda: build_ds(10, drop_remainder=drop_remainder),
+              num_outputs)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def testSparse(self, verify_fn):
+
+    def build_dataset():
+
+      def map_fn(i):
+        return sparse_tensor.SparseTensorValue(
+            indices=[[0]], values=(i * [1]), dense_shape=[1])
+
+      return dataset_ops.Dataset.range(10).apply(
+          batching.map_and_batch(map_fn, 5))
+
+    verify_fn(self, build_dataset, num_outputs=2)
 
 
 if __name__ == "__main__":

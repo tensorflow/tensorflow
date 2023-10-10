@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <gtest/gtest.h>
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -55,8 +56,8 @@ TEST_F(RaggedRangeOpTest, IntValues) {
   TF_ASSERT_OK(RunOpKernel());
 
   // Expected: [[0, 2, 4, 6], [5, 6], [], [5, 4, 3, 2]]
-  test::ExpectTensorEqual<int64>(*GetOutput(kSplitsOutput),
-                                 test::AsTensor<int64>({0, 4, 6, 6, 10}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSplitsOutput),
+                                   test::AsTensor<int64_t>({0, 4, 6, 6, 10}));
   test::ExpectTensorEqual<int>(
       *GetOutput(kValuesOutput),
       test::AsTensor<int>({0, 2, 4, 6, 5, 6, 5, 4, 3, 2}));
@@ -70,11 +71,22 @@ TEST_F(RaggedRangeOpTest, FloatValues) {
   TF_ASSERT_OK(RunOpKernel());
 
   // Expected: [[0, 2, 4, 6], [5, 6], [], [5, 4, 3, 2]]
-  test::ExpectTensorEqual<int64>(*GetOutput(kSplitsOutput),
-                                 test::AsTensor<int64>({0, 4, 6, 6, 10}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSplitsOutput),
+                                   test::AsTensor<int64_t>({0, 4, 6, 6, 10}));
   test::ExpectTensorNear<float>(
       *GetOutput(kValuesOutput),
       test::AsTensor<float>({0, 2, 4, 6, 5, 6, 5, 4, 3, 2}), 0.1);
+}
+
+TEST_F(RaggedRangeOpTest, RangeSizeOverflow) {
+  BuildRaggedRangeGraph<float>();
+  AddInputFromArray<float>(TensorShape({2}), {1.1, 0.1});    // starts
+  AddInputFromArray<float>(TensorShape({2}), {10.0, 1e10});  // limits
+  AddInputFromArray<float>(TensorShape({2}), {1, 1e-10});    // deltas
+
+  EXPECT_EQ(absl::StrCat("Requires ((limit - start) / delta) <= ",
+                         std::numeric_limits<int64_t>::max()),
+            RunOpKernel().message());
 }
 
 TEST_F(RaggedRangeOpTest, BroadcastDeltas) {
@@ -85,8 +97,8 @@ TEST_F(RaggedRangeOpTest, BroadcastDeltas) {
   TF_ASSERT_OK(RunOpKernel());
 
   // Expected: [[0, 1, 2, 3, 4, 5, 6, 7], [5, 6], []]
-  test::ExpectTensorEqual<int64>(*GetOutput(kSplitsOutput),
-                                 test::AsTensor<int64>({0, 8, 10, 10}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSplitsOutput),
+                                   test::AsTensor<int64_t>({0, 8, 10, 10}));
   test::ExpectTensorEqual<int>(
       *GetOutput(kValuesOutput),
       test::AsTensor<int>({0, 1, 2, 3, 4, 5, 6, 7, 5, 6}));
@@ -100,8 +112,8 @@ TEST_F(RaggedRangeOpTest, BroadcastLimitsAndDeltas) {
   TF_ASSERT_OK(RunOpKernel());
 
   // Expected: [[0, 1, 2], [], [0, 1]]
-  test::ExpectTensorEqual<int64>(*GetOutput(kSplitsOutput),
-                                 test::AsTensor<int64>({0, 3, 3, 5}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSplitsOutput),
+                                   test::AsTensor<int64_t>({0, 3, 3, 5}));
   test::ExpectTensorEqual<int>(*GetOutput(kValuesOutput),
                                test::AsTensor<int>({0, 1, 2, 0, 1}));
 }
@@ -114,8 +126,8 @@ TEST_F(RaggedRangeOpTest, BroadcastStartsAndLimits) {
   TF_ASSERT_OK(RunOpKernel());
 
   // Expected: [[0, 3, 6, 9], [0, 4, 8], [0, 5, 10]]]
-  test::ExpectTensorEqual<int64>(*GetOutput(kSplitsOutput),
-                                 test::AsTensor<int64>({0, 4, 7, 10}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSplitsOutput),
+                                   test::AsTensor<int64_t>({0, 4, 7, 10}));
   test::ExpectTensorEqual<int>(
       *GetOutput(kValuesOutput),
       test::AsTensor<int>({0, 3, 6, 9, 0, 4, 8, 0, 5, 10}));
@@ -129,8 +141,8 @@ TEST_F(RaggedRangeOpTest, AllScalarInputs) {
   TF_ASSERT_OK(RunOpKernel());
 
   // Expected: [[0, 1, 2, 3, 4]
-  test::ExpectTensorEqual<int64>(*GetOutput(kSplitsOutput),
-                                 test::AsTensor<int64>({0, 5}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSplitsOutput),
+                                   test::AsTensor<int64_t>({0, 5}));
   test::ExpectTensorEqual<int>(*GetOutput(kValuesOutput),
                                test::AsTensor<int>({0, 1, 2, 3, 4}));
 }
@@ -140,7 +152,7 @@ TEST_F(RaggedRangeOpTest, InvalidArgsStarts) {
   AddInputFromArray<int>(TensorShape({4, 1}), {0, 5, 8, 5});  // starts
   AddInputFromArray<int>(TensorShape({4}), {8, 7, 8, 1});     // limits
   AddInputFromArray<int>(TensorShape({4}), {2, 1, 1, -1});    // deltas
-  EXPECT_EQ("starts must be a scalar or vector", RunOpKernel().error_message());
+  EXPECT_EQ("starts must be a scalar or vector", RunOpKernel().message());
 }
 
 TEST_F(RaggedRangeOpTest, InvalidArgsLimits) {
@@ -148,7 +160,7 @@ TEST_F(RaggedRangeOpTest, InvalidArgsLimits) {
   AddInputFromArray<int>(TensorShape({4}), {0, 5, 8, 5});     // starts
   AddInputFromArray<int>(TensorShape({4, 1}), {8, 7, 8, 1});  // limits
   AddInputFromArray<int>(TensorShape({4}), {2, 1, 1, -1});    // deltas
-  EXPECT_EQ("limits must be a scalar or vector", RunOpKernel().error_message());
+  EXPECT_EQ("limits must be a scalar or vector", RunOpKernel().message());
 }
 
 TEST_F(RaggedRangeOpTest, InvalidArgsDeltas) {
@@ -156,7 +168,7 @@ TEST_F(RaggedRangeOpTest, InvalidArgsDeltas) {
   AddInputFromArray<int>(TensorShape({4}), {0, 5, 8, 5});      // starts
   AddInputFromArray<int>(TensorShape({4}), {8, 7, 8, 1});      // limits
   AddInputFromArray<int>(TensorShape({4, 1}), {2, 1, 1, -1});  // deltas
-  EXPECT_EQ("deltas must be a scalar or vector", RunOpKernel().error_message());
+  EXPECT_EQ("deltas must be a scalar or vector", RunOpKernel().message());
 }
 
 TEST_F(RaggedRangeOpTest, InvalidArgsShapeMismatch) {
@@ -165,7 +177,7 @@ TEST_F(RaggedRangeOpTest, InvalidArgsShapeMismatch) {
   AddInputFromArray<int>(TensorShape({3}), {7, 8, 1});      // limits
   AddInputFromArray<int>(TensorShape({4}), {2, 1, 1, -1});  // deltas
   EXPECT_EQ("starts, limits, and deltas must have the same shape",
-            RunOpKernel().error_message());
+            RunOpKernel().message());
 }
 
 TEST_F(RaggedRangeOpTest, InvalidArgsZeroDelta) {
@@ -173,7 +185,7 @@ TEST_F(RaggedRangeOpTest, InvalidArgsZeroDelta) {
   AddInputFromArray<int>(TensorShape({4}), {0, 5, 8, 5});   // starts
   AddInputFromArray<int>(TensorShape({4}), {7, 8, 8, 1});   // limits
   AddInputFromArray<int>(TensorShape({4}), {2, 1, 0, -1});  // deltas
-  EXPECT_EQ("Requires delta != 0", RunOpKernel().error_message());
+  EXPECT_EQ("Requires delta != 0", RunOpKernel().message());
 }
 
 TEST_F(RaggedRangeOpTest, EmptyRangePositiveDelta) {
@@ -184,8 +196,8 @@ TEST_F(RaggedRangeOpTest, EmptyRangePositiveDelta) {
   TF_ASSERT_OK(RunOpKernel());
 
   // Expected: [[0, 2, 4], []]
-  test::ExpectTensorEqual<int64>(*GetOutput(kSplitsOutput),
-                                 test::AsTensor<int64>({0, 3, 3}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSplitsOutput),
+                                   test::AsTensor<int64_t>({0, 3, 3}));
   test::ExpectTensorEqual<int>(*GetOutput(kValuesOutput),
                                test::AsTensor<int>({0, 2, 4}));
 }
@@ -198,8 +210,8 @@ TEST_F(RaggedRangeOpTest, EmptyRangeNegativeDelta) {
   TF_ASSERT_OK(RunOpKernel());
 
   // Expected: [[], [5, 3, 1]]
-  test::ExpectTensorEqual<int64>(*GetOutput(kSplitsOutput),
-                                 test::AsTensor<int64>({0, 0, 3}));
+  test::ExpectTensorEqual<int64_t>(*GetOutput(kSplitsOutput),
+                                   test::AsTensor<int64_t>({0, 0, 3}));
   test::ExpectTensorEqual<int>(*GetOutput(kValuesOutput),
                                test::AsTensor<int>({5, 3, 1}));
 }

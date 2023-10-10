@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 
+#include <algorithm>
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -198,7 +202,7 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
         }
       } else {
         // Parse it as a value.
-        int64 value = -1;
+        int64_t value = -1;
         if (!strings::safe_strto64(expected_dim, &value)) {
           return Unknown(err_prefix, ": the expected dimension value '",
                          expected_dim, "' failed to parse as int64",
@@ -222,7 +226,7 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // static
@@ -231,7 +235,7 @@ Status ShapeInferenceTestutil::MakeShapeFromString(
     ShapeHandle* output) {
   if (spec == "?") {
     *output = manager->UnknownShape();
-    return Status::OK();
+    return OkStatus();
   }
 
   std::vector<DimensionHandle> dims;
@@ -244,7 +248,7 @@ Status ShapeInferenceTestutil::MakeShapeFromString(
     } else {
       scanner.RestartCapture().Many(strings::Scanner::DIGIT);
       StringPiece match;
-      int64 dim_size = 0;
+      int64_t dim_size = 0;
 
       if (!scanner.GetResult(nullptr, &match) ||
           !strings::safe_strto64(match, &dim_size)) {
@@ -266,7 +270,7 @@ Status ShapeInferenceTestutil::MakeShapeFromString(
   }
   *output = manager->MakeShape(dims);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace shape_inference

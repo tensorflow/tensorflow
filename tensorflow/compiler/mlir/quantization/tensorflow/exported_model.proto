@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package tensorflow.quantization;
+
+import "tensorflow/core/framework/graph.proto";
+import "tensorflow/core/protobuf/meta_graph.proto";
+import "tensorflow/core/protobuf/saver.proto";
+
+option cc_enable_arenas = true;
+
+// Represents an exported TensorFlow model. It consists of a GraphDef and extra
+// metadata required for building a SavedModel. This message is primarily used
+// to "export" the model produced from various quantization passes in c++ to
+// Python layer.
+// Next ID: 11
+message ExportedModel {
+  reserved 3, 4, 7, 9;
+  reserved 'variable_shared_names';
+  reserved 'restore_node_name';
+  reserved 'save_node_name';
+  reserved 'file_prefix_tensor_name';
+
+  GraphDef graph_def = 1;
+
+  // Name of the initialization node (TF Operation) used for initializing
+  // resources like hash tables upon loading.
+  string init_node_name = 2;
+
+  // Path to the directory where checkpoint files are saved. This directoy is
+  // not expected to be persistent (usually a temporary directory). When
+  // fetching the restore op (see `restore_node_name`), this value is provided
+  // to the "file_prefix" tensor to identify the checkpoint directory.
+  string checkpoint_dir = 5;
+
+  // Function name -> function alias mapping. This associates the quantized
+  // functions to the original functions' aliases. This information will be used
+  // to populate `MetaInfoDef`s `function_aliases` when the quantized model is
+  // exported to the saved model. This field is usually only populated for the
+  // TF2 models.
+  map<string, string> function_aliases = 6;
+
+  // Holds information about the asset files used for the model. It essentially
+  // associates asset file names with the tensors to which the asset file names
+  // should be fed.
+  repeated AssetFileDef asset_file_defs = 8;
+
+  // SaverDef including the information required for saving and restoring
+  // variables. This field is not set if there are no variables in the exported
+  // graph. If set, the fields `version`, `filename_tensor_name`,
+  // `restore_op_name` and `save_tensor_name` are populated.
+  SaverDef saver_def = 10;
+}

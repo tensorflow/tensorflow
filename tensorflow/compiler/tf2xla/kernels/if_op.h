@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_IF_OP_H_
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_IF_OP_H_
 
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 
@@ -45,19 +47,18 @@ class XlaIfOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaIfOp);
+  XlaIfOp(const XlaIfOp&) = delete;
+  void operator=(const XlaIfOp&) = delete;
 
   NameAttrList then_branch_;
   NameAttrList else_branch_;
   DataType cond_type_;
   DataTypeVector input_types_;
   DataTypeVector output_types_;
+  std::vector<PartialTensorShape> output_shapes_;
   bool has_token_input_output_;
   std::vector<string> token_input_nodes_;
-  // Whether to propagate compile time consts into the cond branches.
-  // This is not supported by default now since it may cause HBM memory
-  // overheads.
-  bool propagate_compile_time_consts_ = false;
+  string original_node_name_;
 };
 
 }  // namespace tensorflow

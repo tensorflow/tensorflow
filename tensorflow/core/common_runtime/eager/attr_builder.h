@@ -19,8 +19,10 @@ limitations under the License.
 // Support for eager execution of TensorFlow kernels.
 
 #include <memory>
+#include <optional>
 #include <unordered_map>
 
+#include "tensorflow/c/eager/abstract_op_attrs.h"
 #include "tensorflow/c/tf_attrtype.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -29,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
@@ -75,9 +76,11 @@ Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
 // tensorflow::Fprint128 cache_key = a.CacheKey("cpu:0");
 // const NodeDef& n = a.BuildNodeDef();
 //
-// Note that all calls to Set and NumInputs should happen before calling
-// BuildNodeDef. Also, calls to NumInputs or Set between multiple invocations
-// to CacheKey may cause different values to be returned by CacheKey.
+// Calls to NumInputs or Set between multiple invocations to CacheKey may cause
+// different values to be returned by CacheKey.
+//
+// If NumInputs or Set is called, BuildNodeDef should be called again to update
+// the NodeDef.
 //
 // For performance reasons, the class internally delays the actual construction
 // of the NodeDef till BuildNodeDef is called, or Set is called with certain
@@ -88,22 +91,28 @@ Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
 // messages to be destructed, which is not thread safe. This means that it is
 // currently not safe to set attributes on *different* AttrBuilder objects from
 // multiple threads. This does not apply to `CopyAttributes`.
-class AttrBuilder {
+class AttrBuilder : public AbstractOpAttrs {
  public:
-  AttrBuilder() {}
-  explicit AttrBuilder(const char* op) { Reset(op); }
+  AttrBuilder()
+      : AbstractOpAttrs(AbstractOpAttrs::AbstractOpAttrsKind::kEager) {}
+
+  ~AttrBuilder() override = default;
+  explicit AttrBuilder(const char* op)
+      : AbstractOpAttrs(AbstractOpAttrs::AbstractOpAttrsKind::kEager) {
+    Reset(op);
+  }
 
   void Reset(const char* op) {
     op_name_ = op;
     num_inputs_ = 0;
     encoded_attrs_.clear();
-    node_def_initialized_ = false;
     node_def_finalized_ = false;
-    cached_cache_key_ = absl::nullopt;
+    cached_cache_key_ = std::nullopt;
     device_for_cached_cache_key_.clear();
   }
 
   const string& op_name() const { return op_name_; }
+  void set_op_name(const string& name) { op_name_ = name; }
 
   // Needed to work around call to ValidateNodeDef in CreateOpKernel.
   AttrBuilder& NumInputs(int n);
@@ -112,7 +121,8 @@ class AttrBuilder {
   AttrBuilder& Set(StringPiece attr_name, T&& value) {
     SetAttrValue(value, &attr_tmp_);
     AddAttrIfNotPresent(attr_name, attr_tmp_);
-    cached_cache_key_ = absl::nullopt;
+    node_def_finalized_ = false;
+    cached_cache_key_ = std::nullopt;
     return *this;
   }
 
@@ -120,7 +130,7 @@ class AttrBuilder {
 
   AttrBuilder& Set(StringPiece attr_name, const AttrValue& value) {
     AddAttrIfNotPresent(attr_name, value);
-    cached_cache_key_ = absl::nullopt;
+    cached_cache_key_ = std::nullopt;
     return *this;
   }
 
@@ -133,14 +143,14 @@ class AttrBuilder {
     // Common attributes are stored in AttrVecs. This Get() template
     // is specialized for them below. If we end up here, the type must be
     // among those that we store in the node_def_.
-    if (!node_def_initialized_) {
+    if (!node_def_finalized_) {
       return errors::NotFound("No attr named'", attr_name,
                               "' found in AttrBuilder for ", op_name_);
     }
     return GetNodeAttr(AttrSlice(node_def_), attr_name, value);
   }
 
-  tensorflow::Fprint128 CacheKey(const StringPiece device);
+  tensorflow::Fprint128 CacheKey(StringPiece device);
 
   // Fill `m` with the attr-value pairs set via AttrBuilder::Set() so far, as
   // well as any default attr-value pairs from the associated op_def, if there
@@ -161,12 +171,19 @@ class AttrBuilder {
   // AttrValueMap.
   void CopyAttributes(const AttrBuilder& other);
 
- private:
-  tensorflow::Fprint128 BuildCacheKeyForDevice(const StringPiece device) const;
+  void GetNameAttrList(tensorflow::NameAttrList* name_and_attrs) const override;
 
-  // Initialize the node_def_ object.
-  // REQUIRES: node_def_initialized_ = false
-  void InitializeNodeDef();
+  bool GetInt(absl::string_view attr_name, int64_t* result) const override;
+  bool GetFloat(absl::string_view attr_name, float* result) const override;
+  bool GetBool(absl::string_view attr_name, bool* result) const override;
+  bool GetType(absl::string_view attr_name,
+               tensorflow::DataType* result) const override;
+  Status GetTypeList(
+      absl::string_view attr_name,
+      absl::InlinedVector<DataType, 4>* type_list) const override;
+
+ private:
+  tensorflow::Fprint128 BuildCacheKeyForDevice(StringPiece device) const;
 
   template <class T>
   void SetInAttrValueMap(AttrValueMap* m, const string& attr_name,
@@ -182,13 +199,13 @@ class AttrBuilder {
   gtl::FlatMap<string, string> encoded_attrs_;
   mutable AttrValue attr_tmp_;  // For encoding
 
-  string op_name_;  // Conceptually const, but can't be because of Reset(...)
+  string op_name_;
   int num_inputs_;
   NodeDef node_def_;
   bool node_def_initialized_;
   bool node_def_finalized_;
 
-  absl::optional<tensorflow::Fprint128> cached_cache_key_;
+  std::optional<tensorflow::Fprint128> cached_cache_key_;
   string device_for_cached_cache_key_;
 };
 
@@ -201,7 +218,6 @@ Status AttrBuilder::Get(StringPiece attr_name, bool* value) const;
 template <>
 Status AttrBuilder::Get(StringPiece attr_name,
                         tensorflow::DataType* value) const;
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_ATTR_BUILDER_H_

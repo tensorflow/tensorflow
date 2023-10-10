@@ -14,35 +14,39 @@
 # ==============================================================================
 """Experimental API for TensorFlow's "Eager" mode of execution."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.framework import errors
+from tensorflow.python.platform import tf_logging as logging
 
 # Trace of execution and memory usage.
 _active_trace = None
 
 
-def _status_to_exception(code, message):
+def _status_to_exception(status):
   try:
-    error_class = errors.exception_type_from_error_code(code)
-    return error_class(None, None, message)
+    error_class = errors.exception_type_from_error_code(status.code)
+    e = error_class(None, None, status.message, status.payloads)
+    logging.error_log("%s: %s" % (e.__class__.__name__, e))
+    return e
   except KeyError:
-    return errors.UnknownError(None, None, message, code)
+    e = errors.UnknownError(
+        None, None, status.message, status.code, status.payloads
+    )
+    logging.error_log("%s: %s" % (e.__class__.__name__, e))
+    return e
 
 
 class _NotOkStatusException(Exception):
   """Exception class to handle not ok Status."""
 
-  def __init__(self, message, code):
+  def __init__(self, message, code, payloads):
     super(_NotOkStatusException, self).__init__()
     self.message = message
     self.code = code
+    self.payloads = payloads
 
   def __str__(self):
-    e = _status_to_exception(self.code, self.message)
+    e = _status_to_exception(self)
     return "%s: %s" % (e.__class__.__name__, e)
 
 

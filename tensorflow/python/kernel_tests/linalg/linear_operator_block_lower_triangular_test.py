@@ -13,14 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -61,7 +58,12 @@ class SquareLinearOperatorBlockLowerTriangularTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
   def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
     # Increase from 1e-6 to 1e-5
     self._atol[dtypes.float32] = 1e-5
     self._atol[dtypes.complex64] = 1e-5
@@ -204,6 +206,25 @@ class SquareLinearOperatorBlockLowerTriangularTest(
           for item in grads:
             self.assertIsNotNone(item)
 
+  def test_convert_variables_to_tensors(self):
+    operator_1 = linalg.LinearOperatorFullMatrix(
+        variables_module.Variable([[1., 0.], [0., 1.]]),
+        is_self_adjoint=True,
+        is_positive_definite=True)
+    operator_2 = linalg.LinearOperatorFullMatrix(
+        variables_module.Variable([[2., 0.], [1., 0.]]))
+    operator_3 = linalg.LinearOperatorFullMatrix(
+        variables_module.Variable([[3., 1.], [1., 3.]]),
+        is_self_adjoint=True,
+        is_positive_definite=True)
+    operator = block_lower_triangular.LinearOperatorBlockLowerTriangular(
+        [[operator_1], [operator_2, operator_3]],
+        is_self_adjoint=False,
+        is_positive_definite=True)
+    with self.cached_session() as sess:
+      sess.run([x.initializer for x in operator.variables])
+      self.check_convert_variables_to_tensors(operator)
+
   def test_is_non_singular_auto_set(self):
     # Matrix with two positive eigenvalues, 11 and 8.
     # The matrix values do not effect auto-setting of the flags.
@@ -253,11 +274,11 @@ class SquareLinearOperatorBlockLowerTriangularTest(
       block_lower_triangular.LinearOperatorBlockLowerTriangular(operators)
 
   def test_empty_operators_raises(self):
-    with self.assertRaisesRegex(ValueError, "non-empty"):
+    with self.assertRaisesRegex(ValueError, "must be a list of >=1"):
       block_lower_triangular.LinearOperatorBlockLowerTriangular([])
 
   def test_operators_wrong_length_raises(self):
-    with self.assertRaisesRegex(ValueError, "must contain `i` blocks"):
+    with self.assertRaisesRegex(ValueError, "must contain `2` blocks"):
       block_lower_triangular.LinearOperatorBlockLowerTriangular([
           [linalg.LinearOperatorFullMatrix(rng.rand(2, 2))],
           [linalg.LinearOperatorFullMatrix(rng.rand(2, 2))
@@ -269,7 +290,7 @@ class SquareLinearOperatorBlockLowerTriangularTest(
         [linalg.LinearOperatorFullMatrix(rng.rand(3, 4)),
          linalg.LinearOperatorFullMatrix(rng.rand(3, 3))]
     ]
-    with self.assertRaisesRegex(ValueError, "must be equal"):
+    with self.assertRaisesRegex(ValueError, "must be the same as"):
       block_lower_triangular.LinearOperatorBlockLowerTriangular(operators)
 
   def test_incompatible_input_blocks_raises(self):
@@ -288,6 +309,28 @@ class SquareLinearOperatorBlockLowerTriangularTest(
            else "input structure is ambiguous")
     with self.assertRaisesRegex(ValueError, msg):
       operator.matmul(x)
+
+  def test_composite_gradients(self):
+    with backprop.GradientTape() as tape:
+      op1 = linalg.LinearOperatorFullMatrix(rng.rand(4, 4), is_square=True)
+      op2 = linalg.LinearOperatorFullMatrix(rng.rand(3, 4))
+      op3 = linalg.LinearOperatorFullMatrix(rng.rand(3, 3), is_square=True)
+      tape.watch([op1, op2, op3])
+      operator = block_lower_triangular.LinearOperatorBlockLowerTriangular(
+          [[op1], [op2, op3]])
+
+      x = self.make_x(op1, adjoint=False)
+      y = op1.matmul(x)
+      connected_grad, disconnected_grad, composite_grad = tape.gradient(
+          y, [op1, op3, operator]
+      )
+
+    disconnected_component_grad = composite_grad.operators[1][1].to_dense()
+    self.assertAllClose(connected_grad.to_dense(),
+                        composite_grad.operators[0][0].to_dense())
+    self.assertAllClose(disconnected_component_grad,
+                        array_ops.zeros_like(disconnected_component_grad))
+    self.assertIsNone(disconnected_grad)
 
 
 if __name__ == "__main__":

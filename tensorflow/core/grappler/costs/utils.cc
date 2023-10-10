@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -197,8 +198,8 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
   return inputs;
 }
 
-int64 CalculateTensorSize(const OpInfo::TensorProperties& prop) {
-  int64 size = DataTypeSize(BaseType(prop.dtype()));
+int64_t CalculateTensorSize(const OpInfo::TensorProperties& prop) {
+  int64_t size = DataTypeSize(BaseType(prop.dtype()));
   TensorShapeProto shape = prop.shape();
 
   // Can't infer the size if the rank is unknown. It has to be at least a
@@ -216,11 +217,17 @@ int64 CalculateTensorSize(const OpInfo::TensorProperties& prop) {
     }
   }
 
-  int64 num_elems = TensorShape(shape).num_elements();
-  return num_elems * size;
+  int64_t num_elems = TensorShape(shape).num_elements();
+  int64_t tensor_size = MultiplyWithoutOverflow(num_elems, size);
+  if (tensor_size < 0) {
+    VLOG(1) << "Overflow encountered when computing tensor size, multiplying "
+            << num_elems << " with " << size;
+    return -1;
+  }
+  return tensor_size;
 }
 
-int64 CalculateOutputSize(
+int64_t CalculateOutputSize(
     const std::vector<OpInfo::TensorProperties>& output_properties,
     const int port_num) {
   if (port_num < 0) return 4;  // 4B for control dependency.
@@ -241,14 +248,15 @@ DeviceProperties GetDeviceInfo(const string& device_str) {
   DeviceNameUtils::ParsedName parsed;
   if (DeviceNameUtils::ParseFullName(device_str, &parsed)) {
     if (parsed.type == "GPU") {
-      TfGpuId tf_gpu_id(parsed.id);
-      PlatformGpuId platform_gpu_id;
-      Status s = GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id);
+      TfDeviceId tf_device_id(parsed.id);
+      PlatformDeviceId platform_device_id;
+      Status s =
+          GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id);
       if (!s.ok()) {
         // We are probably running simulation without linking cuda libraries.
-        platform_gpu_id = PlatformGpuId(parsed.id);
+        platform_device_id = PlatformDeviceId(parsed.id);
       }
-      return GetLocalGPUInfo(platform_gpu_id);
+      return GetLocalGPUInfo(platform_device_id);
     } else if (parsed.type == "CPU") {
       return GetLocalCPUInfo();
     }

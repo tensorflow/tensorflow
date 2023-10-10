@@ -20,12 +20,10 @@ REGISTER6(UnaryOp, CPU, "Neg", functor::neg, Eigen::half, float, double,
           bfloat16, complex64, complex128);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_UNRANKED_GPU_KERNELS_ENABLED)
-REGISTER6(UnaryOp, GPU, "Neg", functor::neg, Eigen::half, float, double,
-          bfloat16, complex64, complex128);
-#else
-REGISTER3(UnaryOp, GPU, "Neg", functor::neg, bfloat16, complex64, complex128);
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+REGISTER5(UnaryOp, GPU, "Neg", functor::neg, Eigen::half, float, double,
+          complex64, complex128);
 #endif
+REGISTER(UnaryOp, GPU, "Neg", functor::neg, bfloat16);
 #endif
 }  // namespace tensorflow

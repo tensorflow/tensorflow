@@ -40,7 +40,7 @@ namespace {
 Status ForceXlaConstantsOnHost(const Scope& s,
                                FunctionLibraryDefinition* flib_def,
                                std::unique_ptr<Graph>* result) {
-  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   GraphOptimizationPassOptions options;
   SessionOptions session_options;
   session_options.env = Env::Default();
@@ -51,7 +51,7 @@ Status ForceXlaConstantsOnHost(const Scope& s,
   ForceXlaConstantsOnHostPass rewriter;
   TF_RETURN_IF_ERROR(rewriter.Run(options));
   *result = std::move(graph);
-  return Status::OK();
+  return OkStatus();
 }
 
 TEST(ForceXlaConstantsOnHostPassTest, Simple) {

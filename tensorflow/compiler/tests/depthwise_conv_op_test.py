@@ -14,16 +14,12 @@
 # ==============================================================================
 """Functional tests for depthwise convolutional operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
@@ -39,7 +35,7 @@ def ReferenceDepthwiseConv2D(input_tensor, filter_tensor, strides, padding,
   convs = []
   in_channels = filter_tensor.shape[2]
   # Use a custom implementation of depthwise conv2d using slicing.
-  for channel in xrange(in_channels):
+  for channel in range(in_channels):
     # Slice the input along channel
     if data_format == "NCHW":
       input_slice = input_tensor[:, channel:channel+1, :, :]
@@ -220,6 +216,8 @@ class DepthwiseConv2DTest(xla_test.XLATestCase):
     self.assertAllClose(
         np.ravel(native_result), np.ravel(interface_result), rtol=tolerance)
 
+  @test_util.run_without_tensor_float_32(
+      "DepthwiseConv2D may use TF32 when available.")
   def testDepthwiseConv2D(self):
     for index, (input_size, filter_size, _, stride,
                 padding) in enumerate(ConfigsToTest()):
@@ -231,6 +229,8 @@ class DepthwiseConv2DTest(xla_test.XLATestCase):
           self._VerifyValues(
               input_size, filter_size, stride, padding, data_type)
 
+  @test_util.run_without_tensor_float_32(
+      "DepthwiseConv2D may use TF32 when available.")
   def testDepthwiseConv2DFormat(self):
     for index, (input_size, filter_size, _, stride,
                 padding) in enumerate(ConfigsToTest()):
@@ -536,6 +536,8 @@ class DepthwiseConv2DTest(xla_test.XLATestCase):
     cpu_value = _GetVal(use_xla=False)
     self.assertAllClose(cpu_value, gpu_value, rtol=1e-4, atol=1e-4)
 
+  @test_util.run_without_tensor_float_32(
+      "DepthwiseConv2DFilterGrad may use TF32 when available.")
   def testDepthwiseConv2DFilterGradCompare(self):
     for index, (input_size, filter_size, output_size, stride,
                 padding) in enumerate(ConfigsToTest()):
@@ -545,6 +547,8 @@ class DepthwiseConv2DTest(xla_test.XLATestCase):
       self._CompareBackpropFilter(input_size, filter_size, output_size,
                                   stride, padding)
 
+  @test_util.run_without_tensor_float_32(
+      "DepthwiseConv2DFilterGrad may use TF32 when available.")
   def testDepthwiseConv2DFilterGradFormatNCHWCompare(self):
     for index, (input_size, filter_size, output_size, stride,
                 padding) in enumerate(ConfigsToTest()):

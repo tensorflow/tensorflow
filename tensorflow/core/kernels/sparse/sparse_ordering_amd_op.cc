@@ -17,11 +17,11 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/Eigen/SparseCholesky"
-#include "third_party/eigen3/Eigen/SparseCore"
-#include "third_party/eigen3/Eigen/OrderingMethods"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/SparseCholesky"  // from @eigen_archive
+#include "Eigen/SparseCore"  // from @eigen_archive
+#include "Eigen/OrderingMethods"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -74,9 +74,9 @@ class CSROrderingAMDCPUOp : public OpKernel {
                 errors::InvalidArgument("sparse matrix must have rank 2 or 3; ",
                                         "but dense_shape has size ", rank));
 
-    auto dense_shape_vec = dense_shape.vec<int64>();
-    const int64 num_rows = dense_shape_vec((rank == 2) ? 0 : 1);
-    const int64 num_cols = dense_shape_vec((rank == 2) ? 1 : 2);
+    auto dense_shape_vec = dense_shape.vec<int64_t>();
+    const int64_t num_rows = dense_shape_vec((rank == 2) ? 0 : 1);
+    const int64_t num_cols = dense_shape_vec((rank == 2) ? 1 : 2);
 
     OP_REQUIRES(ctx, num_rows == num_cols,
                 errors::InvalidArgument("sparse matrix must be square; got: ",
@@ -92,12 +92,12 @@ class CSROrderingAMDCPUOp : public OpKernel {
 
     // Parallelize AMD computation across batches using a threadpool.
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
-    const int64 amd_cost_per_batch =
+    const int64_t amd_cost_per_batch =
         10 * num_rows * (input_matrix->total_nnz() / batch_size);
     Shard(
         worker_threads.num_threads, worker_threads.workers, batch_size,
-        amd_cost_per_batch, [&](int64 batch_begin, int64 batch_end) {
-          for (int64 batch_index = batch_begin; batch_index < batch_end;
+        amd_cost_per_batch, [&](int64_t batch_begin, int64_t batch_end) {
+          for (int64_t batch_index = batch_begin; batch_index < batch_end;
                ++batch_index) {
             // Define an Eigen SparseMatrix Map to operate on the
             // CSRSparseMatrix component without copying the data.

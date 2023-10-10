@@ -14,16 +14,13 @@
 # ==============================================================================
 """Tests for class OneDeviceStrategy."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
+from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import device as tf_device
@@ -121,7 +118,7 @@ class OneDeviceStrategyTest(
 
   def test_prefetch_to_device_dataset(self, distribution):
     input_options = distribute_lib.InputOptions(
-        experimental_prefetch_to_device=True)
+        experimental_fetch_to_device=True)
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.batch(distribution.num_replicas_in_sync)
     dataset = distribution.experimental_distribute_dataset(
@@ -129,7 +126,7 @@ class OneDeviceStrategyTest(
     if context.executing_eagerly():
       item = next(iter(dataset))
     else:
-      if isinstance(dataset, input_lib.DistributedDatasetV1):
+      if isinstance(dataset, input_lib_v1.DistributedDatasetV1):
         item = dataset.make_initializable_iterator().get_next()
       else:
         self.skipTest("unsupported test combination")
@@ -142,7 +139,7 @@ class OneDeviceStrategyTest(
 
   def test_prefetch_to_host_dataset(self, distribution):
     input_options = distribute_lib.InputOptions(
-        experimental_prefetch_to_device=False)
+        experimental_fetch_to_device=False)
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.batch(distribution.num_replicas_in_sync)
     dataset = distribution.experimental_distribute_dataset(
@@ -150,7 +147,7 @@ class OneDeviceStrategyTest(
     if context.executing_eagerly():
       item = next(iter(dataset))
     else:
-      if isinstance(dataset, input_lib.DistributedDatasetV1):
+      if isinstance(dataset, input_lib_v1.DistributedDatasetV1):
         item = dataset.make_initializable_iterator().get_next()
       else:
         self.skipTest("unsupported test combination")

@@ -14,17 +14,16 @@
 # ==============================================================================
 """Implementation of Cluster Resolvers for Cloud TPUs."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import re
 
-from tensorflow.python.distribute.cluster_resolver import cluster_resolver
+from tensorflow.core.protobuf.tpu import topology_pb2
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
+from tensorflow.python.eager import remote
 from tensorflow.python.framework import config as framework_config
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
@@ -56,7 +55,44 @@ DeviceDetails = collections.namedtuple(
     'DeviceDetails', ['device_map', 'total_cores'])
 
 
-class TPUClusterResolver(cluster_resolver.ClusterResolver):
+def initialize_tpu_system(cluster_resolver=None):
+  """Initialize the TPU devices.
+
+  Args:
+    cluster_resolver: A tf.distribute.cluster_resolver.TPUClusterResolver,
+        which provides information about the TPU cluster.
+  Returns:
+    The tf.tpu.Topology object for the topology of the TPU cluster. If called
+    inside tf.function, it returns the serialized topology object instead.
+
+  Raises:
+    RuntimeError: If running inside a tf.function.
+    NotFoundError: If no TPU devices found in eager mode.
+  """
+  return tpu_strategy_util.initialize_tpu_system_impl(
+      cluster_resolver, TPUClusterResolver)
+
+
+def shutdown_tpu_system(cluster_resolver=None):
+  """Shuts down the TPU devices.
+
+  This will clear all caches, even those that are maintained through sequential
+  calls to tf.tpu.experimental.initialize_tpu_system, such as the compilation
+  cache.
+
+  Args:
+    cluster_resolver: A tf.distribute.cluster_resolver.TPUClusterResolver,
+        which provides information about the TPU cluster.
+
+  Raises:
+    RuntimeError: If no TPU devices found for eager execution or if run in a
+        tf.function.
+  """
+  tpu_strategy_util.shutdown_tpu_system_impl(
+      cluster_resolver, TPUClusterResolver)
+
+
+class TPUClusterResolver(cluster_resolver_lib.ClusterResolver):
   """Cluster Resolver for Google Cloud TPUs.
 
   This is an implementation of cluster resolvers for the Google Cloud TPU
@@ -107,10 +143,8 @@ class TPUClusterResolver(cluster_resolver.ClusterResolver):
       NotFoundError: If no TPU devices found in eager mode.
     """
     resolver = TPUClusterResolver(tpu, zone, project)
-    from tensorflow.python.eager import remote  # pylint: disable=g-import-not-at-top
     remote.connect_to_cluster(resolver)
-    from tensorflow.python.tpu import tpu_strategy_util  # pylint: disable=g-import-not-at-top
-    tpu_strategy_util.initialize_tpu_system(resolver)
+    tpu_strategy_util.initialize_tpu_system_impl(resolver)
     return resolver
 
   @staticmethod
@@ -221,6 +255,8 @@ class TPUClusterResolver(cluster_resolver.ClusterResolver):
     else:
       self._coordinator_address = coordinator_address
 
+    self._tpu_topology = None
+
   def __enter__(self):
     self._cloud_tpu_client.enter()
 
@@ -267,7 +303,7 @@ class TPUClusterResolver(cluster_resolver.ClusterResolver):
         if not job_tasks:
           raise ValueError('No TPUs with the specified names exist.')
         master = job_tasks[0]
-      return cluster_resolver.format_master_url(master, 'grpc')
+      return cluster_resolver_lib.format_master_url(master, 'grpc')
     else:
       return ''
 
@@ -277,6 +313,16 @@ class TPUClusterResolver(cluster_resolver.ClusterResolver):
   def get_job_name(self):
     return self.task_type
 
+  def get_coordination_service_leader(self):
+    """Returns the location for coordination service.
+
+    The coordination service should be located on TPU worker0.
+
+    Returns:
+      A string indicate the location path.
+    """
+    return '/job:' + self.get_job_name() + '/task:0'
+
   def get_tpu_system_metadata(self):
     """Returns the metadata of the TPU system.
 
@@ -285,8 +331,8 @@ class TPUClusterResolver(cluster_resolver.ClusterResolver):
     ```python
 
     resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
-    tpu_system_medata = resolver.get_tpu_system_metadata()
-    num_hosts = tpu_system_medata.num_hosts
+    tpu_system_metadata = resolver.get_tpu_system_metadata()
+    num_hosts = tpu_system_metadata.num_hosts
     ```
 
     Returns:
@@ -375,7 +421,7 @@ class TPUClusterResolver(cluster_resolver.ClusterResolver):
     while True:
       try:
         device_details = TPUClusterResolver._get_device_dict_and_cores(
-            cluster_resolver.get_accelerator_devices(
+            cluster_resolver_lib.get_accelerator_devices(
                 self.master(), config_proto=config_proto))
         break
       except errors.DeadlineExceededError:
@@ -397,10 +443,22 @@ class TPUClusterResolver(cluster_resolver.ClusterResolver):
       }
     return {'TPU': 0}
 
+  def set_tpu_topology(self, serialized_tpu_topology):
+    """Sets the tpu topology info stored in this resolver."""
+    self._tpu_topology = topology_pb2.TopologyProto()
+    self._tpu_topology.ParseFromString(serialized_tpu_topology)
+
+  @property
+  def tpu_hardware_feature(self):
+    """Returns the tpu topology info stored."""
+    if self._tpu_topology is None:
+      return self._tpu_topology
+    return self._tpu_topology.tpu_hardware_feature
+
   @property
   def environment(self):
     """Returns the current environment which TensorFlow is running in."""
-    return self._environment
+    return ''
 
   def _start_local_server(self):
     address = compat.as_text(self._cloud_tpu_client.get_local_ip())

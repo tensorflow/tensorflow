@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for SlurmClusterResolver."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from tensorflow.python.distribute.cluster_resolver.slurm_cluster_resolver import expand_hostlist
@@ -38,6 +34,9 @@ class SlurmClusterResolverTest(test.TestCase):
     self.assertEqual(
         expand_hostlist('n[1-2],m5,o[3-4,6,7-9]'),
         ['n1', 'n2', 'm5', 'o3', 'o4', 'o6', 'o7', 'o8', 'o9'])
+    self.assertEqual(
+        expand_hostlist('n[0001-0003],m5,o[009-011]'),
+        ['n0001', 'n0002', 'n0003', 'm5', 'o009', 'o010', 'o011'])
 
   def test_expand_tasks_per_node(self):
     self.assertEqual(expand_tasks_per_node('2'), [2])

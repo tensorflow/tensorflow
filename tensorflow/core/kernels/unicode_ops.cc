@@ -21,7 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "unicode/appendable.h"  // from @icu
 #include "unicode/schriter.h"  // from @icu
 #include "unicode/uchar.h"  // from @icu
@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/bcast.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
@@ -222,7 +221,7 @@ Status GetErrorOptions(OpKernelConstruction* ctx, ErrorOptions* out) {
         "errors policy must be one of 'strict', 'replace', or 'ignore'");
   }
 
-  int32 replacement_char;
+  int32_t replacement_char;
   TF_RETURN_IF_ERROR(ctx->GetAttr("replacement_char", &replacement_char));
 
   if (replacement_char >= UCHAR_MIN_VALUE &&
@@ -238,7 +237,7 @@ Status GetErrorOptions(OpKernelConstruction* ctx, ErrorOptions* out) {
                                     &(out->replace_control_chars)));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 inline bool ShouldHandleFormatError(const ErrorOptions& error_options,
@@ -263,7 +262,7 @@ class UnicodeTranscodeOp : public OpKernel {
     // at execution time (and to warm any data caches the converter needs).
     // This instance is not used.
     std::unique_ptr<WrappedConverter> input_encoder =
-        absl::make_unique<WrappedConverter>();
+        std::make_unique<WrappedConverter>();
     input_encoder->init(input_encoding_);
     OP_REQUIRES(ctx, input_encoder->converter_,
                 errors::InvalidArgument(
@@ -363,7 +362,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
     // at execution time (and to warm any data caches the converter needs).
     // This instance is not used.
     std::unique_ptr<WrappedConverter> input_encoder =
-        absl::make_unique<WrappedConverter>();
+        std::make_unique<WrappedConverter>();
     input_encoder->init(input_encoding_);
     OP_REQUIRES(ctx, input_encoder->converter_,
                 errors::InvalidArgument(
@@ -409,7 +408,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
     const auto& input_vec = input_tensor->flat<tstring>();
 
     std::unique_ptr<WrappedConverter> input_encoder =
-        absl::make_unique<WrappedConverter>();
+        std::make_unique<WrappedConverter>();
     input_encoder->init(input_encoding_);
     OP_REQUIRES(ctx, input_encoder->converter_,
                 errors::InvalidArgument(
@@ -492,12 +491,12 @@ class UnicodeDecodeWithOffsetsOp : public UnicodeDecodeBaseOp<SPLITS_TYPE> {
 };
 
 REGISTER_KERNEL_BUILDER(
-    Name("UnicodeDecode").Device(DEVICE_CPU).TypeConstraint<int64>("Tsplits"),
-    UnicodeDecodeOp<int64>);
+    Name("UnicodeDecode").Device(DEVICE_CPU).TypeConstraint<int64_t>("Tsplits"),
+    UnicodeDecodeOp<int64_t>);
 REGISTER_KERNEL_BUILDER(Name("UnicodeDecodeWithOffsets")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<int64>("Tsplits"),
-                        UnicodeDecodeWithOffsetsOp<int64>);
+                            .TypeConstraint<int64_t>("Tsplits"),
+                        UnicodeDecodeWithOffsetsOp<int64_t>);
 REGISTER_KERNEL_BUILDER(
     Name("UnicodeDecode").Device(DEVICE_CPU).TypeConstraint<int32>("Tsplits"),
     UnicodeDecodeOp<int32>);
@@ -533,6 +532,21 @@ class UnicodeEncodeOp : public OpKernel {
     const Tensor& input_splits = context->input(1);
     const auto input_splits_flat = input_splits.flat<SPLITS_TYPE>();
 
+    OP_REQUIRES(
+        context, input_splits.NumElements() > 0,
+        errors::InvalidArgument("Input_splits should contain elements, but "
+                                "given input_values has 0 elements"));
+    // Operation will treat first argument in input_splits as if it were zero
+    // regardless of its actual value since splits should begin with zero and
+    // end with the length of the input values vector.
+    OP_REQUIRES(
+        context, input_splits_flat(0) == 0,
+        errors::InvalidArgument("First value in input_splits must be zero."));
+    OP_REQUIRES(context,
+                input_splits_flat(input_splits_flat.size() - 1) ==
+                    input_tensor_flat.size(),
+                errors::InvalidArgument("Last value in input_splits must be "
+                                        "equal to length of input_tensor."));
     // Since we limit to a 2-D input (flat_values of rank 1 and a single splits
     // tensor), our output dimension will be 1 with it's size equal to the
     // number of splits (outer dimension or ragged tensor).
@@ -548,8 +562,16 @@ class UnicodeEncodeOp : public OpKernel {
     for (int i = 1; i < input_splits_flat.size(); ++i) {
       icu::UnicodeString unicode_string;
       icu::UnicodeStringAppendable appendable_unicode_string(unicode_string);
+      OP_REQUIRES(
+          context, input_splits_flat(i - 1) <= input_splits_flat(i),
+          errors::InvalidArgument(
+              "Values in input_splits must be equal or in ascending order."));
+      OP_REQUIRES(
+          context, input_splits_flat(i) <= input_tensor_flat.size(),
+          errors::InvalidArgument("Values in input_splits must be less than or "
+                                  "equal to input_tensor length."));
       for (; idx < input_splits_flat(i); ++idx) {
-        int32 code_point = input_tensor_flat(idx);
+        int32_t code_point = input_tensor_flat(idx);
         // Check for invalid code point
         if (!U_IS_UNICODE_CHAR(code_point)) {
           if (error_options_.error_on_malformatting) {
@@ -575,8 +597,8 @@ class UnicodeEncodeOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(
-    Name("UnicodeEncode").Device(DEVICE_CPU).TypeConstraint<int64>("Tsplits"),
-    UnicodeEncodeOp<int64>);
+    Name("UnicodeEncode").Device(DEVICE_CPU).TypeConstraint<int64_t>("Tsplits"),
+    UnicodeEncodeOp<int64_t>);
 REGISTER_KERNEL_BUILDER(
     Name("UnicodeEncode").Device(DEVICE_CPU).TypeConstraint<int32>("Tsplits"),
     UnicodeEncodeOp<int32>);

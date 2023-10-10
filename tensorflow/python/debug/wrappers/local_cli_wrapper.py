@@ -13,16 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 """Debugger Wrapper Session Consisting of a Local Curses-based CLI."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import os
 import sys
 import tempfile
 
-# Google-internal import(s).
 from tensorflow.python.debug.cli import analyzer_cli
 from tensorflow.python.debug.cli import cli_config
 from tensorflow.python.debug.cli import cli_shared
@@ -51,8 +46,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
   def __init__(self,
                sess,
                dump_root=None,
-               log_usage=True,
-               ui_type="curses",
+               ui_type="readline",
                thread_name_filter=None,
                config_file_path=False):
     """Constructor of LocalCLIDebugWrapperSession.
@@ -64,9 +58,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         does not exist, it will be created by the debugger core during debug
         `run()` calls and removed afterwards. If `None`, the debug dumps will
         be at tfdbg_<random_string> under the system temp directory.
-      log_usage: (`bool`) whether the usage of this class is to be logged.
       ui_type: (`str`) requested UI type. Currently supported:
-        (curses | readline)
+        (readline)
       thread_name_filter: Regular-expression white list for thread name. See
         the doc of `BaseDebugWrapperSession` for details.
       config_file_path: Optional override to the default configuration file
@@ -76,15 +69,11 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       ValueError: If dump_root is an existing and non-empty directory or if
         dump_root is a file.
     """
-
-    if log_usage:
-      pass  # No logging for open-source.
-
     framework.BaseDebugWrapperSession.__init__(
         self, sess, thread_name_filter=thread_name_filter)
 
     if not dump_root:
-      self._dump_root = tempfile.mktemp(prefix=_DUMP_ROOT_PREFIX)
+      self._dump_root = tempfile.mkdtemp(prefix=_DUMP_ROOT_PREFIX)
     else:
       dump_root = os.path.expanduser(dump_root)
       if os.path.isfile(dump_root):

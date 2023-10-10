@@ -1,0 +1,5 @@
+func.func @SelectV2_platform_elem_type_output_type(%arg0: tensor<*xi1>, %arg1: tensor<*xelem_type>, %arg2: tensor<*xelem_type>)
+    -> tensor<*xoutput_type> attributes {tf_entry, llvm.emit_c_interface} {
+  %0 = chlo.broadcast_select %arg0, %arg1, %arg2 : (tensor<*xi1>, tensor<*xelem_type>, tensor<*xelem_type>) -> tensor<*xelem_type>
+  func.return %0 : tensor<*xoutput_type>
+}

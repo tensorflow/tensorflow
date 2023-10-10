@@ -27,7 +27,7 @@ limitations under the License.
 namespace tensorflow {
 
 static Graph* MakeGraph(int split_dim, int num_split,
-                        std::initializer_list<int64> chunk_size) {
+                        std::initializer_list<int64_t> chunk_size) {
   Graph* g = new Graph(OpRegistry::Global());
   TensorShape in_shape(chunk_size);
   in_shape.set_dim(split_dim, in_shape.dim_size(split_dim) * num_split);
@@ -51,7 +51,7 @@ static Graph* MakeGraph(int split_dim, int num_split,
     state.SetLabel(label);                                                  \
     auto g = MakeGraph(/* split_dim = */ 0, num_split, {chunk_size});       \
     test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);      \
-    state.SetItemsProcessed(static_cast<int64>(state.iterations()) *        \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *      \
                             num_split * chunk_size);                        \
   }                                                                         \
   BENCHMARK(BM_Split_1d_##num_split##_##chunk_size)->UseRealTime();
@@ -66,7 +66,7 @@ static Graph* MakeGraph(int split_dim, int num_split,
     state.SetLabel(label);                                                   \
     auto g = MakeGraph(split_dim, num_split, {chunk_size0, chunk_size1});    \
     test::Benchmark("cpu", g, /*old_benchmark_api*/ false).Run(state);       \
-    state.SetItemsProcessed(static_cast<int64>(state.iterations()) *         \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *       \
                             num_split * chunk_size0 * chunk_size1);          \
   }                                                                          \
   BENCHMARK(                                                                 \

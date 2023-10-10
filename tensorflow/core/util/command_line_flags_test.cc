@@ -38,10 +38,11 @@ std::vector<char *> CharPointerVectorFromStrings(
 TEST(CommandLineFlagsTest, BasicUsage) {
   int some_int32_set_directly = 10;
   int some_int32_set_via_hook = 20;
-  int64 some_int64_set_directly = 21474836470;  // max int32 is 2147483647
-  int64 some_int64_set_via_hook = 21474836479;  // max int32 is 2147483647
+  int64_t some_int64_set_directly = 21474836470;  // max int32 is 2147483647
+  int64_t some_int64_set_via_hook = 21474836479;  // max int32 is 2147483647
   bool some_switch_set_directly = false;
   bool some_switch_set_via_hook = true;
+  bool some_switch_set_capitalized = false;
   string some_name_set_directly = "something_a";
   string some_name_set_via_hook = "something_b";
   float some_float_set_directly = -23.23f;
@@ -53,6 +54,7 @@ TEST(CommandLineFlagsTest, BasicUsage) {
                                       "--some_int64_set_via_hook=214748364710",
                                       "--some_switch_set_directly",
                                       "--some_switch_set_via_hook=false",
+                                      "--some_switch_set_capitalized=True",
                                       "--some_name_set_directly=somethingelse",
                                       "--some_name_set_via_hook=anythingelse",
                                       "--some_float_set_directly=42.0",
@@ -64,44 +66,51 @@ TEST(CommandLineFlagsTest, BasicUsage) {
       {
           Flag("some_int32_set_directly", &some_int32_set_directly,
                "some int32 set directly"),
-          Flag("some_int32_set_via_hook",
-               [&](int32 value) {
-                 some_int32_set_via_hook = value;
-                 return true;
-               },
-               some_int32_set_via_hook, "some int32 set via hook"),
+          Flag(
+              "some_int32_set_via_hook",
+              [&](int32_t value) {
+                some_int32_set_via_hook = value;
+                return true;
+              },
+              some_int32_set_via_hook, "some int32 set via hook"),
           Flag("some_int64_set_directly", &some_int64_set_directly,
                "some int64 set directly"),
-          Flag("some_int64_set_via_hook",
-               [&](int64 value) {
-                 some_int64_set_via_hook = value;
-                 return true;
-               },
-               some_int64_set_via_hook, "some int64 set via hook"),
+          Flag(
+              "some_int64_set_via_hook",
+              [&](int64_t value) {
+                some_int64_set_via_hook = value;
+                return true;
+              },
+              some_int64_set_via_hook, "some int64 set via hook"),
           Flag("some_switch_set_directly", &some_switch_set_directly,
                "some switch set directly"),
-          Flag("some_switch_set_via_hook",
-               [&](bool value) {
-                 some_switch_set_via_hook = value;
-                 return true;
-               },
-               some_switch_set_via_hook, "some switch set via hook"),
+          Flag(
+              "some_switch_set_via_hook",
+              [&](bool value) {
+                some_switch_set_via_hook = value;
+                return true;
+              },
+              some_switch_set_via_hook, "some switch set via hook"),
+          Flag("some_switch_set_capitalized", &some_switch_set_capitalized,
+               "some switch set capitalized"),
           Flag("some_name_set_directly", &some_name_set_directly,
                "some name set directly"),
-          Flag("some_name_set_via_hook",
-               [&](string value) {
-                 some_name_set_via_hook = std::move(value);
-                 return true;
-               },
-               some_name_set_via_hook, "some name set via hook"),
+          Flag(
+              "some_name_set_via_hook",
+              [&](string value) {
+                some_name_set_via_hook = std::move(value);
+                return true;
+              },
+              some_name_set_via_hook, "some name set via hook"),
           Flag("some_float_set_directly", &some_float_set_directly,
                "some float set directly"),
-          Flag("some_float_set_via_hook",
-               [&](float value) {
-                 some_float_set_via_hook = value;
-                 return true;
-               },
-               some_float_set_via_hook, "some float set via hook"),
+          Flag(
+              "some_float_set_via_hook",
+              [&](float value) {
+                some_float_set_via_hook = value;
+                return true;
+              },
+              some_float_set_via_hook, "some float set via hook"),
       });
 
   EXPECT_EQ(true, parsed_ok);
@@ -111,6 +120,7 @@ TEST(CommandLineFlagsTest, BasicUsage) {
   EXPECT_EQ(214748364710, some_int64_set_via_hook);
   EXPECT_EQ(true, some_switch_set_directly);
   EXPECT_EQ(false, some_switch_set_via_hook);
+  EXPECT_EQ(true, some_switch_set_capitalized);
   EXPECT_EQ("somethingelse", some_name_set_directly);
   EXPECT_EQ("anythingelse", some_name_set_via_hook);
   EXPECT_NEAR(42.0f, some_float_set_directly, 1e-5f);
@@ -166,8 +176,9 @@ TEST(CommandLineFlagsTest, FailedInt32Hook) {
   std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
   bool parsed_ok =
       Flags::Parse(&argc, argv_array.data(),
-                   {Flag("some_int32", [](int32 value) { return false; }, 30,
-                         "some int32")});
+                   {Flag(
+                       "some_int32", [](int32_t value) { return false; }, 30,
+                       "some int32")});
 
   EXPECT_EQ(false, parsed_ok);
   EXPECT_EQ(argc, 1);
@@ -179,8 +190,9 @@ TEST(CommandLineFlagsTest, FailedInt64Hook) {
   std::vector<char *> argv_array = CharPointerVectorFromStrings(argv_strings);
   bool parsed_ok =
       Flags::Parse(&argc, argv_array.data(),
-                   {Flag("some_int64", [](int64 value) { return false; }, 30,
-                         "some int64")});
+                   {Flag(
+                       "some_int64", [](int64_t value) { return false; }, 30,
+                       "some int64")});
 
   EXPECT_EQ(false, parsed_ok);
   EXPECT_EQ(argc, 1);
@@ -266,7 +278,7 @@ static bool MatchWithAnyWhitespace(const string &str, const string &pat) {
 
 TEST(CommandLineFlagsTest, UsageString) {
   int some_int = 10;
-  int64 some_int64 = 21474836470;  // max int32 is 2147483647
+  int64_t some_int64 = 21474836470;  // max int32 is 2147483647
   bool some_switch = false;
   string some_name = "something";
   // Don't test float in this case, because precision is hard to predict and

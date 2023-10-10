@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_UINT8_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_UINT8_H_
 
+#include <algorithm>
 #include <type_traits>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
@@ -22,6 +23,10 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+
+#ifdef __AVX2__
+#include <immintrin.h>
+#endif
 
 namespace tflite {
 namespace optimized_ops {
@@ -949,6 +954,43 @@ struct QuantizedDepthwiseConvKernel<true, 0, 1> {
       int ic = 0;
       // Handle 16 input channels at a time.
       for (; ic <= input_depth - 16; ic += 16) {
+#ifdef __AVX2__
+        // Load the filters, add filter_offset.
+        __m128i filter_u8_0 = _mm_loadl_epi64(
+            reinterpret_cast<const __m128i*>(local_filter_ptr + 8 * 0));
+        __m128i filter_u8_1 = _mm_loadl_epi64(
+            reinterpret_cast<const __m128i*>(local_filter_ptr + 8 * 1));
+        local_filter_ptr += 16;
+        __m256i filter_0 = _mm256_cvtepu8_epi32(filter_u8_0);
+        __m256i filter_1 = _mm256_cvtepu8_epi32(filter_u8_1);
+        __m256i filter_offset_vec = _mm256_set1_epi32(filter_offset);
+        filter_0 = _mm256_add_epi32(filter_0, filter_offset_vec);
+        filter_1 = _mm256_add_epi32(filter_1, filter_offset_vec);
+        // Load the inputs, add input_offset.
+        __m128i input_u8_0 = _mm_loadl_epi64(
+            reinterpret_cast<const __m128i*>(local_input_ptr + 8 * 0));
+        __m128i input_u8_1 = _mm_loadl_epi64(
+            reinterpret_cast<const __m128i*>(local_input_ptr + 8 * 1));
+        local_input_ptr += 16;
+        __m256i input_0 = _mm256_cvtepu8_epi32(input_u8_0);
+        __m256i input_1 = _mm256_cvtepu8_epi32(input_u8_1);
+        __m256i input_offset_vec = _mm256_set1_epi32(input_offset);
+        input_0 = _mm256_add_epi32(input_0, input_offset_vec);
+        input_1 = _mm256_add_epi32(input_1, input_offset_vec);
+        // Load the accumulators from acc_buffer
+        __m256i acc_0 = _mm256_loadu_si256(
+            reinterpret_cast<const __m256i*>(acc_buffer_ptr + 8 * 0));
+        __m256i acc_1 = _mm256_loadu_si256(
+            reinterpret_cast<const __m256i*>(acc_buffer_ptr + 8 * 1));
+        acc_0 = _mm256_add_epi32(acc_0, _mm256_mullo_epi32(input_0, filter_0));
+        acc_1 = _mm256_add_epi32(acc_1, _mm256_mullo_epi32(input_1, filter_1));
+        // Store the accumulators back to acc_buffer
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(acc_buffer_ptr + 8 * 0),
+                            acc_0);
+        _mm256_storeu_si256(reinterpret_cast<__m256i*>(acc_buffer_ptr + 8 * 1),
+                            acc_1);
+        acc_buffer_ptr += 16;
+#else
         // Load the filters, add filter_offset.
         uint8x8_t filter_u8_0 = vld1_u8(local_filter_ptr + 8 * 0);
         uint8x8_t filter_u8_1 = vld1_u8(local_filter_ptr + 8 * 1);
@@ -982,6 +1024,7 @@ struct QuantizedDepthwiseConvKernel<true, 0, 1> {
         vst1q_s32(acc_buffer_ptr + 4 * 2, acc_2);
         vst1q_s32(acc_buffer_ptr + 4 * 3, acc_3);
         acc_buffer_ptr += 16;
+#endif
       }
       // Handle 8 input channels at a time.
       for (; ic <= input_depth - 8; ic += 8) {
@@ -1477,7 +1520,7 @@ void QuantizedDepthwiseConvAccumRow(int stride, int dilation_factor,
                                     int16 filter_offset, int out_x_buffer_start,
                                     int out_x_buffer_end, int output_depth,
                                     int32* acc_buffer) {
-  ruy::profiler::ScopeLabel label(__PRETTY_FUNCTION__);
+  ruy::profiler::ScopeLabel label(TFLITE_PRETTY_FUNCTION);
   // Consistency check parameters. This is important in particular to ensure
   // that we keep the number of template instantiations minimal, so we don't
   // increase binary size unnecessarily.

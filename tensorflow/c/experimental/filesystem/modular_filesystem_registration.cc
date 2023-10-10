@@ -14,22 +14,23 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/filesystem/modular_filesystem_registration.h"
 
+#include <memory>
+
 #include "tensorflow/c/experimental/filesystem/modular_filesystem.h"
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 
 // Checks that all schemes provided by a plugin are valid.
-// TODO(mihaimaruseac): More validation could be done here, based on supported
+// TODO(b/139060984): More validation could be done here, based on supported
 // charset, maximum length, etc. Punting it for later.
 static Status ValidateScheme(const char* scheme) {
   if (scheme == nullptr)
     return errors::InvalidArgument(
         "Attempted to register filesystem with `nullptr` URI scheme");
-  return Status::OK();
+  return OkStatus();
 }
 
 // Checks if the plugin and core ABI numbers match.
@@ -41,7 +42,7 @@ static Status CheckABI(int pluginABI, int coreABI, StringPiece where) {
         strings::StrCat("Plugin ABI (", pluginABI, ") for ", where,
                         " operations doesn't match expected core ABI (",
                         coreABI, "). Plugin cannot be loaded."));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Checks if the plugin and core ABI numbers match, for all operations.
@@ -67,7 +68,7 @@ static Status ValidateABI(const TF_FilesystemPluginOps* ops) {
                                 TF_READ_ONLY_MEMORY_REGION_OPS_ABI,
                                 "read only memory region"));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Checks if the plugin and core API numbers match, logging mismatches.
@@ -112,14 +113,14 @@ static Status ValidateHelper(const TF_FilesystemOps* ops) {
     return errors::FailedPrecondition(
         "Trying to register filesystem without `cleanup` operation");
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Validates the random access file operations supplied by the plugin.
 static Status ValidateHelper(const TF_RandomAccessFileOps* ops) {
   if (ops == nullptr) {
     // We allow filesystems where files can only be written to (from TF code)
-    return Status::OK();
+    return OkStatus();
   }
 
   if (ops->cleanup == nullptr)
@@ -127,14 +128,14 @@ static Status ValidateHelper(const TF_RandomAccessFileOps* ops) {
         "Trying to register filesystem without `cleanup` operation on random "
         "access files");
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Validates the writable file operations supplied by the plugin.
 static Status ValidateHelper(const TF_WritableFileOps* ops) {
   if (ops == nullptr) {
     // We allow read-only filesystems
-    return Status::OK();
+    return OkStatus();
   }
 
   if (ops->cleanup == nullptr)
@@ -142,14 +143,14 @@ static Status ValidateHelper(const TF_WritableFileOps* ops) {
         "Trying to register filesystem without `cleanup` operation on writable "
         "files");
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Validates the read only memory region operations given by the plugin.
 static Status ValidateHelper(const TF_ReadOnlyMemoryRegionOps* ops) {
   if (ops == nullptr) {
     // read only memory region support is always optional
-    return Status::OK();
+    return OkStatus();
   }
 
   if (ops->cleanup == nullptr)
@@ -167,7 +168,7 @@ static Status ValidateHelper(const TF_ReadOnlyMemoryRegionOps* ops) {
         "Trying to register filesystem without `length` operation on read only "
         "memory regions");
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Validates the operations supplied by the plugin.
@@ -201,7 +202,7 @@ static Status ValidateOperations(const TF_FilesystemPluginOps* ops) {
         "Filesystem allows creation of readonly memory regions but no "
         "operations on them have been supplied.");
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Copies a function table from plugin memory space to core memory space.
@@ -224,7 +225,7 @@ static std::unique_ptr<const T> CopyToCore(const T* plugin_ops,
   if (plugin_ops == nullptr) return nullptr;
 
   size_t copy_size = std::min(plugin_size, sizeof(T));
-  auto core_ops = tensorflow::MakeUnique<T>();
+  auto core_ops = std::make_unique<T>();
   memset(core_ops.get(), 0, sizeof(T));
   memcpy(core_ops.get(), plugin_ops, copy_size);
   return core_ops;
@@ -250,9 +251,9 @@ static Status RegisterFileSystem(const TF_FilesystemPluginInfo* info,
           info->ops[index].read_only_memory_region_ops_size);
 
   // Step 2: Initialize the opaque filesystem structure
-  auto filesystem = tensorflow::MakeUnique<TF_Filesystem>();
+  auto filesystem = std::make_unique<TF_Filesystem>();
   TF_Status* c_status = TF_NewStatus();
-  Status status = Status::OK();
+  Status status = OkStatus();
   core_filesystem_ops->init(filesystem.get(), c_status);
   status = Status(c_status->status);
   TF_DeleteStatus(c_status);
@@ -261,7 +262,7 @@ static Status RegisterFileSystem(const TF_FilesystemPluginInfo* info,
   // Step 3: Actual registration
   return Env::Default()->RegisterFileSystem(
       info->ops[index].scheme,
-      tensorflow::MakeUnique<tensorflow::ModularFileSystem>(
+      std::make_unique<tensorflow::ModularFileSystem>(
           std::move(filesystem), std::move(core_filesystem_ops),
           std::move(core_random_access_file_ops),
           std::move(core_writable_file_ops),
@@ -282,7 +283,7 @@ static Status ValidateAndRegisterFilesystems(
   ValidateAPI(&info->ops[index]);  // we just warn on API number mismatch
   TF_RETURN_IF_ERROR(ValidateOperations(&info->ops[index]));
   TF_RETURN_IF_ERROR(RegisterFileSystem(info, index));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Ensures that the plugin provides the required memory management operations.
@@ -298,7 +299,7 @@ static Status ValidatePluginMemoryRoutines(
         "Cannot load filesystem plugin which does not provide "
         "`plugin_memory_free`");
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace filesystem_registration {

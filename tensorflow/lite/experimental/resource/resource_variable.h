@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_RESOURCE_VARIABLE_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_RESOURCE_VARIABLE_H_
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 
 namespace tflite {
@@ -25,9 +25,6 @@ namespace resource {
 // A resource variable class. It's similar to TensorFlow Resource
 // Variable, but it's identified with int32 ID in TFLite (instead of
 // using Resource handle like TensorFlow).
-//
-// TODO(b/137042749): TFLite converter cannot convert variables yet.
-// Variable functionalities are only tested with unit tests now.
 class ResourceVariable : public ResourceBase {
  public:
   ResourceVariable();
@@ -49,6 +46,10 @@ class ResourceVariable : public ResourceBase {
   // Returns true if this resource variable is initialized.
   bool IsInitialized() override { return is_initialized_; }
 
+  size_t GetMemoryUsage() override {
+    return is_initialized_ ? tensor_.bytes : 0;
+  }
+
  private:
   // The tensor (and its buffer stored in `tensor_.data` is fully owned by
   // the `ResourceVariable` object.
@@ -67,6 +68,10 @@ void CreateResourceVariableIfNotAvailable(ResourceMap* resources,
 // Returns the corresponding resource variable, or nullptr if none.
 // WARNING: Experimental interface, subject to change.
 ResourceVariable* GetResourceVariable(ResourceMap* resources, int resource_id);
+
+// Returns true if 'tensor' points to a builtin resource.
+// WARNING: Experimental interface, subject to change.
+bool IsBuiltinResource(const TfLiteTensor* tensor);
 
 }  // namespace resource
 }  // namespace tflite

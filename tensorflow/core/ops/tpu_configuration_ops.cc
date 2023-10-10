@@ -34,7 +34,10 @@ using shape_inference::ShapeHandle;
 // number of chips on each host. Validates that all hosts have the same number
 // of chips, and that the chips are consistent with the topology set by
 // flags. Has a single output which is a proto describing the requested system
-// configuration, which is sent to all hosts.
+// configuration, which is sent to all hosts. Note that for multi-client setups
+// the input to _ConfigureDistributedTPU refers only to hosts controlled by the
+// local process/client; the topology set by flags determines the total number
+// of hosts across all clients, and this is reflected in the return value.
 //
 // 3 Run _InitializeHostForDistributedTPU on the TPU_SYSTEM of each host, taking
 // as input the output from ConfigureDistributedTPU. Has a single Tensor output
@@ -88,7 +91,7 @@ REGISTER_OP("_ConfigureDistributedTPU")
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 0, &input));
       }
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 An op that sets up the centralized structures for a distributed TPU
@@ -119,7 +122,7 @@ REGISTER_OP("_WaitForDistributedTPU")
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &input));
       }
       c->set_output(0, c->Scalar());
-      return ::tensorflow::Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 An op that blocks execution until a distributed TPU system has
@@ -141,7 +144,7 @@ REGISTER_OP("_SetGlobalTPUArray")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &input));
-      return ::tensorflow::Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 An op that informs a host of the global ids of all the of TPUs in the
@@ -167,12 +170,15 @@ REGISTER_OP("_InitializeHostForDistributedTPU")
     .Input("input: string")
     .Output("tpu_ids: int32")
     .Attr("enable_whole_mesh_compilations: bool = false")
+    // Available values: 0 (unset), 1 (enabled) or 2 (disabled).
+    // This attribute is ignored in non-TFRT TPU runtime.
+    .Attr("tpu_cancellation_closes_chips: int = 0")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &input));
       c->set_output(0, c->Vector(c->UnknownDim()));
-      return ::tensorflow::Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 An op that connects each chip on the host to a centralized UberDriver to allow
@@ -206,6 +212,9 @@ REGISTER_OP("ConfigureDistributedTPU")
     .Attr("is_global_init: bool = false")
     .Attr("enable_whole_mesh_compilations: bool = false")
     .Attr("compilation_failure_closes_chips: bool = true")
+    // Available values: 0 (unset), 1 (enabled) or 2 (disabled).
+    // This attribute is ignored in non-TFRT TPU runtime.
+    .Attr("tpu_cancellation_closes_chips: int = 0")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 
@@ -218,4 +227,9 @@ REGISTER_OP("ConfigureTPUEmbedding")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("IsTPUEmbeddingInitialized")
+    .Output("is_tpu_embedding_initialized: bool")
+    .Attr("config: string = ''")
+    .SetDoNotOptimize()
+    .SetShapeFn(shape_inference::ScalarShape);
 }  // end namespace tensorflow

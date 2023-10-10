@@ -15,9 +15,6 @@
 """Part of the Keras training engine related to Python generators of array data.
 """
 # pylint: disable=protected-access
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import functools
 import math
@@ -36,6 +33,7 @@ from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.types import data as data_types
 from tensorflow.python.util import nest
 
 
@@ -60,7 +58,7 @@ def model_iteration(model,
                     **kwargs):
   """Loop function for arrays of data with modes TRAIN/TEST/PREDICT.
 
-  Arguments:
+  Args:
       model: Keras Model instance.
       data: Either a tuple of NumPy/Tensor inputs (i.e. `(x,)` or `(x, y)` or
         `(x, y, sample_weights)`) or a generator or
@@ -128,7 +126,7 @@ def model_iteration(model,
   # dataset at the end of each epoch.
   reset_dataset_after_each_epoch = False
   original_dataset = None
-  is_dataset = isinstance(data, (dataset_ops.DatasetV2, dataset_ops.DatasetV1))
+  is_dataset = isinstance(data, (data_types.DatasetV2, data_types.DatasetV1))
   if is_dataset:
     original_dataset = data
     if steps_per_epoch is None:
@@ -370,7 +368,7 @@ def _validate_arguments(is_sequence, is_dataset, use_multiprocessing, workers,
                         mode, kwargs):
   """Raises errors if arguments are invalid.
 
-  Arguments:
+  Args:
     is_sequence: Boolean, whether data is a `keras.utils.data_utils.Sequence`
       instance.
     is_dataset: Boolean, whether data is a dataset instance.
@@ -429,7 +427,7 @@ def convert_to_generator_like(data,
                               shuffle=False):
   """Make a generator out of NumPy or EagerTensor inputs.
 
-  Arguments:
+  Args:
     data: Either a generator or `keras.utils.data_utils.Sequence` object or
       `Dataset`, `Iterator`, or a {1,2,3}-tuple of NumPy arrays or EagerTensors.
       If a tuple, the elements represent `(x, y, sample_weights)` and may be
@@ -460,7 +458,7 @@ def convert_to_generator_like(data,
       if steps_per_epoch is None:
         steps_per_epoch = len(data)
     return data, steps_per_epoch
-  if isinstance(data, dataset_ops.DatasetV2):
+  if isinstance(data, data_types.DatasetV2):
     return dataset_ops.make_one_shot_iterator(data), steps_per_epoch
 
   # Create generator from NumPy or EagerTensor Input.
@@ -663,7 +661,7 @@ class EagerDatasetOrIteratorTrainingLoop(training_utils_v1.TrainingLoop):
     # Make sure that y, sample_weights, validation_split are not passed.
     training_utils_v1.validate_dataset_input(x, y, sample_weight,
                                              validation_split)
-    if (isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)) and
+    if (isinstance(x, (data_types.DatasetV1, data_types.DatasetV2)) and
         shuffle):
       training_utils_v1.verify_dataset_shuffled(x)
 

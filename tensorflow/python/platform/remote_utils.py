@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Platform-specific helpers for connecting to remote servers."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 
 def get_default_communication_protocol():
@@ -28,3 +25,8 @@ def is_remote_path(_):
 
 def get_appendable_file_encoding():
   return ''
+
+
+def coordination_service_type(*args, **kwargs):
+  del args, kwargs
+  return None

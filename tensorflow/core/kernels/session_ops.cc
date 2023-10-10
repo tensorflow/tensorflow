@@ -48,7 +48,7 @@ class GetSessionHandleOp : public OpKernel {
     OP_REQUIRES(ctx, session_state != nullptr,
                 errors::FailedPrecondition(
                     "GetSessionHandle called on null session state"));
-    int64 id = session_state->GetNewId();
+    int64_t id = session_state->GetNewId();
     TensorStore::TensorAndKey tk{val, id, requested_device()};
     OP_REQUIRES_OK(ctx, ctx->tensor_store()->AddTensor(name(), tk));
 
@@ -67,7 +67,8 @@ class GetSessionHandleOp : public OpKernel {
     }
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GetSessionHandleOp);
+  GetSessionHandleOp(const GetSessionHandleOp&) = delete;
+  void operator=(const GetSessionHandleOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("GetSessionHandle").Device(DEVICE_CPU),
@@ -75,22 +76,21 @@ REGISTER_KERNEL_BUILDER(Name("GetSessionHandle").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("GetSessionHandleV2").Device(DEVICE_CPU),
                         GetSessionHandleOp);
 
-#define REGISTER_GPU_KERNEL(type)                         \
+#define REGISTER_DEFAULT_KERNEL(type)                     \
   REGISTER_KERNEL_BUILDER(Name("GetSessionHandle")        \
-                              .Device(DEVICE_GPU)         \
+                              .Device(DEVICE_DEFAULT)     \
                               .HostMemory("handle")       \
                               .TypeConstraint<type>("T"), \
                           GetSessionHandleOp)             \
   REGISTER_KERNEL_BUILDER(Name("GetSessionHandleV2")      \
-                              .Device(DEVICE_GPU)         \
+                              .Device(DEVICE_DEFAULT)     \
                               .HostMemory("handle")       \
                               .TypeConstraint<type>("T"), \
                           GetSessionHandleOp)
 
-TF_CALL_NUMBER_TYPES(REGISTER_GPU_KERNEL);
-REGISTER_GPU_KERNEL(bool);
-#undef REGISTER_GPU_KERNEL
-
+TF_CALL_NUMBER_TYPES(REGISTER_DEFAULT_KERNEL);
+REGISTER_DEFAULT_KERNEL(bool);
+#undef REGISTER_DEFAULT_KERNEL
 
 class GetSessionTensorOp : public OpKernel {
  public:
@@ -99,29 +99,35 @@ class GetSessionTensorOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& handle = ctx->input(0);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(handle.shape()),
+                errors::InvalidArgument("handle must be scalar"));
     const string& name = handle.scalar<tstring>()();
     Tensor val;
-    OP_REQUIRES_OK(ctx, ctx->session_state()->GetTensor(name, &val));
+    auto session_state = ctx->session_state();
+    OP_REQUIRES(ctx, session_state != nullptr,
+                errors::FailedPrecondition(
+                    "GetSessionTensor called on null session state"));
+    OP_REQUIRES_OK(ctx, session_state->GetTensor(name, &val));
     ctx->set_output(0, val);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GetSessionTensorOp);
+  GetSessionTensorOp(const GetSessionTensorOp&) = delete;
+  void operator=(const GetSessionTensorOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("GetSessionTensor").Device(DEVICE_CPU),
                         GetSessionTensorOp);
 
-#define REGISTER_GPU_KERNEL(type)                             \
+#define REGISTER_DEFAULT_KERNEL(type)                         \
   REGISTER_KERNEL_BUILDER(Name("GetSessionTensor")            \
-                              .Device(DEVICE_GPU)             \
+                              .Device(DEVICE_DEFAULT)         \
                               .HostMemory("handle")           \
                               .TypeConstraint<type>("dtype"), \
                           GetSessionTensorOp)
 
-TF_CALL_NUMBER_TYPES(REGISTER_GPU_KERNEL);
-REGISTER_GPU_KERNEL(bool);
-#undef REGISTER_GPU_KERNEL
-
+TF_CALL_NUMBER_TYPES(REGISTER_DEFAULT_KERNEL);
+REGISTER_DEFAULT_KERNEL(bool);
+#undef REGISTER_DEFAULT_KERNEL
 
 class DeleteSessionTensorOp : public OpKernel {
  public:
@@ -130,17 +136,24 @@ class DeleteSessionTensorOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& handle = ctx->input(0);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(handle.shape()),
+                errors::InvalidArgument("`handle` must be scalar"));
     const string& name = handle.scalar<tstring>()();
-    OP_REQUIRES_OK(ctx, ctx->session_state()->DeleteTensor(name));
+    auto session_state = ctx->session_state();
+    OP_REQUIRES(ctx, session_state != nullptr,
+                errors::FailedPrecondition(
+                    "DeleteSessionTensor called on null session state"));
+    OP_REQUIRES_OK(ctx, session_state->DeleteTensor(name));
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DeleteSessionTensorOp);
+  DeleteSessionTensorOp(const DeleteSessionTensorOp&) = delete;
+  void operator=(const DeleteSessionTensorOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DeleteSessionTensor").Device(DEVICE_CPU),
                         DeleteSessionTensorOp);
 REGISTER_KERNEL_BUILDER(
-    Name("DeleteSessionTensor").Device(DEVICE_GPU).HostMemory("handle"),
+    Name("DeleteSessionTensor").Device(DEVICE_DEFAULT).HostMemory("handle"),
     DeleteSessionTensorOp);
 
 }  // namespace tensorflow

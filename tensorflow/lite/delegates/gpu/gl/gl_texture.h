@@ -151,12 +151,6 @@ absl::Status CreateReadWriteRgbaImageTexture(DataType data_type,
                                              const uint3& size,
                                              GlTexture* gl_texture);
 
-GLenum ToTextureFormat(DataType type);
-
-GLenum ToTextureInternalFormat(DataType type);
-
-GLenum ToTextureDataType(DataType type);
-
 namespace gl_texture_internal {
 
 // RAII for creating and/or owning texture id.

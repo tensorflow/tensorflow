@@ -12,9 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
+#include <utility>
+
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -27,21 +31,35 @@ namespace TF {
 namespace {
 
 // Legalize TF quantization emulation ops to that in Quant ops dialect.
-struct LegalizeTFToQuant : public PassWrapper<LegalizeTFToQuant, FunctionPass> {
+struct LegalizeTFToQuant
+    : public PassWrapper<LegalizeTFToQuant, OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeTFToQuant)
+
   explicit LegalizeTFToQuant() = default;
   LegalizeTFToQuant(const LegalizeTFToQuant &) {}
 
   /// Performs the lowering to Quant ops dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
+
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<quant::QuantizationDialect,
+                    quantfork::QuantizationForkDialect>();
+  }
+
+  StringRef getArgument() const final {
+    // This is the argument used to refer to the pass in
+    // the textual format (on the commandline for example).
+    return "tf-to-quant";
+  }
+  StringRef getDescription() const final {
+    // This is a brief description of the pass.
+    return "Legalize TF to quant ops dialect";
+  }
 };
 
-// TODO(fengliuai): move this rule to PreparePatterns.td
-// TODO(b/140968741): propagate the sign from the command line. Currently all
-// the FakeQuant is assumed to targeting UIN8, but per-channel kernel is
-// actually INT8.
 // Inserts a "tfl.quantize" and "tfl.dequantize" op pair (QDQs) after the
 // "tf.FakeQuantWithMinMaxVarsOp" to be constant folded. Since the constant
-// folding logic will use a "std.constant" op to replace the
+// folding logic will use a "arith.constant" op to replace the
 // "tf.FakeQuantWithMinMaxVarsOp", the "tfl.quantize" op is used to preserve
 // the quantization parameters as a TypeAttr and "tfl.dequantize" op used to
 // convert the output type to the next op. Here are the transformations:
@@ -76,23 +94,23 @@ struct InsertQuantOpsAfterTFFakeQuantOp
   LogicalResult matchAndRewrite(TFFakeQuantOp tf_op,
                                 PatternRewriter &rewriter) const override {
     // We don't want to insert quantize/dequantize if the quantize op exists.
-    auto res = tf_op.outputs();
-    if (!res.hasOneUse() || isa<quant::QuantizeCastOp>(*res.user_begin()))
+    auto res = tf_op.getOutputs();
+    if (!res.hasOneUse() || isa<quantfork::QuantizeCastOp>(*res.user_begin()))
       return failure();
 
     // Extract the min/max constant values from the operands. We also consider
     // a special case that there are tf.Identity ops between the min/max
     // constants and the tf.FakeQuantWithMinMaxVarsOp.
-    Value min = tf_op.min(), max = tf_op.max();
+    Value min = tf_op.getMin(), max = tf_op.getMax();
     DenseFPElementsAttr min_value, max_value;
     if (auto id1 = dyn_cast_or_null<TF::IdentityOp>(min.getDefiningOp())) {
-      id1.replaceAllUsesWith(id1.input());
-      min = tf_op.min();
+      id1.replaceAllUsesWith(id1.getInput());
+      min = tf_op.getMin();
       rewriter.eraseOp(id1);
     }
     if (auto id2 = dyn_cast_or_null<TF::IdentityOp>(max.getDefiningOp())) {
-      id2.replaceAllUsesWith(id2.input());
-      max = tf_op.max();
+      id2.replaceAllUsesWith(id2.getInput());
+      max = tf_op.getMax();
       rewriter.eraseOp(id2);
     }
     if (!matchPattern(min, m_Constant(&min_value))) return failure();
@@ -107,21 +125,21 @@ struct InsertQuantOpsAfterTFFakeQuantOp
     // Use the min/max from the operands and the num_bits and narrow_range
     // attribute to create the quantization parameter for the new quantize op.
     rewriter.setInsertionPointAfter(tf_op.getOperation());
-    IntegerAttr num_bits = rewriter.getI64IntegerAttr(tf_op.num_bits());
-    BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.narrow_range());
+    IntegerAttr num_bits = rewriter.getI64IntegerAttr(tf_op.getNumBits());
+    BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.getNarrowRange());
     Type res_type = tf_op.getType();
     TypeAttr qtype = quant::GetQuantizedTypeAttr(
         rewriter, res_type, min_value, max_value, quant_dim, num_bits,
         narrow_range, /*is_signed=*/true);
-    if (!qtype) failure();
+    if (!qtype) return failure();
 
     // Finally, use the quantization parameter to create the quantize and
     // dequantize ops, and insert them between the tf.FakeQuantWithMinMaxVarsOp
     // and its users.
-    Value value = tf_op.outputs();
-    auto quantize = rewriter.create<quant::QuantizeCastOp>(
+    Value value = tf_op.getOutputs();
+    auto quantize = rewriter.create<quantfork::QuantizeCastOp>(
         tf_op.getLoc(), qtype.getValue(), value);
-    auto dequantize = rewriter.create<quant::DequantizeCastOp>(
+    auto dequantize = rewriter.create<quantfork::DequantizeCastOp>(
         tf_op.getLoc(), res_type, quantize.getResult());
     value.replaceAllUsesWith(dequantize);
     quantize.getOperation()->replaceUsesOfWith(dequantize, value);
@@ -140,22 +158,23 @@ using PreparePerChannelFakeQuant =
 // TODO(fengliuai): add the support of the tf.QuantizeAndDequantize*
 // legalization.
 
-void LegalizeTFToQuant::runOnFunction() {
-  OwningRewritePatternList patterns;
-  auto func = getFunction();
+void LegalizeTFToQuant::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
+  auto func = getOperation();
   auto *ctx = func.getContext();
-  patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  patterns.add<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 }  // namespace
 
 // Creates an instance of the TensorFlow dialect to QuantOps dialect pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFToQuantPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLegalizeTFToQuantPass() {
   return std::make_unique<LegalizeTFToQuant>();
 }
 
-static PassRegistration<LegalizeTFToQuant> pass(
-    "tf-to-quant", "Legalize TF to quant ops dialect");
+static PassRegistration<LegalizeTFToQuant> pass([] {
+  return CreateLegalizeTFToQuantPass();
+});
 
 }  // namespace TF
 }  // namespace mlir

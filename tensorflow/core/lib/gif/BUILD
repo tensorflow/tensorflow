@@ -5,6 +5,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
     "if_mobile",
+    "tf_cc_test",
     "tf_copts",
 )
 load(
@@ -13,9 +14,13 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/core:__pkg__"],
-    features = ["-parse_headers"],
-    licenses = ["notice"],  # Apache 2.0
+    features = [
+        "-layering_check",
+        "-parse_headers",
+    ],
+    licenses = ["notice"],
 )
 
 cc_library(
@@ -23,6 +28,7 @@ cc_library(
     srcs = [
         "gif_io.cc",
         "//tensorflow/core/platform:gif_hdrs",
+        "@local_tsl//tsl/platform:gif_hdrs",
     ],
     hdrs = ["gif_io.h"],
     copts = tf_copts(),
@@ -44,14 +50,16 @@ cc_library(
     srcs = if_mobile([
         "gif_io.cc",
         "//tensorflow/core/platform:gif_hdrs",
+        "@local_tsl//tsl/platform:gif_hdrs",
     ]),
     hdrs = [
         "gif_io.h",
         "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
         "//tensorflow/core/lib/gtl:legacy_android_gif_internal_headers",
         "//tensorflow/core/platform:gif_internal_hdrs",
-        "//tensorflow/core/platform/default:integral_types.h",
-        "//tensorflow/core/platform/default:logging.h",
+        "@local_tsl//tsl/platform:gif_internal_hdrs",
+        "@local_tsl//tsl/platform/default:integral_types.h",
+        "@local_tsl//tsl/platform/default:logging.h",
     ],
     copts = tf_copts(),
     linkopts = if_android(["-ldl"]),
@@ -62,5 +70,20 @@ cc_library(
         "//tensorflow/core/platform:stringpiece",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "lib_gif_io_test",
+    srcs = ["gif_io_test.cc"],
+    data = ["//tensorflow/core/lib/gif/testdata:gif_testdata"],
+    deps = [
+        ":gif_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/lib/png:png_io",
+        "@com_google_absl//absl/base",
     ],
 )

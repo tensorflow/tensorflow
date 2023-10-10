@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,56 +15,53 @@
 r"""Benchmarks for low-level eager execution primitives.
 
 To run CPU benchmarks:
-  bazel run -c opt benchmarks_test -- --benchmarks=.
+  bazel run -c opt benchmarks_test -- --benchmark_filter=.
 
 To run GPU benchmarks:
   bazel run --config=cuda -c opt --copt="-mavx" benchmarks_test -- \
-    --benchmarks=.
+    --benchmark_filter=.
 
 To run a subset of benchmarks using --benchmarks flag.
 --benchmarks: the list of benchmarks to run. The specified value is interpreted
 as a regular expression and any benchmark whose name contains a partial match
 to the regular expression is executed.
-e.g. --benchmarks=".*matmul*." will run all matmul related benchmarks.
+e.g. --benchmark_filter=".*matmul*." will run all matmul related benchmarks.
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 import numpy as np
-import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tfe
+from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import backprop  # pylint: disable=unused-import
 from tensorflow.python.eager import benchmarks_test_base
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import forwardprop
-from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
-
 
 CPU = "/device:CPU:0"
 GPU = "/device:GPU:0"
@@ -80,16 +77,13 @@ def c_tfe_py_fastpath_execute(a,
   assert ctx.executing_eagerly(
   ), "The prototype doesn't contain C code for graph construction"
   try:
-    return pywrap_tfe.TFE_Py_FastPathExecute(ctx,
-                                             "MatMul", name,
-                                             a, b, "transpose_a", transpose_a,
+    return pywrap_tfe.TFE_Py_FastPathExecute(ctx, "MatMul", name, a, b,
+                                             "transpose_a", transpose_a,
                                              "transpose_b", transpose_b)
   except core._NotOkStatusException as e:
     if name is not None:
-      message = e.message + " name: " + name
-    else:
-      message = e.message
-    six.raise_from(core._status_to_exception(e.code, message), None)
+      e.message += " name: " + name
+    raise core._status_to_exception(e) from None
 
 
 def run_benchmark(func, num_iters, execution_mode=None):
@@ -100,7 +94,7 @@ def run_benchmark(func, num_iters, execution_mode=None):
     if execution_mode == context.ASYNC:
       ctx.executor.wait()
     start = time.time()
-    for _ in xrange(num_iters):
+    for _ in range(num_iters):
       func()
     if execution_mode == context.ASYNC:
       ctx.executor.wait()
@@ -110,7 +104,6 @@ def run_benchmark(func, num_iters, execution_mode=None):
 
 
 class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
-
   def __init__(self):
     # used for multiply benchmarks
     self._m_2 = random_ops.random_uniform([2])
@@ -125,6 +118,9 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     # used for conv2d benchmarks
     self._m_8_28_28_3 = random_ops.random_uniform((8, 28, 28, 3))
     self._m_1_3_3_1 = random_ops.random_uniform((1, 3, 3, 1))
+
+    # used for embedding benchmarks
+    self._m_10000_by_16 = random_ops.random_uniform((10000, 16))
 
   def _get_benchmark_name(self):
     """Mostly copied from benchmark.py _get_name()."""
@@ -205,6 +201,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     self._benchmark_create_constant(42, dtype=dtypes.int32, cached=False)
 
   def _benchmark_add(self, a, b):
+
     def func():
       return memoryview(math_ops.add_v2(a, b))
 
@@ -214,6 +211,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       self._run(func, 30000)
 
   def _benchmark_add_operator_overload(self, a, b):
+
     def func():
       return memoryview(a + b)
 
@@ -413,7 +411,10 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     func = lambda: np.dot(a, b)
     self._run(func, num_iters)
 
-  def _benchmark_tf_matmul(self, m, transpose_b, num_iters,
+  def _benchmark_tf_matmul(self,
+                           m,
+                           transpose_b,
+                           num_iters,
                            execution_mode=None):
     func = lambda: math_ops.matmul(m, m, transpose_b=transpose_b)
     self._run(func, num_iters, execution_mode=execution_mode)
@@ -452,7 +453,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
                               transpose_b,
                               num_iters,
                               execution_mode=None):
-    f = function.defun(math_ops.matmul)
+    f = def_function.function(math_ops.matmul)
     func = lambda: f(m, m, transpose_b=transpose_b)
     self._run(func, num_iters, execution_mode=execution_mode)
 
@@ -474,7 +475,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
                                             num_iters,
                                             execution_mode=None):
 
-    @def_function.function(experimental_relax_shapes=True)
+    @def_function.function(reduce_retracing=True)
     def defun_matmul(m):
       return math_ops.matmul(m, m)
 
@@ -493,9 +494,9 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     self._run(func, num_iters, execution_mode=execution_mode)
 
   def _benchmark_nested_defun_matmul(self, m, transpose_b, num_iters):
-    inner = function.defun(math_ops.matmul)
+    inner = def_function.function(math_ops.matmul)
 
-    @function.defun
+    @def_function.function
     def outer(a, b, c, transpose_b):
       return math_ops.matmul(inner(a, b, transpose_b=transpose_b), c)
 
@@ -834,6 +835,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
   def _benchmark_forwardprop_in_defun_matmul_CPU(self, shape):
     with ops.device(CPU):
+
       @def_function.function
       def compiled_function(x, tangent):
         with forwardprop.ForwardAccumulator(x, tangent) as acc:
@@ -933,8 +935,8 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     self._benchmark_tf_reduce_logsumexp(device=GPU)
 
   def benchmark_tf_reduce_logsumexp_GPU_async(self):
-    self._benchmark_tf_reduce_logsumexp(device=GPU,
-                                        execution_mode=context.ASYNC)
+    self._benchmark_tf_reduce_logsumexp(
+        device=GPU, execution_mode=context.ASYNC)
 
   @test_util.disable_tfrt(
       "b/169371527: Support inserting transfer op in lowering.")
@@ -1071,8 +1073,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     self._benchmark_tf_random_uniform_2_by_2(dtype=dtypes.float32)
 
   def benchmark_tf_random_uniform_2_by_2_float_GPU(self):
-    self._benchmark_tf_random_uniform_2_by_2(
-        dtype=dtypes.float32, device=GPU)
+    self._benchmark_tf_random_uniform_2_by_2(dtype=dtypes.float32, device=GPU)
 
   def benchmark_tf_random_uniform_2_by_2_default_setting_CPU(self):
     with context.device(CPU):
@@ -1115,8 +1116,8 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     self._benchmark_tf_dropout_2_by_2(rate=0, is_rate_tensor=False)
 
   def benchmark_tf_dropout_scalar_rate_2_by_2_GPU_rate_0(self):
-    self._benchmark_tf_dropout_2_by_2(rate=0.0,
-                                      is_rate_tensor=False, device=GPU)
+    self._benchmark_tf_dropout_2_by_2(
+        rate=0.0, is_rate_tensor=False, device=GPU)
 
   def benchmark_tf_dropout_2_by_2_CPU_rate_0(self):
     self._benchmark_tf_dropout_2_by_2(rate=0.0)
@@ -1159,7 +1160,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       del t1, t2, t3, t4, t5, t6, t7, t8
       return None
 
-    defined = function.defun(func)
+    defined = def_function.function(func)
     t = constant_op.constant(0.0)
     cache_computation = lambda: defined(t, t, t, t, t, t, t, t)
     self._run(cache_computation, 30000)
@@ -1170,10 +1171,12 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       del t1, t2, t3, t4, t5, t6, t7, t8
       return None
 
-    defined = function.defun(func)
+    defined = def_function.function(func)
     t = constant_op.constant(0.0)
+
     def cache_computation():
       return defined(t1=t, t2=t, t3=t, t4=t, t5=t, t6=t, t7=t, t8=t)
+
     self._run(cache_computation, 30000)
 
   def benchmark_defun_with_signature(self):
@@ -1182,7 +1185,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       del t1, t2, t3, t4, t5, t6, t7, t8
       return None
 
-    defined = function.defun(
+    defined = def_function.function(
         func, input_signature=[tensor_spec.TensorSpec([], dtypes.float32)] * 8)
     t = constant_op.constant(0.0)
     signature_computation = lambda: defined(t, t, t, t, t, t, t, t)
@@ -1194,11 +1197,13 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       del t1, t2, t3, t4, t5, t6, t7, t8
       return None
 
-    defined = function.defun(
+    defined = def_function.function(
         func, input_signature=[tensor_spec.TensorSpec([], dtypes.float32)] * 8)
     t = constant_op.constant(0.0)
+
     def signature_computation():
       return defined(t1=t, t2=t, t3=t, t4=t, t5=t, t6=t, t7=t, t8=t)
+
     self._run(signature_computation, 30000)
 
   def benchmark_matmul_read_variable_op_2_by_2_CPU(self):
@@ -1251,7 +1256,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
   def benchmarkScanDefun(self):
     elems = math_ops.range(1600)
 
-    @function.defun
+    @def_function.function
     def scan():
       return functional_ops.scan(
           lambda a, x: a + x, elems, parallel_iterations=1)
@@ -1357,6 +1362,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
               30000)
 
   def _benchmarkFunctionWithResourceInputs(self, num_resources, num_iters):
+
     @def_function.function
     def add_all(*args):
       return math_ops.add_n(*args)
@@ -1394,7 +1400,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
           def else_branch():
             return 0.
 
-          return control_flow_ops.cond(
+          return cond.cond(
               constant_op.constant(True), then_branch, else_branch)
 
         return fn_with_many_reads_inner()
@@ -1439,6 +1445,7 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     self._run(fn, 10000)
 
   def benchmark_tf_nest_flatten_none(self):
+
     def fn():
       nest.flatten(None)
 
@@ -1446,8 +1453,17 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
   def benchmark_tf_nest_flatten(self):
     nested = {"a": [1, 2, 3], "b": (4, 5, 6)}
+
     def fn():
       nest.flatten(nested)
+
+    self._run(fn, 100000)
+
+  def benchmark_tf_flatten_dict_items(self):
+    nested = {(4, 5, (6, 8)): ("a", "b", ("c", "d"))}
+
+    def fn():
+      nest.flatten_dict_items(nested)
 
     self._run(fn, 100000)
 
@@ -1472,6 +1488,258 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       tensor_shape.TensorShape(shape_tuple)
 
     self._run(fn, 100000)
+
+  def _boolean_mask_input(self):
+    n = 3000
+    return (array_ops.ones([n, n]), array_ops.fill([n, n], True))
+
+  def _boolean_mask_fn(self, input_tensor, mask):
+    return array_ops.boolean_mask(input_tensor, mask)
+
+  def benchmark_tf_boolean_mask_eager(self):
+    input_tensor, mask = self._boolean_mask_input()
+
+    self._run(lambda: self._boolean_mask_fn(input_tensor, mask), 10000)
+
+  def benchmark_tf_boolean_mask_graph(self):
+    input_tensor, mask = self._boolean_mask_input()
+    compiled_fn = def_function.function(self._boolean_mask_fn)
+
+    self._run(lambda: compiled_fn(input_tensor, mask), 10000)
+
+  def _benchmark_tf_range_var(self,
+                              limit=100,
+                              dtype=dtypes.int32,
+                              range_dtype=dtypes.int32,
+                              device=CPU,
+                              num_iters=1000):
+
+    def func(v, lim):
+      for _ in math_ops.range(lim, dtype=range_dtype):
+        v.assign_add(constant_op.constant(1, dtype=dtype))
+      return v
+
+    compiled_func = def_function.function(func)
+
+    with context.device(CPU):
+      m = resource_variable_ops.ResourceVariable(
+          constant_op.constant(1, dtype=dtype), dtype=dtype)
+      limit_t = constant_op.constant(limit, dtype=dtype)
+
+    with context.device(device):
+      compiled_func(m, limit_t)
+      self._run(lambda: compiled_func(m, limit_t), num_iters=num_iters)
+
+  def benchmark_tf_range_var_int32_CPU(self):
+    self._benchmark_tf_range_var()
+
+  def benchmark_tf_range_var_int64_CPU(self):
+    self._benchmark_tf_range_var(dtype=dtypes.int64, range_dtype=dtypes.int64)
+
+  def benchmark_tf_range_var_int32_GPU(self):
+    self._benchmark_tf_range_var(device=GPU)
+
+  def benchmark_tf_range_var_int64_GPU(self):
+    self._benchmark_tf_range_var(
+        dtype=dtypes.int64, range_dtype=dtypes.int64, device=GPU)
+
+  def _benchmark_tf_range_const(self,
+                                limit=100,
+                                dtype=dtypes.int32,
+                                range_dtype=dtypes.int32,
+                                device=CPU,
+                                num_iters=1000):
+
+    def func(c, lim):
+      for _ in math_ops.range(lim, dtype=range_dtype):
+        c += 1
+      return c
+
+    compiled_func = def_function.function(func)
+
+    with context.device(CPU):
+      input_c = constant_op.constant(1, dtype=dtype)
+      limit_t = constant_op.constant(limit, dtype=dtype)
+
+    with context.device(device):
+      compiled_func(input_c, limit_t)
+      self._run(lambda: compiled_func(input_c, limit_t), num_iters=num_iters)
+
+  # int32 constant, int32 range, CPU
+  def benchmark_tf_range_const_int32_int32_CPU(self):
+    self._benchmark_tf_range_const()
+
+  # int32 constant, int64 range, CPU
+  def benchmark_tf_range_const_int32_int64_CPU(self):
+    self._benchmark_tf_range_const(range_dtype=dtypes.int64)
+
+  # int64 constant, int32 range, CPU
+  def benchmark_tf_range_const_int64_int32_CPU(self):
+    self._benchmark_tf_range_const(dtype=dtypes.int64)
+
+  # int64 constant, int64 range, CPU
+  def benchmark_tf_range_const_int64_int64_CPU(self):
+    self._benchmark_tf_range_const(dtype=dtypes.int64, range_dtype=dtypes.int64)
+
+  # int32 constant, int32 range, GPU
+  def benchmark_tf_range_const_int32_int32_GPU(self):
+    self._benchmark_tf_range_const(device=GPU)
+
+  # int32 constant, int64 range, GPU
+  def benchmark_tf_range_const_int32_int64_GPU(self):
+    self._benchmark_tf_range_const(range_dtype=dtypes.int64, device=GPU)
+
+  # int64 constant, int32 range, GPU
+  def benchmark_tf_range_const_int64_int32_GPU(self):
+    self._benchmark_tf_range_const(dtype=dtypes.int64, device=GPU)
+
+  # int64 constant, int64 range, GPU
+  def benchmark_tf_range_const_int64_int64_GPU(self):
+    self._benchmark_tf_range_const(
+        dtype=dtypes.int64, range_dtype=dtypes.int64, device=GPU)
+
+  def _benchmark_tf_range_return(self,
+                                 limit=100000,
+                                 dtype=dtypes.int32,
+                                 device=CPU,
+                                 num_iters=100000):
+
+    def func(lim):
+      return math_ops.range(lim, dtype=dtype)
+
+    compiled_func = def_function.function(func)
+
+    with context.device(device):
+      limit_t = constant_op.constant(limit, dtype=dtype)
+      compiled_func(limit_t)
+      self._run(lambda: compiled_func(limit_t), num_iters=num_iters)
+
+  def benchmark_tf_range_return_int32_CPU(self):
+    self._benchmark_tf_range_return()
+
+  def benchmark_tf_range_return_int64_CPU(self):
+    self._benchmark_tf_range_return(dtype=dtypes.int64)
+
+  def benchmark_tf_range_return_int32_GPU(self):
+    self._benchmark_tf_range_return(device=GPU)
+
+  def benchmark_tf_range_return_int64_GPU(self):
+    self._benchmark_tf_range_return(dtype=dtypes.int64, device=GPU)
+
+  def _benchmark_embedding_lookup_sparse_with_sparse_input(
+      self, allow_fast_lookup=True, batch_size=32000, device=GPU
+  ):
+    def func(sp_ids):
+      return embedding_ops.embedding_lookup_sparse(
+          self._m_10000_by_16, sp_ids, None, allow_fast_lookup=allow_fast_lookup
+      )
+
+    with context.device(device):
+      values = random_ops.random_uniform(
+          shape=(batch_size,), minval=1, maxval=10000, dtype=dtypes.int64
+      )
+      value_rowids = ops.EagerTensor(np.arange(batch_size), device=device)
+
+      ragged_input = ragged_tensor.RaggedTensor.from_value_rowids(
+          values, value_rowids
+      )
+      sparse_input = ragged_input.to_sparse()
+      func(sparse_input)
+      self._run(lambda: func(sparse_input), num_iters=2000)
+
+  def benchmark_tf_embedding_lookup_sparse_with_sparse_input_sparse_grads(self):
+    self._benchmark_embedding_lookup_sparse_with_sparse_input(
+        allow_fast_lookup=False
+    )
+
+  def benchmark_tf_embedding_lookup_sparse_with_sparse_input_dense_grads(self):
+    self._benchmark_embedding_lookup_sparse_with_sparse_input(
+        allow_fast_lookup=True
+    )
+
+  def _benchmark_embedding_lookup_sparse_with_ragged_input(
+      self, allow_fast_lookup=True, batch_size=32000, device=GPU
+  ):
+    def func(sp_ids):
+      return embedding_ops.embedding_lookup_sparse(
+          self._m_10000_by_16, sp_ids, None, allow_fast_lookup=allow_fast_lookup
+      )
+
+    with context.device(device):
+      values = random_ops.random_uniform(
+          shape=(batch_size,), minval=1, maxval=10000, dtype=dtypes.int64
+      )
+      value_rowids = ops.EagerTensor(np.arange(batch_size), device=device)
+
+      ragged_input = ragged_tensor.RaggedTensor.from_value_rowids(
+          values, value_rowids
+      )
+      func(ragged_input)
+      self._run(lambda: func(ragged_input), num_iters=2000)
+
+  def benchmark_embedding_lookup_sparse_with_ragged_input_sparse_grads(self):
+    self._benchmark_embedding_lookup_sparse_with_ragged_input(
+        allow_fast_lookup=False
+    )
+
+  def benchmark_embedding_lookup_sparse_with_ragged_input_dense_grads(self):
+    self._benchmark_embedding_lookup_sparse_with_ragged_input(
+        allow_fast_lookup=True
+    )
+
+  def _RandomIdsAndWeights(self, batch_size, vocab_size, max_val_per_entry):
+    vals_per_batch_entry = np.random.randint(
+        1, max_val_per_entry, size=batch_size
+    )
+    num_vals = np.sum(vals_per_batch_entry)
+
+    ids = np.random.randint(vocab_size, size=num_vals)
+    weights = 1 + np.random.rand(num_vals)
+
+    indices = []
+    for batch_entry, num_val in enumerate(vals_per_batch_entry):
+      for val_index in range(num_val):
+        indices.append([batch_entry, val_index])
+
+    shape = [batch_size, max_val_per_entry]
+
+    sp_ids = sparse_tensor.SparseTensor(
+        constant_op.constant(indices, dtypes.int64),
+        constant_op.constant(ids, dtypes.int32),
+        constant_op.constant(shape, dtypes.int64),
+    )
+    sp_weights = sparse_tensor.SparseTensor(
+        constant_op.constant(indices, dtypes.int64),
+        constant_op.constant(weights, dtypes.float32),
+        constant_op.constant(shape, dtypes.int64),
+    )
+    return sp_ids, sp_weights
+
+  def _benchmark_embedding_lookup_sparse_with_gradient(
+      self, params, batch_size, max_val_per_entry, device
+  ):
+    def func(sp_ids):
+      with forward_compat.forward_compatibility_horizon(2023, 9, 26):
+        with gradients.GradientTape() as g:
+          y = embedding_ops.embedding_lookup_sparse(params, sp_ids, None)
+        params_grad = g.gradient(y, params)
+        return params_grad
+
+    vocab_size = params.get_shape()[0]
+    with context.device(device):
+      sp_ids, _ = self._RandomIdsAndWeights(
+          batch_size, vocab_size, max_val_per_entry
+      )
+      func(sp_ids)
+      self._run(lambda: func(sp_ids), num_iters=2000)
+
+  def benchmark_embedding_lookup_sparse_with_gradient(self):
+    params = random_ops.random_uniform((1024 * 1024, 16))
+    params = params.gpu()
+    params = resource_variable_ops.ResourceVariable(params)
+    self._benchmark_embedding_lookup_sparse_with_gradient(
+        params, batch_size=32768, max_val_per_entry=64, device=GPU
+    )
 
 
 if __name__ == "__main__":

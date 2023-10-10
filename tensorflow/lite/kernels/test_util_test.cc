@@ -16,10 +16,14 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <initializer_list>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/array.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace {
@@ -47,11 +51,36 @@ TEST(TestUtilTest, QuantizeVectorScalingUp) {
   EXPECT_THAT(q_data, ElementsAreArray(expected));
 }
 
+TEST(DimsAreMatcherTestTensor, ValidOneD) {
+  TensorUniquePtr t = BuildTfLiteTensor(kTfLiteInt32, {2}, kTfLiteDynamic);
+  EXPECT_THAT(t.get(), DimsAre({2}));
+}
+
+TEST(DimsAreMatcherTestTensor, ValidTwoD) {
+  TensorUniquePtr t = BuildTfLiteTensor(kTfLiteInt32, {2, 3}, kTfLiteDynamic);
+  EXPECT_THAT(t.get(), DimsAre({2, 3}));
+}
+
+TEST(DimsAreMatcherTestTensor, ValidScalar) {
+  TensorUniquePtr t =
+      BuildTfLiteTensor(kTfLiteInt32, std::vector<int>{}, kTfLiteDynamic);
+  EXPECT_THAT(t.get(), DimsAre({}));
+}
+
+TEST(DimsAreMatcherTestArray, ValidOneD) {
+  IntArrayUniquePtr arr = BuildTfLiteArray({2});
+  EXPECT_THAT(arr.get(), DimsAre({2}));
+}
+
+TEST(DimsAreMatcherTestArray, ValidTwoD) {
+  IntArrayUniquePtr arr = BuildTfLiteArray({2, 3});
+  EXPECT_THAT(arr.get(), DimsAre({2, 3}));
+}
+
+TEST(DimsAreMatcherTestArray, ValidScalar) {
+  IntArrayUniquePtr arr = BuildTfLiteArray({});
+  EXPECT_THAT(arr.get(), DimsAre({}));
+}
+
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

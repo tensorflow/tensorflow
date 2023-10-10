@@ -22,11 +22,15 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
+namespace tsl {
+class Env;
+}  // namespace tsl
 namespace tensorflow {
+using Env = tsl::Env;
 class DeviceAttributes;
 class Device;
-class Env;
 class WorkerCacheInterface;
 
 // This callback should have the same definition as DeviceMgr::LookupDevice
@@ -60,6 +64,9 @@ typedef std::function<void(const Status&, std::vector<Device*>*)>
 void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
                       const string& worker_name, NewRemoteDevicesDone done);
 
+// Create Remote Device based on the given attributes.
+std::unique_ptr<Device> NewRemoteDevice(Env* env,
+                                        DeviceAttributes device_attribute);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_REMOTE_DEVICE_H_

@@ -14,16 +14,11 @@
 # ==============================================================================
 """Keras Input Tensor used to track functional API Topology."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec as type_spec_module
 from tensorflow.python.keras.utils import object_identity
 from tensorflow.python.ops import array_ops
@@ -32,25 +27,6 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import nest
 
 # pylint: disable=g-classes-have-attributes
-
-_KERAS_TENSORS_ENABLED = True
-
-
-def enable_keras_tensors():
-  """Enable using KerasTensors in Keras's functional API."""
-  global _KERAS_TENSORS_ENABLED
-  _KERAS_TENSORS_ENABLED = True
-
-
-def disable_keras_tensors():
-  """Disable using KerasTensors in Keras's functional API."""
-  global _KERAS_TENSORS_ENABLED
-  _KERAS_TENSORS_ENABLED = False
-
-
-def keras_tensors_enabled():
-  """Return a bool specifying if KerasTensors are enabled."""
-  return _KERAS_TENSORS_ENABLED and ops.executing_eagerly_outside_functions()
 
 
 # Tensorflow tensors have a maximum rank of 254
@@ -166,7 +142,7 @@ class KerasTensor(object):
   @classmethod
   def from_tensor(cls, tensor):
     """Convert a traced (composite)tensor to a representative KerasTensor."""
-    if isinstance(tensor, ops.Tensor):
+    if isinstance(tensor, tensor_lib.Tensor):
       name = getattr(tensor, 'name', None)
       type_spec = type_spec_module.type_spec_from_value(tensor)
       inferred_value = None
@@ -205,6 +181,10 @@ class KerasTensor(object):
       type_spec = type_spec_module.type_spec_from_value(tensor)
       return cls(type_spec, name=name)
 
+  @classmethod
+  def from_type_spec(cls, type_spec, name=None):
+    return cls(type_spec=type_spec, name=name)
+
   def _to_placeholder(self):
     """Convert this KerasTensor to a placeholder in a graph."""
     # If there is an inferred value for this tensor, inject the inferred value
@@ -233,7 +213,7 @@ class KerasTensor(object):
     return nest.map_structure(
         component_to_placeholder, self.type_spec, expand_composites=True)
 
-  def get_shape(self):
+  def get_shape(self) -> tensor_shape.TensorShape:
     return self.shape
 
   def __len__(self):
@@ -323,7 +303,7 @@ class KerasTensor(object):
   def __repr__(self):
     symbolic_description = ''
     inferred_value_string = ''
-    if isinstance(self.type_spec, tensor_spec.TensorSpec):
+    if isinstance(self.type_spec, tensor_lib.TensorSpec):
       type_spec_string = 'shape=%s dtype=%s' % (self.shape, self.dtype.name)
     else:
       type_spec_string = 'type_spec=%s' % self.type_spec
@@ -380,7 +360,7 @@ class KerasTensor(object):
   @classmethod
   def _overload_all_operators(cls, tensor_class):  # pylint: disable=invalid-name
     """Register overloads for all operators."""
-    for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
+    for operator in tensor_lib.Tensor.OVERLOADABLE_OPERATORS:
       cls._overload_operator(tensor_class, operator)
 
     # We include `experimental_ref` for versions of TensorFlow that
@@ -408,7 +388,7 @@ class KerasTensor(object):
     setattr(cls, operator, tensor_oper)
 
 
-KerasTensor._overload_all_operators(ops.Tensor)  # pylint: disable=protected-access
+KerasTensor._overload_all_operators(tensor_lib.Tensor)  # pylint: disable=protected-access
 
 
 class SparseKerasTensor(KerasTensor):
@@ -481,6 +461,10 @@ class RaggedKerasTensor(KerasTensor):
   def ragged_rank(self):
     return self.type_spec.ragged_rank
 
+# Overload slicing
+RaggedKerasTensor._overload_operator(ragged_tensor.RaggedTensor, '__getitem__')  # pylint: disable=protected-access
+
+# Overload math ops
 RaggedKerasTensor._overload_operator(ragged_tensor.RaggedTensor, '__add__')  # pylint: disable=protected-access
 RaggedKerasTensor._overload_operator(ragged_tensor.RaggedTensor, '__radd__')  # pylint: disable=protected-access
 RaggedKerasTensor._overload_operator(ragged_tensor.RaggedTensor, '__mul__')  # pylint: disable=protected-access
@@ -538,6 +522,11 @@ class UserRegisteredTypeKerasTensor(KerasTensor):
   def from_tensor(cls, tensor):
     return cls(tensor)
 
+  @classmethod
+  def from_type_spec(cls, type_spec, name=None):
+    raise NotImplementedError('You cannot instantiate a KerasTensor '
+                              'directly from TypeSpec: %s' % type_spec)
+
   def _to_placeholder(self):
     return self._user_registered_symbolic_object
 
@@ -560,19 +549,17 @@ class _KerasTensorIterator(object):
     self._index += 1
     return result
 
-  next = __next__  # python2.x compatibility.
-
 
 # Specify the mappings of tensor class to KerasTensor class.
 # This is specifically a list instead of a dict for now because
 # 1. we do a check w/ isinstance because a key lookup based on class
 #    would miss subclasses
 # 2. a list allows us to control lookup ordering
-# We include ops.Tensor -> KerasTensor in the first position as a fastpath,
+# We include tensor.Tensor -> KerasTensor in the first position as a fastpath,
 # *and* include object -> KerasTensor at the end as a catch-all.
 # We can re-visit these choices in the future as needed.
 keras_tensor_classes = [
-    (ops.Tensor, KerasTensor),
+    (tensor_lib.Tensor, KerasTensor),
     (sparse_tensor.SparseTensor, SparseKerasTensor),
     (ragged_tensor.RaggedTensor, RaggedKerasTensor),
     (object, KerasTensor)
@@ -608,3 +595,17 @@ def keras_tensor_from_tensor(tensor):
   if hasattr(tensor, '_keras_mask'):
     out._keras_mask = keras_tensor_from_tensor(tensor._keras_mask)  # pylint: disable=protected-access
   return out
+
+
+def keras_tensor_from_type_spec(type_spec, name=None):
+  """Convert a TypeSpec to a representative KerasTensor."""
+  # Create a specialized KerasTensor that supports instance methods,
+  # operators, and additional value inference if possible
+  keras_tensor_cls = None
+  value_type = type_spec.value_type
+  for tensor_type, cls in keras_tensor_classes:
+    if issubclass(value_type, tensor_type):
+      keras_tensor_cls = cls
+      break
+
+  return keras_tensor_cls.from_type_spec(type_spec, name=name)

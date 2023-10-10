@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/tensor_slice_writer.h"
 
+#include <memory>
 #include <utility>
 
 #include "tensorflow/core/framework/versions.pb.h"
@@ -38,12 +39,12 @@ class TableBuilder : public TensorSliceWriter::Builder {
   TableBuilder(const string& name, WritableFile* f) : name_(name), file_(f) {
     table::Options option;
     option.compression = table::kNoCompression;
-    builder_.reset(new table::TableBuilder(option, f));
+    builder_ = std::make_unique<table::TableBuilder>(option, f);
   }
   void Add(StringPiece key, StringPiece val) override {
     builder_->Add(key, val);
   }
-  Status Finish(int64* file_size) override {
+  Status Finish(int64_t* file_size) override {
     *file_size = -1;
     Status s = builder_->Finish();
     if (s.ok()) {
@@ -54,7 +55,7 @@ class TableBuilder : public TensorSliceWriter::Builder {
     }
     if (!s.ok()) {
       s = errors::Internal("Error writing (tmp) checkpoint file: ", name_, ": ",
-                           s.ToString());
+                           s.message());
     }
     builder_.reset();
     file_.reset();
@@ -75,7 +76,7 @@ Status CreateTableTensorSliceBuilder(const string& name,
   Status s = Env::Default()->NewWritableFile(name, &f);
   if (s.ok()) {
     *builder = new TableBuilder(name, f.release());
-    return Status::OK();
+    return OkStatus();
   } else {
     return s;
   }
@@ -111,7 +112,7 @@ Status TensorSliceWriter::Finish() {
     builder->Add(x.first, x.second);
   }
 
-  int64 file_size;
+  int64_t file_size;
   s = builder->Finish(&file_size);
   // We need to rename the file to the proper name
   if (s.ok()) {
@@ -131,6 +132,16 @@ Status TensorSliceWriter::Finish() {
 
 /* static */
 size_t TensorSliceWriter::MaxBytesPerElement(DataType dt) {
+  size_t max_bytes_per_element =
+      TensorSliceWriter::MaxBytesPerElementOrZero(dt);
+  if (max_bytes_per_element == 0) {
+    LOG(FATAL) << "MaxBytesPerElement not implemented for dtype: " << dt;
+  }
+  return max_bytes_per_element;
+}
+
+/* static */
+size_t TensorSliceWriter::MaxBytesPerElementOrZero(DataType dt) {
   switch (dt) {
     case DT_FLOAT:
       return 4;
@@ -170,17 +181,16 @@ size_t TensorSliceWriter::MaxBytesPerElement(DataType dt) {
     case DT_STRING:
     case DT_BFLOAT16:
     default:
-      LOG(FATAL) << "MaxBytesPerElement not implemented for dtype: " << dt;
+      return 0;
   }
-  return 0;
 }
 
 template <>
-Status TensorSliceWriter::SaveData(const tstring* data, int64 num_elements,
+Status TensorSliceWriter::SaveData(const tstring* data, int64_t num_elements,
                                    SavedSlice* ss) {
   size_t size_bound = ss->ByteSize() + kTensorProtoHeaderBytes +
                       (num_elements * MaxBytesPerElement(DT_INT32));
-  for (int64 i = 0; i < num_elements; ++i) {
+  for (int64_t i = 0; i < num_elements; ++i) {
     size_bound += data[i].size();
   }
   if (size_bound > kMaxMessageBytes) {
@@ -191,7 +201,7 @@ Status TensorSliceWriter::SaveData(const tstring* data, int64 num_elements,
   Fill(data, num_elements, ss->mutable_data());
   DCHECK_GE(ss->ByteSize(), 0);
   DCHECK_LE(ss->ByteSize(), size_bound);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace checkpoint

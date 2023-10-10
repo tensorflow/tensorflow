@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_RELU_OP_FUNCTOR_H_
 // Functor definition for ReluOp and ReluGradOp, must be compilable by nvcc.
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
@@ -32,7 +32,8 @@ struct Relu {
   // activations: same shape as "features".
   void operator()(const Device& d, typename TTypes<T>::ConstTensor features,
                   typename TTypes<T>::Tensor activations) {
-    activations.device(d) = features.cwiseMax(static_cast<T>(0));
+    activations.device(d) =
+        features.template cwiseMax<Eigen::PropagateNaN>(static_cast<T>(0));
   }
 };
 
@@ -66,7 +67,8 @@ struct Relu6 {
   void operator()(const Device& d, typename TTypes<T>::ConstTensor features,
                   typename TTypes<T>::Tensor activations) {
     activations.device(d) =
-        features.cwiseMax(static_cast<T>(0)).cwiseMin(static_cast<T>(6));
+        features.template cwiseMax<Eigen::PropagateNaN>(static_cast<T>(0))
+            .template cwiseMin<Eigen::PropagateNaN>(static_cast<T>(6));
   }
 };
 

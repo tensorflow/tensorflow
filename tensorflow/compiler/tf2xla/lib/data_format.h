@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_LIB_DATA_FORMAT_H_
 #define TENSORFLOW_COMPILER_TF2XLA_LIB_DATA_FORMAT_H_
 
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/client/xla_builder.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
@@ -25,12 +25,12 @@ namespace tensorflow {
 // Reformat from NCHW_VECT_C to NCHW.
 //
 // Prerequisites: the last dimension of the input must be of size 4.
-xla::StatusOr<xla::XlaOp> NCHW_VECT_CToNCHW(xla::XlaOp input);
+StatusOr<xla::XlaOp> NCHW_VECT_CToNCHW(xla::XlaOp input);
 
 // Reformat from NCHW to NCHW_VECT_C.
 //
 // Prerequisites: the vectorized dimension `C` must be a multiple of 4.
-xla::StatusOr<xla::XlaOp> NCHWToNCHW_VECT_C(xla::XlaOp input);
+StatusOr<xla::XlaOp> NCHWToNCHW_VECT_C(xla::XlaOp input);
 
 }  // namespace tensorflow
 

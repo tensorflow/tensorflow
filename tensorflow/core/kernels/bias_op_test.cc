@@ -48,21 +48,21 @@ static Graph* BiasAddGrad(int d0, int d1, int d2, int d3) {
       ::testing::benchmark::State& state) {                                    \
     test::Benchmark(#DEVICE, BiasAdd(N, H, W, C), /*old_benchmark_api=*/false) \
         .Run(state);                                                           \
-    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * N * H *   \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * N * H * \
                             W * C);                                            \
   }                                                                            \
   BENCHMARK(BM_BiasAddNHWC##_##N##_##H##_##W##_##C##_##DEVICE)->UseRealTime();
 
-#define BM_BiasAddGradNHWC(N, W, H, C, DEVICE)                               \
-  static void BM_BiasAddGradNHWC##_##N##_##H##_##W##_##C##_##DEVICE(         \
-      ::testing::benchmark::State& state) {                                  \
-    test::Benchmark(#DEVICE, BiasAddGrad(N, H, W, C),                        \
-                    /*old_benchmark_api=*/false)                             \
-        .Run(state);                                                         \
-    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * N * H * \
-                            W * C);                                          \
-  }                                                                          \
-  BENCHMARK(BM_BiasAddGradNHWC##_##N##_##H##_##W##_##C##_##DEVICE)           \
+#define BM_BiasAddGradNHWC(N, W, H, C, DEVICE)                                 \
+  static void BM_BiasAddGradNHWC##_##N##_##H##_##W##_##C##_##DEVICE(           \
+      ::testing::benchmark::State& state) {                                    \
+    test::Benchmark(#DEVICE, BiasAddGrad(N, H, W, C),                          \
+                    /*old_benchmark_api=*/false)                               \
+        .Run(state);                                                           \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * N * H * \
+                            W * C);                                            \
+  }                                                                            \
+  BENCHMARK(BM_BiasAddGradNHWC##_##N##_##H##_##W##_##C##_##DEVICE)             \
       ->UseRealTime();
 
 // CPU

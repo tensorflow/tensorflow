@@ -28,10 +28,10 @@ namespace grappler {
 
 namespace {
 
-void CreateConstOp(const string& name, std::initializer_list<int64> dims,
+void CreateConstOp(const string& name, std::initializer_list<int64_t> dims,
                    NodeDef* node) {
   Tensor tensor(DT_FLOAT, TensorShape(dims));
-  for (int64 i = 0; i < tensor.NumElements(); ++i)
+  for (int64_t i = 0; i < tensor.NumElements(); ++i)
     tensor.flat<float>()(i) = i / 10.0f;
   TF_CHECK_OK(NodeDefBuilder(name, "Const")
                   .Attr("dtype", DT_FLOAT)
@@ -44,7 +44,7 @@ void CreateConstSizesOp(const string& name, const std::vector<int32>& sizes,
   TensorShape shape;
   shape.AddDim(sizes.size());
   Tensor tensor(DT_INT32, shape);
-  for (int64 i = 0; i < tensor.NumElements(); ++i)
+  for (int64_t i = 0; i < tensor.NumElements(); ++i)
     tensor.flat<int32>()(i) = sizes[i];
   TF_CHECK_OK(NodeDefBuilder(name, "Const")
                   .Attr("dtype", DT_INT32)
@@ -100,7 +100,7 @@ TEST(UtilsTest, ConvOpInfo) {
 
   TensorShape paddings_shape({4, 2});
   Tensor paddings_tensor(DT_INT32, paddings_shape);
-  for (int64 i = 0; i < paddings_tensor.NumElements(); ++i) {
+  for (int64_t i = 0; i < paddings_tensor.NumElements(); ++i) {
     paddings_tensor.flat<int32>()(i) = 0;
   }
   TF_CHECK_OK(NodeDefBuilder("paddings", "Const")
@@ -202,6 +202,10 @@ TEST(UtilsTest, CalculateTensorSize) {
   EXPECT_EQ(
       DataTypeSize(DT_FLOAT) * 1 * 7 * 1 * 99,
       CalculateTensorSize(ShapeToTensorProperty({-1, 7, -1, 99}, DT_FLOAT)));
+
+  // Test overflow
+  EXPECT_EQ(-1, CalculateTensorSize(ShapeToTensorProperty(
+                    {4096, 4096, 4096, 33554432}, DT_FLOAT)));
 }
 
 TEST(UtilsTest, CalculateOutputSize) {

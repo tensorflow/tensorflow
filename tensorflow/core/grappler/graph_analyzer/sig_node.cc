@@ -113,7 +113,7 @@ void SigNode::ComputeTopoHash(int distance) {
     return;
   }
 
-  const int64 topo_hash_size = topo_hash_.size();
+  const int64_t topo_hash_size = topo_hash_.size();
   CHECK(topo_hash_size == distance);
 
   int prev = distance - 1;
@@ -155,7 +155,7 @@ void SigNode::ComputeTopoHash(int distance) {
 
 size_t SigNode::GetTopoHash(int distance) const {
   CHECK(!topo_hash_.empty());
-  const int64 topo_hash_size = topo_hash_.size();
+  const int64_t topo_hash_size = topo_hash_.size();
   if (distance >= topo_hash_size) {
     CHECK(hash_is_final_);
     return topo_hash_.back();
@@ -223,7 +223,7 @@ string Signature::ToString() const {
 Status Signature::Compute() {
   if (map.size() > kMaxGraphSize) {
     return Status(
-        error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrFormat(
             "A graph of %d nodes is too big for signature computation, "
             "the maximal supported node count is %d.",
@@ -248,7 +248,7 @@ Status Signature::Compute() {
 
   OrderLinks();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void Signature::PrepareNodes() {
@@ -275,8 +275,8 @@ void Signature::PrepareNodes() {
 
 void Signature::FindUniqueHashes(size_t* next_node_id_p) {
   // Start by sorting by the hash value.
-  std::sort(nodes.begin() + *next_node_id_p, nodes.end(),
-            SigNode::NodeOrderLess());
+  std::stable_sort(nodes.begin() + *next_node_id_p, nodes.end(),
+                   SigNode::NodeOrderLess());
 
   // At each call, if no nodes have unique hashes, one node that has a
   // non-unique (shared) hash can be made unique by assigning a unique id.
@@ -395,7 +395,8 @@ void Signature::OrderLinks() {
     int first_idx = -1;
 
     int idx;
-    for (idx = 0; idx < static_cast<int64>(node->hashed_peers_.size()); ++idx) {
+    for (idx = 0; idx < static_cast<int64_t>(node->hashed_peers_.size());
+         ++idx) {
       auto& entry = node->hashed_peers_[idx];
       if (entry.link_hash == cur_link_hash) {
         continue;

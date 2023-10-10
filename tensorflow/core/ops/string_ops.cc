@@ -46,7 +46,7 @@ REGISTER_OP("RegexReplace")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       c->set_output(0, c->input(0));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("StaticRegexReplace")
@@ -65,7 +65,7 @@ REGISTER_OP("RegexFullMatch")
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       c->set_output(0, c->input(0));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("StaticRegexFullMatch")
@@ -79,6 +79,21 @@ REGISTER_OP("StringToHashBucketFast")
     .Output("output: int64")
     .Attr("num_buckets: int >= 1")
     .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("_TensorToHashBucketFast")
+    .Input("input: T")
+    .Output("output: int64")
+    .Attr("T: {int8, uint8, int16, uint16, int32, uint32, int64, uint64}")
+    .Attr("num_buckets: int >= 1")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Internal operation which is a composition of converting the tensor to a string
+tensor (AsString) and then calling hash functions (StringToHashBucketFast):
+reserved for internal use.
+
+Do not invoke this operator directly in Python. A fusion optimization is
+expected to create these operators.
+)doc");
 
 REGISTER_OP("StringToHashBucketStrong")
     .Input("input: string")
@@ -109,14 +124,12 @@ REGISTER_OP("UnsortedSegmentJoin")
     .Attr("Tindices: {int32,int64}")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
     .Output("output: string")
-    .SetShapeFn(shape_inference::UnsortedSegmentReductionShapeFn);
+    .SetShapeFn(shape_inference::SegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("AsString")
     .Input("input: T")
     .Output("output: string")
-    .Attr(
-        "T: {int8, int16, int32, int64, complex64, complex128, float, double, "
-        "bool, variant}")
+    .Attr("T: {realnumbertype, complex64, complex128, bool, variant, string}")
     .Attr("precision: int = -1")
     .Attr("scientific: bool = false")
     .Attr("shortest: bool = false")
@@ -139,7 +152,7 @@ REGISTER_OP("StringFormat")
 
       std::vector<std::string> split_template;
       split_template = absl::StrSplit(template_, placeholder);
-      int64 num_placeholders = split_template.size() - 1;
+      int64_t num_placeholders = split_template.size() - 1;
       if (c->num_inputs() != num_placeholders) {
         return errors::InvalidArgument(strings::StrCat(
             "num placeholders in template and num inputs must match: ",
@@ -147,12 +160,12 @@ REGISTER_OP("StringFormat")
       }
 
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("StringJoin")
     .Input("inputs: N * string")
-    .Attr("N: int")
+    .Attr("N: int>=0")
     .Attr("separator: string = ''")
     .Output("output: string")
     .SetShapeFn([](InferenceContext* c) {
@@ -163,7 +176,7 @@ REGISTER_OP("StringJoin")
       }
       if (all_scalar) {
         c->set_output(0, c->Scalar());
-        return Status::OK();
+        return OkStatus();
       }
 
       // At least one input is unknown or a scalar.
@@ -177,7 +190,7 @@ REGISTER_OP("StringJoin")
         }
       }
       c->set_output(0, out);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("StringSplit")
@@ -195,7 +208,7 @@ REGISTER_OP("StringSplit")
       c->set_output(0, c->Matrix(InferenceContext::kUnknownDim, 2));
       c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
       c->set_output(2, c->Vector(2));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("StringSplitV2")
@@ -213,7 +226,7 @@ REGISTER_OP("StringSplitV2")
       c->set_output(0, c->Matrix(InferenceContext::kUnknownDim, 2));
       c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
       c->set_output(2, c->Vector(2));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("StringLower")
@@ -266,7 +279,7 @@ REGISTER_OP("Substr")
         TF_RETURN_IF_ERROR(c->WithRank(pos_shape, c->Rank(len_shape), &unused));
       }
       // Check that dimensions are equal
-      for (int32 i = 0; i < c->Rank(pos_shape); ++i) {
+      for (int32_t i = 0; i < c->Rank(pos_shape); ++i) {
         DimensionHandle pos_dim = c->Dim(pos_shape, i);
         DimensionHandle len_dim = c->Dim(len_shape, i);
         if (c->Value(pos_dim) != c->Value(len_dim)) {
@@ -308,7 +321,7 @@ REGISTER_OP("UnicodeEncode")
       TF_RETURN_IF_ERROR(c->Subtract(c->Dim(splits_shape, 0), 1, &dims[0]));
       c->set_output(0, c->MakeShape(dims));
 
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("UnicodeTranscode")
@@ -340,7 +353,7 @@ REGISTER_OP("UnicodeDecode")
       // char_values.shape == [num_chars]
       DimensionHandle num_chars = c->UnknownDim();
       c->set_output(1, c->Vector(num_chars));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("UnicodeDecodeWithOffsets")
@@ -364,7 +377,7 @@ REGISTER_OP("UnicodeDecodeWithOffsets")
       DimensionHandle num_chars = c->UnknownDim();
       c->set_output(1, c->Vector(num_chars));
       c->set_output(2, c->Vector(num_chars));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("StringNGrams")
@@ -386,7 +399,7 @@ REGISTER_OP("StringNGrams")
       ShapeHandle data_splits = c->input(1);
       TF_RETURN_IF_ERROR(c->WithRank(data_splits, 1, &data_splits));
       c->set_output(1, data_splits);
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

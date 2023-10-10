@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "DrawBoundingBoxes"
   input_arg {
     name: "images"

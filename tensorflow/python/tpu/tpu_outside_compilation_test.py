@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for TPU outside compilation."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import tempfile
 
@@ -25,6 +21,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorboard.plugins.histogram import summary_v2 as histogram_summary_v2
+from tensorboard.plugins.image import summary_v2 as image_summary_v2
 from tensorboard.plugins.scalar import summary_v2 as scalar_summary_v2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
@@ -36,31 +33,40 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import test_util
+from tensorflow.python.framework import tensor
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import summary_ops_v2 as summary
+from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 from tensorflow.python.tpu import functional as tpu_functional
 from tensorflow.python.tpu import tpu
-from tensorflow.python.tpu import tpu_strategy_util
+from tensorflow.python.tpu import tpu_replication
 from tensorflow.python.tpu.ops import tpu_ops
 
 FLAGS = flags.FLAGS
+flags.DEFINE_bool(
+    "use_local_tpu",
+    False,
+    "use local TPUs on a TPU VM instead of connecting to a GCP TPU VM or node.",
+)
 flags.DEFINE_string("tpu", "", "Name of TPU to connect to.")
 flags.DEFINE_string("project", None, "Name of GCP project with TPU.")
 flags.DEFINE_string("zone", None, "Name of GCP zone with TPU.")
 
 
 def get_tpu_cluster_resolver():
+  if FLAGS.use_local_tpu:
+    return tpu_cluster_resolver.TPUClusterResolver("local")
   resolver = tpu_cluster_resolver.TPUClusterResolver(
       tpu=FLAGS.tpu,
       zone=FLAGS.zone,
@@ -72,7 +78,7 @@ def get_tpu_cluster_resolver():
 def get_tpu_strategy():
   resolver = get_tpu_cluster_resolver()
   remote.connect_to_cluster(resolver)
-  tpu_strategy_util.initialize_tpu_system(resolver)
+  tpu_cluster_resolver.initialize_tpu_system(resolver)
   return tpu_lib.TPUStrategyV2(resolver)
 
 
@@ -142,7 +148,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
 
       def tpu_fn(x):
         x2 = x + 5.0
-        tpu.outside_compilation(outside_fn)
+        tpu_replication.outside_compilation(outside_fn)
         return x2 + 5.0
 
       return strategy.run(tpu_fn, args=(25.0,))
@@ -162,7 +168,28 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
 
       def tpu_fn(x):
         x2 = x + 5.0
-        tpu.outside_compilation(outside_fn, x2)
+        tpu_replication.outside_compilation(outside_fn, x2)
+        return x2 + 5.0
+
+      return strategy.run(tpu_fn, args=(25.0,))
+
+    self.assertAllEqual(
+        strategy.experimental_local_results(train_step()),
+        constant_op.constant(35., shape=(strategy.num_replicas_in_sync)))
+
+  def testJitCompile(self):
+    strategy = get_tpu_strategy()
+
+    def outside_fn(x):
+      logging_ops.print_v2("Outside compiled", x)
+
+    # jit_compile=True should have no effect for TPU.
+    @def_function.function(jit_compile=True)
+    def train_step():
+
+      def tpu_fn(x):
+        x2 = x + 5.0
+        tpu_replication.outside_compilation(outside_fn, x2)
         return x2 + 5.0
 
       return strategy.run(tpu_fn, args=(25.0,))
@@ -183,7 +210,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
 
       def tpu_fn(x):
         x2 = x + 5.0
-        output = tpu.outside_compilation(outside_fn, x2)
+        output = tpu_replication.outside_compilation(outside_fn, x2)
         return output
 
       return strategy.run(tpu_fn, args=(25.0,))
@@ -210,7 +237,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
       def tpu_fn(x, y):
         a = x + 7.0
         b = y * 2.0
-        c, d, e = tpu.outside_compilation(outside_fn, a, b)
+        c, d, e = tpu_replication.outside_compilation(outside_fn, a, b)
         return (math_ops.reduce_max(c) + math_ops.reduce_min(d) +
                 math_ops.reduce_sum(e))
 
@@ -236,9 +263,9 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
 
       def tpu_fn(x):
         x2 = x + 5.0
-        output1 = tpu.outside_compilation(outside_fn1, x2)
+        output1 = tpu_replication.outside_compilation(outside_fn1, x2)
         x3 = output1 + 3.0
-        output2 = tpu.outside_compilation(outside_fn2, x3)
+        output2 = tpu_replication.outside_compilation(outside_fn2, x3)
         return output2
 
       return strategy.run(tpu_fn, args=(25.0,))
@@ -263,7 +290,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
       def tpu_fn(x):
         x2 = x + 5.0
         if x < 50.0:
-          return tpu.outside_compilation(outside_fn, x2)
+          return tpu_replication.outside_compilation(outside_fn, x2)
         else:
           return x2
 
@@ -290,7 +317,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
       def tpu_fn(x):
         x2 = x + 5.0
         while x2 < 50.0:
-          x2 = tpu.outside_compilation(outside_fn, x2)
+          x2 = tpu_replication.outside_compilation(outside_fn, x2)
         return x2 + 4.0
 
       return strategy.run(tpu_fn, args=(25.0,))
@@ -315,7 +342,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
 
       def tpu_fn(x):
         x2 = x + 5.0
-        x2 = tpu.outside_compilation(outside_fn, x2)
+        x2 = tpu_replication.outside_compilation(outside_fn, x2)
         return x2 + 4.0
 
       return strategy.run(tpu_fn, args=(25.0,))
@@ -336,8 +363,8 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
 
       def computation(x):
         x = x + 1.0
-        y = tpu.outside_compilation(host_computation, x)
-        y = tpu.outside_compilation(host_computation, x)
+        y = tpu_replication.outside_compilation(host_computation, x)
+        y = tpu_replication.outside_compilation(host_computation, x)
         return y + 1.0
 
       return strategy.run(computation, args=(2.0,))
@@ -363,8 +390,8 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
       def computation(x):
         x = x + 1.0
         if x < 5.0:
-          y = tpu.outside_compilation(host_computation, x)
-          y = tpu.outside_compilation(host_computation, x)
+          y = tpu_replication.outside_compilation(host_computation, x)
+          y = tpu_replication.outside_compilation(host_computation, x)
           x = y
         return x + 1.0
 
@@ -399,11 +426,11 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
         n = 0
         while n < 3:
           x = x + 1.0
-          y = tpu.outside_compilation(host_computation, x)
-          y = tpu.outside_compilation(host_computation, x)
+          y = tpu_replication.outside_compilation(host_computation, x)
+          y = tpu_replication.outside_compilation(host_computation, x)
           x = y
           n = n + 1
-        return y + 1.0
+        return x + 1.0
 
       return strategy.run(computation, args=(2.0,))
 
@@ -425,9 +452,9 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
     def train_step():
 
       def computation(x):
-        w = tpu.outside_compilation(host_computation, x)
+        w = tpu_replication.outside_compilation(host_computation, x)
         y = w + 1.0
-        z = tpu.outside_compilation(host_computation, y)
+        z = tpu_replication.outside_compilation(host_computation, y)
         return z + 5.0
 
       return strategy.run(computation, args=(2.0,))
@@ -448,7 +475,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
     def train_step():
       def computation(x, y):
         a = x + 7.0
-        b = tpu.outside_compilation(host_computation, a)
+        b = tpu_replication.outside_compilation(host_computation, a)
         c = b * y
         d = gradients_impl.gradients(
             [c], [x], colocate_gradients_with_ops=True)[0]
@@ -472,7 +499,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
     def train_step():
       def computation(x, y):
         a = x + 7.0
-        b = tpu.outside_compilation(host_computation, a)
+        b = tpu_replication.outside_compilation(host_computation, a)
         c = b * y
         d = gradients_impl.gradients(
             [c], [x], colocate_gradients_with_ops=True)[0]
@@ -493,7 +520,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
 
       @def_function.function
       def tpu_fn(x):
-        x1 = tpu.outside_compilation(math_ops.sqrt, x)
+        x1 = tpu_replication.outside_compilation(math_ops.sqrt, x)
         grad = gradients_impl.gradients([x1], [x],
                                         colocate_gradients_with_ops=True)[0]
         sqrt = [
@@ -504,9 +531,11 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
             op for op in ops.get_default_graph().get_operations()
             if op.type == "SqrtGrad"
         ][0]
-        assert sqrt.get_attr(tpu._OUTSIDE_COMPILATION_ATTR) == b"0"
+        assert sqrt.get_attr(
+            tpu_replication._OUTSIDE_COMPILATION_ATTR) == b"0"
         assert (sqrt_grad.get_attr(
-            tpu._OUTSIDE_COMPILATION_ATTR) == b"0.gradients/uid")
+            tpu_replication._OUTSIDE_COMPILATION_ATTR) == b"0.gradients/uid"
+               )
         return grad
 
       return strategy.run(tpu_fn, args=(25.0,))
@@ -530,7 +559,8 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
     def train_step(x):
 
       def computation(x):
-        return tpu.outside_compilation(computation_with_string_ops, x)
+        return tpu_replication.outside_compilation(
+            computation_with_string_ops, x)
 
       return strategy.run(computation, args=(x,))
 
@@ -553,6 +583,63 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
         strategy.experimental_local_results(train_step(0)),
         constant_op.constant(10, shape=(strategy.num_replicas_in_sync)))
 
+  # Regression test for b/180509859.
+  def testImageSummary(self):
+    strategy = get_tpu_strategy()
+
+    def run():
+
+      @def_function.function
+      def sample_sequence():
+        bsz = 3
+        max_length = 32 * 32
+
+        def f():
+
+          def body(step, tokens):
+            next_token = random_ops.random_uniform([bsz])
+            tokens = tokens.write(step, next_token)
+            return (step + 1, tokens)
+
+          def cond_fn(step, tokens):
+            del tokens
+            return math_ops.less(step, max_length)
+
+          tokens_var = tensor_array_ops.TensorArray(
+              dtype=dtypes.float32,
+              size=max_length,
+              dynamic_size=False,
+              clear_after_read=False,
+              element_shape=(bsz,),
+              name="tokens_accumulator",
+          )
+
+          step = constant_op.constant(0)
+          step, tokens_var = while_loop.while_loop(cond_fn, body,
+                                                   [step, tokens_var])
+
+          image_flat = array_ops.transpose(tokens_var.stack(), [1, 0])
+          image = array_ops.tile(
+              array_ops.reshape(image_flat, [bsz, 32, 32, 1]), [1, 1, 1, 3])
+          image_summary_v2.image("image_sample", image,
+                                 constant_op.constant(5, dtype=dtypes.int64))
+
+        return strategy.run(f)
+
+      sample_sequence()
+
+    logdir = tempfile.mkdtemp()
+    summary_writer = summary.create_file_writer(logdir, flush_millis=10000)
+    with summary_writer.as_default(), summary.always_record_summaries():
+      run()
+    events = _events_from_logdir(self, logdir)
+    decoded_image = image_ops.decode_png(
+        events[1].summary.value[0].tensor.string_val[2]).numpy()
+    # Ensure that non-zero values were written to the image summary.
+    self.assertNotAllEqual(
+        array_ops.zeros((3072,), dtype=dtypes.float32),
+        list(decoded_image.flat))
+
   def testSummaryWithAutoOutsideCompilation(self):
     strategy = get_tpu_strategy()
 
@@ -563,6 +650,36 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
     @def_function.function
     def step():
 
+      def computation(x):
+        x = x + 1.0
+        y = host_computation(x)
+        return y + 1.0
+
+      return strategy.run(computation, args=(2.0,))
+
+    logdir = tempfile.mkdtemp()
+    summary_writer = summary.create_file_writer(logdir, flush_millis=10000)
+    with summary_writer.as_default(), summary.always_record_summaries():
+      self.assertAllEqual(
+          strategy.experimental_local_results(step()),
+          constant_op.constant(7., shape=(strategy.num_replicas_in_sync)))
+    events = _events_from_logdir(self, logdir)
+    # There will be 2 entries: 1 summary file header entry, and 1 entry
+    # written by host.
+    self.assertLen(events, 2)
+    self.assertEqual(events[1].summary.value[0].tag, "x")
+
+  def testNestedFunctionScalarSummary(self):
+    strategy = get_tpu_strategy()
+
+    def host_computation(x):
+      scalar_summary_v2.scalar("x", x, step=0)
+      return x * 2.0
+
+    @def_function.function
+    def step():
+
+      @def_function.function
       def computation(x):
         x = x + 1.0
         y = host_computation(x)
@@ -649,9 +766,6 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
       self.assertLen(events, 2)
       self.assertEqual(events[1].summary.value[0].tag, "cond/x")
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/168493455): Reenable this test once deadlock resolved."
-  )
   def testAutoOutsideCompilationWithFunctionalNodes(self):
     strategy = get_tpu_strategy()
 
@@ -663,7 +777,7 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
         fn2 = lambda: computation_with_string_ops(a)
         pred = math_ops.greater_equal(a, b)
         result = array_ops.identity(
-            control_flow_ops.cond(pred, fn1, fn2),
+            cond.cond(pred, fn1, fn2),
             name="uncompilable_control_flow")
         return result
 
@@ -687,10 +801,6 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
     self.assertAllEqual(
         strategy.experimental_local_results(train_step())[0].shape, [1, 2, 3])
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/167235391): Reenable this test once function calls are handled "
-      "by MLIR bridge."
-  )
   def testOutsideCompilationWithTPUPartitionedCallOp(self):
     """Tests that control flow with TPUPartitionedCall including outside_compilation works."""
     get_tpu_strategy()
@@ -702,18 +812,18 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
     def train_step(x):
       x2 = x + 5.0
       logging_ops.print_v2(x2)
-      x2 = tpu.outside_compilation(host_computation, x2)
+      x2 = tpu_replication.outside_compilation(host_computation, x2)
       return x2 + 4.0
 
     tpu_fn = _rewrite_func_wrapper(train_step)
     partitioned_tpu_fn = _tpu_partitioned_call_wrapper(tpu_fn)
 
     concrete = partitioned_tpu_fn.get_concrete_function(
-        x=tensor_spec.TensorSpec(
+        x=tensor.TensorSpec(
             shape=(1), dtype=dtypes.float32, name="input_tensor"))
 
     self.assertIsInstance(
-        concrete(array_ops.ones((1), dtype=dtypes.float32))[0], ops.Tensor)
+        concrete(array_ops.ones((1), dtype=dtypes.float32))[0], tensor.Tensor)
 
 
 if __name__ == "__main__":

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Unit tests for source_utils."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ast
 import os
 import sys
@@ -35,11 +31,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import tf_inspect
 
@@ -265,8 +261,8 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
 
   def testCallingAnnotateSourceOnUnrelatedSourceFileDoesNotError(self):
     # Create an unrelated source file.
-    unrelated_source_path = tempfile.mktemp()
-    with open(unrelated_source_path, "wt") as source_file:
+    fd, unrelated_source_path = tempfile.mkstemp()
+    with open(fd, "wt") as source_file:
       source_file.write("print('hello, world')\n")
 
     self.assertEqual({},
@@ -277,8 +273,8 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
     os.remove(unrelated_source_path)
 
   def testLoadingPythonSourceFileWithNonAsciiChars(self):
-    source_path = tempfile.mktemp()
-    with open(source_path, "wb") as source_file:
+    fd, source_path = tempfile.mkstemp()
+    with open(fd, "wb") as source_file:
       source_file.write(u"print('\U0001f642')\n".encode("utf-8"))
     source_lines, _ = source_utils.load_source(source_path)
     self.assertEqual(source_lines, [u"print('\U0001f642')", u""])
@@ -339,7 +335,7 @@ class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
       loop_cond = lambda i: math_ops.less(i, 16)
 
       i = constant_op.constant(10, name="i")
-      loop = control_flow_ops.while_loop(loop_cond, loop_body, [i])
+      loop = while_loop.while_loop(loop_cond, loop_body, [i])
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
       debug_utils.watch_graph(

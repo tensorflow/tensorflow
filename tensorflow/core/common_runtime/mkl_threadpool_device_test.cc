@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
 
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if defined(_OPENMP) && !defined(ENABLE_MKLDNN_THREADPOOL)
+#if defined(_OPENMP) && defined(ENABLE_ONEDNN_OPENMP)
 TEST(MKLThreadPoolDeviceTest, TestOmpDefaults) {
   SessionOptions options;
   unsetenv("OMP_NUM_THREADS");
@@ -36,8 +36,8 @@ TEST(MKLThreadPoolDeviceTest, TestOmpDefaults) {
   EXPECT_EQ(omp_get_max_threads(), (port::NumSchedulableCPUs() + ht - 1) / ht);
 }
 
-#endif  // defined(_OPENMP) && !defined(ENABLE_MKLDNN_THREADPOOL)
+#endif  // defined(_OPENMP) && defined(ENABLE_ONEDNN_OPENMP)
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && ENABLE_MKL

@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <map>
+#include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/internal/tfprof_timeline.h"
 
@@ -101,35 +103,35 @@ TFStats::TFStats(const string& filename,
         node_pb.second.name(), std::move(node)));
   }
   has_code_traces_ = profile.has_trace();
-  for (int64 s : profile.steps()) {
+  for (int64_t s : profile.steps()) {
     steps_.insert(s);
   }
 }
 
 void TFStats::BuildView(const string& cmd) {
   if (cmd == kCmds[0] && !scope_view_) {
-    scope_view_.reset(new TFScope(ckpt_reader_.get()));
+    scope_view_ = std::make_unique<TFScope>(ckpt_reader_.get());
     for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
       scope_view_->AddNode(it->second.get());
     }
     scope_view_->Build();
   }
   if (cmd == kCmds[1] && !graph_view_) {
-    graph_view_.reset(new TFGraph(ckpt_reader_.get()));
+    graph_view_ = std::make_unique<TFGraph>(ckpt_reader_.get());
     for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
       graph_view_->AddNode(it->second.get());
     }
     graph_view_->Build();
   }
   if (cmd == kCmds[2] && !code_view_) {
-    code_view_.reset(new TFCode());
+    code_view_ = std::make_unique<TFCode>();
     for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
       code_view_->AddNode(it->second.get());
     }
     code_view_->Build();
   }
   if (cmd == kCmds[3] && !op_view_) {
-    op_view_.reset(new TFOp());
+    op_view_ = std::make_unique<TFOp>();
     for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
       op_view_->AddNode(it->second.get());
     }
@@ -156,7 +158,7 @@ const GraphNodeProto& TFStats::ShowGraphNode(const string& cmd,
     return scope_view_->Show(prefix, opts);
   } else if (cmd == kCmds[1]) {
     if (opts.step < 0 && opts.output_type == kOutput[0]) {
-      for (int64 step : steps_) {
+      for (int64_t step : steps_) {
         Options nopts = opts;
         nopts.step = step;
         graph_view_->Show(prefix, nopts);
@@ -201,8 +203,8 @@ void TFStats::AddGraph(std::unique_ptr<GraphDef> graph) {
     }
     node_added = true;
     size_t num_nodes = nodes_map_.size();
-    nodes_map_[node.name()] = std::unique_ptr<TFGraphNode>(
-        new TFGraphNode(&node, num_nodes, &nodes_map_));
+    nodes_map_[node.name()] =
+        std::make_unique<TFGraphNode>(&node, num_nodes, &nodes_map_);
     node_defs[node.name()] = &node;
   }
   for (auto it = node_defs.begin(); it != node_defs.end(); it++) {
@@ -212,7 +214,7 @@ void TFStats::AddGraph(std::unique_ptr<GraphDef> graph) {
       int output_idx = 0;
       // input name format can be: "^node:src_output"
       // if not :src_output, then it's the first one (further verify?)
-      auto prefix_pos = node_input.find(":");
+      auto prefix_pos = node_input.find(':');
       if (prefix_pos != node_input.npos) {
         std::vector<string> input_parts = absl::StrSplit(node_input, ':');
         DCHECK(input_parts.size() == 2)
@@ -263,7 +265,7 @@ void TFStats::AddOpLogProto(std::unique_ptr<OpLogProto> op_log) {
   }
 }
 
-void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
+void TFStats::AddRunMeta(int64_t step, std::unique_ptr<RunMetadata> run_meta) {
   if (!run_meta || !run_meta->has_step_stats()) {
     absl::FPrintF(stderr, "Invalid RunMetadata for step %d\n", step);
     return;
@@ -287,7 +289,7 @@ void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
     for (const NodeExecStats& node_stat : dev_stat.node_stats()) {
       string name = node_stat.node_name();
       // Sometimes the node_name is suffixed with unnecessary information.
-      auto split_pos = node_stat.node_name().find(":");
+      auto split_pos = node_stat.node_name().find(':');
       if (split_pos != node_stat.node_name().npos) {
         name = node_stat.node_name().substr(0, split_pos);
       }
@@ -296,8 +298,8 @@ void TFStats::AddRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta) {
         NodeDef def;
         if (CreateRunMetadataNode(name, &def)) {
           size_t num_nodes = nodes_map_.size();
-          nodes_map_[name] = std::unique_ptr<TFGraphNode>(
-              new TFGraphNode(&def, num_nodes, &nodes_map_));
+          nodes_map_[name] =
+              std::make_unique<TFGraphNode>(&def, num_nodes, &nodes_map_);
           nodes_map_.at(name)->AddStepStat(step, dev_stat.device(), node_stat);
         }
       } else {
@@ -340,7 +342,7 @@ void TFStats::SerializeToString(string* content) {
 
   profile.set_has_trace(has_code_traces_);
   profile.set_miss_accelerator_stream(miss_accelerator_stream_);
-  for (int64 s : steps_) {
+  for (int64_t s : steps_) {
     profile.add_steps(s);
   }
   *content = profile.SerializeAsString();
@@ -359,7 +361,7 @@ bool TFStats::Validate(const Options& opts) const {
   if (opts.step >= 0 && steps_.find(opts.step) == steps_.end()) {
     absl::FPrintF(stderr,
                   "Options -step=%d not found.\nAvailable steps: ", opts.step);
-    for (int64 s : steps_) {
+    for (int64_t s : steps_) {
       absl::FPrintF(stderr, "%d ", s);
     }
     absl::FPrintF(stderr, "\n");
@@ -368,7 +370,7 @@ bool TFStats::Validate(const Options& opts) const {
   return true;
 }
 
-void TFStats::AddNodeForTest(int64 step, std::unique_ptr<TFGraphNode> node) {
+void TFStats::AddNodeForTest(int64_t step, std::unique_ptr<TFGraphNode> node) {
   steps_.insert(step);
   nodes_map_[node->name()] = std::move(node);
 }

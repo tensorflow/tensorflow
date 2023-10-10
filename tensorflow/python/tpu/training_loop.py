@@ -15,19 +15,24 @@
 
 """Library for constructing a training loop, suitable for TPUs."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from typing import Any, Callable, Iterable, List, Optional, Union
 
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import while_loop as while_loop_tf
 from tensorflow.python.tpu import tensor_tracer
+from tensorflow.python.tpu import tpu_feed
 from tensorflow.python.tpu import tpu_function
+from tensorflow.python.types import core as core_types
 
 
-def while_loop(condition, body, inputs=None, infeed_queue=None, name=None):
+def while_loop(condition: Callable[..., Any],
+               body: Callable[..., Any],
+               inputs: Optional[List[Any]] = None,
+               infeed_queue: Optional[tpu_feed.InfeedQueue] = None,
+               name: Any = None) -> Any:
   """Builds a training loop for TPUs.
 
   The set of loop-carried tensors corresponds to `inputs`.  Both
@@ -41,10 +46,10 @@ def while_loop(condition, body, inputs=None, infeed_queue=None, name=None):
   Args:
     condition: a Python function that builds the loop condition.
     body: a Python function that builds the loop body.
-    inputs: a list of initial values passed into the training loop, or
-      None (equivalent to an empty list).
-    infeed_queue: if not None, the infeed queue from which to append a tuple
-      of arguments as inputs to condition.
+    inputs: a list of initial values passed into the training loop, or None
+      (equivalent to an empty list).
+    infeed_queue: if not None, the infeed queue from which to append a tuple of
+      arguments as inputs to condition.
     name: (Deprecated) Does nothing.
 
   Returns:
@@ -65,32 +70,28 @@ def while_loop(condition, body, inputs=None, infeed_queue=None, name=None):
   if body_arg_error is not None:
     if infeed_queue is None:
       raise TypeError(
-          "Supplied loop body function cannot be called with the specified "
-          "inputs. You specified %d inputs: %s, but the loop body needs %s" % (
-              input_arity, str([i.name for i in inputs]), body_arg_error))
+          f"Supplied loop body function cannot be called with the specified "
+          f"inputs. You specified {input_arity} inputs: {[i.name for i in inputs]}, but the loop body needs {body_arg_error}"
+      )
     else:
       raise TypeError(
-          "Supplied loop body function cannot be called with the specified "
-          "inputs. You specified %d inputs: %s and %d additional inputs from "
-          "infeed, but the computation needs %s" % (input_arity, str(
-              [i.name for i in inputs]), infeed_queue.number_of_tuple_elements,
-                                                    body_arg_error))
+          f"Supplied loop body function cannot be called with the specified "
+          f"inputs. You specified {input_arity} inputs: {[i.name for i in inputs]} and {infeed_queue.number_of_tuple_elements} additional inputs from "
+          f"infeed, but the computation needs {body_arg_error}")
   condition_arg_error = xla.check_function_argument_count(
       condition, input_arity, None)
   if condition_arg_error is not None:
     if infeed_queue is None:
       raise TypeError(
-          "Supplied loop condition function cannot be called with the "
-          "specified inputs. You specified %d inputs: %s, but the loop "
-          "condition needs %s" % (input_arity, str([i.name for i in inputs]),
-                                  condition_arg_error))
+          f"Supplied loop condition function cannot be called with the "
+          f"specified inputs. You specified {input_arity} inputs: {[i.name for i in inputs]}, but the loop "
+          f"condition needs {condition_arg_error}")
     else:
       raise TypeError(
-          "Supplied loop condition function cannot be called with the "
-          "specified inputs. You specified %d inputs: %s, but the loop "
-          "condition needs %s. Note that infeed is not passed to the loop "
-          "condition." % (input_arity, str([i.name for i in inputs]),
-                          condition_arg_error))
+          f"Supplied loop condition function cannot be called with the "
+          f"specified inputs. You specified {input_arity} inputs: {[i.name for i in inputs]}, but the loop "
+          f"condition needs {condition_arg_error}. Note that infeed is not passed to the loop condition."
+      )
 
   def condition_wrapper(*inputs):
     # Discards the dummy output added for arity-0 loops.
@@ -174,11 +175,16 @@ def while_loop(condition, body, inputs=None, infeed_queue=None, name=None):
   # control dependencies from any side-effecting operations.
   if input_arity == 0:
     inputs = [array_ops.constant(0)]
-  return control_flow_ops.while_loop(
+  return while_loop_tf.while_loop(
       condition_wrapper, body_wrapper, inputs, name="", parallel_iterations=1)
 
 
-def repeat(n, body, inputs=None, infeed_queue=None, name=None):
+def repeat(
+    n: int,
+    body: Callable[..., Union[core_types.TensorLike, Iterable]],  # pylint:disable=g-bare-generic
+    inputs: Optional[List[core_types.TensorLike]] = None,
+    infeed_queue: Optional[tpu_feed.InfeedQueue] = None,
+    name: Any = None) -> List[core_types.TensorLike]:
   """Builds a training loop that executes a fixed number of iterations.
 
   The set of loop-carried tensors correspond to `inputs`.
@@ -188,11 +194,12 @@ def repeat(n, body, inputs=None, infeed_queue=None, name=None):
   Args:
     n: the number of loop iterations
     body: a Python function that builds the loop body.
-    inputs: a list of initial values passed into the training loop or
-      None (equivalent to an empty list).
-    infeed_queue: if not None, the infeed queue from which to append a tuple
-      of arguments as inputs to condition.
+    inputs: a list of initial values passed into the training loop or None
+      (equivalent to an empty list).
+    infeed_queue: if not None, the infeed queue from which to append a tuple of
+      arguments as inputs to condition.
     name: (Deprecated) Does nothing.
+
   Returns:
     The final values of the loop-carried tensors.
   Raises:

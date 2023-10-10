@@ -13,11 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Operations for manipulating the binary representations of integers."""
+"""Operations for manipulating the binary representations of integers.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+API docstring: tensorflow.bitwise
+"""
 
 from tensorflow.python.framework import ops
 # go/tf-wildcard-import

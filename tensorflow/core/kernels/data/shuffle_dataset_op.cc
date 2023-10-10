@@ -14,16 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/shuffle_dataset_op.h"
 
+#include <cstdint>
 #include <deque>
+#include <memory>
+#include <numeric>
+#include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
+#include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/name_utils.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
-#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/random_seed_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/random/philox_random.h"
@@ -53,8 +59,8 @@ namespace data {
     ShuffleAndRepeatDatasetOp::kDatasetType;
 /* static */ constexpr const char* const ShuffleAndRepeatDatasetOp::kCount;
 
-const int64 kLogIntervalMicros = 10 * 1000000;  // 10 seconds.
-const int64 kMaxEpochsInBuffer = 3;
+const int64_t kLogIntervalMicros = 10 * 1000000;  // 10 seconds.
+const int64_t kMaxEpochsInBuffer = 3;
 
 constexpr char kNumRandomSamples[] = "num_random_samples";
 constexpr char kDataProduced[] = "data_produced";
@@ -64,10 +70,8 @@ constexpr char kNumElements[] = "num_elements";
 constexpr char kSlicesSize[] = "slices_size";
 constexpr char kSlicesStart[] = "slices_start";
 constexpr char kSlicesEnd[] = "slices_end";
-constexpr char kBuffer[] = "buffer";
-constexpr char kSize[] = "size";
+constexpr char kSlicesReachedEndOfSequence[] = "slices_reached_end_of_sequence";
 constexpr char kSeedGenerator[] = "SeedGenerator";
-constexpr char kTFData[] = "tf_data";
 constexpr char kEpochNumRandomSamples[] = "epoch_num_random_samples";
 constexpr char kShuffleDatasetV1[] = "ShuffleDataset";
 constexpr char kShuffleDatasetV2[] = "ShuffleDatasetV2";
@@ -82,8 +86,9 @@ ShuffleDatasetOpBase::ShuffleDatasetOpBase(OpKernelConstruction* ctx)
 class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
  public:
   ShuffleDatasetBase(OpKernelContext* ctx, const DatasetBase* input,
-                     int64 buffer_size,
-                     std::shared_ptr<SeedGenerator> seed_generator, int64 count)
+                     int64_t buffer_size,
+                     std::shared_ptr<SeedGenerator> seed_generator,
+                     int64_t count)
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
         buffer_size_(buffer_size),
@@ -107,23 +112,41 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     return input_->output_shapes();
   }
 
-  int64 Cardinality() const override {
-    if (count_ == -1 || input_->Cardinality() == kInfiniteCardinality) {
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    if (count_ == -1 || input_->Cardinality(options) == kInfiniteCardinality) {
       return kInfiniteCardinality;
-    } else if (input_->Cardinality() == kUnknownCardinality) {
+    } else if (input_->Cardinality(options) == kUnknownCardinality) {
       return kUnknownCardinality;
     } else {
-      return input_->Cardinality() * count_;
+      return input_->Cardinality(options) * count_;
     }
   }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
+  }
+
+  Status Get(OpKernelContext* ctx, int64 index,
+             std::vector<Tensor>* out_tensors) const override {
+    TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
+    {
+      mutex_lock l(mu_);
+      if (shuffled_indices_.empty()) {
+        InitializeRandomAccessIndices();
+      }
+    }
+    int64 shuffled_index;
+    {
+      tf_shared_lock l(mu_);
+      shuffled_index = shuffled_indices_[index];
+    }
+    TF_RETURN_IF_ERROR(input_->Get(ctx, shuffled_index, out_tensors));
+    return OkStatus();
   }
 
   string DebugString() const override {
@@ -135,9 +158,27 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(
+    return std::make_unique<Iterator>(
         Iterator::Params{this, name_utils::IteratorPrefix(op_type(), prefix)},
         seed_generator_.get());
+  }
+
+  void InitializeRandomAccessIndices() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    const int64 cardinality = Cardinality();
+    shuffled_indices_ = std::vector<std::int64_t>(cardinality);
+    std::iota(shuffled_indices_.begin(), shuffled_indices_.end(), 0);
+    int64_t shuffled_index = 0;
+    random::PhiloxRandom parent_generator =
+        random::PhiloxRandom(seed_generator_->seed(), seed_generator_->seed2());
+    random::SingleSampleAdapter<random::PhiloxRandom> generator =
+        random::SingleSampleAdapter<random::PhiloxRandom>(&parent_generator);
+
+    while (shuffled_index < cardinality) {
+      int64_t offset = generator() % (cardinality - shuffled_index);
+      std::swap(shuffled_indices_[shuffled_index + offset],
+                shuffled_indices_[shuffled_index]);
+      shuffled_index += 1;
+    }
   }
 
  protected:
@@ -148,118 +189,49 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           seed_generator_(seed_generator),
           parent_generator_(seed_generator->seed(), seed_generator->seed2()),
           generator_(&parent_generator_) {
-      buffer_ = absl::make_unique<std::vector<std::vector<Tensor>>>(
-          params.dataset->buffer_size_);
-      slices_.push_back(absl::make_unique<Slice>(0, 0));
+      if (params.dataset->buffer_size_ == kUnknownCardinality) {
+        buffer_ = std::make_unique<std::vector<std::vector<Tensor>>>();
+      } else {
+        buffer_ = std::make_unique<std::vector<std::vector<Tensor>>>(
+            params.dataset->buffer_size_);
+      }
     }
+
+    bool SymbolicCheckpointCompatible() const override { return true; }
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
       seed_generator_->GenerateSeeds(&seed_, &seed2_);
       ResetRngs();
-      return Status::OK();
+      return OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       mutex_lock l(mu_);
-      int64 start_micros = EnvTime::NowMicros();
-      int64 num_log_entries = 0;
-      if (!input_impl_ && epoch_ == 0) {
-        TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
-            ctx, this, this->prefix(), &input_impl_));
-      }
-      while (input_impl_ && num_elements_ < this->dataset()->buffer_size_) {
-        if (EnvTime::NowMicros() >
-            ((num_log_entries + 1) * kLogIntervalMicros) + start_micros) {
-          num_log_entries++;
-          LOG(INFO) << "Filling up shuffle buffer (this may take a while): "
-                    << num_elements_ << " of " << this->dataset()->buffer_size_;
-        }
-        std::vector<Tensor> input_element;
-        bool end_of_input_sequence = false;
-        while (this->dataset()->count_ == -1 ||
-               epoch_ < this->dataset()->count_) {
-          TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &input_element,
-                                                  &end_of_input_sequence));
-          if (!end_of_input_sequence) {
-            data_produced_ = true;
-            break;
-          }
-          if (ctx->split_provider() == nullptr && !data_produced_ &&
-              this->dataset()->count_ == -1) {
-            // If we encounter the end of sequence without producing data, we
-            // terminate the iteration immediately. (Otherwise, this iterator
-            // would loop infinitely and never produce a value.)
-            *end_of_sequence = true;
-            return Status::OK();
-          }
-          epoch_++;
-          int64 n = slices_.back()->end;
-          slices_.push_back(absl::make_unique<Slice>(n, n));
-          if (ctx->split_provider()) {
-            TF_RETURN_IF_ERROR(ctx->split_provider()->Reset());
-          }
-          TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
-              ctx, this, this->prefix(), &input_impl_));
-        }
-        if (!end_of_input_sequence) {
-          if (num_elements_ == 0) {
-            VLOG(1) << "Starting to fill up shuffle buffer of size: "
-                    << this->dataset()->buffer_size_;
-          }
-          this->RecordBufferEnqueue(ctx, input_element);
-          buffer_->at(slices_.back()->end % this->dataset()->buffer_size_) =
-              std::move(input_element);
-          num_elements_++;
-          slices_.back()->end++;
-        } else {
-          input_impl_.reset();
-        }
-        if (slices_.size() > kMaxEpochsInBuffer) {
-          // When the elements stored in `buffer_` span more than
-          // `kMaxEpochsInBuffer` epochs, we do not fill the buffer further to
-          // conserve memory. This means that the upper bound on the size of
-          // `buffer_` is `kMaxEpochsInBuffer * cardinality(input_dataset) +
-          // 1`.
-          break;
-        }
-      }
-      if (num_log_entries > 0) {
-        LOG(INFO) << "Shuffle buffer filled.";
-      }
-
-      if (num_elements_ > 0) {
-        *end_of_sequence = false;
-        // Garbage collect all empty slices.
-        while (!slices_.empty() &&
-               slices_.front()->start == slices_.front()->end) {
-          slices_.pop_front();
-          // Reinitialize the RNG state for the next epoch.
-          num_random_samples_ = 0;
-          seed_generator_->GenerateSeeds(&seed_, &seed2_);
-          ResetRngs();
-        }
-        DCHECK(!slices_.empty());
-        // Choose an element to produce uniformly at random from the first
-        // slice, and then remove the element from the slice.
-        int64 offset =
-            Random() % (slices_.front()->end - slices_.front()->start);
-        int64 index =
-            (slices_.front()->start + offset) % this->dataset()->buffer_size_;
-        *out_tensors = std::move(buffer_->at(index));
-        this->RecordBufferDequeue(ctx, *out_tensors);
-        std::swap(buffer_->at(index),
-                  buffer_->at(slices_.front()->start %
-                              this->dataset()->buffer_size_));
-        slices_.front()->start++;
-        num_elements_--;
-      } else {
+      TF_RETURN_IF_ERROR(FillBuffer(ctx));
+      if (num_elements_ == 0) {
         DCHECK(input_impl_ == nullptr);
         *end_of_sequence = true;
+        return OkStatus();
       }
-      return Status::OK();
+
+      *end_of_sequence = false;
+      ClearEmptySlices();
+      DCHECK(!slices_.empty());
+      // Choose an element to produce uniformly at random from the first
+      // slice, and then remove the element from the slice.
+      int64_t offset =
+          Random() % (slices_.front()->end - slices_.front()->start);
+      int64_t index = (slices_.front()->start + offset) % buffer_->size();
+      *out_tensors = std::move(buffer_->at(index));
+      this->RecordBufferDequeue(ctx, *out_tensors);
+      std::swap(buffer_->at(index),
+                buffer_->at(slices_.front()->start % buffer_->size()));
+      slices_.front()->start++;
+      num_elements_--;
+      return OkStatus();
     }
 
    protected:
@@ -282,63 +254,69 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       mutex_lock l(mu_);
       // Save state needed to restore the random number generators.
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(kEpochNumRandomSamples),
+          writer->WriteScalar(prefix(), kEpochNumRandomSamples,
                               seed_generator_->num_random_samples()));
-      TF_RETURN_IF_ERROR(writer->WriteScalar(this->full_name(kNumRandomSamples),
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kNumRandomSamples,
                                              num_random_samples_));
-      TF_RETURN_IF_ERROR(writer->WriteScalar(this->full_name(kSeed), seed_));
-      TF_RETURN_IF_ERROR(writer->WriteScalar(this->full_name(kSeed2), seed2_));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kSeed, seed_));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kSeed2, seed2_));
 
       // Save input iterator if it hasn't been exhausted else write
       // "end_of_input_sequence".
-      if (!input_impl_) {
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(this->full_name(kEndOfInputSequence), ""));
-      } else {
+      TF_RETURN_IF_ERROR(writer->WriteScalar(
+          prefix(), kEndOfInputSequence, static_cast<int64_t>(!input_impl_)));
+      if (input_impl_) {
         TF_RETURN_IF_ERROR(this->SaveInput(ctx, writer, input_impl_));
       }
 
       // Save the epoch counter, buffer, and buffer slices.
-      TF_RETURN_IF_ERROR(writer->WriteScalar(this->full_name(kEpoch), epoch_));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kEpoch, epoch_));
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(this->full_name(kNumElements), num_elements_));
-      TF_RETURN_IF_ERROR(WriteElementsToCheckpoint(writer, prefix(), *buffer_));
+          writer->WriteScalar(prefix(), kNumElements, num_elements_));
+      TF_RETURN_IF_ERROR(WriteElementsToCheckpoint(
+          writer, absl::StrCat(prefix(), kColon, "buffer"), *buffer_));
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(this->full_name(kSlicesSize), slices_.size()));
+          writer->WriteScalar(prefix(), kSlicesSize, slices_.size()));
       for (size_t i = 0; i < slices_.size(); ++i) {
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(this->full_name(absl::StrJoin(
-                                    std::make_tuple(kSlicesStart, i), "_")),
-                                slices_[i]->start));
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            this->full_name(absl::StrJoin(std::make_tuple(kSlicesEnd, i), "_")),
+            prefix(), absl::StrJoin(std::make_tuple(kSlicesStart, i), "_"),
+            slices_[i]->start));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            prefix(), absl::StrJoin(std::make_tuple(kSlicesEnd, i), "_"),
             slices_[i]->end));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            prefix(),
+            absl::StrJoin(std::make_tuple(kSlicesReachedEndOfSequence, i), "_"),
+            static_cast<int64_t>(slices_[i]->reached_end_of_sequence)));
       }
       if (data_produced_) {
         TF_RETURN_IF_ERROR(
-            writer->WriteScalar(this->full_name(kDataProduced), ""));
+            writer->WriteScalar(this->prefix(), kDataProduced, ""));
       }
 
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
       // Restore the random number generators.
-      int64 num_random_samples;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kEpochNumRandomSamples),
+      int64_t num_random_samples;
+      TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kEpochNumRandomSamples,
                                             &num_random_samples));
       seed_generator_->set_num_random_samples(num_random_samples);
       seed_generator_->Reset();
-      TF_RETURN_IF_ERROR(reader->ReadScalar(this->full_name(kNumRandomSamples),
+      TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kNumRandomSamples,
                                             &num_random_samples_));
-      TF_RETURN_IF_ERROR(reader->ReadScalar(this->full_name(kSeed), &seed_));
-      TF_RETURN_IF_ERROR(reader->ReadScalar(this->full_name(kSeed2), &seed2_));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kSeed, &seed_));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kSeed2, &seed2_));
       ResetRngs();
 
       // Restore the input iterator if it wasn't already exhausted.
-      if (!reader->Contains(this->full_name(kEndOfInputSequence))) {
+      int64_t input_empty;
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix(), kEndOfInputSequence, &input_empty));
+      if (static_cast<bool>(!input_empty)) {
         TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
             ctx, this, this->prefix(), &input_impl_));
         TF_RETURN_IF_ERROR(this->RestoreInput(ctx, reader, input_impl_));
@@ -347,36 +325,47 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       }
 
       // Restore the epoch counter, buffer, and buffer slices.
-      TF_RETURN_IF_ERROR(reader->ReadScalar(this->full_name(kEpoch), &epoch_));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(this->prefix(), kEpoch, &epoch_));
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(this->full_name(kNumElements), &num_elements_));
+          reader->ReadScalar(this->prefix(), kNumElements, &num_elements_));
       size_t slices_size;
       {
-        int64 temp;
+        int64_t temp;
         TF_RETURN_IF_ERROR(
-            reader->ReadScalar(this->full_name(kSlicesSize), &temp));
+            reader->ReadScalar(this->prefix(), kSlicesSize, &temp));
         slices_size = static_cast<size_t>(temp);
       }
-      buffer_ = absl::make_unique<std::vector<std::vector<Tensor>>>(
-          this->dataset()->buffer_size_);
-      TF_RETURN_IF_ERROR(
-          ReadElementsFromCheckpoint(reader, prefix(), buffer_.get()));
+      buffer_ = std::make_unique<std::vector<std::vector<Tensor>>>();
+      TF_RETURN_IF_ERROR(ReadElementsFromCheckpoint(
+          ctx, reader, absl::StrCat(prefix(), kColon, "buffer"),
+          buffer_.get()));
+      for (const auto& element : *buffer_) {
+        RecordBufferEnqueue(ctx, element);
+      }
+      if (!IsShuffleAll()) {
+        buffer_->resize(dataset()->buffer_size_);
+      }
       slices_.clear();
       for (size_t i = 0; i < slices_size; ++i) {
-        int64 start;
-        TF_RETURN_IF_ERROR(
-            reader->ReadScalar(this->full_name(absl::StrJoin(
-                                   std::make_tuple(kSlicesStart, i), "_")),
-                               &start));
-        int64 end;
+        int64_t start;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
-            this->full_name(absl::StrJoin(std::make_tuple(kSlicesEnd, i), "_")),
+            this->prefix(),
+            absl::StrJoin(std::make_tuple(kSlicesStart, i), "_"), &start));
+        int64_t end;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(
+            this->prefix(), absl::StrJoin(std::make_tuple(kSlicesEnd, i), "_"),
             &end));
-        slices_.push_back(absl::make_unique<Slice>(start, end));
+        int64_t reached_end_of_sequence;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(
+            prefix(),
+            absl::StrJoin(std::make_tuple(kSlicesReachedEndOfSequence, i), "_"),
+            &reached_end_of_sequence));
+        slices_.push_back(std::make_unique<Slice>(
+            start, end, static_cast<bool>(reached_end_of_sequence)));
       }
-      data_produced_ = reader->Contains(this->full_name(kDataProduced));
+      data_produced_ = reader->Contains(this->prefix(), kDataProduced);
 
-      return Status::OK();
+      return OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -390,10 +379,14 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     // should be taken modulo the size of `buffer_` as their absolute value
     // can be greater than the range of `buffer_`.
     struct Slice {
-      Slice(int64 start, int64 end) : start(start), end(end) {}
+      Slice(int64_t start, int64_t end, bool reached_end_of_sequence)
+          : start(start),
+            end(end),
+            reached_end_of_sequence(reached_end_of_sequence) {}
 
-      int64 start;
-      int64 end;
+      int64_t start;
+      int64_t end;
+      bool reached_end_of_sequence = false;
     };
 
     random::SingleSampleAdapter<random::PhiloxRandom>::ResultType Random()
@@ -403,15 +396,145 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       return out;
     }
 
+    // Returns if the data-generating slice is complete, i.e, the iterator for
+    // the slice that will serve the next GetNext() request has been exhausted.
+    bool IsServingSliceComplete() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      for (auto& slice : slices_) {
+        if (slice->start != slice->end) {
+          return slice->reached_end_of_sequence;
+        }
+      }
+      return false;
+    }
+
+    bool IsShuffleAll() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      return dataset()->buffer_size_ == kUnknownCardinality;
+    }
+
+    // Fills the shuffle buffer, preparing the buffer for sampling.
+    Status FillBuffer(IteratorContext* ctx) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      int64_t start_micros = EnvTime::NowMicros();
+      int64_t num_log_entries = 0;
+      while (ShouldFillBuffer()) {
+        if (EnvTime::NowMicros() >
+            ((num_log_entries + 1) * kLogIntervalMicros) + start_micros) {
+          num_log_entries++;
+          LOG_EVERY_N_SEC(INFO, 10)
+              << dataset()->metadata().name() << ": "
+              << "Filling up shuffle buffer (this may take a while): "
+              << num_elements_ << " of " << BufferSizeString();
+        }
+        if (!input_impl_) {
+          TF_RETURN_IF_ERROR(PrepareNextEpoch(ctx));
+        }
+        std::vector<Tensor> input_element;
+        bool end_of_input_sequence = false;
+        TF_RETURN_IF_ERROR(
+            input_impl_->GetNext(ctx, &input_element, &end_of_input_sequence));
+        if (end_of_input_sequence) {
+          slices_.back()->reached_end_of_sequence = true;
+        }
+        if (!end_of_input_sequence) {
+          AddToShuffleBuffer(ctx, std::move(input_element));
+          continue;
+        }
+        input_impl_.reset();
+        // Reached end of input_impl_.
+        if (ctx->split_providers().empty() && !data_produced_ &&
+            this->dataset()->count_ == -1) {
+          // If we encounter the end of sequence without producing data, we
+          // terminate the iteration immediately. (Otherwise, this iterator
+          // would loop infinitely and never produce a value.)
+          return OkStatus();
+        }
+      }
+      if (num_log_entries > 0) {
+        LOG(INFO) << "Shuffle buffer filled.";
+      }
+      return OkStatus();
+    }
+
+    bool ShouldFillBuffer() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (!input_impl_ && dataset()->count_ != -1 &&
+          epoch_ >= dataset()->count_) {
+        return false;
+      }
+      if (slices_.size() > kMaxEpochsInBuffer && num_elements_ > 0) {
+        // When the elements stored in `buffer_` span more than
+        // `kMaxEpochsInBuffer` epochs, we do not fill the buffer further to
+        // conserve memory. This means that the upper bound on the size of
+        // `buffer_` is `kMaxEpochsInBuffer * cardinality(input_dataset) +
+        // 1`.
+        return false;
+      }
+      if (IsShuffleAll() && (slices_.empty() || !IsServingSliceComplete())) {
+        // If there is no slice or the first nonempty slice isn't complete,
+        // we need to add to the buffer.
+        return true;
+      }
+      return num_elements_ < buffer_->size();
+    }
+
+    Status PrepareNextEpoch(IteratorContext* ctx)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (epoch_ == 0) {
+        slices_.push_back(std::make_unique<Slice>(0, 0, false));
+      } else {
+        int64_t n = slices_.back()->end;
+        slices_.push_back(std::make_unique<Slice>(n, n, false));
+        for (const auto& provider : ctx->split_providers()) {
+          TF_RETURN_IF_ERROR(provider->Reset());
+        }
+      }
+      TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
+          ctx, this, this->prefix(), &input_impl_));
+      epoch_++;
+      return OkStatus();
+    }
+
+    void AddToShuffleBuffer(IteratorContext* ctx, std::vector<Tensor>&& element)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      data_produced_ = true;
+      if (num_elements_ == 0) {
+        VLOG(1) << "Starting to fill up shuffle buffer of size: "
+                << BufferSizeString();
+      }
+      this->RecordBufferEnqueue(ctx, element);
+      if (num_elements_ == buffer_->size()) {
+        DCHECK(IsShuffleAll());
+        buffer_->push_back(element);
+      } else {
+        size_t index = slices_.back()->end % buffer_->size();
+        buffer_->at(index) = std::move(element);
+      }
+      num_elements_++;
+      slices_.back()->end++;
+    }
+
+    void ClearEmptySlices() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      // Garbage collect all empty slices.
+      while (slices_.front()->start == slices_.front()->end) {
+        slices_.pop_front();
+        // Reinitialize the RNG state for the next epoch.
+        num_random_samples_ = 0;
+        seed_generator_->GenerateSeeds(&seed_, &seed2_);
+        ResetRngs();
+      }
+    }
+
+    std::string BufferSizeString() {
+      return absl::StrCat(dataset()->buffer_size_);
+    }
+
     mutex mu_;
     SeedGenerator* const seed_generator_ TF_GUARDED_BY(mu_);  // Not owned.
     std::unique_ptr<std::vector<std::vector<Tensor>>> buffer_
         TF_GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_) = nullptr;
-    int64 epoch_ TF_GUARDED_BY(mu_) = 0;
-    int64 num_elements_ TF_GUARDED_BY(mu_) = 0;
-    int64 seed_ TF_GUARDED_BY(mu_) = 0;
-    int64 seed2_ TF_GUARDED_BY(mu_) = 0;
+    int64_t epoch_ TF_GUARDED_BY(mu_) = 0;
+    int64_t num_elements_ TF_GUARDED_BY(mu_) = 0;
+    int64_t seed_ TF_GUARDED_BY(mu_) = 0;
+    int64_t seed2_ TF_GUARDED_BY(mu_) = 0;
     // Indices into `buffer_` indicating which data belongs to which epoch.
     // The slice at the front of the deque references data from the earliest
     // buffered epoch. It is an invariant that all slices reference
@@ -420,18 +543,20 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     random::PhiloxRandom parent_generator_ TF_GUARDED_BY(mu_);
     random::SingleSampleAdapter<random::PhiloxRandom> generator_
         TF_GUARDED_BY(mu_);
-    int64 num_random_samples_ TF_GUARDED_BY(mu_) = 0;
+    int64_t num_random_samples_ TF_GUARDED_BY(mu_) = 0;
     bool data_produced_ TF_GUARDED_BY(mu_) = false;
   };
 
   const DatasetBase* const input_;
-  const int64 buffer_size_;
+  const int64_t buffer_size_;
   const std::shared_ptr<SeedGenerator> seed_generator_;
   // The number of epochs to run for. Normally this is just 1, but sometimes we
   // fuse shuffle and repeat together, and make the shuffle dataset op
   // responsible for repeating as well.
-  const int64 count_;
+  const int64_t count_;
   const TraceMeMetadata traceme_metadata_;
+  mutable mutex mu_;
+  mutable std::vector<std::int64_t> shuffled_indices_ TF_GUARDED_BY(mu_);
 };  // ShuffleDatasetBase
 
 // This version of memory dataset has an exclusive ownership of the seed
@@ -440,8 +565,8 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
 // iterators.
 class ShuffleDatasetOp::Dataset : public ShuffleDatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size,
-          int64 count, RandomSeeds&& seeds, SeedGeneratorManager* manager,
+  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64_t buffer_size,
+          int64_t count, RandomSeeds&& seeds, SeedGeneratorManager* manager,
           ResourceHandle&& resource_handle)
       : ShuffleDatasetBase(ctx, input, buffer_size, manager->get(), count),
         manager_(manager),
@@ -482,7 +607,7 @@ class ShuffleDatasetOp::Dataset : public ShuffleDatasetBase {
         {std::make_pair(kReshuffleEachIteration,
                         reshuffle_each_iteration)},  // Attrs
         output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -498,8 +623,8 @@ class ShuffleDatasetOp::Dataset : public ShuffleDatasetBase {
 // iterators.
 class ShuffleDatasetOp::DatasetV2 : public ShuffleDatasetBase {
  public:
-  DatasetV2(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size,
-            int64 count, SeedGeneratorManager* manager,
+  DatasetV2(OpKernelContext* ctx, const DatasetBase* input, int64_t buffer_size,
+            int64_t count, SeedGeneratorManager* manager,
             ResourceHandle&& resource_handle, bool owns_resource)
       : ShuffleDatasetBase(ctx, input, buffer_size, manager->get(), count),
         manager_(manager),
@@ -537,7 +662,7 @@ class ShuffleDatasetOp::DatasetV2 : public ShuffleDatasetBase {
         {input_graph_node, buffer_size_node, resource_handle_node},  // Inputs
         {},                                                          // Attrs
         output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -552,8 +677,8 @@ class ShuffleDatasetOp::DatasetV2 : public ShuffleDatasetBase {
 // whether to reshuffle each iteration) across serialization of the dataset.
 class ShuffleDatasetOp::DatasetV3 : public ShuffleDatasetBase {
  public:
-  DatasetV3(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size,
-            int64 count, RandomSeeds&& seeds, SeedGeneratorManager* manager,
+  DatasetV3(OpKernelContext* ctx, const DatasetBase* input, int64_t buffer_size,
+            int64_t count, RandomSeeds&& seeds, SeedGeneratorManager* manager,
             ResourceHandle&& resource_handle, bool owns_resource)
       : ShuffleDatasetBase(ctx, input, buffer_size, manager->get(), count),
         manager_(manager),
@@ -601,7 +726,7 @@ class ShuffleDatasetOp::DatasetV3 : public ShuffleDatasetBase {
                       {std::make_pair(kReshuffleEachIteration,
                                       reshuffle_each_iteration)},  // Attrs
                       output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -630,15 +755,16 @@ ShuffleDatasetOp::ShuffleDatasetOp(OpKernelConstruction* ctx)
 
 void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                    DatasetBase** output) {
-  int64 buffer_size = 0;
+  int64_t buffer_size = 0;
   OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, kBufferSize, &buffer_size));
+                 ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(
-      ctx, buffer_size > 0,
-      errors::InvalidArgument("buffer_size must be greater than zero."));
+      ctx, buffer_size > 0 || buffer_size == kUnknownCardinality,
+      errors::InvalidArgument(
+          "buffer_size must be greater than zero or UNKNOWN_CARDINALITY"));
 
-  int64 count = 1;
-  static std::atomic<int64> resource_id_counter(0);
+  int64_t count = 1;
+  static std::atomic<int64_t> resource_id_counter(0);
   const string& container = ctx->resource_manager()->default_container();
   auto name = strings::StrCat(ctx->op_kernel().name(), "/", kSeedGenerator, "_",
                               resource_id_counter.fetch_add(1));
@@ -647,10 +773,10 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     SeedGeneratorManager* manager = nullptr;
     Status s = ctx->resource_manager()->Lookup<SeedGeneratorManager>(
         handle.container(), handle.name(), &manager);
-    int64 seed;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed, &seed));
-    int64 seed2;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed2, &seed2));
+    int64_t seed;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed, &seed));
+    int64_t seed2;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed2, &seed2));
     RandomSeeds seeds(seed, seed2);
     bool owns_resource = false;
     if (errors::IsNotFound(s)) {
@@ -668,7 +794,7 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                   *manager =
                       new SeedGeneratorManager(new FixedSeedGenerator(seeds));
                 }
-                return Status::OK();
+                return OkStatus();
               }));
       handle = MakeResourceHandle<SeedGenerator>(ctx, container, name);
     } else {
@@ -697,7 +823,7 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    [&seeds](SeedGeneratorManager** manager) {
                      *manager = new SeedGeneratorManager(
                          new RandomSeedGenerator(seeds));
-                     return Status::OK();
+                     return OkStatus();
                    }));
       handle = MakeResourceHandle<SeedGeneratorManager>(ctx, container, name);
     } else {
@@ -713,10 +839,10 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
       LOG(WARNING) << "Unsupported version of shuffle dataset op: "
                    << op_version_ << ". Defaulting to version 1.";
     }
-    int64 seed;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed, &seed));
-    int64 seed2;
-    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed2, &seed2));
+    int64_t seed;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed, &seed));
+    int64_t seed2;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed2, &seed2));
     RandomSeeds seeds(seed, seed2);
     SeedGeneratorManager* manager;
     OP_REQUIRES_OK(
@@ -732,7 +858,7 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                 *manager =
                     new SeedGeneratorManager(new FixedSeedGenerator(seeds));
               }
-              return Status::OK();
+              return OkStatus();
             }));
     auto handle =
         MakeResourceHandle<SeedGeneratorManager>(ctx, container, name);
@@ -746,8 +872,8 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 
 class ShuffleAndRepeatDatasetOp::Dataset : public ShuffleDatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size,
-          RandomSeeds&& seeds, SeedGeneratorManager* manager, int64 count,
+  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64_t buffer_size,
+          RandomSeeds&& seeds, SeedGeneratorManager* manager, int64_t count,
           ResourceHandle&& resource_handle)
       : ShuffleDatasetBase(ctx, input, buffer_size, manager->get(), count),
         manager_(manager),
@@ -789,7 +915,7 @@ class ShuffleAndRepeatDatasetOp::Dataset : public ShuffleDatasetBase {
         {std::make_pair(kReshuffleEachIteration,
                         reshuffle_each_iteration)},  // Attrs
         output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -801,8 +927,8 @@ class ShuffleAndRepeatDatasetOp::Dataset : public ShuffleDatasetBase {
 
 class ShuffleAndRepeatDatasetOp::DatasetV2 : public ShuffleDatasetBase {
  public:
-  DatasetV2(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size,
-            int64 count, RandomSeeds&& seeds, SeedGeneratorManager* manager,
+  DatasetV2(OpKernelContext* ctx, const DatasetBase* input, int64_t buffer_size,
+            int64_t count, RandomSeeds&& seeds, SeedGeneratorManager* manager,
             ResourceHandle&& resource_handle, bool owns_resource)
       : ShuffleDatasetBase(ctx, input, buffer_size, manager->get(), count),
         manager_(manager),
@@ -852,7 +978,7 @@ class ShuffleAndRepeatDatasetOp::DatasetV2 : public ShuffleDatasetBase {
                       {std::make_pair(kReshuffleEachIteration,
                                       reshuffle_each_iteration)},  // Attrs
                       output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -880,21 +1006,22 @@ ShuffleAndRepeatDatasetOp::ShuffleAndRepeatDatasetOp(OpKernelConstruction* ctx)
 void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
                                             DatasetBase* input,
                                             DatasetBase** output) {
-  int64 buffer_size = 0;
+  int64_t buffer_size = 0;
   OP_REQUIRES_OK(ctx,
-                 ParseScalarArgument<int64>(ctx, kBufferSize, &buffer_size));
+                 ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(
-      ctx, buffer_size > 0,
-      errors::InvalidArgument("buffer_size must be greater than zero."));
+      ctx, buffer_size > 0 || buffer_size == kUnknownCardinality,
+      errors::InvalidArgument(
+          "buffer_size must be greater than zero or UNKNOWN_CARDINALITY"));
 
-  int64 seed;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed, &seed));
+  int64_t seed;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed, &seed));
 
-  int64 seed2;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed2, &seed2));
+  int64_t seed2;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed2, &seed2));
 
-  int64 count;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kCount, &count));
+  int64_t count;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kCount, &count));
 
   OP_REQUIRES(ctx, count > 0 || count == -1,
               errors::InvalidArgument(
@@ -902,7 +1029,7 @@ void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
 
   RandomSeeds seeds(seed, seed2);
 
-  static std::atomic<int64> resource_id_counter(0);
+  static std::atomic<int64_t> resource_id_counter(0);
   const string& container = ctx->resource_manager()->default_container();
   auto name = strings::StrCat(ctx->op_kernel().name(), "/", kSeedGenerator, "_",
                               resource_id_counter.fetch_add(1));
@@ -927,7 +1054,7 @@ void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
                   *manager =
                       new SeedGeneratorManager(new FixedSeedGenerator(seeds));
                 }
-                return Status::OK();
+                return OkStatus();
               }));
       handle = MakeResourceHandle<SeedGenerator>(ctx, container, name);
     } else {
@@ -957,7 +1084,7 @@ void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
                 *manager =
                     new SeedGeneratorManager(new FixedSeedGenerator(seeds));
               }
-              return Status::OK();
+              return OkStatus();
             }));
     auto handle =
         MakeResourceHandle<SeedGeneratorManager>(ctx, container, name);

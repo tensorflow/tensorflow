@@ -81,17 +81,18 @@ class InferenceEnvironment {
   // Loading serialized_model is much faster than loading GraphFloat32.
   // serialized_model must be used with appropriate NewInferenceBuilder
   // method (see below).
+  // Normally BuildSerializedModel method need to be called whenever a model or
+  // OS GPU driver is updated.
   virtual absl::Status BuildSerializedModel(
       const InferenceOptions& options, GraphFloat32 model,
       std::vector<uint8_t>* serialized_model) = 0;
 
-  // std::unique_ptr<InferenceBuilder>* builder - required parameter
-  // std::vector<int64_t>* in_refs - optional, can be nullptr
-  // std::vector<int64_t>* out_refs - optional, can be nullptr
+  // Serialized model can became invalid when environment changes. In this case
+  // this call will fail and model must be regenerated(with
+  // BuildSerializedModel).
   virtual absl::Status NewInferenceBuilder(
       const absl::Span<const uint8_t> serialized_model,
-      std::unique_ptr<InferenceBuilder>* builder, std::vector<int64_t>* in_refs,
-      std::vector<int64_t>* out_refs) = 0;
+      std::unique_ptr<InferenceBuilder>* builder) = 0;
 
   virtual absl::Status NewInferenceBuilder(
       const InferenceOptions& options, GraphFloat32 model,
@@ -139,6 +140,33 @@ absl::Status NewInferenceEnvironment(
     const InferenceEnvironmentOptions& options,
     std::unique_ptr<InferenceEnvironment>* environment,
     InferenceEnvironmentProperties* properties /* optional */);
+
+class CLInferenceRunner : public ::tflite::gpu::InferenceRunner {
+ public:
+  // The RunWithoutExternalBufferCopy provides a contract where the user of this
+  // interface does not need
+  //    a. Inputs to be copied to the internal GPU buffer from the external CPU
+  //       input buffer
+  //    b. Outputs to be copied from the internal GPU buffer to the
+  //       external CPU buffer
+  //
+  // The user of this interface is responsible for copying the inputs prior to
+  // running the GPU kernels and outputs post running with the other interfaces
+  // provided here.
+  virtual absl::Status RunWithoutExternalBufferCopy() = 0;
+
+  // Copies from the external input tensor (normally CPU buffer) to the internal
+  // OpenCL buffer.  The call only guarantees a queueing of the command. The
+  // caller is expected to hold a copy of the queue and wait for completion if
+  // the external buffer is a CPU buffer.
+  virtual absl::Status CopyFromExternalInput(int index) = 0;
+
+  // Copies from the internal output OpenCL buffer to the external output
+  // tensor.  The call only guarantees a queueing of the command. The caller
+  // is expected to hold a copy of the queue and wait for completion if the
+  // external buffer is a CPU buffer.
+  virtual absl::Status CopyToExternalOutput(int index) = 0;
+};
 
 }  // namespace cl
 }  // namespace gpu

@@ -17,6 +17,9 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_CONVOLUTION_TRANSPOSED_H_
 
 #include <cstdint>
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -26,8 +29,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
-#include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/weights_conversion.h"
 #include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
@@ -47,14 +48,15 @@ class ConvolutionTransposed : public GPUOperation {
   int3 GetGridSize() const override;
 
   // Move only
-  ConvolutionTransposed(ConvolutionTransposed&& operation);
-  ConvolutionTransposed& operator=(ConvolutionTransposed&& operation);
+  ConvolutionTransposed(ConvolutionTransposed&& operation) = default;
+  ConvolutionTransposed& operator=(ConvolutionTransposed&& operation) = default;
   ConvolutionTransposed(const ConvolutionTransposed&) = delete;
   ConvolutionTransposed& operator=(const ConvolutionTransposed&) = delete;
 
   WeightsDescription GetWeightsDescription() const {
     WeightsDescription desc;
-    desc.layout = WeightsLayout::kOHWIOGroupI4O4;
+    desc.type = DeduceDataTypeFromPrecision(definition_.precision);
+    desc.layout = weights_layout_;
     desc.output_group_size = block_size_.w;
     return desc;
   }
@@ -72,10 +74,10 @@ class ConvolutionTransposed : public GPUOperation {
 
   ConvolutionTransposed(const OperationDef& definition,
                         const ConvolutionTransposedAttributes& attr,
-                        const GpuInfo& gpu_info, bool weights_are_buffer);
+                        const GpuInfo& gpu_info);
   ConvolutionTransposed(const OperationDef& definition,
                         const ConvolutionTransposed3DAttributes& attr,
-                        const GpuInfo& gpu_info, bool weights_are_buffer);
+                        const GpuInfo& gpu_info);
 
   template <DataType T>
   void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
@@ -87,68 +89,39 @@ class ConvolutionTransposed : public GPUOperation {
 
   std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
                                                 const GpuInfo& gpu_info,
-                                                bool weights_are_buffer,
                                                 const int4& block_size);
   int4 stride_;
   int4 block_size_ = int4(1, 1, 1, 1);  // WHDS
+  WeightsLayout weights_layout_;
 };
 
 template <DataType T>
 void ConvolutionTransposed::UploadWeights(
     const tflite::gpu::Tensor<OHWI, T>& weights, bool weights_are_buffer) {
-  const int dst_depth =
-      AlignByN(DivideRoundUp(weights.shape.o, 4), block_size_.w);
-  const int src_depth = DivideRoundUp(weights.shape.i, 4);
-  const int kernel_x = weights.shape.w;
-  const int kernel_y = weights.shape.h;
+  const auto weights_desc = GetWeightsDescription();
+  const int flt_count =
+      GetTotalElementsCountForLayout(weights_desc, weights.shape);
 
-  const int elements_count = kernel_x * kernel_y * src_depth * dst_depth * 4;
-  const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
-
-  const int float4_size = f32_weights ? 16 : 8;
-  std::vector<uint8_t> data(float4_size * elements_count);
-
-  if (f32_weights) {
-    float4* ptr = reinterpret_cast<float4*>(data.data());
-    if (weights_are_buffer) {
-      RearrangeWeightsToOHWIOGroupI4O4(weights, block_size_.w,
-                                       absl::MakeSpan(ptr, elements_count));
-    } else {
-      RearrangeWeightsToI4HWIOOGroupO4(weights, block_size_.w,
-                                       absl::MakeSpan(ptr, elements_count));
-    }
-  } else {
-    half4* ptr = reinterpret_cast<half4*>(data.data());
-    if (weights_are_buffer) {
-      RearrangeWeightsToOHWIOGroupI4O4(weights, block_size_.w,
-                                       absl::MakeSpan(ptr, elements_count));
-    } else {
-      RearrangeWeightsToI4HWIOOGroupO4(weights, block_size_.w,
-                                       absl::MakeSpan(ptr, elements_count));
-    }
-  }
+  std::vector<uint8_t> weights_data(flt_count * SizeOf(weights_desc.type));
+  RearrangeWeights(weights, weights_desc, absl::MakeSpan(weights_data));
 
   if (weights_are_buffer) {
     BufferDescriptor desc;
-    desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+    desc.element_type = weights_desc.type;
     desc.element_size = 16;
-    desc.size = float4_size * elements_count;
-    desc.data = std::move(data);
+    desc.size = weights_data.size();
+    desc.data = std::move(weights_data);
     args_.AddObject("weights",
-                    absl::make_unique<BufferDescriptor>(std::move(desc)));
+                    std::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
-    int texture_width = dst_depth;
-    int texture_height = src_depth * kernel_x * kernel_y;
-    int sub_size = float4_size * texture_width * texture_height;
+    uint2 tex_size = Get2dResourceSize(weights_desc, weights.shape);
+    int sub_size = SizeOf(weights_desc.type) * 4 * tex_size.x * tex_size.y;
     for (int i = 0; i < 4; ++i) {
-      Texture2DDescriptor desc;
-      desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-      desc.size = int2(texture_width, texture_height);
-      desc.data.resize(sub_size);
-      memcpy(desc.data.data(), data.data() + sub_size * i, sub_size);
-      const std::string name = "weights" + std::to_string(i);
-      args_.AddObject(name,
-                      absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+      TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
+          weights_desc.type, TensorStorageType::TEXTURE_2D, tex_size.x,
+          tex_size.y, weights_data.data() + sub_size * i);
+      args_.AddObject("weights" + std::to_string(i),
+                      std::make_unique<TensorDescriptor>(std::move(desc)));
     }
   }
 }
@@ -156,61 +129,30 @@ void ConvolutionTransposed::UploadWeights(
 template <DataType T>
 void ConvolutionTransposed::UploadWeights(
     const tflite::gpu::Tensor<OHWDI, T>& weights, bool weights_are_buffer) {
-  const int dst_depth =
-      AlignByN(DivideRoundUp(weights.shape.o, 4), block_size_.w);
-  const int src_depth = DivideRoundUp(weights.shape.i, 4);
-  const int kernel_x = weights.shape.w;
-  const int kernel_y = weights.shape.h;
-  const int kernel_z = weights.shape.d;
+  const auto weights_desc = GetWeightsDescription();
+  const int flt_count =
+      GetTotalElementsCountForLayout(weights_desc, weights.shape);
 
-  const int elements_count =
-      kernel_x * kernel_y * kernel_z * src_depth * dst_depth * 4;
-  const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
-
-  const int float4_size = f32_weights ? 16 : 8;
-  std::vector<uint8_t> data(float4_size * elements_count);
-
-  if (f32_weights) {
-    float4* ptr = reinterpret_cast<float4*>(data.data());
-    if (weights_are_buffer) {
-      RearrangeWeightsToODHWIOGroupI4O4(weights, block_size_.w,
-                                        absl::MakeSpan(ptr, elements_count));
-    } else {
-      RearrangeWeightsToI4DHWIOOGroupO4(weights, block_size_.w,
-                                        absl::MakeSpan(ptr, elements_count));
-    }
-  } else {
-    half4* ptr = reinterpret_cast<half4*>(data.data());
-    if (weights_are_buffer) {
-      RearrangeWeightsToODHWIOGroupI4O4(weights, block_size_.w,
-                                        absl::MakeSpan(ptr, elements_count));
-    } else {
-      RearrangeWeightsToI4DHWIOOGroupO4(weights, block_size_.w,
-                                        absl::MakeSpan(ptr, elements_count));
-    }
-  }
+  std::vector<uint8_t> weights_data(flt_count * SizeOf(weights_desc.type));
+  RearrangeWeights(weights, weights_desc, absl::MakeSpan(weights_data));
 
   if (weights_are_buffer) {
     BufferDescriptor desc;
-    desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+    desc.element_type = weights_desc.type;
     desc.element_size = 16;
-    desc.size = float4_size * elements_count;
-    desc.data = std::move(data);
+    desc.size = weights_data.size();
+    desc.data = std::move(weights_data);
     args_.AddObject("weights",
-                    absl::make_unique<BufferDescriptor>(std::move(desc)));
+                    std::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
-    int texture_width = dst_depth;
-    int texture_height = src_depth * kernel_x * kernel_y * kernel_z;
-    int sub_size = float4_size * texture_width * texture_height;
+    uint2 tex_size = Get2dResourceSize(weights_desc, weights.shape);
+    int sub_size = SizeOf(weights_desc.type) * 4 * tex_size.x * tex_size.y;
     for (int i = 0; i < 4; ++i) {
-      Texture2DDescriptor desc;
-      desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-      desc.size = int2(texture_width, texture_height);
-      desc.data.resize(sub_size);
-      memcpy(desc.data.data(), data.data() + sub_size * i, sub_size);
-      const std::string name = "weights" + std::to_string(i);
-      args_.AddObject(name,
-                      absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+      TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
+          weights_desc.type, TensorStorageType::TEXTURE_2D, tex_size.x,
+          tex_size.y, weights_data.data() + sub_size * i);
+      args_.AddObject("weights" + std::to_string(i),
+                      std::make_unique<TensorDescriptor>(std::move(desc)));
     }
   }
 }

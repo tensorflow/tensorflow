@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Command parsing module for TensorFlow Debugger (tfdbg)."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import ast
 import re

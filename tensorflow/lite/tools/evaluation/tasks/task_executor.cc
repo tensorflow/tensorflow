@@ -14,25 +14,27 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/evaluation/tasks/task_executor.h"
 
+#include <optional>
+#include <string>
+
 #include "absl/types/optional.h"
 #include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
 namespace evaluation {
-absl::optional<EvaluationStageMetrics> TaskExecutor::Run(int* argc,
-                                                         char* argv[]) {
+std::optional<EvaluationStageMetrics> TaskExecutor::Run(int* argc,
+                                                        char* argv[]) {
   auto flag_list = GetFlags();
+  auto delegate_flags = delegate_providers_.GetFlags();
+
+  flag_list.insert(flag_list.end(), delegate_flags.begin(),
+                   delegate_flags.end());
   bool parse_result =
       tflite::Flags::Parse(argc, const_cast<const char**>(argv), flag_list);
   if (!parse_result) {
     std::string usage = Flags::Usage(argv[0], flag_list);
     TFLITE_LOG(ERROR) << usage;
-    return absl::nullopt;
-  }
-  parse_result = delegate_providers_.InitFromCmdlineArgs(
-      argc, const_cast<const char**>(argv));
-  if (!parse_result) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   std::string unconsumed_args =

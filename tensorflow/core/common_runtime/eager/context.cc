@@ -15,7 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
+#include <algorithm>
+#include <functional>
 #include <memory>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 // clang-format off
@@ -23,6 +29,10 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/common_runtime/stats_publisher_interface.h"
+#include "tensorflow/core/common_runtime/eager/rendezvous_cache.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/nccl/collective_communicator.h"
@@ -38,25 +48,43 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/common_runtime/eager/small_constants_optimizer.h"
+#include "tensorflow/core/common_runtime/eager/summary_optimizer.h"
 #include "tensorflow/core/common_runtime/process_util.h"
-#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/platform/refcount.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/cluster_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/collective_param_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/rpc_collective_executor_mgr.h"
+#include "tensorflow/core/distributed_runtime/session_mgr.h"
 #endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
+
+namespace {
+// This object tracks the EagerContext owned by global_py_eager_context in
+// pywrap_tfe_src.cc. Since the vast majority of the Python API is dependent on
+// that global_py_eager_context (including memory management), the Py object
+// owns the C object, so this pointer is non-owning.
+EagerContext* global_c_eager_context = nullptr;
+
+}  // namespace
+
+void SetCEagerContext(EagerContext* ctx) { global_c_eager_context = ctx; }
+
+EagerContext* GetCEagerContext() { return global_c_eager_context; }
+
 namespace {
 
 bool ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val) {
@@ -73,18 +101,33 @@ auto* eager_context_created =
 
 }  // namespace
 
+const int64_t EagerContext::kGlobalRendezvousId = -1;
+
+// Find the rendezvous instance corresponding to the step id, or create a
+// new instance if not existing.
+tsl::core::RefCountPtr<IntraProcessRendezvous>
+EagerContext::LocalRendezvousCache::FindOrCreate(int64_t step_id,
+                                                 DeviceMgr* device_mgr) {
+  return cache_->FindOrCreate(step_id, [&]() {
+    return tsl::core::RefCountPtr<IntraProcessRendezvous>(
+        new IntraProcessRendezvous(device_mgr));
+  });
+}
+
 EagerContext::EagerContext(
     const SessionOptions& opts,
     ContextDevicePlacementPolicy default_device_placement_policy, bool async,
-    const bool lazy_copy_function_remote_inputs, const DeviceMgr* device_mgr,
-    bool device_mgr_owned, Rendezvous* rendezvous,
-    DistributedFunctionLibraryRuntime* cluster_flr)
+    DeviceMgr* device_mgr, bool device_mgr_owned,
+    tsl::core::RefCountPtr<Rendezvous> rendezvous,
+    DistributedFunctionLibraryRuntime* cluster_flr,
+    CollectiveExecutorMgrInterface* collective_executor_mgr,
+    bool run_eager_op_as_function, bool jit_compile_rewrite)
     : ImmediateExecutionContext(kEager),
       opts_(opts),
       default_device_placement_policy_(default_device_placement_policy),
       local_device_manager_(device_mgr, device_mgr_owned),
       host_cpu_device_(device_mgr->HostCPU()),
-      rendezvous_(rendezvous),
+      rendezvous_(std::move(rendezvous)),
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
       cluster_flr_(cluster_flr),
       log_device_placement_(opts.config.log_device_placement()),
@@ -92,18 +135,22 @@ EagerContext::EagerContext(
       num_active_steps_(0),
       step_container_(std::make_unique<ScopedStepContainer>(
           0, [this](const string& name) { ClearResourceContainer(name); })),
-      default_executor_(async),
+      default_executor_(async,
+                        /*enable_streaming_enqueue=*/!opts.config.experimental()
+                            .disable_eager_executor_streaming_enqueue()),
       log_memory_(LogMemory::IsEnabled()),
       env_(opts.env),
-      lazy_copy_function_remote_inputs_(lazy_copy_function_remote_inputs),
+      collective_executor_mgr_(collective_executor_mgr, /*owned=*/false),
       use_send_tensor_rpc_(false),
       pin_small_ops_to_cpu_(ReadBoolFromEnvVar(
-          "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)) {
+          "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)),
+      run_eager_op_as_function_(run_eager_op_as_function),
+      jit_compile_rewrite_(jit_compile_rewrite) {
   ResetPFLR(device_mgr, opts.env, &opts.config, TF_GRAPH_DEF_VERSION,
             &func_lib_def_, opts.config.graph_options().optimizer_options(),
             thread_pool_.get(), cluster_flr);
   // Starts exporting metrics through a platform-specific monitoring API (if
-  // provided). For builds using "tensorflow/core/platform/default", this is
+  // provided). For builds using "tensorflow/tsl/platform/default", this is
   // currently a no-op.
   eager_context_created->GetCell()->Set(true);
   InitPrioritizedDeviceTypeList();
@@ -118,18 +165,18 @@ EagerContext::EagerContext(
   context_view_id_ = 0;
 #endif  // IS_MOBILE_PLATFORM
 
-  std::unique_ptr<DeviceResolverInterface> drl(
-      new DeviceResolverLocal(local_device_mgr()));
-  std::unique_ptr<ParamResolverInterface> cprl(new CollectiveParamResolverLocal(
-      opts.config, local_device_mgr(), drl.get(),
-      "/job:localhost/replica:0/task:0"));
-  collective_executor_mgr_.Reset(
-      new CollectiveExecutorMgr(opts.config, local_device_mgr(), std::move(drl),
-                                std::move(cprl), MaybeCreateNcclCommunicator()),
-      /*owned=*/true);
+  // TODO(yuefengz): consider creating a new RpcCollectiveExecutorMgr each
+  // time.
+  if (collective_executor_mgr_.Get() == nullptr) {
+    collective_executor_mgr_.Reset(CreateProdLocalCollectiveExecutorMgr(
+        opts.config, local_device_mgr(),
+        MaybeCreateNcclCommunicator(opts.config)));
+  }
+
+  ResetGlobalRendezvousForFunction();
 }
 
-AbstractTensorInterface* EagerContext::CreateInt64Scalar(int64 value) {
+AbstractTensorInterface* EagerContext::CreateInt64Scalar(int64_t value) {
   return new TensorInterface(Tensor(value));
 }
 
@@ -137,7 +184,7 @@ AbstractTensorInterface* EagerContext::CreateUint64Scalar(uint64 value) {
   return new TensorInterface(Tensor(value));
 }
 
-AbstractTensorInterface* EagerContext::CreateInt32Scalar(int32 value) {
+AbstractTensorInterface* EagerContext::CreateInt32Scalar(int32_t value) {
   return new TensorInterface(Tensor(value));
 }
 
@@ -167,7 +214,7 @@ AbstractTensorInterface* EagerContext::CreateBoolScalar(bool value) {
 }
 
 AbstractTensorInterface* EagerContext::CreateTensor(
-    DataType dtype, absl::Span<const int64> dim_sizes) {
+    DataType dtype, absl::Span<const int64_t> dim_sizes) {
   return new TensorInterface(Tensor(dtype, TensorShape(dim_sizes)));
 }
 
@@ -190,15 +237,15 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
                              const OptimizerOptions& optimizer_options,
                              thread::ThreadPool* thread_pool,
                              DistributedFunctionLibraryRuntime* cluster_flr) {
-  Rendezvous::Factory rendezvous_factory{
-      [this](const int64 step_id, const DeviceMgr*, Rendezvous** r) {
-        *r = CreateRendezvous(step_id);
-        return Status::OK();
-      }};
-  pflr_.reset(new ProcessFunctionLibraryRuntime(
+  Rendezvous::Factory rendezvous_factory = CreateRendezvousFactory();
+  const tensorflow::SessionMetadata* session_metadata = nullptr;
+  if (opts_.config.experimental().has_session_metadata()) {
+    session_metadata = &opts_.config.experimental().session_metadata();
+  }
+  pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
-      thread_pool, cluster_flr,
-      /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
+      thread_pool, cluster_flr, session_metadata, std::move(rendezvous_factory),
+      StatsPublisherInterface::GetStatsPublisherFactory());
 }
 
 void EagerContext::InitPrioritizedDeviceTypeList() {
@@ -291,7 +338,7 @@ Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
       pflr_device_set->prioritized_devices();
   *out = SelectBestMatchingDevice(preferred, existing, supported_devs);
   if (*out != nullptr) {
-    return Status::OK();
+    return OkStatus();
   }
 
   if (AllowSoftPlacement()) {
@@ -303,7 +350,7 @@ Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
     // requested does not exist.
     *out = SelectBestMatchingDevice(soft_device_name, existing, supported_devs);
     if (*out != nullptr) {
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -326,7 +373,20 @@ Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
 
 void EagerContext::ResetClusterFLR(
     DistributedFunctionLibraryRuntime* cluster_flr) {
-  cluster_flr_.Reset(cluster_flr, lazy_copy_function_remote_inputs_);
+  cluster_flr_.Reset(cluster_flr, /*owned=*/true);
+}
+
+void EagerContext::UpdateClusterFLRAndInitDevices(
+    DistributedFunctionLibraryRuntime* cluster_flr) {
+  ResetClusterFLR(cluster_flr);
+
+  const ConfigProto* config = pflr_ ? pflr_->config() : nullptr;
+  ResetPFLR(
+      local_device_manager_.Get(), env_, /*config=*/config,
+      TF_GRAPH_DEF_VERSION, &func_lib_def_,
+      /*optimizer_options=*/
+      config ? config->graph_options().optimizer_options() : OptimizerOptions(),
+      thread_pool_.get(), cluster_flr_.Get());
 }
 
 EagerExecutor& EagerContext::Executor() {
@@ -357,6 +417,16 @@ void EagerContext::SetExecutorForThread(EagerExecutor* executor) {
             thread_local_executor_.erase(thread_id);
           }
           has_cleanup_[thread_id].erase(executor);
+          // Clears the global rendezvous after cleaning up the executor. This
+          // is needed when running in eager op as function mode because it
+          // re-uses the EagerContext's global_rendezvous_for_functions. The
+          // global rendezvous can end up in a bad state if any op ends in a
+          // bad state after execution.
+          if (!GetGlobalRendezvousForFunctionLocalRendezvousStatus().ok()) {
+            VLOG(6) << "global_rendezvous_for_functions_ is in bad state. "
+                       "Resetting.";
+            ResetGlobalRendezvousForFunction();
+          }
         }
       });
       executor->AddCleanup(reinterpret_cast<intptr_t>(this),
@@ -378,25 +448,32 @@ void EagerContext::ClearCachesAndThreadExecutors() {
 }
 
 void EagerContext::ClearCachesAndDefaultExecutor() {
-  // The executor stores pointers to kernels, so we need to make sure that no
-  // async eager ops are still executing. We lock the cache during this time
-  // as well.
-  mutex_lock ml(cache_mu_);
-  default_executor_.WaitForAllPendingNodes().IgnoreError();
-  kernel_cache_.clear();
-  for (auto& entry : registered_functions_) {
-    entry.second->cached_kernel_keys->clear();
+  {
+    // The executor stores pointers to kernels, so we need to make sure that no
+    // async eager ops are still pending to be executed. We lock the cache
+    // during this time as well.
+    mutex_lock ml(cache_mu_);
+    default_executor_.WaitForAllPendingNodes().IgnoreError();
+    kernel_cache_.clear();
+    for (auto& entry : registered_functions_) {
+      entry.second->cached_kernel_keys->clear();
+    }
+  }
+  {
+    mutex_lock dl(device_cache_mu_);
+    device_cache_.clear();
   }
   {
     mutex_lock ml(metadata_mu_);
-    step_container_.reset(new ScopedStepContainer(
-        0, [this](const string& name) { ClearResourceContainer(name); }));
+    step_container_ = std::make_unique<ScopedStepContainer>(
+        0, [this](const string& name) { ClearResourceContainer(name); });
   }
 }
 
 void EagerContext::SetThreadLocalDevicePlacementPolicy(
     ContextDevicePlacementPolicy policy) {
   mutex_lock ml(policy_map_mu_);
+  VLOG(6) << "Setting device placement policy to: " << policy;
   device_placement_policy_[std::this_thread::get_id()] = policy;
 }
 
@@ -405,13 +482,11 @@ ContextDevicePlacementPolicy EagerContext::GetDevicePlacementPolicy() const {
   auto policy_map_it =
       device_placement_policy_.find(std::this_thread::get_id());
   if (policy_map_it != device_placement_policy_.end()) {
+    VLOG(6) << "ContextDevicePlacementPolicy: " << policy_map_it->second;
     return policy_map_it->second;
   }
+  VLOG(6) << "ContextDevicePlacementPolicy not found; returning default.";
   return default_device_placement_policy_;
-}
-
-bool EagerContext::LazyCopyFunctionRemoteInputs() const {
-  return lazy_copy_function_remote_inputs_;
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -469,7 +544,7 @@ void EagerContext::CloseRemoteContexts(
           if (!s.ok()) {
             LOG(ERROR) << "Unable to close remote context with ID "
                        << context_id << " for worker: " << worker << " due to "
-                       << s.error_message();
+                       << s.message();
           }
           counter.DecrementCount();
         });
@@ -528,7 +603,7 @@ EagerContext::~EagerContext() {
 
   // Custom devices may have obtained references to various context components
   // (executors, thread pool). It's safer to run their destructors early.
-  custom_devices_.clear();
+  custom_device_op_handler_.Clear();
 
   ClearCachesAndThreadExecutors();
   std::unordered_map<std::thread::id, EagerExecutor*> executors_copy;
@@ -552,6 +627,15 @@ EagerContext::~EagerContext() {
     // TODO(b/136478427): Fix this.
     LOG(WARNING) << "Unable to destroy server_ object, so releasing instead. "
                     "Servers don't support clean shutdown.";
+    // TODO(hanyangtay): Remove this teardown logic once gRPC server clean
+    // shutdown is supported.
+    if (server_->worker_env()->session_mgr != nullptr) {
+      // Tear down coordination service.
+      Status s = server_->StopCoordinationService();
+      if (!s.ok()) {
+        LOG(ERROR) << "Failed to stop coordination service: " << s;
+      }
+    }
     server_.release();
   }
 
@@ -564,11 +648,23 @@ EagerContext::~EagerContext() {
   if (!remote_contexts_.empty()) {
     CloseAndClearAllRemoteContexts();
   }
+
+  // Clean up all the rendezvous instances created via EagerContext.
+  // Currently there are 3 cases in which a rendezvous instances is created:
+  // (1). Created through a rendezvous_creator passed to EagerContext.
+  // (2). Created through rendezvous_mgr.
+  // (3). Created within EagerContext using LocalRendezvousCache.
+  //
+  // Currently case-(3) is taken care of automatically when an EagerContext
+  // instance is deleted. The following code takes care of case-(2). Case-(1)
+  // is tricky as EagerContext does not have a way to access those rendezvous
+  // instances.
+  // TODO (tfrt-dev): Take care of case-(1) mentioned above.
+  if (worker_env_ != nullptr && worker_env_->rendezvous_mgr != nullptr) {
+    worker_env_->rendezvous_mgr->CleanupAll();
+  }
 #endif  // !IS_MOBILE_PLATFORM
 
-  if (rendezvous_) {
-    rendezvous_->Unref();
-  }
   if (resource_deallocator_ != nullptr) {
     resource_deallocator_();
   }
@@ -587,6 +683,11 @@ const FunctionDef* EagerContext::FindFunctionDef(const string& name) const {
   return func_lib_def_.Find(name);
 }
 
+core::RefCountPtr<FunctionRecord> EagerContext::FindRecord(
+    const string& name) const {
+  return func_lib_def_.FindRecord(name);
+}
+
 std::unique_ptr<RunMetadata> EagerContext::ExportRunMetadata() {
   mutex_lock ml(metadata_mu_);
   auto result = std::make_unique<RunMetadata>();
@@ -594,14 +695,107 @@ std::unique_ptr<RunMetadata> EagerContext::ExportRunMetadata() {
   return result;
 }
 
+ImmediateExecutionTensorHandle* EagerContext::TFTensorHandleFromInterface(
+    ImmediateExecutionTensorHandle* handle) {
+  return handle;
+}
+
+Status EagerContext::RegisterFunction(AbstractFunction* f) {
+  FunctionDef* fdef;
+  TF_RETURN_IF_ERROR(f->GetFunctionDef(&fdef));
+  if (!fdef) {
+    return errors::InvalidArgument("GetFunctionDef returned nullptr.");
+  }
+  return AddFunctionDef(*fdef);
+}
+
 bool EagerContext::UsesTFRT() { return false; }
 
+bool EagerContext::RunEagerOpAsFunction() const {
+  VLOG(3) << "RunEagerOpAsFunction: " << run_eager_op_as_function_;
+  return run_eager_op_as_function_;
+}
+
+void EagerContext::SetRunEagerOpAsFunction(bool enable) {
+  run_eager_op_as_function_ = enable;
+}
+
+bool EagerContext::JitCompileRewrite() const {
+  VLOG(3) << "JitCompileRewrite: " << jit_compile_rewrite_;
+  return jit_compile_rewrite_;
+}
+
+void EagerContext::SetJitCompileRewrite(bool enable) {
+  jit_compile_rewrite_ = enable;
+}
+
 void EagerContext::ListDevices(
-    std::vector<tensorflow::DeviceAttributes>* devices) {
-  local_device_mgr()->ListDeviceAttributes(devices);
-  if (remote_device_mgr()) {
-    remote_device_mgr()->ListDeviceAttributes(devices);
+    std::vector<tensorflow::DeviceAttributes>* device_attributes) {
+  std::vector<Device*> devices = ListAllTfDevices();
+  device_attributes->reserve(devices.size());
+  for (const auto& dev : devices) {
+    device_attributes->emplace_back(dev->attributes());
   }
+}
+
+std::vector<Device*> EagerContext::ListAllTfDevices() {
+  // Since remote_device_mgr may also contain local devices, make sure no
+  // duplicated device is returned.
+  std::vector<Device*> devices;
+  std::unordered_set<string> dev_names;
+
+  if (local_device_mgr()) {
+    for (const auto& dev : local_device_mgr()->ListDevices()) {
+      devices.emplace_back(dev);
+      dev_names.emplace(dev->attributes().name());
+    }
+  }
+
+  // TODO (b/197281777): Include local devices in remote_device_mgr on the
+  // client-side in single-client deployment.
+  if (remote_device_mgr()) {
+    for (const auto& dev : remote_device_mgr()->ListDevices()) {
+      Device* device = nullptr;
+      if (local_device_mgr()->LookupDevice(dev->name(), &device) !=
+          OkStatus()) {
+        // Include this device from remote_device_mgr only if it does not exist
+        // in local_device_mgr.
+        devices.emplace_back(dev);
+      }
+    }
+  }
+
+  return devices;
+}
+
+Status EagerContext::AddDevices(std::vector<std::unique_ptr<Device>> devices) {
+  std::vector<std::unique_ptr<Device>> local_devices, remote_devices;
+  while (!devices.empty()) {
+    if (devices.front()->IsLocal()) {
+      local_devices.push_back(std::move(devices.front()));
+    } else {
+      remote_devices.push_back(std::move(devices.front()));
+    }
+    devices.erase(devices.begin());
+  }
+  TF_RETURN_IF_ERROR(
+      reinterpret_cast<DynamicDeviceMgr*>(local_device_manager_.Get())
+          ->AddDevices(std::move(local_devices)));
+
+  if (!remote_devices.empty()) {
+    if (!remote_device_mgr()) {
+      remote_device_manager_.Reset(
+          std::make_unique<tensorflow::DynamicDeviceMgr>());
+    }
+    TF_RETURN_IF_ERROR(
+        reinterpret_cast<DynamicDeviceMgr*>(remote_device_manager_.Get())
+            ->AddDevices(std::move(remote_devices)));
+  }
+
+  // Add the devices to pflr's device set.
+  pflr_->InitializeDeviceAndFlr();
+  InitPrioritizedDeviceTypeList();
+  return OkStatus();
 }
 
 void EagerContext::StartStep() {
@@ -615,8 +809,8 @@ void EagerContext::EndStep() {
   if (num_active_steps_ == 0) {
     // TODO(b/139809335): This does not properly clean up remote resources
     // Clean up the previous step container and create a new one.
-    step_container_.reset(new ScopedStepContainer(
-        0, [this](const string& name) { ClearResourceContainer(name); }));
+    step_container_ = std::make_unique<ScopedStepContainer>(
+        0, [this](const string& name) { ClearResourceContainer(name); });
   }
 }
 
@@ -627,7 +821,7 @@ ScopedStepContainer* EagerContext::StepContainer() {
 
 Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
   // Only client context can register function on remote worker context.
-  if (!remote_device_manager_.Owned()) return Status::OK();
+  if (!remote_device_manager_.Owned()) return OkStatus();
 #if !defined(IS_MOBILE_PLATFORM)
   std::shared_ptr<eager::EnqueueRequest> request(new eager::EnqueueRequest);
   request->set_context_id(GetContextId());
@@ -646,11 +840,12 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
 
     eager::EnqueueResponse* response = new eager::EnqueueResponse();
     eager_client->StreamingEnqueueAsync(
+        this->Executor().StreamingEnqueue(),
         /*call_opts=*/nullptr, request.get(), response,
         [request, response](const Status& status) {
           if (!status.ok()) {
             LOG(ERROR) << "Failed to register function remotely due to "
-                       << status.error_message()
+                       << status.message()
                        << "\nThis could happen if the remote target has been "
                           "disconnected from the client.";
           }
@@ -658,7 +853,43 @@ Status EagerContext::MaybeRegisterFunctionRemotely(const FunctionDef& fdef) {
         });
   }
 #endif  // !IS_MOBILE_PLATFORM
-  return Status::OK();
+  return OkStatus();
+}
+
+Status EagerContext::MaybeRemoveFunctionRemotely(const string& function_name) {
+  // Only client context can remove function on remote worker context.
+  if (!remote_device_manager_.Owned()) {
+    return OkStatus();
+  }
+
+#if !defined(IS_MOBILE_PLATFORM)
+  auto request = std::make_shared<eager::EnqueueRequest>();
+  request->set_context_id(GetContextId());
+
+  eager::RemoveFunctionOp* remove_function =
+      request->add_queue()->mutable_remove_function();
+  *remove_function->mutable_function_name() = function_name;
+
+  auto remote_contexts = GetRemoteContexts();
+  for (const auto& target : remote_contexts) {
+    core::RefCountPtr<eager::EagerClient> eager_client;
+    TF_RETURN_IF_ERROR(GetClient(target, &eager_client));
+
+    auto response = std::make_shared<eager::EnqueueResponse>();
+    eager_client->StreamingEnqueueAsync(
+        this->Executor().StreamingEnqueue(),
+        /*call_opts=*/nullptr, request.get(), response.get(),
+        [request, response](const Status& status) {
+          if (!status.ok()) {
+            LOG(ERROR) << "Failed to remove function remotely due to "
+                       << status.message()
+                       << "\nThis could happen if the remote target has been "
+                          "disconnected from the client.";
+          }
+        });
+  }
+#endif  // !IS_MOBILE_PLATFORM
+  return OkStatus();
 }
 
 Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
@@ -690,11 +921,12 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
     for (int i = 0; i < requests.size(); i++) {
       auto response = std::make_shared<eager::EnqueueResponse>();
       eager_client->StreamingEnqueueAsync(
+          this->Executor().StreamingEnqueue(),
           /*call_opts=*/nullptr, requests[i].get(), response.get(),
           [request = requests[i], response](const Status& s) {
             if (!s.ok()) {
               LOG(ERROR) << "Failed to register function remotely due to "
-                         << s.error_message()
+                         << s.message()
                          << "\nThis could happen if the remote target has been "
                             "disconnected from the client.";
             }
@@ -702,7 +934,7 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
     }
   }
 #endif  // !IS_MOBILE_PLATFORM
-  return Status::OK();
+  return OkStatus();
 }
 
 Status EagerContext::AddFunctionDefWithStackTraces(
@@ -720,6 +952,20 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
                                     const FunctionDefLibrary& library,
                                     const bool add_to_local_only,
                                     const StackTracesMap& stack_traces) {
+  auto fdefs_to_add =
+      small_constants_optimizer::FoldInputTensors(fdef, func_lib_def_);
+  for (const auto& fdef_to_add : fdefs_to_add) {
+    TF_RETURN_IF_ERROR(
+        AddFunctionDef(fdef_to_add, library, add_to_local_only, stack_traces));
+  }
+
+  auto stripped_fdefs_to_add =
+      summary_optimizer::StripSummaries(fdef, func_lib_def_);
+  for (const auto& fdef_to_add : stripped_fdefs_to_add) {
+    TF_RETURN_IF_ERROR(
+        AddFunctionDef(fdef_to_add, library, add_to_local_only, stack_traces));
+  }
+
   bool is_first_ref = false;
   {
     mutex_lock l(cache_mu_);
@@ -728,7 +974,7 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
     if (registered_function == nullptr) {
       registered_function = new RegisteredFunction;
       registered_function->cached_kernel_keys =
-          absl::make_unique<std::vector<Fprint128>>();
+          std::make_unique<std::vector<Fprint128>>();
       gtl::InsertOrUpdate(&registered_functions_, fdef.signature().name(),
                           registered_function);
     } else {
@@ -751,22 +997,63 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
       registered_function->Ref();
     }
     is_first_ref = registered_function->RefCountIsOne();
-  }
-  if (is_first_ref) {
-    TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef, stack_traces));
-    TF_RETURN_IF_ERROR(func_lib_def_.AddLibrary(library));
-    if (!add_to_local_only) {
-      return MaybeRegisterFunctionRemotely(fdef);
+    if (is_first_ref) {
+      TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef, stack_traces));
+      TF_RETURN_IF_ERROR(func_lib_def_.AddLibrary(library));
     }
   }
-  return Status::OK();
+  if (is_first_ref && !add_to_local_only) {
+    return MaybeRegisterFunctionRemotely(fdef);
+  }
+  return OkStatus();
 }
 
 const FunctionDef* EagerContext::GetFunctionDef(const string& function_name) {
   return func_lib_def_.Find(function_name);
 }
 
+std::vector<string> EagerContext::ListFunctionNames() {
+  return func_lib_def_.ListFunctionNames();
+}
+
+Status EagerContext::AddRemoveFunctionNotifier(const string& func,
+                                               std::function<void()> notifier) {
+  mutex_lock l(remove_function_notifiers_mu_);
+  auto iter = remove_function_notifiers_.find(func);
+  if (iter != remove_function_notifiers_.end()) {
+    iter->second.push_back(notifier);
+  } else {
+    std::vector<std::function<void()>> notifiers = {notifier};
+    remove_function_notifiers_.insert({func, notifiers});
+  }
+  return OkStatus();
+}
+
+tensorflow::ImmediateExecutionContext::CacheStats
+EagerContext::GetCacheStats() {
+  CacheStats stats;
+  {
+    mutex_lock l(cache_mu_);
+    stats.kernel_cache_size = kernel_cache_.size();
+    for (const auto& iter : registered_functions_) {
+      stats.func_kernel_cache_entries[iter.first] =
+          iter.second->cached_kernel_keys->size();
+    }
+  }
+  {
+    mutex_lock dl(device_cache_mu_);
+    stats.device_cache_size = device_cache_.size();
+  }
+  {
+    stats.local_rendezvous_cache_active_size =
+        local_rendezvous_cache_.GetActiveStepIds().size();
+  }
+  return stats;
+}
+
 Status EagerContext::RemoveFunction(const string& func) {
+  // TODO(mdan): The context owns these functions. Why check refcount then?
+  std::vector<std::function<void()>> notifiers;
   bool is_last_ref = false;
   {
     mutex_lock l(cache_mu_);
@@ -783,15 +1070,30 @@ Status EagerContext::RemoveFunction(const string& func) {
       registered_functions_.erase(func);
     }
     registered_function->Unref();
+    if (is_last_ref) {
+      TF_RETURN_IF_ERROR(func_lib_def_.RemoveFunction(func));
+
+      mutex_lock l(remove_function_notifiers_mu_);
+      auto iter = remove_function_notifiers_.find(func);
+      if (iter != remove_function_notifiers_.end()) {
+        notifiers = std::move(iter->second);
+      }
+      remove_function_notifiers_.erase(func);
+    }
   }
+  // MaybeRemoveFunctionRemotely contains rpc calls. Including it to mutex lock
+  // will cause error.
   if (is_last_ref) {
-    // TODO(fishx): Remove remote function as well.
-    return func_lib_def_.RemoveFunction(func);
+    for (const auto& notifier : notifiers) {
+      notifier();
+    }
+    return MaybeRemoveFunctionRemotely(func);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status EagerContext::SyncExecutors() {
+  VLOG(6) << "Calling SyncExecutors";
   StatusGroup sg;
   // Synchronize on context default executor
   sg.Update(default_executor_.WaitForAllPendingNodes());
@@ -824,6 +1126,7 @@ Status EagerContext::SyncExecutors() {
 
     eager::EnqueueResponse* response = new eager::EnqueueResponse();
     eager_client->StreamingEnqueueAsync(
+        this->Executor().StreamingEnqueue(),
         /*call_opts=*/nullptr, &request, response,
         [response, target, &counter, &s = statuses[i]](const Status& status) {
           s = status;
@@ -836,6 +1139,10 @@ Status EagerContext::SyncExecutors() {
     sg.Update(s);
   }
 #endif  // !IS_MOBILE_PLATFORM
+
+  // Reset the global rendezvous, which otherwise stores a failure state.
+  ResetGlobalRendezvousForFunction();
+
   return sg.as_summary_status();
 }
 
@@ -851,6 +1158,13 @@ core::RefCountPtr<KernelAndDevice> EagerContext::GetCachedKernel(
   return new_ref;
 }
 
+Device* EagerContext::GetCachedDevice(Fprint128 device_cache_key) {
+  tf_shared_lock l(device_cache_mu_);
+  auto iter = device_cache_.find(device_cache_key);
+  if (iter == device_cache_.end()) return nullptr;
+  return iter->second;
+}
+
 void EagerContext::AddKernelToCache(Fprint128 cache_key,
                                     KernelAndDevice* kernel) {
   mutex_lock ml(cache_mu_);
@@ -859,10 +1173,19 @@ void EagerContext::AddKernelToCache(Fprint128 cache_key,
   kernel_cache_[cache_key] = std::move(new_ref);
   auto* registered_function =
       gtl::FindPtrOrNull(registered_functions_, kernel->name());
+
   // The kernel name can be either a primitive op or a function.
   if (registered_function != nullptr) {
     registered_function->cached_kernel_keys->emplace_back(cache_key);
+    VLOG(5) << "Cached key size of kernel " << kernel->name()
+            << " is: " << registered_function->cached_kernel_keys->size();
   }
+}
+
+void EagerContext::AddDeviceToCache(Fprint128 device_cache_key,
+                                    Device* device) {
+  mutex_lock l(device_cache_mu_);
+  device_cache_[device_cache_key] = device;
 }
 
 bool EagerContext::ShouldStoreGraphs() { return should_store_graphs_.load(); }
@@ -871,7 +1194,7 @@ void EagerContext::SetShouldStoreGraphs(bool value) {
   mutex_lock ml(metadata_mu_);
   should_store_graphs_.store(value);
   if (!value) {
-    run_metadata_.reset(new RunMetadata);
+    run_metadata_ = std::make_unique<RunMetadata>();
   }
 }
 
@@ -879,7 +1202,7 @@ Status EagerContext::FindDeviceFromName(const char* device_name,
                                         Device** device) const {
   *device = HostCPU();
   if (device_name == nullptr || strlen(device_name) == 0) {
-    return Status::OK();
+    return OkStatus();
   }
 
   auto status = local_device_mgr()->LookupDevice(device_name, device);
@@ -900,44 +1223,27 @@ Status EagerContext::FindCompositeDeviceFromName(
   for (const auto& d : composite_devices_) {
     if (d.second->name() == device_name) {
       *device = d.second.get();
-      return Status::OK();
+      return OkStatus();
     }
   }
   return errors::NotFound("Unknown composite device: ", device_name);
 }
 
-bool EagerContext::FindCustomDeviceFromName(const string& device_name,
-                                            CustomDevice** dev) const {
-  auto dev_it = custom_devices_.find(device_name);
-  if (dev_it == custom_devices_.end()) {
-    return false;
-  }
-  *dev = dev_it->second.get();
-  return true;
+bool EagerContext::IsCustomDevice(const string& device_name) {
+  CustomDevice* device = nullptr;
+  return custom_device_op_handler_.FindCustomDeviceFromName(device_name,
+                                                            &device);
 }
 
 Status EagerContext::RegisterCustomDevice(
     const string& device_name, std::unique_ptr<CustomDevice> device) {
-  DeviceNameUtils::ParsedName parsed;
-  if (!DeviceNameUtils::ParseFullName(device_name, &parsed) ||
-      !parsed.has_job || !parsed.has_replica || !parsed.has_task ||
-      !parsed.has_type || !parsed.has_id) {
-    return errors::InvalidArgument(
-        device_name,
-        " could not be parsed as a device name. Use the full "
-        "/job:<name>/replica:<replica>/task:<task>/device:<type>:<device_num> "
-        "format.");
-  }
   Device* existing_physical_device = nullptr;
   if (FindDeviceFromName(device_name.c_str(), &existing_physical_device).ok()) {
     return errors::AlreadyExists(device_name,
                                  " already registered as a physical device.");
   }
-  if (!custom_devices_.emplace(device_name, std::move(device)).second) {
-    return errors::AlreadyExists(device_name,
-                                 " already registered as a custom device.");
-  }
-  return Status::OK();
+  return custom_device_op_handler_.RegisterCustomDevice(device_name,
+                                                        std::move(device));
 }
 
 Status EagerContext::FindOrCreateCompositeDevice(
@@ -945,7 +1251,7 @@ Status EagerContext::FindOrCreateCompositeDevice(
     CompositeDevice** composite_device) {
   if (!device_name.empty() &&
       FindCompositeDeviceFromName(device_name, composite_device).ok()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   const uint64 hash_key = Fingerprint64(absl::StrJoin(underlying_devices, ","));
@@ -954,7 +1260,7 @@ Status EagerContext::FindOrCreateCompositeDevice(
   auto iter = composite_devices_.find(hash_key);
   if (iter != composite_devices_.end()) {
     *composite_device = iter->second.get();
-    return Status::OK();
+    return OkStatus();
   }
 
   Status s;
@@ -972,7 +1278,7 @@ Status EagerContext::FindOrCreateCompositeDevice(
   *composite_device = device.get();
   pflr_->AddCompositeDevice(*composite_device);
   composite_devices_.emplace(hash_key, std::move(device));
-  return Status::OK();
+  return OkStatus();
 }
 
 bool EagerContext::OnSameTask(const Device* first, const Device* second) const {
@@ -1002,6 +1308,23 @@ void EagerContext::ClearResourceContainer(const string& name) {
   }
 }
 
+Status EagerContext::GetGlobalRendezvousForFunctionLocalRendezvousStatus() {
+  mutex_lock l(global_rendezvous_mu_);
+  tsl::core::RefCountPtr<IntraProcessRendezvous> rendezvous =
+      local_rendezvous_cache_.Find(kGlobalRendezvousId);
+  if (rendezvous == nullptr) return OkStatus();
+  return rendezvous->GetLocalRendezvousStatus();
+}
+
+void EagerContext::UpdateGlobalRendezvousDeviceManager(
+    tensorflow::DeviceMgr* device_mgr) {
+  mutex_lock l(global_rendezvous_mu_);
+  tsl::core::RefCountPtr<IntraProcessRendezvous> rendezvous =
+      local_rendezvous_cache_.Find(kGlobalRendezvousId);
+  if (rendezvous == nullptr) return;
+  rendezvous->UpdateDeviceManager(device_mgr);
+}
+
 namespace {
 Status GetTaskName(Device* d, string* task_name) {
   string ignored;
@@ -1009,7 +1332,7 @@ Status GetTaskName(Device* d, string* task_name) {
     return errors::InvalidArgument("Unable to parse device name: ", d->name());
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -1049,7 +1372,7 @@ Status EagerContext::GetClient(const DeviceNameUtils::ParsedName& device_name,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status EagerContext::GetClient(const string& remote_task,
@@ -1067,7 +1390,7 @@ Status EagerContext::GetClient(const string& remote_task,
     return errors::InvalidArgument(
         "Unable to find eager client corresponding to target ", remote_task);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 uint64 EagerContext::GetContextId() const {
@@ -1085,14 +1408,26 @@ void EagerContext::IncrementContextViewId() {
   context_view_id_ += 1;
 }
 
+Status EagerContext::EnableCollectiveOps(const ServerDef& server_def) {
+  return distributed_manager_->EnableCollectiveOps(server_def);
+}
+
 // Set collective ops related state in the context. Passing nullptr to
 // `new_server` will reuse the existing GRPC server in context.
 Status EagerContext::StoreCollectiveOpsServer(
-    std::unique_ptr<ServerInterface> new_server, const DeviceMgr* device_mgr,
+    std::unique_ptr<ServerInterface> new_server, DeviceMgr* device_mgr,
     CollectiveExecutorMgrInterface* rpc_collective_executor_mgr) {
   collective_executor_mgr_.Reset(rpc_collective_executor_mgr);
 
-  local_device_manager_.Reset(device_mgr);
+  if (device_mgr != local_device_manager_.Get()) {
+    if (local_device_manager_.Owned()) {
+      old_local_device_managers_.push_back(
+          std::move(local_device_manager_.owned_object));
+    }
+    local_device_manager_.Reset(device_mgr);
+    UpdateGlobalRendezvousDeviceManager(local_device_manager_.Get());
+    TF_RETURN_IF_ERROR(RendezvousFactory()(-1, nullptr, &rendezvous_));
+  }
   host_cpu_device_ = local_device_manager_.Get()->HostCPU();
 
   InitPrioritizedDeviceTypeList();
@@ -1124,7 +1459,7 @@ Status EagerContext::StoreCollectiveOpsServer(
   }
   DCHECK(server_ != nullptr);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status EagerContext::SetRemoteDeviceFilters(
@@ -1163,7 +1498,7 @@ Status EagerContext::SetRemoteDeviceFilters(
   }
   mutex_lock l(remote_state_mu_);
   cluster_device_filters_.emplace(remote_worker_task_name, parsed_filters);
-  return Status::OK();
+  return OkStatus();
 }
 
 void EagerContext::FilterDevicesForRemoteWorkers(
@@ -1207,14 +1542,20 @@ void EagerContext::FilterDevicesForRemoteWorkers(
   }
 }
 
+void EagerContext::SetWorkerEnv(WorkerEnv* worker_env,
+                                std::shared_ptr<WorkerSession> worker_session) {
+  worker_env_ = worker_env;
+  worker_session_ = worker_session;
+}
+
 Status EagerContext::InitializeRemoteMaster(
     std::unique_ptr<ServerInterface> server, WorkerEnv* worker_env,
     std::shared_ptr<WorkerSession> worker_session,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     std::unique_ptr<DynamicDeviceMgr> remote_device_manager,
     const std::vector<string>& remote_contexts, uint64 context_id,
-    Rendezvous* r, const DeviceMgr* local_device_mgr, int keep_alive_secs,
-    DistributedFunctionLibraryRuntime* cluster_flr,
+    tsl::core::RefCountPtr<Rendezvous> r, DeviceMgr* local_device_mgr,
+    int keep_alive_secs, DistributedFunctionLibraryRuntime* cluster_flr,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr) {
   if (context_id == kInvalidContextId) {
@@ -1234,8 +1575,8 @@ Status EagerContext::InitializeRemoteMaster(
   return SetMasterContextState(
       std::move(server), worker_env, std::move(worker_session),
       std::move(remote_eager_workers), std::move(remote_device_manager),
-      context_id, 0, r, local_device_mgr, keep_alive_secs, cluster_flr,
-      std::move(remote_mgr));
+      context_id, 0, std::move(r), local_device_mgr, keep_alive_secs,
+      cluster_flr, std::move(remote_mgr));
 }
 
 Status EagerContext::UpdateRemoteMaster(
@@ -1279,7 +1620,7 @@ Status EagerContext::UpdateRemoteMaster(
     context_view_id_++;
 
     remote_eager_workers_ = std::move(remote_eager_workers);
-    pflr_->InitializeDeviceSet();
+    pflr_->InitializeDeviceAndFlr();
     InitPrioritizedDeviceTypeList();
 
     default_executor_.ClearError();
@@ -1301,7 +1642,7 @@ Status EagerContext::UpdateRemoteMaster(
   // ignored by the remote workers.
   TF_RETURN_IF_ERROR(
       RegisterExistingFunctionsOnRemoteWorkers(add_remote_contexts));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Set distributed execution related state in the master context.
@@ -1310,8 +1651,9 @@ Status EagerContext::SetMasterContextState(
     std::shared_ptr<WorkerSession> worker_session,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     std::unique_ptr<DynamicDeviceMgr> remote_device_manager, uint64 context_id,
-    uint64 context_view_id, Rendezvous* r, const DeviceMgr* local_device_mgr,
-    int keep_alive_secs, DistributedFunctionLibraryRuntime* cluster_flr,
+    uint64 context_view_id, tsl::core::RefCountPtr<Rendezvous> r,
+    DeviceMgr* local_device_mgr, int keep_alive_secs,
+    DistributedFunctionLibraryRuntime* cluster_flr,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr) {
   mutex_lock l(remote_state_mu_);
@@ -1328,11 +1670,11 @@ Status EagerContext::SetMasterContextState(
           std::move(local_device_manager_.owned_object));
     }
     local_device_manager_.Reset(local_device_mgr);
+    UpdateGlobalRendezvousDeviceManager(local_device_manager_.Get());
   }
   host_cpu_device_ = local_device_manager_.Get()->HostCPU();
 
-  if (rendezvous_ != nullptr) rendezvous_->Unref();
-  rendezvous_ = r;
+  rendezvous_ = std::move(r);
 
   // Memory leak!
   if (server_ != nullptr) {
@@ -1423,7 +1765,7 @@ Status EagerContext::SetMasterContextState(
           }
         }));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status EagerContext::InitializeRemoteWorker(
@@ -1431,7 +1773,8 @@ Status EagerContext::InitializeRemoteWorker(
     DynamicDeviceMgr* remote_device_mgr,
     const std::vector<string>& remote_contexts, uint64 context_id,
     uint64 context_view_id,
-    std::function<Rendezvous*(const int64)> rendezvous_creator,
+    std::function<tsl::core::RefCountPtr<Rendezvous>(const int64_t)>
+        rendezvous_creator,
     DistributedFunctionLibraryRuntime* cluster_flr,
     std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
         remote_mgr,
@@ -1479,7 +1822,7 @@ Status EagerContext::InitializeRemoteWorker(
 
   resource_deallocator_ = std::move(resource_deallocator);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status EagerContext::UpdateRemoteWorker(
@@ -1498,7 +1841,7 @@ Status EagerContext::UpdateRemoteWorker(
     remote_contexts_ = remote_contexts;
     remote_eager_workers_ = std::move(remote_eager_workers);
     InitPrioritizedDeviceTypeList();
-    pflr_->InitializeDeviceSet();
+    pflr_->InitializeDeviceAndFlr();
   }
 
   // No need to update remote_device_manager_ since it's not owned for remote
@@ -1517,7 +1860,7 @@ Status EagerContext::UpdateRemoteWorker(
       entry.second->ClearError();
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 #endif  // !IS_MOBILE_PLATFORM
 

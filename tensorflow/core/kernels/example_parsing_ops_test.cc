@@ -318,7 +318,7 @@ static Graph* ParseSingleExample(int num_keys, int feature_size) {
   TF_EXPECT_OK(NodeBuilder(g->NewName("n"), "ParseSingleExample")
                    .Input(test::graph::Constant(g, serialized))
                    .Input(dense_defaults)
-                   .Attr<int64>("num_sparse", sparse_keys.size())
+                   .Attr<int64_t>("num_sparse", sparse_keys.size())
                    .Attr("sparse_keys", sparse_keys)
                    .Attr("sparse_types", sparse_types)
                    .Attr("dense_keys", dense_keys)
@@ -351,11 +351,11 @@ typedef BenchmarkOptions<ExampleStore<FloatFiller>, kRagged> RaggedFloat;
 #define BM_ParseExample(TYPE, B, K, F)                                    \
   static void BM_ParseExample##_##TYPE##_##B##_##K##_##F(                 \
       ::testing::benchmark::State& state) {                               \
-    int64 items_per_iter = static_cast<int64>(B) * K * F;                 \
+    int64_t items_per_iter = static_cast<int64_t>(B) * K * F;             \
     test::Benchmark("cpu", ParseExample<TYPE>(B, K, F), nullptr, nullptr, \
                     nullptr, "SINGLE_THREADED_EXECUTOR", false)           \
         .Run(state);                                                      \
-    state.SetItemsProcessed(static_cast<int64>(state.iterations()) *      \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *    \
                             items_per_iter);                              \
   }                                                                       \
   BENCHMARK(BM_ParseExample##_##TYPE##_##B##_##K##_##F)->UseRealTime();
@@ -388,12 +388,12 @@ BM_AllParseExample(VarLenDenseFloat);
 #define BM_ParseExampleV2(TYPE, B, K, F)                                    \
   static void BM_ParseExampleV2##_##TYPE##_##B##_##K##_##F(                 \
       ::testing::benchmark::State& state) {                                 \
-    int64 items_per_iter = static_cast<int64>(std::max(B, 1)) * K * F;      \
+    int64_t items_per_iter = static_cast<int64_t>(std::max(B, 1)) * K * F;  \
     test::Benchmark("cpu", ParseExampleV2<TYPE>(B, K, F), nullptr, nullptr, \
                     nullptr, "SINGLE_THREADED_EXECUTOR",                    \
                     /*old_benchmark_api=*/false)                            \
         .Run(state);                                                        \
-    state.SetItemsProcessed(static_cast<int64>(state.iterations()) *        \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *      \
                             items_per_iter);                                \
   }                                                                         \
   BENCHMARK(BM_ParseExampleV2##_##TYPE##_##B##_##K##_##F)->UseRealTime();
@@ -442,12 +442,12 @@ BM_AllParseExampleV2(RaggedFloat);
 #define BM_ParseSingleExample(TYPE, K, F)                                    \
   void BM_ParseSingleExample##_##TYPE##_1_##K##_##F(                         \
       ::testing::benchmark::State& state) {                                  \
-    int64 items_per_iter = K * F;                                            \
+    int64_t items_per_iter = K * F;                                          \
     test::Benchmark("cpu", ParseSingleExample<TYPE>(K, F), nullptr, nullptr, \
                     nullptr, "SINGLE_THREADED_EXECUTOR",                     \
                     /*old_benchmark_api=*/false)                             \
         .Run(state);                                                         \
-    state.SetItemsProcessed(static_cast<int64>(state.iterations()) *         \
+    state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) *       \
                             items_per_iter);                                 \
   }                                                                          \
   BENCHMARK(BM_ParseSingleExample##_##TYPE##_1_##K##_##F)->UseRealTime();

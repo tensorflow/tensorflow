@@ -17,25 +17,27 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_configuration_rewrite_pass.h"
 
-#include <unordered_map>
+#include <cstdint>
+#include <string>
+#include <vector>
 
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/core/common_runtime/device_set.h"
-#include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "absl/status/status.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/graph/graph_node_util.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_helpers.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_options.h"
 #include "tensorflow/core/tpu/tpu_init_mode.h"
-#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -50,9 +52,11 @@ constexpr char kShutdownOp[] = "ShutdownDistributedTPU";
 constexpr char kInternalShutdownOp[] = "_ShutdownDistributedTPU";
 constexpr char kHostDisconnectOp[] = "_DisconnectHostFromDistributedTPUSystem";
 constexpr char kEmbeddingConfigurationAttr[] = "embedding_config";
+constexpr char kTpuCancellationClosesChipsAttr[] =
+    "tpu_cancellation_closes_chips";
 constexpr int kDefaultStartupTimeout = 20;
 
-Status AddConfigurationNode(const string& configuration_device_name,
+Status AddConfigurationNode(const std::string& configuration_device_name,
                             int number_of_hosts, Graph* graph,
                             bool enable_whole_mesh_compilations,
                             Node** configuration_node) {
@@ -65,18 +69,15 @@ Status AddConfigurationNode(const string& configuration_device_name,
               &config_def);
   // TODO(shikharagarwal): Fill with appropriate original node debug info.
 
-  Status status;
-  *configuration_node = graph->AddNode(config_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(*configuration_node, graph->AddNode(config_def));
   (*configuration_node)->set_assigned_device_name(configuration_device_name);
-  return Status::OK();
+  return absl::OkStatus();
 }
 
-Status AddHostConfigNode(const string& host_device_name,
+Status AddHostConfigNode(const std::string& host_device_name,
                          Node* configuration_node, Graph* graph,
                          bool enable_whole_mesh_compilations,
+                         int tpu_cancellation_closes_chips,
                          Node** host_configuration_node) {
   NodeDef host_config_def;
   host_config_def.set_name(graph->NewName("configure_tpu_host"));
@@ -84,26 +85,25 @@ Status AddHostConfigNode(const string& host_device_name,
   host_config_def.set_device(host_device_name);
   AddNodeAttr("enable_whole_mesh_compilations", enable_whole_mesh_compilations,
               &host_config_def);
+  AddNodeAttr(kTpuCancellationClosesChipsAttr, tpu_cancellation_closes_chips,
+              &host_config_def);
   MergeDebugInfo(NodeDebugInfo(configuration_node->def()), &host_config_def);
 
-  Status status;
-  *host_configuration_node = graph->AddNode(host_config_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(*host_configuration_node,
+                      graph->AddNode(host_config_def));
   (*host_configuration_node)->set_assigned_device_name(host_device_name);
   graph->AddEdge(configuration_node, 0, *host_configuration_node, 0);
-  return Status::OK();
+  return absl::OkStatus();
 }
 
-Status AddWaitNode(const string& configuration_device_name,
+Status AddWaitNode(const std::string& configuration_device_name,
                    const std::vector<Node*>& host_configuration_nodes,
                    Graph* graph, Node** wait_node) {
   NodeDef wait_def;
   wait_def.set_name(graph->NewName("wait_for_distributed_tpu_system"));
   wait_def.set_op(kWaitOp);
   wait_def.set_device(configuration_device_name);
-  AddNodeAttr("N", static_cast<int32>(host_configuration_nodes.size()),
+  AddNodeAttr("N", static_cast<int32_t>(host_configuration_nodes.size()),
               &wait_def);
   AddNodeAttr("startup_timeout_sec", kDefaultStartupTimeout, &wait_def);
   if (!host_configuration_nodes.empty()) {
@@ -111,39 +111,33 @@ Status AddWaitNode(const string& configuration_device_name,
                    &wait_def);
   }
 
-  Status status;
-  *wait_node = graph->AddNode(wait_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(*wait_node, graph->AddNode(wait_def));
   (*wait_node)->set_assigned_device_name(configuration_device_name);
   // Get the inputs from the host configuration nodes.
   for (int i = 0; i < host_configuration_nodes.size(); ++i) {
     graph->AddEdge(host_configuration_nodes[i], 0, *wait_node, i);
   }
-  return Status::OK();
+  return absl::OkStatus();
 }
 
-Status AddGlobalTPUArrayNode(const string& host_device_name, Node* wait_node,
-                             Graph* graph, Node** global_tpu_array_node) {
+Status AddGlobalTPUArrayNode(const std::string& host_device_name,
+                             Node* wait_node, Graph* graph,
+                             Node** global_tpu_array_node) {
   NodeDef global_tpu_array_def;
   global_tpu_array_def.set_name(graph->NewName("set_global_tpu_array"));
   global_tpu_array_def.set_op(kGlobalTPUArrayOp);
   global_tpu_array_def.set_device(host_device_name);
   MergeDebugInfo(NodeDebugInfo(wait_node->def()), &global_tpu_array_def);
 
-  Status status;
-  *global_tpu_array_node = graph->AddNode(global_tpu_array_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(*global_tpu_array_node,
+                      graph->AddNode(global_tpu_array_def));
   (*global_tpu_array_node)->set_assigned_device_name(host_device_name);
   graph->AddEdge(wait_node, 0, *global_tpu_array_node, 0);
-  return Status::OK();
+  return absl::OkStatus();
 }
 
 Status AddSynchronizationNode(
-    const NodeDef& sync_node_def, const string& device_name,
+    const NodeDef& sync_node_def, const std::string& device_name,
     const std::vector<Node*>& global_array_id_nodes, Node* wait_node,
     const std::vector<DistributedTPURewriteHelpers::OutputDependency>&
         output_dependencies,
@@ -155,11 +149,7 @@ Status AddSynchronizationNode(
   AddNodeAttr("T", DT_STRING, &sync_def);
   MergeDebugInfo(NodeDebugInfo(sync_node_def), &sync_def);
 
-  Status status;
-  Node* sync_node = graph->AddNode(sync_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(Node * sync_node, graph->AddNode(sync_def));
   sync_node->set_assigned_device_name(device_name);
   // Add control edges from the global array id nodes.
   for (auto node : global_array_id_nodes) {
@@ -176,12 +166,11 @@ Status AddSynchronizationNode(
       graph->AddEdge(sync_node, dep.src_output, dep.dst, dep.dst_input);
     }
   }
-  return Status::OK();
+  return absl::OkStatus();
 }
 
-
 Status AddShutdownNode(
-    const NodeDef& shutdown_node_def, const string& shutdown_device_name,
+    const NodeDef& shutdown_node_def, const std::string& shutdown_device_name,
     const std::vector<DistributedTPURewriteHelpers::OutputDependency>&
         output_dependencies,
     Graph* graph, Node** shutdown_node) {
@@ -191,24 +180,20 @@ Status AddShutdownNode(
   shutdown_def.set_device(shutdown_device_name);
   MergeDebugInfo(NodeDebugInfo(shutdown_node_def), &shutdown_def);
 
-  Status status;
-  *shutdown_node = graph->AddNode(shutdown_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(*shutdown_node, graph->AddNode(shutdown_def));
   (*shutdown_node)->set_assigned_device_name(shutdown_device_name);
   // Replace the output control edges.
   for (const DistributedTPURewriteHelpers::OutputDependency& dep :
        output_dependencies) {
     if (dep.dst_input != Graph::kControlSlot) {
-      return errors::Internal("Shutdown node had non-control edge output");
+      return absl::InternalError("Shutdown node had non-control edge output");
     }
     graph->AddControlEdge(*shutdown_node, dep.dst);
   }
-  return Status::OK();
+  return absl::OkStatus();
 }
 
-Status AddHostDisconnectNode(const string& host_device_name,
+Status AddHostDisconnectNode(const std::string& host_device_name,
                              const std::vector<Node*>& input_dependencies,
                              Node* post_disconnect_node, int output_index,
                              Graph* graph) {
@@ -219,11 +204,8 @@ Status AddHostDisconnectNode(const string& host_device_name,
   MergeDebugInfo(NodeDebugInfo(post_disconnect_node->def()),
                  &host_disconnect_def);
 
-  Status status;
-  Node* host_disconnect_node = graph->AddNode(host_disconnect_def, &status);
-  if (!status.ok()) {
-    return status;
-  }
+  TF_ASSIGN_OR_RETURN(Node * host_disconnect_node,
+                      graph->AddNode(host_disconnect_def));
   host_disconnect_node->set_assigned_device_name(host_device_name);
   // Replace the input control edges.
   for (Node* src_node : input_dependencies) {
@@ -234,7 +216,7 @@ Status AddHostDisconnectNode(const string& host_device_name,
   } else {
     graph->AddEdge(host_disconnect_node, 0, post_disconnect_node, output_index);
   }
-  return Status::OK();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -258,7 +240,7 @@ Status DistributedTPUConfigurationRewritePass::Run(
       DistributedTPURewriteHelpers::ForConfigurationNodeMatchingType(
           kConfigureOp, graph, *options.device_set,
           [](const NodeDef& configuration_node_def,
-             const string& configuration_device_name,
+             const std::string& configuration_device_name,
              const std::vector<Device*>& host_devices,
              const std::vector<Node*>& input_dependencies,
              const std::vector<DistributedTPURewriteHelpers::OutputDependency>&
@@ -268,7 +250,8 @@ Status DistributedTPUConfigurationRewritePass::Run(
                 AttrSlice(configuration_node_def), kEmbeddingConfigurationAttr);
 
             if (!embedding_attr_string.empty()) {
-              return errors::InvalidArgument("embedding_config must be empty.");
+              return absl::InvalidArgumentError(
+                  "embedding_config must be empty.");
             }
 
             bool is_global_init = false;
@@ -287,6 +270,11 @@ Status DistributedTPUConfigurationRewritePass::Run(
                                            &compilation_failure_closes_chips));
             internal::SetTpuCompilationFailureClosesChips(
                 compilation_failure_closes_chips);
+
+            int tpu_cancellation_closes_chips;
+            TF_RETURN_IF_ERROR(GetNodeAttr(configuration_node_def,
+                                           kTpuCancellationClosesChipsAttr,
+                                           &tpu_cancellation_closes_chips));
 
             // Add the global TPU system configuration node.
             Node* configuration_node;
@@ -308,7 +296,8 @@ Status DistributedTPUConfigurationRewritePass::Run(
               Node* host_configuration_node;
               TF_RETURN_IF_ERROR(AddHostConfigNode(
                   host_device->name(), configuration_node, graph,
-                  enable_whole_mesh_compilations, &host_configuration_node));
+                  enable_whole_mesh_compilations, tpu_cancellation_closes_chips,
+                  &host_configuration_node));
               host_configuration_nodes.push_back(host_configuration_node);
             }
 
@@ -331,7 +320,8 @@ Status DistributedTPUConfigurationRewritePass::Run(
             }
 
             if (host_devices.empty()) {
-              return errors::InvalidArgument("TPU job contains no CPU devices");
+              return absl::InvalidArgumentError(
+                  "TPU job contains no CPU devices");
             }
             TF_RET_CHECK(!host_devices.empty());
 
@@ -339,7 +329,7 @@ Status DistributedTPUConfigurationRewritePass::Run(
                 configuration_node_def, host_devices.front()->name(),
                 global_array_id_nodes, wait_node, output_dependencies, graph));
 
-            return Status::OK();
+            return absl::OkStatus();
           }));
 
   if (VLOG_IS_ON(1)) {
@@ -348,7 +338,7 @@ Status DistributedTPUConfigurationRewritePass::Run(
   }
 
   VLOG(1) << "DistributedTPUConfigurationRewritePass::Run() finished";
-  return Status::OK();
+  return absl::OkStatus();
 }
 
 Status DistributedTPUShutdownRewritePass::Run(
@@ -370,7 +360,7 @@ Status DistributedTPUShutdownRewritePass::Run(
       DistributedTPURewriteHelpers::ForConfigurationNodeMatchingType(
           kShutdownOp, graph, *options.device_set,
           [](const NodeDef& shutdown_node_def,
-             const string& shutdown_device_name,
+             const std::string& shutdown_device_name,
              const std::vector<Device*>& host_devices,
              const std::vector<Node*>& input_dependencies,
              const std::vector<DistributedTPURewriteHelpers::OutputDependency>&
@@ -388,7 +378,7 @@ Status DistributedTPUShutdownRewritePass::Run(
                                         shutdown_node, -1, graph));
             }
 
-            return Status::OK();
+            return absl::OkStatus();
           }));
 
   if (VLOG_IS_ON(1)) {
@@ -396,7 +386,7 @@ Status DistributedTPUShutdownRewritePass::Run(
   }
 
   VLOG(1) << "DistributedTPUShutdownRewritePass::Run() finished";
-  return Status::OK();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

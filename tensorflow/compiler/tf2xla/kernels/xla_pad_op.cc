@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
@@ -34,9 +36,9 @@ class XlaPadOp : public XlaOpKernel {
     const TensorShape padding_value_shape =
         context->InputShape("padding_value");
 
-    std::vector<int64> padding_low;
-    std::vector<int64> padding_high;
-    std::vector<int64> padding_interior;
+    std::vector<int64_t> padding_low;
+    std::vector<int64_t> padding_high;
+    std::vector<int64_t> padding_interior;
     OP_REQUIRES_OK(context, context->ConstantInputAsIntVector("padding_low",
                                                               &padding_low));
     OP_REQUIRES_OK(context, context->ConstantInputAsIntVector("padding_high",
@@ -63,7 +65,7 @@ class XlaPadOp : public XlaOpKernel {
                     "rank (",
                     padding_interior.size(), " vs. ", rank, ")"));
 
-    auto non_negative = [](int64 x) { return x >= 0; };
+    auto non_negative = [](int64_t x) { return x >= 0; };
     OP_REQUIRES(
         context, absl::c_all_of(padding_interior, non_negative),
         errors::InvalidArgument("padding_interior must be non-negative, got [",
@@ -84,7 +86,8 @@ class XlaPadOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaPadOp);
+  XlaPadOp(const XlaPadOp&) = delete;
+  void operator=(const XlaPadOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaPad")

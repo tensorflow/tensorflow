@@ -15,27 +15,31 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_tf_data_stats.h"
 
+#include <algorithm>
+#include <optional>
+#include <string>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
-#include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
-#include "tensorflow/core/profiler/utils/tf_op_utils.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
-#include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
+#include "tsl/profiler/utils/group_events.h"
+#include "tsl/profiler/utils/tf_op_utils.h"
+#include "tsl/profiler/utils/tf_xplane_visitor.h"
+#include "tsl/profiler/utils/timespan.h"
 
 namespace tensorflow {
 namespace profiler {
 
 // 50 us from https://www.tensorflow.org/guide/data_performance_analysis
-const int64 kSlowCallThresholdPs = 50 * 1000000;
+const int64_t kSlowCallThresholdPs = 50 * 1000000;
 
 namespace {
 
@@ -52,18 +56,19 @@ bool IsRootIteratorEvent(const XEventVisitor& iterator_event) {
 bool IsAsyncIterator(absl::string_view iterator_event_name) {
   static auto* kAsyncIterators = new absl::flat_hash_set<absl::string_view>(
       {"Prefetch", "ParallelInterleave", "ParallelMap", "ParseExample",
-       "MapAndBatch", "DataService", "LegacyParallelInterleave"});
+       "MapAndBatch", "DataService", "LegacyParallelInterleave",
+       "ParallelBatch"});
   return kAsyncIterators->contains(iterator_event_name);
 }
 
-void SetIteratorMetadata(int64 id, const XEventVisitor& event,
+void SetIteratorMetadata(int64_t id, const XEventVisitor& event,
                          IteratorMetadata* metadata) {
   metadata->set_id(id);
   auto parent_id_stat = event.GetStat(StatType::kParentId);
   if (parent_id_stat.has_value()) {
     metadata->set_parent_id(parent_id_stat->IntValue());
   }
-  metadata->set_name(IteratorName(event.Name()));
+  metadata->set_name(tsl::profiler::IteratorName(event.Name()));
   metadata->set_long_name(event.Name().data(), event.Name().size());
   metadata->set_is_async(IsAsyncIterator(metadata->name()));
   // TODO(b/161831651): Set params.
@@ -71,33 +76,35 @@ void SetIteratorMetadata(int64 id, const XEventVisitor& event,
 
 // Returns the parent iterator's id if it is a root of a device input
 // pipeline.
-absl::optional<int64> FindDeviceInputPipeline(const XEventVisitor& event) {
+std::optional<int64_t> FindDeviceInputPipeline(const XEventVisitor& event) {
   if (event.Type() == HostEventType::kDeviceInputPipelineSecondIterator) {
     auto parent_id_stat = event.GetStat(StatType::kParentId);
     if (parent_id_stat.has_value()) return parent_id_stat->IntValue();
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
-// Processes EventForest to do the following:
+// Processes tsl::profiler::EventForest to do the following:
 // (1) set iterator metadata
 // (2) find root iterator events
 // (3) find device input pipeline ids
-void ProcessEventForest(const EventForest& event_forest,
-                        absl::flat_hash_set<int64>* device_input_pipeline_ids,
-                        absl::flat_hash_map<int64, std::vector<EventNode*>>*
-                            root_iterator_event_map,
-                        TfDataStats* tf_data_stats) {
-  const EventNodeMap& event_node_map = event_forest.GetEventNodeMap();
-  auto iterator_event_list =
+void ProcessEventForest(
+    const tsl::profiler::EventForest& event_forest,
+    absl::flat_hash_set<int64_t>* device_input_pipeline_ids,
+    absl::flat_hash_map<int64_t, std::vector<const tsl::profiler::EventNode*>>*
+        root_iterator_event_map,
+    TfDataStats* tf_data_stats) {
+  const tsl::profiler::EventNodeMap& event_node_map =
+      event_forest.GetEventNodeMap();
+  auto* iterator_event_list =
       gtl::FindOrNull(event_node_map, HostEventType::kIterator);
   if (!iterator_event_list) return;
-  for (const auto& iterator_event : *iterator_event_list) {
+  for (const tsl::profiler::EventNode& iterator_event : *iterator_event_list) {
     const XEventVisitor& iterator_event_visitor =
-        iterator_event->GetEventVisitor();
+        iterator_event.GetEventVisitor();
     auto iterator_id_stat = iterator_event_visitor.GetStat(StatType::kStepId);
     if (!iterator_id_stat.has_value()) continue;
-    int64 iterator_id = iterator_id_stat->IntValue();
+    int64_t iterator_id = iterator_id_stat->IntValue();
     auto result = tf_data_stats->mutable_iterator_metadata()->insert(
         {iterator_id, IteratorMetadata()});
     IteratorMetadata& metadata = result.first->second;
@@ -107,19 +114,19 @@ void ProcessEventForest(const EventForest& event_forest,
     }
     if (IsRootIteratorEvent(iterator_event_visitor)) {
       // Record root iterator events.
-      (*root_iterator_event_map)[iterator_id].push_back(iterator_event.get());
+      (*root_iterator_event_map)[iterator_id].push_back(&iterator_event);
     }
   }
-  auto device_input_pipeline_second_iterator_events = gtl::FindOrNull(
+  auto* device_input_pipeline_second_iterator_events = gtl::FindOrNull(
       event_node_map, HostEventType::kDeviceInputPipelineSecondIterator);
   if (!device_input_pipeline_second_iterator_events) return;
-  for (const auto& iterator_event :
+  for (const tsl::profiler::EventNode& iterator_event :
        *device_input_pipeline_second_iterator_events) {
     const XEventVisitor& iterator_event_visitor =
-        iterator_event->GetEventVisitor();
+        iterator_event.GetEventVisitor();
     auto iterator_id_stat = iterator_event_visitor.GetStat(StatType::kStepId);
     if (!iterator_id_stat.has_value()) continue;
-    int64 iterator_id = iterator_id_stat->IntValue();
+    int64_t iterator_id = iterator_id_stat->IntValue();
     auto result = tf_data_stats->mutable_iterator_metadata()->insert(
         {iterator_id, IteratorMetadata()});
     IteratorMetadata& metadata = result.first->second;
@@ -127,7 +134,7 @@ void ProcessEventForest(const EventForest& event_forest,
       // First time processing this iterator.
       SetIteratorMetadata(iterator_id, iterator_event_visitor, &metadata);
       // Find and record device input pipeline ids.
-      absl::optional<int64> device_input_pipeline_id =
+      std::optional<int64_t> device_input_pipeline_id =
           FindDeviceInputPipeline(iterator_event_visitor);
       if (device_input_pipeline_id.has_value()) {
         device_input_pipeline_ids->insert(*device_input_pipeline_id);
@@ -136,7 +143,7 @@ void ProcessEventForest(const EventForest& event_forest,
   }
 }
 
-void SetInputPipelineMetadata(int64 id, int64 name_id,
+void SetInputPipelineMetadata(int64_t id, int64_t name_id,
                               bool is_device_input_pipeline,
                               InputPipelineMetadata* metadata) {
   constexpr absl::string_view kHostInputPipelinePrefix = "Host:";
@@ -151,13 +158,14 @@ void SetInputPipelineMetadata(int64 id, int64 name_id,
   }
 }
 
-void ProcessIteratorEvent(const EventNode& iterator_event,
+void ProcessIteratorEvent(const tsl::profiler::EventNode& iterator_event,
                           InputPipelineStat* input_pipeline_stat,
-                          bool is_blocking) {
+                          bool is_blocking, int level = 0) {
+  if (level > 100) return;
   const XEventVisitor& visitor = iterator_event.GetEventVisitor();
   auto iterator_id_stat = visitor.GetStat(StatType::kStepId);
   if (!iterator_id_stat.has_value()) return;
-  int64 iterator_id = iterator_id_stat->IntValue();
+  int64_t iterator_id = iterator_id_stat->IntValue();
   auto result = input_pipeline_stat->mutable_iterator_stats()->insert(
       {iterator_id, IteratorStat()});
   IteratorStat& iterator_stat = result.first->second;
@@ -167,15 +175,16 @@ void ProcessIteratorEvent(const EventNode& iterator_event,
   }
   iterator_stat.set_duration_ps(iterator_stat.duration_ps() +
                                 visitor.DurationPs());
-  int64 self_time_ps = visitor.DurationPs();
-  Timespan self_time_span = visitor.GetTimespan();
-  for (EventNode* child : iterator_event.GetChildren()) {
+  int64_t self_time_ps = visitor.DurationPs();
+  tsl::profiler::Timespan self_time_span = visitor.GetTimespan();
+  for (const tsl::profiler::EventNode* child : iterator_event.GetChildren()) {
     const XEventVisitor& child_visitor = child->GetEventVisitor();
-    if (ParseTfOpFullname(child_visitor.Name()).category == Category::kTfData) {
-      int64 overlap_duration_ps =
+    if (tsl::profiler::ParseTfOpFullname(child_visitor.Name()).category ==
+        tsl::profiler::Category::kTfData) {
+      int64_t overlap_duration_ps =
           self_time_span.OverlappedDurationPs(child_visitor.GetTimespan());
       ProcessIteratorEvent(*child, input_pipeline_stat,
-                           is_blocking && overlap_duration_ps);
+                           is_blocking && overlap_duration_ps, level + 1);
       // Note: Assume no overlap between child events.
       self_time_ps -= overlap_duration_ps;
     }
@@ -186,8 +195,8 @@ void ProcessIteratorEvent(const EventNode& iterator_event,
 }
 
 void SetBottleneckIteratorId(InputPipelineStat* input_pipeline_stat) {
-  int64 bottleneck_iterator_id = 0;
-  int64 max_self_time = 0;
+  int64_t bottleneck_iterator_id = 0;
+  int64_t max_self_time = 0;
   for (const auto& pair : input_pipeline_stat->iterator_stats()) {
     const auto& id = pair.first;
     const auto& iterator_stat = pair.second;
@@ -202,21 +211,21 @@ void SetBottleneckIteratorId(InputPipelineStat* input_pipeline_stat) {
 }
 
 void ProcessInputPipelines(
-    const absl::flat_hash_set<int64>& device_input_pipeline_ids,
-    absl::flat_hash_map<int64, std::vector<EventNode*>>*
+    const absl::flat_hash_set<int64_t>& device_input_pipeline_ids,
+    absl::flat_hash_map<int64_t, std::vector<const tsl::profiler::EventNode*>>*
         root_iterator_event_map,
     TfDataStats* tf_data_stats) {
   auto* input_pipelines = tf_data_stats->mutable_input_pipelines();
-  int64 num_host_input_pipelines = 0;
-  int64 num_device_input_pipelines = 0;
+  int64_t num_host_input_pipelines = 0;
+  int64_t num_device_input_pipelines = 0;
   for (auto& id_and_events : *root_iterator_event_map) {
     auto& root_iterator_id = id_and_events.first;
     auto& root_iterator_events = id_and_events.second;
-    absl::c_sort(root_iterator_events,
-                 [](const EventNode* lhs, const EventNode* rhs) {
-                   return lhs->GetEventVisitor().DurationPs() >
-                          rhs->GetEventVisitor().DurationPs();
-                 });
+    absl::c_sort(root_iterator_events, [](const tsl::profiler::EventNode* lhs,
+                                          const tsl::profiler::EventNode* rhs) {
+      return lhs->GetEventVisitor().DurationPs() >
+             rhs->GetEventVisitor().DurationPs();
+    });
     auto result =
         input_pipelines->insert({root_iterator_id, InputPipelineStats()});
     InputPipelineStats& input_pipeline_stats = result.first->second;
@@ -224,21 +233,22 @@ void ProcessInputPipelines(
     if (result.second) {
       bool is_device_input_pipeline =
           device_input_pipeline_ids.contains(root_iterator_id);
-      int64 name_id = is_device_input_pipeline ? num_device_input_pipelines++
-                                               : num_host_input_pipelines++;
+      int64_t name_id = is_device_input_pipeline ? num_device_input_pipelines++
+                                                 : num_host_input_pipelines++;
       SetInputPipelineMetadata(root_iterator_id, name_id,
                                is_device_input_pipeline, metadata);
     }
-    int64 sum_latency_ps = 0;
-    int64 min_latency_ps = INT64_MAX;
-    int64 max_latency_ps = 0;
-    int64 num_slow_calls = 0;
-    for (const EventNode* root_iterator_event : root_iterator_events) {
+    int64_t sum_latency_ps = 0;
+    int64_t min_latency_ps = INT64_MAX;
+    int64_t max_latency_ps = 0;
+    int64_t num_slow_calls = 0;
+    for (const tsl::profiler::EventNode* root_iterator_event :
+         root_iterator_events) {
       InputPipelineStat* stat = input_pipeline_stats.add_stats();
       ProcessIteratorEvent(*root_iterator_event, stat,
                            /*is_blocking*/ true);
       SetBottleneckIteratorId(stat);
-      int64 latency_ps = root_iterator_event->GetEventVisitor().DurationPs();
+      int64_t latency_ps = root_iterator_event->GetEventVisitor().DurationPs();
       sum_latency_ps += latency_ps;
       min_latency_ps = std::min(min_latency_ps, latency_ps);
       max_latency_ps = std::max(max_latency_ps, latency_ps);
@@ -255,10 +265,10 @@ void ProcessInputPipelines(
 void SetBottleneckAnalysis(CombinedTfDataStats* combined_tf_data_stats) {
   struct InputPipeline {
     InputPipeline(absl::string_view host_name,
-                  absl::string_view input_pipeline_name, int64 max_latency_ps,
+                  absl::string_view input_pipeline_name, int64_t max_latency_ps,
                   absl::string_view iterator_name,
                   absl::string_view iterator_long_name,
-                  int64 iterator_latency_ps)
+                  int64_t iterator_latency_ps)
         : host_name(host_name),
           input_pipeline_name(input_pipeline_name),
           max_latency_ps(max_latency_ps),
@@ -267,10 +277,10 @@ void SetBottleneckAnalysis(CombinedTfDataStats* combined_tf_data_stats) {
           iterator_latency_ps(iterator_latency_ps) {}
     absl::string_view host_name;
     absl::string_view input_pipeline_name;
-    int64 max_latency_ps;
+    int64_t max_latency_ps;
     absl::string_view iterator_name;
     absl::string_view iterator_long_name;
-    int64 iterator_latency_ps;
+    int64_t iterator_latency_ps;
 
     bool operator<(const InputPipeline& rhs) const {
       return max_latency_ps > rhs.max_latency_ps;
@@ -410,7 +420,7 @@ void SetSuggestion(CombinedTfDataStats* combined_tf_data_stats) {
 }
 
 void SetSummary(CombinedTfDataStats* combined_tf_data_stats) {
-  int64 max_latency_ps = 0;
+  int64_t max_latency_ps = 0;
   if (combined_tf_data_stats->bottleneck_analysis_size()) {
     max_latency_ps =
         combined_tf_data_stats->bottleneck_analysis().at(0).max_latency_ps();
@@ -430,7 +440,7 @@ void SetSummary(CombinedTfDataStats* combined_tf_data_stats) {
   } else {
     combined_tf_data_stats->set_is_input_bound(false);
     combined_tf_data_stats->set_summary(
-        "No tf.data activitiy captured in your profile. If your job uses "
+        "No tf.data activity captured in your profile. If your job uses "
         "tf.data, try to capture a longer profile.");
   }
 }
@@ -487,12 +497,13 @@ void CombinedTfDataStatsBuilder::Add(absl::string_view host_name,
   TfDataStats& tf_data_stats =
       (*combined_tf_data_stats_
             ->mutable_tf_data_stats())[std::string(host_name)];
-  EventForest event_forest;
-  event_forest.AddPlanes(CreateTfXPlaneVisitor, {host_plane});
+  tsl::profiler::EventForest event_forest;
+  event_forest.AddPlanes(tsl::profiler::CreateTfXPlaneVisitor, {host_plane});
   event_forest.ConnectEvents();
   event_forest.ConnectTfDataEvents();
-  absl::flat_hash_set<int64> device_input_pipeline_ids;
-  absl::flat_hash_map<int64, std::vector<EventNode*>> root_iterator_event_map;
+  absl::flat_hash_set<int64_t> device_input_pipeline_ids;
+  absl::flat_hash_map<int64_t, std::vector<const tsl::profiler::EventNode*>>
+      root_iterator_event_map;
   ProcessEventForest(event_forest, &device_input_pipeline_ids,
                      &root_iterator_event_map, &tf_data_stats);
   ProcessInputPipelines(device_input_pipeline_ids, &root_iterator_event_map,

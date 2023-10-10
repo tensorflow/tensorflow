@@ -14,31 +14,27 @@
 # ==============================================================================
 """Ragged operations for working with string Tensors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+import typing
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import gen_string_ops
+from tensorflow.python.ops import map_fn as map_fn_lib
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
+from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import compat as util_compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-
-map_fn_lib = LazyLoader("map_fn_lib", globals(),
-                        "tensorflow.python.ops.map_fn")
 
 
 @tf_export("strings.bytes_split")
@@ -77,7 +73,7 @@ def string_bytes_split(input, name=None):  # pylint: disable=redefined-builtin
       raise ValueError("input must have a statically-known rank.")
 
     if rank == 0:
-      return string_bytes_split(array_ops.stack([input]))[0]
+      return string_bytes_split(array_ops_stack.stack([input]))[0]
     elif rank == 1:
       indices, values, shape = gen_string_ops.string_split(
           input, delimiter="", skip_empty=False)
@@ -166,7 +162,7 @@ def unicode_encode(input,
         # reshape the output of our processed flattened tensor.
         flat_input_tensor = array_ops.reshape(
             input_tensor,
-            array_ops.stack([-1, array_ops.shape(input_tensor)[-1]]))
+            array_ops_stack.stack([-1, array_ops.shape(input_tensor)[-1]]))
         flat_output_tensor = unicode_encode(flat_input_tensor, output_encoding,
                                             errors, replacement_char)
         return array_ops.reshape(flat_output_tensor, input_tensor.shape[:-1])
@@ -178,7 +174,7 @@ def unicode_encode(input,
         # the additional dimension from the output and return the string scalar.
         ragged_input_tensor = ragged_tensor.RaggedTensor.from_row_splits(
             input_tensor,
-            array_ops.stack(
+            array_ops_stack.stack(
                 [0, array_ops.shape(input_tensor, out_type=dtypes.int32)[0]]),
             validate=False)
         output_tensor = unicode_encode(ragged_input_tensor, output_encoding,
@@ -473,7 +469,7 @@ def string_split_v2(input, sep=None, maxsplit=-1, name=None):  # pylint: disable
   """Split elements of `input` based on `sep` into a `RaggedTensor`.
 
   Let N be the size of `input` (typically N will be the batch size). Split each
-  element of `input` based on `sep` and return a `RaggedTensor` containing the 
+  element of `input` based on `sep` and return a `RaggedTensor` containing the
   split tokens. Empty tokens are ignored.
 
   Example:
@@ -515,7 +511,7 @@ def string_split_v2(input, sep=None, maxsplit=-1, name=None):  # pylint: disable
 
     rank = input.shape.ndims
     if rank == 0:
-      return string_split_v2(array_ops.stack([input]), sep, maxsplit)[0]
+      return string_split_v2(array_ops_stack.stack([input]), sep, maxsplit)[0]
     elif rank == 1 or rank is None:
       sparse_result = string_ops.string_split_v2(
           input, sep=sep, maxsplit=maxsplit)
@@ -661,7 +657,12 @@ def strings_split_v1(input=None, sep=None, maxsplit=-1,  # pylint: disable=redef
       raise ValueError("result_type must be 'RaggedTensor' or 'SparseTensor'.")
 
 
-def reduce_join(inputs, axis=None, keepdims=None, separator="", name=None):
+@dispatch.dispatch_for_api(string_ops.reduce_join_v2)
+def reduce_join(inputs: ragged_tensor.Ragged,
+                axis=None,
+                keepdims=None,
+                separator="",
+                name=None):
   """For docs, see: _RAGGED_REDUCE_DOCSTRING."""
   return ragged_math_ops.ragged_reduce_aggregate(
       string_ops.reduce_join, string_ops.unsorted_segment_join, inputs, axis,
@@ -766,7 +767,7 @@ def ngrams(data,
 
     # preserve the shape of the data if it is a tensor
     to_tensor = False
-    if isinstance(data, ops.Tensor):
+    if isinstance(data, tensor_lib.Tensor):
       dense_shape = array_ops.concat([array_ops.shape(data)[:-1], [-1]], axis=0)
       to_tensor = True
 
@@ -823,9 +824,16 @@ def ngrams(data,
                              dense_shape) if to_tensor else output
 
 
-def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
+@dispatch.dispatch_for_api(string_ops.string_format)
+def string_format(
+    template: str,
+    inputs: typing.Union[ragged_tensor.Ragged,
+                         typing.List[ragged_tensor.RaggedOrDense]],
+    placeholder="{}",
+    summarize=3,
+    name=None):
   """Version of tf.strings.format that handles RaggedTensors."""
-  if tensor_util.is_tensor(inputs) or ragged_tensor.is_ragged(inputs):
+  if tensor_util.is_tf_type(inputs) or ragged_tensor.is_ragged(inputs):
     inputs = [inputs]
 
   split_template = template.split(placeholder)
@@ -910,9 +918,9 @@ def _ragged_tensor_to_string(string_tensor, summarize):
     pieces = map_fn_lib.map_fn(
         lambda s: _ragged_tensor_to_string(s, summarize),
         string_tensor,
-        fn_output_signature=tensor_spec.TensorSpec(None, dtypes.string))
+        fn_output_signature=tensor_lib.TensorSpec(None, dtypes.string))
   if summarize not in (-1, None):
-    pieces = control_flow_ops.cond(
+    pieces = cond.cond(
         _nrows(string_tensor) <= 2 * summarize,
         lambda: pieces,
         lambda: array_ops.concat(  # pylint: disable=g-long-lambda
@@ -926,3 +934,15 @@ def _nrows(tensor, out_type=dtypes.int32):
     return tensor.nrows(out_type=out_type)
   else:
     return array_ops.shape(tensor, out_type=out_type)[0]
+
+
+@dispatch.dispatch_for_api(string_ops.string_join)
+def string_join(inputs: typing.List[ragged_tensor.RaggedOrDense],
+                separator="",
+                name=None):
+  """RaggedTensor implementation for tf.strings.join."""
+  if len(inputs) < 0:
+    raise ValueError("tf.strings.join: expected at least one input.")
+  with ops.name_scope(name, "RaggedStringJoin", inputs):
+    return ragged_functional_ops.map_flat_values(string_ops.string_join, inputs,
+                                                 separator)

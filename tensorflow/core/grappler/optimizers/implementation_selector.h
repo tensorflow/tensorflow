@@ -52,7 +52,7 @@ namespace grappler {
 // input = tf.constant(2.0, dtype=tf.float32)
 // cpu_fn = lambda:plus_one_reference_implementation(input)
 // gpu_fn = lambda:plus_one_gpu(input)
-// control_flow_ops.execute_fn_for_device(
+// control_flow_switch_case.execute_fn_for_device(
 //  {"CPU": cpu_fn, "GPU":gpu_fn)}, default_fn=cpu_fn)
 //
 // Idea for approach 2.
@@ -96,7 +96,7 @@ class ImplementationSelector : public CustomGraphOptimizer {
   ~ImplementationSelector() override = default;
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    return Status::OK();
+    return OkStatus();
   }
   string name() const override {
     return "implementation_selector";
@@ -107,10 +107,6 @@ class ImplementationSelector : public CustomGraphOptimizer {
   // This call is not thread-safe.
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override;
-
-  // Does not take any feedback.
-  void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override {}
 
  private:
   Status LoadFunctions(const GraphDef& graph);
@@ -193,7 +189,8 @@ class ImplementationSelector : public CustomGraphOptimizer {
 
   std::unique_ptr<FunctionLibraryApiInfo> lib_info_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ImplementationSelector);
+  ImplementationSelector(const ImplementationSelector&) = delete;
+  void operator=(const ImplementationSelector&) = delete;
 };
 
 }  // namespace grappler

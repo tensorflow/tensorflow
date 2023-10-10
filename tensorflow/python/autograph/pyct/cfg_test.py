@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for cfg module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gast
 
 from tensorflow.python.autograph.pyct import cfg
@@ -86,7 +82,7 @@ class GraphVisitorTest(test.TestCase):
     self.assertEqual(visitor.counts[node.body[0].test], 1)
     self.assertEqual(visitor.counts[node.body[0].body[0]], 1)
     self.assertEqual(visitor.counts[node.body[0].body[1]], 1)
-    self.assertTrue(visitor.counts[node.body[0].body[2]], 1)
+    self.assertEqual(visitor.counts[node.body[0].body[2]], 1)
     self.assertEqual(visitor.counts[node.body[1]], 1)
 
 

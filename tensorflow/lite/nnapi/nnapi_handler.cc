@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/nnapi/nnapi_handler.h"
 
 #include <cstdio>
+#include <string>
 
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
@@ -53,6 +54,7 @@ void NnApiHandler::Reset() {
 void NnApiHandler::SetAndroidSdkVersion(int version,
                                         bool set_unsupported_ops_to_null) {
   nnapi_->android_sdk_version = version;
+  nnapi_->nnapi_runtime_feature_level = version;
 
   if (!set_unsupported_ops_to_null) {
     return;

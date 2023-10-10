@@ -14,10 +14,6 @@
 # ==============================================================================
 """Cancellation support for eager execution."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python import pywrap_tfe
 
 
@@ -39,8 +35,28 @@ class CancellationManager(object):
     pywrap_tfe.TFE_CancellationManagerStartCancel(self._impl)
 
   def get_cancelable_function(self, concrete_function):
-    # pylint: disable=protected-access
-    return concrete_function._experimental_with_cancellation_manager(self)
+    def cancellable(*args, **kwargs):
+      with CancellationManagerContext(self):
+        return concrete_function(*args, **kwargs)
+    return cancellable
 
-  def __del__(self):
-    pywrap_tfe.TFE_DeleteCancellationManager(self._impl)
+_active_context = None
+
+
+def context():
+  return _active_context
+
+
+class CancellationManagerContext:
+  """A Python context for wrapping a cancellable ConcreteFunction."""
+
+  def __init__(self, cancellation_manager):
+    self._cancellation_manager = cancellation_manager
+
+  def __enter__(self):
+    global _active_context
+    _active_context = self._cancellation_manager
+
+  def __exit__(self, exc_type, exc_value, exc_tb):
+    global _active_context
+    _active_context = None

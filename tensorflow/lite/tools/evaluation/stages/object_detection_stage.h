@@ -35,10 +35,11 @@ namespace evaluation {
 // Assumes that the object detection model's signature (number of
 // inputs/outputs, ordering of outputs & what they denote) is same as the
 // MobileNet SSD model:
-// https://www.tensorflow.org/lite/models/object_detection/overview#output.
+// https://www.tensorflow.org/lite/examples/object_detection/overview#output_signature.
 // Input size/type & number of detections could be different.
-// TODO(b/133772912): Generalize support for other types of object detection
-// models.
+//
+// This class will be extended to support other types of detection models, if
+// required in the future.
 class ObjectDetectionStage : public EvaluationStage {
  public:
   explicit ObjectDetectionStage(const EvaluationStageConfig& config)

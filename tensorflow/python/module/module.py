@@ -14,25 +14,20 @@
 # ==============================================================================
 """Modules encapsulate building stateful components."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 
-import six
-
 from tensorflow.python import tf2
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("Module")
-class Module(tracking.AutoTrackable):
+class Module(autotrackable.AutoTrackable):
   """Base neural network module class.
 
   A module is a named container for `tf.Variable`s, other `tf.Module`s and
@@ -41,7 +36,7 @@ class Module(tracking.AutoTrackable):
 
   >>> class Dense(tf.Module):
   ...   def __init__(self, input_dim, output_size, name=None):
-  ...     super(Dense, self).__init__(name=name)
+  ...     super().__init__(name=name)
   ...     self.w = tf.Variable(
   ...       tf.random.normal([input_dim, output_size]), name='w')
   ...     self.b = tf.Variable(tf.zeros([output_size]), name='b')
@@ -79,7 +74,7 @@ class Module(tracking.AutoTrackable):
 
   >>> class MLP(tf.Module):
   ...   def __init__(self, input_size, sizes, name=None):
-  ...     super(MLP, self).__init__(name=name)
+  ...     super().__init__(name=name)
   ...     self.layers = []
   ...     with self.name_scope:
   ...       for size in sizes:
@@ -188,7 +183,8 @@ class Module(tracking.AutoTrackable):
       name) followed by variables from all submodules recursively (breadth
       first).
     """
-    return tuple(self._flatten(predicate=_is_non_trainable_variable))
+    return tuple(self._flatten(
+        predicate=_is_non_trainable_variable, expand_composites=True))
 
   @property
   def submodules(self):
@@ -231,7 +227,7 @@ class Module(tracking.AutoTrackable):
     ```
     class Foo(tf.Module):
       def __init__(self):
-        super(Foo, self).__init__()
+        super().__init__()
         self.x = [tf.constant('a'), tf.constant('b')]
         self.y = {'i': tf.constant('c'), 'j': tf.constant('d')}
         self.z = tf.constant('e')
@@ -344,6 +340,21 @@ def camel_to_snake(value):
   return _CAMEL_TO_SNAKE_R.sub(r"_\1", value).lower()
 
 
+def _flatten_non_variable_composites_with_tuple_path(structure, path_prefix=()):
+  """Flattens composite tensors with tuple path expect variables."""
+  for path, child in nest.flatten_with_tuple_paths(structure):
+    if (isinstance(child, composite_tensor.CompositeTensor) and
+        not _is_variable(child)):
+      # pylint: disable=protected-access
+      spec = child._type_spec
+      yield from _flatten_non_variable_composites_with_tuple_path(
+          spec._to_components(child),
+          path_prefix + path + (spec.value_type.__name__,))
+      # pylint: enable=protected-access
+    else:
+      yield path_prefix + path, child
+
+
 def _flatten_module(module,
                     recursive,
                     predicate,
@@ -352,13 +363,54 @@ def _flatten_module(module,
                     with_path,
                     expand_composites,
                     module_path=(),
-                    seen=None):
-  """Implementation of `flatten`."""
+                    seen=None,
+                    recursion_stack=None):
+  """Implementation of `flatten`.
+
+  Args:
+    module: Current module to process.
+    recursive: Whether to recurse into child modules or not.
+    predicate: (Optional) If set then only values matching predicate are
+      yielded. A value of `None` (the default) means no items will be
+      filtered.
+    attribute_traversal_key: (Optional) Method to rekey object attributes
+      before they are sorted. Contract is the same as `key` argument to
+      builtin `sorted` and only applies to object properties.
+    attributes_to_ignore: object attributes to ignored.
+    with_path: (Optional) Whether to include the path to the object as well
+      as the object itself. If `with_path` is `True` then leaves will not be
+      de-duplicated (e.g. if the same leaf instance is reachable via multiple
+      modules then it will be yielded multiple times with different paths).
+    expand_composites: If true, then composite tensors are expanded into their
+      component tensors.
+    module_path: The path to the current module as a tuple.
+    seen: A set containing all leaf IDs seen so far.
+    recursion_stack: A list containing all module IDs associated with the
+      current call stack.
+
+  Yields:
+    Matched leaves with the optional corresponding paths of the current module
+    and optionally all its submodules.
+  """
+  module_id = id(module)
   if seen is None:
-    seen = set([id(module)])
+    seen = set([module_id])
 
   module_dict = vars(module)
   submodules = []
+
+  if recursion_stack is None:
+    recursion_stack = []
+
+  # When calling `_flatten_module` with `with_path=False`, the global lookup
+  # table `seen` guarantees the uniqueness of the matched objects.
+  # In the case of `with_path=True`, there might be multiple paths associated
+  # with the same predicate, so we don't stop traversing according to `seen`
+  # to make sure all these paths are returned.
+  # When there are cycles connecting submodules, we break cycles by avoiding
+  # following back edges (links pointing to a node in `recursion_stack`).
+  if module_id in recursion_stack:
+    recursive = False
 
   for key in sorted(module_dict, key=attribute_traversal_key):
     if key in attributes_to_ignore:
@@ -366,18 +418,17 @@ def _flatten_module(module,
 
     prop = module_dict[key]
     try:
-      leaves = nest.flatten_with_tuple_paths(
-          prop, expand_composites=expand_composites)
+      if expand_composites:
+        leaves = list(_flatten_non_variable_composites_with_tuple_path(prop))
+      else:
+        leaves = nest.flatten_with_tuple_paths(prop)
     except Exception as cause:  # pylint: disable=broad-except
-      six.raise_from(
-          ValueError(
-              "Error processing property {!r} of {!r}".format(key, prop)),
-          cause)
+      raise ValueError("Error processing property {!r} of {!r}".format(
+          key, prop)) from cause
 
     for leaf_path, leaf in leaves:
       leaf_path = (key,) + leaf_path
 
-      # TODO(tomhennigan) Handle cycles for `with_path=True` (e.g. `a.a = a`).
       if not with_path:
         leaf_id = id(leaf)
         if leaf_id in seen:
@@ -394,6 +445,8 @@ def _flatten_module(module,
         # Walk direct properties first then recurse.
         submodules.append((module_path + leaf_path, leaf))
 
+  recursion_stack.append(module_id)
+
   for submodule_path, submodule in submodules:
     subvalues = _flatten_module(
         submodule,
@@ -404,8 +457,11 @@ def _flatten_module(module,
         with_path=with_path,
         expand_composites=expand_composites,
         module_path=submodule_path,
-        seen=seen)
+        seen=seen,
+        recursion_stack=recursion_stack)
 
     for subvalue in subvalues:
       # Predicate is already tested for these values.
       yield subvalue
+
+  recursion_stack.pop()

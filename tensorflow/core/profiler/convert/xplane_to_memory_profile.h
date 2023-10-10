@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_MEMORY_PROFILE_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_MEMORY_PROFILE_H_
 
+#include <string>
+
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/memory_profile.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -28,7 +30,7 @@ namespace profiler {
 // max_num_snapshots will be displayed on the UI.
 // REQUIRED: host_plane should have been grouped by calling GroupTfEvents().
 MemoryProfile ConvertXPlaneToMemoryProfile(const XPlane& host_plane,
-                                           int64 max_num_snapshots = 1000);
+                                           int64_t max_num_snapshots = 1000);
 
 Status ConvertXSpaceToMemoryProfileJson(const XSpace& xspace,
                                         std::string* json_output);

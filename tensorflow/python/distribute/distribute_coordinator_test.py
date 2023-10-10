@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Distribute Coordinator."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import copy
 import json
@@ -27,13 +23,6 @@ import threading
 import time
 
 import six
-
-_portpicker_import_error = None
-try:
-  import portpicker  # pylint: disable=g-import-not-at-top
-except ImportError as _error:  # pylint: disable=invalid-name
-  _portpicker_import_error = _error
-  portpicker = None
 
 # pylint: disable=g-import-not-at-top
 from tensorflow.core.protobuf import config_pb2
@@ -199,23 +188,20 @@ class DistributeCoordinatorTestBase(test.TestCase):
                            num_workers=1,
                            num_ps=0,
                            has_eval=False):
-    if _portpicker_import_error:
-      raise _portpicker_import_error  # pylint: disable=raising-bad-type
-
     cluster_spec = {}
     if has_chief:
-      cluster_spec[CHIEF] = ["localhost:%s" % portpicker.pick_unused_port()]
+      cluster_spec[CHIEF] = ["localhost:%s" % test_util.pick_unused_port()]
     if num_workers:
       cluster_spec[WORKER] = [
-          "localhost:%s" % portpicker.pick_unused_port()
+          "localhost:%s" % test_util.pick_unused_port()
           for _ in range(num_workers)
       ]
     if num_ps:
       cluster_spec[PS] = [
-          "localhost:%s" % portpicker.pick_unused_port() for _ in range(num_ps)
+          "localhost:%s" % test_util.pick_unused_port() for _ in range(num_ps)
       ]
     if has_eval:
-      cluster_spec[EVALUATOR] = ["localhost:%s" % portpicker.pick_unused_port()]
+      cluster_spec[EVALUATOR] = ["localhost:%s" % test_util.pick_unused_port()]
     return cluster_spec
 
   def _in_graph_worker_fn(self, strategy):
@@ -589,8 +575,7 @@ class DistributeCoordinatorTestStandaloneMode(DistributeCoordinatorTestBase):
     # and distributed_mode.
     self.assertEqual(self._worker_context["None"][0], (_strip_protocol(
         _bytes_to_str(self._workers[0].target)), 3, True, True))
-    self.assertEqual(self._worker_context[EVALUATOR][0],
-                     ("fake_evaluator", 3, True, False))
+    self.assertEqual(self._worker_context[EVALUATOR][0], ("", 3, True, False))
 
 
 class DistributeCoordinatorTestIndependentWorkerMode(
@@ -755,19 +740,15 @@ class DistributeCoordinatorTestIndependentWorkerMode(
     # and distributed_mode.
     self.assertEqual(self._worker_context["None"][0],
                      (_bytes_to_str(cluster_spec[WORKER][0]), 3, True, True))
-    self.assertEqual(self._worker_context[EVALUATOR][0],
-                     (cluster_spec[EVALUATOR][0], 3, True, False))
+    self.assertEqual(self._worker_context[EVALUATOR][0], ("", 3, True, False))
 
     # Make sure each worker runs a std server.
-    self.assertEqual(len(self._std_servers), 2)
+    self.assertEqual(len(self._std_servers), 1)
     self.assertTrue(WORKER in self._std_servers)
-    self.assertTrue(EVALUATOR in self._std_servers)
     self.assertEqual(len(self._std_servers[WORKER]), 3)
-    self.assertEqual(len(self._std_servers[EVALUATOR]), 1)
     self.assertFalse(self._std_servers[WORKER][0].joined)
     self.assertTrue(self._std_servers[WORKER][1].joined)
     self.assertTrue(self._std_servers[WORKER][2].joined)
-    self.assertFalse(self._std_servers[EVALUATOR][0].joined)
 
   def testRunStdServerInGoogleEnvironment(self):
     cluster_spec = {"worker": ["fake_worker"], "ps": ["localhost:0"]}

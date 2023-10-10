@@ -16,15 +16,45 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 
 #include <stddef.h>
+
 #include <string>
+
+#include "absl/strings/str_cat.h"
 
 namespace tflite {
 namespace gpu {
+namespace {
+std::string ToGlslType(const std::string& scalar_type,
+                       const std::string& vec_type, int vec_size) {
+  return vec_size == 1 ? scalar_type : absl::StrCat(vec_type, vec_size);
+}
+
+std::string GetGlslPrecisionModifier(DataType data_type) {
+  switch (data_type) {
+    case DataType::UINT8:
+    case DataType::INT8:
+      return "lowp ";
+    case DataType::FLOAT16:
+    case DataType::INT16:
+    case DataType::UINT16:
+      return "mediump ";
+    case DataType::FLOAT32:
+    case DataType::INT32:
+    case DataType::UINT32:
+      return "highp ";
+    case DataType::BOOL:
+      return "";
+    default:
+      return "";
+  }
+}
+}  // namespace
 
 size_t SizeOf(DataType data_type) {
   switch (data_type) {
     case DataType::UINT8:
     case DataType::INT8:
+    case DataType::BOOL:
       return 1;
     case DataType::FLOAT16:
     case DataType::INT16:
@@ -68,6 +98,8 @@ std::string ToString(DataType data_type) {
       return "uint64";
     case DataType::UINT8:
       return "uint8";
+    case DataType::BOOL:
+      return "bool";
     case DataType::UNKNOWN:
       return "unknown";
   }
@@ -99,6 +131,8 @@ std::string ToCLDataType(DataType data_type, int vec_size) {
       return "ulong" + postfix;
     case DataType::UINT8:
       return "uchar" + postfix;
+    case DataType::BOOL:
+      return "bool" + postfix;
     case DataType::UNKNOWN:
       return "unknown";
   }
@@ -130,10 +164,64 @@ std::string ToMetalDataType(DataType data_type, int vec_size) {
       return "ulong" + postfix;
     case DataType::UINT8:
       return "uchar" + postfix;
+    case DataType::BOOL:
+      return "bool" + postfix;
     case DataType::UNKNOWN:
       return "unknown";
   }
   return "undefined";
+}
+
+DataType ToMetalTextureType(DataType data_type) {
+  switch (data_type) {
+    case DataType::FLOAT32:
+    case DataType::FLOAT16:
+    case DataType::INT32:
+    case DataType::INT16:
+    case DataType::UINT32:
+    case DataType::UINT16:
+      return data_type;
+    case DataType::INT8:
+      return DataType::INT16;
+    case DataType::UINT8:
+    case DataType::BOOL:
+      return DataType::UINT16;
+    default:
+      return DataType::UNKNOWN;
+  }
+}
+
+std::string ToGlslShaderDataType(DataType data_type, int vec_size,
+                                 bool add_precision, bool explicit_fp16) {
+  const std::string precision_modifier =
+      add_precision ? GetGlslPrecisionModifier(data_type) : "";
+  switch (data_type) {
+    case DataType::FLOAT16:
+      if (explicit_fp16) {
+        return ToGlslType("float16_t", "f16vec", vec_size);
+      } else {
+        return precision_modifier + ToGlslType("float", "vec", vec_size);
+      }
+    case DataType::FLOAT32:
+      return precision_modifier + ToGlslType("float", "vec", vec_size);
+    case DataType::FLOAT64:
+      return precision_modifier + ToGlslType("double", "dvec", vec_size);
+    case DataType::INT8:
+    case DataType::INT16:
+    case DataType::INT32:
+    case DataType::INT64:
+      return precision_modifier + ToGlslType("int", "ivec", vec_size);
+    case DataType::UINT8:
+    case DataType::UINT16:
+    case DataType::UINT32:
+    case DataType::UINT64:
+      return precision_modifier + ToGlslType("uint", "uvec", vec_size);
+    case DataType::BOOL:
+      return ToGlslType("bool", "bvec", vec_size);
+    case DataType::UNKNOWN:
+      return "unknown";
+  }
+  return "unknown";
 }
 
 }  // namespace gpu

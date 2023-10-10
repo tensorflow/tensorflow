@@ -5,11 +5,23 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "AdagradMomentum"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Adam"
     mtype: "<type \'type\'>"
   }
   member {
+    name: "FTRL"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "FeatureConfig"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "QuantizationConfig"
     mtype: "<type \'type\'>"
   }
   member {
@@ -18,6 +30,14 @@ tf_module {
   }
   member {
     name: "TPUEmbedding"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TPUEmbeddingForServing"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TPUEmbeddingV0"
     mtype: "<type \'type\'>"
   }
   member {

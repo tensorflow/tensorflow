@@ -15,20 +15,25 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_TRANSPOSE_CONV_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_TRANSPOSE_CONV_H_
 
+#include <algorithm>
+
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 
 namespace tflite {
 namespace optimized_integer_ops {
 
 // TransposeConvV2 expect the weights in HWOI order.
+template <typename InputScalar, typename DestinationScalar>
 inline void TransposeConvV2(
     const ConvParams& params, const int32* output_multiplier,
     const int32* output_shift, const RuntimeShape& input_shape,
-    const int8_t* input_data, const RuntimeShape& hwoi_ordered_filter_shape,
+    const InputScalar* input_data,
+    const RuntimeShape& hwoi_ordered_filter_shape,
     const int8_t* hwoi_ordered_filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    int8_t* output_data, const RuntimeShape& col2im_shape, int32_t* col2im_data,
-    int32_t* scratch_data, CpuBackendContext* cpu_backend_context) {
+    DestinationScalar* output_data, const RuntimeShape& col2im_shape,
+    int32_t* col2im_data, int32_t* scratch_data,
+    CpuBackendContext* cpu_backend_context) {
   ruy::profiler::ScopeLabel label("TransposeConvV2/int8");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(hwoi_ordered_filter_shape.DimensionsCount(), 4);
@@ -58,6 +63,9 @@ inline void TransposeConvV2(
   const int stride_height = params.stride_height;
   const int stride_width = params.stride_width;
 
+  const int32 output_activation_min = params.quantized_activation_min;
+  const int32 output_activation_max = params.quantized_activation_max;
+
   const int hwoi_ordered_filter_total_size =
       filter_height * filter_width * output_depth;
 
@@ -71,7 +79,7 @@ inline void TransposeConvV2(
   int32_t* scratch_data_p = scratch_data;
   std::fill_n(scratch_data, output_offset * batch_size, static_cast<int32>(0));
   for (int i = 0; i < batch_size; ++i) {
-    cpu_backend_gemm::MatrixParams<int8_t> rhs_params;
+    cpu_backend_gemm::MatrixParams<InputScalar> rhs_params;
     rhs_params.order = cpu_backend_gemm::Order::kColMajor;
     rhs_params.rows = input_depth;
     rhs_params.cols = input_image_size;
@@ -98,12 +106,10 @@ inline void TransposeConvV2(
   optimized_ops::BiasAdd(scratch_data_p, bias_data, batch_size, output_height,
                          output_width, output_depth);
 
-  const int32_t output_min = std::numeric_limits<int8_t>::min();
-  const int32_t output_max = std::numeric_limits<int8_t>::max();
-
   optimized_ops::Quantize(output_multiplier, output_shift, output_depth,
                           output_shape.FlatSize(), params.output_offset,
-                          output_min, output_max, scratch_data, output_data);
+                          output_activation_min, output_activation_max,
+                          scratch_data, output_data);
 }
 
 }  // namespace optimized_integer_ops

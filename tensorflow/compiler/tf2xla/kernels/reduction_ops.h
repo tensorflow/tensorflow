@@ -18,8 +18,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_REDUCTION_OPS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_REDUCTION_OPS_H_
 
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
@@ -34,7 +36,7 @@ namespace tensorflow {
 class XlaReductionOp : public XlaOpKernel {
  public:
   XlaReductionOp(OpKernelConstruction* ctx, DataType reduction_type);
-  ~XlaReductionOp() override {}
+  ~XlaReductionOp() override = default;
 
   // Return the base case for the reduction.
   virtual xla::XlaOp InitialValue(xla::XlaBuilder* builder) = 0;
@@ -55,7 +57,7 @@ class XlaReductionOp : public XlaOpKernel {
   virtual xla::XlaOp BuildFinalizer(
       xla::XlaBuilder* builder, const xla::XlaOp& input,
       const xla::XlaOp& reduce_output,
-      const std::vector<int64>& dimensions_to_reduce);
+      const std::vector<int64_t>& dimensions_to_reduce);
 
   void Compile(XlaOpKernelContext* ctx) override;
 

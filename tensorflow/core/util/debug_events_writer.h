@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_DEBUG_EVENTS_WRITER_H_
 #define TENSORFLOW_CORE_UTIL_DEBUG_EVENTS_WRITER_H_
 
+#include <atomic>
 #include <deque>
+#include <memory>
+#include <unordered_map>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -73,7 +76,7 @@ class DebugEventsWriter {
 #ifndef SWIG
   // Prefix of version string present in the first entry of every event file.
   // Default size of each circular buffer (unit: number of DebugEvent protos).
-  static constexpr const int64 kDefaultCyclicBufferSize = 1000;
+  static constexpr const int64_t kDefaultCyclicBufferSize = 1000;
 
   static constexpr const char* kFileNamePrefix = "tfdbg_events";
   static constexpr const char* kMetadataSuffix = "metadata";
@@ -107,7 +110,7 @@ class DebugEventsWriter {
   //   A pointer to a DebugEventsWriter object: a per-dump_root singleton.
   static DebugEventsWriter* GetDebugEventsWriter(const string& dump_root,
                                                  const string& tfdbg_run_id,
-                                                 int64 circular_buffer_size);
+                                                 int64_t circular_buffer_size);
   // Look up existing events writer by dump_root.
   // If no DebugEventsWriter has been created at the dump_root, a non-OK
   // Status will be returned. Else an OK status will be returned, with
@@ -166,8 +169,8 @@ class DebugEventsWriter {
   //     depends on the value of `tensor_debug_mode`.
   Status WriteGraphExecutionTrace(const string& tfdbg_context_id,
                                   const string& device_name,
-                                  const string& op_name, int32 output_slot,
-                                  int32 tensor_debug_mode,
+                                  const string& op_name, int32_t output_slot,
+                                  int32_t tensor_debug_mode,
                                   const Tensor& tensor_value);
 
   // Writes a serialized DebugEvent to one of the debug-events files
@@ -218,7 +221,7 @@ class DebugEventsWriter {
   static mutex factory_mu_;
 
   DebugEventsWriter(const string& dump_root, const string& tfdbg_run_id,
-                    int64 circular_buffer_size);
+                    int64_t circular_buffer_size);
 
   // Get the path prefix. The same for all files, which differ only in the
   // suffix.
@@ -243,7 +246,7 @@ class DebugEventsWriter {
   bool is_initialized_ TF_GUARDED_BY(initialization_mu_);
   mutex initialization_mu_;
 
-  const int64 circular_buffer_size_;
+  const int64_t circular_buffer_size_;
   std::deque<string> execution_buffer_ TF_GUARDED_BY(execution_buffer_mu_);
   mutex execution_buffer_mu_;
   std::deque<string> graph_execution_trace_buffer_
@@ -260,7 +263,8 @@ class DebugEventsWriter {
   std::unique_ptr<SingleDebugEventFileWriter> execution_writer_;
   std::unique_ptr<SingleDebugEventFileWriter> graph_execution_traces_writer_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DebugEventsWriter);
+  DebugEventsWriter(const DebugEventsWriter&) = delete;
+  void operator=(const DebugEventsWriter&) = delete;
 
   friend class DebugEventsWriterTest;
 };

@@ -1,0 +1,234 @@
+diff --git a/include/cudnn_backend_base.h b/include/cudnn_backend_base.h
+index 56d8bec..8ceb19c 100644
+--- a/include/cudnn_backend_base.h
++++ b/include/cudnn_backend_base.h
+@@ -24,7 +24,7 @@
+ 
+ #include <ostream>
+ 
+-#include <cudnn.h>
++#include "third_party/gpus/cudnn/cudnn.h"
+ 
+ namespace cudnn_frontend {
+ 
+diff --git a/include/cudnn_frontend_ConvDesc.h b/include/cudnn_frontend_ConvDesc.h
+index ded7e67..68341e1 100644
+--- a/include/cudnn_frontend_ConvDesc.h
++++ b/include/cudnn_frontend_ConvDesc.h
+@@ -29,8 +29,8 @@
+ #include <sstream>
+ #include <utility>
+ 
+-#include <cudnn.h>
+-#include <cudnn_backend.h>
++#include "third_party/gpus/cudnn/cudnn.h"
++#include "third_party/gpus/cudnn/cudnn_backend.h"
+ 
+ #include "cudnn_frontend_utils.h"
+ 
+diff --git a/include/cudnn_frontend_Engine.h b/include/cudnn_frontend_Engine.h
+index 7e18cd7..d26f4ee 100644
+--- a/include/cudnn_frontend_Engine.h
++++ b/include/cudnn_frontend_Engine.h
+@@ -30,8 +30,8 @@
+ #include <utility>
+ #include <vector>
+ 
+-#include <cudnn.h>
+-#include <cudnn_backend.h>
++#include "third_party/gpus/cudnn/cudnn.h"
++#include "third_party/gpus/cudnn/cudnn_backend.h"
+ 
+ #include "cudnn_frontend_OperationGraph.h"
+ #include "cudnn_frontend_utils.h"
+diff --git a/include/cudnn_frontend_EngineConfig.h b/include/cudnn_frontend_EngineConfig.h
+index ea68554..0888858 100644
+--- a/include/cudnn_frontend_EngineConfig.h
++++ b/include/cudnn_frontend_EngineConfig.h
+@@ -29,8 +29,8 @@
+ #include <sstream>
+ #include <utility>
+ 
+-#include <cudnn.h>
+-#include <cudnn_backend.h>
++#include "third_party/gpus/cudnn/cudnn.h"
++#include "third_party/gpus/cudnn/cudnn_backend.h"
+ 
+ #include "cudnn_frontend_Engine.h"
+ #include "cudnn_frontend_utils.h"
+diff --git a/include/cudnn_frontend_EngineFallbackList.h b/include/cudnn_frontend_EngineFallbackList.h
+index 323106a..d90a1ea 100644
+--- a/include/cudnn_frontend_EngineFallbackList.h
++++ b/include/cudnn_frontend_EngineFallbackList.h
+@@ -22,7 +22,7 @@
+ 
+ #pragma once
+ 
+-#include <cudnn.h>
++#include "third_party/gpus/cudnn/cudnn.h"
+ #include <numeric>
+ #include "cudnn_frontend_Heuristics.h"
+ 
+diff --git a/include/cudnn_frontend_ExecutionPlan.h b/include/cudnn_frontend_ExecutionPlan.h
+index e361821..88f5790 100644
+--- a/include/cudnn_frontend_ExecutionPlan.h
++++ b/include/cudnn_frontend_ExecutionPlan.h
+@@ -30,8 +30,8 @@
+ #include <sstream>
+ #include <utility>
+ 
+-#include <cudnn.h>
+-#include <cudnn_backend.h>
++#include "third_party/gpus/cudnn/cudnn.h"
++#include "third_party/gpus/cudnn/cudnn_backend.h"
+ 
+ #include "cudnn_frontend_Engine.h"
+ #include "cudnn_frontend_utils.h"
+diff --git a/include/cudnn_frontend_Filters.h b/include/cudnn_frontend_Filters.h
+index aac4086..ed1f343 100644
+--- a/include/cudnn_frontend_Filters.h
++++ b/include/cudnn_frontend_Filters.h
+@@ -22,7 +22,7 @@
+ 
+ #pragma once
+ 
+-#include <cudnn.h>
++#include "third_party/gpus/cudnn/cudnn.h"
+ 
+ namespace cudnn_frontend {
+ 
+diff --git a/include/cudnn_frontend_Heuristics.h b/include/cudnn_frontend_Heuristics.h
+index 680906a..3df8924 100644
+--- a/include/cudnn_frontend_Heuristics.h
++++ b/include/cudnn_frontend_Heuristics.h
+@@ -25,8 +25,8 @@
+ #include <vector>
+ #include <mutex>
+ 
+-#include <cudnn.h>
+-#include <cudnn_backend.h>
++#include "third_party/gpus/cudnn/cudnn.h"
++#include "third_party/gpus/cudnn/cudnn_backend.h"
+ 
+ #include "cudnn_frontend_OperationGraph.h"
+ #include "cudnn_frontend_EngineConfig.h"
+diff --git a/include/cudnn_frontend_MatMulDesc.h b/include/cudnn_frontend_MatMulDesc.h
+index e7dd8f7..7a5d443 100644
+--- a/include/cudnn_frontend_MatMulDesc.h
++++ b/include/cudnn_frontend_MatMulDesc.h
+@@ -29,8 +29,8 @@
+ #include <sstream>
+ #include <utility>
+ 
+-#include <cudnn.h>
+-#include <cudnn_backend.h>
++#include "third_party/gpus/cudnn/cudnn.h"
++#include "third_party/gpus/cudnn/cudnn_backend.h"
+ 
+ #include "cudnn_frontend_utils.h"
+ 
+diff --git a/include/cudnn_frontend_Operation.h b/include/cudnn_frontend_Operation.h
+index fe75d5b..a43d696 100644
+--- a/include/cudnn_frontend_Operation.h
++++ b/include/cudnn_frontend_Operation.h
+@@ -30,8 +30,8 @@
+ #include <sstream>
+ #include <utility>
+ 
+-#include <cudnn.h>
+-#include <cudnn_backend.h>
++#include "third_party/gpus/cudnn/cudnn.h"
++#include "third_party/gpus/cudnn/cudnn_backend.h"
+ 
+ #include "cudnn_frontend_ConvDesc.h"
+ #include "cudnn_frontend_PointWiseDesc.h"
+diff --git a/include/cudnn_frontend_OperationGraph.h b/include/cudnn_frontend_OperationGraph.h
+index 919a190..5e31484 100644
+--- a/include/cudnn_frontend_OperationGraph.h
++++ b/include/cudnn_frontend_OperationGraph.h
+@@ -30,8 +30,8 @@
+ #include <utility>
+ #include <vector>
+ 
+-#include <cudnn.h>
+-#include <cudnn_backend.h>
++#include "third_party/gpus/cudnn/cudnn.h"
++#include "third_party/gpus/cudnn/cudnn_backend.h"
+ 
+ #include "cudnn_frontend_Operation.h"
+ #include "cudnn_frontend_utils.h"
+diff --git a/include/cudnn_frontend_PointWiseDesc.h b/include/cudnn_frontend_PointWiseDesc.h
+index ad1f943..f320a27 100644
+--- a/include/cudnn_frontend_PointWiseDesc.h
++++ b/include/cudnn_frontend_PointWiseDesc.h
+@@ -30,8 +30,8 @@
+ #include <utility>
+ #include <limits>
+ 
+-#include <cudnn.h>
+-#include <cudnn_backend.h>
++#include "third_party/gpus/cudnn/cudnn.h"
++#include "third_party/gpus/cudnn/cudnn_backend.h"
+ 
+ #include "cudnn_frontend_utils.h"
+ 
+diff --git a/include/cudnn_frontend_ReductionDesc.h b/include/cudnn_frontend_ReductionDesc.h
+index e22a0fb..d69e8c6 100644
+--- a/include/cudnn_frontend_ReductionDesc.h
++++ b/include/cudnn_frontend_ReductionDesc.h
+@@ -29,8 +29,8 @@
+ #include <sstream>
+ #include <utility>
+ 
+-#include <cudnn.h>
+-#include <cudnn_backend.h>
++#include "third_party/gpus/cudnn/cudnn.h"
++#include "third_party/gpus/cudnn/cudnn_backend.h"
+ 
+ #include "cudnn_frontend_utils.h"
+ 
+diff --git a/include/cudnn_frontend_Resample.h b/include/cudnn_frontend_Resample.h
+index 4d2d197..1b7c24d 100644
+--- a/include/cudnn_frontend_Resample.h
++++ b/include/cudnn_frontend_Resample.h
+@@ -29,8 +29,8 @@
+ #include <sstream>
+ #include <utility>
+ 
+-#include <cudnn.h>
+-#include <cudnn_backend.h>
++#include "third_party/gpus/cudnn/cudnn.h"
++#include "third_party/gpus/cudnn/cudnn_backend.h"
+ 
+ #include "cudnn_frontend_utils.h"
+ 
+diff --git a/include/cudnn_frontend_Rng.h b/include/cudnn_frontend_Rng.h
+index 0001ac6..80a623b 100644
+--- a/include/cudnn_frontend_Rng.h
++++ b/include/cudnn_frontend_Rng.h
+@@ -29,8 +29,8 @@
+ #include <sstream>
+ #include <utility>
+ 
+-#include <cudnn.h>
+-#include <cudnn_backend.h>
++#include "third_party/gpus/cudnn/cudnn.h"
++#include "third_party/gpus/cudnn/cudnn_backend.h"
+ 
+ #include "cudnn_frontend_utils.h"
+ 
+diff --git a/include/cudnn_frontend_VariantPack.h b/include/cudnn_frontend_VariantPack.h
+index dc68207..8b47fce 100644
+--- a/include/cudnn_frontend_VariantPack.h
++++ b/include/cudnn_frontend_VariantPack.h
+@@ -30,8 +30,8 @@
+ #include <sstream>
+ #include <utility>
+ 
+-#include <cudnn.h>
+-#include <cudnn_backend.h>
++#include "third_party/gpus/cudnn/cudnn.h"
++#include "third_party/gpus/cudnn/cudnn_backend.h"
+ 
+ #include "cudnn_frontend_utils.h"
+ 

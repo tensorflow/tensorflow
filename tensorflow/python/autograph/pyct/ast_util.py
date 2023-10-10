@@ -14,10 +14,6 @@
 # ==============================================================================
 """AST manipulation utilities."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ast
 
 import gast
@@ -274,7 +270,7 @@ def apply_to_single_assignments(targets, values, apply_fn):
           value_el = values.elts[i]
         else:
           idx = parser.parse_expression(str(i))
-          value_el = gast.Subscript(values, gast.Index(idx), ctx=gast.Load())
+          value_el = gast.Subscript(values, idx, ctx=gast.Load())
         apply_to_single_assignments(target_el, value_el, apply_fn)
     else:
       apply_fn(target, values)

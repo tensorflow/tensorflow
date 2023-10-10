@@ -100,7 +100,7 @@ TEST_F(ScatterNdUpdateOpTest, Simple_Two64) {
   // Feed and run
   AddInputFromArray<float>(TensorShape({5, 3}),
                            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0});
-  AddInputFromArray<int64>(TensorShape({3, 1}), {0, 4, 2});
+  AddInputFromArray<int64_t>(TensorShape({3, 1}), {0, 4, 2});
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   TF_ASSERT_OK(RunOpKernel());
@@ -283,7 +283,7 @@ void BM_ScatterNdHelper(::testing::benchmark::State& state, int embedding_size,
   for (auto i : state) {
     Status s = bm.RunOpKernel();
   }
-  state.SetItemsProcessed((static_cast<int64>(kNumUpdates) * embedding_size) *
+  state.SetItemsProcessed((static_cast<int64_t>(kNumUpdates) * embedding_size) *
                           state.iterations());
 }
 
@@ -295,7 +295,7 @@ void BM_ScatterNdUpdateInt32(::testing::benchmark::State& state) {
 void BM_ScatterNdUpdateInt64(::testing::benchmark::State& state) {
   const int embedding_size = state.range(0);
 
-  BM_ScatterNdHelper<int64>(state, embedding_size, "ScatterNdUpdate");
+  BM_ScatterNdHelper<int64_t>(state, embedding_size, "ScatterNdUpdate");
 }
 
 void BM_ScatterNdAddInt32(::testing::benchmark::State& state) {
@@ -306,7 +306,7 @@ void BM_ScatterNdAddInt32(::testing::benchmark::State& state) {
 void BM_ScatterNdAddInt64(::testing::benchmark::State& state) {
   const int embedding_size = state.range(0);
 
-  BM_ScatterNdHelper<int64>(state, embedding_size, "ScatterNdAdd");
+  BM_ScatterNdHelper<int64_t>(state, embedding_size, "ScatterNdAdd");
 }
 
 BENCHMARK(BM_ScatterNdUpdateInt32)

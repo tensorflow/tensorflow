@@ -30,11 +30,15 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace {
+
+using ::tensorflow::testing::StatusIs;
+using ::testing::MatchesRegex;
 
 class QuantizeAndDequantizeTest : public OpsTestBase {};
 
@@ -97,10 +101,10 @@ TEST_F(QuantizeAndDequantizeTest, Convert_scalar_tensor_V3) {
 // Creates a tensor with the specified dims, using values chosen from data,
 // multiplied by (1 + index) along the axis dimension.
 template <typename T>
-std::vector<T> ScalePerSliceAlongAxis(std::vector<int64> dims, int axis,
+std::vector<T> ScalePerSliceAlongAxis(std::vector<int64_t> dims, int axis,
                                       const std::vector<T>& data) {
   uint32 seed = 123;
-  int64 out_size = 1;
+  int64_t out_size = 1;
   for (int dim : dims) {
     out_size *= dim;
   }
@@ -132,7 +136,7 @@ TEST_P(ParameterizedQuantizeAndDequantizeTest, Convert_4D_tensor_with_int8) {
           .Attr("axis", axis)
           .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  const std::vector<int64> dims = {2, 3, 4, 5};
+  const std::vector<int64_t> dims = {2, 3, 4, 5};
   // Each slice contains the same 7 values multiplied by (slice_idx + 1).
   AddInputFromArray<float>(
       TensorShape(dims),
@@ -183,7 +187,7 @@ TEST_P(ParameterizedQuantizeAndDequantizeTest,
           .Attr("axis", axis)
           .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  const std::vector<int64> dims = {5, 7, 11, 13};
+  const std::vector<int64_t> dims = {5, 7, 11, 13};
   // Each slice contains the same 7 values multiplied by (slice_idx + 1).
   AddInputFromArray<float>(
       TensorShape(dims),
@@ -237,7 +241,7 @@ TEST_P(ParameterizedQuantizeAndDequantizeTest,
           .Attr("axis", axis)
           .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  const std::vector<int64> dims = {2, 3, 4, 5};
+  const std::vector<int64_t> dims = {2, 3, 4, 5};
   // Each slice contains the same 7 values multiplied by (slice_idx + 1).
   AddInputFromArray<float>(
       TensorShape(dims),
@@ -320,7 +324,7 @@ TEST_P(ParameterizedQuantizeAndDequantizeTest,
           .Attr("axis", axis)
           .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  const std::vector<int64> dims = {2, 3, 4, 5};
+  const std::vector<int64_t> dims = {2, 3, 4, 5};
   // Each slice contains the same 7 values multiplied by (slice_idx + 1).
   AddInputFromArray<float>(
       TensorShape(dims),
@@ -373,7 +377,7 @@ TEST_P(ParameterizedQuantizeAndDequantizeTest, GradientV4_op) {
                    .Attr("axis", axis)
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  const std::vector<int64> dims = {2, 3, 4, 5};
+  const std::vector<int64_t> dims = {2, 3, 4, 5};
   // Input gradient. (repeating 11 values multiplied by (slice_idx + 1))
   auto gradients = ScalePerSliceAlongAxis<float>(
       dims, axis, {1, -2, -3, 4, 5, 6, -7, -8, -9, -10, 11});
@@ -757,6 +761,30 @@ TEST_F(QuantizeAndDequantizeTest, Invalid_range_given_V3) {
   EXPECT_TRUE(absl::StrContains(s.ToString(),
                                 "Invalid range: input_min 1 > input_max 0"))
       << s;
+}
+
+// Axis is invalid
+TEST_F(QuantizeAndDequantizeTest, Invalid_axis_given_V3) {
+  TF_ASSERT_OK(
+      NodeDefBuilder("quantize_and_dequantize_Op", "QuantizeAndDequantizeV3")
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_FLOAT))
+          .Input(FakeInput(DT_INT32))
+          .Attr("range_given", false)
+          .Attr("axis", static_cast<int32_t>(-2147483648))
+          .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({2, 2, 1, 1}), {-0.5, 0, 0.3, 0.8});
+  AddInputFromArray<float>(TensorShape({}), {1.0});  // Min
+  AddInputFromArray<float>(TensorShape({}), {0.0});  // Max
+  AddInputFromArray<int32>(TensorShape({}), {8});    // num_bits
+
+  EXPECT_THAT(
+      RunOpKernel(),
+      StatusIs(
+          error::INVALID_ARGUMENT,
+          MatchesRegex("Axis requested is larger than input dimensions.*")));
 }
 
 #define BM_SIMPLE_QUAN_DEQUAN(DEVICE)                                    \

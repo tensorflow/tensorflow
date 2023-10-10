@@ -95,7 +95,7 @@ class DelayOp : public AsyncOpKernel {
   }
 
  private:
-  int64 micros_;
+  int64_t micros_;
 };
 REGISTER_KERNEL_BUILDER(Name("Delay").Device(DEVICE_CPU), DelayOp);
 

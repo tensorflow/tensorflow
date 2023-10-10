@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tridiagonal solve ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
@@ -193,7 +189,6 @@ class TridiagonalSolveOpsTest(xla_test.XLATestCase):
   def test1x1(self):
     self._test(diags=[[0], [3], [0]], rhs=[6], expected=[2])
 
-  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def test0x0(self):
     self._test(
         diags=np.zeros(shape=(3, 0), dtype=np.float32),

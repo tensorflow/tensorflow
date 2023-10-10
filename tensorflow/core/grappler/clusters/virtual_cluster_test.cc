@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 
+#include <memory>
+
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
@@ -44,7 +46,7 @@ class VirtualClusterTest : public ::testing::Test {
     cpu_device.set_memory_size(1024 * 1024);
     std::unordered_map<string, DeviceProperties> devices;
     devices["/job:localhost/replica:0/task:0/cpu:0"] = cpu_device;
-    cluster_.reset(new VirtualCluster(devices));
+    cluster_ = std::make_unique<VirtualCluster>(devices);
     TF_CHECK_OK(cluster_->Provision());
   }
 

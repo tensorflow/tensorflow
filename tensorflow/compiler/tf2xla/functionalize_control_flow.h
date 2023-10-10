@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_FUNCTIONALIZE_CONTROL_FLOW_H_
 
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
@@ -58,14 +58,9 @@ Status FunctionalizeControlFlowForGraphDef(GraphDef* graph_def,
                                            const NodeFilter& node_filter = {},
                                            bool include_functions = false);
 
-// This pass looks at the graph, and turns V1 control flow structure
-// (Switch/Merge/etc.) into V2 control flow structure (If/While).
-class FunctionalizeControlFlowPass : public GraphOptimizationPass {
- public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
-};
-
-// Same as the above but only modifies functions that will be executed by XLA.
+// Rewrites the graph by turning V1 control flow structure
+// (Switch/Merge/etc.) into V2 control flow structure (If/While), only modifies
+// functions that will be executed by XLA.
 class FunctionalizeControlFlowForXlaPass : public GraphOptimizationPass {
  public:
   Status Run(const GraphOptimizationPassOptions& options) override;

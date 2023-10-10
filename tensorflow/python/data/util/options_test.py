@@ -14,11 +14,11 @@
 # ==============================================================================
 """Tests for dataset options utilities."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from absl.testing import parameterized
 
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.util import options
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
@@ -37,12 +37,14 @@ class _NestedTestOptions(options.OptionsBase):
       name="opts", ty=_TestOptions, docstring="nested options")
 
 
-class OptionsTest(test.TestCase):
+class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testDocumentation(self):
     self.assertEqual(_TestOptions.x.__doc__, "the answer to everything")
     self.assertEqual(_TestOptions.y.__doc__, "a tasty pie")
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCreateOption(self):
     opts = _TestOptions()
     self.assertEqual(opts.x, 42)
@@ -58,6 +60,7 @@ class OptionsTest(test.TestCase):
     with self.assertRaises(TypeError):
       opts.y = 42
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMergeOptions(self):
     options1, options2 = _TestOptions(), _TestOptions()
     with self.assertRaises(ValueError):
@@ -71,6 +74,7 @@ class OptionsTest(test.TestCase):
     self.assertEqual(merged_options.x, 0)
     self.assertEqual(merged_options.y, 0.0)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMergeNestedOptions(self):
     options1, options2 = _NestedTestOptions(), _NestedTestOptions()
     merged_options = options.merge_options(options1, options2)
@@ -87,19 +91,50 @@ class OptionsTest(test.TestCase):
     self.assertEqual(merged_options.opts.x, 0)
     self.assertEqual(merged_options.opts.y, 0.0)
 
-  def testMergeOptionsInvalid(self):
-    with self.assertRaises(TypeError):
-      options.merge_options(0)
-    options1, options2 = _TestOptions(), _NestedTestOptions()
-    with self.assertRaises(TypeError):
-      options.merge_options(options1, options2)
+  @combinations.generate(test_base.default_test_combinations())
+  def testImmutable(self):
+    test_options = _TestOptions()
+    test_options._set_mutable(False)
 
+    with self.assertRaisesRegex(
+        ValueError, r"Mutating `tf.data.Options\(\)` returned by "
+        r"`tf.data.Dataset.options\(\)` has no effect. Use "
+        r"`tf.data.Dataset.with_options\(options\)` to set or "
+        "update dataset options."):
+      test_options.test = 100
+
+  @combinations.generate(test_base.default_test_combinations())
   def testNoSpuriousAttrs(self):
     test_options = _TestOptions()
-    with self.assertRaises(AttributeError):
+
+    with self.assertRaisesRegex(
+        AttributeError, "Cannot set the property wrong_attr on _TestOptions."):
       test_options.wrong_attr = True
     with self.assertRaises(AttributeError):
       _ = test_options.wrong_attr
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testMergeNoOptions(self):
+    with self.assertRaisesRegex(ValueError,
+                                "At least one options should be provided"):
+      options.merge_options()
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testMergeOptionsDifferentType(self):
+    options1, options2 = _TestOptions(), _NestedTestOptions()
+    with self.assertRaisesRegex(
+        TypeError, r"Could not merge incompatible options of type "
+        r"\<class \'__main__._NestedTestOptions\'\> and "
+        r"\<class \'__main__._TestOptions\'\>."):
+      options.merge_options(options1, options2)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testMergeOptionsWrongType(self):
+    with self.assertRaisesRegex(
+        TypeError, "All options to be merged should inherit from "
+        r"\`OptionsBase\` but found option of type \<class \'int\'\> which "
+        "does not."):
+      options.merge_options(1, 2, 3)
 
 
 if __name__ == "__main__":

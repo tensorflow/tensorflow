@@ -15,9 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TESTING_KERNEL_TEST_DIFF_ANALYZER_H_
 #define TENSORFLOW_LITE_TESTING_KERNEL_TEST_DIFF_ANALYZER_H_
 
+#include <string>
+#include <unordered_map>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/string_type.h"
 
 namespace tflite {
@@ -28,12 +30,17 @@ namespace testing {
 class DiffAnalyzer {
  public:
   DiffAnalyzer() = default;
+  // Reads base and test tensor values from files.
+  // Each file have lines in <name>:<values> format, where name is the signature
+  // output name and value as comma separated value string.
   TfLiteStatus ReadFiles(const string& base, const string& test);
+  // Writes diff report in <name>:<L2 Error>,<Max Diff> format.
   TfLiteStatus WriteReport(const string& filename);
 
  private:
-  std::vector<std::vector<float>> base_tensors_;
-  std::vector<std::vector<float>> test_tensors_;
+  // Mappings from signature output names to its values.
+  std::unordered_map<string, std::vector<float>> base_tensors_;
+  std::unordered_map<string, std::vector<float>> test_tensors_;
 };
 
 }  // namespace testing

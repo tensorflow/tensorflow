@@ -12,11 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# LINT.IfChange
 """Utils for saving a Keras Model or Estimator to the SavedModel format."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=wildcard-import
 from tensorflow.python.saved_model.model_utils.export_output import *
 from tensorflow.python.saved_model.model_utils.export_utils import build_all_signature_defs
@@ -27,3 +24,4 @@ from tensorflow.python.saved_model.model_utils.export_utils import get_temp_expo
 from tensorflow.python.saved_model.model_utils.export_utils import get_timestamped_export_dir
 from tensorflow.python.saved_model.model_utils.export_utils import SIGNATURE_KEY_MAP
 # pylint: enable=wildcard-import
+# LINT.ThenChange(//tensorflow/python/keras/saving/utils_v1/__init__.py)

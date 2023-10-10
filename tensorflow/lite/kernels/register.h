@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,30 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_REGISTER_H_
 #define TENSORFLOW_LITE_KERNELS_REGISTER_H_
 
-#include "tensorflow/lite/model.h"  // Legacy.
-#include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/core/kernels/register.h"
 
 namespace tflite {
 namespace ops {
 namespace builtin {
-
-// This built-in op resolver provides a list of TfLite delegates that could be
-// applied by TfLite interpreter by default.
-class BuiltinOpResolver : public MutableOpResolver {
- public:
-  BuiltinOpResolver();
-  OpResolver::TfLiteDelegatePtrVector GetDelegates(
-      int num_threads) const override;
-};
-
-// TfLite interpreter could apply a TfLite delegate by default. To completely
-// disable this behavior, one could choose to use the following class
-// BuiltinOpResolverWithoutDefaultDelegates.
-class BuiltinOpResolverWithoutDefaultDelegates : public BuiltinOpResolver {
- public:
-  BuiltinOpResolverWithoutDefaultDelegates() : BuiltinOpResolver() {}
-  OpResolver::TfLiteDelegatePtrVector GetDelegates(int num_threads) const final;
-};
+using BuiltinOpResolver = ::tflite::ops::builtin::BuiltinOpResolver;
+using BuiltinOpResolverWithoutDefaultDelegates =
+    ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates;
 
 }  // namespace builtin
 }  // namespace ops

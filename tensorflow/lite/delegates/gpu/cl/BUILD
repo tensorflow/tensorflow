@@ -1,12 +1,14 @@
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//tensorflow:tensorflow.bzl", "if_google", "workspace_root")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
-    licenses = ["notice"],  # Apache 2.0
+    licenses = ["notice"],
 )
 
 config_setting(
@@ -33,9 +35,8 @@ cc_library(
         ":opencl_wrapper",
         ":tensor",
         ":tensor_type_util",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/types:span",
         "//tensorflow/lite/delegates/gpu:api",
+        "//tensorflow/lite/delegates/gpu:tflite_profile",
         "//tensorflow/lite/delegates/gpu/cl/kernels:converter",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:model",
@@ -44,6 +45,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -60,6 +63,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -100,14 +104,10 @@ cc_library(
         ":buffer",
         ":cl_context",
         ":gpu_object",
-        ":linear_storage",
+        ":qcom_thin_filter",
         ":tensor",
-        ":texture2d",
-        "//tensorflow/lite/delegates/gpu/common:access_type",
-        "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/task:arguments",
         "//tensorflow/lite/delegates/gpu/common/task:util",
@@ -126,6 +126,7 @@ cc_test(
     deps = [
         ":buffer",
         ":cl_arguments",
+        ":cl_test",
         ":gpu_object",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "@com_google_absl//absl/strings",
@@ -146,8 +147,8 @@ cc_library(
         ":util",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common/task:profiling_info",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
     ],
 )
 
@@ -176,7 +177,18 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_test(
+    name = "cl_device_test",
+    srcs = ["cl_device_test.cc"],
+    deps = [
+        ":cl_device",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -247,7 +259,6 @@ cc_library(
         ":cl_kernel",
         ":program_cache",
         ":tensor",
-        "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
     ],
 )
@@ -298,7 +309,6 @@ cc_library(
         ":cl_context",
         ":cl_device",
         ":program_cache",
-        ":tensor",
         ":util",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
@@ -350,7 +360,7 @@ cc_library(
         ":opencl_wrapper",
         ":tensor_type_util",
         "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/gpu:api",
         "//tensorflow/lite/delegates/gpu:delegate",
         "//tensorflow/lite/delegates/gpu/common:model",
@@ -378,70 +388,38 @@ cc_library(
     name = "inference_context",
     srcs = [
         "inference_context.cc",
-        "serialization.cc",
     ],
     hdrs = [
         "inference_context.h",
-        "serialization.h",
     ],
     deps = [
         ":buffer",
         ":cl_command_queue",
-        ":cl_context",
         ":cl_device",
         ":cl_operation",
         ":environment",
         ":gpu_object",
         ":opencl_wrapper",
+        ":recordable_queue_builder",
         ":serialization_cc_fbs",
         ":tensor",
         "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:gpu_model",
+        "//tensorflow/lite/delegates/gpu/common:gpu_model_cc_fbs",
         "//tensorflow/lite/delegates/gpu/common:memory_management",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_hints",
-        "//tensorflow/lite/delegates/gpu/common:model_transformer",
-        "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/common/selectors:operation_selector",
-        "//tensorflow/lite/delegates/gpu/common/selectors:special_selector",
-        "//tensorflow/lite/delegates/gpu/common/task:arguments",
-        "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
-        "//tensorflow/lite/delegates/gpu/common/task:gpu_object_desc",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
-        "//tensorflow/lite/delegates/gpu/common/task:storage_type_util",
+        "//tensorflow/lite/delegates/gpu/common/task:serialization_base",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
-        "//tensorflow/lite/delegates/gpu/common/task:tensor_linear_desc",
-        "//tensorflow/lite/delegates/gpu/common/task:texture2d_desc",
-        "//tensorflow/lite/delegates/gpu/common/transformations:add_bias",
-        "//tensorflow/lite/delegates/gpu/common/transformations:global_pooling_to_reduce_op",
-        "//tensorflow/lite/delegates/gpu/common/transformations:merge_padding_with",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "linear_storage",
-    srcs = ["linear_storage.cc"],
-    hdrs = ["linear_storage.h"],
-    deps = [
-        ":cl_context",
-        ":gpu_object",
-        ":opencl_wrapper",
-        ":util",
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
-        "//tensorflow/lite/delegates/gpu/common/task:tensor_linear_desc",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -454,13 +432,25 @@ cc_library(
             "-ldl",  # opencl_wrapper calls dlopen()
             "-lm",
         ],
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:linux-google": [
+        # "-ldl",
+        # "-rdynamic",
+        # ],
+        # copybara:uncomment_end
         "//conditions:default": ["-ldl"],  # opencl_wrapper calls dlopen()
     }),
     deps = [
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/strings",
         "@opencl_headers",
-    ],
+        "//tensorflow/lite/delegates/gpu/cl/" + if_google("google", "default") + ":qcom_wrapper",
+    ] + select({
+        # copybara:uncomment_begin(google-only)
+        # "//tools/cc_target_os:linux-google": ["//third_party/opencl_icd_loader"],
+        # copybara:uncomment_end
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -482,14 +472,52 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "qcom_thin_filter",
+    srcs = ["qcom_thin_filter.cc"],
+    hdrs = ["qcom_thin_filter.h"],
+    deps = [
+        ":cl_context",
+        ":gpu_object",
+        ":util",
+        "//tensorflow/lite/delegates/gpu/common/task:qcom_thin_filter_desc",
+    ],
+)
+
+cc_library(
+    name = "recordable_queue",
+    hdrs = ["recordable_queue.h"],
+    deps = [
+        ":cl_command_queue",
+        ":cl_context",
+        ":cl_device",
+        ":cl_operation",
+        ":opencl_wrapper",
+        "//tensorflow/lite/delegates/gpu/common:status",
+    ],
+)
+
+cc_library(
+    name = "recordable_queue_builder",
+    hdrs = ["recordable_queue_builder.h"],
+    deps = [
+        ":cl_context",
+        ":cl_device",
+        ":cl_operation",
+        ":recordable_queue",
+        "//tensorflow/lite/delegates/gpu/cl/" + if_google("google", "default") + ":recordable_queue",
+    ],
+)
+
 flatbuffer_cc_library(
     name = "serialization_cc_fbs",
     srcs = ["serialization.fbs"],
     flatc_args = [
         "--scoped-enums",
-        "-I ./",
+        "-I " + workspace_root,
     ],
     includes = [
+        "//tensorflow/lite/delegates/gpu/common:gpu_model_cc_fbs_includes",
         "//tensorflow/lite/delegates/gpu/common/task:serialization_base_cc_fbs_includes",
     ],
 )
@@ -532,7 +560,6 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -548,40 +575,6 @@ cc_library(
 )
 
 cc_library(
-    name = "texture2d",
-    srcs = ["texture2d.cc"],
-    hdrs = ["texture2d.h"],
-    deps = [
-        ":cl_command_queue",
-        ":cl_context",
-        ":gpu_object",
-        ":opencl_wrapper",
-        ":util",
-        "//tensorflow/lite/delegates/gpu/common:data_type",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/task:texture2d_desc",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_test(
-    name = "texture2d_test",
-    srcs = ["texture2d_test.cc"],
-    linkstatic = True,
-    tags = tf_gpu_tests_tags() + [
-        "linux",
-        "local",
-    ],
-    deps = [
-        ":cl_test",
-        ":texture2d",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
     name = "util",
     srcs = ["util.cc"],
     hdrs = ["util.h"],
@@ -591,7 +584,9 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "//tensorflow/lite/delegates/gpu/cl/" + if_google("google", "default") + ":util",
     ],
 )

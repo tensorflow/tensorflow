@@ -19,6 +19,7 @@ limitations under the License.
 #include <numeric>
 #include <string>
 #include <vector>
+
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/logging.h"
@@ -67,7 +68,7 @@ struct Transpose {
 // Implementation details.
 namespace internal {
 
-typedef gtl::InlinedVector<int64, 8> TransposeDimsVec;
+typedef gtl::InlinedVector<int64_t, 8> TransposeDimsVec;
 typedef gtl::InlinedVector<int32, 8> TransposePermsVec;
 
 // Helper function that takes a tensor shape, a permutation, combines the
@@ -166,7 +167,6 @@ template <typename Device>
 Status DoTransposeImpl(const Device& d, const Tensor& in,
                        const gtl::ArraySlice<int32> perm, bool conjugate,
                        Tensor* out) {
-  CHECK_GE(in.dims(), 2);
   CHECK_EQ(in.dims(), out->dims());
   CHECK_EQ(in.dims(), perm.size());
   CHECK_EQ(in.dtype(), out->dtype());
@@ -176,6 +176,8 @@ Status DoTransposeImpl(const Device& d, const Tensor& in,
     case DT_QINT8:
     case DT_QUINT8:
     case DT_UINT8:
+    case DT_FLOAT8_E5M2:
+    case DT_FLOAT8_E4M3FN:
       Transpose<Device, uint8>::run(d, in, perm, out);
       break;
 
@@ -233,20 +235,19 @@ Status DoTransposeImpl(const Device& d, const Tensor& in,
     default:
       return errors::Unimplemented("Unsupported dtype on CPU: ", in.dtype());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Device>
 inline Status DoMatrixTransposeImpl(const Device& device, const Tensor& in,
                                     bool conjugate, Tensor* out) {
   const int ndims = in.dims();
-  if (ndims == 0) return Status::OK();
+  if (ndims == 0) return OkStatus();
   TransposePermsVec perm(ndims);
   std::iota(perm.begin(), perm.end(), 0);
   std::swap(perm[ndims - 2], perm[ndims - 1]);
   return DoTransposeImpl(device, in, perm, conjugate, out);
 }
-
 
 }  // namespace internal
 }  // namespace tensorflow

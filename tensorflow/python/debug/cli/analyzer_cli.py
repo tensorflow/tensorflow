@@ -17,15 +17,10 @@
 The analyzer performs post hoc analysis of dumped intermediate tensors and
 graph structure information from debugged Session.run() calls.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import copy
 import re
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.debug.cli import cli_config
 from tensorflow.python.debug.cli import cli_shared
@@ -1423,7 +1418,7 @@ class DebugAnalyzer(object):
 
     # Create depth-dependent hanging indent for the line.
     hang = ""
-    for k in xrange(depth):
+    for k in range(depth):
       if k < depth - 1:
         if k + 1 in unfinished:
           hang += HANG_UNFINISHED
@@ -1582,16 +1577,16 @@ class DebugAnalyzer(object):
 
 def create_analyzer_ui(debug_dump,
                        tensor_filters=None,
-                       ui_type="curses",
+                       ui_type="readline",
                        on_ui_exit=None,
                        config=None):
-  """Create an instance of CursesUI based on a DebugDumpDir object.
+  """Create an instance of ReadlineUI based on a DebugDumpDir object.
 
   Args:
     debug_dump: (debug_data.DebugDumpDir) The debug dump to use.
     tensor_filters: (dict) A dict mapping tensor filter name (str) to tensor
       filter (Callable).
-    ui_type: (str) requested UI type, e.g., "curses", "readline".
+    ui_type: (str) requested UI type, only "readline" is supported.
     on_ui_exit: (`Callable`) the callback to be called when the UI exits.
     config: A `cli_config.CLIConfig` object.
 

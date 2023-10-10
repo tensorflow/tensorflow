@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "FFT"
   input_arg {
     name: "input"

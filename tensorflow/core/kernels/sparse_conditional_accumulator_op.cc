@@ -37,7 +37,7 @@ class SparseConditionalAccumulatorOp : public ConditionalAccumulatorBaseOp {
           new SparseConditionalAccumulator<Device, T>(
               dtype_, shape_, cinfo_.name(), reduction_type_);
       *ret = accumulator;
-      return Status::OK();
+      return OkStatus();
     };
   }
 
@@ -45,15 +45,17 @@ class SparseConditionalAccumulatorOp : public ConditionalAccumulatorBaseOp {
   // it with cond2 otherwise.
   Status CheckSignature(OpKernelContext* ctx) override {
     TF_RETURN_IF_ERROR(ctx->MatchSignature({}, {DT_STRING_REF}));
-    return Status::OK();
+    return OkStatus();
   }
 
   void SetHandleToOutput(OpKernelContext* ctx)
       TF_SHARED_LOCKS_REQUIRED(mu_) override {
-    ctx->set_output_ref(0, &mu_, accumulator_handle_.AccessTensor(ctx));
+    ctx->set_output_ref(0, &mu_, &accumulator_);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SparseConditionalAccumulatorOp);
+  SparseConditionalAccumulatorOp(const SparseConditionalAccumulatorOp&) =
+      delete;
+  void operator=(const SparseConditionalAccumulatorOp&) = delete;
 };
 
 #define REGISTER_KERNELS(type, dev)                            \
@@ -91,7 +93,9 @@ class SparseAccumulatorApplyGradientOp
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(SparseAccumulatorApplyGradientOp);
+  SparseAccumulatorApplyGradientOp(const SparseAccumulatorApplyGradientOp&) =
+      delete;
+  void operator=(const SparseAccumulatorApplyGradientOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(
@@ -126,7 +130,9 @@ class SparseAccumulatorTakeGradientOp
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(SparseAccumulatorTakeGradientOp);
+  SparseAccumulatorTakeGradientOp(const SparseAccumulatorTakeGradientOp&) =
+      delete;
+  void operator=(const SparseAccumulatorTakeGradientOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(

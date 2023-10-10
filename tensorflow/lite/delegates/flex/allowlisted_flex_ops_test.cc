@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
 
 #include <set>
+#include <string>
 
 #include <gtest/gtest.h>
 #include "tensorflow/core/framework/op_kernel.h"
@@ -64,8 +65,3 @@ TEST(TfTextUtilsTest, TestFlexOpNotAllowed) {
 
 }  // namespace flex
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

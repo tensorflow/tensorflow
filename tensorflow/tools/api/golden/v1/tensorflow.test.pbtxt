@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "mock"
     mtype: "<type \'module\'>"
   }
@@ -35,6 +39,10 @@ tf_module {
   member_method {
     name: "create_local_cluster"
     argspec: "args=[\'num_workers\', \'num_ps\', \'protocol\', \'worker_config\', \'ps_config\'], varargs=None, keywords=None, defaults=[\'grpc\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "disable_with_predicate"
+    argspec: "args=[\'pred\', \'skip_message\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_temp_dir"
@@ -71,5 +79,9 @@ tf_module {
   member_method {
     name: "test_src_dir_path"
     argspec: "args=[\'relative_path\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_eager_op_as_function"
+    argspec: "args=[\'cls\', \'only_as_function\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
   }
 }

@@ -18,8 +18,8 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/Eigen/Eigenvalues"
+#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/Eigenvalues"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -53,7 +53,7 @@ class EigOp : public LinearAlgebraOp<InputScalar, OutputScalar> {
 
   TensorShapes GetOutputMatrixShapes(
       const TensorShapes& input_matrix_shapes) const final {
-    int64 n = input_matrix_shapes[0].dim_size(0);
+    int64_t n = input_matrix_shapes[0].dim_size(0);
     if (compute_v_) {
       return TensorShapes({TensorShape({n}), TensorShape({n, n})});
     } else {
@@ -64,7 +64,7 @@ class EigOp : public LinearAlgebraOp<InputScalar, OutputScalar> {
   void ComputeMatrix(OpKernelContext* context,
                      const InputConstMatrixMaps& inputs,
                      OutputMatrixMaps* outputs) final {
-    const int64 rows = inputs[0].rows();
+    const int64_t rows = inputs[0].rows();
     if (rows == 0) {
       // If X is an empty matrix (0 rows, 0 col), X * X' == X.
       // Therefore, we return X.
@@ -74,10 +74,12 @@ class EigOp : public LinearAlgebraOp<InputScalar, OutputScalar> {
     // This algorithm relies on denormals, so switch them back on locally.
     port::ScopedDontFlushDenormal dont_flush_denormals;
 
-    Eigen::ComplexEigenSolver<OutputMatrix> eig(
-        inputs[0],
-        compute_v_ ? Eigen::ComputeEigenvectors : Eigen::EigenvaluesOnly);
-    // TODO(rmlarsen): Output more detailed error info on failure.
+    using EigenSolver =
+        std::conditional_t<Eigen::NumTraits<InputScalar>::IsComplex,
+                           Eigen::ComplexEigenSolver<InputMatrix>,
+                           Eigen::EigenSolver<InputMatrix>>;
+    EigenSolver eig(inputs[0], /*computeEigenvectors=*/compute_v_);
+
     OP_REQUIRES(
         context, eig.info() == Eigen::Success,
         errors::InvalidArgument("Eigen decomposition was not "

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Experimental impl for GradientTape using unified APIs, for testing only."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework.experimental import _tape
 from tensorflow.python.framework.experimental import context_stack
 from tensorflow.python.framework.experimental import gradient_registry

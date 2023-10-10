@@ -1,0 +1,7 @@
+path: "tensorflow.__internal__.mixed_precision"
+tf_module {
+  member_method {
+    name: "register_loss_scale_wrapper"
+    argspec: "args=[\'optimizer_cls\', \'wrapper_fn\', \'wrapper_cls\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

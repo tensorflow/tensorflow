@@ -116,7 +116,7 @@ Status FeedInputs(
     }
     out_feed_types->push_back(BaseType(n->output_type(id.second)));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FetchOutputs(
@@ -170,7 +170,7 @@ Status FetchOutputs(
     out_fetch_types->push_back(BaseType(n->output_type(id.second)));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool AddNodeToTargets(const string& node_or_tensor_name,
@@ -211,7 +211,7 @@ Status PruneForTargets(Graph* g, const NameIndex& name_index,
   // Reconnect nodes with no outgoing edges to the sink node
   FixupSourceAndSinkEdges(g);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -230,7 +230,7 @@ Status ArgFeedRewrite::AddNode(Graph* g, NodeBuilder::NodeOut feed_tensor,
           .Attr("index", arg_index_)
           .Finalize(g, out_node, /*consume=*/true));
   (*out_node)->set_assigned_device_name(device_info().name());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RecvFeedRewrite::AddNode(Graph* g, NodeBuilder::NodeOut feed_tensor,
@@ -245,12 +245,12 @@ Status RecvFeedRewrite::AddNode(Graph* g, NodeBuilder::NodeOut feed_tensor,
           .Attr("send_device", device_info().name())
           .Attr("recv_device", device_info().name())
           .Attr("send_device_incarnation",
-                static_cast<int64>(device_info().incarnation()))
+                static_cast<int64_t>(device_info().incarnation()))
           .Attr("client_terminated", true)
           .Finalize(g, out_node, /*consume=*/true));
 
   (*out_node)->set_assigned_device_name(device_info().name());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RetvalFetchRewrite::AddNode(Graph* g, NodeBuilder::NodeOut fetch_tensor,
@@ -269,7 +269,7 @@ Status RetvalFetchRewrite::AddNode(Graph* g, NodeBuilder::NodeOut fetch_tensor,
           .Attr("index", retval_index_)
           .Finalize(g, out_node, /*consume=*/true));
   (*out_node)->set_assigned_device_name(device_info().name());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SendFetchRewrite::AddNode(Graph* g, NodeBuilder::NodeOut fetch_tensor,
@@ -283,11 +283,11 @@ Status SendFetchRewrite::AddNode(Graph* g, NodeBuilder::NodeOut fetch_tensor,
           .Attr("send_device", device_info().name())
           .Attr("recv_device", device_info().name())
           .Attr("send_device_incarnation",
-                static_cast<int64>(device_info().incarnation()))
+                static_cast<int64_t>(device_info().incarnation()))
           .Attr("client_terminated", true)
           .Finalize(g, out_node, /*consume=*/true));
   (*out_node)->set_assigned_device_name(device_info().name());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RewriteGraphForExecution(
@@ -392,7 +392,7 @@ Status RewriteGraphForExecution(
         PruneForTargets(g, name_index, fetch_nodes, target_node_names));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace subgraph

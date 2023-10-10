@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for the private `replicate()` transformation."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.core.protobuf import cluster_pb2
@@ -25,9 +21,9 @@ from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import distribute
-from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import config
@@ -55,6 +51,13 @@ class LocalReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
     self._device0 = "/device:CPU:0"
     self._device1 = "/device:CPU:1"
     self._device2 = "/device:CPU:2"
+
+  def tearDown(self):
+    super().tearDown()
+    # Clear the current device scope to avoid polluting other test cases.
+    ops.device(None).__enter__()
+    # Reset the context to avoid polluting other test cases.
+    context._reset_context()
 
   @combinations.generate(test_base.default_test_combinations())
   def testBasic(self):
@@ -120,15 +123,17 @@ class LocalReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset1 = replicated_ds[self._device1]
     dataset2 = replicated_ds[self._device2]
     self.evaluate(counter_var.initializer)
+    with ops.device(self._device1):
+      self.assertDatasetProduces(
+          dataset1, range(1, 101), requires_initialization=True)
+    with ops.device(self._device2):
+      self.assertDatasetProduces(
+          dataset2, range(1, 101), requires_initialization=True)
+    # Iterate through the original device last so that replication happens
+    # before counter_var is modified. The order only matters in graph mode.
     with ops.device(self._device0):
       self.assertDatasetProduces(
           dataset0, range(1, 101), requires_initialization=True)
-    with ops.device(self._device1):
-      self.assertDatasetProduces(
-          dataset1, range(101, 201), requires_initialization=True)
-    with ops.device(self._device2):
-      self.assertDatasetProduces(
-          dataset2, range(201, 301), requires_initialization=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testExternalStatePolicyIgnore(self):
@@ -139,9 +144,9 @@ class LocalReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
               minval=1,
               maxval=10,
               dtype=dtypes.float32))
-      opt = dataset_ops.Options()
+      opt = options_lib.Options()
       opt.experimental_external_state_policy = (
-          distribute_options.ExternalStatePolicy.IGNORE)
+          options_lib.ExternalStatePolicy.IGNORE)
       dataset0 = dataset0.with_options(opt)
     replicated_ds = distribute.replicate(dataset0,
                                          [self._device1, self._device2])
@@ -169,9 +174,9 @@ class LocalReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
               minval=1,
               maxval=10,
               dtype=dtypes.float32))
-      opt = dataset_ops.Options()
+      opt = options_lib.Options()
       opt.experimental_external_state_policy = (
-          distribute_options.ExternalStatePolicy.WARN)
+          options_lib.ExternalStatePolicy.WARN)
       dataset0 = dataset0.with_options(opt)
     replicated_ds = distribute.replicate(dataset0,
                                          [self._device1, self._device2])
@@ -199,9 +204,9 @@ class LocalReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
               minval=1,
               maxval=10,
               dtype=dtypes.float32))
-      opt = dataset_ops.Options()
+      opt = options_lib.Options()
       opt.experimental_external_state_policy = (
-          distribute_options.ExternalStatePolicy.FAIL)
+          options_lib.ExternalStatePolicy.FAIL)
       dataset0 = dataset0.with_options(opt)
     with self.assertRaises(errors.FailedPreconditionError):
       replicated_ds = distribute.replicate(dataset0,
@@ -248,16 +253,19 @@ class EagerClusterReplicateTest(test_base.DatasetTestBase,
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(EagerClusterReplicateTest, self).__init__(methodName)
     self._job_name = "remove_device"
-    self._cached_server1 = server_lib.Server.create_local_server()
-    self._cached_server2 = server_lib.Server.create_local_server()
-    self._cached_server1_target = self._cached_server1.target[len("grpc://"):]
-    self._cached_server2_target = self._cached_server2.target[len("grpc://"):]
     self._device0 = "/job:%s/replica:0/task:0/device:CPU:0" % self._job_name
     self._device1 = "/job:%s/replica:0/task:1/device:CPU:0" % self._job_name
     self._device2 = "/job:%s/replica:0/task:2/device:CPU:0" % self._job_name
 
   def setUp(self):
     super(EagerClusterReplicateTest, self).setUp()
+
+    # TODO(b/171412104): Move create server to __init__ once tfrt support it.
+    self._cached_server1 = server_lib.Server.create_local_server()
+    self._cached_server2 = server_lib.Server.create_local_server()
+    self._cached_server1_target = self._cached_server1.target[len("grpc://"):]
+    self._cached_server2_target = self._cached_server2.target[len("grpc://"):]
+
     # Start the local server.
     local_port = pywrap_tfe.TF_PickUnusedPortOrDie()
     context.set_server_def(
@@ -268,6 +276,13 @@ class EagerClusterReplicateTest(test_base.DatasetTestBase,
                 self._cached_server1_target, self._cached_server2_target
             ],
             task_index=0))
+
+  def tearDown(self):
+    super().tearDown()
+    # Clear the current device scope to avoid polluting other test cases.
+    ops.device(None).__enter__()
+    # Reset the context to avoid polluting other test cases.
+    context._reset_context()
 
   @combinations.generate(
       combinations.combine(tf_api_version=[2], mode=["eager"]))
@@ -318,10 +333,10 @@ class EagerClusterReplicateTest(test_base.DatasetTestBase,
           dataset0, range(1, 101), requires_initialization=True)
     with ops.device(self._device1):
       self.assertDatasetProduces(
-          dataset1, range(101, 201), requires_initialization=True)
+          dataset1, range(1, 101), requires_initialization=True)
     with ops.device(self._device2):
       self.assertDatasetProduces(
-          dataset2, range(201, 301), requires_initialization=True)
+          dataset2, range(1, 101), requires_initialization=True)
 
 
 class GraphClusterReplicateTest(test_base.DatasetTestBase,
@@ -338,6 +353,13 @@ class GraphClusterReplicateTest(test_base.DatasetTestBase,
     self._device1 = "/job:worker/replica:0/task:1/device:CPU:0"
     self._device2 = "/job:worker/replica:0/task:2/device:CPU:0"
     self._target = worker[0].target
+
+  def tearDown(self):
+    super().tearDown()
+    # Clear the current device scope to avoid polluting other test cases.
+    ops.device(None).__enter__()
+    # Reset the context to avoid polluting other test cases.
+    context._reset_context()
 
   @combinations.generate(
       combinations.combine(tf_api_version=[1], mode=["graph"]))

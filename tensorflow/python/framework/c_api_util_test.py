@@ -14,10 +14,7 @@
 # ==============================================================================
 
 """Tests for c_api utils."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import gc
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -54,6 +51,71 @@ END
     self.assertEqual(api_def.summary, "Returns x + y element-wise.")
 
 
+class UniquePtrTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+
+    super(UniquePtrTest, self).setUp()
+
+    class MockClass:
+
+      def __init__(self):
+        self.deleted = False
+
+    def deleter(obj):
+      obj.deleted = True
+
+    self.obj = MockClass()
+    self.deleter = deleter
+
+  def testLifeCycle(self):
+    self.assertFalse(self.obj.deleted)
+
+    a = c_api_util.UniquePtr(name="mock", deleter=self.deleter, obj=self.obj)
+
+    with a.get() as obj:
+      self.assertIs(obj, self.obj)
+
+    del a
+    gc.collect()
+    self.assertTrue(self.obj.deleted)
+
+  def testSafeUnderRaceCondition(self):
+    self.assertFalse(self.obj.deleted)
+
+    a = c_api_util.UniquePtr(name="mock", deleter=self.deleter, obj=self.obj)
+
+    with a.get() as obj:
+      self.assertIs(obj, self.obj)
+      # The del below mimics a potential race condition.
+      # 'a' could be owned by a different thread, and this thread not
+      # necessarily hold a long-term reference to a.
+      del a
+      gc.collect()
+      self.assertFalse(obj.deleted)
+
+    gc.collect()
+    self.assertTrue(self.obj.deleted)
+
+  def testRaiseAfterDeleted(self):
+    self.assertFalse(self.obj.deleted)
+
+    a = c_api_util.UniquePtr(name="mock", deleter=self.deleter, obj=self.obj)
+
+    # The __del__ below mimics a partially started deletion, potentially
+    # started from another thread.
+    # 'a' could be owned by a different thread, and this thread not
+    # necessarily hold a long-term reference to a.
+    a.__del__()
+    self.assertTrue(self.obj.deleted)
+
+    with self.assertRaisesRegex(c_api_util.AlreadyGarbageCollectedError,
+                                "MockClass"):
+      with a.get():
+        pass
+
+    gc.collect()
+    self.assertTrue(self.obj.deleted)
+
 if __name__ == "__main__":
   googletest.main()
-

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
-#include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -135,13 +135,21 @@ class FullyConnected : public GPUOperation {
   friend FullyConnected CreateFullyConnected(
       const GpuInfo& gpu_info, const OperationDef& definition,
       const FullyConnectedAttributes& attr);
+  friend FullyConnected CreateFullyConnected(
+      const GpuInfo& gpu_info, const OperationDef& definition,
+      const FullyConnectedInt8Attributes& attr);
 
+  void UploadQuantizedWeights(
+      const tflite::gpu::Tensor<OHWI, DataType::INT8>& weights, float scale,
+      float zero_point);
   template <DataType T>
   void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
                      bool weights_are_buffer);
 
   std::string GetFullyConnectedKernelCode(const OperationDef& op_def,
-                                          const GpuInfo& gpu_info);
+                                          const GpuInfo& gpu_info,
+                                          bool weights_are_buffer,
+                                          bool quantized);
 };
 
 template <DataType T>
@@ -171,29 +179,31 @@ void FullyConnected::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
     }
 
     args_.AddObject("weights",
-                    absl::make_unique<BufferDescriptor>(std::move(desc)));
+                    std::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
-    Texture2DDescriptor desc;
-    desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-    desc.size = int2(src_depth * 4, dst_depth);
-    desc.data.resize(float4_size * elements_count);
-
+    std::vector<uint8_t> data(float4_size * elements_count);
     if (f32_weights) {
-      float* ptr = reinterpret_cast<float*>(desc.data.data());
+      float* ptr = reinterpret_cast<float*>(data.data());
       RearrangeFCWeightsToOIO4I4(weights, ptr);
     } else {
-      half* ptr = reinterpret_cast<half*>(desc.data.data());
+      half* ptr = reinterpret_cast<half*>(data.data());
       RearrangeFCWeightsToOIO4I4(weights, ptr);
     }
 
-    args_.AddObject("weights",
-                    absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+    TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
+        f32_weights ? DataType::FLOAT32 : DataType::FLOAT16,
+        TensorStorageType::TEXTURE_2D, src_depth * 4, dst_depth, data.data());
+    args_.AddObject("weights", std::make_unique<TensorDescriptor>(desc));
   }
 }
 
 FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
                                     const OperationDef& definition,
                                     const FullyConnectedAttributes& attr);
+
+FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
+                                    const OperationDef& definition,
+                                    const FullyConnectedInt8Attributes& attr);
 
 }  // namespace gpu
 }  // namespace tflite

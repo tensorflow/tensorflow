@@ -34,7 +34,10 @@ limitations under the License.
 // Note that, for GIF inputs, to reuse existing code, only single-frame ones
 // are supported.
 
+#include <algorithm>
 #include <fstream>
+#include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -86,7 +89,7 @@ Status ReadLabelsFile(const string& file_name, std::vector<string>* result,
   while (result->size() % padding) {
     result->emplace_back();
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 static Status ReadEntireFile(tensorflow::Env* env, const string& filename,
@@ -108,7 +111,7 @@ static Status ReadEntireFile(tensorflow::Env* env, const string& filename,
                                         data.size());
   }
   output->scalar<tstring>()() = tstring(data);
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Given an image file name, read in the data, try to decode it as an image,
@@ -167,8 +170,8 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
       root, dims_expander,
       Const(root.WithOpName("size"), {input_height, input_width}));
   // Subtract the mean and divide by the scale.
-  Div(root.WithOpName(output_name), Sub(root, resized, {input_mean}),
-      {input_std});
+  Div output_op(root.WithOpName(output_name), Sub(root, resized, {input_mean}),
+                {input_std});
 
   // This runs the GraphDef network definition that we've just constructed, and
   // returns the results in the output tensor.
@@ -179,7 +182,7 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
       tensorflow::NewSession(tensorflow::SessionOptions()));
   TF_RETURN_IF_ERROR(session->Create(graph));
   TF_RETURN_IF_ERROR(session->Run({inputs}, {output_name}, {}, out_tensors));
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Reads a model graph definition from disk, and creates a session object you
@@ -198,7 +201,7 @@ Status LoadGraph(const string& graph_file_name,
   if (!session_create_status.ok()) {
     return session_create_status;
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Analyzes the output of the Inception graph to retrieve the highest scores and
@@ -209,7 +212,7 @@ Status GetTopLabels(const std::vector<Tensor>& outputs, int how_many_labels,
   using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
 
   string output_name = "top_k";
-  TopK(root.WithOpName(output_name), outputs[0], how_many_labels);
+  TopK top_k(root.WithOpName(output_name), outputs[0], how_many_labels);
   // This runs the GraphDef network definition that we've just constructed, and
   // returns the results in the output tensors.
   tensorflow::GraphDef graph;
@@ -225,7 +228,7 @@ Status GetTopLabels(const std::vector<Tensor>& outputs, int how_many_labels,
                                   {}, &out_tensors));
   *scores = out_tensors[0];
   *indices = out_tensors[1];
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Given the output of a model run, and the name of a file containing the labels
@@ -251,7 +254,7 @@ Status PrintTopLabels(const std::vector<Tensor>& outputs,
     const float score = scores_flat(pos);
     LOG(INFO) << labels[label_index] << " (" << label_index << "): " << score;
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // This is a testing function that returns whether the top label index is the
@@ -271,7 +274,7 @@ Status CheckTopLabel(const std::vector<Tensor>& outputs, int expected,
   } else {
     *is_expected = true;
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 int main(int argc, char* argv[]) {
@@ -284,8 +287,8 @@ int main(int argc, char* argv[]) {
       "tensorflow/examples/label_image/data/inception_v3_2016_08_28_frozen.pb";
   string labels =
       "tensorflow/examples/label_image/data/imagenet_slim_labels.txt";
-  int32 input_width = 299;
-  int32 input_height = 299;
+  int32_t input_width = 299;
+  int32_t input_height = 299;
   float input_mean = 0;
   float input_std = 255;
   string input_layer = "input";

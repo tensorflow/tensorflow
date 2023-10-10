@@ -14,31 +14,38 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
 
+#include <utility>
+
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
 namespace mlir {
 namespace TFL {
 namespace {
 
+#define GEN_PASS_DEF_IDENTIFYDILATEDCONVPASS
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
+
 struct IdentifyDilatedConvPass
-    : public PassWrapper<IdentifyDilatedConvPass, FunctionPass> {
-  void runOnFunction() override;
+    : public impl::IdentifyDilatedConvPassBase<IdentifyDilatedConvPass> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(IdentifyDilatedConvPass)
+  void runOnOperation() override;
 };
 
-void IdentifyDilatedConvPass::runOnFunction() {
-  OwningRewritePatternList patterns;
-  auto func = getFunction();
+void IdentifyDilatedConvPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
+  auto func = getOperation();
 
-  patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>,
-                  ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(
+  patterns.add<ConvertTFDilatedConvOp<TF::Conv2DOp>,
+               ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(
       &getContext());
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 }  // namespace
-
-static PassRegistration<IdentifyDilatedConvPass> pass(
-    "tfl-identify-dilated-conv",
-    "Identify and replace patterns for dilated convolution.");
+std::unique_ptr<OperationPass<func::FuncOp>> CreateIdentifyDilatedConvPass() {
+  return std::make_unique<IdentifyDilatedConvPass>();
+}
 
 }  // namespace TFL
 }  // namespace mlir

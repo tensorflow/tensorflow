@@ -17,17 +17,24 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <algorithm>
+#include <iterator>
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/c/c_api.h"
-#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
+#include "tsl/profiler/protobuf/profile.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -82,7 +89,7 @@ class StringTable {
       return idx->second;
     }
     all_strings_.push_back(str);
-    return string_id_.insert(std::pair<string, int64>(str, string_id_.size()))
+    return string_id_.insert(std::pair<string, int64_t>(str, string_id_.size()))
         .first->second;
   }
 
@@ -114,7 +121,7 @@ class FunctionTable {
     func_pb->set_id(function_table_.size());
 
     string file_base(io::Basename(file_path));
-    file_base = file_base.substr(0, file_base.find_last_of("."));
+    file_base = file_base.substr(0, file_base.find_last_of('.'));
     func_pb->set_name(
         string_table_->GetIndex(absl::StrCat(file_base, ":", func_name)));
     func_pb->set_filename(string_table_->GetIndex(file_path));
@@ -291,7 +298,7 @@ class PprofProfileImpl : public PprofProfile {
     Status s = Env::Default()->NewWritableFile(filename, &file);
     if (!s.ok()) return s;
 
-    int32 buf_size = 1024 * 1024;
+    int32_t buf_size = 1024 * 1024;
     io::ZlibOutputBuffer* zlib_output_buffer = new io::ZlibOutputBuffer(
         file.get(), buf_size, buf_size, io::ZlibCompressionOptions::GZIP());
     s = zlib_output_buffer->Init();
@@ -413,8 +420,8 @@ void TFCode::AddNode(TFGraphNode* node) {
   }
 
   if (!root_) {
-    graph_root_.reset(new TFMultiGraphNode(kTFProfRoot));
-    root_.reset(new CodeNode(graph_root_.get(), nullptr, ""));
+    graph_root_ = std::make_unique<TFMultiGraphNode>(kTFProfRoot);
+    root_ = std::make_unique<CodeNode>(graph_root_.get(), nullptr, "");
   }
 
   CodeNode* pre_code_node = root_.get();
@@ -428,7 +435,7 @@ void TFCode::AddNode(TFGraphNode* node) {
     traces.insert(trace);
     pre_code_node = pre_code_node->AddChildren(
         trace, &node->call_stack()->traces().at(i), "");
-    const int64 last_index = node->call_stack()->traces().size() - 1;
+    const int64_t last_index = node->call_stack()->traces().size() - 1;
     if (i == last_index) {
       pre_code_node->node->AddGraphNode(node);
     }
@@ -436,7 +443,7 @@ void TFCode::AddNode(TFGraphNode* node) {
 }
 
 void TFCode::Build() {
-  int64 unaccounted_nodes = 0;
+  int64_t unaccounted_nodes = 0;
   for (const auto& it : grad_nodes_) {
     const string& forward_name = it.first;
     auto forward_it = forward_nodes_.find(forward_name);
@@ -452,7 +459,7 @@ void TFCode::Build() {
           GetTraceString(fn->call_stack()->traces().at(i)) + kGradientSuffix;
       pre_code_node = pre_code_node->AddChildren(
           trace, &fn->call_stack()->traces().at(i), kGradientSuffix);
-      const int64 last_trace = fn->call_stack()->traces().size() - 1;
+      const int64_t last_trace = fn->call_stack()->traces().size() - 1;
       if (i == last_trace) {
         leaf = pre_code_node;
       }
@@ -507,7 +514,7 @@ const ShowMultiNode* TFCode::ShowInternal(const Options& opts,
 
   if (opts.output_type == kOutput[3]) {
     std::vector<uint64> call_ids;
-    pprof_profile_.reset(new PprofProfileImpl(&opts));
+    pprof_profile_ = std::make_unique<PprofProfileImpl>(&opts);
     Format(root, root->show_children, opts, &root->formatted_str,
            root->mutable_proto(), &call_ids);
     Status s = pprof_profile_->WritePprofProfile(
@@ -631,8 +638,8 @@ std::vector<CodeNode*> TFCode::Account(const std::vector<CodeNode*>& roots,
   return act_nodes;
 }
 
-string TFCode::FormatNodeMemory(CodeNode* node, int64 bytes,
-                                int64 total_bytes) const {
+string TFCode::FormatNodeMemory(CodeNode* node, int64_t bytes,
+                                int64_t total_bytes) const {
   string memory = FormatMemory(total_bytes);
   if (node->account) {
     memory = FormatMemory(bytes) + "/" + memory;
@@ -643,7 +650,7 @@ string TFCode::FormatNodeMemory(CodeNode* node, int64 bytes,
 }
 
 string TFCode::FormatNode(CodeNode* node, const Options& opts,
-                          int64 indent) const {
+                          int64_t indent) const {
   std::vector<string> attrs;
   if (opts.select.find(kShown[0]) != opts.select.end()) {
     attrs.push_back(FormatNodeMemory(node, node->proto().requested_bytes(),

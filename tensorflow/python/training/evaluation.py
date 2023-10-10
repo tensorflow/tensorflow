@@ -14,10 +14,6 @@
 # ==============================================================================
 """Contains functions for evaluation and summarization of metrics."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 import time
 
@@ -252,7 +248,7 @@ def _evaluate_once(checkpoint_path,
         h._set_evals_completed_tensor(eval_step_value)  # pylint: disable=protected-access
 
   logging.info('Starting evaluation at ' +
-               time.strftime('%Y-%m-%dT%H:%M:%SZ', time.localtime()))
+               time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime()))
   start = time.time()
   # Prepare the session creator.
   session_creator = monitored_session.ChiefSessionCreator(

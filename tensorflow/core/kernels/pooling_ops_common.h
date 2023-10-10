@@ -22,7 +22,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -49,11 +49,11 @@ struct PoolParameters {
   // elements otherwise.
   PoolParameters(OpKernelContext* context, const std::vector<int32>& ksize,
                  const std::vector<int32>& stride, Padding padding,
-                 std::vector<int64> explicit_paddings, TensorFormat data_format,
-                 const TensorShape& tensor_in_shape);
+                 std::vector<int64_t> explicit_paddings,
+                 TensorFormat data_format, const TensorShape& tensor_in_shape);
 
   // Returns the shape of the output for "forward" pooling operations.
-  TensorShape forward_output_shape();
+  Status forward_output_shape(TensorShape* shape);
 
   int depth;
 
@@ -69,24 +69,19 @@ struct PoolParameters {
   int col_stride;
   int depth_stride;
 
-  int64 out_height;
-  int64 out_width;
+  int64_t out_height;
+  int64_t out_width;
   int out_depth;
 
-  int64 pad_top;
-  int64 pad_bottom;
-  int64 pad_left;
-  int64 pad_right;
+  int64_t pad_top;
+  int64_t pad_bottom;
+  int64_t pad_left;
+  int64_t pad_right;
 
   int pad_depth;
 
   TensorFormat data_format;
 };
-
-// Checks if the sizes of the paddings are less than the size of window.
-// This is required for MaxPool because it pads with -inf, so the pooling
-// window cannot fully cover the padded area.
-Status CheckPaddingSize(PoolParameters& params);
 
 // An implementation of MaxPooling (forward).
 // TODO (yongtang): Remove MaxPoolingOp and use MaxPoolingV2Op,
@@ -141,8 +136,11 @@ class MaxPoolingOp : public OpKernel {
     }
 
     Tensor* output = nullptr;
+    TensorShape params_forward_output_shape;
+    OP_REQUIRES_OK(context,
+                   params.forward_output_shape(&params_forward_output_shape));
     OP_REQUIRES_OK(context, context->allocate_output(
-                                0, params.forward_output_shape(), &output));
+                                0, params_forward_output_shape, &output));
 
     if (params.depth_window > 1) {
       // Validate spec against the current implementation.  A
@@ -194,6 +192,9 @@ class MaxPoolingOp : public OpKernel {
   void SpatialMaxPool(OpKernelContext* context, Tensor* output,
                       const Tensor& tensor_in, const PoolParameters& params,
                       const Padding& padding) {
+    if (output->NumElements() == 0) {
+      return;
+    }
     // On GPU, use Eigen's Spatial Max Pooling.  On CPU, use an
     // EigenMatrix version that is currently faster than Eigen's
     // Spatial MaxPooling implementation.
@@ -232,49 +233,50 @@ class MaxPoolingOp : public OpKernel {
       // tensor_in_as_matrix,
       //    and updates the corresponding column(s) in output_as_matrix with the
       //    max value.
-      auto shard = [&params, &in_mat, &out_mat](int64 start, int64 limit) {
-        const int32 in_rows = params.tensor_in_rows;
-        const int32 in_cols = params.tensor_in_cols;
-        const int32 pad_top = params.pad_top;
-        const int32 pad_left = params.pad_left;
-        const int32 window_rows = params.window_rows;
-        const int32 window_cols = params.window_cols;
-        const int32 row_stride = params.row_stride;
-        const int32 col_stride = params.col_stride;
-        const int32 out_height = params.out_height;
-        const int32 out_width = params.out_width;
+      auto shard = [&params, &in_mat, &out_mat](int64_t start, int64_t limit) {
+        const int32_t in_rows = params.tensor_in_rows;
+        const int32_t in_cols = params.tensor_in_cols;
+        const int32_t pad_top = params.pad_top;
+        const int32_t pad_left = params.pad_left;
+        const int32_t window_rows = params.window_rows;
+        const int32_t window_cols = params.window_cols;
+        const int32_t row_stride = params.row_stride;
+        const int32_t col_stride = params.col_stride;
+        const int32_t out_height = params.out_height;
+        const int32_t out_width = params.out_width;
 
         {
           // Initializes the output tensor with MIN<T>.
-          const int32 output_image_size = out_height * out_width * params.depth;
+          const int32_t output_image_size =
+              out_height * out_width * params.depth;
           EigenMatrixMap out_shard(out_mat.data() + start * output_image_size,
                                    1, (limit - start) * output_image_size);
           out_shard.setConstant(Eigen::NumTraits<T>::lowest());
         }
 
-        for (int32 b = start; b < limit; ++b) {
-          const int32 out_offset_batch = b * out_height;
-          for (int32 h = 0; h < in_rows; ++h) {
-            for (int32 w = 0; w < in_cols; ++w) {
+        for (int32_t b = start; b < limit; ++b) {
+          const int32_t out_offset_batch = b * out_height;
+          for (int32_t h = 0; h < in_rows; ++h) {
+            for (int32_t w = 0; w < in_cols; ++w) {
               // (h_start, h_end) * (w_start, w_end) is the range that the input
               // vector projects to.
-              const int32 hpad = h + pad_top;
-              const int32 wpad = w + pad_left;
-              const int32 h_start = (hpad < window_rows)
-                                        ? 0
-                                        : (hpad - window_rows) / row_stride + 1;
-              const int32 h_end = std::min(hpad / row_stride + 1, out_height);
-              const int32 w_start = (wpad < window_cols)
-                                        ? 0
-                                        : (wpad - window_cols) / col_stride + 1;
-              const int32 w_end = std::min(wpad / col_stride + 1, out_width);
+              const int32_t hpad = h + pad_top;
+              const int32_t wpad = w + pad_left;
+              const int32_t h_start =
+                  (hpad < window_rows) ? 0
+                                       : (hpad - window_rows) / row_stride + 1;
+              const int32_t h_end = std::min(hpad / row_stride + 1, out_height);
+              const int32_t w_start =
+                  (wpad < window_cols) ? 0
+                                       : (wpad - window_cols) / col_stride + 1;
+              const int32_t w_end = std::min(wpad / col_stride + 1, out_width);
               // compute elementwise max
-              const int32 in_offset = (b * in_rows + h) * in_cols + w;
-              for (int32 ph = h_start; ph < h_end; ++ph) {
-                const int32 out_offset_base =
+              const int32_t in_offset = (b * in_rows + h) * in_cols + w;
+              for (int32_t ph = h_start; ph < h_end; ++ph) {
+                const int32_t out_offset_base =
                     (out_offset_batch + ph) * out_width;
-                for (int32 pw = w_start; pw < w_end; ++pw) {
-                  const int32 out_offset = out_offset_base + pw;
+                for (int32_t pw = w_start; pw < w_end; ++pw) {
+                  const int32_t out_offset = out_offset_base + pw;
                   out_mat.col(out_offset) =
                       out_mat.col(out_offset).cwiseMax(in_mat.col(in_offset));
                 }
@@ -286,7 +288,7 @@ class MaxPoolingOp : public OpKernel {
 
       // TODO(andydavis) Consider sharding across batch x rows x cols.
       // TODO(andydavis) Consider a higher resolution shard cost model.
-      const int64 shard_cost =
+      const int64_t shard_cost =
           params.tensor_in_rows * params.tensor_in_cols * params.depth;
       Shard(worker_threads.num_threads, worker_threads.workers,
             params.tensor_in_batch, shard_cost, shard);
@@ -296,7 +298,7 @@ class MaxPoolingOp : public OpKernel {
   std::vector<int32> ksize_;
   std::vector<int32> stride_;
   Padding padding_;
-  std::vector<int64> explicit_paddings_;
+  std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;
 };
 
@@ -353,6 +355,10 @@ class MaxPoolingV2Op : public OpKernel {
       OP_REQUIRES(context, ksize_.size() == 4,
                   errors::InvalidArgument("Sliding window ksize field must "
                                           "specify 4 dimensions"));
+      OP_REQUIRES(
+          context,
+          ksize_[0] > 0 && ksize_[1] > 0 && ksize_[2] > 0 && ksize_[3] > 0,
+          errors::InvalidArgument("Sliding window ksize must be positive."));
       OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
       OP_REQUIRES(context, stride_.size() == 4,
                   errors::InvalidArgument("Sliding window stride field must "
@@ -385,6 +391,9 @@ class MaxPoolingV2Op : public OpKernel {
     OP_REQUIRES(context, ksize.size() == 4,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 4 dimensions"));
+    OP_REQUIRES(
+        context, ksize[0] > 0 && ksize[1] > 0 && ksize[2] > 0 && ksize[3] > 0,
+        errors::InvalidArgument("Sliding window ksize must be positive."));
     OP_REQUIRES(context, stride.size() == 4,
                 errors::InvalidArgument("Sliding window stride field must "
                                         "specify 4 dimensions"));
@@ -406,8 +415,11 @@ class MaxPoolingV2Op : public OpKernel {
     }
 
     Tensor* output = nullptr;
+    TensorShape params_forward_output_shape;
+    OP_REQUIRES_OK(context,
+                   params.forward_output_shape(&params_forward_output_shape));
     OP_REQUIRES_OK(context, context->allocate_output(
-                                0, params.forward_output_shape(), &output));
+                                0, params_forward_output_shape, &output));
 
     if (params.depth_window > 1) {
       // Validate spec against the current implementation.  A
@@ -447,6 +459,9 @@ class MaxPoolingV2Op : public OpKernel {
   void SpatialMaxPool(OpKernelContext* context, Tensor* output,
                       const Tensor& tensor_in, const PoolParameters& params,
                       const Padding& padding) {
+    if (output->NumElements() == 0) {
+      return;
+    }
     // On GPU, use Eigen's Spatial Max Pooling.  On CPU, use an
     // EigenMatrix version that is currently faster than Eigen's
     // Spatial MaxPooling implementation.
@@ -493,49 +508,50 @@ class MaxPoolingV2Op : public OpKernel {
       // tensor_in_as_matrix,
       //    and updates the corresponding column(s) in output_as_matrix with the
       //    max value.
-      auto shard = [&params, &in_mat, &out_mat](int64 start, int64 limit) {
-        const int32 in_rows = params.tensor_in_rows;
-        const int32 in_cols = params.tensor_in_cols;
-        const int32 pad_top = params.pad_top;
-        const int32 pad_left = params.pad_left;
-        const int32 window_rows = params.window_rows;
-        const int32 window_cols = params.window_cols;
-        const int32 row_stride = params.row_stride;
-        const int32 col_stride = params.col_stride;
-        const int32 out_height = params.out_height;
-        const int32 out_width = params.out_width;
+      auto shard = [&params, &in_mat, &out_mat](int64_t start, int64_t limit) {
+        const int32_t in_rows = params.tensor_in_rows;
+        const int32_t in_cols = params.tensor_in_cols;
+        const int32_t pad_top = params.pad_top;
+        const int32_t pad_left = params.pad_left;
+        const int32_t window_rows = params.window_rows;
+        const int32_t window_cols = params.window_cols;
+        const int32_t row_stride = params.row_stride;
+        const int32_t col_stride = params.col_stride;
+        const int32_t out_height = params.out_height;
+        const int32_t out_width = params.out_width;
 
         {
           // Initializes the output tensor with MIN<T>.
-          const int32 output_image_size = out_height * out_width * params.depth;
+          const int32_t output_image_size =
+              out_height * out_width * params.depth;
           EigenMatrixMap out_shard(out_mat.data() + start * output_image_size,
                                    1, (limit - start) * output_image_size);
           out_shard.setConstant(Eigen::NumTraits<T>::lowest());
         }
 
-        for (int32 b = start; b < limit; ++b) {
-          const int32 out_offset_batch = b * out_height;
-          for (int32 h = 0; h < in_rows; ++h) {
-            for (int32 w = 0; w < in_cols; ++w) {
+        for (int32_t b = start; b < limit; ++b) {
+          const int32_t out_offset_batch = b * out_height;
+          for (int32_t h = 0; h < in_rows; ++h) {
+            for (int32_t w = 0; w < in_cols; ++w) {
               // (h_start, h_end) * (w_start, w_end) is the range that the input
               // vector projects to.
-              const int32 hpad = h + pad_top;
-              const int32 wpad = w + pad_left;
-              const int32 h_start = (hpad < window_rows)
-                                        ? 0
-                                        : (hpad - window_rows) / row_stride + 1;
-              const int32 h_end = std::min(hpad / row_stride + 1, out_height);
-              const int32 w_start = (wpad < window_cols)
-                                        ? 0
-                                        : (wpad - window_cols) / col_stride + 1;
-              const int32 w_end = std::min(wpad / col_stride + 1, out_width);
+              const int32_t hpad = h + pad_top;
+              const int32_t wpad = w + pad_left;
+              const int32_t h_start =
+                  (hpad < window_rows) ? 0
+                                       : (hpad - window_rows) / row_stride + 1;
+              const int32_t h_end = std::min(hpad / row_stride + 1, out_height);
+              const int32_t w_start =
+                  (wpad < window_cols) ? 0
+                                       : (wpad - window_cols) / col_stride + 1;
+              const int32_t w_end = std::min(wpad / col_stride + 1, out_width);
               // compute elementwise max
-              const int32 in_offset = (b * in_rows + h) * in_cols + w;
-              for (int32 ph = h_start; ph < h_end; ++ph) {
-                const int32 out_offset_base =
+              const int32_t in_offset = (b * in_rows + h) * in_cols + w;
+              for (int32_t ph = h_start; ph < h_end; ++ph) {
+                const int32_t out_offset_base =
                     (out_offset_batch + ph) * out_width;
-                for (int32 pw = w_start; pw < w_end; ++pw) {
-                  const int32 out_offset = out_offset_base + pw;
+                for (int32_t pw = w_start; pw < w_end; ++pw) {
+                  const int32_t out_offset = out_offset_base + pw;
                   out_mat.col(out_offset) =
                       out_mat.col(out_offset).cwiseMax(in_mat.col(in_offset));
                 }
@@ -547,7 +563,7 @@ class MaxPoolingV2Op : public OpKernel {
 
       // TODO(andydavis) Consider sharding across batch x rows x cols.
       // TODO(andydavis) Consider a higher resolution shard cost model.
-      const int64 shard_cost =
+      const int64_t shard_cost =
           params.tensor_in_rows * params.tensor_in_cols * params.depth;
       Shard(worker_threads.num_threads, worker_threads.workers,
             params.tensor_in_batch, shard_cost, shard);
@@ -564,6 +580,9 @@ template <typename Device, typename T>
 void SpatialAvgPool(OpKernelContext* context, Tensor* output,
                     const Tensor& input, const PoolParameters& params,
                     const Padding& padding) {
+  if (output->NumElements() == 0) {
+    return;
+  }
   typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
       ConstEigenMatrixMap;
   typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
@@ -572,13 +591,13 @@ void SpatialAvgPool(OpKernelContext* context, Tensor* output,
   auto in_flat = input.flat<T>();
   auto out_flat = output->flat<T>();
 
-  auto shard = [&params, &in_flat, &out_flat](int64 start, int64 limit) {
+  auto shard = [&params, &in_flat, &out_flat](int64_t start, int64_t limit) {
     // Calculate indices for this shards chunk of work.
-    const int64 input_image_size =
+    const int64_t input_image_size =
         params.tensor_in_rows * params.tensor_in_cols * params.depth;
-    const int64 output_image_size =
+    const int64_t output_image_size =
         params.out_width * params.out_height * params.depth;
-    const int64 shard_batch_size = limit - start;
+    const int64_t shard_batch_size = limit - start;
 
     ConstEigenMatrixMap in_mat(
         in_flat.data() + start * input_image_size, params.depth,
@@ -641,14 +660,14 @@ void SpatialAvgPool(OpKernelContext* context, Tensor* output,
     out_mat.array().rowwise() /= out_count.transpose().array();
   };
 
-  const int64 work_unit_size =
+  const int64_t work_unit_size =
       params.tensor_in_rows * params.tensor_in_cols * params.depth;
   // NOTE: Constants in calculation below were estimated based on benchmarking.
   // Nanoseconds/work_unit for benchmarks ranged from 0.01 to 0.001, and
   // so the factor 0.01 (i.e. 1/100) with a max of 10000, was chosen to limit
   // the work unit cost to an operating range in which it empirically performed
   // best.
-  const int64 work_unit_cost = std::max(int64{10000}, work_unit_size / 100);
+  const int64_t work_unit_cost = std::max(int64_t{10000}, work_unit_size / 100);
   const DeviceBase::CpuWorkerThreads& worker_threads =
       *(context->device()->tensorflow_cpu_worker_threads());
   Shard(worker_threads.num_threads, worker_threads.workers,

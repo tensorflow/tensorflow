@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/slicing.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/lib/slicing.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -35,13 +36,13 @@ class DataFormatDimMapOp : public XlaOpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("src_format", &src_format));
     string dst_format;
     OP_REQUIRES_OK(context, context->GetAttr("dst_format", &dst_format));
-    OP_REQUIRES(context, src_format.size() == 4 or src_format.size() == 5,
+    OP_REQUIRES(context, src_format.size() == 4 || src_format.size() == 5,
                 errors::InvalidArgument(
                     absl::StrCat("Source format must of length 4 or 5, "
                                  "received src_format = ",
                                  src_format)));
     OP_REQUIRES(
-        context, dst_format.size() == 4 or dst_format.size() == 5,
+        context, dst_format.size() == 4 || dst_format.size() == 5,
         errors::InvalidArgument(absl::StrCat(
             "Destination format must of length 4 or 5, received dst_format = ",
             dst_format)));
@@ -78,7 +79,8 @@ class DataFormatDimMapOp : public XlaOpKernel {
  private:
   std::vector<int32> dst_idx_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DataFormatDimMapOp);
+  DataFormatDimMapOp(const DataFormatDimMapOp&) = delete;
+  void operator=(const DataFormatDimMapOp&) = delete;
 };
 
 REGISTER_XLA_OP(
@@ -112,13 +114,27 @@ class DataFormatVecPermuteOp : public XlaOpKernel {
                     "Input must be a vector or matrix, but got shape ",
                     input_tensor_shape.DebugString()));
     const int dim0 = input_tensor_shape.dim_size(0);
-    OP_REQUIRES(
-        ctx, dim0 == 2 || dim0 == 4 || dim0 == 5,
-        errors::InvalidArgument(
-            "First dimension of input must be of size 2, 4 or 5, but got "
-            "shape ",
-            input_tensor_shape.DebugString()));
-    if (input_rank == 2) {
+
+    const int full_dim_count = src_format_.size();
+    const int spatial_dim_count = full_dim_count - 2;
+
+    if (input_rank == 1) {
+      OP_REQUIRES(ctx,
+                  input_tensor_shape.num_elements() == spatial_dim_count ||
+                      input_tensor_shape.num_elements() == full_dim_count,
+                  errors::InvalidArgument("1D input must be of size ",
+                                          spatial_dim_count, " or ",
+                                          full_dim_count, ", but got shape ",
+                                          input_tensor_shape.DebugString()));
+    } else if (input_rank == 2) {
+      OP_REQUIRES(ctx,
+                  input_tensor_shape.dim_size(0) == spatial_dim_count ||
+                      input_tensor_shape.dim_size(0) == full_dim_count,
+                  errors::InvalidArgument("First dimension of 2D input must be "
+                                          "of size ",
+                                          spatial_dim_count, " or ",
+                                          full_dim_count, ", but got shape ",
+                                          input_tensor_shape.DebugString()));
       OP_REQUIRES(
           ctx, input_tensor_shape.dim_size(1) == 2,
           errors::InvalidArgument(
@@ -128,13 +144,17 @@ class DataFormatVecPermuteOp : public XlaOpKernel {
 
     string src_format_str = src_format_;
     string dst_format_str = dst_format_;
-    if (dim0 == 2) {
-      // If the input is a vector of size 2, treat the two elements as spatial
-      // dimensions.
-      auto keep_only_spatial_dimensions = [](string* format_str) -> void {
-        auto new_end = std::remove_if(
-            format_str->begin(), format_str->end(),
-            [](const char dim) { return dim != 'H' && dim != 'W'; });
+    if (input_tensor_shape.dim_size(0) == spatial_dim_count) {
+      // If the input is a vector of size spatial_dim_count, treat the elements
+      // as spatial dimensions.
+      auto keep_only_spatial_dimensions =
+          [spatial_dim_count](string* format_str) -> void {
+        auto new_end =
+            std::remove_if(format_str->begin(), format_str->end(),
+                           [spatial_dim_count](const char dim) {
+                             return dim != 'H' && dim != 'W' &&
+                                    (spatial_dim_count == 2 || dim != 'D');
+                           });
         format_str->erase(new_end, format_str->end());
       };
       keep_only_spatial_dimensions(&src_format_str);
@@ -159,7 +179,8 @@ class DataFormatVecPermuteOp : public XlaOpKernel {
   string src_format_;
   string dst_format_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DataFormatVecPermuteOp);
+  DataFormatVecPermuteOp(const DataFormatVecPermuteOp&) = delete;
+  void operator=(const DataFormatVecPermuteOp&) = delete;
 };
 
 REGISTER_XLA_OP(

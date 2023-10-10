@@ -13,14 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.enumerate()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -47,6 +45,30 @@ class EnumerateTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertDatasetProduces(dataset, [(20, (b"a", 1, 37.0)),
                                          (21, (b"b", 2, 38.0))])
+
+
+class EnumerateCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                              parameterized.TestCase):
+
+  def _build_enumerate_dataset(self, start, stop, options=None):
+    dataset = dataset_ops.Dataset.range(start, stop).enumerate()
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, symbolic_checkpoint):
+    start = 2
+    stop = 10
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(
+        self, lambda: self._build_enumerate_dataset(
+            start=start, stop=stop, options=options), stop - start)
 
 
 if __name__ == "__main__":

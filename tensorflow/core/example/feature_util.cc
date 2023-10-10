@@ -15,52 +15,57 @@ limitations under the License.
 
 #include "tensorflow/core/example/feature_util.h"
 
+#include <string>
+
+#include "absl/strings/string_view.h"
+
 namespace tensorflow {
 
 namespace internal {
-Feature& ExampleFeature(const string& name, Example* example) {
+Feature& ExampleFeature(absl::string_view name, Example* example) {
   return *GetFeature(name, example);
 }
 
 }  // namespace internal
 
 template <>
-bool HasFeature<>(const string& key, const Features& features) {
-  return (features.feature().find(key) != features.feature().end());
+bool HasFeature<>(absl::string_view key, const Features& features) {
+  return features.feature().contains(internal::ProtoMapKey(key));
 }
 
 template <>
-bool HasFeature<protobuf_int64>(const string& key, const Features& features) {
-  auto it = features.feature().find(key);
+bool HasFeature<protobuf_int64>(absl::string_view key,
+                                const Features& features) {
+  auto it = features.feature().find(internal::ProtoMapKey(key));
   return (it != features.feature().end()) &&
          (it->second.kind_case() == Feature::KindCase::kInt64List);
 }
 
 template <>
-bool HasFeature<float>(const string& key, const Features& features) {
-  auto it = features.feature().find(key);
+bool HasFeature<float>(absl::string_view key, const Features& features) {
+  auto it = features.feature().find(internal::ProtoMapKey(key));
   return (it != features.feature().end()) &&
          (it->second.kind_case() == Feature::KindCase::kFloatList);
 }
 
 template <>
-bool HasFeature<string>(const string& key, const Features& features) {
-  auto it = features.feature().find(key);
+bool HasFeature<std::string>(absl::string_view key, const Features& features) {
+  auto it = features.feature().find(internal::ProtoMapKey(key));
   return (it != features.feature().end()) &&
          (it->second.kind_case() == Feature::KindCase::kBytesList);
 }
 
 template <>
-bool HasFeature<tstring>(const string& key, const Features& features) {
-  auto it = features.feature().find(key);
+bool HasFeature<tstring>(absl::string_view key, const Features& features) {
+  auto it = features.feature().find(internal::ProtoMapKey(key));
   return (it != features.feature().end()) &&
          (it->second.kind_case() == Feature::KindCase::kBytesList);
 }
 
-bool HasFeatureList(const string& key,
+bool HasFeatureList(absl::string_view key,
                     const SequenceExample& sequence_example) {
-  auto& feature_list = sequence_example.feature_lists().feature_list();
-  return (feature_list.find(key) != feature_list.end());
+  return sequence_example.feature_lists().feature_list().contains(
+      internal::ProtoMapKey(key));
 }
 
 template <>
@@ -87,37 +92,42 @@ protobuf::RepeatedField<float>* GetFeatureValues<float>(Feature* feature) {
 }
 
 template <>
-const protobuf::RepeatedPtrField<string>& GetFeatureValues<tstring>(
+const protobuf::RepeatedPtrField<std::string>& GetFeatureValues<tstring>(
     const Feature& feature) {
   return feature.bytes_list().value();
 }
 
 template <>
-const protobuf::RepeatedPtrField<string>& GetFeatureValues<string>(
+const protobuf::RepeatedPtrField<std::string>& GetFeatureValues<std::string>(
     const Feature& feature) {
   return feature.bytes_list().value();
 }
 
 template <>
-protobuf::RepeatedPtrField<string>* GetFeatureValues<tstring>(
+protobuf::RepeatedPtrField<std::string>* GetFeatureValues<tstring>(
     Feature* feature) {
   return feature->mutable_bytes_list()->mutable_value();
 }
 
 template <>
-protobuf::RepeatedPtrField<string>* GetFeatureValues<string>(Feature* feature) {
+protobuf::RepeatedPtrField<std::string>* GetFeatureValues<std::string>(
+    Feature* feature) {
   return feature->mutable_bytes_list()->mutable_value();
 }
 
 const protobuf::RepeatedPtrField<Feature>& GetFeatureList(
-    const string& key, const SequenceExample& sequence_example) {
-  return sequence_example.feature_lists().feature_list().at(key).feature();
+    absl::string_view key, const SequenceExample& sequence_example) {
+  return sequence_example.feature_lists()
+      .feature_list()
+      .at(internal::ProtoMapKey(key))
+      .feature();
 }
 
 protobuf::RepeatedPtrField<Feature>* GetFeatureList(
-    const string& feature_list_key, SequenceExample* sequence_example) {
+    absl::string_view feature_list_key, SequenceExample* sequence_example) {
   return (*sequence_example->mutable_feature_lists()
-               ->mutable_feature_list())[feature_list_key]
+               ->mutable_feature_list())[internal::ProtoMapKey(
+                                             feature_list_key)]
       .mutable_feature();
 }
 
@@ -132,7 +142,7 @@ void ClearFeatureValues<float>(Feature* feature) {
 }
 
 template <>
-void ClearFeatureValues<string>(Feature* feature) {
+void ClearFeatureValues<std::string>(Feature* feature) {
   feature->mutable_bytes_list()->Clear();
 }
 
@@ -152,6 +162,11 @@ Features* GetFeatures<Example>(Example* proto) {
 }
 
 template <>
+Features* GetFeatures<SequenceExample>(SequenceExample* proto) {
+  return proto->mutable_context();
+}
+
+template <>
 const Features& GetFeatures<Features>(const Features& proto) {
   return proto;
 }
@@ -162,32 +177,8 @@ const Features& GetFeatures<Example>(const Example& proto) {
 }
 
 template <>
-const protobuf::RepeatedField<protobuf_int64>& GetFeatureValues<protobuf_int64>(
-    const Feature& feature);
-
-template <>
-protobuf::RepeatedField<protobuf_int64>* GetFeatureValues<protobuf_int64>(
-    Feature* feature);
-
-template <>
-const protobuf::RepeatedField<float>& GetFeatureValues<float>(
-    const Feature& feature);
-
-template <>
-protobuf::RepeatedField<float>* GetFeatureValues<float>(Feature* feature);
-
-template <>
-const protobuf::RepeatedPtrField<string>& GetFeatureValues<string>(
-    const Feature& feature);
-
-template <>
-const protobuf::RepeatedPtrField<string>& GetFeatureValues<tstring>(
-    const Feature& feature);
-
-template <>
-protobuf::RepeatedPtrField<string>* GetFeatureValues<string>(Feature* feature);
-
-template <>
-protobuf::RepeatedPtrField<string>* GetFeatureValues<tstring>(Feature* feature);
+const Features& GetFeatures<SequenceExample>(const SequenceExample& proto) {
+  return proto.context();
+}
 
 }  // namespace tensorflow

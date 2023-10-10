@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
+
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/status.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -32,7 +35,7 @@ REGISTER_OP("KthOrderStatistic")
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->Subshape(input, 0, -1, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TopKUnique")
@@ -44,14 +47,14 @@ REGISTER_OP("TopKUnique")
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input));
 
-      int32 k;
+      int32_t k;
       TF_RETURN_IF_ERROR(c->GetAttr("k", &k));
 
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->ReplaceDim(input, 1, c->MakeDim(k), &s));
       c->set_output(0, s);
       c->set_output(1, s);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("MakeUnique")
@@ -61,7 +64,7 @@ REGISTER_OP("MakeUnique")
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input));
       c->set_output(0, input);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("TopKWithUnique")
@@ -73,13 +76,13 @@ REGISTER_OP("TopKWithUnique")
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input));
 
-      int32 k;
+      int32_t k;
       TF_RETURN_IF_ERROR(c->GetAttr("k", &k));
 
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->ReplaceDim(input, 1, c->MakeDim(k), &s));
       c->set_output(0, s);
       c->set_output(1, s);
-      return Status::OK();
+      return OkStatus();
     });
 }  // namespace tensorflow

@@ -13,12 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for conv with activations."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -100,8 +96,8 @@ def make_conv_activation_tests(activation_op):
         input_tensors = [input_tensor, filter_input]
 
       out = tf.nn.conv2d(
-          input_tensor,
-          filter_input,
+          input=input_tensor,
+          filters=filter_input,
           strides=parameters["strides"],
           dilations=parameters["dilations"],
           padding=parameters["padding"],
