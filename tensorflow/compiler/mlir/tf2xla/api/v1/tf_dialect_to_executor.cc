@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
@@ -117,6 +118,15 @@ tensorflow::Status ExportFromTensorflowDialectToExecutor(
 
   return diag_handler.ConsumeStatus();
 }
+
+// Registers a pipeline builder function for TF Graph export. Should be
+// the same as ExportFromTensorflowDialectToExecutor just in PassRegistration
+// form.
+mlir::PassPipelineRegistration<> tf_dialect_to_executor_pipeline(
+    "tf-dialect-to-executor-v1",
+    "Run passes to convert from TF Dialect to Executor in preparation for "
+    "exporting module back to TF Graph.",
+    AddTfDialectToExecutorPasses);
 
 }  // namespace v1
 }  // namespace tf2xla

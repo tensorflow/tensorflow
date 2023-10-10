@@ -20,12 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
-namespace mlir {
-namespace TFTPU {
-extern void AddGraphExportLoweringPasses(OpPassManager &pm);
-}  // namespace TFTPU
-}  // namespace mlir
-
 namespace {
 
 // Registers a pipeline builder function for TF TPU bridge.
@@ -36,11 +30,5 @@ mlir::PassPipelineRegistration<> tpu_pipeline(
     [](mlir::OpPassManager& pm) {
       return mlir::TFTPU::CreateTPUBridgePipeline(pm);
     });
-
-// Registers a pipeline builder function for TF Graph export.
-mlir::PassPipelineRegistration<> tpu_export(
-    "tf-graph-export",
-    "Run passes to prepare for exporting module back to TF Graph.",
-    mlir::TF::AddGraphExportLoweringPasses);
 
 }  // anonymous namespace
