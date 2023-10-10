@@ -5540,7 +5540,7 @@ def TFL_Conv3DTransposeOp : TFL_Op<"conv_3d_transpose", [
     PredOpTrait<"bias must has num of elements equals to 4th dim of filter",
       Or<[
         TFL_OperandIsNoneType<3>,
-        TFL_NumElementsEqualsDim<3, 1, 4>]>>]> {
+        TFL_NumElementsEqualsDim<3, 1, 3>]>>]> {
   let summary = "Transposed Convolution 3D operator";
 
   let description = [{
