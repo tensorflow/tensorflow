@@ -1934,9 +1934,11 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
 #else
   TF_RETURN_IF_ERROR(gpu_device->Init(options));
 #endif  // TF_GPU_USE_PJRT
-  gpu_allocator->SetStreamAndPreallocateMemory(gpu_device->GetStream());
-  devices->push_back(std::move(gpu_device));
 
+  gpu_allocator->SetStreamAndPreallocateMemory(
+      gpu_device->compute_stream()->platform_specific_handle().stream);
+
+  devices->push_back(std::move(gpu_device));
   return OkStatus();
 }
 

@@ -175,10 +175,6 @@ class BaseGPUDevice : public LocalDevice {
   // Helper method for unit tests to reset the streams. Never use in production.
   static void TestOnlyReset();
 
-  void* GetStream() {
-    return stream_->compute->implementation()->GpuStreamMemberHack();
-  }
-
   se::Stream* compute_stream() { return stream_->compute; }
 
   // Given the compute stream for a GPU or virtual GPU, return the TfDeviceId

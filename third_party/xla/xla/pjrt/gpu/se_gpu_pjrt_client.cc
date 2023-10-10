@@ -684,8 +684,8 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateCudaAsyncAllocator(
         tsl::PlatformDeviceId(device_ordinal), allocator_memory, preallocate);
     allocator->SetStreamAndPreallocateMemory(
         ordinal_and_device.second->compute_stream()
-            ->implementation()
-            ->GpuStreamMemberHack());
+            ->platform_specific_handle()
+            .stream);
     allocators.emplace_back(std::move(allocator),
                             ordinal_and_device.second->compute_stream());
   }
