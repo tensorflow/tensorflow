@@ -107,7 +107,7 @@ def get_topology_for_devices(devices: List[Device]) -> DeviceTopology:
   ...
 
 
-def make_tpu_client() -> Client:
+def make_tpu_client(library_path: Optional[str]) -> Client:
   ...
 
 
