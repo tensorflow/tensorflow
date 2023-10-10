@@ -384,6 +384,10 @@ message DebugOptions {
   int64 xla_gpu_all_gather_combine_threshold_bytes = 212;
   int64 xla_gpu_reduce_scatter_combine_threshold_bytes = 213;
 
+  // Combine all-gather ops with the same dimension or irrespective of their
+  // dimension.
+  bool xla_gpu_enable_all_gather_combine_by_dim = 254;
+
   // Combine GPU all-reduces into a single operation over a contiguous buffer.
   bool xla_gpu_all_reduce_contiguous = 158;
 
@@ -637,7 +641,7 @@ message DebugOptions {
   // Maximum number of buffers to print when debugging buffer assignment.
   int64 xla_debug_buffer_assignment_show_max = 251;
 
-  // Next id: 254
+  // Next id: 255
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

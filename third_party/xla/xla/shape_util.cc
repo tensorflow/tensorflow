@@ -252,7 +252,7 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
 /* static */ int64_t ShapeUtil::TrueRank(const Shape& shape) {
   int64_t accum = 0;
   for (int64_t dimension : shape.dimensions()) {
-    // We do not count zero dimensions.
+    // We do not count unit dimensions.
     if (dimension != 1) {
       accum += 1;
     }
