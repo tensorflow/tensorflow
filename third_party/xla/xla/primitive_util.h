@@ -219,6 +219,10 @@ constexpr bool IsIntegralType(PrimitiveType type) {
   return IsUnsignedIntegralType(type) || IsSignedIntegralType(type);
 }
 
+constexpr bool Is4BitType(PrimitiveType type) {
+  return type == S4 || type == U4;
+}
+
 // Returns true if values of the given primitive type are held in array shapes.
 inline constexpr bool IsArrayType(PrimitiveType primitive_type) {
   return primitive_type != PRIMITIVE_TYPE_INVALID && primitive_type != TUPLE &&
