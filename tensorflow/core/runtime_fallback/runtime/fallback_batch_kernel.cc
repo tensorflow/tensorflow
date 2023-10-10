@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstdlib>
+#include <optional>
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -130,8 +131,10 @@ BatchFunctionFallbackKernelBase::BatchFunctionFallbackKernelBase(
   if (c->HasAttr("enable_large_batch_splitting")) {
     OP_REQUIRES_OK(c, c->GetAttr("enable_large_batch_splitting",
                                  &enable_large_batch_splitting_));
+    has_attribute_enable_large_batch_splitting_ = true;
   } else {
     enable_large_batch_splitting_ = false;
+    has_attribute_enable_large_batch_splitting_ = false;
   }
 
   if (c->HasAttr("disable_padding")) {

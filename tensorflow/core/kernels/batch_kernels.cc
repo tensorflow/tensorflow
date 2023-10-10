@@ -19,9 +19,11 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/function.h"
@@ -69,23 +71,22 @@ const int64_t kInitialInflightBatches = 2;
 const int64_t kBatchesToAverageOver = 10;
 const int64_t kMaxInflightBatches = 64;
 
-auto* batch_op_split_usage = monitoring::Gauge<string, 1>::New(
-    "/tensorflow/serving/batching/enable_large_batch_splitting",
-    "Tracks the usage of attribute `enable_large_batch_splitting` for "
-    "BatchFunction kernel in a saved model.",
-    "model_name");
-
 void RecordBatchSplitUsage(
-    absl::optional<bool> maybe_enable_large_batch_splitting,
-    const string& model_name) {
+    std::optional<bool> maybe_enable_large_batch_splitting,
+    absl::string_view model_name) {
+  static auto* cell = monitoring::Gauge<std::string, 1>::New(
+      "/tensorflow/serving/batching/enable_large_batch_splitting",
+      "Tracks the usage of attribute `enable_large_batch_splitting` for "
+      "BatchFunction kernel in a saved model.",
+      "model_name");
   if (maybe_enable_large_batch_splitting.has_value()) {
     if (maybe_enable_large_batch_splitting.value()) {
-      batch_op_split_usage->GetCell(model_name)->Set("true");
+      cell->GetCell(std::string(model_name))->Set("true");
     } else {
-      batch_op_split_usage->GetCell(model_name)->Set("false");
+      cell->GetCell(std::string(model_name))->Set("false");
     }
   } else {
-    batch_op_split_usage->GetCell(model_name)->Set("unset");
+    cell->GetCell(std::string(model_name))->Set("unset");
   }
 }
 
