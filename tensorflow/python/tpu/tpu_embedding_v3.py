@@ -58,6 +58,7 @@ from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 _PIPELINE_ATTRIBUTE = "_embedding_pipelining"
 _PIPELINE_MODE_FORWARD = "forward"
@@ -246,6 +247,7 @@ PartitionedCsrFormatTensor = collections.namedtuple(
 
 
 # TODO(b/233952762): Add tests of this version of the mid-level API.
+@tf_export("tpu.experimental.embedding.TPUEmbeddingV2")
 class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
   """The TPUEmbedding mid level API running on TPU with sparse core accelerator."""
 

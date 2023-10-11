@@ -1036,6 +1036,7 @@ py_strict_library(
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_inspect",
         "@absl_py//absl/logging",
     ],
