@@ -781,7 +781,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
         /*combine_threshold_count=*/256);
     pipeline.AddPass<ReduceScatterCombiner>(
         debug_options.xla_gpu_reduce_scatter_combine_threshold_bytes(),
-        /*combine_threshold_count=*/256);
+        /*combine_threshold_count=*/256,
+        debug_options.xla_gpu_enable_reduce_scatter_combine_by_dim());
 
     if (debug_options.xla_gpu_all_reduce_contiguous()) {
       pipeline.AddPass<AllReduceContiguous>();

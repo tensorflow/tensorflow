@@ -112,8 +112,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_all_reduce_combine_threshold_bytes(kDefaultThreshold);
   opts.set_xla_gpu_all_gather_combine_threshold_bytes(kDefaultThreshold);
   opts.set_xla_gpu_reduce_scatter_combine_threshold_bytes(kDefaultThreshold);
-
   opts.set_xla_gpu_enable_all_gather_combine_by_dim(true);
+  opts.set_xla_gpu_enable_reduce_scatter_combine_by_dim(true);
 
   opts.set_xla_gpu_enable_async_collectives(false);
   opts.set_xla_gpu_enable_async_all_reduce(true);
@@ -869,6 +869,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_enable_all_gather_combine_by_dim(),
       "Combine all-gather ops with the same gather dimension or irrespective "
       "of their dimension."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_reduce_scatter_combine_by_dim",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_reduce_scatter_combine_by_dim),
+      debug_options->xla_gpu_enable_reduce_scatter_combine_by_dim(),
+      "Combine reduce-scatter ops with the same dimension or irrespective of "
+      "their dimension."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_all_reduce_contiguous",
       bool_setter_for(&DebugOptions::set_xla_gpu_all_reduce_contiguous),

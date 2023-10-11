@@ -47,7 +47,7 @@ class AllGatherCombiner : public HloModulePass {
   // Combine all gather ops up to this threshold (number of operands).
   int64_t combine_threshold_count_;
 
-  // Combine all-gather ops with the same gather dimension.
+  // Combine only all-gather ops with the same gather dimension.
   bool combine_by_dim_;
 };
 
