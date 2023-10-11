@@ -4107,7 +4107,7 @@ Status AutoShardingImplementation::CanonicalizeLayouts(HloModule* module) {
     TF_RETURN_IF_ERROR(entry_computation_layout.mutable_parameter_layout(i)
                            ->CopyLayoutFromShape(argument_shapes.at(i)));
   }
-  *module->config().mutable_entry_computation_layout() =
+  *module->mutable_config().mutable_entry_computation_layout() =
       entry_computation_layout;
   return OkStatus();
 }
@@ -4674,7 +4674,7 @@ StatusOr<bool> AutoSharding::Run(
         module->ReplaceComputations(computation_replacements);
         module->MoveComputationsFrom(modules[min_mesh_shape_index].get());
 
-        *module->config().mutable_entry_computation_layout() =
+        *module->mutable_config().mutable_entry_computation_layout() =
             modules[min_mesh_shape_index]->entry_computation_layout();
 
         module_is_changed = true;

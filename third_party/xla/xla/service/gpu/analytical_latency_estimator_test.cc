@@ -140,7 +140,7 @@ ENTRY entry {
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
-  hlo_module->config().set_num_partitions(8);
+  hlo_module->mutable_config().set_num_partitions(8);
 
   HloSchedule& module_schedule = hlo_module->schedule();
   EXPECT_TRUE(hlo_module->has_entry_computation());

@@ -344,7 +344,7 @@ StatusOr<std::unique_ptr<HloModule>> TritonGemmAutotuneExtractor(
       AutotunerUtil::ExtractInstructionIntoNewModule(*fusion);
   // Reduce memory usage during compilation by disabling GPU runtime.
   debug_opts.set_xla_gpu_enable_xla_runtime_executable(false);
-  new_module->config().set_debug_options(debug_opts);
+  new_module->mutable_config().set_debug_options(debug_opts);
 
   HloComputation* entry_computation = new_module->entry_computation();
   HloInstruction* cloned_dot_fusion = entry_computation->root_instruction();
@@ -386,7 +386,7 @@ StatusOr<std::unique_ptr<HloModule>> CublasGemmAutotuneExtractor(
       fusion->called_computations().at(0);
   std::unique_ptr<HloModule> new_module =
       AutotunerUtil::ExtractComputationIntoNewModule(*fusion_computation);
-  new_module->config().set_debug_options(debug_opts);
+  new_module->mutable_config().set_debug_options(debug_opts);
 
   GemmRewriter rewriter(config.GetCudaComputeCapability());
   GpuInstructionFusion fusion_pass(

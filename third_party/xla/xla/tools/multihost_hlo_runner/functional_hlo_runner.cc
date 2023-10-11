@@ -720,7 +720,7 @@ ParameterType GetParameterType(const HloModule& module) {
 Status FunctionalHloRunner::PrepareHloModuleForCompilation(
     HloModule* hlo_module, const DebugOptions& debug_options,
     const PreprocessingOptions& preproc_options) {
-  hlo_module->config().set_debug_options(debug_options);
+  hlo_module->mutable_config().set_debug_options(debug_options);
 
   if (preproc_options.is_spmd_partitioned_module()) {
     // If the module has already been partitioned by SPMD, add sharding

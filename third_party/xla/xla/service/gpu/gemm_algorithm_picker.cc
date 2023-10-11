@@ -263,7 +263,7 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
       AutotunerUtil::CreateBuffer(buffer_allocator, output_shape,
                                   autotune_config, rng_state));
 
-  HloModuleConfig& hlo_module_config = gemm->GetModule()->config();
+  HloModuleConfig& hlo_module_config = gemm->GetModule()->mutable_config();
   AutotuneResult best_algorithm;
   if (IsCublasLtMatmul(*gemm)) {
     bool has_matrix_bias = config.beta != 0.;

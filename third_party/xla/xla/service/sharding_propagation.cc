@@ -2843,7 +2843,7 @@ Status ShardingPropagation::CanonicalizeLayouts(HloModule* module) {
   TF_ASSIGN_OR_RETURN(auto layouts,
                       module->layout_canonicalization_callback()(*module));
   Shape& result_shape = layouts.second;
-  TF_RETURN_IF_ERROR(module->config()
+  TF_RETURN_IF_ERROR(module->mutable_config()
                          .mutable_entry_computation_layout()
                          ->mutable_result_layout()
                          ->CopyLayoutFromShape(result_shape));
