@@ -24,6 +24,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 // TODO(b/114492873): Move this include into core/platform.
+#include <optional>
 #include <thread>  // NOLINT
 #include <utility>
 #include <vector>
@@ -946,7 +947,8 @@ class Model {
   // invoke `cancellation_mgr->StartCancel()`.
   Status OptimizeLoop(AutotuneAlgorithm algorithm,
                       std::function<int64_t()> cpu_budget_func,
-                      std::function<int64_t(int64_t)> ram_budget_func,
+                      double ram_budget_share,
+                      std::optional<int64_t> fixed_ram_budget,
                       RamBudgetManager& ram_budget_manager,
                       CancellationManager* cancellation_manager);
 
@@ -954,7 +956,8 @@ class Model {
   // optimization.
   void Optimize(AutotuneAlgorithm algorithm,
                 std::function<int64_t()> cpu_budget_func,
-                std::function<int64_t(int64_t)> ram_budget_func,
+                double ram_budget_share,
+                std::optional<int64_t> fixed_ram_budget,
                 double model_input_time, RamBudgetManager& ram_budget_manager,
                 CancellationManager* cancellation_manager);
 
