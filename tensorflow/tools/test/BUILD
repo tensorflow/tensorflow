@@ -29,7 +29,7 @@ py_strict_library(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client",
+        "//tensorflow/python/client:device_lib",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:gfile",
         "@six_archive//:six",

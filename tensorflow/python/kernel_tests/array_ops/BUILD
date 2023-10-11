@@ -258,7 +258,7 @@ cuda_py_strict_test(
         "no_cuda_asan",  # times out
     ],
     deps = [
-        "//tensorflow/python/client",
+        "//tensorflow/python/client:device_lib",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",

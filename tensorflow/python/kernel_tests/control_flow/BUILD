@@ -64,7 +64,7 @@ cuda_py_strict_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:distributed_framework_test_lib",
         "//tensorflow/python:tf2",
-        "//tensorflow/python/client",
+        "//tensorflow/python/client:device_lib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/data/experimental/ops:cardinality",
         "//tensorflow/python/data/ops:dataset_ops",
