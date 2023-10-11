@@ -340,8 +340,6 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   const Tensor* program_key_t;
   OP_REQUIRES_OK(ctx, ctx->input("program_key", &program_key_t));
   tstring program_key = program_key_t->vec<tstring>()(0);
-  OP_REQUIRES(ctx, !program_key.empty(),
-              absl::FailedPreconditionError("Expected non-empty program key"));
 
   int64_t per_sparse_core_batch_size = sample_count_ / num_sc_per_chip_;
 
@@ -553,8 +551,6 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   const Tensor* program_key_t;
   OP_REQUIRES_OK(ctx, ctx->input("program_key", &program_key_t));
   tstring program_key = program_key_t->vec<tstring>()(0);
-  OP_REQUIRES(ctx, !program_key.empty(),
-              absl::FailedPreconditionError("Expected non-empty program key"));
 
   int32 per_sc_sample_count = sample_count_ / num_sc_per_chip_;
 
@@ -971,8 +967,7 @@ void StoreMinibatchStatisticsInFdoOp::Compute(OpKernelContext* ctx) {
   const Tensor* program_key_t;
   OP_REQUIRES_OK(ctx, ctx->input("program_key", &program_key_t));
   tstring program_key = program_key_t->vec<tstring>()(0);
-  OP_REQUIRES(ctx, !program_key.empty(),
-              absl::FailedPreconditionError("Expected non-empty program key"));
+
   const Tensor* max_ids_t;
   OP_REQUIRES_OK(ctx, ctx->input("max_ids", &max_ids_t));
   int64_t max_ids = max_ids_t->scalar<int64>()();
