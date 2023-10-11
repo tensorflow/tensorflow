@@ -1972,7 +1972,7 @@ XlaOp Zeta(XlaOp x, XlaOp q) {
     // resulting in more numerically stable code.
     for (int i = 0; i < 11; ++i) {
       factor =
-          (x - ScalarLike(x, 22 - 2 * i)) * (x - ScalarLike(x, 21 - 2 * i));
+          (x + ScalarLike(x, 22 - 2 * i)) * (x + ScalarLike(x, 21 - 2 * i));
       horner_sum = factor * a_inverse_square *
                    (horner_sum + ScalarLike(a, 1. / kZetaCoeffs[i]));
     }
