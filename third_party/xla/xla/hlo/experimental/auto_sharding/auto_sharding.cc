@@ -264,10 +264,12 @@ std::unique_ptr<StrategyVector> MaybeFollowInsStrategyVector(
     strategies = CreateTupleStrategyVector(instruction_id);
     strategies->childs.reserve(src_strategies->childs.size());
     for (size_t i = 0; i < src_strategies->childs.size(); ++i) {
-      strategies->childs.push_back(MaybeFollowInsStrategyVector(
+      auto child_strategies = MaybeFollowInsStrategyVector(
           src_strategies->childs[i].get(), shape.tuple_shapes(i),
           instruction_id, have_memory_cost, leaf_strategies, cluster_env,
-          pretrimmed_strategy_map));
+          pretrimmed_strategy_map);
+      child_strategies->tuple_element_idx = i;
+      strategies->childs.push_back(std::move(child_strategies));
     }
   } else {
     CHECK(shape.IsArray() || shape.IsToken());
@@ -335,6 +337,7 @@ StatusOr<std::unique_ptr<StrategyVector>> FollowReduceStrategy(
       if (!child_strategy_status.ok()) {
         return child_strategy_status;
       }
+      child_strategy_status.value()->tuple_element_idx = i;
       strategies->childs.push_back(std::move(child_strategy_status.value()));
     }
   } else if (output_shape.IsArray()) {
@@ -2283,11 +2286,13 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         const StrategyVector* src_strategies =
             strategy_map.at(ins->operand(0)).get();
         for (size_t i = 0; i < ins->shape().tuple_shapes_size(); ++i) {
-          strategies->childs.push_back(MaybeFollowInsStrategyVector(
+          auto child_strategies = MaybeFollowInsStrategyVector(
               src_strategies->childs[i].get(),
               ins->shape().tuple_shapes().at(i), instruction_id,
               /* have_memory_cost= */ true, leaf_strategies, cluster_env,
-              pretrimmed_strategy_map));
+              pretrimmed_strategy_map);
+          child_strategies->tuple_element_idx = i;
+          strategies->childs.push_back(std::move(child_strategies));
         }
 
         break;
