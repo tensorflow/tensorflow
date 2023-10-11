@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/tf_dialect_to_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/clustering_bridge_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/inference/inference_passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stacktrace.h"
@@ -56,24 +57,6 @@ namespace {
 // Name of component for error logging. This name is fixed and required to
 // enable logging.
 constexpr char kBridgeComponent[] = "TFXLABridge";
-
-// Add logger to bridge passmanager.
-// Enable timing statistics per pass for the bridge passmanager.
-void EnableDetailedLogging(PassManager *pm,
-                           llvm::StringRef module_name = llvm::StringRef()) {
-  // Print the whole module after each pass, which requires disabling
-  // multi-threading as well.
-  pm->getContext()->disableMultithreading();
-  pm->enableIRPrinting(std::make_unique<::tensorflow::DataDumperLoggerConfig>(
-      [module_name](const std::string &pass_tag_name, mlir::Operation *op) {
-        return DEBUG_DATA_DUMPER()->GetDumpFilename(
-            module_name.str(), kDebugGroupBridgePhase1Clustering,
-            pass_tag_name);
-      },
-      "",
-      /*print_module_scope=*/true));
-  pm->enableTiming();
-}
 
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {
   pm.addPass(mlir::tf2xla::internal::CreateInferenceMetricsPass());
@@ -143,7 +126,8 @@ tensorflow::Status RunTFXLABridge(
   if (VLOG_IS_ON(2) ||
       DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(),
                                       kDebugGroupBridgePhase1Clustering)) {
-    EnableDetailedLogging(&bridge, module_name);
+    internal::EnablePassIRPrinting(bridge, kDebugGroupBridgePhase1Clustering,
+                                   module_name);
   }
 
   LogicalResult result = bridge.run(module);

@@ -156,6 +156,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
         "//tensorflow/compiler/mlir/tf2xla/internal:clustering_bridge_passes",
+        "//tensorflow/compiler/mlir/tf2xla/internal:logging_hooks",
         "//tensorflow/compiler/mlir/tf2xla/internal/inference:inference_metrics_pass",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
