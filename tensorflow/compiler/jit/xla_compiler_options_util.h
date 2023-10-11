@@ -47,6 +47,15 @@ XlaCompiler::Options GenerateCompilerOptionsForPjRt(
     const DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>*
         pjrt_device_compiler = nullptr);
 
+// Returns created options for XLA compiler when PjRt (Device API) is used for
+// compilation and execution.
+XlaCompiler::Options GenerateCompilerOptionsForPjRt(
+    const FunctionLibraryDefinition* function_library_def,
+    int graph_def_version, const DeviceBase* device_base,
+    const XlaPlatformInfo& platform_info,
+    const DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>*
+        pjrt_device_compiler = nullptr);
+
 // Returns created CompileOptions for XLA compiler.
 XlaCompiler::CompileOptions GenerateCompileOptions(
     bool has_ref_vars, bool may_alias_resource_update);

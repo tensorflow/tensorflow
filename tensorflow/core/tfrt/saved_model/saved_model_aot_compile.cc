@@ -27,12 +27,24 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/compiler/jit/pjrt_device_compiler_client.h"
+#include "tensorflow/compiler/jit/tf_graph_to_hlo_compiler.h"
+#include "tensorflow/compiler/jit/xla_compiler_options_util.h"
+#include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
+#include "xla/pjrt/gpu/se_gpu_pjrt_compiler.h"
+#include "xla/pjrt/pjrt_compiler.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/compiler.h"
+#include "xla/service/gpu/gpu_target_config.h"
+#include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/path.h"
@@ -45,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/saved_model/saved_model_util.h"
 #include "tensorflow/core/tfrt/saved_model/utils/serialize_bef_utils.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
+#include "tensorflow/core/tpu/virtual_device.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system_helper.h"
@@ -226,7 +239,48 @@ StatusOr<AotResult> AotCompileSavedModel(absl::string_view input_model_dir,
   return AotResult{std::move(bef), std::move(xla_functions)};
 }
 
-// TODO(b/294095043): Create a function (ex Status
-// SerializeAotResult(AotResult)) to avoid using temp directories.
+StatusOr<std::unique_ptr<xla::PjRtExecutable>> AotCompileToGpuPjRtExecutable(
+    const FunctionLibraryDefinition* flib_def, const NameAttrList& function,
+    int graph_def_version, const std::vector<XlaCompiler::Argument>& args,
+    bool has_ref_vars, bool may_alias_resource_update,
+    const stream_executor::GpuTargetConfigProto& gpu_target_config,
+    XlaCompiler::CompilationResult** compilation_result) {
+  // Construct a virtual GPU device.
+  DeviceAttributes device_proto;
+  device_proto.set_name("/job:localhost/replica:0/task:0/device:GPU:0");
+  device_proto.set_device_type(DEVICE_GPU);
+  auto device =
+      std::make_unique<VirtualDevice>(tensorflow::Env::Default(), device_proto);
+  const XlaPlatformInfo platform_info(
+      DeviceType(device->device_type()), se::cuda::kCudaPlatformId,
+      /*xla_device_metadata=*/nullptr, /*pjrt_device_metadata=*/nullptr,
+      /*device_allocator=*/nullptr);
 
+  XlaCompiler::Options options = GenerateCompilerOptionsForPjRt(
+      flib_def, graph_def_version, device.get(), platform_info,
+      /*pjrt_device_compiler=*/nullptr);
+  // Set device type correctly so that compilation can find kernels.
+  options.device_type = DeviceType("XLA_GPU_JIT");
+
+  XlaCompiler::CompileOptions compile_options =
+      GenerateCompileOptions(has_ref_vars, may_alias_resource_update);
+
+  TfGraphToHloCompiler compiler(options);
+  auto compilation_status =
+      compiler.Compile(compile_options, function, args, *compilation_result);
+  if ((*compilation_result)->computation == nullptr) {
+    LOG(ERROR) << compilation_status;
+    return compilation_status;
+  }
+
+  xla::gpu::GpuTargetConfig gpu_config(gpu_target_config);
+  xla::StreamExecutorGpuCompiler pjrt_gpu_compiler(gpu_config);
+  // Create a trivial topology, which won't be used.
+  xla::StreamExecutorGpuTopologyDescription topology(
+      xla::CudaId(), xla::CudaName(), "fake_device", {0});
+  const xla::CompileOptions pjrt_options =
+      GetPjRtCompileOptions(options, **compilation_result);
+  return pjrt_gpu_compiler.Compile(
+      pjrt_options, *((*compilation_result)->computation), topology, nullptr);
+}
 }  // namespace tensorflow::tfrt_stub

@@ -74,6 +74,11 @@ class PjRtDeviceCompilerClient
   TF_DISALLOW_COPY_AND_ASSIGN(PjRtDeviceCompilerClient);
 };
 
+// Generates CompileOptions for PJRT compilation.
+xla::CompileOptions GetPjRtCompileOptions(
+    const XlaCompiler::Options& options,
+    const XlaCompiler::CompilationResult& result);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_PJRT_DEVICE_COMPILER_CLIENT_H_

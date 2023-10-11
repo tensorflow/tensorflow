@@ -26,6 +26,7 @@ package_group(
     packages = [
         "//tensorflow/c/...",
         "//tensorflow/compiler/tests/...",
+        "//tensorflow/core/tfrt/saved_model/...",
         "//tensorflow/python/...",
     ],
 )
