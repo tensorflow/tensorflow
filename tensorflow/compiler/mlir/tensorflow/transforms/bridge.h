@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/base/attributes.h"
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/core/lib/core/status.h"
@@ -43,11 +45,15 @@ inline constexpr char kStandardPipelineAfter[] = "standard_pipeline_after";
 // any target specialization. When enable_logging is true, enables
 // tensorflow::BridgeLogger. When enable_inliner is true, enables the inliner
 // pass.
+ABSL_DEPRECATED(
+    "This is legacy code and is unsupported. Use at your own risk. Use "
+    "tf2xla/api/v2/* for specific functionality")
 tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
                                                  bool enable_logging,
                                                  bool enable_inliner);
 
 // Runs all passes for non TPU (GPU and CPU) graph.
+ABSL_DEPRECATED("Use tf2xla::v2::RunFunctionTf2xlaClusteringBridge instead.")
 tensorflow::Status RunTFXLABridge(
     ModuleOp module, llvm::StringRef module_name = llvm::StringRef());
 }  // namespace TF
