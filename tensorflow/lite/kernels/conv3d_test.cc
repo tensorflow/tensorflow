@@ -326,7 +326,7 @@ TEST(PerChannelQuantizedConv3dOpModel, SimpleINT8TestPerChannelQuantized) {
   m.SetFilter({-2, -2, -2, -2, -2, 2, -2, 2, -2, 2,  2,  2, 2, 2,  -2, -2,
                2,  -2, 2,  2,  2,  2, -2, 2, -2, -2, -2, 2, 2, -2, 2,  -2});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 3, 2));
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
@@ -352,7 +352,7 @@ TEST(PerChannelQuantizedConv3dOpModel, AsymmetricINT8TestPerChannelQuantized) {
   m.SetFilter({-2, -2, -2, -2, -2, 2, -2, 2, -2, 2,  2,  2, 2, 2,  -2, -2,
                2,  -2, 2,  2,  2,  2, -2, 2, -2, -2, -2, 2, 2, -2, 2,  -2});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 3, 2));
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
@@ -379,7 +379,7 @@ TEST(PerChannelQuantizedConv3dOpModel, StrideINT8TestPerChannelQuantized) {
   m.SetFilter({-2, -2, -2, -2, -2, 2, -2, 2, -2, 2,  2,  2, 2, 2,  -2, -2,
                2,  -2, 2,  2,  2,  2, -2, 2, -2, -2, -2, 2, 2, -2, 2,  -2});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 2, 2));
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
@@ -407,7 +407,7 @@ TEST(PerChannelQuantizedConv3dOpModel,
   m.SetFilter({-2, -2, -2, -2, -2, 2, -2, 2, -2, 2,  2,  2, 2, 2,  -2, -2,
                2,  -2, 2,  2,  2,  2, -2, 2, -2, -2, -2, 2, 2, -2, 2,  -2});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 2, 2));
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
@@ -437,7 +437,7 @@ TEST(PerChannelQuantizedConv3dOpModel, DilationINT8TestPerChannelQuantized) {
   m.SetFilter({-2, -2, -2, -2, -2, 2, -2, 2, -2, 2,  2,  2, 2, 2,  -2, -2,
                2,  -2, 2,  2,  2,  2, -2, 2, -2, -2, -2, 2, 2, -2, 2,  -2});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 2, 1, 2));
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
@@ -463,7 +463,7 @@ TEST(PerChannelQuantizedConv3dOpModel, BiasINT8TestPerChannelQuantized) {
   m.SetFilter({-2, -2, -2, -2, -2, 2, -2, 2, -2, 2,  2,  2, 2, 2,  -2, -2,
                2,  -2, 2,  2,  2,  2, -2, 2, -2, -2, -2, 2, 2, -2, 2,  -2});
   m.SetBias({1, 2});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 3, 2));
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
@@ -488,7 +488,7 @@ TEST(PerChannelQuantizedConv3dOpModel, SimpleINT16x8TestPerChannelQuantized) {
   m.SetFilter({-2, -2, -2, -2, -2, 2, -2, 2, -2, 2,  2,  2, 2, 2,  -2, -2,
                2,  -2, 2,  2,  2,  2, -2, 2, -2, -2, -2, 2, 2, -2, 2,  -2});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(1, 1, 1, 3, 2));
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
