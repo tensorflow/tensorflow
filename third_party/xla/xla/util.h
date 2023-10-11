@@ -21,7 +21,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <limits>
 #include <memory>
 #include <string>
@@ -30,6 +33,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
@@ -37,13 +41,18 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/math/math_util.h"
+#include "tsl/platform/bfloat16.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"  // IWYU pragma: keep
+#include "tsl/platform/float8.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -378,21 +387,21 @@ bool HasInteriorPadding(const PaddingConfig& config);
 // Imports the templated FloorOfRatio math function from the TensorFlow
 // namespace, as it is very commonly used.
 template <typename T>
-T FloorOfRatio(T dividend, T divisor) {
+constexpr T FloorOfRatio(T dividend, T divisor) {
   return tsl::MathUtil::FloorOfRatio<T>(dividend, divisor);
 }
 
 // Imports the templated CeilOfRatio math function from the TensorFlow
 // namespace, as it is very commonly used.
 template <typename T>
-T CeilOfRatio(T dividend, T divisor) {
+constexpr T CeilOfRatio(T dividend, T divisor) {
   return tsl::MathUtil::CeilOfRatio<T>(dividend, divisor);
 }
 
 // Rounds the value up to a multiple of the divisor by first calling CeilOfRatio
 // then multiplying by the divisor. For example: RoundUpTo(13, 8) => 16
 template <typename T>
-T RoundUpTo(T value, T divisor) {
+constexpr T RoundUpTo(T value, T divisor) {
   return CeilOfRatio(value, divisor) * divisor;
 }
 
@@ -400,7 +409,7 @@ T RoundUpTo(T value, T divisor) {
 // FloorOfRatio then multiplying by the divisor. For example:
 // RoundDownTo(13, 8) => 8
 template <typename T>
-T RoundDownTo(T value, T divisor) {
+constexpr T RoundDownTo(T value, T divisor) {
   return FloorOfRatio(value, divisor) * divisor;
 }
 
@@ -413,7 +422,7 @@ struct DivMod {
 // Divide `dividend` by `divisor` such that the quotient is rounded towards
 // negative infinity. The remainder will have the same sign as `divisor`.
 template <typename T>
-DivMod<T> FloorDivMod(T dividend, T divisor) {
+constexpr DivMod<T> FloorDivMod(T dividend, T divisor) {
   DivMod<T> div_mod;
   div_mod.quotient = FloorOfRatio(dividend, divisor);
   div_mod.modulo = dividend - div_mod.quotient * divisor;
