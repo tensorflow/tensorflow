@@ -38,7 +38,7 @@ void RecordPjrtCompilerCompileComputationStatus(bool is_compiling);
 
 void RecordPjrtCompilerCompileModuleStatus(bool is_compiling);
 
-void RecordFreeGpuSystemMemory(int gpu_id);
+void RecordFreeGpuSystemMemory();
 
 int64_t GetFreeGpuSystemMemory(int gpu_id);
 

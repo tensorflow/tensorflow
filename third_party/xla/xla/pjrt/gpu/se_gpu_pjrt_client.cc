@@ -543,9 +543,7 @@ StreamExecutorGpuClient::Compile(const XlaComputation& computation,
   auto executable = PjRtStreamExecutorClient::Compile(computation, options);
 
 #ifdef GOOGLE_CUDA
-  for (const auto& device : addressable_devices()) {
-    metrics::RecordFreeGpuSystemMemory(device->local_hardware_id());
-  }
+  metrics::RecordFreeGpuSystemMemory();
 #endif  // GOOGLE_CUDA
 
   return executable;
