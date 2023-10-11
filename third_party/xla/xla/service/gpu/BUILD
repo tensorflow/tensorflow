@@ -361,9 +361,9 @@ cc_library(
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ] + if_gpu_is_configured([
         ":triangular_solve_thunk",
-        ":cholesky_thunk",
         ":cublas_lt_matmul_thunk",
         ":ir_emitter_triton",
+        "//xla/service/gpu/runtime3:cholesky_thunk",
     ]),
 )
 
@@ -1018,8 +1018,8 @@ cc_library(
         "@local_tsl//tsl/profiler/lib:scoped_annotation",
         "@local_tsl//tsl/profiler/lib:traceme",
     ] + if_gpu_is_configured([
-        ":cholesky_thunk",
         ":precompiled_kernels",
+        "//xla/service/gpu/runtime3:cholesky_thunk",
         ":triangular_solve_thunk",
     ]) + if_cuda_is_configured([
         "//xla/stream_executor/cuda:cublas_plugin",
@@ -1110,33 +1110,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:statusor",
     ],
-)
-
-# TODO(ezhulenev): Extract `RunCholesky` into a separate library.
-cc_library(
-    name = "cholesky_thunk",
-    srcs = if_gpu_is_configured(["cholesky_thunk.cc"]),
-    hdrs = if_gpu_is_configured(["cholesky_thunk.h"]),
-    visibility = ["//visibility:public"],
-    deps = if_gpu_is_configured([
-        ":buffer_allocations",
-        ":cusolver_context",
-        ":precompiled_kernels",
-        ":thunk",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/service:buffer_assignment",
-        "//xla/hlo/ir:hlo",
-        "@local_tsl//tsl/platform:logging",
-        "//xla/stream_executor",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor/gpu:gpu_asm_opts",
-    ]) + ["@local_tsl//tsl/platform:status"],
 )
 
 # TODO(ezhulenev): Extract `RunTriangularSolve` into a separate library.

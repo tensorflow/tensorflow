@@ -37,8 +37,8 @@ cc_library(
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
         "//xla/service:executable",
-        "//xla/service/gpu:cholesky_thunk",
         "//xla/service/gpu:gpu_asm_opts_util",
+        "//xla/service/gpu/runtime3:cholesky_thunk",
     ],
 )
 
