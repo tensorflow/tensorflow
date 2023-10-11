@@ -187,10 +187,7 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
       filter_width, filter_depth, params->padding, &out_height, &out_width,
       &out_depth);
 
-  // Note that full fixed-point inference requires that all tensors have their
-  // parameters set. This is usually done during quantized training or
-  // calibration.
-  if (input_type != kTfLiteFloat32) {
+  if (input_type == kTfLiteInt8 || input_type == kTfLiteInt16) {
     TF_LITE_ENSURE_EQ(context, filter->quantization.type,
                       kTfLiteAffineQuantization);
     const auto* affine_quantization =
@@ -212,6 +209,7 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
         opdata->per_channel_output_multiplier.data(),
         opdata->per_channel_output_shift.data(), channels_out));
   }
+
   TfLiteIntArray* output_size = TfLiteIntArrayCreate(5);
   output_size->data[0] = batches;
   output_size->data[1] = out_depth;
