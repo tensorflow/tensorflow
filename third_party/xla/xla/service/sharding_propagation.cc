@@ -1687,10 +1687,6 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
   if (!IsSpatiallyPartitioned(&user)) {
     return std::nullopt;
   }
-  if (instruction.opcode() == HloOpcode::kConstant &&
-      user.sharding().IsManual()) {
-    return std::nullopt;
-  }
   const bool may_combine_partial_sharding = is_spmd && aggressiveness > 0;
 
   switch (user.opcode()) {
@@ -1856,13 +1852,18 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
       }
       if (user.shape().IsArray()) {
         // Use ReplicateAllDataDims instead of HloSharding::Replicate() to
-        // preserve manual subgroups.
+        // preserve manual subgroups, but in case it's manual, use
+        // HloSharding::Replicate() instead.
         HloSharding new_sharding =
             instruction.has_sharding()
                 ? instruction.sharding()
                 : HloSharding::SingleTuple(
                       instruction.shape(),
-                      hlo_sharding_util::ReplicateAllDataDims(user.sharding()));
+                      hlo_sharding_util::ReplicateAllDataDims(user.sharding())
+                              .IsManual()
+                          ? HloSharding::Replicate(user.sharding().metadata())
+                          : hlo_sharding_util::ReplicateAllDataDims(
+                                user.sharding()));
         new_sharding.tuple_elements()[sharding_index] = user.sharding();
         return new_sharding;
       } else {
@@ -1875,7 +1876,12 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
                 : HloSharding::SingleTuple(
                       instruction.shape(),
                       hlo_sharding_util::ReplicateAllDataDims(
-                          user.sharding().tuple_elements()[0]));
+                          user.sharding().tuple_elements()[0])
+                              .IsManual()
+                          ? HloSharding::Replicate(
+                                user.sharding().tuple_elements()[0].metadata())
+                          : hlo_sharding_util::ReplicateAllDataDims(
+                                user.sharding().tuple_elements()[0]));
         for (int64_t i = 0; i < user.sharding().tuple_elements().size(); ++i) {
           new_sharding.tuple_elements()[sharding_index + i] =
               user.sharding().tuple_elements()[i];
@@ -2136,9 +2142,7 @@ bool ShardingPropagation::InferShardingFromShardGroup(
     return false;
   }
   // Propagate manual sharding.
-  if (instruction->opcode() != HloOpcode::kConstant &&
-      (!instruction->has_sharding() ||
-       instruction->sharding().IsTileMaximal())) {
+  if (!instruction->has_sharding() || instruction->sharding().IsTileMaximal()) {
     for (const HloInstruction* member : shard_group) {
       if (!member->has_sharding() || !member->sharding().IsManual()) {
         continue;
@@ -2180,12 +2184,16 @@ bool ShardingPropagation::InferShardingFromOperands(
   // Propagate manual sharding. Avoid tuple shaped HLOs that group independent
   // together. Reduce, ReduceWindow, and Sort can be tuples but the elements
   // are correlated, so we propagate manual sharding through them.
+  // For custom-calls with manual operand, the default propagation logic will
+  // just assign manual to the whole custom-call.
   if ((!instruction->has_sharding() ||
        instruction->sharding().IsTileMaximal()) &&
       (instruction->shape().IsArray() ||
        instruction->opcode() == HloOpcode::kReduce ||
        instruction->opcode() == HloOpcode::kSort ||
-       instruction->opcode() == HloOpcode::kReduceWindow)) {
+       instruction->opcode() == HloOpcode::kReduceWindow ||
+       (instruction->opcode() == HloOpcode::kCustomCall &&
+        instruction->shape().IsTuple()))) {
     for (const HloInstruction* op : instruction->operands()) {
       if (!op->has_sharding() || !op->sharding().IsManual()) continue;
       // Do not pass through manual sharding to SPMDShardToFullShape.
@@ -2739,6 +2747,7 @@ bool ShardingPropagation::InferShardingFromUsers(
     int64_t aggressiveness, bool is_spmd,
     const CustomCallShardingHelper* sharding_helper,
     const CallGraph& call_graph) {
+  const bool may_combine_partial_sharding = is_spmd && aggressiveness > 0;
   if (aggressiveness < 2 && instruction->opcode() == HloOpcode::kBroadcast) {
     return false;
   }
@@ -2747,24 +2756,47 @@ bool ShardingPropagation::InferShardingFromUsers(
     return false;
   }
   // Propagate manual sharding.
-  if (instruction->opcode() != HloOpcode::kConstant &&
-      (!instruction->has_sharding() ||
-       instruction->sharding().IsTileMaximal())) {
-    for (const HloInstruction* user : instruction->users()) {
-      if (!user->has_sharding() || user->IsCustomCall("SPMDFullToShardShape"))
-        continue;
-      if (instruction->shape().IsArray() && user->sharding().IsManual()) {
+  if (instruction->opcode() != HloOpcode::kConstant) {
+    if (instruction->shape().IsArray() &&
+        (!instruction->has_sharding() ||
+         instruction->sharding().IsTileMaximal())) {
+      for (const HloInstruction* user : instruction->users()) {
+        if (!user->has_sharding() || !user->sharding().IsManual() ||
+            user->IsCustomCall("SPMDFullToShardShape")) {
+          continue;
+        }
         instruction->set_sharding(
             HloSharding::Manual(user->sharding().metadata()));
         return true;
-      } else {
+      }
+    } else if (instruction->shape().IsTuple()) {
+      bool changed = false;
+      for (const HloInstruction* user : instruction->users()) {
+        if (user->IsCustomCall("SPMDFullToShardShape")) {
+          continue;
+        }
+        // For tuple-shaped ops, propagate the manual subsharding in parallel
+        // position one at a time.
         std::optional<HloSharding> user_sharding =
             ShardingPropagation::GetShardingFromUser(
                 *instruction, *user, aggressiveness, is_spmd, call_graph);
-        if (user_sharding && user_sharding->IsManual()) {
-          instruction->set_sharding(*user_sharding);
-          return true;
+        if (user_sharding.has_value()) {
+          ShapeTree<HloSharding> sharding_shape_tree =
+              user_sharding.value().GetAsShapeTree(instruction->shape());
+          for (auto iter = sharding_shape_tree.leaf_begin();
+               iter != sharding_shape_tree.leaf_end(); ++iter) {
+            const ShapeIndex& shape_index = iter->first;
+            const HloSharding& sub_sharding = iter->second;
+            if (sub_sharding.IsManual()) {
+              changed |= MaybeImproveInstructionSubSharding(
+                  sub_sharding, instruction, shape_index,
+                  may_combine_partial_sharding);
+            }
+          }
         }
+      }
+      if (changed) {
+        return true;
       }
     }
   }
@@ -2776,16 +2808,10 @@ bool ShardingPropagation::InferShardingFromUsers(
     return false;
   }
   bool improved_sharding = false;
-  const bool may_combine_partial_sharding = is_spmd && aggressiveness > 0;
   for (const HloInstruction* user : instruction->users()) {
     std::optional<HloSharding> user_sharding =
         ShardingPropagation::GetShardingFromUser(
             *instruction, *user, aggressiveness, is_spmd, call_graph);
-    // Do not propagate manual sharding to constant from partially manual tuple.
-    if (instruction->opcode() == HloOpcode::kConstant && user_sharding &&
-        user_sharding->IsManual()) {
-      continue;
-    }
     if (user_sharding && instruction->opcode() == HloOpcode::kCustomCall) {
       if (auto* partitioner =
               GetCustomCallPartitioner(instruction->custom_call_target())) {

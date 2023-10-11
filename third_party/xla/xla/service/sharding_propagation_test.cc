@@ -19,9 +19,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
+#include "xla/hlo/transforms/hlo_constant_splitter.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/protobuf_util.h"
 #include "xla/service/hlo_dce.h"
@@ -1218,9 +1220,10 @@ ENTRY %entry {
   auto* tuple = module->entry_computation()->root_instruction()->operand(0);
   ASSERT_NE(tuple, nullptr);
   // Check that the sharding on param1 is not replicated on tuple element[1].
-  EXPECT_THAT(tuple, op::Sharding("{{replicated}, {manual}, {manual}}"));
+  EXPECT_THAT(tuple, op::Sharding("{{manual}, {manual}, {manual}}"));
   if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
-    EXPECT_THAT(tuple->sharding().tuple_elements()[0], ShardingMetadata({}));
+    EXPECT_THAT(tuple->sharding().tuple_elements()[0],
+                ShardingMetadata({CreateMetadata("a")}));
     EXPECT_THAT(tuple->sharding().tuple_elements()[1],
                 ShardingMetadata({CreateMetadata("a")}));
     EXPECT_THAT(tuple->sharding().tuple_elements()[2],
@@ -9040,6 +9043,75 @@ ENTRY %entry {
   EXPECT_THAT(instruction, op::Sharding("{manual}"));
 }
 
+TEST_F(ShardingPropagationTest, ManualTuple) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%add {
+  %lhs = f32[] parameter(0)
+  %rhs = f32[] parameter(1)
+  ROOT %add = f32[] add(%lhs, %rhs)
+}
+
+ENTRY %entry {
+  %param0 = f32[6,3] parameter(0)
+  %copy = f32[6,3] copy(%param0), sharding={devices=[2,1]0,1}
+  %annotate = f32[6,3] custom-call(%copy), custom_call_target="Sharding",
+    sharding={devices=[2,1]0,1}
+  %to_manual = f32[3,3] custom-call(%annotate),
+    custom_call_target="SPMDFullToShardShape", sharding={manual}
+  %constant = f32[3,3] constant({{0,1,2},{3,4,5},{6,7,8}})
+  %t = (f32[3,3],f32[3,3]) tuple(%to_manual, %constant)
+  %gte = f32[3,3] get-tuple-element(%t), index=0
+  %to_auto = f32[3,3] custom-call(%gte),
+    custom_call_target="SPMDShardToFullShape", sharding={devices=[2,1]0,1}
+  ROOT %copy.2 = f32[3,3] copy(%to_auto)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "t");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{{manual},{replicated}}"));
+  instruction = FindInstruction(module.get(), "gte");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{manual}"));
+}
+
+TEST_F(ShardingPropagationTest, DefaultManualCustomCallForward) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[6,3]{1,0} parameter(0),
+    sharding={manual metadata={op_name="a"}}
+  %copy = f32[6,3]{1,0} copy(%param0)
+  %param1 = f32[6,3]{1,0} parameter(1)
+  %copy.1 = f32[6,3]{1,0} copy(%param1)
+  %param2 = f32[6,3]{1,0} parameter(2)
+  %copy.2 = f32[6,3]{1,0} copy(%param2)
+  %custom-call = (f32[], f32[6,3]{1,0}) custom-call(%copy, %copy.1, %copy.2), custom_call_target="some_custom_call"
+  ROOT %copy.3 = (f32[], f32[6,3]{1,0}) copy(%custom-call)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "custom-call");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction, op::Sharding("{{manual},{manual}}"));
+}
+
 TEST_F(ShardingPropagationTest, RefineUnspecifiedDims) {
   const char* const hlo_string = R"(
 HloModule module
@@ -9206,7 +9278,7 @@ ENTRY %entry {
   EXPECT_FALSE(spmd_shard_to_full->sharding().IsManual());
 }
 
-TEST_F(ShardingPropagationTest, DoNotPassManualShardingThroughConstant) {
+TEST_F(ShardingPropagationTest, ManualShardingPassThroughSplitConstant) {
   const char* const hlo_string = R"(
 HloModule module
 
@@ -9224,16 +9296,25 @@ ENTRY %entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK_AND_ASSIGN(
+      bool is_split,
+      HloConstantSplitter(/*split_expressions=*/true).Run(module.get()));
+  EXPECT_TRUE(is_split);
+  TF_ASSERT_OK_AND_ASSIGN(auto _, HloDCE().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
       ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
           .Run(module.get()));
   XLA_VLOG_LINES(1, module->ToString());
   // Sharding op is changed to a copy.
   EXPECT_TRUE(changed);
-  HloInstruction* constant = FindInstruction(module.get(), "constant");
-  EXPECT_FALSE(constant->sharding().IsManual());
-  HloInstruction* add1 = FindInstruction(module.get(), "add.1");
-  EXPECT_FALSE(add1->sharding().IsManual());
+  const HloInstruction* add0 = FindInstruction(module.get(), "add.0");
+  const HloInstruction* manual_constant = add0->operand(0);
+  EXPECT_TRUE(manual_constant->IsConstant() &&
+              manual_constant->sharding().IsManual());
+  const HloInstruction* add1 = FindInstruction(module.get(), "add.1");
+  const HloInstruction* replicate_constant = add1->operand(0);
+  EXPECT_TRUE(replicate_constant->IsConstant() &&
+              replicate_constant->sharding().IsReplicated());
 }
 
 TEST_F(ShardingPropagationTest, ReshapeNoMatchSubgroupManual) {
