@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_asm_opts_util.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logger.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/util/proto/proto_utils.h"
 
@@ -169,8 +171,7 @@ StatusOr<AutotuneResult> GetBestAlgorithm(
   LOG(WARNING) << "Failed to find best cuBLAS algorithm, GEMM performance "
                   "might be suboptimal: "
                << best.status();
-  best->clear_gemm();
-  return best;
+  return AutotuneResult{};
 }
 
 // Select the best algorithm using information from a Blas instruction.
@@ -324,28 +325,27 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
     std::vector<se::blas::AlgorithmType> algorithms;
     TF_RET_CHECK(stream->parent()->GetBlasGemmAlgorithms(stream, &algorithms));
 
-    TF_ASSIGN_OR_RETURN(best_algorithm,
-                        GetBestBlasAlgorithm(
-                            stream, buffer_allocator, gemm->ToString(),
-                            autotune_config, lhs_buffer, rhs_buffer,
-                            output_buffer, algorithms, output_shape,
-                            hlo_module_config, gemm_config.beta(),
-                            [&](const se::blas::AlgorithmType& algorithm)
-                                -> StatusOr<se::blas::ProfileResult> {
-                              se::blas::ProfileResult profile_result;
-                              // We expect GemmWithAlgorithm to fail sometimes
-                              // -- in fact, it will fail for all algorithms if
-                              // we're targeting < sm_50.  But because we pass a
-                              // non-null ProfileResult, DoGemmWithAlgorithm
-                              // should always return true, and the actual
-                              // success-ness is returned in
-                              // ProfileResult::is_valid.
-                              TF_RETURN_IF_ERROR(
-                                  RunGemm(config, lhs_buffer, rhs_buffer,
-                                          output_buffer, deterministic_ops,
-                                          stream, algorithm, &profile_result));
-                              return std::move(profile_result);
-                            }));
+    TF_ASSIGN_OR_RETURN(
+        best_algorithm,
+        GetBestBlasAlgorithm(
+            stream, buffer_allocator, gemm->ToString(), autotune_config,
+            lhs_buffer, rhs_buffer, output_buffer, algorithms, output_shape,
+            hlo_module_config, gemm_config.beta(),
+            [&](const se::blas::AlgorithmType& algorithm)
+                -> StatusOr<se::blas::ProfileResult> {
+              se::blas::ProfileResult profile_result;
+              // We expect GemmWithAlgorithm to fail sometimes
+              // -- in fact, it will fail for all algorithms if
+              // we're targeting < sm_50.  But because we pass a
+              // non-null ProfileResult, DoGemmWithAlgorithm
+              // should always return true, and the actual
+              // success-ness is returned in
+              // ProfileResult::is_valid.
+              TF_RETURN_IF_ERROR(RunGemm(config, lhs_buffer, rhs_buffer,
+                                         output_buffer, deterministic_ops,
+                                         stream, algorithm, &profile_result));
+              return std::move(profile_result);
+            }));
     if (best_algorithm.has_gemm()) {
       int alg_idx = best_algorithm.gemm().algorithm();
       best_algorithm.mutable_gemm()->set_algorithm(algorithms[alg_idx]);
