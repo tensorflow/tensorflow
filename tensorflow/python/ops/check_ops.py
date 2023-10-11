@@ -1942,6 +1942,12 @@ def _get_diff_for_monotonic_comparison(x):
   is_shorter_than_two = math_ops.less(array_ops.size(x), 2)
   short_result = lambda: ops.convert_to_tensor([], dtype=x.dtype)
 
+  # If x is insigned then cast into signed to avoid overflow.
+  # For example overflow always makes  math.is_non_decreasing to True.
+  # Below code avoids it.
+  if x.dtype in [dtypes.uint8, dtypes.uint16, dtypes.uint32, dtypes.uint64]:
+    x = math_ops.cast(x,dtype=dtypes.int64)
+  
   # With 2 or more elements, return x[1:] - x[:-1]
   s_len = array_ops.shape(x) - 1
   diff = lambda: array_ops.strided_slice(x, [1], [1] + s_len)- array_ops.strided_slice(x, [0], s_len)
