@@ -29,7 +29,12 @@ teardown_file() {
 
 @test "Wheel is manylinux2014 (manylinux_2_17) compliant" {
     python3 -m auditwheel show "$TF_WHEEL" > audit.txt
-    grep --quiet 'This constrains the platform tag to "manylinux_2_17_x86_64"' audit.txt
+    # Verify wheel based upon name/architecture, fallback to x86
+    if [[ $TF_WHEEL == *"aarch64.whl" ]]; then
+        grep --quiet -zoP 'is consistent with the following platform tag:\n"manylinux_2_17_aarch64"\.' audit.txt
+    else
+        grep --quiet 'This constrains the platform tag to "manylinux_2_17_x86_64"' audit.txt
+    fi
 }
 
 @test "Wheel conforms to upstream size limitations" {
