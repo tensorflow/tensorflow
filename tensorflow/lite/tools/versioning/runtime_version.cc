@@ -15,6 +15,9 @@ limitations under the License.
 #include "tensorflow/lite/tools/versioning/runtime_version.h"
 
 #include <cstring>
+#include <map>
+#include <string>
+#include <utility>
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
@@ -396,7 +399,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
            {{BuiltinOperator_CALL_ONCE, 1}, "2.5.0"},
            {{BuiltinOperator_RFFT2D, 1}, "2.5.0"},
            {{BuiltinOperator_CONV_3D, 1}, "2.5.0"},
-           {{BuiltinOperator_CONV_3D, 2}, "2.12.0"},
+           {{BuiltinOperator_CONV_3D, 2}, "2.15.0"},
            {{BuiltinOperator_IMAG, 1}, "2.5.0"},
            {{BuiltinOperator_REAL, 1}, "2.5.0"},
            {{BuiltinOperator_COMPLEX_ABS, 1}, "2.5.0"},
