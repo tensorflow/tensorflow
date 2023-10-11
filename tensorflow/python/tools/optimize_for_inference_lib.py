@@ -685,25 +685,29 @@ def convert_placeholder_to_const(input_graph_def, nodes_to_convert=None):
 
   result_graph_def = graph_pb2.GraphDef()
   for node in input_graph_def.node:
+    is_replaced = False
     new_node = node_def_pb2.NodeDef()
+    if ((node.op == "PlaceholderWithDefault" or node.op == "Placeholder")):
+      match_key = [find_key for find_key in dict_to_change.keys()
+                     if find_key in node.name]
+      if len(match_key) > 0:
+        if dtypes.bool.as_datatype_enum == node.attr['dtype'].type:
+          new_val_str =  dict_to_change[match_key[0]]
+          new_node.op = "Const"
+          new_node.name = node.name
+          new_node.attr["dtype"].CopyFrom(node.attr["dtype"])
+          new_node.attr["value"].CopyFrom(
+              attr_value_pb2.AttrValue(tensor=tensor_util.make_tensor_proto(
+                  strtobool(new_val_str), dtype=dtypes.bool,shape=[])))
+          is_replaced = True
+        else:
+          tf_logging.warning("Not converting to Const. Currently only bool \
+            PlaceholderWithDefault or Placeholder can be converted to const. \
+            current dtype = ", node.attr['dtype'])
 
-    if ((node.op == "PlaceholderWithDefault" or node.op == "Placeholder") and
-      node.name in dict_to_change.keys()):
-      if dtypes.bool.as_datatype_enum == node.attr['dtype'].type:
-        new_val_str = dict_to_change[node.name]
-        new_node.op = "Const"
-        new_node.name = node.name
-        new_node.attr["dtype"].CopyFrom(node.attr["dtype"])
-        new_node.attr["value"].CopyFrom(
-            attr_value_pb2.AttrValue(tensor=tensor_util.make_tensor_proto(
-                strtobool(new_val_str), dtype=dtypes.bool,shape=[])))
-      else:
-        tf_logging.warning("Not converting to Const. Currently only bool \
-          PlaceholderWithDefault or Placeholder can be converted to const. \
-          current dtype = ", node.attr['dtype'].type)
-        new_node.CopyFrom(node)
-    else:
+    if not is_replaced:
       new_node.CopyFrom(node)
 
     result_graph_def.node.extend([new_node])
   return result_graph_def
+
