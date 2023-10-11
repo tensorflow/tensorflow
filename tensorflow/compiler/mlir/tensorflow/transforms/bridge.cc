@@ -126,8 +126,6 @@ tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
 
 namespace TF {
 
-void NoCanonicalization(OpPassManager &pm) {}
-
 tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
                                                  bool enable_logging,
                                                  bool enable_inliner) {
@@ -156,79 +154,7 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
 }
 
 void CreateTFXLABridgePipeline(OpPassManager &pm) {
-  // The following ops must be preserved regardless of reachability. Ideally,
-  // all graphs should have control dependencies to enforce this.
-  VLOG(2) << "Create TF XLA Bridge pipeline";
-  pm.addNestedPass<func::FuncOp>(
-      TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
-  // This pass expectes unified compilation markers.
-  pm.addPass(TFDevice::CreateXlaValidateInputsPass());
-  const llvm::SmallVector<std::string, 4> ops_to_preserve = {};
-  pm.addNestedPass<func::FuncOp>(
-      tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));
-  // It is assumed at this stage there are no V1 control flow ops as Graph
-  // functionalization is ran before import. Ops can be lifted out of
-  // tf_executor dialect islands/graphs.
-  pm.addNestedPass<func::FuncOp>(
-      CreateExecutorDialectToFunctionalConversionPass());
-  // Guarantee all functions have one use, which enables more exact shape
-  // inference.
-  pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
-  pm.addPass(TF::CreateTFShapeInferencePass());
-  // Encapsulate PartitionedCall ops within a cluster so that the composite
-  // resource ops can be decomposed.
-  pm.addPass(TFDevice::CreateXlaClusterFormationPass());
-  // Running canonicalizer before decomposing resource ops in cluster helps the
-  // latter pass to converge faster as it does not have to spend time folding
-  // away dead ops.
-  pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
-  // Decompose resource ops.
-  pm.addPass(TFDevice::CreateDecomposeResourceOpsInClusterPass());
-  // TODO(b/267193636): Remove this flag when outside compilation
-  // for generic pipeline is landed.
-  if (tensorflow::GetMlirCommonFlags()
-          ->tf_mlir_enable_generic_outside_compilation) {
-    pm.addPass(TF::CreateTFFunctionalControlFlowToRegions());
-  }
-  // Run another shape inference pass because resource decomposition might have
-  // created new partial types. Also, after dropping `shape_invariant` attribute
-  // from While/WhileRegion ops within cluster would lead to more precise
-  // shapes.
-  pm.addPass(TF::CreateTFShapeInferencePass());
-  pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
-  // Inline all the function calls. Do not call canonicalizer to prevent it from
-  // moving the definition of any constant operand of ops within a cluster to
-  // its outside. This may cause the op to fail to verify after the cluster is
-  // outlined, as the constant operand is replaced by an argument.
-  pm.addPass(mlir::createInlinerPass({}, NoCanonicalization));
-  // Lift resource operations out of device computation. This step needs to be
-  // done after inlining.
-  pm.addPass(TFDevice::CreateResourceOpLiftingPass());
-  // TODO(b/267193636): Remove this flag when outside compilation
-  // for generic pipeline is landed.
-  if (tensorflow::GetMlirCommonFlags()
-          ->tf_mlir_enable_generic_outside_compilation) {
-    pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
-    pm.addPass(TFDevice::CreateExtractHeadTailOutsideCompilationPass());
-    pm.addPass(TFDevice::CreateExtractOutsideCompilationPass());
-  }
-  // Outline clusters into cluster functions.
-  pm.addPass(TFDevice::CreateClusterOutliningPass());
-  // Rewrite cluster functions into XLA  launch ops.
-  if (tensorflow::GetMlirCommonFlags()
-          ->tf_mlir_enable_generic_outside_compilation) {
-    pm.addPass(TFDevice::CreateXlaRewriteV2Pass());
-  } else {
-    pm.addPass(TFDevice::CreateXlaRewritePass());
-  }
-  // Re-run the canonicalizer pass as some cleanup during resource op lifting
-  // pass opens up some opportunities for canonicalization of cluster ops.
-  // Specifically, we want to eliminate pass through results from the cluster
-  // op.
-  pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
-
-  pm.addNestedPass<func::FuncOp>(createCSEPass());
-  pm.addPass(createSymbolDCEPass());
+  tensorflow::tf2xla::internal::AddNonTPUBridgeClusteringPipelinePasses(pm);
 }
 
 tensorflow::Status RunTFXLABridge(ModuleOp module,
@@ -240,7 +166,8 @@ tensorflow::Status RunTFXLABridge(ModuleOp module,
   Status status = mlir::TFTPU::RunTFXLABridge(
       module,
       [](OpPassManager &pm) {
-        CreateTFXLABridgePipeline(pm);
+        tensorflow::tf2xla::internal::AddNonTPUBridgeClusteringPipelinePasses(
+            pm);
       },
       module_name);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(

@@ -31,6 +31,13 @@ TEST(ClusteringBridgePassesTest, AddsBridgePasses) {
   EXPECT_EQ(pass_manager.size(), 54);
 }
 
+TEST(ClusteringBridgePassesTest, AddsNonTPUBridgePasses) {
+  OpPassManager pass_manager;
+  AddNonTPUBridgeClusteringPipelinePasses(pass_manager);
+
+  EXPECT_EQ(pass_manager.size(), 18);
+}
+
 };  // namespace internal
 };  // namespace tf2xla
 };  // namespace tensorflow
