@@ -150,8 +150,8 @@ struct StrategyVector {
   // Used when is_tuple == True. A vector of pointers, each pointer is one
   // StrategyVector for one value in the output Tuple
   std::vector<std::unique_ptr<StrategyVector>> childs;
-  // The index of this instruction in the HLO operand list.
-  std::optional<int64_t> operand_idx;
+  // The index of this instruction in the HLO operand (or tuple shape) list.
+  std::optional<int64_t> tuple_element_idx;
 
   std::string ToString(size_t indention = 0) const {
     std::string str;
