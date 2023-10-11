@@ -882,15 +882,19 @@ inline void RunIfBoxIndexIsValid<GPUDevice>(
   TensorReference isvalid_dev_ref(isvalid_dev_tensor);
   auto wrapped_callback = [context, isvalid_host_tensor, isvalid_dev_ref,
                            compute, done]() {
-    auto stream = context->op_device_context()->stream();
-    ScopedActivateExecutorContext scoped_activation{stream->parent()};
-    const bool isvalid = isvalid_host_tensor.scalar<bool>()();
-    isvalid_dev_ref.Unref();
-    OP_REQUIRES_ASYNC(
-        context, isvalid,
-        errors::OutOfRange("box_index has values outside [0, batch_size)"),
-        done);
-    compute();
+    {
+      auto stream = context->op_device_context()->stream();
+      ScopedActivateExecutorContext scoped_activation{stream->parent()};
+      const bool isvalid = isvalid_host_tensor.scalar<bool>()();
+      isvalid_dev_ref.Unref();
+      OP_REQUIRES_ASYNC(
+          context, isvalid,
+          errors::OutOfRange("box_index has values outside [0, batch_size)"),
+          done);
+      compute();
+    }  // Release ScopedActivateExecutorContext to prevent deadlock when done
+       // inlines another Op kernel, which may assume the original cuda Context.
+
     done();
   };
 
