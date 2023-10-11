@@ -624,6 +624,12 @@ absl::Status CLArguments::Bind(cl_kernel kernel, int offset) {
   return absl::OkStatus();
 }
 
+bool CLArguments::HasEqualScalarArguments(const CLArguments& other) const {
+  return (other.int_values_ == int_values_ &&
+          other.float_values_ == float_values_ &&
+          other.half_values_ == half_values_);
+}
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

@@ -16,6 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SNAPSHOT_UTILS_H_
 #define TENSORFLOW_CORE_DATA_SNAPSHOT_UTILS_H_
 
+#include <cstdint>
+#include <deque>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -28,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
 
 namespace tensorflow {
 
@@ -68,7 +78,7 @@ std::string ShardDirectory(const std::string& run_directory, int64_t shard_id);
 
 // Returns the checkpoint file name for the given directory and checkpoint ID.
 std::string GetCheckpointFileName(const std::string& shard_directory,
-                                  const uint64 checkpoint_id);
+                                  uint64 checkpoint_id);
 
 // This is a interface class that exposes snapshot writing functionality.
 class Writer {
@@ -89,7 +99,7 @@ class Writer {
   // be invalid after this call.
   virtual Status Close() = 0;
 
-  virtual ~Writer() {}
+  virtual ~Writer() = default;
 
  protected:
   virtual Status Initialize(tensorflow::Env* env) = 0;
@@ -101,6 +111,8 @@ class TFRecordWriter : public Writer {
   TFRecordWriter(const std::string& filename,
                  const std::string& compression_type);
 
+  Status Initialize(tensorflow::Env* env) override;
+
   Status WriteTensors(const std::vector<Tensor>& tensors) override;
 
   Status Sync() override;
@@ -108,9 +120,6 @@ class TFRecordWriter : public Writer {
   Status Close() override;
 
   ~TFRecordWriter() override;
-
- protected:
-  Status Initialize(tensorflow::Env* env) override;
 
  private:
   const std::string filename_;
@@ -215,8 +224,11 @@ class Reader {
                                   const string& compression_type, int version,
                                   const DataTypeVector& dtypes,
                                   const std::vector<PartialTensorShape>& shapes,
-                                  const int64_t start_index,
-                                  DatasetBase** output);
+                                  int64_t start_index, DatasetBase** output);
+
+  // Returns a nested dataset for the given datasets.
+  static void MakeNestedDataset(const std::vector<DatasetBase*>& datasets,
+                                DatasetBase** output);
 
   // Reads a vector of Tensors from the snapshot file.
   virtual Status ReadTensors(std::vector<Tensor>* read_tensors) = 0;
@@ -225,7 +237,7 @@ class Reader {
   // times then discarding the results.
   virtual Status SkipRecords(int64_t num_records);
 
-  virtual ~Reader() {}
+  virtual ~Reader() = default;
 
  protected:
   virtual Status Initialize(Env* env) = 0;
@@ -234,26 +246,59 @@ class Reader {
   class NestedDataset;
 };
 
-// Reads snapshots previously written with `TFRecordWriter`.
-class TFRecordReader : public Reader {
+class TFRecordReaderImpl {
  public:
-  TFRecordReader(const std::string& filename, const string& compression_type,
-                 const DataTypeVector& dtypes);
+  // Constructs a `TFRecordReaderImpl`.
+  // `filename` is the file to read from.
+  // `compression_type` is the compression method, as defined in
+  // tensorflow/tsl/lib/io/compression.h.
+  // `output_buffer_size` specifies the buffer size required by Snappy/Zlib
+  // compression algorithms. Ignored if compression is not enabled.
+  TFRecordReaderImpl(const std::string& filename, const string& compression,
+                     std::optional<int64_t> output_buffer_size = std::nullopt);
 
-  Status ReadTensors(std::vector<Tensor>* read_tensors) override;
+  // Initializes the reader. Callers must initialize the reader before calling
+  // `GetNext` or `GetTensors`.
+  Status Initialize(Env* env);
 
-  ~TFRecordReader() override {}
+  // Reads the next Tensor in the input file.
+  StatusOr<Tensor> GetNext();
 
- protected:
-  Status Initialize(Env* env) override;
+  // Reads all Tensors in the input file.
+  StatusOr<std::vector<Tensor>> GetTensors();
 
  private:
+  // Parses `record` into a Tensor.
+  StatusOr<Tensor> Parse(const tstring& record);
+
   std::string filename_;
   std::unique_ptr<RandomAccessFile> file_;
   std::unique_ptr<io::RecordReader> record_reader_;
-  uint64 offset_;
+  uint64_t offset_;
 
-  const string compression_type_;
+  const string compression_;
+  const std::optional<int64_t> output_buffer_size_;
+};
+
+// Reads snapshots previously written with `TFRecordWriter`.
+class TFRecordReader : public Reader {
+ public:
+  TFRecordReader(const std::string& filename, const string& compression,
+                 const DataTypeVector& dtypes,
+                 std::optional<int64_t> output_buffer_size = std::nullopt)
+      : reader_impl_(filename, compression, output_buffer_size),
+        dtypes_(dtypes) {}
+
+  // Initializes the reader. Callers must initialize the reader before calling
+  // `ReadTensors`.
+  Status Initialize(Env* env) override { return reader_impl_.Initialize(env); }
+
+  // Reads Tensors into `read_tensors`. Returns OK on success, OutOfRange for
+  // end of file, or an error status if there is an error.
+  Status ReadTensors(std::vector<Tensor>* read_tensors) override;
+
+ private:
+  TFRecordReaderImpl reader_impl_;
   const DataTypeVector dtypes_;
 };
 
@@ -276,11 +321,11 @@ class CustomReader : public Reader {
   static constexpr const char* const kSeparator = "::";
 
   CustomReader(const std::string& filename, const string& compression_type,
-               const int version, const DataTypeVector& dtypes);
+               int version, const DataTypeVector& dtypes);
 
   Status ReadTensors(std::vector<Tensor>* read_tensors) override;
 
-  ~CustomReader() override {}
+  ~CustomReader() override = default;
 
  protected:
   Status Initialize(Env* env) override;
@@ -315,9 +360,24 @@ class CustomReader : public Reader {
 Status WriteMetadataFile(Env* env, const string& dir,
                          const experimental::SnapshotMetadataRecord* metadata);
 
+// Writes distributed snapshot metadata to the given directory. An error is
+// returned if `dir` is unable to be created or if `metadata` is unable to be
+// written.
+Status WriteMetadataFile(
+    Env* env, const string& dir,
+    const experimental::DistributedSnapshotMetadata* metadata);
+
 // Reads snapshot metadata from the given directory.
 Status ReadMetadataFile(Env* env, const string& dir,
                         experimental::SnapshotMetadataRecord* metadata,
+                        bool* file_exists);
+
+// Reads distributed snapshot metadata from the given directory. If the file
+// doesn't exist in `dir`, `file_exists` is set to true and an ok status is
+// returned. If the file exists in `dir` but is unable to be opened, an error
+// is returned.
+Status ReadMetadataFile(Env* env, const string& dir,
+                        experimental::DistributedSnapshotMetadata* metadata,
                         bool* file_exists);
 
 // Writes a dataset graph to the given directory.
@@ -326,8 +386,7 @@ Status DumpDatasetGraph(Env* env, const std::string& path, uint64 hash,
 
 Status DetermineOpState(const std::string& mode_string, bool file_exists,
                         const experimental::SnapshotMetadataRecord* metadata,
-                        const uint64 pending_snapshot_expiry_seconds,
-                        Mode* mode);
+                        uint64 pending_snapshot_expiry_seconds, Mode* mode);
 
 // Represents a dataset element or EOF.
 struct ElementOrEOF {

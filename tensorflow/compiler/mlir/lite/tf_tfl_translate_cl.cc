@@ -124,7 +124,7 @@ opt<bool> unfold_batchmatmul(
     "unfold_batchmatmul",
     llvm::cl::desc(
         "Whether to unfold TF BatchMatMul to a set of TFL FullyConnected ops."),
-    llvm::cl::init(true));
+    llvm::cl::init(false));
 
 // NOLINTNEXTLINE
 opt<bool> unfold_large_splat_constant(
@@ -175,4 +175,31 @@ opt<bool> preserve_assert_op(
 opt<bool> enable_stablehlo_conversion(
     "enable-stablehlo-conversion",
     llvm::cl::desc("Enable converting TF to Stablehlo."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> post_training_quantization(
+    "post-training-quantization",
+    llvm::cl::desc("Enable post_training_quantization."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> legalize_custom_tensor_list_ops(
+    "legalize-custom-tensor-list-ops",
+    llvm::cl::desc("Convert \"tf.TensorList*\" ops to \"tfl.custom_op\""
+                   "if they can all be supported."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> serialize_stablehlo_ops(
+    "serialize-stablehlo-ops",
+    llvm::cl::desc("Wether serialize stablehlo ops or not"),
+    llvm::cl::init(true));
+
+// NOLINTNEXTLINE
+opt<bool> reduce_type_precision(
+    "reduce-type-precision",
+    llvm::cl::desc("Convert tensors to a lower precision if all values are "
+                   "within the reduced precision range. This could have side "
+                   "effects triggered by downstream packing algorithms."),
     llvm::cl::init(false));

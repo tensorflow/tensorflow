@@ -20,7 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "sobol_data.h"  // from @sobol_data
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -157,6 +157,10 @@ class SobolSampleOp : public OpKernel {
     OP_REQUIRES(context,
                 num_results < std::numeric_limits<int32_t>::max() - skip,
                 errors::InvalidArgument("num_results+skip must be less than ",
+                                        std::numeric_limits<int32_t>::max()));
+    OP_REQUIRES(context,
+                num_results < std::numeric_limits<int32_t>::max() / dim,
+                errors::InvalidArgument("num_results*dim must be less than ",
                                         std::numeric_limits<int32_t>::max()));
 
     Tensor* output = nullptr;

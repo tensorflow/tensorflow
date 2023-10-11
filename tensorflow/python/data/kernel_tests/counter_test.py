@@ -15,8 +15,10 @@
 """Tests for `tf.data.Dataset.counter`."""
 from absl.testing import parameterized
 
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import test
@@ -38,6 +40,32 @@ class CounterTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = self.getNext(dataset)
     for expected in expected_output:
       self.assertEqual(expected, self.evaluate(get_next()))
+
+
+class CounterCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                            parameterized.TestCase):
+
+  def _build_counter_dataset(self, start, step, num_outputs, options=None):
+    counter_dataset = dataset_ops.Dataset.counter(start, step)
+    range_dataset = dataset_ops.Dataset.range(num_outputs)
+    dataset = dataset_ops.Dataset.zip((counter_dataset, range_dataset))
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, symbolic_checkpoint):
+    num_outputs = 10
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(
+        self, lambda: self._build_counter_dataset(
+            start=2, step=10, num_outputs=num_outputs, options=options),
+        num_outputs)
 
 
 if __name__ == "__main__":

@@ -76,7 +76,7 @@ TEST_F(RequantizeTest, InvalidOutputMin) {
   AddInputFromArray<float>(TensorShape({}), {0.01f});
   AddInputFromArray<float>(TensorShape({}), {1.0f});
   EXPECT_EQ("requested_output_min must be <= 0, but got 0.01",
-            RunOpKernel().error_message());
+            RunOpKernel().message());
 }
 
 TEST_F(RequantizeTest, InvalidOutputMax) {
@@ -92,7 +92,7 @@ TEST_F(RequantizeTest, InvalidOutputMax) {
   EXPECT_EQ(
       "requested_output_max must be >= requested_output_min, but got -11 and "
       "-10",
-      RunOpKernel().error_message());
+      RunOpKernel().message());
 }
 
 }  // end namespace tensorflow

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/sequence_ops.h"
 
 #include <cmath>
+#include <type_traits>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -38,10 +39,8 @@ struct RangeFunctor<CPUDevice, T> {
   void operator()(OpKernelContext* context, int64_t size, T start, T delta,
                   typename TTypes<T>::Flat output) const {
     (void)context;
-    T val = start;
     for (int64_t i = 0; i < size; ++i) {
-      output(i) = T(val);
-      val += delta;
+      output(i) = start + static_cast<T>(i) * delta;
     }
   }
 };
@@ -93,7 +92,7 @@ class RangeOp : public OpKernel {
               "Requires start >= limit when delta < 0: ", start, "/", limit));
     }
     int64_t size;
-    if (std::is_integral<T>::value) {
+    if constexpr (std::is_integral<T>::value) {
       size = Eigen::divup(Eigen::numext::abs(limit - start),
                           Eigen::numext::abs(delta));
     } else {

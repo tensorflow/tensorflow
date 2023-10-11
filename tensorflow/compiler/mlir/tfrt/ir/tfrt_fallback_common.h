@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_IR_TFRT_FALLBACK_COMMON_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_IR_TFRT_FALLBACK_COMMON_H_
 
+#include <utility>
+
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -109,6 +111,8 @@ struct ParseExecuteOpOptions {
   bool has_device = false;
   bool has_func_attr = false;
   bool has_cost = false;
+  bool has_op_name = true;
+  bool has_symbol_ref = false;
 };
 
 mlir::ParseResult ParseExecuteOpCommon(mlir::OpAsmParser &parser,

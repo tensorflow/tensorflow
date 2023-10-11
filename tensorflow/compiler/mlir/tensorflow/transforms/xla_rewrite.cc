@@ -13,69 +13,97 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This transformation pass converts stateful partitioned calls with
-// _xla_compile_device_type attribute to XLA launch ops.
+// This transformation pass converts stateful and stateless partitioned calls
+// with _xla_compile_device_type attribute to XLA launch ops.
 
-#include <memory>
-#include <string>
-#include <vector>
+#include <stack>
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/call_graph_util.h"
 
 #define DEBUG_TYPE "tf-xla-rewrite"
 
 namespace mlir {
-
 namespace {
 
-struct XlaRewritePass : public TFDevice::XlaRewritePassBase<XlaRewritePass> {
+#define GEN_PASS_DEF_XLAREWRITEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+
+struct XlaRewritePass : public impl::XlaRewritePassBase<XlaRewritePass> {
   void runOnOperation() override;
 };
 
-void Rewrite(TF::StatefulPartitionedCallOp call_op) {
-  OpBuilder builder(call_op->getContext());
-  builder.setInsertionPoint(call_op);
+void MoveResourceArgsToEnd(func::FuncOp callee) {
+  llvm::DenseMap<BlockArgument, BlockArgument> mapping;
+  unsigned num_params = callee.getNumArguments();
+  llvm::BitVector removed_params(num_params);
+  // Copy the resource-type parameters to the end.
+  for (unsigned i = 0; i < num_params; ++i) {
+    BlockArgument param = callee.getArgument(i);
+    if (getElementTypeOrSelf(param.getType())
+            .template isa<TF::ResourceType>()) {
+      removed_params.set(i);
+      callee.getBody().addArgument(param.getType(), param.getLoc());
+      param.replaceAllUsesWith(callee.getArguments().back());
+      removed_params.push_back(false);
+    }
+  }
+  // Remove old resource-type parameters.
+  callee.getBody().front().eraseArguments(removed_params);
+  // Update function type.
+  callee.setFunctionType(FunctionType::get(callee.getContext(),
+                                           callee.getBody().getArgumentTypes(),
+                                           callee.getResultTypes()));
+}
 
-  llvm::SmallVector<Value> args, resources;
-  for (auto arg : call_op.args()) {
-    if (getElementTypeOrSelf(arg.getType()).isa<TF::ResourceType>()) {
-      resources.push_back(arg);
+void RewriteCall(tf_device::ClusterFuncOp cluster_func_op, SymbolTable &symtab,
+                 OpBuilder &builder) {
+  llvm::SmallVector<Value> non_resource_args, resource_args;
+  bool has_resources = false, in_order = true;
+  for (const Value &arg : cluster_func_op.getOperands()) {
+    if (!getElementTypeOrSelf(arg.getType()).template isa<TF::ResourceType>()) {
+      non_resource_args.push_back(arg);
+      if (has_resources) in_order = false;
     } else {
-      args.push_back(arg);
+      resource_args.push_back(arg);
+      has_resources = true;
     }
   }
 
+  if (!in_order) {
+    // Functions do not get reused in practice, so skip the check for if the
+    // callee has been updated.
+    StringAttr callee_sym = cluster_func_op.getFuncAttr().getAttr();
+    MoveResourceArgsToEnd(symtab.lookup<func::FuncOp>(callee_sym));
+  }
+  builder.setInsertionPoint(cluster_func_op);
   auto xla_launch_op = builder.create<TF::XlaLaunchOp>(
-      call_op.getLoc(), call_op.getResultTypes(), /*constants=*/ValueRange({}),
-      ValueRange(args), ValueRange(resources), call_op.fAttr());
-  CopyDeviceAndUnderscoredAttributes(call_op, xla_launch_op);
-  call_op.replaceAllUsesWith(xla_launch_op.getResults());
-  call_op.erase();
+      cluster_func_op.getLoc(), cluster_func_op.getResultTypes(),
+      /*constants=*/ValueRange({}), ValueRange(non_resource_args),
+      ValueRange(resource_args), cluster_func_op.getFuncAttr());
+
+  CopyDeviceAndUnderscoredAttributes(cluster_func_op, xla_launch_op);
+  cluster_func_op.replaceAllUsesWith(xla_launch_op.getResults());
+  cluster_func_op.erase();
 }
 
 void XlaRewritePass::runOnOperation() {
-  func::FuncOp func_op = getOperation();
-
-  llvm::SmallVector<TF::StatefulPartitionedCallOp, 4> ops;
-  func_op.walk([&](TF::StatefulPartitionedCallOp call_op) {
-    if (call_op->hasAttr(tensorflow::kCompileDeviceTypeAttr)) {
-      ops.push_back(call_op);
-    }
+  ModuleOp module = getOperation();
+  SymbolTable symtab(module);
+  OpBuilder builder(&getContext());
+  module.walk([&](tf_device::ClusterFuncOp cluster_func_op) {
+    RewriteCall(cluster_func_op, symtab, builder);
   });
-
-  // Rewrite tf.StatefulPartitionedCall ops to tf.XlaLaunch ops.
-  for (auto call_op : ops) Rewrite(call_op);
 }
 
 }  // namespace
 
 namespace TFDevice {
-std::unique_ptr<OperationPass<func::FuncOp>> CreateXlaRewritePass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateXlaRewritePass() {
   return std::make_unique<XlaRewritePass>();
 }
 

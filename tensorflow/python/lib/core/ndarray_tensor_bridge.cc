@@ -13,16 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// clang-format off
 // Must be included first.
-#include "tensorflow/python/lib/core/numpy.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tsl/python/lib/core/numpy.h"
+// clang-format on
+
+#include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 
 #include <vector>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/python/lib/core/bfloat16.h"
-#include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
+#include "tensorflow/python/lib/core/py_util.h"
+#include "tsl/python/lib/core/ml_dtypes.h"
 
 namespace tensorflow {
 
@@ -115,6 +120,8 @@ PyTypeObject TensorReleaserType = {
 
 Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
                                    int* out_pyarray_type) {
+  const tsl::ml_dtypes::NumpyDtypes& custom_dtypes =
+      tsl::ml_dtypes::GetNumpyDtypes();
   switch (tf_datatype) {
     case TF_HALF:
       *out_pyarray_type = NPY_FLOAT16;
@@ -183,7 +190,19 @@ Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
       *out_pyarray_type = NPY_INT32;
       break;
     case TF_BFLOAT16:
-      *out_pyarray_type = Bfloat16NumpyType();
+      *out_pyarray_type = custom_dtypes.bfloat16;
+      break;
+    case TF_FLOAT8_E5M2:
+      *out_pyarray_type = custom_dtypes.float8_e5m2;
+      break;
+    case TF_FLOAT8_E4M3FN:
+      *out_pyarray_type = custom_dtypes.float8_e4m3fn;
+      break;
+    case TF_INT4:
+      *out_pyarray_type = custom_dtypes.int4;
+      break;
+    case TF_UINT4:
+      *out_pyarray_type = custom_dtypes.uint4;
       break;
     default:
       return errors::Internal("Tensorflow type ", tf_datatype,
@@ -214,6 +233,20 @@ Status ArrayFromMemory(int dim_size, npy_intp* dims, void* data, DataType dtype,
   }
   auto* np_array = reinterpret_cast<PyArrayObject*>(
       PyArray_SimpleNewFromData(dim_size, dims, type_num, data));
+  if (np_array == nullptr) {
+    string shape_str = absl::StrJoin(
+        absl::Span<npy_intp>{dims, static_cast<size_t>(dim_size)}, ", ");
+    if (PyErr_Occurred()) {
+      string exception_str = PyExceptionFetch();
+      PyErr_Clear();
+      return errors::InvalidArgument(
+          "Failed to create numpy array from tensor of shape [", shape_str,
+          "]. Numpy error: ", exception_str);
+    }
+    return errors::Internal(
+        "Failed to create numpy array from tensor of shape [", shape_str, "]");
+  }
+
   PyArray_CLEARFLAGS(np_array, NPY_ARRAY_OWNDATA);
   if (PyType_Ready(&TensorReleaserType) == -1) {
     return errors::Unknown("Python type initialization failed.");

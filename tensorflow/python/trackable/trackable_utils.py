@@ -156,7 +156,11 @@ def extract_local_name(key, prefix=None):
   # "local name" refers to the the keys of `Trackable._serialize_to_tensors.`
   prefix = prefix or ""
   search_key = OBJECT_ATTRIBUTES_NAME + "/" + prefix
-  return key[key.index(search_key) + len(search_key):]
+  # If checkpoint is saved from TF1, return key as is.
+  try:
+    return key[key.index(search_key) + len(search_key):]
+  except ValueError:
+    return key
 
 
 def slot_variable_key(variable_path, optimizer_path, slot_name):

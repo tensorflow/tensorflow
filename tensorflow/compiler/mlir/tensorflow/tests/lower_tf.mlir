@@ -81,15 +81,32 @@ func.func @div_no_nan(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf3
   func.return %0 : tensor<*xf32>
 }
 
-// CHECK-LABEL: @truncate_div
+// CHECK-LABEL: @truncate_div_int
 // CHECK-SAME: (%[[LHS:.*]]: tensor<*xi32>, %[[RHS:.*]]: tensor<*xi32>)
-func.func @truncate_div(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>)
+func.func @truncate_div_int(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>)
     -> tensor<*xi32> {
   // CHECK: %[[RESULT:.*]] = "tf.Div"(%[[LHS]], %[[RHS]])
   // CHECK: return %[[RESULT]]
   %0 = "tf.TruncateDiv"(%arg0, %arg1)
       : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
   func.return %0 : tensor<*xi32>
+}
+
+// CHECK-LABEL: @truncate_div_float
+// CHECK-SAME: (%[[LHS:.*]]: tensor<*xf32>, %[[RHS:.*]]: tensor<*xf32>)
+func.func @truncate_div_float(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>)
+    -> tensor<*xf32> {
+  // CHECK:  %[[ZERO:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK:  %[[XDIVY:.*]] = "tf.Div"(%[[LHS]], %[[RHS]])
+  // CHECK:  %[[MASK:.*]] = "tf.Less"(%[[XDIVY]], %[[ZERO]])
+  // CHECK:  %[[CEIL:.*]] = "tf.Ceil"(%[[XDIVY]])
+  // CHECK:  %[[FLOOR:.*]] = "tf.Floor"(%[[XDIVY]])
+  // CHECK:  %[[RESULT:.*]] = "tf.SelectV2"(%[[MASK]], %[[CEIL]], %[[FLOOR]])
+  %0 = "tf.TruncateDiv"(%arg0, %arg1)
+      : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+
+  // CHECK: return %[[RESULT]]
+  func.return %0 : tensor<*xf32>
 }
 
 // CHECK-LABEL: func @mul_no_nan
@@ -1322,4 +1339,74 @@ func.func @expm1(%arg0: tensor<3x4xf32>) -> tensor<3x4xf32> {
   // CHECK: %[[EXP:.*]] = "tf.Exp"(%[[ARG0]]) : (tensor<3x4xf32>) -> tensor<3x4xf32>
   // CHECK: %[[RESULT:.*]] = "tf.Sub"(%[[EXP]], %[[ONE]]) : (tensor<3x4xf32>, tensor<f32>) -> tensor<3x4xf32>
   // CHECK: return %[[RESULT]]
+}
+
+// CHECK-LABEL: func @matrix_band_part
+// CHECK-SAME: (%[[INPUT:.*]]: tensor<4x5xf32>, %[[NUM_LOWER:.*]]: tensor<i64>, %[[NUM_UPPER:.*]]: tensor<i64>) -> tensor<4x5xf32> {
+func.func @matrix_band_part(%input: tensor<4x5xf32>, %num_lower: tensor<i64>, %num_upper: tensor<i64>) -> tensor<4x5xf32> {
+  // CHECK-DAG: %[[ZERO:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>} : () -> tensor<i64>
+  // CHECK-DAG: %[[OFFSET:.*]] = "tf.Const"() {{.+}} : () -> tensor<4x5xi64>
+  // CHECK-DAG: %[[M:.*]] = "tf.Const"() {value = dense<4> : tensor<i64>} : () -> tensor<i64>
+  // CHECK-DAG: %[[N:.*]] = "tf.Const"() {value = dense<5> : tensor<i64>} : () -> tensor<i64>
+  // CHECK-DAG: %[[ZEROS_LIKE:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<4x5xf32>} : () -> tensor<4x5xf32>
+  // CHECK-DAG: %[[LE:.*]] = "tf.Less"(%[[NUM_LOWER]], %[[ZERO]]) : (tensor<i64>, tensor<i64>) -> tensor<i1>
+  // CHECK-DAG: %[[NUM_LOWER_OR_M:.*]] = "tf.SelectV2"(%[[LE]], %[[M]], %[[NUM_LOWER]]) : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i64>
+  // CHECK-DAG: %[[LE1:.*]] = "tf.Less"(%[[NUM_UPPER]], %[[ZERO]]) : (tensor<i64>, tensor<i64>) -> tensor<i1>
+  // CHECK-DAG: %[[NUM_UPPER_OR_N:.*]] = "tf.SelectV2"(%[[LE1]], %[[N]], %[[NUM_UPPER]]) : (tensor<i1>, tensor<i64>, tensor<i64>) -> tensor<i64>
+  // CHECK-DAG: %[[LE2:.*]] = "tf.LessEqual"(%[[OFFSET]], %[[NUM_LOWER_OR_M]]) : (tensor<4x5xi64>, tensor<i64>) -> tensor<4x5xi1>
+  // CHECK-DAG: %[[NEG:.*]] = "tf.Neg"(%[[NUM_UPPER_OR_N]]) : (tensor<i64>) -> tensor<i64>
+  // CHECK-DAG: %[[GE:.*]] = "tf.GreaterEqual"(%[[OFFSET]], %[[NEG]]) : (tensor<4x5xi64>, tensor<i64>) -> tensor<4x5xi1>
+  // CHECK-DAG: %[[INDICATOR:.*]] = "tf.LogicalAnd"(%[[LE2]], %[[GE]]) : (tensor<4x5xi1>, tensor<4x5xi1>) -> tensor<4x5xi1>
+  // CHECK-DAG: %[[RET:.*]] = "tf.SelectV2"(%[[INDICATOR]], %[[INPUT]], %[[ZEROS_LIKE]]) : (tensor<4x5xi1>, tensor<4x5xf32>, tensor<4x5xf32>) -> tensor<4x5xf32>
+  // CHECK-DAG: return %[[RET]]
+  %0 = "tf.MatrixBandPart"(%input, %num_lower, %num_upper) : (tensor<4x5xf32>, tensor<i64>, tensor<i64>) -> tensor<4x5xf32>
+  func.return %0 : tensor<4x5xf32>
+}
+
+// CHECK-LABEL: func @rank3_matrix_band_part
+func.func @rank3_matrix_band_part(%input: tensor<?x4x5xf32>, %num_lower: tensor<i64>, %num_upper: tensor<i64>) -> tensor<?x4x5xf32> {
+  // CHECK-NOT: tf.MatrixBandPart
+  %0 = "tf.MatrixBandPart"(%input, %num_lower, %num_upper) : (tensor<?x4x5xf32>, tensor<i64>, tensor<i64>) -> tensor<?x4x5xf32>
+  func.return %0 : tensor<?x4x5xf32>
+}
+
+// CHECK-LABEL: func @dynamic_shape_matrix_band_part
+// CHECK-SAME: (%[[INPUT:.*]]: tensor<?x?xf32>, %[[NUM_LOWER:.*]]: tensor<i32>, %[[NUM_UPPER:.*]]: tensor<i32>) -> tensor<?x?xf32> {
+func.func @dynamic_shape_matrix_band_part(%input: tensor<?x?xf32>, %num_lower: tensor<i32>, %num_upper: tensor<i32>) -> tensor<?x?xf32> {
+  // CHECK-DAG: %[[ZERO:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-DAG: %[[ONE:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-DAG: %[[NEG_ONE:.*]] = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-DAG: %[[ZERO_1D:.*]] = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-DAG: %[[ONE_1D:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-DAG: %[[TWO_1D:.*]] = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-DAG: %[[ZERO_F32:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK-DAG: %[[SHAPE:.*]] = "tf.Shape"(%[[INPUT]]) : (tensor<?x?xf32>) -> tensor<2xi32>
+  // CHECK-DAG: %[[M:.*]] = "tf.StridedSlice"(%[[SHAPE]], %[[ZERO_1D]], %[[ONE_1D]], %[[ONE_1D]]) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<2xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
+  // CHECK-DAG: %[[SHAPE1:.*]] = "tf.Shape"(%[[INPUT]]) : (tensor<?x?xf32>) -> tensor<2xi32>
+  // CHECK-DAG: %[[N:.*]] = "tf.StridedSlice"(%[[SHAPE1]], %[[ONE_1D]], %[[TWO_1D]], %[[ONE_1D]]) {begin_mask = 0 : i64, ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<2xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
+  // CHECK-DAG: %[[LE:.*]] = "tf.Less"(%[[NUM_LOWER]], %[[ZERO]]) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  // CHECK-DAG: %[[NUM_LOWER_OR_M:.*]] = "tf.SelectV2"(%[[LE]], %[[M]], %[[NUM_LOWER]]) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
+  // CHECK-DAG: %[[LE1:.*]] = "tf.Less"(%[[NUM_UPPER]], %[[ZERO]]) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  // CHECK-DAG: %[[NUM_UPPER_OR_N:.*]] = "tf.SelectV2"(%[[LE1]], %[[N]], %[[NUM_UPPER]]) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
+  // CHECK-DAG: %[[RANGE_M:.*]] = "tf.Range"(%[[ZERO]], %[[M]], %[[ONE]]) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<?xi32>
+  // CHECK-DAG: %[[RANGE_N:.*]] = "tf.Range"(%[[ZERO]], %[[N]], %[[ONE]]) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<?xi32>
+  // CHECK-DAG: %[[EXPAND_DIMS:.*]] = "tf.ExpandDims"(%[[RANGE_M]], %[[NEG_ONE]]) : (tensor<?xi32>, tensor<i32>) -> tensor<?x1xi32>
+  // CHECK-DAG: %[[OFFSET:.*]] = "tf.Sub"(%[[EXPAND_DIMS]], %[[RANGE_N]]) : (tensor<?x1xi32>, tensor<?xi32>) -> tensor<?x?xi32>
+  // CHECK-DAG: %[[LE2:.*]] = "tf.LessEqual"(%[[OFFSET]], %[[NUM_LOWER_OR_M]]) : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi1>
+  // CHECK-DAG: %[[NEG:.*]] = "tf.Neg"(%[[NUM_UPPER_OR_N]]) : (tensor<i32>) -> tensor<i32>
+  // CHECK-DAG: %[[GE:.*]] = "tf.GreaterEqual"(%[[OFFSET]], %[[NEG]]) : (tensor<?x?xi32>, tensor<i32>) -> tensor<?x?xi1>
+  // CHECK-DAG: %[[INDICATOR:.*]] = "tf.LogicalAnd"(%[[LE2]], %[[GE]]) : (tensor<?x?xi1>, tensor<?x?xi1>) -> tensor<?x?xi1>
+  // CHECK-DAG: %[[SHAPE_I64:.*]] = "tf.Shape"(%[[INPUT]]) : (tensor<?x?xf32>) -> tensor<2xi64>
+  // CHECK-DAG: %[[ZEROS_LIKE:.*]] = "tf.BroadcastTo"(%[[ZERO_F32]], %[[SHAPE_I64]]) : (tensor<f32>, tensor<2xi64>) -> tensor<?x?xf32>
+  // CHECK-DAG: %[[RET:.*]] = "tf.SelectV2"(%[[INDICATOR]], %[[INPUT]], %[[ZEROS_LIKE]]) : (tensor<?x?xi1>, tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  // CHECK-DAG: return %[[RET]]
+  %0 = "tf.MatrixBandPart"(%input, %num_lower, %num_upper) : (tensor<?x?xf32>, tensor<i32>, tensor<i32>) -> tensor<?x?xf32>
+  func.return %0 : tensor<?x?xf32>
+}
+
+// CHECK-LABEL: func @unranked_matrix_band_part
+func.func @unranked_matrix_band_part(%input: tensor<*xf32>, %num_lower: tensor<i64>, %num_upper: tensor<i64>) -> tensor<*xf32> {
+  // CHECK-NOT: tf.MatrixBandPart
+  %0 = "tf.MatrixBandPart"(%input, %num_lower, %num_upper) : (tensor<*xf32>, tensor<i64>, tensor<i64>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
 }

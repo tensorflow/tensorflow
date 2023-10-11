@@ -80,10 +80,12 @@ def _generate_random_tensor_ops(shape: Sequence[int], dtype: tf_dtypes.DType,
           shape=shape,
           dtype=random_dtype,
           # Limits maximum value as 255 to simulate pixel values, avoid
-          # generating large numbers and casuing overflows.
-          maxval=min(dtype_max, random_dtype.max, 255)),
+          # generating large numbers and causing overflows.
+          maxval=min(dtype_max, random_dtype.max, 255),
+      ),
       dtype=dtype,
-      name=name)
+      name=name,
+  )
 
 
 def _generate_random_tensor_v1(tensor_info: meta_graph_pb2.TensorInfo,
@@ -333,11 +335,16 @@ class ModelHandlerV2(_ModelHandlerBase):
 
   @property
   def graph_func(self):
-    graph_func = load_graph_func(
-        saved_model_dir=self.model_config.saved_model_dir,
-        saved_model_tags=self.model_config.saved_model_tags,
-        saved_model_signature_key=self.model_config.saved_model_signature_key)
-    return convert_to_constants.convert_variables_to_constants_v2(graph_func)
+    try:
+      return self._graph_func
+    except:
+      graph_func = load_graph_func(
+          saved_model_dir=self.model_config.saved_model_dir,
+          saved_model_tags=self.model_config.saved_model_tags,
+          saved_model_signature_key=self.model_config.saved_model_signature_key)
+      self._graph_func = convert_to_constants.convert_variables_to_constants_v2(
+          graph_func)
+      return self._graph_func
 
   @property
   def input_tensor_names(self):

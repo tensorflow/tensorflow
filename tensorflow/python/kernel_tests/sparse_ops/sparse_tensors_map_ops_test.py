@@ -22,6 +22,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import benchmark
@@ -81,7 +82,7 @@ class SparseTensorsMapTest(test.TestCase):
       handle0 = add_sparse_to_tensors_map(sp_input0, shared_name="a")
       handle1 = add_sparse_to_tensors_map(sp_input1, shared_name="a")
       self.assertEqual(handle0.get_shape(), ())
-      handles_concat = array_ops.stack([handle0, handle1])
+      handles_concat = array_ops_stack.stack([handle0, handle1])
 
       sp_out = take_many_sparse_from_tensors_map(
           sparse_map_op=handle0.op, sparse_handles=handles_concat)

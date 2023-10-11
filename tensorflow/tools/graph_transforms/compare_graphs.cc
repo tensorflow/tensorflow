@@ -49,7 +49,7 @@ int ParseFlagsAndCompareGraphs(int argc, char* argv[]) {
   Status a_load_status = LoadTextOrBinaryGraphFile(argv[1], &a);
   if (!a_load_status.ok()) {
     LOG(ERROR) << "Loading graph '" << argv[1] << "' failed with "
-               << a_load_status.error_message();
+               << a_load_status.message();
     return -1;
   }
 
@@ -57,7 +57,7 @@ int ParseFlagsAndCompareGraphs(int argc, char* argv[]) {
   Status b_load_status = LoadTextOrBinaryGraphFile(argv[2], &b);
   if (!b_load_status.ok()) {
     LOG(ERROR) << "Loading graph '" << argv[2] << "' failed with "
-               << b_load_status.error_message();
+               << b_load_status.message();
     return -1;
   }
 

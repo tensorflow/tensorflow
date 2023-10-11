@@ -14,10 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <queue>
 #include <string>
 #include <utility>
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
@@ -31,8 +33,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/string_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/legalization_op_config.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 
 namespace mlir {
@@ -48,8 +51,11 @@ auto* auto_outside_compilation_gauge =
         "/tensorflow/core/use_auto_outside_compilation",
         "Tracks if auto outside compilation is enabled");
 
+#define GEN_PASS_DEF_MARKOPSFOROUTSIDECOMPILATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct MarkOpsForOutsideCompilation
-    : public TF::MarkOpsForOutsideCompilationPassBase<
+    : public impl::MarkOpsForOutsideCompilationPassBase<
           MarkOpsForOutsideCompilation> {
   void runOnOperation() override;
 };
@@ -88,17 +94,22 @@ void AddSupportedOpsUsingFolding(MLIRContext* context,
   supported_ops->insert(allowlist_ops.begin(), allowlist_ops.end());
 }
 
-// Adds the list of ops that are supported through dynamic padder using op by op
-// fallback to the TF2XLA bridge.
-// TODO(b/168036682): Remove this once ops are supported using dynamic padder
-// on MLIR bridge.
-void AddSupportedOpsUsingDynamicPadder(
-    MLIRContext* context, llvm::DenseSet<OperationName>* supported_ops) {
+// Adds the list of ops that are only supported in the old bridge.
+// TODO(b/168036682): Remove bounded dynamism ops now that MLIR bridge supports
+// bounded dynamism.
+// TODO(b/257574556): Remove the need for this manual list by making use of old
+// bridge phase 2 op list.
+void AddOldBridgeOnlyOps(MLIRContext* context,
+                         llvm::DenseSet<OperationName>* supported_ops) {
   llvm::SmallDenseSet<OperationName, 8> allowlist_ops = {
+      OperationName(TF::DynamicPartitionOp::getOperationName(), context),
+      OperationName(TF::OutfeedEnqueueOp::getOperationName(), context),
       OperationName(TF::WhereOp::getOperationName(), context),
       OperationName(TF::UniqueOp::getOperationName(), context),
       OperationName(TF::XlaSetDynamicDimensionSizeOp::getOperationName(),
                     context),
+      OperationName(TF::XlaSpmdFullToShardShapeOp::getOperationName(), context),
+      OperationName(TF::XlaSpmdShardToFullShapeOp::getOperationName(), context),
   };
 
   supported_ops->insert(allowlist_ops.begin(), allowlist_ops.end());
@@ -235,9 +246,14 @@ bool IsSupportedOp(Operation& op,
   // Assert has a legalization that later removes it so we don't want to outside
   // compile it ever for performance reasons.
   if (llvm::isa<TF::AssertOp>(op)) return true;
-  return !HasStringOperand(op) && !HasStringResult(op) &&
-         (MatchesPattern(op, supported_ops) ||
-          mhlo::IsOpAllowedTf2XlaFallback(&op));
+
+  if (HasStringOperand(op)) return false;
+  if (HasStringResult(op)) return false;
+  if (MatchesPattern(op, supported_ops)) return true;
+
+  auto abstractOp = op.getRegisteredInfo();
+  if (!abstractOp) return false;
+  return mhlo::HasTf2XlaFallback(abstractOp->getTypeID());
 }
 
 // Checks all regions of `op` for captured string operands.
@@ -372,8 +388,8 @@ bool ContainsUncompilableOps(const Dialect* tf_dialect, Block* block,
 // Unmarks outside compilation for any op that has parents already
 // marked for outside compilation since the child will be extracted
 // anyways.
-void UnmarkChildren(Block* block) {
-  block->walk([&](Operation* op) {
+void UnmarkChildren(ModuleOp module) {
+  module->walk([&](Operation* op) {
     if (!op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) return;
     Operation* iter_op = op;
     bool remove_attr = false;
@@ -386,6 +402,38 @@ void UnmarkChildren(Block* block) {
     }
     if (remove_attr) op->removeAttr(kXlaOutsideCompilationAttr);
   });
+}
+
+constexpr int kTooManyOutsideCompileRegionThreshold = 32;
+constexpr int kOpDetailCount = 8;
+
+void WarnOnExcessOutsideCompilationOps(ModuleOp module) {
+  // Count the number of outside compilation ops. If it exceeds the reporting
+  // threshold, warn the user that their model may run slowly.
+  llvm::SmallVector<Operation*, 8> outside_compile_ops;
+  module->walk([&](Operation* op) {
+    if (op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
+      outside_compile_ops.push_back(op);
+    }
+  });
+
+  if (outside_compile_ops.size() > kTooManyOutsideCompileRegionThreshold) {
+    llvm::SmallVector<std::string, kOpDetailCount> op_info;
+    for (int i = 0; i < kOpDetailCount; ++i) {
+      auto& op = outside_compile_ops[i];
+      op_info.push_back(tensorflow::OpAsString(*op));
+    }
+
+    LOG(WARNING) << outside_compile_ops.size() << " outside compilation "
+                 << "regions found while processing "
+                 << module->getName().getStringRef().str()
+                 << ". This may result in excessively slow model execution. "
+                 << "First " << op_info.size()
+                 << " ops: " << absl::StrJoin(op_info, "\n");
+  } else {
+    LOG(INFO) << "Found " << outside_compile_ops.size()
+              << " outside compilation regions.";
+  }
 }
 
 void MarkOpsForOutsideCompilation::runOnOperation() {
@@ -408,12 +456,12 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   llvm::DenseSet<OperationName> supported_ops;
   PatternApplicator(std::move(patterns))
       .walkAllPatterns([&](const Pattern& pattern) {
-        Optional<OperationName> root_kind = pattern.getRootKind();
-        if (root_kind.has_value()) supported_ops.insert(root_kind.getValue());
+        std::optional<OperationName> root_kind = pattern.getRootKind();
+        if (root_kind.has_value()) supported_ops.insert(root_kind.value());
       });
   AddSupportedFunctionalOps(module.getContext(), &supported_ops);
   AddSupportedOpsUsingFolding(module.getContext(), &supported_ops);
-  AddSupportedOpsUsingDynamicPadder(module.getContext(), &supported_ops);
+  AddOldBridgeOnlyOps(module.getContext(), &supported_ops);
   AddRewrittenEmbeddingOps(module.getContext(), &supported_ops);
   AddRewrittenCompositeOps(module.getContext(), &supported_ops);
 
@@ -438,16 +486,9 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
 
   if (result.wasInterrupted()) return signalPassFailure();
 
-  module.walk([&](tf_device::ClusterOp cluster) {
-    // Only if `allow_soft_placement` attribute is true should we unmark ops
-    // for outside compilation.
-    auto soft_placement_attr =
-        cluster->getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
-    if (!(soft_placement_attr && soft_placement_attr.getValue())) {
-      return;
-    }
-    UnmarkChildren(&cluster.GetBody());
-  });
+  UnmarkChildren(module);
+
+  WarnOnExcessOutsideCompilationOps(module);
 }
 
 }  // namespace

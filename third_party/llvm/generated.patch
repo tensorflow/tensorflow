@@ -1,0 +1,21 @@
+Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/mlir/tools/mlir-tblgen/OpPythonBindingGen.cpp b/mlir/tools/mlir-tblgen/OpPythonBindingGen.cpp
+--- a/mlir/tools/mlir-tblgen/OpPythonBindingGen.cpp
++++ b/mlir/tools/mlir-tblgen/OpPythonBindingGen.cpp
+@@ -301,9 +301,13 @@
+ /// (does not change the `name` if it already is suitable) and returns the
+ /// modified version.
+ static std::string sanitizeName(StringRef name) {
+-  if (isPythonReserved(name) || isODSReserved(name))
+-    return (name + "_").str();
+-  return name.str();
++  std::string processed_str = name.str();
++
++  std::replace(processed_str.begin(), processed_str.end(), '-', '_');
++
++  if (isPythonReserved(processed_str) || isODSReserved(processed_str))
++    return processed_str + "_";
++  return processed_str;
+ }
+ 
+ static std::string attrSizedTraitForKind(const char *kind) {

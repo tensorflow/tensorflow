@@ -2,6 +2,13 @@
 # The autotuning results can be serialized as a string, allowing you to save
 # and later restore them.
 
+# Placeholder: load py_proto_library
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cuda_library",
+    "tf_cuda_only_cc_test",
+)
+
 # TODO(ruochengw): Currently only supports contrib's fused_conv2d_bias_activation_op.
 # We plan to add more ops and move fused_conv2d_bias_activation_op back into core library.
 load(
@@ -9,13 +16,12 @@ load(
     "tf_proto_library",
 )
 load(
-    "//tensorflow:tensorflow.bzl",
-    "if_cuda_or_rocm",
-    "tf_cuda_library",
-    "tf_cuda_only_cc_test",
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:__subpackages__"],
     features = ["-layering_check"],
     licenses = ["notice"],
@@ -39,7 +45,7 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = [
         "//tensorflow/core/framework:types_proto",
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto",
+        "@local_tsl//tsl/protobuf:dnn_proto",
     ],
 )
 
@@ -68,7 +74,9 @@ cc_library(
         "conv_autotune_maps.h",
         "conv_parameters.h",
     ],
-    visibility = ["//tensorflow/core/kernels:__pkg__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 tf_cuda_library(
@@ -78,7 +86,6 @@ tf_cuda_library(
         "conv_parameters.h",
     ],
     deps = [
-        ":autotune_maps_utils",
         ":conv_parameters_proto_cc",
         "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:protobuf",
@@ -86,26 +93,6 @@ tf_cuda_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
     ],
-)
-
-tf_cuda_library(
-    name = "autotune_maps_utils",
-    srcs = ["autotune_maps_utils.cc"],
-    hdrs = ["autotune_maps_utils.h"],
-    visibility = [
-        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
-    ],
-    deps = [
-        "@com_google_absl//absl/strings:str_format",
-        "//tensorflow/core/platform:protobuf",
-        "//tensorflow/core/platform:hash",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:statusor",
-    ] + if_cuda_or_rocm(
-        [
-            "//tensorflow/compiler/xla/stream_executor/gpu:gpu_driver_header",
-        ],
-    ),
 )
 
 tf_proto_library(
@@ -116,7 +103,7 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = [
         "//tensorflow/core/util/autotune_maps:conv_parameters_proto",
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto",
+        "@local_tsl//tsl/protobuf:dnn_proto",
     ],
     visibility = ["//waymo/ml/deploy/system/autotuning:__subpackages__"],
 )
@@ -142,16 +129,17 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":autotune_map_proto_cc",
-        ":autotune_maps_utils",
         ":conv_autotune_maps",
         ":conv_parameters",
         ":conv_parameters_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor:lazy_op_runner",
-        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stream_executor",
+        "@local_tsl//tsl/protobuf:dnn_proto_cc",
+        "@local_xla//xla:status_macros",
+        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:lazy_op_runner",
+        "@local_xla//xla/stream_executor/gpu:gpu_init",
     ],
 )
 
@@ -165,9 +153,10 @@ tf_cuda_only_cc_test(
         ":conv_autotune_maps",
         ":conv_parameters",
         ":conv_parameters_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_driver_header",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:status_matchers",
+        "@local_xla//xla/stream_executor/gpu:gpu_driver_header",
+        "@local_xla//xla/stream_executor/gpu:gpu_init",
     ],
 )

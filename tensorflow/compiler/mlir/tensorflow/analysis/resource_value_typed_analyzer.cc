@@ -12,12 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_value_typed_analyzer.h"
 
-#include "llvm/Support/Casting.h"
+#include <tuple>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -26,6 +27,7 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 namespace {
+
 bool IsResourceType(Type type) {
   if (auto tensor_type = type.dyn_cast<TensorType>()) {
     return tensor_type.getElementType().isa<TF::ResourceType>();
@@ -42,37 +44,38 @@ func::FuncOp GetSessionInitializerFunc(ModuleOp module) {
   auto session_init_op = tf_saved_model::GetSessionInitializerOp(module);
   if (session_init_op && !session_init_op.getInitializers().empty()) {
     SymbolTable symbol_table(module);
-    func::FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
-        session_init_op.getInitializers()[0]
-            .cast<FlatSymbolRefAttr>()
-            .getValue());
+    func::FuncOp init_func_op =
+        symbol_table.lookup<func::FuncOp>(session_init_op.getInitializers()[0]
+                                              .cast<FlatSymbolRefAttr>()
+                                              .getValue());
     return init_func_op;
   }
   return nullptr;
 }
 
 // Returns ID for identifying a resource.
-std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef> GetResourceKey(
-    Operation* op) {
-  llvm::StringRef device;
-  if (auto attr = op->getAttrOfType<mlir::StringAttr>("device")) {
+std::tuple<StringRef, StringRef, StringRef> GetResourceKey(Operation* op) {
+  StringRef device;
+  if (auto attr = op->getAttrOfType<StringAttr>("device")) {
     device = attr.getValue();
   }
 
-  llvm::StringRef container;
-  if (auto attr = op->getAttrOfType<mlir::StringAttr>("container")) {
+  StringRef container;
+  if (auto attr = op->getAttrOfType<StringAttr>("container")) {
     container = attr.getValue();
   }
 
-  llvm::StringRef shared_name;
-  if (auto attr = op->getAttrOfType<mlir::StringAttr>("shared_name")) {
+  StringRef shared_name;
+  if (auto attr = op->getAttrOfType<StringAttr>("shared_name")) {
     shared_name = attr.getValue();
   }
 
-  return std::tuple<llvm::StringRef, llvm::StringRef, llvm::StringRef>{
-      device, container, shared_name};
+  return std::tuple<StringRef, StringRef, StringRef>{device, container,
+                                                     shared_name};
 }
+
 }  // namespace
+
 ResourceAnalyzer::ResourceAnalyzer(ModuleOp module, bool skip_session_init) {
   auto session_init_func = GetSessionInitializerFunc(module);
   for (auto func : module.getOps<func::FuncOp>()) {
@@ -85,7 +88,7 @@ void ResourceAnalyzer::SetPotentiallyWritten(Value resource) {
   assert(IsResource(resource));
   resource_infos_[resource].potentially_written = true;
   auto* operation = resource.getDefiningOp();
-  if (operation && llvm::isa<TF::VarHandleOp>(operation)) {
+  if (operation && isa<TF::VarHandleOp>(operation)) {
     mutable_variables_.insert(GetResourceKey(operation));
   }
 }
@@ -93,7 +96,7 @@ void ResourceAnalyzer::SetPotentiallyWritten(Value resource) {
 bool ResourceAnalyzer::IsPotentiallyWritten(Value resource) const {
   assert(IsResource(resource));
   auto* operation = resource.getDefiningOp();
-  if (operation && llvm::isa<TF::VarHandleOp>(operation))
+  if (operation && isa<TF::VarHandleOp>(operation))
     return mutable_variables_.contains(GetResourceKey(operation));
   auto it = resource_infos_.find(resource);
   if (it == resource_infos_.end()) {
@@ -118,7 +121,7 @@ LogicalResult ResourceAnalyzer::AnalyzeRegion(Region& region) {
       return;
     }
     if (auto assign_variable = dyn_cast<TF::AssignVariableOp>(op)) {
-      SetPotentiallyWritten(assign_variable.resource());
+      SetPotentiallyWritten(assign_variable.getResource());
       return;
     }
     if (auto call = dyn_cast<CallOpInterface>(op)) {
@@ -131,29 +134,37 @@ LogicalResult ResourceAnalyzer::AnalyzeRegion(Region& region) {
     if (auto if_op = dyn_cast<TF::IfOp>(op)) {
       for (auto callee : {if_op.then_function(), if_op.else_function()}) {
         PropagatePotentiallyWrittenUpFromCallee(callee.getRegion(),
-                                                if_op.input());
+                                                if_op.getInput());
       }
       return;
     }
     if (auto if_op = dyn_cast<TF::IfRegionOp>(op)) {
-      PropagatePotentiallyWrittenUpFromCallee(if_op.then_branch(),
+      PropagatePotentiallyWrittenUpFromCallee(if_op.getThenBranch(),
                                               if_op.getODSOperands(1));
-      PropagatePotentiallyWrittenUpFromCallee(if_op.else_branch(),
+      PropagatePotentiallyWrittenUpFromCallee(if_op.getElseBranch(),
                                               if_op.getODSOperands(1));
       return;
     }
     if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
       for (auto callee : {while_op.cond_function(), while_op.body_function()}) {
         PropagatePotentiallyWrittenUpFromCallee(callee.getRegion(),
-                                                while_op.input());
+                                                while_op.getInput());
       }
       return;
     }
     if (auto while_op = dyn_cast<TF::WhileRegionOp>(op)) {
-      PropagatePotentiallyWrittenUpFromCallee(while_op.cond(),
-                                              while_op.input());
-      PropagatePotentiallyWrittenUpFromCallee(while_op.body(),
-                                              while_op.input());
+      PropagatePotentiallyWrittenUpFromCallee(while_op.getCond(),
+                                              while_op.getInput());
+      PropagatePotentiallyWrittenUpFromCallee(while_op.getBody(),
+                                              while_op.getInput());
+      return;
+    }
+    // `TF::BatchFunctionOp`, although it looks like a function call, does not
+    // interface the `CallOpInterface` so it should be handled separately.
+    if (auto batch_function = dyn_cast<TF::BatchFunctionOp>(op)) {
+      // Propagate the analysis results from within the callee's body.
+      PropagatePotentiallyWrittenUpFromCallee(batch_function.func().getRegion(),
+                                              batch_function.getOperands());
       return;
     }
     // For all other ops, we assume it mutates all resources it uses, so

@@ -70,7 +70,13 @@ void CostModel::MergeFromLocal(const Graph& g, const CostModel& cm) {
         CHECK_EQ(num_slots, slot_bytes_[global_id].size());
       }
       for (int s = 0; s < num_slots; ++s) {
-        slot_bytes_[global_id][s] += cm.slot_bytes_[local_id][s];
+        auto& current_v = slot_bytes_[global_id][s];
+        auto other_v = cm.slot_bytes_[local_id][s];
+        if (current_v < 0) {
+          current_v = other_v;
+        } else if (other_v > 0) {
+          current_v += other_v;
+        }
       }
     }
   }
@@ -81,10 +87,10 @@ void CostModel::MergeFromGlobal(const CostModel& cm) {
   CHECK_EQ(true, cm.is_global());
   const int num_nodes = cm.count_.size();
   for (int i = num_nodes - 1; i >= 0; --i) {
-    count_[i] += cm.count_[i];
-    time_[i] += cm.time_[i];
     int num_slots = cm.slot_bytes_[i].size();
     Ensure(i, num_slots);
+    count_[i] += cm.count_[i];
+    time_[i] += cm.time_[i];
     if (num_slots > 0) {
       if (slot_bytes_[i].empty()) {
         slot_bytes_[i].resize(num_slots);
@@ -92,7 +98,13 @@ void CostModel::MergeFromGlobal(const CostModel& cm) {
         CHECK_EQ(num_slots, slot_bytes_[i].size());
       }
       for (int s = 0; s < num_slots; ++s) {
-        slot_bytes_[i][s] += cm.slot_bytes_[i][s];
+        auto& current_v = slot_bytes_[i][s];
+        auto other_v = cm.slot_bytes_[i][s];
+        if (current_v < 0) {
+          current_v = other_v;
+        } else if (other_v > 0) {
+          current_v += other_v;
+        }
       }
     }
   }
@@ -118,8 +130,14 @@ void CostModel::MergeFromStats(const NodeNameToCostIdMap& map,
         if (static_cast<size_t>(si) >= slot_bytes_[global_id].size()) {
           slot_bytes_[global_id].resize(1 + si);
         }
-        slot_bytes_[global_id][si] +=
+        auto& current_v = slot_bytes_[global_id][si];
+        auto other_v =
             no.tensor_description().allocation_description().requested_bytes();
+        if (current_v < 0) {
+          current_v = other_v;
+        } else if (other_v > 0) {
+          current_v += other_v;
+        }
       }
     }
   }
@@ -306,7 +324,7 @@ DataType CostModel::MaxMemoryType(const Node* node, int slot) const {
 
 Bytes CostModel::TempMemorySize(const Node* node) const {
   const int id = Id(node);
-  if (id < 0) {
+  if (id < 0 || static_cast<size_t>(id) >= max_mem_usage_.size()) {
     return Bytes(0);
   }
   return max_mem_usage_[id].temp_memory_size;
@@ -314,7 +332,7 @@ Bytes CostModel::TempMemorySize(const Node* node) const {
 
 Bytes CostModel::PersistentMemorySize(const Node* node) const {
   const int id = Id(node);
-  if (id < 0) {
+  if (id < 0 || static_cast<size_t>(id) >= max_mem_usage_.size()) {
     return Bytes(0);
   }
   return max_mem_usage_[id].persistent_memory_size;
@@ -324,6 +342,7 @@ void CostModel::RecordMemoryStats(const Node* node,
                                   const MemoryStats& memory_stats) {
   const int id = Id(node);
   if (id < 0) return;
+  Ensure(id, node->num_outputs());
   max_mem_usage_[id].temp_memory_size = memory_stats.temp_memory_size();
   max_mem_usage_[id].persistent_memory_size =
       memory_stats.persistent_memory_size();
@@ -370,12 +389,7 @@ bool CostModel::IsPersistentTensor(const Node* node, int64_t alloc_id) const {
   if (persistent_alloc_ids_.count(alloc_id) > 0) {
     return true;
   }
-  if (persistent_alloc_ids_by_devices_.find(node->assigned_device_name()) ==
-      persistent_alloc_ids_by_devices_.end()) {
-    return false;
-  }
-  return persistent_alloc_ids_by_devices_.at(node->assigned_device_name())
-      .count(alloc_id);
+  return false;
 }
 
 Microseconds CostModel::CopyTimeEstimate(Bytes b, double network_latency_millis,

@@ -50,7 +50,7 @@ StatusOr<mlir::Operation*> TensorListReserveSPMDExpander::ExpandOp(
   mlir::TF::TensorListReserveOp new_op =
       builder.create<mlir::TF::TensorListReserveOp>(
           DT_LOC(op), new_output_type, new_shape_value,
-          tensorlist_op.num_elements());
+          tensorlist_op.getNumElements());
 
   op->getResult(0).replaceAllUsesWith(new_op.getResult());
   op->erase();

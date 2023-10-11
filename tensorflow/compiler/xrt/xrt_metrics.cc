@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xrt/xrt_metrics.h"
 
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/platform/regexp.h"
 

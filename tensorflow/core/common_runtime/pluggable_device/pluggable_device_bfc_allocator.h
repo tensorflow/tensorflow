@@ -40,9 +40,10 @@ class PluggableDeviceBFCAllocator : public BFCAllocator {
                               size_t total_memory,
                               const GPUOptions& gpu_options, const string& name,
                               bool force_memory_growth_requested);
-  ~PluggableDeviceBFCAllocator() override {}
+  ~PluggableDeviceBFCAllocator() override = default;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PluggableDeviceBFCAllocator);
+  PluggableDeviceBFCAllocator(const PluggableDeviceBFCAllocator&) = delete;
+  void operator=(const PluggableDeviceBFCAllocator&) = delete;
 
  private:
   static bool GetAllowGrowthValue(const GPUOptions& gpu_options,

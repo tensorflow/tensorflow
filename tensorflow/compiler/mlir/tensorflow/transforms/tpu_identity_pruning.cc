@@ -28,7 +28,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -42,8 +41,11 @@ namespace {
 // Identity ops may remove `_XlaSharding` annotation attribute if Identity ops
 // are used to propagate such information.
 
+#define GEN_PASS_DEF_TPUIDENTITYPRUNINGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TPUIdentityPruning
-    : public TF::TPUIdentityPruningPassBase<TPUIdentityPruning> {
+    : public impl::TPUIdentityPruningPassBase<TPUIdentityPruning> {
   void runOnOperation() override;
 };
 

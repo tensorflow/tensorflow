@@ -16,7 +16,6 @@
 import copy
 import os
 import re
-import sre_constants
 import traceback
 
 import numpy as np
@@ -402,7 +401,7 @@ def regex_find(orig_screen_output, regex, font_attr):
 
   try:
     re_prog = re.compile(regex)
-  except sre_constants.error:
+  except re.error:
     raise ValueError("Invalid regular expression: \"%s\"" % regex)
 
   regex_match_lines = []
@@ -810,11 +809,10 @@ class CommandHandlerRegistry:
     """Compile the help information for a given command prefix.
 
     Args:
-      cmd_prefix: Command prefix, as the prefix itself or one of its
-        aliases.
+      cmd_prefix: Command prefix, as the prefix itself or one of its aliases.
 
     Returns:
-      A list of str as the help information fo cmd_prefix. If the cmd_prefix
+      A list of str as the help information for cmd_prefix. If the cmd_prefix
         does not exist, the returned list of str will indicate that.
     """
     lines = []

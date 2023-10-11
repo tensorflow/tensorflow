@@ -24,14 +24,14 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/minimal_logging.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
@@ -375,13 +375,15 @@ TfLiteStatus BuildLoggingInterpreter(
     std::unique_ptr<Interpreter>* interpreter,
     std::unique_ptr<CalibrationReader>* calibration_reader) {
   return BuildLoggingInterpreter(model.GetModel(), model.error_reporter(),
-                                 op_resolver, interpreter, calibration_reader);
+                                 op_resolver, interpreter, calibration_reader,
+                                 model.allocation());
 }
 
 TfLiteStatus BuildLoggingInterpreter(
     const tflite::Model* tflite_model, ErrorReporter* error_reporter,
     const OpResolver& op_resolver, std::unique_ptr<Interpreter>* interpreter,
-    std::unique_ptr<CalibrationReader>* calibration_reader) {
+    std::unique_ptr<CalibrationReader>* calibration_reader,
+    const Allocation* allocation) {
   if (error_reporter == nullptr) {
     // Make sure error_reporter is valid.
     error_reporter = DefaultErrorReporter();
@@ -459,8 +461,9 @@ TfLiteStatus BuildLoggingInterpreter(
   auto logging_op_resolver = std::make_unique<LoggingOpResolver>(
       builtin_op_and_versions, custom_op_and_versions, op_resolver, LoggingEval,
       error_reporter);
-  tflite::InterpreterBuilder(tflite_model, *logging_op_resolver,
-                             error_reporter)(interpreter);
+  tflite::InterpreterBuilder(tflite_model, *logging_op_resolver, error_reporter,
+                             /*options_experimental=*/nullptr,
+                             allocation)(interpreter);
 
   if (!(*interpreter)) {
     error_reporter->Report("Failed to construct interpreter");

@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/kernels/random_ops_util.h"
 #include "tensorflow/core/kernels/stateless_random_gamma_op.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
@@ -44,8 +45,13 @@ static constexpr int kReservedSamplesPerOutput = 256;
 template <typename T>
 __global__ void __launch_bounds__(1024)
     FillKernel(int64 num_samples, int64 num_alphas, int64 samples_per_alpha,
+               const uint64* key, const uint64* counter,
                random::PhiloxRandom random, T* samples_flat,
                const T* alpha_flat) {
+  if (key != nullptr && counter != nullptr) {
+    random = GetPhiloxRandomFromCounterKeyMem(counter, key);
+  }
+
   using Eigen::numext::exp;
   using Eigen::numext::log;
   using Eigen::numext::log1p;
@@ -150,15 +156,16 @@ template <typename T>
 struct StatelessRandomGammaFunctor<GPUDevice, T> {
   static Status Fill(OpKernelContext* ctx, const T* alpha_flat,
                      int64 num_samples, int64 num_alphas,
-                     int64 samples_per_alpha,
-                     const random::PhiloxRandom& random, T* samples_flat) {
+                     int64 samples_per_alpha, const uint64* key,
+                     const uint64* counter, const random::PhiloxRandom& random,
+                     T* samples_flat) {
     const GPUDevice& d = ctx->eigen_device<GPUDevice>();
     GpuLaunchConfig cfg = GetGpuLaunchConfig(num_samples, d);
 
     TF_CHECK_OK(GpuLaunchKernel(FillKernel<T>, cfg.block_count,
                                 cfg.thread_per_block, 0, d.stream(),
-                                num_samples, num_alphas, samples_per_alpha,
-                                random, samples_flat, alpha_flat));
+                                num_samples, num_alphas, samples_per_alpha, key,
+                                counter, random, samples_flat, alpha_flat));
     return OkStatus();
   }
 };

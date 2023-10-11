@@ -15,15 +15,19 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/case_op.h"
 
+#include <tuple>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/kernels/if_while_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/dynamic_shaped_ops.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/lib/dynamic_shaped_ops.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {

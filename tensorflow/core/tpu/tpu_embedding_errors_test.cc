@@ -18,19 +18,26 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow::tpu {
 namespace {
 
-StatusOr<std::string> GenerateTFStatusOr(errors::Code code,
+using absl::Status;
+using absl::StatusOr;
+
+StatusOr<std::string> GenerateTFStatusOr(absl::StatusCode code,
                                          absl::string_view value = "") {
-  if (code == errors::Code::OK) {
+  if (code == absl::StatusCode::kOk) {
     return std::string(value);
   } else {
-    return errors::Create(code, /*message=*/"", /*payloads=*/{});
+    return absl::Status(code, value);
   }
 }
 
@@ -38,7 +45,7 @@ TEST(TpuEmbeddingErrors, StatusOk) {
   constexpr absl::string_view kValue = "success";
 
   {
-    const Status status = AppendTpuEmbeddingErrorPayload(OkStatus());
+    const Status status = AppendTpuEmbeddingErrorPayload(absl::OkStatus());
     TF_EXPECT_OK(status);
     EXPECT_FALSE(HasTpuEmbeddingErrorPayload(status));
     EXPECT_FALSE(HasTpuEmbeddingErrorMessage(status));
@@ -46,8 +53,8 @@ TEST(TpuEmbeddingErrors, StatusOk) {
 
   {
     TF_ASSERT_OK_AND_ASSIGN(const std::string value,
-                            AppendTpuEmbeddingErrorPayload(
-                                GenerateTFStatusOr(errors::Code::OK, kValue)));
+                            AppendTpuEmbeddingErrorPayload(GenerateTFStatusOr(
+                                absl::StatusCode::kOk, kValue)));
     EXPECT_EQ(value, kValue);
   }
 }
@@ -63,7 +70,7 @@ TEST(TpuEmbeddingErrors, StatusFailed) {
 
   {
     StatusOr<std::string> status_or = AppendTpuEmbeddingErrorPayload(
-        GenerateTFStatusOr(errors::Code::RESOURCE_EXHAUSTED));
+        GenerateTFStatusOr(absl::StatusCode::kResourceExhausted));
     EXPECT_FALSE(status_or.ok());
     const Status& status = status_or.status();
     EXPECT_EQ(status.code(), error::Code::RESOURCE_EXHAUSTED);

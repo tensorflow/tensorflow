@@ -31,10 +31,6 @@ inline void StridedSlice(const tflite::StridedSliceParams& op_params,
                          const RuntimeShape& unextended_input_shape,
                          const RuntimeShape& unextended_output_shape,
                          SequentialTensorWriter<T>* writer) {
-  using strided_slice::LoopCondition;
-  using strided_slice::StartForAxis;
-  using strided_slice::StopForAxis;
-
   ruy::profiler::ScopeLabel label("StridedSlice");
 
   // Note that the output_shape is not used herein.
@@ -51,41 +47,71 @@ inline void StridedSlice(const tflite::StridedSliceParams& op_params,
   // requires (ie. all shapes must be 5D and are given backwards).
   strided_slice::StridedSlicePadIndices(&params_copy, 5);
 
-  const int start_0 = StartForAxis(params_copy, input_shape, 0);
-  const int stop_0 = StopForAxis(params_copy, input_shape, 0, start_0);
-  const int start_1 = StartForAxis(params_copy, input_shape, 1);
-  const int stop_1 = StopForAxis(params_copy, input_shape, 1, start_1);
-  const int start_2 = StartForAxis(params_copy, input_shape, 2);
-  const int stop_2 = StopForAxis(params_copy, input_shape, 2, start_2);
-  const int start_3 = StartForAxis(params_copy, input_shape, 3);
-  const int stop_3 = StopForAxis(params_copy, input_shape, 3, start_3);
-  const int start_4 = StartForAxis(params_copy, input_shape, 4);
-  const int stop_4 = StopForAxis(params_copy, input_shape, 4, start_4);
+  const int start_0 =
+      strided_slice::StridedSliceStartForAxis(params_copy, input_shape, 0);
+  const int stop_0 = strided_slice::StridedSliceEndForAxis(
+      params_copy, input_shape, 0, start_0);
+  const int start_1 =
+      strided_slice::StridedSliceStartForAxis(params_copy, input_shape, 1);
+  const int stop_1 = strided_slice::StridedSliceEndForAxis(
+      params_copy, input_shape, 1, start_1);
+  const int start_2 =
+      strided_slice::StridedSliceStartForAxis(params_copy, input_shape, 2);
+  const int stop_2 = strided_slice::StridedSliceEndForAxis(
+      params_copy, input_shape, 2, start_2);
+  const int start_3 =
+      strided_slice::StridedSliceStartForAxis(params_copy, input_shape, 3);
+  const int stop_3 = strided_slice::StridedSliceEndForAxis(
+      params_copy, input_shape, 3, start_3);
+  const int start_4 =
+      strided_slice::StridedSliceStartForAxis(params_copy, input_shape, 4);
+  const int stop_4 = strided_slice::StridedSliceEndForAxis(
+      params_copy, input_shape, 4, start_4);
 
-  for (int offset_0 = start_0 * input_shape.Dims(1),
-           end_0 = stop_0 * input_shape.Dims(1),
-           step_0 = params_copy.strides[0] * input_shape.Dims(1);
-       !LoopCondition(offset_0, end_0, params_copy.strides[0]);
-       offset_0 += step_0) {
-    for (int offset_1 = (offset_0 + start_1) * input_shape.Dims(2),
-             end_1 = (offset_0 + stop_1) * input_shape.Dims(2),
-             step_1 = params_copy.strides[1] * input_shape.Dims(2);
-         !LoopCondition(offset_1, end_1, params_copy.strides[1]);
-         offset_1 += step_1) {
-      for (int offset_2 = (offset_1 + start_2) * input_shape.Dims(3),
-               end_2 = (offset_1 + stop_2) * input_shape.Dims(3),
-               step_2 = params_copy.strides[2] * input_shape.Dims(3);
-           !LoopCondition(offset_2, end_2, params_copy.strides[2]);
-           offset_2 += step_2) {
-        for (int offset_3 = (offset_2 + start_3) * input_shape.Dims(4),
-                 end_3 = (offset_2 + stop_3) * input_shape.Dims(4),
-                 step_3 = params_copy.strides[3] * input_shape.Dims(4);
-             !LoopCondition(offset_3, end_3, params_copy.strides[3]);
-             offset_3 += step_3) {
-          for (int offset_4 = offset_3 + start_4, end_4 = offset_3 + stop_4;
-               !LoopCondition(offset_4, end_4, params_copy.strides[4]);
-               offset_4 += params_copy.strides[4]) {
-            writer->Write(offset_4);
+  auto lc = [&](int end, int stride, int index) {
+    if (stride < 0) {
+      return index > end;
+    } else {
+      return index < end;
+    }
+  };
+  // With a static_cast it is not possible to initialize
+  // a variable of type 'const int *'
+  // with an rvalue of type 'const int32_t *' (aka 'const long *').
+  // reinterpret_cast is required to handle this casting.
+  const int* shape = reinterpret_cast<const int*>(input_shape.DimsData());
+  const int* stride = reinterpret_cast<const int*>(params_copy.strides);
+  const bool inner_stride_is_1 = params_copy.strides[4] == 1;
+
+  for (int offset_0 = start_0; lc(stop_0, stride[0], offset_0);
+       offset_0 += stride[0]) {
+    for (int offset_1 = start_1; lc(stop_1, stride[1], offset_1);
+         offset_1 += stride[1]) {
+      for (int offset_2 = start_2; lc(stop_2, stride[2], offset_2);
+           offset_2 += stride[2]) {
+        for (int offset_3 = start_3; lc(stop_3, stride[3], offset_3);
+             offset_3 += stride[3]) {
+          // When the stride is 1, the inner loop is equivalent to the
+          // optimized slice inner loop. Otherwise, it is identical to the
+          // strided_slice reference implementation inner loop.
+          if (inner_stride_is_1) {
+            const int len = stop_4 - start_4;
+            int index = start_4 + offset_3 * shape[4] +
+                        offset_2 * shape[3] * shape[4] +
+                        offset_1 * shape[2] * shape[3] * shape[4] +
+                        offset_0 * shape[1] * shape[2] * shape[3] * shape[4];
+            if (len > 0) {
+              writer->WriteN(index, len);
+            }
+          } else {
+            for (int offset_4 = start_4; lc(stop_4, stride[4], offset_4);
+                 offset_4 += stride[4]) {
+              int index = offset_4 + offset_3 * shape[4] +
+                          offset_2 * shape[3] * shape[4] +
+                          offset_1 * shape[2] * shape[3] * shape[4] +
+                          offset_0 * shape[1] * shape[2] * shape[3] * shape[4];
+              writer->Write(index);
+            }
           }
         }
       }

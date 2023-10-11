@@ -1,9 +1,10 @@
 # Description:
 # gif test data packages.
 
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -15,6 +16,7 @@ filegroup(
         "scan.gif",
         "red_black.gif",
         "squares.gif",
+        "3g_multiframe.gif",
         "pendulum_sm.gif",
         # Add groundtruth frames for `pendulum_sm.gif`.
         # PNG format because it's lossless.

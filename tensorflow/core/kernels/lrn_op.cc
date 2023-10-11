@@ -18,7 +18,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#include "tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -95,13 +95,13 @@ struct LaunchLRN<CPUDevice, T> {
 #if defined(IS_MOBILE_PLATFORM)
     SingleThreadedLRN(in, batch, rows, cols, depth, output);
 #else
-    const int nodes = cols * rows;
     if (depth > kSingleThreadedLRNDepthCutoff &&
         (beta_ == T(0.5) || beta_ == T(1))) {
       SingleThreadedLRN(in, batch, rows, cols, depth, output);
       return;
     }
 
+    const int nodes = cols * rows;
     auto in_shaped = in.shaped<T, 2>({nodes * batch, depth});
 
     // Multiplying the input with the band matrix has the effect of reducing the
@@ -237,30 +237,34 @@ struct LaunchLRN<GPUDevice, T> {
     const int depth = static_cast<int>(in.dim_size(3));
 
     Tensor transformed_input;
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(
-                       DataTypeToEnum<T>::value,
-                       ShapeFromFormat(FORMAT_NCHW, in.shape(), FORMAT_NHWC),
-                       &transformed_input));
+    TensorShape transformed_input_shape;
+    OP_REQUIRES_OK(
+        context, ShapeFromFormatWithStatus(FORMAT_NCHW, in.shape(), FORMAT_NHWC,
+                                           &transformed_input_shape));
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                   transformed_input_shape,
+                                                   &transformed_input));
     functor::NHWCToNCHW<GPUDevice, T, 4>()(context->eigen_device<GPUDevice>(),
                                            in.tensor<T, 4>(),
                                            transformed_input.tensor<T, 4>());
 
     Tensor transformed_output;
-    OP_REQUIRES_OK(
-        context, context->allocate_temp(
-                     DataTypeToEnum<T>::value,
-                     ShapeFromFormat(FORMAT_NCHW, output->shape(), FORMAT_NHWC),
-                     &transformed_output));
+    TensorShape transformed_output_shape;
+    OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                FORMAT_NCHW, output->shape(), FORMAT_NHWC,
+                                &transformed_output_shape));
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                   transformed_output_shape,
+                                                   &transformed_output));
 
-    perftools::gputools::dnn::BatchDescriptor dimensions_desc;
+    stream_executor::dnn::BatchDescriptor dimensions_desc;
     dimensions_desc.set_count(batch)
         .set_height(rows)
         .set_width(cols)
         .set_feature_map_count(depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(stream_executor::dnn::DataLayout::kBatchDepthYX);
 
-    perftools::gputools::dnn::NormalizeDescriptor normalize_desc;
+    stream_executor::dnn::NormalizeDescriptor normalize_desc;
     normalize_desc.set_bias(bias_)
         .set_range(depth_radius_)
         .set_alpha(alpha_)
@@ -531,50 +535,58 @@ struct LaunchLRNGrad<GPUDevice, T> {
     const int64 depth = in_grads.dim_size(3);
 
     Tensor transformed_in_grads;
-    OP_REQUIRES_OK(context, context->allocate_temp(
-                                DataTypeToEnum<T>::value,
-                                ShapeFromFormat(FORMAT_NCHW, in_grads.shape(),
-                                                FORMAT_NHWC),
-                                &transformed_in_grads));
+    TensorShape transformed_in_grads_shape;
+    OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                FORMAT_NCHW, in_grads.shape(), FORMAT_NHWC,
+                                &transformed_in_grads_shape));
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                   transformed_in_grads_shape,
+                                                   &transformed_in_grads));
     functor::NHWCToNCHW<GPUDevice, T, 4>()(context->eigen_device<GPUDevice>(),
                                            in_grads.tensor<T, 4>(),
                                            transformed_in_grads.tensor<T, 4>());
 
     Tensor transformed_in_image;
-    OP_REQUIRES_OK(context, context->allocate_temp(
-                                DataTypeToEnum<T>::value,
-                                ShapeFromFormat(FORMAT_NCHW, in_image.shape(),
-                                                FORMAT_NHWC),
-                                &transformed_in_image));
+    TensorShape transformed_in_image_shape;
+    OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                FORMAT_NCHW, in_image.shape(), FORMAT_NHWC,
+                                &transformed_in_image_shape));
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                   transformed_in_image_shape,
+                                                   &transformed_in_image));
     functor::NHWCToNCHW<GPUDevice, T, 4>()(context->eigen_device<GPUDevice>(),
                                            in_image.tensor<T, 4>(),
                                            transformed_in_image.tensor<T, 4>());
 
     Tensor transformed_out_image;
-    OP_REQUIRES_OK(context, context->allocate_temp(
-                                DataTypeToEnum<T>::value,
-                                ShapeFromFormat(FORMAT_NCHW, out_image.shape(),
-                                                FORMAT_NHWC),
-                                &transformed_out_image));
+    TensorShape transformed_out_image_shape;
+    OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                FORMAT_NCHW, out_image.shape(), FORMAT_NHWC,
+                                &transformed_out_image_shape));
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                   transformed_out_image_shape,
+                                                   &transformed_out_image));
     functor::NHWCToNCHW<GPUDevice, T, 4>()(
         context->eigen_device<GPUDevice>(), out_image.tensor<T, 4>(),
         transformed_out_image.tensor<T, 4>());
 
     Tensor transformed_output;
-    OP_REQUIRES_OK(
-        context, context->allocate_temp(
-                     DataTypeToEnum<T>::value,
-                     ShapeFromFormat(FORMAT_NCHW, output->shape(), FORMAT_NHWC),
-                     &transformed_output));
+    TensorShape transformed_output_shape;
+    OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                FORMAT_NCHW, output->shape(), FORMAT_NHWC,
+                                &transformed_output_shape));
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                   transformed_output_shape,
+                                                   &transformed_output));
 
-    perftools::gputools::dnn::BatchDescriptor dimensions_desc;
+    stream_executor::dnn::BatchDescriptor dimensions_desc;
     dimensions_desc.set_count(batch)
         .set_height(rows)
         .set_width(cols)
         .set_feature_map_count(depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(stream_executor::dnn::DataLayout::kBatchDepthYX);
 
-    perftools::gputools::dnn::NormalizeDescriptor normalize_desc;
+    stream_executor::dnn::NormalizeDescriptor normalize_desc;
     normalize_desc.set_bias(bias_)
         .set_range(depth_radius_)
         .set_alpha(alpha_)

@@ -14,6 +14,8 @@
 # ==============================================================================
 """Bring in all of the public TensorFlow interface into this module."""
 
+# pylint: disable=g-bad-import-order,g-import-not-at-top,protected-access
+
 import logging as _logging
 import os as _os
 import sys as _sys
@@ -21,8 +23,7 @@ import typing as _typing
 
 from tensorflow.python.tools import module_util as _module_util
 from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
-
-# pylint: disable=g-bad-import-order
+from tensorflow.python.util.lazy_loader import KerasLazyLoader as _KerasLazyLoader
 
 # API IMPORTS PLACEHOLDER
 
@@ -48,12 +49,16 @@ if _module_dir:
   _current_module.__path__ = [_module_dir] + _current_module.__path__
 setattr(_current_module, "estimator", estimator)
 
-_keras_module = "keras.api._v2.keras"
-_keras = _LazyLoader("keras", globals(), _keras_module)
-_module_dir = _module_util.get_parent_dir_for_name(_keras_module)
-if _module_dir:
-  _current_module.__path__ = [_module_dir] + _current_module.__path__
-setattr(_current_module, "keras", _keras)
+# Lazy load Keras v2
+_tf_uses_legacy_keras = (
+    _os.environ.get("TF_USE_LEGACY_KERAS", None) in ("true", "True", "1"))
+setattr(_current_module, "keras", _KerasLazyLoader(globals(), mode="v2"))
+if _tf_uses_legacy_keras:
+  _module_dir = _module_util.get_parent_dir_for_name("tf_keras.api._v2.keras")
+else:
+  _module_dir = _module_util.get_parent_dir_for_name("keras.api._v2.keras")
+_current_module.__path__ = [_module_dir] + _current_module.__path__
+
 
 # We would like the following to work for fully enabling 2.0 in a 1.0 install:
 #
@@ -65,32 +70,21 @@ from tensorflow.python.compat.v2_compat import enable_v2_behavior  # pylint: dis
 setattr(_current_module, "enable_v2_behavior", enable_v2_behavior)
 
 # Add module aliases
-if hasattr(_current_module, 'keras'):
-  # It is possible that keras is a lazily loaded module, which might break when
-  # actually trying to import it. Have a Try-Catch to make sure it doesn't break
-  # when it doing some very initial loading, like tf.compat.v2, etc.
-  try:
-    _keras_package = "keras.api._v2.keras."
-    _losses = _LazyLoader("losses", globals(), _keras_package + "losses")
-    _metrics = _LazyLoader("metrics", globals(), _keras_package + "metrics")
-    _optimizers = _LazyLoader(
-        "optimizers", globals(), _keras_package + "optimizers")
-    _initializers = _LazyLoader(
-        "initializers", globals(), _keras_package + "initializers")
-    setattr(_current_module, "losses", _losses)
-    setattr(_current_module, "metrics", _metrics)
-    setattr(_current_module, "optimizers", _optimizers)
-    setattr(_current_module, "initializers", _initializers)
-  except ImportError:
-    pass
+_losses = _KerasLazyLoader(
+    globals(), submodule="losses", name="losses", mode="v2")
+_metrics = _KerasLazyLoader(
+    globals(), submodule="metrics", name="metrics", mode="v2")
+_optimizers = _KerasLazyLoader(
+    globals(), submodule="optimizers", name="optimizers", mode="v2")
+_initializers = _KerasLazyLoader(
+    globals(), submodule="initializers", name="initializers", mode="v2")
+setattr(_current_module, "losses", _losses)
+setattr(_current_module, "metrics", _metrics)
+setattr(_current_module, "optimizers", _optimizers)
+setattr(_current_module, "initializers", _initializers)
 
 # Explicitly import lazy-loaded modules to support autocompletion.
 # pylint: disable=g-import-not-at-top
 if _typing.TYPE_CHECKING:
   from tensorflow_estimator.python.estimator.api._v2 import estimator as estimator
-  from keras.api._v2 import keras
-  from keras.api._v2.keras import losses
-  from keras.api._v2.keras import metrics
-  from keras.api._v2.keras import optimizers
-  from keras.api._v2.keras import initializers
 # pylint: enable=g-import-not-at-top

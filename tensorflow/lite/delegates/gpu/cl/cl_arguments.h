@@ -52,6 +52,10 @@ class CLArguments : public ArgumentsBinder {
 
   absl::Status Bind(cl_kernel kernel, int offset = 0);
 
+  // Compares Int, Float, Half names to values mapping with the mapping in
+  // `other` and returns true if they are the same.
+  bool HasEqualScalarArguments(const CLArguments& other) const;
+
  private:
   absl::Status AllocateObjects(const Arguments& args, CLContext* context);
   absl::Status AddObjectArgs(const GpuInfo& gpu_info, const Arguments& args);
@@ -91,6 +95,11 @@ class CLArguments : public ArgumentsBinder {
 
     // offset to shared storage.
     uint32_t offset = -1;
+
+    bool operator==(const IntValue& other) const {
+      return value == other.value && offset == other.offset &&
+             active == other.active;
+    }
   };
   std::map<std::string, IntValue> int_values_;
   std::vector<int32_t> shared_int4s_data_;
@@ -104,6 +113,11 @@ class CLArguments : public ArgumentsBinder {
 
     // offset to shared storage.
     uint32_t offset = -1;
+
+    bool operator==(const FloatValue& other) const {
+      return value == other.value && offset == other.offset &&
+             active == other.active;
+    }
   };
   std::map<std::string, FloatValue> float_values_;
   std::vector<float> shared_float4s_data_;
@@ -120,6 +134,11 @@ class CLArguments : public ArgumentsBinder {
 
     // offset to shared uniform storage.
     uint32_t offset = -1;
+
+    bool operator==(const HalfValue& other) const {
+      return value == other.value && offset == other.offset &&
+             active == other.active;
+    }
   };
   std::map<std::string, HalfValue> half_values_;
   std::vector<half> shared_half4s_data_;

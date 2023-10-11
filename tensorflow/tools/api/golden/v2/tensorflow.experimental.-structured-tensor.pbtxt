@@ -43,7 +43,7 @@ tf_class {
   }
   member_method {
     name: "from_fields_and_rank"
-    argspec: "args=[\'cls\', \'fields\', \'rank\', \'validate\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'cls\', \'fields\', \'rank\', \'validate\', \'dtype\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "from_pyval"
@@ -72,6 +72,10 @@ tf_class {
   member_method {
     name: "to_pyval"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_shape_dtype"
+    argspec: "args=[\'self\', \'dtype\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "with_updates"

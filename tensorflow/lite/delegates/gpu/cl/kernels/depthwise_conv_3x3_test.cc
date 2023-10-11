@@ -30,17 +30,17 @@ namespace {
 
 TEST_F(OpenCLOperationTest, DepthwiseConv3x3SimpleWeights) {
   auto status = DepthwiseConv3x3SimpleWeightsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, DepthwiseConv3x3) {
   auto status = DepthwiseConv3x3Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, DepthWiseConv3x3StrideH2SimpleWeights) {
   auto status = DepthWiseConv3x3StrideH2SimpleWeightsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace

@@ -20,7 +20,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -39,17 +39,17 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_ops_util.h"
 #include "tensorflow/core/util/util.h"
 
-// stream.h isn't available in some platforms such as Android, iOS, and
-// ChromiumOS. Only include it for platforms that PluggableDevice is tested on.
+// stream.h isn't available in some platforms such as Android, iOS, ChromiumOS,
+// and Fuchsia. Only include it for platforms that PluggableDevice is tested on.
 #if !defined(PLUGGABLE_DEVICE_SUPPORTED) &&                              \
     (__x86_64__ || __i386__ || defined(__APPLE__) || defined(_WIN32)) && \
     !defined(ANDROID) && !defined(__ANDROID__) && !TARGET_OS_IOS &&      \
-    !defined(PLATFORM_CHROMIUMOS)
+    !defined(PLATFORM_CHROMIUMOS) && !defined(__Fuchsia__)
 #define PLUGGABLE_DEVICE_SUPPORTED
 #endif
 
 #ifdef PLUGGABLE_DEVICE_SUPPORTED
-#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream.h"
 #endif
 
 namespace tensorflow {
@@ -691,6 +691,12 @@ class TensorListGather : public OpKernel {
     if (!tensor_list->element_shape.IsFullyDefined()) {
       for (int index = 0; index < indices.NumElements(); ++index) {
         const int i = indices.flat<int32>()(index);
+
+        OP_REQUIRES(c, 0 <= i && i < tensor_list->tensors().size(),
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Trying to gather element ", i, " in a list with ",
+                        tensor_list->tensors().size(), " elements.")));
+
         const Tensor& t = tensor_list->tensors()[i];
         if (t.dtype() != DT_INVALID) {
           PartialTensorShape tmp = partial_element_shape;

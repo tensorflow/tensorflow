@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CategoricalFocalCrossentropy"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "CategoricalHinge"
     mtype: "<type \'type\'>"
   }
@@ -105,6 +109,10 @@ tf_module {
     argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'label_smoothing\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'0.0\', \'-1\'], "
   }
   member_method {
+    name: "categorical_focal_crossentropy"
+    argspec: "args=[\'y_true\', \'y_pred\', \'alpha\', \'gamma\', \'from_logits\', \'label_smoothing\', \'axis\'], varargs=None, keywords=None, defaults=[\'0.25\', \'2.0\', \'False\', \'0.0\', \'-1\'], "
+  }
+  member_method {
     name: "categorical_hinge"
     argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
@@ -114,7 +122,7 @@ tf_module {
   }
   member_method {
     name: "deserialize"
-    argspec: "args=[\'name\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'name\', \'custom_objects\', \'use_legacy_format\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
   }
   member_method {
     name: "get"
@@ -186,7 +194,7 @@ tf_module {
   }
   member_method {
     name: "serialize"
-    argspec: "args=[\'loss\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'loss\', \'use_legacy_format\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "sparse_categorical_crossentropy"

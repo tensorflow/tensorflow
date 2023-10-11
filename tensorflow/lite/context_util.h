@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 /// \file
+///
 /// This provides a few C++ helpers that are useful for manipulating C
 /// structures in C++.
 #ifndef TENSORFLOW_LITE_CONTEXT_UTIL_H_
@@ -20,7 +21,7 @@ limitations under the License.
 
 #include <stddef.h>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
 

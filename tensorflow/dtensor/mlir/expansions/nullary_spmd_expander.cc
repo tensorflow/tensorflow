@@ -53,7 +53,7 @@ StatusOr<mlir::Operation*> NullarySPMDExpander::ExpandOp(mlir::Operation* op) {
   if (all_operands_fully_replicated) return op;
 
   if (auto const_op = mlir::dyn_cast<mlir::TF::ConstOp>(op)) {
-    if (auto dense = const_op.value().dyn_cast<mlir::DenseElementsAttr>()) {
+    if (auto dense = const_op.getValue().dyn_cast<mlir::DenseElementsAttr>()) {
       if (dense.isSplat()) {
         // A 'splat' value for a DenseElementsAttr, has a single value for
         // all its elements. For these inputs, we don't need to slice. We just
@@ -63,8 +63,7 @@ StatusOr<mlir::Operation*> NullarySPMDExpander::ExpandOp(mlir::Operation* op) {
         auto shape = dense.getType().getShape();
         std::vector<int64_t> new_shape(dense.getType().getRank());
         for (int i = 0; i < op_layouts[0]->rank(); ++i) {
-          const int num_shards =
-              op_layouts[0]->num_shards_for_dim(op_layouts[0]->dim(i));
+          const int num_shards = op_layouts[0]->num_shards_for_dim(i);
           if (shape[i] % num_shards != 0)
             return errors::InvalidArgument(
                 "has output dimension size ", shape[i],
@@ -72,7 +71,7 @@ StatusOr<mlir::Operation*> NullarySPMDExpander::ExpandOp(mlir::Operation* op) {
                 num_shards, " in the layout for that dimension.");
           new_shape[i] = shape[i] / num_shards;
         }
-        const_op.valueAttr(mlir::DenseElementsAttr::get(
+        const_op.setValueAttr(mlir::DenseElementsAttr::get(
             mlir::RankedTensorType::get(new_shape,
                                         dense.getType().getElementType()),
             dense.getSplatValue<mlir::Attribute>()));
@@ -103,6 +102,7 @@ StatusOr<mlir::Operation*> NullarySPMDExpander::ExpandOp(mlir::Operation* op) {
   auto identity_op = builder.create<mlir::TF::IdentityNOp>(
       op->getLoc(), generated_types, generated_outputs);
 
+  newly_created_ops.insert(identity_op);
   for (int i = 0; i < op_layouts.size(); ++i)
     op->getOpResult(i).replaceAllUsesExcept(identity_op.getResult(i),
                                             newly_created_ops);

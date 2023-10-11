@@ -17,9 +17,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/xla_builder.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
@@ -42,10 +42,15 @@ class ReverseSequenceOp : public XlaOpKernel {
                                         seq_lens_shape.dims()));
     OP_REQUIRES(context, batch_dim_ != seq_dim_,
                 errors::InvalidArgument("batch_dim == seq_dim == ", seq_dim_));
+    OP_REQUIRES(context, seq_dim_ >= 0,
+                errors::InvalidArgument("seq_dim must be >=0, got ", seq_dim_));
     OP_REQUIRES(
         context, seq_dim_ < input_shape.dims(),
         errors::InvalidArgument("seq_dim must be < input rank", " ( ", seq_dim_,
                                 " vs. ", input_shape.dims(), ")"));
+    OP_REQUIRES(
+        context, batch_dim_ >= 0,
+        errors::InvalidArgument("batch_dim must be >=0, got ", batch_dim_));
     OP_REQUIRES(
         context, batch_dim_ < input_shape.dims(),
         errors::InvalidArgument("batch_dim must be < input rank", " ( ",

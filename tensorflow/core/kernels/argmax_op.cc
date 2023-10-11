@@ -25,7 +25,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/argmax_op.h"
 
 #include <memory>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -72,7 +73,9 @@ class ArgOp : public OpKernel {
     TensorShape output_shape;
     const TensorShape& input_shape = input.shape();
     for (int d = 0; d < input_dims - 1; ++d) {
-      output_shape.AddDim(input_shape.dim_size((d < axis) ? d : d + 1));
+      OP_REQUIRES_OK(context,
+                     output_shape.AddDimWithStatus(
+                         input_shape.dim_size((d < axis) ? d : d + 1)));
     }
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
@@ -108,7 +111,8 @@ class ArgOp : public OpKernel {
 #undef HANDLE_DIM
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ArgOp);
+  ArgOp(const ArgOp&) = delete;
+  void operator=(const ArgOp&) = delete;
 };
 
 template <typename Device, typename T, typename Tout>

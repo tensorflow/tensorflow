@@ -1,0 +1,13 @@
+==== triton/lib/Conversion/TritonGPUToLLVM/Utility.h#5 - /google/src/cloud/aliia/mlir_85175edd4efee6995b39b8a06f3f946003005211_1695659054/triton/lib/Conversion/TritonGPUToLLVM/Utility.h ====
+# action=edit type=text
+--- triton/lib/Conversion/TritonGPUToLLVM/Utility.h	2023-07-07 10:10:42.000000000 -0700
++++ triton/lib/Conversion/TritonGPUToLLVM/Utility.h	2023-09-25 09:28:13.000000000 -0700
+@@ -76,7 +76,7 @@
+ #define address_of(...) rewriter.create<LLVM::AddressOfOp>(loc, __VA_ARGS__)
+ #define barrier() rewriter.create<mlir::gpu::BarrierOp>(loc)
+ #define undef(...) rewriter.create<LLVM::UndefOp>(loc, __VA_ARGS__)
+-#define null(...) rewriter.create<LLVM::NullOp>(loc, __VA_ARGS__)
++#define null(...) rewriter.create<LLVM::ZeroOp>(loc, __VA_ARGS__)
+ #define call(...) rewriter.create<LLVM::CallOp>(loc, __VA_ARGS__)
+ 
+ // Types

@@ -16,12 +16,23 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_STATS_PUBLISHER_INTERFACE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_STATS_PUBLISHER_INTERFACE_H_
 
+#include <functional>
+#include <memory>
+#include <string>
+
 #include "tensorflow/core/common_runtime/build_graph_options.h"
 #include "tensorflow/core/common_runtime/profile_handler.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
+
+class StatsPublisherInterface;
+
+typedef std::function<std::unique_ptr<StatsPublisherInterface>(
+    const std::string&, const BuildGraphOptions&, const SessionOptions&)>
+    StatsPublisherFactory;
 
 // StatsPublisherInterface describes objects that publish information exported
 // by Sessions.
@@ -40,6 +51,7 @@ class StatsPublisherInterface {
   // corresponding to the latest call will be published.
   virtual void PublishGraphProto(
       const std::vector<const GraphDef*>& graph_defs) = 0;
+  virtual void PublishGraphProto(std::vector<GraphDef> graph_defs) = 0;
 
   // Returns a profile handler for the given step based on the execution_count
   // and RunOptions.
@@ -49,11 +61,17 @@ class StatsPublisherInterface {
       uint64 step, int64_t execution_count, const RunOptions& ropts) = 0;
 
   virtual ~StatsPublisherInterface() {}
-};
 
-typedef std::function<std::unique_ptr<StatsPublisherInterface>(
-    const string&, const BuildGraphOptions&, const SessionOptions&)>
-    StatsPublisherFactory;
+  static void RegisterStatsPublisher(StatsPublisherFactory factory_fn);
+
+  static StatsPublisherFactory GetStatsPublisherFactory();
+
+ private:
+  static StatsPublisherFactory** GetStatsPublisherFactoryPtr() {
+    static StatsPublisherFactory* stats_publisher_factory = nullptr;
+    return &stats_publisher_factory;
+  }
+};
 
 std::unique_ptr<StatsPublisherInterface> CreateNoOpStatsPublisher(
     const string& session, const BuildGraphOptions& bopts,

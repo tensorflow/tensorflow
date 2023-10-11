@@ -89,6 +89,10 @@ tf_module {
     argspec: "args=[\'expected_cardinality\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "at"
+    argspec: "args=[\'dataset\', \'index\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "bucket_by_sequence_length"
     argspec: "args=[\'element_length_func\', \'bucket_boundaries\', \'bucket_batch_sizes\', \'padded_shapes\', \'padding_values\', \'pad_to_bucket_boundary\', \'no_padding\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'False\'], "
   }
@@ -175,6 +179,10 @@ tf_module {
   member_method {
     name: "map_and_batch"
     argspec: "args=[\'map_func\', \'batch_size\', \'num_parallel_batches\', \'drop_remainder\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "pad_to_cardinality"
+    argspec: "args=[\'cardinality\', \'mask_key\'], varargs=None, keywords=None, defaults=[\'valid\'], "
   }
   member_method {
     name: "parallel_interleave"

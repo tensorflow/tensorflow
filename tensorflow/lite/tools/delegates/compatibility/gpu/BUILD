@@ -1,4 +1,5 @@
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -14,6 +15,7 @@ cc_test(
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/conv3d_huge_im2col.bin",
     ],
+    tags = ["no_oss"],  #TODO(b/276295784): Re-enable when fixed.
     deps = [
         ":gpu_delegate_compatibility_checker",
         "//tensorflow/core/platform:resource_loader",

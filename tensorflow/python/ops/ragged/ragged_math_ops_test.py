@@ -24,8 +24,22 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
+from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
+
+
+class RaggedReduceTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+
+  @parameterized.parameters(
+      [dict(original=['a b'.split(), 'c d e'.split()], expected='a b c d e')])
+  @test_util.run_in_graph_and_eager_modes
+  def testStringReduceJoin(self, original, expected, separator=' ', axis=None):
+    original_rt = ragged_factory_ops.constant(original)
+    expected_rt = ragged_factory_ops.constant(expected)
+    actual = ragged_string_ops.reduce_join(original_rt, axis=axis,
+                                           separator=separator)
+    self.assertAllEqual(actual, expected_rt)
 
 
 class RaggedSoftmaxTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -165,4 +179,3 @@ class RaggedCumsumTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
 if __name__ == '__main__':
   googletest.main()
-

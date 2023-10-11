@@ -40,6 +40,8 @@ namespace tensorflow {
 namespace serving {
 namespace {
 
+using ::testing::HasSubstr;
+
 class FakeTask : public BatchTask {
  public:
   explicit FakeTask(size_t size) : size_(size) {}
@@ -51,7 +53,8 @@ class FakeTask : public BatchTask {
  private:
   const size_t size_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FakeTask);
+  FakeTask(const FakeTask&) = delete;
+  void operator=(const FakeTask&) = delete;
 };
 
 using Queue = BatchScheduler<FakeTask>;
@@ -593,8 +596,8 @@ TEST_P(SharedBatchSchedulerTest, ConstMethods) {
     EXPECT_THAT(
         ScheduleTask(1, queue.get()),
         testing::StatusIs(error::UNAVAILABLE,
-                          "The batch scheduling queue to which this task was "
-                          "submitted is full"));
+                          HasSubstr("The batch scheduling queue to which this "
+                                    "task was submitted is full")));
 
     EXPECT_EQ(max_enqueued_batches * 2, queue->NumEnqueuedTasks());
     EXPECT_EQ(0, queue->SchedulingCapacity());

@@ -1,4 +1,4 @@
-// RUN: tfg-transforms-opt -pass-pipeline='tfg.func(tfg-cse)' %s | FileCheck %s
+// RUN: tfg-transforms-opt -pass-pipeline='builtin.module(tfg.func(tfg-cse))' %s | FileCheck %s
 
 // CHECK-LABEL: tfg.func @test_simple_cse
 // CHECK-SAME: %[[A:.*]]: tensor

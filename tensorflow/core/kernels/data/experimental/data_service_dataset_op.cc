@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/experimental/data_service_dataset_op.h"
 
 #include <algorithm>
+#include <atomic>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -24,45 +26,42 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/captured_function.h"
-#include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
-#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/data/service/client/common.h"
 #include "tensorflow/core/data/service/client/data_service_client.h"
+#include "tensorflow/core/data/service/client/utils.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
-#include "tensorflow/core/data/service/dispatcher_client.h"
-#include "tensorflow/core/data/service/grpc_util.h"
+#include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset.pb.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
@@ -94,9 +93,6 @@ namespace data {
     DataServiceDatasetOp::kCrossTrainerCacheOptions;
 
 namespace {
-// Default interval between task list refreshes.
-const int64_t kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
-
 constexpr char kDataServiceDatasetV1[] = "DataServiceDataset";
 constexpr char kDataServiceDatasetV2[] = "DataServiceDatasetV2";
 constexpr char kDataServiceDatasetV3[] = "DataServiceDatasetV3";
@@ -105,90 +101,31 @@ constexpr char kDataServiceDatasetV4[] = "DataServiceDatasetV4";
 constexpr const char kParallelEpochs[] = "parallel_epochs";
 constexpr const char kDistributedEpoch[] = "distributed_epoch";
 
-// Same timeout used by the RegisterDatasetOp.
-constexpr absl::Duration kGetMetadataRetryTimeout = absl::Hours(1);
+// Default interval between task list refreshes.
+constexpr absl::Duration kDefaultTaskRefreshInterval = absl::Seconds(1);
 
-bool IsColocatedTask(const TaskInfo& task) {
-  return absl::c_any_of(task.worker_tags(), [](absl::string_view worker_tag) {
-    return absl::AsciiStrToUpper(worker_tag) == kColocatedWorkerTag;
-  });
-}
+// Default starting `max_outstanding_requests` when it is autotuned.
+constexpr int64_t kStartingMaxOutstandingRequests = 16;
 
-StatusOr<DataServiceMetadata> GetDataServiceMetadata(
-    const std::string& dataset_id, const tstring& address,
-    const tstring& protocol) {
-  DataServiceDispatcherClient client(address, protocol);
-  DataServiceMetadata metadata;
-  absl::Time deadline =
-      absl::FromUnixMicros(EnvTime::NowMicros()) + kGetMetadataRetryTimeout;
-
-  Status status = grpc_util::Retry(
-      [&]() { return client.GetDataServiceMetadata(dataset_id, metadata); },
-      absl::Substitute("Get data service metadata for dataset $0, "
-                       "with dispatcher at $1.",
-                       dataset_id, std::string(address)),
-      absl::ToUnixMicros(deadline));
-  if (errors::IsNotFound(status)) {
-    return errors::NotFound(
-        "Dataset id ", dataset_id,
-        " not found. It must be registered with `register_dataset` before "
-        "calling `from_dataset_id`.");
-  }
-  TF_RETURN_IF_ERROR(status);
-  return metadata;
-}
-
-StatusOr<DataServiceMetadata::Compression> GetValidatedCompression(
-    const std::string& dataset_id, const DataServiceMetadata& metadata) {
-  if (metadata.compression() == DataServiceMetadata::COMPRESSION_UNSPECIFIED) {
-    return errors::Internal(absl::Substitute(
-        "Got invalid compression $0 for dataset $1. A proper compression "
-        "should be registered in `register_dataset`.",
-        DataServiceMetadata::Compression_Name(metadata.compression()),
-        dataset_id));
-  }
-  return metadata.compression();
-}
-
-StatusOr<DataServiceConfig> GetDataServiceConfig(const tstring& address,
-                                                 const tstring& protocol) {
-  DataServiceDispatcherClient client(address, protocol);
-  DataServiceConfig config;
-  absl::Time deadline =
-      absl::FromUnixMicros(EnvTime::NowMicros()) + kGetMetadataRetryTimeout;
-
-  TF_RETURN_IF_ERROR(grpc_util::Retry(
-      [&]() { return client.GetDataServiceConfig(config); },
-      absl::Substitute("Get data service config with dispatcher at $0.",
-                       std::string(address)),
-      absl::ToUnixMicros(deadline)));
-  return config;
-}
 }  // namespace
 
-// Dataset for reading data from the tf.data service non-deterministically.
-//
-// This dataset interleaves dataset elements produced by multiple tf.data
-// workers. We periodically query the dispatcher to determine which workers
-// to read from (in case workers are added or removed).
+// Dataset for reading data from the tf.data service.
 class DataServiceDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int op_version, const std::string& dataset_id,
-          const ProcessingModeDef& processing_mode, const std::string& address,
-          const std::string& protocol,
-          const std::string& data_transfer_protocol,
-          const std::string& job_name, std::optional<int64_t> consumer_index,
-          std::optional<int64_t> num_consumers,
-          int64_t max_outstanding_requests, int64_t task_refresh_interval_ms,
-          const TargetWorkers target_workers,
-          const DataServiceMetadata& metadata,
-          IterationCounter* iteration_counter, bool owns_resource,
-          ResourceHandle iteration_counter_handle,
-          std::unique_ptr<CapturedFunction> captured_uncompress_func,
-          const std::optional<CrossTrainerCacheOptions>&
-              cross_trainer_cache_options,
-          const DataTypeVector& output_types,
-          const std::vector<PartialTensorShape>& output_shapes)
+  Dataset(
+      OpKernelContext* ctx, int op_version, const std::string& dataset_id,
+      const ProcessingModeDef& processing_mode, const std::string& address,
+      const std::string& protocol, const std::string& data_transfer_protocol,
+      const std::string& job_name, std::optional<int64_t> consumer_index,
+      std::optional<int64_t> num_consumers, int64_t max_outstanding_requests,
+      absl::Duration task_refresh_interval, const TargetWorkers target_workers,
+      const DataServiceMetadata& metadata, IterationCounter* iteration_counter,
+      bool owns_resource, ResourceHandle iteration_counter_handle,
+      std::unique_ptr<CapturedFunction> captured_uncompress_func,
+      const std::optional<CrossTrainerCacheOptions>&
+          cross_trainer_cache_options,
+      const DataTypeVector& output_types,
+      const std::vector<PartialTensorShape>& output_shapes)
       : DatasetBase(DatasetContext(ctx)),
         op_version_(op_version),
         dataset_id_(dataset_id),
@@ -201,7 +138,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         consumer_index_(consumer_index),
         num_consumers_(num_consumers),
         max_outstanding_requests_(max_outstanding_requests),
-        task_refresh_interval_ms_(task_refresh_interval_ms),
+        task_refresh_interval_(task_refresh_interval),
         target_workers_(target_workers),
         metadata_(metadata),
         iteration_counter_(iteration_counter),
@@ -230,13 +167,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     return std::make_unique<Iterator>(
         Iterator::Params{this,
                          name_utils::IteratorPrefix(kDatasetType, prefix)},
-        DataServiceParams{
-            dataset_id_, processing_mode_, address_, protocol_,
-            data_transfer_protocol_, job_name_,
-            /*repetition=*/iteration_counter_->GetAndIncrement(),
-            num_consumers_, consumer_index_, max_outstanding_requests_,
-            absl::Milliseconds(task_refresh_interval_ms_), target_workers_,
-            metadata_, cross_trainer_cache_options_});
+        DataServiceParams{dataset_id_, processing_mode_, address_, protocol_,
+                          data_transfer_protocol_, job_name_,
+                          /*repetition=*/iteration_counter_->GetAndIncrement(),
+                          num_consumers_, consumer_index_,
+                          max_outstanding_requests_, task_refresh_interval_,
+                          target_workers_, metadata_,
+                          cross_trainer_cache_options_});
   }
 
   const DataTypeVector& output_dtypes() const override { return output_types_; }
@@ -249,36 +186,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override {
-    if (is_coordinated_read_) {
-      // Coordinated reads require the dataset to be infinite.
-      return kInfiniteCardinality;
-    }
-
-    if (metadata_.cardinality() == 0) {
-      return 0;
-    }
-
-    if (metadata_.cardinality() == kInfiniteCardinality) {
-      // Sharding may cause an infinite dataset to be empty. For example, in
-      // `range(10).batch(10, drop_remainder=True).repeat()`, inserting `shard`
-      // before `batch` will cause the dataset to be empty.
-      // This case is rare, and there is significant performance hit for dynamic
-      // sharding if it reports unknown cardinality, so it is reasonable to
-      // report infinite cardinality. For DATA sharding, it is ok to report
-      // infinite cardinality since it inserts `shard` after `repeat`.
-      if (processing_mode_.sharding_policy() == ProcessingModeDef::OFF ||
-          processing_mode_.sharding_policy() == ProcessingModeDef::DYNAMIC ||
-          processing_mode_.sharding_policy() == ProcessingModeDef::DATA) {
-        return kInfiniteCardinality;
-      }
-    }
-    return kUnknownCardinality;
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return EstimateCardinality(processing_mode_, metadata_,
+                               is_coordinated_read_);
   }
 
   Status CheckExternalState() const override {
     return Status(
-        error::FAILED_PRECONDITION,
+        absl::StatusCode::kFailedPrecondition,
         strings::StrCat(DebugString(), " does not yet support serialization."));
   }
 
@@ -352,7 +267,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     // Attributes
     std::vector<std::pair<StringPiece, AttrValue>> attrs;
     AttrValue task_refresh_interval_hint_ms;
-    b->BuildAttrValue(task_refresh_interval_ms_,
+    b->BuildAttrValue(absl::ToInt64Milliseconds(task_refresh_interval_),
                       &task_refresh_interval_hint_ms);
     attrs.push_back(
         {kTaskRefreshIntervalHintMs, task_refresh_interval_hint_ms});
@@ -405,7 +320,16 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params,
                       const DataServiceParams& data_service_params)
         : DatasetIterator<Dataset>(params),
-          data_service_client_(data_service_params) {}
+          data_service_client_(data_service_params),
+          buffer_size_(std::make_shared<model::SharedState>(
+              // Give it a value of 1 if it is autotuned to make the parameter
+              // not tunable by Autotune because it will be directly set by the
+              // `data_service_client_` when number of tasks changes.
+              params.dataset->max_outstanding_requests_ == model::kAutotune
+                  ? 1
+                  : params.dataset->max_outstanding_requests_,
+              std::make_shared<mutex>(),
+              std::make_shared<condition_variable>())) {}
 
     ~Iterator() override {
       data_service_client_.Cancel();
@@ -425,7 +349,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       auto ctx_factory = [ctx, this]() {
-        return std::make_unique<DataServiceIteratorContext>(ctx, this);
+        return std::make_unique<DataServiceIteratorContext>(
+            ctx, this, buffer_size_, model_node());
       };
       TF_ASSIGN_OR_RETURN(GetNextResult result,
                           data_service_client_.GetNext(ctx_factory));
@@ -437,8 +362,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
-      return model::MakeKnownRatioNode(std::move(args),
-                                       /*ratio=*/1);
+      return model::MakeAsyncKnownRatioNode(
+          std::move(args),
+          /*ratio=*/1,
+          {model::MakeParameter(model::kBufferSize, buffer_size_,
+                                /*min=*/1,
+                                /*max=*/std::numeric_limits<double>::max())});
     }
 
     Status SaveInternal(SerializationContext* ctx,
@@ -458,8 +387,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
    private:
     class DataServiceIteratorContext : public DataServiceContext {
      public:
-      DataServiceIteratorContext(IteratorContext* ctx, Iterator* iterator)
-          : ctx_(*ctx), iterator_(iterator) {}
+      DataServiceIteratorContext(
+          IteratorContext* ctx, Iterator* iterator,
+          std::shared_ptr<model::SharedState> buffer_size,
+          std::shared_ptr<model::Node> node)
+          : ctx_(*ctx),
+            iterator_(iterator),
+            node_(node),
+            buffer_size_(buffer_size) {}
       ~DataServiceIteratorContext() override = default;
       DataServiceIteratorContext(const DataServiceIteratorContext&) = delete;
       DataServiceIteratorContext& operator=(const DataServiceIteratorContext&) =
@@ -478,12 +413,82 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         iterator_->RecordBufferDequeue(&ctx_, element);
       }
 
+      double GetTargetProcessingTimeNsec() const override {
+        if (ctx_.model() == nullptr) {
+          LOG(WARNING) << "tf.data Model is null in DataServiceIteratorContext";
+          return 0.0;
+        }
+
+        double target_time_nsec =
+            ctx_.model()->ComputeExperimentalTargetTimeNsec();
+        if (target_time_nsec == 0.0) return 0.0;
+
+        model::ModelTiming model_timing(ctx_.model()->output());
+        const model::ModelTiming::NodeTiming* data_service_node_timing =
+            model_timing.GetTiming(iterator_->model_node().get());
+
+        return target_time_nsec / data_service_node_timing->pipeline_ratio;
+      }
+
+      // TODO(yangchen): Move this code to `DataServiceClient` and implement it
+      // around `UpdateBufferSize()`.
+      int64_t UpdateMaxOutstandingRequests(
+          int64_t max_outstanding_requests,
+          int64_t requested_outstanding_requests) override {
+        if (node_ == nullptr ||
+            max_outstanding_requests == requested_outstanding_requests) {
+          return requested_outstanding_requests;
+        }
+        if (element_size_cache_ == 0.0) {
+          element_size_cache_ = node_->AverageBufferedElementSize();
+          if (element_size_cache_ == 0) {
+            int64_t new_outstanding_requests = std::max(
+                max_outstanding_requests, kStartingMaxOutstandingRequests);
+            VLOG(3) << "The average element size of `DataService` is 0. The "
+                       "`max_outstanding_requests` value "
+                    << max_outstanding_requests
+                    << (max_outstanding_requests == new_outstanding_requests
+                            ? " is kept at "
+                            : " is changed to the default value of ")
+                    << new_outstanding_requests << ".";
+            return new_outstanding_requests;
+          }
+        }
+        const int64_t delta_outstanding_requests =
+            ctx_.ram_budget_manager()->RequestModelBytes(
+                requested_outstanding_requests -
+                    std::max(static_cast<int64_t>(0), max_outstanding_requests),
+                element_size_cache_);
+        if (delta_outstanding_requests == 0) {
+          VLOG(3) << "Request to change `max_outstanding_requests` from "
+                  << max_outstanding_requests << " to "
+                  << requested_outstanding_requests
+                  << " failed due to low available memory. It is kept at "
+                  << max_outstanding_requests;
+          return max_outstanding_requests;
+        }
+        element_size_cache_ = node_->AverageBufferedElementSize();
+        const int64_t new_outstanding_requests =
+            max_outstanding_requests + delta_outstanding_requests;
+        VLOG(3) << "The `max_outstanding_requests` changed from "
+                << max_outstanding_requests << " to "
+                << new_outstanding_requests << ". Requested value is "
+                << requested_outstanding_requests;
+        mutex_lock l(*buffer_size_->mu);
+        buffer_size_->value = new_outstanding_requests;
+        return new_outstanding_requests;
+      }
+
      private:
       IteratorContext ctx_;
       Iterator* iterator_ = nullptr;
+      const std::shared_ptr<model::Node> node_;
+      const std::shared_ptr<model::SharedState> buffer_size_;
+      double element_size_cache_ = 0.0;
     };
 
     DataServiceClient data_service_client_;
+    const std::shared_ptr<model::SharedState> buffer_size_;
     // Method for deregistering the cancellation callback.
     std::function<void()> deregister_fn_;
     friend class DataServiceIteratorContext;
@@ -500,7 +505,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   const std::optional<int64_t> consumer_index_;
   const std::optional<int64_t> num_consumers_;
   const int64_t max_outstanding_requests_;
-  const int64_t task_refresh_interval_ms_;
+  const absl::Duration task_refresh_interval_;
   const TargetWorkers target_workers_;
   const DataServiceMetadata metadata_;
   IterationCounter* const iteration_counter_;  // Owned
@@ -530,19 +535,20 @@ DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
     return;
   }
 
+  int64_t task_refresh_interval_hint_ms = 0;
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kTaskRefreshIntervalHintMs,
-                                   &task_refresh_interval_hint_ms_));
-  if (task_refresh_interval_hint_ms_ == model::kAutotune) {
-    task_refresh_interval_hint_ms_ = kDefaultTaskRefreshIntervalMs;
+                                   &task_refresh_interval_hint_ms));
+  if (task_refresh_interval_hint_ms == model::kAutotune) {
+    task_refresh_interval_hint_ = kDefaultTaskRefreshInterval;
+  } else {
+    task_refresh_interval_hint_ =
+        absl::Milliseconds(task_refresh_interval_hint_ms);
   }
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
   if (ctx->HasAttr(kDataTransferProtocol)) {
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr(kDataTransferProtocol, &data_transfer_protocol_));
-  }
-  if (data_transfer_protocol_.empty()) {
-    data_transfer_protocol_ = kGrpcTransferProtocol;
   }
 
   std::string target_workers_str = "AUTO";
@@ -691,6 +697,19 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
         should_uncompress &&
         (*compression == DataServiceMetadata::COMPRESSION_SNAPPY);
   }
+  if (should_uncompress) {
+    StatusOr<bool> disable_compression_at_runtime = DisableCompressionAtRuntime(
+        data_transfer_protocol_, config->deployment_mode());
+    OP_REQUIRES_OK(ctx, disable_compression_at_runtime.status());
+    StatusOr<bool> compression_disabled_at_runtime =
+        CompressionDisabledAtRuntime(dataset_id, address, protocol,
+                                     *disable_compression_at_runtime);
+    OP_REQUIRES_OK(ctx, compression_disabled_at_runtime.status());
+    metrics::RecordTFDataServiceRuntimeCompressionDecision(
+        *compression_disabled_at_runtime);
+    should_uncompress = should_uncompress && !*compression_disabled_at_runtime;
+  }
+
   DataTypeVector data_service_output_types = output_types_;
   std::vector<PartialTensorShape> data_service_output_shapes = output_shapes_;
   if (should_uncompress) {
@@ -715,7 +734,7 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
   DatasetBase* dataset = new Dataset(
       ctx, op_version_, dataset_id, processing_mode, address, protocol,
       data_transfer_protocol_, job_name, consumer_index, num_consumers,
-      max_outstanding_requests, task_refresh_interval_hint_ms_, target_workers_,
+      max_outstanding_requests, task_refresh_interval_hint_, target_workers_,
       *metadata, iteration_counter, owns_resource, iteration_counter_handle,
       std::move(captured_uncompress_func), cross_trainer_cache_options,
       data_service_output_types, data_service_output_shapes);

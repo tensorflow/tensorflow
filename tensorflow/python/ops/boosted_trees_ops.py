@@ -44,7 +44,6 @@ from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_update_ens
 from tensorflow.python.ops.gen_boosted_trees_ops import is_boosted_trees_quantile_stream_resource_initialized as is_quantile_resource_initialized
 # pylint: enable=unused-import
 
-from tensorflow.python.trackable import resource
 from tensorflow.python.training import saver
 
 
@@ -68,10 +67,10 @@ class QuantileAccumulatorSaveable(saver.BaseSaverBuilder.SaveableObject):
   """SaveableObject implementation for QuantileAccumulator."""
 
   def __init__(self, resource_handle, create_op, num_streams, name):
-    self._resource_handle = resource_handle
+    self.resource_handle = resource_handle
     self._num_streams = num_streams
     self._create_op = create_op
-    bucket_boundaries = get_bucket_boundaries(self._resource_handle,
+    bucket_boundaries = get_bucket_boundaries(self.resource_handle,
                                               self._num_streams)
     slice_spec = ''
     specs = []
@@ -83,17 +82,17 @@ class QuantileAccumulatorSaveable(saver.BaseSaverBuilder.SaveableObject):
       specs += [
           make_save_spec(bucket_boundaries[i], '_bucket_boundaries_' + str(i))
       ]
-    super(QuantileAccumulatorSaveable, self).__init__(self._resource_handle,
+    super(QuantileAccumulatorSaveable, self).__init__(self.resource_handle,
                                                       specs, name)
 
   def restore(self, restored_tensors, unused_tensor_shapes):
     bucket_boundaries = restored_tensors
     with ops.control_dependencies([self._create_op]):
       return quantile_resource_deserialize(
-          self._resource_handle, bucket_boundaries=bucket_boundaries)
+          self.resource_handle, bucket_boundaries=bucket_boundaries)
 
 
-class QuantileAccumulator(resource.TrackableResource):
+class QuantileAccumulator():
   """SaveableObject implementation for QuantileAccumulator.
 
      The bucket boundaries are serialized and deserialized from checkpointing.
@@ -105,22 +104,23 @@ class QuantileAccumulator(resource.TrackableResource):
                num_quantiles,
                name=None,
                max_elements=None):
+    del max_elements  # Unused.
+
     self._eps = epsilon
     self._num_streams = num_streams
     self._num_quantiles = num_quantiles
-    super(QuantileAccumulator, self).__init__()
 
     with ops.name_scope(name, 'QuantileAccumulator') as name:
       self._name = name
-      self._resource_handle = self._create_resource()
+      self.resource_handle = self._create_resource()
       self._init_op = self._initialize()
       is_initialized_op = self.is_initialized()
     resources.register_resource(self.resource_handle, self._init_op,
                                 is_initialized_op)
-    self._saveable = QuantileAccumulatorSaveable(
-        self.resource_handle, self._init_op, self._num_streams,
-        self.resource_handle.name)
-    ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, self._saveable)
+    ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS,
+                          QuantileAccumulatorSaveable(
+                              self.resource_handle, self._init_op,
+                              self._num_streams, self.resource_handle.name))
 
   def _create_resource(self):
     return quantile_resource_handle_op(
@@ -139,12 +139,15 @@ class QuantileAccumulator(resource.TrackableResource):
   def is_initialized(self):
     return is_quantile_resource_initialized(self.resource_handle)
 
-  @property
-  def saveable(self):
-    return self._saveable
+  def _serialize_to_tensors(self):
+    raise NotImplementedError('When the need arises, TF2 compatibility can be '
+                              'added by implementing this method, along with '
+                              '_restore_from_tensors below.')
 
-  def _gather_saveables_for_checkpoint(self):
-    return {'quantile_accumulator', self._saveable}
+  def _restore_from_tensors(self, restored_tensors):
+    raise NotImplementedError('When the need arises, TF2 compatibility can be '
+                              'added by implementing this method, along with '
+                              '_serialize_to_tensors above.')
 
   def add_summaries(self, float_columns, example_weights):
     summaries = make_quantile_summaries(float_columns, example_weights,
@@ -183,7 +186,7 @@ class _TreeEnsembleSavable(saver.BaseSaverBuilder.SaveableObject):
                                         name + '_serialized'),
     ]
     super(_TreeEnsembleSavable, self).__init__(resource_handle, specs, name)
-    self._resource_handle = resource_handle
+    self.resource_handle = resource_handle
     self._create_op = create_op
 
   def restore(self, restored_tensors, unused_restored_shapes):
@@ -199,12 +202,12 @@ class _TreeEnsembleSavable(saver.BaseSaverBuilder.SaveableObject):
     """
     with ops.control_dependencies([self._create_op]):
       return gen_boosted_trees_ops.boosted_trees_deserialize_ensemble(
-          self._resource_handle,
+          self.resource_handle,
           stamp_token=restored_tensors[0],
           tree_ensemble_serialized=restored_tensors[1])
 
 
-class TreeEnsemble(resource.TrackableResource):
+class TreeEnsemble():
   """Creates TreeEnsemble resource."""
 
   def __init__(self, name, stamp_token=0, is_local=False, serialized_proto=''):
@@ -213,14 +216,15 @@ class TreeEnsemble(resource.TrackableResource):
     self._is_local = is_local
     with ops.name_scope(name, 'TreeEnsemble') as name:
       self._name = name
-      self._resource_handle = self._create_resource()
+      self.resource_handle = self._create_resource()
       self._init_op = self._initialize()
       is_initialized_op = self.is_initialized()
       # Adds the variable to the savable list.
       if not is_local:
-        self._saveable = _TreeEnsembleSavable(
-            self.resource_handle, self.initializer, self.resource_handle.name)
-        ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, self._saveable)
+        ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS,
+                              _TreeEnsembleSavable(
+                                  self.resource_handle, self.initializer,
+                                  self.resource_handle.name))
       resources.register_resource(
           self.resource_handle,
           self.initializer,
@@ -247,9 +251,15 @@ class TreeEnsemble(resource.TrackableResource):
     return gen_boosted_trees_ops.is_boosted_trees_ensemble_initialized(
         self.resource_handle)
 
-  def _gather_saveables_for_checkpoint(self):
-    if not self._is_local:
-      return {'tree_ensemble': self._saveable}
+  def _serialize_to_tensors(self):
+    raise NotImplementedError('When the need arises, TF2 compatibility can be '
+                              'added by implementing this method, along with '
+                              '_restore_from_tensors below.')
+
+  def _restore_from_tensors(self, restored_tensors):
+    raise NotImplementedError('When the need arises, TF2 compatibility can be '
+                              'added by implementing this method, along with '
+                              '_serialize_to_tensors above.')
 
   def get_stamp_token(self):
     """Returns the current stamp token of the resource."""

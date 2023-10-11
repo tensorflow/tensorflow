@@ -59,9 +59,9 @@ class IgnoreErrorsTest(test_base.DatasetTestBase, parameterized.TestCase):
             lambda x: array_ops.check_numerics(x, "message")).ignore_errors(
                 log_warning=True))
     get_next = self.getNext(dataset)
-    for x in [1., 2., 3.]:
-      self.assertEqual(x, self.evaluate(get_next()))
     with self.captureWritesToStream(sys.stderr) as logged:
+      for x in [1., 2., 3.]:
+        self.assertEqual(x, self.evaluate(get_next()))
       self.assertEqual(5., self.evaluate(get_next()))
     expected = "Tensor had NaN values"
     self.assertIn((expected), logged.contents())

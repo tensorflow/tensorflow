@@ -18,7 +18,7 @@ limitations under the License.
 #include <fstream>
 
 #include "tensorflow/core/util/command_line_flags.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/testing/kernel_test/input_generator.h"
 #include "tensorflow/lite/testing/split.h"
 #include "tensorflow/lite/testing/tflite_driver.h"

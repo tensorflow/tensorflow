@@ -129,12 +129,12 @@ function bazel_test_wheel {
   # Run Bazel Test
   PY_MAJ_MINOR_VER=$(python -c "print(__import__('sys').version)" 2>&1 | awk '{ print $1 }' | head -n 1 | awk -F'.'  '{printf "%s%s\n", $1, $2 }')
   TF_TEST_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py --test_output=errors --verbose_failures=true --keep_going --test_env=TF2_BEHAVIOR=1"
-  TF_TEST_FILTER_TAGS="-nopip,-no_pip,-nomac,-no_mac,-no_oss,-oss_serial,-no_oss_py${PY_MAJ_MINOR_VER},-v1only,-gpu,-tpu,-benchmark-test"
+  TF_TEST_FILTER_TAGS="-nopip,-no_pip,-nomac,-no_mac,-mac_excluded,-no_oss,-oss_excluded,-oss_serial,-no_oss_py${PY_MAJ_MINOR_VER},-v1only,-gpu,-tpu,-benchmark-test"
   BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=$(sysctl -n hw.ncpu)"
 
   # Install additional test requirements
   # TODO - Add these to setup.py test requirements
-  pip install portpicker~=1.4.0 scipy~=1.7.2
+  pip install portpicker~=1.5.2 scipy~=1.7.2
 
   PIP_TEST_PREFIX=bazel_pip
   TEST_ROOT=$(pwd)/${PIP_TEST_PREFIX}

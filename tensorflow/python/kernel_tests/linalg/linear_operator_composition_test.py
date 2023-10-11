@@ -119,6 +119,24 @@ class SquareLinearOperatorCompositionTest(
       linalg.LinearOperatorComposition(
           [operator_1, operator_2], is_non_singular=False)
 
+  def test_is_spd_is_auto_set(self):
+    matrix = [[11., 0.], [1., 8.]]
+    x = linalg.LinearOperatorFullMatrix(matrix, is_non_singular=True)
+    y = linalg.LinearOperatorFullMatrix(matrix, is_non_singular=True)
+
+    operator = linalg.LinearOperatorComposition(
+        [x, y, y.H, x.H], is_non_singular=None)
+
+    self.assertTrue(operator.is_self_adjoint)
+    self.assertTrue(operator.is_positive_definite)
+    self.assertTrue(operator.is_non_singular)
+
+    with self.assertRaisesRegex(ValueError, "self-adjoint"):
+      linalg.LinearOperatorComposition([x, x.H], is_self_adjoint=False)
+
+    with self.assertRaisesRegex(ValueError, "non-singular"):
+      linalg.LinearOperatorComposition([x, x.H], is_non_singular=False)
+
   def test_name(self):
     matrix = [[11., 0.], [1., 8.]]
     operator_1 = linalg.LinearOperatorFullMatrix(matrix, name="left")
@@ -258,6 +276,14 @@ class NonSquareLinearOperatorCompositionTest(
     with self.cached_session():
       self.assertAllEqual(
           (1, 2, 3, 5), operator.shape_tensor().eval(feed_dict=feed_dict))
+
+  @test_util.run_deprecated_v1
+  def test_is_square_set_for_aat_form(self):
+    mat_ph = array_ops.placeholder(dtypes.float64)  # No shape set at all.
+    x = linalg.LinearOperatorFullMatrix(mat_ph, is_square=False)
+
+    operator = linalg.LinearOperatorComposition([x, x.H])
+    self.assertTrue(operator.is_square)
 
 
 if __name__ == "__main__":

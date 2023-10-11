@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <iterator>
+#include <utility>
 
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -81,7 +82,15 @@ template <class T>
 static Status TF_MUST_USE_RESULT BuildDenseSpec(
     const StridedSliceSparseSpec& sparse, StridedSliceDenseSpec* dense) {
   if (dense->dims < 0) {
-    return errors::InvalidArgument("Unexpected negative dense.dims");
+    return errors::InvalidArgument("Unexpected negative dense.dims: %d",
+                                   dense->dims);
+  }
+
+  if (dense->dims >= 1024) {
+    // We do not expect to see tensors with rank >= 1024, it must mean that
+    // there is a bug somewhere.
+    return errors::InvalidArgument("Unexpected large dense.dims: %d",
+                                   dense->dims);
   }
 
   // Build expanded begin, end, strides, begin_mask, end_mask
@@ -130,6 +139,9 @@ static Status TF_MUST_USE_RESULT BuildDenseSpec(
         dense->final_shape_gather_indices_sparse.push_back(-1);
       } else {
         if (full_index == dense->begin.size()) {
+          if (dense->dims == 0) {
+            return errors::InvalidArgument("Attempting to slice scalar input.");
+          }
           return errors::InvalidArgument("Index out of range using input dim ",
                                          full_index, "; input has only ",
                                          dense->dims, " dims");

@@ -16,9 +16,10 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/in_top_k_spmd_expander.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/types/optional.h"
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
@@ -35,9 +36,9 @@ namespace {
 // layout, ensuring that the 2nd dimension is replicated.
 StatusOr<Layout> GetSuggestedPredictionsLayout(const Layout& layout) {
   // predictions is a rank-2 tensor (batch_size x num_classes)
-  std::vector<ShardingSpec> layout_specs(2);
-  layout_specs[0].set_sharding_spec(layout.sharding_spec(0));
-  layout_specs[1].set_sharding_spec(Layout::kUnshardedDim);
+  std::vector<std::string> layout_specs(2);
+  layout_specs[0] = layout.sharding_spec(0);
+  layout_specs[1] = Layout::kUnshardedDim;
 
   return Layout::GetLayout(layout_specs, layout.mesh());
 }
@@ -46,10 +47,10 @@ StatusOr<Layout> GetSuggestedPredictionsLayout(const Layout& layout) {
 // of "other_layout".
 StatusOr<Layout> MatchBatchDim(const Layout& layout,
                                const Layout& other_layout) {
-  std::vector<ShardingSpec> layout_specs(layout.rank());
-  layout_specs[0].set_sharding_spec(other_layout.sharding_spec(0));
+  std::vector<std::string> layout_specs(layout.rank());
+  layout_specs[0] = other_layout.sharding_spec(0);
   for (int i = 1; i < layout.rank(); ++i) {
-    layout_specs[i].set_sharding_spec(layout.sharding_spec(i));
+    layout_specs[i] = layout.sharding_spec(i);
   }
 
   return Layout::GetLayout(layout_specs, layout.mesh());
@@ -60,10 +61,10 @@ StatusOr<Layout> MatchBatchDim(const Layout& layout,
 StatusOr<mlir::Operation*> InTopKSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto in_top_k_op = mlir::cast<mlir::TF::InTopKV2Op>(op);
 
-  mlir::Value predictions = in_top_k_op.predictions();
+  mlir::Value predictions = in_top_k_op.getPredictions();
   TF_ASSIGN_OR_RETURN(const Layout predictions_layout,
                       ExtractRequiredLayoutFromOperand(predictions));
-  mlir::Value targets = in_top_k_op.targets();
+  mlir::Value targets = in_top_k_op.getTargets();
   TF_ASSIGN_OR_RETURN(const Layout targets_layout,
                       ExtractRequiredLayoutFromOperand(targets));
 
@@ -110,7 +111,7 @@ StatusOr<mlir::Operation*> InTopKSPMDExpander::ExpandOp(mlir::Operation* op) {
   }
 
   mlir::OpBuilder builder(op);
-  mlir::BlockAndValueMapping mapping;
+  mlir::IRMapping mapping;
   // Apply any input relayouts.
   if (relayout_predictions) {
     TF_ASSIGN_OR_RETURN(

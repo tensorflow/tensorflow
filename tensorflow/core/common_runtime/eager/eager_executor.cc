@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 
 #include <forward_list>
+#include <functional>
+#include <memory>
+#include <utility>
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -31,7 +34,8 @@ bool IsAsyncWaitForRemoteFunctionEnabled() {
 }
 }  // namespace
 
-EagerExecutor::EagerExecutor(bool async, bool enable_streaming_enqueue)
+EagerExecutor::EagerExecutor(bool async, bool enable_streaming_enqueue,
+                             int in_flight_nodes_limit)
     : next_node_id_(0),
       ok_(true),
       thread_(async ? tensorflow::Env::Default()->StartThread(
@@ -41,7 +45,13 @@ EagerExecutor::EagerExecutor(bool async, bool enable_streaming_enqueue)
       last_eager_client_(nullptr),
       enable_async_wait_for_remote_function_(
           IsAsyncWaitForRemoteFunctionEnabled()),
-      enable_streaming_enqueue_(enable_streaming_enqueue) {}
+      enable_streaming_enqueue_(enable_streaming_enqueue),
+      in_flight_nodes_limit_(in_flight_nodes_limit) {
+  if (async && in_flight_nodes_limit_ > 0) {
+    VLOG(4) << "EagerExecutor InFlightNodes limit is set to "
+            << in_flight_nodes_limit_;
+  }
+}
 
 EagerExecutor::~EagerExecutor() {
   tensorflow::mutex_lock l(node_queue_mutex_);
@@ -100,7 +110,7 @@ const char* EagerExecutor::StateStringLocked() {
 
 Status EagerExecutor::SyncExecute(EagerNode* node) {
   if (Async()) {
-    return errors::Internal("Executor does not support async execution");
+    return errors::Internal("SyncExecute does not support async execution.");
   }
   if (node->AsAsync() != nullptr) {
     return errors::Internal("Executor does not support executing async nodes");
@@ -141,7 +151,7 @@ Status EagerExecutor::AddOrExecute(std::unique_ptr<EagerNode> node) {
   } else {
     tensorflow::mutex_lock l(node_queue_mutex_);
     DVLOG(3) << "Add node [id " << item->id << "]" << item->node->DebugString()
-             << " with status: " << status_.ToString();
+             << " with status: " << status_;
     if (state_ != ExecutorState::kActive) {
       status = errors::FailedPrecondition(
           "EagerExecutor accepts new EagerNodes to run only in Active state. "
@@ -156,7 +166,22 @@ Status EagerExecutor::AddOrExecute(std::unique_ptr<EagerNode> node) {
         if (node_queue_.size() == 1) {
           nodes_pending_.notify_all();
         }
-
+        if (in_flight_nodes_limit_ == 0) {
+          return OkStatus();
+        }
+        // Limit the concurrency by controlling the number of in flight nodes.
+        while (true) {
+          int64_t in_flight_nodes_count =
+              node_queue_.size() + unfinished_nodes_.size();
+          if (in_flight_nodes_count < in_flight_nodes_limit_) {
+            break;
+          }
+          VLOG(4) << "Hitting in-flight node limit node_queue_.size() = "
+                  << node_queue_.size()
+                  << " unfinished_nodes_.size() = " << unfinished_nodes_.size()
+                  << ".";
+          nodes_done_.wait(l);
+        }
         return OkStatus();
       }
     }
@@ -210,7 +235,7 @@ void EagerExecutor::ClearError() {
 void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
                              const Status& status, bool from_queue) {
   DVLOG(3) << "Node Done: [id " << item->id << "] " << item->node->DebugString()
-           << " with status: " << status.ToString();
+           << " with status: " << status;
   DCHECK(item->state != NodeState::kDONE);
   item->state = NodeState::kDONE;
 
@@ -275,6 +300,8 @@ void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
     if (need_notification) {
       NotifyWaiters(item->id);
     }
+    // Notify AddOrExecute() some nodes have been done.
+    nodes_done_.notify_all();
   }
 
   for (auto& item : items_to_destroy) {
@@ -305,11 +332,11 @@ void EagerExecutor::NotifyWaiters(uint64 id) {
     // occurred. These calling threads are responsible for checking status_
     // before proceeding.
     const auto range =
-        status_.ok()
-            ? make_pair(node_done_notifications_.lower_bound(id),
-                        node_done_notifications_.upper_bound(upperbound_id))
-            : make_pair(node_done_notifications_.begin(),
-                        node_done_notifications_.end());
+        status_.ok() ? std::make_pair(
+                           node_done_notifications_.lower_bound(id),
+                           node_done_notifications_.upper_bound(upperbound_id))
+                     : std::make_pair(node_done_notifications_.begin(),
+                                      node_done_notifications_.end());
     for (auto it = range.first; it != range.second; ++it) {
       it->second->notify_all();
     }

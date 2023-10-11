@@ -1,4 +1,4 @@
-// RUN: tfg-transforms-opt -pass-pipeline='tfg-functional-to-region,tfg.func(tfg-cf-sink),tfg-region-to-functional,tfg-prepare-attrs-export,tfg-shape-inference' %s | FileCheck %s
+// RUN: tfg-transforms-opt -pass-pipeline='builtin.module(tfg-functional-to-region,tfg.func(tfg-cf-sink),tfg-region-to-functional,tfg-prepare-attrs-export,tfg-shape-inference)' %s | FileCheck %s
 
 // In this test case, `@then` has an unused argument `%b`. Sinking `Add` into 
 // `@else` does not cause the signature to visibly change, so the function is

@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "llvm/Support/FormatVariadic.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
 #include "tensorflow/dtensor/mlir/device_utils.h"
@@ -93,8 +94,20 @@ StatusOr<mlir::Operation*> Expand(mlir::Operation* op) {
   symbol_table.insert(else_func);
 
   TF_ASSIGN_OR_RETURN(mlir::Value device_id, DeviceId(op));
+
+  TF_ASSIGN_OR_RETURN(
+      mlir::Value zero_scalar,
+      CreateZeroScalarConst(
+          builder, location,
+          device_id.getType().cast<mlir::TensorType>().getElementType()));
+
+  mlir::TF::NotEqualOp not_equal = builder.create<mlir::TF::NotEqualOp>(
+      location, device_id, zero_scalar,
+      /*incompatible_shape_error=*/builder.getBoolAttr(false));
+
   mlir::Operation* if_op = builder.create<mlir::TF::IfOp>(
-      location, then_func.getFunctionType().getResults(), /*cond=*/device_id,
+      location, then_func.getFunctionType().getResults(),
+      /*cond=*/not_equal.getResult(),
       /*input=*/op->getOperands(),
       /*then_branch=*/then_func.getSymName(),
       /*else_branch=*/else_func.getSymName(), /*is_stateless=*/false);
@@ -108,6 +121,8 @@ StatusOr<mlir::Operation*> Expand(mlir::Operation* op) {
 StatusOr<mlir::Operation*> IOOpSPMDExpander::ExpandOp(mlir::Operation* op) {
   if (llvm::isa<mlir::TF::WriteSummaryOp>(op)) {
     return Expand<mlir::TF::WriteSummaryOp>(op);
+  } else if (llvm::isa<mlir::TF::FlushSummaryWriterOp>(op)) {
+    return Expand<mlir::TF::FlushSummaryWriterOp>(op);
   }
   return errors::Unimplemented(
       llvm::formatv("SPMD for op : {0} is not implemented ", OpName(op)).str());

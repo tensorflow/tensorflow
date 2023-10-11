@@ -1,18 +1,18 @@
 // RUN: tf-opt --split-input-file -tf-lower-to-mlprogram-and-hlo %s -o - | FileCheck %s
 
 module attributes {tf_saved_model.semantics} {
-  // CHECK-LABEL: func @lowers_to_mhlo
-  func.func @lowers_to_mhlo(%arg0: tensor<i32> {tf_saved_model.index_path = []}) -> (tensor<*xi32> {tf_saved_model.index_path = []})
-    attributes {tf_saved_model.exported_names = ["lowers_to_mhlo"]}
+  // CHECK-LABEL: func @lowers_to_stablehlo
+  func.func @lowers_to_stablehlo(%arg0: tensor<i32> {tf_saved_model.index_path = []}) -> (tensor<*xi32> {tf_saved_model.index_path = []})
+    attributes {tf_saved_model.exported_names = ["lowers_to_stablehlo"]}
   {
-    // CHECK-DAG: [[one:%.*]] = mhlo.constant dense<1>
-    // CHECK-DAG: [[twenty:%.*]] = mhlo.constant dense<20>
-    // CHECK-DAG: [[r3:%.*]] = mhlo.subtract [[twenty]], %arg0
-    // CHECK-DAG: [[zero:%.*]] = mhlo.constant dense<0>
-    // CHECK-DAG: [[r4:%.*]] = mhlo.divide [[r3]], [[one]]
-    // CHECK-DAG: [[r5:%.*]] = mhlo.compare NE
-    // CHECK-DAG: [[r6:%.*]] = mhlo.compare LT
-    // CHECK: [[result:%.*]] = "mhlo.select"
+    // CHECK-DAG: [[one:%.*]] = stablehlo.constant dense<1>
+    // CHECK-DAG: [[twenty:%.*]] = stablehlo.constant dense<20>
+    // CHECK-DAG: [[r3:%.*]] = stablehlo.subtract [[twenty]], %arg0
+    // CHECK-DAG: [[zero:%.*]] = stablehlo.constant dense<0>
+    // CHECK-DAG: [[r4:%.*]] = stablehlo.divide [[r3]], [[one]]
+    // CHECK-DAG: [[r5:%.*]] = stablehlo.compare NE
+    // CHECK-DAG: [[r6:%.*]] = stablehlo.compare LT
+    // CHECK: [[result:%.*]] = stablehlo.select
     // CHECK-NEXT: return [[result]]
     %0 = tf_executor.graph {
       %outputs, %control = tf_executor.island wraps "tf.Const"() {device = "", value = dense<1> : tensor<i32>} : () -> tensor<i32>
@@ -55,8 +55,7 @@ module attributes {tf_saved_model.semantics} {
   func.func @lowers_variable_ops()
     attributes {tf_saved_model.exported_names = ["lowers_variable_ops"]}
   {
-    // CHECK: %0 = mhlo.constant dense<1> : tensor<i32>
-    // CHECK: ml_program.global_store @vars.v = %0 : tensor<i32>
+    // CHECK: ml_program.global_store
     tf_executor.graph {
       %0, %c0 = tf_executor.island wraps "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
       %1, %c1 = tf_executor.island wraps "tf.VarHandleOp"() {container = "", shared_name = "v"} : () -> tensor<!tf_type.resource<tensor<i32>>>
@@ -90,9 +89,9 @@ module attributes {tf_saved_model.semantics} {
 
   // CHECK-LABEL: func @handles_variables_in_while_loops
   func.func @handles_variables_in_while_loops(%arg0: tensor<!tf_type.resource<tensor<i32>>> {tf._user_specified_name = "arg0", tf.device = "/job:localhost/replica:0/task:0/device:CPU:0", tf_saved_model.index_path = []})
-    attributes {tf_saved_model.exported_names = ["lowers_variable_ops"]}
+    attributes {tf_saved_model.exported_names = ["handles_variables_in_while_loops"]}
   {
-    // CHECK: mhlo.while
+    // CHECK: stablehlo.while
     tf_executor.graph {
       %0, %c0 = tf_executor.island wraps "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
       %1, %c1 = tf_executor.island wraps "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
@@ -102,5 +101,36 @@ module attributes {tf_saved_model.semantics} {
       tf_executor.fetch %c2 : !tf_executor.control
     }
     return
+  }
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+  // CHECK: func @a
+  // CHECK: func @b
+  // CHECK: func @c
+  // CHECK-LABEL @expands_exported_names
+  func.func @expands_exported_names()
+      attributes {tf_saved_model.exported_names = ["a", "b", "c"]} {
+    return
+  }
+}
+
+// -----
+
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1512 : i32}} {
+  // CHECK-LABEL @lowers_string_ops
+  // CHECK-DAG: ml_program.global public @vars.Variable_1([]) : tensor<!tf_type.string>
+  func.func @lowers_string_ops(%arg0: tensor<128xi32>, %arg1: tensor<128xi32>, %arg2: tensor<128x1xi32>, %arg3: tensor<128x90xi32>, %arg4: tensor<128x90xi32>, %arg5: tensor<128x90xi32>, %arg6: tensor<128x90x64xf32>, %arg7: tensor<128x90x64xf32>) -> tensor<!tf_type.string> {
+    // CHECK: %0 = ml_program.global_load @vars.Variable_1 : tensor<!tf_type.string>
+    %0 = tf_executor.graph {
+      %outputs_4, %control_5 = tf_executor.island wraps "tf.VarHandleOp"() {container = "", shared_name = "Variable"} : () -> tensor<!tf_type.resource<tensor<!tf_type.string>>>
+      %outputs_10, %control_11 = tf_executor.island wraps "tf.VarHandleOp"() {container = "", shared_name = "Variable_1"} : () -> tensor<!tf_type.resource<tensor<!tf_type.string>>>
+      %outputs_14, %control_15 = tf_executor.island wraps "tf.ReadVariableOp"(%outputs_10) : (tensor<!tf_type.resource<tensor<!tf_type.string>>>) -> tensor<!tf_type.string>
+      %control_18 = tf_executor.island wraps "tf.AssignVariableOp"(%outputs_4, %outputs_14) : (tensor<!tf_type.resource<tensor<!tf_type.string>>>, tensor<!tf_type.string>) -> ()
+      tf_executor.fetch %outputs_14 : tensor<!tf_type.string>
+   }
+   func.return %0 : tensor<!tf_type.string>
   }
 }

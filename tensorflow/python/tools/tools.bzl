@@ -1,7 +1,7 @@
 """Definitions for using tools like saved_model_cli."""
 
 load("//tensorflow:tensorflow.bzl", "clean_dep", "if_xla_available")
-load("//tensorflow:tensorflow.bzl", "tfcompile_target_cpu")
+load("//tensorflow:tensorflow.default.bzl", "tfcompile_target_cpu")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "target_llvm_triple")
 
 def _maybe_force_compile(args, force_compile):
@@ -110,7 +110,7 @@ def saved_model_compile_aot(
     """
     saved_model = "{}/saved_model.pb".format(directory)
     target_triple = target_triple or target_llvm_triple()
-    target_cpu = target_cpu or tfcompile_target_cpu() or ""
+    target_cpu = target_cpu or tfcompile_target_cpu(name) or ""
     variables_to_feed = variables_to_feed or "''"
     if checkpoint_path:
         checkpoint_cmd_args = (

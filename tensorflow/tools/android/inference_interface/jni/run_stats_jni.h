@@ -18,6 +18,9 @@ limitations under the License.
 
 #include <jni.h>
 
+#include "tensorflow/core/util/stat_summarizer.h"
+#include "tsl/util/stats_calculator.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus

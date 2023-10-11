@@ -52,9 +52,12 @@ namespace acceleration {
 // custom_input[i] will be mapped to main_model.input[i].
 class CustomValidationEmbedder {
  public:
-  CustomValidationEmbedder(int batch_size,
-                           std::vector<std::vector<uint8_t>> custom_input)
-      : batch_size_(batch_size), custom_input_(std::move(custom_input)) {}
+  CustomValidationEmbedder(
+      int batch_size, std::vector<std::vector<uint8_t>> custom_input,
+      ErrorReporter* error_reporter = DefaultErrorReporter())
+      : batch_size_(batch_size),
+        custom_input_(std::move(custom_input)),
+        error_reporter_(error_reporter) {}
 
   // Move only.
   CustomValidationEmbedder(CustomValidationEmbedder&&) = default;
@@ -81,7 +84,7 @@ class CustomValidationEmbedder {
 
   int batch_size_;
   std::vector<std::vector<uint8_t>> custom_input_;
-  ErrorReporter* error_reporter_ = tflite::DefaultErrorReporter();
+  ErrorReporter* error_reporter_;
 };
 
 }  // namespace acceleration

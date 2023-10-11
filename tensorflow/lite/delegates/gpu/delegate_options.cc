@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/delegate_options.h"
 
+#include <limits>
+
 TfLiteGpuDelegateOptionsV2 TfLiteGpuDelegateOptionsV2Default() {
   TfLiteGpuDelegateOptionsV2 options;
   // set it to -1 to detect whether it was later adjusted.
@@ -28,5 +30,9 @@ TfLiteGpuDelegateOptionsV2 TfLiteGpuDelegateOptionsV2Default() {
   options.max_delegated_partitions = 1;
   options.model_token = nullptr;
   options.serialization_dir = nullptr;
+#ifdef TFLITE_DEBUG_DELEGATE
+  options.first_delegate_node_index = 0;
+  options.last_delegate_node_index = std::numeric_limits<int>::max();
+#endif
   return options;
 }

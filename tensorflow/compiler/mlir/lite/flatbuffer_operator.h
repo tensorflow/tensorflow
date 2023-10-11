@@ -18,13 +18,13 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/AssumeBundleQueries.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -32,22 +32,25 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/mutable/schema_generated.h"
 
 namespace mlir {
+
+// Returns true if the op_code belongs to a stablehlo operation.
+bool IsStablehloOp(const tflite::OperatorCodeT &op_code);
 
 // Returns the MLIR op name for the flatbuffer operator corresponding to
 // `op_code`.
 std::string GetMlirOpNameFromOpCode(const ::tflite::OperatorCodeT &op_code);
 
 // Returns the builtin op code for the given MLIR operation on success; emits
-// error and returns llvm::None on failure.
-llvm::Optional<tflite::BuiltinOperator> GetBuiltinOpCode(Operation *mlir_op);
+// error and returns std::nullopt on failure.
+std::optional<tflite::BuiltinOperator> GetBuiltinOpCode(Operation *mlir_op);
 
 // Packs the given MLIR operation into a TFLite FlatBuffer operator object.
 // Returns the FlatBuffer offset for the operator on success; emits error and
-// returns llvm::None on failure.
-llvm::Optional<flatbuffers::Offset<tflite::Operator>> CreateFlatBufferOperator(
+// returns std::nullopt on failure.
+std::optional<flatbuffers::Offset<tflite::Operator>> CreateFlatBufferOperator(
     Operation *mlir_op, uint32_t opcode_index,
     const std::vector<int32_t> &operands, const std::vector<int32_t> &results,
     const std::vector<int32_t> &intermediates,
@@ -75,6 +78,144 @@ tensorflow::Status CustomOptionsToAttributes(
     mlir::Builder builder,
     // NOLINTNEXTLINE
     Location loc, llvm::SmallVectorImpl<mlir::NamedAttribute> *attributes);
+
+// TODO(zichuanwei@): Populate Builtin_options_2 manual for now, should automate
+// these in the future
+void BuiltinOptions2ToAttributes(
+    tflite::BuiltinOptions2Union op_union, mlir::Builder builder,
+    llvm::SmallVectorImpl<mlir::NamedAttribute> &attributes);
+
+// Function calls with a non-specialized type will result to a linker error.
+template <typename T>
+inline std::vector<T> GetVector(DenseElementsAttr elements);
+
+// TODO(zichuanwei@): for each type, we need to make sure the element type
+// matches the expected type otherwise an error should be thrown, but for now
+// we're just returning empty vector
+template <>
+inline std::vector<bool> GetVector(DenseElementsAttr elements) {
+  auto type = elements.getType();
+  auto elemType = type.getElementType();
+  if (elemType.isSignlessInteger(1)) {
+    auto vec = llvm::to_vector(
+        llvm::map_range(elements.getValues<bool>(),
+                        [&](bool value) -> uint8_t { return value ? 1 : 0; }));
+    return std::vector<bool>(vec.begin(), vec.end());
+  }
+
+  return std::vector<bool>();
+}
+
+template <>
+inline std::vector<int8_t> GetVector(DenseElementsAttr elements) {
+  auto type = elements.getType();
+  auto elemType = type.getElementType();
+  if (elemType.isSignlessInteger(8)) {
+    auto vec = llvm::to_vector(llvm::map_range(
+        elements.getValues<APInt>(),
+        [&](APInt value) -> int8_t { return value.getSExtValue(); }));
+    return std::vector<int8_t>(vec.begin(), vec.end());
+  }
+
+  return std::vector<int8_t>();
+}
+
+template <>
+inline std::vector<int16_t> GetVector(DenseElementsAttr elements) {
+  auto type = elements.getType();
+  auto elemType = type.getElementType();
+  if (elemType.isSignlessInteger(16)) {
+    auto vec = llvm::to_vector(llvm::map_range(
+        elements.getValues<APInt>(),
+        [&](APInt value) -> int16_t { return value.getSExtValue(); }));
+    return std::vector<int16_t>(vec.begin(), vec.end());
+  }
+
+  return std::vector<int16_t>();
+}
+
+template <>
+inline std::vector<int32_t> GetVector(DenseElementsAttr elements) {
+  auto type = elements.getType();
+  auto elemType = type.getElementType();
+  if (elemType.isSignlessInteger(32)) {
+    auto vec = llvm::to_vector(llvm::map_range(
+        elements.getValues<APInt>(),
+        [&](APInt value) -> int32_t { return value.getSExtValue(); }));
+    return std::vector<int32_t>(vec.begin(), vec.end());
+  }
+
+  return std::vector<int32_t>();
+}
+
+template <>
+inline std::vector<int64_t> GetVector(DenseElementsAttr elements) {
+  auto type = elements.getType();
+  auto elemType = type.getElementType();
+  if (elemType.isSignlessInteger(64)) {
+    auto vec = llvm::to_vector(llvm::map_range(
+        elements.getValues<APInt>(),
+        [&](APInt value) -> int64_t { return value.getSExtValue(); }));
+    return std::vector<int64_t>(vec.begin(), vec.end());
+  }
+
+  return std::vector<int64_t>();
+}
+
+template <>
+inline std::vector<uint64_t> GetVector(DenseElementsAttr elements) {
+  auto type = elements.getType();
+  auto elemType = type.getElementType();
+  if (elemType.isSignlessInteger(64)) {
+    auto vec = llvm::to_vector(llvm::map_range(
+        elements.getValues<APInt>(),
+        [&](APInt value) -> uint64_t { return value.getSExtValue(); }));
+    return std::vector<uint64_t>(vec.begin(), vec.end());
+  }
+
+  return std::vector<uint64_t>();
+}
+
+template <>
+inline std::vector<float> GetVector(DenseElementsAttr elements) {
+  auto type = elements.getType();
+  auto elemType = type.getElementType();
+  if (elemType.isF32()) {
+    auto vec = llvm::to_vector(llvm::map_range(
+        elements.getValues<APFloat>(),
+        [&](APFloat value) -> float { return value.convertToFloat(); }));
+    return std::vector<float>(vec.begin(), vec.end());
+  }
+
+  return std::vector<float>();
+}
+
+template <>
+inline std::vector<double> GetVector(DenseElementsAttr elements) {
+  auto type = elements.getType();
+  auto elemType = type.getElementType();
+  if (elemType.isF64()) {
+    auto vec = llvm::to_vector(llvm::map_range(
+        elements.getValues<APFloat>(),
+        [&](APFloat value) -> double { return value.convertToFloat(); }));
+    return std::vector<double>(vec.begin(), vec.end());
+  }
+
+  return std::vector<double>();
+}
+
+// Handles the case when the DenseElementsAttr doesn't exist, and when it
+// doesn't returns a vector of length `default_size` all with the same value
+// `default_value`.
+template <typename T>
+static inline std::vector<T> GetOptionalVector(
+    std::optional<DenseElementsAttr> elements, int64_t default_size = 0,
+    int64_t default_value = 0) {
+  if (elements.has_value()) {
+    return GetVector<T>(elements.value());
+  }
+  return std::vector<T>(default_size, default_value);
+}
 
 }  // namespace mlir
 

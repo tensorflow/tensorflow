@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-functional-control-flow-to-regions -split-input-file | FileCheck %s
+// RUN: tf-opt %s -pass-pipeline='builtin.module(tf-functional-control-flow-to-regions{allow-passthrough-args})' -split-input-file | FileCheck %s
 
 // Simple If
 // CHECK: func private @testIf1Then{{.+}}
@@ -146,6 +146,24 @@ func.func @testIf1Result(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf
 
 // -----
 
+func.func private @branch_0(%arg0: tensor<!tf_type.resource>) -> tensor<*xf32>
+func.func private @branch_1(%arg0: tensor<!tf_type.resource>) -> tensor<*xf32>
+
+// CHECK-LABEL: func @testCase(%arg0: tensor<i32>, %arg1: tensor<!tf_type.resource<tensor<1x2x3xf32>>>)
+func.func @testCase(%arg0: tensor<i32>, %arg1: tensor<!tf_type.resource<tensor<1x2x3xf32>>>) -> tensor<1x2x3xf32> {
+  %0 = "tf.Case"(%arg0, %arg1) {branches = [@branch_0, @branch_1], is_stateless = false} : (tensor<i32>, tensor<!tf_type.resource<tensor<1x2x3xf32>>>) -> tensor<1x2x3xf32>
+
+  // CHECK: [[Result0:%.*]] = "tf.CaseRegion"
+  // CHECK: [[Result1:%.*]] = func.call @branch_0
+  // CHECK: "tf.Yield"([[Result1]])
+  // CHECK: [[Result2:%.*]] = func.call @branch_1
+  // CHECK: "tf.Yield"([[Result2]])
+  // CHECK: return [[Result0]]
+  func.return %0 : tensor<1x2x3xf32>
+}
+
+// -----
+
 // Simple While
 func.func private @testWhileCond(tensor<*xf32>) -> (tensor<i1>)
 func.func private @testWhileBody(tensor<*xf32>) -> (tensor<*xf32>)
@@ -161,8 +179,9 @@ func.func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
   } : (tensor<*xf32>) -> (tensor<*xf32>)
 
   // CHECK: [[Result0:%.*]] = "tf.WhileRegion"
+  // CHECK: ^bb0([[CARG0:%[^:]*]]:
   // CHECK: [[Result1:%.*]] = func.call @testWhileCond
-  // CHECK: "tf.Yield"([[Result1]])
+  // CHECK: "tf.Yield"([[Result1]], [[CARG0]])
   // CHECK: [[Result2:%.*]] = func.call @testWhileBody
   // CHECK: "tf.Yield"([[Result2]])
   // CHECK: _attr0 = 10
@@ -213,9 +232,9 @@ func.func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
   } : (tensor<*xf32>) -> (tensor<*xf32>)
 
   // CHECK: [[Result0:%.*]] = "tf.WhileRegion"
-  // CHECK: ^bb0(%[[CARG0:.*]]: tensor<4xf32>
-  // CHECK: [[Result1:%.*]] = func.call @testWhileCond(%[[CARG0]])
-  // CHECK: "tf.Yield"([[Result1]])
+  // CHECK: ^bb0([[CARG0:%.*]]: tensor<4xf32>
+  // CHECK: [[Result1:%.*]] = func.call @testWhileCond([[CARG0]])
+  // CHECK: "tf.Yield"([[Result1]], [[CARG0]])
   // CHECK: ^bb0(%[[BARG0:.*]]: tensor<4xf32>
   // CHECK: [[Result2:%.*]] = func.call @testWhileBody(%[[BARG0]])
   // CHECK: "tf.Yield"([[Result2]])
@@ -240,9 +259,10 @@ func.func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
   } : (tensor<*xf32>) -> (tensor<*xf32>)
 
   // CHECK: [[Result0:%.*]] = "tf.WhileRegion"
+  // CHECK: ^bb0([[CARG0:%[^:]*]]:
   // CHECK: [[Result1:%.*]] = func.call @testWhileCond
   // CHECK: [[ToBool:%.*]] = "tf.ToBool"([[Result1]])
-  // CHECK: "tf.Yield"([[ToBool]])
+  // CHECK: "tf.Yield"([[ToBool]], [[CARG0]])
   // CHECK: [[Result2:%.*]] = func.call @testWhileBody
   // CHECK: "tf.Yield"([[Result2]])
   // CHECK: return [[Result0]]

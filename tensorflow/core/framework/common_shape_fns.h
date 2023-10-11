@@ -35,7 +35,7 @@ Status GetWindowedOutputSizeFromDims(InferenceContext* c,
 
 // The V2 version computes the same outputs with arbitrary dilation_rate, and
 // supports EXPLICIT padding. For detailed equations, refer to the comments
-// for GetWindowedOutputSizeV2(). The 'padding_before' and 'padding_after'
+// for GetWindowedOutputSize(). The 'padding_before' and 'padding_after'
 // parameters are only used if padding_type == EXPLICIT.
 Status GetWindowedOutputSizeFromDimsV2(
     InferenceContext* c, DimensionHandle input_size,
@@ -122,6 +122,9 @@ Status BiasAddShape(shape_inference::InferenceContext* c);
 // Shape function for BiasAddGrad-like operations.
 Status BiasAddGradShape(shape_inference::InferenceContext* c);
 
+// Shape function for general Convolution operation
+Status ConvShape(shape_inference::InferenceContext* c);
+
 // Shape function for Conv2D-like operations that support explicit padding.
 Status Conv2DShapeWithExplicitPadding(shape_inference::InferenceContext* c);
 
@@ -206,7 +209,7 @@ Status UnknownShape(shape_inference::InferenceContext* c);
 Status ReductionShape(shape_inference::InferenceContext* c);
 
 // Shape function for unsorted segment operations.
-Status UnsortedSegmentReductionShapeFn(InferenceContext* c);
+Status SegmentReductionWithNumSegmentsShapeFn(InferenceContext* c);
 
 // Shape function for concat operations.
 // <num_inputs_to_concat> is the number of inputs to concatenate and are taken

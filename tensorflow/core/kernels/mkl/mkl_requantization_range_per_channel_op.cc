@@ -14,14 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/array_ops.cc.
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL)
 #define EIGEN_USE_THREADS
 
 #include <math.h>
 
 #include <limits>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/meta_support.h"
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/mkl_threadpool.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
@@ -128,8 +127,8 @@ class MklRequantizationRangePerChannelOp : public OpKernel {
     Tensor* output_max = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(kOutputMinIndex, {}, &output_min));
     OP_REQUIRES_OK(ctx, ctx->allocate_output(kOutputMaxIndex, {}, &output_max));
-    output_min->flat<float>()(0) = is_non_negative ? 0.0f : -out_min_max;
-    output_max->flat<float>()(0) = out_min_max;
+    output_min->scalar<float>()() = is_non_negative ? 0.0f : -out_min_max;
+    output_max->scalar<float>()() = out_min_max;
   }
 
  private:

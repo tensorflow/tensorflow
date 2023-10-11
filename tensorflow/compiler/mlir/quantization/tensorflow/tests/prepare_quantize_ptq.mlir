@@ -1,17 +1,3 @@
-// Copyright 2022 The TensorFlow Runtime Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 // RUN: tf-quant-opt %s -split-input-file -quant-prepare-quantize='post-training-quantize=true' | FileCheck %s
 
 // -----
@@ -109,11 +95,11 @@ module {
 // CHECK-DAG: %[[cst_1:.*]] = arith.constant dense<{{.*}}> : tensor<2x3x3x2xf32>
 
 // CHECK: %[[q0:.*]] = "quantfork.qcast"(%[[cst]]) {volatile}
-// CHECK-SAME: tensor<2x!quant.uniform<i32:f32:0, {0.044169864606680966,0.042867627733627671}>>
+// CHECK-SAME: tensor<2x!quant.uniform<i32:f32, 0.044169864606680966>>
 // CHECK: %[[dq0:.*]] = "quantfork.dcast"(%[[q0]])
 
 // CHECK: %[[q1:.*]] = "quantfork.qcast"(%[[cst_1]]) {volatile}
-// CHECK-SAME: tensor<2x3x3x2x!quant.uniform<i8<-127:127>:f32:3, {0.075176584439014829,0.072960192762960605}
+// CHECK-SAME: tensor<2x3x3x2x!quant.uniform<i8<-127:127>:f32, 0.075176584439014829>>
 // CHECK: %[[dq1:.*]] = "quantfork.dcast"(%[[q1]])
 
 // CHECK: %[[q2:.*]] = "quantfork.qcast"(%arg0)

@@ -12,18 +12,7 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_disable_ptxas_warning_flags")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
 
 # TODO(rmlarsen): Remove ASAP.
 package_group(
@@ -36,6 +25,7 @@ package_group(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":friends",
         "//tensorflow:__subpackages__",
@@ -136,7 +126,7 @@ cc_library(
 )
 
 IMAGE_DEPS = [
-    "//third_party/eigen3",
+    "@eigen_archive//:eigen3",
     "//tensorflow/core:framework",
     "//tensorflow/core:gif_internal",
     "//tensorflow/core:jpeg_internal",
@@ -212,7 +202,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "decode_image_op",
     prefix = "decode_image_op",
-    deps = IMAGE_DEPS + ["@com_google_absl//absl/strings"],
+    deps = IMAGE_DEPS + [
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/util:byte_swap_array",
+    ],
 )
 
 tf_kernel_library(
@@ -255,7 +248,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/core/kernels:ops_util",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -350,8 +343,8 @@ tf_cc_tests(
     }),
     deps = [
         ":image",
-        ":sampling_kernels",
         ":mirror_pad_op",
+        ":sampling_kernels",
     ] + IMAGE_TEST_DEPS,
 )
 
@@ -443,7 +436,15 @@ cc_library(
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
+        "//tensorflow/core/framework:bounds_check",
+        "//tensorflow/core/framework:op_requires",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/lib/core:status",
         "//tensorflow/core/lib/png:png_io",
+        "//tensorflow/core/platform:byte_order",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/util:byte_swap_array",
     ],
     alwayslink = 1,
 )

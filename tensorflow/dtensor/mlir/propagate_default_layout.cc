@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 
 #include "absl/types/optional.h"
@@ -43,9 +44,10 @@ namespace {
 #define GEN_PASS_DEF_DTENSORPROPAGATEDEFAULTLAYOUT
 #include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
-// Creates tf.DTensorLayout op that forwards `input` value.
+// Rewrites Op to a tf.DTensorLayout op that forwards `input` value.
 void CreateDTensorLayoutOp(const Layout& layout, mlir::Value input,
                            mlir::TensorType& type, mlir::Location loc,
+                           mlir::IntegerAttr arg_index,
                            mlir::OpBuilder* builder,
                            mlir::MLIRContext* context) {
   if (layout.IsEmpty()) return;
@@ -53,15 +55,18 @@ void CreateDTensorLayoutOp(const Layout& layout, mlir::Value input,
   auto layout_op = builder->create<mlir::TF::DTensorLayout>(
       loc, input, mlir::dtensor::LayoutAttr::get(context, layout),
       mlir::TF::ShapeAttr::get(context, type));
+  if (arg_index != nullptr) {
+    layout_op->setAttr(kFromArgIndex, arg_index);
+  }
   llvm::SmallPtrSet<mlir::Operation*, 4> exception{layout_op};
-  input.replaceAllUsesExcept(layout_op.output(), exception);
+  input.replaceAllUsesExcept(layout_op.getOutput(), exception);
 }
 
 // Adds DTensorLayout op following each Relayout operation to ensure that
 // tensor from `relayout` has fixed layout.
 mlir::LogicalResult PropagateDTensorLayoutForRelayout(
     mlir::MLIRContext& c, mlir::TF::RelayoutOp relayout) {
-  const std::string layout_str = relayout.layout().str();
+  const std::string layout_str = relayout.getLayout().str();
   auto layout_or_status = Layout::FromString(layout_str);
   if (!layout_or_status.ok()) {
     return relayout.emitOpError(
@@ -81,8 +86,8 @@ mlir::LogicalResult PropagateDTensorLayoutForRelayout(
   mlir::TensorType type = relayout.getType().dyn_cast<mlir::TensorType>();
   if (!type) return relayout.emitOpError("type required for Relayout op");
 
-  CreateDTensorLayoutOp(layout, relayout.output(), type, relayout.getLoc(),
-                        &builder, &c);
+  CreateDTensorLayoutOp(layout, relayout.getOutput(), type, relayout.getLoc(),
+                        nullptr, &builder, &c);
   return mlir::success();
 }
 
@@ -107,7 +112,9 @@ mlir::LogicalResult PropagateFunctionArgAttrToLayoutOp(
     mlir::Type tensor_type = GetSubtypeOrSelf(arg);
     if (auto type = tensor_type.dyn_cast<mlir::TensorType>()) {
       CreateDTensorLayoutOp(layout_or_status.value(), arg, type,
-                            function.getLoc(), &builder, &c);
+                            function.getLoc(),
+                            builder.getI64IntegerAttr(arg_index), &builder, &c);
+
     } else {
       return function.emitOpError()
              << "is missing tensor type for argument " << arg_index;
@@ -144,12 +151,54 @@ mlir::LogicalResult PropagateFunctionDefaultLayoutAttrToLayoutOp(
 
     if (auto type = return_value.getType().dyn_cast<mlir::TensorType>())
       CreateDTensorLayoutOp(result_layout_or_status.value(), return_value, type,
-                            function.getLoc(), &builder, &c);
+                            function.getLoc(), nullptr, &builder, &c);
     else
       return function.emitOpError()
              << "is missing tensor type for result " << ret_index;
   }
 
+  return mlir::success();
+}
+
+mlir::LogicalResult PropagateOpAttrToLayoutOp(mlir::MLIRContext& context,
+                                              mlir::func::FuncOp function) {
+  auto walk_result =
+      function.walk([&](mlir::Operation* op) -> mlir::WalkResult {
+        if (auto relayout = llvm::dyn_cast<mlir::TF::RelayoutOp>(op)) {
+          (void)PropagateDTensorLayoutForRelayout(context, relayout);
+          return mlir::WalkResult::advance();
+        }
+
+        auto layout_or_status = ExtractLayoutFromOp(op);
+        auto arg_index = op->getAttrOfType<mlir::IntegerAttr>(kFromArgIndex);
+        if (!layout_or_status.ok()) {
+          op->emitOpError(llvm::formatv(
+              "op has layout attribute {0} that cannot be deserizlied.",
+              kLayoutAttr));
+          return mlir::WalkResult::interrupt();
+        }
+
+        mlir::OpBuilder builder(&context);
+        builder.setInsertionPointAfter(op);
+        const auto layouts = layout_or_status.value();
+        for (const auto& layout_and_index : llvm::enumerate(layouts)) {
+          const int index = layout_and_index.index();
+          const auto& layout = layout_and_index.value();
+          if (!layout || layout->IsEmpty()) continue;
+
+          auto op_output = op->getResult(index);
+          if (auto type = op_output.getType().dyn_cast<mlir::TensorType>()) {
+            CreateDTensorLayoutOp(*layout, op_output, type, function.getLoc(),
+                                  arg_index, &builder, &context);
+          } else {
+            return op->emitOpError()
+                   << "type for output " << index << " is not a TensorType";
+          }
+        }
+
+        return mlir::WalkResult::advance();
+      });
+  if (walk_result.wasInterrupted()) return mlir::failure();
   return mlir::success();
 }
 
@@ -167,48 +216,9 @@ struct DTensorPropagateDefaultLayout
 
     auto function = getOperation();
 
-    auto walk_result =
-        getOperation().walk([&](mlir::Operation* op) -> mlir::WalkResult {
-          if (auto relayout = llvm::dyn_cast<mlir::TF::RelayoutOp>(op)) {
-            (void)PropagateDTensorLayoutForRelayout(context, relayout);
-            return mlir::WalkResult::advance();
-          }
-
-          // Set user annotated layout on operations.
-          auto layout_or_status = ExtractLayoutFromOp(op);
-          if (!layout_or_status.ok()) {
-            op->emitOpError(llvm::formatv(
-                "op has layout attribute {0} that cannot be deserizlied.",
-                kLayoutAttr));
-            return mlir::WalkResult::interrupt();
-          }
-
-          mlir::OpBuilder builder(&context);
-          builder.setInsertionPointAfter(op);
-          const auto layouts = layout_or_status.value();
-          for (const auto& layout_and_index : llvm::enumerate(layouts)) {
-            const int index = layout_and_index.index();
-            const auto& layout = layout_and_index.value();
-            if (!layout || layout->IsEmpty()) continue;
-
-            auto op_output = op->getResult(index);
-            if (auto type = op_output.getType().dyn_cast<mlir::TensorType>()) {
-              auto layout_op = builder.create<mlir::TF::DTensorLayout>(
-                  function.getLoc(), op_output,
-                  mlir::dtensor::LayoutAttr::get(&context, *layout),
-                  mlir::TF::ShapeAttr::get(&context, type));
-              llvm::SmallPtrSet<mlir::Operation*, 4> exception{layout_op};
-              op_output.replaceAllUsesExcept(layout_op.output(), exception);
-            } else {
-              return op->emitOpError()
-                     << "type for output " << index << " is not a TensorType";
-            }
-          }
-
-          return mlir::WalkResult::advance();
-        });
-
-    if (walk_result.wasInterrupted()) return signalPassFailure();
+    // Set user annotated layout on operations.
+    if (mlir::failed(PropagateOpAttrToLayoutOp(context, function)))
+      return signalPassFailure();
 
     // Set user annotated layout on function arguments.
     if (mlir::failed(PropagateFunctionArgAttrToLayoutOp(context, function)))

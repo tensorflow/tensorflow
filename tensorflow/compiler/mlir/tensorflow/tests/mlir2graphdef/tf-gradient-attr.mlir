@@ -8,10 +8,12 @@ func.func @main() {
     %0:2 = tf_executor.island wraps "tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", value = dense<2.500000e-01> : tensor<f32>} : () -> tensor<f32> loc("Const")
 
   // CHECK:      node {
-  // CHECK-NEXT:   name: "foo"
-  // CHECK-NEXT:   op: "foo"
-  // CHECK-NEXT:   input: "Const"
-    %1:2 = tf_executor.island wraps "tf.foo"(%0#0) {device = ""} : (tensor<f32>) -> tensor<*xf32> loc("foo")
+  // CHECK-NEXT:   name: "tf.PartitionedCall"
+  // CHECK-NEXT:   op: "PartitionedCall"
+  // CHECK:        func {
+  // CHECK:          name: "foo"
+  // CHECK:        }
+    %1:2 = tf_executor.island wraps "tf.PartitionedCall"(%0) {Tin = [], Tout = [], config = "", config_proto = "", device = "", executor_type = "", f = @foo, name = "Call_foo"} : (tensor<f32>) -> tensor<*xf32>
     tf_executor.fetch
   }
   func.return

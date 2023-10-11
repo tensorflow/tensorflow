@@ -449,6 +449,17 @@ func.func @batchMatMulV2MatrixAdjXY(%arg0: tensor<5x4xf32>, %arg1: tensor<6x5xf3
 }
 
 // -----
+
+func.func @batchMatMulV2DynamicSize(%arg0: tensor<?x?xf32>, %arg1: tensor<?x4xf32>) -> tensor<?x4xf32> {
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<?x?xf32>, tensor<?x4xf32>) -> tensor<?x4xf32>
+  func.return %0 : tensor<?x4xf32>
+
+  // CHECK-LABEL: batchMatMulV2DynamicSize
+  // CHECK: %[[MATMUL_1:.*]] = "tf.MatMul"(%arg0, %arg1) {transpose_a = false, transpose_b = false} : (tensor<?x?xf32>, tensor<?x4xf32>) -> tensor<?x4xf32>
+  // CHECK: return %[[MATMUL_1]] : tensor<?x4xf32>
+}
+
+// -----
 // ==== V3 tests ====
 
 func.func @batchMatMulV3TwoDim(%arg0: tensor<2x3x4x5xf32>, %arg1: tensor<2x3x5x6xf32>) -> tensor<2x3x4x6xf32> {

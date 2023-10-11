@@ -32,8 +32,6 @@ _KERAS_GET_SESSION_FUNCTION = None
 _KERAS_LOAD_MODEL_FUNCTION = None
 _KERAS_LOAD_CONTEXT_FUNCTION = None
 
-# TODO(scottzhu): Disable duplicated inject once keras is moved to
-# third_party/py/keras.
 # TODO(b/169898786): Use the Keras public API when TFLite moves out of TF
 
 
@@ -63,7 +61,7 @@ def register_load_model_function(func):
 
 
 # This is used to register the in_load_context function in
-# third_party/py/keras/saving/saved_model/load_context.py for use in
+# third_party/py/tf_keras/saving/saved_model/load_context.py for use in
 # third_party/tensorflow library.
 @tf_export('__internal__.register_load_context_function', v1=[])
 def register_load_context_function(func):

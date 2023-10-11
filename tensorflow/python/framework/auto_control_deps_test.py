@@ -18,14 +18,14 @@ import itertools
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import auto_control_deps as acd
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gen_sendrecv_ops
@@ -33,6 +33,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 from tensorflow.python.training import momentum
@@ -309,7 +310,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       def body(_):
         return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
 
-      return control_flow_ops.while_loop(
+      return while_loop.while_loop(
           lambda i: True, body, [0.0], maximum_iterations=1)
 
     self._testVariableReadInFunctionalOp(build_functional_op, "While")
@@ -324,7 +325,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       def else_branch():
         return array_ops.zeros([], v.dtype)
 
-      return control_flow_ops.cond(
+      return cond.cond(
           constant_op.constant(True), then_branch, else_branch)
 
     self._testVariableReadInFunctionalOp(build_functional_op, "If")
@@ -339,7 +340,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       def else_branch():
         return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
 
-      return control_flow_ops.cond(
+      return cond.cond(
           constant_op.constant(False), then_branch, else_branch)
 
     self._testVariableReadInFunctionalOp(build_functional_op, "If")
@@ -354,7 +355,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       def branch1():
         return array_ops.zeros([], v.dtype)
 
-      return control_flow_ops.switch_case(
+      return control_flow_switch_case.switch_case(
           constant_op.constant(0), [branch0, branch1])
 
     self._testVariableReadInFunctionalOp(build_functional_op, "Case")
@@ -369,7 +370,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       def branch1():
         return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
 
-      return control_flow_ops.switch_case(
+      return control_flow_switch_case.switch_case(
           constant_op.constant(0), [branch0, branch1])
 
     self._testVariableReadInFunctionalOp(build_functional_op, "Case")
@@ -418,7 +419,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
           def body(_):
             return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
 
-          return control_flow_ops.while_loop(
+          return while_loop.while_loop(
               lambda i: True, body, [0.0], maximum_iterations=1)
 
         return inner_fn()
@@ -444,7 +445,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
           def else_branch():
             return array_ops.zeros([], v.dtype)
 
-          return control_flow_ops.cond(
+          return cond.cond(
               constant_op.constant(True), then_branch, else_branch)
 
         return inner_fn()
@@ -499,7 +500,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
         gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
         return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
 
-      return control_flow_ops.while_loop(
+      return while_loop.while_loop(
           lambda i: True, body, [0.0], maximum_iterations=1)
 
     self._testVariableWriteInFunctionalOp(build_functional_op, "While")
@@ -515,7 +516,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       def else_branch():
         return array_ops.zeros([], v.dtype)
 
-      return control_flow_ops.cond(
+      return cond.cond(
           constant_op.constant(True), then_branch, else_branch)
 
     self._testVariableWriteInFunctionalOp(build_functional_op, "If")
@@ -531,7 +532,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
         gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
         return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
 
-      return control_flow_ops.cond(
+      return cond.cond(
           constant_op.constant(False), then_branch, else_branch)
 
     self._testVariableWriteInFunctionalOp(build_functional_op, "If")
@@ -547,7 +548,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
       def branch1():
         return array_ops.zeros([], v.dtype)
 
-      return control_flow_ops.switch_case(
+      return control_flow_switch_case.switch_case(
           constant_op.constant(0), [branch0, branch1])
 
     self._testVariableWriteInFunctionalOp(build_functional_op, "Case")
@@ -563,7 +564,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
         gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
         return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
 
-      return control_flow_ops.switch_case(
+      return control_flow_switch_case.switch_case(
           constant_op.constant(0), [branch0, branch1])
 
     self._testVariableWriteInFunctionalOp(build_functional_op, "Case")
@@ -615,7 +616,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
             gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
             return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
 
-          return control_flow_ops.while_loop(
+          return while_loop.while_loop(
               lambda i: True, body, [0.0], maximum_iterations=1)
 
         return inner_fn()
@@ -642,7 +643,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
           def else_branch():
             return array_ops.zeros([], v.dtype)
 
-          return control_flow_ops.cond(
+          return cond.cond(
               constant_op.constant(True), then_branch, else_branch)
 
         return inner_fn()
@@ -668,7 +669,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
           v.assign(v + 4)
           return 1.0
 
-        control_flow_ops.cond(p, true_fn, false_fn)
+        cond.cond(p, true_fn, false_fn)
         val = v.read_value()
         val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False}), 5.0)
@@ -690,7 +691,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
           v.assign(v + 4)
           return 1.0
 
-        control_flow_ops.cond(p, true_fn, false_fn)
+        cond.cond(p, true_fn, false_fn)
         one = constant_op.constant(1.0)
         one = c.mark_as_return(one)
       one.eval(feed_dict={p: False})
@@ -721,10 +722,10 @@ class AutomaticControlDependenciesTest(test.TestCase):
             v.assign(v * 3, name="false_false")
             return 3.0
 
-          control_flow_ops.cond(q, inner_true_fn, inner_false_fn)
+          cond.cond(q, inner_true_fn, inner_false_fn)
           return 1.0
 
-        control_flow_ops.cond(p, true_fn, false_fn)
+        cond.cond(p, true_fn, false_fn)
         with ops.name_scope("final"):
           val = v.read_value()
         val = c.mark_as_return(val)
@@ -748,7 +749,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
           v.assign(v + 4)
           return 1.0
 
-        control_flow_ops.cond(p, true_fn, false_fn)
+        cond.cond(p, true_fn, false_fn)
         val = v.read_value()
         val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False}), 5.0)
@@ -770,7 +771,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
           v.assign(v + 4)
           return 1.0
 
-        control_flow_ops.cond(p, true_fn, false_fn)
+        cond.cond(p, true_fn, false_fn)
         val = v.read_value()
         val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False}), 6.0)
@@ -791,22 +792,22 @@ class AutomaticControlDependenciesTest(test.TestCase):
           v.assign(v + 4)
           return 1.0
 
-        control_flow_ops.cond(p, true_fn, false_fn)
+        cond.cond(p, true_fn, false_fn)
         v.assign(v * 2)
         val = v.read_value()
         val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False}), 10.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 20.0)
 
-  def testDefunWhileLoopWithCapturedLoopVars(self):
+  def testFunctionWhileLoopWithCapturedLoopVars(self):
     n = 3
     x = constant_op.constant(list(range(n)))
 
-    @function.defun
+    @def_function.function
     def loop():
       c = lambda i, x: i < n
       b = lambda i, x: (i + 1, x + 1)
-      i, out = control_flow_ops.while_loop(c, b, (0, x))
+      i, out = while_loop.while_loop(c, b, (0, x))
       return i, out
 
     i, out = loop()
@@ -826,25 +827,25 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
       self.assertAllEqual(f(), 4.0)
 
-  def testOptimizerInDefun(self):
+  def testOptimizerInFunction(self):
     def loss(v):
       return v**2
 
     optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
 
-    @function.defun
+    @def_function.function
     def train():
-      self.v = resource_variable_ops.ResourceVariable(1.0)
       grad = backprop.implicit_grad(loss)(self.v)
       optimizer.apply_gradients(grad)
       return self.v.read_value()
 
+    self.v = resource_variable_ops.ResourceVariable(1.0)
     value = train()
     self.assertEqual(value.numpy(), -1.0)
 
   def testReturningNonTensorRaisesError(self):
     optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
-    optimizer.apply_gradients = function.defun(optimizer.apply_gradients)
+    optimizer.apply_gradients = def_function.function(optimizer.apply_gradients)
     v = resource_variable_ops.ResourceVariable(1.0)
     grad = backprop.implicit_grad(lambda v: v**2)(v)
 
@@ -856,29 +857,29 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
   # TODO(b/111663004): This should work when the outer context is graph
   # building.
-  def testOptimizerNonSlotVarsInDefunNoError(self):
+  def testOptimizerNonSlotVarsInFunctionNoError(self):
     def loss(v):
       return v**2
 
     optimizer = adam.AdamOptimizer(learning_rate=1.0)
 
-    @function.defun
+    @def_function.function
     def train():
-      self.v = resource_variable_ops.ResourceVariable(1.0)
       grad = backprop.implicit_grad(loss)(self.v)
       optimizer.apply_gradients(grad)
       return self.v.read_value()
 
+    self.v = resource_variable_ops.ResourceVariable(1.0)
     train()
 
-  def testOptimizerInDefunWithCapturedVariable(self):
+  def testOptimizerInFunctionWithCapturedVariable(self):
     v = resource_variable_ops.ResourceVariable(1.0)
     def loss():
       return v**2
 
     optimizer = momentum.MomentumOptimizer(learning_rate=1.0, momentum=1.0)
 
-    @function.defun
+    @def_function.function
     def train():
       grad = backprop.implicit_grad(loss)()
       optimizer.apply_gradients(grad)

@@ -23,7 +23,7 @@ namespace mlir {
 namespace TFL {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_ANALYZEVARIABLESPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Attribute name to be added on the module to identify whether
@@ -48,12 +48,12 @@ bool IsSupportedTFLiteControlFlow(Operation* op) {
 // Returns true if the 'op' is one of the supported TF control flow ops or
 // dataset ops. Those ops just forward the operands to other subgraphs.
 bool IsSupportedTFDataForwardingOp(Operation* op) {
-  return llvm::isa<TF::MapDatasetOp, TF::ReduceDatasetOp,
+  return llvm::isa<TF::MapDatasetOp, TF::ReduceDatasetOp, TF::CacheDatasetV2Op,
                    TF::TakeWhileDatasetOp, TF::IfOp, TF::WhileOp>(op);
 }
 
 class AnalyzeVariablesPass
-    : public AnalyzeVariablesPassBase<AnalyzeVariablesPass> {
+    : public impl::AnalyzeVariablesPassBase<AnalyzeVariablesPass> {
  public:
   explicit AnalyzeVariablesPass() {}
   void runOnOperation() override;

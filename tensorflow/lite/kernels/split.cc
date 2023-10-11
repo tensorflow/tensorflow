@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -96,7 +96,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // If we know the contents of the 'axis' tensor, resize all outputs.
   // Otherwise, wait until Eval().
-  if (IsConstantTensor(op_context.axis)) {
+  if (IsConstantOrPersistentTensor(op_context.axis)) {
     return ResizeOutputTensors(context, node, op_context.axis, op_context.input,
                                op_context.params->num_splits);
   } else {

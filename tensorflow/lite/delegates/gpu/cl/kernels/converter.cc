@@ -528,20 +528,22 @@ class CpuCopier : public OpenClConverterImpl {
                                const TensorObject& tensor_obj) {
     const size_t num_elements = cpu_memory->size_bytes;
     const bool* bool_data = reinterpret_cast<bool*>(cpu_memory->data);
-    std::vector<uint8_t> tmp_data(num_elements);
+    tmp_bool_data_ = std::make_unique<std::vector<uint8_t>>();
+    tmp_bool_data_->reserve(num_elements);
     for (int i = 0; i < num_elements; ++i) {
-      tmp_data[i] = bool_data[i];
+      tmp_bool_data_->push_back(bool_data[i]);
     }
     auto texture_output = std::get_if<OpenClTexture>(&tensor_obj);
     if (texture_output) {
       return queue_->EnqueueWriteImage(texture_output->memobj,
                                        int3(region_[0], region_[1], region_[2]),
-                                       tmp_data.data(), async_);
+                                       tmp_bool_data_->data(), async_);
     }
     auto buffer_output = std::get_if<OpenClBuffer>(&tensor_obj);
     if (buffer_output) {
-      return queue_->EnqueueWriteBuffer(buffer_output->memobj, tmp_data.size(),
-                                        tmp_data.data(), async_);
+      return queue_->EnqueueWriteBuffer(buffer_output->memobj,
+                                        tmp_bool_data_->size(),
+                                        tmp_bool_data_->data(), async_);
     }
     return absl::InternalError("Unexpected object");
   }
@@ -550,6 +552,7 @@ class CpuCopier : public OpenClConverterImpl {
   bool async_;
   DataType input_data_type_;
   DataType output_data_type_;
+  std::unique_ptr<std::vector<uint8_t>> tmp_bool_data_;
 };
 
 class OpenClTensorConverterBuilder : public TensorObjectConverterBuilder {

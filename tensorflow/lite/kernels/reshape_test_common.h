@@ -47,19 +47,22 @@ class ReshapeOpModel : public BASE {
   ReshapeOpModel(std::initializer_list<int> input_shape,
                  std::initializer_list<int> shape_shape,
                  std::initializer_list<int> shape_data,
-                 ShapeSpecificationType shape_type) {
+                 ShapeSpecificationType shape_type,
+                 const std::vector<T>* input_data = nullptr) {
+    this->SetBypassDefaultDelegates();
     switch (shape_type) {
       case ShapeSpecificationType::kAsTensor:
-        this->BuildWithTensorShape(input_shape, shape_shape, shape_data);
+        this->BuildWithTensorShape(input_shape, shape_shape, shape_data,
+                                   input_data);
         break;
       case ShapeSpecificationType::kAsConstantTensor:
-        this->BuildWithConstantTensorShape(input_shape, shape_shape,
-                                           shape_data);
+        this->BuildWithConstantTensorShape(input_shape, shape_shape, shape_data,
+                                           input_data);
         break;
       case ShapeSpecificationType::kAsReshapeOption:
         // In this case the shape of the new shape doesn't matter. It is
         // always hardcoded as a flat vector.
-        this->BuildWithHardcodedShape(input_shape, shape_data);
+        this->BuildWithHardcodedShape(input_shape, shape_data, input_data);
         break;
     }
   }
@@ -79,8 +82,14 @@ class ReshapeOpModel : public BASE {
 
  private:
   void BuildWithHardcodedShape(std::initializer_list<int> input_shape,
-                               std::initializer_list<int> shape_data) {
-    input_ = this->AddInput({GetTensorType<T>(), input_shape});
+                               std::initializer_list<int> shape_data,
+                               const std::vector<T>* input_data = nullptr) {
+    if (input_data != nullptr) {
+      input_ =
+          this->AddConstInput(GetTensorType<T>(), *input_data, input_shape);
+    } else {
+      input_ = this->AddInput({GetTensorType<T>(), input_shape});
+    }
     output_ = this->AddOutput(GetTensorType<T>());
     this->SetBuiltinOp(
         BuiltinOperator_RESHAPE, BuiltinOptions_ReshapeOptions,
@@ -93,8 +102,14 @@ class ReshapeOpModel : public BASE {
 
   void BuildWithTensorShape(std::initializer_list<int> input_shape,
                             std::initializer_list<int> shape_shape,
-                            std::initializer_list<int> shape_data) {
-    input_ = this->AddInput({GetTensorType<T>(), input_shape});
+                            std::initializer_list<int> shape_data,
+                            const std::vector<T>* input_data = nullptr) {
+    if (input_data != nullptr) {
+      input_ =
+          this->AddConstInput(GetTensorType<T>(), *input_data, input_shape);
+    } else {
+      input_ = this->AddInput({GetTensorType<T>(), input_shape});
+    }
     output_ = this->AddOutput(GetTensorType<T>());
     int shape_input_tensor = this->AddInput({TensorType_INT32, shape_shape});
     // Note how shape also appears in ReshapeOptions
@@ -111,10 +126,17 @@ class ReshapeOpModel : public BASE {
     }
   }
 
-  void BuildWithConstantTensorShape(std::initializer_list<int> input_shape,
-                                    std::initializer_list<int> shape_shape,
-                                    std::initializer_list<int> shape_data) {
-    input_ = this->AddInput({GetTensorType<T>(), input_shape});
+  void BuildWithConstantTensorShape(
+      std::initializer_list<int> input_shape,
+      std::initializer_list<int> shape_shape,
+      std::initializer_list<int> shape_data,
+      const std::vector<T>* input_data = nullptr) {
+    if (input_data != nullptr) {
+      input_ =
+          this->AddConstInput(GetTensorType<T>(), *input_data, input_shape);
+    } else {
+      input_ = this->AddInput({GetTensorType<T>(), input_shape});
+    }
     output_ = this->AddOutput(GetTensorType<T>());
     this->AddConstInput(TensorType_INT32, shape_data, shape_shape);
     // Note how the shape also appears in the ReshapeOptions.

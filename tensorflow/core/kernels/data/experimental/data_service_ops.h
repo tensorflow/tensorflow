@@ -48,7 +48,7 @@ class RegisterDatasetOp : public OpKernel {
 
  private:
   int op_version_;
-  SerializationContext::ExternalStatePolicy external_state_policy_;
+  ExternalStatePolicy external_state_policy_;
   std::string element_spec_;
   std::string serialized_metadata_;
   std::string requested_dataset_id_;

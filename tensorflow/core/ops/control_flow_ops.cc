@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <vector>
+
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -143,6 +145,13 @@ Status MergeShape(InferenceContext* c) {
   c->set_output(1, c->Scalar());
   return OkStatus();
 }
+
+TypeInferenceFn MergeTypeFn() {
+  std::vector<TypeInferenceFn> func_list{full_type::Merge(),
+                                         full_type::Tensor(TFT_INT32)};
+  return full_type::Tuple(func_list);
+}
+
 }  // namespace
 
 REGISTER_OP("Merge")
@@ -151,7 +160,7 @@ REGISTER_OP("Merge")
     .Output("value_index: int32")
     .Attr("T: type")
     .Attr("N: int >= 1")
-    .SetForwardTypeFn(full_type::Merge())
+    .SetForwardTypeFn(MergeTypeFn())
     .SetShapeFn(MergeShape);
 
 REGISTER_OP("RefMerge")

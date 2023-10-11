@@ -1,10 +1,11 @@
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
 )
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -44,6 +45,7 @@ cc_test(
     ],
     deps = [
         ":converter",
+        ":test_util",
         "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -353,9 +355,13 @@ cc_library(
     hdrs = ["mul.h"],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:convert",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
         "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -716,10 +722,18 @@ cc_library(
     testonly = 1,
     srcs = ["test_util.cc"],
     hdrs = ["test_util.h"],
-    linkopts = [
-        "-lEGL",
-        "-lGLESv3",
-    ],
+    linkopts = select({
+        "//tensorflow:android": [
+            "-lEGL",
+            "-lGLESv3",
+            "-ldl",
+            "-lm",
+        ],
+        "//conditions:default": [
+            "-lEGL",
+            "-lGLESv3",
+        ],
+    }),
     deps = [
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:operations",
@@ -843,10 +857,10 @@ cc_library(
                "//conditions:default": NON_TFLITE_GPU_BINARY_RELEASE_OPERATORS,
            }) + [
         ":custom_registry",
-        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/gl:node_shader",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],

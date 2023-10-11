@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -20,29 +23,35 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 namespace mlir {
 namespace TFDevice {
 
 namespace {
 
-constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncAttr[] = "func";
 
+#define GEN_PASS_DEF_CLUSTEROUTLININGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct ClusterOutliningPass
-    : public TF::ClusterOutliningPassBase<ClusterOutliningPass> {
+    : public impl::ClusterOutliningPassBase<ClusterOutliningPass> {
   void runOnOperation() override;
 };
 
+#define GEN_PASS_DEF_LAUNCHOUTLININGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct LaunchOutliningPass
-    : public TF::LaunchOutliningPassBase<LaunchOutliningPass> {
+    : public impl::LaunchOutliningPassBase<LaunchOutliningPass> {
   void runOnOperation() override;
 };
 
@@ -64,10 +73,17 @@ func::FuncOp BuildFunction(llvm::ArrayRef<Value> live_ins, ClusterOrLaunchOp op,
 
   auto func_type = builder->getFunctionType(operand_types, op.getResultTypes());
 
-  // TODO(lyandy): Define better name for outlined function. Potentially some
-  // name can be added during cluster formation.
+  std::string func_name;
+  if (auto outlined_func_name = op->template getAttrOfType<StringAttr>(
+          TF::kClusterOutlinedFunctionNameAttr)) {
+    op->removeAttr(TF::kClusterOutlinedFunctionNameAttr);
+    func_name = outlined_func_name.str();
+  } else {
+    func_name = "_func";
+  }
+
   func::FuncOp outlined_func =
-      func::FuncOp::create(op.getLoc(), "_func", func_type);
+      func::FuncOp::create(op.getLoc(), func_name, func_type);
 
   // This function is not externally visible and marking it private would allow
   // symbol-dce pass to remove it when it is not referenced anymore.
@@ -118,9 +134,9 @@ void OutlineCluster(tf_device::ClusterOp cluster_op, SymbolTable* symbol_table,
   auto cluster_func_op = builder->create<tf_device::ClusterFuncOp>(
       cluster_op.getLoc(), outlined_func.getFunctionType().getResults(),
       live_ins.getArrayRef(), cluster_op->getAttrs());
-  auto device_attr = cluster_op->getAttrOfType<StringAttr>(kDeviceAttr);
+  auto device_attr = cluster_op->getAttrOfType<StringAttr>(TF::kDeviceAttr);
   if (device_attr && !device_attr.getValue().empty()) {
-    cluster_func_op->setAttr(kDeviceAttr, device_attr);
+    cluster_func_op->setAttr(TF::kDeviceAttr, device_attr);
   }
   cluster_op.replaceAllUsesWith(cluster_func_op);
   cluster_op.erase();

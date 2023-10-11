@@ -1,0 +1,11 @@
+path: "tensorflow.__internal__"
+tf_module {
+  member {
+    name: "SymbolicTensor"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "types"
+    mtype: "<type \'module\'>"
+  }
+}

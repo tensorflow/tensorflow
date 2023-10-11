@@ -95,6 +95,17 @@ REGISTER_OP("StatelessRandomUniformFullIntV2")
     .Attr("Tshape: {int32, int64} = DT_INT32")
     .SetShapeFn(StatelessShapeV2);
 
+REGISTER_OP("StatelessRandomGammaV3")
+    .Input("shape: shape_dtype")
+    .Input("key: uint64")
+    .Input("counter: uint64")
+    .Input("alg: int32")
+    .Input("alpha: dtype")
+    .Output("output: dtype")
+    .Attr("dtype: {float16, float32, float64}")
+    .Attr("shape_dtype: {int32, int64} = DT_INT32")
+    .SetShapeFn(StatelessShapeV2);
+
 REGISTER_OP("StatelessShuffle")
     .Input("value: T")
     .Input("key: uint64")

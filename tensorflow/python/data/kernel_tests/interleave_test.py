@@ -385,27 +385,35 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
           map_fn, num_parallel_calls=num_parallel_calls)
 
 
-class InterleaveDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
-                                      parameterized.TestCase):
+class InterleaveCheckpointTest(
+    checkpoint_test_base.CheckpointTestBase, parameterized.TestCase
+):
 
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
           combinations.combine(
+              symbolic_checkpoint=[False, True],
               cycle_length=2,
               block_length=[1, 3],
               num_parallel_calls=[None, 1, 2])))
-  def test(self, verify_fn, cycle_length, block_length, num_parallel_calls):
+  def test(self, verify_fn, symbolic_checkpoint, cycle_length, block_length,
+           num_parallel_calls):
 
     num_repeats = 2
     input_values = np.array([2, 3], dtype=np.int64)
 
     def _build_dataset():
-      return dataset_ops.Dataset.from_tensor_slices(input_values).repeat(
-          num_repeats).interleave(
-              lambda x: dataset_ops.Dataset.from_tensors(x).repeat(x),
-              cycle_length, block_length, num_parallel_calls)
+      dataset = dataset_ops.Dataset.from_tensor_slices(input_values)
+      dataset = dataset.repeat(num_repeats)
+      dataset = dataset.interleave(
+          lambda x: dataset_ops.Dataset.from_tensors(x).repeat(x), cycle_length,
+          block_length, num_parallel_calls)
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      dataset = dataset.with_options(options)
+      return dataset
 
     num_outputs = np.sum(input_values) * num_repeats
     verify_fn(self, _build_dataset, num_outputs)

@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
+#include "tensorflow/lite/delegates/gpu/cl/cl_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_model.h"
@@ -225,9 +226,15 @@ void InferenceContext::ExecutionHints::Init(const GpuInfo& gpu_info) {
 
     flush_periodically = true;
     flush_period = 24;
-  }
-  if (gpu_info.IsPowerVR()) {
+  } else if (gpu_info.IsPowerVR()) {
     need_flush = true;
+    flush_periodically = true;
+    // Some Ge8xxx devices are slower without frequent periodic flushing.
+    flush_period =
+        gpu_info.powervr_info.IsBetterThan(PowerVRGpu::kRogueGm9xxx) ? 16 : 4;
+  } else if (gpu_info.IsAdreno() &&
+             !gpu_info.adreno_info.IsBetterThan(AdrenoGpu::kAdreno630)) {
+    // Adreno620 or lower devices has smaller GPU buffer.
     flush_periodically = true;
     flush_period = 16;
   }
@@ -553,10 +560,20 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
 
   std::vector<bool> created_tensors(buffer_usage_records.size(), false);
   shared_buffer_tensors_.resize(buffer_usage_records.size());
+  bool create_model_output_tensors = false;
   for (auto& node : gpu_model.nodes) {
+    // Handle node input tensors.
     std::vector<ValueId> node_tensor_ids = node.inputs;
+    // Handle node output tensors.
     node_tensor_ids.insert(node_tensor_ids.end(), node.outputs.begin(),
                            node.outputs.end());
+    if (!create_model_output_tensors) {
+      // Handle graph output tensors.
+      for (const auto& output : gpu_model.output_ids_and_refs) {
+        node_tensor_ids.push_back(output.first);
+      }
+      create_model_output_tensors = true;
+    }
     for (auto& tensor_id : node_tensor_ids) {
       if (GetTensorType(gpu_model, create_info, gpu_info, tensor_id) !=
           TensorType::kRuntime) {
@@ -682,9 +699,35 @@ absl::Status InferenceContext::Compile(
 absl::Status InferenceContext::Tune(TuningType tuning_type,
                                     const GpuInfo& gpu_info,
                                     ProfilingCommandQueue* profiling_queue) {
+  // Cache tuned CL operations. Multiple CL operations might share the
+  // same kernel but use different inputs, which might require different working
+  // group setups. Therefore, we store a vector of tuned cl operations for each
+  // kernel and match in a second stage based on equal CL arguments.
+  typedef std::reference_wrapper<const ClOperation> ClOperationRef;
+  absl::flat_hash_map<uint64_t, std::vector<ClOperationRef>> tuned_ops;
+
   for (auto& node : nodes_) {
+    uint64_t fingerprint = node.cl_operation.GetKernelFingerprint();
+    auto cl_ops_it = tuned_ops.find(fingerprint);
+    bool found_cached_cl_op = false;
+    if (cl_ops_it != tuned_ops.end()) {
+      for (const auto& cl_op : cl_ops_it->second) {
+        if (!node.cl_operation.HasEqualScalarArguments(cl_op)) {
+          continue;
+        }
+        // Fingerprint and CLArguments match, so we reuse the work group size.
+        node.cl_operation.GetGpuOperation().work_group_size_ =
+            cl_op.get().GetGpuOperation().work_group_size_;
+        node.cl_operation.GetGpuOperation().RecalculateWorkGroupsCount();
+        found_cached_cl_op = true;
+      }
+    }
+    if (found_cached_cl_op) {
+      continue;
+    }
     RETURN_IF_ERROR(
         node.cl_operation.Tune(tuning_type, gpu_info, profiling_queue));
+    tuned_ops[fingerprint].emplace_back(std::cref(node.cl_operation));
   }
   return absl::OkStatus();
 }

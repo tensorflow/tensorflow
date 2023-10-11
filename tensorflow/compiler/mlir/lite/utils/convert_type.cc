@@ -20,7 +20,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -51,6 +51,11 @@ tflite::TensorType ConvertTypeToTensorType(mlir::Type type) {
     switch (itype.getWidth()) {
       case 1:
         return tflite::TensorType_BOOL;
+      case 4:
+        if (itype.isUnsigned())
+          llvm_unreachable("invalid unsigned 4bit integer Type in conversion");
+        else
+          return tflite::TensorType_INT4;
       case 8:
         if (itype.isUnsigned())
           return tflite::TensorType_UINT8;
@@ -100,6 +105,8 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
       return mlir::ComplexType::get(builder.getF32Type());
     case tflite::TensorType_COMPLEX128:
       return mlir::ComplexType::get(builder.getF64Type());
+    case tflite::TensorType_INT4:
+      return builder.getIntegerType(4);
     case tflite::TensorType_INT8:
       return builder.getIntegerType(8);
     case tflite::TensorType_UINT64:
@@ -125,6 +132,9 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
       return tensorflow::DT_FLOAT;
     case tflite::TensorType_FLOAT64:
       return tensorflow::DT_DOUBLE;
+    // TODO(b/246806634): Tensorflow DT_INT4 type doesn't exist yet
+    case tflite::TensorType_INT4:
+      return tensorflow::DT_INT8;
     case tflite::TensorType_INT8:
       return tensorflow::DT_INT8;
     case tflite::TensorType_INT16:
@@ -207,7 +217,7 @@ bool NotFromQuantOpOrSameQuantType(mlir::Value val, mlir::TypeAttr qtype_attr) {
 
   // Ignore shape details - we're really only trying to
   // check if quantization is the same.
-  auto stripped_src_qtype = GetShapeStrippedType(q_op.qtypeAttr());
+  auto stripped_src_qtype = GetShapeStrippedType(q_op.getQtypeAttr());
   auto stripped_qtype = GetShapeStrippedType(qtype_attr);
   return stripped_src_qtype == stripped_qtype;
 }

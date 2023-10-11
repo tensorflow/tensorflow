@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DEPTHWISE_CONV_OP_H_
 #define TENSORFLOW_CORE_KERNELS_DEPTHWISE_CONV_OP_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/util/tensor_format.h"
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/core/platform/stream_executor.h"
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -79,6 +83,8 @@ struct LaunchDepthwiseConvBackpropFilterOp {
                   const T* out_backprop, const T* input, T* filter_backprop,
                   TensorFormat data_format);
 };
+
+bool UseCudnnWith16BitFloat(OpKernelContext* ctx, DataType dtype);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename T>

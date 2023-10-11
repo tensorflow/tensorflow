@@ -48,17 +48,18 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#include "tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
-#if GOOGLE_CUDA
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/stream_executor/gpu/redzone_allocator.h"
+#include "xla/stream_executor/tf_allocator_adapter.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/kernels/matmul_op_impl.h"
 #include "tensorflow/core/kernels/matmul_util.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
@@ -66,7 +67,7 @@ limitations under the License.
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/core/util/use_cudnn.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -173,17 +174,19 @@ struct LaunchFusedMatMulOp<CPUDevice, T> {
   };
 };
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 namespace {
 
-StatusOr<se::cuda::BlasLt::Epilogue> GetBlasLtEpilogOp(
+#if GOOGLE_CUDA || TF_HIPBLASLT
+StatusOr<se::gpu::BlasLt::Epilogue> GetBlasLtEpilogOp(
     FusedComputationType fusion) {
   if (fusion == FusedComputationType::kBiasAdd) {
-    return se::cuda::BlasLt::Epilogue::kBias;
+    return se::gpu::BlasLt::Epilogue::kBias;
   } else if (fusion == FusedComputationType::kBiasAddWithRelu) {
-    return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
+    return se::gpu::BlasLt::Epilogue::kBiasThenReLU;
   } else if (fusion == FusedComputationType::kBiasAddWithGeluApproximate) {
-    return se::cuda::BlasLt::Epilogue::kBiasThenGeLUApproximate;
+    return se::gpu::BlasLt::Epilogue::kBiasThenGELU;
   } else {
     return errors::Internal("Unsupported fusion for BlasLt Matmul");
   }
@@ -191,7 +194,7 @@ StatusOr<se::cuda::BlasLt::Epilogue> GetBlasLtEpilogOp(
 
 template <typename LaunchFunc>
 se::blas::AlgorithmConfig AutotuneMatmul(
-    const std::vector<se::cuda::BlasLt::MatmulAlgorithm>& algorithms,
+    const std::vector<se::gpu::BlasLt::MatmulAlgorithm>& algorithms,
     BlasLtMatmulPlanParams& matmul_params, OpKernelContext* context,
     const LaunchFunc& launch_func) {
   // Note that algorithm_config.algorithm() here is used to refer
@@ -239,9 +242,10 @@ se::blas::AlgorithmConfig AutotuneMatmul(
   }
   return algorithm_config;
 }
+#endif
 
 template <typename LaunchFunc, typename Sig>
-StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneMatMulImpl(
+StatusOr<std::vector<xla::AutotuneResult>> AutotuneMatMulImpl(
     OpKernelContext* ctx,
     std::vector<std::unique_ptr<const se::dnn::OpRunner<Sig>>>& runners,
     bool actually_do_autotune, const LaunchFunc& launch_func,
@@ -251,7 +255,7 @@ StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneMatMulImpl(
   se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
                                               stream);
 
-  std::vector<tensorflow::AutotuneResult> results;
+  std::vector<xla::AutotuneResult> results;
   results.reserve(runners.size());
   // TODO(reedwm): Warn if determinism is enabled after autotune is run
   for (auto& runner : runners) {
@@ -294,7 +298,7 @@ StatusOr<std::vector<tensorflow::AutotuneResult>> AutotuneMatMulImpl(
       CheckRedzones(rz_scratch_allocator, &result);
       CheckRedzones(rz_allocator, &result);
     } else {
-      result.mutable_failure()->set_kind(AutotuneResult::UNKNOWN);
+      result.mutable_failure()->set_kind(xla::AutotuneResult::UNKNOWN);
       result.mutable_failure()->set_msg(
           absl::StrCat("Profiling failure on CUDNN engine ", desc.ToString(),
                        ": ", cudnn_launch_status.ToString()));
@@ -325,7 +329,6 @@ StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>> AutotuneFusedMatmul(
     int64_t scratch_size_limit) {
   AutotuneEntry<se::dnn::FusedMatmulOp> autotune_entry;
   auto* stream = ctx->op_device_context()->stream();
-
   if (!autotune_map->Find(params, &autotune_entry)) {
     profiler::ScopedAnnotation trace("cudnn_autotuning");
 
@@ -340,7 +343,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>> AutotuneFusedMatmul(
     TF_RETURN_IF_ERROR(stream->parent()->GetFusedMatmulRunners(
         CudnnUseFrontend(), element_type, element_type, element_type, stream,
         trans_a, trans_b, m, n, k, lda, ldb, ldc, activation_mode,
-        /*use_fallback=*/false, &runners));
+        /*use_fallback=*/false, GetNumericOptions(), &runners));
 
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
@@ -384,7 +387,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>> AutotuneFusedMatmul(
       TF_RETURN_IF_ERROR(stream->parent()->GetFusedMatmulRunners(
           CudnnUseFrontend(), element_type, element_type, element_type, stream,
           trans_a, trans_b, m, n, k, lda, ldb, ldc, activation_mode,
-          /*use_fallback=*/true, &fallback_runners));
+          /*use_fallback=*/true, GetNumericOptions(), &fallback_runners));
 
       TF_ASSIGN_OR_RETURN(
           auto fallback_results,
@@ -400,7 +403,6 @@ StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>> AutotuneFusedMatmul(
                           BestCudnnConvAlgorithm<se::dnn::FusedMatmulOp>(
                               fallback_results, std::move(fallback_runners)));
     }
-
     autotune_map->Insert(params, autotune_entry);
   }
   return autotune_entry;
@@ -448,8 +450,8 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     const int64_t k = a.dim_size(trans_a ? 0 : 1);
     const int64_t n = b.dim_size(trans_b ? 0 : 1);
 
-    bool use_cudnn = false;
     se::dnn::ActivationMode matmul_activation_mode;
+    bool use_cudnn = false;
     switch (fusion) {
       case FusedComputationType::kBiasAddWithGeluExact:
         matmul_activation_mode = se::dnn::ActivationMode::kGeluExact;
@@ -463,29 +465,49 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
         matmul_activation_mode = se::dnn::ActivationMode::kSigmoid;
         use_cudnn = true;
         break;
+      case FusedComputationType::kBiasAdd:
+        matmul_activation_mode = se::dnn::ActivationMode::kNone;
+        break;
+      case FusedComputationType::kBiasAddWithRelu:
+        matmul_activation_mode = se::dnn::ActivationMode::kRelu;
+        break;
+      case FusedComputationType::kBiasAddWithRelu6:
+        matmul_activation_mode = se::dnn::ActivationMode::kRelu6;
+        break;
+      case FusedComputationType::kBiasAddWithElu:
+        matmul_activation_mode = se::dnn::ActivationMode::kElu;
+        break;
+      case FusedComputationType::kBiasAddWithLeakyRelu:
+        matmul_activation_mode = se::dnn::ActivationMode::kLeakyRelu;
+        break;
+      case FusedComputationType::kBiasAddWithGeluApproximate:
+        matmul_activation_mode = se::dnn::ActivationMode::kGeluExact;
+        break;
       default:
         use_cudnn = false;
     }
+#if !(GOOGLE_CUDA || TF_HIPBLASLT)
+    use_cudnn = true;
+#endif
+
+#if TF_HIPBLASLT
+    auto cap = stream->GetRocmComputeCapability();
+    // as of ROCm 5.5, hipblaslt only supports MI200.
+    if (cap.gcn_arch_name().substr(0, 6) != "gfx90a") use_cudnn = true;
+#endif
 
     BlasScratchAllocator scratch_allocator(context);
 
     // The Gelu exact fusion is supported by the cuDNN.
     if (use_cudnn) {
-      int device_id = stream->parent()->device_ordinal();
-      DataType ab_dtype = a.dtype();
-      DataType c_dtype = output->dtype();
-      MatmulParameters cudnn_matmul_params = {/*ab_type=*/ab_dtype,
-                                              /*c_type=*/c_dtype,
-                                              trans_a,
-                                              trans_b,
-                                              static_cast<uint64_t>(m),
-                                              static_cast<uint64_t>(n),
-                                              static_cast<uint64_t>(k),
-                                              a.dim_size(1),
-                                              b.dim_size(1),
-                                              output->dim_size(1),
-                                              matmul_activation_mode,
-                                              device_id};
+      // printf("trans_a %d trans_b %d\n", (int)trans_a, (int)trans_b);
+      MatmulParameters cudnn_matmul_params(
+          stream->parent(),
+          /*ab_type=*/a.dtype(),
+          /*c_type=*/output->dtype(), trans_a, trans_b,
+          static_cast<uint64_t>(m), static_cast<uint64_t>(n),
+          static_cast<uint64_t>(k), a.dim_size(1), b.dim_size(1),
+          output->dim_size(1), matmul_activation_mode);
 
       auto entry_or = AutotuneFusedMatmul<T>(
           use_autotune, FusedMatmulAutotuneMap::GetInstance(),
@@ -523,10 +545,10 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
       OP_REQUIRES_OK(context, cudnn_launch_status);
       return;
     }
-
+#if GOOGLE_CUDA || TF_HIPBLASLT
     auto epilog_op_or = GetBlasLtEpilogOp(fusion);
     OP_REQUIRES_OK(context, epilog_op_or.status());
-    se::cuda::BlasLt::Epilogue epilog_op = epilog_op_or.value();
+    se::gpu::BlasLt::Epilogue epilog_op = epilog_op_or.value();
 
     se::blas::Transpose trans[] = {se::blas::Transpose::kNoTranspose,
                                    se::blas::Transpose::kTranspose};
@@ -541,9 +563,11 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
                                          /*broadcast_a=*/false,
                                          /*broadcast_b=*/false,
                                          epilog_op};
-
-    auto plan_and_algorithms_or = GetPlanAndAlgorithms(stream, matmul_params);
+    absl::Mutex* pmu;
+    auto plan_and_algorithms_or =
+        GetPlanAndAlgorithms(stream, matmul_params, &pmu);
     OP_REQUIRES_OK(context, plan_and_algorithms_or.status());
+    absl::MutexLock lock(pmu);
     const auto* plan_and_algorithms = std::move(plan_and_algorithms_or).value();
     const auto& plan = plan_and_algorithms->plan;
     const auto& algorithms = plan_and_algorithms->algorithms;
@@ -551,13 +575,13 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
                 errors::InvalidArgument("No matmul algorithm returned!"));
 
     auto launch_func = [&](BlasScratchAllocator& scratch_allocator,
-                           const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
+                           const se::gpu::BlasLt::MatmulAlgorithm& algorithm,
                            se::blas::ProfileResult* profile_result) {
       return DoBlasLtMatmul(stream, plan, a_ptr, b_ptr, c_ptr, algorithm,
                             scratch_allocator, bias_ptr, profile_result);
     };
 
-    se::cuda::BlasLt::MatmulAlgorithm algorithm = algorithms[0];
+    se::gpu::BlasLt::MatmulAlgorithm algorithm = algorithms[0];
     if (use_autotune) {
       se::blas::AlgorithmConfig algorithm_config =
           AutotuneMatmul(algorithms, matmul_params, context, launch_func);
@@ -567,10 +591,11 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     }
 
     OP_REQUIRES_OK(context, launch_func(scratch_allocator, algorithm, nullptr));
+#endif
   }
 };
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORLFOW_USE_ROCM
 
 template <typename Device, typename T>
 class FusedMatMulOp : public OpKernel {
@@ -676,7 +701,8 @@ class FusedMatMulOp : public OpKernel {
   FusedComputationType fused_computation_ = FusedComputationType::kUndefined;
   FusedComputationArgs fused_computation_args_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FusedMatMulOp);
+  FusedMatMulOp(const FusedMatMulOp&) = delete;
+  void operator=(const FusedMatMulOp&) = delete;
 };
 
 // Registration of the CPU implementations.
@@ -689,7 +715,7 @@ TF_CALL_float(REGISTER_FUSED_CPU_MATMUL);
 
 #undef REGISTER_FUSED_CPU_MATMUL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Registration of the GPU implementations.
 #define REGISTER_FUSED_GPU_MATMUL(T)                                  \

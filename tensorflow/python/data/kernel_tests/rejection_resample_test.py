@@ -46,7 +46,7 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
             target_dist=target_dist,
             initial_dist=initial_dist,
             class_func=lambda c, _: c,
-            seed=27))
+            seed=27), requires_initialization=True)
 
     returned = []
     while len(returned) < 2000:
@@ -132,7 +132,7 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
         target_dist=target_dist,
         initial_dist=init_dist)
 
-    get_next = self.getNext(dataset)
+    get_next = self.getNext(dataset, requires_initialization=True)
     returned = []
     with self.assertRaises(errors.OutOfRangeError):
       while True:
@@ -164,7 +164,7 @@ class RejectionResampleTest(test_base.DatasetTestBase, parameterized.TestCase):
         class_func=lambda x: x % 2,
         target_dist=target_dist,
         initial_dist=init_dist)
-    get_next = self.getNext(dataset)
+    get_next = self.getNext(dataset, requires_initialization=True)
     self.evaluate(get_next())
 
 

@@ -28,11 +28,15 @@ limitations under the License.
 #include "flatbuffers/reflection_generated.h"  // from @flatbuffers
 #include "flatbuffers/util.h"  // from @flatbuffers
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/interpreter_builder.h"
+#if FLATBUFFERS_LITTLEENDIAN == 0
+#include "tensorflow/lite/core/model_builder.h"
+#endif
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/call_register.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/decode_jpeg_register.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier/embedder.h"
-#include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
+#include "tensorflow/lite/tools/benchmark/register_custom_op.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 
 namespace tflite {
@@ -69,6 +73,9 @@ int RunEmbedder(const EmbedderOptions& options) {
               << std::endl;
     return 3;
   }
+#if FLATBUFFERS_LITTLEENDIAN == 0
+  tflite::FlatBufferModel::ByteSwapSerializedModel(&main_model_contents, false);
+#endif
   const Model* main_model =
       flatbuffers::GetRoot<Model>(main_model_contents.data());
 
@@ -80,6 +87,10 @@ int RunEmbedder(const EmbedderOptions& options) {
               << std::endl;
     return 4;
   }
+#if FLATBUFFERS_LITTLEENDIAN == 0
+  tflite::FlatBufferModel::ByteSwapSerializedModel(&metrics_model_contents,
+                                                   false);
+#endif
   const Model* metrics_model =
       flatbuffers::GetRoot<Model>(metrics_model_contents.data());
 
@@ -107,6 +118,9 @@ int RunEmbedder(const EmbedderOptions& options) {
   resolver.AddCustom(
       "validation/decode_jpeg",
       ::tflite::acceleration::decode_jpeg_kernel::Register_DECODE_JPEG(), 1);
+
+  RegisterSelectedOps(&resolver);
+
   auto status = embedder.CreateModelWithEmbeddedValidation(&fbb, &resolver);
   if (!status.ok()) {
     std::cerr << "Creating model with embedded validation failed: "
@@ -124,6 +138,9 @@ int RunEmbedder(const EmbedderOptions& options) {
               << " for writing failed: " << strerror(errno) << std::endl;
     return 7;
   }
+#if FLATBUFFERS_LITTLEENDIAN == 0
+  tflite::FlatBufferModel::ByteSwapSerializedModel(&binary, true);
+#endif
   f << binary;
   f.close();
   if (!f.good()) {

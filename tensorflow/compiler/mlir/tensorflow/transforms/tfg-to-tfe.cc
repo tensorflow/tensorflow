@@ -18,7 +18,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/transforms/toposort/pass.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -475,7 +474,11 @@ class ConvertGeneralOp : public ConversionPattern {
   const DenseSet<StringRef> &func_symbols_;
 };
 
-class LegalizeTFGToTFE : public TF::LegalizeTFGToTFPassBase<LegalizeTFGToTFE> {
+#define GEN_PASS_DEF_LEGALIZETFGTOTFPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
+class LegalizeTFGToTFE
+    : public impl::LegalizeTFGToTFPassBase<LegalizeTFGToTFE> {
   void getDependentDialects(DialectRegistry &registry) const override {
     RegisterAllTensorFlowDialects(registry);
   }

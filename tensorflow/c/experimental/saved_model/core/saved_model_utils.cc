@@ -80,51 +80,6 @@ Status ConstantFromSavedConstant(
   return internal::TensorProtoToConstant(ctx, tensor_proto, output);
 }
 
-// Finds the "signatures" object in the object graph, and fills a mapping of
-// each signature's name to the corresponding function's node in the object
-// graph.
-Status GetSignaturesMap(const SavedObjectGraph& saved_objects,
-                        gtl::FlatMap<std::string, int>* signatures_map) {
-  if (saved_objects.nodes().empty()) {
-    return errors::FailedPrecondition("Saved Object Graph was empty.");
-  }
-  const SavedObject& root = saved_objects.nodes(0);
-  const SavedObject* signatures = nullptr;
-  for (const auto& child : root.children()) {
-    if (child.local_name() == "signatures") {
-      if (child.node_id() >= saved_objects.nodes().size()) {
-        return errors::FailedPrecondition(
-            "Signature object had child node id ", child.node_id(),
-            " which exceeds the size of the set of nodes");
-      }
-      signatures = &saved_objects.nodes(child.node_id());
-    }
-  }
-
-  // Some basic sanity checks that this object is actually our "signatures" map
-  if (signatures == nullptr) {
-    // This is where the "signatures" attribute is always set:
-    // https://github.com/tensorflow/tensorflow/blob/a2c542a0d83227568f9214a2af9a38ae3625976f/tensorflow/python/saved_model/save.py#L1106-L1109
-    return errors::FailedPrecondition(
-        "SavedObjectGraph's root object must have a child 'signatures' object");
-  }
-  if (signatures->kind_case() != SavedObject::kUserObject) {
-    return errors::FailedPrecondition(
-        "Signatures must be a SavedObject of type UserObject.");
-  }
-  if (signatures->user_object().identifier() != "signature_map") {
-    // This is where the string comes from:
-    // https://github.com/tensorflow/tensorflow/blob/c59af2913aaec235d883f50428efef1086f4c0e6/tensorflow/python/saved_model/signature_serialization.py#L220
-    return errors::FailedPrecondition(
-        "Signatures SavedObject must have identifier 'signature_map'.");
-  }
-
-  for (const auto& child : signatures->children()) {
-    (*signatures_map)[child.local_name()] = child.node_id();
-  }
-  return Status();
-}
-
 // Perform some basic sanity checks on SavedConcreteFunction's input and
 // output signatures with respect to the corresponding FunctionDef's input
 // and output args.
@@ -183,6 +138,50 @@ Status ValidateSavedFunctionCompatibleWithFunctionDef(
   return Status();
 }
 
+}  // namespace
+
+Status GetSignaturesMap(const SavedObjectGraph& saved_objects,
+                        gtl::FlatMap<std::string, int>* signatures_map) {
+  if (saved_objects.nodes().empty()) {
+    return errors::FailedPrecondition("Saved Object Graph was empty.");
+  }
+  const SavedObject& root = saved_objects.nodes(0);
+  const SavedObject* signatures = nullptr;
+  for (const auto& child : root.children()) {
+    if (child.local_name() == "signatures") {
+      if (child.node_id() >= saved_objects.nodes().size()) {
+        return errors::FailedPrecondition(
+            "Signature object had child node id ", child.node_id(),
+            " which exceeds the size of the set of nodes");
+      }
+      signatures = &saved_objects.nodes(child.node_id());
+    }
+  }
+
+  // Some basic sanity checks that this object is actually our "signatures" map
+  if (signatures == nullptr) {
+    // This is where the "signatures" attribute is always set:
+    // https://github.com/tensorflow/tensorflow/blob/a2c542a0d83227568f9214a2af9a38ae3625976f/tensorflow/python/saved_model/save.py#L1106-L1109
+    return errors::FailedPrecondition(
+        "SavedObjectGraph's root object must have a child 'signatures' object");
+  }
+  if (signatures->kind_case() != SavedObject::kUserObject) {
+    return errors::FailedPrecondition(
+        "Signatures must be a SavedObject of type UserObject.");
+  }
+  if (signatures->user_object().identifier() != "signature_map") {
+    // This is where the string comes from:
+    // https://github.com/tensorflow/tensorflow/blob/c59af2913aaec235d883f50428efef1086f4c0e6/tensorflow/python/saved_model/signature_serialization.py#L220
+    return errors::FailedPrecondition(
+        "Signatures SavedObject must have identifier 'signature_map'.");
+  }
+
+  for (const auto& child : signatures->children()) {
+    (*signatures_map)[child.local_name()] = child.node_id();
+  }
+  return Status();
+}
+
 Status ValidateSingleConcreteFunction(const SavedFunction& saved_function) {
   // We only allow loading functions that have an annotated input signature,
   // which means there is 1:1 correspondence between tf.function
@@ -197,8 +196,6 @@ Status ValidateSingleConcreteFunction(const SavedFunction& saved_function) {
   }
   return Status();
 }
-
-}  // namespace
 
 Status LoadSavedAsset(ImmediateExecutionContext* ctx, const SavedAsset& asset,
                       const std::string& saved_model_dir,
@@ -438,9 +435,11 @@ Status PartiallyReviveSavedModelObjects(const MetaGraphDef& metagraph,
       resource_revival_state.device = node.resource().device();
       objects->restored_resources[i] = std::move(resource_revival_state);
     } else if (node.kind_case() == SavedObject::kFunction) {
-      // Get the SavedFunction node and validate it has a single concrete func.
+      // Get the SavedFunction node and skip if it has no concrete functions.
       const SavedFunction& saved_function = node.function();
-      TF_RETURN_IF_ERROR(ValidateSingleConcreteFunction(saved_function));
+      if (saved_function.concrete_functions_size() < 1) {
+        continue;
+      }
 
       // Retrieve related function information.
       const std::string& function_name = saved_function.concrete_functions(0);

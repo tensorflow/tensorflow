@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_bfc_allocator.h"
 
+#include <cstdlib>
+
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {

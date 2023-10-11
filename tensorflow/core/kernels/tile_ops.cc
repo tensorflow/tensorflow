@@ -23,7 +23,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -92,6 +92,8 @@ extern template struct Tile<GPUDevice, complex128, int32>;
 extern template struct Tile<GPUDevice, complex128, int64_t>;
 extern template struct Tile<GPUDevice, Eigen::half, int32>;
 extern template struct Tile<GPUDevice, Eigen::half, int64_t>;
+extern template struct Tile<GPUDevice, Eigen::bfloat16, int32>;
+extern template struct Tile<GPUDevice, Eigen::bfloat16, int64_t>;
 extern template struct Tile<GPUDevice, int16, int32>;
 extern template struct Tile<GPUDevice, int16, int64_t>;
 extern template struct Tile<GPUDevice, int32, int32>;
@@ -254,7 +256,8 @@ class TileOp : public OpKernel {
                   const gtl::ArraySlice<Tmultiples> multiples_array,
                   Tensor* result);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TileOp);
+  TileOp(const TileOp&) = delete;
+  void operator=(const TileOp&) = delete;
 };
 
 template <typename Device, typename Tmultiples>
@@ -311,6 +314,7 @@ TF_CALL_int16(HANDLE_TYPE_NAME_GPU);
 TF_CALL_int32(HANDLE_TYPE_NAME_GPU);
 TF_CALL_int64(HANDLE_TYPE_NAME_GPU);
 TF_CALL_half(HANDLE_TYPE_NAME_GPU);
+TF_CALL_bfloat16(HANDLE_TYPE_NAME_GPU);
 TF_CALL_complex64(HANDLE_TYPE_NAME_GPU);
 TF_CALL_complex128(HANDLE_TYPE_NAME_GPU);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -505,7 +509,8 @@ class TileGradientOp : public OpKernel {
         context->input(0).tensor<T, NDIM>(), reduce_dim, reshape_dim);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TileGradientOp);
+  TileGradientOp(const TileGradientOp&) = delete;
+  void operator=(const TileGradientOp&) = delete;
 };
 
 template <typename Device, typename Tmultiples>
@@ -566,6 +571,7 @@ TF_CALL_int16(HANDLE_TYPE_NAME_GPU);
 TF_CALL_int32(HANDLE_TYPE_NAME_GPU);
 TF_CALL_int64(HANDLE_TYPE_NAME_GPU);
 TF_CALL_half(HANDLE_TYPE_NAME_GPU);
+TF_CALL_bfloat16(HANDLE_TYPE_NAME_GPU);
 TF_CALL_complex64(HANDLE_TYPE_NAME_GPU);
 TF_CALL_complex128(HANDLE_TYPE_NAME_GPU);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -634,6 +640,7 @@ TF_CALL_bool(REGISTER_GPU_TILE);
 TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
 TF_CALL_half(REGISTER_GPU);
+TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_int16(REGISTER_GPU);
 TF_CALL_int32(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);

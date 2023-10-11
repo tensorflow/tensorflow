@@ -137,9 +137,8 @@ class RingReducerTest : public ::testing::Test {
     if (fail_after > 0) {
       // Confirm that every device terminated with the expected error status.
       for (int di = 0; di < static_cast<int>(instances_.size()); ++di) {
-        EXPECT_NE(
-            instances_[di]->status_.error_message().find("Deliberate failure"),
-            string::npos);
+        EXPECT_NE(instances_[di]->status_.message().find("Deliberate failure"),
+                  string::npos);
       }
     } else {
       // Confirm that every device computed the same correct reduction value.

@@ -25,7 +25,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/one_hot_op.h"
 
 #include <memory>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -123,7 +124,8 @@ class OneHotOp : public OpKernel {
  private:
   int32 axis_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(OneHotOp);
+  OneHotOp(const OneHotOp&) = delete;
+  void operator=(const OneHotOp&) = delete;
 };
 
 #define REGISTER_ONE_HOT_INDEX(type, index_type)                \

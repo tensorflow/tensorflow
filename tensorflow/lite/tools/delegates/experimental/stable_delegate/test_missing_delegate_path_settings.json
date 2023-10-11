@@ -1,0 +1,6 @@
+// Test only TF Lite settings file. Missing a delegate path in the stable
+// delegate settings.
+{
+  "delegate": "NONE",
+  "stable_delegate_loader_settings": {}
+}

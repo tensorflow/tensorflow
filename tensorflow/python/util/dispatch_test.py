@@ -23,8 +23,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
@@ -54,6 +57,22 @@ class CustomTensor(object):
 @dispatch.add_dispatch_support
 def test_op(x, y, z):
   """A fake op for testing dispatch of Python ops."""
+  return x + (2 * y) + (3 * z)
+
+
+@tf_export("test_op_with_optional")
+@dispatch.add_dispatch_support
+def test_op_with_optional(x, y, z, optional=None):
+  """A fake op for testing dispatch of Python ops."""
+  del optional
+  return x + (2 * y) + (3 * z)
+
+
+@tf_export("test_op_with_kwonly")
+@dispatch.add_dispatch_support
+def test_op_with_kwonly(*, x, y, z, optional=None):
+  """A fake op for testing dispatch of Python ops."""
+  del optional
   return x + (2 * y) + (3 * z)
 
 
@@ -87,13 +106,13 @@ class TensorTracer(object):
   @classmethod
   def _overload_all_operators(cls):  # pylint: disable=invalid-name
     """Register overloads for all operators."""
-    for operator in ops.Tensor.OVERLOADABLE_OPERATORS:
+    for operator in tensor_lib.Tensor.OVERLOADABLE_OPERATORS:
       cls._overload_operator(operator)
 
   @classmethod
   def _overload_operator(cls, operator):  # pylint: disable=invalid-name
-    """Overload an operator with the same overloading as `ops.Tensor`."""
-    tensor_oper = getattr(ops.Tensor, operator)
+    """Overload an operator with the same overloading as `tensor_lib.Tensor`."""
+    tensor_oper = getattr(tensor_lib.Tensor, operator)
 
     # Compatibility with Python 2:
     # Python 2 unbound methods have type checks for the first arg,
@@ -172,11 +191,16 @@ class DispatchTest(test_util.TensorFlowTestCase):
   def testAddDispatchForTypes_With_PythonOp(self):
     original_handlers = test_op._tf_fallback_dispatchers[:]
 
-    @dispatch.dispatch_for_types(test_op, CustomTensor)
     def override_for_test_op(x, y, z):  # pylint: disable=unused-variable
       return CustomTensor(
           test_op(x.tensor, y.tensor, z.tensor),
           (x.score + y.score + z.score) / 3.0)
+
+    override = dispatch.dispatch_for_types(test_op, CustomTensor)(
+        override_for_test_op
+    )
+
+    self.assertIs(override, override_for_test_op)
 
     x = CustomTensor([1, 2, 3], 0.2)
     y = CustomTensor([7, 8, 2], 0.4)
@@ -189,11 +213,112 @@ class DispatchTest(test_util.TensorFlowTestCase):
     # Clean up
     test_op._tf_fallback_dispatchers = original_handlers
 
-  def testDispatchForTypes_SignatureMismatch(self):
-    with self.assertRaisesRegex(
-        AssertionError, "The decorated function's "
-        "signature must exactly match.*"):
+  def testDispatchForTypes_MissingArgs(self):
+    original_handlers = test_op_with_optional._tf_fallback_dispatchers[:]
 
+    def override_for_test_op(x, y, z):  # pylint: disable=unused-variable
+      return CustomTensor(
+          test_op(x.tensor, y.tensor, z.tensor),
+          (x.score + y.score + z.score) / 3.0,
+      )
+
+    override = dispatch.dispatch_for_types(test_op_with_optional, CustomTensor)(
+        override_for_test_op
+    )
+
+    self.assertIs(override, override_for_test_op)
+
+    x = CustomTensor([1, 2, 3], 0.2)
+    y = CustomTensor([7, 8, 2], 0.4)
+    z = CustomTensor([0, 1, 2], 0.6)
+
+    result = test_op_with_optional(x, y, z)
+    self.assertAllEqual(self.evaluate(result.tensor), [15, 21, 13])
+    self.assertNear(result.score, 0.4, 0.001)
+
+    # Clean up
+    test_op_with_optional._tf_fallback_dispatchers = original_handlers
+
+  def testDispatchForTypes_ProvidingMissingArgs(self):
+    original_handlers = test_op_with_optional._tf_fallback_dispatchers[:]
+
+    @dispatch.dispatch_for_types(test_op_with_optional, CustomTensor)
+    def override_for_test_op(x, y, z):  # pylint: disable=unused-variable
+      return CustomTensor(
+          test_op(x.tensor, y.tensor, z.tensor),
+          (x.score + y.score + z.score) / 3.0,
+      )
+
+    x = CustomTensor([1, 2, 3], 0.2)
+    y = CustomTensor([7, 8, 2], 0.4)
+    z = CustomTensor([0, 1, 2], 0.6)
+
+    with self.assertRaisesRegex(
+        AssertionError,
+        "Dispatched op is called with argument `optional` set to a non-default"
+        " value, which is not supported by the decorated function",
+    ):
+      test_op_with_optional(x, y, z, optional=3)
+
+    # Clean up
+    test_op_with_optional._tf_fallback_dispatchers = original_handlers
+
+  def testDispatchForTypes_NewArgs(self):
+    original_handlers = test_op_with_optional._tf_fallback_dispatchers[:]
+
+    @dispatch.dispatch_for_types(test_op_with_optional, CustomTensor)
+    def override_for_test_op(x, y, z, u=None):  # pylint: disable=unused-variable
+      del u
+      return CustomTensor(
+          test_op(x.tensor, y.tensor, z.tensor),
+          (x.score + y.score + z.score) / 3.0,
+      )
+
+    x = CustomTensor([1, 2, 3], 0.2)
+    y = CustomTensor([7, 8, 2], 0.4)
+    z = CustomTensor([0, 1, 2], 0.6)
+
+    result = test_op_with_optional(x, y, z)
+    self.assertAllEqual(self.evaluate(result.tensor), [15, 21, 13])
+    self.assertNear(result.score, 0.4, 0.001)
+
+    # Clean up
+    test_op_with_optional._tf_fallback_dispatchers = original_handlers
+
+  def testDispatchForTypes_SignatureMismatchOrder(self):
+    with self.assertRaisesRegex(
+        AssertionError,
+        "The decorated function's non-default arguments must be identical to"
+        " that of the overridden op.",
+    ):
+
+      @dispatch.dispatch_for_types(test_op, CustomTensor)
+      def override_for_test_op(x, z, y):  # pylint: disable=unused-variable
+        return CustomTensor(
+            test_op(x.tensor, y.tensor, z.tensor),
+            (x.score + y.score + z.score) / 3.0,
+        )
+
+  def testDispatchForTypes_MissingKwOnly(self):
+    with self.assertRaisesRegex(
+        AssertionError,
+        "The decorated function's non-default arguments must be identical to"
+        " that of the overridden op.",
+    ):
+
+      @dispatch.dispatch_for_types(test_op_with_kwonly, CustomTensor)
+      def override_for_test_op(x, z, y):  # pylint: disable=unused-variable
+        return CustomTensor(
+            test_op(x.tensor, y.tensor, z.tensor),
+            (x.score + y.score + z.score) / 3.0,
+        )
+
+  def testDispatchForTypes_SignatureMismatchNames(self):
+    with self.assertRaisesRegex(
+        AssertionError,
+        "The decorated function's non-default arguments must be identical to"
+        " that of the overridden op.",
+    ):
       @dispatch.dispatch_for_types(test_op, CustomTensor)
       def override_for_test_op(a, b, c):  # pylint: disable=unused-variable
         return CustomTensor(
@@ -253,7 +378,9 @@ class DispatchTest(test_util.TensorFlowTestCase):
       x = TensorTracer("x")
       y = TensorTracer("y")
       trace = math_ops.add(
-          math_ops.abs(ops.convert_to_tensor_v2_with_dispatch(x)), y)
+          math_ops.abs(tensor_conversion.convert_to_tensor_v2_with_dispatch(x)),
+          y,
+      )
       self.assertEqual(
           str(trace), "math.add(math.abs(convert_to_tensor(x)), y)")
 
@@ -333,13 +460,13 @@ class DispatchTest(test_util.TensorFlowTestCase):
 
 class MaskedTensor(extension_type.ExtensionType):
   """Simple ExtensionType for testing v2 dispatch."""
-  values: ops.Tensor
-  mask: ops.Tensor
+  values: tensor_lib.Tensor
+  mask: tensor_lib.Tensor
 
 
 class SillyTensor(extension_type.ExtensionType):
   """Simple ExtensionType for testing v2 dispatch."""
-  value: ops.Tensor
+  value: tensor_lib.Tensor
   how_silly: float
 
 
@@ -439,7 +566,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
       dispatch.unregister_dispatch_for(masked_concat)
 
   def testDispatchForUnion(self):
-    MaybeMasked = typing.Union[MaskedTensor, ops.Tensor]
+    MaybeMasked = typing.Union[MaskedTensor, tensor_lib.Tensor]
 
     @dispatch.dispatch_for_api(math_ops.add, {
         "x": MaybeMasked,
@@ -771,7 +898,7 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
     @dispatch.dispatch_for_api(math_ops.add_n,
                                {"inputs": typing.List[MaskedTensor]})
     def masked_add_n(inputs):
-      masks = array_ops.stack([x.mask for x in inputs])
+      masks = array_ops_stack.stack([x.mask for x in inputs])
       return MaskedTensor(
           math_ops.add_n([x.values for x in inputs]),
           math_ops.reduce_all(masks, axis=0))
@@ -810,7 +937,8 @@ class DispatchV2Test(test_util.TensorFlowTestCase):
     self.assertIn(array_ops.concat, dispatch_apis)
 
   def testTypeBasedDispatchTargetsFor(self):
-    MaskedTensorList = typing.List[typing.Union[MaskedTensor, ops.Tensor]]
+    MaskedTensorList = typing.List[
+        typing.Union[MaskedTensor, tensor_lib.Tensor]]
     try:
 
       @dispatch.dispatch_for_api(math_ops.add)

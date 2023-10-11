@@ -18,8 +18,8 @@ limitations under the License.
 #include <cstdio>
 #include <vector>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
