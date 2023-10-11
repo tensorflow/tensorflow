@@ -213,8 +213,8 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
     values = ops.convert_to_tensor(
         t.values if isinstance(t, indexed_slices.IndexedSlices) else t,
         name="t")
-    clip_norm = tf.cast(math_ops.maximum(clip_norm, 0),dtype = values.dtype)
-
+    clip_norm = math_ops.cast(math_ops.maximum(clip_norm, 0),
+                              dtype = values.dtype)
 
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
     l2sum = math_ops.reduce_sum(values * values, axes, keepdims=True)
