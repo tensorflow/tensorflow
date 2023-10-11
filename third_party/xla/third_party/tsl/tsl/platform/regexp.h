@@ -18,9 +18,9 @@ limitations under the License.
 
 #include "tsl/platform/platform.h"
 
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) ||      \
-    defined(PLATFORM_GOOGLE_IOS) || defined(PLATFORM_PORTABLE_GOOGLE) || \
-    (defined(__clang__) && defined(PLATFORM_WINDOWS))
+
+#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
+    defined(PLATFORM_GOOGLE_IOS) || defined(PLATFORM_PORTABLE_GOOGLE)
 #include "third_party/re2/re2.h"
 #else
 #include "re2/re2.h"
