@@ -97,7 +97,8 @@ void BuildProfilerSubmodule(py::module* m) {
         const tensorflow::ProfileOptions&)>
         create_func = [profiler_api = profiler_api](
                           const tensorflow::ProfileOptions& options) mutable {
-          return std::make_unique<xla::profiler::PluginTracer>(profiler_api);
+          return std::make_unique<xla::profiler::PluginTracer>(profiler_api,
+                                                               options);
         };
     tsl::profiler::RegisterProfilerFactory(std::move(create_func));
   });

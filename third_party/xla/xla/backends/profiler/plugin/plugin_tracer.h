@@ -29,7 +29,8 @@ namespace profiler {
 // Thread-safety: This class is go/thread-compatible.
 class PluginTracer : public tsl::profiler::ProfilerInterface {
  public:
-  explicit PluginTracer(const PLUGIN_Profiler_Api* profiler_api);
+  explicit PluginTracer(const PLUGIN_Profiler_Api* profiler_api,
+                        const tensorflow::ProfileOptions& options);
   ~PluginTracer() override;
 
   Status Start() override;

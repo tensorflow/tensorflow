@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -96,7 +97,8 @@ absl::Status PluginProfilerErrorToStatus(const PLUGIN_Profiler_Error* error,
 
 }  // namespace
 
-PluginTracer::PluginTracer(const PLUGIN_Profiler_Api* profiler_api) {
+PluginTracer::PluginTracer(const PLUGIN_Profiler_Api* profiler_api,
+                           const tensorflow::ProfileOptions& options) {
   if (profiler_api == nullptr) {
     LOG(ERROR) << "The plugin does not implement a profiler interface. This "
                   "could restrict the profiling capabilities.";
@@ -112,6 +114,9 @@ PluginTracer::PluginTracer(const PLUGIN_Profiler_Api* profiler_api) {
   profiler_api_ = profiler_api;
 
   PLUGIN_Profiler_Create_Args args;
+  std::string options_str = options.SerializeAsString();
+  args.options = options_str.c_str();
+  args.options_size = options_str.size();
   PLUGIN_Profiler_Error* error = profiler_api_->create(&args);
   if (error != nullptr) {
     std::unique_ptr<PLUGIN_Profiler_Error,
