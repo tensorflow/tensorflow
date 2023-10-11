@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/tf_dialect_to_executor.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_dialect_to_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/clustering_bridge_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/inference/inference_passes.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/stacktrace.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
 #include "tsl/platform/error_logging.h"
@@ -115,41 +117,9 @@ void CreateTPUBridgePipeline(OpPassManager &pm, llvm::StringRef module_name) {
 
 tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
                              llvm::StringRef module_name) {
-  VLOG(2)
-      << "TPU Bridge called stack trace is "
-      << "(NOTE: this is not an error; rather the stack trace for debugging) : "
-      << tensorflow::CurrentStackTrace();
-  Status bridge_status = RunTFXLABridge(
-      module,
-      [module_name](OpPassManager &pm) {
-        CreateTPUBridgePipeline(pm, module_name);
-      },
+  return tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
+      module, tensorflow::tf2xla::v2::XLA_TPU_JIT, fallback_enabled,
       module_name);
-  tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      "tpu", "v2", fallback_enabled,
-      bridge_status.ok() ? "success" : "failure");
-  tsl::OkOrSetErrorCounterPayload(
-      tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_1,
-      bridge_status);
-  if (!bridge_status.ok()) {
-    tsl::error_logging::Log(TFTPU::kBridgeComponent,
-                            "TFXLA_PHASE_ONE_MLIR_TPU_BRIDGE",
-                            bridge_status.ToString())
-        .IgnoreError();
-    return bridge_status;
-  }
-
-  Status export_status =
-      tensorflow::tf2xla::v2::ExportFromTensorflowDialectToExecutor(
-          module, module_name);
-  if (!export_status.ok()) {
-    tsl::error_logging::Log(TFTPU::kBridgeComponent,
-                            "TFXLA_PHASE_ONE_MLIR_TPU_BRIDGE_EXPORT",
-                            export_status.ToString())
-        .IgnoreError();
-  }
-
-  return export_status;
 }
 
 }  // namespace TFTPU

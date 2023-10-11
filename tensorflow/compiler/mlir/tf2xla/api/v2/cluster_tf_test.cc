@@ -15,21 +15,92 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
 
+#include <string>
+
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/register_common_dialects.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/core/platform/resource_loader.h"
 #include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tf2xla {
 namespace v2 {
 namespace {
 
+using mlir::DialectRegistry;
+using mlir::MLIRContext;
 using mlir::ModuleOp;
+using mlir::OwningOpRef;
+using mlir::WalkResult;
+using mlir::func::FuncOp;
 
-TEST(FunctionTf2xlaClusteringBridgeTest, ClustersTf) {
-  ModuleOp module;
-  TF_ASSERT_OK(
-      RunFunctionTf2xlaClusteringBridge(module, DeviceType::XLA_TPU_JIT));
+std::string TestDataPath() {
+  return tensorflow::GetDataDependencyFilepath(
+      "tensorflow/compiler/mlir/tf2xla/api/v2/testdata/");
+}
+
+class FunctionClusterTensorflowDialectTest : public ::testing::Test {
+ public:
+  FunctionClusterTensorflowDialectTest() {
+    mlir::RegisterCommonToolingDialects(registry_);
+    context_.appendDialectRegistry(registry_);
+    context_.loadAllAvailableDialects();
+  }
+
+  tsl::Status CreateMlirModule(std::string mlir_module_filename) {
+    std::string mlir_module_path = TestDataPath() + mlir_module_filename;
+    mlir_module_ =
+        mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context_);
+    if (!mlir_module_) {
+      return tsl::Status(
+          absl::StatusCode::kNotFound,
+          absl::StrCat("Could not find MLIR module at ", mlir_module_path));
+    }
+    return tsl::OkStatus();
+  }
+
+  DialectRegistry registry_;
+  MLIRContext context_;
+  OwningOpRef<mlir::ModuleOp> mlir_module_;
+};
+
+TEST_F(FunctionClusterTensorflowDialectTest, ClustersTf) {
+  TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
+
+  TF_EXPECT_OK(
+      RunFunctionTf2xlaClusteringBridge(*mlir_module_, DeviceType::XLA_TPU_JIT,
+                                        /*is_in_fallback_enabled_mode=*/false));
+
+  FuncOp main = mlir_module_->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_TRUE(main);
+
+  bool has_graph_op = false;
+  main.walk([&](mlir::tf_executor::GraphOp graph) {
+    has_graph_op = true;
+    return WalkResult::advance();
+  });
+
+  EXPECT_TRUE(has_graph_op);
+}
+
+TEST_F(FunctionClusterTensorflowDialectTest, FailsOnGPU) {
+  TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
+
+  EXPECT_FALSE(
+      RunFunctionTf2xlaClusteringBridge(*mlir_module_, DeviceType::XLA_GPU_JIT,
+                                        /*is_in_fallback_enabled_mode=*/false)
+          .ok());
 }
 
 }  // namespace
