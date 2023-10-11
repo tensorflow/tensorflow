@@ -36,10 +36,13 @@ limitations under the License.
 //===----------------------------------------------------------------------===//
 
 namespace mlir::quant::stablehlo {
-namespace {
 
+// Put the definitions inside the ::mlir::quant::stablehlo namespace, to match
+// the declarations in passes.h.
 #define GEN_PASS_DEF_PREPARESRQQUANTIZEPASS
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
+
+namespace {
 
 using QuantizationUnits = llvm::SetVector<std::pair<Operation*, int>>;
 using ::stablehlo::quantization::QuantizationOptions;
