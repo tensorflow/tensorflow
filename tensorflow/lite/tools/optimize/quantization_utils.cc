@@ -46,7 +46,7 @@ const int8_t kMinQuantizedValue4bit = -7;
 const int8_t kMaxQuantizedValue4bit = 7;
 
 // The maximum number of dimensions supported in per-channel quantization.
-constexpr int kPerChannelMaxDim = 4;
+constexpr int kPerChannelMaxDim = 5;
 }  // namespace
 
 TfLiteStatus NumElements(const TensorT& tensor, uint64_t* num_elements) {
@@ -150,10 +150,11 @@ TfLiteStatus FillPerChannelMinMax(const float* const input,
         "Min or max already present in tensor quantization params.");
     return kTfLiteError;
   }
-  if (dimension.size() != 4 && dimension.size() != 5) {
+
+  if (dimension.size() > kPerChannelMaxDim) {
     TF_LITE_REPORT_ERROR(
         error_reporter,
-       "Expected tensor with less than %d dimensions, but got %d.",
+        "Expected tensor with less than %d dimensions, but got %d.",
         kPerChannelMaxDim + 1, dimension.size());
     return kTfLiteError;
   }
@@ -170,34 +171,32 @@ TfLiteStatus FillPerChannelMinMax(const float* const input,
   quantization_params->min = std::vector<float>(channel_dim_size);
   quantization_params->max = std::vector<float>(channel_dim_size);
   std::vector<bool> has_min_max_value(channel_dim_size, false);
-  int indices[dimension.size()];
-  RuntimeShape tensor_dims(dimension.size(), dimension.data());
-  auto set_min_max = [&]() {
-    int channel_idx = indices[channel_dim_index];
-    const float val = input[Offset(tensor_dims, indices)];
-    if (has_min_max_value[channel_idx]) {
-      if (quantization_params->min[channel_idx] > val) {
-        quantization_params->min[channel_idx] = val;
-      } else if (quantization_params->max[channel_idx] < val) {
-        quantization_params->max[channel_idx] = val;
-      }
-    } else {
-      quantization_params->min[channel_idx] = val;
-      quantization_params->max[channel_idx] = val;
-      has_min_max_value[channel_idx] = true;
-    }
-  };
+  int indices[kPerChannelMaxDim];
+  RuntimeShape unextended_tensor_dims(dimension.size(), dimension.data());
+  RuntimeShape tensor_dims =
+      RuntimeShape::ExtendedShape(kPerChannelMaxDim, unextended_tensor_dims);
+  channel_dim_index +=
+      kPerChannelMaxDim - unextended_tensor_dims.DimensionsCount();
+
   // Compute min max ranges per channel
-  for (indices[0] = 0; indices[0] < dimension[0]; indices[0]++) {
-    for (indices[1] = 0; indices[1] < dimension[1]; indices[1]++) {
-      for (indices[2] = 0; indices[2] < dimension[2]; indices[2]++) {
-        for (indices[3] = 0; indices[3] < dimension[3]; indices[3]++) {
-          if (dimension.size() == 5) {
-            for (indices[4] = 0; indices[4] < dimension[4]; indices[4]++) {
-              set_min_max();
+  for (indices[0] = 0; indices[0] < tensor_dims.Dims(0); indices[0]++) {
+    for (indices[1] = 0; indices[1] < tensor_dims.Dims(1); indices[1]++) {
+      for (indices[2] = 0; indices[2] < tensor_dims.Dims(2); indices[2]++) {
+        for (indices[3] = 0; indices[3] < tensor_dims.Dims(3); indices[3]++) {
+          for (indices[4] = 0; indices[4] < tensor_dims.Dims(4); indices[4]++) {
+            int channel_idx = indices[channel_dim_index];
+            const float val = input[Offset(tensor_dims, indices)];
+            if (has_min_max_value[channel_idx]) {
+              if (quantization_params->min[channel_idx] > val) {
+                quantization_params->min[channel_idx] = val;
+              } else if (quantization_params->max[channel_idx] < val) {
+                quantization_params->max[channel_idx] = val;
+              }
+            } else {
+              quantization_params->min[channel_idx] = val;
+              quantization_params->max[channel_idx] = val;
+              has_min_max_value[channel_idx] = true;
             }
-          } else {
-            set_min_max();
           }
         }
       }
@@ -391,34 +390,31 @@ void SymmetricPerChannelQuantizeValues(const float* const input,
                                        std::vector<int8_t>* output_value,
                                        TfLiteType type) {
   // Quantize the values.
-  int indices[dimension.size()];
-  RuntimeShape tensor_dims(dimension.size(), dimension.data());
-  auto set_quantized_values = [&]() {
-    int channel_idx = indices[channel_dim_index];
-    int index = Offset(tensor_dims, indices);
-    const float val = input[index];
-    const int32_t quantized_value =
-        static_cast<int32_t>(TfLiteRound(val * scales_inv[channel_idx]));
-    if (type == kTfLiteInt4) {
-      output_value->at(index) =
-          std::min<int8_t>(kMaxQuantizedValue4bit,
-                           std::max<int8_t>(kMinQuantizedValue4bit, quantized_value));
-    } else {
-      output_value->at(index) =
-          std::min<int8_t>(kMaxQuantizedValue8bit,
-                           std::max<int8_t>(kMinQuantizedValue8bit, quantized_value));
-    }
-  };
-  for (indices[0] = 0; indices[0] < dimension[0]; indices[0]++) {
-    for (indices[1] = 0; indices[1] < dimension[1]; indices[1]++) {
-      for (indices[2] = 0; indices[2] < dimension[2]; indices[2]++) {
-        for (indices[3] = 0; indices[3] < dimension[3]; indices[3]++) {
-          if (dimension.size() == 5) {
-            for (indices[4] = 0; indices[4] < dimension[4]; indices[4]++) {
-              set_quantized_values();
+  int indices[kPerChannelMaxDim];
+  RuntimeShape unextended_tensor_dims(dimension.size(), dimension.data());
+  RuntimeShape tensor_dims =
+      RuntimeShape::ExtendedShape(kPerChannelMaxDim, unextended_tensor_dims);
+  channel_dim_index +=
+      kPerChannelMaxDim - unextended_tensor_dims.DimensionsCount();
+  for (indices[0] = 0; indices[0] < tensor_dims.Dims(0); indices[0]++) {
+    for (indices[1] = 0; indices[1] < tensor_dims.Dims(1); indices[1]++) {
+      for (indices[2] = 0; indices[2] < tensor_dims.Dims(2); indices[2]++) {
+        for (indices[3] = 0; indices[3] < tensor_dims.Dims(3); indices[3]++) {
+          for (indices[4] = 0; indices[4] < tensor_dims.Dims(4); indices[4]++) {
+            int channel_idx = indices[channel_dim_index];
+            int index = Offset(tensor_dims, indices);
+            const float val = input[index];
+            const int32_t quantized_value = static_cast<int32_t>(
+                TfLiteRound(val * scales_inv[channel_idx]));
+            if (type == kTfLiteInt4) {
+              output_value->at(index) = std::min<int8_t>(
+                  kMaxQuantizedValue4bit,
+                  std::max<int8_t>(kMinQuantizedValue4bit, quantized_value));
+            } else {
+              output_value->at(index) = std::min<int8_t>(
+                  kMaxQuantizedValue8bit,
+                  std::max<int8_t>(kMinQuantizedValue8bit, quantized_value));
             }
-          } else {
-            set_quantized_values();
           }
         }
       }
@@ -591,7 +587,7 @@ TfLiteStatus AddQuantizationParams(const std::vector<float>& scales,
 TfLiteStatus SymmetricQuantizeTensorPerChannel(ModelT* model, TensorT* tensor,
                                                int32_t channel_dim_index,
                                                ErrorReporter* error_reporter) {
-  if (tensor->shape.size() != 4 && tensor->shape.size() != 5) {
+  if (tensor->shape.size() > kPerChannelMaxDim) {
     TF_LITE_REPORT_ERROR(
         error_reporter,
         "SymmetricQuantizeTensorPerChannel requires tensor with less than %d "

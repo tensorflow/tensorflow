@@ -659,7 +659,7 @@ TfLiteStatus RequantizeConstant(
   const TensorDataType* buffer_values =
       reinterpret_cast<const TensorDataType*>(buffer_data.data());
   // This logic is for per-channel quantization, but works for per-tensor.
-  const int kPerChannelMaxDim = 4;
+  const int kPerChannelMaxDim = 5;
   const std::vector<int32_t>& tensor_shape = tensor->shape;
   RuntimeShape unextended_tensor_dims(tensor_shape.size(), tensor_shape.data());
   RuntimeShape tensor_dims =
@@ -672,14 +672,16 @@ TfLiteStatus RequantizeConstant(
     for (indices[1] = 0; indices[1] < tensor_dims.Dims(1); indices[1]++) {
       for (indices[2] = 0; indices[2] < tensor_dims.Dims(2); indices[2]++) {
         for (indices[3] = 0; indices[3] < tensor_dims.Dims(3); indices[3]++) {
-          const float scale = scales.size() > 1
-                                  ? scales[indices[channel_dim_index]]
-                                  : scales[0];
-          const int64_t zp = zero_points.size() > 1
-                                 ? zero_points[indices[channel_dim_index]]
-                                 : zero_points[0];
-          const int index = Offset(tensor_dims, indices);
-          float_values[index] = scale * (buffer_values[index] - zp);
+          for (indices[4] = 0; indices[4] < tensor_dims.Dims(4); indices[4]++) {
+            const float scale = scales.size() > 1
+                                    ? scales[indices[channel_dim_index]]
+                                    : scales[0];
+            const int64_t zp = zero_points.size() > 1
+                                   ? zero_points[indices[channel_dim_index]]
+                                   : zero_points[0];
+            const int index = Offset(tensor_dims, indices);
+            float_values[index] = scale * (buffer_values[index] - zp);
+          }
         }
       }
     }
