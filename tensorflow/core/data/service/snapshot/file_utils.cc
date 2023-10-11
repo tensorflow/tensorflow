@@ -107,7 +107,7 @@ absl::Status AtomicallyWriteTFRecords(absl::string_view filename,
                                          std::string(compression));
     TF_RETURN_IF_ERROR(writer.Initialize(env));
     TF_RETURN_IF_ERROR(writer.WriteTensors(tensors));
-    return absl::OkStatus();
+    return writer.Close();
   };
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       AtomicallyWrite(filename, env, nonatomically_write),
