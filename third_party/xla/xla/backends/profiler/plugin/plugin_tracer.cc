@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
-#include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/status.h"
 #include "tsl/platform/logging.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -104,11 +103,11 @@ PluginTracer::PluginTracer(const PLUGIN_Profiler_Api* profiler_api,
                   "could restrict the profiling capabilities.";
     return;
   }
-  xla::Status check_struct_size_status = pjrt::CheckMatchingStructSizes(
-      "PLUGIN_Profiler_Api", PLUGIN_Profiler_Api_STRUCT_SIZE,
-      profiler_api->struct_size);
-  if (!check_struct_size_status.ok()) {
-    LOG(ERROR) << check_struct_size_status.message();
+  if (profiler_api->struct_size != PLUGIN_Profiler_Api_STRUCT_SIZE) {
+    LOG(ERROR) << "Unexpected PLUGIN_Profiler_Api size: expected "
+               << PLUGIN_Profiler_Api_STRUCT_SIZE << ", got "
+               << profiler_api->struct_size
+               << ". Check installed software versions.";
     return;
   }
   profiler_api_ = profiler_api;
