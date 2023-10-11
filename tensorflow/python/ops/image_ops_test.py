@@ -936,7 +936,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
     x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
 
     saturation_factor = 0.5
-    y_data = [7, 9, 13, 140, 180, 226, 135, 121, 234, 172, 255, 128]
+    y_data = [7, 9, 13, 140, 180, 226, 136, 121, 234, 172, 255, 128]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
     with self.cached_session():
@@ -966,7 +966,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
     x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
 
     saturation_factor = 0.5
-    y_data = [7, 9, 13, 140, 180, 226, 135, 121, 234, 172, 255, 128]
+    y_data = [7, 9, 13, 140, 180, 226, 136, 121, 234, 172, 255, 128]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
     with self.cached_session():

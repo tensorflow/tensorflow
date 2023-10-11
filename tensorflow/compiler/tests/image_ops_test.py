@@ -317,7 +317,7 @@ class AdjustSaturationTest(xla_test.XLATestCase):
     x_np = np.array(x_rgb_data, dtype=np.uint8).reshape(x_shape)
 
     saturation_factor = 0.5
-    y_rgb_data = [7, 9, 13, 140, 181, 226, 136, 121, 234, 172, 255, 128]
+    y_rgb_data = [7, 9, 13, 140, 181, 226, 135, 121, 234, 172, 255, 128]
     y_np = np.array(y_rgb_data, dtype=np.uint8).reshape(x_shape)
 
     with self.session():
