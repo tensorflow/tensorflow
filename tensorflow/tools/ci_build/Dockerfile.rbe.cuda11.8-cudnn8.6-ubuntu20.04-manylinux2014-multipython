@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y \
     libreadline-dev \
     libsqlite3-dev \
     patchelf \
+    cuda-nvml-dev-11-8 \
     libnccl2=2.18.5-1+cuda11.0 \
       && \
     rm -rf /var/lib/apt/lists/*
