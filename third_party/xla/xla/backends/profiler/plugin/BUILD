@@ -34,3 +34,17 @@ cc_library(
     ],
     alwayslink = True,
 )
+
+cc_library(
+    name = "profiler_error",
+    srcs = ["profiler_error.cc"],
+    hdrs = ["profiler_error.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":profiler_c_api_hdrs",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:logging",
+    ],
+    alwayslink = True,
+)
