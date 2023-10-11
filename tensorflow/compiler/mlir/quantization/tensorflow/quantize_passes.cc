@@ -82,6 +82,9 @@ void AddQuantizeQatPasses(
         mlir::TF::CreateUnrollBatchMatMulPassPass());
   }
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  if (quantization_options.experimental_enable_tpu_model_support()) {
+    AddConvertTpuToCpuModelPasses(pm);
+  }
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertTfXlaOpToTfOpPass());
   pm.addNestedPass<mlir::func::FuncOp>(
