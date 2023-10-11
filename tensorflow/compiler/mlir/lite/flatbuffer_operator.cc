@@ -39,10 +39,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/mutable/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 
 namespace {
@@ -70,23 +70,23 @@ StatusOr<mlir::StringAttr> GetPaddingAttr(TfLitePadding pad_params,
 
 }  // namespace
 
+bool mlir::IsStablehloOp(const tflite::OperatorCodeT& op_code) {
+  llvm::StringRef op_name(
+      tflite::EnumNameBuiltinOperator(tflite::GetBuiltinCode(&op_code)));
+  return op_name.startswith("STABLEHLO_");
+}
+
 std::string mlir::GetMlirOpNameFromOpCode(
     const tflite::OperatorCodeT& op_code) {
   auto builtin_code = tflite::GetBuiltinCode(&op_code);
-  if (builtin_code == tflite::BuiltinOperator_CUSTOM) {
-    return std::string("tfl.custom");
-  }
   if (builtin_code == tflite::BuiltinOperator_IF) {
     return std::string("tf.If");
-  }
-  if (builtin_code == tflite::BuiltinOperator_WHILE) {
-    return std::string("tfl.while");
   }
 
   llvm::StringRef op_name(tflite::EnumNameBuiltinOperator(builtin_code));
 
   // If the Op name contains stablehlo
-  if (op_name.startswith("STABLEHLO_")) {
+  if (IsStablehloOp(op_code)) {
     return llvm::Twine("stablehlo.", op_name.drop_front(10).lower()).str();
   }
   return llvm::Twine("tfl.", op_name.lower()).str();
@@ -380,7 +380,7 @@ Status mlir::CustomOptionsToAttributes(
 
 // TODO(zichuanwei@): Populate Builtin_options_2 manual for now, should automate
 // these in the future
-void mlir::BuiltinOptions2ToAttributes(
+void BuiltinOptions2ToAttributesManual(
     tflite::BuiltinOptions2Union op_union, mlir::Builder builder,
     llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes) {
   if (const auto* op = op_union.AsStablehloConcatenateOptions()) {
@@ -537,6 +537,113 @@ void mlir::BuiltinOptions2ToAttributes(
         "dimensions",
         BuildRankedTensorAttr({static_cast<int64_t>(op->dimensions.size())},
                               op->dimensions, builder)));
+    return;
+  }
+  if (const auto* op = op_union.AsStablehloReduceWindowOptions()) {
+    if (!op->window_dimensions.empty()) {
+      attributes.emplace_back(builder.getNamedAttr(
+          "window_dimensions",
+          BuildRankedTensorAttr(
+              {static_cast<int64_t>(op->window_dimensions.size())},
+              op->window_dimensions, builder)));
+    }
+    if (!op->window_strides.empty()) {
+      attributes.emplace_back(builder.getNamedAttr(
+          "window_strides",
+          BuildRankedTensorAttr(
+              {static_cast<int64_t>(op->window_strides.size())},
+              op->window_strides, builder)));
+    }
+    if (!op->base_dilations.empty()) {
+      attributes.emplace_back(builder.getNamedAttr(
+          "base_dilations",
+          BuildRankedTensorAttr(
+              {static_cast<int64_t>(op->base_dilations.size())},
+              op->base_dilations, builder)));
+    }
+    if (!op->window_dilations.empty()) {
+      attributes.emplace_back(builder.getNamedAttr(
+          "window_dilations",
+          BuildRankedTensorAttr(
+              {static_cast<int64_t>(op->window_dilations.size())},
+              op->window_dilations, builder)));
+    }
+    if (!op->padding.empty()) {
+      attributes.emplace_back(builder.getNamedAttr(
+          "padding", BuildRankedTensorAttr(
+                         {static_cast<int64_t>(op->padding.size()) / 2, 2},
+                         op->padding, builder)));
+    }
+    return;
+  }
+  if (const auto* op = op_union.AsStablehloDotGeneralOptions()) {
+    attributes.emplace_back(builder.getNamedAttr(
+        "dot_dimension_numbers",
+        mlir::stablehlo::DotDimensionNumbersAttr::get(
+            builder.getContext(), op->lhs_batching_dimensions,
+            op->rhs_batching_dimensions, op->lhs_contracting_dimensions,
+            op->rhs_contracting_dimensions)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "precision_config",
+        BuildStablehlo_PrecisionConfigAttr(op->precision_config, builder)));
+    return;
+  }
+  if (const auto* op = op_union.AsStablehloSortOptions()) {
+    attributes.emplace_back(builder.getNamedAttr(
+        "dimension", BuildI64Attr(op->dimension, builder)));
+    attributes.emplace_back(builder.getNamedAttr(
+        "is_stable", BuildBoolAttr(op->is_stable, builder)));
+    return;
+  }
+  if (const auto* op = op_union.AsStablehloScatterOptions()) {
+    auto attr = mlir::stablehlo::ScatterDimensionNumbersAttr::get(
+        builder.getContext(), op->update_window_dims, op->inserted_window_dims,
+        op->scatter_dims_to_operand_dims, op->index_vector_dim);
+    attributes.emplace_back(
+        builder.getNamedAttr("scatter_dimension_numbers", attr));
+    return;
+  }
+  if (const auto* op = op_union.AsStablehloGatherOptions()) {
+    auto gather_dim = mlir::stablehlo::GatherDimensionNumbersAttr::get(
+        builder.getContext(), op->offset_dims, op->collapsed_slice_dims,
+        op->start_index_map, op->index_vector_dim);
+    attributes.emplace_back(
+        builder.getNamedAttr("dimension_numbers", gather_dim));
+    if (!op->slice_sizes.empty()) {
+      attributes.emplace_back(builder.getNamedAttr(
+          "slice_sizes",
+          BuildRankedTensorAttr({static_cast<int64_t>(op->slice_sizes.size())},
+                                op->slice_sizes, builder)));
+    }
+    attributes.emplace_back(builder.getNamedAttr(
+        "indices_are_sorted", BuildBoolAttr(op->indices_are_sorted, builder)));
+    return;
+  }
+  if (const auto* op = op_union.AsStablehloTransposeOptions()) {
+    if (!op->permutation.empty()) {
+      attributes.emplace_back(builder.getNamedAttr(
+          "permutation",
+          BuildRankedTensorAttr({static_cast<int64_t>(op->permutation.size())},
+                                op->permutation, builder)));
+    }
+
+    return;
+  }
+  if (const auto* op = op_union.AsStablehloRngBitGeneratorOptions()) {
+    mlir::stablehlo::RngAlgorithm algorithm;
+    switch (op->algorithm) {
+      case tflite::RngAlgorithm_THREEFRY:
+        algorithm = mlir::stablehlo::RngAlgorithm::THREE_FRY;
+        break;
+      case tflite::RngAlgorithm_PHILOX:
+        algorithm = mlir::stablehlo::RngAlgorithm::PHILOX;
+        break;
+      case tflite::RngAlgorithm_DEFAULT:
+        algorithm = mlir::stablehlo::RngAlgorithm::DEFAULT;
+    }
+    auto attr =
+        mlir::stablehlo::RngAlgorithmAttr::get(builder.getContext(), algorithm);
+    attributes.emplace_back(builder.getNamedAttr("rng_algorithm", attr));
     return;
   }
 }

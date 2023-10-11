@@ -1,7 +1,7 @@
 load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "get_compatible_with_portable", "tf_py_strict_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_protos_grappler")
-load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -174,12 +174,13 @@ tf_py_strict_test(
         ":tf_item",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:meta_graph",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -257,6 +258,7 @@ py_strict_library(
         ":_pywrap_tf_optimizer",
         ":tf_cluster",
         "//tensorflow/core:protos_all_py",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -290,6 +292,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
+        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )
 

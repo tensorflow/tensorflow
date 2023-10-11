@@ -137,7 +137,7 @@ class EventFileWriter:
     disk.
     """
     if not self._closed:
-      # Request a flush operation by enqueing a sentinel and then waiting for
+      # Request a flush operation by enqueuing a sentinel and then waiting for
       # the writer thread to mark the flush as complete.
       self._flush_complete.clear()
       self._try_put(self._flush_sentinel)

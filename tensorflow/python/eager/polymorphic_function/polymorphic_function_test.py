@@ -480,6 +480,32 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(not_present, 2, fdefs)
       self.assertEqual(present, 1, fdefs)
 
+  def testDisableACDAttribute(self):
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    def foo(x, y):
+      nonlocal v
+      t = v.read_value()
+      v.assign_add(x + y)
+      return t
+
+    with_acd = polymorphic_function.function(foo)
+    without_acd = polymorphic_function.function(
+        foo, experimental_attributes={'_disable_acd': True}
+    )
+
+    with_acd_control_outputs = with_acd.get_concrete_function(
+        tensor_lib.TensorSpec(shape=None, dtype=dtypes.float32),
+        tensor_lib.TensorSpec(shape=None, dtype=dtypes.float32),
+    ).graph.control_outputs
+    without_acd_control_outputs = without_acd.get_concrete_function(
+        tensor_lib.TensorSpec(shape=None, dtype=dtypes.float32),
+        tensor_lib.TensorSpec(shape=None, dtype=dtypes.float32),
+    ).graph.control_outputs
+
+    self.assertLen(with_acd_control_outputs, 2)
+    self.assertEmpty(without_acd_control_outputs)
+
   def testReduceTracingWithNestedTFFunction(self):
     v = resource_variable_ops.ResourceVariable([1., 2.])
 
@@ -2857,65 +2883,33 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     scalar = constant_op.constant(5)
     vector = constant_op.constant([10, 10, 20])
-    ragged = ragged_factory_ops.constant([[10, 20], [40]])
 
-    c1 = func.get_concrete_function(scalar, vector)
-    c1_summary = r'func\(x, kangaroo, octopus=7\)'
-    c1_details = (r'  Args:\n'
-                  r'    x: int32 Tensor, shape=\(\)\n'
-                  r'    kangaroo: int32 Tensor, shape=\(3,\)\n'
-                  r'  Returns:\n'
-                  r'    int32 Tensor, shape=\(\)')
-    self.assertRegex(c1.pretty_printed_signature(verbose=False), c1_summary)
-    self.assertRegex(
-        c1.pretty_printed_signature(verbose=True),
-        c1_summary + '\n' + c1_details)
-    self.assertRegex(
-        repr(c1), r'<ConcreteFunction func\(x, kangaroo, octopus=7\) at .*>')
-    self.assertRegex(
-        str(c1), 'ConcreteFunction {}\n{}'.format(c1_summary, c1_details))
-
-    c2 = func.get_concrete_function(scalar, ragged, 3)
-    c2_summary = r'func\(x, kangaroo, octopus=3\)'
-    c2_details = (r'  Args:\n'
-                  r'    x: int32 Tensor, shape=\(\)\n'
-                  r'    kangaroo: RaggedTensorSpec\(.*\)\n'
-                  r'  Returns:\n'
-                  r'    int32 Tensor, shape=\(\)')
-    self.assertRegex(c2.pretty_printed_signature(),
-                     c2_summary + '\n' + c2_details)
-
-    c3 = func.get_concrete_function({'a': scalar, 'b': [ragged, ragged]})
-    c3_summary = r'func\(x, kangaroo=None, octopus=7\)'
-    c3_details = (r'  Args:\n'
-                  r"    x: {'a': <1>, 'b': \[<2>, <3>\]}\n"
-                  r'      <1>: int32 Tensor, shape=\(\)\n'
-                  r'      <2>: RaggedTensorSpec\(.*\)\n'
-                  r'      <3>: RaggedTensorSpec\(.*\)\n'
-                  r'  Returns:\n'
-                  r"    {'a': <1>, 'b': \[<2>, <3>\]}\n"
-                  r'      <1>: int32 Tensor, shape=\(\)\n'
-                  r'      <2>: RaggedTensorSpec\(.*\)\n'
-                  r'      <3>: RaggedTensorSpec\(.*\)')
-
-    # python 3.5 does not gurantee deterministic iteration of dict contents
-    # which can lead mismatch on pretty_printed_signature output for "Args"
-    if sys.version_info >= (3, 6):
-      self.assertRegex(c3.pretty_printed_signature(),
-                       c3_summary + '\n' + c3_details)
-
-    # pylint: disable=keyword-arg-before-vararg
-    @polymorphic_function.function
-    def func2(x, y=3, *args, **kwargs):
-      return (x, y, args, kwargs)
-
-    c4 = func2.get_concrete_function(scalar, 4, 5, a=scalar)
-    c4_summary = 'func2(x, y=4, args_0=5, *, a)'
-    self.assertEqual(c4.pretty_printed_signature(verbose=False), c4_summary)
-
-    c5 = func2.get_concrete_function(8, vector)
-    c5_summary = 'func2(x=8, y)'
-    self.assertEqual(c5.pretty_printed_signature(verbose=False), c5_summary)
+    concrete_fn = func.get_concrete_function(scalar, vector)
+    summary = (
+        '(x: TensorSpec(shape=(), dtype=tf.int32, name=None), kangaroo:'
+        ' TensorSpec(shape=(3,), dtype=tf.int32, name=None), octopus:'
+        ' Literal[7]) -> TensorSpec(shape=(), dtype=tf.int32, name=None)'
+    )
+    details = (
+        'Input Parameters:\n'
+        + '  x (POSITIONAL_OR_KEYWORD): TensorSpec(shape=(),'
+        ' dtype=tf.int32, name=None)\n'
+        + '  kangaroo (POSITIONAL_OR_KEYWORD):'
+        ' TensorSpec(shape=(3,), dtype=tf.int32, name=None)\n'
+        + '  octopus (POSITIONAL_OR_KEYWORD): Literal[7]\n'
+        + 'Output Type:\n'
+        + '  TensorSpec(shape=(), dtype=tf.int32, name=None)\n'
+        + 'Captures:\n'
+        + '  None'
+    )
+    self.assertEqual(
+        concrete_fn.pretty_printed_signature(verbose=False), summary
+    )
+    self.assertEqual(
+        concrete_fn.pretty_printed_signature(verbose=True), details
+    )
+    self.assertRegex(repr(concrete_fn), r'<ConcreteFunction .* at .*')
+    self.assertEqual(str(concrete_fn), 'ConcreteFunction {}'.format(details))
 
   def testPrettyPrintedExplicitSignatureWithKeywordArg(self):
 
@@ -2925,13 +2919,23 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return a + b
 
     concrete_fn = fn.get_concrete_function()
-    self.assertEqual(concrete_fn.pretty_printed_signature(False), 'fn(a, b=1)')
     self.assertEqual(
-        concrete_fn.pretty_printed_signature(True), 'fn(a, b=1)\n'
-        '  Args:\n'
-        '    a: float32 Tensor, shape=<unknown>\n'
-        '  Returns:\n'
-        '    float32 Tensor, shape=<unknown>')
+        concrete_fn.pretty_printed_signature(False),
+        '(a: TensorSpec(shape=<unknown>, dtype=tf.float32, name=None), b:'
+        ' Literal[1]) -> TensorSpec(shape=<unknown>, dtype=tf.float32,'
+        ' name=None)',
+    )
+    self.assertEqual(
+        concrete_fn.pretty_printed_signature(True),
+        'Input Parameters:\n'
+        + '  a (POSITIONAL_OR_KEYWORD):'
+        ' TensorSpec(shape=<unknown>, dtype=tf.float32, name=None)\n'
+        + '  b (POSITIONAL_OR_KEYWORD): Literal[1]\n'
+        + 'Output Type:\n'
+        + '  TensorSpec(shape=<unknown>, dtype=tf.float32, name=None)\n'
+        + 'Captures:\n'
+        + '  None',
+    )
 
   def testPrettyPrintedSignatureLoadedNamedTuple(self):
     Point = collections.namedtuple('Point', ['x', 'y'])
@@ -2953,10 +2957,22 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     loaded = load('/tmp/f')
 
     printed = loaded.signatures['serving_default'].pretty_printed_signature()
-    self.assertIn('a: int32 Tensor, shape=()', printed)
-    self.assertIn('a_1: int32 Tensor, shape=()', printed)
-    self.assertIn('b: float32 Tensor, shape=()', printed)
-    self.assertIn('b_1: float32 Tensor, shape=()', printed)
+    self.assertEqual(
+        printed,
+        'Input Parameters:\n'
+        + "  a (KEYWORD_ONLY): TensorSpec(shape=(), dtype=tf.int32, name='a')\n"
+        + '  a_1 (KEYWORD_ONLY): TensorSpec(shape=(),'
+        " dtype=tf.int32, name='a_1')\n"
+        + '  b (KEYWORD_ONLY): TensorSpec(shape=(),'
+        " dtype=tf.float32, name='b')\n"
+        + '  b_1 (KEYWORD_ONLY):'
+        " TensorSpec(shape=(), dtype=tf.float32, name='b_1')\n"
+        + 'Output Type:\n'
+        + "  Dict[['output_0', TensorSpec(shape=(), dtype=tf.float32,"
+        " name='output_0')]]\n"
+        + 'Captures:\n'
+        + '  None',
+    )
 
   @test_util.run_in_graph_and_eager_modes
   def testIndexedSlicesAsGradientsForConcreteFunctions(self):

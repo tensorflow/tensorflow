@@ -87,16 +87,16 @@ template <typename Callable>
 tfrt::TaskFunction WrapWork(int64_t id, absl::string_view name,
                             Callable&& work) {
   tensorflow::Context context(tensorflow::ContextKind::kThread);
-  return tfrt::TaskFunction([id, name = std::string(name),
+  tensorflow::profiler::TraceMeProducer producer(
+      [&]() { return absl::StrCat("producer_", name); },
+      tensorflow::profiler::ContextType::kTfrtExecutor);
+  return tfrt::TaskFunction([traceme_id = producer.GetContextId(),
+                             name = std::string(name),
                              context = std::move(context),
                              work = std::forward<Callable>(work)]() mutable {
-    // From TraceMeProducer in the function that launches graph execution, eg.
-    // SavedModelImpl::Run().
-    tensorflow::profiler::TraceMeConsumer activity(
-        [&]() {
-          return tensorflow::profiler::TraceMeEncode(name, {{"id", id}});
-        },
-        tensorflow::profiler::ContextType::kTfrtExecutor, id,
+    tensorflow::profiler::TraceMeConsumer consumer(
+        [&]() { return absl::StrCat("consumer_", name); },
+        tensorflow::profiler::ContextType::kTfrtExecutor, traceme_id,
         tensorflow::profiler::TraceMeLevel::kInfo);
     tensorflow::WithContext wc(context);
     std::forward<Callable>(work)();

@@ -24,7 +24,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/tsl/platform/cpu_info.h"
+#include "tsl/platform/cpu_info.h"
 
 namespace tensorflow {
 

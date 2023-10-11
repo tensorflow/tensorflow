@@ -64,7 +64,7 @@ py_strict_library(
         "//tensorflow/python/keras/legacy_tf_layers:core",
         "//tensorflow/python/keras/legacy_tf_layers:pooling",
         "//tensorflow/python/util:lazy_loader",
-        # Normalization layer will need //third_party/py/keras/legacy_tf_layers:normalization
+        # Normalization layer will need //third_party/py/tf_keras/legacy_tf_layers:normalization
         # Client lib should import that, since this target can't import it due to
         # circular dependency.
     ],

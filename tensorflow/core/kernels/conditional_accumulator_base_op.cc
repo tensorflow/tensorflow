@@ -55,7 +55,8 @@ class AccumulatorSetGlobalStepOp
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(AccumulatorSetGlobalStepOp);
+  AccumulatorSetGlobalStepOp(const AccumulatorSetGlobalStepOp&) = delete;
+  void operator=(const AccumulatorSetGlobalStepOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("AccumulatorSetGlobalStep").Device(DEVICE_CPU),
@@ -72,7 +73,9 @@ class ResourceAccumulatorSetGlobalStepOp : public AccumulatorSetGlobalStepOp {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ResourceAccumulatorSetGlobalStepOp);
+  ResourceAccumulatorSetGlobalStepOp(
+      const ResourceAccumulatorSetGlobalStepOp&) = delete;
+  void operator=(const ResourceAccumulatorSetGlobalStepOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(
@@ -116,7 +119,8 @@ class AccumulatorNumAccumulatedOp
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(AccumulatorNumAccumulatedOp);
+  AccumulatorNumAccumulatedOp(const AccumulatorNumAccumulatedOp&) = delete;
+  void operator=(const AccumulatorNumAccumulatedOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("AccumulatorNumAccumulated").Device(DEVICE_CPU),
@@ -133,7 +137,9 @@ class ResourceAccumulatorNumAccumulatedOp : public AccumulatorNumAccumulatedOp {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ResourceAccumulatorNumAccumulatedOp);
+  ResourceAccumulatorNumAccumulatedOp(
+      const ResourceAccumulatorNumAccumulatedOp&) = delete;
+  void operator=(const ResourceAccumulatorNumAccumulatedOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(

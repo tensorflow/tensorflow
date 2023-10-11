@@ -28,6 +28,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import sort_ops
 from tensorflow.python.platform import test
 
 ALL_KEY_TYPES = [
@@ -236,6 +237,20 @@ class XlaSortOpTest(xla_test.XLATestCase, parameterized.TestCase):
               is_stable=True)
 
         self._assertOpOutputMatchesExpected(wrap_sort, inputs, expected=inputs)
+
+  @parameterized.product(dimension=[0, 1, 2], dtype=ALL_KEY_TYPES)
+  def testArgsort(self, dimension, dtype):
+    shape = (2, 3, 4)
+    if dtype not in self._supported_key_types():
+      return
+
+    def argsort(v, axis=dimension):
+      return sort_ops.argsort(v, axis, stable=True)
+
+    x = self._shuffled_arange(shape, dtype)
+    self._assertOpOutputMatchesExpected(
+        argsort, [x], expected=[np.argsort(x, axis=dimension, kind="stable")]
+    )
 
   @parameterized.product(
       dtype=[

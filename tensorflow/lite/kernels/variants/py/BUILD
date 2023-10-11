@@ -23,12 +23,10 @@ py_strict_test(
     deps = [
         ":register_list_ops_py",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/lite/python:analyzer",
         "//tensorflow/lite/python:interpreter",
         "//tensorflow/python/ops:list_ops",
         "//tensorflow/python/platform:test",
         "//tensorflow/python/types:core",
-        "//testing/pybase",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

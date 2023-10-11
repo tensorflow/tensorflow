@@ -109,7 +109,8 @@ class Master {
   // on the returned MasterSession if not null.
   MasterSession* FindMasterSession(const string& handle);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Master);
+  Master(const Master&) = delete;
+  void operator=(const Master&) = delete;
 };
 
 }  // namespace tensorflow

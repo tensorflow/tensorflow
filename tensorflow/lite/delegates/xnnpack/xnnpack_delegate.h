@@ -39,6 +39,9 @@ extern "C" {
 // operators. Indirection buffer initialization will take place on every
 // inference run, instead of only once during initialization of the operators.
 #define TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER 0x00000020
+// Enable the latest XNNPACK operators and features in the delegate which have
+// not yet been enabled by default.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS 0x00000040
 
 struct TfLiteXNNPackDelegateWeightsCache;
 
@@ -53,6 +56,7 @@ typedef struct {
   // - TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED
   // - TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS
   // - TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS
   uint32_t flags;
   // Cache for packed weights, can be shared between multiple instances of
   // delegates.

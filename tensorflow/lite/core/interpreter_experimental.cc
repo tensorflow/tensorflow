@@ -152,31 +152,6 @@ TfLiteStatus Interpreter::ApplyOptions(InterpreterOptions* options) {
   return ApplyOptionsImpl(options);
 }
 
-impl::SignatureRunner* Interpreter::GetSignatureRunner(
-    const char* signature_key) {
-  auto iter = signature_runner_map_.find(signature_key);
-  if (iter != signature_runner_map_.end()) {
-    return &(iter->second);
-  }
-
-  // Default delegates are applied once for all subgraphs. Only returns error
-  // when the status is kTfLiteError. For other statuses, it will fall back to
-  // the default implementation.
-  if (ApplyLazyDelegateProviders() == kTfLiteError) {
-    return nullptr;
-  }
-
-  for (const auto& signature : signature_defs_) {
-    if (signature.signature_key == signature_key) {
-      auto status = signature_runner_map_.insert(
-          {signature_key,
-           SignatureRunner(&signature, subgraph(signature.subgraph_index))});
-      return &(status.first->second);
-    }
-  }
-  return nullptr;
-}
-
 async::AsyncSignatureRunner* Interpreter::GetAsyncSignatureRunner(
     const char* signature_key) {
   // Handles nullptr signature key.

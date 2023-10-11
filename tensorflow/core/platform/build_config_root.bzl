@@ -1,7 +1,7 @@
 """Provides a redirection point for platform specific implementations of starlark utilities."""
 
 load(
-    "//tensorflow/tsl/platform/default:build_config_root.bzl",
+    "@local_tsl//tsl/platform/default:build_config_root.bzl",
     _if_static = "if_static",
     _if_static_and_not_mobile = "if_static_and_not_mobile",
     _tf_additional_grpc_deps_py = "tf_additional_grpc_deps_py",

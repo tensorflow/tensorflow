@@ -42,14 +42,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
-#include "tensorflow/compiler/xla/array4d.h"
-#include "tensorflow/compiler/xla/service/computation_placer.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/array4d.h"
+#include "xla/service/computation_placer.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -744,6 +744,46 @@ mlir::LogicalResult GetDeviceToHostMap(
     core_to_host.push_back(host_device);
     return mlir::success();
   }
+}
+
+mlir::LogicalResult GetNonReplicatedTPU0(mlir::Operation* op,
+                                         std::string* tpu0_device) {
+  // Fetch the TPU devices.
+  mlir::ModuleOp moduleOp = op->getParentOfType<mlir::ModuleOp>();
+  mlir::TF::RuntimeDevices devices;
+  if (failed(tensorflow::GetDevicesFromOp(moduleOp, &devices)))
+    return moduleOp.emitOpError() << "No available devices.";
+  llvm::ArrayRef<tensorflow::DeviceNameUtils::ParsedName> device_names =
+      devices.device_names();
+  auto status_or_system_devices = GetTPUSystemDevices(device_names);
+  if (!status_or_system_devices.ok())
+    return moduleOp.emitOpError()
+           << "error in fetching TPU_SYSTEM devices: "
+           << status_or_system_devices.status().message();
+  auto status_or_tpu_devices =
+      GetTPUDevices(device_names, status_or_system_devices.value());
+  if (!status_or_tpu_devices.ok())
+    return moduleOp.emitOpError() << "error in fetching TPU devices: "
+                                  << status_or_tpu_devices.status().message();
+
+  // Select the first TPU device.
+  *tpu0_device =
+      DeviceNameUtils::ParsedNameToString(status_or_tpu_devices.value()[0][0]);
+  return mlir::success();
+}
+
+mlir::LogicalResult GetNonReplicatedCPU0(mlir::Operation* op,
+                                         std::string* cpu0_device) {
+  std::string tpu0_device;
+  if (failed(tensorflow::GetNonReplicatedTPU0(op, &tpu0_device)))
+    return mlir::failure();
+  auto status = tensorflow::DeviceNameUtils::DeviceNameToCpuDeviceName(
+      tpu0_device, cpu0_device);
+  if (!status.ok())
+    return op->emitError()
+           << "error in converting TPU0 to CPU0. The TPU device is "
+           << tpu0_device;
+  return mlir::success();
 }
 
 }  // namespace tensorflow

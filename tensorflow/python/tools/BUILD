@@ -121,6 +121,12 @@ py_strict_library(
     ],
 )
 
+py_strict_binary(
+    name = "tf_import_time",
+    srcs = ["tf_import_time.py"],
+    deps = ["//tensorflow:tensorflow_py"],
+)
+
 py_strict_test(
     name = "freeze_graph_test",
     size = "small",
@@ -131,8 +137,10 @@ py_strict_test(
         ":freeze_graph_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:graph_io",
+        "//tensorflow/python/framework:importer",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
@@ -213,9 +221,11 @@ py_strict_test(
         ":strip_unused_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:graph_io",
+        "//tensorflow/python/framework:importer",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/platform:client_testlib",
@@ -254,8 +264,8 @@ py_strict_library(
     deps = [
         ":optimize_for_inference_lib",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:graph_io",
         "//tensorflow/python/platform:gfile",
         "@absl_py//absl:app",
     ],
@@ -270,9 +280,10 @@ py_strict_test(
     deps = [
         ":optimize_for_inference_lib",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:importer",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
@@ -576,10 +587,10 @@ tf_cc_test(
         ":aot_compiled_x_matmul_y_small",
         ":aot_compiled_x_plus_y",
         # LINT.ThenChange(//tensorflow/tools/pip_package/xla_build/pip_test/run_xla_aot_test.sh)
-        "//tensorflow/compiler/xla/service/cpu:runtime_matmul_acl",
+        "@local_xla//xla/service/cpu:runtime_matmul_acl",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:logging",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ]),
 )
 

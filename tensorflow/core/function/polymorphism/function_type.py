@@ -164,7 +164,7 @@ class Parameter(inspect.Parameter):
                              self.type_constraint))
 
 
-class FunctionType(inspect.Signature):
+class FunctionType(core.FunctionType):
   """Represents the type of a TensorFlow function.
 
   FunctionType is the canonical way to represent the input/output contract of
@@ -456,8 +456,27 @@ class FunctionType(inspect.Signature):
     return hash((tuple(self.parameters.items()), tuple(self.captures.items())))
 
   def __repr__(self):
-    return (f"FunctionType(parameters={list(self.parameters.values())!r}, "
-            f"captures={self.captures})")
+    if hasattr(self, "_cached_repr"):
+      return self._cached_repr
+
+    lines = ["Input Parameters:"]
+    for parameter in self.parameters.values():
+      lines.append(
+          f"  {parameter.name} ({parameter.kind}): {parameter.type_constraint}"
+      )
+
+    lines.append("Output Type:")
+    lines.append(f"  {self.output}")
+
+    lines.append("Captures:")
+    if self.captures:
+      for capture_id, capture_type in self.captures.items():
+        lines.append(f"  {capture_id}: {capture_type}")
+    else:
+      lines.append("  None")
+
+    self._cached_repr = "\n".join(lines)
+    return self._cached_repr
 
 
 MAX_SANITIZATION_WARNINGS = 5

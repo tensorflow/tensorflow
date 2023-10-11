@@ -39,7 +39,7 @@ class CustomNestTraceType(trace.TraceType):
   def is_subtype_of(self, other: trace.TraceType) -> bool:
     if not self._is_same_trace_type(other):
       return False
-    for c_self, c_other in zip(self.components, other.components):
+    for c_self, c_other in zip(self.components, other.components):  # pytype: disable=attribute-error
       if not c_self.is_subtype_of(c_other):
         return False
     return True
@@ -51,7 +51,7 @@ class CustomNestTraceType(trace.TraceType):
       if not self._is_same_trace_type(other):
         return None
 
-    others_components = [other.components for other in others]
+    others_components = [other.components for other in others]  # pytype: disable=attribute-error
     supertyped_components = tuple(
         self_component.most_specific_common_supertype(others_component)
         for self_component, *others_component in zip(

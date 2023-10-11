@@ -8,33 +8,33 @@ package(
 )
 
 pytype_strict_library(
-    name = "parser",
-    srcs = ["parser.py"],
-    deps = [
-        "//tensorflow/python/tools/api/generator2/shared:exported_api",
-        "@absl_py//absl/logging",
-    ],
-)
-
-py_strict_test(
-    name = "parser_test",
-    srcs = ["parser_test.py"],
-    tags = ["no_pip"],
-    deps = [
-        ":parser",
-        "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/tools/api/generator2/shared:exported_api",
-    ],
-)
-
-pytype_strict_binary(
     name = "extractor",
     srcs = ["extractor.py"],
     visibility = ["//visibility:public"],
     deps = [
-        ":parser",
         "//tensorflow/python/tools/api/generator2/shared:exported_api",
-        "@absl_py//absl:app",
         "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
+    ],
+)
+
+pytype_strict_binary(
+    name = "main",
+    srcs = ["main.py"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":extractor",
+        "@absl_py//absl:app",
+    ],
+)
+
+py_strict_test(
+    name = "extractor_test",
+    srcs = ["extractor_test.py"],
+    tags = ["no_pip"],
+    deps = [
+        ":extractor",
+        "//tensorflow/python/tools/api/generator2/shared:exported_api",
+        "@absl_py//absl/testing:absltest",
     ],
 )

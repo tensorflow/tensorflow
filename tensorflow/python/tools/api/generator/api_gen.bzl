@@ -76,7 +76,9 @@ def gen_api_init_files(
         output_package = "tensorflow",
         output_dir = "",
         root_file_name = "__init__.py",
-        proxy_module_root = None):
+        proxy_module_root = None,
+        api_packages_file_name = None,
+        visibility = []):
     """Creates API directory structure and __init__.py files.
 
     Creates a genrule that generates a directory structure with __init__.py
@@ -114,6 +116,8 @@ def gen_api_init_files(
       proxy_module_root: Module root for proxy-import format. If specified, proxy files with content
         like `from proxy_module_root.proxy_module import *` will be created to enable import
         resolution under TensorFlow.
+      api_packages_file_name: Name of the file with the list of all API packages. Stores in output_dir.
+      visibility: Visibility of the rule.
     """
     root_init_template_flag = ""
     if root_init_template:
@@ -149,6 +153,11 @@ def gen_api_init_files(
     for compat_api_version in compat_api_versions:
         compat_api_version_flags += " --compat_apiversion=%d" % compat_api_version
 
+    if api_packages_file_name:
+        api_packages_path = "%s%s" % (output_dir, api_packages_file_name)
+    else:
+        api_packages_path = None
+
     compat_init_template_flags = ""
     for compat_init_template in compat_init_templates:
         compat_init_template_flags += (
@@ -182,12 +191,30 @@ def gen_api_init_files(
         srcs = srcs,
         flags = flags,
         api_gen_binary_target = ":" + api_gen_binary_target,
+        api_packages_path = api_packages_path,
         loading_value = if_indexing_source_code("static", loading_value),
-        visibility = [
-            "//tensorflow:__pkg__",
-            "//tensorflow/tools/api/tests:__pkg__",
-        ],
+        visibility = visibility,
     )
+
+def _get_module_by_path(dir_path, output_dir):
+    """Get module that corresponds to the path.
+
+    bazel-out/k8-opt/bin/tensorflow/_api/v2/compat/v2/compat/v2/compat/__init__.py
+    to
+    tensorflow._api.v2.compat.v2.compat.v2.compat
+
+    Args:
+    dir_path: Path to the directory.
+    output_dir: Path to the directory.
+
+    Returns:
+    Name of module that corresponds to the given directory.
+    """
+    dir_path = dir_path.split(output_dir)[1]
+    dir_path = dir_path.replace("__init__.py", "")
+
+    #    dir_path = "tensorflow/%s" % dir_path
+    return dir_path.replace("/", ".").strip(".")
 
 def _api_gen_rule_impl(ctx):
     api_gen_binary_target = ctx.attr.api_gen_binary_target[DefaultInfo].files_to_run.executable
@@ -201,6 +228,16 @@ def _api_gen_rule_impl(ctx):
     # Without this, the command will be too long (even when executed in a shell script)
     params = ctx.actions.declare_file(ctx.attr.name + ".params")
     ctx.actions.write(params, ";".join(output_paths))
+
+    # Convert output_paths to the list of corresponding modules for the further testing
+    if ctx.attr.api_packages_path:
+        output_modules = sorted([
+            _get_module_by_path(path, ctx.genfiles_dir.path)
+            for path in output_paths
+            if "__init__.py" in path
+        ])
+        api_packages = ctx.actions.declare_file(ctx.attr.api_packages_path.name)
+        ctx.actions.write(api_packages, "\n".join(output_modules))
 
     cmd = _make_cmd(api_gen_binary_target, flags, loading, [params.path])
     ctx.actions.run_shell(
@@ -232,5 +269,6 @@ api_gen_rule = rule(
         "flags": attr.string_list(),
         "api_gen_binary_target": attr.label(executable = True, cfg = if_oss("target", "exec"), mandatory = True),
         "loading_value": attr.string(mandatory = True),
+        "api_packages_path": attr.output(),
     },
 )

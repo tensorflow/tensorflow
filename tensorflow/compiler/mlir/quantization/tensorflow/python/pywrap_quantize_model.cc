@@ -43,6 +43,7 @@ using ::tensorflow::quantization::QuantizePtqDynamicRange;
 using ::tensorflow::quantization::QuantizePtqModelPostCalibration;
 using ::tensorflow::quantization::QuantizePtqModelPreCalibration;
 using ::tensorflow::quantization::QuantizeQatModel;
+using ::tensorflow::quantization::QuantizeWeightOnly;
 
 // Serializes an ExportedModel. Raises python ValueError if serialization fails.
 std::string Serialize(const ExportedModel& exported_model) {
@@ -179,6 +180,23 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
           -> absl::StatusOr<ExportedModel> {
         return QuantizePtqDynamicRange(saved_model_path, signature_keys, tags,
                                        quant_opts, function_aliases);
+      },
+      R"pbdoc(
+      Returns serialized ExportedModel that contains the quantized model's
+      GraphDef and metadata. The user should pass a serialized
+      `QuantizationOptions` for the `quant_opts` argument.
+
+      Raises `StatusNotOk` exception if when the run was unsuccessful.
+    )pbdoc");
+
+  m.def(
+      "quantize_weight_only",
+      [](const absl::string_view saved_model_path,
+         const QuantizationOptions& quant_opts,
+         const absl::flat_hash_map<std::string, std::string>& function_aliases)
+          -> absl::StatusOr<ExportedModel> {
+        return QuantizeWeightOnly(saved_model_path, quant_opts,
+                                  function_aliases);
       },
       R"pbdoc(
       Returns serialized ExportedModel that contains the quantized model's

@@ -18,9 +18,9 @@ limitations under the License.
 #include <string>
 
 #include "fuzztest/fuzztest.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/text_literal_reader.h"
-#include "tensorflow/tsl/platform/env.h"
+#include "xla/service/hlo_parser.h"
+#include "xla/text_literal_reader.h"
+#include "tsl/platform/env.h"
 
 namespace xla {
 namespace {

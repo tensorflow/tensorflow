@@ -21,7 +21,7 @@ limitations under the License.
 // TODO(ahentz): This is not strictly required here but, for historical
 // reasons, many people depend on cpu_info.h in order to use kLittleEndian.
 #include "tensorflow/core/platform/byte_order.h"
-#include "tensorflow/tsl/platform/cpu_info.h"
+#include "tsl/platform/cpu_info.h"
 
 namespace tensorflow {
 namespace port {

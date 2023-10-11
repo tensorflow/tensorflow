@@ -2,8 +2,8 @@
 # TensorFlow SavedModel.
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "if_google")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -477,17 +477,39 @@ tf_py_strict_test(
         "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-    ] + if_google([
-        "//tensorflow/tools/proto_splitter:constants",
-    ]),
+    ],
 )
+
+# copybara:uncomment_begin(google-only)
+#
+# tf_py_strict_test(
+#     name = "proto_splitter_save_test",
+#     srcs = ["proto_splitter_save_test.py"],
+#     tags = [
+#         "no_mac",  # TODO(b/291933687)
+#         "no_windows",  # TODO(b/291001524)
+#     ],
+#     deps = [
+#         ":save",
+#         ":save_options",
+#         "//third_party/py/numpy",
+#         "//tensorflow/python/eager:def_function",
+#         "//tensorflow/python/eager:test",
+#         "//tensorflow/python/framework:constant_op",
+#         "//tensorflow/python/module",
+#         "//tensorflow/tools/proto_splitter:constants",
+#         "@absl_py//absl/testing:parameterized",
+#     ],
+# )
+#
+# copybara:uncomment_end
 
 py_strict_library(
     name = "load",
     srcs = ["load.py"],
     srcs_version = "PY3",
     tags = [
-        "ignore_for_dep=third_party.py.keras.optimizers.optimizer_v2",
+        "ignore_for_dep=third_party.py.tf_keras.optimizers.optimizer_v2",
     ],
     deps = [
         ":fingerprinting",
@@ -906,6 +928,8 @@ tf_python_pybind_extension(
     ],
     deps = [
         ":pywrap_saved_model_headers",
+        # placeholder for index annotation deps
+        "@com_google_absl//absl/log",
         "//tensorflow/cc/experimental/libexport:save",
         "//tensorflow/cc/saved_model:reader",
         "//tensorflow/core:protos_all_cc",

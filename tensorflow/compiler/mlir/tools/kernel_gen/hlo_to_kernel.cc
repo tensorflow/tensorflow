@@ -35,6 +35,7 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/TargetParser/Host.h"
+#include "mlir/Dialect/MemRef/Transforms/AllocationOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
@@ -106,7 +107,8 @@ StatusOr<std::string> EmitToBinary(llvm::StringRef host_triple,
       llvm::Triple(llvm_module->getTargetTriple())));
 
   if (target_machine->addPassesToEmitFile(codegen_passes, ostream, nullptr,
-                                          llvm::CGFT_ObjectFile, false)) {
+                                          llvm::CodeGenFileType::ObjectFile,
+                                          false)) {
     return absl::InternalError("Failed add passes to emit file");
   }
   codegen_passes.run(*llvm_module);
@@ -126,7 +128,10 @@ Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
       ReadFileToString(Env::Default(), input_file.str(), &hlo_code));
 
   // Compile.
-  mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  mlir::memref::registerAllocationOpInterfaceExternalModels(registry);
+  mlir::MLIRContext context(registry);
+
   llvm::SourceMgr source_mgr;
   mlir::SourceMgrDiagnosticHandler source_mgr_handler(source_mgr, &context);
 

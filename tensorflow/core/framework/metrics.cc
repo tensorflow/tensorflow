@@ -22,10 +22,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
-#include "tensorflow/tsl/lib/monitoring/counter.h"
-#include "tensorflow/tsl/lib/monitoring/gauge.h"
-#include "tensorflow/tsl/lib/monitoring/sampler.h"
-#include "tensorflow/tsl/platform/types.h"
+#include "tsl/lib/monitoring/counter.h"
+#include "tsl/lib/monitoring/gauge.h"
+#include "tsl/lib/monitoring/sampler.h"
+#include "tsl/platform/types.h"
 
 namespace tensorflow {
 namespace metrics {
@@ -378,7 +378,7 @@ auto* mlir_bridge_first_phase_counter = tsl::monitoring::Counter<4>::New(
     "version", "fallback", "result");
 
 auto* mlir_second_phase_count = tensorflow::monitoring::Counter<1>::New(
-    "/tensorflow/core/tf2xla/api/v1/phase2_compilation_status" /*metric_name*/,
+    "/tensorflow/core/tf2xla/api/v2/phase2_compilation_status" /*metric_name*/,
     "Counts the number of graphs that were analyzed prior deciding whether "
     "the MLIR or the old bridge will be used" /* metric description */,
     "status" /* metric label */);

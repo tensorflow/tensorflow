@@ -109,7 +109,6 @@ py_strict_library(
         ":schema_py",
         ":schema_util",
         "//tensorflow/lite/tools:visualize_lib",
-        "//tensorflow/python/framework",
     ],
 )
 

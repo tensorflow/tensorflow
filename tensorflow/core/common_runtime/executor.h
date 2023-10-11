@@ -242,7 +242,8 @@ class ExecutorBarrier {
     }
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExecutorBarrier);
+  ExecutorBarrier(const ExecutorBarrier&) = delete;
+  void operator=(const ExecutorBarrier&) = delete;
 };
 
 // A few helpers to facilitate create/delete kernels.

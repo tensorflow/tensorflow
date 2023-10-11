@@ -25,7 +25,7 @@ limitations under the License.
 #endif  // IS_SLIM_BUILD
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/lib/io/record_reader.h"
+#include "tsl/lib/io/record_reader.h"
 
 namespace tensorflow {
 namespace io {

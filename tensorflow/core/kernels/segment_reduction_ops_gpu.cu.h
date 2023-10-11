@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/core/util/permutation_input_iterator.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
+#include "xla/stream_executor/cuda/cuda_activation.h"
 #elif (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #include "tensorflow/core/platform/rocm.h"
 #endif

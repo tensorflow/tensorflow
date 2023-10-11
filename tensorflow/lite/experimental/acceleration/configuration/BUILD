@@ -20,7 +20,7 @@ load("//tensorflow/lite:special_rules.bzl", "nnapi_plugin_impl_visibility_allowl
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 # copybara:comment_begin(oss-only)
-load("//tensorflow/tsl/platform/default:build_config.bzl", "tf_proto_library_py")
+load("@local_tsl//tsl/platform/default:build_config.bzl", "tf_proto_library_py")
 # copybara:comment_end
 
 package(
@@ -140,12 +140,7 @@ cc_library(
     name = "nnapi_plugin_impl",
     hdrs = ["nnapi_plugin.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = nnapi_plugin_impl_visibility_allowlist() + [
-        "//tensorflow/lite/acceleration/configuration/c:__pkg__",
-        "//tensorflow/lite/core/acceleration/configuration/c:__pkg__",
-        "//tensorflow/lite/core/experimental/acceleration/configuration/c:__pkg__",
-        "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
-    ],
+    visibility = nnapi_plugin_impl_visibility_allowlist(),
     deps = [
         "//tensorflow/lite/core/acceleration/configuration:nnapi_plugin",
     ],

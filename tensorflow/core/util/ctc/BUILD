@@ -54,7 +54,7 @@ cc_library(
         ":ctc_loss_util_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 
@@ -84,7 +84,7 @@ cc_library(
         ":ctc_loss_util_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 

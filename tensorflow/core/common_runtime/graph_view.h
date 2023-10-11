@@ -200,7 +200,8 @@ struct NodeItem {
         sizeof(uint8) * num_inputs);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(NodeItem);
+  NodeItem(const NodeItem&) = delete;
+  void operator=(const NodeItem&) = delete;
 };
 
 // Immutable view of a Graph organized for efficient execution.
@@ -249,7 +250,8 @@ class GraphView {
 
   char* space_;  // NodeItem objects are allocated here
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GraphView);
+  GraphView(const GraphView&) = delete;
+  void operator=(const GraphView&) = delete;
 };
 
 }  // namespace tensorflow

@@ -1,23 +1,26 @@
 # All required CUDA packages
-cuda-command-line-tools-11-8
-cuda-cudart-dev-11-8
-cuda-nvcc-11-8
-cuda-cupti-11-8
-cuda-nvprune-11-8
-cuda-libraries-11-8
-cuda-libraries-dev-11-8
-libcufft-11-8
-libcusolver-dev-11-8
-libcusparse-dev-11-8
-libcublas-dev-11-8
+cuda-command-line-tools-12-2
+cuda-cudart-dev-12-2
+cuda-nvcc-12-2
+cuda-cupti-12-2
+cuda-nvprune-12-2
+cuda-libraries-12-2
+cuda-libraries-dev-12-2
+cuda-nvml-dev-12-2
+libcufft-12-2
+libcurand-12-2
+libcusolver-dev-12-2
+libcusparse-dev-12-2
+libcublas-dev-12-2
+libnccl-dev=2.18.5-1+cuda12.2
 # CuDNN: https://docs.nvidia.com/deeplearning/sdk/cudnn-install/index.html#ubuntu-network-installation
-libcudnn8-dev=8.6.0.163-1+cuda11.8
-libcudnn8=8.6.0.163-1+cuda11.8
+libcudnn8-dev=8.9.4.25-1+cuda12.2
+libcudnn8=8.9.4.25-1+cuda12.2
 # TensorRT: See https://docs.nvidia.com/deeplearning/sdk/tensorrt-install-guide/index.html#maclearn-net-repo-install-rpm
-libnvinfer-plugin8=8.4.3-1+cuda11.6
-libnvinfer8=8.4.3-1+cuda11.6
-libnvinfer-dev=8.4.3-1+cuda11.6
-libnvinfer-plugin-dev=8.4.3-1+cuda11.6
+libnvinfer-plugin8=8.6.1.6-1+cuda12.0
+libnvinfer8=8.6.1.6-1+cuda12.0
+libnvinfer-dev=8.6.1.6-1+cuda12.0
+libnvinfer-plugin-dev=8.6.1.6-1+cuda12.0
 
 # Other build-related tools
 apt-transport-https
@@ -25,9 +28,9 @@ autoconf
 automake
 build-essential
 ca-certificates
-llvm-16
-clang-16
-lld-16
+llvm-17
+clang-17
+lld-17
 clang-format-12
 colordiff
 curl

@@ -24,8 +24,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
-
+from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow.calibrator import calibration_statistics_pb2 as calib_stat_pb2
+
+_CalibrationMethod = quant_opts_pb2.CalibrationOptions.CalibrationMethod
 
 
 class CustomAggregatorTest(test.TestCase):
@@ -40,8 +42,11 @@ class CustomAggregatorTest(test.TestCase):
       input_tensor = array_ops.constant(
           [1.0, 2.0, 3.0, 4.0, 5.0], dtypes.float32
       )
+
       aggregator = custom_aggregator_op_wrapper.custom_aggregator(
-          input_tensor, '1'
+          input_tensor,
+          '1',
+          calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX,
       )
       self.assertAllEqual(self.evaluate(aggregator), [1.0, 2.0, 3.0, 4.0, 5.0])
 
@@ -61,14 +66,18 @@ class CustomAggregatorTest(test.TestCase):
           [1.0, 2.0, 3.0, 4.0, 5.0], dtypes.float32
       )
       aggregator1 = custom_aggregator_op_wrapper.custom_aggregator(
-          input_tensor1, '2'
+          input_tensor1,
+          '2',
+          calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX,
       )
       self.assertAllEqual(self.evaluate(aggregator1), [1.0, 2.0, 3.0, 4.0, 5.0])
       input_tensor2 = array_ops.constant(
           [-1.0, -2.0, -3.0, -4.0, -5.0], dtypes.float32
       )
       aggregator2 = custom_aggregator_op_wrapper.custom_aggregator(
-          input_tensor2, '3'
+          input_tensor2,
+          '3',
+          calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX,
       )
       self.assertAllEqual(
           self.evaluate(aggregator2), [-1.0, -2.0, -3.0, -4.0, -5.0]
@@ -94,14 +103,18 @@ class CustomAggregatorTest(test.TestCase):
           [1.0, 2.0, 3.0, 4.0, 5.0], dtypes.float32
       )
       aggregator1 = custom_aggregator_op_wrapper.custom_aggregator(
-          input_tensor1, '4'
+          input_tensor1,
+          '4',
+          calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX,
       )
       self.assertAllEqual(self.evaluate(aggregator1), [1.0, 2.0, 3.0, 4.0, 5.0])
       input_tensor2 = array_ops.constant(
           [-1.0, -2.0, -3.0, -4.0, -5.0], dtypes.float32
       )
       aggregator2 = custom_aggregator_op_wrapper.custom_aggregator(
-          input_tensor2, '5'
+          input_tensor2,
+          '5',
+          calibration_method=_CalibrationMethod.CALIBRATION_METHOD_MIN_MAX,
       )
       self.assertAllEqual(
           self.evaluate(aggregator2), [-1.0, -2.0, -3.0, -4.0, -5.0]
@@ -139,16 +152,21 @@ class CustomAggregatorTest(test.TestCase):
           [-50.0, -25.0, 0.0, 25.0, 50.0], dtypes.float32
       )
       aggregator1 = custom_aggregator_op_wrapper.custom_aggregator(
-          input_tensor1, '6'
+          input_tensor1,
+          '6',
+          calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX,
       )
       self.assertAllEqual(
-          self.evaluate(aggregator1), [-50.0, -25.0, 0.0, 25.0, 50.0]
+          self.evaluate(aggregator1),
+          [-50.0, -25.0, 0.0, 25.0, 50.0],
       )
       input_tensor2 = array_ops.constant(
           [-100.0, -50.0, 0.0, 50.0, 100.0], dtypes.float32
       )
       aggregator2 = custom_aggregator_op_wrapper.custom_aggregator(
-          input_tensor2, '6'
+          input_tensor2,
+          '6',
+          calibration_method=_CalibrationMethod.CALIBRATION_METHOD_AVERAGE_MIN_MAX,
       )
       self.assertAllEqual(
           self.evaluate(aggregator2), [-100.0, -50.0, 0.0, 50.0, 100.0]

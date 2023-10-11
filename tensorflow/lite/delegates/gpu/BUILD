@@ -33,6 +33,19 @@ config_setting(
     },
 )
 
+# copybara:uncomment_begin(google-only)
+# config_setting(
+#     name = "tflite_gpu_angle",
+#     flag_values = {
+#         "//tools/cpp:cc_target_os": "linux-google",
+#         "//third_party/angle:use_angle": "True",
+#     },
+#     values = {
+#         "cpu": "k8",
+#     },
+# )
+# copybara:uncomment_end
+
 cc_library(
     name = "gl_delegate",
     srcs = ["gl_delegate.cc"],
@@ -241,6 +254,20 @@ cc_library(
         "//conditions:default": [
             "//tensorflow/lite/delegates/gpu/gl:api2",
         ],
+    }) + select({
+        "//tensorflow:android": [
+            ":async_buffers",
+            "//tensorflow/lite/core/async/c:task",
+            "//tensorflow/lite/core/async/interop/c:attribute_map",
+            "//tensorflow/lite/core/async/interop/c:constants",
+            "//tensorflow/lite/delegates/gpu/gl:android_sync",
+            "//tensorflow/lite/delegates/gpu/gl:egl_environment",
+            "//tensorflow/lite/delegates/utils",
+            "//tensorflow/lite/delegates/utils:async_type_helpers",
+            "//tensorflow/lite/delegates/utils:ret_macros",
+            "//tensorflow/lite/delegates/utils:sync_fence",
+        ],
+        "//conditions:default": [],
     }) + [
         ":api",
         ":delegate_options",
@@ -248,9 +275,6 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/async:backend_async_kernel_interface",
-        "//tensorflow/lite/core/async/c:task",
-        "//tensorflow/lite/core/async/interop/c:attribute_map",
-        "//tensorflow/lite/core/async/interop/c:constants",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates:serialization",
         "//tensorflow/lite/delegates/gpu/cl:api",
@@ -258,10 +282,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:model_builder_helper",
         "//tensorflow/lite/delegates/gpu/common:quantization_util",
-        "//tensorflow/lite/delegates/utils",
-        "//tensorflow/lite/delegates/utils:async_type_helpers",
-        "//tensorflow/lite/delegates/utils:ret_macros",
-        "//tensorflow/lite/delegates/utils:sync_fence",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/profiling/telemetry",
         "//tensorflow/lite/profiling/telemetry:telemetry_status",
@@ -292,7 +312,6 @@ cc_library(
         ":api",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/gl:gl_errors",
-        "//third_party/GL:EGL_headers",
         "@com_google_absl//absl/status",
     ],
 )

@@ -406,7 +406,8 @@ class GraphConstructor {
   };
   std::vector<EdgeInfo> back_edges_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GraphConstructor);
+  GraphConstructor(const GraphConstructor&) = delete;
+  void operator=(const GraphConstructor&) = delete;
 };
 
 // Implementation of GraphConstructor that does not take ownership of the

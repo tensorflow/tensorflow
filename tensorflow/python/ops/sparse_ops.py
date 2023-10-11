@@ -25,6 +25,7 @@ import numbers
 
 import numpy as np
 
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -3011,9 +3012,6 @@ def bincount(arr: sparse_tensor.SparseTensor,
 
   If `minlength` and `maxlength` are not given, returns a vector with length
   `tf.reduce_max(arr) + 1` if `arr` is non-empty, and length 0 otherwise.
-  If `weights` are non-None, then index `i` of the output stores the sum of the
-  value in `weights` at each index where the corresponding value in `arr` is
-  `i`.
 
   >>> data = tf.sparse.SparseTensor(
   ...     indices=[[0, 3], [1, 7], [2, 4], [3, 0],
@@ -3030,6 +3028,8 @@ def bincount(arr: sparse_tensor.SparseTensor,
   index. Here, index 1 in output has a value 2. This indicates value 1 occurs
   two times in `values`.
 
+  **Bin-counting with weights**
+
   >>> indices=[[0, 3], [1, 7], [2, 4], [3, 0], [4, 9], [5, 1], [6, 8], [7, 2]]
   >>> data = tf.sparse.SparseTensor(
   ...     indices=indices,
@@ -3042,9 +3042,15 @@ def bincount(arr: sparse_tensor.SparseTensor,
   >>> tf.math.bincount(data, weights=weights)
   <tf.Tensor: ... numpy=array([0, 6, 0, 1, 9, 5], dtype=int32)>
 
-  Bin will be incremented by the corresponding weight instead of 1.
-  Here, index 1 in output has a value 6. This is the summation of weights
-  corresponding to the value in `values`.
+  When `weights` is specified, bins will be incremented by the corresponding
+  weight instead of 1. Here, index 1 in output has a value 6. This is the
+  summation of `weights` corresponding to the value in `values` (i.e. for index
+  1, the first two data values are 1 so the first two weights, 1 and 5, are
+  summed).
+
+  On GPU, `bincount` with weights is only supported when `axis=0` and XLA is
+  enabled (typically when a function decorated with
+  `@tf.function(jit_compile=True)`).
 
   **Bin-counting matrix rows independently**
 
@@ -3127,7 +3133,8 @@ def bincount(arr: sparse_tensor.SparseTensor,
     name: A name scope for the associated operations (optional).
     axis: The axis to slice over. Axes at and below `axis` will be flattened
       before bin counting. Currently, only `0`, and `-1` are supported. If None,
-      all axes will be flattened (identical to passing `0`).
+      all axes will be flattened (identical to passing `0`). XLA does not
+      support `axis=-1`.
     binary_output: If True, this op will output 1 instead of the number of times
       a token appears (equivalent to one_hot + reduce_any instead of one_hot +
       reduce_add). Defaults to False.
@@ -3351,7 +3358,11 @@ def sparse_bincount(values,
       values = tensor_conversion.convert_to_tensor_v2_with_dispatch(
           values, name="values")
     if weights is not None:
-      if not isinstance(weights, sparse_tensor.SparseTensor):
+      # Note that `weights` is not used for dispatch and if there is a type
+      # mismatch between `values` and `weights`, `weights` can be a RaggedTensor
+      # (or potentially some other kind of CompositeTensor) where conversion
+      # to a dense tensor fails.
+      if not isinstance(weights, composite_tensor.CompositeTensor):
         weights = tensor_conversion.convert_to_tensor_v2_with_dispatch(
             weights, name="weights")
 

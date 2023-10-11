@@ -2020,4 +2020,357 @@ then performs a GatherNd operation on it.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_XlaSparseCoreAdagradOp : TF_Op<"XlaSparseCoreAdagrad", []> {
+  let summary = "aaa";
+
+  let arguments = (ins
+    TF_Int32Tensor:$indices,
+    TF_Float32Tensor:$gradient,
+    TF_Float32Tensor:$learning_rate,
+    TF_Float32Tensor:$accumulator,
+    TF_Float32Tensor:$embedding_table,
+
+    I64Attr:$feature_width
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table,
+    TF_Float32Tensor:$updated_accumulator
+  );
+}
+
+def TF_XlaSparseCoreAdagradMomentumOp : TF_Op<"XlaSparseCoreAdagradMomentum", []> {
+  let summary = "aaa";
+
+  let arguments = (ins
+    TF_Int32Tensor:$indices,
+    TF_Float32Tensor:$gradient,
+    TF_Float32Tensor:$learning_rate,
+    TF_Float32Tensor:$beta_1,
+    TF_Float32Tensor:$epsilon,
+    TF_Float32Tensor:$accumulator,
+    TF_Float32Tensor:$momentum,
+    TF_Float32Tensor:$embedding_table,
+
+    I64Attr:$feature_width,
+    BoolAttr:$use_nesterov,
+    F32Attr:$beta_2,
+    F32Attr:$exponent
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table,
+    TF_Float32Tensor:$updated_accumulator,
+    TF_Float32Tensor:$updated_momentum
+  );
+}
+
+def TF_XlaSparseCoreAdamOp : TF_Op<"XlaSparseCoreAdam", []> {
+  let summary = "aaa";
+
+  let arguments = (ins
+    TF_Float32Tensor:$embedding_table,
+    TF_Int32Tensor:$indices,
+    TF_Float32Tensor:$gradient,
+    TF_Float32Tensor:$learning_rate,
+    TF_Float32Tensor:$momentum,
+    TF_Float32Tensor:$velocity,
+    TF_Float32Tensor:$beta_1,
+    TF_Float32Tensor:$beta_2,
+    TF_Float32Tensor:$epsilon,
+
+    I64Attr:$feature_width,
+    BoolAttr:$use_sum_inside_sqrt
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table,
+    TF_Float32Tensor:$updated_velocity,
+    TF_Float32Tensor:$updated_momentum
+  );
+}
+
+def TF_XlaSparseCoreFtrlOp : TF_Op<"XlaSparseCoreFtrl", []> {
+  let summary = "aaa";
+
+  let arguments = (ins
+    TF_Float32Tensor:$embedding_table,
+    TF_Float32Tensor:$accumulator,
+    TF_Float32Tensor:$linear,
+    TF_Float32Tensor:$learning_rate,
+    TF_Int32Tensor:$indices,
+    TF_Float32Tensor:$gradient,
+    TF_Float32Tensor:$beta,
+    TF_Float32Tensor:$learning_rate_power,
+    TF_Float32Tensor:$l2_regularization_strength,
+
+    I64Attr:$feature_width,
+    BoolAttr:$multiply_linear_by_learning_rate,
+    F32Attr:$l1_regularization_strength
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table,
+    TF_Float32Tensor:$updated_accumulator,
+    TF_Float32Tensor:$updated_linear
+  );
+}
+
+def TF_XlaSparseCoreSgdOp : TF_Op<"XlaSparseCoreSgd", []> {
+  let summary = "aaa";
+
+  let arguments = (ins
+    TF_Int32Tensor:$indices,
+    TF_Float32Tensor:$gradient,
+    TF_Float32Tensor:$learning_rate,
+    TF_Float32Tensor:$embedding_table,
+
+    I64Attr:$feature_width
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table
+  );
+}
+
+def TF_XlaSparseDenseMatmulWithCsrInputOp : TF_Op<"XlaSparseDenseMatmulWithCsrInput", [Pure]> {
+  let summary = "aaa";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Float32Tensor:$embedding_table,
+    TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
+
+    ConfinedAttr<I64Attr, [IntMinValue<0>]>:$input_size,
+    OptionalAttr<F32Attr>:$quantization_config_low,
+    OptionalAttr<F32Attr>:$quantization_config_high,
+    OptionalAttr<I64Attr>:$quantization_config_num_buckets,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$activations
+  );
+}
+
+def TF_XlaSparseDenseMatmulGradWithSgdAndCsrInputOp : TF_Op<"XlaSparseDenseMatmulGradWithSgdAndCsrInput", [Pure]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Float32Tensor:$activation_gradients,
+    TF_Float32Tensor:$learning_rate,
+    TF_Float32Tensor:$embedding_table,
+    TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
+
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table
+  );
+}
+
+def XlaSparseDenseMatmulGradWithAdagradAndCsrInputOp : TF_Op<"XlaSparseDenseMatmulGradWithAdagradAndCsrInput", [Pure]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Float32Tensor:$activation_gradients,
+    TF_Float32Tensor:$learning_rate,
+    TF_Float32Tensor:$embedding_table,
+    TF_Float32Tensor:$accumulator,
+    TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
+
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table,
+    TF_Float32Tensor:$updated_accumulator
+  );
+}
+
+def XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInputOp : TF_Op<"XlaSparseDenseMatmulGradWithAdagradMomentumAndCsrInput", [Pure]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Float32Tensor:$activation_gradients,
+    TF_Float32Tensor:$learning_rate,
+    TF_Float32Tensor:$embedding_table,
+    TF_Float32Tensor:$accumulator,
+    TF_Float32Tensor:$momenta,
+    TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
+
+    BoolAttr:$use_nesterov,
+    F32Attr:$exponent,
+    F32Attr:$beta1,
+    F32Attr:$beta2,
+    F32Attr:$epsilon,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table,
+    TF_Float32Tensor:$updated_accumulator,
+    TF_Float32Tensor:$updated_momenta
+  );
+}
+
+def XlaSparseDenseMatmulGradWithAdamAndCsrInputOp : TF_Op<"XlaSparseDenseMatmulGradWithAdamAndCsrInput", [Pure]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Float32Tensor:$activation_gradients,
+    TF_Float32Tensor:$learning_rate,
+    TF_Float32Tensor:$embedding_table,
+    TF_Float32Tensor:$momenta,
+    TF_Float32Tensor:$velocity,
+    TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
+
+    BoolAttr:$use_sum_inside_sqrt,
+    F32Attr:$beta1,
+    F32Attr:$beta2,
+    F32Attr:$epsilon,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table,
+    TF_Float32Tensor:$updated_momenta,
+    TF_Float32Tensor:$updated_velocity
+  );
+}
+
+def XlaSparseDenseMatmulGradWithFtrlAndCsrInputOp : TF_Op<"XlaSparseDenseMatmulGradWithFtrlAndCsrInput", [Pure]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Float32Tensor:$activation_gradients,
+    TF_Float32Tensor:$learning_rate,
+    TF_Float32Tensor:$embedding_table,
+    TF_Float32Tensor:$accumulator,
+    TF_Float32Tensor:$linear,
+    TF_Int32Tensor:$num_minibatches_per_physical_sparse_core,
+
+    BoolAttr:$multiply_linear_by_learning_rate,
+    F32Attr:$beta,
+    F32Attr:$learning_rate_power,
+    F32Attr:$l1_regularization_strength,
+    F32Attr:$l2_regularization_strength,
+    StrAttr:$table_name
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$updated_embedding_table,
+    TF_Float32Tensor:$updated_accumulator,
+    TF_Float32Tensor:$updated_linear
+  );
+}
+
+def TF_GetMinibatchesInCsrWithPhysicalReplicaOp : TF_Op<"GetMinibatchesInCsrWithPhysicalReplica", [Pure]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_StrTensor:$program_key,
+    TF_Int32Tensor:$row_ids,
+    TF_Int32Tensor:$col_ids,
+    TF_Float32Tensor:$gains,
+    TF_Int64Tensor:$splits,
+    TF_Int32Tensor:$id_counts,
+
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$sample_count,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_replica,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$max_minibatches_per_sc,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$max_ids_per_chip_per_sample,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$table_vocab_size,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$feature_width,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_sc_per_chip,
+
+    StrAttr:$table_name,
+    StrAttr:$mini_batch_in_csr
+  );
+
+  let results = (outs
+    TF_Int32Tensor:$row_pointers,
+    TF_Int32Tensor:$sorted_sample_ids,
+    TF_Int32Tensor:$sorted_token_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Int32Tensor:$row_pointers_unpadded_size,
+    TF_Int32Tensor:$ids_unpadded_size,
+    TF_Int32Tensor:$num_minibatches_per_physical_sparse_core
+  );
+}
+
+def TF_GetMinibatchSplitsWithPhysicalReplicaOp : TF_Op<"GetMinibatchSplitsWithPhysicalReplica", [Pure]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_StrTensor:$program_key,
+    TF_Int32Tensor:$row_ids,
+    TF_Int32Tensor:$col_ids,
+    TF_Float32Tensor:$gains,
+
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$sample_count,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_replica,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$table_vocab_size,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$feature_width,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_sc_per_chip,
+
+    StrAttr:$table_name,
+    StrAttr:$mini_batch_splits
+  );
+
+  let results = (outs
+    TF_Int32Tensor:$sorted_row_ids,
+    TF_Int32Tensor:$sorted_col_ids,
+    TF_Float32Tensor:$sorted_gains,
+    TF_Int64Tensor:$splits,
+    TF_Int32Tensor:$id_counts,
+    TF_Int32Tensor:$max_ids,
+    TF_Int32Tensor:$max_uniques
+  );
+}
+
+def TF_StoreMinibatchStatisticsInFdoOp : TF_Op<"StoreMinibatchStatisticsInFdo", [Pure]> {
+  let summary = "Store the number of IDs and unique IDs in an FDO table.";
+
+  let arguments = (ins
+    TF_StrTensor:$program_key,
+    TF_Int32Tensor:$max_ids,
+    TF_Int32Tensor:$max_uniques,
+
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$sample_count,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_replica,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$feature_width,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_sc_per_chip,
+
+    StrAttr:$table_name,
+    StrAttr:$mini_batch_splits
+  );
+
+  let results = (outs
+  );
+}
 #endif // TF_OPS

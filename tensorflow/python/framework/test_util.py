@@ -46,6 +46,7 @@ from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.client import session as s
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.compat.compat import forward_compatibility_horizon
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -1106,6 +1107,25 @@ def run_all_in_graph_and_eager_modes(cls):
   return cls
 
 
+def run_class_in_v1_v2(cls):
+  """Execute all test methods in a given class in v1 and v2 modes."""
+  base_decorator = run_in_v1_v2
+  for name in dir(cls):
+    if (not name.startswith(unittest.TestLoader.testMethodPrefix) or
+        name.startswith("testSkipEager") or
+        name.startswith("test_skip_eager") or
+        name == "test_session" or
+        name == "test_scope"):
+      continue
+
+    attr = getattr(cls, name, None)
+    if not callable(attr):
+      continue
+
+    setattr(cls, name, base_decorator(attr))
+  return cls
+
+
 def enable_nested_function_shape_inference(fn):
   """Decorator for enabling nested_function_shape_inference on a test.
 
@@ -1546,6 +1566,83 @@ def run_in_graph_and_eager_modes(func=None,
       ops.dismantle_graph(graph_for_eager_test)
 
     return tf_decorator.make_decorator(f, decorated)
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
+def run_in_v1_v2(func=None,
+                 device_to_use: str = None,
+                 assert_no_eager_garbage: bool = False):
+  """Execute the decorated test in v1 and v2 modes.
+
+  The overall execution is similar to that of `run_in_graph_and_eager_mode`.
+
+  Args:
+    func: A test function/method to be decorated. If `func` is None, this method
+      returns a decorator the can be applied to a function. Otherwise, an
+      already applied decorator is returned.
+    device_to_use: A string in the following format: "/device:CPU:0".
+    assert_no_eager_garbage: If True, sets DEBUG_SAVEALL on the garbage
+      collector and asserts that no extra garbage has been created when running
+      the test with eager execution enabled. This will fail if there are
+      reference cycles (e.g. a = []; a.append(a)). Off by default because some
+      tests may create garbage for legitimate reasons (e.g. they define a class
+      which inherits from `object`), and because DEBUG_SAVEALL is sticky in some
+      Python interpreters (meaning that tests which rely on objects being
+      collected elsewhere in the unit test file will not work). Additionally,
+      checks that nothing still has a reference to Tensors that the test
+      allocated.
+
+  Returns:
+    A decorator that runs a given test in v1 and v2 modes.
+  """
+
+  decorator_tag = "wrapped_with_v1_v2_decorator"
+  if hasattr(func, decorator_tag):
+    # Already decorated with this very same decorator
+    return func
+
+  def decorator(f):
+
+    def decorated(self, *args, **kwargs):
+      logging.info("Running %s in V1 mode.", f.__name__)
+      try:
+        with self.subTest("V1_mode"):
+          v2_compat.disable_v2_behavior()
+          f(self, *args, **kwargs)
+      except unittest.case.SkipTest:
+        pass
+
+      def run_v2(self, **kwargs):
+        logging.info("Running %s in V2 mode.", f.__name__)
+        if device_to_use:
+          with ops.device(device_to_use):
+            f(self, *args, **kwargs)
+        else:
+          f(self, *args, **kwargs)
+
+      if assert_no_eager_garbage:
+        ops.reset_default_graph()
+        run_v2 = assert_no_new_tensors(
+            assert_no_garbage_created(run_v2))
+
+      # This decorator runs the wrapped test twice.
+      # Reset the test environment between runs.
+      self.tearDown()
+      self._tempdir = None  # pylint:disable=protected-access
+
+      ops.reset_default_graph()
+      v2_compat.enable_v2_behavior()
+      with self.subTest("V2_mode"):
+        self.setUp()
+        run_v2(self, **kwargs)
+
+    tf_decorated = tf_decorator.make_decorator(f, decorated)
+    tf_decorated.__dict__[decorator_tag] = True
+    return tf_decorated
 
   if func is not None:
     return decorator(func)

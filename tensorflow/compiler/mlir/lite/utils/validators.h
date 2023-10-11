@@ -50,8 +50,11 @@ inline bool TFDataFormatIsNDHWC(Operation *op) {
 bool TFIntListIs1XY1(Operation *op, StringRef name, IntegerAttr *x,
                      IntegerAttr *y);
 
-// Returns true if the attribute is an integer list of the form [1, X, Y, 1],
+// Returns true if the attribute is an integer list of the form [1, X, Y, 1].
 bool TFIntListIs1XY1(Attribute attr);
+
+// Returns true if the attribute is an integer list of the form [1, 1, X, Y].
+bool TFIntListIs11XY(Attribute attr);
 
 // Returns true if the given `op`
 //   * has an attribute with the given `name`,

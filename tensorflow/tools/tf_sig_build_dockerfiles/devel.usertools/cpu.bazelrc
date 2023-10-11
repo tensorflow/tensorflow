@@ -10,44 +10,10 @@ build:sigbuild_remote_cache_push --remote_cache="https://storage.googleapis.com/
 # Change the value of CACHEBUSTER when upgrading the toolchain, or when testing
 # different compilation methods. E.g. for a PR to test a new CUDA version, set
 # the CACHEBUSTER to the PR number.
-build --action_env=CACHEBUSTER=501872366
+build --action_env=CACHEBUSTER=565341047
 
-# Use Python 3.X as installed in container image
-build --action_env PYTHON_BIN_PATH="/usr/bin/python3"
-build --action_env PYTHON_LIB_PATH="/usr/lib/tf_python"
-build --python_path="/usr/bin/python3"
-
-# Build TensorFlow v2
-build --define=tf_api_version=2 --action_env=TF2_BEHAVIOR=1
-
-# Target the AVX instruction set
-build --copt=-mavx --host_copt=-mavx
-
-# Use lld as the linker
-build --linkopt="-fuse-ld=lld"
-build --linkopt="-lm"
-
-# Disable clang extention that rejects type definitions within offsetof. 
-# This was added in clang-16 by https://reviews.llvm.org/D133574.
-# Can be removed once upb is updated, since a type definition is used within
-# offset of in the current version of ubp.
-# See https://github.com/protocolbuffers/upb/blob/9effcbcb27f0a665f9f345030188c0b291e32482/upb/upb.c#L183.
-build --copt=-Wno-gnu-offsetof-extensions
-
-# Store performance profiling log in the mounted artifact directory.
-# The profile can be viewed by visiting chrome://tracing in a Chrome browser.
-# See https://docs.bazel.build/versions/main/skylark/performance.html#performance-profiling
-build --profile=/tf/pkg/profile.json.gz
-
-# Use the Clang toolchain to compile for manylinux2014
-build --crosstool_top="@sigbuild-r2.14-clang_config_cuda//crosstool:toolchain"
-
-# Test-related settings below this point.
-test --build_tests_only --keep_going --test_output=errors --verbose_failures=true
-test --local_test_jobs=HOST_CPUS
-test --test_env=LD_LIBRARY_PATH
-# Give only the list of failed tests at the end of the log
-test --test_summary=short
+# Build options for CPU Linux
+build --config=release_cpu_linux
 
 # "nonpip" tests are regular py_test tests.
 # Pass --config=nonpip to run the same suite of tests. If you want to run just

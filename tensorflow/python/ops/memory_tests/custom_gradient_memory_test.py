@@ -17,7 +17,7 @@
 import functools
 
 from absl.testing import parameterized
-from tensorflow.compiler.xla.service import hlo_pb2
+from xla.service import hlo_pb2
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function

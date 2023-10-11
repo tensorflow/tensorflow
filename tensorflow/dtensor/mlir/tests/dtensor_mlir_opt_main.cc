@@ -21,7 +21,7 @@ limitations under the License.
 #include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/register.h"
+#include "xla/mlir_hlo/mhlo/IR/register.h"
 #include "tensorflow/dtensor/mlir/create_dtensor_mlir_passes.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"

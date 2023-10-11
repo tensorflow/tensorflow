@@ -20,8 +20,8 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/ThreadPool"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/ThreadPool"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/env_var.h"
-#include "tensorflow/tsl/framework/numeric_types.h"
+#include "tsl/framework/numeric_types.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
@@ -166,28 +166,32 @@ class FFTNBase : public OpKernel {
 
     const Tensor& fft_length = ctx->input(1);
     const Tensor& axes = ctx->input(2);
+    unsigned int input_rank = input_shape.dims();
     const int fft_rank = axes.dim_size(0);
-    uint64 fft_shape[3];
-    int32 axes_shape[3];
+    std::vector<uint64_t> fft_shape(fft_rank);
+    std::vector<int32_t> axes_shape(fft_rank);  // List of axes to transform.
 
-    OP_REQUIRES(ctx, input_shape.dims() >= fft_rank,
+    OP_REQUIRES(ctx, input_rank >= fft_rank,
                 absl::InvalidArgumentError(
                     absl::StrCat("Input must have rank of at least ", fft_rank,
                                  " but got: ", input_shape.DebugString())));
     auto axes_as_vec = axes.vec<int32>();
     // TODO(b/295964813): fftn() ops now doesn't work for arbitrary axes.
     for (int i = 0; i < fft_rank; ++i) {
-      if (i < fft_rank - 1)
-        OP_REQUIRES(ctx, (axes_as_vec(i) + 1) == axes_as_vec(i + 1),
-                    absl::InvalidArgumentError(
-                        "axes must be successive and ascending."));
-      axes_shape[i] = axes_as_vec(i) % input_shape.dims();
+      axes_shape[i] = axes_as_vec(i) % input_rank;
       if (axes_as_vec(i) < 0) {
-        axes_shape[i] = axes_as_vec(i) + input_shape.dims();
+        axes_shape[i] = axes_as_vec(i) + input_rank;
       } else {
         axes_shape[i] = axes_as_vec(i);
       }
+      if (i > 0)
+        OP_REQUIRES(ctx, (axes_shape[i - 1] + 1) == axes_shape[i],
+                    absl::InvalidArgumentError(
+                        "axes must be successive and ascending."));
     }
+    OP_REQUIRES(ctx, (axes_shape[fft_rank - 1] == input_rank - 1),
+                absl::InvalidArgumentError(
+                    "The last axis to perform transform on must be -1."));
 
     // In R2C or C2R mode, we use a second input to specify the FFT length
     // instead of inferring it from the input shape.
@@ -208,7 +212,7 @@ class FFTNBase : public OpKernel {
         bool inner_most = (i == fft_rank - 1);
         uint64 min_input_dim_length =
             !IsForward() && inner_most ? fft_shape[i] / 2 + 1 : fft_shape[i];
-        auto input_index = input_shape.dims() - fft_rank + i;
+        auto input_index = input_rank - fft_rank + i;
         OP_REQUIRES(
             ctx,
             // We pass through empty tensors, so special case them here.
@@ -260,7 +264,7 @@ class FFTNBase : public OpKernel {
       DCHECK_EQ(0, output_shape.num_elements());
       return;
     }
-    DoFFTN(ctx, in, fft_shape, axes_shape, out);
+    DoFFTN(ctx, in, fft_shape.data(), axes_shape.data(), out);
   }
 
  protected:

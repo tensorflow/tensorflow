@@ -39,6 +39,14 @@ TfLiteRegistration* Register_LIST_FROM_TENSOR();
 
 TfLiteRegistration* Register_LIST_GET_ITEM();
 
+TfLiteRegistration* Register_LIST_LENGTH();
+
+TfLiteRegistration* Register_LIST_ELEMENT_SHAPE();
+
+TfLiteRegistration* Register_LIST_POP_BACK();
+
+TfLiteRegistration* Register_LIST_PUSH_BACK();
+
 }  // namespace ops
 }  // namespace variants
 }  // namespace tflite

@@ -19,8 +19,8 @@ limitations under the License.
 
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.h"
-#include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "xla/stream_executor/cuda/cuda_driver.h"
+#include "xla/stream_executor/platform.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/runtime_fallback/util/tensor_util.h"

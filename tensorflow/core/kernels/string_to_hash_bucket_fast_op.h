@@ -58,7 +58,8 @@ class StringToHashBucketOp : public OpKernel {
  private:
   int64_t num_buckets_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StringToHashBucketOp);
+  StringToHashBucketOp(const StringToHashBucketOp&) = delete;
+  void operator=(const StringToHashBucketOp&) = delete;
 };
 
 }  // namespace tensorflow

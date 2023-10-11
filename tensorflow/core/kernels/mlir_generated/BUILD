@@ -2,16 +2,16 @@
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load(
+    "//tensorflow:tensorflow.bzl",
+    "if_cuda_or_rocm",
+)
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test", "tf_kernel_library")
+load(
     "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
     "gpu_kernel_library",
     "if_mlir_generated_experimental_kernels_enabled",
     "if_mlir_generated_gpu_kernels_enabled",
 )
-load(
-    "//tensorflow:tensorflow.bzl",
-    "if_cuda_or_rocm",
-)
-load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -157,7 +157,7 @@ tf_kernel_library(
         ":gpu_sign_kernels",
         ":gpu_sqrt_kernels",
         ":gpu_square_kernels",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         ":gpu_abs_kernels",
         ":gpu_atanh_kernels",
         ":gpu_acos_kernels",
@@ -239,7 +239,7 @@ tf_kernel_library(
         ":gpu_xlog1py_kernels",
         ":gpu_xlogy_kernels",
         ":gpu_zeta_kernels",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         ":gpu_add_v2_kernels",
         ":gpu_sub_kernels",
         ":gpu_div_kernels",
@@ -278,7 +278,7 @@ tf_kernel_library(
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
         ":gpu_cast_kernels",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ]),
 )
 
@@ -305,7 +305,7 @@ tf_kernel_library(
         ":base_gpu_op",
         ":gpu_ones_like_kernels",
         ":gpu_zeros_like_kernels",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ]),
 )
 
@@ -352,7 +352,7 @@ tf_kernel_library(
         ":gpu_elu_kernels",
         ":gpu_relu_kernels",
         ":gpu_selu_kernels",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ]),
 )
 
@@ -374,7 +374,7 @@ tf_kernel_library(
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
         ":gpu_softplus_kernels",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ]),
 )
 
@@ -396,7 +396,7 @@ tf_kernel_library(
     deps = if_mlir_generated_gpu_kernels_enabled([
         ":base_gpu_op",
         ":gpu_softsign_kernels",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ]),
 )
 
@@ -779,6 +779,10 @@ gpu_kernel_library(
         "f16": "floor_mod_float",
         "f32": "floor_mod_float",
         "f64": "floor_mod_float",
+        "ui8": "floor_mod_unsigned",
+        "ui16": "floor_mod_unsigned",
+        "ui32": "floor_mod_unsigned",
+        "ui64": "floor_mod_unsigned",
     },
     jit_types = [
         "i8",

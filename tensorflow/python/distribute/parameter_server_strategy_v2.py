@@ -50,7 +50,7 @@ from tensorflow.python.util import keras_deps
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.tsl.protobuf import coordination_config_pb2
+from tsl.protobuf import coordination_config_pb2
 
 
 ALLOWED_TASK_TYPES = ("chief", "worker", "ps")
@@ -58,6 +58,15 @@ ALLOWED_TASK_TYPES = ("chief", "worker", "ps")
 # value of 1 led to some spurious reports of unavailability, so a higher value
 # is used. Refer to the discussion in b/249134783 for more.
 _HEARTBEAT_TIMEOUT_SECS = 5
+
+# Set the number of retries during initial connection for fault tolerance.
+# Retries follow an exponential backoff waiting period as defined in the
+# runtime, with min value 1ms, max value 10s, and exponent 1.3. So 50 retries
+# enables ~3 minutes of retrying. In general, this means the first 35 retries
+# consist of 42 seconds of backoff waiting, and each subsequent retry waits for
+# 10 seconds. So to enable 30 minutes of retrying, we would want
+# 35 + (30 * 60 - 42) // 10 = 210 retries.
+_SET_SERVER_DEF_RETRIES = 50
 
 
 @tf_export(
@@ -545,6 +554,12 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
         "ps_strategy_num_workers").set(self._num_workers)
     distribute_lib.distribution_strategy_replica_gauge.get_cell(
         "ps_strategy_num_ps").set(self._num_ps)
+
+    # Explicitly connect to the cluster here. Enable retries in case of worker
+    # preemptions during connection.
+    context.set_server_def_retries(_SET_SERVER_DEF_RETRIES)
+    # Perform connection by initializing context.
+    context.ensure_initialized()
 
   def _verify_args_and_config(self, cluster_resolver: base_cluster_resolver.ClusterResolver):
     if not cluster_resolver.cluster_spec():

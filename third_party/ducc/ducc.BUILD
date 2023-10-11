@@ -52,9 +52,9 @@ cc_library(
     deps = [
         # Required for custom threadpool usage:
         "@org_tensorflow//third_party/eigen3",
-        "@org_tensorflow//tensorflow/tsl/platform:env",
-        "@org_tensorflow//tensorflow/tsl/platform:mutex",
-        "@org_tensorflow//tensorflow/tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:mutex",
+        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 

@@ -632,6 +632,8 @@ class TFLiteConverterBase:
     self._experimental_tf_quantization_mode = None
     # If unset, bias:int32 is by default except 16x8 quant.
     # For 16x8 quant, bias:int64 is used to prevent any overflow by default.
+    # The accumulator type will be the same as bias type set by
+    # full_integer_quantization_bias_type.
     self._experimental_full_integer_quantization_bias_type = None
     # Provides specs for quantization, whether preset or custom.
     self._experimental_quantization_options = None
@@ -659,6 +661,7 @@ class TFLiteConverterBase:
     self._experimental_variable_quantization = False
     self._experimental_disable_fuse_mul_and_fc = False
     self._experimental_use_buffer_offset = False
+    self._experimental_reduce_type_precision = False
 
     # Debug parameters
     self.mlir_dump_dir = None
@@ -810,6 +813,7 @@ class TFLiteConverterBase:
             self.mlir_elide_elementsattrs_if_larger
         ),
         "use_buffer_offset": self._experimental_use_buffer_offset,
+        "reduce_type_precision": self._experimental_reduce_type_precision,
     }
 
     if self.saved_model_dir:
@@ -1695,7 +1699,7 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
 
     # Without the provided trackable obj, it is not able to serialize the given
     # concrete functions as a saved model format. Also when trackable obj is
-    # a function, use the original concrete function conversion pipline.
+    # a function, use the original concrete function conversion pipeline.
     if not self._trackable_obj or isinstance(
         self._trackable_obj,
         (_function.ConcreteFunction, _def_function.Function),

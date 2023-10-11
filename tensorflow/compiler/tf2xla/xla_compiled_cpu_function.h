@@ -20,10 +20,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/compiler/xla/cpu_function_runtime.h"
-#include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/service/cpu/buffer_desc.h"
-#include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
+#include "xla/cpu_function_runtime.h"
+#include "xla/executable_run_options.h"
+#include "xla/service/cpu/buffer_desc.h"
+#include "xla/service/custom_call_status_internal.h"
 #include "tensorflow/core/platform/types.h"
 
 // Forward-declare, rather than include, to reduce code size for users that

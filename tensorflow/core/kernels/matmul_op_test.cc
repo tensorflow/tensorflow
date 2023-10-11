@@ -26,6 +26,10 @@ limitations under the License.
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/public/session.h"
 
+#if TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
+
 namespace tensorflow {
 namespace {
 
@@ -221,6 +225,8 @@ class FusedMatMulOpTest : public OpsTestBase {
   // FusedMatMul.
   void VerifyMatMulWithBias(int m, int k, int n, bool transpose_a,
                             bool transpose_b) {
+    VLOG(2) << "=== VerifyMatMulWithBias (" << m << ", " << k << ", " << n
+            << ", " << (int)transpose_a << ", " << (int)transpose_b << ") ===";
     const BiasAddGraphRunner run_default =
         [&](const Tensor& input_data, const Tensor& filter_data,
             const Tensor& bias_data, Tensor* out) {
@@ -280,15 +286,16 @@ TYPED_TEST_SUITE_P(FusedMatMulWithBiasOpTest);
 // MatMul + BiasAdd + {Activation}                                            //
 // -------------------------------------------------------------------------- //
 
-TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x256) {
-  this->VerifyMatMulWithBias(256, 256, 256, false, false);
-  this->VerifyMatMulWithBias(256, 256, 256, true, false);
-  this->VerifyMatMulWithBias(256, 256, 256, false, true);
-  this->VerifyMatMulWithBias(256, 256, 256, true, true);
+TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x128x64) {
+  this->VerifyMatMulWithBias(256, 128, 64, false, false);
+  this->VerifyMatMulWithBias(256, 128, 64, true, false);
+  this->VerifyMatMulWithBias(256, 128, 64, false, true);
+  this->VerifyMatMulWithBias(256, 128, 64, true, true);
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x256) {
   this->VerifyMatMulWithBias(1, 256, 256, false, false);
+  this->VerifyMatMulWithBias(4, 128, 256, false, false);
   this->VerifyMatMulWithBias(1, 256, 256, true, false);
   this->VerifyMatMulWithBias(1, 256, 256, false, true);
   this->VerifyMatMulWithBias(1, 256, 256, true, true);
@@ -296,6 +303,7 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x256) {
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x1) {
   this->VerifyMatMulWithBias(256, 256, 1, false, false);
+  this->VerifyMatMulWithBias(256, 128, 4, false, false);
   this->VerifyMatMulWithBias(256, 256, 1, true, false);
   this->VerifyMatMulWithBias(256, 256, 1, false, true);
   this->VerifyMatMulWithBias(256, 256, 1, true, true);
@@ -305,15 +313,15 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1) {
   this->VerifyMatMulWithBias(1, 256, 1, false, false);
 }
 
-TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x256WithActivation) {
+TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x128x64WithActivation) {
   for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
-    this->VerifyConv2DWithBiasAndActivation(256, 256, 256, false, false,
+    this->VerifyConv2DWithBiasAndActivation(256, 128, 64, false, false,
                                             activation);
-    this->VerifyConv2DWithBiasAndActivation(256, 256, 256, true, false,
+    this->VerifyConv2DWithBiasAndActivation(256, 128, 64, true, false,
                                             activation);
-    this->VerifyConv2DWithBiasAndActivation(256, 256, 256, false, true,
+    this->VerifyConv2DWithBiasAndActivation(256, 128, 64, false, true,
                                             activation);
-    this->VerifyConv2DWithBiasAndActivation(256, 256, 256, true, true,
+    this->VerifyConv2DWithBiasAndActivation(256, 128, 64, true, true,
                                             activation);
   }
 }
@@ -339,14 +347,14 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1WithActivation) {
   }
 }
 
-REGISTER_TYPED_TEST_SUITE_P(FusedMatMulWithBiasOpTest,        //
-                            MatMul256x256x256,                //
-                            MatMul1x256x256,                  //
-                            MatMul256x256x1,                  //
-                            MatMul1x256x1,                    //
-                            MatMul256x256x256WithActivation,  //
-                            MatMul1x256x256WithActivation,    //
-                            MatMul256x256x1WithActivation,    //
+REGISTER_TYPED_TEST_SUITE_P(FusedMatMulWithBiasOpTest,       //
+                            MatMul256x128x64,                //
+                            MatMul1x256x256,                 //
+                            MatMul256x256x1,                 //
+                            MatMul1x256x1,                   //
+                            MatMul256x128x64WithActivation,  //
+                            MatMul1x256x256WithActivation,   //
+                            MatMul256x256x1WithActivation,   //
                             MatMul1x256x1WithActivation);
 
 // TODO(ezhulenev): Add support for more data types.

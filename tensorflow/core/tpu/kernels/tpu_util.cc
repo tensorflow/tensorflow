@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/core/platform/random.h"
 
 namespace tensorflow {

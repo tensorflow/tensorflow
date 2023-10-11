@@ -22,12 +22,11 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/runtime_fallback/util/type_util.h"
+#include "tensorflow/core/runtime_fallback/util/tensor_metadata.h"  // IWYU pragma: export
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/host_buffer.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
 #include "tfrt/tensor/string_host_tensor.h"  // from @tf_runtime
-#include "tfrt/tensor/tensor_metadata.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor_shape.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -52,18 +51,6 @@ inline tensorflow::TensorShape GetTfShape(const tfrt::TensorShape& shape) {
   shape.GetDimensions(&dimensions);
   llvm::SmallVector<int64_t, 4> dims(dimensions.begin(), dimensions.end());
   return tensorflow::TensorShape(dims);
-}
-
-// Retrieves TFRT TensorMetadata from a tensorflow::Tensor.
-inline tfrt::TensorMetadata GetTensorMetadata(
-    const tensorflow::Tensor& tf_tensor) {
-  auto dtype = tfd::GetTfrtDtype(tf_tensor.dtype());
-  auto dim_sizes = tf_tensor.shape().dim_sizes();
-  static_assert(sizeof(tfrt::Index) == sizeof(dim_sizes.front()),
-                "Invalid dimension type size");
-  auto shape = llvm::ArrayRef(reinterpret_cast<tfrt::Index*>(dim_sizes.data()),
-                              dim_sizes.size());
-  return tfrt::TensorMetadata(dtype, shape);
 }
 
 inline void CheckBoolCompatibility() {

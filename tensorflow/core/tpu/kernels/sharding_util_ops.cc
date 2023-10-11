@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -38,9 +38,9 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tensorflow/tsl/platform/macros.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 namespace {
@@ -653,6 +653,8 @@ class ReadVariableXlaSplitNDOp : public XlaSplitNDBaseOp<Device, T> {
 
 TF_CALL_POD_TYPES(REGISTER_XLA_SPLIT_ND);
 TF_CALL_QUANTIZED_TYPES(REGISTER_XLA_SPLIT_ND);
+TF_CALL_int4(REGISTER_XLA_SPLIT_ND);
+TF_CALL_uint4(REGISTER_XLA_SPLIT_ND);
 #undef REGISTER_XLA_SPLIT_ND
 
 #define REGISTER_READ_VARIABLE_XLA_SPLIT_ND(type) \
@@ -664,6 +666,8 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_XLA_SPLIT_ND);
 
 TF_CALL_POD_TYPES(REGISTER_READ_VARIABLE_XLA_SPLIT_ND);
 TF_CALL_QUANTIZED_TYPES(REGISTER_READ_VARIABLE_XLA_SPLIT_ND);
+TF_CALL_int4(REGISTER_READ_VARIABLE_XLA_SPLIT_ND);
+TF_CALL_uint4(REGISTER_READ_VARIABLE_XLA_SPLIT_ND);
 #undef REGISTER_READ_VARIABLE_XLA_SPLIT_ND
 
 // Shared base class to save code space
@@ -949,6 +953,8 @@ class AssignVariableXlaConcatNDOp : public XlaConcatNDBaseOp<Device, T> {
 
 TF_CALL_POD_TYPES(REGISTER_XLA_CONCAT_ND);
 TF_CALL_QUANTIZED_TYPES(REGISTER_XLA_CONCAT_ND);
+TF_CALL_int4(REGISTER_XLA_CONCAT_ND);
+TF_CALL_uint4(REGISTER_XLA_CONCAT_ND);
 #undef REGISTER_XLA_CONCAT_ND
 
 #define REGISTER_ASSIGN_VARIABLE_XLA_CONCAT_ND(type) \
@@ -960,6 +966,8 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_XLA_CONCAT_ND);
 
 TF_CALL_POD_TYPES(REGISTER_ASSIGN_VARIABLE_XLA_CONCAT_ND);
 TF_CALL_QUANTIZED_TYPES(REGISTER_ASSIGN_VARIABLE_XLA_CONCAT_ND);
+TF_CALL_int4(REGISTER_ASSIGN_VARIABLE_XLA_CONCAT_ND);
+TF_CALL_uint4(REGISTER_ASSIGN_VARIABLE_XLA_CONCAT_ND);
 #undef REGISTER_ASSIGN_VARIABLE_XLA_CONCAT_ND
 
 }  // anonymous namespace

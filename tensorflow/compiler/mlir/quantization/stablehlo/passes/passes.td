@@ -18,17 +18,17 @@ include "mlir/Pass/PassBase.td"
 def QuantizeWeightPass : Pass<"stablehlo-quantize-weight", "mlir::func::FuncOp"> {
   let summary = "Quantizes the weight component of StableHLO graph.";
   let constructor = "CreateQuantizeWeightPass()";
-  let dependentDialects = ["stablehlo::StablehloDialect"];
+  let dependentDialects = ["mlir::stablehlo::StablehloDialect"];
 }
 
 def PrepareSrqQuantizePass : Pass<"stablehlo-prepare-srq-quantize", "mlir::func::FuncOp"> {
   let summary = "Prepare StableHLO dialect for static range quantization.";
   let constructor = "CreatePrepareSrqQuantizePass()";
   let dependentDialects = [
-      "stablehlo::StablehloDialect", 
-      "quant::QuantizationDialect", 
-      "quantfork::QuantizationForkDialect", 
-      "arith::ArithDialect"
+      "mlir::stablehlo::StablehloDialect",
+      "mlir::quant::QuantizationDialect",
+      "mlir::quantfork::QuantizationForkDialect",
+      "mlir::arith::ArithDialect",
   ];
 }
 
