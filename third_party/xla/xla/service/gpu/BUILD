@@ -3386,6 +3386,20 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "hlo_fusion_analysis_test",
+    srcs = ["hlo_fusion_analysis_test.cc"],
+    deps = [
+        ":backend_configs_cc",
+        ":gpu_device_info_for_tests",
+        ":hlo_fusion_analysis",
+        ":hlo_traversal",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
 cc_library(
     name = "gpu_performance_model",
     srcs = ["gpu_performance_model.cc"],
