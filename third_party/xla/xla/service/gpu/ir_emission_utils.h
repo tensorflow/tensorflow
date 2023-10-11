@@ -189,8 +189,11 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
 
 bool IsIntermediate(const HloInstruction* instr, int allowed_operand_count = 1);
 
-// Log and verify an LLVM module.
-void LogAndVerify(const llvm::Module* m);
+// Log the given module if the VLOG level is >= level.
+void VLogModule(int level, const llvm::Module& module);
+
+// Verify the given module, and crash if it failed.
+void VerifyModule(const llvm::Module& module);
 
 // Returns the llvm type for the indices used in the kernel that contains the
 // hlo instruction. Such indices include the index for the parallel loop and

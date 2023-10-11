@@ -1057,7 +1057,10 @@ cc_library(
         "//xla/translate/mhlo_to_hlo:location_exporter",
         "//xla/translate/mhlo_to_hlo:type_to_shape",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
     ],
 )

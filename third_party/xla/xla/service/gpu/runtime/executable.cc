@@ -213,6 +213,8 @@ GpuRuntimeExecutable::Create(std::string module_name,
   // Options for constructing XLA runtime JitExecutable.
   JitExecutable::Options opts;
   opts.specialization = JitExecutable::Specialization::kDisabled;
+  opts.compiler.verification_level =
+      program->debug_options.xla_gpu_llvm_verification_level();
   opts.compiler.register_dialects =
       runtime::RegisterDefaultXlaGpuRuntimeDialects;
 

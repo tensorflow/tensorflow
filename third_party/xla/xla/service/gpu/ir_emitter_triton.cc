@@ -1726,10 +1726,19 @@ StatusOr<TritonWrapperResult> TritonWrapper(
   VLOG(2) << config.ShortDebugString();
 
   // Compile Triton kernel to LLVM.
-  mlir::PassManager pm(&mlir_context);
-
   std::optional<llvm::raw_fd_ostream> log_stream;
   const HloModule* hlo_module = hlo_computation->parent();
+
+  bool should_verify =
+      (hlo_module->config().debug_options().xla_gpu_llvm_verification_level() >=
+       1);
+#ifndef NDEBUG
+  should_verify = true;
+#endif
+
+  mlir::PassManager pm(&mlir_context);
+  pm.enableVerifier(should_verify);
+
   if (hlo_module->config().debug_options().xla_gpu_dump_llvmir()) {
     const std::string basename =
         absl::StrCat(absl::string_view(tsl::io::Basename(hlo_module->name())),
@@ -1794,7 +1803,10 @@ StatusOr<TritonWrapperResult> TritonWrapper(
       std::unique_ptr<llvm::Module> ll_triton_module,
       TranslateLLVMToLLVMIR(&llvm_module->getContext(), *triton_module,
                             GetLibdevicePath(hlo_computation)));
-  LogAndVerify(ll_triton_module.get());
+  VLogModule(5, *ll_triton_module);
+  if (should_verify) {
+    VerifyModule(*ll_triton_module);
+  }
 
   // Integrate LLVM matmul kernel into XLA's LLVM module.
   ll_triton_module->eraseNamedMDNode(
@@ -1804,7 +1816,10 @@ StatusOr<TritonWrapperResult> TritonWrapper(
   // Use override flag because libdevice functions can be present in both.
   CHECK(!llvm::Linker::linkModules(*llvm_module, std::move(ll_triton_module),
                                    llvm::Linker::Flags::OverrideFromSrc));
-  LogAndVerify(llvm_module);
+  VLogModule(5, *llvm_module);
+  if (should_verify) {
+    VerifyModule(*llvm_module);
+  }
 
   return {{shared_mem_bytes}};
 }

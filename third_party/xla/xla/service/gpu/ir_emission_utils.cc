@@ -24,8 +24,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -802,16 +804,15 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
   });
 }
 
-void LogAndVerify(const llvm::Module* m) {
-  if (VLOG_IS_ON(5)) {
-    XLA_VLOG_LINES(5, llvm_ir::DumpToString(m));
-  }
+void VLogModule(int level, const llvm::Module& module) {
+  XLA_VLOG_LINES(level, llvm_ir::DumpToString(&module));
+}
 
-  std::string llir_str;
-  llvm::raw_string_ostream llir_stream(llir_str);
-  bool broken = llvm::verifyModule(*m, &llir_stream);
-  llir_stream.flush();
-  CHECK(!broken) << llir_str;
+void VerifyModule(const llvm::Module& module) {
+  std::string error_str;
+  llvm::raw_string_ostream error_stream(error_str);
+  bool broken = llvm::verifyModule(module, &error_stream);
+  CHECK(!broken) << error_str;
 }
 
 llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,

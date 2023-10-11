@@ -115,7 +115,13 @@ static Status LowerToXlaGpuRuntime(
     return InternalError("No MLIR module to lower.");
   }
 
+  bool should_verify = debug_options.xla_gpu_llvm_verification_level() >= 1;
+#ifndef NDEBUG
+  should_verify = true;
+#endif
+
   mlir::PassManager pm(module->getName(), mlir::PassManager::Nesting::Implicit);
+  pm.enableVerifier(should_verify);
 
   GpuPipelineOpts opts;
   opts.gpu_graph_level = debug_options.xla_gpu_graph_level();
