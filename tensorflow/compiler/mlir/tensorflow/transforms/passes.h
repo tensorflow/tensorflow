@@ -17,14 +17,22 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_
 
 #include <memory>
+#include <string>
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassOptions.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 
 namespace mlir {
 
@@ -302,6 +310,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateNameAnonymousIteratorsPass();
 // handle this.
 // TODO(b/244596254) Implement followup pass for creating control deps.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateSplitIntoIslandPerOpPass();
+
+// Prints, but otherwise pipes through without changes, the current module.
+std::unique_ptr<OperationPass<ModuleOp>> CreatePrintPass(
+    raw_ostream* os = nullptr);
 
 // Populates the supplied passmanager with the passes required to run the
 // CPU/GPU bridge.

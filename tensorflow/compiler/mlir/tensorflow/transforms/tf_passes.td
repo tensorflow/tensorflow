@@ -2798,3 +2798,17 @@ def ColocateTPUCopyWithDynamicShapePass : Pass<"tf-colocate-tpu-copy-with-dynami
   }];
   let constructor = "TFTPU::CreateColocateTPUCopyWithDynamicShapePass()";
 }
+
+def PrintPass : Pass<"tf-print", "ModuleOp"> {
+  let summary = "Prints the current module.";
+  let description = [{
+    This prints the current module (by default, to stderr). The module is
+    otherwise piped through without changes.
+
+    This complements MLIRs dumping functionality, which can sometimes be hard
+    to configure. This pass is useful if you know the exact position in the
+    pipeline where you want to dump, and are able to easily modify the pipeline
+    source code.
+  }];
+  let constructor = "TF::CreatePrintPass()";
+}
