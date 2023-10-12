@@ -154,16 +154,52 @@ tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
   return export_status;
 }
 
+tensorflow::Status RunNonTPUBridge(ModuleOp module,
+                                   llvm::StringRef module_name) {
+  VLOG(2)
+      << "CPU/GPU Bridge called stack trace is "
+      << "(NOTE: this is not an error; rather the stack trace for debugging) : "
+      << tensorflow::CurrentStackTrace();
+  Status status = RunTFXLABridge(
+      module,
+      [](OpPassManager &pm) {
+        tensorflow::tf2xla::internal::AddNonTPUBridgeClusteringPipelinePasses(
+            pm);
+      },
+      module_name);
+  tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+      /*device type*/ "cpu/gpu", /*bridge version*/ "tfxla",
+      /*fallback_enabled*/ false,
+      /*result*/ status.ok() ? "success" : "failure");
+  if (!status.ok()) {
+    tsl::error_logging::Log(kBridgeComponent,
+                            "TFXLA_PHASE_ONE_MLIR_CPU/GPU_BRIDGE",
+                            status.ToString())
+        .IgnoreError();
+  }
+
+  Status export_status =
+      tensorflow::tf2xla::v2::ExportFromTensorflowDialectToExecutor(
+          module, module_name);
+  if (!export_status.ok()) {
+    tsl::error_logging::Log(kBridgeComponent,
+                            "TFXLA_PHASE_ONE_MLIR_CPU_BRIDGE_EXPORT",
+                            export_status.ToString())
+        .IgnoreError();
+  }
+
+  return status;
+}
+
 tensorflow::Status RunFunctionTf2xlaClusteringBridge(
     ModuleOp module, DeviceType device_type, bool is_in_fallback_enabled_mode,
     llvm::StringRef module_name) {
   if (device_type == DeviceType::XLA_TPU_JIT) {
     return TPUBridge(module, /*fallback_enabled=*/is_in_fallback_enabled_mode,
-                     /*module_name=*/"");
+                     /*module_name=*/module_name);
   }
 
-  return tsl::FromAbslStatus(
-      absl::UnimplementedError("API not implemented for non TPU devices yet."));
+  return RunNonTPUBridge(module, module_name);
 }
 
 }  // namespace v2

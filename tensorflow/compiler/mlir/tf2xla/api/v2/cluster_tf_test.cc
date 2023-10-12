@@ -94,13 +94,42 @@ TEST_F(FunctionClusterTensorflowDialectTest, ClustersTf) {
   EXPECT_TRUE(has_graph_op);
 }
 
-TEST_F(FunctionClusterTensorflowDialectTest, FailsOnGPU) {
+TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFCPU) {
   TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
 
-  EXPECT_FALSE(
+  TF_EXPECT_OK(
+      RunFunctionTf2xlaClusteringBridge(*mlir_module_, DeviceType::XLA_CPU_JIT,
+                                        /*is_in_fallback_enabled_mode=*/false));
+
+  FuncOp main = mlir_module_->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_TRUE(main);
+
+  bool has_graph_op = false;
+  main.walk([&](mlir::tf_executor::GraphOp graph) {
+    has_graph_op = true;
+    return WalkResult::advance();
+  });
+
+  EXPECT_TRUE(has_graph_op);
+}
+
+TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFGPU) {
+  TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
+
+  TF_EXPECT_OK(
       RunFunctionTf2xlaClusteringBridge(*mlir_module_, DeviceType::XLA_GPU_JIT,
-                                        /*is_in_fallback_enabled_mode=*/false)
-          .ok());
+                                        /*is_in_fallback_enabled_mode=*/false));
+
+  FuncOp main = mlir_module_->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_TRUE(main);
+
+  bool has_graph_op = false;
+  main.walk([&](mlir::tf_executor::GraphOp graph) {
+    has_graph_op = true;
+    return WalkResult::advance();
+  });
+
+  EXPECT_TRUE(has_graph_op);
 }
 
 }  // namespace

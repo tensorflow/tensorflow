@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/tf_dialect_to_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/device_type.pb.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_dialect_to_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/clustering_bridge_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/inference/inference_passes.h"
@@ -159,39 +161,10 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
 
 tensorflow::Status RunTFXLABridge(ModuleOp module,
                                   llvm::StringRef module_name) {
-  VLOG(2)
-      << "CPU/GPU Bridge called stack trace is "
-      << "(NOTE: this is not an error; rather the stack trace for debugging) : "
-      << tensorflow::CurrentStackTrace();
-  Status status = mlir::TFTPU::RunTFXLABridge(
-      module,
-      [](OpPassManager &pm) {
-        tensorflow::tf2xla::internal::AddNonTPUBridgeClusteringPipelinePasses(
-            pm);
-      },
-      module_name);
-  tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      /*device type*/ "cpu/gpu", /*bridge version*/ "tfxla",
-      /*fallback_enabled*/ false,
-      /*result*/ status.ok() ? "success" : "failure");
-  if (!status.ok()) {
-    tsl::error_logging::Log(TFTPU::kBridgeComponent,
-                            "TFXLA_PHASE_ONE_MLIR_CPU/GPU_BRIDGE",
-                            status.ToString())
-        .IgnoreError();
-  }
-
-  Status export_status =
-      tensorflow::tf2xla::v2::ExportFromTensorflowDialectToExecutor(
-          module, module_name);
-  if (!export_status.ok()) {
-    tsl::error_logging::Log(TFTPU::kBridgeComponent,
-                            "TFXLA_PHASE_ONE_MLIR_CPU_BRIDGE_EXPORT",
-                            export_status.ToString())
-        .IgnoreError();
-  }
-
-  return status;
+  // CPU == GPU here, so both are equivalent.
+  return tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
+      module, tensorflow::tf2xla::v2::XLA_GPU_JIT,
+      /*is_in_fallback_enabled_mode=*/false, module_name);
 }
 
 }  // namespace TF

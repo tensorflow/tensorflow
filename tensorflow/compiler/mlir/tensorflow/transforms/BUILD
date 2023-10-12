@@ -877,6 +877,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tf2xla/api/v1:tf_dialect_to_executor",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:cluster_tf",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:device_type_proto_cc",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:tf_dialect_to_executor",
         "//tensorflow/compiler/mlir/tf2xla/internal:clustering_bridge_passes",
         "//tensorflow/compiler/mlir/tf2xla/internal:logging_hooks",
