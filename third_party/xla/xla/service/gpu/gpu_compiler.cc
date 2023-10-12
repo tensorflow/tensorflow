@@ -1060,8 +1060,9 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   const DebugOptions& debug_options = module->config().debug_options();
   TF_RETURN_IF_ERROR(LoadAutotuneResultsFromFile(debug_options));
 
-  MaybeUploadUnoptimizedGpuSymbolsToXSymbol(
-      module.get(), GetGpuTargetConfig(stream_exec).ToProto());
+  const std::optional<std::string> unoptimized_fingerprint =
+      MaybeUploadUnoptimizedGpuSymbols(
+          module.get(), GetGpuTargetConfig(stream_exec).ToProto());
 
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER_IF(
@@ -1085,7 +1086,13 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   // out we have no way of telling how far through the process we got).
   RecordHloPassesDuration(end_usecs - start_usecs);
 
-  MaybeUploadOptimizedGpuSymbolsToXSymbol(module.get());
+  const std::optional<std::string> optimized_fingerprint =
+      MaybeUploadOptimizedGpuSymbols(module.get());
+  if (unoptimized_fingerprint.has_value() &&
+      optimized_fingerprint.has_value()) {
+    MaybeUploadGpuSymbolMapping(*unoptimized_fingerprint,
+                                *optimized_fingerprint);
+  }
   TF_RETURN_IF_ERROR(SerializeAutotuneResultsToFile(debug_options));
 
   return std::move(module);
@@ -1095,8 +1102,9 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPassesWithoutDevice(
     std::unique_ptr<HloModule> module, const CompileOptions& options,
     const GpuTargetConfig& gpu_target_config,
     const AutotuneResults& autotune_results) {
-  MaybeUploadUnoptimizedGpuSymbolsToXSymbol(module.get(),
-                                            gpu_target_config.ToProto());
+  const std::optional<std::string> unoptimized_fingerprint =
+      MaybeUploadUnoptimizedGpuSymbols(module.get(),
+                                       gpu_target_config.ToProto());
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER_IF(
       absl::StrCat("GpuCompiler::RunHloPasses for ", module->name()),
@@ -1116,7 +1124,14 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPassesWithoutDevice(
   // out we have no way of telling how far through the process we got).
   RecordHloPassesDuration(end_usecs - start_usecs);
 
-  MaybeUploadOptimizedGpuSymbolsToXSymbol(module.get());
+  const std::optional<std::string> optimized_fingerprint =
+      MaybeUploadOptimizedGpuSymbols(module.get());
+
+  if (unoptimized_fingerprint.has_value() &&
+      optimized_fingerprint.has_value()) {
+    MaybeUploadGpuSymbolMapping(*unoptimized_fingerprint,
+                                *optimized_fingerprint);
+  }
 
   return std::move(module);
 }

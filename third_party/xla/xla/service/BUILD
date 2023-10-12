@@ -7291,6 +7291,7 @@ cc_library(
     deps = [
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description_proto_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
