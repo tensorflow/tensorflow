@@ -260,6 +260,9 @@ cc_library(
         ":gpu_stream",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor:stream_executor_internal",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:status",
     ] + if_cuda_is_configured([
         "//xla/stream_executor/cuda:cuda_driver",

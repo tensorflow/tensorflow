@@ -4757,3 +4757,24 @@ xla_cc_test(
         "@local_tsl//tsl/platform:statusor",
     ],
 )
+
+xla_cc_test(
+    name = "determinism_test",
+    srcs = ["determinism_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":autotuner_util",
+        "//xla:literal",
+        "//xla:xla_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/gpu/tests:gpu_codegen_test",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/gpu:gpu_timer_header",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:test_utils",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)

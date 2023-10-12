@@ -697,7 +697,8 @@ StatusOr<AutotuneResult> Execute(const AutotuneConfig& config,
       AutotuneResult best_triton,
       PickBestResult(results, root.ToString(), root.GetModule()->config()));
 
-  if (debug_opts.xla_gpu_cublas_fallback()) {
+  if (debug_opts.xla_gpu_cublas_fallback() &&
+      !debug_opts.xla_gpu_deterministic_ops()) {
     const absl::Duration best_triton_duration =
         tsl::proto_utils::FromDurationProto(best_triton.run_time());
     VLOG(2) << fusion->name() << ": time with cuBLAS: " << cublas_duration
