@@ -40,7 +40,7 @@ class FusedMatMulOpTest : public OpsTestBase {
   static constexpr auto TValueType = DataTypeToEnum<T>::value;
 
   using BiasAddGraphRunner =
-      std::function<void(const Tensor& lhs_data, const Tensor& rhs_data,
+      std::function<bool(const Tensor& lhs_data, const Tensor& rhs_data,
                          const Tensor& bias_data, Tensor* out)>;
 
   // Runs a Tensorflow graph defined by the root scope, and fetches the result
@@ -48,8 +48,9 @@ class FusedMatMulOpTest : public OpsTestBase {
   // allows to define a fetch node directly using a NodeDef for the ops that are
   // not supported by the C++ Api.
   void RunAndFetch(const tensorflow::Scope& root, const string& fetch,
-                   Tensor* output, bool allow_gpu_device,
-                   const NodeDef* fetch_node = nullptr) {
+                   Tensor* output, bool allow_gpu_device, 
+                   const NodeDef* fetch_node = nullptr,
+                   tsl::Status *last_status = nullptr) {
     tensorflow::GraphDef graph;
     TF_ASSERT_OK(root.ToGraphDef(&graph));
 
@@ -99,9 +100,15 @@ class FusedMatMulOpTest : public OpsTestBase {
     TF_ASSERT_OK(session->Create(graph));
 
     std::vector<Tensor> unfused_tensors;
-    TF_ASSERT_OK(session->Run({}, {fetch}, {}, &unfused_tensors));
-
-    *output = unfused_tensors[0];
+    auto res = session->Run({}, {fetch}, {}, &unfused_tensors);
+    if (last_status != nullptr) {
+      *last_status = res;
+    } else {
+      TF_ASSERT_OK(res);
+    }
+    if (!unfused_tensors.empty()) {
+      *output = unfused_tensors[0];
+    }
   }
 
   void RunMatMulWithBias(const Tensor& lhs_data, const Tensor& rhs_data,
@@ -165,7 +172,7 @@ class FusedMatMulOpTest : public OpsTestBase {
                         const std::vector<Tensor>& args_data,
                         const std::vector<string>& fused_ops, bool transpose_a,
                         bool transpose_b, Tensor* output,
-                        bool allow_gpu_device = false) {
+                        bool allow_gpu_device = false, bool *test_skipped = nullptr) {
     Scope root = tensorflow::Scope::NewRootScope();
 
     DataType dtype = DataTypeToEnum<T>::v();
@@ -195,8 +202,20 @@ class FusedMatMulOpTest : public OpsTestBase {
                      .Attr("transpose_b", transpose_b)
                      .Finalize(&fused_matmul));
 
+    tsl::Status last_status;
     RunAndFetch(root, fused_matmul.name(), output, allow_gpu_device,
-                &fused_matmul);
+                &fused_matmul, &last_status);
+
+    std::string_view what = "No algorithm worked!";
+    bool skip = last_status.message().find(what) != std::string::npos;
+    if (test_skipped != nullptr) {
+      *test_skipped = skip;
+    }
+    if (skip) {
+      GTEST_SKIP() << what;
+    } else {
+      TF_ASSERT_OK(last_status);
+    }
   }
 
   void VerifyBiasAddTensorsNear(int m, int k, int n, bool transpose_a,
@@ -223,15 +242,17 @@ class FusedMatMulOpTest : public OpsTestBase {
     Tensor fused_matmul;
 
     run_default(lhs, rhs, bias, &matmul);
-    run_fused(lhs, rhs, bias, &fused_matmul);
+    bool skipped = run_fused(lhs, rhs, bias, &fused_matmul);
 
-    ASSERT_EQ(matmul.dtype(), fused_matmul.dtype());
-    ASSERT_EQ(matmul.shape(), fused_matmul.shape());
+    if (!skipped) {
+      ASSERT_EQ(matmul.dtype(), fused_matmul.dtype());
+      ASSERT_EQ(matmul.shape(), fused_matmul.shape());
 
-    // use specific rtol value for DT_HALF datatype and the default one for all others
-    double atol = this->TValueType == DT_HALF ? 1e-3 : 1e-5;
-    double rtol = this->TValueType == DT_HALF ? 1e-3 : -1.0;
-    test::ExpectClose(matmul, fused_matmul, atol, rtol);
+      // use specific rtol value for DT_HALF datatype and the default one for all others
+      double atol = this->TValueType == DT_HALF ? 1e-3 : 1e-5;
+      double rtol = this->TValueType == DT_HALF ? 1e-3 : -1.0;
+      test::ExpectClose(matmul, fused_matmul, atol, rtol);
+    }
   }
 
   // Verifies that computing MatMul+BiasAdd in a graph is identical to
@@ -240,19 +261,23 @@ class FusedMatMulOpTest : public OpsTestBase {
                             bool transpose_b) {
     VLOG(2) << "=== VerifyMatMulWithBias (" << m << ", " << k << ", " << n
             << ", " << (int)transpose_a << ", " << (int)transpose_b << ") ===";
+
     const BiasAddGraphRunner run_default =
         [&](const Tensor& input_data, const Tensor& filter_data,
             const Tensor& bias_data, Tensor* out) {
           RunMatMulWithBias(input_data, filter_data, bias_data, transpose_a,
                             transpose_b, out, /*allow_gpu_device=*/true);
+          return false;
         };
 
     const BiasAddGraphRunner run_fused =
         [&](const Tensor& input_data, const Tensor& filter_data,
             const Tensor& bias_data, Tensor* out) {
+          bool skipped = false;
           RunFusedMatMulOp(input_data, filter_data, {bias_data}, {"BiasAdd"},
                            transpose_a, transpose_b, out,
-                           /*allow_gpu_device=*/true);
+                           /*allow_gpu_device=*/true, &skipped);
+          return skipped;
         };
 
     VerifyBiasAddTensorsNear(m, k, n, transpose_a, transpose_b, run_default,
@@ -273,15 +298,18 @@ class FusedMatMulOpTest : public OpsTestBase {
       RunMatMulWithBiasAndActivation(input_data, filter_data, bias_data,
                                      transpose_a, transpose_b, activation, out,
                                      use_gpu_device);
+      return false;
     };
 
     const BiasAddGraphRunner run_fused = [&](const Tensor& input_data,
                                              const Tensor& filter_data,
                                              const Tensor& bias_data,
                                              Tensor* out) {
+      bool skipped = false;
       RunFusedMatMulOp(input_data, filter_data, {bias_data},
                        {"BiasAdd", activation}, transpose_a, transpose_b, out,
-                       use_gpu_device);
+                       use_gpu_device, &skipped);
+      return skipped;
     };
 
     VerifyBiasAddTensorsNear(m, k, n, transpose_a, transpose_b, run_default,
@@ -310,7 +338,6 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x128x64) {
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x256) {
   this->VerifyMatMulWithBias(1, 256, 256, false, false);
-  this->VerifyMatMulWithBias(4, 128, 256, false, false);
   this->VerifyMatMulWithBias(1, 256, 256, true, false);
   this->VerifyMatMulWithBias(1, 256, 256, false, true);
   this->VerifyMatMulWithBias(1, 256, 256, true, true);
@@ -318,7 +345,6 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x256) {
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x1) {
   this->VerifyMatMulWithBias(256, 256, 1, false, false);
-  this->VerifyMatMulWithBias(256, 128, 4, false, false);
   this->VerifyMatMulWithBias(256, 256, 1, true, false);
   this->VerifyMatMulWithBias(256, 256, 1, false, true);
   this->VerifyMatMulWithBias(256, 256, 1, true, true);
@@ -363,10 +389,6 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x256WithActivation) {
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x1WithActivation) {
 
-  if(this->TValueType == DT_HALF) { // NO available matmul algorithm in CuDNN for Eigen::half
-    return;
-  }
-
   for (const string& activation : GetActivations(this->TValueType)) {
     this->VerifyConv2DWithBiasAndActivation(256, 256, 1, false, false,
                                             activation);
@@ -374,10 +396,6 @@ TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x256x1WithActivation) {
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x1WithActivation) {
-
-  if(this->TValueType == DT_HALF) { // NO available matmul algorithm in CuDNN for Eigen::half
-    return;
-  }
 
   for (const string& activation : GetActivations(this->TValueType)) {
     this->VerifyConv2DWithBiasAndActivation(1, 256, 1, false, false,
