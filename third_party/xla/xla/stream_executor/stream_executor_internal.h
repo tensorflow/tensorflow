@@ -190,10 +190,6 @@ class StreamInterface {
   // implementation, or nullptr otherwise.
   virtual void* GpuStreamHack() { return nullptr; }
 
-  // Returns a pointer to a GPU stream associated with this platform's stream,
-  // or a nullptr.
-  virtual void** GpuStreamMemberHack() { return nullptr; }
-
  private:
   StreamInterface(const StreamInterface&) = delete;
   void operator=(const StreamInterface&) = delete;

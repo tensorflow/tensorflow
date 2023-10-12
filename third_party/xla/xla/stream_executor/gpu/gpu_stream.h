@@ -42,9 +42,6 @@ class GpuStream : public internal::StreamInterface {
   ~GpuStream() override = default;
 
   void* GpuStreamHack() override { return gpu_stream_; }
-  void** GpuStreamMemberHack() override {
-    return reinterpret_cast<void**>(&gpu_stream_);
-  }
 
   // Explicitly initialize the CUDA resources associated with this stream, used
   // by StreamExecutor::AllocateStream().
