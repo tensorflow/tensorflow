@@ -42,6 +42,9 @@ class SymbolUploader {
   virtual std::optional<std::string> MaybeUploadUnoptimizedHloModule(
       HloModule* module,
       const stream_executor::GpuTargetConfigProto& gpu_target_config) = 0;
+
+  virtual std::optional<std::string> MaybeUploadOptimizedHloModule(
+      HloModule* module) = 0;
 };
 
 // Registers a single process-wide XSymbolUploader to use. The registry is used
@@ -72,6 +75,16 @@ inline std::optional<std::string> MaybeUploadUnoptimizedGpuSymbolsToXSymbol(
   if (SymbolUploader* uploader = GetGlobalSymbolUploaderRegistry().uploader();
       uploader != nullptr) {
     return uploader->MaybeUploadUnoptimizedHloModule(module, gpu_target_config);
+  }
+
+  return std::nullopt;
+}
+
+inline std::optional<std::string> MaybeUploadOptimizedGpuSymbolsToXSymbol(
+    HloModule* module) {
+  if (SymbolUploader* uploader = GetGlobalSymbolUploaderRegistry().uploader();
+      uploader != nullptr) {
+    return uploader->MaybeUploadOptimizedHloModule(module);
   }
 
   return std::nullopt;

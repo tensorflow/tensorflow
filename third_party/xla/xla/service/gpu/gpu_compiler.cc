@@ -1085,6 +1085,7 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   // out we have no way of telling how far through the process we got).
   RecordHloPassesDuration(end_usecs - start_usecs);
 
+  MaybeUploadOptimizedGpuSymbolsToXSymbol(module.get());
   TF_RETURN_IF_ERROR(SerializeAutotuneResultsToFile(debug_options));
 
   return std::move(module);
@@ -1114,6 +1115,8 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPassesWithoutDevice(
   // This won't record values for calls that error out (because if they error
   // out we have no way of telling how far through the process we got).
   RecordHloPassesDuration(end_usecs - start_usecs);
+
+  MaybeUploadOptimizedGpuSymbolsToXSymbol(module.get());
 
   return std::move(module);
 }
