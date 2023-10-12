@@ -190,6 +190,11 @@ This release contains contributions from many people at Google, as well as:
         the creation of the SavedModel-native save/restore ops simply cause
         longer model serialization times.
 
+* `tf.math.bincount`
+    *   Updated documentation. Fixed
+        "[Bincount doesn't check the tensor type](https://github.com/tensorflow/tensorflow/issues/56499)"
+         and some other corner cases.
+
 ## Keras
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
