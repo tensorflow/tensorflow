@@ -41,6 +41,7 @@ Thunk::ExecuteParams::ExecuteParams(
     return #x
   switch (kind) {
     CASE(kCholesky);
+    CASE(kCommandBuffer);
     CASE(kConditional);
     CASE(kConvolution);
     CASE(kConvolutionReorder);

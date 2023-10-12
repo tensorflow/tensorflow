@@ -22,12 +22,10 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/status.h"
-#include "xla/statusor.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 
@@ -35,26 +33,17 @@ namespace xla::gpu {
 // CommandBufferCmdSequence
 //===----------------------------------------------------------------------===//
 
-/*static*/ StatusOr<CommandBufferCmdSequence> CommandBufferCmdSequence::Create(
-    se::StreamExecutor* executor) {
-  TF_ASSIGN_OR_RETURN(auto command_buffer, se::CommandBuffer::Create(executor));
-  return CommandBufferCmdSequence(std::move(command_buffer));
-}
-
-CommandBufferCmdSequence::CommandBufferCmdSequence(
-    se::CommandBuffer command_buffer)
-    : command_buffer_(std::move(command_buffer)) {}
-
 void CommandBufferCmdSequence::Append(std::unique_ptr<CommandBufferCmd> cmd) {
   commands_.push_back(std::move(cmd));
 }
 
 Status CommandBufferCmdSequence::Record(
-    const CommandBufferCmd::RecordParams& params) {
+    const CommandBufferCmd::RecordParams& params,
+    se::CommandBuffer* command_buffer) {
   for (auto& cmd : commands_) {
-    TF_RETURN_IF_ERROR(cmd->Record(params, command_buffer_));
+    TF_RETURN_IF_ERROR(cmd->Record(params, *command_buffer));
   }
-  return command_buffer_.Finalize();
+  return command_buffer->Finalize();
 }
 
 //===----------------------------------------------------------------------===//

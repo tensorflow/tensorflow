@@ -46,6 +46,7 @@ xla_test(
         "//xla/stream_executor",
         "//xla/stream_executor:multi_platform_manager",
         "//xla/stream_executor:platform",
+        "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_benchmark",
         "@local_tsl//tsl/platform:test_main",
@@ -76,4 +77,50 @@ cc_library(
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor/gpu:gpu_asm_opts",
     ]) + ["@local_tsl//tsl/platform:status"],
+)
+
+cc_library(
+    name = "command_buffer_thunk",
+    srcs = ["command_buffer_thunk.cc"],
+    hdrs = ["command_buffer_thunk.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":command_buffer_cmd",
+        "//xla:status",
+        "//xla:statusor",
+        "//xla:types",
+        "//xla/service:buffer_assignment",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/service/gpu:thunk",
+        "//xla/stream_executor",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_test(
+    name = "command_buffer_thunk_test",
+    srcs = ["command_buffer_thunk_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":command_buffer_cmd",
+        ":command_buffer_thunk",
+        "//xla:types",
+        "//xla/service:buffer_assignment",
+        "//xla/service:executable",
+        "//xla/service/gpu:buffer_allocations",
+        "//xla/service/gpu:thunk",
+        "//xla/stream_executor",
+        "//xla/stream_executor:multi_platform_manager",
+        "//xla/stream_executor:platform",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_benchmark",
+        "@local_tsl//tsl/platform:test_main",
+    ],
 )

@@ -13,14 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/runtime3/command_buffer_cmd.h"
+#include "xla/service/gpu/runtime3/command_buffer_thunk.h"
 
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/stream_executor/command_buffer.h"
+#include "xla/service/gpu/runtime3/command_buffer_cmd.h"
+#include "xla/service/gpu/thunk.h"
+#include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -36,7 +39,7 @@ static se::StreamExecutor* CudaExecutor() {
   return platform->ExecutorForDevice(0).value();
 }
 
-TEST(CommandBufferCmdTest, MemcpyCmd) {
+TEST(CommandBufferThunkTest, MemcpyCmd) {
   se::StreamExecutor* executor = CudaExecutor();
 
   se::Stream stream(executor);
@@ -64,13 +67,15 @@ TEST(CommandBufferCmdTest, MemcpyCmd) {
   CommandBufferCmdSequence commands;
   commands.Emplace<MemcpyDeviceToDeviceCmd>(slice_b, slice_a, byte_length);
 
+  // Construct a thunk with command sequence.
+  CommandBufferThunk thunk(std::move(commands), Thunk::ThunkInfo(nullptr));
+
+  ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a, b}, 0, executor->GetAllocator());
+  Thunk::ExecuteParams params(run_options, allocations, &stream, {});
 
-  auto command_buffer = se::CommandBuffer::Create(executor).value();
-  TF_ASSERT_OK(commands.Record({&allocations}, &command_buffer));
-
-  // Execute command buffer and verify that it copied the memory.
-  TF_ASSERT_OK(executor->Submit(&stream, command_buffer));
+  // Execute command buffer thunk and verify that it copied the memory.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
 
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);

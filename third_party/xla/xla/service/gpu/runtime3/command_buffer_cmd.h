@@ -61,8 +61,7 @@ class CommandBufferCmd {
 // purpose is to manipulate command buffers at run time.
 class CommandBufferCmdSequence {
  public:
-  static StatusOr<CommandBufferCmdSequence> Create(
-      se::StreamExecutor* executor);
+  CommandBufferCmdSequence() = default;
 
   void Append(std::unique_ptr<CommandBufferCmd> cmd);
 
@@ -71,16 +70,12 @@ class CommandBufferCmdSequence {
     Append(std::make_unique<T>(std::forward<Args>(args)...));
   }
 
-  // Records all commands added to a sequence into the command buffer.
-  Status Record(const CommandBufferCmd::RecordParams& params);
-
-  se::CommandBuffer& command_buffer() { return command_buffer_; }
+  // Records all commands added to a sequence into the given command buffer.
+  Status Record(const CommandBufferCmd::RecordParams& params,
+                se::CommandBuffer* command_buffer);
 
  private:
-  explicit CommandBufferCmdSequence(se::CommandBuffer command_buffer);
-
   std::vector<std::unique_ptr<CommandBufferCmd>> commands_;
-  se::CommandBuffer command_buffer_;
 };
 
 //===----------------------------------------------------------------------===//
