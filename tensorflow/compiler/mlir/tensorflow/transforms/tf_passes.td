@@ -1874,6 +1874,8 @@ def TPUAnnotateDynamicShapeInputsPass : Pass<"tf-tpu-annotate-dynamic-shape-inpu
     that the generated HLO program is correctly reflecting the dynamic shape.
   }];
 
+  // Required for mhlo bounded shape extension.
+  let dependentDialects = ["mhlo::MhloDialect"];
   let constructor = "TFTPU::CreateTPUAnnotateDynamicShapeInputsPass()";
 }
 
