@@ -163,7 +163,7 @@ absl::StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Resume(
 absl::Status SnapshotManager::Resume() TF_LOCKS_EXCLUDED(mu_) {
   tsl::mutex_lock l(mu_);
   if (!env_->FileExists(path_).ok()) {
-    return absl::InvalidArgumentError(
+    return absl::InternalError(
         absl::StrCat("Failed to recover snapshot at ", path_,
                      ": the snapshot path doesn't exist"));
   }
@@ -190,7 +190,7 @@ absl::Status SnapshotManager::Resume() TF_LOCKS_EXCLUDED(mu_) {
 absl::Status SnapshotManager::ReadOnDiskMetadata()
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   if (!env_->FileExists(SnapshotMetadataFilePath(path_)).ok()) {
-    return absl::InvalidArgumentError(
+    return absl::InternalError(
         absl::StrCat("Failed to recover snapshot at ", path_,
                      ": snapshot has no snapshot.metadata"));
   }
@@ -198,7 +198,7 @@ absl::Status SnapshotManager::ReadOnDiskMetadata()
       ReadTextProto(env_, SnapshotMetadataFilePath(path_), &metadata_));
 
   if (!env_->FileExists(DatasetDefFilePath(path_)).ok()) {
-    return absl::InvalidArgumentError(
+    return absl::InternalError(
         absl::StrCat("Failed to recovery snapshot at ", path_,
                      ": snapshot has no dataset_def.proto"));
   }
@@ -227,7 +227,7 @@ absl::Status SnapshotManager::ReadOnDiskStreams()
     int64_t stream_index;
     if (tokens.size() != 2 || !absl::SimpleAtoi(tokens[1], &stream_index) ||
         stream_index < 0) {
-      return absl::InvalidArgumentError(absl::StrCat(
+      return absl::InternalError(absl::StrCat(
           "Can't parse the name of ", stream_path,
           ": filename must have the format stream_<stream_index>."));
     }
@@ -249,7 +249,7 @@ absl::Status SnapshotManager::ReadOnDiskStreams()
 
   for (int64_t i = 0; i < global_split_indices.size(); ++i) {
     if (!global_split_indices.contains(i)) {
-      return absl::InvalidArgumentError(absl::StrCat(
+      return absl::InternalError(absl::StrCat(
           "Found missing global split index, ", i, ", in ", path_));
     }
   }
@@ -281,7 +281,7 @@ absl::Status SnapshotManager::ReadOnDiskStream(
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   auto [it, success] = assignments_.insert({worker_address, stream_index});
   if (!success) {
-    return absl::InvalidArgumentError(absl::StrCat(
+    return absl::InternalError(absl::StrCat(
         "tf.data dispatcher failed to assign stream ", stream_index,
         " to snapshot worker ", worker_address,
         ": The  worker is already assigned stream ", it->second, "."));
@@ -299,12 +299,12 @@ absl::Status SnapshotManager::ReadOnDiskStream(
     int64_t source_index;
     if (tokens.size() != 2 || !absl::SimpleAtoi(tokens[1], &source_index) ||
         source_index < 0) {
-      return absl::InvalidArgumentError(absl::StrCat(
+      return absl::InternalError(absl::StrCat(
           "Can't parse the name of ", source_path,
           ": filename must have the format source_<source_index>"));
     }
     if (source_index >= num_sources()) {
-      return absl::InvalidArgumentError(
+      return absl::InternalError(
           absl::StrCat("Found conflict between the number of sources, ",
                        num_sources(), ", and the filename of ", source_path));
     }
@@ -366,7 +366,7 @@ absl::Status SnapshotManager::ReadOnDiskSplit(
   TF_ASSIGN_OR_RETURN(auto split_indices, ParseSplitFilename(split_file));
   auto [local_split_index, global_split_index] = split_indices;
   if (global_split_indices.contains(global_split_index)) {
-    return absl::InvalidArgumentError(absl::StrCat(
+    return absl::InternalError(absl::StrCat(
         "Found duplicate global split index in name of ", split_file));
   }
   global_split_indices.insert(global_split_index);
