@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_live_range.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/shape.h"
 #include "xla/statusor.h"
@@ -163,14 +164,16 @@ Status HandleDot(std::unique_ptr<StrategyVector>& strategies,
                  const HloInstruction* ins, size_t instruction_id,
                  const ClusterEnvironment& cluster_env,
                  const InstructionBatchDimMap& batch_map,
-                 const AutoShardingSolverOption& solver_option);
+                 const AutoShardingSolverOption& solver_option,
+                 const CallGraph& call_graph);
 
 Status HandleConv(std::unique_ptr<StrategyVector>& strategies,
                   LeafStrategies& leaf_strategies, StrategyMap& strategy_map,
                   const HloInstruction* ins, size_t instruction_id,
                   const ClusterEnvironment& cluster_env,
                   const InstructionBatchDimMap& batch_map,
-                  const AutoShardingSolverOption& solver_option);
+                  const AutoShardingSolverOption& solver_option,
+                  const CallGraph& call_graph);
 
 void AnnotateShardingWithSimpleHeuristic(HloModule* module,
                                          const std::string& heuristic,

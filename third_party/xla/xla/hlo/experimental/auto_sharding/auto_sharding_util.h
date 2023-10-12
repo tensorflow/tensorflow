@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/service/call_graph.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/statusor.h"
@@ -352,6 +353,15 @@ inline std::vector<int> Argsort(const std::vector<T>& scores) {
   std::sort(index.begin(), index.end(), cmp);
   return index;
 }
+
+// Given the sharding for an instruction, invoke the sharding propagation pass
+// to infer appropriate shardings for its operands.
+std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
+                                            const HloInstruction* operand,
+                                            int64_t op_index,
+                                            const HloSharding& output_sharding,
+                                            const xla::CallGraph& call_graph,
+                                            int64_t num_devices);
 
 // Return whether the reshape is a special reshape that switches the batch dim
 // of a dot.

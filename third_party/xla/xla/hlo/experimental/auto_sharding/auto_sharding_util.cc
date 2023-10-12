@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
+#include "xla/service/sharding_propagation.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
@@ -63,6 +64,27 @@ inline const HloInstruction* PassThroughCustomCallMarkerGetSource(
     const HloInstruction* ins);
 inline HloInstruction* PassThroughCustomCallMarkerUser(
     HloInstruction* raw_user, const HloInstruction* inst);
+
+std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
+                                            const HloInstruction* operand,
+                                            int64_t op_index,
+                                            const HloSharding& output_sharding,
+                                            const CallGraph& call_graph,
+                                            int64_t num_devices) {
+  auto ins_clone = ins->Clone();
+  ins_clone->set_sharding(output_sharding);
+  auto operand_clone = operand->Clone();
+  if (operand_clone->has_sharding() &&
+      !operand_clone->sharding()
+           .Validate(operand_clone->shape(), num_devices)
+           .ok()) {
+    operand_clone->clear_sharding();
+  }
+  auto s = ins_clone->ReplaceOperandWith(op_index, operand_clone.get());
+  CHECK_OK(s);
+  return ShardingPropagation::GetShardingFromUser(*operand_clone, *ins_clone,
+                                                  10, true, call_graph);
+}
 
 // Return whether a reshape instruction is a special reshape that switches
 // the batch dim of a dot.
