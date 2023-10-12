@@ -430,6 +430,26 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
     }
   }
 
+  if (IsInputFusibleScatter(consumer)) {
+    const HloInstruction* inplace_operand;
+    if (consumer.opcode() == HloOpcode::kFusion) {
+      const HloInstruction* scatter = consumer.fused_expression_root();
+      CHECK_EQ(scatter->opcode(), HloOpcode::kScatter);
+      CHECK_EQ(scatter->operand(0)->opcode(), HloOpcode::kParameter);
+      inplace_operand =
+          consumer.operand(scatter->operand(0)->parameter_number());
+    } else {
+      inplace_operand = consumer.operand(0);
+    }
+    if (inplace_operand == &producer) {
+      return "do not fuse into the in-place operand of scatter";
+    }
+    if (absl::c_find(producer.operands(), inplace_operand) !=
+        producer.operands().end()) {
+      return "Producer uses the in-place operand of a scatter";
+    }
+  }
+
   if (!IsInputFusible(consumer) &&
       !IsLoopFusibleAsConsumer(consumer, consumer_hero)) {
     return "the consumer is not input-fusible and not loop-fusible";
