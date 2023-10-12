@@ -470,6 +470,8 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
       }
       return !gpu::IsMatrixMultiplication(*instr);
     };
+    pipeline.AddPass<DotDimensionSorter>();
+    pipeline.AddPass<DotDecomposer>();
 
     pipeline.AddPass<OperandUpcaster>(upcaster_filter);
     pipeline.AddPass<ResultCaster>(upcaster_filter);
@@ -503,9 +505,6 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
 
     // TODO(b/64094172): make Call work on GPU instead of inlining.
     pipeline.AddPass<CallInliner>();
-
-    pipeline.AddPass<DotDimensionSorter>();
-    pipeline.AddPass<DotDecomposer>();
 
     pipeline.AddPass<StochasticConvertDecomposer>();
 

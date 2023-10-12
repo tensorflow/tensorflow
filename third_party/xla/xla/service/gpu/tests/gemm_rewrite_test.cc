@@ -901,6 +901,30 @@ ENTRY int8gemm {
   }
 }
 
+TEST_F(GemmRewriteTest, Int8GemmRankGreaterThanTwo) {
+  const char* hlo_text = R"(
+HloModule int8gemm
+
+ENTRY main.4 {
+  Arg_0.1 = s8[1,8,2]{2,1,0} parameter(0)
+  Arg_1.2 = s8[2,4]{1,0} parameter(1)
+  ROOT dot.3 = s32[1,8,4]{2,1,0} dot(Arg_0.1, Arg_1.2),
+  lhs_contracting_dims={2}, rhs_contracting_dims={0}
+}
+  )";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+
+  if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK %custom-call = s32[8,4]{1,0} custom-call(s8[8,4]{1,0} %fusion.1, s8[4,4]{0,1} %bitcast.13), custom_call_target="__cublas$gemm", backend_config={"selected_algorithm":"0","alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+; CHECK: ROOT %bitcast.1 = s32[1,8,4]{2,1,0} bitcast(s32[8,4]{1,0} %custom-call)
+  )",
+                      /*print_operand_shape=*/true);
+  }
+}
+
 TEST_P(ParameterizedGemmRewriteTest, Int8GemmNoAlphaRewrite) {
   const char* hlo_text = R"(
 HloModule int8gemm
