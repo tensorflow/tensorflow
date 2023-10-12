@@ -24,6 +24,7 @@ from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.platform import test
 
 
 def _ragged_factory(x):
@@ -280,7 +281,8 @@ class TestDenseBincount(test_util.TensorFlowTestCase, parameterized.TestCase):
       expected,
       axis,
   ):
-    if "GPU" in set([d.device_type for d in tf_config.list_physical_devices()]):
+    device_set = set([d.device_type for d in tf_config.list_physical_devices()])
+    if "GPU" in device_set and not test_util.is_xla_enabled():
       self.skipTest(
           "b/263004039 The DenseBincount GPU kernel does not support weights."
           " unsorted_segment_sum should be used instead on GPU."
@@ -551,3 +553,6 @@ class TestSparseCountFailureModes(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 "must have the same row splits"):
       self.evaluate(sparse_ops.sparse_bincount(x, weights=weights, axis=-1))
+
+if __name__ == "__main__":
+  test.main()

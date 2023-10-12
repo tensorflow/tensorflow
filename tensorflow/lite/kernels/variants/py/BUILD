@@ -4,6 +4,10 @@ load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 pybind_extension(
     name = "register_list_ops_py",
     srcs = ["register_list_ops_py.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "register_list_ops_py.pyi",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite:mutable_op_resolver",
@@ -19,12 +23,10 @@ py_strict_test(
     deps = [
         ":register_list_ops_py",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/lite/python:analyzer",
         "//tensorflow/lite/python:interpreter",
         "//tensorflow/python/ops:list_ops",
         "//tensorflow/python/platform:test",
         "//tensorflow/python/types:core",
-        "//testing/pybase",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

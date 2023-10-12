@@ -49,7 +49,8 @@ class FakeClockEnv : public EnvWrapper {
   mutable mutex mu_;
   uint64 current_time_ TF_GUARDED_BY(mu_) = 0;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FakeClockEnv);
+  FakeClockEnv(const FakeClockEnv&) = delete;
+  void operator=(const FakeClockEnv&) = delete;
 };
 
 }  // namespace tensorflow

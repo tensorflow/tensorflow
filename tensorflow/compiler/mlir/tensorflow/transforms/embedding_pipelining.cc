@@ -29,7 +29,7 @@ In pseudocode, the algorithm is as follows:
 
 // Start step 0
 C_0 = cond(args_0)
-N_0 = non_tup(args_0)
+N_0 = non_tpu(args_0)
 if (C_0) {
    F_0 = forward(args_0, N_0)
    T_0 = core_tpu(args_0, N_0, F_0)
@@ -40,7 +40,7 @@ args_1 = update_args(args_0, N_0, T_0)
 
 // Start step 1
 C_1 = cond(args_1)
-N_1 = non_tup(args_1)
+N_1 = non_tpu(args_1)
 if (C_1) {
    F_1 = forward(args_1, N_1)
    // T_1 = core_tpu() is not evaluated here.
@@ -375,6 +375,37 @@ struct Inliner : public InlinerInterface {
     return LogicalResult::success();
   }
 
+  LogicalResult PatchCollectiveGatherInstanceKey(func::FuncOp func) {
+    // We're expecting the original model to have a single CollectiveGatherV2Op
+    // that gets split into 3 copies in the start_step_0, start_step_1 and
+    // new_while_body functions. To make sure the instance keys are unique among
+    // them we replace the original instance key as:
+    //   new_instance_key = c + original_instance_key
+    // where c = -2, -1 or 0 depending on which function it's being replaced in.
+    static int32_t offset_value = -2;
+    for (auto gather_op : func.getRegion().getOps<TF::CollectiveGatherV2Op>()) {
+      Value orig_instance_key = gather_op->getOperand(3);
+      auto loc = gather_op->getLoc();
+      builder.setInsertionPoint(gather_op);
+      auto offset = builder.create<TF::ConstOp>(
+          loc, builder.getI32IntegerAttr(offset_value));
+      auto new_instance_key = builder.create<TF::AddV2Op>(
+          loc, orig_instance_key, offset->getResult(0));
+      gather_op->setOperand(3, new_instance_key->getResult(0));
+      std::vector<std::string> attr_names = {
+          TF::kReplicationInfoAttr.str(), "_xla_compile_device_type",
+          kEmbeddingPipelining, "_xla_outside_compilation", "device"};
+      for (const auto& attr_name : attr_names) {
+        if (!gather_op->hasAttr(attr_name)) continue;
+        offset->setAttr(attr_name, gather_op->getAttr(attr_name));
+        new_instance_key->setAttr(attr_name, gather_op->getAttr(attr_name));
+      }
+      // Make the next function to get inlined use a different offset.
+      ++offset_value;
+    }
+    return LogicalResult::success();
+  }
+
   // Find any StatefulPartitionedCalls and inline their contents in this func.
   LogicalResult InlineCallsInFunc(func::FuncOp func,
                                   bool inline_all_funcs = false) {
@@ -407,7 +438,10 @@ struct Inliner : public InlinerInterface {
     }
     for (auto op : ops_to_erase) op->erase();
 
-    auto result = UnifyReplicationInfo(func);
+    auto result = PatchCollectiveGatherInstanceKey(func);
+    if (failed(result)) return result;
+
+    result = UnifyReplicationInfo(func);
     if (failed(result)) return result;
 
     result = RemoveOutputInputPairs(func);
@@ -877,11 +911,11 @@ LogicalResult FindForwardPassOps(OpBuilder& builder,
     TF::TPUReplicatedInputOp private_input = input.clone();
     builder.insert(private_input);
     forward_pass_ops.insert(private_input);
-    for (OpOperand& next_use : input.getOutput().getUses()) {
-      if (!forward_pass_ops.contains(next_use.getOwner())) continue;
-      next_use.getOwner()->setOperand(next_use.getOperandNumber(),
-                                      private_input.getOutput());
-    }
+
+    input.getOutput().replaceUsesWithIf(
+        private_input.getOutput(), [&](OpOperand& use) {
+          return forward_pass_ops.contains(use.getOwner());
+        });
   }
 
   VLOG(3) << "Cloned " << cloned_inputs << " TPUReplicatedInputOps";
@@ -992,11 +1026,10 @@ LogicalResult FindBackwardPassOps(
     TF::TPUReplicatedInputOp private_input = input.clone();
     builder.insert(private_input);
     backward_pass_ops.insert(private_input);
-    for (OpOperand& next_use : input.getOutput().getUses()) {
-      if (!backward_pass_ops.contains(next_use.getOwner())) continue;
-      next_use.getOwner()->setOperand(next_use.getOperandNumber(),
-                                      private_input.getOutput());
-    }
+    input.getOutput().replaceUsesWithIf(
+        private_input.getOutput(), [&](OpOperand& use) {
+          return backward_pass_ops.contains(use.getOwner());
+        });
   }
 
   VLOG(2) << " cloned " << to_clone.size() << " and inserted "
@@ -1033,9 +1066,9 @@ LogicalResult FindBackwardPassOps(
     TF::TPUReplicatedInputOp input = builder.create<TF::TPUReplicatedInputOp>(
         loc, value.getType(), output.getResults());
     input->setAttr(kDevice, builder.getStringAttr(""));
-    for (OpOperand& use : value.getUses())
-      if (backward_pass_ops.contains(use.getOwner()))
-        use.getOwner()->setOperand(use.getOperandNumber(), input.getOutput());
+    value.replaceUsesWithIf(input.getOutput(), [&](OpOperand& use) {
+      return backward_pass_ops.contains(use.getOwner());
+    });
     backward_pass_ops.insert(input);
   }
 
@@ -1221,8 +1254,12 @@ int FindReturnIndex(Value val) {
   return not_found;
 }
 
+// Skip the assertions because they currently create problematic dependencies.
+constexpr bool kDoAssertions = true;
+
 void AddAssertion(OpBuilder& builder, Location& loc, Value cond,
                   const std::string& message) {
+  if (!kDoAssertions) return;
   auto shape_type =
       RankedTensorType::get({1}, builder.getType<TF::StringType>());
   auto msg = builder.create<TF::ConstOp>(

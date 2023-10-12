@@ -341,10 +341,6 @@ class DataServiceDispatcherImpl {
   Status GetDatasetDef(const DispatcherState::Dataset& dataset,
                        std::shared_ptr<const DatasetDef>& dataset_def)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Gets host information about a noncolocated worker from the dispatcher
-  // state. Returns null if no noncolocated worker has registered.
-  std::optional<absl::flat_hash_map<std::string, std::string>>
-  WorkerCompressionInfoByProtocol() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const experimental::DispatcherConfig config_;
   Env* env_;
@@ -392,7 +388,8 @@ class DataServiceDispatcherImpl {
   std::unique_ptr<Thread> maintenance_thread_;
   MultipleIterationsAutoScaler auto_scaler_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DataServiceDispatcherImpl);
+  DataServiceDispatcherImpl(const DataServiceDispatcherImpl&) = delete;
+  void operator=(const DataServiceDispatcherImpl&) = delete;
 };
 
 }  // namespace data

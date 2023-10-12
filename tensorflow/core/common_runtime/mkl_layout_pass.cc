@@ -1070,6 +1070,17 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
       reason = "User has assigned a device that is not CPU.";
     }
 
+    const string& type_attr = "T";
+    if (HasNodeAttr(n->def(), type_attr)) {
+      const auto& attr = n->def().attr().at(type_attr);
+      DataType dtype = attr.type();
+      if (dtype == DT_BFLOAT16 && !IsBF16SupportedByOneDNNOnThisCPU()) {
+        mkl_op_registry::BF16UnsupportedWarning();
+        result = false;
+        reason = "Intel oneDNN with bfloat16 is not supported.";
+      }
+    }
+
     if (result == false) {
       VLOG(1) << "MklLayoutRewritePass: Skipping rewriting of the node "
               << n->type_string() << ", reason: " << reason;
@@ -1672,24 +1683,23 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     DCHECK(n);
     Node* filter_node = nullptr;
     TF_CHECK_OK(n->input_node(0, &filter_node));
-    bool narrow_range = false;
-    int axis = -1;
     string mode_string;
     string round_mode_string;
     DataType type;
-    TryGetNodeAttr(n->def(), "narrow_range", &narrow_range);
-    TryGetNodeAttr(n->def(), "axis", &axis);
     TF_CHECK_OK(GetNodeAttr(n->def(), "mode", &mode_string));
     TF_CHECK_OK(GetNodeAttr(n->def(), "round_mode", &round_mode_string));
     TF_CHECK_OK(GetNodeAttr(n->def(), "T", &type));
 
-    if (narrow_range) {
+    bool narrow_range;
+    if (TryGetNodeAttr(n->def(), "narrow_range", &narrow_range) &&
+        narrow_range) {
       VLOG(1) << "QuantizeOpRewrite: narrow range is enabled for quantization."
               << "This case is not optimized by Intel MKL, "
               << "thus using Eigen op for Quantize op ";
       return false;
     }
-    if (axis != -1) {
+    int axis;
+    if (TryGetNodeAttr(n->def(), "axis", &axis) && axis != -1) {
       VLOG(1) << "QuantizeOpRewrite: dimension is specified for "
               << "per slice quantization."
               << "This case is not optimized by Intel MKL, "

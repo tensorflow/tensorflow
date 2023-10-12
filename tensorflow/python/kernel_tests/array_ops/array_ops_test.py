@@ -630,9 +630,19 @@ class StridedSliceChecker(object):
 
 
 STRIDED_SLICE_TYPES = [
-    dtypes.int32, dtypes.int64, dtypes.int16, dtypes.int8, dtypes.uint8,
-    dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128,
-    dtypes.bool, dtypes.bfloat16
+    dtypes.int32,
+    dtypes.int64,
+    dtypes.int16,
+    dtypes.int8,
+    dtypes.uint8,
+    dtypes.float32,
+    dtypes.float64,
+    dtypes.complex64,
+    dtypes.complex128,
+    dtypes.bool,
+    dtypes.bfloat16,
+    dtypes.float8_e5m2,
+    dtypes.float8_e4m3fn,
 ]
 
 

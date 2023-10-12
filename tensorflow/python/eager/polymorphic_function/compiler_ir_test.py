@@ -20,7 +20,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
@@ -119,13 +118,7 @@ class CompilerIrTest(xla_test.XLATestCase):
       args = [ops.convert_to_tensor([1, 2, 3, 4])]
       args_spec = nest.map_structure(tensor.TensorSpec.from_tensor, args)
       concrete_fn = f2.get_concrete_function(*args_spec)
-      if test_util.is_mlir_bridge_enabled():
-        with self.assertRaisesRegex(
-            ValueError, 'TF to XLA legalization failed'
-        ):
-          _ = compiler_ir.from_concrete_function(concrete_fn)(stage='hlo')
-      else:
-        _ = compiler_ir.from_concrete_function(concrete_fn)(stage='hlo')
+      _ = compiler_ir.from_concrete_function(concrete_fn)(stage='hlo')
 
   def test_make_handledata_tensor_specs(self):
     with ops.device('device:{}:0'.format(self.device)):
@@ -174,9 +167,6 @@ class CompilerIrTest(xla_test.XLATestCase):
       self._compareTwoMethodsCompilerIROutput(f4, [], kwargs)
 
   def test_capture_variable_2(self):
-    if not test_util.is_mlir_bridge_enabled():
-      self.skipTest('Non_milr_bridge will fail here.')
-
     if 'gpu' in self.device.lower():
       self.skipTest('Skip test on GPU')
 

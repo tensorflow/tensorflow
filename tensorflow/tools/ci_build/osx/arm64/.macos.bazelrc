@@ -23,6 +23,9 @@ build --action_env MACOSX_DEPLOYMENT_TARGET=12.0
 # Test-related settings below this point.
 test --verbose_failures=true --local_test_jobs=HOST_CPUS --test_output=errors
 
+# TODO(b/294367488) disable after 2.15 brancut
+test --flaky_test_attempts=3
+
 # Increase the test timeout as tests often take longer on mac.
 test --test_timeout=300,450,1200,3600
 test --test_size_filters=small,medium

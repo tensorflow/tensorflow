@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -72,7 +73,7 @@ class _CustomSequenceThatRaisesException(collections.abc.Sequence):
 @dataclasses.dataclass
 class MaskedTensor:
   mask: bool
-  value: ops.Tensor
+  value: tensor.Tensor
 
   def __tf_flatten__(self):
     metadata = (self.mask,)
@@ -560,7 +561,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     nest.assert_shallow_structure(traverse_result2, nmt)
 
     traverse_result3 = nest.get_traverse_shallow_structure(
-        lambda s: isinstance(s, ops.Tensor), nmt
+        lambda s: isinstance(s, tensor.Tensor), nmt
     )
     # Expected `traverse_result3 = False` because `nmt` doesn't pass the
     # traverse function.

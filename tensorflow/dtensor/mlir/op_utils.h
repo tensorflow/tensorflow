@@ -82,6 +82,9 @@ mlir::LogicalResult ReplaceAuxiliaryDTensorLayoutOpsWithIdentity(
 // constant operation has at most 1 usage.
 void DuplicateConstants(mlir::Operation* op);
 
+// Constructs the dtensor Operation name from a module object.
+std::string GetOperationName(mlir::ModuleOp module);
+
 }  // namespace dtensor
 }  // namespace tensorflow
 

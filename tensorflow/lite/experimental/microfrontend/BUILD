@@ -127,7 +127,6 @@ tf_custom_op_py_strict_library(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
-        "//tensorflow/python/util:tf_export",
     ],
 )
 

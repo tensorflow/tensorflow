@@ -18,6 +18,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import weak_tensor_ops  # pylint: disable=unused-import
 from tensorflow.python.ops.numpy_ops import np_dtypes
 from tensorflow.python.ops.numpy_ops import np_math_ops
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import tf_export
 
 
@@ -45,6 +46,12 @@ def enable_numpy_behavior(prefer_float32=False, dtype_conversion_mode="legacy"):
       corresponds to a PromoMode Enum and can be 'off', 'legacy', 'safe', or
       'all'. 'safe' or 'all' mode enables the auto dtype conversion semantics.
   """
+  if dtype_conversion_mode == "safe" or dtype_conversion_mode == "all":
+    tf_logging.warning(
+        "UserWarning: enabling the new type promotion must happen at the"
+        " beginning of the program. Please ensure no TF APIs have been used"
+        " yet."
+    )
   ops.set_dtype_conversion_mode(dtype_conversion_mode)
   ops.enable_numpy_style_slicing()
   np_math_ops.enable_numpy_methods_on_tensor()

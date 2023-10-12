@@ -74,6 +74,19 @@ class ConcatTest(xla_test.XLATestCase):
     self.assertAllEqual(result[:2, :], p1)
     self.assertAllEqual(result[2:, :], p2)
 
+  def testAxisInt64(self):
+    with self.session():
+      p1 = np.random.rand(2, 3).astype("i")
+      p2 = np.random.rand(2, 3).astype("i")
+      x1 = constant_op.constant(p1)
+      x2 = constant_op.constant(p2)
+      axis = constant_op.constant(0, dtype=dtypes.int64)
+      with self.test_scope():
+        c = array_ops.concat([x1, x2], axis)
+      result = self.evaluate(c)
+    self.assertAllEqual(result[:2, :], p1)
+    self.assertAllEqual(result[2:, :], p2)
+
   def _testRandom(self, dtype):
     # Random dims of rank 5
     shape = np.random.randint(1, 5, size=5)

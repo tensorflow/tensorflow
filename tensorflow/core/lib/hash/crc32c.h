@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/lib/hash/crc32c.h"
+#include "tsl/lib/hash/crc32c.h"
 
 namespace tensorflow {
 namespace crc32c {

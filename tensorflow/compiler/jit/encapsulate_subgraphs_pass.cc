@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
-#include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/service/graphcycles/graphcycles.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
@@ -360,7 +360,8 @@ class Encapsulator {
 
   absl::flat_hash_map<string, Subgraph> subgraphs_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Encapsulator);
+  Encapsulator(const Encapsulator&) = delete;
+  void operator=(const Encapsulator&) = delete;
 };
 
 namespace {

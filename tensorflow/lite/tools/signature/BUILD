@@ -68,6 +68,10 @@ pybind_extension(
     srcs = [
         "signature_def_util_wrapper_pybind11.cc",
     ],
+    data = [
+        "_pywrap_signature_def_util_wrapper.pyi",
+    ],
+    enable_stub_generation = True,
     deps = [
         ":signature_def_util",
         "//tensorflow/lite:framework",

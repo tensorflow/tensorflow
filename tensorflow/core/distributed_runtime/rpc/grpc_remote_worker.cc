@@ -338,7 +338,8 @@ class GrpcRemoteWorker : public WorkerInterface {
   WorkerCacheLogger* logger_;
   const string target_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GrpcRemoteWorker);
+  GrpcRemoteWorker(const GrpcRemoteWorker&) = delete;
+  void operator=(const GrpcRemoteWorker&) = delete;
 };
 
 WorkerInterface* NewGrpcRemoteWorker(SharedGrpcChannelPtr channel,

@@ -33,6 +33,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
+#include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
 
 // Implements legalization and post-legalization optimization helper functions
 
@@ -78,8 +80,7 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
   llvm::SmallVector<int64_t> static_dims;
 
   if (output_type.hasRank()) {
-    static_dims.append(output_type.getShape().begin(),
-                       output_type.getShape().end());
+    static_dims = tensorflow::ConvertMlirShapeToTF(output_type.getShape());
   } else {
     static_dims.resize(dims.size(), tensorflow::kTFDynamicSize);
   }
@@ -292,6 +293,59 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
     op->emitOpError("buildConvRescaleOp: unknown weight quantized type");
     return nullptr;
   }
+}
+
+Value getTosaConstRsqrt8bitTable(PatternRewriter& rewriter, Operation* op,
+                                 float input_scale, int32_t input_zp,
+                                 float output_scale, int32_t output_zp) {
+  // See RsqrtEvalQuantized (elementwise.cc)
+  const int kMin = std::numeric_limits<int8_t>::min();
+  const int kMax = std::numeric_limits<int8_t>::max();
+  SmallVector<int8_t, 256> table;
+
+  int32_t output_scale_multiplier;
+  int32_t output_scale_shift;
+
+  const double scale = 1. / (std::sqrt(input_scale) * output_scale);
+  tflite::QuantizeMultiplier(scale, &output_scale_multiplier,
+                             &output_scale_shift);
+
+  std::function<int8_t(int8_t)> quantRsqrtFunc = [&](int8_t i) {
+    const int32_t value = (i - input_zp);
+    const int32_t kShift = 20;  // Shift to keep value integer.
+    if (value <= 0) {
+      // Assume that any value close to 0 (or negtive values) represents the max
+      // output value.
+      return static_cast<int8_t>(kMax);
+    }
+    int32_t inv_sqrt_multiplier;
+    int inv_sqrt_shift;
+    tflite::GetInvSqrtQuantizedMultiplierExp(
+        value, tflite::kReverseShift, &inv_sqrt_multiplier, &inv_sqrt_shift);
+    const int32_t data = tflite::MultiplyByQuantizedMultiplier(
+        1, inv_sqrt_multiplier, inv_sqrt_shift + kShift);
+    const int32_t output =
+        tflite::MultiplyByQuantizedMultiplier(data, output_scale_multiplier,
+                                              output_scale_shift - kShift) +
+        output_zp;
+    return static_cast<int8_t>(std::min(std::max(output, kMin), kMax));
+  };
+
+  for (int32_t i = -128; i < 128; i++) {
+    table.push_back(quantRsqrtFunc(i));
+  }
+
+  auto element_qtype =
+      UniformQuantizedType::get(true, rewriter.getIntegerType(8),
+                                rewriter.getF32Type(), 1.0f, 0, -128, 127);
+  auto const_type = tensorflow::GetTypeFromTFTensorShape({256}, element_qtype);
+  auto storage_type = tensorflow::GetTypeFromTFTensorShape(
+      {256}, element_qtype.getStorageType());
+  auto const_attr = DenseElementsAttr::get(storage_type, llvm::ArrayRef(table));
+
+  auto const_op =
+      rewriter.create<tosa::ConstOp>(op->getLoc(), const_type, const_attr);
+  return const_op.getResult();
 }
 
 // Create a 8-bit TOSA TABLE constant tensor with int8[256] array.

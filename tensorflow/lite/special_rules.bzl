@@ -138,7 +138,9 @@ def flex_portable_tensorflow_deps():
     return [
         "//third_party/fft2d:fft2d_headers",
         "//third_party/eigen3",
-        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@gemmlowp",
         "@icu//:common",

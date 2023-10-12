@@ -15,8 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_C_C_API_OPAQUE_INTERNAL_H_
 #define TENSORFLOW_LITE_C_C_API_OPAQUE_INTERNAL_H_
 
-#include <memory>
-
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/c/common.h"
 
@@ -31,6 +29,8 @@ namespace internal {
 
 class CommonOpaqueConversionUtil {
  public:
+  CommonOpaqueConversionUtil() = delete;
+
   // Obtain (or create) a 'TfLiteRegistrationExternal' object that corresponds
   // to the provided 'registration' argument, and return the address of the
   // external registration.  We loosely define that a
@@ -52,16 +52,6 @@ class CommonOpaqueConversionUtil {
   static TfLiteRegistrationExternal* ObtainRegistrationExternal(
       TfLiteContext* context, const TfLiteRegistration* registration,
       int node_index);
-
-  // Get a shared_ptr to the RegistrationExternalsCache from an OpResolver.
-  // This is used to allow the InterpreterBuilder and OpResolver to share
-  // the same RegistrationExternalsCache, so that the RegistrationExternal
-  // objects in it can persist for the lifetimes of both the InterpreterBuilder
-  // and OpResolver.
-  static std::shared_ptr<::tflite::internal::RegistrationExternalsCache>
-  GetSharedCache(const ::tflite::OpResolver& op_resolver) {
-    return op_resolver.registration_externals_cache_;
-  }
 
  private:
   static TfLiteRegistrationExternal* CachedObtainRegistrationExternal(

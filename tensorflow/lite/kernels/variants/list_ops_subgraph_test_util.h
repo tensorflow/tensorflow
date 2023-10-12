@@ -56,6 +56,9 @@ class ListOpsSubgraphBuilder {
   // the given int by 1.
   void BuildSetItemAndIncrementSubgraph(Subgraph* subgraph);
 
+  // Populates the given Subgraph with a "ListReserve" and "ListLength" op.
+  void BuildReserveLengthSubgraph(Subgraph* subgraph);
+
  private:
   // Creates a constant tensor in given Subgraphs at given indice with
   // corresponding data.

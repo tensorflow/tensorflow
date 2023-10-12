@@ -301,7 +301,6 @@ cuda_py_strict_test(
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/saved_model:save_options",
         "//tensorflow/python/training:training_ops",
-        "//tensorflow/python/types:trace",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_decorator",
@@ -344,6 +343,7 @@ tf_xla_py_strict_test(
     python_version = "PY3",
     tags = [
         "no_mac",
+        "no_oss",  # TODO(b/295654746)
         "no_pip",
         "no_tfrt",  # TODO(b/185944215)
         "no_windows",
@@ -467,7 +467,6 @@ tf_py_strict_test(
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/framework:test_ops",
-        "//tensorflow/python/layers",
         "//tensorflow/python/module",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:functional_ops_gen",
@@ -623,7 +622,9 @@ py_strict_library(
     name = "compiler_ir",
     srcs = ["compiler_ir.py"],
     srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
     deps = [
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/eager:context",

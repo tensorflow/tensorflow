@@ -209,7 +209,8 @@ class Device : public DeviceBase {
   // Resources associated w/ this device. E.g., shared variables, etc.
   ResourceMgr* rmgr_ = nullptr;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Device);
+  Device(const Device&) = delete;
+  void operator=(const Device&) = delete;
 };
 
 }  // namespace tensorflow

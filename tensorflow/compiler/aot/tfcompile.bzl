@@ -313,30 +313,30 @@ def _tf_library(
         ] + (need_xla_data_proto and [
             # If we're generating the program shape, we must depend on the
             # proto.
-            "//tensorflow/compiler/xla:xla_data_proto_cc",
+            "@local_xla//xla:xla_data_proto_cc",
         ] or []) + (enable_xla_hlo_profiling and [
-            "//tensorflow/compiler/xla/service:hlo_profile_printer_data_cc",
+            "@local_xla//xla/service:hlo_profile_printer_data_cc",
         ] or []) + (include_standard_runtime_deps and [
             # TODO(cwhipkey): only depend on kernel code that the model actually
             # needed.
-            "//tensorflow/compiler/xla/service/cpu/runtime:convolution_ffi",
-            "//tensorflow/compiler/xla/service/cpu/runtime:rng_ffi",
-            "//tensorflow/compiler/xla/service/cpu:runtime_conv2d",
-            "//tensorflow/compiler/xla/service/cpu:runtime_custom_call_status",
-            "//tensorflow/compiler/xla/service/cpu:runtime_key_value_sort",
-            "//tensorflow/compiler/xla/service/cpu:runtime_matmul",
-            "//tensorflow/compiler/xla/service/cpu:runtime_topk",
-            "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_conv2d",
-            "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_matmul",
-            "//third_party/eigen3",
+            "@local_xla//xla/service/cpu/runtime:convolution_ffi",
+            "@local_xla//xla/service/cpu/runtime:rng_ffi",
+            "@local_xla//xla/service/cpu:runtime_conv2d",
+            "@local_xla//xla/service/cpu:runtime_custom_call_status",
+            "@local_xla//xla/service/cpu:runtime_key_value_sort",
+            "@local_xla//xla/service/cpu:runtime_matmul",
+            "@local_xla//xla/service/cpu:runtime_topk",
+            "@local_xla//xla/service/cpu:runtime_single_threaded_conv2d",
+            "@local_xla//xla/service/cpu:runtime_single_threaded_matmul",
+            "@eigen_archive//:eigen3",
         ] or []) + (
             mlir_components.count("HloLowering") > 0 and [
-                "//tensorflow/compiler/xla/runtime:aot_ffi_c_symbols",
-                "//tensorflow/compiler/xla/service/cpu:runtime_mlir_utils",
+                "@local_xla//xla/runtime:aot_ffi_c_symbols",
+                "@local_xla//xla/service/cpu:runtime_mlir_utils",
             ] or []
         ) + (
             include_standard_runtime_deps and mlir_components == "HloLowering" and [
-                "//tensorflow/compiler/xla/service/cpu/runtime:retain",
+                "@local_xla//xla/service/cpu/runtime:retain",
             ] or []
         ) + (deps or []),
         tags = tags,
@@ -390,8 +390,8 @@ def _tf_library(
             deps = [
                 ":" + name,
                 "//tensorflow/compiler/aot:tf_library_test_main",
-                "//tensorflow/compiler/xla:executable_run_options",
-                "//third_party/eigen3",
+                "@local_xla//xla:executable_run_options",
+                "@eigen_archive//:eigen3",
             ] + if_oss([
                 "//tensorflow/core:lib",
                 "//tensorflow/core:test",
@@ -443,8 +443,8 @@ def _tf_library(
             deps = [
                 ":" + name,
                 "//tensorflow/compiler/aot:benchmark",
-                "//tensorflow/compiler/xla:executable_run_options",
-                "//third_party/eigen3",
+                "@local_xla//xla:executable_run_options",
+                "@eigen_archive//:eigen3",
             ] + if_android([
                 "//tensorflow/compiler/aot:benchmark_extra_android",
             ]),

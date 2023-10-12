@@ -1950,18 +1950,18 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
         TfLiteIntArrayEqual(tensor->dims, new_size) == 0;
     if (tensor->type != kTfLiteString && tensor->type != kTfLiteResource &&
         tensor->type != kTfLiteVariant) {
-      size_t bytesRequired;
+      size_t bytes_required;
       TfLiteStatus status =
           tflite::BytesRequired(tensor->type, new_size->data, new_size->size,
-                                &bytesRequired, &context_);
+                                &bytes_required, &context_);
       if (status != kTfLiteOk) {
         TfLiteIntArrayFree(new_size);
         return kTfLiteError;
       }
 
       // Realloc space for heap-allocated tensors.
-      TfLiteTensorResizeMaybeCopy(bytesRequired, tensor, false);
-      tensor->bytes = bytesRequired;
+      TfLiteTensorResizeMaybeCopy(bytes_required, tensor, false);
+      tensor->bytes = bytes_required;
     }
     if (tensor->dims && tensor->dims != new_size) {
       TfLiteIntArrayFree(tensor->dims);
@@ -2246,7 +2246,7 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegateImpl(TfLiteDelegate* delegate) {
         0, execution_plan_, &last_execution_plan_index_prepared));
     if (has_dynamic_tensors_) {
       TF_LITE_ENSURE_STATUS(EnsureMemoryAllocations());
-      TFLITE_LOG(
+      TFLITE_LOG_PROD_ONCE(
           tflite::TFLITE_LOG_WARNING,
           "Attempting to use a delegate that only supports static-sized "
           "tensors with a graph that has dynamic-sized tensors (tensor#%d is a "

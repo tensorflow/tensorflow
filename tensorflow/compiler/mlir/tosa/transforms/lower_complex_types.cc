@@ -37,11 +37,14 @@ limitations under the License.
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 
 #define PASS_NAME "tosa-lower-complex-types"
@@ -121,8 +124,6 @@ void LowerComplexTypes::runOnOperation() {
   ComplexTypeConverter converter;
   ConversionTarget target(getContext());
 
-  target.addIllegalOp<mlir::UnrealizedConversionCastOp>();
-
   // Operations are legal if they don't contain any illegal type.
   target.markUnknownOpDynamicallyLegal([](Operation* op) {
     if (auto funcOp = dyn_cast<func::FuncOp>(op)) {
@@ -150,6 +151,12 @@ void LowerComplexTypes::runOnOperation() {
   populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
                                                                  converter);
   if (failed(applyFullConversion(func, target, std::move(patterns)))) {
+    signalPassFailure();
+  }
+
+  // We need to run folders post rewrite to cleanup conversion casts.
+  RewritePatternSet emptyRewriters(ctx);
+  if (failed(applyPatternsAndFoldGreedily(func, std::move(emptyRewriters)))) {
     signalPassFailure();
   }
 }

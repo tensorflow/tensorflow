@@ -34,6 +34,22 @@ namespace crop {
 
 const algo::Algo* Impl_CenterCrop();
 
+// Crop to Bounding Box
+//
+// Inputs: [img: any, offset_height: unsigned, offset_width: unsigned,
+//          target_height: unsigned, target_width: unsigned]
+// Ouputs: [img: any]
+//
+// Cuts a rectangular bounding box out of given image. The top-left corner of
+// the bounding box is at (`offset_height`, `offset_width`) in image, and the
+// lower-right corner is at (`offset_height` + `target_height`,
+// `offset_width` + `target_width`). Mimics semantic of
+// `tf.image.crop_to_bounding_box`.
+//
+// https://www.tensorflow.org/api_docs/python/tf/image/crop_to_bounding_box
+
+const algo::Algo* Impl_CropToBoundingBox();
+
 }  // namespace crop
 }  // namespace ml_adj
 

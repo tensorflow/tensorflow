@@ -160,4 +160,3 @@ create_python_test_dir "${PY_TEST_DIR}"
 if [[ "$TF_NIGHTLY" == 1 ]]; then
   exit 0
 fi
-

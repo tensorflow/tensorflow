@@ -65,7 +65,8 @@ class ExtendedInferenceContext {
   std::vector<DataType> input_types_;
   std::vector<DataType> output_types_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExtendedInferenceContext);
+  ExtendedInferenceContext(const ExtendedInferenceContext&) = delete;
+  void operator=(const ExtendedInferenceContext&) = delete;
 };
 
 // ShapeRefiner performs shape inference for TensorFlow Graphs.  It is
@@ -305,15 +306,15 @@ class ShapeRefiner {
                       hash<const Node*>>
       node_to_context_;
 
-  // Holds a cache from tensor name (node name:node output) to the tensor that
-  // is evaluatable as a constant expression. This reduces repeated execution
+  // Holds a cache from tensor id (node id:node output) to the tensor that
+  // is evaluable as a constant expression. This reduces repeated execution
   // of the entire constant subgraph as a graph is being built up. This could
   // be changed to some kind of size-based LRU cache to avoid consuming too much
   // memory, if that eventually becomes a concern.
   //
   // Only tensors less than 1KiB are currently stored in the cache.
   static constexpr int64_t kMaxTensorSize = 1024;
-  absl::flat_hash_map<std::pair<std::string, int>, Tensor> const_tensor_map_;
+  absl::flat_hash_map<std::pair<int, int>, Tensor> const_tensor_map_;
 
   bool require_shape_inference_fns_ = true;
   bool disable_constant_propagation_ = false;
@@ -326,7 +327,8 @@ class ShapeRefiner {
   // are refined.
   absl::flat_hash_map<std::string, std::unique_ptr<const Graph>> functions_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ShapeRefiner);
+  ShapeRefiner(const ShapeRefiner&) = delete;
+  void operator=(const ShapeRefiner&) = delete;
 };
 
 }  // namespace tensorflow

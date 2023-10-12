@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_C_KERNELS_H_
 #define TENSORFLOW_C_KERNELS_H_
 
+#include <stddef.h>
 #include <stdint.h>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
+#include "tensorflow/c/tf_buffer.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
@@ -440,7 +442,7 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrBoolList(
 // TF_OpKernelConstruction_GetAttrSize(ctx, attr_name, list_size,
 // total_size).
 TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrStringList(
-    TF_OpKernelConstruction* ctx, const char* attr_name, char** vals,
+    TF_OpKernelConstruction* ctx, const char* attr_name, char** values,
     size_t* lengths, int max_values, void* storage, size_t storage_size,
     TF_Status* status);
 

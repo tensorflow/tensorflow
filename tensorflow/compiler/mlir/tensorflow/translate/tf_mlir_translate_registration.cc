@@ -28,10 +28,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/compile_only_client.h"
-#include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
-#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
+#include "xla/client/client_library.h"
+#include "xla/client/compile_only_client.h"
+#include "xla/stream_executor/host/host_platform_id.h"
+#include "xla/stream_executor/multi_platform_manager.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -122,6 +122,7 @@ static LogicalResult MlirToGraphTranslateFunction(ModuleOp module,
 
   tensorflow::GraphExportConfig confs;
   confs.export_entry_func_to_flib = export_entry_func_to_flib;
+  confs.export_original_tf_func_name = export_original_tf_func_name;
 
   std::unique_ptr<tensorflow::FunctionLibraryDefinition> flib_def;
   auto graph =
@@ -169,6 +170,8 @@ static LogicalResult MlirToGraphdefTranslateFunction(
   // TODO(fengliuai): Add exporter flags.
   tensorflow::GraphExportConfig confs;
   confs.export_entry_func_to_flib = export_entry_func_to_flib;
+  confs.export_original_tf_func_name = export_original_tf_func_name;
+
   StatusOr<std::unique_ptr<tensorflow::GraphDef>> graphdef_or(
       tensorflow::ConvertMlirToGraphdef(module, confs));
   if (!graphdef_or.status().ok()) {

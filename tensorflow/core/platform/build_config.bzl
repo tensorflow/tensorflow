@@ -1,7 +1,7 @@
 """Provides a redirection point for platform specific implementations of starlark utilities."""
 
 load(
-    "//tensorflow/tsl/platform:build_config.bzl",
+    "@local_tsl//tsl/platform:build_config.bzl",
     _if_llvm_aarch64_available = "if_llvm_aarch64_available",
     _if_llvm_system_z_available = "if_llvm_system_z_available",
     _pyx_library = "pyx_library",
@@ -28,7 +28,6 @@ load(
     _tf_proto_library_cc = "tf_proto_library_cc",
     _tf_protobuf_compiler_deps = "tf_protobuf_compiler_deps",
     _tf_protobuf_deps = "tf_protobuf_deps",
-    _tf_protos_all = "tf_protos_all",
     _tf_protos_grappler = "tf_protos_grappler",
     _tf_protos_grappler_impl = "tf_protos_grappler_impl",
     _tf_protos_profiler_service = "tf_protos_profiler_service",
@@ -43,6 +42,7 @@ load(
     "//tensorflow/core/platform:build_config.default.bzl",
     _tf_additional_binary_deps = "tf_additional_binary_deps",
     _tf_dtensor_tpu_dependencies = "tf_dtensor_tpu_dependencies",
+    _tf_protos_all = "tf_protos_all",
     _tf_tpu_dependencies = "tf_tpu_dependencies",
 )
 

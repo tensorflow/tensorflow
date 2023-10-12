@@ -25,6 +25,10 @@ tf_gen_op_wrapper_py(
         "//tensorflow/python/util:tf_export",
     ],
     py_lib_rule = py_strict_library,
+    visibility = [
+        "//tensorflow/compiler/tf2xla:internal",
+        "//tensorflow/python:__pkg__",
+    ],
     deps = ["//tensorflow/compiler/jit/ops:xla_ops"],
 )
 
@@ -32,5 +36,9 @@ py_strict_library(
     name = "xla_ops_grad",
     srcs = ["xla_ops_grad.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow/compiler/tf2xla:internal",
+        "//tensorflow/python/ops:__pkg__",
+    ],
     deps = ["//tensorflow/python/framework:ops"],
 )

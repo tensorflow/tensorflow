@@ -13,8 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Mid level API for Serving TPU Embeddings."""
+import functools
+from typing import Any, Dict, Iterable, Optional, Union
 
-from typing import Any, Iterable, Optional, Text, Union, Dict
 from absl import logging
 
 from tensorflow.python.distribute import distribute_lib
@@ -32,6 +33,7 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.tpu import tpu_embedding_base
 from tensorflow.python.tpu import tpu_embedding_v2_utils
+from tensorflow.python.trackable import base as trackable_base
 from tensorflow.python.types import core
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -88,7 +90,8 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
   def __init__(
       self,
       feature_config: Union[tpu_embedding_v2_utils.FeatureConfig, Iterable],  # pylint:disable=g-bare-generic
-      optimizer: Optional[tpu_embedding_v2_utils._Optimizer]):  # pylint:disable=protected-access
+      optimizer: Optional[tpu_embedding_v2_utils._Optimizer],
+      experimental_sparsecore_restore_info: Optional[Dict[str, Any]] = None):  # pylint:disable=protected-access
     """Creates the TPUEmbeddingForServing mid level API object.
 
     ```python
@@ -108,12 +111,18 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
         may be set to None to avoid the creation of the optimizer slot
         variables, useful for optimizing memory consumption when exporting the
         model for serving where slot variables aren't needed.
+      experimental_sparsecore_restore_info: Information from the sparse core
+        training, required to restore from checkpoint for serving (like number
+        of TPU devices used `num_tpu_devices`.)
 
     Raises:
       RuntimeError: If created under TPUStrategy.
     """
     super(TPUEmbeddingForServing, self).__init__(feature_config, optimizer)
     self._strategy = distribute_lib.get_strategy()
+    self._experimental_sparsecore_restore_info = (
+        experimental_sparsecore_restore_info
+    )
     if isinstance(self._strategy,
                   (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2)):
       raise RuntimeError("Serving on TPU is not yet supported.")
@@ -139,8 +148,123 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
       with ops.init_scope():
         self.build()
 
+  def _unshuffle_from_sc_to_cpu(self, t: tensor.Tensor) -> tensor.Tensor:
+    if self._experimental_sparsecore_restore_info is None:
+      return t
+    if "num_tpu_devices" not in self._experimental_sparsecore_restore_info:
+      raise ValueError(
+          "Missing `num_tpu_devices` in `experimental_sparsecore_restore_info`"
+      )
+    if "num_sc_chips_per_tpu" not in self._experimental_sparsecore_restore_info:
+      raise ValueError(
+          "Missing `num_sc_chips_per_tpu` in"
+          " `experimental_sparsecore_restore_info`"
+      )
+    num_sc_devices = (
+        self._experimental_sparsecore_restore_info["num_tpu_devices"]
+        * self._experimental_sparsecore_restore_info["num_sc_chips_per_tpu"]
+    )
+    old_shape = t.shape
+    # The width of the table must be a multiple of number of SC devices. The
+    # tpu strategy does this round off at training time so we expect the
+    # checkpoints value to meet this requirement.
+    assert t.shape[0] % num_sc_devices == 0
+    intermediate_tensor = array_ops.reshape(
+        t, (num_sc_devices, t.shape[0] // num_sc_devices, t.shape[1])
+    )
+    intermediate_tensor = array_ops.transpose(intermediate_tensor, (1, 0, 2))
+    return array_ops.reshape(intermediate_tensor, old_shape)
+
+  def _remove_padding_from_sc(
+      self, value_in_checkpoint: tensor.Tensor, variable_shape: tuple[int, int]
+  ) -> tensor.Tensor:
+    checkpoint_value_shape = value_in_checkpoint.shape.as_list()
+    # If the checkpoint shape is at least the size of the variable, we conclude
+    # that the extra rows and cols must be padding.
+    is_init_value_padded = all(
+        [i >= j for i, j in zip(checkpoint_value_shape, variable_shape)]
+    )
+    if not is_init_value_padded:
+      return value_in_checkpoint
+    # checkpoint has padding so we can remove it.
+    begin = [0] * len(checkpoint_value_shape)
+    return array_ops.slice(
+        value_in_checkpoint, begin=begin, size=variable_shape
+    )
+
+  def _create_variables(
+      self, table: tpu_embedding_v2_utils.TableConfig, trainable: bool
+  ) -> Dict[str, tf_variables.Variable]:
+    """Create all variables including table variables and slot variables."""
+    variable_shape = (table.vocabulary_size, table.dim)
+
+    def getter(name, shape, dtype, initializer, trainable):
+      # _add_variable_with_custom_getter clears the shape sometimes, so we
+      # take the global shape from outside the getter.
+      del shape
+      if isinstance(initializer, trackable_base.CheckpointInitialValueCallable):
+        checkpoint_init_value = initializer(variable_shape).wrapped_value
+        restore_uid = initializer.restore_uid
+        unshuffled = self._unshuffle_from_sc_to_cpu(checkpoint_init_value)
+        truncated = self._remove_padding_from_sc(unshuffled, variable_shape)
+        var = tf_variables.Variable(
+            name=name,
+            initial_value=truncated,
+            shape=variable_shape,
+            dtype=dtype,
+            trainable=trainable,
+        )
+        # Maybe initialize the variable
+        var._maybe_initialize_trackable()  # pylint:disable=protected-access
+        # Update the uid for this variable from the checkpoint init value.
+        # This lets the checkpoint deferred restoration code know that this
+        # variable was restored while creation, so no need to restore it from
+        # the checkpoint later.
+        if restore_uid is not None:
+          var._update_uid = initializer.restore_uid  # pylint:disable=protected-access
+        return var
+
+      initial_value = functools.partial(
+          initializer, variable_shape, dtype=dtype
+      )
+      return tf_variables.Variable(
+          name=name,
+          initial_value=initial_value,
+          shape=variable_shape,
+          dtype=dtype,
+          trainable=trainable,
+      )
+
+    def variable_creator(name, initializer, shape, trainable=True):
+      # Use add_variable_with_custom_getter here so that we take advantage of
+      # the checkpoint loading to allow restore before the variables get
+      # created which avoids double initialization.
+      return self._add_variable_with_custom_getter(
+          name=name,
+          initializer=initializer,
+          shape=shape,
+          dtype=dtypes.float32,
+          getter=getter,
+          trainable=trainable,
+      )
+
+    parameters = variable_creator(
+        table.name, table.initializer, variable_shape, trainable=trainable
+    )
+
+    def slot_creator(name, initializer):
+      return variable_creator(table.name + "/" + name, initializer, False)
+
+    if table.optimizer is not None:
+      slot_vars = table.optimizer._create_slots(parameters, slot_creator)  # pylint: disable=protected-access
+    else:
+      slot_vars = {}
+    slot_vars["parameters"] = parameters
+    return slot_vars
+
   def _create_variables_and_slots(
-      self) -> Dict[Text, Dict[Text, tf_variables.Variable]]:
+      self,
+  ) -> Dict[str, Dict[str, tf_variables.Variable]]:
     """Create variables for TPU embeddings.
 
     Returns:
@@ -176,10 +300,12 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
                                 self._feature_config)
 
 
-def _ragged_embedding_lookup_with_reduce(table: tf_variables.Variable,
-                                         ragged: ragged_tensor.RaggedTensor,
-                                         weights: ragged_tensor.RaggedTensor,
-                                         combiner: Text) -> core.Tensor:
+def _ragged_embedding_lookup_with_reduce(
+    table: tf_variables.Variable,
+    ragged: ragged_tensor.RaggedTensor,
+    weights: ragged_tensor.RaggedTensor,
+    combiner: str,
+) -> core.Tensor:
   """Compute a ragged lookup followed by a reduce on axis 1.
 
   Args:

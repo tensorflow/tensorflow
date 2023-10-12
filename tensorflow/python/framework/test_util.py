@@ -30,6 +30,7 @@ import re
 import tempfile
 import threading
 import time
+from typing import Union
 import unittest
 
 from absl.testing import parameterized
@@ -44,7 +45,8 @@ from tensorflow.python import pywrap_sanitizers
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import pywrap_tf_session
-from tensorflow.python.client import session
+from tensorflow.python.client import session as s
+from tensorflow.python.compat import v2_compat
 from tensorflow.python.compat.compat import forward_compatibility_horizon
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -69,6 +71,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
+from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_sync_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -1104,6 +1107,25 @@ def run_all_in_graph_and_eager_modes(cls):
   return cls
 
 
+def run_class_in_v1_v2(cls):
+  """Execute all test methods in a given class in v1 and v2 modes."""
+  base_decorator = run_in_v1_v2
+  for name in dir(cls):
+    if (not name.startswith(unittest.TestLoader.testMethodPrefix) or
+        name.startswith("testSkipEager") or
+        name.startswith("test_skip_eager") or
+        name == "test_session" or
+        name == "test_scope"):
+      continue
+
+    attr = getattr(cls, name, None)
+    if not callable(attr):
+      continue
+
+    setattr(cls, name, base_decorator(attr))
+  return cls
+
+
 def enable_nested_function_shape_inference(fn):
   """Decorator for enabling nested_function_shape_inference on a test.
 
@@ -1551,6 +1573,83 @@ def run_in_graph_and_eager_modes(func=None,
   return decorator
 
 
+def run_in_v1_v2(func=None,
+                 device_to_use: str = None,
+                 assert_no_eager_garbage: bool = False):
+  """Execute the decorated test in v1 and v2 modes.
+
+  The overall execution is similar to that of `run_in_graph_and_eager_mode`.
+
+  Args:
+    func: A test function/method to be decorated. If `func` is None, this method
+      returns a decorator the can be applied to a function. Otherwise, an
+      already applied decorator is returned.
+    device_to_use: A string in the following format: "/device:CPU:0".
+    assert_no_eager_garbage: If True, sets DEBUG_SAVEALL on the garbage
+      collector and asserts that no extra garbage has been created when running
+      the test with eager execution enabled. This will fail if there are
+      reference cycles (e.g. a = []; a.append(a)). Off by default because some
+      tests may create garbage for legitimate reasons (e.g. they define a class
+      which inherits from `object`), and because DEBUG_SAVEALL is sticky in some
+      Python interpreters (meaning that tests which rely on objects being
+      collected elsewhere in the unit test file will not work). Additionally,
+      checks that nothing still has a reference to Tensors that the test
+      allocated.
+
+  Returns:
+    A decorator that runs a given test in v1 and v2 modes.
+  """
+
+  decorator_tag = "wrapped_with_v1_v2_decorator"
+  if hasattr(func, decorator_tag):
+    # Already decorated with this very same decorator
+    return func
+
+  def decorator(f):
+
+    def decorated(self, *args, **kwargs):
+      logging.info("Running %s in V1 mode.", f.__name__)
+      try:
+        with self.subTest("V1_mode"):
+          v2_compat.disable_v2_behavior()
+          f(self, *args, **kwargs)
+      except unittest.case.SkipTest:
+        pass
+
+      def run_v2(self, **kwargs):
+        logging.info("Running %s in V2 mode.", f.__name__)
+        if device_to_use:
+          with ops.device(device_to_use):
+            f(self, *args, **kwargs)
+        else:
+          f(self, *args, **kwargs)
+
+      if assert_no_eager_garbage:
+        ops.reset_default_graph()
+        run_v2 = assert_no_new_tensors(
+            assert_no_garbage_created(run_v2))
+
+      # This decorator runs the wrapped test twice.
+      # Reset the test environment between runs.
+      self.tearDown()
+      self._tempdir = None  # pylint:disable=protected-access
+
+      ops.reset_default_graph()
+      v2_compat.enable_v2_behavior()
+      with self.subTest("V2_mode"):
+        self.setUp()
+        run_v2(self, **kwargs)
+
+    tf_decorated = tf_decorator.make_decorator(f, decorated)
+    tf_decorated.__dict__[decorator_tag] = True
+    return tf_decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
 def py_func_if_in_function(f):
 
   def decorated(*args, **kwds):
@@ -1699,7 +1798,7 @@ def _run_vn_only(func=None, v2=True, reason=None):
     reason: string giving a reason for limiting the test to a particular mode.
 
   Returns:
-    Returns a decorator that will conditionally skip the decorated test method.
+    A decorator that will skip the test method in the specified version.
   """
   if not reason:
     reason = f"Test is only compatible with {'v2 ' if v2 else 'v1'}"
@@ -1730,7 +1829,7 @@ def _run_vn_only(func=None, v2=True, reason=None):
 
         return f(self, *args, **kwargs)
 
-      return decorated
+      return tf_decorator.make_decorator(f, decorated)
 
   if func is not None:
     return decorator(func)
@@ -2055,7 +2154,7 @@ class FakeEagerSession:
     return self._test_case.evaluate(fetches)
 
 
-class ErrorLoggingSession(session.Session):
+class ErrorLoggingSession(s.Session):
   """Wrapper around a Session that logs errors in run()."""
 
   def run(self, *args, **kwargs):
@@ -2505,7 +2604,7 @@ class TensorFlowTestCase(googletest.TestCase):
     return self._tempdir
 
   @contextlib.contextmanager
-  def captureWritesToStream(self, stream):
+  def captureWritesToStream(self, stream) -> Iterator[CapturedWrites]:
     """A context manager that captures the writes to a given stream.
 
     This context manager captures all writes to a given stream inside of a
@@ -2684,7 +2783,13 @@ class TensorFlowTestCase(googletest.TestCase):
       return None
     return nest.map_structure(self._eval_tensor, tensors)
 
-  def evaluate(self, tensors):
+  def evaluate(
+      self, tensors
+  ) -> Union[
+      ragged_tensor_value.RaggedTensorValue,
+      sparse_tensor.SparseTensorValue,
+      None
+  ]:
     """Evaluates tensors and returns numpy values.
 
     Args:
@@ -2703,7 +2808,6 @@ class TensorFlowTestCase(googletest.TestCase):
           flattened_results = sess.run(flattened_tensors)
       else:
         flattened_results = sess.run(flattened_tensors)
-
       return nest.pack_sequence_as(tensors, flattened_results)
 
   # pylint: disable=g-doc-return-or-yield
@@ -2711,7 +2815,7 @@ class TensorFlowTestCase(googletest.TestCase):
   @contextlib.contextmanager
   def session(
       self, graph=None, config=None, use_gpu=True, force_gpu=False
-  ) -> Iterator[session.Session]:
+  ) -> Iterator[s.Session]:
     """A context manager for a TensorFlow Session for use in executing tests.
 
     Note that this will set this session and the graph as global defaults.
@@ -2759,7 +2863,7 @@ class TensorFlowTestCase(googletest.TestCase):
                      graph=None,
                      config=None,
                      use_gpu=True,
-                     force_gpu=False):
+                     force_gpu=False) -> Iterator[s.Session]:
     """Returns a TensorFlow Session for use in executing tests.
 
     This method behaves differently than self.session(): for performance reasons
@@ -3973,7 +4077,7 @@ class AbstractGradientTape:
     self._use_tape = use_tape
     self._persistent = persistent
 
-  def __enter__(self):
+  def __enter__(self) -> backprop.GradientTape:
     if self._use_tape:
       self._tape_impl = backprop.GradientTape(persistent=self._persistent)
     else:

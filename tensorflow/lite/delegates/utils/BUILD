@@ -75,7 +75,6 @@ cc_test(
     data = [":c_api_test_builtin_op_models"],
     deps = [
         ":simple_opaque_delegate",
-        "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:c_api_types",

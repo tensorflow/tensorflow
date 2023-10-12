@@ -29,7 +29,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/strided_slice_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
@@ -456,6 +456,8 @@ class StridedSliceAssignOp : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_STRIDED_SLICE);
 TF_CALL_QUANTIZED_TYPES(REGISTER_STRIDED_SLICE);
+TF_CALL_float8_e5m2(REGISTER_STRIDED_SLICE);
+TF_CALL_float8_e4m3fn(REGISTER_STRIDED_SLICE);
 
 #undef REGISTER_STRIDED_SLICE
 

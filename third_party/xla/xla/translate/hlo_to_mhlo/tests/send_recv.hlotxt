@@ -1,0 +1,55 @@
+// RUN: xla-translate -hlo-text-to-mlir-hlo -hlo-import-all-computations %s -o - | FileCheck %s
+
+HloModule foo
+
+// CHECK:      func private @[[RECV_FUNC:[^(]*]]
+// CHECK:        mhlo.recv
+// CHECK-SAME:     channel_handle = #mhlo.channel_handle<handle = 5, type = 3>
+// CHECK-NOT:      mhlo.sharding
+
+// CHECK:      func private @[[SEND_FUNC:[^(]*]]
+// CHECK:        mhlo.send
+// CHECK-SAME:     channel_handle = #mhlo.channel_handle<handle = 3, type = 2>
+
+// CHECK:      func @main
+// CHECK:        mhlo.async_start
+// CHECK-SAME:     called_computation = @[[SEND_FUNC]]
+// CHECK-SAME:     mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "_foo_dtoh_0"}
+// CHECK-SAME:     mhlo.sharding = "{
+// CHECK-SAME:       {maximal device=0}, {maximal device=0}, {maximal device=0}
+// CHECK-SAME:     }"
+// CHECK-SAME:     (tensor<i32>, !mhlo.token) -> !mhlo.async_bundle<tuple<tensor<i32>, !mhlo.token>, !mhlo.token, tensor<ui32>>
+// CHECK:        mhlo.async_done
+// CHECK-SAME:     called_computation = @[[SEND_FUNC]]
+// CHECK-SAME:     mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "_foo_dtoh_0"}
+// CHECK-SAME:     mhlo.sharding = "{maximal device=0}"
+// CHECK-SAME:     (!mhlo.async_bundle<tuple<tensor<i32>, !mhlo.token>, !mhlo.token, tensor<ui32>>) -> !mhlo.token
+// CHECK:        mhlo.async_start
+// CHECK-SAME:     called_computation = @[[RECV_FUNC]]
+// CHECK-SAME:     mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "_foo_htod_0"}
+// CHECK-SAME:     mhlo.sharding = "{
+// CHECK-SAME:       {maximal device=0}, {maximal device=0}, {maximal device=0}
+// CHECK-SAME:     }"
+// CHECK-SAME:     (!mhlo.token) -> !mhlo.async_bundle<!mhlo.token, tuple<tensor<i32>, !mhlo.token>, tensor<ui32>>
+// CHECK:        mhlo.async_done
+// CHECK-SAME:     called_computation = @[[RECV_FUNC]]
+// CHECK-SAME:     mhlo.frontend_attributes = {_xla_host_transfer_handler_name = "tf_rendezvous", _xla_host_transfer_rendezvous = "_foo_htod_0"}
+// CHECK-SAME:     mhlo.sharding = "{
+// CHECK-SAME:       {maximal device=0}, {maximal device=0}
+// CHECK-SAME:     }"
+// CHECK-SAME:     (!mhlo.async_bundle<!mhlo.token, tuple<tensor<i32>, !mhlo.token>, tensor<ui32>>) -> (tensor<i32>, !mhlo.token)
+
+ENTRY %foo (arg_0: s32[], arg_1: token[]) -> (s32[], token[]) {
+  %arg_0 = s32[] parameter(0)
+  %arg_1 = token[] parameter(1)
+
+  %send.0 = (s32[], u32[], token[]) send(s32[] %arg_0, token[] %arg_1), channel_id=3, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="_foo_dtoh_0"}
+  %send-done.1 = token[] send-done((s32[], u32[], token[]) %send.0), channel_id=3, is_host_transfer=true, sharding={maximal device=0}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="_foo_dtoh_0"}
+
+  %recv.2 = (s32[], u32[], token[]) recv(token[] %send-done.1), channel_id=5, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="_foo_htod_0"}
+  %recv-done.3 = (s32[], token[]) recv-done((s32[], u32[], token[]) %recv.2), channel_id=5, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}}, frontend_attributes={_xla_host_transfer_handler_name="tf_rendezvous", _xla_host_transfer_rendezvous="_foo_htod_0"}
+
+  %get-tuple-element.4 = s32[] get-tuple-element((s32[], token[]) %recv-done.3), index=0, sharding={maximal device=0}
+  %get-tuple-element.5 = token[] get-tuple-element((s32[], token[]) %recv-done.3), index=1, sharding={maximal device=0}
+  ROOT %tuple.6 = (s32[], token[]) tuple(s32[] %get-tuple-element.4, token[] %get-tuple-element.5)
+}

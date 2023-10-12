@@ -19,6 +19,7 @@ cc_library(
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/transforms:utils",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FunctionInterfaces",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",

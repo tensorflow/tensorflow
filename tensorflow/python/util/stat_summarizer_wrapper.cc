@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/util/stat_summarizer.h"
-#include "tensorflow/tsl/util/stat_summarizer_options.h"
-#include "tensorflow/tsl/util/stats_calculator.h"
+#include "tsl/util/stat_summarizer_options.h"
+#include "tsl/util/stats_calculator.h"
 
 namespace py = pybind11;
 

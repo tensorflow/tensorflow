@@ -228,7 +228,8 @@ class ResourceOpSet {
   // to this set expect the contents of this set to be stable.
   mutable bool frozen_ = false;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ResourceOpSet);
+  ResourceOpSet(const ResourceOpSet&) = delete;
+  void operator=(const ResourceOpSet&) = delete;
 };
 
 string ResourceOpSetToString(const ResourceOpSet& resource_op_set) {

@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/framework/allocator_retry.h"
+#include "tsl/framework/allocator_retry.h"
 
 namespace tensorflow {
 using tsl::AllocatorRetry;  // NOLINT

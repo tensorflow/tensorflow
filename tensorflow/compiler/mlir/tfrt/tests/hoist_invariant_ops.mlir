@@ -200,8 +200,8 @@ func.func @main(%arg0: tensor<1x3xf32> {tf_saved_model.index_path = ["input"]}) 
   // CHECK:  "tf._TfrtGetResource"() 
   %0 = "tf.VarHandleOp"() {device = "/device:CPU:0", container = "", shared_name = "variable"} : () -> tensor<!tf_type.resource<tensor<1x3xf32>>>
   // CHECK: "tf.BatchFunction"(%arg0, %0)
-  // CHECK: operand_segment_sizes = array<i32: 1, 1>
-  %1 = "tf.BatchFunction"(%arg0, %0) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operand_segment_sizes = array<i32: 1, 1>, shared_name = "batch/"} : (tensor<1x3xf32>, tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
+  // CHECK: operandSegmentSizes = array<i32: 1, 1>
+  %1 = "tf.BatchFunction"(%arg0, %0) {allowed_batch_sizes = [6], batch_timeout_micros = 100000 : i64, batching_queue = "", container = "", device = "/device:CPU:0", enable_large_batch_splitting = false, f = @batched_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operandSegmentSizes = array<i32: 1, 1>, shared_name = "batch/"} : (tensor<1x3xf32>, tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
   func.return %1 : tensor<*xf32>
 }
 
@@ -261,7 +261,7 @@ func.func private @xla_func(%arg0: tensor<1x3xf32>) -> tensor<1x3xf32>
 func.func @main(%arg0: tensor<1x3xf32> {tf_saved_model.index_path = ["input"]}) -> (tensor<*xf32> {tf_saved_model.index_path = ["r"]}) 
   attributes {tf_saved_model.exported_names = ["main"]} {
   %0 = "tf.VarHandleOp"() {device = "/device:CPU:0", container = "", shared_name = "variable"} : () -> tensor<!tf_type.resource<tensor<1x3xf32>>>
-  %1 = "tf.XlaLaunch"(%arg0, %0) {device = "/device:GPU:0", function = @xla_func, operand_segment_sizes = array<i32: 0, 2, 0>} : (tensor<1x3xf32>, tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
+  %1 = "tf.XlaLaunch"(%arg0, %0) {device = "/device:GPU:0", function = @xla_func, operandSegmentSizes = array<i32: 0, 2, 0>} : (tensor<1x3xf32>, tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
   func.return  %1 : tensor<*xf32>
 
 }

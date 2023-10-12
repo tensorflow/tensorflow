@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #ifdef INTEL_MKL
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -651,7 +651,8 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
     std::vector<std::unordered_map<int, memory>> net_args;
 
     BatchNormBwdContext()
-        : src_mem(nullptr),
+        : flags(0),
+          src_mem(nullptr),
           mean_mem(nullptr),
           variance_mem(nullptr),
           diff_dst_mem(nullptr),

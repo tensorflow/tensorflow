@@ -37,6 +37,8 @@ limitations under the License.
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
+#include "tensorflow/core/tfrt/saved_model/saved_model_util.h"
+#include "tsl/platform/protobuf.h"
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
@@ -48,38 +50,6 @@ class HostContext;
 
 namespace tensorflow {
 namespace tfrt_stub {
-
-// TODO(tfrt-dev): Replace tfrt::TensorSpec with tensorflow::TensorSpec once the
-// latter is checked in.
-struct TensorSpec {
-  tensorflow::DataType dtype;
-  tensorflow::PartialTensorShape shape;
-
-  explicit TensorSpec(tensorflow::DataType dtype) : dtype(dtype) {}
-  TensorSpec(tensorflow::DataType dtype, tensorflow::PartialTensorShape shape)
-      : dtype(dtype), shape(std::move(shape)) {}
-};
-
-inline bool operator==(const TensorSpec& a, const TensorSpec& b) {
-  return a.dtype == b.dtype && a.shape.IsIdenticalTo(b.shape);
-}
-
-namespace internal {
-
-struct Signature {
-  // The following three fields should have the same size.
-  std::vector<std::string> input_names;
-  std::vector<TensorSpec> input_specs;
-  std::vector<std::string> input_devices;
-
-  // The following two fields should have the same size.
-  std::vector<std::string> output_names;
-  std::vector<TensorSpec> output_specs;
-
-  proto2::Map<std::string, TensorProto> default_inputs;
-};
-
-}  // namespace internal
 
 class FunctionMetadata {
  public:
@@ -104,7 +74,7 @@ class FunctionMetadata {
     return signature_->output_specs;
   }
 
-  const proto2::Map<std::string, TensorProto>& GetDefaultInputs() const {
+  const protobuf::Map<std::string, TensorProto>& GetDefaultInputs() const {
     return signature_->default_inputs;
   }
 
@@ -146,7 +116,10 @@ class SavedModel {
   explicit SavedModel(const Runtime* runtime) : options_(runtime) {
     DCHECK(runtime);
   }
-  explicit SavedModel(Options&& options) : options_(std::move(options)) {}
+  explicit SavedModel(Options options,
+                      std::unique_ptr<GraphExecutor> graph_executor)
+      : options_(std::move(options)),
+        graph_executor_(std::move(graph_executor)) {}
   virtual ~SavedModel();
 
   const SessionMetadata& model_metadata() const {
@@ -158,6 +131,8 @@ class SavedModel {
     return *options_.graph_execution_options.runtime;
   }
   tfrt::HostContext* GetHostContext() const;
+
+  GraphExecutor& graph_executor() const { return *graph_executor_; }
 
   // Returns meta graph def. Note that the graph_def field in the MetaGraphDef
   // has already been removed.
@@ -207,36 +182,11 @@ class SavedModel {
 
  protected:
   const Options options_;
+  std::unique_ptr<GraphExecutor> graph_executor_;
 };
-
-// TODO(cesarmagana) Create new library saved_model_utils and move (refactor)
-// functions to the anonymous space of the util file. Making only one API public
-// for use in both LoadSavedModel and AotCompileSavedModel.
-StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
-    mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
-    const FallbackState& fallback_state, std::string saved_model_dir,
-    bool import_user_signatures, bool run_placer_grappler_on_functions);
-
-StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
-    absl::string_view saved_model_dir,
-    const std::unordered_set<std::string>& tags);
 
 using SignatureMap = absl::flat_hash_map<std::string, internal::Signature>;
 using ::tensorflow::StatusOr;
-
-struct Initializer {
-  std::string name;
-};
-
-struct InitializersAndSignatures {
-  // Initializers are kept in a certain order as they need to be executed in
-  // that order.
-  std::vector<Initializer> initializers;
-  SignatureMap signature_map;
-};
-
-StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
-    mlir::ModuleOp module);
 
 class SavedModelImpl final : public SavedModel {
  public:
@@ -315,6 +265,13 @@ class SavedModelImpl final : public SavedModel {
 
     std::unique_ptr<OpKernelRunnerTable> runner_table;
     std::unique_ptr<tfd::FallbackResourceArray> resource_array;
+
+    // There are some resources that need re-creating when the executable is
+    // re-created, so a resource context is stored along with the executable.
+    // This resource context is meant to be passed to the op kernels for their
+    // references. See the comment above `GraphExecutor::resource_context_`
+    // about the todo to merge that resource context with this one.
+    std::unique_ptr<tfrt::ResourceContext> resource_context;
   };
 
   // Imports a subgraph as an MLIR module with the specified `input_nodes`,
@@ -363,7 +320,6 @@ class SavedModelImpl final : public SavedModel {
   absl::flat_hash_map<std::string /*joined_name*/,
                       std::unique_ptr<LoadingResult>>
       loading_result_cache_ TF_GUARDED_BY(loading_result_cache_mu_);
-  std::unique_ptr<GraphExecutor> graph_executor_;
 };
 
 class SavedModelMiraImpl;

@@ -1,4 +1,4 @@
-/* Copyright 2023 The StableHLO Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,12 +34,15 @@ limitations under the License.
 //===----------------------------------------------------------------------===//
 // The prepare-srq-quantize Pass.
 //===----------------------------------------------------------------------===//
-namespace mlir {
-namespace stablehlo {
 
-namespace {
+namespace mlir::quant::stablehlo {
+
+// Put the definitions inside the ::mlir::quant::stablehlo namespace, to match
+// the declarations in passes.h.
 #define GEN_PASS_DEF_PREPARESRQQUANTIZEPASS
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
+
+namespace {
 
 using QuantizationUnits = llvm::SetVector<std::pair<Operation*, int>>;
 using ::stablehlo::quantization::QuantizationOptions;
@@ -101,9 +104,6 @@ void PrepareSrqQuantizePass::runOnOperation() {
     signalPassFailure();
   }
 }
-
-static PassRegistration<PrepareSrqQuantizePass> pass;
-
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareSrqQuantizePass(
@@ -114,5 +114,4 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareSrqQuantizePass(
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareSrqQuantizePass() {
   return std::make_unique<PrepareSrqQuantizePass>();
 }
-}  // namespace stablehlo
-}  // namespace mlir
+}  // namespace mlir::quant::stablehlo

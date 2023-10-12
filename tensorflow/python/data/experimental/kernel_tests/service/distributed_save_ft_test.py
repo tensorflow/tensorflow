@@ -349,25 +349,30 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     self.assertTrue(self._snapshot_is_done())
     # TODO(b/250921378): Verify the number of elements.
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testRepeatedDatasetRecoversAndCompletes(self):
-    cluster = data_service_test_base.TestCluster(num_workers=3)
-    ds = dataset_ops.Dataset.range(100)
-    ds = ds.repeat(10)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_workers=[1, 3], num_repetitions=[1, 10])))
+  def testRepeatedDatasetRecoversAndCompletes(
+      self, num_workers, num_repetitions):
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
+    ds = dataset_ops.Dataset.range(1000)
+    ds = ds.repeat(num_repetitions)
     self.evaluate(distributed_save_op.distributed_save(
         ds, self._path, cluster.dispatcher_address()))
 
     # Blocks until all workers have streams.
-    get_stream_assignments(cluster, 3, [self._path])
+    get_stream_assignments(cluster, num_workers, [self._path])
     cluster.stop_worker(0)
     cluster.restart_dispatcher()
-    cluster.restart_worker(0)
+    for worker_idx in range(num_workers):
+      cluster.restart_worker(worker_idx)
     self._wait_for_snapshot()
     self.assertTrue(self._snapshot_is_done())
 
     dataset = dataset_ops.Dataset.load(self._path)
     self.assertDatasetProduces(
-        dataset, list(range(100)) * 10, assert_items_equal=True)
+        dataset, list(range(1000)) * num_repetitions, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testNonrepeatedDatasetDoesntProduceSecondRepetitionDir(self):

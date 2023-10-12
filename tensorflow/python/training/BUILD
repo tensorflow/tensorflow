@@ -483,6 +483,7 @@ py_strict_library(
     srcs = ["session_manager.py"],
     srcs_version = "PY3",
     deps = [
+        ":saver",
         "//tensorflow/python/checkpoint:checkpoint_lib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/distribute:distribute_lib",
@@ -974,7 +975,7 @@ py_strict_library(
         ":summary_io",
         ":training_util",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client",
+        "//tensorflow/python/client:timeline",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
@@ -1425,12 +1426,12 @@ cuda_py_strict_test(
     python_version = "PY3",
     deps = [
         ":slot_creator",
-        "//tensorflow/compiler/xla:xla_data_proto_py",
         "//tensorflow/python/compiler/xla/experimental:xla_sharding",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:variable_v1",
+        "@local_xla//xla:xla_data_proto_py",
     ] + TRAINING_TEST_DEPS,
 )
 

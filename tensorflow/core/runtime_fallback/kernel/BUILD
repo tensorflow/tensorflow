@@ -54,6 +54,7 @@ tf_cc_shared_test(
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
+            "//tensorflow/c:c_api",
             "//tensorflow/core:test",
             "//tensorflow/core:test_main",
             "//tensorflow/core/framework:types_proto_cc",
@@ -120,6 +121,7 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":attr_util",
+        "//tensorflow/c:tf_tensor",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
@@ -392,14 +394,12 @@ cc_library(
         # JIT compilation kernels need access to fallback state to set up
         # Eigen thread pool as async runtime worker threads.
         "//tensorflow/compiler/mlir/tfrt:__pkg__",
-        # TPU runtime needs to access fallback state to configure MLIR bridge
-        # rollout state
-        "//third_party/tf_runtime_google:__pkg__",
         # Sync fallback kernels need access to the fallback state.
         "//learning/brain/experimental/tfrt/native_lowering/kernels:__subpackages__",
         "//tensorflow/core/tfrt/graph_executor:__subpackages__",
         "//tensorflow/core/tfrt/saved_model:__subpackages__",
         "//tensorflow/core/tfrt/mlrt/kernel:__subpackages__",
+        "//tensorflow/core/tfrt/gpu/kernel:__subpackages__",
     ],
     deps = [
         "//tensorflow/core/tfrt/fallback:cost_recorder",
@@ -438,26 +438,4 @@ cc_library(
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "@com_google_absl//absl/container:inlined_vector",
     ],
-)
-
-cc_library(
-    name = "gpurt_kernels",
-    srcs = ["gpurt_kernels.cc"],
-    visibility = [
-        "//tensorflow/core/runtime_fallback:internal",
-        "//tensorflow/core/tfrt/saved_model:__pkg__",
-    ],
-    deps = [
-        ":kernel_fallback_compat_request_state",
-        ":kernel_fallback_utils",
-        ":tensor_util",
-        "//tensorflow/core/tfrt/utils:fallback_tensor",
-        "//tensorflow/core/tfrt/utils:gpu_variables_table",
-        "//tensorflow/core/tfrt/utils:tensor_util",
-        "@tf_runtime//:core_runtime",
-        "@tf_runtime//:hostcontext",
-        "@tf_runtime//:support",
-        "@tf_runtime//:tensor_alwayslink",
-    ],
-    alwayslink = True,
 )
