@@ -61,6 +61,10 @@ absl::StatusOr<std::vector<std::string>> GetChildren(
 // normal data processing.
 bool IsTemporaryFile(absl::string_view filename);
 
+// If `filename` is a temporary file, returns the actual file name. Otherwise,
+// returns an internal error.
+absl::StatusOr<std::string> ParseTemporaryFile(absl::string_view filename);
+
 }  // namespace data
 }  // namespace tensorflow
 

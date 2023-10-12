@@ -16,6 +16,7 @@
 import collections
 import os
 import pathlib
+import shutil
 import tempfile
 import time
 
@@ -160,6 +161,32 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
       self.evaluate(distributed_save_op.distributed_save(
           ds, self._path, cluster.dispatcher_address()
       ))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testRecoversTempSplits(self):
+    cluster, _ = self.setup(ds_size=1000, num_sources=3)
+    # Waits for the split files to be written.
+    source_dir = os.path.join(
+        self._path, "streams", "stream_0", "splits", "source_0", "repetition_0"
+    )
+    while not (
+        os.path.exists(source_dir)
+        and any(not f.endswith(".tmp") for f in os.listdir(source_dir))
+    ):
+      time.sleep(0.1)
+    split_files = [f for f in os.listdir(source_dir) if not f.endswith(".tmp")]
+    split_file = split_files[0]
+    temp_split_file = f"{split_files[0]}__TMP_FILE__uuid.tmp"
+    shutil.move(
+        os.path.join(source_dir, split_file),
+        os.path.join(source_dir, temp_split_file),
+    )
+
+    self.assertNotIn(split_file, os.listdir(source_dir))
+    self.assertIn(temp_split_file, os.listdir(source_dir))
+    cluster.restart_dispatcher()
+    self.assertIn(split_file, os.listdir(source_dir))
+    self.assertNotIn(temp_split_file, os.listdir(source_dir))
 
   # TODO(b/250921378): Figure out why tsan times out when there is a worker.
   @combinations.generate(

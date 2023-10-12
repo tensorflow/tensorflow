@@ -136,6 +136,17 @@ TEST(FileUtilsTest, IsTemporaryFile) {
   EXPECT_FALSE(IsTemporaryFile(""));
 }
 
+TEST(FileUtilsTest, ParseTemporaryFile) {
+  EXPECT_THAT(ParseTemporaryFile("file____TMP_FILE__unique___string___.tmp"),
+              IsOkAndHolds("file__"));
+}
+
+TEST(FileUtilsTest, ParseTemporaryFileError) {
+  EXPECT_THAT(ParseTemporaryFile("file_invalid_filename.tmp"),
+              StatusIs(tsl::error::INTERNAL));
+  EXPECT_THAT(ParseTemporaryFile(""), StatusIs(tsl::error::INTERNAL));
+}
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow
