@@ -363,16 +363,6 @@ std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
                                             const xla::CallGraph& call_graph,
                                             int64_t num_devices);
 
-// Return whether the reshape is a special reshape that switches the batch dim
-// of a dot.
-bool IsBatchDimSwitchReshape(const HloInstruction* inst);
-
-// Return whether the instruction is followed by a broadcast.
-bool IsFollowedByBroadcast(const HloInstruction* inst);
-
-// Return whether the instruction is followed by a reduce.
-bool IsFollowedByReduce(const HloInstruction* inst);
-
 // Return whether the instruction is an activation from another pipeline stage.
 bool IsActivationFromAnotherStage(const HloInstruction* inst,
                                   const InstructionBatchDimMap& batch_dim_map);

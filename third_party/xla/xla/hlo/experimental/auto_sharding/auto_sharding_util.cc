@@ -50,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
+#include "xla/service/call_graph.h"
 #include "xla/service/sharding_propagation.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
@@ -84,86 +85,6 @@ std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
   CHECK_OK(s);
   return ShardingPropagation::GetShardingFromUser(*operand_clone, *ins_clone,
                                                   10, true, call_graph);
-}
-
-// Return whether a reshape instruction is a special reshape that switches
-// the batch dim of a dot.
-bool IsBatchDimSwitchReshape(const HloInstruction* inst) {
-  if (inst->opcode() != HloOpcode::kReshape) {
-    return false;
-  }
-  if (inst->users().size() != 1) {
-    return false;
-  }
-  const HloInstruction* operand = inst->operand(0);
-  const HloInstruction* user = inst->users().front();
-
-  if (operand->opcode() != HloOpcode::kDot) {
-    return false;
-  }
-
-  int batch_dims = operand->dot_dimension_numbers().lhs_batch_dimensions_size();
-  if (batch_dims <= 0) {
-    return false;
-  }
-
-  if (user->opcode() != HloOpcode::kTranspose) {
-    return false;
-  }
-
-  return true;
-}
-
-// Return whether the instruction is followed by a broadcast.
-bool IsFollowedByBroadcast(const HloInstruction* ins) {
-  const int max_depth = 6;
-  for (int i = 0; i < max_depth; ++i) {
-    if (ins->users().empty()) {
-      return false;
-    }
-    ins = PassThroughCustomCallMarkerUser(ins->users().front(), ins);
-    if (ins->opcode() == HloOpcode::kBroadcast) {
-      return true;
-    }
-    if (ins->opcode() == HloOpcode::kReshape) {
-      i--;
-    }
-  }
-
-  return false;
-}
-
-// Return whether the instruction is followed by a reduce.
-bool IsFollowedByReduce(const HloInstruction* ins) {
-  int max_depth = 1;
-  bool found = false;
-
-  std::function<void(const HloInstruction*, int)> dfs;
-
-  dfs = [&](const HloInstruction* cur, int depth) {
-    if (found) {
-      return;
-    }
-
-    if (cur->opcode() == HloOpcode::kReduce) {
-      found = true;
-      return;
-    }
-
-    if (cur->opcode() == HloOpcode::kGetTupleElement) {
-      depth -= 1;
-    }
-
-    if (depth < max_depth) {
-      for (auto user : cur->users()) {
-        dfs(PassThroughCustomCallMarkerUser(user, cur), depth + 1);
-      }
-    }
-  };
-
-  dfs(ins, 0);
-
-  return found;
 }
 
 // Return whether the instruction is an activation from another pipeline stage.

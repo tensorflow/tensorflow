@@ -2146,11 +2146,9 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                   only_allow_divisible, " 1d", call_graph);
         }
 
-        if (strategies->leaf_vector.empty() || IsFollowedByBroadcast(ins)) {
-          // Replicate
-          AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
-                                strategies, replicated_penalty * 5);
-        }
+        // Replicate
+        AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
+                              strategies, replicated_penalty * 5);
 
         break;
       }
