@@ -79,7 +79,8 @@ class FaultToleranceTest(data_service_test_base.TestBase,
     cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 100
     ds = self.make_distributed_range_dataset(
-        num_elements, cluster, processing_mode="distributed_epoch")
+        num_elements, cluster,
+        processing_mode=data_service_ops.ShardingPolicy.DYNAMIC)
     iterator = iter(ds)
     results = []
     for _ in range(num_elements // 2):
@@ -99,7 +100,7 @@ class FaultToleranceTest(data_service_test_base.TestBase,
     ds = dataset_ops.Dataset.range(num_elements)
     ds = ds.repeat(repetitions)
     ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+        ds, cluster, processing_mode=data_service_ops.ShardingPolicy.DYNAMIC)
 
     iterator = iter(ds)
     results = []
@@ -279,7 +280,7 @@ class FaultToleranceTest(data_service_test_base.TestBase,
     range_dataset = dataset_ops.Dataset.range(num_elements)
     ds = range_dataset.apply(
         data_service_ops.distribute(
-            processing_mode="parallel_epochs",
+            processing_mode=data_service_ops.ShardingPolicy.OFF,
             service=cluster.dispatcher_address(),
             job_name="test"))
     iterator = iter(ds)
@@ -288,7 +289,7 @@ class FaultToleranceTest(data_service_test_base.TestBase,
     cluster.restart_dispatcher()
     ds = range_dataset.apply(
         data_service_ops.distribute(
-            processing_mode="distributed_epoch",
+            processing_mode=data_service_ops.ShardingPolicy.DYNAMIC,
             service=cluster.dispatcher_address(),
             job_name="test"))
     with self.assertRaisesOpError(
