@@ -137,7 +137,7 @@ ENTRY e {
 
   ASSERT_THAT(CreateTritonIrAndFileCheck(kHloText, config, EmitMatMul,
                                          "triton_gemm_r", R"(
-CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<i8> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32> {tt.divisibility = 16 : i32}) {
+CHECK:    tt.func @triton_fn(%[[LHS:.*]]: !tt.ptr<i8, 1> {tt.divisibility = 16 : i32}, %[[RHS:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}, %[[OUT:.*]]: !tt.ptr<f32, 1> {tt.divisibility = 16 : i32}) {
 CHECK-DAG:  %[[ZERO_KN:.*]] = arith.constant dense<0.000000e+00> : tensor<32x64xf32>
 CHECK-DAG:  %[[ZERO_MK:.*]] = arith.constant dense<0.000000e+00> : tensor<16x32xf32>
 CHECK-DAG:  %[[ZERO_MN:.*]] = arith.constant dense<0.000000e+00> : tensor<16x64xf32>
@@ -193,11 +193,11 @@ CHECK:        %[[RHS_INBOUNDS_K1:.*]] = arith.cmpi slt, %[[K_OFFSETS_K1]], %[[TI
 CHECK:        %[[RHS_INBOUNDS_KN:.*]] = tt.broadcast %[[RHS_INBOUNDS_K1]] : (tensor<32x1xi1>) -> tensor<32x64xi1>
 CHECK:        %[[RHS_MASKED:.*]] = arith.select %[[RHS_INBOUNDS_KN]], %[[RHS_TILE]], %[[ZERO_KN]] : tensor<32x64xi1>, tensor<32x64xf32>
 CHECK:        %[[ACC_NEXT:.*]] = tt.dot %[[LHS_MASKED]], %[[RHS_MASKED]], %[[ACC]]
-CHECK:        scf.yield %[[LHS_ITER_PTR_NEXT]], %[[RHS_ITER_PTR_NEXT]], %[[ACC_NEXT]] : !tt.ptr<tensor<16x32xi8>>, !tt.ptr<tensor<32x64xf32>>, tensor<16x64xf32>
+CHECK:        scf.yield %[[LHS_ITER_PTR_NEXT]], %[[RHS_ITER_PTR_NEXT]], %[[ACC_NEXT]] : !tt.ptr<tensor<16x32xi8>, 1>, !tt.ptr<tensor<32x64xf32>, 1>, tensor<16x64xf32>
 CHECK:      }
-CHECK:      %[[OUT_PTR:.*]] = tt.make_tensor_ptr %[[OUT]], [%[[C80]], %[[SIZE_M]]], [%[[SIZE_M]], %[[C1]]], [%[[C0]], %[[C0]]] {order = array<i32: 1, 0>} : <tensor<16x64xf32>>
-CHECK:      %[[OUT_OFFSET:.*]] = tt.advance %[[OUT_PTR]], [%[[TILE_OFFSET_M]], %[[TILE_OFFSET_N]]] : <tensor<16x64xf32>>
-CHECK:      tt.store %[[OUT_OFFSET]], %[[FOR]]#2 {boundaryCheck = array<i32: 1>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<16x64xf32>>, tensor<16x64xf32>
+CHECK:      %[[OUT_PTR:.*]] = tt.make_tensor_ptr %[[OUT]], [%[[C80]], %[[SIZE_M]]], [%[[SIZE_M]], %[[C1]]], [%[[C0]], %[[C0]]] {order = array<i32: 1, 0>} : <tensor<16x64xf32>, 1>
+CHECK:      %[[OUT_OFFSET:.*]] = tt.advance %[[OUT_PTR]], [%[[TILE_OFFSET_M]], %[[TILE_OFFSET_N]]] : <tensor<16x64xf32>, 1>
+CHECK:      tt.store %[[OUT_OFFSET]], %[[FOR]]#2 {boundaryCheck = array<i32: 1>, cache = 1 : i32, evict = 1 : i32} : !tt.ptr<tensor<16x64xf32>, 1>, tensor<16x64xf32>
 CHECK:      tt.return
 CHECK:    }
 )"),

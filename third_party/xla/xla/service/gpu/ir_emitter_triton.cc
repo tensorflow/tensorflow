@@ -109,12 +109,14 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
+#include "triton/Conversion/NVGPUToLLVM/NVGPUToLLVMPass.h"
 #include "triton/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
 #include "triton/Dialect/Triton/Transforms/Passes.h"
 #include "triton/Dialect/TritonGPU/Transforms/Passes.h"
+#include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 
 namespace xla {
 namespace gpu {
@@ -351,11 +353,12 @@ Value EmitElementwise(ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
       mlir::getElementTypeOrSelf(inputs[0]).isF64()) {
     auto dev_fn_id = GetTargetDeviceFunctionID(hlo.opcode());
     if (dev_fn_id.ok()) {
-      return b.create<mt::PureExternElementwiseOp>(
+      return b.create<mt::ExternElementwiseOp>(
           inputs[0].getType(), inputs, "libdevice", libdevice_path,
           ObtainDeviceFunctionName(dev_fn_id.value(),
                                    hlo.shape().element_type(),
-                                   llvm::Triple("nvptx64-unknown-unknown")));
+                                   llvm::Triple("nvptx64-unknown-unknown")),
+          /*pure=*/true);
     }
   }
   const bool is_integer =
@@ -669,8 +672,8 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mt::createRewriteTensorPointerPass());
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mt::createCombineOpsPass());
-  pm.addPass(mt::createReorderBroadcastPass());
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mt::createReorderBroadcastPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addPass(mlir::createSymbolDCEPass());
@@ -680,23 +683,29 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   // Based on optimize_ttgir() in
   // @triton//:python/triton/compiler/compiler.py
   pm.addPass(mlir::createTritonGPUCoalescePass());
+  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass());
   pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
   pm.addPass(mlir::createTritonGPUAccelerateMatmulPass(ccAsInt));
   pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
   pm.addPass(mlir::createTritonGPUOptimizeDotOperandsPass());
-  pm.addPass(mlir::createTritonGPUPipelinePass(num_stages));
+  pm.addPass(mlir::createTritonGPUPipelinePass(num_stages, num_warps));
+  pm.addPass(mlir::createTritonNvidiaGPUMaterializeLoadStorePass());
   pm.addPass(mlir::createTritonGPUPrefetchPass());
   pm.addPass(mlir::createTritonGPUOptimizeDotOperandsPass());
   pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
   pm.addPass(mlir::createTritonGPUDecomposeConversionsPass());
+  pm.addPass(mlir::createTritonNvidiaGPUWSFixupMissingAttrs());
   pm.addPass(mlir::createTritonGPUReorderInstructionsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
+  pm.addPass(mlir::createTritonNvidiaGPUWSFixupMissingAttrs());
   // Based on translateTritonGPUToLLVMIR() in
   // @triton//:lib/Target/LLVMIR/LLVMIRTranslation.cpp
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
-  pm.addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt));
+  pm.addPass(
+      mt::createConvertTritonGPUToLLVMPass(ccAsInt, mt::Default, nullptr));
+  pm.addPass(mt::createConvertNVGPUToLLVMPass());
   pm.addPass(mlir::createArithToLLVMConversionPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
