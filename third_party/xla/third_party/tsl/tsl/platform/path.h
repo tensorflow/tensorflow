@@ -107,13 +107,8 @@ std::string CreateURI(tsl::StringPiece scheme, tsl::StringPiece host,
 // Creates a temporary file name with an extension.
 std::string GetTempFilename(const std::string& extension);
 
-// Reads the TEST_UNDECLARED_OUTPUTS_DIR environment variable, and if set
-// assigns `dir` to the value. `dir` is not modified if the environment variable
-// is unset. Returns true if the environment variable is set, otherwise false.
-// Passing `dir` as nullptr, will just probe for the environment variable.
-//
-// Note: This function obviates the need to deal with Bazel's odd path decisions
-// on Windows, and should be preferred over a simple `getenv`.
+// Returns whether the TEST_UNDECLARED_OUTPUTS_DIR environment variable is set.
+// If it's set and dir != nullptr then sets *dir to that.
 bool GetTestUndeclaredOutputsDir(std::string* dir);
 
 }  // namespace io
