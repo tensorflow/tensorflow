@@ -14,7 +14,7 @@
 # ============================================================================
 name: Buildifier
 on:
-  pull_request:
+  pull_request_target:
 
 env:
   # Have `go install` place binaries in $PATH
