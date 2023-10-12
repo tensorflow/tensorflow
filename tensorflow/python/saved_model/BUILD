@@ -974,9 +974,12 @@ tf_py_strict_test(
     name = "keras_injection_test",
     size = "small",
     srcs = ["keras_injection_test.py"],
+    data = ["//tensorflow/cc/saved_model:saved_model_test_files"],
     python_version = "PY3",
+    tags = ["no_oss"],  # Due to the usage of keras component.
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/eager:test",
     ],
 )
 
