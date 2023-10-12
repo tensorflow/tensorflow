@@ -132,11 +132,21 @@ cc_library(
         "transforms/lower_cluster_to_runtime_ops.h",
     ],
     deps = [
+        "//tensorflow/compiler/jit:flags_headers",
+        "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
         "@local_tsl//tsl/platform:status",
     ],
 )
@@ -144,11 +154,27 @@ cc_library(
 tf_cc_test(
     name = "lower_cluster_to_runtime_ops_test",
     srcs = ["transforms/lower_cluster_to_runtime_ops_test.cc"],
+    data = [
+        "transforms/testdata/basic_cluster.mlir",
+        "transforms/testdata/empty_func.mlir",
+        "transforms/testdata/malformed_cluster.mlir",
+    ],
     deps = [
         ":lower_cluster_to_runtime_ops",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:resource_loader",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -507,6 +533,7 @@ cc_library(
     testonly = True,
     srcs = ["tf-tfrt-opt.cc"],
     deps = [
+        ":lower_cluster_to_runtime_ops",
         ":passes",
         ":test_cost_analysis_pass",
         ":test_opkernels",
