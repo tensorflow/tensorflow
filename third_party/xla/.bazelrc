@@ -630,6 +630,7 @@ build:release_arm64_linux --config=linux_arm64
 build:release_arm64_linux --crosstool_top="@ml2014_clang_aarch64_config_aarch64//crosstool:toolchain"
 build:release_arm64_linux --config=mkl_aarch64_threadpool
 build:release_arm64_linux --copt=-flax-vector-conversions
+test:release_arm64_linux --flaky_test_attempts=3
 
 # The old gcc linux build options are preserved in the unsupported_*_linux
 # configs. If your project fails to build with Clang, you can use these
