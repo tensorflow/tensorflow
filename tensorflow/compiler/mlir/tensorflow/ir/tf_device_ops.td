@@ -36,11 +36,10 @@ def TfDevice_Dialect : Dialect {
     These operations do not map 1-1 to TensorFlow ops and requires a lowering
     pass later to transform them into Compile/Run op pairs, like XlaCompile and
     XlaRun.
-
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
 }];
 
   let cppNamespace = "::mlir::tf_device";
+  let usePropertiesForAttributes = 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -48,7 +47,7 @@ def TfDevice_Dialect : Dialect {
 //===----------------------------------------------------------------------===//
 
 // Base class for the operation in this dialect.
-class TfDevice_Op<string mnemonic, list<OpTrait> traits = []> :
+class TfDevice_Op<string mnemonic, list<Trait> traits = []> :
     Op<TfDevice_Dialect, mnemonic, traits> { }
 
 def TfDevice_LaunchOp : TfDevice_Op<"launch",
@@ -73,7 +72,6 @@ This op captures all needed live-in values.
 
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
-    StringRef getDevice() { return device(); }
     bool WrapsSingleOp();
   }];
 
@@ -89,7 +87,7 @@ This op captures all needed live-in values.
   let hasCanonicalizer = 1;
 }
 
-def TfDevice_ReturnOp : TfDevice_Op<"return", [NoSideEffect, ReturnLike, Terminator]> {
+def TfDevice_ReturnOp : TfDevice_Op<"return", [Pure, ReturnLike, Terminator]> {
   let summary = [{
 The `tf_device.return` operation terminates and returns values from a
 `tf_device` dialect operation.
@@ -117,16 +115,11 @@ def TfDevice_LaunchFuncOp : TfDevice_Op<"launch_func", []> {
   let arguments = (ins
     StrAttr:$device,
     FlatSymbolRefAttr:$func,
-    Variadic<AnyType>:$operands);
+    Variadic<AnyType>);
 
   let results = (outs
     Variadic<AnyType>:$results
   );
-
-  let extraClassDeclaration = [{
-    StringRef getFunc() { return func(); }
-    StringRef getDevice() { return device(); }
-  }];
 }
 
 def TfDevice_ParallelExecuteOp : TfDevice_Op<"parallel_execute",
@@ -174,7 +167,7 @@ def TfDevice_ParallelExecuteOp : TfDevice_Op<"parallel_execute",
     OpBuilder<(ins "int":$num_regions, "TypeRange":$output_types)>,
   ];
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
 def TfDevice_ReplicateOp : TfDevice_Op<"replicate",
@@ -270,8 +263,8 @@ For example:
     Variadic<AnyType>:$replicated_inputs,
     Variadic<AnyType>:$packed_inputs,
 
-    I32ElementsAttr:$operand_segment_sizes,
-    Confined<I32Attr, [IntMinValue<2>]>:$n,
+    DenseI32ArrayAttr:$operandSegmentSizes,
+    ConfinedAttr<I32Attr, [IntMinValue<2>]>:$n,
     OptionalAttr<DictionaryAttr>:$devices
   );
 
@@ -300,14 +293,13 @@ For example:
       "const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&":$devices,
       "llvm::ArrayRef<std::pair<ValueRange, Type>>":$replicated_inputs,
       "ValueRange":$packed_inputs, "TypeRange":$replica_output_types)>,
-    OpBuilder<(ins "int":$n, "llvm::Optional<DictionaryAttr>":$devices,
+    OpBuilder<(ins "int":$n, "std::optional<DictionaryAttr>":$devices,
       "llvm::ArrayRef<std::pair<ValueRange, Type>>":$replicated_inputs,
       "ValueRange":$packed_inputs, "TypeRange":$replica_output_types)>,
   ];
 
-  let parser = [{ return Parse$cppClass(&parser, &result); }];
-  let printer = [{ return Print(*this, &p); }];
-  let verifier = [{ return Verify(*this); }];
+  let hasCustomAssemblyFormat = 1;
+  let hasVerifier = 1;
 }
 
 def TfDevice_ClusterOp : TfDevice_Op<"cluster",
@@ -357,7 +349,7 @@ This op is used for outlining a cluster.
 
   let arguments = (ins
     FlatSymbolRefAttr:$func,
-    Variadic<AnyType>:$operands
+    Variadic<AnyType>
   );
 
   let results = (outs
@@ -366,8 +358,8 @@ This op is used for outlining a cluster.
 
   let extraClassDeclaration = [{
     // returns the function that this operation will launch.
-    FuncOp getFunc() {
-      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, funcAttr());
+    func::FuncOp getFuncOp() {
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getFuncAttr());
     }
   }];
 }

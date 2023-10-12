@@ -285,7 +285,7 @@ struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
       std::vector<string> attrs_str;
       absl::c_transform(
           attrs, std::back_inserter(attrs_str),
-          [](const std::pair<string, absl::optional<AttrValue>>& attr_kv_pair) {
+          [](const std::pair<string, std::optional<AttrValue>>& attr_kv_pair) {
             return absl::StrCat(attr_kv_pair.first, "->",
                                 attr_kv_pair.second
                                     ? SummarizeAttrValue(*attr_kv_pair.second)
@@ -327,14 +327,14 @@ struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
     return false;
   }
 
-  absl::optional<string> op;
-  absl::optional<string> name;
-  absl::optional<string> assigned_device;
-  absl::optional<Tensor> constant_value;
-  absl::optional<std::vector<::testing::Matcher<OutEdge>>> input_matchers;
-  absl::optional<::testing::Matcher<absl::Span<const Node* const>>>
+  std::optional<string> op;
+  std::optional<string> name;
+  std::optional<string> assigned_device;
+  std::optional<Tensor> constant_value;
+  std::optional<std::vector<::testing::Matcher<OutEdge>>> input_matchers;
+  std::optional<::testing::Matcher<absl::Span<const Node* const>>>
       control_dep_set;
-  std::map<string, absl::optional<AttrValue>> attrs;
+  std::map<string, std::optional<AttrValue>> attrs;
 };
 
 // Matches a dst and dst_output on an input edge.  Today we only use this with
@@ -507,7 +507,7 @@ impl::NodeMatcherProperties impl::Attr(std::pair<string, AttrValue> attr) {
 
 impl::NodeMatcherProperties impl::Attr(string name) {
   impl::NodeMatcherProperties props;
-  props.set_attr({std::move(name), absl::nullopt});
+  props.set_attr({std::move(name), std::nullopt});
   return props;
 }
 

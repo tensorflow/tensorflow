@@ -24,11 +24,11 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/core/protobuf/struct.pb.h"
 
 namespace tensorflow {
 
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 // Converts an TensorFlow tensor proto into an MLIR elements attribute.
 StatusOr<mlir::ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
@@ -48,6 +48,10 @@ PartialTensorShape ConvertTypeToTensorShape(const mlir::Type& type);
 // Converts an MLIR shaped type to a TensorFlow shape attribute.
 mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type);
 
+// Converts an MLIR shaped type to a Tensorflow tensor spec proto.
+absl::StatusOr<TensorSpecProto> ConvertTypeToTensorSpecProto(
+    const mlir::Type& type);
+
 // Converts a TensorFlow shape attribute to an MLIR shape attribute.
 StatusOr<mlir::Attribute> ConvertTensorShapeProto(const TensorShapeProto& shape,
                                                   mlir::MLIRContext* context);
@@ -58,11 +62,6 @@ Status ConvertToTensorProto(mlir::ElementsAttr attr,
 
 // Converts an MLIR elements attribute to a TensorFlow tensor.
 Status ConvertToTensor(mlir::ElementsAttr attr, Tensor* output_tensor);
-
-// Decodes the given opaque elements attribute holding tensor content into a
-// human-readable elements attribute.
-StatusOr<mlir::ElementsAttr> DecodeOpaqueTensor(
-    mlir::OpaqueElementsAttr input_attr, mlir::Builder builder);
 
 }  // namespace tensorflow
 

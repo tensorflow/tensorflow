@@ -59,7 +59,6 @@ def main(_):
   hooks = []
   if FLAGS.debug:
     if FLAGS.use_random_config_path:
-      # TODO(mihaimaruseac): Safe to ignore fd here?
       _, config_file_path = tempfile.mkstemp(".tfdbg_config")
     else:
       config_file_path = None
@@ -112,8 +111,8 @@ if __name__ == "__main__":
   parser.add_argument(
       "--ui_type",
       type=str,
-      default="curses",
-      help="Command-line user interface type (curses | readline)")
+      default="readline",
+      help="Command-line user interface type (only readline is supported)")
   parser.add_argument(
       "--debug",
       type="bool",

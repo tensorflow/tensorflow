@@ -26,11 +26,12 @@ sudo xcode-select -s "${DEVELOPER_DIR}"
 # Set up py310 via pyenv and check it worked
 PY_VERSION=3.10.0
 setup_python_from_pyenv_macos "${PY_VERSION}"
+python -m venv .tf-venv && source .tf-venv/bin/activate
 
 # Set up and install MacOS pip dependencies.
 install_macos_pip_deps
 
-tag_filters="-no_oss,-oss_serial,-no_oss_py310,-nomac,-no_mac$(maybe_skip_v1),-gpu,-tpu,-benchmark-test"
+tag_filters="-no_oss,-oss_excluded,-oss_serial,-no_oss_py310,-mac_excluded,-nomac,-no_mac$(maybe_skip_v1),-gpu,-tpu,-benchmark-test"
 
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
@@ -39,8 +40,10 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 # Pass PYENV_VERSION since we're using pyenv. See b/182399580
 bazel test \
   --config=release_cpu_macos \
+  --config=nonccl \
   --action_env PYENV_VERSION="${PY_VERSION}" \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" \
   --test_output=errors \
-  -- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...
+  -- ${DEFAULT_BAZEL_TARGETS} \
+  -//tensorflow/lite/... -//tensorflow/compiler/aot/...

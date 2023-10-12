@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/sl/public/NeuralNetworksSupportLibraryImpl.h"
 
@@ -273,4 +274,34 @@ Java_org_tensorflow_lite_nnapi_NnApiDelegateTest_closeMockSl(JNIEnv* env,
   delete reinterpret_cast<NnApiSLDriverImplFL5*>(handle);
 }
 
+JNIEXPORT jboolean JNICALL
+Java_org_tensorflow_lite_NnApiDelegateNativeTest_getAllowFp16Option(
+    JNIEnv* env, jclass clazz, jlong delegate_handle) {
+  auto* delegate =
+      reinterpret_cast<tflite::StatefulNnApiDelegate*>(delegate_handle);
+  tflite::StatefulNnApiDelegate::Options options =
+      delegate->GetOptions(delegate);
+  return options.allow_fp16;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_tensorflow_lite_NnApiDelegateNativeTest_getDisallowNnapiCpuOption(
+    JNIEnv* env, jclass clazz, jlong delegate_handle) {
+  auto* delegate =
+      reinterpret_cast<tflite::StatefulNnApiDelegate*>(delegate_handle);
+  tflite::StatefulNnApiDelegate::Options options =
+      delegate->GetOptions(delegate);
+  return options.disallow_nnapi_cpu;
+}
+
+JNIEXPORT jstring JNICALL
+Java_org_tensorflow_lite_NnApiDelegateNativeTest_getModelTokenOption(
+    JNIEnv* env, jclass clazz, jlong delegate_handle) {
+  auto* delegate =
+      reinterpret_cast<tflite::StatefulNnApiDelegate*>(delegate_handle);
+  tflite::StatefulNnApiDelegate::Options options =
+      delegate->GetOptions(delegate);
+  if (options.model_token == nullptr) return nullptr;
+  return env->NewStringUTF(options.model_token);
+}
 }  // extern "C"

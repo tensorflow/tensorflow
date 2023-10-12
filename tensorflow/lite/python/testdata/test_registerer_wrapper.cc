@@ -9,8 +9,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/lite/python/testdata/test_registerer.h"
 
 PYBIND11_MODULE(_pywrap_test_registerer, m) {

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/test_cluster.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/server_lib.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
@@ -64,20 +66,26 @@ Status TestCluster::Initialize() {
   for (int i = 0; i < num_workers_; ++i) {
     TF_RETURN_IF_ERROR(AddWorker());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
-Status TestCluster::AddWorker() {
+Status TestCluster::AddWorker(std::optional<int> port) {
   std::unique_ptr<WorkerGrpcDataServer> worker;
   experimental::WorkerConfig config;
+  if (port.has_value()) {
+    config.set_port(*port);
+  }
   config.set_protocol(kProtocol);
   config.set_dispatcher_address(dispatcher_address_);
-  config.set_worker_address("localhost:%port%");
+  std::string worker_address =
+      port.has_value() ? absl::StrCat("localhost:", *port) : "localhost:%port%";
+  config.set_worker_address(worker_address);
+  config.set_heartbeat_interval_ms(config_.worker_heartbeat_interval_ms);
   TF_RETURN_IF_ERROR(NewWorkerServer(config, worker));
   TF_RETURN_IF_ERROR(worker->Start());
   worker_addresses_.push_back(absl::StrCat("localhost:", worker->BoundPort()));
   workers_.push_back(std::move(worker));
-  return Status::OK();
+  return OkStatus();
 }
 
 std::string TestCluster::DispatcherAddress() const {
@@ -100,6 +108,14 @@ void TestCluster::StopWorkers() {
   for (std::unique_ptr<WorkerGrpcDataServer>& worker : workers_) {
     worker->Stop();
   }
+}
+
+ServerStateExport TestCluster::ExportDispatcherState() const {
+  return dispatcher_->ExportState();
+}
+
+ServerStateExport TestCluster::ExportWorkerState(size_t index) const {
+  return workers_[index]->ExportState();
 }
 
 }  // namespace data

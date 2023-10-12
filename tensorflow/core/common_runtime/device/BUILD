@@ -3,17 +3,10 @@ load(
     "tf_copts",
     "tf_cuda_library",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# For platform specific build config
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "tf_kernel_tests_linkstatic",
+    "//tensorflow:tensorflow.default.bzl",
+    "filegroup",
+    "tf_cuda_cc_test",
 )
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -26,10 +19,8 @@ load(
 )
 
 package(
-    default_visibility = [
-        "//tensorflow:internal",
-        "//tensorflow_models:__subpackages__",
-    ],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//tensorflow:internal"],
     # features = ["-parse_headers"],
     features = ["-layering_check"],
     licenses = ["notice"],
@@ -43,6 +34,8 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:types",
+        "@local_tsl//tsl/framework:device_id",
     ] + if_static([
         ":device_id_impl",
     ]),
@@ -50,7 +43,6 @@ cc_library(
 
 cc_library(
     name = "device_id_impl",
-    srcs = ["device_id_manager.cc"],
     hdrs = [
         "device_id.h",
         "device_id_manager.h",
@@ -59,6 +51,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@local_tsl//tsl/framework:device_id_impl",
     ],
 )
 
@@ -78,6 +71,7 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/platform:stream_executor",
+        "@local_xla//xla/stream_executor:device_mem_allocator",
     ],
 )
 
@@ -88,8 +82,8 @@ filegroup(
         "device_host_allocator.h",
         "device_id.h",
         "device_id_manager.h",
-        "device_id_utils.h",
         "device_mem_allocator.h",
+        "@local_tsl//tsl/framework:device_runtime_headers",
     ],
 )
 
@@ -140,7 +134,6 @@ tf_cuda_cc_test(
     srcs = [
         "device_id_manager_test.cc",
     ],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
         ":device_id",
@@ -163,7 +156,6 @@ tf_cuda_cc_test(
 tf_cuda_cc_test(
     name = "device_event_mgr_test",
     srcs = ["device_event_mgr_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
         ":device_event_mgr",
@@ -176,5 +168,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:cwise_op",
+        "@local_tsl//tsl/framework:device_id",
     ],
 )

@@ -52,7 +52,7 @@ TEST(InlineFunctionBody, ColocationConstraintPropagation) {
       });
   TF_ASSERT_OK(flib_def.AddFunctionDef(fdef));
 
-  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  auto g = std::make_unique<Graph>(OpRegistry::Global());
   GraphConstructorOptions opts;
   const Tensor kZero = test::AsScalar<int64_t>(0);
   const Tensor kOne = test::AsScalar<int64_t>(1);

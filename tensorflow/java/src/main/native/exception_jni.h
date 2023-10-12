@@ -22,7 +22,7 @@ limitations under the License.
 extern "C" {
 #endif
 
-struct TF_Status;
+struct TSL_Status;
 
 extern const char kIllegalArgumentException[];
 extern const char kIllegalStateException[];
@@ -34,7 +34,7 @@ void throwException(JNIEnv* env, const char* clazz, const char* fmt, ...);
 
 // If status is not TF_OK, then throw an appropriate exception.
 // Returns true iff TF_GetCode(status) == TF_OK.
-bool throwExceptionIfNotOK(JNIEnv* env, const TF_Status* status);
+bool throwExceptionIfNotOK(JNIEnv* env, const TSL_Status* status);
 
 #ifdef __cplusplus
 }  // extern "C"

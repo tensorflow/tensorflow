@@ -24,21 +24,16 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
-#include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/service/graphcycles/graphcycles.h"
+#include "xla/statusor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
 // The attribute that marks nodes to be grouped into functions by the
 // encapsulate subgraphs pass.
 extern const char* const kXlaClusterAttr;
-
-// The attribute that marks nodes in a cluster to be placed outside the xla
-// compilation by the encapsulate subgraphs pass.
-extern const char* const kXlaOutsideCompilationAttr;
 
 // The attribute that marks certain inputs to a Node as required to be a
 // constant at compile time.  If this attribute is present then the
@@ -65,7 +60,7 @@ StatusOr<bool> CreateCycleDetectionGraph(const Graph* graph,
 
 // Returns the XLA cluster in which `node` is placed if it is in an XLA cluster,
 // otherwise returns nullopt.
-absl::optional<absl::string_view> GetXlaClusterForNode(const Node& node);
+std::optional<absl::string_view> GetXlaClusterForNode(const Node& node);
 
 // Removes `node_def` its XLA cluster (by clearing its _XlaCluster attribute).
 void RemoveFromXlaCluster(NodeDef* node_def);

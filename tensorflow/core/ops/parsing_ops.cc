@@ -38,7 +38,7 @@ Status AddDenseOutputShapes(const std::vector<TensorShapeType>& dense_shapes,
     TF_RETURN_IF_ERROR(c->Concatenate(prefix, s, &s));
     c->set_output((*output_idx)++, s);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Adds output shapes for sparse tensors in Parse*Example ops.
@@ -81,7 +81,7 @@ Status AddRaggedOutputShapes(int num_ragged, bool ragged_rank_2,
       c->set_output((*output_idx)++, c->Vector(c->UnknownDim()));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Adds output shapes for dense_lengths tensors in Parse*Example ops.
@@ -108,7 +108,7 @@ REGISTER_OP("DecodeRaw")
       TF_RETURN_IF_ERROR(c->Concatenate(
           c->input(0), c->Vector(InferenceContext::kUnknownDim), &out));
       c->set_output(0, out);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("DecodePaddedRaw")
@@ -135,7 +135,7 @@ REGISTER_OP("DecodePaddedRaw")
       TF_RETURN_IF_ERROR(c->Concatenate(c->input(0), c->Vector(width), &out));
 
       c->set_output(0, out);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("DecodeCompressed")
@@ -172,7 +172,7 @@ REGISTER_OP("ParseExample")
       AddSparseOutputShapes(attrs.num_sparse, input, 1, c, &output_idx);
       TF_RETURN_IF_ERROR(
           AddDenseOutputShapes(attrs.dense_shapes, input, c, &output_idx));
-      return Status::OK();
+      return OkStatus();
     });
 
 // Differences between ParseExample and ParseExampleV2:
@@ -223,7 +223,7 @@ REGISTER_OP("ParseExampleV2")
       TF_RETURN_IF_ERROR(AddRaggedOutputShapes(attrs.num_ragged, false,
                                                num_examples, c, &output_idx));
 
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ParseSingleExample")
@@ -250,7 +250,7 @@ REGISTER_OP("ParseSingleExample")
       AddSparseOutputShapes(attrs.sparse_keys.size(), input, 1, c, &output_idx);
       TF_RETURN_IF_ERROR(
           AddDenseOutputShapes(attrs.dense_shapes, input, c, &output_idx));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ParseSequenceExample")
@@ -306,7 +306,7 @@ REGISTER_OP("ParseSequenceExample")
       AddDenseLengthsShapes(attrs.num_feature_list_dense, input, c,
                             &output_idx);
 
-      return Status::OK();
+      return OkStatus();
     });
 
 // Differences between ParseSequenceExample and ParseSequenceExampleV2:
@@ -395,7 +395,7 @@ REGISTER_OP("ParseSequenceExampleV2")
                             &output_idx);
       TF_RETURN_IF_ERROR(AddRaggedOutputShapes(
           attrs.num_feature_list_ragged, true, num_examples, c, &output_idx));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ParseSingleSequenceExample")
@@ -449,7 +449,7 @@ REGISTER_OP("ParseSingleSequenceExample")
       TF_RETURN_IF_ERROR(AddDenseOutputShapes(attrs.feature_list_dense_shapes,
                                               c->UnknownShapeOfRank(1), c,
                                               &output_idx));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ParseTensor")
@@ -492,7 +492,7 @@ REGISTER_OP("DecodeCSV")
 
       // Propagate shape of the records input.
       for (int i = 0; i < c->num_outputs(); ++i) c->set_output(i, c->input(0));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("StringToNumber")

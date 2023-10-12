@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_SPARSE_MATMUL_OP_H_
 #define TENSORFLOW_CORE_KERNELS_SPARSE_MATMUL_OP_H_
 
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/types.h"
 
 #if defined(PLATFORM_WINDOWS)
-#include "tensorflow/core/platform/windows/intrinsics_port.h"
+#include "tsl/platform/windows/intrinsics_port.h"
 #endif
 
 namespace Eigen {

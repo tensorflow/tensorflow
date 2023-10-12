@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_lookup.h"
 
+#include <limits>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "grpcpp/security/credentials.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
@@ -92,7 +97,7 @@ Status TpuCompilationCacheRpcLookup::Lookup(
     }
     PostLookupLocked(&cache_entry, entry, &removed_entries);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TpuCompilationCacheRpcLookup::Lookup(
@@ -137,7 +142,7 @@ Status TpuCompilationCacheRpcLookup::Lookup(
     }
     PostLookupLocked(&cache_entry, entry, &removed_entries);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TpuCompilationCacheRpcLookup::RemoteLookupLocked(
@@ -164,7 +169,7 @@ Status TpuCompilationCacheRpcLookup::RemoteLookupLocked(
   cache_.emplace(local_proto_key, (*cache_entry));
   cache_size_ += (*cache_entry)->size;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void TpuCompilationCacheRpcLookup::PostLookupLocked(

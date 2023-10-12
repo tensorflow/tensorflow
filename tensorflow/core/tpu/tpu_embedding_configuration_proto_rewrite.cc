@@ -15,11 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_embedding_configuration_proto_rewrite.h"
 
+#include <cstdint>
+#include <functional>
+#include <vector>
+
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 namespace {
@@ -27,39 +34,39 @@ namespace {
 // Validates that the batch_size_per_tensor_core and
 // TableDescriptor.num_features fields have been populated correctly in the TPU
 // embedding configuration.
-Status ValidateBatchSizeAndFeatureCounts(
+absl::Status ValidateBatchSizeAndFeatureCounts(
     const tpu::TPUEmbeddingConfiguration& config) {
   if (config.batch_size_per_tensor_core() <= 0) {
-    return errors::InvalidArgument(absl::StrFormat(
+    return absl::InvalidArgumentError(absl::StrFormat(
         "Invalid batch_size_per_tensor_core: %d found in the TPU embedding "
         "configuration. Valid values are >0.",
         config.batch_size_per_tensor_core()));
   }
   for (const auto& table_config : config.table_descriptor()) {
     if (table_config.num_features() <= 0) {
-      return errors::InvalidArgument(absl::StrFormat(
+      return absl::InvalidArgumentError(absl::StrFormat(
           "Invalid num_features: %d found for table: %s in the TPU embedding "
           "configuration. Valid values are >0.",
           table_config.num_features(), table_config.name()));
     }
   }  // table_config
-  return Status::OK();
+  return absl::OkStatus();
 }
 
 // Validates that the batch_size_per_tensor_core and
 // TableDescriptor.num_features fields are NOT populated in the TPU embedding
 // configuration when the feature descriptor fields are filled in.
-Status ValidateBatchSizeAndFeatureCountsAreEmpty(
+absl::Status ValidateBatchSizeAndFeatureCountsAreEmpty(
     const tpu::TPUEmbeddingConfiguration& config) {
   if (config.batch_size_per_tensor_core() != 0) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Invalid TPU embedding configuration. The batch_size_per_tensor_core "
         "field must NOT be populated when the feature_descriptor fields are "
         "filled in.");
   }
   for (const auto& table_config : config.table_descriptor()) {
     if (table_config.num_features() != 0) {
-      return errors::InvalidArgument(absl::StrFormat(
+      return absl::InvalidArgumentError(absl::StrFormat(
           "Invalid TPU embedding configuration. The "
           "TableDescriptor.num_features field must NOT be populated when the "
           "feature_descriptor fields are filled in, num_features is set to %d "
@@ -67,12 +74,12 @@ Status ValidateBatchSizeAndFeatureCountsAreEmpty(
           table_config.num_features(), table_config.name()));
     }
   }  // table_config
-  return Status::OK();
+  return absl::OkStatus();
 }
 
 // Validates that the feature_descriptor fields have been correctly filled in.
 // All tables must have at least one input feature.
-Status ValidateFeatureDescriptors(
+absl::Status ValidateFeatureDescriptors(
     const tpu::TPUEmbeddingConfiguration& config) {
   const int table_count = config.table_descriptor_size();
   std::vector<bool> tables_present(table_count, false);
@@ -81,19 +88,19 @@ Status ValidateFeatureDescriptors(
     const int table_id = feature_config.table_id();
     const auto& input_shape = feature_config.input_shape();
     if (table_id < 0 || table_id >= table_count) {
-      return errors::InvalidArgument(absl::StrFormat(
+      return absl::InvalidArgumentError(absl::StrFormat(
           "Invalid table_id: %d found in feature_descriptor: %s, all table_ids "
           "must be in the range[0, %d)",
           table_id, feature_config.ShortDebugString(), table_count));
     }
     if (input_shape.empty()) {
-      return errors::InvalidArgument(absl::StrFormat(
+      return absl::InvalidArgumentError(absl::StrFormat(
           "The input_shape field cannot be empty in feature_descriptor: %s",
           feature_config.ShortDebugString()));
     }
     for (const int dim_size : input_shape) {
       if (dim_size <= 0) {
-        return errors::InvalidArgument(absl::StrFormat(
+        return absl::InvalidArgumentError(absl::StrFormat(
             "The input_shape dimension sizes must all be >0 in "
             "feature_descriptor: %s, found dimension size set to %d",
             feature_config.ShortDebugString(), dim_size));
@@ -104,13 +111,13 @@ Status ValidateFeatureDescriptors(
 
   for (int table_id = 0; table_id < table_count; ++table_id) {
     if (!tables_present[table_id]) {
-      return errors::InvalidArgument(absl::StrFormat(
+      return absl::InvalidArgumentError(absl::StrFormat(
           "No feature_descriptor fields found for table: %s (ID: %d) in "
           "the TPU embedding configuration.",
           config.table_descriptor(table_id).name(), table_id));
     }
   }
-  return Status::OK();
+  return absl::OkStatus();
 }
 
 // Populates the feature_descriptor fields with default values when they have
@@ -132,9 +139,9 @@ void PopulateFeatureDescriptors(tpu::TPUEmbeddingConfiguration* config) {
 // be the product of all the axes except the last one.
 std::vector<int> ComputeInputFeatureBatchSizes(
     const tpu::TPUEmbeddingConfiguration& config) {
-  std::vector<int32> input_feature_batch_sizes;
+  std::vector<int32_t> input_feature_batch_sizes;
   for (int i = 0; i < config.feature_descriptor_size(); ++i) {
-    const int32 batch_size =
+    const int32_t batch_size =
         absl::c_accumulate(config.feature_descriptor(i).input_shape(),
                            /*init=*/1, std::multiplies<>());
     input_feature_batch_sizes.push_back(batch_size);
@@ -193,7 +200,7 @@ void PopulateBatchSizeAndFeatureCounts(tpu::TPUEmbeddingConfiguration* config) {
 
 }  // namespace
 
-Status PopulateMissingFieldsInTPUEmbeddingConfig(
+absl::Status PopulateMissingFieldsInTPUEmbeddingConfig(
     tpu::TPUEmbeddingConfiguration* config) {
   if (config->feature_descriptor_size() == 0) {
     // If the feature_descriptor list is empty, validate that the batch size and
@@ -210,7 +217,7 @@ Status PopulateMissingFieldsInTPUEmbeddingConfig(
     TF_RETURN_IF_ERROR(ValidateFeatureDescriptors(*config));
     PopulateBatchSizeAndFeatureCounts(config);
   }
-  return Status::OK();
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

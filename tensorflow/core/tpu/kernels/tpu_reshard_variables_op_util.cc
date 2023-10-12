@@ -15,12 +15,20 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/tpu_reshard_variables_op_util.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/xla_device.h"
-#include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/tpu/tpu_executor.h"
+#include "xla/stream_executor/tpu/tpu_executor_interface.h"
+#include "xla/stream_executor/tpu/tpu_node_context.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -38,10 +46,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_execute.h"
 #include "tensorflow/core/util/stream_executor_util.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor_interface.h"
-#include "tensorflow/stream_executor/tpu/tpu_node_context.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -68,7 +72,7 @@ Status CheckIsValidKey(const Tensor& key) {
         "new_format_key argument to TPUReshardVariables must be DT_STRING "
         "type");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool IsDefaultKey(const Tensor& key) { return key.vec<tstring>()(0).empty(); }
@@ -91,7 +95,7 @@ Status GetComputationCacheEntry(
   TF_RETURN_IF_ERROR(
       proto_lookup->Lookup(key.vec<tstring>()(0), entry, fetch_target));
   *rendezvous_key_base = key.vec<tstring>()(1);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Builds an InputBuffers object that describes the inputs to the computation.
@@ -138,7 +142,7 @@ xla::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   };
 
   for (int i = 0; i < variables.size(); ++i) {
@@ -196,7 +200,7 @@ xla::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>> BuildInputBuffers(
                                tensor.RefCountIsOne());
       xla_tensor->WaitForDefinitionEventOnStream(stream);
     }
-    return Status::OK();
+    return OkStatus();
   };
 
   for (int i = 0; i < var_list.size(); ++i) {

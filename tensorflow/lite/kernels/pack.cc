@@ -15,8 +15,8 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -48,10 +48,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, data->axis >= 0);
 
   if (input0->type != kTfLiteInt32 && input0->type != kTfLiteFloat32 &&
-      input0->type != kTfLiteUInt8 && input0->type != kTfLiteInt8 &&
-      input0->type != kTfLiteInt16 && input0->type != kTfLiteInt64) {
-    context->ReportError(context, "Type '%s' is not supported by pack.",
-                         TfLiteTypeGetName(input0->type));
+      input0->type != kTfLiteUInt8 && input0->type != kTfLiteUInt32 &&
+      input0->type != kTfLiteInt8 && input0->type != kTfLiteInt16 &&
+      input0->type != kTfLiteInt64) {
+    TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by pack.",
+                       TfLiteTypeGetName(input0->type));
     return kTfLiteError;
   }
   // Make sure all inputs have the same shape and type.
@@ -115,33 +116,24 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
   switch (output->type) {
-    case kTfLiteFloat32: {
-      return PackImpl<float>(context, node, output, data->values_count,
-                             data->axis);
-    }
-    case kTfLiteUInt8: {
-      return PackImpl<uint8_t>(context, node, output, data->values_count,
-                               data->axis);
-    }
-    case kTfLiteInt8: {
+    case kTfLiteInt8:
+    case kTfLiteUInt8:
       return PackImpl<int8_t>(context, node, output, data->values_count,
                               data->axis);
-    }
-    case kTfLiteInt16: {
+    case kTfLiteInt16:
       return PackImpl<int16_t>(context, node, output, data->values_count,
                                data->axis);
-    }
-    case kTfLiteInt32: {
+    case kTfLiteFloat32:
+    case kTfLiteInt32:
+    case kTfLiteUInt32:
       return PackImpl<int32_t>(context, node, output, data->values_count,
                                data->axis);
-    }
-    case kTfLiteInt64: {
+    case kTfLiteInt64:
       return PackImpl<int64_t>(context, node, output, data->values_count,
                                data->axis);
-    }
     default: {
-      context->ReportError(context, "Type '%s' is not supported by pack.",
-                           TfLiteTypeGetName(output->type));
+      TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by pack.",
+                         TfLiteTypeGetName(output->type));
       return kTfLiteError;
     }
   }

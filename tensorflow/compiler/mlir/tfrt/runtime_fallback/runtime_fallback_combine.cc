@@ -76,5 +76,5 @@ struct SimplifyDoubleConversion
 // so that they can be picked up by the Canonicalization framework.
 void mlir::tfd::ConvertTftToDhtOp::getCanonicalizationPatterns(
     RewritePatternSet& results, MLIRContext* context) {
-  results.insert<SimplifyDoubleConversion>(context);
+  results.add<SimplifyDoubleConversion>(context);
 }

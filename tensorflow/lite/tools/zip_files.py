@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# Lint as: python3
 """Creates a zip package of the files passed in."""
 import os
 import zipfile

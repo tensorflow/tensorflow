@@ -16,11 +16,15 @@ limitations under the License.
 
 #include <algorithm>
 #include <cctype>
+#include <functional>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/utils.h"
@@ -30,22 +34,16 @@ namespace mlir {
 namespace TFL {
 namespace tac {
 namespace {
-struct RegisteredTargetHardware {
-  // TODO(b/177376459): Remove this constructor.
-  RegisteredTargetHardware(const std::string& name,
-                           const std::string& description, mlir::TypeID type_id,
-                           std::unique_ptr<TargetHardware> target_hardware)
-      : unique_name(GetCanonicalHardwareName(name)),
-        description(description),
-        type_id(type_id),
-        target_hardware(std::move(target_hardware)) {}
 
+struct RegisteredTargetHardware {
   RegisteredTargetHardware(
       const std::string& name, const std::string& description,
       mlir::TypeID type_id,
       std::function<std::unique_ptr<TargetHardware>()> target_hardware_factory)
       : unique_name(GetCanonicalHardwareName(name)),
         description(description),
+        type_id(type_id),
+        target_hardware(target_hardware_factory()),
         target_hardware_factory(target_hardware_factory) {}
 
   std::string unique_name;
@@ -99,7 +97,7 @@ getRegisteredOperationsForHardware(mlir::TypeID type_id) {
 
 // A deny list for op cost computation since those ops are not arithemtic.
 inline bool IsNonArithmeticOp(mlir::Operation* op) {
-  if (llvm::isa<ReturnOp, FuncOp>(op)) return true;
+  if (llvm::isa<func::ReturnOp, func::FuncOp>(op)) return true;
   if (op->hasTrait<OpTrait::ConstantLike>()) return true;
   if (llvm::isa<QConstOp, SparseQConstOp>(op)) return true;
   if (!NotTFLQuantDequantizeOp(op)) return true;
@@ -143,7 +141,7 @@ bool TargetHardware::IsOpSupported(mlir::Operation* op) const {
   return hardware_op->second->IsOpSupported(op);
 }
 
-double TargetHardware::GetFuncCost(FuncOp* func) const {
+double TargetHardware::GetFuncCost(func::FuncOp* func) const {
   double total_cost = 0.0;
   func->walk([&](Operation* op) {
     if (IsNonArithmeticOp(op)) return;
@@ -181,22 +179,6 @@ std::function<std::unique_ptr<TargetHardware>()> GetTargetHardwareFactory(
 }
 
 namespace internal {
-
-void RegisterTargetHardware(
-    const std::string& unique_name, const std::string& description,
-    mlir::TypeID type_id,
-    std::function<std::unique_ptr<TargetHardware>()> target_hardware_factory) {
-  auto* registered_hardwares = GetRegisteredHardwares();
-  for (const auto& hardware : *registered_hardwares) {
-    if (hardware.unique_name == unique_name) {
-      llvm::errs() << "Ignoring duplicate hardware. Hardware " << unique_name
-                   << " already registered\n";
-      return;
-    }
-  }
-  registered_hardwares->push_back(RegisteredTargetHardware(
-      unique_name, description, type_id, target_hardware_factory()));
-}
 
 void RegisterTargetHardwareFactory(
     const std::string& unique_name, const std::string& description,

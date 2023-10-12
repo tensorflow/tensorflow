@@ -79,7 +79,7 @@ class OpDefBuilderTest : public ::testing::Test {
     Status status = builder.Finalize(&op_reg_data);
     EXPECT_FALSE(status.ok());
     if (!status.ok()) {
-      EXPECT_EQ(status.error_message(), error);
+      EXPECT_EQ(status.message(), error);
     }
   }
 };
@@ -124,13 +124,15 @@ TEST_F(OpDefBuilderTest, AttrWithRestrictions) {
       "attr: { name: 'a' type: 'type' allowed_values { list { type: "
       "[DT_HALF, DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, DT_INT16, "
       "DT_UINT16, DT_INT8, DT_COMPLEX64, DT_COMPLEX128, DT_QINT8, DT_QUINT8, "
-      "DT_QINT32, DT_UINT32, DT_UINT64, DT_BFLOAT16] } } }");
+      "DT_QINT32, DT_UINT32, DT_UINT64, DT_BFLOAT16, DT_QINT16, DT_QUINT16] } "
+      "} }");
   ExpectSuccess(
       b().Attr("a:{numbertype, variant}"),
       "attr: { name: 'a' type: 'type' allowed_values { list { type: "
       "[DT_HALF, DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, DT_INT16, "
       "DT_UINT16, DT_INT8, DT_COMPLEX64, DT_COMPLEX128, DT_QINT8, DT_QUINT8, "
-      "DT_QINT32, DT_UINT32, DT_UINT64, DT_BFLOAT16, DT_VARIANT] } } }");
+      "DT_QINT32, DT_UINT32, DT_UINT64, DT_BFLOAT16, DT_VARIANT, DT_QINT16, "
+      "DT_QUINT16] } } }");
   ExpectSuccess(b().Attr("a:realnumbertype"),
                 "attr: { name: 'a' type: 'type' allowed_values { list { type: "
                 "[DT_HALF, DT_FLOAT, DT_DOUBLE, DT_INT64, DT_INT32, DT_UINT8, "
@@ -615,7 +617,7 @@ TEST_F(OpDefBuilderTest, SetShapeFn) {
       "attr { name: \"dtype\" type: \"type\" allowed_values { list { } } }",
       &fn_out);
   ASSERT_TRUE(fn_out != nullptr);
-  EXPECT_EQ("ShapeFn was called", fn_out(nullptr).error_message());
+  EXPECT_EQ("ShapeFn was called", fn_out(nullptr).message());
 }
 
 TEST_F(OpDefBuilderTest, SetShapeFnCalledTwiceFailure) {

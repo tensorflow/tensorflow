@@ -61,7 +61,7 @@ bool ParseBoolAttrValue(StringPiece attr_value) {
 
 Status ParseValue(StringPiece input, bool* value) {
   *value = ParseBoolAttrValue(input);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseValue(StringPiece input, int32* value) {
@@ -69,17 +69,17 @@ Status ParseValue(StringPiece input, int32* value) {
   if (!parse_result) {
     return errors::InvalidArgument("Could not parse int32 from ", input);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseValue(StringPiece input, DataType* value) {
   *value = ParseTFDataType(input);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseValue(StringPiece input, std::string* value) {
   *value = std::string(input);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseValue(StringPiece input, std::vector<int32>* value) {
@@ -94,7 +94,7 @@ Status ParseValue(StringPiece input, std::vector<int32>* value) {
     }
     value->push_back(value_int);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseValue(StringPiece input, Padding* value) {

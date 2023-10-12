@@ -5,7 +5,7 @@
 # Such shapes don't really make sense in TensorFlow, but grappler is using this
 # during some "symbolic shape analysis".
 # CHECK: _Arg name("test_model")
-# CHECK-SAME: #tf_type.shape<?>
+# CHECK-SAME: #tf_type.shape<-5>
 node {
   name: "test_model"
   op: "_Arg"

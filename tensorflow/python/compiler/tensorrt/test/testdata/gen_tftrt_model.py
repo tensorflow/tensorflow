@@ -39,7 +39,7 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 
 
 def GetGraph(input1, input2, var):
@@ -55,7 +55,7 @@ def GetGraph(input1, input2, var):
 def GenerateModelV2(tf_saved_model_dir, tftrt_saved_model_dir):
   """Generate and convert a model using TFv2 API."""
 
-  class SimpleModel(tracking.AutoTrackable):
+  class SimpleModel(autotrackable.AutoTrackable):
     """Define model with a TF function."""
 
     def __init__(self):
@@ -83,6 +83,11 @@ def GenerateModelV2(tf_saved_model_dir, tftrt_saved_model_dir):
   converter = trt_convert.TrtGraphConverterV2(
       input_saved_model_dir=tf_saved_model_dir)
   converter.convert()
+  try:
+    line_length = max(160, os.get_terminal_size().columns)
+  except OSError:
+    line_length = 160
+  converter.summary(line_length=line_length, detailed=True)
   converter.save(tftrt_saved_model_dir)
 
 

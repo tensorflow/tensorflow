@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_3x3_stride_h2_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -41,12 +42,12 @@ absl::Status DepthWiseConv3x3StrideH2SimpleWeightsTest(
   attr.bias.shape = Linear(1);
   attr.bias.data = {0.0f};
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
@@ -54,7 +55,7 @@ absl::Status DepthWiseConv3x3StrideH2SimpleWeightsTest(
           CreateDepthWiseConv3x3StrideH2(op_def, attr, env->GetGpuInfo());
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor,
-          absl::make_unique<DepthWiseConv3x3StrideH2>(std::move(operation)),
+          std::make_unique<DepthWiseConv3x3StrideH2>(std::move(operation)),
           BHWC(1, 2, 2, 1), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({8.0f, 12.0f, 20.0f, 24.0f}, dst_tensor.data, eps));

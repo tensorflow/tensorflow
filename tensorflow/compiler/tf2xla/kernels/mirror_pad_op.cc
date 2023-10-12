@@ -16,10 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/util/mirror_pad_mode.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -96,15 +95,16 @@ class MirrorPadOp : public XlaOpKernel {
     StatusOr<xla::Shape> in0_shape = b->GetShape(in0);
     OP_REQUIRES(ctx, in0_shape.ok(), in0_shape.status());
     StatusOr<xla::XlaOp> accum_status =
-        DoMirrorPad(in0, in0_shape.ValueOrDie(), pad_literal, mode, b);
+        DoMirrorPad(in0, in0_shape.value(), pad_literal, mode, b);
 
     OP_REQUIRES_OK(ctx, accum_status.status());
 
-    ctx->SetOutput(0, accum_status.ValueOrDie());
+    ctx->SetOutput(0, accum_status.value());
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(MirrorPadOp);
+  MirrorPadOp(const MirrorPadOp&) = delete;
+  void operator=(const MirrorPadOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("MirrorPad").CompileTimeConstantInput("paddings"),
@@ -196,15 +196,16 @@ class MirrorPadGradOp : public XlaOpKernel {
     StatusOr<xla::Shape> in0_shape = b->GetShape(in0);
     OP_REQUIRES(ctx, in0_shape.ok(), in0_shape.status());
     StatusOr<xla::XlaOp> accum_status =
-        DoMirrorPadGrad(in0, in0_shape.ValueOrDie(), pad_literal, mode, b);
+        DoMirrorPadGrad(in0, in0_shape.value(), pad_literal, mode, b);
 
     OP_REQUIRES_OK(ctx, accum_status.status());
 
-    ctx->SetOutput(0, accum_status.ValueOrDie());
+    ctx->SetOutput(0, accum_status.value());
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(MirrorPadGradOp);
+  MirrorPadGradOp(const MirrorPadGradOp&) = delete;
+  void operator=(const MirrorPadGradOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("MirrorPadGrad").CompileTimeConstantInput("paddings"),

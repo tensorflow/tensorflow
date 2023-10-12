@@ -24,6 +24,8 @@ namespace functor {
 DEFINE_BINARY5(xdivy, Eigen::half, float, double, complex64, complex128);
 #endif
 
+DEFINE_BINARY1(xdivy, bfloat16);
+
 }  // namespace functor
 }  // namespace tensorflow
 

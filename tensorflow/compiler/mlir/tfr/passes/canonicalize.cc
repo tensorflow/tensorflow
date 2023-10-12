@@ -18,12 +18,13 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/LoopUtils.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -65,7 +66,7 @@ class UnrollSCFForOp : public OpRewritePattern<scf::ForOp> {
     // TODO(fengliuai): use loopUnrollByFactor once the iter_arg is supported
 
     Block *single_block = for_op.getBody();
-    BlockAndValueMapping mapping;
+    IRMapping mapping;
     Value iv = for_op.getInductionVar();
     for (auto iter_op :
          llvm::zip(for_op.getRegionIterArgs(), for_op.getInitArgs())) {
@@ -156,7 +157,7 @@ LogicalResult SimplifySCFIfOp::InlineRegion(Location loc,
 
 }  // namespace
 
-void populateCanonicalizationPatterns(FuncOp func,
+void populateCanonicalizationPatterns(func::FuncOp func,
                                       RewritePatternSet &patterns) {
   MLIRContext *context = func.getContext();
   mlir::Dialect *tf = context->getLoadedDialect<mlir::TF::TensorFlowDialect>();
@@ -169,7 +170,7 @@ void populateCanonicalizationPatterns(FuncOp func,
       op->getRegisteredInfo()->getCanonicalizationPatterns(patterns, context);
     }
   });
-  patterns.insert<UnrollSCFForOp, SimplifySCFIfOp>(context);
+  patterns.add<UnrollSCFForOp, SimplifySCFIfOp>(context);
 }
 
 }  // namespace TFR

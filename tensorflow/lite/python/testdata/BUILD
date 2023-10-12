@@ -1,14 +1,16 @@
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow/lite:build_def.bzl", "tf_to_tflite", "tflite_copts")
-load("//tensorflow:tensorflow.bzl", "pybind_extension", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_custom_op_py_strict_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_custom_op_library",
-    "tf_features_nolayering_check_if_android_or_ios",
+    "tf_features_nolayering_check_if_ios",
     "tf_gen_op_wrapper_py",
     "tf_opts_nortti_if_android",
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -81,7 +83,7 @@ cc_library(
     srcs = ["test_delegate.cc"],
     visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
     ],
     alwayslink = 1,
 )
@@ -101,7 +103,7 @@ cc_library(
     testonly = 1,
     srcs = ["double_op.cc"],
     copts = tflite_copts() + tf_opts_nortti_if_android(),
-    features = tf_features_nolayering_check_if_android_or_ios(),
+    features = tf_features_nolayering_check_if_ios(),
     deps = select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -127,10 +129,17 @@ tf_gen_op_wrapper_py(
     name = "gen_double_op_wrapper",
     testonly = 1,
     out = "double_op_wrapper.py",
+    extra_py_deps = [
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+    py_lib_rule = py_strict_library,
     deps = [":double_op_and_kernels"],
 )
 
-tf_custom_op_py_library(
+tf_custom_op_py_strict_library(
     name = "double_op",
     testonly = 1,
     srcs = ["double_op.py"],
@@ -139,7 +148,9 @@ tf_custom_op_py_library(
     srcs_version = "PY3",
     deps = [
         ":gen_double_op_wrapper",
-        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/platform:resource_loader",
     ],
 )
 
@@ -164,8 +175,11 @@ pybind_extension(
     ],
     hdrs = ["test_registerer.h"],
     additional_exported_symbols = ["TF_TestRegisterer"],
+    enable_stub_generation = True,
     link_in_framework = True,
-    module_name = "_pywrap_test_registerer",
+    pytype_srcs = [
+        "_pywrap_test_registerer.pyi",
+    ],
     deps = [
         ":test_registerer",
         "//tensorflow/lite:framework",

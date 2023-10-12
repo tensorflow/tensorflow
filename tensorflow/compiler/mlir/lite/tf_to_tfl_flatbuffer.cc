@@ -15,26 +15,47 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 
+#include <iostream>
+#include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/debug/debug.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/serializer/flatbuffer_export.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/op_stat_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_tfl_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_util.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantize_passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_freeze_variables.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
@@ -43,17 +64,19 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/lite/python/metrics/converter_error_data.pb.h"
 #include "tensorflow/lite/tools/optimize/quantize_weights.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::Operation;
-using mlir::OwningModuleRef;
-using stream_executor::port::StatusOr;
+using mlir::OwningOpRef;
+using tsl::StatusOr;
 
 bool IsControlFlowV1Op(Operation* op) {
   return mlir::isa<mlir::tf_executor::SwitchOp, mlir::tf_executor::MergeOp,
@@ -80,6 +103,25 @@ mlir::LogicalResult IsValidGraph(mlir::ModuleOp module) {
   return mlir::success();
 }
 
+mlir::LogicalResult GraphContainsStatefulPartitionedOp(mlir::ModuleOp module) {
+  auto result = module.walk([&](Operation* op) {
+    return llvm::isa_and_nonnull<mlir::TF::StatefulPartitionedCallOp>(op)
+               ? mlir::WalkResult::interrupt()
+               : mlir::WalkResult::advance();
+  });
+  if (result.wasInterrupted()) {
+    // StatefulPartitionedCall ops are not supported by the tflite runtime.
+    mlir::TFL::AttachErrorCode(
+        module.emitError(
+            "The Graph contains unsupported `StatefulPartionedCallOp`(s), will "
+            "retry with `guarantee_all_funcs_used_once`"),
+        tflite::metrics::ConverterErrorData::
+            ERROR_STATEFUL_PARTITIONED_CALL_IN_FINAL_IR);
+    return mlir::failure();
+  }
+  return mlir::success();
+}
+
 // Util that registers 'extra_tf_opdefs' to the TF global registry.
 // Return OK on success, failure if registering failed.
 Status RegisterExtraTfOpDefs(absl::Span<const std::string> extra_tf_opdefs) {
@@ -95,14 +137,14 @@ Status RegisterExtraTfOpDefs(absl::Span<const std::string> extra_tf_opdefs) {
     tensorflow::OpRegistry::Global()->Register(
         [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
-          return Status::OK();
+          return OkStatus();
         });
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
-StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
+StatusOr<OwningOpRef<ModuleOp>> LoadFromGraphdefOrMlirSource(
     const std::string& input_filename, bool input_mlir,
     bool use_splatted_constant, const std::vector<std::string>& extra_tf_opdefs,
     const GraphImportConfig& specs, absl::string_view debug_info_file,
@@ -120,36 +162,42 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
 
   if (input_mlir) {
     source_mgr->AddNewSourceBuffer(std::move(file), llvm::SMLoc());
-    return OwningModuleRef(mlir::parseSourceFile(*source_mgr, context));
+    return OwningOpRef<ModuleOp>(
+        mlir::parseSourceFile<mlir::ModuleOp>(*source_mgr, context));
   }
 
   // Register extra TF ops passed as OpDef.
   auto extra_opdefs_status = RegisterExtraTfOpDefs(extra_tf_opdefs);
   if (!extra_opdefs_status.ok()) return extra_opdefs_status;
 
+  ::tensorflow::GraphdefToMlirOptions graphdef_conversion_options{
+      std::string(debug_info_file),
+      /*xla_compile_device_type=*/"",
+      /*prune_unused_nodes=*/specs.prune_unused_nodes,
+      /*convert_legacy_fed_inputs=*/true,
+      /*graph_as_function=*/false,
+      specs.upgrade_legacy,
+      /*enable_shape_inference=*/false,
+      /*unconditionally_use_set_output_shapes=*/true,
+      /*enable_soft_placement=*/false};
+
   if (use_splatted_constant) {
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
-        file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
-        input_shapes, output_arrays, control_output_arrays,
-        specs.prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
-        /*graph_as_function=*/false, specs.upgrade_legacy,
-        /*enable_shape_inference=*/false,
-        /*unconditionally_use_set_output_shapes=*/true, context);
+        file->getBuffer(), input_arrays, input_dtypes, input_shapes,
+        output_arrays, control_output_arrays, graphdef_conversion_options,
+        context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
-      file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
-      input_shapes, output_arrays, control_output_arrays,
-      specs.prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
-      /*graph_as_function=*/false, specs.upgrade_legacy,
-      /*enable_shape_inference=*/false,
-      /*unconditionally_use_set_output_shapes=*/true, context);
+      file->getBuffer(), input_arrays, input_dtypes, input_shapes,
+      output_arrays, control_output_arrays, graphdef_conversion_options,
+      context);
 }
 
 // Applying post-training dynamic range quantization from the old TOCO quantizer
 // on the translated_result using quant_specs and saving the final output in
 // result.
 Status ApplyDynamicRangeQuantizationFromOldQuantizer(
-    const mlir::TFL::QuantizationSpecs& quant_specs,
+    const mlir::quant::QuantizationSpecs& quant_specs,
     std::string translated_result, std::string* result) {
   flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);
   const uint8_t* buffer =
@@ -171,15 +219,97 @@ Status ApplyDynamicRangeQuantizationFromOldQuantizer(
 
   bool use_updated_hybrid_scheme = !quant_specs.disable_per_channel;
   if (::tflite::optimize::QuantizeWeights(
-          &q_builder, input_model, quantized_type, use_updated_hybrid_scheme) !=
-      kTfLiteOk) {
+          &q_builder, input_model, quantized_type, use_updated_hybrid_scheme,
+          ::tflite::optimize::QuantizerType::OLD_QUANTIZER) != kTfLiteOk) {
     return errors::InvalidArgument("Quantize weights transformation failed.");
   }
   const uint8_t* q_buffer = q_builder.GetBufferPointer();
   *result =
       string(reinterpret_cast<const char*>(q_buffer), q_builder.GetSize());
 
-  return Status::OK();
+  return OkStatus();
+}
+
+Status ConvertTFExecutorToStablehloFlatbuffer(
+    mlir::PassManager& pass_manager, mlir::ModuleOp module, bool export_to_mlir,
+    mlir::StatusScopedDiagnosticHandler& statusHandler,
+    const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
+    std::optional<tensorflow::Session*> session, std::string* result,
+    const std::unordered_set<std::string>& saved_model_tags) {
+  // Currently, TF quantization only support dynamic range quant, as such
+  // when toco flag post training quantization is specified with converting to
+  // stablehlo, we automatically enable dynamic range quantization
+
+  if (toco_flags.post_training_quantize()) {
+    const auto status = tensorflow::quantization::PreprocessAndFreezeGraph(
+        module, module.getContext(), session);
+    if (!status.ok()) {
+      return errors::Aborted("Failed to preprocess & freeze TF graph");
+    }
+
+    // TODO(b/264218457): Refactor the component below once StableHLO Quantizer
+    // can run DRQ. Temporarily using TF Quantization for StableHLO DRQ.
+    if (!toco_flags.has_quantization_options()) {
+      // The default minimum number of elements a weights array must have to be
+      // quantized by this transformation.
+      const int kWeightsMinNumElementsDefault = 1024;
+
+      tensorflow::quantization::QuantizationOptions quantization_options;
+
+      quantization_options.mutable_quantization_method()->set_preset_method(
+          tensorflow::quantization::QuantizationMethod::
+              METHOD_DYNAMIC_RANGE_INT8);
+      quantization_options.set_op_set(
+          tensorflow::quantization::UNIFORM_QUANTIZED);
+      quantization_options.set_min_num_elements_for_weights(
+          kWeightsMinNumElementsDefault);
+      tensorflow::quantization::AddQuantizePtqDynamicRangePasses(
+          pass_manager, quantization_options);
+    }
+    if (failed(pass_manager.run(module))) {
+      return statusHandler.ConsumeStatus();
+    }
+  }
+
+  pass_manager.clear();
+  mlir::odml::AddTFToStablehloPasses(pass_manager, /*skip_resize*/ true,
+                                     /*smuggle_disallowed_ops*/ true);
+  // Print out a detailed report of non-converted stats.
+  pass_manager.addPass(mlir::odml::createPrintOpStatsPass(
+      mlir::odml::GetAcceptedStableHLODialects()));
+  mlir::odml::AddStablehloOptimizationPasses(pass_manager);
+  if (toco_flags.has_quantization_options()) {
+    stablehlo::quantization::AddQuantizationPasses(
+        pass_manager, toco_flags.quantization_options());
+  }
+  if (failed(pass_manager.run(module))) {
+    return statusHandler.ConsumeStatus();
+  }
+
+  if (export_to_mlir) {
+    llvm::raw_string_ostream os(*result);
+    module.print(os);
+    return statusHandler.ConsumeStatus();
+  }
+
+  // Write MLIR Stablehlo dialect into FlatBuffer
+  OpOrArgLocNameMapper op_or_arg_name_mapper;
+  tflite::FlatbufferExportOptions options;
+  options.toco_flags = toco_flags;
+  options.saved_model_tags = saved_model_tags;
+  options.op_or_arg_name_mapper = &op_or_arg_name_mapper;
+  options.metadata[tflite::kModelUseStablehloTensorKey] = "true";
+  if (!tflite::MlirToFlatBufferTranslateFunction(module, options, result,
+                                                 true)) {
+    auto s = statusHandler.ConsumeStatus();
+    std::string message = "Could not translate MLIR to FlatBuffer.";
+    if (!s.ok()) {
+      absl::StrAppend(&message, " ", s.ToString());
+    }
+    return absl::UnknownError(message);
+  }
+
+  return OkStatus();
 }
 
 Status ConvertTFExecutorToTFLOrFlatbuffer(
@@ -187,9 +317,14 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     const toco::TocoFlags& toco_flags, const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags,
     llvm::StringRef saved_model_dir,
-    llvm::Optional<tensorflow::Session*> session, std::string* result) {
+    std::optional<tensorflow::Session*> session, std::string* result,
+    bool serialize_stablehlo_ops) {
   // Explicitly disable dumping Op details on failures.
   module.getContext()->printOpOnDiagnostic(false);
+
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  module.getContext()->appendDialectRegistry(registry);
 
   // Register a warning handler only log to std out.
   mlir::ScopedDiagnosticHandler s(
@@ -212,22 +347,31 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
 
   mlir::PassManager pass_manager(module.getContext());
   mlir::registerPassManagerCLOptions();
-  mlir::applyPassManagerCLOptions(pass_manager);
+  if (mlir::failed(mlir::applyPassManagerCLOptions(pass_manager))) {
+    return absl::UnknownError("failed to apply MLIR pass manager CL options");
+  }
   pass_manager.addInstrumentation(
       std::make_unique<mlir::TFL::ErrorCollectorInstrumentation>(
           pass_manager.getContext()));
+  InitPassManager(pass_manager, toco_flags.debug_options());
 
-  tensorflow::AddPreVariableFreezingTFToTFLConversionPasses(
-      saved_model_dir, toco_flags, pass_config, &pass_manager);
+  if (pass_config.enable_stablehlo_conversion) {
+    // return to avoid adding TFL converter path
+    return ConvertTFExecutorToStablehloFlatbuffer(
+        pass_manager, module, export_to_mlir, statusHandler, toco_flags,
+        pass_config, session, result, saved_model_tags);
+  }
+
+  tensorflow::AddPreVariableFreezingTFToTFLConversionPasses(pass_config,
+                                                            &pass_manager);
   if (failed(pass_manager.run(module))) {
     return statusHandler.ConsumeStatus();
   }
-
   // Freeze variables if a session is provided.
-  if (session.hasValue()) {
+  if (session.has_value()) {
     mlir::TFL::ErrorCollectorInstrumentation collector(module.getContext());
-    if (failed(mlir::tf_saved_model::FreezeVariables(module,
-                                                     session.getValue()))) {
+    if (failed(
+            mlir::tf_saved_model::FreezeVariables(module, session.value()))) {
       auto status = statusHandler.ConsumeStatus();
       mlir::TFL::ErrorCollector* collector =
           mlir::TFL::ErrorCollector::GetErrorCollector();
@@ -243,7 +387,9 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
       return status;
     }
   }
+
   pass_manager.clear();
+
   tensorflow::AddPostVariableFreezingTFToTFLConversionPasses(
       saved_model_dir, toco_flags, pass_config, &pass_manager);
   if (failed(pass_manager.run(module))) {
@@ -264,6 +410,18 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     return status;
   }
 
+  if (failed(GraphContainsStatefulPartitionedOp(module))) {
+    return statusHandler.ConsumeStatus();
+  }
+
+  pass_manager.clear();
+  // Print out a detailed report of ops that are not converted to TFL ops.
+  pass_manager.addPass(mlir::odml::createPrintOpStatsPass(
+      mlir::odml::GetAcceptedTFLiteDialects()));
+  if (failed(pass_manager.run(module))) {
+    return statusHandler.ConsumeStatus();
+  }
+
   if (export_to_mlir) {
     llvm::raw_string_ostream os(*result);
     module.print(os);
@@ -271,7 +429,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   // Write MLIR TFLite dialect into FlatBuffer
-  const mlir::TFL::QuantizationSpecs& quant_specs = pass_config.quant_specs;
+  const mlir::quant::QuantizationSpecs& quant_specs = pass_config.quant_specs;
   OpOrArgLocNameMapper op_or_arg_name_mapper;
   tflite::FlatbufferExportOptions options;
   std::string translated_result;
@@ -283,13 +441,20 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     options.metadata.insert(
         MetadataForReducedPrecisionSupport(quant_specs.support_mask));
   }
-  if (!tflite::MlirToFlatBufferTranslateFunction(module, options,
-                                                 &translated_result)) {
-    return statusHandler.ConsumeStatus();
+  if (!tflite::MlirToFlatBufferTranslateFunction(
+          module, options, &translated_result, serialize_stablehlo_ops)) {
+    auto s = statusHandler.ConsumeStatus();
+    std::string message = "Could not translate MLIR to FlatBuffer.";
+    if (!s.ok()) {
+      absl::StrAppend(&message, " ", s.ToString());
+    }
+    return absl::UnknownError(message);
   }
 
+  // TODO(b/176267167): Quantize flex fallback in the MLIR pipeline
   if (quant_specs.weight_quantization &&
-      !quant_specs.RunAndRewriteDynamicRangeQuantizationPasses()) {
+      (!quant_specs.RunAndRewriteDynamicRangeQuantizationPasses() ||
+       !pass_config.emit_builtin_tflite_ops)) {
     // Apply post-training dynamic range quantization from the old TOCO
     // quantizer.Once MLIR has support for this, we can remove this if
     // statement.
@@ -300,13 +465,13 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     *result = translated_result;
   }
 
-  if (mlir::failed(module.verify())) {
+  if (mlir::failed(module.verifyInvariants())) {
     return tensorflow::errors::Unknown("Final module is invalid");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
-StatusOr<mlir::OwningModuleRef> ImportSavedModel(
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     const std::string& input_filename, const int saved_model_version,
     const std::unordered_set<std::string>& tags,
     absl::Span<const std::string> extra_tf_opdefs,
@@ -322,17 +487,18 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
         input_filename, tags, exported_names, context,
         /*unconditionally_use_set_output_shapes=*/true);
     if (!module_or.status().ok()) return module_or.status();
-    return module_or.ConsumeValueOrDie();
+    return std::move(module_or).value();
   } else if (saved_model_version == 1) {
     MLIRImportOptions options;
     options.upgrade_legacy = specs.upgrade_legacy;
     options.unconditionally_use_set_output_shapes = true;
+    options.lift_variables = enable_variable_lifting;
     auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
         input_filename, tags, exported_names, context, options,
-        enable_variable_lifting, saved_model_bundle);
+        saved_model_bundle);
 
     if (!module_or.status().ok()) return module_or.status();
-    return module_or.ConsumeValueOrDie();
+    return std::move(module_or).value();
   } else {
     return tensorflow::errors::InvalidArgument(
         "Should be either saved model v1 or v2");

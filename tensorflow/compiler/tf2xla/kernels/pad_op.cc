@@ -17,9 +17,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/value_inference.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/value_inference.h"
+#include "xla/client/xla_builder.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -118,7 +118,7 @@ class PadOp : public XlaOpKernel {
                 total_size, xla::ValueInferenceMode::kUpperBound);
         OP_REQUIRES_OK(ctx, size_upper_bound_status_or.status());
         auto size_upper_bound =
-            size_upper_bound_status_or.ValueOrDie().Get<int32>({});
+            size_upper_bound_status_or.value().Get<int32>({});
         OP_REQUIRES(
             ctx, size_upper_bound.has_value(),
             errors::InvalidArgument(

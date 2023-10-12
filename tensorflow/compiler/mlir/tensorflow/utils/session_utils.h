@@ -15,8 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_SESSION_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_SESSION_UTILS_H_
 
+#include <string>
+#include <vector>
+
 #include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/public/session.h"

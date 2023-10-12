@@ -34,6 +34,10 @@ struct PerChannelQuantData {
   // tensor.
   float* scales_data = nullptr;
   int num_scale_values = 1;
+  // Number of splits to workaround DepthwiseConv accuracy issue.
+  // See Conv2dOpBuilder.should_split_dwconv_ for details.
+  int splits = 0;
+  std::vector<OpBuilder*> channel_scales_nodes;
 };
 
 class Conv2dOpBuilder : public OpBuilder {
@@ -59,6 +63,33 @@ class Conv2dOpBuilder : public OpBuilder {
                                    const TfLiteIntArray* outputs,
                                    TfLiteContext* context);
 
+  void BuildStandardConv(const TfLiteIntArray* inputs,
+                         const TfLiteTensor& output_data_tensor,
+                         OpBuilder* data_min_const, OpBuilder* data_max_const,
+                         OpBuilder* conv_output_min_const,
+                         OpBuilder* conv_output_max_const,
+                         OpBuilder* stride_node,
+                         const TfLitePadding padding_type,
+                         TensorID* output_tensor, TensorID* output_min_tensor,
+                         TensorID* output_max_tensor);
+  void BuildDilatedDwConv(const TfLiteIntArray* inputs,
+                          const TfLiteTensor& data_tensor,
+                          const TfLiteTensor& output_data_tensor,
+                          OpBuilder* data_min_const, OpBuilder* data_max_const,
+                          OpBuilder* conv_output_min_const,
+                          OpBuilder* conv_output_max_const,
+                          OpBuilder* stride_node, int stride_height,
+                          const TfLitePadding padding_type,
+                          TensorID* output_tensor, TensorID* output_min_tensor,
+                          TensorID* output_max_tensor);
+  void BuildSplittedDwConv(
+      const TfLiteIntArray* inputs, const TfLiteTensor& data_tensor,
+      const TfLiteTensor& output_data_tensor, OpBuilder* data_min_const,
+      OpBuilder* data_max_const, OpBuilder* conv_output_min_const,
+      OpBuilder* conv_output_max_const, OpBuilder* stride_node,
+      const TfLitePadding padding_type, TensorID* output_tensor,
+      TensorID* output_min_tensor, TensorID* output_max_tensor);
+
   TensorID node_output_;
   std::vector<float> transposed_weights_;
   std::vector<int> stride_shape_;
@@ -67,6 +98,36 @@ class Conv2dOpBuilder : public OpBuilder {
   OpBuilder* weights_max_node_ = nullptr;
   OpBuilder* bias_min_node_ = nullptr;
   OpBuilder* bias_max_node_ = nullptr;
+
+  // TODO(b/228874753)
+  // We are seeing accuray issues on DepthwiseSupernode_8x8p32to8 in the
+  // following case:
+  // * kernel size is 5x5
+  // * stride size is 2x2
+  // * per channel quantized
+  // * input depth more than 32
+  //
+  // To workaround the issue, the DepthwiseSupernode_8x8p32to8 is splitted
+  // into 32 channel batches and concatenated afterwards.
+  // Input tensor, weights, bias and channel scales are splitted into 32
+  // channel sizes and fed to multiple DepthwiseSupernode_8x8p32to8 ops.
+  // The results are stitched back with a Concat op.
+  //
+  // Checks if it has DepthwiseSupernode_8x8p32to8 accuracy issues.
+  void CheckShouldSplitDwConv(TfLiteType weights_type, int input_depth,
+                              bool is_per_channel_quant,
+                              int channel_multiplier);
+  // Split weights into multiple 32-channel nodes.
+  // `converted_data` is MSB flipped int8 weight values.
+  void SplitWeightsForDwConv(const std::vector<uint8_t>& converted_data,
+                             int input_depth, int channel_multiplier);
+  // Split bias into 32 element batches.
+  // `preprocessed_bias_data` is the output of ProcessPerChannelQuantizedBias.
+  void SplitBiasForDwConv(std::vector<int>& preprocessed_bias_data);
+  bool should_split_dwconv_ = false;
+  std::vector<TensorID> data_nodes_;
+  std::vector<OpBuilder*> bias_nodes_;
+  std::vector<OpBuilder*> weights_nodes_;
 
   // Modified only if node has per-channel quantized weights/biases.
   PerChannelQuantData per_channel_quant_;
@@ -93,6 +154,7 @@ TfLiteStatus ProcessPerChannelQuantizedBias(
     const int bias_tensor_idx, TfLiteContext* context, float* bias_min,
     float* bias_max, GraphBuilder* graph_builder,
     PerChannelQuantData* per_channel_quant,
+    std::vector<int>* preprocessed_bias_data,
     OpBuilder** bias_const_node = nullptr);
 
 }  // namespace hexagon

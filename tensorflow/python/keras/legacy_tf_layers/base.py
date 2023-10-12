@@ -28,10 +28,8 @@ from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.utils import tf_contextlib
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
-from tensorflow.python.util.tf_export import tf_export
 
 # Avoid breaking users who directly import this symbol from this file.
 # TODO(fchollet): remove this.
@@ -40,9 +38,6 @@ InputSpec = base_layer.InputSpec  # pylint: disable=invalid-name
 _KERAS_STYLE_SCOPE = False
 
 
-@keras_export(
-    v1=['keras.__internal__.legacy.layers.experimental.keras_style_scope'])
-@tf_export(v1=['layers.experimental.keras_style_scope'])
 @tf_contextlib.contextmanager
 def keras_style_scope():
   """Use Keras-style variable management.
@@ -111,9 +106,6 @@ def keras_style_scope():
     _KERAS_STYLE_SCOPE = stack
 
 
-@keras_export(
-    v1=['keras.__internal__.legacy.layers.experimental.set_keras_style'])
-@tf_export(v1=['layers.experimental.set_keras_style'])
 def set_keras_style():
   """Use Keras-style variable management.
 
@@ -156,8 +148,6 @@ def _is_in_keras_style_scope():
   return _KERAS_STYLE_SCOPE
 
 
-@keras_export(v1=['keras.__internal__.legacy.layers.Layer'])
-@tf_export(v1=['layers.Layer'])
 class Layer(base_layer.Layer):
   """Base layer class.
 

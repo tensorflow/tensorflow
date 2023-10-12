@@ -12,14 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tracing Protocol for tf.function.
+"""Trace-time type system for tf.function (TraceType).
 
-TODO(b/202447704): Briefly describe the tracing, retracing, and how trace types
-control it.
+Trace-time types describe things like tf.function signatures and type
+constraints in some ops.
+
+This module provides utilities and concrete tf.types.experimental.TraceType
+definitions for common Python types like containers, along with a generic
+implementation for Python objects.
+See also: tf.types.experimental.TraceType
+
+Other implementations of TraceType include tf.TypeSpec and its subclasses.
 """
 
-
-from tensorflow.core.function.trace_type.signature_builder import make_function_signature
-from tensorflow.core.function.trace_type.signature_builder import SignatureContext
-from tensorflow.core.function.trace_type.signature_builder import WeakrefDeletionObserver
-
+from tensorflow.core.function.trace_type.default_types import register_tensor_type
+from tensorflow.core.function.trace_type.default_types import Weakref
+from tensorflow.core.function.trace_type.serialization import deserialize
+from tensorflow.core.function.trace_type.serialization import register_serializable
+from tensorflow.core.function.trace_type.serialization import Serializable
+from tensorflow.core.function.trace_type.serialization import serialize
+from tensorflow.core.function.trace_type.serialization import SerializedTraceType
+from tensorflow.core.function.trace_type.trace_type_builder import from_value
+from tensorflow.core.function.trace_type.trace_type_builder import InternalCastContext
+from tensorflow.core.function.trace_type.trace_type_builder import InternalPlaceholderContext
+from tensorflow.core.function.trace_type.trace_type_builder import InternalTracingContext

@@ -218,16 +218,11 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
             f"be True. Received: {is_positive_definite}.")
       is_positive_definite = True
 
-    # Initialization.
-    graph_parents = []
-    for operator in operators:
-      graph_parents.extend(operator.graph_parents)
-
     if name is None:
       name = operators[0].name
       for operator in operators[1:]:
         name += "_x_" + operator.name
-    with ops.name_scope(name, values=graph_parents):
+    with ops.name_scope(name):
       super(LinearOperatorKronecker, self).__init__(
           dtype=dtype,
           is_non_singular=is_non_singular,
@@ -236,8 +231,6 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
           is_square=is_square,
           parameters=parameters,
           name=name)
-    # TODO(b/143910018) Remove graph_parents in V3.
-    self._set_graph_parents(graph_parents)
 
   @property
   def operators(self):
@@ -284,6 +277,34 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
           batch_shape, operator.batch_shape_tensor())
 
     return array_ops.concat((batch_shape, matrix_shape), 0)
+
+  def _linop_adjoint(self) -> "LinearOperatorKronecker":
+    return LinearOperatorKronecker(
+        operators=[operator.adjoint() for operator in self.operators],
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=True)
+
+  def _linop_cholesky(self) -> "LinearOperatorKronecker":
+    # Cholesky decomposition of a Kronecker product is the Kronecker product
+    # of cholesky decompositions.
+    return LinearOperatorKronecker(
+        operators=[operator.cholesky() for operator in self.operators],
+        is_non_singular=True,
+        is_self_adjoint=None,  # Let the operators passed in decide.
+        is_square=True)
+
+  def _linop_inverse(self) -> "LinearOperatorKronecker":
+    # Inverse decomposition of a Kronecker product is the Kronecker product
+    # of inverse decompositions.
+    return LinearOperatorKronecker(
+        operators=[
+            operator.inverse() for operator in self.operators],
+        is_non_singular=self.is_non_singular,
+        is_self_adjoint=self.is_self_adjoint,
+        is_positive_definite=self.is_positive_definite,
+        is_square=True)
 
   def _solve_matmul_internal(
       self,
@@ -511,3 +532,7 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
   @property
   def _composite_tensor_fields(self):
     return ("operators",)
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    return {"operators": [0] * len(self.operators)}

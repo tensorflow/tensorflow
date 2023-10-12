@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 
+#include <algorithm>
+
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 
 namespace mlir {
 namespace TFL {
@@ -47,7 +50,7 @@ bool TFIntListIs1XY1(Operation *op, StringRef name, IntegerAttr *x,
   return true;
 }
 
-// Returns true if the attribute is an integer list of the form [1, X, Y, 1],
+// Returns true if the attribute is an integer list of the form [1, X, Y, 1].
 bool TFIntListIs1XY1(const Attribute attr) {
   const auto &elements = attr.cast<ArrayAttr>().getValue();
   if (elements.size() != 4 ||
@@ -57,6 +60,21 @@ bool TFIntListIs1XY1(const Attribute attr) {
 
   if (elements.front().cast<IntegerAttr>().getValue() != 1 ||
       elements.back().cast<IntegerAttr>().getValue() != 1)
+    return false;
+  return true;
+}
+
+// Returns true if the attribute is an integer list of the form [1, 1, X, Y].
+bool TFIntListIs11XY(const Attribute attr) {
+  const auto &elements = attr.cast<ArrayAttr>().getValue();
+  if (elements.size() != 4 ||
+      std::any_of(elements.begin(), elements.end(),
+                  [](Attribute e) { return !e.isa<IntegerAttr>(); }))
+    return false;
+
+  const Attribute *data = elements.data();
+  if (data[0].cast<IntegerAttr>().getValue() != 1 ||
+      data[1].cast<IntegerAttr>().getValue() != 1)
     return false;
   return true;
 }
@@ -98,7 +116,7 @@ bool TFIntListIsAllOnes(const Attribute attr) {
   });
 }
 
-bool IsBroadcastableElementsAttrs(mlir::Attribute a, mlir::Attribute b) {
+bool IsBroadcastableElementsAttrs(mlir::TypedAttr a, mlir::TypedAttr b) {
   // This would return false if we had unranked tensors (where they should
   // probably be considered as broadcastable), but given we are working with
   // attributes here that shouldn't be an issue,
@@ -114,7 +132,7 @@ bool IsDimensionsDegenerateExceptLastOne(ArrayRef<int64_t> elements_shape) {
   return true;
 }
 
-bool IsDimensionsDegenerateExceptLastOne(Attribute val) {
+bool IsDimensionsDegenerateExceptLastOne(TypedAttr val) {
   if (auto ranked_type = val.getType().dyn_cast<RankedTensorType>()) {
     return IsDimensionsDegenerateExceptLastOne(ranked_type.getShape());
   }

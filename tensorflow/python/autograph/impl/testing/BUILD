@@ -1,6 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],
 )
@@ -8,7 +9,10 @@ package(
 pybind_extension(
     name = "pybind_for_testing",
     srcs = ["pybind_for_testing.cc"],
-    module_name = "pybind_for_testing",
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "pybind_for_testing.pyi",
+    ],
     deps = [
         "@pybind11",
     ],

@@ -143,7 +143,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
     for (int wi = 0; wi < num_workers; ++wi) {
       for (int di = 0; di < num_devices; ++di) {
         int rank = wi * num_devices + di;
-        instances_.push_back(absl::make_unique<DeviceInstance>(
+        instances_.push_back(std::make_unique<DeviceInstance>(
             rank, dtype, shape, test_env_.get()));
       }
     }
@@ -190,9 +190,8 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
     for (int di = 0; di < instances_.size(); ++di) {
       if (!instances_[di]->status_.ok()) {
         ASSERT_GT(fail_after, 0);
-        ASSERT_NE(
-            instances_[di]->status_.error_message().find("Deliberate failure"),
-            string::npos);
+        ASSERT_NE(instances_[di]->status_.message().find("Deliberate failure"),
+                  string::npos);
         ++failure_count_;
         continue;
       }

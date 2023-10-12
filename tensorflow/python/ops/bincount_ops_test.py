@@ -17,7 +17,7 @@
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.eager import context
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -25,488 +25,21 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import bincount_ops
 from tensorflow.python.ops import gen_count_ops
 from tensorflow.python.ops import sparse_ops
-from tensorflow.python.ops.ragged import ragged_factory_ops
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
-class TestSparseCount(test.TestCase, parameterized.TestCase):
+def _adjust_expected_rank1(x, minlength, maxlength):
+  """Trim or pad an expected result based on minlength and maxlength."""
+  n = len(x)
+  if (minlength is not None) and (n < minlength):
+    x = x + [0] * (minlength - n)
+  if (maxlength is not None) and (n > maxlength):
+    x = x[:maxlength]
+  return x
 
-  @parameterized.named_parameters(
-      {
-          "testcase_name": "_no_maxlength",
-          "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
-          "expected_indices": [[0, 1], [0, 2], [0, 3], [1, 4], [1, 5]],
-          "expected_values": [1, 1, 1, 2, 1],
-          "expected_shape": [2, 6]
-      }, {
-          "testcase_name": "_maxlength",
-          "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
-          "maxlength": 7,
-          "expected_indices": [[0, 1], [0, 2], [0, 3], [1, 0], [1, 4]],
-          "expected_values": [1, 1, 1, 1, 2],
-          "expected_shape": [2, 7]
-      }, {
-          "testcase_name": "_minlength",
-          "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
-          "minlength": 9,
-          "expected_indices": [[0, 1], [0, 2], [0, 3], [0, 7], [1, 0], [1, 4],
-                               [1, 7]],
-          "expected_values": [1, 1, 1, 1, 1, 2, 1],
-          "expected_shape": [2, 9]
-      }, {
-          "testcase_name": "_minlength_larger_values",
-          "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
-          "minlength": 3,
-          "expected_indices": [[0, 1], [0, 2], [0, 3], [0, 7], [1, 0], [1, 4],
-                               [1, 7]],
-          "expected_values": [1, 1, 1, 1, 1, 2, 1],
-          "expected_shape": [2, 8]
-      }, {
-          "testcase_name": "_no_maxlength_binary",
-          "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
-          "expected_indices": [[0, 1], [0, 2], [0, 3], [1, 4], [1, 5]],
-          "expected_values": [1, 1, 1, 1, 1],
-          "expected_shape": [2, 6],
-          "binary_output": True,
-      }, {
-          "testcase_name": "_maxlength_binary",
-          "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
-          "maxlength": 7,
-          "expected_indices": [[0, 1], [0, 2], [0, 3], [1, 0], [1, 4]],
-          "expected_values": [1, 1, 1, 1, 1],
-          "expected_shape": [2, 7],
-          "binary_output": True,
-      }, {
-          "testcase_name": "_minlength_binary",
-          "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
-          "minlength": 9,
-          "expected_indices": [[0, 1], [0, 2], [0, 3], [0, 7], [1, 0], [1, 4],
-                               [1, 7]],
-          "expected_values": [1, 1, 1, 1, 1, 1, 1],
-          "expected_shape": [2, 9],
-          "binary_output": True,
-      }, {
-          "testcase_name": "_minlength_larger_values_binary",
-          "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
-          "minlength": 3,
-          "expected_indices": [[0, 1], [0, 2], [0, 3], [0, 7], [1, 0], [1, 4],
-                               [1, 7]],
-          "expected_values": [1, 1, 1, 1, 1, 1, 1],
-          "expected_shape": [2, 8],
-          "binary_output": True,
-      }, {
-          "testcase_name": "_no_maxlength_weights",
-          "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
-          "expected_indices": [[0, 1], [0, 2], [0, 3], [1, 4], [1, 5]],
-          "expected_values": [2, 1, 0.5, 9, 3],
-          "expected_shape": [2, 6],
-          "weights": [[0.5, 1, 2], [3, 4, 5]]
-      }, {
-          "testcase_name": "_maxlength_weights",
-          "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
-          "maxlength": 7,
-          "expected_indices": [[0, 1], [0, 2], [0, 3], [1, 0], [1, 4]],
-          "expected_values": [2, 1, 0.5, 3, 9],
-          "expected_shape": [2, 7],
-          "weights": [[0.5, 1, 2, 11], [7, 3, 4, 5]]
-      }, {
-          "testcase_name": "_minlength_weights",
-          "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
-          "minlength": 9,
-          "expected_indices": [[0, 1], [0, 2], [0, 3], [0, 7], [1, 0], [1, 4],
-                               [1, 7]],
-          "expected_values": [2, 1, 0.5, 3, 5, 13, 4],
-          "expected_shape": [2, 9],
-          "weights": [[0.5, 1, 2, 3], [4, 5, 6, 7]]
-      }, {
-          "testcase_name": "_minlength_larger_values_weights",
-          "x": np.array([[3, 2, 1, 7], [7, 0, 4, 4]], dtype=np.int32),
-          "minlength": 3,
-          "expected_indices": [[0, 1], [0, 2], [0, 3], [0, 7], [1, 0], [1, 4],
-                               [1, 7]],
-          "expected_values": [2, 1, 0.5, 3, 5, 13, 4],
-          "expected_shape": [2, 8],
-          "weights": [[0.5, 1, 2, 3], [4, 5, 6, 7]]
-      }, {
-          "testcase_name": "_1d",
-          "x": np.array([3, 2, 1, 1], dtype=np.int32),
-          "expected_indices": [[1], [2], [3]],
-          "expected_values": [2, 1, 1],
-          "expected_shape": [4]
-      }, {
-          "testcase_name": "_all_axes",
-          "x": np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32),
-          "expected_indices": [[1], [2], [3], [4], [5]],
-          "expected_values": [1, 1, 1, 2, 1],
-          "expected_shape": [6],
-          "axis": None
-      })
-  def test_dense_input(self,
-                       x,
-                       expected_indices,
-                       expected_values,
-                       expected_shape,
-                       minlength=None,
-                       maxlength=None,
-                       binary_output=False,
-                       weights=None,
-                       axis=-1):
-    y = bincount_ops.sparse_bincount(
-        x,
-        weights=weights,
-        minlength=minlength,
-        maxlength=maxlength,
-        binary_output=binary_output,
-        axis=axis)
-    self.assertAllEqual(expected_indices, y.indices)
-    self.assertAllEqual(expected_values, y.values)
-    self.assertAllEqual(expected_shape, y.dense_shape)
 
-  @parameterized.named_parameters(
-      {
-          "testcase_name":
-              "_no_maxlength",
-          "x":
-              np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]],
-                       dtype=np.int32),
-          "expected_indices": [[0, 1], [0, 3], [2, 4], [2, 5]],
-          "expected_values": [1, 1, 2, 1],
-          "expected_shape": [3, 6],
-      },
-      {
-          "testcase_name":
-              "_maxlength",
-          "x":
-              np.array([[3, 0, 1, 0], [7, 0, 0, 0], [5, 0, 4, 4]],
-                       dtype=np.int32),
-          "expected_indices": [[0, 1], [0, 3], [2, 4], [2, 5]],
-          "expected_values": [1, 1, 2, 1],
-          "expected_shape": [3, 7],
-          "maxlength":
-              7,
-      },
-      {
-          "testcase_name":
-              "_minlength",
-          "x":
-              np.array([[3, 0, 1, 0], [7, 0, 0, 0], [5, 0, 4, 4]],
-                       dtype=np.int32),
-          "expected_indices": [[0, 1], [0, 3], [1, 7], [2, 4], [2, 5]],
-          "expected_values": [1, 1, 1, 2, 1],
-          "expected_shape": [3, 9],
-          "minlength":
-              9,
-      },
-      {
-          "testcase_name":
-              "_minlength_larger_values",
-          "x":
-              np.array([[3, 0, 1, 0], [7, 0, 0, 0], [5, 0, 4, 4]],
-                       dtype=np.int32),
-          "expected_indices": [[0, 1], [0, 3], [1, 7], [2, 4], [2, 5]],
-          "expected_values": [1, 1, 1, 2, 1],
-          "expected_shape": [3, 8],
-          "minlength":
-              3,
-      },
-      {
-          "testcase_name":
-              "_no_maxlength_binary",
-          "x":
-              np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]],
-                       dtype=np.int32),
-          "expected_indices": [[0, 1], [0, 3], [2, 4], [2, 5]],
-          "expected_values": [1, 1, 1, 1],
-          "expected_shape": [3, 6],
-          "binary_output":
-              True,
-      },
-      {
-          "testcase_name":
-              "_maxlength_binary",
-          "x":
-              np.array([[3, 0, 1, 0], [0, 0, 7, 0], [5, 0, 4, 4]],
-                       dtype=np.int32),
-          "expected_indices": [[0, 1], [0, 3], [2, 4], [2, 5]],
-          "expected_values": [1, 1, 1, 1],
-          "expected_shape": [3, 7],
-          "maxlength":
-              7,
-          "binary_output":
-              True,
-      },
-      {
-          "testcase_name":
-              "_minlength_binary",
-          "x":
-              np.array([[3, 0, 1, 0], [7, 0, 0, 0], [5, 0, 4, 4]],
-                       dtype=np.int32),
-          "expected_indices": [[0, 1], [0, 3], [1, 7], [2, 4], [2, 5]],
-          "expected_values": [1, 1, 1, 1, 1],
-          "expected_shape": [3, 9],
-          "minlength":
-              9,
-          "binary_output":
-              True,
-      },
-      {
-          "testcase_name":
-              "_minlength_larger_values_binary",
-          "x":
-              np.array([[3, 0, 1, 0], [7, 0, 0, 0], [5, 0, 4, 4]],
-                       dtype=np.int32),
-          "expected_indices": [[0, 1], [0, 3], [1, 7], [2, 4], [2, 5]],
-          "expected_values": [1, 1, 1, 1, 1],
-          "expected_shape": [3, 8],
-          "minlength":
-              3,
-          "binary_output":
-              True,
-      },
-      {
-          "testcase_name":
-              "_no_maxlength_weights",
-          "x":
-              np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]],
-                       dtype=np.int32),
-          "expected_indices": [[0, 1], [0, 3], [2, 4], [2, 5]],
-          "expected_values": [2, 6, 7, 10],
-          "expected_shape": [3, 6],
-          "weights":
-              np.array([[6, 0, 2, 0], [0, 0, 0, 0], [10, 0, 3.5, 3.5]]),
-      },
-      {
-          "testcase_name":
-              "_maxlength_weights",
-          "x":
-              np.array([[3, 0, 1, 0], [0, 0, 7, 0], [5, 0, 4, 4]],
-                       dtype=np.int32),
-          "expected_indices": [[0, 1], [0, 3], [2, 4], [2, 5]],
-          "expected_values": [2, 6, 7, 10],
-          "expected_shape": [3, 7],
-          "maxlength":
-              7,
-          "weights":
-              np.array([[6, 0, 2, 0], [0, 0, 14, 0], [10, 0, 3.5, 3.5]]),
-      },
-      {
-          "testcase_name":
-              "_minlength_weights",
-          "x":
-              np.array([[3, 0, 1, 0], [7, 0, 0, 0], [5, 0, 4, 4]],
-                       dtype=np.int32),
-          "expected_indices": [[0, 1], [0, 3], [1, 7], [2, 4], [2, 5]],
-          "expected_values": [2, 6, 14, 6.5, 10],
-          "expected_shape": [3, 9],
-          "minlength":
-              9,
-          "weights":
-              np.array([[6, 0, 2, 0], [14, 0, 0, 0], [10, 0, 3, 3.5]]),
-      },
-      {
-          "testcase_name":
-              "_minlength_larger_values_weights",
-          "x":
-              np.array([[3, 0, 1, 0], [7, 0, 0, 0], [5, 0, 4, 4]],
-                       dtype=np.int32),
-          "expected_indices": [[0, 1], [0, 3], [1, 7], [2, 4], [2, 5]],
-          "expected_values": [2, 6, 14, 6.5, 10],
-          "expected_shape": [3, 8],
-          "minlength":
-              3,
-          "weights":
-              np.array([[6, 0, 2, 0], [14, 0, 0, 0], [10, 0, 3, 3.5]]),
-      },
-      {
-          "testcase_name": "_1d",
-          "x": np.array([3, 0, 1, 1], dtype=np.int32),
-          "expected_indices": [[1], [3]],
-          "expected_values": [2, 1],
-          "expected_shape": [4],
-      },
-      {
-          "testcase_name":
-              "_all_axes",
-          "x":
-              np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]],
-                       dtype=np.int32),
-          "expected_indices": [[1], [3], [4], [5]],
-          "expected_values": [1, 1, 2, 1],
-          "expected_shape": [6],
-          "axis":
-              None,
-      },
-  )
-  def test_sparse_input(self,
-                        x,
-                        expected_indices,
-                        expected_values,
-                        expected_shape,
-                        maxlength=None,
-                        minlength=None,
-                        binary_output=False,
-                        weights=None,
-                        axis=-1):
-    x_sparse = sparse_ops.from_dense(x)
-    w_sparse = sparse_ops.from_dense(weights) if weights is not None else None
-    y = bincount_ops.sparse_bincount(
-        x_sparse,
-        weights=w_sparse,
-        minlength=minlength,
-        maxlength=maxlength,
-        binary_output=binary_output,
-        axis=axis)
-    self.assertAllEqual(expected_indices, y.indices)
-    self.assertAllEqual(expected_values, y.values)
-    self.assertAllEqual(expected_shape, y.dense_shape)
-
-  @parameterized.named_parameters(
-      {
-          "testcase_name": "_no_maxlength",
-          "x": [[], [], [3, 0, 1], [], [5, 0, 4, 4]],
-          "expected_indices": [[2, 0], [2, 1], [2, 3], [4, 0], [4, 4], [4, 5]],
-          "expected_values": [1, 1, 1, 1, 2, 1],
-          "expected_shape": [5, 6],
-      },
-      {
-          "testcase_name": "_maxlength",
-          "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
-          "maxlength": 7,
-          "expected_indices": [[2, 0], [2, 1], [2, 3], [4, 0], [4, 4], [4, 5]],
-          "expected_values": [1, 1, 1, 1, 2, 1],
-          "expected_shape": [5, 7],
-      },
-      {
-          "testcase_name": "_minlength",
-          "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
-          "minlength": 9,
-          "expected_indices": [[2, 0], [2, 1], [2, 3], [3, 7], [4, 0], [4, 4],
-                               [4, 5]],
-          "expected_values": [1, 1, 1, 1, 1, 2, 1],
-          "expected_shape": [5, 9],
-      },
-      {
-          "testcase_name": "_minlength_larger_values",
-          "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
-          "minlength": 3,
-          "expected_indices": [[2, 0], [2, 1], [2, 3], [3, 7], [4, 0], [4, 4],
-                               [4, 5]],
-          "expected_values": [1, 1, 1, 1, 1, 2, 1],
-          "expected_shape": [5, 8],
-      },
-      {
-          "testcase_name": "_no_maxlength_binary",
-          "x": [[], [], [3, 0, 1], [], [5, 0, 4, 4]],
-          "expected_indices": [[2, 0], [2, 1], [2, 3], [4, 0], [4, 4], [4, 5]],
-          "expected_values": [1, 1, 1, 1, 1, 1],
-          "expected_shape": [5, 6],
-          "binary_output": True,
-      },
-      {
-          "testcase_name": "_maxlength_binary",
-          "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
-          "maxlength": 7,
-          "expected_indices": [[2, 0], [2, 1], [2, 3], [4, 0], [4, 4], [4, 5]],
-          "expected_values": [1, 1, 1, 1, 1, 1],
-          "expected_shape": [5, 7],
-          "binary_output": True,
-      },
-      {
-          "testcase_name": "_minlength_binary",
-          "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
-          "minlength": 9,
-          "expected_indices": [[2, 0], [2, 1], [2, 3], [3, 7], [4, 0], [4, 4],
-                               [4, 5]],
-          "expected_values": [1, 1, 1, 1, 1, 1, 1],
-          "expected_shape": [5, 9],
-          "binary_output": True,
-      },
-      {
-          "testcase_name": "_minlength_larger_values_binary",
-          "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
-          "minlength": 3,
-          "binary_output": True,
-          "expected_indices": [[2, 0], [2, 1], [2, 3], [3, 7], [4, 0], [4, 4],
-                               [4, 5]],
-          "expected_values": [1, 1, 1, 1, 1, 1, 1],
-          "expected_shape": [5, 8],
-      },
-      {
-          "testcase_name": "_no_maxlength_weights",
-          "x": [[], [], [3, 0, 1], [], [5, 0, 4, 4]],
-          "expected_indices": [[2, 0], [2, 1], [2, 3], [4, 0], [4, 4], [4, 5]],
-          "expected_values": [0.5, 2, 6, 0.25, 8, 10],
-          "expected_shape": [5, 6],
-          "weights": [[], [], [6, 0.5, 2], [], [10, 0.25, 5, 3]],
-      },
-      {
-          "testcase_name": "_maxlength_weights",
-          "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
-          "maxlength": 7,
-          "expected_indices": [[2, 0], [2, 1], [2, 3], [4, 0], [4, 4], [4, 5]],
-          "expected_values": [0.5, 2, 6, 0.25, 8, 10],
-          "expected_shape": [5, 7],
-          "weights": [[], [], [6, 0.5, 2], [14], [10, 0.25, 5, 3]],
-      },
-      {
-          "testcase_name": "_minlength_weights",
-          "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
-          "minlength": 9,
-          "expected_indices": [[2, 0], [2, 1], [2, 3], [3, 7], [4, 0], [4, 4],
-                               [4, 5]],
-          "expected_values": [0.5, 2, 6, 14, 0.25, 8, 10],
-          "expected_shape": [5, 9],
-          "weights": [[], [], [6, 0.5, 2], [14], [10, 0.25, 5, 3]],
-      },
-      {
-          "testcase_name": "_minlength_larger_values_weights",
-          "x": [[], [], [3, 0, 1], [7], [5, 0, 4, 4]],
-          "minlength": 3,
-          "expected_indices": [[2, 0], [2, 1], [2, 3], [3, 7], [4, 0], [4, 4],
-                               [4, 5]],
-          "expected_values": [0.5, 2, 6, 14, 0.25, 8, 10],
-          "expected_shape": [5, 8],
-          "weights": [[], [], [6, 0.5, 2], [14], [10, 0.25, 5, 3]],
-      },
-      {
-          "testcase_name": "_1d",
-          "x": [3, 0, 1, 1],
-          "expected_indices": [[0], [1], [3]],
-          "expected_values": [1, 2, 1],
-          "expected_shape": [4],
-      },
-      {
-          "testcase_name": "_all_axes",
-          "x": [[], [], [3, 0, 1], [], [5, 0, 4, 4]],
-          "expected_indices": [[0], [1], [3], [4], [5]],
-          "expected_values": [2, 1, 1, 2, 1],
-          "expected_shape": [6],
-          "axis": None,
-      },
-  )
-  def test_ragged_input(self,
-                        x,
-                        expected_indices,
-                        expected_values,
-                        expected_shape,
-                        maxlength=None,
-                        minlength=None,
-                        binary_output=False,
-                        weights=None,
-                        axis=-1):
-    x_ragged = ragged_factory_ops.constant(x)
-    w = ragged_factory_ops.constant(weights) if weights is not None else None
-    y = bincount_ops.sparse_bincount(
-        x_ragged,
-        weights=w,
-        minlength=minlength,
-        maxlength=maxlength,
-        binary_output=binary_output,
-        axis=axis)
-    self.assertAllEqual(expected_indices, y.indices)
-    self.assertAllEqual(expected_values, y.values)
-    self.assertAllEqual(expected_shape, y.dense_shape)
+def _adjust_expected_rank2(x, minlength, maxlength):
+  return [_adjust_expected_rank1(i, minlength, maxlength) for i in x]
 
 
 class TestDenseBincount(test.TestCase, parameterized.TestCase):
@@ -518,18 +51,23 @@ class TestDenseBincount(test.TestCase, parameterized.TestCase):
   }])
   def test_sparse_input_all_count(self, dtype):
     np.random.seed(42)
-    num_rows = 128
+    num_rows = 4096
     size = 1000
-    n_elems = 4096
+    n_elems = 128
     inp_indices = np.random.randint(0, num_rows, (n_elems, 1))
     inp_indices = np.concatenate([inp_indices, np.zeros((n_elems, 1))], axis=1)
     inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
     sparse_inp = sparse_tensor.SparseTensor(inp_indices, inp_vals,
                                             [num_rows, 1])
 
+    # Note that the default for sparse tensors is to not count implicit zeros.
     np_out = np.bincount(inp_vals, minlength=size)
     self.assertAllEqual(
-        np_out, self.evaluate(bincount_ops.bincount(sparse_inp, axis=0)))
+        np_out,
+        self.evaluate(
+            bincount_ops.bincount(sparse_inp, axis=0, minlength=size)
+        ),
+    )
 
   @parameterized.parameters([{
       "dtype": np.int32,
@@ -538,12 +76,15 @@ class TestDenseBincount(test.TestCase, parameterized.TestCase):
   }])
   def test_sparse_input_all_count_with_weights(self, dtype):
     np.random.seed(42)
-    num_rows = 128
+    num_rows = 4096
     size = 1000
-    n_elems = 4096
+    n_elems = 128
     inp_indices = np.random.randint(0, num_rows, (n_elems, 1))
     inp_indices = np.concatenate([inp_indices, np.zeros((n_elems, 1))], axis=1)
-    inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
+    inp_vals = np.random.randint(0, size, (n_elems-1,), dtype=dtype)
+    # Add an element with value `size-1` to input so bincount output has `size`
+    # elements.
+    inp_vals = np.concatenate([inp_vals, [size-1]], axis=0)
     sparse_inp = sparse_tensor.SparseTensor(inp_indices, inp_vals,
                                             [num_rows, 1])
     weight_vals = np.random.random((n_elems,))
@@ -563,9 +104,9 @@ class TestDenseBincount(test.TestCase, parameterized.TestCase):
   }])
   def test_sparse_input_all_binary(self, dtype):
     np.random.seed(42)
-    num_rows = 128
+    num_rows = 4096
     size = 10
-    n_elems = 4096
+    n_elems = 128
     inp_indices = np.random.randint(0, num_rows, (n_elems, 1))
     inp_indices = np.concatenate([inp_indices, np.zeros((n_elems, 1))], axis=1)
     inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
@@ -633,202 +174,238 @@ class TestDenseBincount(test.TestCase, parameterized.TestCase):
         self.evaluate(
             bincount_ops.bincount(arr=inp_sparse, axis=-1, binary_output=True)))
 
-  @parameterized.parameters([{
-      "dtype": np.int32,
-  }, {
-      "dtype": np.int64,
-  }])
-  def test_ragged_input_count(self, dtype):
-    x = ragged_factory_ops.constant([[], [], [3, 0, 1], [], [5, 0, 4, 4]],
-                                    dtype)
-    # pyformat: disable
-    expected_output = [
-        [0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0],
-        [1, 1, 0, 1, 0, 0],
-        [0, 0, 0, 0, 0, 0],
-        [1, 0, 0, 0, 2, 1]]
-    # pyformat: enable
-    self.assertAllEqual(expected_output,
-                        self.evaluate(bincount_ops.bincount(arr=x, axis=-1)))
-
-  @parameterized.parameters([{
-      "dtype": np.int32,
-  }, {
-      "dtype": np.int64,
-  }])
-  def test_ragged_input_binary(self, dtype):
-    x = ragged_factory_ops.constant([[], [], [3, 0, 1], [], [5, 0, 4, 4]])
-    # pyformat: disable
-    expected_output = [
-        [0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0],
-        [1, 1, 0, 1, 0, 0],
-        [0, 0, 0, 0, 0, 0],
-        [1, 0, 0, 0, 1, 1]]
-    # pyformat: enable
+  @parameterized.product(
+      (
+          dict(
+              tid="_d1",
+              x=[1, 2, 2, 3, 3, 3],
+              expected=[0, 1, 2, 3],
+          ),
+          dict(
+              tid="_d2",
+              x=[[0, 0, 0], [0, 1, 0], [2, 0, 2], [3, 3, 3]],
+              expected=[6, 1, 2, 3],
+          ),
+          dict(
+              tid="_d3",
+              x=[[[0, 0, 0], [0, 1, 0]], [[2, 0, 2], [3, 3, 3]]],
+              expected=[6, 1, 2, 3],
+          ),
+      ),
+      (
+          dict(minlength=None, maxlength=None),
+          dict(minlength=3, maxlength=None),
+          dict(minlength=5, maxlength=None),
+          dict(minlength=None, maxlength=3),
+          dict(minlength=None, maxlength=5),
+          dict(minlength=2, maxlength=3),
+          dict(minlength=3, maxlength=5),
+          dict(minlength=5, maxlength=10),
+          dict(minlength=None, maxlength=0),
+      ),
+  )
+  def test_default(
+      self,
+      x,
+      minlength,
+      maxlength,
+      expected,
+      tid=None,
+  ):
+    expected = _adjust_expected_rank1(expected, minlength, maxlength)
     self.assertAllEqual(
-        expected_output,
+        expected,
         self.evaluate(
-            bincount_ops.bincount(arr=x, axis=-1, binary_output=True)))
-
-  @parameterized.parameters([{
-      "dtype": np.int32,
-  }, {
-      "dtype": np.int64,
-  }])
-  def test_ragged_input_count_with_weights(self, dtype):
-    x = ragged_factory_ops.constant([[], [], [3, 0, 1], [], [5, 0, 4, 4]])
-    weights = ragged_factory_ops.constant([[], [], [.1, .2, .3], [],
-                                           [.2, .5, .6, .3]])
-    # pyformat: disable
-    expected_output = [
-        [0, 0, 0, 0, 0, 0],
-        [0, 0, 0, 0, 0, 0],
-        [.2, .3, 0, .1, 0, 0],
-        [0, 0, 0, 0, 0, 0],
-        [.5, 0, 0, 0, .9, .2]]
-    # pyformat: enable
-    self.assertAllClose(
-        expected_output,
-        self.evaluate(bincount_ops.bincount(arr=x, weights=weights, axis=-1)))
-
-  @parameterized.parameters([{
-      "dtype": np.int32,
-  }, {
-      "dtype": np.int64,
-  }])
-  def test_ragged_input_count_np(self, dtype):
-    np.random.seed(42)
-    num_rows = 128
-    num_cols = 27
-    size = 1000
-    inp = np.random.randint(0, size, (num_rows, num_cols), dtype=dtype)
-    np_out = np.reshape(
-        np.concatenate(
-            [np.bincount(inp[j, :], minlength=size) for j in range(num_rows)],
-            axis=0), (num_rows, size))
-    x = ragged_tensor.RaggedTensor.from_tensor(inp)
+            bincount_ops.bincount(x, minlength=minlength, maxlength=maxlength)
+        ),
+    )
     self.assertAllEqual(
-        np_out,
-        self.evaluate(bincount_ops.bincount(arr=x, minlength=size, axis=-1)))
-
-  @parameterized.parameters([{
-      "dtype": np.int32,
-  }, {
-      "dtype": np.int64,
-  }])
-  def test_ragged_input_count_np_with_weights(self, dtype):
-    np.random.seed(42)
-    num_rows = 128
-    num_cols = 27
-    size = 1000
-    inp = np.random.randint(0, size, (num_rows, num_cols), dtype=dtype)
-    np_weight = np.random.random((num_rows, num_cols))
-    np_out = np.reshape(
-        np.concatenate([
-            np.bincount(inp[j, :], weights=np_weight[j, :], minlength=size)
-            for j in range(num_rows)
-        ],
-                       axis=0), (num_rows, size))
-    x = ragged_tensor.RaggedTensor.from_tensor(inp)
-    weights = ragged_tensor.RaggedTensor.from_tensor(np_weight)
-    self.assertAllEqual(
-        np_out,
+        expected,
         self.evaluate(
             bincount_ops.bincount(
-                arr=x, weights=weights, minlength=size, axis=-1)))
+                x, minlength=minlength, maxlength=maxlength, axis=0
+            )
+        ),
+    )
 
+  @parameterized.product(
+      (
+          dict(
+              tid="_d2",
+              x=[[0, 0, 0], [0, 1, 0], [2, 0, 2], [3, 3, 3]],
+              expected=[[3, 0, 0, 0], [2, 1, 0, 0], [1, 0, 2, 0], [0, 0, 0, 3]],
+          ),
+      ),
+      (
+          dict(minlength=None, maxlength=None),
+          dict(minlength=3, maxlength=None),
+          dict(minlength=5, maxlength=None),
+          dict(minlength=None, maxlength=3),
+          dict(minlength=None, maxlength=5),
+          dict(minlength=2, maxlength=3),
+          dict(minlength=3, maxlength=5),
+          dict(minlength=5, maxlength=10),
+          dict(minlength=None, maxlength=0),
+      ),
+  )
+  def test_axis_neg_1(
+      self, tid, x, minlength, maxlength, expected
+  ):
+    expected = _adjust_expected_rank2(expected, minlength, maxlength)
+    self.assertAllEqual(
+        expected,
+        self.evaluate(
+            bincount_ops.bincount(
+                x, minlength=minlength, maxlength=maxlength, axis=-1
+            )
+        ),
+    )
 
-class TestSparseCountFailureModes(test.TestCase):
-
-  def test_dense_input_sparse_weights_fails(self):
-    x = np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32)
-    weights = sparse_ops.from_dense(
-        np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    with self.assertRaisesRegex(ValueError, "must be a tf.Tensor"):
-      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
-
-  def test_dense_input_ragged_weights_fails(self):
-    x = np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32)
-    weights = ragged_factory_ops.constant([[6, 0.5, 2], [14], [10, 0.25, 5, 3]])
-    with self.assertRaisesRegex(ValueError, "must be a tf.Tensor"):
-      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
-
-  def test_dense_input_wrong_shape_fails(self):
-    x = np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32)
-    weights = np.array([[3, 2], [5, 4], [4, 3]])
-    # Note: Eager mode and graph mode throw different errors here. Graph mode
-    # will fail with a ValueError from the shape checking logic, while Eager
-    # will fail with an InvalidArgumentError from the kernel itself.
-    if context.executing_eagerly():
-      with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                  "must have the same shape"):
-        self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
+  @parameterized.product(
+      (
+          dict(
+              tid="_d1",
+              x=[1, 2, 2, 3, 3, 3],
+              weights=[1, 2, 3, 4, 5, 6],
+              axis=None,
+              expected=[0, 1, 5, 15],
+          ),
+          dict(
+              tid="_d2",
+              x=[[0, 0, 0], [0, 1, 0], [2, 0, 2], [3, 3, 3]],
+              weights=[[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]],
+              axis=None,
+              expected=[24, 5, 16, 33],
+          ),
+          dict(
+              tid="_d3",
+              x=[[[0, 0, 0], [0, 1, 0]], [[2, 0, 2], [3, 3, 3]]],
+              weights=[[[1, 2, 3], [4, 5, 6]], [[7, 8, 9], [10, 11, 12]]],
+              axis=None,
+              expected=[24, 5, 16, 33],
+          ),
+          dict(
+              tid="_d2_axis_neg_1",
+              x=[[0, 0, 0], [0, 1, 0], [2, 0, 2], [3, 3, 3]],
+              weights=[[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]],
+              axis=-1,
+              expected=[
+                  [6, 0, 0, 0],
+                  [10, 5, 0, 0],
+                  [8, 0, 16, 0],
+                  [0, 0, 0, 33],
+              ],
+          ),
+      ),
+      (
+          dict(minlength=None, maxlength=None),
+          dict(minlength=3, maxlength=None),
+          dict(minlength=5, maxlength=None),
+          dict(minlength=None, maxlength=3),
+          dict(minlength=None, maxlength=5),
+          dict(minlength=2, maxlength=3),
+          dict(minlength=3, maxlength=5),
+          dict(minlength=5, maxlength=10),
+          dict(minlength=None, maxlength=0),
+      ),
+  )
+  def test_weights(
+      self,
+      tid,
+      x,
+      weights,
+      minlength,
+      maxlength,
+      expected,
+      axis=None,
+  ):
+    device_set = set([d.device_type for d in tf_config.list_physical_devices()])
+    if "GPU" in device_set and not test_util.is_xla_enabled():
+      self.skipTest(
+          "b/263004039 The DenseBincount GPU kernel does not support weights."
+          " unsorted_segment_sum should be used instead on GPU."
+      )
+    if axis == -1:
+      expected = _adjust_expected_rank2(expected, minlength, maxlength)
     else:
-      with self.assertRaisesRegex(ValueError, "both shapes must be equal"):
-        self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
+      expected = _adjust_expected_rank1(expected, minlength, maxlength)
+    self.assertAllEqual(
+        expected,
+        self.evaluate(
+            bincount_ops.bincount(
+                x,
+                weights=weights,
+                minlength=minlength,
+                maxlength=maxlength,
+                axis=axis,
+            )
+        ),
+    )
 
-  def test_sparse_input_dense_weights_fails(self):
-    x = sparse_ops.from_dense(
-        np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    weights = np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32)
-    with self.assertRaisesRegex(ValueError, "must be a SparseTensor"):
-      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
-
-  def test_sparse_input_ragged_weights_fails(self):
-    x = sparse_ops.from_dense(
-        np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    weights = ragged_factory_ops.constant([[6, 0.5, 2], [14], [10, 0.25, 5, 3]])
-    with self.assertRaisesRegex(ValueError, "must be a SparseTensor"):
-      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
-
-  def test_sparse_input_wrong_indices_fails(self):
-    x = sparse_ops.from_dense(
-        np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    weights = sparse_ops.from_dense(
-        np.array([[3, 1, 0, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "must have the same indices"):
-      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
-
-  def test_sparse_input_too_many_indices_fails(self):
-    x = sparse_ops.from_dense(
-        np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    weights = sparse_ops.from_dense(
-        np.array([[3, 1, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    with self.assertRaisesIncompatibleShapesError():
-      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
-
-  def test_sparse_input_wrong_shape_fails(self):
-    x = sparse_ops.from_dense(
-        np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    weights = sparse_ops.from_dense(
-        np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4], [0, 0, 0, 0]],
-                 dtype=np.int32))
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "must have the same dense shape"):
-      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
-
-  def test_ragged_input_dense_weights_fails(self):
-    x = ragged_factory_ops.constant([[6, 1, 2], [14], [10, 1, 5, 3]])
-    weights = np.array([[3, 2, 1], [5, 4, 4]], dtype=np.int32)
-    with self.assertRaisesRegex(ValueError, "must be a RaggedTensor"):
-      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
-
-  def test_ragged_input_sparse_weights_fails(self):
-    x = ragged_factory_ops.constant([[6, 1, 2], [14], [10, 1, 5, 3]])
-    weights = sparse_ops.from_dense(
-        np.array([[3, 0, 1, 0], [0, 0, 0, 0], [5, 0, 4, 4]], dtype=np.int32))
-    with self.assertRaisesRegex(ValueError, "must be a RaggedTensor"):
-      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
-
-  def test_ragged_input_different_shape_fails(self):
-    x = ragged_factory_ops.constant([[6, 1, 2], [14], [10, 1, 5, 3]])
-    weights = ragged_factory_ops.constant([[6, 0.5, 2], [], [10, 0.25, 5, 3]])
-    with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "must have the same row splits"):
-      self.evaluate(bincount_ops.sparse_bincount(x, weights=weights, axis=-1))
+  @parameterized.product(
+      (
+          dict(
+              tid="_d1",
+              x=[1, 2, 2, 3, 3, 3],
+              expected=[0, 1, 1, 1],
+              axis=None,
+          ),
+          dict(
+              tid="_d2",
+              x=[[0, 0, 0], [0, 1, 0], [2, 0, 2], [3, 3, 3]],
+              expected=[1, 1, 1, 1],
+              axis=None,
+          ),
+          dict(
+              tid="_d3",
+              x=[[[0, 0, 0], [0, 1, 0]], [[2, 0, 2], [3, 3, 3]]],
+              expected=[1, 1, 1, 1],
+              axis=None,
+          ),
+          dict(
+              tid="_d2_axis_neg_1",
+              x=[[0, 0, 0], [0, 1, 0], [2, 0, 2], [3, 3, 3]],
+              expected=[[1, 0, 0, 0], [1, 1, 0, 0], [1, 0, 1, 0], [0, 0, 0, 1]],
+              axis=-1,
+          ),
+      ),
+      (
+          dict(minlength=None, maxlength=None),
+          dict(minlength=3, maxlength=None),
+          dict(minlength=5, maxlength=None),
+          dict(minlength=None, maxlength=3),
+          dict(minlength=None, maxlength=5),
+          dict(minlength=2, maxlength=3),
+          dict(minlength=3, maxlength=5),
+          dict(minlength=5, maxlength=10),
+          dict(minlength=None, maxlength=0),
+      ),
+  )
+  def test_binary_output(
+      self,
+      tid,
+      x,
+      minlength,
+      maxlength,
+      expected,
+      axis=None,
+  ):
+    if axis == -1:
+      expected = _adjust_expected_rank2(expected, minlength, maxlength)
+    else:
+      expected = _adjust_expected_rank1(expected, minlength, maxlength)
+    self.assertAllEqual(
+        expected,
+        self.evaluate(
+            bincount_ops.bincount(
+                x,
+                minlength=minlength,
+                maxlength=maxlength,
+                binary_output=True,
+                axis=axis,
+            )
+        ),
+    )
 
 
 class RawOpsHeapOobTest(test.TestCase, parameterized.TestCase):
@@ -900,6 +477,19 @@ class RawOpsTest(test.TestCase, parameterized.TestCase):
               weights=weights,
               binary_output=False))
 
+  def testSparseCountSparseOutputNegativeValue(self):
+    indices = [[0, 0], [0, 1], [1, 0], [1, 2]]
+    values = [1, 1, -1, 10]
+    dense_shape = [2, 3]
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Input values must all be non-negative"):
+      self.evaluate(
+          gen_count_ops.SparseCountSparseOutput(
+              indices=indices,
+              values=values,
+              dense_shape=dense_shape,
+              binary_output=False))
+
   def testRaggedCountSparseOutput(self):
     splits = [0, 4, 7]
     values = [1, 1, 2, 1, 2, 10, 5]
@@ -964,6 +554,15 @@ class RawOpsTest(test.TestCase, parameterized.TestCase):
               values=values,
               weights=weights,
               binary_output=False))
+
+  def testRaggedCountSparseOutputNegativeValue(self):
+    splits = [0, 4, 7]
+    values = [1, 1, 2, 1, -2, 10, 5]
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Input values must all be non-negative"):
+      self.evaluate(
+          gen_count_ops.RaggedCountSparseOutput(
+              splits=splits, values=values, binary_output=False))
 
 
 if __name__ == "__main__":

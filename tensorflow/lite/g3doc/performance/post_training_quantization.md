@@ -4,7 +4,7 @@ Post-training quantization is a conversion technique that can reduce model size
 while also improving CPU and hardware accelerator latency, with little
 degradation in model accuracy. You can quantize an already-trained float
 TensorFlow model when you convert it to TensorFlow Lite format using the
-[TensorFlow Lite Converter](../convert/).
+[TensorFlow Lite Converter](../models/convert/).
 
 Note: The procedures on this page require TensorFlow 1.15 or higher.
 
@@ -29,8 +29,11 @@ method is best for your use case:
 
 ### Dynamic range quantization
 
-The simplest form of post-training quantization statically quantizes only the
-weights from floating point to integer, which has 8-bits of precision:
+Dynamic range quantization is a recommended starting point because it provides
+reduced memory usage and faster computation without you having to provide a
+representative dataset for calibration. This type of quantization, statically
+quantizes only the weights from floating point to integer at conversion time,
+which provides 8-bits of precision:
 
 <pre>
 import tensorflow as tf
@@ -39,16 +42,12 @@ converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 tflite_quant_model = converter.convert()
 </pre>
 
-At inference, weights are converted from 8-bits of precision to floating point
-and computed using floating-point kernels. This conversion is done once and
-cached to reduce latency.
-
-To further improve latency, "dynamic-range" operators dynamically quantize
-activations based on their range to 8-bits and perform computations with 8-bit
-weights and activations. This optimization provides latencies close to fully
-fixed-point inference. However, the outputs are still stored using floating
-point so that the speedup with dynamic-range ops is less than a full fixed-point
-computation.
+To further reduce latency during inference, "dynamic-range" operators
+dynamically quantize activations based on their range to 8-bits and perform
+computations with 8-bit weights and activations. This optimization provides
+latencies close to fully fixed-point inferences. However, the outputs are still
+stored using floating point so the increased speed of dynamic-range ops is less
+than a full fixed-point computation.
 
 ### Full integer quantization
 
@@ -66,7 +65,7 @@ samples) of the training or validation data. Refer to the
 `representative_dataset()` function below.
 
 From TensorFlow 2.7 version, you can specify the representative dataset through
-a [signature](/lite/guide/signatures) as the following example:
+a [signature](../guide/signatures.ipynb) as the following example:
 
 <pre>
 def representative_dataset():
@@ -166,9 +165,6 @@ converter.representative_dataset = representative_dataset
 tflite_quant_model = converter.convert()
 </pre>
 
-Note: The converter will throw an error if it encounters an operation it cannot
-currently quantize.
-
 ### Float16 quantization
 
 You can reduce the size of a floating point model by quantizing the weights to
@@ -232,9 +228,12 @@ tflite_quant_model = converter.convert()
 </pre>
 
 Examples of the use cases where accuracy improvements provided by this
-quantization scheme include: * super-resolution, * audio signal processing such
-as noise cancelling and beamforming, * image de-noising, * HDR reconstruction
-from a single image.
+quantization scheme include:
+
+*   super-resolution,
+*   audio signal processing such as noise cancelling and beamforming,
+*   image de-noising,
+*   HDR reconstruction from a single image.
 
 The disadvantage of this quantization is:
 
@@ -252,12 +251,11 @@ A tutorial for this quantization mode can be found
 
 Since weights are quantized post training, there could be an accuracy loss,
 particularly for smaller networks. Pre-trained fully quantized models are
-provided for specific networks in the
-[TensorFlow Lite model repository](../models/). It is important to check the
-accuracy of the quantized model to verify that any degradation in accuracy is
-within acceptable limits. There are tools to evaluate
+provided for specific networks on
+[TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite&q=quantized){:.external}.
+It is important to check the accuracy of the quantized model to verify that any
+degradation in accuracy is within acceptable limits. There are tools to evaluate
 [TensorFlow Lite model accuracy](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/evaluation/tasks){:.external}.
-
 
 Alternatively, if the accuracy drop is too high, consider using
 [quantization aware training](https://www.tensorflow.org/model_optimization/guide/quantization/training)
@@ -281,6 +279,6 @@ The representation has two main parts:
     the range [-128, 127], with a zero-point in range [-128, 127].
 
 For a detailed view of our quantization scheme, please see our
-[quantization spec](./quantization_spec.md). Hardware vendors who want to plug
+[quantization spec](./quantization_spec). Hardware vendors who want to plug
 into TensorFlow Lite's delegate interface are encouraged to implement the
 quantization scheme described there.

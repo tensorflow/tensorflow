@@ -436,10 +436,8 @@ TEST(CheckAttrExists, All) {
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
   EXPECT_TRUE(absl::StrContains(
-      status.error_message(),
-      "Node 'node' lacks 'banana' attr: name: \"node\" "
-      "attr { key: \"apple\" value { i: 7 } } attr { key: \"pear\" value "
-      "{ b: true } }"));
+      status.message(), absl::StrFormat("Node 'node' lacks 'banana' attr: %s",
+                                        node.ShortDebugString())));
   EXPECT_FALSE(CheckAttrsExist(node, {""}).ok());
   EXPECT_FALSE(CheckAttrsExist(node, {"pear", "cherry"}).ok());
   EXPECT_FALSE(CheckAttrsExist(node, {"banana", "apple"}).ok());
@@ -607,7 +605,7 @@ void TestSetTensorValue(DataType type, int val, bool success,
   if (s.ok()) {
     test::ExpectTensorEqual<T>(Tensor(static_cast<T>(val)), t);
   } else {
-    EXPECT_EQ(s.error_message(), error_msg);
+    EXPECT_EQ(s.message(), error_msg);
   }
 }
 

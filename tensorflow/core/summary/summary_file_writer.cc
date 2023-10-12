@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/summary/summary_file_writer.h"
 
+#include <memory>
+
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -24,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/summary/summary_converter.h"
 #include "tensorflow/core/util/events_writer.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
@@ -56,13 +57,13 @@ class SummaryFileWriter : public SummaryWriterInterface {
         ".", pid, ".", file_id_counter.fetch_add(1), sep, filename_suffix);
     mutex_lock ml(mu_);
     events_writer_ =
-        tensorflow::MakeUnique<EventsWriter>(io::JoinPath(logdir, "events"));
+        std::make_unique<EventsWriter>(io::JoinPath(logdir, "events"));
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         events_writer_->InitWithSuffix(uniquified_filename_suffix),
         "Could not initialize events writer.");
     last_flush_ = env_->NowMicros();
     is_initialized_ = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Flush() override {
@@ -156,7 +157,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
         env_->NowMicros() - last_flush_ > 1000 * flush_millis_) {
       return InternalFlush();
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   string DebugString() const override { return "SummaryFileWriter"; }
@@ -174,7 +175,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
     TF_RETURN_WITH_CONTEXT_IF_ERROR(events_writer_->Flush(),
                                     "Could not flush events file.");
     last_flush_ = env_->NowMicros();
-    return Status::OK();
+    return OkStatus();
   }
 
   bool is_initialized_;
@@ -204,7 +205,7 @@ Status CreateSummaryFileWriter(int max_queue, int flush_millis,
     return s;
   }
   *result = w;
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

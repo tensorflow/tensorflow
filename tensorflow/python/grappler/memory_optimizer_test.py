@@ -26,6 +26,7 @@ from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import training as train
@@ -37,8 +38,8 @@ class MemoryOptimizerSwapTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testNoSwapping(self):
     """Make sure the graph is preserved when there is nothing to swap."""
-    a = variables.VariableV1(10, name='a')
-    b = variables.VariableV1(20, name='b')
+    a = variable_v1.VariableV1(10, name='a')
+    b = variable_v1.VariableV1(20, name='b')
     c = math_ops.add_n([a, b], name='c')
     d = math_ops.add_n([b, c], name='d')
     train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
@@ -63,8 +64,8 @@ class MemoryOptimizerSwapTest(test.TestCase):
   def testSimpleSwap(self):
     """Check that the swap annotations are followed."""
     with ops.device('/gpu:0'):
-      a = variables.VariableV1(10, name='a')
-      b = variables.VariableV1(20, name='b')
+      a = variable_v1.VariableV1(10, name='a')
+      b = variable_v1.VariableV1(20, name='b')
       c = math_ops.add_n([a, b], name='c')
       d = math_ops.add_n([b, c], name='d')
       train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)

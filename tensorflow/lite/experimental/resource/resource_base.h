@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 
 namespace tflite {
 namespace resource {
@@ -33,6 +34,10 @@ class ResourceBase {
 
   // Returns true if it is initialized.
   virtual bool IsInitialized() = 0;
+
+  virtual size_t GetMemoryUsage() {
+    return 0;
+  }  // TODO(b/242603814): Make it pure virtual.
 };
 
 /// WARNING: Experimental interface, subject to change.

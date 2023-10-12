@@ -22,6 +22,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import map_fn
@@ -109,9 +110,11 @@ class LuOpTest(test.TestCase):
           array_ops.broadcast_to(
               math_ops.range(batch_size)[:, None], perm_reshaped.shape),
           dtype=output_idx_type)
+      if inv_perm_reshaped.shape == [0]:
+        inv_perm_reshaped = array_ops.zeros_like(batch_indices)
       permuted_verification_reshaped = array_ops.gather_nd(
           verification_reshaped,
-          array_ops.stack([batch_indices, inv_perm_reshaped], axis=-1))
+          array_ops_stack.stack([batch_indices, inv_perm_reshaped], axis=-1))
 
       # Reshape the verification matrix back to the original shape.
       verification = array_ops.reshape(permuted_verification_reshaped,

@@ -12,24 +12,30 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "tensorflow/core/tpu/tpu_compile.h"
 
+#include <map>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include "absl/types/span.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "tensorflow/compiler/xla/client/compile_only_client.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/compile_only_client.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
-#include "tensorflow/core/tpu/kernels/tpu_util.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
@@ -85,7 +91,7 @@ Status SetPerCoreArgShapes(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Adds TPU_REPLICATED_CORE device assignments to the _Arg and _Retval
@@ -112,7 +118,7 @@ Status AssignDevicesToArgsAndRetvals(
           << sharding.DebugString();
     }
     node->AddAttr("_XlaSharding", sharding.SerializeAsString());
-    return Status::OK();
+    return OkStatus();
   };
   for (Node* node : graph->op_nodes()) {
     if (node->type_string() == kArgOp) {
@@ -129,7 +135,7 @@ Status AssignDevicesToArgsAndRetvals(
       TF_RETURN_IF_ERROR(assign(node, retval_core_mapping[index].sharding));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void ConvertGraphShapeInfoToShapeMap(
@@ -211,7 +217,7 @@ Status OptimizeGraph(const tpu::TPUCompileMetadataProto& metadata,
 
   TF_RETURN_IF_ERROR(RewriteTensorListWithConstElement(graph->get(), fld));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Populates the mapping from return value to ShardingAndIndex.
@@ -244,7 +250,7 @@ Status AssignReturnValueToCore(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Populates the arguments, core mapping and per core argument shape for the
@@ -286,8 +292,8 @@ Status BuildComputationArgumentDescriptions(
         arg.kind = XlaCompiler::Argument::kConstant;
         guaranteed_constants_size =
             guaranteed_constants.index() == 0
-                ? absl::get<0>(guaranteed_constants).size()
-                : absl::get<1>(guaranteed_constants)->size();
+                ? std::get<0>(guaranteed_constants).size()
+                : std::get<1>(guaranteed_constants)->size();
         TF_RET_CHECK(constant_count < guaranteed_constants_size)
             << "More constant args in TPUCompileMetadataProto than constant "
                "tensors.";
@@ -296,13 +302,13 @@ Status BuildComputationArgumentDescriptions(
           // const>`.
           Tensor tensor;
           CHECK(tensor.FromProto(
-              *absl::get<0>(guaranteed_constants)[constant_count++]))
+              *std::get<0>(guaranteed_constants)[constant_count++]))
               << "Failed to deserialize invalid `TensorProto` into `Tensor`.";
           arg.constant_value = tensor;
         } else {
           // `guaranteed_constants` is of type `const OpInputList* const`.
           arg.constant_value =
-              (*absl::get<1>(guaranteed_constants))[constant_count++];
+              (*std::get<1>(guaranteed_constants))[constant_count++];
         }
         break;
       case tpu::TPUCompileMetadataProto::Arg::INVALID:
@@ -330,7 +336,7 @@ Status BuildComputationArgumentDescriptions(
   TF_RET_CHECK(constant_count == guaranteed_constants_size)
       << "Not all of the constant tensors were consumed.";
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -374,22 +380,20 @@ Status CompileTFFunctionToHlo(
     const std::vector<TensorShape>& arg_shapes,
     const GuaranteedConsts& guaranteed_constants, const NameAttrList& function,
     const tpu::TPUCompileMetadataProto& metadata,
-    std::function<Status(ResourceMgr*)> populate_resource_manager_fn,
     xla::CompileOnlyClient* client,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
-    XlaCompiler::CompilationResult* compilation_result) {
+    bool use_tuple_args, XlaCompiler::CompilationResult* compilation_result) {
   XlaCompiler::Options compiler_options;
   FunctionLibraryDefinition flib_definition(flib_def);
   compiler_options.device_type = DeviceType(DEVICE_TPU_XLA_JIT);
   compiler_options.client = client;
   compiler_options.flib_def = &flib_definition;
   compiler_options.allow_cpu_custom_calls = false;
-  compiler_options.populate_resource_manager = &populate_resource_manager_fn;
   compiler_options.graph_def_version = graph_def_version;
   compiler_options.shape_determination_fns = shape_determination_fns;
 
-  auto compiler = absl::make_unique<XlaCompiler>(compiler_options);
+  auto compiler = std::make_unique<XlaCompiler>(compiler_options);
 
   std::vector<XlaCompiler::Argument> args;
   TF_RETURN_IF_ERROR(BuildComputationArgumentDescriptions(
@@ -443,7 +447,7 @@ Status CompileTFFunctionToHlo(
   VLOG(1) << "Compiling TensorFlow graph to HLO";
   XlaCompiler::CompileOptions compile_options;
   compile_options.return_updated_values_for_all_resources = false;
-  compile_options.use_tuple_arg = true;
+  compile_options.use_tuple_arg = use_tuple_args;
   compile_options.is_entry_computation = true;
   compile_options.alias_resource_update = true;
   return compiler->CompileGraph(compile_options, function_id, std::move(graph),
@@ -468,7 +472,7 @@ Status GetShardingInfo(
     TF_ASSIGN_OR_RETURN(auto arg_sharding,
                         xla::HloSharding::FromProto(proto_arg.sharding()));
     auto layout_preference = shape_determination_fns.layout_preference_fn(
-        arg_shapes[i], proto_arg.dtype(), absl::nullopt);
+        arg_shapes[i], proto_arg.dtype(), std::nullopt);
     TF_ASSIGN_OR_RETURN(auto xla_arg_shape,
                         shape_determination_fns.shape_representation_fn(
                             arg_shapes[i], proto_arg.dtype(),
@@ -479,7 +483,7 @@ Status GetShardingInfo(
     TF_RETURN_IF_ERROR(SetPerCoreArgShapes(
         proto_arg, i, &xla_arg_shape, arg_core_mapping, per_core_arg_shapes));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tpu

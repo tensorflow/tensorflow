@@ -16,14 +16,17 @@ limitations under the License.
 // This file combines patterns for lowering shape dialect to standard ops,
 // structured control flow and descriptors.
 
+#include <memory>
+#include <utility>
+
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
+#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -35,11 +38,11 @@ namespace kernel_gen {
 namespace transforms {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_SHAPETODESCRIPTORSPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 struct ShapeToDescriptorsPass
-    : public ShapeToDescriptorsPassBase<ShapeToDescriptorsPass> {
+    : public impl::ShapeToDescriptorsPassBase<ShapeToDescriptorsPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<scf::SCFDialect>();
   }
@@ -51,10 +54,10 @@ struct ShapeToDescriptorsPass
     // Setup target legality.
     ConversionTarget target(ctx);
     target.addIllegalDialect<shape::ShapeDialect>();
-    target.addLegalDialect<arith::ArithmeticDialect>();
+    target.addLegalDialect<arith::ArithDialect>();
     target.addLegalDialect<scf::SCFDialect>();
     target.addLegalDialect<memref::MemRefDialect>();
-    target.addLegalDialect<StandardOpsDialect>();
+    target.addLegalDialect<func::FuncDialect>();
     target.addLegalDialect<math::MathDialect>();
     target.addLegalDialect<tensor::TensorDialect>();
     // Don't mark the primary Cstr/Assuming ops as illegal, so they can be

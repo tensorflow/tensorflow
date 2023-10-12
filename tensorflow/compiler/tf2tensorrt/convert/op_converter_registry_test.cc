@@ -25,14 +25,14 @@ namespace convert {
 TEST(TestOpConverterRegistry, TestOpConverterRegistry) {
   bool flag{false};
 
-  auto set_true_func = [&flag](OpConverterParams*) -> Status {
+  auto set_true_func = [&flag](const OpConverterParams*) -> Status {
     flag = true;
-    return Status::OK();
+    return OkStatus();
   };
 
-  auto set_false_func = [&flag](OpConverterParams*) -> Status {
+  auto set_false_func = [&flag](const OpConverterParams*) -> Status {
     flag = false;
-    return Status::OK();
+    return OkStatus();
   };
 
   GetOpConverterRegistry()->Register("FakeFunc", kDefaultConverterPriority,

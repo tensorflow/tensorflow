@@ -15,8 +15,8 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
+#include "tensorflow/lite/core/experimental/acceleration/configuration/delegate_registry.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
 
 #if defined(__ARM_ARCH)
 #include "tensorflow/lite/delegates/hexagon/hexagon_delegate.h"
@@ -44,7 +44,7 @@ class HexagonPlugin : public DelegatePluginInterface {
   }
   static std::unique_ptr<HexagonPlugin> New(
       const TFLiteSettings& tflite_settings) {
-    return absl::make_unique<HexagonPlugin>(tflite_settings);
+    return std::make_unique<HexagonPlugin>(tflite_settings);
   }
   explicit HexagonPlugin(const TFLiteSettings& tflite_settings) {
     const HexagonSettings* settings = tflite_settings.hexagon_settings();

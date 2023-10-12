@@ -12,13 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #ifndef TENSORFLOW_CORE_TPU_TPU_COMPILE_H_
 #define TENSORFLOW_CORE_TPU_TPU_COMPILE_H_
 
+#include <vector>
+
+#include "absl/types/span.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
-#include "tensorflow/compiler/xla/client/compile_only_client.h"
-#include "tensorflow/core/framework/function.h"
+#include "xla/client/compile_only_client.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 
@@ -42,11 +46,10 @@ Status CompileTFFunctionToHlo(
     const std::vector<TensorShape>& arg_shapes,
     const GuaranteedConsts& guaranteed_constants, const NameAttrList& function,
     const tpu::TPUCompileMetadataProto& metadata,
-    std::function<Status(ResourceMgr*)> populate_resource_manager_fn,
     xla::CompileOnlyClient* client,
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
-    XlaCompiler::CompilationResult* compilation_result);
+    bool use_tuple_args, XlaCompiler::CompilationResult* compilation_result);
 
 // Gets information regarding how input arguments are sharded across multiple
 // cores.

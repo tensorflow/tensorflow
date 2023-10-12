@@ -19,6 +19,7 @@ from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
@@ -101,19 +102,25 @@ class ShardTest(test_base.DatasetTestBase, parameterized.TestCase):
 class ShardCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                           parameterized.TestCase):
 
-  def _build_dataset(self, num_elements, num_shards, index):
-    return dataset_ops.Dataset.range(num_elements).shard(num_shards, index)
+  def _build_dataset(self, num_elements, num_shards, index, options=None):
+    dataset = dataset_ops.Dataset.range(num_elements).shard(num_shards, index)
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True]),
           combinations.combine(
               elems=[10, 100], num_shards=[2, 5], index=[0, 1])))
-  def test(self, verify_fn, elems, num_shards, index):
+  def test(self, verify_fn, symbolic_checkpoint, elems, num_shards, index):
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
     verify_fn(
         self,
-        lambda: self._build_dataset(elems, num_shards, index),
+        lambda: self._build_dataset(elems, num_shards, index, options),
         num_outputs=elems // num_shards)
 
 

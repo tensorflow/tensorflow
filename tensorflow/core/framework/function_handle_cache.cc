@@ -51,7 +51,7 @@ Status FunctionHandleCache::Instantiate(
   } else {
     *handle = h;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FunctionHandleCache::Clear() {
@@ -60,7 +60,7 @@ Status FunctionHandleCache::Clear() {
     TF_RETURN_IF_ERROR(lib_->ReleaseHandle(entry.second));
   }
   handles_.clear();
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

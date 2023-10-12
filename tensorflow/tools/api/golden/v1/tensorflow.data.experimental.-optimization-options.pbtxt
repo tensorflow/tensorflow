@@ -12,6 +12,14 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "filter_parallelization"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "inject_prefetch"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "map_and_batch_fusion"
     mtype: "<type \'property\'>"
   }

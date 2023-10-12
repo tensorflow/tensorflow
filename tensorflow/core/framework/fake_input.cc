@@ -105,17 +105,17 @@ Status FakeInputImpl::AddInputToBuilder() {
       if (!status.ok()) {
         return errors::InvalidArgument(
             "Could not infer list of types for input '", arg_->name(),
-            "': ", status.error_message());
+            "': ", status.message());
       }
       SourceList(dts);
-      return Status::OK();
+      return OkStatus();
     }
 
     DataType dt;
     TF_RETURN_IF_ERROR(GetDataType(&dt));
     builder_->Input(in_node_, 0, dt);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // static
@@ -131,17 +131,16 @@ Status FakeInputImpl::GetN(int* n) const {
     Status status = GetNodeAttr(*node_def_, arg_->number_attr(), n);
     if (!status.ok()) {
       return errors::InvalidArgument("Could not infer length of input '",
-                                     arg_->name(),
-                                     "': ", status.error_message());
+                                     arg_->name(), "': ", status.message());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FakeInputImpl::GetDataType(DataType* dt) const {
   if (dt_specified_) {
     *dt = dt_;
-    return Status::OK();  // Ignore is_ref field of arg_.
+    return OkStatus();  // Ignore is_ref field of arg_.
   } else if (arg_->type() != DT_INVALID) {
     *dt = arg_->type();
   } else if (!arg_->type_attr().empty()) {
@@ -153,8 +152,7 @@ Status FakeInputImpl::GetDataType(DataType* dt) const {
         *dt = attr->default_value().type();
       } else {
         return errors::InvalidArgument("Could not infer type for input '",
-                                       arg_->name(),
-                                       "': ", status.error_message());
+                                       arg_->name(), "': ", status.message());
       }
     }
   } else {
@@ -164,7 +162,7 @@ Status FakeInputImpl::GetDataType(DataType* dt) const {
   if (arg_->is_ref()) {
     *dt = MakeRefType(*dt);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void FakeInputImpl::NSources(int n, DataType dt) const {

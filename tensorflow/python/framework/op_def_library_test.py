@@ -15,19 +15,24 @@
 
 """Tests for tensorflow.python.ops.op_def_library."""
 
+from google.protobuf import text_format
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import tensor_shape_pb2
-from tensorflow.python.eager import function as eager_function
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import op_def_library
+from tensorflow.python.framework import op_def_library_pybind
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import compat
 
 
+@test_util.add_graph_building_optimization_tests
 class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def Tensor(self, t, name="in"):
@@ -411,28 +416,20 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def testAttrFuncWithFuncWithAttrs(self):
     with ops.Graph().as_default():
-      @eager_function.defun_with_attributes(
-          input_signature=(tensor_spec.TensorSpec(None, dtypes.float32),),
+      @def_function.function(
+          input_signature=(tensor.TensorSpec(None, dtypes.float32),),
           autograph=False,
-          attributes={"_dummy_attr": 15})
+          experimental_attributes={"_implements": 15})
       def fn(x):
         return 2 + x
 
       concrete_fn = fn.get_concrete_function()
 
       op = op_def_library.apply_op("FuncAttr", f=concrete_fn, name="t")
-      self.assertProtoEquals("""
-        name: 't' op: 'FuncAttr'
-        attr {
-          key: 'f'
-          value {
-            func {
-              name: '%s'
-              attr { key: "_dummy_attr" value { i: 15 } }
-            }
-          }
-        }
-        """ % compat.as_str(concrete_fn.name), op.node_def)
+      self.assertEqual(15, op.node_def.attr["f"].func.attr["_implements"].i)
+      self.assertEqual(
+          compat.as_str(concrete_fn.name), op.node_def.attr["f"].func.name
+      )
 
   def testAttrFuncList(self):
     with ops.Graph().as_default():
@@ -1337,7 +1334,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         self.assertIsInstance(a, list)
         self.assertEqual(n_a, len(a))
         self.assertTrue(all(x.dtype == dtypes.int32 for x in a))
-        self.assertIsInstance(b, ops.Tensor)
+        self.assertIsInstance(b, tensor.Tensor)
         self.assertEqual(dtypes.float32, b.dtype)
 
   def testStructuredOutputMultipleLists(self):
@@ -1357,6 +1354,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
             self.assertEqual(t_c, [x.dtype for x in c])
 
 
+@test_util.add_graph_building_optimization_tests
 class OpDefLibraryGraphTest(test_util.TensorFlowTestCase):
 
   def testNoGraph(self):
@@ -1377,6 +1375,25 @@ class OpDefLibraryGraphTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError) as cm:
       op_def_library.apply_op("Binary", a=a, b=b)
     self.assertIn("must be from the same graph", str(cm.exception))
+
+
+class OpDefLibraryPybindTest(test_util.TensorFlowTestCase):
+
+  def testPybind(self):
+    x = constant_op.constant(32, dtype=dtypes.float32)
+    y = constant_op.constant(32, dtype=dtypes.float32)
+
+    attrs, inputs, input_types, output_structure = (
+        op_def_library_pybind.process_inputs("AddV2", 1, {
+            "x": x,
+            "y": y
+        }))
+
+    proto = text_format.Parse("type: DT_FLOAT", attr_value_pb2.AttrValue())
+    self.assertEqual(attrs, {"T": proto})
+    self.assertEqual(inputs, [x, y])
+    self.assertEqual(input_types, [dtypes.float32, dtypes.float32])
+    self.assertEqual(output_structure, [None])
 
 
 if __name__ == "__main__":

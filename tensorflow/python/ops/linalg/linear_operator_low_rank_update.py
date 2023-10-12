@@ -15,6 +15,7 @@
 """Perturb a `LinearOperator` with a rank `K` update."""
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
@@ -233,8 +234,7 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
       is_positive_definite = True
       is_self_adjoint = True
 
-    values = base_operator.graph_parents + [u, diag_update, v]
-    with ops.name_scope(name, values=values):
+    with ops.name_scope(name):
 
       # Create U and V.
       self._u = linear_operator_util.convert_nonref_to_tensor(u, name="u")
@@ -251,9 +251,6 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
 
       # Create base_operator L.
       self._base_operator = base_operator
-      graph_parents = base_operator.graph_parents + [
-          self.u, self._diag_update, self.v]
-      graph_parents = [p for p in graph_parents if p is not None]
 
       super(LinearOperatorLowRankUpdate, self).__init__(
           dtype=self._base_operator.dtype,
@@ -263,7 +260,6 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
           is_square=is_square,
           parameters=parameters,
           name=name)
-      self._set_graph_parents(graph_parents)
 
       # Create the diagonal operator D.
       self._set_diag_operators(diag_update, is_diag_update_positive)
@@ -370,11 +366,11 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
 
   def _get_uv_as_tensors(self):
     """Get (self.u, self.v) as tensors (in case they were refs)."""
-    u = ops.convert_to_tensor_v2_with_dispatch(self.u)
+    u = tensor_conversion.convert_to_tensor_v2_with_dispatch(self.u)
     if self.v is self.u:
       v = u
     else:
-      v = ops.convert_to_tensor_v2_with_dispatch(self.v)
+      v = tensor_conversion.convert_to_tensor_v2_with_dispatch(self.v)
     return u, v
 
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
@@ -504,3 +500,12 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
   @property
   def _composite_tensor_fields(self):
     return ("base_operator", "u", "diag_update", "v", "is_diag_update_positive")
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    return {
+        "base_operator": 0,
+        "u": 2,
+        "diag_update": 1,
+        "v": 2
+    }

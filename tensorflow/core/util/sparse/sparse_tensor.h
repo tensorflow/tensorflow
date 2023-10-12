@@ -21,7 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/macros.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -574,7 +574,7 @@ inline Status SparseTensor::Split(const SparseTensor& input_tensor,
     }
     result->push_back(std::move(tensor));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T>

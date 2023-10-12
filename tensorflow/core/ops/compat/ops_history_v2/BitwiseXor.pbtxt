@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "BitwiseXor"
   input_arg {
     name: "x"

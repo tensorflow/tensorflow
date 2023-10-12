@@ -3,7 +3,7 @@
 // Tests expansion of a outside compiled ops at head/tail of TPU computation.
 
 // CHECK-LABEL: func @identity_at_head_expanded
-func @identity_at_head_expanded(%arg0: tensor<?xi32>) {
+func.func @identity_at_head_expanded(%arg0: tensor<?xi32>) {
   // CHECK: "tf_device.cluster"
   // CHECK-NEXT: "tf.Identity"
   // CHECK-SAME: _xla_outside_compilation = ""
@@ -13,11 +13,11 @@ func @identity_at_head_expanded(%arg0: tensor<?xi32>) {
     "tf.C"() : () -> ()
     tf_device.return
   }) : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @cast_at_head_expanded
-func @cast_at_head_expanded(%arg0: tensor<?xi32>) {
+func.func @cast_at_head_expanded(%arg0: tensor<?xi32>) {
   // CHECK: "tf_device.cluster"
   // CHECK-NEXT: "tf.Cast"
   // CHECK-SAME: _xla_outside_compilation = ""
@@ -27,11 +27,11 @@ func @cast_at_head_expanded(%arg0: tensor<?xi32>) {
     "tf.C"() : () -> ()
     tf_device.return
   }) {} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @check_consecutive_unary_ops_outside_compiled
-func @check_consecutive_unary_ops_outside_compiled(%arg0: tensor<?xi32>) {
+func.func @check_consecutive_unary_ops_outside_compiled(%arg0: tensor<?xi32>) {
   // CHECK: "tf_device.cluster"
   // CHECK-NEXT: "tf.Cast"
   // CHECK-SAME: _xla_outside_compilation = ""
@@ -45,11 +45,11 @@ func @check_consecutive_unary_ops_outside_compiled(%arg0: tensor<?xi32>) {
     "tf.C"() : () -> ()
     tf_device.return
   }) {} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @check_only_necesarily_ops_outside_compiled
-func @check_only_necesarily_ops_outside_compiled(%arg0: tensor<?xi32>) {
+func.func @check_only_necesarily_ops_outside_compiled(%arg0: tensor<?xi32>) {
   // CHECK: "tf_device.cluster"
   // CHECK-NEXT: "tf.Identity"
   // CHECK-NOT: _xla_outside_compilation = ""
@@ -60,11 +60,11 @@ func @check_only_necesarily_ops_outside_compiled(%arg0: tensor<?xi32>) {
     "tf.C"() : () -> ()
     tf_device.return
   }) {} : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @check_only_necesarily_ops_outside_compiled_with_chained_ops
-func @check_only_necesarily_ops_outside_compiled_with_chained_ops(%arg0: tensor<?xi32>) {
+func.func @check_only_necesarily_ops_outside_compiled_with_chained_ops(%arg0: tensor<?xi32>) {
   // CHECK: "tf_device.cluster"
   // CHECK-NEXT: "tf.Cast"
   // CHECK-NOT: _xla_outside_compilation
@@ -78,11 +78,11 @@ func @check_only_necesarily_ops_outside_compiled_with_chained_ops(%arg0: tensor<
     "tf.C"() : () -> ()
     tf_device.return
   }) : () -> ()
-  return
+  func.return
 }
 
 // CHECK-LABEL: func @check_op_without_usage_not_outside_compiled
-func @check_op_without_usage_not_outside_compiled(%arg0: tensor<?xi32>) {
+func.func @check_op_without_usage_not_outside_compiled(%arg0: tensor<?xi32>) {
   // CHECK: "tf_device.cluster"
   // CHECK-NEXT: "tf.Identity"
   // CHECK-NOT: _xla_outside_compilation
@@ -91,5 +91,5 @@ func @check_op_without_usage_not_outside_compiled(%arg0: tensor<?xi32>) {
     "tf.C"() : () -> ()
     tf_device.return
   }) : () -> ()
-  return
+  func.return
 }

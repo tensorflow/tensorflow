@@ -1223,7 +1223,8 @@ class ComplexMakeRealImagTest(test.TestCase):
               math_ops.square(math_ops.imag(cplx)))
       epsilon = 1e-3
       jacob_t, jacob_n = gradient_checker.compute_gradient(
-          inx, list(x.shape), loss, [1], x_init_value=x, delta=epsilon)
+          inx, list(x.shape), loss, list(loss.shape), x_init_value=x,
+          delta=epsilon)
     self.assertAllClose(jacob_t, jacob_n, rtol=epsilon, atol=epsilon)
 
   def _compareBroadcastGradient(self, x):
@@ -1327,6 +1328,32 @@ class PolyvalTest(test.TestCase):
     coeffs = {}
     with self.assertRaisesRegex(ValueError, "Argument coeffs must be list"):
       math_ops.polyval(coeffs, x)
+
+
+class RealTest(test.TestCase):
+
+  def _run_test(self, input_values, expected_values):
+    res = math_ops.real(input_values)
+    self.assertAllEqual(res, expected_values)
+
+  def test_real(self):
+    test_cases = [
+        # Complex tensor
+        (np.complex64, [-2.25 + 4.75j, 3.25 + 5.75j], [-2.25, 3.25]),
+        (np.complex128, [-2.25 + 4.75j, 3.25 + 5.75j], [-2.25, 3.25]),
+        # Real tensor
+        (np.float32, [1.0, 2.0, 3.0], [1.0, 2.0, 3.0]),
+        (np.float64, [1.0, 2.0, 3.0], [1.0, 2.0, 3.0]),
+    ]
+
+    for dtype, input_values, expected_values in test_cases:
+      with self.subTest(dtype=dtype):
+        self._run_test(input_values, expected_values)
+
+  def test_real_raises_error_for_non_numeric_tensor(self):
+    x = np.array(["Hello", "World"])
+    with self.assertRaisesRegex(TypeError, "input must be a numeric tensor"):
+      self._run_test(x, None)
 
 
 if __name__ == "__main__":

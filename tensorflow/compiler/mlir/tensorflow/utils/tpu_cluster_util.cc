@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <utility>
+
 #include "mlir/Analysis/CallGraph.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
@@ -24,7 +30,7 @@ namespace {
 mlir::LogicalResult WalkReachableFromTpuCluster(
     bool pass_host_device, ModuleOp module,
     std::function<WalkResult(Operation*, tf_device::ClusterOp,
-                             absl::optional<std::string>)>
+                             std::optional<std::string>)>
         callback) {
   mlir::TF::RuntimeDevices devices;
   if (failed(tensorflow::GetDevicesFromOp(module, &devices))) return failure();
@@ -35,7 +41,7 @@ mlir::LogicalResult WalkReachableFromTpuCluster(
   llvm::SmallVector<std::pair<CallGraphNode*, tf_device::ClusterOp>>
       pending_call_nodes;
   // Cache the host device for each TPU cluster.
-  std::unordered_map<Operation*, absl::optional<std::string>> cluster_to_host;
+  std::unordered_map<Operation*, std::optional<std::string>> cluster_to_host;
 
   auto insert_pending_op = [&](Operation* op,
                                tf_device::ClusterOp tpu_cluster) {
@@ -48,8 +54,8 @@ mlir::LogicalResult WalkReachableFromTpuCluster(
 
   // Traverse ops in each TPU cluster.
   auto result = module.walk([&](tf_device::ClusterOp tpu_cluster) {
-    absl::optional<std::string> host_device;
-    if (pass_host_device && !tensorflow::HasModelParallelism(tpu_cluster)) {
+    std::optional<std::string> host_device;
+    if (pass_host_device) {
       std::string host_device_value;
       if (failed(tensorflow::GetHostDeviceOutsideComputation(
               devices, tpu_cluster, &host_device_value)))
@@ -96,7 +102,7 @@ mlir::LogicalResult WalkReachableFromTpuCluster(
 
 mlir::LogicalResult WalkReachableFromTpuCluster(
     ModuleOp module, std::function<WalkResult(Operation*, tf_device::ClusterOp,
-                                              absl::optional<std::string>)>
+                                              std::optional<std::string>)>
                          callback) {
   return WalkReachableFromTpuCluster(true, module, callback);
 }
@@ -105,7 +111,7 @@ mlir::LogicalResult WalkReachableFromTpuCluster(
     ModuleOp module,
     std::function<WalkResult(Operation*, tf_device::ClusterOp)> callback) {
   auto with_host_op = [&](Operation* op, tf_device::ClusterOp tpu_cluster,
-                          absl::optional<std::string> host_device) {
+                          std::optional<std::string> host_device) {
     return callback(op, tpu_cluster);
   };
   return WalkReachableFromTpuCluster(false, module, with_host_op);

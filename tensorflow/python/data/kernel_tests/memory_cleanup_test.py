@@ -16,9 +16,9 @@
 
 import gc
 import time
+import weakref
 
 from absl.testing import parameterized
-import six
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -51,7 +51,7 @@ class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
     # Wait for background threads to start up and allocate memory.
     time.sleep(4)
     initial = memory_profiler.memory_usage(-1)[0]
-    for _ in six.moves.range(num_iters):
+    for _ in range(num_iters):
       f()
     increase = memory_profiler.memory_usage(-1)[0] - initial
     logging.info("Memory increase observed: %f MB" % increase)
@@ -71,8 +71,16 @@ class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
       run()
 
     gc.collect()
+
+    def is_native_object(o):
+      # First check if `o` is a weakref proxy. Calling
+      # `isinstance(o, internal.NativeObject)` on an expired weak reference
+      # proxy will raise a ReferenceError.
+      if isinstance(o, weakref.ProxyTypes): return False
+      return isinstance(o, internal.NativeObject)
+
     tensors = [
-        o for o in gc.get_objects() if isinstance(o, internal.NativeObject)
+        o for o in gc.get_objects() if is_native_object(o)
     ]
     self.assertEmpty(tensors, "%d Tensors are still alive." % len(tensors))
 
@@ -149,7 +157,7 @@ class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
     def get_dataset():
 
       def fn():
-        return six.moves.range(100)
+        return range(100)
 
       return dataset_ops.Dataset.from_generator(fn, output_types=dtypes.float32)
 

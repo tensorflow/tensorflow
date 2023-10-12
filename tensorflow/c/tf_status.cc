@@ -13,42 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef LIBTPU_EXCLUDE_C_API_IMPL
+
 #include "tensorflow/c/tf_status.h"
 
 #include "tensorflow/c/tf_status_internal.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 
-using ::tensorflow::Status;
-using ::tensorflow::error::Code;
-using ::tensorflow::errors::IOError;
+// Trampoline implementation to redirect to TSL. Kept here for backward
+// compatibility only.
 
-TF_Status* TF_NewStatus() { return new TF_Status; }
-
-void TF_DeleteStatus(TF_Status* s) { delete s; }
-
+TF_Status* TF_NewStatus() { return TSL_NewStatus(); }
+void TF_DeleteStatus(TF_Status* s) { TSL_DeleteStatus(s); }
 void TF_SetStatus(TF_Status* s, TF_Code code, const char* msg) {
-  if (code == TF_OK) {
-    s->status = Status::OK();
-    return;
-  }
-  s->status = Status(static_cast<Code>(code), tensorflow::StringPiece(msg));
+  TSL_SetStatus(s, TSL_Code(code), msg);
 }
-
 void TF_SetPayload(TF_Status* s, const char* key, const char* value) {
-  s->status.SetPayload(key, value);
+  TSL_SetPayload(s, key, value);
 }
-
+void TF_ForEachPayload(const TF_Status* s, TF_PayloadVisitor visitor,
+                       void* capture) {
+  TSL_ForEachPayload(s, visitor, capture);
+}
 void TF_SetStatusFromIOError(TF_Status* s, int error_code,
                              const char* context) {
-  // TODO(mihaimaruseac): Handle windows when changing its filesystem
-  s->status = IOError(context, error_code);
+  TSL_SetStatusFromIOError(s, error_code, context);
 }
+TF_Code TF_GetCode(const TF_Status* s) { return TF_Code(TSL_GetCode(s)); }
+const char* TF_Message(const TF_Status* s) { return TSL_Message(s); }
 
-TF_Code TF_GetCode(const TF_Status* s) {
-  return static_cast<TF_Code>(s->status.code());
-}
-
-const char* TF_Message(const TF_Status* s) {
-  return s->status.error_message().c_str();
-}
+#endif  // LIBTPU_EXCLUDE_C_API_IMPL

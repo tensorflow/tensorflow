@@ -24,8 +24,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/c/checkpoint_reader.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/profiler/internal/tfprof_node.h"
 #include "tensorflow/core/profiler/internal/tfprof_show_multi.h"
@@ -41,7 +39,7 @@ namespace tfprof {
 
 class PprofProfile {
  public:
-  virtual ~PprofProfile() {}
+  virtual ~PprofProfile() = default;
 
   virtual uint64 AddLocation(const CodeNode* callee,
                              const CodeNode* caller) = 0;
@@ -54,8 +52,8 @@ class PprofProfile {
 
 class TFCode : public TFMultiShow {
  public:
-  TFCode() {}
-  ~TFCode() override {}
+  TFCode() = default;
+  ~TFCode() override = default;
 
   // Add nodes to the code view. Called before Build()
   void AddNode(TFGraphNode* node) override;
@@ -71,7 +69,7 @@ class TFCode : public TFMultiShow {
   std::vector<CodeNode*> SearchRoot(std::vector<CodeNode*> roots,
                                     const std::vector<string>& regexes);
 
-  std::vector<CodeNode*> PrintScope(const std::vector<CodeNode*> roots,
+  std::vector<CodeNode*> PrintScope(std::vector<CodeNode*> roots,
                                     const Options& opts, int depth,
                                     int last_ident);
 

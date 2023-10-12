@@ -51,12 +51,13 @@ Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
                            queue_runner_def.enqueue_op_name().end());
   size_t op_names_size = enqueue_op_names_.size();
   if (op_names_size > kint32max) {
-    return Status(error::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   "Enqueue ops to run cannot exceed kint32max");
   }
   runs_ = static_cast<int>(op_names_size);
   if (runs_ == 0) {
-    return Status(error::INVALID_ARGUMENT, "Empty enqueue ops to run.");
+    return Status(absl::StatusCode::kInvalidArgument,
+                  "Empty enqueue ops to run.");
   }
   close_op_name_ = queue_runner_def.close_op_name();
   cancel_op_name_ = queue_runner_def.cancel_op_name();
@@ -76,7 +77,7 @@ Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
   thread_pool_.reset(new thread::ThreadPool(
       Env::Default(), SanitizeThreadSuffix(queue_name_), nthreads));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 QueueRunner::~QueueRunner() {
@@ -105,7 +106,7 @@ Status QueueRunner::Start(Session* sess, int wait_for) {
   // Wait for up to 'wait_for' milliseconds.
   if (wait_for > 0) {
     if (!counter_->WaitFor(std::chrono::milliseconds(wait_for))) {
-      return Status(error::DEADLINE_EXCEEDED,
+      return Status(absl::StatusCode::kDeadlineExceeded,
                     "Queues not fed before the timeout");
     }
     // Check the status of the queue runner as well as the result of the enqueue
@@ -117,7 +118,7 @@ Status QueueRunner::Start(Session* sess, int wait_for) {
       return status_;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status QueueRunner::StartAndCollectCostGraph(Session* session, int wait_for_ms,
@@ -206,12 +207,12 @@ Status QueueRunner::GetStatus() {
 
 Status QueueRunner::ExportCostGraph(CostGraphDef* cost_graph) const {
   if (!cg_mu_) {
-    return Status(error::FAILED_PRECONDITION,
+    return Status(absl::StatusCode::kFailedPrecondition,
                   "This QueueRunner doesn't collect a cost graph.");
   }
   mutex_lock l(*cg_mu_);
   cost_graph->MergeFrom(*cost_graph_);
-  return Status::OK();
+  return OkStatus();
 }
 
 void QueueRunner::SetRunArgumentsAndCostGraph(const RunOptions& run_options) {

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/py_utils.h"
 
+#include <string>
+
 #include "tensorflow/core/data/service/credentials_factory.h"
 
 namespace tensorflow {

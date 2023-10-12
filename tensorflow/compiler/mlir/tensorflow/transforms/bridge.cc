@@ -16,225 +16,120 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 
 #include <memory>
+#include <string>
+#include <utility>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/tf_dialect_to_executor.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_dialect_to_executor.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/clustering_bridge_passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/inference/inference_passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
+#include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/platform/error_payloads.h"
+#include "tensorflow/core/platform/stacktrace.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
+#include "tsl/platform/error_logging.h"
 
 namespace mlir {
-namespace {
-// Add logger to bridge passmanager.
-// Enable timing statistics per pass for the bridge passmanager.
-void EnableDetailedLogging(PassManager *pm) {
-  // Print the whole module after each pass, which requires disabling
-  // multi-threading as well.
-  pm->getContext()->disableMultithreading();
-  pm->enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
-      /*print_module_scope=*/true));
-  pm->enableTiming();
-}
-}  // namespace
-
 namespace TFTPU {
-
 namespace {
-tensorflow::Status RunTPUBridge(
-    ModuleOp module, bool enable_logging,
-    llvm::function_ref<void(OpPassManager &pm)> pipeline_builder) {
+
+constexpr char kBridgeComponent[] = "TFXLABridge";
+
+// Run the TF XLA Bridge based on the input pipeline, which can be either TPU
+// bridge pipeline or non TPU bridge pipeline.
+tensorflow::Status RunTFXLABridge(
+    ModuleOp module,
+    llvm::function_ref<void(OpPassManager &pm)> pipeline_builder,
+    llvm::StringRef module_name = llvm::StringRef()) {
+  // Explicitly check that the TensorFlow dialect can constant fold ops.
+  // Constant folding is essential for the bridge. Without this check, the
+  // bridge may fail with an error that is difficult to understand and not
+  // actionable.
+  if (!TF::TensorFlowDialect::HasConstantFoldHook()) {
+    return tensorflow::errors::Internal(
+        "TensorFlow dialect missing constant fold hook in TFXLA bridge phase "
+        "1; this could happen if the binary doesn't link the constant fold "
+        "hook registration library.");
+  }
+
   PassManager bridge(module.getContext());
   ::tensorflow::applyTensorflowAndCLOptions(bridge);
-  if (enable_logging || VLOG_IS_ON(1)) {
-    tensorflow::DumpMlirOpToFile("tpu_bridge_before", module);
-    if (VLOG_IS_ON(2)) EnableDetailedLogging(&bridge);
-  }
 
   // Populate a passmanager with the list of passes that implement the bridge.
   pipeline_builder(bridge);
-
-  // Add set of passes to lower back to graph (from tf_executor).
-  TF::AddGraphExportLoweringPasses(bridge);
 
   mlir::StatusScopedDiagnosticHandler diag_handler(
       module.getContext(), /*propagate=*/false,
       /*filter_stack=*/!VLOG_IS_ON(1));
 
+  if (VLOG_IS_ON(1) ||
+      DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain)) {
+    ::tensorflow::DumpMlirOpToFile(
+        DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
+                                             "tf_xla_bridge_before"),
+        module, llvm::StringRef(), &bridge);
+  }
+
+  if (VLOG_IS_ON(2) ||
+      DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(),
+                                      kDebugGroupBridgePhase1Clustering)) {
+    ::tensorflow::tf2xla::internal::EnablePassIRPrinting(
+        bridge, kDebugGroupBridgePhase1Clustering, module_name);
+  }
+
   LogicalResult result = bridge.run(module);
   (void)result;
-  if (enable_logging || VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("tpu_bridge_after", module);
+
+  if (VLOG_IS_ON(1) ||
+      DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain)) {
+    ::tensorflow::DumpMlirOpToFile(
+        DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
+                                             "tf_xla_bridge_after"),
+        module, llvm::StringRef(), &bridge);
+  }
+
   return diag_handler.ConsumeStatus();
 }
+
 }  // namespace
 
-void CreateTPUBridgePipeline(OpPassManager &pm) {
-  // The following ops must be preserved regardless of reachability. Ideally,
-  // all graphs should have control dependencies to enforce this but this is
-  // currently not the case (see b/177478741).
-  const llvm::SmallVector<std::string, 4> ops_to_preserve = {
-      "tf.TPUReplicateMetadata", "tf.TPUCompilationResult",
-      "tf.TPUReplicatedOutput"};
-  pm.addNestedPass<FuncOp>(
-      tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));
-  // It is assumed at this stage there are no V1 control flow ops as Graph
-  // functionalization is ran before import. Ops can be lifted out of
-  // tf_executor dialect islands/graphs.
-  pm.addNestedPass<FuncOp>(CreateExecutorDialectToFunctionalConversionPass());
-  // Guarantee all functions have one use, which enables more exact shape
-  // inference.
-  pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
-  // Run shape inference so that tf_executor/tf_device ops created later will
-  // likely to inherit more concrete types.
-  pm.addPass(TF::CreateTFShapeInferencePass());
-  pm.addNestedPass<FuncOp>(CreateTPUReorderReplicateAndPartitionedInputsPass());
-  pm.addPass(CreateTPUClusterFormationPass());
-  // Run TPU cluster cleanup attributes so ops with no outside compiled
-  // attribute have no host device attribute.
-  pm.addPass(CreateTPUClusterCleanupAttributesPass());
-  pm.addPass(CreateOutsideCompiledToHostLaunchPass());
-  pm.addNestedPass<FuncOp>(TFDevice::CreateDeviceAttributeToLaunchPass());
-  // Running canonicalizer before decomposing resource ops in cluster helps the
-  // latter pass to converge faster as it does not have to spend time folding
-  // away dead ops.
-  pm.addNestedPass<FuncOp>(createCanonicalizerPass());
-  // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
-  // because DecomposeResourceOpsPass uses pattern rewriter which hoists
-  // changed constants out of tf_device.Launch.
-  pm.addPass(TFDevice::CreateDecomposeResourceOpsInClusterPass());
-  // Encode this in its own scope so that func_pm is not mistakenly used
-  // later on.
-  {
-    OpPassManager &func_pm = pm.nest<FuncOp>();
-    func_pm.addPass(CreateTPUHostComputationExpansionPass());
-    func_pm.addPass(CreateTPUUpdateEmbeddingEnqueueOpInputsPass());
-  }
-  // TODO(b/173622615): This should incrementally be moved down as
-  // more passes support this representation and then can be removed once
-  // all passes support it.
-  pm.addPass(TFDevice::CreateHostLaunchToOutsideCompiledPass());
-
-  // TODO(b/173622615): Once OutsideCompilation is represented by launch op and
-  // the remaining passes including Inliner support it, remove this
-  // LaunchToDeviceAttributePass. This LaunchToDeviceAttribute pass needs to
-  // come before TPUClusterCleanupAttributes pass or else the device attribute
-  // will be removed from launch causing an error.
-  pm.addNestedPass<FuncOp>(TFDevice::CreateLaunchToDeviceAttributePass());
-
-  // TODO(b/173622615): This can be removed once more passes support outside
-  // compilation represented by op and conversion back to attribute is removed.
-  pm.addPass(CreateOutsideCompiledToHostLaunchPass());
-  // Note that the region-based control-flow produced here still contains
-  // function call ops which get inlined by the subsequent inliner pass.
-  pm.addPass(TF::CreateTFFunctionalControlFlowToRegions());
-  pm.addPass(mlir::createInlinerPass());
-  pm.addNestedPass<FuncOp>(
-      TF::CreateDropWhileShapeInvariantInDeviceClusterPass());
-  // Run another shape inference pass because resource decomposition might have
-  // created new partial types. Also, after dropping `shape_invariant` attribute
-  // from While/WhileRegion ops within cluster would lead to more precise
-  // shapes.
-  pm.addPass(TF::CreateTFShapeInferencePass());
-  pm.addNestedPass<FuncOp>(createCanonicalizerPass());
-  pm.addPass(CreateTPUClusterCleanupAttributesPass());
-  pm.addPass(TFDevice::CreateResourceOpLiftingPass());
-  // Re-run the canonicalizer pass as some cleanup during resource op lifting
-  // pass opens up some opportunities for canonicalization of cluster ops.
-  // Specifically, we want to eliminate pass through results from the cluster
-  // op.
-  pm.addNestedPass<FuncOp>(createCanonicalizerPass());
-
-  // TODO(b/173622615): This should incrementally be moved down as
-  // more passes support this representation and then can be removed once
-  // all passes support it.
-  pm.addPass(TFDevice::CreateHostLaunchToOutsideCompiledPass());
-  pm.addNestedPass<FuncOp>(createCSEPass());
-  if (tensorflow::GetMlirCommonFlags()
-          ->tf_mlir_enable_merge_control_flow_pass) {
-    pm.addPass(TFDevice::CreateMergeControlFlowPass());
-  }
-
-  pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
-  pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
-  pm.addPass(CreateTPUExtractOutsideCompilationPass());
-
-  pm.addNestedPass<FuncOp>(TFDevice::CreateClusterConstantSinkingPass());
-  pm.addPass(TF::CreateResourceDeviceInferencePass());
-  pm.addPass(TFDevice::CreateClusterOutliningPass());
-  pm.addPass(CreateTPUResourceReadForWritePass());
-  pm.addPass(TFDevice::CreateMarkInputOutputAliasesPass());
-  pm.addPass(CreateTPUShardingIdentificationPass());
-  pm.addNestedPass<FuncOp>(CreateTPUResourceReadsWritesPartitioningPass());
-  pm.addPass(TFDevice::CreateAnnotateParameterReplicationPass());
-  pm.addPass(CreateTPURewritePass());
-  pm.addPass(createSymbolDCEPass());
-  pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
-  pm.addPass(CreateTPUMergeVariablesWithExecutePass());
-  pm.addNestedPass<FuncOp>(
-      TF::CreateHoistReplicateInvariantResourceWritesPass());
-  pm.addNestedPass<FuncOp>(CreateTPUColocateCompositeResourceOps());
-  pm.addPass(CreateTPUVariableRuntimeReformattingPass());
-  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
+void CreateTPUBridgePipeline(OpPassManager &pm, llvm::StringRef module_name) {
+  pm.addPass(CreateTPUValidateInputsPass());
+  pm.addNestedPass<func::FuncOp>(
+      TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
+  tensorflow::tf2xla::internal::AddBridgeClusteringPipelinePasses(pm,
+                                                                  module_name);
 }
 
-void CreateTPUBridgePipelineV1(OpPassManager &pm) {
-  // Guarantee all functions have one use, which enables more exact shape
-  // inference.
-  pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
-  pm.addPass(TF::CreateTFShapeInferencePass());
-  // For V1 compatibility, we process a module where the graph does not have
-  // feeds and fetched. We extract first the TPU computation in a submodule,
-  // where it'll be in a function with args and returned values, much more like
-  // a TF v2 module. We can then run the usual pipeline on this nested module.
-  // Afterward we inline back in the parent module and delete the nested one.
-  pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandCoarseningPass());
-  pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandOutliningPass());
-  OpPassManager &nested_module = pm.nest<ModuleOp>();
-  CreateTPUBridgePipeline(nested_module);
-  pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandInliningPass());
-}
-
-tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging) {
-  return RunTPUBridge(module, enable_logging, CreateTPUBridgePipeline);
-}
-tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging) {
-  return RunTPUBridge(module, enable_logging, CreateTPUBridgePipelineV1);
+tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
+                             llvm::StringRef module_name) {
+  return tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
+      module, tensorflow::tf2xla::v2::XLA_TPU_JIT, fallback_enabled,
+      module_name);
 }
 
 }  // namespace TFTPU
 
 namespace TF {
 
-void AddGraphExportLoweringPasses(OpPassManager &pm) {
-  auto add_pass = [&](std::unique_ptr<Pass> pass) {
-    pm.addNestedPass<FuncOp>(std::move(pass));
-    pm.addPass(CreateBreakUpIslandsPass());
-  };
-
-  add_pass(CreateFunctionalToExecutorDialectConversionPass());
-  add_pass(TFDevice::CreateReplicateToIslandPass());
-  add_pass(TFDevice::CreateParallelExecuteToIslandsPass());
-  add_pass(TFDevice::CreateLaunchToDeviceAttributePass());
-  pm.addNestedPass<FuncOp>(TFTPU::CreateTPUDevicePropagationPass());
-  pm.addPass(createSymbolDCEPass());
-  if (tensorflow::GetMlirCommonFlags()
-          ->tf_mlir_enable_convert_control_to_data_outputs_pass) {
-    pm.addPass(tf_executor::CreateTFExecutorConvertControlToDataOutputsPass());
-  }
-  pm.addPass(CreateVerifySuitableForExportPass());
-}
-
 tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
                                                  bool enable_logging,
                                                  bool enable_inliner) {
   PassManager bridge(module.getContext());
-  if (enable_logging || VLOG_IS_ON(1)) {
-    tensorflow::DumpMlirOpToFile("standard_pipeline_before", module);
-    if (VLOG_IS_ON(2)) EnableDetailedLogging(&bridge);
-  }
 
   StandardPipelineOptions pipeline_options;
   pipeline_options.enable_inliner.setValue(enable_inliner);
@@ -244,11 +139,59 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
       module.getContext(), /*propagate=*/false,
       /*filter_stack=*/!VLOG_IS_ON(1));
 
+  if (enable_logging || VLOG_IS_ON(1)) {
+    tensorflow::DumpMlirOpToFile(kStandardPipelineBefore, module, "", &bridge);
+    if (VLOG_IS_ON(2)) {
+      tensorflow::tf2xla::internal::EnablePassIRPrinting(
+          bridge, TFTPU::kBridgeComponent);
+    }
+  }
   LogicalResult result = bridge.run(module);
   (void)result;
   if (enable_logging || VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("standard_pipeline_after", module);
+    tensorflow::DumpMlirOpToFile(kStandardPipelineAfter, module, "", &bridge);
   return diag_handler.ConsumeStatus();
+}
+
+void CreateTFXLABridgePipeline(OpPassManager &pm) {
+  tensorflow::tf2xla::internal::AddNonTPUBridgeClusteringPipelinePasses(pm);
+}
+
+tensorflow::Status RunTFXLABridge(ModuleOp module,
+                                  llvm::StringRef module_name) {
+  VLOG(2)
+      << "CPU/GPU Bridge called stack trace is "
+      << "(NOTE: this is not an error; rather the stack trace for debugging) : "
+      << tensorflow::CurrentStackTrace();
+  Status status = mlir::TFTPU::RunTFXLABridge(
+      module,
+      [](OpPassManager &pm) {
+        tensorflow::tf2xla::internal::AddNonTPUBridgeClusteringPipelinePasses(
+            pm);
+      },
+      module_name);
+  tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+      /*device type*/ "cpu/gpu", /*bridge version*/ "tfxla",
+      /*fallback_enabled*/ false,
+      /*result*/ status.ok() ? "success" : "failure");
+  if (!status.ok()) {
+    tsl::error_logging::Log(TFTPU::kBridgeComponent,
+                            "TFXLA_PHASE_ONE_MLIR_CPU/GPU_BRIDGE",
+                            status.ToString())
+        .IgnoreError();
+  }
+
+  Status export_status =
+      tensorflow::tf2xla::v2::ExportFromTensorflowDialectToExecutor(
+          module, module_name);
+  if (!export_status.ok()) {
+    tsl::error_logging::Log(TFTPU::kBridgeComponent,
+                            "TFXLA_PHASE_ONE_MLIR_CPU_BRIDGE_EXPORT",
+                            export_status.ToString())
+        .IgnoreError();
+  }
+
+  return status;
 }
 
 }  // namespace TF

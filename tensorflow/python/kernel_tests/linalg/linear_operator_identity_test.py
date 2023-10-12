@@ -49,6 +49,14 @@ class LinearOperatorIdentityTest(
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
+    ]
+
   def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
@@ -299,6 +307,14 @@ class LinearOperatorScaledIdentityTest(
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
+    ]
+
   def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
@@ -477,6 +493,12 @@ class LinearOperatorScaledIdentityTest(
     self.assertTrue(operator.is_non_singular)
     self.assertTrue(operator.is_self_adjoint)  # Auto-set due to real multiplier
 
+  def test_identity_adjoint_type(self):
+    operator = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows=2, multiplier=1., is_non_singular=True)
+    self.assertIsInstance(
+        operator.adjoint(), linalg_lib.LinearOperatorScaledIdentity)
+
   def test_identity_matmul(self):
     operator1 = linalg_lib.LinearOperatorIdentity(num_rows=2)
     operator2 = linalg_lib.LinearOperatorScaledIdentity(
@@ -560,6 +582,14 @@ class LinearOperatorScaledIdentityTest(
     operator = linalg_lib.LinearOperatorScaledIdentity(
         num_rows=2, multiplier=multiplier)
     self.check_tape_safe(operator)
+
+  def test_convert_variables_to_tensors(self):
+    multiplier = variables_module.Variable(1.23)
+    operator = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows=2, multiplier=multiplier)
+    with self.cached_session() as sess:
+      sess.run([multiplier.initializer])
+      self.check_convert_variables_to_tensors(operator)
 
 
 if __name__ == "__main__":

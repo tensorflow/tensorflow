@@ -16,6 +16,7 @@
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.framework import full_type_pb2
 from tensorflow.python import tf2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -26,11 +27,13 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import googletest
@@ -54,6 +57,19 @@ class ReduceTest(test_util.TensorFlowTestCase):
     expected = math_ops.cast(out_f32, dtypes.bfloat16)
 
     self.assertAllClose(out_bf16, expected, 1e-3)
+
+  def testCountNonzero(self):
+    # simple case
+    x = np.array([[0, -2, 0], [4, 0, 0]], dtype=np.int32)
+    self.assertEqual(self.evaluate(math_ops.count_nonzero(x)), 2)
+
+    # boolean input
+    x = math_ops.not_equal(x, 0)
+    self.assertEqual(self.evaluate(math_ops.count_nonzero(x)), 2)
+
+    # would overflow if int8 would be used for internal calculations
+    x = 2 * np.ones(512, dtype=np.int8)
+    self.assertEqual(self.evaluate(math_ops.count_nonzero(x)), 512)
 
   def testReduceExplicitAxes(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
@@ -683,6 +699,12 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     np_result = self.numpySafeTruncateDivInt(nums, divs)
     self.assertAllEqual(tf_result, np_result)
 
+  def testTruncateDivideFloat(self):
+    nums, divs = self.floatTestData()
+    tf_result = math_ops.truncatediv(nums, divs)
+    np_result = np.trunc(nums / divs)
+    self.assertAllEqual(tf_result, np_result)
+
   @test_util.deprecated_graph_mode_only
   def testDivideName(self):
     op = math_ops.divide(
@@ -763,9 +785,9 @@ class DivAndModTest(test_util.TensorFlowTestCase):
   def testWithPythonValue(self):
     # Test case for https://github.com/tensorflow/tensorflow/issues/39475
     x = math_ops.divide(5, 2)
-    self.assertIsInstance(x, ops.Tensor)
+    self.assertIsInstance(x, tensor_lib.Tensor)
     x = math_ops.divide(5, array_ops.constant(2.0))
-    self.assertIsInstance(x, ops.Tensor)
+    self.assertIsInstance(x, tensor_lib.Tensor)
 
   def intEdgeTestData(self, dtype):
     """Edge-case test data for integer types."""
@@ -811,12 +833,26 @@ class DivAndModTest(test_util.TensorFlowTestCase):
 @test_util.run_all_in_graph_and_eager_modes
 class DivNoNanTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  @parameterized.parameters((dtypes.bfloat16), (dtypes.float16),
-                            (dtypes.float32), (dtypes.float64),
-                            (dtypes.complex64), (dtypes.complex128))
+  _SUPPORTED_DTYPES = [dtypes.int8, dtypes.uint8,
+                       dtypes.int16, dtypes.uint16,
+                       dtypes.int32, dtypes.uint32,
+                       dtypes.int64, dtypes.uint64,
+                       dtypes.bfloat16, dtypes.float16,
+                       dtypes.float32, dtypes.float64,
+                       dtypes.complex64, dtypes.complex128]
+
+  @parameterized.parameters(*_SUPPORTED_DTYPES)
   def testBasic(self, dtype):
-    nums = np.arange(-10, 10, .25).reshape(80, 1)
-    divs = np.arange(-3, 3, .25).reshape(1, 24)
+    if dtype.is_unsigned:
+      nums = np.arange(0, 120, 3).reshape(40, 1)
+      divs = np.arange(0, 48, 4).reshape(1, 12)
+    elif dtype.is_integer:
+      nums = np.arange(-120, 120, 3).reshape(80, 1)
+      divs = np.arange(-48, 48, 4).reshape(1, 24)
+    else:
+      nums = np.arange(-10, 10, .25).reshape(80, 1)
+      divs = np.arange(-3, 3, .25).reshape(1, 24)
+    assert 0 in divs, "Bad test set-up"
 
     tf_nums = constant_op.constant(nums, dtype=dtype)
     tf_divs = constant_op.constant(divs, dtype=dtype)
@@ -831,6 +867,35 @@ class DivNoNanTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with test_util.use_gpu():
       tf_result = math_ops.div_no_nan(tf_nums, tf_divs)
       self.assertAllCloseAccordingToType(tf_result, np_result)
+
+  @parameterized.product(
+      type_x=_SUPPORTED_DTYPES + [float, int],
+      type_y=_SUPPORTED_DTYPES + [float, int])
+  def testSameSupportedTypesAsDivide(self, type_x, type_y):
+    def one(type_):
+      if type_ is int:
+        return 1
+      elif type_ is float:
+        return 1.0
+      else:
+        return constant_op.constant(1, dtype=type_)
+
+    x = one(type_x)
+    y = one(type_y)
+
+    divide_raises = False
+    try:
+      divide_result = math_ops.divide(x, y)
+    except TypeError:
+      divide_raises = True
+
+    if divide_raises:
+      with self.assertRaises(TypeError):
+        _ = math_ops.div_no_nan(x, y)
+    else:
+      divide_no_nan_result = math_ops.div_no_nan(x, y)
+      self.assertEqual(divide_no_nan_result.dtype, divide_result.dtype)
+      self.assertAllEqual(divide_no_nan_result, divide_result)
 
   @parameterized.parameters((dtypes.bfloat16), (dtypes.float16),
                             (dtypes.float32), (dtypes.float64),
@@ -1142,7 +1207,7 @@ class EqualityTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     x = constant_op.constant(4)
     try:
       result = op(x, float_literal)
-      if isinstance(result, ops.Tensor):
+      if isinstance(result, tensor_lib.Tensor):
         result = self.evaluate(result)
     except TypeError:
       # Throwing a TypeError is OK
@@ -1158,6 +1223,14 @@ class RangeTest(test_util.TensorFlowTestCase):
     tensor = ops.convert_to_tensor(values)
     self.assertAllEqual((5,), tensor.get_shape().as_list())
     self.assertAllEqual(values, self.evaluate(tensor))
+
+  def testInputsNearInt64Max(self):
+    int64_t_max = 2**63 - 1
+    x = math_ops.range(0, 201, int64_t_max - 200, dtype=dtypes.int64)
+    self.assertAllEqual((0,), self.evaluate(x))  # just below potential overflow
+    x = math_ops.range(0, 202, int64_t_max - 200, dtype=dtypes.int64)
+    self.assertAllEqual(
+        (0,), self.evaluate(x))  # smallest input with potential overflow
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1207,6 +1280,17 @@ class ArgMaxMinTest(test_util.TensorFlowTestCase):
       values = array_ops.zeros(shape=(193681,), dtype=dtype)
       self.assertAllEqual(math_ops.argmax(values), 0)
 
+  def testArgMaxUint16(self):
+    shape = (24, 8)
+    for dtype in self._getValidDtypes():
+      tf_values = self._generateRandomTensor(dtype, shape)
+      np_values = self.evaluate(tf_values)
+      for axis in range(0, len(shape)):
+        np_max = np.argmax(np_values, axis=axis)
+        tf_max = math_ops.argmax(
+            tf_values, axis=axis, output_type=dtypes.uint16)
+        self.assertAllEqual(tf_max, np_max)
+
   def testArgMin(self):
     shape = (24, 8)
     for dtype in self._getValidDtypes():
@@ -1229,6 +1313,26 @@ class ArgMaxMinTest(test_util.TensorFlowTestCase):
       values = array_ops.zeros(shape=(193681,), dtype=dtype)
       self.assertAllEqual(math_ops.argmin(values), 0)
 
+
+class CastTest(test_util.TensorFlowTestCase):
+
+  def testCastWithFullType(self):
+
+    @def_function.function
+    def test_fn():
+      ta = tensor_array_ops.TensorArray(dtypes.int32, size=1)
+      h = math_ops.cast(ta.flow, dtypes.variant)
+
+      t = full_type_pb2.FullTypeDef(
+          type_id=full_type_pb2.TFT_PRODUCT,
+          args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_ARRAY)])
+      h.op.experimental_set_type(t)
+
+      ta = tensor_array_ops.TensorArray(dtypes.int32, flow=h)
+      ta = ta.write(0, constant_op.constant(1))
+      return ta.stack()
+
+    self.assertAllEqual(self.evaluate(test_fn()), [1])
 
 if __name__ == "__main__":
   googletest.main()

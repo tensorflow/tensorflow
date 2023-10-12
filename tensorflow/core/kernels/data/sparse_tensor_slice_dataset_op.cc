@@ -41,7 +41,7 @@ class Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(typename Iterator::Params{
+    return std::make_unique<Iterator>(typename Iterator::Params{
         this, strings::StrCat(prefix, "::SparseTensorSlice")});
   }
 
@@ -54,15 +54,15 @@ class Dataset : public DatasetBase {
     return "SparseTensorSliceDatasetOp::Dataset";
   }
 
-  int64_t CardinalityInternal() const override {
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
     return sparse_tensor_.shape()[0];
   }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
-    return Status::OK();
+    return OkStatus();
   }
 
-  Status CheckExternalState() const override { return Status::OK(); }
+  Status CheckExternalState() const override { return OkStatus(); }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -83,7 +83,7 @@ class Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {indices_node, value_node, dense_shape_node},
                       {{"Tvalues", val_dtype}}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -107,7 +107,7 @@ class Dataset : public DatasetBase {
       mutex_lock l(mu_);
       if (i_ == num_elements_) {
         *end_of_sequence = true;
-        return Status::OK();
+        return OkStatus();
       }
 
       out_tensors->clear();
@@ -158,7 +158,7 @@ class Dataset : public DatasetBase {
 
       ++i_;
       *end_of_sequence = false;
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -170,37 +170,37 @@ class Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(writer->WriteScalar(Iterator::full_name("i"), i_));
+      TF_RETURN_IF_ERROR(writer->WriteScalar(Iterator::prefix(), "i", i_));
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(Iterator::full_name("iter_loc"), iter_.loc()));
+          writer->WriteScalar(Iterator::prefix(), "iter_loc", iter_.loc()));
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          Iterator::full_name("next_non_empty_i_"), next_non_empty_i_));
+          Iterator::prefix(), "next_non_empty_i_", next_non_empty_i_));
       if (i_ <= next_non_empty_i_) {
-        TF_RETURN_IF_ERROR(writer->WriteTensor(
-            Iterator::full_name("next_indices_"), next_indices_));
-        TF_RETURN_IF_ERROR(writer->WriteTensor(
-            Iterator::full_name("next_values_"), next_values_));
+        TF_RETURN_IF_ERROR(writer->WriteTensor(Iterator::prefix(),
+                                               "next_indices_", next_indices_));
+        TF_RETURN_IF_ERROR(writer->WriteTensor(Iterator::prefix(),
+                                               "next_values_", next_values_));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(reader->ReadScalar(Iterator::full_name("i"), &i_));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(Iterator::prefix(), "i", &i_));
       int64_t iter_loc;
       TF_RETURN_IF_ERROR(
-          reader->ReadScalar(Iterator::full_name("iter_loc"), &iter_loc));
+          reader->ReadScalar(Iterator::prefix(), "iter_loc", &iter_loc));
       iter_ = group_iterable_.at(iter_loc);
       TF_RETURN_IF_ERROR(reader->ReadScalar(
-          Iterator::full_name("next_non_empty_i_"), &next_non_empty_i_));
+          Iterator::prefix(), "next_non_empty_i_", &next_non_empty_i_));
       if (i_ <= next_non_empty_i_) {
-        TF_RETURN_IF_ERROR(reader->ReadTensor(
-            Iterator::full_name("next_indices_"), &next_indices_));
-        TF_RETURN_IF_ERROR(reader->ReadTensor(
-            Iterator::full_name("next_values_"), &next_values_));
+        TF_RETURN_IF_ERROR(reader->ReadTensor(Iterator::prefix(),
+                                              "next_indices_", &next_indices_));
+        TF_RETURN_IF_ERROR(reader->ReadTensor(Iterator::prefix(),
+                                              "next_values_", &next_values_));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
    private:

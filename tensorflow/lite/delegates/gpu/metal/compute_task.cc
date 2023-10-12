@@ -55,81 +55,9 @@ void ReplaceAllWords(const std::string& old_word, const std::string& new_word,
     position = str->find(old_word, position + new_word.size());
   }
 }
-}  // namespace
 
-ComputeTask::ComputeTask(ComputeTask&& task)
-    : operation_(std::move(task.operation_)),
-      program_(task.program_),
-      metal_args_(std::move(task.metal_args_)),
-      use_arguments_buffer_(task.use_arguments_buffer_),
-      need_icb_support_(task.need_icb_support_),
-      arguments_encoder_(task.arguments_encoder_),
-      arg_buffer_(task.arg_buffer_) {
-  task.program_ = nullptr;
-  task.arguments_encoder_ = nullptr;
-  task.arg_buffer_ = nullptr;
-}
-
-ComputeTask& ComputeTask::operator=(ComputeTask&& task) {
-  if (this != &task) {
-    Release();
-    operation_ = std::move(task.operation_);
-    std::swap(program_, task.program_);
-    metal_args_ = std::move(task.metal_args_);
-    std::swap(use_arguments_buffer_, task.use_arguments_buffer_);
-    std::swap(need_icb_support_, task.need_icb_support_);
-    std::swap(arguments_encoder_, task.arguments_encoder_);
-    std::swap(arg_buffer_, task.arg_buffer_);
-  }
-  return *this;
-}
-
-ComputeTask::~ComputeTask() { Release(); }
-
-void ComputeTask::Release() {
-  if (program_) {
-    program_ = nullptr;
-  }
-  if (arguments_encoder_) {
-    arguments_encoder_ = nullptr;
-  }
-  if (arg_buffer_) {
-    arg_buffer_ = nullptr;
-  }
-}
-
-void ComputeTask::Init(std::unique_ptr<GPUOperation>&& operation) {
-  operation_ = std::move(operation);
-}
-
-const OperationDef& ComputeTask::GetDefinition() const {
-  return operation_->GetDefinition();
-}
-
-bool ComputeTask::IsLinkable() const { return operation_->IsLinkable(); }
-
-absl::Status ComputeTask::AddTask(ComputeTask* task) {
-  return operation_->AddOperation(task->operation_.get());
-}
-
-absl::Status ComputeTask::Compile(MetalDevice* device) {
-  RETURN_IF_ERROR(metal_args_.Init(use_arguments_buffer_, device,
-                                   &operation_->args_, &operation_->code_));
-
-  operation_->args_.ReleaseCPURepresentation();
-
-  // manually resolving this defines, so as Metal has reserved words for them
-  ReplaceAllWords("float16", "float4x4", &operation_->code_);
-  ReplaceAllWords("half16", "half4x4", &operation_->code_);
-  ReplaceAllWords("float8", "float2x4", &operation_->code_);
-  ReplaceAllWords("half8", "half2x4", &operation_->code_);
-  return CompileProgram(device, operation_->GetDefinition().precision,
-                        operation_->code_);
-}
-
-absl::Status ComputeTask::CompileProgram(MetalDevice* device,
-                                         CalculationsPrecision precision,
-                                         const std::string& kernel_code) {
+std::map<std::string, std::string> GetMetalDefines(
+    MetalDevice* device, CalculationsPrecision precision) {
   std::string simdgroup_barrier;
   // simdgroup_barrier is supported since Metal shading language version 2.0
   if (device->IsLanguageVersion2orHigher()) {
@@ -153,7 +81,7 @@ absl::Status ComputeTask::CompileProgram(MetalDevice* device,
       accumulator_type = "half";
     }
   }
-  std::map<std::string, std::string> macros = {
+  return {
       {"FLT16_0123(V)", "V[0]"},
       {"FLT16_4567(V)", "V[1]"},
       {"FLT16_89ab(V)", "V[2]"},
@@ -208,60 +136,111 @@ absl::Status ComputeTask::CompileProgram(MetalDevice* device,
       {"INIT_INT2v2(v0, v1)", "int2(v0, v1)"},
       {"INIT_INT4v4(v0, v1, v2, v3)", "int4(v0, v1, v2, v3)"},
       {"CONVERT_TO_INT4(value)", "int4(value)"},
-      {"SELECT_BY_INDEX_FROM_FLT4(value, index)", "(value)[index]"},
   };
+}
+}  // namespace
 
+ComputeTask::ComputeTask(ComputeTask&& task)
+    : operation_(std::move(task.operation_)),
+      program_(task.program_),
+      metal_args_(std::move(task.metal_args_)),
+      use_arguments_buffer_(task.use_arguments_buffer_),
+      need_icb_support_(task.need_icb_support_),
+      arguments_encoder_(task.arguments_encoder_),
+      arg_buffer_(task.arg_buffer_) {
+  task.program_ = nullptr;
+  task.arguments_encoder_ = nullptr;
+  task.arg_buffer_ = nullptr;
+}
+
+ComputeTask& ComputeTask::operator=(ComputeTask&& task) {
+  if (this != &task) {
+    Release();
+    operation_ = std::move(task.operation_);
+    std::swap(program_, task.program_);
+    metal_args_ = std::move(task.metal_args_);
+    std::swap(use_arguments_buffer_, task.use_arguments_buffer_);
+    std::swap(need_icb_support_, task.need_icb_support_);
+    std::swap(arguments_encoder_, task.arguments_encoder_);
+    std::swap(arg_buffer_, task.arg_buffer_);
+  }
+  return *this;
+}
+
+ComputeTask::~ComputeTask() { Release(); }
+
+void ComputeTask::Release() {
+  if (program_) {
+    program_ = nullptr;
+  }
+  if (arguments_encoder_) {
+    arguments_encoder_ = nullptr;
+  }
+  if (arg_buffer_) {
+    arg_buffer_ = nullptr;
+  }
+}
+
+void ComputeTask::Init(std::unique_ptr<GPUOperation>&& operation) {
+  operation_ = std::move(operation);
+}
+
+absl::Status ComputeTask::Compile(MetalDevice* device) {
+  RETURN_IF_ERROR(metal_args_.Init(use_arguments_buffer_, device,
+                                   &operation_->args_, &operation_->code_));
+
+  operation_->args_.ReleaseCPURepresentation();
+
+  // manually resolving this defines, so as Metal has reserved words for them
+  ReplaceAllWords("float16", "float4x4", &operation_->code_);
+  ReplaceAllWords("half16", "half4x4", &operation_->code_);
+  ReplaceAllWords("float8", "float2x4", &operation_->code_);
+  ReplaceAllWords("half8", "half2x4", &operation_->code_);
+  defines_ = GetMetalDefines(device, operation_->GetPrecision());
+  return CompileProgram(device, operation_->code_, defines_);
+}
+
+absl::Status ComputeTask::CompileProgram(
+    MetalDevice* device, const std::string& code,
+    const std::map<std::string, std::string>& defines) {
+  id<MTLComputePipelineState> program;
   if (use_arguments_buffer_) {
-    if (@available(macOS 10.13, iOS 11.0, tvOS 11.0, *)) {
-      id<MTLFunction> function;
-      RETURN_IF_ERROR(CreateFunction(device->device(), kernel_code,
-                                     "ComputeFunction", macros, &function));
-      arguments_encoder_ = [function newArgumentEncoderWithBufferIndex:0];
-      if (!arguments_encoder_) {
-        return absl::InternalError("Failed to get MTLArgumentEncoder.");
-      }
-      arg_buffer_ =
-          [device->device() newBufferWithLength:arguments_encoder_.encodedLength
-                                        options:0];
-      if (!arg_buffer_) {
-        return absl::InternalError("Failed to create MTLBuffer.");
-      }
-      MTLComputePipelineDescriptor* pipeline_desc =
-          [[MTLComputePipelineDescriptor alloc] init];
-      pipeline_desc.computeFunction = function;
-      if (need_icb_support_) {
-        if (@available(macOS 11.00, iOS 13.0, tvOS 13.0, *)) {
-          pipeline_desc.supportIndirectCommandBuffers = TRUE;
-        } else {
-          return absl::InternalError(
-              "Indirect compute command buffer available since ios 13");
-        }
-      }
-      NSError* error = nil;
-      program_ = [device->device()
-          newComputePipelineStateWithDescriptor:pipeline_desc
-                                        options:MTLPipelineOptionNone
-                                     reflection:nullptr
-                                          error:&error];
-      if (!program_) {
-        NSString* error_string = [NSString
-            stringWithFormat:@"newComputePipelineStateWithDescriptor: %@",
-                             [error localizedDescription]];
-        return absl::InternalError([error_string UTF8String]);
-      }
+    id<MTLArgumentEncoder> arguments_encoder;
+    if (need_icb_support_) {
+      RETURN_IF_ERROR(CreateComputeProgramWithICBSupport(
+          device->device(), code, "ComputeFunction", defines, &program,
+          &arguments_encoder));
     } else {
-      return absl::InternalError(
-          "Metal argument buffers available since ios 11.");
+      RETURN_IF_ERROR(CreateComputeProgramWithArgumentBuffer(
+          device->device(), code, "ComputeFunction", defines, &program,
+          &arguments_encoder));
+    }
+    arguments_encoder_ = arguments_encoder;
+    arg_buffer_ =
+        [device->device() newBufferWithLength:arguments_encoder_.encodedLength
+                                      options:0];
+    if (!arg_buffer_) {
+      return absl::InternalError("Failed to create MTLBuffer.");
     }
   } else {
-    id<MTLComputePipelineState> program;
-    RETURN_IF_ERROR(CreateComputeProgram(device->device(), kernel_code,
-                                         "ComputeFunction", macros, &program));
-    if (!program) {
-      return absl::InternalError("Unknown shader compilation error");
-    }
-    program_ = program;
+    RETURN_IF_ERROR(CreateComputeProgram(device->device(), code,
+                                         "ComputeFunction", defines, &program));
   }
+  program_ = program;
+  return absl::OkStatus();
+}
+
+absl::Status ComputeTask::Init(
+    MetalDevice* device, const std::string& code,
+    const std::map<std::string, std::string>& defines) {
+  return CompileProgram(device, code, defines);
+}
+
+absl::Status ComputeTask::RestoreDeserialized(MetalDevice* device) {
+  RETURN_IF_ERROR(
+      metal_args_.Init(use_arguments_buffer_, device, &operation_->args_));
+
+  operation_->args_.ReleaseCPURepresentation();
   return absl::OkStatus();
 }
 
@@ -367,6 +346,11 @@ absl::Status ComputeTask::Tune(TuningType tuning_type, MetalDevice* device) {
   operation_->work_group_size_ = possible_dispatches[0].work_group_size;
   operation_->RecalculateWorkGroupsCount();
   return absl::OkStatus();
+}
+
+void ComputeTask::SetWorkGroupSize(const int3& work_group_size) {
+  operation_->work_group_size_ = work_group_size;
+  operation_->RecalculateWorkGroupsCount();
 }
 
 }  // namespace metal

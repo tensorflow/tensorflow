@@ -14,7 +14,7 @@
 # ==============================================================================
 """Test configs for fully_connected."""
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -107,6 +107,14 @@ def make_fully_connected_tests(options):
   }, {
       "shape1": [[0, 3]],
       "shape2": [[3, 3]],
+      "transpose_a": [False],
+      "transpose_b": [False],
+      "constant_filter": [True, False],
+      "fully_quantize": [False],
+      "quant_16x8": [False]
+  }, {
+      "shape1": [[3, 0]],
+      "shape2": [[0, 3]],
       "transpose_a": [False],
       "transpose_b": [False],
       "constant_filter": [True, False],

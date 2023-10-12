@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 
 #include <memory>
+#include <optional>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
@@ -28,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -58,23 +59,25 @@ Status SetTypeAttribute(absl::string_view name, ContainerT types,
   assert(result.second && "cannot have multiple attributes with the same name");
   (void)result;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Sets shape list attribute with the given `name` to the given `shapes`. If the
 // attribute already exists then this will just retain the set value.
 template <typename ContainerT,
           typename = typename std::enable_if<std::is_same<
-              llvm::Optional<llvm::ArrayRef<int64_t>>,
+              std::optional<llvm::ArrayRef<int64_t>>,
               decltype(*std::declval<ContainerT>().begin())>::value>::type>
 void SetShapeAttribute(absl::string_view name, ContainerT shapes,
                        AttrValueMap* values) {
   AttrValue value;
   auto& shape_list = *value.mutable_list();
-  for (const llvm::Optional<llvm::ArrayRef<int64_t>>& shape : shapes) {
+  for (const std::optional<llvm::ArrayRef<int64_t>>& shape : shapes) {
     TensorShapeProto& tshape = *shape_list.add_shape();
-    if (shape.hasValue()) {
-      for (int64_t dim : *shape) tshape.add_dim()->set_size(dim);
+    if (shape.has_value()) {
+      for (int64_t dim : *shape) {
+        tshape.add_dim()->set_size(mlir::ShapedType::isDynamic(dim) ? -1 : dim);
+      }
     } else {
       tshape.set_unknown_rank(true);
     }
@@ -94,7 +97,7 @@ Status GetUnregisteredAttrs(
     absl::flat_hash_set<absl::string_view>* attrs_to_ignore) {
   if (!op_reg_data) {
     // This is likely a function call node, so we should continue.
-    return Status::OK();
+    return OkStatus();
   }
 
   // Collect all the registered attributes.
@@ -111,7 +114,7 @@ Status GetUnregisteredAttrs(
           absl::string_view(attr.getName().data(), attr.getName().size()));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Collects all attribute names to ignore in an MLIR operation when exporting to
@@ -190,7 +193,27 @@ Status PopulateDerivedAttributes(mlir::Operation* inst, llvm::StringRef name,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
+}
+
+// A `Cast` with DstT == SrcT can be introduced in MLIR as a shape cast. But
+// `Cast` only has shapes in the TF dialect's types, not TF graph, so it is
+// valid to convert a `Cast` to an `Identity`. The `_output_shapes` attribute of
+// the `Cast` will be preserved. This transform is needed for the graph to be
+// executed on TPU or GPU devices, which do not have `Cast` registered as a
+// runtime OpKernel.
+void RemoveIdentityCast(NodeDef* node_def) {
+  auto attr = node_def->mutable_attr();
+  if (node_def->op() == "Cast" && attr->contains("SrcT") &&
+      attr->contains("DstT") &&
+      attr->at("SrcT").type() == attr->at("DstT").type() &&
+      attr->contains("Truncate") && !attr->at("Truncate").b()) {
+    node_def->set_op("Identity");
+    attr->insert({{"T", attr->at("SrcT")}});
+    attr->erase("SrcT");
+    attr->erase("DstT");
+    attr->erase("Truncate");
+  }
 }
 
 }  // namespace
@@ -230,7 +253,7 @@ Status GetAttrValuesFromOperation(
     value.mutable_func()->set_name("");
     (*attributes)[kShapeInferenceGraph] = value;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
@@ -244,6 +267,7 @@ StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
   TF_RETURN_IF_ERROR(GetAttrValuesFromOperation(inst, name, op_reg_data,
                                                 ignore_unregistered_attrs,
                                                 node_def->mutable_attr()));
+  RemoveIdentityCast(node_def.get());
   return node_def;
 }
 

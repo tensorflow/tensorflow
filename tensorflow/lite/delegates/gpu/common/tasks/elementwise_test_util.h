@@ -30,6 +30,7 @@ absl::Status ExpTest(TestExecutionEnvironment* env);
 absl::Status FloorTest(TestExecutionEnvironment* env);
 absl::Status FloorDivTest(TestExecutionEnvironment* env);
 absl::Status FloorModTest(TestExecutionEnvironment* env);
+absl::Status GeluTest(TestExecutionEnvironment* env);
 absl::Status HardSwishTest(TestExecutionEnvironment* env);
 absl::Status LogTest(TestExecutionEnvironment* env);
 absl::Status NegTest(TestExecutionEnvironment* env);
@@ -62,6 +63,12 @@ absl::Status GreaterTest(TestExecutionEnvironment* env);
 absl::Status GreaterEqualTest(TestExecutionEnvironment* env);
 absl::Status EqualTest(TestExecutionEnvironment* env);
 absl::Status NotEqualTest(TestExecutionEnvironment* env);
+absl::Status CosBroadcastTest(TestExecutionEnvironment* env);
+absl::Status MaximumScalarBroadcastInputTest(TestExecutionEnvironment* env);
+absl::Status MulLinearBroadcastInputTest(TestExecutionEnvironment* env);
+absl::Status MulBroadcastBothInputsTest(TestExecutionEnvironment* env);
+absl::Status LogicalAndTest(TestExecutionEnvironment* env);
+absl::Status LogicalAndWithConstantTest(TestExecutionEnvironment* env);
 
 }  // namespace gpu
 }  // namespace tflite

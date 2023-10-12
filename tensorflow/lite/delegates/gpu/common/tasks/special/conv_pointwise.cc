@@ -15,16 +15,22 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/conv_pointwise.h"
 
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
 namespace gpu {
-
 namespace {
-std::string GenerateCode() {
+std::string GenerateCode(const ConvPointwiseAttributes& attr) {
   std::string c = R"(
 MAIN_FUNCTION($0) {
   int X = GLOBAL_ID_0;
@@ -58,9 +64,13 @@ MAIN_FUNCTION($0) {
     res.z += dot(src, w2);
     res.w += dot(src, w3);
   }
-  FLT4 result = TO_FLT4(res) / INIT_FLT(args.src_tensor.Channels());
-  args.dst_tensor.Write(result, X, Y, S);
-})";
+  FLT4 result = TO_FLT4(res);
+)";
+  if (attr.mean) {
+    c += "  result = result / INIT_FLT(args.src_tensor.Channels());\n";
+  }
+  c += "  args.dst_tensor.Write(result, X, Y, S);\n";
+  c += "}\n";
   return c;
 }
 
@@ -111,6 +121,19 @@ absl::Status IsMeanNode(const GraphFloat32& graph, Node* node,
   return absl::OkStatus();
 }
 
+absl::Status IsReduceSumNode(const GraphFloat32& graph, Node* node,
+                             NodeContext* node_context) {
+  RETURN_IF_ERROR(
+      IsNode(graph, OperationType::REDUCE_SUM, 1, 1, node, node_context));
+  auto reduce_attr =
+      std::any_cast<ReduceAttributes>(node_context->node->operation.attributes);
+  if (reduce_attr.dims != std::set<Axis>{Axis::CHANNELS}) {
+    return absl::InternalError(
+        "Expected reduce_sum node with channels reduction.");
+  }
+  return absl::OkStatus();
+}
+
 absl::Status IsMulNode(const GraphFloat32& graph, Node* node,
                        NodeContext* node_context) {
   RETURN_IF_ERROR(IsNode(graph, OperationType::MUL, 2, 1, node, node_context));
@@ -148,11 +171,15 @@ absl::Status IsConcatNode(const GraphFloat32& graph, Node* node,
 absl::Status GetOffset(const GraphFloat32& graph, NodeId concat_input_node,
                        NodeId second_commom_input_id, int* offset_x,
                        int* offset_y, std::set<NodeId>* consumed_nodes) {
-  NodeContext mean_node, mul_node, slice_node;
-  RETURN_IF_ERROR(
-      IsMeanNode(graph, graph.FindProducer(concat_input_node), &mean_node));
-  RETURN_IF_ERROR(
-      IsMulNode(graph, graph.FindProducer(mean_node.inputs[0]->id), &mul_node));
+  NodeContext reduce_node, mul_node, slice_node;
+  absl::Status status =
+      IsMeanNode(graph, graph.FindProducer(concat_input_node), &reduce_node);
+  if (!status.ok()) {
+    RETURN_IF_ERROR(IsReduceSumNode(
+        graph, graph.FindProducer(concat_input_node), &reduce_node));
+  }
+  RETURN_IF_ERROR(IsMulNode(
+      graph, graph.FindProducer(reduce_node.inputs[0]->id), &mul_node));
   const ValueId slice_output_id =
       mul_node.inputs[0]->id == second_commom_input_id ? mul_node.inputs[1]->id
                                                        : mul_node.inputs[0]->id;
@@ -162,11 +189,12 @@ absl::Status GetOffset(const GraphFloat32& graph, NodeId concat_input_node,
       absl::any_cast<SliceAttributes>(slice_node.node->operation.attributes);
   *offset_x = slice_attr.starts.w;
   *offset_y = slice_attr.starts.h;
-  consumed_nodes->insert(mean_node.node->id);
+  consumed_nodes->insert(reduce_node.node->id);
   consumed_nodes->insert(mul_node.node->id);
   consumed_nodes->insert(slice_node.node->id);
   return absl::OkStatus();
 }
+
 }  // namespace
 
 GPUOperation CreateConvPointwise(const OperationDef& definition,
@@ -183,20 +211,17 @@ GPUOperation CreateConvPointwise(const OperationDef& definition,
     offsets_data[i * 2 + 1] = attr.offsets.back().y;
   }
 
-  Texture2DDescriptor desc;
-  desc.element_type = DataType::INT32;
-  desc.size = int2(dst_depth * 2, 1);
-  desc.data.resize(offsets_data.size() * 4);
-  memcpy(desc.data.data(), offsets_data.data(), offsets_data.size() * 4);
-
   GPUOperation op(definition);
   op.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   op.AddSrcTensor("weights_tensor", definition.src_tensors[1]);
   op.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
-  op.code_ = GenerateCode();
+  op.code_ = GenerateCode(attr);
   op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
-  op.args_.AddObject("offsets",
-                     absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+
+  TensorDescriptor desc = CreateConstantHWVec4TensorDescriptor(
+      DataType::INT32, TensorStorageType::TEXTURE_2D, dst_depth * 2, 1,
+      reinterpret_cast<uint8_t*>(offsets_data.data()));
+  op.args_.AddObject("offsets", std::make_unique<TensorDescriptor>(desc));
   return op;
 }
 
@@ -222,15 +247,21 @@ absl::Status TryFusedPointwiseConv(
   if (mul_consumers.size() != 1) {
     return absl::NotFoundError("FusedPointwiseConv not suitable.");
   }
-  NodeContext mean_node;
-  RETURN_IF_ERROR(IsMeanNode(graph, mul_consumers[0], &mean_node));
-  auto mean_consumers = graph.FindConsumers(mean_node.outputs[0]->id);
-  if (mean_consumers.size() != 1) {
+  NodeContext reduce_node;
+  bool mean = true;
+  absl::Status status = IsMeanNode(graph, mul_consumers[0], &reduce_node);
+  if (!status.ok()) {
+    RETURN_IF_ERROR(IsReduceSumNode(graph, mul_consumers[0], &reduce_node));
+    mean = false;
+  }
+  auto reduce_consumers = graph.FindConsumers(reduce_node.outputs[0]->id);
+  if (reduce_consumers.size() != 1) {
     return absl::NotFoundError("FusedPointwiseConv not suitable.");
   }
   NodeContext concat_node;
-  RETURN_IF_ERROR(IsConcatNode(graph, mean_consumers[0], &concat_node));
+  RETURN_IF_ERROR(IsConcatNode(graph, reduce_consumers[0], &concat_node));
   ConvPointwiseAttributes op_attr;
+  op_attr.mean = mean;
   std::set<NodeId> temp_consumed_nodes;
   for (const auto& concat_input : concat_node.inputs) {
     int offset_x, offset_y;
@@ -259,7 +290,7 @@ absl::Status TryFusedPointwiseConv(
       InitSingleOpSubgraph({second_commom_input, first_commom_input},
                            {concat_node.outputs[0]}, gpu_subgraph);
   auto operation = CreateConvPointwise(op_def, op_attr);
-  *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
+  *gpu_op = std::make_unique<GPUOperation>(std::move(operation));
   return absl::OkStatus();
 }
 

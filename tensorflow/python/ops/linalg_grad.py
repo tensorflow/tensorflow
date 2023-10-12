@@ -36,7 +36,8 @@ References:
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -44,17 +45,19 @@ from tensorflow.python.ops.linalg import linalg_impl as _linalg
 
 
 @ops.RegisterGradient("MatrixInverse")
-def _MatrixInverseGrad(op, grad):
+def _MatrixInverseGrad(op: ops.Operation, grad):
   """Gradient for MatrixInverse."""
   ainv = op.outputs[0]
+  op_adjoint = op.get_attr("adjoint")
   return -math_ops.matmul(  # pylint: disable=invalid-unary-operand-type
       ainv,
-      math_ops.matmul(grad, ainv, adjoint_b=True),
-      adjoint_a=True)
+      math_ops.matmul(grad, ainv, adjoint_a=op_adjoint,
+                      adjoint_b=not op_adjoint),
+      adjoint_a=not op_adjoint)
 
 
 @ops.RegisterGradient("Einsum")
-def _EinsumGrad(op, grad):
+def _EinsumGrad(op: ops.Operation, grad):
   """Gradient for Einsum."""
   ellipsis = "..."
 
@@ -135,7 +138,8 @@ def _EinsumGrad(op, grad):
     # labels. If the same label appears multiple times, get the left-most axis.
     reduced_axes = [_GetAxisFromLabel(subscripts, s) for s in reduced_subs]
     # Get the corresponding dimensions for each reduced axis.
-    reduced_dims = array_ops.stack([input_shape[ax] for ax in reduced_axes])
+    reduced_dims = array_ops_stack.stack(
+        [input_shape[ax] for ax in reduced_axes])
     return reduced_subs, reduced_dims, reduced_axes
 
   def _GetGradReduced(output_grad, output_subs, input_subs, input_shape,
@@ -369,7 +373,7 @@ def _EinsumGrad(op, grad):
 
 
 @ops.RegisterGradient("MatrixDeterminant")
-def _MatrixDeterminantGrad(op, grad):
+def _MatrixDeterminantGrad(op: ops.Operation, grad):
   """Gradient for MatrixDeterminant."""
   a = op.inputs[0]
   c = op.outputs[0]
@@ -381,7 +385,7 @@ def _MatrixDeterminantGrad(op, grad):
 
 
 @ops.RegisterGradient("MatrixSquareRoot")
-def _MatrixSquareRootGrad(op, grad):
+def _MatrixSquareRootGrad(op: ops.Operation, grad):
   """Gradient for MatrixSquareRoot."""
 
   # Let A be an m x m square matrix (or batch of matrices)
@@ -446,7 +450,7 @@ def _MatrixSquareRootGrad(op, grad):
 
 
 @ops.RegisterGradient("LogMatrixDeterminant")
-def _LogMatrixDeterminantGrad(op, _, grad_b):
+def _LogMatrixDeterminantGrad(op: ops.Operation, _, grad_b):
   """Gradient for LogMatrixDeterminant."""
   a = op.inputs[0]
   c = op.outputs[1]
@@ -457,7 +461,7 @@ def _LogMatrixDeterminantGrad(op, _, grad_b):
 
 
 @ops.RegisterGradient("Cholesky")
-def _CholeskyGrad(op, grad):
+def _CholeskyGrad(op: ops.Operation, grad):
   """Gradient for Cholesky."""
 
   # Gradient is l^{-H} @ ((l^{H} @ grad) * (tril(ones)-1/2*eye)) @ l^{-1}
@@ -483,7 +487,7 @@ def _CholeskyGrad(op, grad):
 
 
 @ops.RegisterGradient("Qr")
-def _QrGrad(op, dq, dr):
+def _QrGrad(op: ops.Operation, dq, dr):
   """Gradient for Qr."""
 
   # The methodology is explained in detail in https://arxiv.org/abs/2009.10071
@@ -551,7 +555,7 @@ def _QrGrad(op, dq, dr):
 
 
 @ops.RegisterGradient("MatrixSolve")
-def _MatrixSolveGrad(op, grad):
+def _MatrixSolveGrad(op: ops.Operation, grad):
   """Gradient for MatrixSolve."""
   a = op.inputs[0]
   adjoint_a = op.get_attr("adjoint")
@@ -565,7 +569,7 @@ def _MatrixSolveGrad(op, grad):
 
 
 @ops.RegisterGradient("MatrixSolveLs")
-def _MatrixSolveLsGrad(op, grad):
+def _MatrixSolveLsGrad(op: ops.Operation, grad):
   """Gradients for MatrixSolveLs."""
 
   # TODO(rmlarsen): The implementation could be more efficient:
@@ -573,8 +577,8 @@ def _MatrixSolveLsGrad(op, grad):
   #      recomputing it here.
   #   b) Implement a symmetric rank-k update op instead of computing
   #      x*z + transpose(x*z). This pattern occurs other places in TensorFlow.
-
-  def _Overdetermined(op, grad):
+  # pylint: disable=g-doc-args
+  def _Overdetermined(op: ops.Operation, grad):
     """Gradients for the overdetermined case of MatrixSolveLs.
 
     This is the backprop for the solution to the normal equations of the first
@@ -599,7 +603,8 @@ def _MatrixSolveLsGrad(op, grad):
     grad_b = math_ops.matmul(a, z)
     return (grad_a, grad_b, None)
 
-  def _Underdetermined(op, grad):
+  # pylint: disable=g-doc-args
+  def _Underdetermined(op: ops.Operation, grad):
     """Gradients for the underdetermined case of MatrixSolveLs.
 
     This is the backprop for the solution to the normal equations of the second
@@ -638,13 +643,13 @@ def _MatrixSolveLsGrad(op, grad):
     # We have to defer determining the shape to runtime and use
     # conditional execution of the appropriate graph.
     matrix_shape = array_ops.shape(op.inputs[0])[-2:]
-    return control_flow_ops.cond(matrix_shape[-2] >= matrix_shape[-1],
-                                 lambda: _Overdetermined(op, grad),
-                                 lambda: _Underdetermined(op, grad))
+    return cond.cond(matrix_shape[-2] >= matrix_shape[-1],
+                     lambda: _Overdetermined(op, grad),
+                     lambda: _Underdetermined(op, grad))
 
 
 @ops.RegisterGradient("BandedTriangularSolve")
-def _BandedTriangularSolveGrad(op, grad):
+def _BandedTriangularSolveGrad(op: ops.Operation, grad):
   """Gradient for BandedTriangularSolve."""
   a = op.inputs[0]
   b = op.inputs[1]
@@ -677,7 +682,7 @@ def _BandedTriangularSolveGrad(op, grad):
 
 
 @ops.RegisterGradient("MatrixTriangularSolve")
-def _MatrixTriangularSolveGrad(op, grad):
+def _MatrixTriangularSolveGrad(op: ops.Operation, grad):
   """Gradient for MatrixTriangularSolve."""
   a = op.inputs[0]
   b = op.inputs[1]
@@ -709,12 +714,13 @@ def _MatrixTriangularSolveGrad(op, grad):
 # To avoid nan in cases with degenerate eigenvalues or
 # degenerate/zero singular values in calculations of
 # f and s_inv_mat, we introduce a Lorentz broadening.
-def _SafeReciprocal(x, epsilon=1E-20):
+def _SafeReciprocal(x, epsilon=1e-20):
   return x * math_ops.reciprocal(x * x + epsilon)
 
 
+# pylint: disable=g-doc-args
 @ops.RegisterGradient("Eig")
-def _EigGrad(op, grad_e, grad_v):
+def _EigGrad(op: ops.Operation, grad_e, grad_v):
   """Gradient for Eig.
 
   Based on eq. 4.77 from paper by
@@ -768,7 +774,7 @@ def _EigGrad(op, grad_e, grad_v):
 
 
 @ops.RegisterGradient("SelfAdjointEigV2")
-def _SelfAdjointEigV2Grad(op, grad_e, grad_v):
+def _SelfAdjointEigV2Grad(op: ops.Operation, grad_e, grad_v):
   """Gradient for SelfAdjointEigV2."""
   e = op.outputs[0]
   compute_v = op.get_attr("compute_v")
@@ -810,7 +816,7 @@ def _SelfAdjointEigV2Grad(op, grad_e, grad_v):
 
 
 @ops.RegisterGradient("Svd")
-def _SvdGrad(op, grad_s, grad_u, grad_v):
+def _SvdGrad(op: ops.Operation, grad_s, grad_u, grad_v):
   """Gradient for the singular value decomposition."""
 
   # The derivation for the compute_uv=False case, and most of
@@ -958,7 +964,7 @@ def _RightShift(x):
 
 
 @ops.RegisterGradient("TridiagonalMatMul")
-def _TridiagonalMatMulGrad(op, grad):
+def _TridiagonalMatMulGrad(op: ops.Operation, grad):
   """Gradient for TridiagonalMatMul."""
   superdiag_conj = array_ops.matrix_transpose(op.inputs[0], conjugate=True)
   maindiag_conj = array_ops.matrix_transpose(op.inputs[1], conjugate=True)
@@ -979,7 +985,7 @@ def _TridiagonalMatMulGrad(op, grad):
 
 
 @ops.RegisterGradient("TridiagonalSolve")
-def _TridiagonalSolveGrad(op, grad):
+def _TridiagonalSolveGrad(op: ops.Operation, grad):
   """Gradient for TridiagonalSolveGrad."""
   diags = op.inputs[0]
   x = op.outputs[0]
@@ -1029,7 +1035,7 @@ def _TransposeTridiagonalMatrix(diags):
     subdiag_pad = array_ops.concat((zeros, array_ops.constant([[1, 0]])),
                                    axis=0)
     subdiag = array_ops.pad(diags[..., 0, :-1], subdiag_pad)
-  return array_ops.stack([superdiag, diag, subdiag], axis=-2)
+  return array_ops_stack.stack([superdiag, diag, subdiag], axis=-2)
 
 
 def _MatmulExtractingThreeDiagonals(x, y_tr):
@@ -1068,4 +1074,4 @@ def _MatmulExtractingThreeDiagonals(x, y_tr):
         (zeros, array_ops.constant([[1, 0], [0, 0]])), axis=0)
     subdiag = math_ops.reduce_sum(
         x * array_ops.pad(y_tr[..., :-1, :], subdiag_pad), axis=-1)
-  return array_ops.stack([superdiag, diag, subdiag], axis=-2)
+  return array_ops_stack.stack([superdiag, diag, subdiag], axis=-2)

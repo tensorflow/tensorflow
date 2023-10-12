@@ -14,13 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 
+#include <algorithm>
+#include <string>
 #include <thread>  // NOLINT - only production use is on Android, where std::thread is allowed
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 
 namespace tflite {
 namespace acceleration {
@@ -33,7 +35,10 @@ std::string GetTemporaryDirectory() {
   if (getenv("TEST_TMPDIR")) {
     return getenv("TEST_TMPDIR");
   }
-  return getenv("TEMP");
+  if (getenv("TEMP")) {
+    return getenv("TEMP");
+  }
+  return ".";
 #endif
 }
 

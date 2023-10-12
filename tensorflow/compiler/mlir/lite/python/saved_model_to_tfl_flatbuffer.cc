@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,12 +15,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/python/saved_model_to_tfl_flatbuffer.h"
 
 #include <memory>
+#include <optional>
+#include <string>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "absl/types/span.h"
-#include "llvm/ADT/None.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -37,21 +41,22 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
-Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
-                                         mlir::OwningModuleRef* module) {
-  mlir::FuncOp entry_function = nullptr;
-  for (auto func : module->get().getOps<mlir::FuncOp>()) {
+Status HandleInputOutputArraysWithModule(
+    const toco::ModelFlags& model_flags,
+    mlir::OwningOpRef<mlir::ModuleOp>* module) {
+  mlir::func::FuncOp entry_function = nullptr;
+  for (auto func : module->get().getOps<mlir::func::FuncOp>()) {
     if (auto tf_attrs =
             func->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function")) {
       // TODO(b/184697652): There could be multiple entry functions. Let's
@@ -120,21 +125,21 @@ Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
                                      ") does not exist in the given graph");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
                                            const toco::TocoFlags& toco_flags,
                                            string* result) {
   mlir::MLIRContext context;
-  mlir::TFL::QuantizationSpecs quant_specs;
+  mlir::quant::QuantizationSpecs quant_specs;
 
   // Parse input arrays.
   std::vector<string> node_names;
   std::vector<string> node_dtypes;
-  std::vector<llvm::Optional<std::vector<int>>> node_shapes;
-  std::vector<llvm::Optional<double>> node_mins;
-  std::vector<llvm::Optional<double>> node_maxs;
+  std::vector<std::optional<std::vector<int>>> node_shapes;
+  std::vector<std::optional<double>> node_mins;
+  std::vector<std::optional<double>> node_maxs;
 
   // Populate quantization specs.
   TF_RETURN_IF_ERROR(internal::PopulateQuantizationSpecs(
@@ -190,6 +195,14 @@ Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   }
   pass_config.unfold_large_splat_constant =
       toco_flags.unfold_large_splat_constant();
+  pass_config.enable_dynamic_update_slice =
+      toco_flags.enable_dynamic_update_slice();
+  pass_config.preserve_assert_op = toco_flags.preserve_assert_op();
+  pass_config.guarantee_all_funcs_one_use =
+      toco_flags.guarantee_all_funcs_one_use();
+  pass_config.enable_stablehlo_conversion = toco_flags.convert_to_stablehlo();
+  pass_config.legalize_custom_tensor_list_ops =
+      toco_flags.legalize_custom_tensor_list_ops();
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(

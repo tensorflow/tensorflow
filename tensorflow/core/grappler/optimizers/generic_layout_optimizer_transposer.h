@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
-#include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/frame.h"
 #include "tensorflow/core/grappler/utils/graph_view.h"
@@ -76,7 +75,6 @@ struct TransposeContext {
   absl::flat_hash_set<string> nodes_to_preserve;
   std::unique_ptr<GraphProperties> graph_properties;
   std::unique_ptr<utils::MutableGraphView> graph_view;
-  std::unique_ptr<const VirtualPlacer> virtual_placer;
 
   string target_device;
   string src_format;
@@ -305,6 +303,14 @@ class FusedBatchNormGradTransposer : public LayoutSensitiveOpTransposer {
 class MaxPoolV2Transposer : public LayoutSensitiveOpTransposer {
  public:
   explicit MaxPoolV2Transposer() : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
+class MaxPool3DTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit MaxPool3DTransposer() : LayoutSensitiveOpTransposer() {}
 
   Status TransposeNode(TransposeContext* context,
                        utils::MutableNodeView* node) override;
@@ -576,7 +582,7 @@ Status PermuteSingle(absl::string_view location,
   DCHECK(values != nullptr);
   int permutation_size = permutation.size();
   if (values->size() != permutation_size) {
-    return Status(tensorflow::error::Code::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   absl::StrCat("Size of values ", values->size(),
                                " does not match size of permutation ",
                                permutation_size, " @ ", location));
@@ -587,7 +593,7 @@ Status PermuteSingle(absl::string_view location,
   for (V& element : *values) {
     element = elements[permutation[index++]];
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Permutes two elements at a time according to permutation and replaces the
@@ -598,7 +604,7 @@ Status PermuteDouble(absl::string_view location,
   DCHECK(values != nullptr);
   int permutation_size = permutation.size();
   if (values->size() != permutation_size * 2) {
-    return Status(tensorflow::error::Code::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   absl::StrCat("Size of values ", values->size(),
                                " does not match twice the size of permutation ",
                                permutation_size, " @ ", location));
@@ -610,10 +616,10 @@ Status PermuteDouble(absl::string_view location,
     (*values)[i] = elements[permutation_index * 2];
     (*values)[i + 1] = elements[permutation_index * 2 + 1];
   }
-  return Status::OK();
+  return OkStatus();
 }
 
-string GetDeviceName(const VirtualPlacer* virtual_placer, const NodeDef& node);
+string GetDeviceName(const NodeDef& node);
 
 bool IsDefaultLayoutSensitiveOp(const NodeDef& node);
 
@@ -628,6 +634,8 @@ bool IsTernaryOp(const NodeDef& node);
 bool IsUnaryGrad(const NodeDef& node);
 
 bool IsMaxPoolV2(const NodeDef& node);
+
+bool IsMaxPool3D(const NodeDef& node);
 
 bool IsMaxPoolGradV2(const NodeDef& node);
 

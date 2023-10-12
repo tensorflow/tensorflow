@@ -252,21 +252,21 @@ std::unique_ptr<InlinedFunctionBodyPlacer>
 InlinedFunctionBodyPlacer::DefaultPlacer(const Graph& graph,
                                          const Node& caller) {
   VLOG(3) << "Create default placer for inlined function body.";
-  return absl::make_unique<DefaultFunctionBodyPlacer>(caller);
+  return std::make_unique<DefaultFunctionBodyPlacer>(caller);
 }
 
 std::unique_ptr<InlinedFunctionBodyPlacer>
 InlinedFunctionBodyPlacer::SingleDevicePlacer(const Graph& graph,
                                               const Node& caller) {
   VLOG(3) << "Create single device placer for inlined function body.";
-  return absl::make_unique<SingleDeviceFunctionBodyPlacer>(caller);
+  return std::make_unique<SingleDeviceFunctionBodyPlacer>(caller);
 }
 
 std::unique_ptr<InlinedFunctionBodyPlacer>
 InlinedFunctionBodyPlacer::MultiDevicePlacer(const Graph& graph,
                                              const Node& caller) {
   VLOG(3) << "Create multi device placer for inlined function body.";
-  return absl::make_unique<MultiDeviceFunctionBodyPlacer>(caller);
+  return std::make_unique<MultiDeviceFunctionBodyPlacer>(caller);
 }
 
 namespace {
@@ -278,7 +278,7 @@ Status ValidateNoInline(const FunctionBody* fbody) {
     return errors::InvalidArgument(
         "Can't inline function marked with '_noinline'");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
@@ -393,7 +393,7 @@ Status ValidateInlining(const Node* node, const FunctionBody* fbody,
     TF_RETURN_IF_ERROR(ValidateNoInline(fbody));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Function inlining must preserve function execution semantics with regards to
@@ -486,7 +486,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
 
   Status validation = ValidateInlining(caller, fbody, options);
   if (!validation.ok()) {
-    return errors::Internal("Inlining mismatch: ", validation.error_message());
+    return errors::Internal("Inlining mismatch: ", validation.message());
   }
 
   // Placer is responsible for assigning devices for all nodes that we will add
@@ -578,6 +578,9 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   std::vector<Node*> input_nodes;
   std::map<absl::string_view, absl::string_view> input_node_name_map;
   for (std::size_t i = 0; i < fbody->arg_nodes.size(); ++i) {
+    if (inputs[i].node == nullptr)
+      return errors::Internal("Null node found for input ", i);
+
     Node* n = input_identity("input", inputs[i], i);
     input_node_name_map[arg_name(fbody->fdef.signature().input_arg(), i)] =
         n->name();
@@ -850,7 +853,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
 
   VLOG(4) << "Final graph: " << g->ToGraphDefDebug().DebugString();
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
@@ -873,7 +876,7 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
     FunctionLibraryRuntime::Handle handle;
     Status s = InstantiateFunctionCall(node->def(), lib, &handle);
     if (!s.ok()) {
-      LOG(ERROR) << "Failed to instantiate a function:  " << s.error_message();
+      LOG(ERROR) << "Failed to instantiate a function:  " << s.message();
       continue;
     }
     const FunctionBody* fbody = lib->GetFunctionBody(handle);
@@ -891,7 +894,7 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
       inlined_any = true;
     } else {
       VLOG(1) << "Failed to inline function call: node=" << p.first->name()
-              << " error=" << inlined.error_message();
+              << " error=" << inlined.message();
     }
   }
 

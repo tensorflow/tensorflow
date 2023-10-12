@@ -13,8 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_TPU_CLUSTER_UTIL_H_
-#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_TPU_CLUSTER_UTIL_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_TPU_CLUSTER_UTIL_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_TPU_CLUSTER_UTIL_H_
+
+#include <functional>
+#include <optional>
+#include <string>
 
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
@@ -32,7 +36,7 @@ namespace TFTPU {
 // outside compilation.
 mlir::LogicalResult WalkReachableFromTpuCluster(
     ModuleOp module, std::function<WalkResult(Operation*, tf_device::ClusterOp,
-                                              absl::optional<std::string>)>
+                                              std::optional<std::string>)>
                          callback);
 
 // Like above, except TPU clusters are not required to have a host device, and
@@ -44,4 +48,4 @@ mlir::LogicalResult WalkReachableFromTpuCluster(
 }  // namespace TFTPU
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_TPU_CLUSTER_UTIL_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_TPU_CLUSTER_UTIL_H_

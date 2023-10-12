@@ -90,7 +90,6 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
@@ -100,20 +99,20 @@ namespace {
 Status XlaResourceOpKindForNode(
     const Node& n, const FunctionLibraryDefinition* flib_def,
     const std::function<Status(const Node&, bool*)>& resource_ops_to_ignore,
-    absl::optional<XlaResourceOpKind>* out_resource_op_kind) {
+    std::optional<XlaResourceOpKind>* out_resource_op_kind) {
   bool should_ignore = false;
   if (resource_ops_to_ignore) {
     TF_RETURN_IF_ERROR(resource_ops_to_ignore(n, &should_ignore));
   }
   if (should_ignore) {
-    *out_resource_op_kind = absl::nullopt;
-    return Status::OK();
+    *out_resource_op_kind = std::nullopt;
+    return OkStatus();
   }
 
   const XlaResourceOpInfo* op_info = GetResourceOpInfoForOp(n.type_string());
   if (op_info) {
     *out_resource_op_kind = op_info->kind();
-    return Status::OK();
+    return OkStatus();
   }
 
   // We conservatively assume that functions will both read and write resource
@@ -122,10 +121,10 @@ Status XlaResourceOpKindForNode(
   if (MayCallFunction(n, flib_def)) {
     *out_resource_op_kind = XlaResourceOpKind::kReadWrite;
   } else {
-    *out_resource_op_kind = absl::nullopt;
+    *out_resource_op_kind = std::nullopt;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns true if a control or data dependence from a TensorFlow operation of
@@ -208,7 +207,7 @@ class ResourceOpSet {
 
   void EnsureIsCopied() {
     if (storage_ == nullptr) {
-      storage_ = absl::make_unique<Impl>();
+      storage_ = std::make_unique<Impl>();
       for (ResourceOp op : *this) {
         storage_->insert(op);
       }
@@ -229,7 +228,8 @@ class ResourceOpSet {
   // to this set expect the contents of this set to be stable.
   mutable bool frozen_ = false;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ResourceOpSet);
+  ResourceOpSet(const ResourceOpSet&) = delete;
+  void operator=(const ResourceOpSet&) = delete;
 };
 
 string ResourceOpSetToString(const ResourceOpSet& resource_op_set) {
@@ -259,12 +259,12 @@ Status ComputeIncompatibleResourceOperationPairs(
                       });
 
   auto resource_op_set_for_node =
-      absl::make_unique<ResourceOpSet[]>(g.num_node_ids());
+      std::make_unique<ResourceOpSet[]>(g.num_node_ids());
 
   const bool vlog = VLOG_IS_ON(2);
 
   for (Node* n : rpo) {
-    absl::optional<XlaResourceOpKind> op_kind;
+    std::optional<XlaResourceOpKind> op_kind;
     TF_RETURN_IF_ERROR(XlaResourceOpKindForNode(
         *n, flib_def, resource_ops_to_ignore, &op_kind));
 
@@ -314,6 +314,6 @@ Status ComputeIncompatibleResourceOperationPairs(
   std::sort(result->begin(), result->end());
   CHECK(std::unique(result->begin(), result->end()) == result->end());
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace tensorflow

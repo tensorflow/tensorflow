@@ -67,7 +67,8 @@ class GetSessionHandleOp : public OpKernel {
     }
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GetSessionHandleOp);
+  GetSessionHandleOp(const GetSessionHandleOp&) = delete;
+  void operator=(const GetSessionHandleOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("GetSessionHandle").Device(DEVICE_CPU),
@@ -98,6 +99,8 @@ class GetSessionTensorOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& handle = ctx->input(0);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(handle.shape()),
+                errors::InvalidArgument("handle must be scalar"));
     const string& name = handle.scalar<tstring>()();
     Tensor val;
     auto session_state = ctx->session_state();
@@ -108,7 +111,8 @@ class GetSessionTensorOp : public OpKernel {
     ctx->set_output(0, val);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GetSessionTensorOp);
+  GetSessionTensorOp(const GetSessionTensorOp&) = delete;
+  void operator=(const GetSessionTensorOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("GetSessionTensor").Device(DEVICE_CPU),
@@ -132,6 +136,8 @@ class DeleteSessionTensorOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& handle = ctx->input(0);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(handle.shape()),
+                errors::InvalidArgument("`handle` must be scalar"));
     const string& name = handle.scalar<tstring>()();
     auto session_state = ctx->session_state();
     OP_REQUIRES(ctx, session_state != nullptr,
@@ -140,7 +146,8 @@ class DeleteSessionTensorOp : public OpKernel {
     OP_REQUIRES_OK(ctx, session_state->DeleteTensor(name));
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DeleteSessionTensorOp);
+  DeleteSessionTensorOp(const DeleteSessionTensorOp&) = delete;
+  void operator=(const DeleteSessionTensorOp&) = delete;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DeleteSessionTensor").Device(DEVICE_CPU),

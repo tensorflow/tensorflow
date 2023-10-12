@@ -34,6 +34,7 @@ class VarHandleOp : public OpKernel {
   bool is_anonymous_;
   string container_;
   string name_;
+  string debug_name_;
   Tensor const_tensor_;
 
   DtypeAndPartialTensorShape dtype_and_shape_;
@@ -65,6 +66,12 @@ class DestroyResourceOp : public OpKernel {
 
  private:
   bool ignore_lookup_error_;
+};
+
+class DisableCopyOnReadOp : public OpKernel {
+ public:
+  explicit DisableCopyOnReadOp(OpKernelConstruction* c) : OpKernel(c) {}
+  void Compute(OpKernelContext* ctx) override;
 };
 
 template <typename T>

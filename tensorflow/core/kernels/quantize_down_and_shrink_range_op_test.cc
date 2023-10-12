@@ -53,8 +53,8 @@ TEST_F(QuantizeDownAndShrinkRangeTest, HandCrafted) {
   const int value_count = 3;
   AddInputFromArray<qint32>(TensorShape({value_count}),
                             {-(1 << 23), 0, (1 << 23)});
-  AddInputFromArray<float>(TensorShape({1}), {-256.0f});
-  AddInputFromArray<float>(TensorShape({1}), {256.0f});
+  AddInputFromArray<float>(TensorShape({}), {-256.0f});
+  AddInputFromArray<float>(TensorShape({}), {256.0f});
   TF_ASSERT_OK(RunOpKernel());
   Tensor expected(allocator(), DT_QUINT8, TensorShape({value_count}));
   test::FillValues<quint8>(&expected, {0, 128, 255});

@@ -26,7 +26,6 @@ import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 import "tensorflow/core/protobuf/config.proto";
-import "tensorflow/core/protobuf/coordination_config.proto";
 import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/error_codes.proto";
 import "tensorflow/core/protobuf/named_tensor.proto";
@@ -83,8 +82,7 @@ message CreateWorkerSessionRequest {
   // WorkerSessions.
   int64 master_incarnation = 6;
 
-  // Configures coordination service within worker sessions.
-  CoordinationServiceConfig coordination_service_config = 7;
+  reserved 7;  // Deprecated config that is embedded within server_def now.
 }
 
 message CreateWorkerSessionResponse {}
@@ -568,8 +566,8 @@ message CompleteGroupResponse {
 }
 
 // Supplies data about one collective op belonging to the instance identified
-// by instance_key.  Service will respond when all group_size ops have
-// become known.  Most of the data being sent is for correctness checking,
+// by instance_key and step_id.  Service will respond when all group_size ops
+// have become known.  Most of the data being sent is for correctness checking,
 // to ensure that all ops in the instance share common attributes.
 message CompleteInstanceRequest {
   string name = 1;
@@ -583,6 +581,7 @@ message CompleteInstanceRequest {
   repeated int32 subdiv_offset = 9;
   string device = 10;
   bool is_source = 11;
+  int64 step_id = 12;
 }
 
 // Confirms that every op in the instance has consistently declared itself.

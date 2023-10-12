@@ -16,8 +16,12 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 
 #include <algorithm>
+#include <cstring>
 #include <limits>
 #include <memory>
+#include <optional>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/match.h"
@@ -36,18 +40,25 @@ limitations under the License.
 #include "tensorflow/core/framework/op_gen_lib.h"
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eval_const_tensor.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/config/flag_defs.h"
+#include "tensorflow/core/config/flags.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/cpp_shape_inference.pb.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -74,10 +85,10 @@ limitations under the License.
 
 // The implementation below is at the top level instead of the
 // brain namespace because we are defining 'extern "C"' functions.
-using tensorflow::AllocationDescription;
 using tensorflow::AttrValueMap;
 using tensorflow::DataType;
 using tensorflow::ExtendSessionGraphHelper;
+using tensorflow::FullTypeDef;
 using tensorflow::Graph;
 using tensorflow::GraphDef;
 using tensorflow::mutex_lock;
@@ -86,10 +97,7 @@ using tensorflow::NameRangesForNode;
 using tensorflow::NewSession;
 using tensorflow::Node;
 using tensorflow::NodeBuilder;
-using tensorflow::NodeDef;
 using tensorflow::OpDef;
-using tensorflow::OpRegistry;
-using tensorflow::OutputTensor;
 using tensorflow::PartialTensorShape;
 using tensorflow::RunMetadata;
 using tensorflow::RunOptions;
@@ -97,9 +105,7 @@ using tensorflow::Session;
 using tensorflow::Status;
 using tensorflow::string;
 using tensorflow::Tensor;
-using tensorflow::TensorBuffer;
 using tensorflow::TensorId;
-using tensorflow::TensorShape;
 using tensorflow::TensorShapeProto;
 using tensorflow::VersionDef;
 using tensorflow::errors::FailedPrecondition;
@@ -116,7 +122,13 @@ const char* TF_Version() { return TF_VERSION_STRING; }
 // --------------------------------------------------------------------------
 
 // --------------------------------------------------------------------------
-TF_SessionOptions* TF_NewSessionOptions() { return new TF_SessionOptions; }
+TF_SessionOptions* TF_NewSessionOptions() {
+  TF_SessionOptions* out = new TF_SessionOptions;
+  // Disable optimizations for static graph to allow calls to Session::Extend.
+  out->options.config.mutable_experimental()
+      ->set_disable_optimize_for_static_graph(true);
+  return out;
+}
 void TF_DeleteSessionOptions(TF_SessionOptions* opt) { delete opt; }
 
 void TF_SetTarget(TF_SessionOptions* options, const char* target) {
@@ -128,33 +140,10 @@ void TF_SetConfig(TF_SessionOptions* options, const void* proto,
   if (!options->options.config.ParseFromArray(proto, proto_len)) {
     status->status = InvalidArgument("Unparseable ConfigProto");
   }
+  // Disable optimizations for static graph to allow calls to Session::Extend.
+  options->options.config.mutable_experimental()
+      ->set_disable_optimize_for_static_graph(true);
 }
-// --------------------------------------------------------------------------
-TF_Buffer* TF_NewBuffer() { return new TF_Buffer{nullptr, 0, nullptr}; }
-
-TF_Buffer* TF_NewBufferFromString(const void* proto, size_t proto_len) {
-  void* copy = tensorflow::port::Malloc(proto_len);
-  memcpy(copy, proto, proto_len);
-
-  TF_Buffer* buf = new TF_Buffer;
-  buf->data = copy;
-  buf->length = proto_len;
-  buf->data_deallocator = [](void* data, size_t length) {
-    tensorflow::port::Free(data);
-  };
-  return buf;
-}
-
-void TF_DeleteBuffer(TF_Buffer* buffer) {
-  if (buffer == nullptr) return;
-  if (buffer->data_deallocator != nullptr) {
-    (*buffer->data_deallocator)(const_cast<void*>(buffer->data),
-                                buffer->length);
-  }
-  delete buffer;
-}
-
-TF_Buffer TF_GetBuffer(TF_Buffer* buffer) { return *buffer; }
 
 void TF_TensorFromProto(const TF_Buffer* from, TF_Tensor* to,
                         TF_Status* status) {
@@ -187,7 +176,7 @@ void TF_CloseDeprecatedSession(TF_DeprecatedSession* s, TF_Status* status) {
 }
 
 void TF_DeleteDeprecatedSession(TF_DeprecatedSession* s, TF_Status* status) {
-  status->status = Status::OK();
+  status->status = ::tensorflow::OkStatus();
   if (s == nullptr) return;
   delete s->session;
   delete s;
@@ -227,39 +216,6 @@ void TF_Reset(const TF_SessionOptions* opt, const char** containers,
 }  // end extern "C"
 
 namespace tensorflow {
-
-Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
-                       TF_Buffer* out) {
-  if (out->data != nullptr) {
-    return InvalidArgument("Passing non-empty TF_Buffer is invalid.");
-  }
-  const size_t proto_size = in.ByteSizeLong();
-  void* buf = port::Malloc(proto_size);
-  if (buf == nullptr) {
-    return tensorflow::errors::ResourceExhausted(
-        "Failed to allocate memory to serialize message of type '",
-        in.GetTypeName(), "' and size ", proto_size);
-  }
-  if (!in.SerializeWithCachedSizesToArray(static_cast<uint8*>(buf))) {
-    port::Free(buf);
-    return InvalidArgument("Unable to serialize ", in.GetTypeName(),
-                           " protocol buffer, perhaps the serialized size (",
-                           proto_size, " bytes) is too large?");
-  }
-  out->data = buf;
-  out->length = proto_size;
-  out->data_deallocator = [](void* data, size_t length) { port::Free(data); };
-  return Status::OK();
-}
-
-Status BufferToMessage(const TF_Buffer* in,
-                       tensorflow::protobuf::MessageLite* out) {
-  if (in == nullptr || !out->ParseFromArray(in->data, in->length)) {
-    return errors::InvalidArgument("Unparseable ", out->GetTypeName(),
-                                   " proto");
-  }
-  return Status::OK();
-}
 
 void RecordMutation(TF_Graph* graph, const TF_Operation& op,
                     const char* mutation_type) {
@@ -373,6 +329,9 @@ bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
         }
       }
       *graph_def.mutable_library() = graph.flib_def().ToProto();
+      if (flags::Global().more_stack_traces.value()) {
+        *graph_def.mutable_debug_info() = graph.BuildDebugInfo();
+      }
       session->graph->mu.unlock();
       status->status = session->session->Extend(std::move(graph_def));
       if (!status->status.ok()) {
@@ -393,7 +352,7 @@ bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
 
 static void TF_Run_Setup(int noutputs, TF_Tensor** c_outputs,
                          TF_Status* status) {
-  status->status = Status::OK();
+  status->status = ::tensorflow::OkStatus();
   for (int i = 0; i < noutputs; ++i) {
     c_outputs[i] = nullptr;
   }
@@ -429,9 +388,9 @@ static Status TF_TensorToTensorV1(const TF_Tensor* src, Tensor* dst) {
       return InvalidArgument(
           "Malformed TF_RESOURCE tensor: unable to parse resource handle");
     }
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 static bool TF_Run_Inputs(TF_Tensor* const* c_inputs,
@@ -675,7 +634,7 @@ int TF_DeviceListCount(const TF_DeviceList* list) {
       status->status = InvalidArgument("index out of bounds");            \
       return err_val;                                                     \
     }                                                                     \
-    status->status = Status::OK();                                        \
+    status->status = ::tensorflow::OkStatus();                            \
     return list->response[index].accessor;                                \
   }
 
@@ -1000,7 +959,7 @@ void TF_SetAttrTensorShapeProto(TF_OperationDescription* desc,
   TensorShapeProto shape;
   if (shape.ParseFromArray(proto, static_cast<int>(proto_len))) {
     desc->node_builder.Attr(attr_name, shape);
-    status->status = Status::OK();
+    status->status = ::tensorflow::OkStatus();
   } else {
     status->status = InvalidArgument("Unparseable TensorShapeProto");
   }
@@ -1027,7 +986,7 @@ void TF_SetAttrTensorShapeProtoList(TF_OperationDescription* desc,
     }
   }
   desc->node_builder.Attr(attr_name, shapes);
-  status->status = Status::OK();
+  status->status = ::tensorflow::OkStatus();
 }
 
 void TF_SetAttrTensor(TF_OperationDescription* desc, const char* attr_name,
@@ -1040,7 +999,7 @@ void TF_SetAttrTensor(TF_OperationDescription* desc, const char* attr_name,
 void TF_SetAttrTensorList(TF_OperationDescription* desc, const char* attr_name,
                           TF_Tensor* const* values, int num_values,
                           TF_Status* status) {
-  status->status = Status::OK();
+  status->status = ::tensorflow::OkStatus();
   std::vector<Tensor> t;
   t.reserve(num_values);
 
@@ -1078,7 +1037,7 @@ void TF_SetAttrValueProto(TF_OperationDescription* desc, const char* attr_name,
     desc->node_builder.Attr(attr_name, std::move(attr_value));
   }
 
-  status->status = Status::OK();
+  status->status = ::tensorflow::OkStatus();
 }
 
 TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
@@ -1593,7 +1552,7 @@ void TF_OperationGetAttrName(TF_Operation* oper, int i, char* output,
   for (it = attrs.begin(); it != attrs.end(); it++) {
     if (count == i) {
       strncpy(output, it->first.c_str(), it->first.length());
-      status->status = Status::OK();
+      status->status = ::tensorflow::OkStatus();
       return;
     }
     count++;
@@ -1957,7 +1916,7 @@ Status CopyGraph(Graph* src_graph, Graph* dst_graph,
   for (const auto& pair : results.return_tensors) {
     return_nodes->emplace_back(pair.first, pair.second);
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 bool ValidateConstWhileParams(const TF_WhileParams& params, TF_Status* s) {
@@ -2089,7 +2048,7 @@ void TF_FinishWhileHelper(const TF_WhileParams* params, TF_Status* status,
             scope.impl()->control_deps(), &params->cond_output,
             /* nreturn_nodes */ 1, &cond_output));
         *output = cond_output[0];
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       };
 
   // 'body_fn' copies the body graph into the parent graph.
@@ -2104,7 +2063,7 @@ void TF_FinishWhileHelper(const TF_WhileParams* params, TF_Status* status,
                       &parent->refiner, params->body_inputs, inputs,
                       scope.impl()->name(), scope.impl()->control_deps(),
                       params->body_outputs, num_loop_vars, outputs));
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       };
 
   // Create the while loop using an internal scope.
@@ -2338,7 +2297,7 @@ void TF_CloseSession(TF_Session* s, TF_Status* status) {
 }
 
 void TF_DeleteSession(TF_Session* s, TF_Status* status) {
-  status->status = Status::OK();
+  status->status = ::tensorflow::OkStatus();
   if (s == nullptr) return;
   TF_Graph* const graph = s->graph;
   if (graph != nullptr) {
@@ -2475,20 +2434,21 @@ void TF_SessionPRun(TF_Session* session, const char* handle,
 
 unsigned char TF_TryEvaluateConstant(TF_Graph* graph, TF_Output output,
                                      TF_Tensor** result, TF_Status* status) {
-  *result = nullptr;
   mutex_lock l(graph->mu);
-  OutputTensor tensor(&output.oper->node, output.index);
-  bool evaluated;
-  Tensor result_tensor;
-  status->status = EvaluateConstantTensor(
-      tensor, graph->refiner, *graph->graph.op_registry(),
-      graph->graph.versions().producer(), &evaluated, &result_tensor);
-  if (evaluated) {
-    DCHECK(status->status.ok());
-    *result = TF_TensorFromTensor(result_tensor, &status->status);
-    if (!status->status.ok()) evaluated = false;
+  auto status_or = EvaluateConstantTensor(
+      output.oper->node, output.index, graph->refiner,
+      [](const Node&, int) { return std::optional<Tensor>(); },
+      tensorflow::EvaluateConstantTensorRunner{
+          graph->graph.op_registry(),
+          graph->graph.versions().producer(),
+      });
+  if (!status_or.ok() || !status_or->has_value()) {
+    *result = nullptr;
+    status->status = std::move(status_or).status();
+    return false;
   }
-  return evaluated;
+  *result = TF_TensorFromTensor(**status_or, &status->status);
+  return status->status.ok();
 }
 
 TF_ApiDefMap* TF_NewApiDefMap(TF_Buffer* op_list_buffer, TF_Status* status) {
@@ -2497,7 +2457,7 @@ TF_ApiDefMap* TF_NewApiDefMap(TF_Buffer* op_list_buffer, TF_Status* status) {
     status->status = InvalidArgument("Unparseable OpList");
     return nullptr;
   }
-  status->status = Status::OK();
+  status->status = ::tensorflow::OkStatus();
   return new TF_ApiDefMap(op_list);
 }
 
@@ -2613,6 +2573,150 @@ void TF_UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
     RecordMutation(graph, *dst.oper, "updating input tensor");
   }
 }
+
+// Apis that are corresponding to python c api. --------------------------
+
+void TF_AddOperationControlInput(TF_Graph* graph, TF_Operation* op,
+                                 TF_Operation* input) {
+  using tensorflow::RecordMutation;
+  mutex_lock l(graph->mu);
+  graph->graph.AddControlEdge(&input->node, &op->node);
+  RecordMutation(graph, *op, "adding control input");
+}
+
+void TF_SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
+                TF_Buffer* attr_value_proto, TF_Status* status) {
+  using tensorflow::RecordMutation;
+  tensorflow::AttrValue attr_val;
+  if (!attr_val.ParseFromArray(attr_value_proto->data,
+                               attr_value_proto->length)) {
+    status->status = absl::InvalidArgumentError("Invalid AttrValue proto");
+    return;
+  }
+
+  mutex_lock l(graph->mu);
+  op->node.AddAttr(attr_name, attr_val);
+  RecordMutation(graph, *op, "setting attribute");
+}
+
+void TF_ClearAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
+                  TF_Status* status) {
+  using tensorflow::RecordMutation;
+  mutex_lock l(graph->mu);
+  op->node.ClearAttr(attr_name);
+  RecordMutation(graph, *op, "clearing attribute");
+}
+
+void TF_SetFullType(TF_Graph* graph, TF_Operation* op,
+                    const TF_Buffer* full_type_proto) {
+  using tensorflow::RecordMutation;
+  mutex_lock l(graph->mu);
+  FullTypeDef full_type;
+  full_type.ParseFromArray(full_type_proto->data, full_type_proto->length);
+  *op->node.mutable_def()->mutable_experimental_type() = full_type;
+  RecordMutation(graph, *op, "setting fulltype");
+}
+
+void TF_SetRequestedDevice(TF_Graph* graph, TF_Operation* op,
+                           const char* device) {
+  using tensorflow::RecordMutation;
+  mutex_lock l(graph->mu);
+  op->node.set_requested_device(device);
+  RecordMutation(graph, *op, "setting device");
+}
+
+void TF_RemoveAllControlInputs(TF_Graph* graph, TF_Operation* op) {
+  mutex_lock l(graph->mu);
+  std::vector<const tensorflow::Edge*> control_edges;
+  for (const tensorflow::Edge* edge : op->node.in_edges()) {
+    if (!edge->IsControlEdge()) continue;
+    control_edges.push_back(edge);
+  }
+  for (const tensorflow::Edge* edge : control_edges) {
+    graph->graph.RemoveControlEdge(edge);
+  }
+}
+
+void TF_SetRequireShapeInferenceFns(TF_Graph* graph, bool require) {
+  mutex_lock l(graph->mu);
+  graph->refiner.set_require_shape_inference_fns(require);
+}
+
+void TF_ExtendSession(TF_Session* session, TF_Status* status) {
+  ExtendSessionGraphHelper(session, status);
+  session->extend_before_run = false;
+}
+
+TF_Buffer* TF_GetHandleShapeAndType(TF_Graph* graph, TF_Output output) {
+  Node* node = &output.oper->node;
+  tensorflow::core::CppShapeInferenceResult::HandleData handle_data;
+  handle_data.set_is_set(true);
+  {
+    mutex_lock l(graph->mu);
+    tensorflow::shape_inference::InferenceContext* ic =
+        graph->refiner.GetContext(node);
+    CHECK(ic != nullptr);                       // Crash OK
+    CHECK_LT(output.index, ic->num_outputs());  // Crash OK
+    const auto* shapes_and_types =
+        ic->output_handle_shapes_and_types(output.index);
+    if (shapes_and_types == nullptr) return nullptr;
+
+    for (const auto& p : *shapes_and_types) {
+      auto* out_shape_and_type = handle_data.add_shape_and_type();
+      ic->ShapeHandleToProto(p.shape, out_shape_and_type->mutable_shape());
+      out_shape_and_type->set_dtype(p.dtype);
+      *out_shape_and_type->mutable_type() = p.type;
+    }
+  }
+  string str_data;
+  handle_data.SerializeToString(&str_data);
+
+  TF_Buffer* result = TF_NewBufferFromString(str_data.c_str(), str_data.size());
+  return result;
+}
+
+void TF_SetHandleShapeAndType(TF_Graph* graph, TF_Output output,
+                              const void* proto, size_t proto_len,
+                              TF_Status* status) {
+  tensorflow::core::CppShapeInferenceResult::HandleData handle_data;
+  if (!handle_data.ParseFromArray(proto, proto_len)) {
+    status->status =
+        absl::InvalidArgumentError("Couldn't deserialize HandleData proto");
+    return;
+  }
+  DCHECK(handle_data.is_set());
+
+  tensorflow::mutex_lock l(graph->mu);
+  tensorflow::shape_inference::InferenceContext* ic =
+      graph->refiner.GetContext(&output.oper->node);
+
+  std::vector<tensorflow::shape_inference::ShapeAndType> shapes_and_types;
+  for (const auto& shape_and_type_proto : handle_data.shape_and_type()) {
+    tensorflow::shape_inference::ShapeHandle shape;
+    status->status =
+        ic->MakeShapeFromShapeProto(shape_and_type_proto.shape(), &shape);
+    if (TF_GetCode(status) != TF_OK) return;
+    shapes_and_types.emplace_back(shape, shape_and_type_proto.dtype(),
+                                  shape_and_type_proto.type());
+  }
+  ic->set_output_handle_shapes_and_types(output.index, shapes_and_types);
+}
+
+void TF_AddWhileInputHack(TF_Graph* graph, TF_Output new_src, TF_Operation* dst,
+                          TF_Status* status) {
+  using tensorflow::RecordMutation;
+  mutex_lock l(graph->mu);
+  status->status = graph->graph.AddWhileInputHack(&new_src.oper->node,
+                                                  new_src.index, &dst->node);
+  if (TF_GetCode(status) == TF_OK) {
+    // This modification only updates the destination node for
+    // the purposes of running this graph in a session. Thus, we don't
+    // record the source node as being modified.
+    RecordMutation(graph, *dst, "adding input tensor");
+  }
+}
+
+// -------------------------------------------------------------------
 
 // TF_Server functions ----------------------------------------------
 

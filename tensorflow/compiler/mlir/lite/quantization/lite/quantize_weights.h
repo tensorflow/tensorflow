@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -33,8 +34,8 @@ enum class BufferType { QUANTIZED_INT8, QUANTIZED_FLOAT16 };
 
 // Stores information about how to quantize a user-specified custom operation.
 // CustomOpInfo contains info of its corresponding CustomOp registered in the
-// CustomOpMap. 'quantizable_input_indices' is used to determine which indicies
-// of the CustomOp is quantizable. 'is_weight_only' is used specify whether the
+// CustomOpMap. 'quantizable_input_indices' is used to determine which indices
+// of the CustomOp are quantizable. 'is_weight_only' is used specify whether the
 // custom op is quantized only for storage and dequantized at runtime.
 // 'no_side_effect' is used to determine whether the op can be pruned if
 // considered as trivially dead.
@@ -44,7 +45,6 @@ struct CustomOpInfo {
   bool no_side_effect = true;
 };
 
-using StringSet = absl::flat_hash_set<std::string>;
 using BuiltinOperatorSet = absl::flat_hash_set<tflite::BuiltinOperator>;
 // Map from custom op code to custom op quantization information.
 using CustomOpMap = std::unordered_map<std::string, CustomOpInfo>;
@@ -57,16 +57,15 @@ using CustomOpMap = std::unordered_map<std::string, CustomOpInfo>;
 // third_party/tensorflow/lite/tools/optimize/quantize_weights.h.
 // TODO(b/202468183): Selective quantization + quant debugger support for
 // dynamic range quantization for verify_numeric and whole_model_verify flags.
-TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
-                             const tflite::Model* input_model,
-                             tflite::ErrorReporter* error_reporter,
-                             const tflite::TensorType& inference_type,
-                             const StringSet& denylisted_ops,
-                             const CustomOpMap& custom_op_map,
-                             int64_t minimum_elements_for_weights = 1024,
-                             bool disable_per_channel = false,
-                             bool weight_only_quantization = false,
-                             bool legacy_float_scale = false);
+TfLiteStatus QuantizeWeights(
+    flatbuffers::FlatBufferBuilder* builder, const tflite::Model* input_model,
+    tflite::ErrorReporter* error_reporter,
+    const tflite::TensorType& inference_type,
+    const absl::flat_hash_set<std::string>& denylisted_ops,
+    const CustomOpMap& custom_op_map,
+    int64_t minimum_elements_for_weights = 1024,
+    bool disable_per_channel = false, bool weight_only_quantization = false,
+    bool legacy_float_scale = false);
 
 // Overloading methods to support old quantizer versions API
 TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,

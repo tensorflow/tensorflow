@@ -15,9 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 
-#include <unordered_map>
-#include <unordered_set>
-
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -73,10 +72,10 @@ class NodeNameMapping {
   // input names (in signature), output names (in signature), and node names
   // (in node_def).
   // This is a superset of values in name_mapping_.
-  std::unordered_map<string, uint64> used_names_;
+  absl::flat_hash_map<string, uint64> used_names_;
   // Mapping from original node name from the graph to the normalized
   // and uniquified version of it.
-  std::unordered_map<string, string> name_mapping_;
+  absl::flat_hash_map<string, string> name_mapping_;
 };
 
 string NodeNameMapping::Normalize(string name) {
@@ -143,7 +142,7 @@ Status NodeNameMapping::UseOutputName(const string& name) {
         "' appears more than once in 'output_names' array.");
   }
   used_names_.emplace(name, 0);
-  return Status::OK();
+  return OkStatus();
 }
 
 string NodeNameMapping::Lookup(const string& name) const {
@@ -155,10 +154,10 @@ string NodeNameMapping::Lookup(const string& name) const {
 Status FillFunctionBody(
     const string& fn_name, const NodeNameMapping& node_names,
     const std::vector<const Node*>& body_nodes,
-    const std::unordered_map<string, string>& tensor_renaming,
+    const absl::flat_hash_map<string, string>& tensor_renaming,
     bool set_stateful_from_nodes, bool copy_placeholder_attrs_from_nodes,
     FunctionDef* fdef) {
-  std::unordered_set<string> func_attr_names;
+  absl::flat_hash_set<string> func_attr_names;
   for (const auto& func_attr : fdef->signature().attr()) {
     func_attr_names.insert(func_attr.name());
   }
@@ -289,7 +288,7 @@ Status FillFunctionBody(
       func_attr_names.insert(func_attr_name);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GraphToFunctionDefHelper(
@@ -306,10 +305,13 @@ Status GraphToFunctionDefHelper(
     if ((*args_or_retvals)[index].node == nullptr) {
       (*args_or_retvals)[index].node = node;
     } else {
-      return errors::InvalidArgument("Multiple '", node->type_string(),
-                                     "' nodes found with index ", index);
+      return errors::InvalidArgument(
+          "Multiple '", node->type_string(), "' nodes found with index ", index,
+          "; originally we already have:\n",
+          (*args_or_retvals)[index].node->DebugString(), "\nNow we have:\n",
+          node->DebugString());
     }
-    return Status::OK();
+    return OkStatus();
   };
 
   std::vector<const Node*> body_nodes;
@@ -348,7 +350,7 @@ Status GraphToFunctionDefHelper(
                                            "' node at index ", i);
           }
         }
-        return Status::OK();
+        return OkStatus();
       };
 
   TF_RETURN_IF_ERROR(validate_args_retvals(inputs, "_Arg"));
@@ -394,7 +396,7 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
   //  - For tensors produced by nodes in function's body:
   //    {flat_tensor_name -> nested_tensor_name}
   //    e.g. {Add:3 -> add_0:z:1}
-  std::unordered_map<string, string> tensor_renaming;
+  absl::flat_hash_map<string, string> tensor_renaming;
 
   // Fill outputs in function's signature.
   // We fill the outputs first to prevent output_names from colliding
@@ -580,7 +582,7 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
     fdef->mutable_signature()->add_control_output(control_output);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GraphToFunctionDef(

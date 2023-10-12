@@ -15,9 +15,22 @@ limitations under the License.
 
 #include "tensorflow/core/activity_watcher/activity.h"
 
+#include <atomic>
+#include <memory>
+
 namespace tensorflow {
 namespace activity_watcher {
-ActivityScope::ActivityScope(std::unique_ptr<Activity>) {}
-ActivityScope::~ActivityScope() {}
+void MaybeEnableMultiWorkersWatching(tsl::CoordinationServiceAgent* agent) {}
+
+namespace tfw_internal {
+
+std::atomic<int> g_watcher_level(kWatcherDisabled);
+ActivityId RecordActivityStart(std::unique_ptr<Activity>) {
+  return kActivityNotRecorded;
+}
+void RecordActivityEnd(ActivityId id) {}
+
+}  // namespace tfw_internal
+
 }  // namespace activity_watcher
 }  // namespace tensorflow

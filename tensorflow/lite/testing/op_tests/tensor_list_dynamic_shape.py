@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for tensor_list_dynamic_shape."""
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -34,7 +34,7 @@ def make_tensor_list_dynamic_shape_tests(options):
 
   def build_graph(parameters):
     """Build the TensorListSetItem op testing graph."""
-    item = tf.placeholder(
+    item = tf.compat.v1.placeholder(
         dtype=parameters["element_dtype"], shape=parameters["element_shape"])
     tensor_list = list_ops.tensor_list_reserve(
         element_shape=None,
@@ -51,7 +51,8 @@ def make_tensor_list_dynamic_shape_tests(options):
       new_list = list_ops.tensor_list_set_item(tensor_list, i, new_item)
       return i + 1, new_list
 
-    _, tensor_list = tf.while_loop(condition, loop_body, init_state)
+    _, tensor_list = tf.while_loop(
+        cond=condition, body=loop_body, loop_vars=init_state)
     out = list_ops.tensor_list_stack(
         tensor_list,
         num_elements=parameters["num_elements"],

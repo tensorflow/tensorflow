@@ -100,6 +100,10 @@ class PoolAllocator : public Allocator {
     return pool_size_limit_;
   }
 
+  AllocatorMemoryType GetMemoryType() const override {
+    return allocator_->GetMemoryType();
+  }
+
  private:
   struct PtrRecord {
     void* ptr;
@@ -162,10 +166,15 @@ class BasicCPUAllocator : public SubAllocator {
 
   bool SupportsCoalescing() const override { return false; }
 
+  AllocatorMemoryType GetMemoryType() const override {
+    return AllocatorMemoryType::kHostPageable;
+  }
+
  private:
   int numa_node_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BasicCPUAllocator);
+  BasicCPUAllocator(const BasicCPUAllocator&) = delete;
+  void operator=(const BasicCPUAllocator&) = delete;
 };
 
 }  // namespace tensorflow

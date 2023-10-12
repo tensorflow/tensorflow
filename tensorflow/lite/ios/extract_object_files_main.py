@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# Lint as: python3
 """Command line tool version of the extract_object_files module.
 
 This command line tool version takes the archive file path and the destination

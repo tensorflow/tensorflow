@@ -55,12 +55,12 @@ using SliceDims = absl::InlinedVector<int64, 4>;
 // through to the Converter functions optionally accept it (SetLayerName,
 // PrepareTensorForShape).
 Status ConvertStridedSliceHelper(
-    OpConverterParams* params, const TRT_TensorOrWeights& input,
+    const OpConverterParams* params, const TRT_TensorOrWeights& input,
     const PartialTensorShape& input_dims, const SliceDims& begin,
     const SliceDims& stride, const SliceDims& end,
-    absl::optional<nvinfer1::Dims> final_shape = absl::nullopt,
-    absl::optional<int> op_instance = absl::nullopt,
-    absl::optional<StridedSliceShapeSpec> strided_slice_spec = absl::nullopt);
+    std::optional<nvinfer1::Dims> final_shape = std::nullopt,
+    std::optional<int> op_instance = std::nullopt,
+    std::optional<StridedSliceShapeSpec> strided_slice_spec = std::nullopt);
 
 }  // namespace convert
 }  // namespace tensorrt

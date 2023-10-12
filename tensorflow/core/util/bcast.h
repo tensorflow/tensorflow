@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_BCAST_H_
 
 #include <algorithm>
+#include <vector>
 
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -78,10 +79,9 @@ class BCastList {
   // If return_flattened_batch_indices is true, the implementation will compute
   // for each output member of the flattened output, which batch indices of
   // each input correspond to it. This is disabled by default.
-  explicit BCastList(const Vec (&x)[N],
-                     const bool fewer_dims_optimization = true,
-                     const bool return_flattened_batch_indices = false);
-  ~BCastList() {}
+  explicit BCastList(const Vec (&x)[N], bool fewer_dims_optimization = true,
+                     bool return_flattened_batch_indices = false);
+  ~BCastList() = default;
 
   // Returns true iff two operands are compatible according to the
   // broadcasting rule.
@@ -96,7 +96,7 @@ class BCastList {
   const Vec& result_shape() const { return result_; }
   const Vec& output_shape() const { return output_; }
   const Vec& grad_reduce_idx(int i) const { return grad_reduce_idx_[i]; }
-  const int64_t output_batch_size() const { return output_batch_size_; }
+  int64_t output_batch_size() const { return output_batch_size_; }
 
   // Returns the mapping from the flattened output batch indices to x's
   // flattened batch indices. The result is a vector of length
@@ -124,7 +124,8 @@ class BCastList {
     std::reverse(shape->begin(), shape->end());
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BCastList);
+  BCastList(const BCastList&) = delete;
+  void operator=(const BCastList&) = delete;
 };
 
 template <int N>
@@ -134,7 +135,7 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
   typedef BCastList::Vec Vec;
 
   // Safely multiplies dimensions taking into account symbolic shapes.
-  auto mul_dims = [](int64_t dim1, int64_t dim2) -> int64 {
+  auto mul_dims = [](int64_t dim1, int64_t dim2) -> int64_t {
     return dim1 != 0 && dim2 != 0 && (dim1 < 0 || dim2 < 0) ? -1 : dim1 * dim2;
   };
 
@@ -199,7 +200,7 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
   }
   Vec output;
   bool output_dim_set = false;
-  int output_dim = -1;
+  int64_t output_dim = -1;
   bool none_is_one = true;
   bool set_one = false;
   for (int j = 0; j < largest_rank; ++j) {
@@ -366,7 +367,7 @@ class BCast : public BCastList<2> {
       : BCastList<2>({x, y}, fewer_dims_optimization,
                      return_flattened_batch_indices) {}
 
-  ~BCast() {}
+  ~BCast() = default;
 
   // If and only if IsValid(), the following fields can be used in
   // implementing a broadcasted binary tensor operation according to
@@ -417,7 +418,8 @@ class BCast : public BCastList<2> {
   static TensorShape ToShape(const Vec& vec);
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(BCast);
+  BCast(const BCast&) = delete;
+  void operator=(const BCast&) = delete;
 };
 
 }  // end namespace tensorflow

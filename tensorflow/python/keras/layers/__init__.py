@@ -86,16 +86,6 @@ from tensorflow.python.keras.layers.dense_attention import Attention
 # Embedding layers.
 from tensorflow.python.keras.layers.embeddings import Embedding
 
-# Einsum-based dense layer/
-from tensorflow.python.keras.layers.einsum_dense import EinsumDense
-
-# Multi-head Attention layer.
-from tensorflow.python.keras.layers.multi_head_attention import MultiHeadAttention
-
-# Locally-connected layers.
-from tensorflow.python.keras.layers.local import LocallyConnected1D
-from tensorflow.python.keras.layers.local import LocallyConnected2D
-
 # Merge layers.
 from tensorflow.python.keras.layers.merge import Add
 from tensorflow.python.keras.layers.merge import Subtract
@@ -113,14 +103,6 @@ from tensorflow.python.keras.layers.merge import maximum
 from tensorflow.python.keras.layers.merge import minimum
 from tensorflow.python.keras.layers.merge import concatenate
 from tensorflow.python.keras.layers.merge import dot
-
-# Noise layers.
-from tensorflow.python.keras.layers.noise import AlphaDropout
-from tensorflow.python.keras.layers.noise import GaussianNoise
-from tensorflow.python.keras.layers.noise import GaussianDropout
-
-# Kernelized layers.
-from tensorflow.python.keras.layers.kernelized import RandomFourierFeatures
 
 # Pooling layers.
 from tensorflow.python.keras.layers.pooling import MaxPooling1D
@@ -159,27 +141,15 @@ from tensorflow.python.keras.layers.recurrent import PeepholeLSTMCell
 from tensorflow.python.keras.layers.recurrent import SimpleRNN
 
 if tf2.enabled():
-  from tensorflow.python.keras.layers.recurrent_v2 import GRU
-  from tensorflow.python.keras.layers.recurrent_v2 import GRUCell
-  from tensorflow.python.keras.layers.recurrent_v2 import LSTM
-  from tensorflow.python.keras.layers.recurrent_v2 import LSTMCell
   from tensorflow.python.keras.layers.recurrent import GRU as GRUV1
   from tensorflow.python.keras.layers.recurrent import GRUCell as GRUCellV1
   from tensorflow.python.keras.layers.recurrent import LSTM as LSTMV1
   from tensorflow.python.keras.layers.recurrent import LSTMCell as LSTMCellV1
-  GRUV2 = GRU
-  GRUCellV2 = GRUCell
-  LSTMV2 = LSTM
-  LSTMCellV2 = LSTMCell
 else:
   from tensorflow.python.keras.layers.recurrent import GRU
   from tensorflow.python.keras.layers.recurrent import GRUCell
   from tensorflow.python.keras.layers.recurrent import LSTM
   from tensorflow.python.keras.layers.recurrent import LSTMCell
-  from tensorflow.python.keras.layers.recurrent_v2 import GRU as GRUV2
-  from tensorflow.python.keras.layers.recurrent_v2 import GRUCell as GRUCellV2
-  from tensorflow.python.keras.layers.recurrent_v2 import LSTM as LSTMV2
-  from tensorflow.python.keras.layers.recurrent_v2 import LSTMCell as LSTMCellV2
   GRUV1 = GRU
   GRUCellV1 = GRUCell
   LSTMV1 = LSTM
@@ -187,10 +157,6 @@ else:
 
 # Convolutional-recurrent layers.
 from tensorflow.python.keras.layers.convolutional_recurrent import ConvLSTM2D
-
-# CuDNN recurrent layers.
-from tensorflow.python.keras.layers.cudnn_recurrent import CuDNNLSTM
-from tensorflow.python.keras.layers.cudnn_recurrent import CuDNNGRU
 
 # # RNN Cell wrappers.
 from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import DeviceWrapper

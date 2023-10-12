@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.compiler.tensorrt import utils as trt_utils
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -60,7 +61,7 @@ class SimpleSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "TRTEngineOp_0": [
+        "TRTEngineOp_000": [
             "weights", "conv", "bias", "bias_add", "relu", "identity",
             "max_pool"
         ]
@@ -109,18 +110,24 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "TRTEngineOp_0": [
+        "TRTEngineOp_000": [
             "add", "add1", "c1", "div1", "mul", "mul1", "sub", "sub1", "one",
             "one_sub"
         ],
-        "TRTEngineOp_1": ["c2", "conv", "div", "weights"]
+        "TRTEngineOp_001": ["c2", "conv", "div", "weights"]
     }
 
   def setUp(self):
-    super(trt_test.TfTrtIntegrationTestBase, self).setUp()  # pylint: disable=bad-super-call
+    super().setUp()
     # Disable layout optimizer, since it will convert BiasAdd with NHWC
     # format to NCHW format under four dimentional input.
     self.DisableNonTrtOptimizers()
+
+  def ShouldRunTest(self, run_params):
+    return (
+        trt_utils.is_linked_tensorrt_version_greater_equal(8),
+        "Test is non-hermetic with TensorRT 7",
+    )
 
 
 class SimpleMultiEnginesTest2(trt_test.TfTrtIntegrationTestBase):
@@ -149,8 +156,8 @@ class SimpleMultiEnginesTest2(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "TRTEngineOp_0": ["c0", "c1", "add0", "add1", "mul0", "mul1"],
-        "TRTEngineOp_1": ["c2", "c3", "add2", "add3", "mul2", "mul3"]
+        "TRTEngineOp_000": ["c0", "c1", "add0", "add1", "mul0", "mul1"],
+        "TRTEngineOp_001": ["c2", "c3", "add2", "add3", "mul2", "mul3"]
     }
 
   def ShouldRunTest(self, run_params):
@@ -191,8 +198,8 @@ class ConstInputTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "TRTEngineOp_0": ["add", "add1", "mul"],
-        "TRTEngineOp_1": ["add2", "add3", "mul1"]
+        "TRTEngineOp_000": ["add", "add1", "mul"],
+        "TRTEngineOp_001": ["add2", "add3", "mul1"]
     }
 
   def ExpectedConnections(self, run_params):
@@ -201,10 +208,10 @@ class ConstInputTest(trt_test.TfTrtIntegrationTestBase):
         "input_0": set(),
         "c": set(),
         "incompatible": {"input_0", "c"},
-        "TRTEngineOp_0": {"incompatible"},
-        "incompatible1": {"TRTEngineOp_0"},
-        "TRTEngineOp_1": {"incompatible1"},
-        "output_0": {"TRTEngineOp_1"},
+        "TRTEngineOp_000": {"incompatible"},
+        "incompatible1": {"TRTEngineOp_000"},
+        "TRTEngineOp_001": {"incompatible1"},
+        "output_0": {"TRTEngineOp_001"},
     }
 
 
@@ -226,7 +233,7 @@ class ConstDataInputSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return {"TRTEngineOp_0": ["c", "add", "add1", "mul"]}
+    return {"TRTEngineOp_000": ["c", "add", "add1", "mul"]}
 
 
 class ConstDataInputMultipleEnginesTest(trt_test.TfTrtIntegrationTestBase):
@@ -252,12 +259,12 @@ class ConstDataInputMultipleEnginesTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "TRTEngineOp_0": ["add2", "add3", "mul1"],
+        "TRTEngineOp_000": ["add2", "add3", "mul1"],
         # Why segment ["add", "add1", "mul"] was assigned segment id 1
         # instead of 0: the parent node of this segment is actually const
         # node 'c', but it's removed later since it's const output of the
         # segment which is not allowed.
-        "TRTEngineOp_1": ["add", "add1", "mul"]
+        "TRTEngineOp_001": ["add", "add1", "mul"]
     }
 
 
@@ -290,8 +297,8 @@ class ControlDependencyTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "TRTEngineOp_0": ["c1", "add", "add1", "mul"],
-        "TRTEngineOp_1": ["c2", "add2", "add3", "mul1"]
+        "TRTEngineOp_000": ["c1", "add", "add1", "mul"],
+        "TRTEngineOp_001": ["c2", "add2", "add3", "mul1"]
     }
 
   def ExpectedConnections(self, run_params):
@@ -300,10 +307,10 @@ class ControlDependencyTest(trt_test.TfTrtIntegrationTestBase):
         "input_0": set(),
         "d1": {"input_0"},
         "d2": {"input_0"},
-        "TRTEngineOp_0": {"input_0", "^d1"},
-        "incompatible": {"TRTEngineOp_0"},
-        "TRTEngineOp_1": {"incompatible", "^d2"},
-        "incompatible1": {"TRTEngineOp_1", "d1"},
+        "TRTEngineOp_000": {"input_0", "^d1"},
+        "incompatible": {"TRTEngineOp_000"},
+        "TRTEngineOp_001": {"incompatible", "^d2"},
+        "incompatible1": {"TRTEngineOp_001", "d1"},
         "incompatible2": {"incompatible1", "d2"},
         "output_0": {"incompatible2"},
     }

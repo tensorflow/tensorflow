@@ -15,12 +15,17 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/api.h"
 
+#include <utility>
+
 #ifndef CL_DELEGATE_NO_GL
 #define CL_DELEGATE_ALLOW_GL
 #endif
 
 #include <algorithm>
 #include <cstring>
+#include <memory>
+#include <variant>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
@@ -31,7 +36,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/converter.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
-#include "tensorflow/lite/delegates/gpu/cl/serialization.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -39,6 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
+#include "tensorflow/lite/delegates/gpu/tflite_profile.h"
 
 #ifdef CL_DELEGATE_ALLOW_GL
 #include <EGL/eglext.h>
@@ -112,7 +117,7 @@ class DefaultTensorTie : public TensorTie {
   static absl::Status New(const TensorTieDef& def, TensorObject internal_object,
                           TensorObjectConverterBuilder* converter_builder,
                           Environment* env, std::unique_ptr<TensorTie>* tie) {
-    auto tie_impl = absl::make_unique<DefaultTensorTie>(def, internal_object);
+    auto tie_impl = std::make_unique<DefaultTensorTie>(def, internal_object);
     RETURN_IF_ERROR(tie_impl->Init(converter_builder, env));
     *tie = std::move(tie_impl);
     return absl::OkStatus();
@@ -152,7 +157,7 @@ class DefaultTensorTie : public TensorTie {
     if (def().external_def.object_def.user_provided &&
         GlClBufferCopier::IsSupported(def().external_def.object_def,
                                       def().internal_def.object_def)) {
-      converter_from_ = absl::make_unique<GlClBufferCopier>(
+      converter_from_ = std::make_unique<GlClBufferCopier>(
           def().internal_def, def().external_def, env);
     } else {
       RETURN_IF_ERROR(converter_builder->MakeConverter(
@@ -161,7 +166,7 @@ class DefaultTensorTie : public TensorTie {
     if (def().external_def.object_def.user_provided &&
         GlClBufferCopier::IsSupported(def().internal_def.object_def,
                                       def().external_def.object_def)) {
-      converter_to_ = absl::make_unique<GlClBufferCopier>(
+      converter_to_ = std::make_unique<GlClBufferCopier>(
           def().internal_def, def().external_def, env);
     } else {
       RETURN_IF_ERROR(converter_builder->MakeConverter(
@@ -192,13 +197,12 @@ class DefaultTensorTie : public TensorTie {
       case ObjectType::OPENCL_BUFFER: {
         auto& dims = d.dimensions;
         const BHWC shape(dims.b, dims.h, dims.w, dims.c);
-        const TensorDescriptor desc{
-            d.object_def.data_type,
-            ToTensorStorageType(d.object_def.object_type,
-                                d.object_def.data_layout),
-            Layout::BHWC};
+        TensorStorageType storage_type = ToTensorStorageType(
+            d.object_def.object_type, d.object_def.data_layout);
+        TensorDescriptor desc = CreateBhwcTensorDescriptor(
+            d.object_def.data_type, storage_type, shape);
         RETURN_IF_ERROR(
-            AllocateTensorMemory(env->context(), shape, desc, &cl_memory_));
+            AllocateTensorMemory(env->context(), desc, &cl_memory_));
         if (d.object_def.object_type == ObjectType::OPENCL_TEXTURE) {
           external_obj_ = OpenClTexture{cl_memory_.memory()};
         } else {
@@ -238,7 +242,7 @@ class TwoStepTensorTie : public TensorTie {
   static absl::Status New(const TensorTieDef& def, TensorObject internal_object,
                           TensorObjectConverterBuilder* converter_builder,
                           Environment* env, std::unique_ptr<TensorTie>* tie) {
-    auto tie_impl = absl::make_unique<TwoStepTensorTie>(def);
+    auto tie_impl = std::make_unique<TwoStepTensorTie>(def);
     RETURN_IF_ERROR(tie_impl->Init(internal_object, converter_builder, env));
     *tie = std::move(tie_impl);
     return absl::OkStatus();
@@ -317,7 +321,7 @@ class GlBufferHolder : public TensorTie {
                           GlInteropFabric* gl_interop_fabric, Environment* env,
                           std::unique_ptr<TensorTie>* tie) {
     auto tie_impl =
-        absl::make_unique<GlBufferHolder>(def, gl_interop_fabric, env);
+        std::make_unique<GlBufferHolder>(def, gl_interop_fabric, env);
     RETURN_IF_ERROR(DefaultTensorTie::New(MakeClDef(def), internal_object,
                                           converter_builder, env,
                                           &tie_impl->tie_));
@@ -326,11 +330,11 @@ class GlBufferHolder : public TensorTie {
   }
 
   absl::Status SetExternalObject(TensorObject obj) final {
-    auto ssbo = absl::get_if<OpenGlBuffer>(&obj);
+    auto ssbo = std::get_if<OpenGlBuffer>(&obj);
     if (!ssbo) {
       return absl::InvalidArgumentError("Missing OpenGL SSBO");
     }
-    auto old_ssbo = absl::get_if<OpenGlBuffer>(&external_obj_);
+    auto old_ssbo = std::get_if<OpenGlBuffer>(&external_obj_);
     if (old_ssbo && ssbo->id == old_ssbo->id) {
       return absl::OkStatus();
     }
@@ -414,7 +418,7 @@ class TensorTieFactory {
     TensorObject internal_object = TensorToObj(*context_.GetTensor(def.id));
     auto converter = converter_builder_.get();
     if (NoopTensorTie::IsSupported(def)) {
-      *tie = absl::make_unique<NoopTensorTie>(def, internal_object);
+      *tie = std::make_unique<NoopTensorTie>(def, internal_object);
       return absl::OkStatus();
     }
     if (DefaultTensorTie::IsSupported(def, *converter)) {
@@ -451,6 +455,7 @@ class InferenceRunnerImpl : public CLInferenceRunner {
 #endif
                       )
       : queue_(environment->queue()),
+        profiling_queue_(environment->profiling_queue()),
         context_(std::move(context))
 #ifdef CL_DELEGATE_ALLOW_GL
         ,
@@ -552,9 +557,18 @@ class InferenceRunnerImpl : public CLInferenceRunner {
   }
 
   absl::Status RunWithoutExternalBufferCopy() override {
+    if (IsTfLiteProfilerActive()) {
+      ProfilingInfo profiling_info;
+      RETURN_IF_ERROR(context_->Profile(profiling_queue_, &profiling_info));
+      AddTfLiteProfilerEvents(&profiling_info);
+    }
+
+    // TODO(b/300902515): This code introduces duplicate runs, it should not
+    // be needed if the profiling execution would produce result correctly,
+    // but currently it does not, see the bug for details. Once fixed, this
+    // code should be in an else clause of the above if statement.
     RETURN_IF_ERROR(context_->AddToQueue(queue_));
     clFlush(queue_->queue());
-
     return absl::OkStatus();
   }
 
@@ -582,6 +596,7 @@ class InferenceRunnerImpl : public CLInferenceRunner {
   }
 
   CLCommandQueue* queue_;
+  ProfilingCommandQueue* profiling_queue_;
   std::unique_ptr<InferenceContext> context_;
 #ifdef CL_DELEGATE_ALLOW_GL
   std::unique_ptr<GlInteropFabric> gl_interop_fabric_;
@@ -653,6 +668,28 @@ TensorStorageType GetStorageTypeFromOptions(const Environment& env,
   return TensorStorageType::UNKNOWN;
 }
 
+CreateGpuModelInfo GetCreateInfo(const Environment& environment,
+                                 const InferenceOptions& options) {
+  CreateGpuModelInfo create_info;
+  create_info.precision = GetPrecision(environment, options);
+  create_info.storage_type = GetStorageTypeFromOptions(environment, options);
+  if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
+    create_info.hints.Add(ModelHints::kReduceKernelsCount);
+    create_info.hints.Add(ModelHints::kFastTuning);
+  } else if (options.usage == InferenceUsage::BALANCED) {
+    create_info.hints.Add(ModelHints::kReduceKernelsCount);
+  } else if (options.usage == InferenceUsage::SUSTAINED_SPEED) {
+    create_info.hints.Add(ModelHints::kAllowSpecialKernels);
+  }
+  if (GetRelativeImportance(options, InferencePriority::MIN_MEMORY_USAGE,
+                            InferencePriority::MIN_LATENCY) ==
+      PriorityImportance::HIGHER) {
+    create_info.hints.Add(ModelHints::kNoWinogradOptimizations);
+    create_info.hints.Add(ModelHints::kReuseConvWeights);
+  }
+  return create_info;
+}
+
 class InferenceBuilderImpl : public InferenceBuilder {
  public:
   explicit InferenceBuilderImpl(Environment* environment)
@@ -661,35 +698,21 @@ class InferenceBuilderImpl : public InferenceBuilder {
   absl::Status Initialize(const InferenceOptions& options,
                           const InferenceEnvironmentOptions& env_options,
                           const GraphFloat32& graph) {
-    context_ = absl::make_unique<InferenceContext>();
-    CreateGpuModelInfo create_info;
-    create_info.precision = GetPrecision(*environment_, options);
-    create_info.storage_type =
-        GetStorageTypeFromOptions(*environment_, options);
-    if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
-      create_info.hints.Add(ModelHints::kReduceKernelsCount);
-      create_info.hints.Add(ModelHints::kFastTuning);
-    } else if (options.usage == InferenceUsage::SUSTAINED_SPEED) {
-      create_info.hints.Add(ModelHints::kAllowSpecialKernels);
-    }
-    if (GetRelativeImportance(options, InferencePriority::MIN_MEMORY_USAGE,
-                              InferencePriority::MIN_LATENCY) ==
-        PriorityImportance::HIGHER) {
-      create_info.hints.Add(ModelHints::kNoWinogradOptimizations);
-    }
+    context_ = std::make_unique<InferenceContext>();
+    CreateGpuModelInfo create_info = GetCreateInfo(*environment_, options);
     RETURN_IF_ERROR(context_->InitFromGraph(create_info, graph, environment_));
 
 #ifdef CL_DELEGATE_ALLOW_GL
     if (env_options.IsGlAware() &&
         IsGlSharingSupported(environment_->device())) {
-      gl_interop_fabric_ = absl::make_unique<GlInteropFabric>(
+      gl_interop_fabric_ = std::make_unique<GlInteropFabric>(
           env_options.egl_display, environment_);
     }
-    tie_factory_ = absl::make_unique<TensorTieFactory>(
+    tie_factory_ = std::make_unique<TensorTieFactory>(
         environment_, context_.get(), gl_interop_fabric_.get());
 #else
     tie_factory_ =
-        absl::make_unique<TensorTieFactory>(environment_, context_.get());
+        std::make_unique<TensorTieFactory>(environment_, context_.get());
 #endif
 
     inputs_ = LinkTensors(context_->GetInputIds(), AccessType::READ);
@@ -699,21 +722,21 @@ class InferenceBuilderImpl : public InferenceBuilder {
 
   absl::Status Initialize(const InferenceEnvironmentOptions& env_options,
                           const absl::Span<const uint8_t> serialized_model) {
-    context_ = absl::make_unique<InferenceContext>();
+    context_ = std::make_unique<InferenceContext>();
     RETURN_IF_ERROR(
         context_->RestoreDeserialized(serialized_model, environment_));
 
 #ifdef CL_DELEGATE_ALLOW_GL
     if (env_options.IsGlAware() &&
         IsGlSharingSupported(environment_->device())) {
-      gl_interop_fabric_ = absl::make_unique<GlInteropFabric>(
+      gl_interop_fabric_ = std::make_unique<GlInteropFabric>(
           env_options.egl_display, environment_);
     }
-    tie_factory_ = absl::make_unique<TensorTieFactory>(
+    tie_factory_ = std::make_unique<TensorTieFactory>(
         environment_, context_.get(), gl_interop_fabric_.get());
 #else
     tie_factory_ =
-        absl::make_unique<TensorTieFactory>(environment_, context_.get());
+        std::make_unique<TensorTieFactory>(environment_, context_.get());
 #endif
 
     inputs_ = LinkTensors(context_->GetInputIds(), AccessType::READ);
@@ -771,10 +794,10 @@ class InferenceBuilderImpl : public InferenceBuilder {
       // extra synchronization cost.
       gl_interop_fabric_.reset(nullptr);
     }
-    auto runner_impl = absl::make_unique<InferenceRunnerImpl>(
+    auto runner_impl = std::make_unique<InferenceRunnerImpl>(
         environment_, std::move(context_), std::move(gl_interop_fabric_));
 #else
-    auto runner_impl = absl::make_unique<InferenceRunnerImpl>(
+    auto runner_impl = std::make_unique<InferenceRunnerImpl>(
         environment_, std::move(context_));
 #endif
     RETURN_IF_ERROR(
@@ -871,7 +894,8 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
             "OpenCL context and EGL parameters are set in the same time.");
       }
 #endif
-      context = CLContext(options_.context, /* has_ownership = */ false);
+      context =
+          CLContext(options_.context, /* has_ownership = */ false, device);
     } else {
 #ifdef CL_DELEGATE_ALLOW_GL
       if (options_.IsGlAware() && properties_.is_gl_sharing_supported) {
@@ -923,15 +947,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
 
     RETURN_IF_ERROR(RunGraphTransformsForGpuModel(&model));
     InferenceContext context;
-    CreateGpuModelInfo create_info;
-    create_info.precision = GetPrecision(environment_, options);
-    create_info.storage_type = GetStorageTypeFromOptions(environment_, options);
-    if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
-      create_info.hints.Add(ModelHints::kReduceKernelsCount);
-      create_info.hints.Add(ModelHints::kFastTuning);
-    } else if (options.usage == InferenceUsage::SUSTAINED_SPEED) {
-      create_info.hints.Add(ModelHints::kAllowSpecialKernels);
-    }
+    CreateGpuModelInfo create_info = GetCreateInfo(environment_, options);
     RETURN_IF_ERROR(context.InitFromGraph(create_info, model, &environment_,
                                           serialized_model));
     return absl::OkStatus();
@@ -955,7 +971,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     }
 
     RETURN_IF_ERROR(RunGraphTransformsForGpuModel(&model));
-    auto builder_impl = absl::make_unique<InferenceBuilderImpl>(&environment_);
+    auto builder_impl = std::make_unique<InferenceBuilderImpl>(&environment_);
     RETURN_IF_ERROR(
         builder_impl->Initialize(resolved_options, options_, model));
     *builder = std::move(builder_impl);
@@ -974,7 +990,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
           .IgnoreError();
     }
 
-    auto builder_impl = absl::make_unique<InferenceBuilderImpl>(&environment_);
+    auto builder_impl = std::make_unique<InferenceBuilderImpl>(&environment_);
     RETURN_IF_ERROR(builder_impl->Initialize(options_, serialized_model));
     *builder = std::move(builder_impl);
     return absl::OkStatus();
@@ -1005,7 +1021,7 @@ absl::Status NewInferenceEnvironment(
     const InferenceEnvironmentOptions& options,
     std::unique_ptr<InferenceEnvironment>* environment,
     InferenceEnvironmentProperties* properties) {
-  auto env_impl = absl::make_unique<InferenceEnvironmentImpl>(options);
+  auto env_impl = std::make_unique<InferenceEnvironmentImpl>(options);
   absl::Status status = env_impl->Init();
   if (properties) {
     *properties = env_impl->properties();

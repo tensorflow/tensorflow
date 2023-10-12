@@ -1,0 +1,57 @@
+# DTensor Internal experimental code.
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [
+        "//tensorflow/dtensor:dtensor-internal",
+    ],
+    licenses = ["notice"],
+)
+
+cc_library(
+    name = "dtensor_mlir_passes_internal",
+    srcs = [
+        "collective_lowering.cc",
+        "dtensor_mlir_passes_internal.cc",
+        "update_tpu_metadata.cc",
+    ],
+    hdrs = ["dtensor_mlir_passes_internal.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "//tensorflow/dtensor/cc:constants",
+        "//tensorflow/dtensor/cc:dstatus",
+        "//tensorflow/dtensor/cc:dtensor_utils",
+        "//tensorflow/dtensor/cc:layout_to_xla_sharding",
+        "//tensorflow/dtensor/cc:tensor_layout",
+        "//tensorflow/dtensor/mlir:collectives",
+        "//tensorflow/dtensor/mlir:collectives_common",
+        "//tensorflow/dtensor/mlir:create_dtensor_mlir_passes",
+        "//tensorflow/dtensor/mlir:device_utils",
+        "//tensorflow/dtensor/mlir:dtensor_location",
+        "//tensorflow/dtensor/mlir:dtensor_passes_inc_gen",
+        "//tensorflow/dtensor/mlir:layout_parsing",
+        "//tensorflow/dtensor/mlir:op_utils",
+        "//tensorflow/dtensor/mlir:shape_utils",
+        "//tensorflow/dtensor/mlir:spmd_expander_common",
+        "//tensorflow/dtensor/mlir:tf_dtensor_dialect",
+        "//tensorflow/dtensor/mlir:value_utils",
+        "//tensorflow/dtensor/mlir/dtensor_dialect:ir/dtensor_attributes",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/util:env_var",
+        "@local_xla//xla:xla_data_proto_cc",
+    ],
+)

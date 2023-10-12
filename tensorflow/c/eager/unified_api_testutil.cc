@@ -45,7 +45,7 @@ Status CreateParamsForInputs(AbstractContext* ctx,
         input->DataType(), shape, &handle));
     params->emplace_back(handle);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Runs `model` maybe wrapped in a function.
@@ -113,7 +113,7 @@ Status RunModel(Model model, AbstractContext* ctx,
       }
     }
     TF_RETURN_IF_ERROR(ctx->RemoveFunction(fn_name));
-    return Status::OK();
+    return OkStatus();
   } else {
     return model(ctx, inputs, outputs);
   }
@@ -127,7 +127,7 @@ Status BuildImmediateExecutionContext(bool use_tfrt, AbstractContext** ctx) {
   *ctx = unwrap(TF_NewEagerExecutionContext(opts, status.get()));
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
   TFE_DeleteContextOptions(opts);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetValue(AbstractTensorHandle* t, TF_Tensor** result_tensor) {

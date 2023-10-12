@@ -20,14 +20,7 @@ source tensorflow/tools/ci_build/release/common.sh
 
 install_ubuntu_16_python_pip_deps python3.7
 
-# Update bazel
-#
-# The update_bazel_linux function installs bazel in $HOME/bin, but adds /home/kbuilder/bin to the path.
-# "/home/kbuilder" does not exist in the ROCm docker container, and hence the "which bazel" cmd at the
-# end of that function fails!. So explicitly adding $HOME/bin to the PATH here
-export PATH="$HOME/bin:$PATH"
-
-update_bazel_linux
+install_bazelisk
 
 # Export required variables for running pip.sh
 export OS_TYPE="UBUNTU"
@@ -49,8 +42,22 @@ export N_TEST_JOBS=$(expr ${TF_GPU_COUNT} \* ${TF_TESTS_PER_GPU})
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
+#Add filter tags specific to ROCm version
+rocm_major_version=`cat /opt/rocm/.info/version | cut -d "." -f 1`
+rocm_minor_version=`cat /opt/rocm/.info/version | cut -d "." -f 2`
+TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC=""
+if [[ $rocm_major_version -ge 5 ]]; then
+	if [[ $rocm_minor_version -lt 3 ]]; then
+		TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC=",no_rocm_pre_53"	
+	fi
+else
+    TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC=",no_rocm_pre_53"	
+fi
+
+
+
 # # Export optional variables for running pip.sh
-export TF_TEST_FILTER_TAGS='gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py37,-no_rocm'
+export TF_TEST_FILTER_TAGS='gpu,requires-gpu,-no_gpu,-no_oss,-oss_excluded,-oss_serial,-no_oss_py39,-no_rocm'${TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC}
 export TF_BUILD_FLAGS="--config=release_base "
 export TF_TEST_FLAGS="--test_tag_filters=${TF_TEST_FILTER_TAGS} --build_tag_filters=${TF_TEST_FILTER_TAGS} \
  --test_env=TF2_BEHAVIOR=1 \

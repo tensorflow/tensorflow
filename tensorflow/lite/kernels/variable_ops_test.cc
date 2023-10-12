@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/builtin_op_kernels.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 
 namespace tflite {
@@ -42,7 +42,7 @@ class VariableOpsTest : public ::testing::Test {
   }
 
   void ConstructInvalidGraph() {
-    interpreter_.reset(new Interpreter);
+    interpreter_ = std::make_unique<Interpreter>();
     // Invalid graph, variable is read before it is assigned a value.
 
     // Construct a graph like this:
@@ -80,7 +80,7 @@ class VariableOpsTest : public ::testing::Test {
   }
 
   void ConstructGraph() {
-    interpreter_.reset(new Interpreter);
+    interpreter_ = std::make_unique<Interpreter>();
     // Construct a graph like this:
     //   Input: %0
     //   Output: %2
@@ -111,7 +111,7 @@ class VariableOpsTest : public ::testing::Test {
 
   // Similar with `ConstructGraph`, but with static tensor shapes.
   void ConstructGraphWithKnownShape() {
-    interpreter_.reset(new Interpreter);
+    interpreter_ = std::make_unique<Interpreter>();
     // Construct a graph like this:
     //   Input: %0
     //   Output: %2

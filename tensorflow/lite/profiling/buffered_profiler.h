@@ -75,10 +75,22 @@ namespace profiling {
 //
 class BufferedProfiler : public tflite::Profiler {
  public:
+  BufferedProfiler(uint32_t max_num_initial_entries,
+                   bool allow_dynamic_buffer_increase)
+      : buffer_(max_num_initial_entries, false /*enabled*/,
+                allow_dynamic_buffer_increase),
+        supported_event_types_(
+            ~(static_cast<uint64_t>(
+                  EventType::GENERAL_RUNTIME_INSTRUMENTATION_EVENT) |
+              static_cast<uint64_t>(EventType::TELEMETRY_EVENT) |
+              static_cast<uint64_t>(EventType::TELEMETRY_REPORT_SETTINGS) |
+              static_cast<uint64_t>(EventType::TELEMETRY_DELEGATE_EVENT) |
+              static_cast<uint64_t>(
+                  EventType::TELEMETRY_DELEGATE_REPORT_SETTINGS))) {}
+
   explicit BufferedProfiler(uint32_t max_num_entries)
-      : buffer_(max_num_entries, false),
-        supported_event_types_(~static_cast<uint64_t>(
-            EventType::GENERAL_RUNTIME_INSTRUMENTATION_EVENT)) {}
+      : BufferedProfiler(max_num_entries,
+                         false /*allow_dynamic_buffer_increase*/) {}
 
   uint32_t BeginEvent(const char* tag, EventType event_type,
                       int64_t event_metadata1,
@@ -97,11 +109,10 @@ class BufferedProfiler : public tflite::Profiler {
     buffer_.EndEvent(event_handle, &event_metadata1, &event_metadata2);
   }
 
-  void AddEvent(const char* tag, EventType event_type, uint64_t start,
-                uint64_t end, int64_t event_metadata1,
-                int64_t event_metadata2) override {
+  void AddEvent(const char* tag, EventType event_type, uint64_t elapsed_time,
+                int64_t event_metadata1, int64_t event_metadata2) override {
     if (!ShouldAddEvent(event_type)) return;
-    buffer_.AddEvent(tag, event_type, start, end, event_metadata1,
+    buffer_.AddEvent(tag, event_type, elapsed_time, event_metadata1,
                      event_metadata2);
   }
 

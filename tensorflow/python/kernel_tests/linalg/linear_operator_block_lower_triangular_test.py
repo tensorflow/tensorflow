@@ -206,6 +206,25 @@ class SquareLinearOperatorBlockLowerTriangularTest(
           for item in grads:
             self.assertIsNotNone(item)
 
+  def test_convert_variables_to_tensors(self):
+    operator_1 = linalg.LinearOperatorFullMatrix(
+        variables_module.Variable([[1., 0.], [0., 1.]]),
+        is_self_adjoint=True,
+        is_positive_definite=True)
+    operator_2 = linalg.LinearOperatorFullMatrix(
+        variables_module.Variable([[2., 0.], [1., 0.]]))
+    operator_3 = linalg.LinearOperatorFullMatrix(
+        variables_module.Variable([[3., 1.], [1., 3.]]),
+        is_self_adjoint=True,
+        is_positive_definite=True)
+    operator = block_lower_triangular.LinearOperatorBlockLowerTriangular(
+        [[operator_1], [operator_2, operator_3]],
+        is_self_adjoint=False,
+        is_positive_definite=True)
+    with self.cached_session() as sess:
+      sess.run([x.initializer for x in operator.variables])
+      self.check_convert_variables_to_tensors(operator)
+
   def test_is_non_singular_auto_set(self):
     # Matrix with two positive eigenvalues, 11 and 8.
     # The matrix values do not effect auto-setting of the flags.
@@ -290,6 +309,28 @@ class SquareLinearOperatorBlockLowerTriangularTest(
            else "input structure is ambiguous")
     with self.assertRaisesRegex(ValueError, msg):
       operator.matmul(x)
+
+  def test_composite_gradients(self):
+    with backprop.GradientTape() as tape:
+      op1 = linalg.LinearOperatorFullMatrix(rng.rand(4, 4), is_square=True)
+      op2 = linalg.LinearOperatorFullMatrix(rng.rand(3, 4))
+      op3 = linalg.LinearOperatorFullMatrix(rng.rand(3, 3), is_square=True)
+      tape.watch([op1, op2, op3])
+      operator = block_lower_triangular.LinearOperatorBlockLowerTriangular(
+          [[op1], [op2, op3]])
+
+      x = self.make_x(op1, adjoint=False)
+      y = op1.matmul(x)
+      connected_grad, disconnected_grad, composite_grad = tape.gradient(
+          y, [op1, op3, operator]
+      )
+
+    disconnected_component_grad = composite_grad.operators[1][1].to_dense()
+    self.assertAllClose(connected_grad.to_dense(),
+                        composite_grad.operators[0][0].to_dense())
+    self.assertAllClose(disconnected_component_grad,
+                        array_ops.zeros_like(disconnected_component_grad))
+    self.assertIsNone(disconnected_grad)
 
 
 if __name__ == "__main__":

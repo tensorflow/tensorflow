@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_FRAME_PAIR_H_
-#define TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_FRAME_PAIR_H_
+#ifndef TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_FRAME_PAIR_H_
+#define TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_FRAME_PAIR_H_
 
 #include "tensorflow/tools/android/test/jni/object_tracking/keypoint.h"
 
@@ -95,9 +95,10 @@ class FramePair {
   bool optical_flow_found_keypoint_[kMaxKeypoints];
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(FramePair);
+  FramePair(const FramePair&) = delete;
+  void operator=(const FramePair&) = delete;
 };
 
 }  // namespace tf_tracking
 
-#endif  // TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_FRAME_PAIR_H_
+#endif  // TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_FRAME_PAIR_H_

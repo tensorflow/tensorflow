@@ -105,7 +105,11 @@ TEST_F(DebugIOUtilsTest, DebugNodeKeysIsHashable) {
 TEST_F(DebugIOUtilsTest, DumpFloatTensorToFileSunnyDay) {
   Initialize();
 
-  const string test_dir = testing::TmpDir();
+  const string test_dir =
+      strings::StrCat(testing::TmpDir(), "/DumpFloatTensorToFileSunnyDay");
+  if (!env_->FileExists(test_dir).ok()) {
+    ASSERT_TRUE(env_->RecursivelyCreateDir(test_dir).ok());
+  }
 
   // Append levels of nonexisting directories, to test that the function can
   // create directories.
@@ -148,8 +152,11 @@ TEST_F(DebugIOUtilsTest, DumpFloatTensorToFileSunnyDay) {
 TEST_F(DebugIOUtilsTest, DumpStringTensorToFileSunnyDay) {
   Initialize();
 
-  const string test_dir = testing::TmpDir();
-
+  const string test_dir =
+      strings::StrCat(testing::TmpDir(), "/DumpStringTensorToFileSunnyDay");
+  if (!env_->FileExists(test_dir).ok()) {
+    ASSERT_TRUE(env_->RecursivelyCreateDir(test_dir).ok());
+  }
   const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
                                    "quux/grault/tensor_b", 1, "DebugIdentity");
   const uint64 wall_time = env_->NowMicros();
@@ -200,7 +207,11 @@ TEST_F(DebugIOUtilsTest, DumpTensorToFileCannotCreateDirectory) {
   Initialize();
 
   // First, create the file at the path.
-  const string test_dir = testing::TmpDir();
+  const string test_dir = strings::StrCat(
+      testing::TmpDir(), "/DumpTensorToFileCannotCreateDirectory");
+  if (!env_->FileExists(test_dir).ok()) {
+    ASSERT_TRUE(env_->RecursivelyCreateDir(test_dir).ok());
+  }
   const string kDeviceName = "/job:localhost/replica:0/task:0/cpu:0";
   const DebugNodeKey kDebugNodeKey(kDeviceName, "baz/tensor_a", 0,
                                    "DebugIdentity");
@@ -254,7 +265,8 @@ TEST_F(DebugIOUtilsTest, PublishTensorToMultipleFileURLs) {
   std::vector<string> dump_file_paths;
   std::vector<string> urls;
   for (int i = 0; i < kNumDumpRoots; ++i) {
-    string dump_root = strings::StrCat(testing::TmpDir(), "/", i);
+    string dump_root = strings::StrCat(testing::TmpDir(),
+                                       "/PublicTensorToMultipleFileUrls_", i);
 
     dump_roots.push_back(dump_root);
     dump_file_paths.push_back(
@@ -354,7 +366,12 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
   thread::ThreadPool* tp =
       new thread::ThreadPool(Env::Default(), "test", kConcurrentPubs);
   const uint64 wall_time = env_->NowMicros();
-  const string dump_root_base = testing::TmpDir();
+  const string dump_root_base =
+      strings::StrCat(testing::TmpDir(),
+                      "/PublishTensorConcurrentlyToPartiallyOverlappingPaths");
+  if (!env_->FileExists(dump_root_base).ok()) {
+    ASSERT_TRUE(env_->RecursivelyCreateDir(dump_root_base).ok());
+  }
 
   mutex mu;
   std::vector<string> dump_roots TF_GUARDED_BY(mu);
@@ -448,9 +465,10 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
     // Tear down temporary file and directories.
     int64_t undeleted_files = 0;
     int64_t undeleted_dirs = 0;
-    ASSERT_TRUE(env_->DeleteRecursively(dump_root_base, &undeleted_files,
-                                        &undeleted_dirs)
-                    .ok());
+    auto delete_files = env_->DeleteRecursively(
+        dump_root_base, &undeleted_files, &undeleted_dirs);
+
+    ASSERT_TRUE(delete_files.ok()) << delete_files;
     ASSERT_EQ(0, undeleted_files);
     ASSERT_EQ(0, undeleted_dirs);
   }

@@ -72,7 +72,7 @@ Status FuseShuffleV1AndRepeat(const NodeDef& shuffle_node,
   // Optionally set the `metadata` attribute.
   graph_utils::MaybeSetFusedMetadata(shuffle_node, repeat_node, fused_node);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FuseShuffleV2AndRepeat(const NodeDef& shuffle_node,
@@ -112,7 +112,7 @@ Status FuseShuffleV2AndRepeat(const NodeDef& shuffle_node,
   // Optionally set the `metadata` attribute.
   graph_utils::MaybeSetFusedMetadata(shuffle_node, repeat_node, fused_node);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FuseShuffleV3AndRepeat(const NodeDef& shuffle_node,
@@ -149,7 +149,7 @@ Status FuseShuffleV3AndRepeat(const NodeDef& shuffle_node,
   // Optionally set the `metadata` attribute.
   graph_utils::MaybeSetFusedMetadata(shuffle_node, repeat_node, fused_node);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -205,7 +205,7 @@ Status ShuffleAndRepeatFusion::OptimizeAndCollectStats(
   }
 
   TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(ShuffleAndRepeatFusion,

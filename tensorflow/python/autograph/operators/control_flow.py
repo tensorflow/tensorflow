@@ -56,6 +56,7 @@ self.x = self_x    # the result is not properly captured
 """
 
 import functools
+import sys
 import traceback
 
 import numpy as np
@@ -65,24 +66,24 @@ from tensorflow.python.autograph.operators import variables
 from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.autograph.utils import misc
 from tensorflow.python.autograph.utils import tensors
-from tensorflow.python.data.experimental.ops import take_while_ops
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.framework import constant_op
+from tensorflow.python.autograph.utils import type_registry
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond as tf_cond
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
-from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops import while_loop
 from tensorflow.python.types import distribute
 from tensorflow.python.util import nest
+from tensorflow.python.util import variable_utils
 
 
 PYTHON_MAX_ITERATIONS = 100000000  # Fails in about one minute for empty loops.
@@ -95,6 +96,8 @@ INEFFICIENT_UNROLL_MIN_OPS = 1
 # An example of this pattern is found in the implementation of distributed
 # datasets. Before it can be used though, we need to standardize the interface.
 
+for_loop_registry = type_registry.TypeRegistry()
+
 
 def _is_none_or_undef(value):
   """Tests whether a value is None or undefined.
@@ -104,6 +107,7 @@ def _is_none_or_undef(value):
 
   Args:
     value: value to test
+
   Returns:
     Boolean
   """
@@ -115,7 +119,7 @@ def _is_none_or_undef(value):
 def _verify_tf_condition(cond, tag):
   """Ensures that the condition can be used in a TF control flow."""
   extra_hint = 'to check for None, use `is not None`'
-  cond = ops.convert_to_tensor_v2(cond)
+  cond = tensor_conversion.convert_to_tensor_v2(cond)
 
   if cond.dtype != dtypes.bool:
     raise ValueError(
@@ -139,7 +143,9 @@ def _verify_tf_condition(cond, tag):
   return cond
 
 
-def _verify_loop_init_vars(init_vars, symbol_names, first_iter_vars=None):
+def verify_loop_init_vars(
+    init_vars, symbol_names, first_iter_vars=None, extra_message=None
+):
   """Ensures that all values in the state are valid to use in a TF loop.
 
   The init_vars may contain placeholder values derived from first_iter_vars.
@@ -148,6 +154,8 @@ def _verify_loop_init_vars(init_vars, symbol_names, first_iter_vars=None):
     init_vars: initial loop variables (as taken before entering the loop)
     symbol_names: corresponding names of the initial loop variables
     first_iter_vars: loop variables after one iteration of the loop
+    extra_message: an extra string to append to the error message, in case of
+      "undefined variable" errors (see variables.Undefined)
   """
   if not symbol_names:
     return
@@ -171,21 +179,13 @@ def _verify_loop_init_vars(init_vars, symbol_names, first_iter_vars=None):
 
     error_msg = None
     if val is None:
-      error_msg = "'{}' may not be None before the loop".format(name)
+      error_msg = "'{}' is not allowed to be None before the loop".format(name)
     elif isinstance(val, variables.Undefined):
       error_msg = "'{}' must be defined before the loop".format(name)
+      if extra_message:
+        error_msg += '\n' + extra_message
 
-    # This only happens when we could not infer a placeholder for the
-    # variable. The canonical case when that happens is when _placeholder_value
-    # couldnot infer a placeholder for it. That means it's of an unknown type
-    # or it's still undefined after staging one iteration.
     if error_msg is not None:
-      if fi_val:
-        error_msg += (", unless it's a {}; got {}".format(
-            LEGAL_LOOP_TYPES, type(fi_val)))
-      else:
-        # TODO(mdan): This can be handled by removing the loop var.
-        error_msg += '.'
       raise ValueError(error_msg)
 
 
@@ -214,11 +214,11 @@ def _verify_single_loop_var(
     raise ValueError("'{}' is None at the end of the iteration.".format(name))
 
   if isinstance(init, (bool, int, float, str, np.ndarray)):
-    init = ops.convert_to_tensor_v2(init)
+    init = tensor_conversion.convert_to_tensor_v2(init)
   if isinstance(entry, (bool, int, float, str, np.ndarray)):
-    entry = ops.convert_to_tensor_v2(entry)
+    entry = tensor_conversion.convert_to_tensor_v2(entry)
   if isinstance(exit_, (bool, int, float, str, np.ndarray)):
-    exit_ = ops.convert_to_tensor_v2(exit_)
+    exit_ = tensor_conversion.convert_to_tensor_v2(exit_)
 
   if (not tensor_util.is_tf_type(entry) or
       not tensor_util.is_tf_type(exit_)):
@@ -259,16 +259,18 @@ def _verify_single_loop_var(
       if not _is_subshape(exit_shape, shape_invariant):
         raise ValueError(
             "'{}' has shape {} after one iteration, which does not conform with"
-            ' the shape invariant {}.'.format(
-                name, exit_shape, shape_invariant))
+            ' the shape invariant {}.'.format(name, exit_shape, shape_invariant)
+        )
 
 
-def _verify_tf_loop_vars(init_vars,
-                         iter_entry_vars,
-                         iter_exit_vars,
-                         symbol_names,
-                         opts,
-                         check_shapes=True):
+def verify_tf_loop_vars(
+    init_vars,
+    iter_entry_vars,
+    iter_exit_vars,
+    symbol_names,
+    opts,
+    check_shapes=True,
+):
   """Verifies loop variables for consistency."""
   if check_shapes and 'shape_invariants' in opts:
     shape_invariants = opts['shape_invariants']
@@ -289,16 +291,30 @@ def _verify_tf_loop_vars(init_vars,
 
     try:
       nest.assert_same_structure(init, entry, expand_composites=True)
+    except (ValueError, TypeError):
+      # `Variable`s in `init` may be implicitly converted to `Tensor`s. Convert
+      # `ResourceVariable`s to Tensors so tf.nest.assert_same_structure
+      # won't break due to type spec mismatches between `ResourceVariable`s and
+      # `Tensor`s.
+      try:
+        init_tensors = variable_utils.convert_variables_to_tensors(init)
+        nest.assert_same_structure(init_tensors, entry, expand_composites=True)
+      except (ValueError, TypeError) as e:
+        raise TypeError("'{}' does not have the same nested structure after one"
+                        ' iteration.\n\n{}'.format(name, e)) from e
+
+    try:
       nest.assert_same_structure(entry, exit_, expand_composites=True)
     except (ValueError, TypeError) as e:
       raise TypeError("'{}' does not have the same nested structure after one"
-                      ' iteration.\n\n{}'.format(name, e))
+                      ' iteration.\n\n{}'.format(name, e)) from e
     if invariant is not None:
       try:
         nest.assert_same_structure(init, invariant, expand_composites=False)
       except (ValueError, TypeError) as e:
         raise TypeError("'{}' does not have the same nested structure as its"
-                        ' corresponding shape invariant.\n\n{}'.format(name, e))
+                        ' corresponding shape invariant.\n\n{}'.format(
+                            name, e)) from e
 
     nest.map_structure(
         functools.partial(_verify_single_loop_var, name, check_shapes), init,
@@ -314,10 +330,10 @@ def verify_single_cond_var(name, body_var, orelse_var):
         "'{}' is None at the end of the else branch.".format(name))
 
   if isinstance(body_var, (bool, int, float, str, np.ndarray)):
-    body_var = ops.convert_to_tensor_v2(body_var)
+    body_var = tensor_conversion.convert_to_tensor_v2(body_var)
 
   if isinstance(orelse_var, (bool, int, float, str, np.ndarray)):
-    orelse_var = ops.convert_to_tensor_v2(orelse_var)
+    orelse_var = tensor_conversion.convert_to_tensor_v2(orelse_var)
 
   if (not tensor_util.is_tf_type(body_var) or
       not tensor_util.is_tf_type(orelse_var)):
@@ -355,10 +371,20 @@ def _verify_tf_cond_vars(body_vars, orelse_vars, symbol_names):
   for name, body_var, orelse_var in named_vars:
     try:
       nest.assert_same_structure(body_var, orelse_var, expand_composites=True)
-    except (ValueError, TypeError) as e:
-      raise TypeError(
-          "'{}' must have the same nested structure in the main and else"
-          ' branches:\n\n{}'.format(name, str(e)))
+    except (ValueError, TypeError):
+      # One branch of cond could be a `Tensor`, while the other branch could be
+      # a `ResourceVariable`. Convert `ResourceVariable`s to `Tensor`s so
+      # assert_same_structure won't fail.
+      try:
+        body_var_tensors = variable_utils.convert_variables_to_tensors(body_var)
+        orelse_var_tensors = variable_utils.convert_variables_to_tensors(
+            orelse_var)
+        nest.assert_same_structure(body_var_tensors, orelse_var_tensors,
+                                   expand_composites=True)
+      except (ValueError, TypeError) as e:
+        raise TypeError(
+            "'{}' must have the same nested structure in the main and else"
+            ' branches:\n\n{}'.format(name, str(e))) from e
     nest.map_structure(
         functools.partial(verify_single_cond_var, name), body_var, orelse_var)
 
@@ -381,7 +407,7 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, symbol_names, opts):
       arith_mean += a
   ```
 
-  The state is represented by the variables geo_mean and arith_mean. The
+  The state is represented by the variables named geo_mean and arith_mean. The
   `extra_test`, `body`, `get_state` and `set_state` functions must bind to the
   original `geo_mean` and `arith_mean` symbols, using `nonlocal`.
 
@@ -392,8 +418,7 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, symbol_names, opts):
 
   Args:
     iter_: The entity being iterated over.
-    extra_test: Callable with boolean return type.
-      An additional loop condition.
+    extra_test: Callable with boolean return type. An additional loop condition.
     body: Callable representing the actual loop body.
     get_state: Additional callable which can capture additional state (such as
       the values of composite symbols). This is only useful when staging the
@@ -404,45 +429,31 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, symbol_names, opts):
       get_state.
     opts: Optional dict of extra loop parameters.
   """
-  if tensor_util.is_tf_type(iter_):
-    if tensors.is_range_tensor(iter_):
-      _tf_range_for_stmt(iter_, extra_test, body, get_state, set_state,
-                         symbol_names, opts)
-    elif isinstance(iter_, ragged_tensor.RaggedTensor):
-      _tf_ragged_for_stmt(iter_, extra_test, body, get_state, set_state,
-                          symbol_names, opts)
-    else:
-      _known_len_tf_for_stmt(
-          iter_, extra_test, body, get_state, set_state, symbol_names, opts)
 
-  elif isinstance(iter_, dataset_ops.DatasetV2):
-    _tf_dataset_for_stmt(
-        iter_, extra_test, body, get_state, set_state, symbol_names, opts)
+  try:
+    for_fn = for_loop_registry.lookup(iter_)
+  except LookupError:
+    for_fn = _py_for_stmt
 
-  elif isinstance(iter_, iterator_ops.OwnedIterator):
-    _tf_iterator_for_stmt(
-        iter_, extra_test, body, get_state, set_state, symbol_names, opts)
+    if tensor_util.is_tf_type(iter_):
+      if tensors.is_range_tensor(iter_):
+        for_fn = _tf_range_for_stmt
+      else:
+        for_fn = _known_len_tf_for_stmt
+    elif isinstance(iter_, distribute.Iterator):
+      for_fn = _tf_iterator_for_stmt
+    elif isinstance(iter_, distribute.Iterable):
+      # TODO(b/162250181): Use _tf_iterator_for_stmt(iter(iter_)...
+      for_fn = _tf_distributed_iterable_for_stmt
 
-  elif isinstance(iter_, ragged_tensor.RaggedTensor):
-    _tf_ragged_for_stmt(
-        iter_, extra_test, body, get_state, set_state, symbol_names, opts)
-
-  elif isinstance(iter_, distribute.Iterator):
-    _tf_iterator_for_stmt(
-        iter_, extra_test, body, get_state, set_state, symbol_names, opts)
-
-  elif isinstance(iter_, distribute.Iterable):
-    # TODO(b/162250181): Use _tf_iterator_for_stmt(iter(iter_)...
-    _tf_distributed_iterable_for_stmt(
-        iter_, extra_test, body, get_state, set_state, symbol_names, opts)
-
-  else:
-    _py_for_stmt(iter_, extra_test, body, None, None)
+  for_fn(iter_, extra_test, body, get_state, set_state, symbol_names, opts)
 
 
-def _py_for_stmt(iter_, extra_test, body, get_state, set_state):
+def _py_for_stmt(
+    iter_, extra_test, body, get_state, set_state, symbol_names, opts
+):
   """Overload of for_stmt that executes a Python for loop."""
-  del get_state, set_state
+  del get_state, set_state, symbol_names, opts
 
   if __debug__:
     checker = _PythonLoopChecker()
@@ -464,7 +475,7 @@ def _py_for_stmt(iter_, extra_test, body, get_state, set_state):
         # Note: Using try/except and not tensor_util.is_tf_type to avoid
         # performance degradation.
         return bool(extra_test_result)
-      except errors_impl.OperatorNotAllowedInGraphError:
+      except errors_impl.OperatorNotAllowedInGraphError as e:
         ag_logging.log(
             1,
             'Caught error while evaluating loop stop condition',
@@ -476,7 +487,7 @@ def _py_for_stmt(iter_, extra_test, body, get_state, set_state):
             ' loop?\nSee '
             'https://github.com/tensorflow/tensorflow/blob/master/tensorflow/'
             'python/autograph/g3doc/reference/limitations.md'
-            '#consistency-of-control-flow-types for more info.')
+            '#consistency-of-control-flow-types for more info.') from e
 
     if guarded_extra_test():
       for target in iter_:
@@ -515,7 +526,7 @@ def _known_len_tf_for_stmt(
     nonlocal iterate_index
     # TODO(b/171479293): Drop the lint override.
     iterate_index, *loop_vars = aug_loop_vars  # pylint:disable=unused-variable
-    # The iteration index is not "output" by the for loop. If the iterate
+    # The iteration index is not "output" by the for loop. If the iteration index
     # is used outside the loop, it will appear in the loop vars separately.
     set_state(loop_vars)
 
@@ -527,7 +538,7 @@ def _known_len_tf_for_stmt(
   def aug_test():
     main_test = iterate_index < n
     if extra_test is not None:
-      return control_flow_ops.cond(main_test, extra_test, lambda: False)
+      return tf_cond.cond(main_test, extra_test, lambda: False)
     return main_test
 
   _add_max_iterations_hint(opts, n)
@@ -540,53 +551,6 @@ def _known_len_tf_for_stmt(
       ('<internal iterate>',) + symbol_names,
       opts,
   )
-
-
-def _tf_ragged_for_stmt(
-    iter_, extra_test, body, get_state, set_state, symbol_names, opts):
-  """Overload of for_stmt that iterates over TF ragged tensors."""
-  init_vars = get_state()
-  _verify_loop_init_vars(init_vars, symbol_names)
-
-  # TODO(mdan): Move this into len()? Requires eager support.
-  if iter_.shape and iter_.shape[0] is not None:
-    n = iter_.shape[0]
-  else:
-    n = iter_.row_lengths()[0]
-
-  iterate_index = 0
-
-  def aug_get_state():
-    return (iterate_index,) + get_state()
-
-  def aug_set_state(aug_loop_vars):
-    nonlocal iterate_index
-    # TODO(b/171479293): Drop the lint override.
-    iterate_index, *loop_vars = aug_loop_vars  # pylint:disable=unused-variable
-    # The iteration index is not "output" by the for loop. If the iterate
-    # is used outside the loop, it will appear in the loop vars separately.
-    set_state(loop_vars)
-
-  def aug_body():
-    nonlocal iterate_index
-    body(iter_[iterate_index])
-    iterate_index += 1
-
-  def aug_test():
-    main_test = iterate_index < n
-    if extra_test is not None:
-      return control_flow_ops.cond(main_test, extra_test, lambda: False)
-    return main_test
-
-  _add_max_iterations_hint(opts, n)
-
-  _tf_while_stmt(
-      aug_test,
-      aug_body,
-      aug_get_state,
-      aug_set_state,
-      ('<internal iterate>',) + symbol_names,
-      opts)
 
 
 def _tf_range_for_stmt(
@@ -635,7 +599,7 @@ def _tf_range_for_stmt(
           math_ops.logical_and(delta < 0, iterate > limit))
 
     if extra_test is not None:
-      main_test = control_flow_ops.cond(main_test, extra_test, lambda: False)
+      main_test = tf_cond.cond(main_test, extra_test, lambda: False)
     return main_test
 
   _add_max_iterations_hint(
@@ -667,7 +631,7 @@ def _tf_iterator_for_stmt(
     set_state(loop_vars)
 
   init_vars = aug_get_state()
-  _verify_loop_init_vars(init_vars, symbol_names)
+  verify_loop_init_vars(init_vars, symbol_names)
 
   def aug_body():
     """Main body passed to _tf_while_stmt."""
@@ -682,7 +646,7 @@ def _tf_iterator_for_stmt(
       # Note: this verification duplicates the one performed in tf_while_stmt,
       # but needs to be done earlier to prevent the tf.cond from blowing up
       # first.
-      _verify_tf_loop_vars(
+      verify_tf_loop_vars(
           init_vars, loop_vars, new_loop_vars, symbol_names, opts)
       return new_loop_vars
 
@@ -693,7 +657,7 @@ def _tf_iterator_for_stmt(
     # Calling set_state so that get_state() _tf_while_loop sees the conditional
     # tensors.
     aug_set_state(
-        control_flow_ops.cond(has_next, main_path, noop_path))
+        tf_cond.cond(has_next, main_path, noop_path))
 
   def aug_test():
     # This value takes a complicated path to get here:
@@ -701,7 +665,7 @@ def _tf_iterator_for_stmt(
     #   -> current_iteration_body -> set_state -> has_next
     main_test = has_next
     if extra_test is not None:
-      return control_flow_ops.cond(main_test, extra_test, lambda: False)
+      return tf_cond.cond(main_test, extra_test, lambda: False)
     return main_test
 
   _tf_while_stmt(
@@ -711,93 +675,6 @@ def _tf_iterator_for_stmt(
       aug_set_state,
       symbol_names,
       opts)
-
-
-def _general_purpose_scan(ds, init_state, body):
-  """Variant of Dataset.scan with semantics of general-purpose computation."""
-  # Datasets are typically intended for data preprocessing. However, in
-  # autograph loops they usually appear as general-purpose computations (for
-  # example, a custom training loop). These two use cases require significantly
-  # different optimization policies, the most important of which is the device
-  # placement. The flag override for use_default_device below instructs the
-  # runtime to treat the computation as general-purpose, rather than data
-  # preprocessing.
-  # TODO(mdan): s/use_default_device/specialize_for_input_pipeline.
-  # TODO(mdan): Don't use private symbols.
-  # pylint:disable=protected-access
-  return dataset_ops._ScanDataset(
-      ds, init_state, body, use_default_device=False)
-
-
-def _tf_dataset_for_stmt(
-    ds, extra_test, body, get_state, set_state, symbol_names, opts):
-  """Overload of _dataset_for_stmt with early stopping. See for_stmt."""
-  # Note: This is easier to follow with the insight that the computations in
-  # a dataset pipeline are transposed (aka fused).
-  # For example, given a pipeline input -> scan -> take_while -> reduce,
-  # and a dataset with input [1, 2, 3], the computations occur in the following
-  # order:
-  #  reduce(take_while(scan(1)))
-  #  reduce(take_while(scan(2)))
-  #  reduce(take_while(scan(3)))
-
-  init_vars = get_state()
-  _verify_loop_init_vars(init_vars, symbol_names)
-
-  # Workaround for Dataset.reduce not allowing empty state tensors - create
-  # a dummy state variable that remains unused.
-  # TODO(mdan): reduce should allow and match empty structures.
-  if not init_vars:
-    init_vars = (constant_op.constant(0),)
-    symbol_names = ('<internal dummy>',)
-
-    def dummy_set_state(unused_dummy):
-      pass
-
-    def dummy_get_state():
-      return (constant_op.constant(0),)
-
-    get_state, set_state = dummy_get_state, dummy_set_state
-
-  def scan_body(scan_state, scan_inputs):
-    """Main body of the Dataset.scan."""
-    loop_vars, iterate = scan_state, scan_inputs
-    set_state(loop_vars)
-
-    def main_path():
-      body(iterate)
-      new_loop_vars = get_state()
-      _verify_tf_loop_vars(
-          init_vars, loop_vars, new_loop_vars, symbol_names, opts,
-          check_shapes=False)
-      return new_loop_vars
-
-    if extra_test is not None:
-      extra_cond = extra_test()
-      new_loop_vars = control_flow_ops.cond(
-          extra_cond, main_path, lambda: loop_vars)
-    else:
-      # TODO(mdan): the optimizer should be able to remove an invariant cond?
-      extra_cond = (constant_op.constant(True),)  # dummy value, unused
-      new_loop_vars = main_path()
-
-    scan_outputs = new_loop_vars, extra_cond
-    new_scan_state = new_loop_vars
-    return new_scan_state, scan_outputs
-
-  def take_while_predicate(unused_loop_vars, extra_cond):
-    return extra_cond
-
-  def reduce_body(unused_reduce_state, scan_outputs):
-    output_loop_vars, unused_extra_cond = scan_outputs
-    new_reduce_state = output_loop_vars
-    return new_reduce_state
-
-  ds = _general_purpose_scan(ds, init_vars, scan_body)
-  if extra_test is not None:
-    ds = ds.apply(take_while_ops.take_while(take_while_predicate))
-  final_loop_vars = ds.reduce(init_vars, reduce_body)
-  set_state(final_loop_vars)
 
 
 def _tf_distributed_iterable_for_stmt(
@@ -810,7 +687,7 @@ def _tf_distributed_iterable_for_stmt(
         'for ... in distributed input loops.')
 
   init_vars = get_state()
-  _verify_loop_init_vars(init_vars, symbol_names)
+  verify_loop_init_vars(init_vars, symbol_names)
 
   if 'shape_invariants' in opts:
     opts['shape_invariants'] = _shape_invariants_mapping_to_positional_list(
@@ -820,7 +697,7 @@ def _tf_distributed_iterable_for_stmt(
     set_state(loop_vars)
     body(iterate)
     new_loop_vars = get_state()
-    _verify_tf_loop_vars(
+    verify_tf_loop_vars(
         init_vars, loop_vars, new_loop_vars, symbol_names, opts)
     return new_loop_vars
 
@@ -895,7 +772,7 @@ class _PythonLoopChecker(object):
     self.check_op_count_after_iteration = False
 
   def _get_ops(self):
-    return ops.get_default_graph().get_operations()
+    return set(ops.get_default_graph().get_operations())
 
   def _check_unroll_limits(self):
     if self.iterations > PYTHON_MAX_ITERATIONS:
@@ -974,7 +851,7 @@ def _py_while_stmt(test, body, get_state, set_state, opts):
       # Note: Using try/except and not tensor_util.is_tf_type to avoid
       # performance degradation.
       return bool(test_result)
-    except errors_impl.OperatorNotAllowedInGraphError:
+    except errors_impl.OperatorNotAllowedInGraphError as e:
       ag_logging.log(
           1,
           'Caught error while evaluating while loop condition',
@@ -988,7 +865,7 @@ def _py_while_stmt(test, body, get_state, set_state, opts):
           ' remove the error.\nSee '
           'https://github.com/tensorflow/tensorflow/blob/master/tensorflow/'
           'python/autograph/g3doc/reference/limitations.md'
-          '#consistency-of-control-flow-types for more info.')
+          '#consistency-of-control-flow-types for more info.') from e
   while guarded_test():
     body()
 
@@ -1014,21 +891,25 @@ def _placeholder_value(like, shape_invariant, original=None):
   """Constructs a (dummy) placeholder value for a loop-initialized variable.
 
   Args:
-    like: Any object. The value created by the first iteration of the loop.
-      If a Python scalar, the placeholder will be the zero value of that type.
-      If a Tensor, the placeholder will be a zero tensor of matching shape and
-      dtype. If a list, dict or tuple, the placeholder will be an identical
-      structure of placeholders.
+    like: Any object. The value created by the first iteration of the loop. If a
+      Python scalar, the placeholder will be the zero value of that type. If a
+      Tensor, the placeholder will be a zero tensor of matching shape and dtype.
+      If a list, dict or tuple, the placeholder will be an identical structure
+      of placeholders.
     shape_invariant: The shape invariant specified by the user (or None, if
       nothing was specified) for the respective variable.
     original: Any object. The value of the variable prior to entering the loop.
       Typically, this is one of the special "Undefined" value, because that's
       when a placeholder is needed.
+
   Returns:
     Either a zero value of structure, shape and dtype mathing 'like', or
     'original', if no such zero value could be created.
   """
-  if isinstance(like, (variables.Undefined, variables.UndefinedReturnValue)):
+  if like is None:
+    return original, None
+
+  elif isinstance(like, (variables.Undefined, variables.UndefinedReturnValue)):
     return original, None
 
   elif isinstance(like, (int, float, bool)):
@@ -1085,7 +966,11 @@ def _placeholder_value(like, shape_invariant, original=None):
     return (nest.pack_sequence_as(like,
                                   vals), nest.pack_sequence_as(like, invars))
 
-  return original, None
+  # This is to be caught by _try_handling_undefineds, to give more context.
+  raise TypeError(
+      "Found an unsupported type '{}' while creating placeholder for {}."
+      ' Supported types include Tensor, int, float, bool, list, tuple or dict.'
+      .format(type(like).__name__, like))
 
 
 def _try_handling_undefineds(body, get_state, set_state, init_vars, nulls,
@@ -1096,24 +981,31 @@ def _try_handling_undefineds(body, get_state, set_state, init_vars, nulls,
    1. the types of loop variables could be inferred (usually by staging one
        iteration)
    2. these types could be replaced by placeholders (e.g. zero values, for
-       tensors.
+       tensors).
 
   Args:
     body: a function representing the loop body. See while_stmt.
     get_state: state getter for the loop statement. See while_stmt.
     set_state: state getter for the loop statement. See while_stmt.
     init_vars: loop variables before entering the loop. See while_stmt.
-    nulls: list of boolean flags indicating whether the corresponding loop
-        var is None or undefined.
+    nulls: list of boolean flags indicating whether the corresponding loop var
+      is None or undefined.
     shape_invariants: user-specified shape invariant for each loop variable.
     symbol_names: list of loop variable names. See while_stmt.
+
   Returns:
-    A tuple (success, new_init_vars). success is a boolean flag indicating
-    whether types could be successfully inferred (step 1 above). new_init_vars
-    contains the loop vars, with None or undefined values replaced by
-    placeholders, where possible (step 2 above).
+    A tuple (success, new_init_vars, extra_shape_invariants, failure_message):
+     * success is a boolean flag indicating
+       whether types could be successfully inferred (step 1 above)
+     * new_init_vars contains the loop vars, with None or undefined values
+       replaced by default values, where possible (step 2 above)
+     * extra_shape_invariants contains shape invariants that would be needed
+       by while_stmt, for instance if the placeholder values had a shape
+       different from the corresponding loop outputs
   """
   state_modified = False
+  first_iter_vars = None
+  failure_message = None
 
   try:
     # Stage an iteration of the loop body in a temporary graph.
@@ -1126,7 +1018,7 @@ def _try_handling_undefineds(body, get_state, set_state, init_vars, nulls,
       def autocast_to_tensor(v):
         if isinstance(
             v, (int, float, bool, str, list, tuple, np.ndarray, np.generic)):
-          init_val = ops.convert_to_tensor_v2(v)
+          init_val = tensor_conversion.convert_to_tensor_v2(v)
           return array_ops.placeholder(init_val.dtype, init_val.shape)
         return v
       autocast_init_vars = nest.map_structure(autocast_to_tensor, init_vars)
@@ -1135,29 +1027,33 @@ def _try_handling_undefineds(body, get_state, set_state, init_vars, nulls,
 
       body()
       first_iter_vars = get_state()
-  except (UnboundLocalError, TypeError, ValueError, KeyError):
-    ag_logging.log(1, 'Caught error while staging loop body', exc_info=True)
-    # Fall back to the old functionality. It will likely result in an input
-    # validation failure.
-    first_iter_vars = None
-  finally:
-    if state_modified:
-      set_state(init_vars)
 
-  if first_iter_vars is not None:
-    # Note: the actual placeholder value doesn't matter, because as the staging
-    # proved, it will be replaced by an actual value before being read.
+    # Note: the actual placeholder value doesn't matter, because as the
+    # staging proved, it will be replaced by an actual value before being
+    # read.
     inits_and_invariants = tuple(
         (_placeholder_value(iv, i, v) if n else (v, None))
         for v, n, iv, i in zip(init_vars, nulls, first_iter_vars,
                                shape_invariants))
     init_vars, extra_shape_invariants = zip(*inits_and_invariants)
     success = True
-  else:
-    success = False
+
+  except (UnboundLocalError, TypeError, ValueError, KeyError):
+    ag_logging.log(1, 'Caught error while staging loop body', exc_info=True)
+    # Fall back to the old functionality. It will likely result in an input
+    # validation failure.
+    exc = sys.exc_info()
+    failure_message = (
+        'Note: AutoGraph tried to define it automatically, but ran into a'
+        ' {}: {}'.format(exc[0].__name__, exc[1]))
+
+  finally:
+    if state_modified:
+      set_state(init_vars)
 
   # This check runs regardless, in case we captured non-Tensor inputs.
-  _verify_loop_init_vars(init_vars, symbol_names, first_iter_vars)
+  verify_loop_init_vars(
+      init_vars, symbol_names, first_iter_vars, extra_message=failure_message)
 
   return success, init_vars, extra_shape_invariants
 
@@ -1201,7 +1097,7 @@ def _tf_while_stmt(test, body, get_state, set_state, symbol_names, opts):
     # This has two roles:
     #  1. Shape invariants are remapped from the old init vars to the new ones.
     #  2. Any new shape invariants created by the init vars are kept, but only
-    #     if the user didn't already specified some.
+    #     if the user didn't already specify some.
     for v, nv, ni in zip(orig_init_vars, init_vars, extra_shape_invariants):
       merged_invariant = merged_shape_invariants.get(id(v), ni)
       if merged_invariant is not None:
@@ -1227,7 +1123,7 @@ def _tf_while_stmt(test, body, get_state, set_state, symbol_names, opts):
     set_state(loop_vars)
     body()
     new_loop_vars = get_state()
-    _verify_tf_loop_vars(
+    verify_tf_loop_vars(
         init_vars, loop_vars, new_loop_vars, symbol_names, opts)
 
     if require_one_iteration:
@@ -1254,12 +1150,12 @@ def _tf_while_stmt(test, body, get_state, set_state, symbol_names, opts):
   else:
     aug_init_vars = init_vars
 
-  final_loop_vars = control_flow_ops.while_loop(
-      aug_test, aug_body, aug_init_vars, **while_loop_opts)
+  final_loop_vars = while_loop.while_loop(aug_test, aug_body, aug_init_vars,
+                                          **while_loop_opts)
 
   if require_one_iteration:
     with ops.control_dependencies([
-        control_flow_ops.Assert(final_loop_vars[0], [
+        control_flow_assert.Assert(final_loop_vars[0], [
             _runtime_zero_iterations_errmsg(symbol_names, nulls, orig_init_vars)
         ])
     ]):
@@ -1309,10 +1205,10 @@ def if_stmt(cond, body, orelse, get_state, set_state, symbol_names, nouts):
       for each composite symbol that may be modified in a branch of the
       conditional. The is usually the result of a call to get_state.
     symbol_names: Tuple containing basic loop var names.
-    nouts: Number of variables output by the statement. Vars which are
-      not outputs will not be passed through staged control flow such as
-      tf.cond. This includes variables that are defined before the conditional,
-      but are not used after it.
+    nouts: Number of variables output by the statement. Vars which are not
+      outputs will not be passed through staged control flow such as tf.cond.
+      This includes variables that are defined before the conditional, but are
+      not used after it.
   """
   # Note: tf.cond doesn't support SparseTensor.
   if tensors.is_dense_tensor(cond):
@@ -1362,7 +1258,7 @@ def _tf_if_stmt(
       _verify_tf_cond_vars(new_body_vars_[0], new_orelse_vars, symbol_names)
     return new_orelse_vars
 
-  final_cond_vars = control_flow_ops.cond(
+  final_cond_vars = tf_cond.cond(
       cond, aug_body, aug_orelse, strict=True)
   final_cond_vars = final_cond_vars + init_vars[nouts:]
 

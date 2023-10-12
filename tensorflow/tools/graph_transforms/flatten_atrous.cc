@@ -127,11 +127,11 @@ Status FlattenAtrousConv(const GraphDef& input_graph_def,
         new_nodes->push_back(upsampled_filter_node);
         new_nodes->push_back(flattened_conv_node);
 
-        return Status::OK();
+        return OkStatus();
       },
       {}, &replaced_graph_def));
   *output_graph_def = replaced_graph_def;
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("flatten_atrous_conv", FlattenAtrousConv);

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_OP_STATS_TO_OVERVIEW_PAGE_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_OP_STATS_TO_OVERVIEW_PAGE_H_
 
+#include <string>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
@@ -23,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {

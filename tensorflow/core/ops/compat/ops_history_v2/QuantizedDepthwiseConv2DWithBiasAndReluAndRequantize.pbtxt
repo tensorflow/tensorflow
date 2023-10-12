@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize"
   input_arg {
     name: "input"

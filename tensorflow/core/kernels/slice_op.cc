@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/slice_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -109,7 +109,7 @@ void SharedSliceValidation(OpKernelContext* context, const Tensor& input,
           errors::InvalidArgument("Expected size[", i, "] in [0, ",
                                   input.dim_size(i) - b, "], but ", "got ", s));
     }
-    output_shape->AddDim(s);
+    OP_REQUIRES_OK(context, output_shape->AddDimWithStatus(s));
     const bool take_all = (b == 0) && (s == input.dim_size(i));
     (*is_identity) &= take_all;
     (*slice_dim0) &= (i == 0) || take_all;
@@ -273,6 +273,8 @@ TF_CALL_ALL_TYPES(DECLARE_FOR_N);
 
 TF_CALL_POD_STRING_TYPES(REGISTER_SLICE);
 TF_CALL_QUANTIZED_TYPES(REGISTER_SLICE);
+TF_CALL_float8_e5m2(REGISTER_SLICE);
+TF_CALL_float8_e4m3fn(REGISTER_SLICE);
 #undef REGISTER_SLICE
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -297,7 +299,6 @@ namespace functor {
   DECLARE_GPU_SPEC(T, 7); \
   DECLARE_GPU_SPEC(T, 8);
 
-TF_CALL_bfloat16(DECLARE_FOR_N);
 TF_CALL_int8(DECLARE_FOR_N);
 TF_CALL_int32(DECLARE_FOR_N);
 TF_CALL_int64(DECLARE_FOR_N);
@@ -315,25 +316,24 @@ TF_CALL_GPU_ALL_TYPES(DECLARE_FOR_N);
                               .HostMemory("size"),       \
                           SliceOp<GPUDevice, type>)
 
-TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_int8(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);
 
-// A special GPU kernel for int32.
+#undef REGISTER_GPU
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+// A special DEVICE_DEFAULT kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Slice")
-                            .Device(DEVICE_GPU)
+                            .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .HostMemory("input")
                             .HostMemory("begin")
                             .HostMemory("size")
                             .HostMemory("output"),
                         SliceOp<CPUDevice, int32>);
-
-#undef REGISTER_GPU
-
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

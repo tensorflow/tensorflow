@@ -3,6 +3,7 @@
 # learning applications.
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -20,5 +21,5 @@ filegroup(
             "**/OWNERS",
         ],
     ),
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:private"],
 )

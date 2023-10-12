@@ -21,7 +21,7 @@ import functools
 import warnings
 
 from tensorflow.python.distribute import central_storage_strategy
-from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import values as ds_values
@@ -30,6 +30,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
@@ -47,9 +48,8 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.saved_model import revived_types
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
 
 
 _DEFAULT_VALID_DTYPES = frozenset([
@@ -108,7 +108,6 @@ def name_scope_only_in_function_or_graph(name):
     return NullContextmanager()
 
 
-@keras_export("keras.optimizers.Optimizer", metaclass=abc.ABCMeta)
 class OptimizerV2(trackable.Trackable):
   """Base class for Keras optimizers.
 
@@ -393,8 +392,8 @@ class OptimizerV2(trackable.Trackable):
     self._hypers_created = False
     # Store the distribution strategy object if the optimizer is created inside
     # strategy scope, so it could be used to create variables later.
-    if distribute_ctx.has_strategy():
-      self._distribution_strategy = distribute_ctx.get_strategy()
+    if distribute_lib.has_strategy():
+      self._distribution_strategy = distribute_lib.get_strategy()
     else:
       self._distribution_strategy = None
 
@@ -645,13 +644,13 @@ class OptimizerV2(trackable.Trackable):
         # gradients
         return control_flow_ops.no_op()
 
-      if distribute_ctx.in_cross_replica_context():
+      if distribute_lib.in_cross_replica_context():
         raise RuntimeError(
             "`apply_gradients() cannot be called in cross-replica context. "
             "Use `tf.distribute.Strategy.run` to enter replica "
             "context.")
 
-      strategy = distribute_ctx.get_strategy()
+      strategy = distribute_lib.get_strategy()
       if (not experimental_aggregate_gradients and strategy and
           isinstance(strategy,
                      (parameter_server_strategy.ParameterServerStrategyV1,
@@ -672,7 +671,7 @@ class OptimizerV2(trackable.Trackable):
         return self._distributed_apply(strategy, grads_and_vars, name,
                                        apply_state)
       else:
-        return distribute_ctx.get_replica_context().merge_call(
+        return distribute_lib.get_replica_context().merge_call(
             functools.partial(self._distributed_apply, apply_state=apply_state),
             args=(grads_and_vars,),
             kwargs={
@@ -684,7 +683,7 @@ class OptimizerV2(trackable.Trackable):
 
     def apply_grad_to_update_var(var, grad):
       """Apply gradient to variable."""
-      if isinstance(var, ops.Tensor):
+      if isinstance(var, tensor.Tensor):
         raise NotImplementedError("Trying to update a Tensor ", var)
 
       apply_kwargs = {}
@@ -718,7 +717,7 @@ class OptimizerV2(trackable.Trackable):
               var.op.name):
             update_op = distribution.extended.update(
                 var, apply_grad_to_update_var, args=(grad,), group=False)
-            if distribute_ctx.in_cross_replica_context():
+            if distribute_lib.in_cross_replica_context():
               # In cross-replica context, extended.update returns a list of
               # update ops from all replicas (group=False).
               update_ops.extend(update_op)
@@ -787,7 +786,7 @@ class OptimizerV2(trackable.Trackable):
       prev_value = self._hyper[name]
       if (callable(prev_value)
           or isinstance(prev_value,
-                        (ops.Tensor, int, float,
+                        (tensor.Tensor, int, float,
                          learning_rate_schedule.LearningRateSchedule))
           or isinstance(value, learning_rate_schedule.LearningRateSchedule)):
         self._hyper[name] = value
@@ -900,7 +899,7 @@ class OptimizerV2(trackable.Trackable):
         initial_value = initializer
 
       with self._distribution_strategy_scope():
-        strategy = distribute_ctx.get_strategy()
+        strategy = distribute_lib.get_strategy()
         if not strategy.extended.variable_created_in_scope(var):
           raise ValueError(
               "Trying to create optimizer slot variable under the scope for "
@@ -965,8 +964,8 @@ class OptimizerV2(trackable.Trackable):
     with self._distribution_strategy_scope():
       # Iterate hyper values deterministically.
       for name, value in sorted(self._hyper.items()):
-        if isinstance(value,
-                      (ops.Tensor, tf_variables.Variable)) or callable(value):
+        if isinstance(
+            value, (tensor.Tensor, tf_variables.Variable)) or callable(value):
           # The check for `callable` covers the usage when `value` is a
           # `LearningRateSchedule`, in which case it does not need to create a
           # variable.
@@ -1410,7 +1409,7 @@ class OptimizerV2(trackable.Trackable):
   @contextlib.contextmanager
   def _distribution_strategy_scope(self):
     """Returns the `tf.distribute.Strategy` this optimizer was created under."""
-    if self._distribution_strategy and not distribute_ctx.has_strategy():
+    if self._distribution_strategy and not distribute_lib.has_strategy():
       with self._distribution_strategy.scope():
         yield self._distribution_strategy.scope()
     else:

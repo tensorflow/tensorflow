@@ -13,12 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Ignore_errors dataset transformations."""
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.ops import gen_experimental_dataset_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("data.experimental.ignore_errors")
+@deprecation.deprecated(None, "Use `tf.data.Dataset.ignore_errors` instead.")
 def ignore_errors(log_warning=False):
   """Creates a `Dataset` from another `Dataset` and silently ignores any errors.
 
@@ -45,22 +45,7 @@ def ignore_errors(log_warning=False):
     A `Dataset` transformation function, which can be passed to
     `tf.data.Dataset.apply`.
   """
-
   def _apply_fn(dataset):
-    return _IgnoreErrorsDataset(dataset, log_warning)
+    return dataset.ignore_errors(log_warning)
 
   return _apply_fn
-
-
-class _IgnoreErrorsDataset(dataset_ops.UnaryUnchangedStructureDataset):
-  """A `Dataset` that silently ignores errors when computing its input."""
-
-  def __init__(self, input_dataset, log_warning):
-    """See `Dataset.ignore_errors()` for details."""
-    self._input_dataset = input_dataset
-    variant_tensor = (
-        gen_experimental_dataset_ops.ignore_errors_dataset(
-            self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-            log_warning=log_warning,
-            **self._flat_structure))
-    super(_IgnoreErrorsDataset, self).__init__(input_dataset, variant_tensor)

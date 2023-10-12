@@ -29,7 +29,7 @@ class SkipDatasetParams : public DatasetParams {
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         count_(count) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
                                    input_dataset_params.iterator_prefix());
@@ -43,7 +43,7 @@ class SkipDatasetParams : public DatasetParams {
     input_names->clear();
     input_names->emplace_back(SkipDatasetOp::kInputDataset);
     input_names->emplace_back(SkipDatasetOp::kCount);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -51,7 +51,7 @@ class SkipDatasetParams : public DatasetParams {
     attr_vector->emplace_back("output_types", output_dtypes_);
     attr_vector->emplace_back("output_shapes", output_shapes_);
     attr_vector->emplace_back("metadata", "");
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override { return SkipDatasetOp::kDatasetType; }

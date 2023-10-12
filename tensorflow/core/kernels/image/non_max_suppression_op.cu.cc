@@ -20,7 +20,8 @@ limitations under the License.
 #include <limits>
 
 #include "absl/strings/str_cat.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
-#include "tensorflow/stream_executor/stream_executor.h"
 
 namespace tensorflow {
 namespace {
@@ -276,10 +276,10 @@ StatusOr<int> CountIf(OpKernelContext* context, const float* dev_array,
   size_t workspace_size = 0;
   auto cuda_stream = tensorflow::GetGpuStream(context);
   auto device = context->eigen_gpu_device();
-  gpuprim::DeviceSelect::If(nullptr, workspace_size,
-                            static_cast<float*>(nullptr),
-                            static_cast<float*>(nullptr),
-                            static_cast<int*>(nullptr), num_elements, op);
+  TF_RETURN_IF_CUDA_ERROR(gpuprim::DeviceSelect::If(
+      nullptr, workspace_size, static_cast<float*>(nullptr),
+      static_cast<float*>(nullptr), static_cast<int*>(nullptr), num_elements,
+      op));
 
   Tensor scratch_output;
   TF_RETURN_IF_ERROR(context->allocate_temp(
@@ -328,7 +328,7 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
     Tensor* output_indices = nullptr;
     TF_RETURN_IF_ERROR(
         context->allocate_output(0, TensorShape({0}), &output_indices));
-    return Status::OK();
+    return OkStatus();
   }
 
   cudaError_t cuda_ret = gpuprim::DeviceRadixSort::SortPairsDescending(
@@ -406,7 +406,7 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
       *num_saved_outputs = 0;
       TF_RETURN_IF_ERROR(context->allocate_output(0, TensorShape({len_output}),
                                                   &output_indices));
-      return Status::OK();
+      return OkStatus();
     } else {
       VLOG(2) << "Number of boxes above threshold=" << score_threshold << " is "
               << limited_num_boxes;
@@ -441,7 +441,7 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
   }
   if (num_outputs == 0) {
     *num_saved_outputs = num_outputs;
-    return Status::OK();
+    return OkStatus();
   }
   config = GetGpuLaunchConfig(num_outputs, device);
   TF_CHECK_OK(GpuLaunchKernel(
@@ -451,7 +451,28 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
       (*output_indices).flat<int>().data()));
   TF_RETURN_IF_CUDA_ERROR(cudaGetLastError());
   *num_saved_outputs = num_outputs;
-  return Status::OK();
+  return OkStatus();
+}
+
+// Extracts a scalar of type T from a tensor, with correct type checking.
+// This is necessary because several of the kernels here assume
+// T == T_threshold.
+template <typename T>
+T GetScalar(const Tensor& tensor) {
+  switch (tensor.dtype()) {
+    case DT_FLOAT:
+      return static_cast<T>(tensor.scalar<float>()());
+    case DT_DOUBLE:
+      return static_cast<T>(tensor.scalar<double>()());
+    case DT_BFLOAT16:
+      return static_cast<T>(tensor.scalar<Eigen::bfloat16>()());
+    case DT_HALF:
+      return static_cast<T>(tensor.scalar<Eigen::half>()());
+    default:
+      DCHECK(false) << "Unsupported type " << tensor.dtype();
+      break;
+  }
+  return static_cast<T>(0);
 }
 
 Status CheckValidInputs(const Tensor& boxes, const Tensor& scores,
@@ -469,7 +490,7 @@ Status CheckValidInputs(const Tensor& boxes, const Tensor& scores,
                                    " (Shape must be rank 0 but is rank ",
                                    iou_threshold.dims(), ")");
   }
-  const float iou_threshold_val = iou_threshold.scalar<float>()();
+  const float iou_threshold_val = GetScalar<float>(iou_threshold);
   if (iou_threshold_val < 0 || iou_threshold_val > 1) {
     return errors::InvalidArgument("iou_threshold must be in [0, 1]");
   }
@@ -498,7 +519,7 @@ Status CheckValidInputs(const Tensor& boxes, const Tensor& scores,
         "(Dimensions must be equal, but are ",  // otherwise tests fail!
         num_boxes, " and ", scores.dim_size(0), ")");
   }
-  return Status::OK();
+  return OkStatus();
 }
 class NonMaxSuppressionV2GPUOp : public OpKernel {
  public:
@@ -527,7 +548,7 @@ class NonMaxSuppressionV2GPUOp : public OpKernel {
                                                        &output_indices));
       return;
     }
-    const float iou_threshold_val = iou_threshold.scalar<float>()();
+    const float iou_threshold_val = GetScalar<float>(iou_threshold);
     const int64_t output_size = max_output_size.scalar<int>()();
 
     OP_REQUIRES_OK(
@@ -565,7 +586,7 @@ class NonMaxSuppressionV3GPUOp : public OpKernel {
         context, TensorShapeUtils::IsScalar(score_threshold.shape()),
         errors::InvalidArgument("score_threshold must be 0-D, got shape ",
                                 score_threshold.shape().DebugString()));
-    const float score_threshold_val = score_threshold.scalar<float>()();
+    const float score_threshold_val = GetScalar<float>(score_threshold);
     int num_boxes = boxes.dim_size(0);
     if (num_boxes == 0) {
       Tensor* output_indices = nullptr;
@@ -573,7 +594,7 @@ class NonMaxSuppressionV3GPUOp : public OpKernel {
                                                        &output_indices));
       return;
     }
-    const float iou_threshold_val = iou_threshold.scalar<float>()();
+    const float iou_threshold_val = GetScalar<float>(iou_threshold);
     const int64_t output_size = max_output_size.scalar<int>()();
     OP_REQUIRES_OK(context, DoNMS(context, boxes, scores, output_size,
                                   iou_threshold_val, score_threshold_val,
@@ -610,7 +631,7 @@ class NonMaxSuppressionV4GPUOp : public OpKernel {
         context, TensorShapeUtils::IsScalar(score_threshold.shape()),
         errors::InvalidArgument("score_threshold must be 0-D, got shape ",
                                 score_threshold.shape().DebugString()));
-    const float score_threshold_val = score_threshold.scalar<float>()();
+    const float score_threshold_val = GetScalar<float>(score_threshold);
 
     Tensor* num_outputs_t = nullptr;
     OP_REQUIRES_OK(context,
@@ -626,7 +647,7 @@ class NonMaxSuppressionV4GPUOp : public OpKernel {
       return;
     }
 
-    const float iou_threshold_val = iou_threshold.scalar<float>()();
+    const float iou_threshold_val = GetScalar<float>(iou_threshold);
     const int64_t output_size = max_output_size.scalar<int>()();
     int num_outputs = 0;
     OP_REQUIRES_OK(context, DoNMS(context, boxes, scores, output_size,
@@ -641,7 +662,7 @@ class NonMaxSuppressionV4GPUOp : public OpKernel {
   bool pad_to_max_output_size_;
 };
 
-}  // anonymous namespace
+}  // namespace
 
 Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
               const float iou_threshold, int* d_selected_indices, int* h_nkeep,
@@ -724,13 +745,14 @@ Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
   TF_RETURN_IF_CUDA_ERROR(cudaGetLastError());
   // do Cub::deviceSelect::flagged
   size_t flagged_buffer_size = 0;
-  gpuprim::DeviceSelect::Flagged(static_cast<void*>(nullptr),  // temp_storage
-                                 flagged_buffer_size,
-                                 static_cast<int*>(nullptr),   // input
-                                 static_cast<char*>(nullptr),  // selection flag
-                                 static_cast<int*>(nullptr),   // selected items
-                                 static_cast<int*>(nullptr),   // num_selected
-                                 num_boxes, device.stream());
+  TF_RETURN_IF_CUDA_ERROR(gpuprim::DeviceSelect::Flagged(
+      static_cast<void*>(nullptr),  // temp_storage
+      flagged_buffer_size,
+      static_cast<int*>(nullptr),   // input
+      static_cast<char*>(nullptr),  // selection flag
+      static_cast<int*>(nullptr),   // selected items
+      static_cast<int*>(nullptr),   // num_selected
+      num_boxes, device.stream()));
   Tensor cub_scratch;
   TF_RETURN_IF_ERROR(context->allocate_temp(
       DataType::DT_INT8, TensorShape({(int64)flagged_buffer_size}),
@@ -739,22 +761,22 @@ Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
   TF_RETURN_IF_ERROR(context->allocate_temp(DataType::DT_INT32,
                                             TensorShape({1}), &d_num_selected));
 
-  gpuprim::DeviceSelect::Flagged(
+  TF_RETURN_IF_CUDA_ERROR(gpuprim::DeviceSelect::Flagged(
       (void*)cub_scratch.flat<int8>().data(),  // temp_storage
       flagged_buffer_size,
       d_indices.flat<int>().data(),  // input
       selected,                      // selection flag
       d_selected_indices,            // selected items
-      h_selected_count, num_boxes, device.stream());
+      h_selected_count, num_boxes, device.stream()));
   gpuEvent_t copy_done;
   TF_RETURN_IF_CUDA_ERROR(
       gpuEventCreateWithFlags(&copy_done, gpuEventDisableTiming));
   TF_RETURN_IF_CUDA_ERROR(gpuEventRecord(copy_done, device.stream()));
   TF_RETURN_IF_CUDA_ERROR(gpuEventSynchronize(copy_done));
-  gpuEventDestroy(copy_done);
+  TF_RETURN_IF_CUDA_ERROR(gpuEventDestroy(copy_done));
 
   *h_nkeep = *h_selected_count;
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV2")

@@ -15,6 +15,7 @@
 
 import numpy as np
 
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
@@ -112,6 +113,13 @@ class SquareLinearOperatorFullMatrixTest(
     matrix = variables_module.Variable([[2.]])
     operator = linalg.LinearOperatorFullMatrix(matrix)
     self.check_tape_safe(operator)
+
+  def test_convert_variables_to_tensors(self):
+    matrix = variables_module.Variable([[3.]])
+    operator = linalg.LinearOperatorFullMatrix(matrix)
+    with self.cached_session() as sess:
+      sess.run([matrix.initializer])
+      self.check_convert_variables_to_tensors(operator)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -255,6 +263,7 @@ class NonSquareLinearOperatorFullMatrixTest(
 
 
 if __name__ == "__main__":
+  config.enable_tensor_float_32_execution(False)
   linear_operator_test_util.add_tests(SquareLinearOperatorFullMatrixTest)
   linear_operator_test_util.add_tests(NonSquareLinearOperatorFullMatrixTest)
   linear_operator_test_util.add_tests(

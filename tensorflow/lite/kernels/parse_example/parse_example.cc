@@ -17,20 +17,22 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <memory>
+#include <string>
 #include <unordered_map>
+#include <utility>
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
 #include "tensorflow/core/util/presized_cuckoo_map.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/parse_example/example_proto_fast_parsing.h"
@@ -162,7 +164,7 @@ Status FastParseSerializedExample(
     };
 
     tf::DataType example_dtype;
-    if (feature.ParseDataType(&example_dtype) != Status::OK()) {
+    if (feature.ParseDataType(&example_dtype) != ::tensorflow::OkStatus()) {
       return parse_error();
     }
     if (is_dense) {
@@ -385,7 +387,7 @@ Status FastParseSerializedExample(
     out.example_end_indices.push_back(prev_example_end_index);
   }
 
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 void CountSparseFeatures(const SparseBuffer& sparse_buffer,
@@ -553,10 +555,11 @@ Status FastParseExampleLite(
     tf::TensorShape values_shape;
     DCHECK_EQ(max_num_features % config.dense[d].elements_per_stride, 0);
     const size_t batch_size = GetStringCount(serialized);
-    values_shape.AddDim(batch_size);
-    values_shape.AddDim(max_num_elements);
+    TF_RETURN_IF_ERROR(values_shape.AddDimWithStatus(batch_size));
+    TF_RETURN_IF_ERROR(values_shape.AddDimWithStatus(max_num_elements));
     for (int i = 1; i < config.dense[d].shape.dims(); ++i) {
-      values_shape.AddDim(config.dense[d].shape.dim_size(i));
+      TF_RETURN_IF_ERROR(
+          values_shape.AddDimWithStatus(config.dense[d].shape.dim_size(i)));
     }
     TfLiteTensor* values = result->dense_values[d];
     const size_t num_elements = GetTensorShape(values).FlatSize();
@@ -635,7 +638,7 @@ Status FastParseExampleLite(
                    elements_per_stride);
     }
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace
@@ -968,7 +971,7 @@ TfLiteStatus EvalParseExample(TfLiteContext* context, TfLiteNode* node) {
       data->config, serialized, {}, data->quick_filter, data->quick_filter_size,
       data->config_index, data->config_index_size, &data->hasher, &data->got,
       stats, context);
-  if (status != tf::Status::OK()) {
+  if (status != ::tensorflow::OkStatus()) {
     TF_LITE_KERNEL_LOG(context, status.ToString().c_str());
     return kTfLiteError;
   }

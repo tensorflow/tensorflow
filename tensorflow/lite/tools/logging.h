@@ -20,10 +20,15 @@ limitations under the License.
 
 #include <cstdlib>
 #include <iostream>
+#include <ostream>
 #include <sstream>
 
 #ifdef _WIN32
 #undef ERROR
+#endif
+
+#ifdef __ANDROID__
+#include <android/log.h>
 #endif
 
 namespace tflite {
@@ -46,16 +51,39 @@ class LoggingWrapper {
   std::stringstream& Stream() { return stream_; }
   ~LoggingWrapper() {
     if (should_log_) {
+      // Also print log to logcat for android, as stderr will be hidden
+      // in the app use case.
+#ifdef __ANDROID__
       switch (severity_) {
         case LogSeverity::INFO:
+          __android_log_print(ANDROID_LOG_INFO, "tflite", "%s",
+                              stream_.str().c_str());
+          break;
         case LogSeverity::WARN:
-          std::cout << stream_.str() << std::endl;
+          __android_log_print(ANDROID_LOG_WARN, "tflite", "%s",
+                              stream_.str().c_str());
           break;
         case LogSeverity::ERROR:
-          std::cerr << stream_.str() << std::endl;
+          __android_log_print(ANDROID_LOG_ERROR, "tflite", "%s",
+                              stream_.str().c_str());
           break;
         case LogSeverity::FATAL:
-          std::cerr << stream_.str() << std::endl;
+          __android_log_print(ANDROID_LOG_ERROR, "tflite", "%s",
+                              stream_.str().c_str());
+      }
+#endif
+      switch (severity_) {
+        case LogSeverity::INFO:
+          std::cout << "INFO: " << stream_.str() << std::endl;
+          break;
+        case LogSeverity::WARN:
+          std::cout << "WARN: " << stream_.str() << std::endl;
+          break;
+        case LogSeverity::ERROR:
+          std::cerr << "ERROR: " << stream_.str() << std::endl;
+          break;
+        case LogSeverity::FATAL:
+          std::cerr << "FATAL: " << stream_.str() << std::endl;
           std::flush(std::cerr);
           std::abort();
           break;

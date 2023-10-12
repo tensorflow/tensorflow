@@ -19,8 +19,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/Eigen/LU"
+#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/LU"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/kernels/linalg/eye_functor.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/util/gpu_solvers.h"
@@ -80,7 +80,51 @@ class MatrixInverseOp : public LinearAlgebraOp<Scalar> {
  private:
   bool adjoint_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixInverseOp);
+  MatrixInverseOp(const MatrixInverseOp&) = delete;
+  void operator=(const MatrixInverseOp&) = delete;
+};
+
+// For Eigen::half, compute inverse via float32 - otherwise precision is
+// too poor for meaningful results.
+template <>
+class MatrixInverseOp<Eigen::half> : public LinearAlgebraOp<Eigen::half> {
+ public:
+  INHERIT_LINALG_TYPEDEFS(Eigen::half);
+
+  explicit MatrixInverseOp(OpKernelConstruction* context) : Base(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("adjoint", &adjoint_));
+  }
+
+  void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
+                     MatrixMaps* outputs) final {
+    const ConstMatrixMap& input = inputs[0];
+    if (input.rows() == 0) {
+      // By definition, an empty matrix's inverse is an empty matrix.
+      return;
+    }
+
+    using FloatMatrix =
+        Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>;
+
+    Eigen::PartialPivLU<FloatMatrix> lu_decomposition;
+    if (adjoint_) {
+      lu_decomposition.compute(input.adjoint().template cast<float>());
+    } else {
+      lu_decomposition.compute(input.template cast<float>());
+    }
+    const float min_abs_pivot =
+        lu_decomposition.matrixLU().diagonal().cwiseAbs().minCoeff();
+    OP_REQUIRES(context, min_abs_pivot > 0.0,
+                errors::InvalidArgument("Input is not invertible."));
+    outputs->at(0).noalias() =
+        lu_decomposition.inverse().template cast<Eigen::half>();
+  }
+
+ private:
+  bool adjoint_;
+
+  MatrixInverseOp(const MatrixInverseOp&) = delete;
+  void operator=(const MatrixInverseOp&) = delete;
 };
 
 #if GOOGLE_CUDA
@@ -280,10 +324,14 @@ REGISTER_LINALG_OP_GPU("MatrixInverse", (MatrixInverseOpGpu<complex128>),
 
 #endif  // GOOGLE_CUDA
 
+REGISTER_LINALG_OP("MatrixInverse", (MatrixInverseOp<Eigen::half>),
+                   Eigen::half);
 REGISTER_LINALG_OP("MatrixInverse", (MatrixInverseOp<float>), float);
 REGISTER_LINALG_OP("MatrixInverse", (MatrixInverseOp<double>), double);
 REGISTER_LINALG_OP("MatrixInverse", (MatrixInverseOp<complex64>), complex64);
 REGISTER_LINALG_OP("MatrixInverse", (MatrixInverseOp<complex128>), complex128);
+REGISTER_LINALG_OP("BatchMatrixInverse", (MatrixInverseOp<Eigen::half>),
+                   Eigen::half);
 REGISTER_LINALG_OP("BatchMatrixInverse", (MatrixInverseOp<float>), float);
 REGISTER_LINALG_OP("BatchMatrixInverse", (MatrixInverseOp<double>), double);
 

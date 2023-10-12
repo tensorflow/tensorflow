@@ -15,17 +15,19 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/xnnpack/quantized_depthwise_conv_2d_tester.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <random>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
@@ -43,16 +45,14 @@ void QuantizedDepthwiseConv2DTester::Test(
                                              std::numeric_limits<T>::max()),
       std::ref(rng));
   T* default_input_data = default_interpreter->typed_input_tensor<T>(0);
-  std::generate(default_input_data,
-                default_input_data + BatchSize() * InputHeight() *
-                                         InputWidth() * InputChannels(),
-                input_rng);
+  std::generate_n(default_input_data,
+                  BatchSize() * InputHeight() * InputWidth() * InputChannels(),
+                  input_rng);
 
   T* delegate_input_data = delegate_interpreter->typed_input_tensor<T>(0);
-  std::copy(default_input_data,
-            default_input_data +
-                BatchSize() * InputHeight() * InputWidth() * InputChannels(),
-            delegate_input_data);
+  std::copy_n(default_input_data,
+              BatchSize() * InputHeight() * InputWidth() * InputChannels(),
+              delegate_input_data);
 
   ASSERT_EQ(default_interpreter->Invoke(), kTfLiteOk);
   ASSERT_EQ(delegate_interpreter->Invoke(), kTfLiteOk);
@@ -115,6 +115,10 @@ void QuantizedDepthwiseConv2DTester::Test(TfLiteDelegate* delegate) const {
   ASSERT_EQ(default_interpreter->AllocateTensors(), kTfLiteOk);
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
+
+  if (weights_cache_ != nullptr) {
+    TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache_);
+  }
 
   if (Unsigned()) {
     Test<uint8_t>(delegate_interpreter.get(), default_interpreter.get());

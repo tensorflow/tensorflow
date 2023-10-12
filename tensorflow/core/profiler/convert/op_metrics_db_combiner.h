@@ -27,7 +27,10 @@ namespace profiler {
 void CopyOpMetricsMetadata(const OpMetrics& src, OpMetrics* dst);
 
 // Combines OpMetrics data (e.g., occurrences, time) from src into dst.
-void CombineOpMetrics(const OpMetrics& src, OpMetrics* dst);
+// If <update_num_cores> is set to true, update the dst->num_cores to
+// calculate the number of cores a certain op occurs.
+void CombineOpMetrics(const OpMetrics& src, OpMetrics* dst,
+                      bool update_num_cores);
 
 // Combines the memory access breakdown.
 void CombineMemoryAccessedBreakdown(
@@ -39,7 +42,10 @@ class OpMetricsDbCombiner : public OpMetricsDbBuilder {
  public:
   explicit OpMetricsDbCombiner(OpMetricsDb* dst) : OpMetricsDbBuilder(dst) {}
 
-  void Combine(const OpMetricsDb& src);
+  // Combine the OpMetrics in OpMetricsDb <src> to current OpMetricsDbCombiner.
+  // If <update_num_cores> is set to true, update the OpMetrics.num_cores to
+  // calculate the number of cores a certain op occurs.
+  void Combine(const OpMetricsDb& src, bool update_num_cores = true);
 };
 
 }  // namespace profiler

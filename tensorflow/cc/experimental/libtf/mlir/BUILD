@@ -6,6 +6,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/cc/experimental/libtf:__subpackages__",
     ],
@@ -22,8 +23,8 @@ cc_library(
         "//tensorflow/cc/experimental/libtf",
         "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/mlir/tensorflow:tf_saved_model_passes",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",
     ],
 )

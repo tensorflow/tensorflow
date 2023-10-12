@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/ir/utility.h"
 
+#include <optional>
+
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/platform/test.h"
@@ -37,11 +39,12 @@ TEST(DialectUtilityTest, TestLookupControlDependency) {
     }
   )mlir";
 
-  OwningModuleRef module = mlir::parseSourceString(code, &context);
+  OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
-  auto ret_op = cast<ReturnOp>(func.body().front().getTerminator());
+  auto ret_op = cast<ReturnOp>(func.getBody().front().getTerminator());
 
   Value copy = ret_op.getOperand(0);
   Value ctl = LookupControlDependency(copy);
@@ -71,14 +74,15 @@ TEST(DialectUtilityTest, TestLookupDataValue) {
     }
   )mlir";
 
-  OwningModuleRef module = mlir::parseSourceString(code, &context);
+  OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
-  auto ret_op = cast<ReturnOp>(func.body().front().getTerminator());
+  auto ret_op = cast<ReturnOp>(func.getBody().front().getTerminator());
 
   Value ctl = ret_op.getOperand(1);
-  Optional<Value> produce = LookupDataValue(ctl);
+  std::optional<Value> produce = LookupDataValue(ctl);
   ASSERT_TRUE(produce);
   OpResult produce_result = produce->dyn_cast<OpResult>();
   ASSERT_TRUE(produce_result);
@@ -87,7 +91,7 @@ TEST(DialectUtilityTest, TestLookupDataValue) {
   ASSERT_EQ(produce_result.getOwner()->getResult(1), ctl);
 
   Value arg_ctl = produce_result.getOwner()->getOperand(0);
-  Optional<Value> arg = LookupDataValue(arg_ctl);
+  std::optional<Value> arg = LookupDataValue(arg_ctl);
   ASSERT_TRUE(arg);
   BlockArgument arg_arg = arg->dyn_cast<BlockArgument>();
   ASSERT_TRUE(arg_arg);
@@ -105,14 +109,15 @@ TEST(DialectUtilityTest, TestLookupDataValueNoData) {
     }
   )mlir";
 
-  OwningModuleRef module = mlir::parseSourceString(code, &context);
+  OwningOpRef<mlir::ModuleOp> module =
+      mlir::parseSourceString<mlir::ModuleOp>(code, &context);
   ASSERT_TRUE(module);
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
-  auto ret_op = cast<ReturnOp>(func.body().front().getTerminator());
+  auto ret_op = cast<ReturnOp>(func.getBody().front().getTerminator());
 
   Value ctl = ret_op.getOperand(1);
-  Optional<Value> no_data = LookupDataValue(ctl);
+  std::optional<Value> no_data = LookupDataValue(ctl);
   ASSERT_FALSE(no_data);
 }
 

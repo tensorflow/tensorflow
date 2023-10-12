@@ -13,19 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstddef>
+#include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/call_register.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_test_util.h"
-#include "tensorflow/lite/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
 #include "tensorflow/lite/testing/util.h"
 
@@ -35,7 +36,7 @@ namespace {
 
 class CallTest : public subgraph_test_util::ControlFlowOpTest {
  public:
-  CallTest() { interpreter_.reset(new Interpreter(&error_reporter_)); }
+  CallTest() { interpreter_ = std::make_unique<Interpreter>(&error_reporter_); }
   ~CallTest() override = default;
   void SetupTensor(Subgraph* subgraph, int tensor_index, TfLiteType type) {
     ASSERT_EQ(subgraph->SetTensorParametersReadWrite(tensor_index, type, "", 0,
@@ -185,7 +186,7 @@ TEST_F(CallTest, SubgraphMultipleInputsSingleOutput) {
   // Will loop over and will be fed to the subgraph as {1,2}, {1,3}, {1,1,3},
   // {1,3,1,2}.
   for (size_t i = 0; i < test_shapes.size(); ++i) {
-    interpreter_.reset(new Interpreter);
+    interpreter_ = std::make_unique<Interpreter>();
     AddSubgraphs(1);
     int loop_count = test_shapes[i][0];
     builder_->BuildMulSubgraph(interpreter_->subgraph(1));
@@ -257,7 +258,7 @@ TEST_F(CallTest, SubgraphWithMultipleInputsAndOutputs) {
   std::vector<std::vector<int>> test_shapes = {
       {3, 2, 1}, {1, 2, 3}, {2, 1, 3}, {2, 3, 1, 1}, {2, 3}};
   for (size_t i = 0; i < test_shapes.size(); ++i) {
-    interpreter_.reset(new Interpreter);
+    interpreter_ = std::make_unique<Interpreter>();
     AddSubgraphs(1);
     int loop_count = test_shapes[i][0];
     CallTest::BuildGraphWithMultipleOutputs(interpreter_->subgraph(1));

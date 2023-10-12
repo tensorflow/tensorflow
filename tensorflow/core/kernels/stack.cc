@@ -63,7 +63,7 @@ class Stack : public ResourceBase {
                                      "its max_size (", max_size_, ")");
     }
     stack_.push_back(value);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Pop(TensorAndAllocation* value) {
@@ -75,7 +75,7 @@ class Stack : public ResourceBase {
     }
     *value = stack_.back();
     stack_.pop_back();
-    return Status::OK();
+    return OkStatus();
   }
 
   // We don't swap the first tensor on the stack and any subsequent tensors
@@ -121,7 +121,7 @@ class Stack : public ResourceBase {
       return errors::InvalidArgument("Stack[", stack_name_,
                                      "] has already been closed.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -147,7 +147,7 @@ Status GetStack(OpKernelContext* ctx, Stack** stack) {
       return errors::Internal("No step container.");
     }
     TF_RETURN_IF_ERROR(step_container->Lookup(rm, key, stack));
-    return Status::OK();
+    return OkStatus();
   }
 }
 

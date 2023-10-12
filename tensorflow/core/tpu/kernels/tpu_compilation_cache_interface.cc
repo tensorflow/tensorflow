@@ -14,9 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -106,7 +112,7 @@ Status CompilationCacheEntryRef::ToSubEntryRef(
   // Otherwise, since the refcount is always on the main entry, we don't
   // need ref/unref.
   entry_ = target;
-  return Status::OK();
+  return OkStatus();
 }
 
 TpuCompilationCacheInterface::TpuCompilationCacheInterface(
@@ -124,7 +130,7 @@ TpuCompilationCacheInterface::~TpuCompilationCacheInterface() {
   for (const auto& entry : entries_by_uid_) {
     while (entry.second->external_references > 0) {
       Status s = Release(entry.first);
-      CHECK(s.ok());
+      TF_CHECK_OK(s);
     }
   }
   while (!entries_by_last_use_.empty()) {
@@ -151,7 +157,7 @@ Status TpuCompilationCacheInterface::MarkEntryForEviction(
     auto iter = entries_by_uid_.find(subgraph_uid);
     if (iter == entries_by_uid_.end()) {
       // If already evicted, return ok.
-      return Status::OK();
+      return OkStatus();
     }
 
     // Mark entry for eviction.
@@ -185,7 +191,7 @@ Status TpuCompilationCacheInterface::MarkEntryForEviction(
 
   // Unload from device cache if entry is evicted from host cache.
   UnloadAndDestroy(deleted_entry);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TpuCompilationCacheInterface::Release(int64_t subgraph_uid) {
@@ -214,7 +220,7 @@ Status TpuCompilationCacheInterface::Release(int64_t subgraph_uid) {
             << marked_for_eviction_size_ << " bytes).";
   }
   UnloadAndDestroy(deleted_entry);
-  return Status::OK();
+  return OkStatus();
 }
 
 void TpuCompilationCacheInterface::UnloadAndDestroy(CompiledSubgraph* entry) {
@@ -230,9 +236,9 @@ size_t TpuCompilationCacheInterface::RemoveEntry(const std::string& key) {
   TpuCompilationMetrics::SetCacheEntryCount(cache_.size());
 
   auto parsed_key_or_status = ParseCompilationCacheKey(key);
-  CHECK(parsed_key_or_status.status().ok());
+  TF_CHECK_OK(parsed_key_or_status.status());
   const TpuCompilationCacheKey parsed_key =
-      parsed_key_or_status.ConsumeValueOrDie();
+      std::move(parsed_key_or_status).value();
   if (!parsed_key.has_guaranteed_const) {
     return erased;
   }
@@ -346,9 +352,9 @@ void TpuCompilationCacheInterface::InsertEntry(const std::string& key,
   TpuCompilationMetrics::SetCacheEntryCount(cache_.size());
 
   auto parsed_key_or_status = ParseCompilationCacheKey(key);
-  CHECK(parsed_key_or_status.status().ok());
+  TF_CHECK_OK(parsed_key_or_status.status());
   const TpuCompilationCacheKey parsed_key =
-      parsed_key_or_status.ConsumeValueOrDie();
+      std::move(parsed_key_or_status).value();
   if (!parsed_key.has_guaranteed_const) {
     return;
   }
@@ -391,7 +397,7 @@ std::string TpuCompilationCacheInterface::FindCacheKey(
   }
   iter = fingerprint_key_map_.find(strings::StrCat(
       subgraph_key.prefix, subgraph_key.guaranteed_const_fingerprint()));
-  if (iter != session_key_map_.end()) {
+  if (iter != fingerprint_key_map_.end()) {
     return iter->second;
   }
   VLOG(1) << "No matching cache key found for key " << subgraph_key.ToString();
@@ -436,7 +442,8 @@ Status TpuCompilationCacheInterface::CompileIfKeyAbsentHelper(
 
     // Check if caller has disabled compilation. Set using
     // internal::ScopedTpuCompileDisabler.
-    if (!OpsApiFn()->TpuCompile_IsTpuCompilationEnabledFn()) {
+    if (!stream_executor::tpu::OpsApiFn()
+             ->TpuCompile_IsTpuCompilationEnabledFn()) {
       const std::string error_msg = strings::StrCat(
           "[TpuCompilationDisabled]: Compilation cache miss, but compilation "
           "disabled, session_name(",
@@ -552,7 +559,7 @@ Status TpuCompilationCacheInterface::GetKeysFromUid(
     return errors::NotFound("No subgraph found for uid ", uid);
   }
   *keys = iter->second->proto_key;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TpuCompilationCacheInterface::Lookup(
@@ -575,9 +582,9 @@ Status TpuCompilationCacheInterface::Lookup(
     return errors::NotFound("No proto found for core index ", proto_index,
                             " in subgraph with uid ", uid);
   }
-  *entry = absl::make_unique<CompilationCacheEntryRef>(this, cache_entry,
-                                                       proto_index);
-  return Status::OK();
+  *entry = std::make_unique<CompilationCacheEntryRef>(this, cache_entry,
+                                                      proto_index);
+  return OkStatus();
 }
 
 Status TpuCompilationCacheInterface::Lookup(
@@ -595,9 +602,9 @@ Status TpuCompilationCacheInterface::Lookup(
   }
   CompiledSubgraph* cache_entry = iter->second.first;
   int proto_index = iter->second.second;
-  *entry = absl::make_unique<CompilationCacheEntryRef>(this, cache_entry,
-                                                       proto_index);
-  return Status::OK();
+  *entry = std::make_unique<CompilationCacheEntryRef>(this, cache_entry,
+                                                      proto_index);
+  return OkStatus();
 }
 }  // namespace tpu
 }  // namespace tensorflow

@@ -75,7 +75,9 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
   std::shared_ptr<StatsAggregator> wrapped_;
   string tag_;
   string prefix_;
-  TF_DISALLOW_COPY_AND_ASSIGN(StatsAggregatorWithTagAndPrefix);
+  StatsAggregatorWithTagAndPrefix(const StatsAggregatorWithTagAndPrefix&) =
+      delete;
+  void operator=(const StatsAggregatorWithTagAndPrefix&) = delete;
 };
 
 class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
@@ -86,8 +88,9 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     core::RefCountPtr<StatsAggregatorResource> resource;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, HandleFromInput(ctx, 1), &resource));
+    ResourceHandle handle;
+    OP_REQUIRES_OK(ctx, HandleFromInput(ctx, 1, &handle));
+    OP_REQUIRES_OK(ctx, LookupResource(ctx, handle, &resource));
     tstring tag;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "tag", &tag));
     tstring prefix;
@@ -121,7 +124,7 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return absl::make_unique<Iterator>(Iterator::Params{
+      return std::make_unique<Iterator>(Iterator::Params{
           this, strings::StrCat(prefix, "::SetStatsAggregator")});
     }
 
@@ -136,14 +139,14 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
       return "SetStatsAggregatorDatasetOp::Dataset";
     }
 
-    int64_t CardinalityInternal() const override {
-      return input_->Cardinality();
+    int64_t CardinalityInternal(CardinalityOptions options) const override {
+      return input_->Cardinality(options);
     }
 
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return Status::OK();
+      return OkStatus();
     }
 
     Status CheckExternalState() const override {
@@ -165,7 +168,7 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddDataset(
           this, {input_graph_node, resource_handle_node, tag_node, prefix_node},
           output));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:

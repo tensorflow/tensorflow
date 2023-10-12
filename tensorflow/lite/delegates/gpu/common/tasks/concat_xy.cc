@@ -88,7 +88,7 @@ std::string GetConcatKernelCode(const OperationDef& op_def,
        "S >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
   c += "  } \n";
-  c += "  FLT4 result = INIT_FLT4(0.0f);\n";
+  c += "  args.src_tensor_0::type result = args.src_tensor_0::zero_value;\n";
   c += "  int coord = " + axis_to_coord[attr.axis] + ";\n";
   for (int i = 0; i < op_def.src_tensors.size(); ++i) {
     const std::string field =

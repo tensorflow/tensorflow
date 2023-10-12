@@ -16,11 +16,9 @@
 import copy
 import os
 import re
-import sre_constants
 import traceback
 
 import numpy as np
-import six
 
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.platform import gfile
@@ -45,7 +43,7 @@ class CommandLineExit(Exception):
     return self._exit_token
 
 
-class RichLine(object):
+class RichLine:
   """Rich single-line text.
 
   Attributes:
@@ -88,7 +86,7 @@ class RichLine(object):
         attributes applied to the corresponding substrings.
     """
     ret = RichLine()
-    if isinstance(other, six.string_types):
+    if isinstance(other, str):
       ret.text = self.text + other
       ret.font_attr_segs = self.font_attr_segs[:]
       return ret
@@ -147,7 +145,7 @@ def get_tensorflow_version_lines(include_dependency_versions=False):
   return RichTextLines(lines)
 
 
-class RichTextLines(object):
+class RichTextLines:
   """Rich multi-line text.
 
   Line-by-line text output, with font attributes (e.g., color) and annotations
@@ -193,7 +191,7 @@ class RichTextLines(object):
     """
     if isinstance(lines, list):
       self._lines = lines
-    elif isinstance(lines, six.string_types):
+    elif isinstance(lines, str):
       self._lines = [lines]
     else:
       raise ValueError("Unexpected type in lines: %s" % type(lines))
@@ -403,7 +401,7 @@ def regex_find(orig_screen_output, regex, font_attr):
 
   try:
     re_prog = re.compile(regex)
-  except sre_constants.error:
+  except re.error:
     raise ValueError("Invalid regular expression: \"%s\"" % regex)
 
   regex_match_lines = []
@@ -523,7 +521,7 @@ def wrap_rich_text_lines(inp, cols):
   return out, new_line_indices
 
 
-class CommandHandlerRegistry(object):
+class CommandHandlerRegistry:
   """Registry of command handlers for CLI.
 
   Handler methods (callables) for user commands can be registered with this
@@ -630,7 +628,7 @@ class CommandHandlerRegistry(object):
       raise ValueError("handler is not callable")
 
     # Make sure that help info is a string.
-    if not isinstance(help_info, six.string_types):
+    if not isinstance(help_info, str):
       raise ValueError("help_info is not a str")
 
     # Process prefix aliases.
@@ -811,11 +809,10 @@ class CommandHandlerRegistry(object):
     """Compile the help information for a given command prefix.
 
     Args:
-      cmd_prefix: Command prefix, as the prefix itself or one of its
-        aliases.
+      cmd_prefix: Command prefix, as the prefix itself or one of its aliases.
 
     Returns:
-      A list of str as the help information fo cmd_prefix. If the cmd_prefix
+      A list of str as the help information for cmd_prefix. If the cmd_prefix
         does not exist, the returned list of str will indicate that.
     """
     lines = []
@@ -839,7 +836,7 @@ class CommandHandlerRegistry(object):
     return lines
 
 
-class TabCompletionRegistry(object):
+class TabCompletionRegistry:
   """Registry for tab completion responses."""
 
   def __init__(self):
@@ -997,7 +994,7 @@ class TabCompletionRegistry(object):
     return s1
 
 
-class CommandHistory(object):
+class CommandHistory:
   """Keeps command history and supports lookup."""
 
   _HISTORY_FILE_NAME = ".tfdbg_history"
@@ -1060,7 +1057,7 @@ class CommandHistory(object):
       # Ignore repeating commands in a row.
       return
 
-    if not isinstance(command, six.string_types):
+    if not isinstance(command, str):
       raise TypeError("Attempt to enter non-str entry to command history")
 
     self._commands.append(command)
@@ -1103,7 +1100,7 @@ class CommandHistory(object):
   # TODO(cais): Lookup by regex.
 
 
-class MenuItem(object):
+class MenuItem:
   """A class for an item in a text-based menu."""
 
   def __init__(self, caption, content, enabled=True):
@@ -1144,7 +1141,7 @@ class MenuItem(object):
     self._enabled = True
 
 
-class Menu(object):
+class Menu:
   """A class for text-based menu."""
 
   def __init__(self, name=None):

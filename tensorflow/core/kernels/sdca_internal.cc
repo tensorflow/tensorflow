@@ -21,13 +21,13 @@ limitations under the License.
 #include <numeric>
 #include <random>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#include "tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 namespace tensorflow {
@@ -156,7 +156,7 @@ Status ModelWeights::Initialize(OpKernelContext* const context) {
                   {1, weight_inputs[i].NumElements()}),
               deltas});
         }
-        return Status::OK();
+        return OkStatus();
       };
 
   return initialize_weights(dense_weights_inputs, &dense_weights_outputs,
@@ -319,7 +319,7 @@ Status Examples::SampleAdaptiveProbabilities(
   for (int i = id; i < num_examples(); ++i) {
     sampled_count_[i] = examples_not_seen[i - id].first;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void Examples::RandomShuffle() {
@@ -389,6 +389,13 @@ Status Examples::Initialize(OpKernelContext* const context,
   OpInputList dense_features_inputs;
   TF_RETURN_IF_ERROR(
       context->input_list("dense_features", &dense_features_inputs));
+  for (int i = 0; i < dense_features_inputs.size(); ++i) {
+    if (!TensorShapeUtils::IsMatrix(dense_features_inputs[i].shape())) {
+      return errors::InvalidArgument("Dense features at index ", i,
+                                     " must be rank 2 but is rank ",
+                                     dense_features_inputs[i].dims());
+    }
+  }
 
   examples_.clear();
   examples_.resize(num_examples);
@@ -414,7 +421,7 @@ Status Examples::Initialize(OpKernelContext* const context,
   TF_RETURN_IF_ERROR(ComputeSquaredNormPerExample(
       worker_threads, num_examples, num_sparse_features, num_dense_features,
       &examples_));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Examples::CreateSparseFeatureRepresentation(

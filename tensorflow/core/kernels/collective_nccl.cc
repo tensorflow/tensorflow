@@ -44,6 +44,12 @@ Status NcclBase::InitializeCollectiveParams(CollectiveParams* col_params) {
     case GATHER_COLLECTIVE:
       expected_name = "NcclGather";
       break;
+    case REDUCE_SCATTER_COLLECTIVE:
+      expected_name = "NcclReduceScatter";
+      break;
+    case ALL_TO_ALL_COLLECTIVE:
+      expected_name = "NcclAllToAll";
+      break;
     default:
       return errors::Internal("Unexpected CollectiveType ", type_);
   }
@@ -55,7 +61,7 @@ Status NcclBase::InitializeCollectiveParams(CollectiveParams* col_params) {
                             ", expected name ", expected_name);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status NcclBase::InitializeCollectiveContext(

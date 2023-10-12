@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "OptionalHasValue"
   input_arg {
     name: "optional"

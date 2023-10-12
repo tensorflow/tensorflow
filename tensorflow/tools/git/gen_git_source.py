@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -212,6 +211,7 @@ def write_version_info(filename, git_version):
 #else
 #define TF_CXX11_ABI_FLAG 0
 #endif
+#define TF_CXX_VERSION __cplusplus
 #ifdef TENSORFLOW_MONOLITHIC_BUILD
 #define TF_MONOLITHIC_BUILD 1
 #else

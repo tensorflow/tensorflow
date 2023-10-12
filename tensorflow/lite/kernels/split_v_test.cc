@@ -104,7 +104,7 @@ void Check(TestType test_type, int axis, std::initializer_list<int> input_shape,
       m.SetInput<T>(input_data);
       m.SetSizeSplits(size_splits_data);
       m.SetAxis(axis);
-      m.Invoke();
+      ASSERT_EQ(m.Invoke(), kTfLiteOk);
       for (int i = 0; i < num_splits; ++i) {
         EXPECT_THAT(m.GetOutput<T>(i), ElementsAreArray(output_data[i]));
         EXPECT_THAT(m.GetOutputShape(i), ElementsAreArray(output_shapes[i]));
@@ -116,7 +116,7 @@ void Check(TestType test_type, int axis, std::initializer_list<int> input_shape,
                       {/*size_splits is a tensor*/});
       m.SetInput<T>(input_data);
       m.SetSizeSplits(size_splits_data);
-      m.Invoke();
+      ASSERT_EQ(m.Invoke(), kTfLiteOk);
       for (int i = 0; i < num_splits; ++i) {
         EXPECT_THAT(m.GetOutput<T>(i), ElementsAreArray(output_data[i]));
         EXPECT_THAT(m.GetOutputShape(i), ElementsAreArray(output_shapes[i]));
@@ -127,7 +127,7 @@ void Check(TestType test_type, int axis, std::initializer_list<int> input_shape,
                       {TensorType_INT32, size_splits_shape}, num_splits, axis,
                       size_splits_data);
       m.SetInput<T>(input_data);
-      m.Invoke();
+      ASSERT_EQ(m.Invoke(), kTfLiteOk);
       for (int i = 0; i < num_splits; ++i) {
         EXPECT_THAT(m.GetOutputShape(i), ElementsAreArray(output_shapes[i]));
         if (output_data[i].size() != 0) {

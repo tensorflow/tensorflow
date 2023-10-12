@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_stats.h"
 
+#include <algorithm>
+#include <utility>
+#include <vector>
+
 #include "google/protobuf/any.pb.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -22,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/utils/diagnostics.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -37,7 +41,7 @@ PodStatsRecord CreatePodStatsRecord(absl::string_view host_name,
   DCHECK(success);
   record.set_host_name(string(host_name));
   record.set_step_num(step_info.step_num());
-  record.set_total_duration_us(PicosToMicros(step_info.duration_ps()));
+  record.set_total_duration_us(PicoToMicro(step_info.duration_ps()));
   auto& step_breakdown_map = *record.mutable_step_breakdown_us();
   std::vector<std::pair<uint64, absl::string_view>> metrics;
 
@@ -47,7 +51,7 @@ PodStatsRecord CreatePodStatsRecord(absl::string_view host_name,
     for (const auto& event_type : event_list) {
       ps += gtl::FindWithDefault(generic.type_ps(), event_type, /*value=*/0);
     }
-    step_breakdown_map[type] = PicosToMicros(ps);
+    step_breakdown_map[type] = PicoToMicro(ps);
     metrics.emplace_back(ps, GetGenericEventTypeStr(type));
   };
 
@@ -83,6 +87,10 @@ PodStatsDatabase ConvertOpStatsToPodStats(const OpStats& op_stats) {
 
   for (const auto& step_sequence : op_stats.step_db().step_sequence()) {
     for (const auto& entry : step_sequence.step_info_per_core()) {
+      if (!core_id_map.contains(entry.first)) {
+        LOG(WARNING) << "core_id_map does not contain " << entry.first;
+        continue;
+      }
       const CoreDetails& details = core_id_map.at(entry.first);
       *pod_stats_db.add_pod_stats_record() =
           CreatePodStatsRecord(details.hostname(), entry.second);

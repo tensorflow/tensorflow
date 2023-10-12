@@ -45,16 +45,16 @@ namespace {
 Status ReductionOp(const string& merge_op, ncclRedOp_t* reduction_op) {
   if (merge_op == "Add") {
     *reduction_op = ncclSum;
-    return Status::OK();
+    return OkStatus();
   } else if (merge_op == "Mul") {
     *reduction_op = ncclProd;
-    return Status::OK();
+    return OkStatus();
   } else if (merge_op == "Maximum") {
     *reduction_op = ncclMax;
-    return Status::OK();
+    return OkStatus();
   } else if (merge_op == "Minimum") {
     *reduction_op = ncclMin;
-    return Status::OK();
+    return OkStatus();
   } else {
     return errors::Internal(
         "Expected merge_op to be in [Add, Mul, Maximum, Minimum], found ",
@@ -87,7 +87,8 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
   const string nccl_collective_key =
       NcclCollectiveKey(col_ctx->exec_key, col_ctx->step_id);
   auto* compute_stream = col_ctx->op_ctx->op_device_context()->stream();
-  auto* gpu_info = col_ctx->op_ctx->device()->tensorflow_gpu_device_info();
+  auto* gpu_info =
+      col_ctx->op_ctx->device()->tensorflow_accelerator_device_info();
   auto participant = absl::make_unique<NcclManager::Participant>(
       compute_stream->parent(), compute_stream, gpu_info, col_ctx->input,
       col_ctx->output, col_ctx->col_params->default_rank,
@@ -157,6 +158,22 @@ void NcclCommunicator::Enqueue(std::shared_ptr<CollectiveContext> col_ctx,
       } else {
         nccl_manager_.AddBroadcastRecv(std::move(participant), context);
       }
+      break;
+    }
+    case REDUCE_SCATTER_COLLECTIVE: {
+      ncclRedOp_t reduction_op;
+      Status s =
+          ReductionOp(col_params->merge_op->type_string(), &reduction_op);
+      if (!s.ok()) {
+        participant->done_callback(s);
+        return;
+      }
+      nccl_manager_.AddToReduceScatter(std::move(participant), context,
+                                       reduction_op);
+      break;
+    }
+    case ALL_TO_ALL_COLLECTIVE: {
+      nccl_manager_.AddToAllToAll(std::move(participant), context);
       break;
     }
     default: {

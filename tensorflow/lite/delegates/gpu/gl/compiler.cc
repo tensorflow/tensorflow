@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/compiler.h"
 
 #include <algorithm>
+#include <any>
+#include <memory>
 #include <string>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -36,6 +39,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/compiler/fuse_inplace.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/shader_codegen.h"
 #include "tensorflow/lite/delegates/gpu/gl/float16_conversions.h"
+
+#ifdef __ANDROID__
+#include <sys/system_properties.h>
+#endif  // __ANDROID__
 
 namespace tflite {
 namespace gpu {
@@ -63,7 +70,7 @@ bool ExceedsMaxSize(const Object& object, const GpuInfo& gpu_info) {
   size_checker.max_size =
       int2(gpu_info.GetMaxImage2DWidth(), gpu_info.GetMaxImage2DHeight());
   size_checker.max_z_size = gpu_info.GetMaxImage2DArrayLayers();
-  return absl::visit(size_checker, object.size);
+  return std::visit(size_checker, object.size);
 }
 
 ObjectType ChooseFastestObjectType(const GpuInfo& gpu_info) {
@@ -101,6 +108,15 @@ class CompilerImpl : public Compiler {
     if (options_.ref_obj_type == ObjectType::UNKNOWN) {
       options_.ref_obj_type = ChooseFastestRefObjectType(*gpu_info, options);
     }
+#ifdef __ANDROID__
+    // Circumvent FP16 bug with Adreno 660 on Android SDK 30.
+    if (gpu_info_.IsAdreno() &&
+        gpu_info_.adreno_info.adreno_gpu == AdrenoGpu::kAdreno660) {
+      char sdk_version[PROP_VALUE_MAX];
+      __system_property_get("ro.build.version.sdk", sdk_version);
+      if (!strcmp(sdk_version, "30")) options_.allow_precision_loss = false;
+    }
+#endif  // __ANDROID__
   }
 
   absl::Status Compile(
@@ -180,7 +196,7 @@ class CompilerImpl : public Compiler {
     // Prepare readonly objects and check whether object types are supported.
     for (auto node : compiled_graph_.nodes()) {
       auto& attr =
-          absl::any_cast<CompiledNodeAttributes&>(node->operation.attributes);
+          std::any_cast<CompiledNodeAttributes&>(node->operation.attributes);
 
       // Set workload explicitly.
       if (attr.code.workload == uint3()) {
@@ -235,7 +251,7 @@ class CompilerImpl : public Compiler {
     ShaderCodegen codegen(options_, gpu_info_);
     for (auto node : compiled_graph_.nodes()) {
       auto& attr =
-          absl::any_cast<CompiledNodeAttributes&>(node->operation.attributes);
+          std::any_cast<CompiledNodeAttributes&>(node->operation.attributes);
       if (attr.code.source_code.empty()) {
         // noop. Skip this node.
         continue;
@@ -299,7 +315,7 @@ class CompilerImpl : public Compiler {
 std::unique_ptr<Compiler> NewCompiler(const NodeShader* node_shader,
                                       const GpuInfo* gpu_info,
                                       const CompilationOptions& options) {
-  return absl::make_unique<CompilerImpl>(node_shader, gpu_info, options);
+  return std::make_unique<CompilerImpl>(node_shader, gpu_info, options);
 }
 
 }  // namespace gl

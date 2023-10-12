@@ -19,7 +19,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -146,7 +146,7 @@ class CSRSparseMatrixMulScalar<GPUDevice, T> {
     functor::BinaryFunctor<GPUDevice, functor::mul<T>, 1>().Right(
         d, c_values, a_values, b, error_ptr);
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 

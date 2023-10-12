@@ -7,13 +7,14 @@ load("//tensorflow/lite:special_rules.bzl", "nnapi_native_srcs_visibility_allowl
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
 
 cc_library_with_tflite(
     name = "native",
-    srcs = ["nnapi_delegate_jni.cc"],
+    srcs = ["nnapi_delegate_impl_jni.cc"],
     copts = tflite_copts(),
     tags = [
         "manual",
@@ -28,6 +29,6 @@ cc_library_with_tflite(
 
 filegroup(
     name = "native_srcs",
-    srcs = ["nnapi_delegate_jni.cc"],
+    srcs = ["nnapi_delegate_impl_jni.cc"],
     visibility = nnapi_native_srcs_visibility_allowlist(),
 )

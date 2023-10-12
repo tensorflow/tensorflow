@@ -27,12 +27,11 @@ limitations under the License.
 #include <set>
 
 #include "absl/types/optional.h"
-#include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/layout_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
+#include "xla/client/local_client.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -45,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/tfrt/common/async_value_tensor.h"
 
 namespace tensorflow {
 
@@ -88,7 +88,8 @@ class XlaDevice : public LocalDevice {
     PaddedShapeFn padded_shape_fn_;
     const bool use_multiple_streams_;
 
-    TF_DISALLOW_COPY_AND_ASSIGN(Metadata);
+    Metadata(const Metadata&) = delete;
+    void operator=(const Metadata&) = delete;
   };
 
   // Sets `*metadata` to the XlaDevice Metadata in the XLA device used by `ctx`.
@@ -144,7 +145,7 @@ class XlaDevice : public LocalDevice {
     // Set of devices to use. This controls which of the devices on the given
     // platform will have resources allocated. For GPUs this will be
     // filled from visible_gpu_devices list from session configuration.
-    absl::optional<std::set<int>> allowed_devices;
+    std::optional<std::set<int>> allowed_devices;
   };
 
   // Creates a new XLA Device.
@@ -166,7 +167,7 @@ class XlaDevice : public LocalDevice {
                              const AllocatorAttributes alloc_attrs,
                              Tensor* tensor) override TF_LOCKS_EXCLUDED(mu_);
 
-  Status MakeTensorFromProto(XlaDeviceContext* device_context,
+  Status MakeTensorFromProto(DeviceContext* device_context,
                              const TensorProto& tensor_proto,
                              const AllocatorAttributes alloc_attrs,
                              Tensor* tensor);
@@ -184,13 +185,13 @@ class XlaDevice : public LocalDevice {
   // Two convenient methods to get the underlying device context.
   // Get the default device context, created by the first
   // shape_representation_fn.
-  StatusOr<XlaDeviceContext*> GetDeviceContextDefault();
+  StatusOr<DeviceContext*> GetDeviceContextDefault();
   // Get the device context given the index.
-  StatusOr<XlaDeviceContext*> GetDeviceContextWithIndex(int index);
+  StatusOr<DeviceContext*> GetDeviceContextWithIndex(int index);
 
-  // Instructs this XlaDevice to set a GpuDeviceInfo, which holds extra
+  // Instructs this XlaDevice to set a AcceleratorDeviceInfo, which holds extra
   // information for GPU and TPU devices.
-  Status UseGpuDeviceInfo() TF_LOCKS_EXCLUDED(mu_);
+  Status UseAcceleratorDeviceInfo() TF_LOCKS_EXCLUDED(mu_);
 
   // Instructs this XlaDevice to return 'sync_on_completion' for
   // AllowsSyncOnCompletion().
@@ -214,7 +215,7 @@ class XlaDevice : public LocalDevice {
 
   // Return a vector of device context, ordered by the sequence in the given
   // shape_representation_fns.
-  StatusOr<std::vector<XlaDeviceContext*>> GetDeviceContextLocked()
+  StatusOr<std::vector<DeviceContext*>> GetDeviceContextLocked()
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Handles error when RefreshStatus sees !status.ok().
@@ -225,6 +226,8 @@ class XlaDevice : public LocalDevice {
   const Metadata xla_metadata_;
   // Which hardware device in the client's platform this XlaDevice controls.
   const int device_ordinal_;
+  // The name/type of this XlaDevice. eg. "XLA_GPU".
+  const DeviceType device_name_;
   // The name of the device that is used to compile Ops for this XlaDevice.
   const DeviceType jit_device_name_;
   // The platform for this device.
@@ -233,6 +236,7 @@ class XlaDevice : public LocalDevice {
   const int intra_op_parallelism_threads_;
   // Memory allocator associated with this device.
   Allocator* xla_allocator_ TF_GUARDED_BY(mu_) = nullptr;  // Not owned.
+  std::unique_ptr<AsyncValueAllocator> pjrt_allocator_ TF_GUARDED_BY(mu_);
 
   // Stream associated with this device. Operations enqueued on this
   // stream are executed on the device. Operations include data
@@ -259,13 +263,14 @@ class XlaDevice : public LocalDevice {
   // A list of the device context accessed by all users of the XlaDevice, set by
   // calls to EnsureDeviceContextOk. The number of device conetexts is based on
   // the number of shape representation functions in XlaDevice::Options. If
-  // gpu_device_info_ is non-null, this pointer is also filled in to that
-  // struct. XlaDeviceContext is a ref-counted object.
-  std::vector<XlaDeviceContext*> device_contexts_ TF_GUARDED_BY(mu_);
+  // accelerator_device_info_ is non-null, this pointer is also filled in to
+  // that struct. DeviceContext is a ref-counted object.
+  std::vector<DeviceContext*> device_contexts_ TF_GUARDED_BY(mu_);
 
   // Holds extra information for GPU and TPU devices, e.g. the device context.
-  bool use_gpu_device_info_ TF_GUARDED_BY(mu_) = false;
-  std::unique_ptr<GpuDeviceInfo> gpu_device_info_ TF_GUARDED_BY(mu_);
+  bool use_accelerator_device_info_ TF_GUARDED_BY(mu_) = false;
+  std::unique_ptr<DeviceBase::AcceleratorDeviceInfo> accelerator_device_info_
+      TF_GUARDED_BY(mu_);
 
   // Thread pool used for running closures
   std::unique_ptr<thread::ThreadPool> thread_pool_;
@@ -280,7 +285,7 @@ class XlaDevice : public LocalDevice {
   // Set of devices to use. This controls which of the devices on the given
   // platform will have resources allocated. For GPUs this will be
   // filled from visible_gpu_devices list from session configuration.
-  absl::optional<std::set<int>> allowed_devices_;
+  std::optional<std::set<int>> allowed_devices_;
 
   const bool use_global_compute_stream_;
 
@@ -299,6 +304,11 @@ struct XlaDeviceOpRegistrations {
   std::vector<std::unique_ptr<kernel_factory::OpKernelRegistrar>>
       op_kernel_registrars;
 };
+
+XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(
+    const char* device, const char* jit_device,
+    OpKernel* (*factory)(OpKernelConstruction*), StringPiece kernel_class_name);
+
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
                                                    const char* jit_device);
 

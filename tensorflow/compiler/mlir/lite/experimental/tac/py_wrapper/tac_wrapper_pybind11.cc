@@ -15,7 +15,10 @@ limitations under the License.
 
 #include <pybind11/stl.h>
 
-#include "pybind11/pybind11.h"
+#include <string>
+#include <vector>
+
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/mlir/lite/experimental/tac/py_wrapper/tac_wrapper.h"
 
 // Warning: The API is experimental and subject to change.

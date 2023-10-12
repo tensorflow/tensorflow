@@ -14,9 +14,9 @@
 # ==============================================================================
 """Tests for py_builtins module."""
 
+import io
 import sys
 
-import six
 
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import function_wrappers
@@ -34,7 +34,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
 
-class TestBase(object):
+class TestBase:
 
   def overridden_method(self, x):
     return x + 20
@@ -178,7 +178,7 @@ class PyBuiltinsTest(test.TestCase):
   @test_util.run_deprecated_v1
   def test_print_tensors(self):
     try:
-      out_capturer = six.StringIO()
+      out_capturer = io.StringIO()
       sys.stdout = out_capturer
       with self.cached_session() as sess:
         sess.run(py_builtins.print_(constant_op.constant('test message'), 1))
@@ -189,7 +189,7 @@ class PyBuiltinsTest(test.TestCase):
   @test_util.run_deprecated_v1
   def test_print_complex(self):
     try:
-      out_capturer = six.StringIO()
+      out_capturer = io.StringIO()
       sys.stdout = out_capturer
       with self.cached_session() as sess:
         sess.run(
@@ -197,6 +197,51 @@ class PyBuiltinsTest(test.TestCase):
         self.assertEqual(out_capturer.getvalue(), 'test message [1, 2]\n')
     finally:
       sys.stdout = sys.__stdout__
+
+  def test_max(self):
+    self.assertEqual(py_builtins.max_([1, 3, 2]), 3)
+    self.assertEqual(py_builtins.max_(0, 2, 1), 2)
+
+  def test_max_tensor(self):
+    r = py_builtins.max_(constant_op.constant(2))
+    self.assertAllEqual(self.evaluate(r), 2)
+    with self.assertRaises(ValueError):
+      py_builtins.max_(constant_op.constant([[2]]))
+    r = py_builtins.max_(constant_op.constant([1, 3, 2]))
+    self.assertAllEqual(self.evaluate(r), 3)
+    with self.assertRaises(ValueError):
+      py_builtins.max_(constant_op.constant([[1, 3], [3, 4]]))
+    r = py_builtins.max_(
+        constant_op.constant(6), constant_op.constant(4),
+        constant_op.constant(8))
+    self.assertAllEqual(self.evaluate(r), 8)
+    with self.assertRaises(ValueError):
+      py_builtins.max_(
+          constant_op.constant([6]), constant_op.constant(4),
+          constant_op.constant(8))
+
+  def test_min(self):
+    self.assertEqual(py_builtins.min_([2, 1, 3]), 1)
+    self.assertEqual(py_builtins.min_(2, 0, 1), 0)
+
+  def test_min_tensor(self):
+    r = py_builtins.min_(constant_op.constant(2))
+    self.assertAllEqual(self.evaluate(r), 2)
+    with self.assertRaises(ValueError):
+      py_builtins.min_(constant_op.constant([[2]]))
+    r = py_builtins.min_(constant_op.constant([3, 1, 2]))
+    self.assertAllEqual(self.evaluate(r), 1)
+    with self.assertRaises(ValueError):
+      py_builtins.min_(constant_op.constant([[1, 3], [3, 4]]))
+    r = py_builtins.min_(
+        constant_op.constant(6), constant_op.constant(4),
+        constant_op.constant(8))
+    self.assertAllEqual(self.evaluate(r), 4)
+    with self.assertRaises(ValueError):
+      py_builtins.min_(
+          constant_op.constant([6]), constant_op.constant(4),
+          constant_op.constant(8))
+
 
   def test_range(self):
     self.assertListEqual(list(py_builtins.range_(3)), [0, 1, 2])

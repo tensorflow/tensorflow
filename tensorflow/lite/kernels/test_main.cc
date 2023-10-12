@@ -12,9 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "benchmark/benchmark.h"  // from @com_google_benchmark
 #include "tensorflow/lite/kernels/test_delegate_providers.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/testing/util.h"
@@ -49,6 +51,7 @@ int main(int argc, char** argv) {
   ::tflite::LogToStderr();
   if (InitKernelTest(&argc, argv)) {
     ::testing::InitGoogleTest(&argc, argv);
+    benchmark::RunSpecifiedBenchmarks();
     return RUN_ALL_TESTS();
   } else {
     return EXIT_FAILURE;

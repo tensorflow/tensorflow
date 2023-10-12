@@ -15,6 +15,7 @@
 """Tools for selecting ops in a graph."""
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.util import object_identity
 
 
@@ -27,7 +28,7 @@ def is_differentiable(op):
 
 def is_iterable(obj):
   """Return true if the object is iterable."""
-  if isinstance(obj, ops.Tensor):
+  if isinstance(obj, tensor_lib.Tensor):
     return False
   try:
     _ = iter(obj)
@@ -77,7 +78,7 @@ def get_unique_graph(tops, check_types=None, none_if_empty=False):
   """Return the unique graph used by the all the elements in tops.
 
   Args:
-    tops: list of elements to check (usually a list of tf.Operation and/or
+    tops: iterable of elements to check (usually a list of tf.Operation and/or
       tf.Tensor). Or a tf.Graph.
     check_types: check that the element in tops are of given type(s). If None,
       the types (tf.Operation, tf.Tensor) are used.
@@ -94,7 +95,7 @@ def get_unique_graph(tops, check_types=None, none_if_empty=False):
   if not is_iterable(tops):
     raise TypeError("{} is not iterable".format(type(tops)))
   if check_types is None:
-    check_types = (ops.Operation, ops.Tensor)
+    check_types = (ops.Operation, tensor_lib.Tensor)
   elif not is_iterable(check_types):
     check_types = (check_types,)
   g = None
@@ -153,9 +154,9 @@ def make_list_of_t(ts, check_graph=True, allow_graph=True, ignore_ops=False):
     if not ts:
       return []
     if check_graph:
-      check_types = None if ignore_ops else ops.Tensor
+      check_types = None if ignore_ops else tensor_lib.Tensor
       get_unique_graph(ts, check_types=check_types)
-    return [t for t in ts if isinstance(t, ops.Tensor)]
+    return [t for t in ts if isinstance(t, tensor_lib.Tensor)]
 
 
 def get_generating_ops(ts):
@@ -265,9 +266,14 @@ def get_backward_walk_ops(seed_ops,
 
   if not is_iterable(seed_ops):
     seed_ops = [seed_ops]
-  if not seed_ops:
+
+  try:
+    first_seed_op = next(iter(seed_ops))
+  except StopIteration:
+    # Empty iterable.
     return []
-  if isinstance(seed_ops[0], ops.Tensor):
+
+  if isinstance(first_seed_op, tensor_lib.Tensor):
     ts = make_list_of_t(seed_ops, allow_graph=False)
     seed_ops = get_generating_ops(ts)
   else:
@@ -313,7 +319,7 @@ class UnliftableError(Exception):
 
 
 def _as_operation(op_or_tensor):
-  if isinstance(op_or_tensor, ops.Tensor):
+  if isinstance(op_or_tensor, tensor_lib.Tensor):
     return op_or_tensor.op
   return op_or_tensor
 
@@ -322,22 +328,27 @@ def graph_inputs(op):
   return [x.op for x in op.inputs] + list(op.control_inputs)
 
 
-def _path_from(from_op, tensor, sources):
-  """Find one path from `from_op` to `tensor`, ignoring `sources`.
+def show_path(from_op, tensors, sources):
+  """Find one path from `from_op` to any of `tensors`, ignoring `sources`.
 
   Args:
     from_op: A `tf.Operation`.
-    tensor: A `tf.Operation` or `tf.Tensor`.
+    tensors: A `tf.Operation`, a `tf.Tensor`, or a list thereof.
     sources: A list of `tf.Tensor`.
 
   Returns:
     A python string containing the path, or "??" if none is found.
   """
-  if isinstance(from_op, ops.Tensor):
+  if isinstance(from_op, tensor_lib.Tensor):
     from_op = from_op.op
 
+  if not isinstance(tensors, list):
+    tensors = [tensors]
+
+  final_ops = [_as_operation(tensor) for tensor in tensors]
+
   visited_ops = set(x.op for x in sources)
-  ops_to_visit = [_as_operation(tensor)]
+  ops_to_visit = list(final_ops)
   some_op_output = {}
   while ops_to_visit:
     op = ops_to_visit.pop()
@@ -347,8 +358,7 @@ def _path_from(from_op, tensor, sources):
     if op == from_op:
       path_op = op
       path = [path_op]
-      final_op = _as_operation(tensor)
-      while path_op != final_op:
+      while path_op not in final_ops:
         path_op = some_op_output[path_op]
         path.append(path_op)
       return " <- ".join("%s (%s)" % (x.name, x.type) for x in reversed(path))
@@ -406,8 +416,8 @@ def map_subgraph(init_tensor, sources, disallowed_placeholders, visited_ops,
     if should_raise:
       raise UnliftableError(
           "Unable to lift tensor %s because it depends transitively on "
-          "placeholder %s via at least one path, e.g.: %s"
-          % (repr(init_tensor), repr(op), _path_from(op, init_tensor, sources)))
+          "placeholder %s via at least one path, e.g.: %s" %
+          (repr(init_tensor), repr(op), show_path(op, init_tensor, sources)))
     for inp in graph_inputs(op):
       op_outputs[inp].add(op)
       if inp not in visited_ops and inp not in (sources or extra_sources):

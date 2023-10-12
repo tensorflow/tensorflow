@@ -102,10 +102,14 @@ PyObject* TFE_Py_RegisterGradientFunction(PyObject* e);
 // This function is not thread-safe.
 PyObject* TFE_Py_RegisterJVPFunction(PyObject* e);
 
+namespace tensorflow {
+
 // Returns 0 if 'status' is TF_OK. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
 // TFE_Py_RegisterExceptionClass), and returns -1.
 int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception);
+
+}  // namespace tensorflow
 
 // Returns 0 if 'status' is ok. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
@@ -131,10 +135,12 @@ void TFE_DeleteContextCapsule(PyObject* context);
 bool EagerTensor_CheckExact(const PyObject* o);
 
 // Helper function to construct a new EagerTensor from a TFE_TensorHandle.
+// This functions takes the ownership of the handle.
 PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle,
                                 const bool is_packed = false);
 
 // Extracts the handle inside EagerTensor object `o`. Returns nullptr on error.
+// This functions returns a unreferenced pointer to the handle.
 TFE_TensorHandle* EagerTensor_Handle(const PyObject* o);
 
 // Creates the `EagerTensor` class by subclassing `base_class` and returns the
@@ -383,23 +389,6 @@ PyObject* TFE_Py_SetEagerContext(PyObject* py_context);
 // The returned PyObject is "new", i.e. the caller must call Py_DECREF on it at
 // some point.
 PyObject* GetPyEagerContext();
-
-// Sets the EagerContext owned by the current Python eager Context (see
-// TFE_Py_SetEagerContext). This is always called in tandem with
-// TFE_Py_SetEagerContext (but not called by it, because its py_context
-// argument is opaque).
-//
-// Do not use this function in production. It is only intended for testing.
-// (see _reset_context in context.py).
-//
-// Not thread-safe.
-void TFE_Py_SetCEagerContext(TFE_Context* ctx);
-
-// Returns the EagerContext owned by the current Python eager Context (see
-// TFE_Py_SetEagerContext).
-//
-// Not thread-safe.
-TFE_Context* GetCEagerContext();
 
 // These are exposed since there is SWIG code that calls these.
 // Returns a pre-allocated status if it exists.

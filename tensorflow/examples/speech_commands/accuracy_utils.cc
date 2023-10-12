@@ -39,7 +39,7 @@ Status ReadGroundTruthFile(const string& file_name,
       continue;
     }
     float timestamp;
-    if (!tensorflow::strings::safe_strtof(pieces[1].c_str(), &timestamp)) {
+    if (!tensorflow::strings::safe_strtof(pieces[1], &timestamp)) {
       return tensorflow::errors::InvalidArgument(
           "Wrong number format at line: ", line);
     }
@@ -52,7 +52,7 @@ Status ReadGroundTruthFile(const string& file_name,
                const std::pair<string, int64>& right) {
               return left.second < right.second;
             });
-  return Status::OK();
+  return OkStatus();
 }
 
 void CalculateAccuracyStats(

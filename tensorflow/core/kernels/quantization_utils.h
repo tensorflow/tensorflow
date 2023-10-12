@@ -32,7 +32,7 @@ limitations under the License.
 
 #include <array>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #define GEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK
 #include "public/gemmlowp.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -666,7 +666,6 @@ inline void RequantizeManyInNewRange<quint8, qint32>(
 
 template <int shift>
 struct int64_right_shift_op {
-  EIGEN_EMPTY_STRUCT_CTOR(int64_right_shift_op)
   EIGEN_DEVICE_FUNC
   EIGEN_STRONG_INLINE const int64_t operator()(const int64_t a) const {
     return a >> shift;
@@ -944,7 +943,8 @@ class TensorflowGemmlowpWorkersPool {
   // The BlockingCounter used to wait for the workers.
   gemmlowp::BlockingCounter counter_to_decrement_when_ready_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorflowGemmlowpWorkersPool);
+  TensorflowGemmlowpWorkersPool(const TensorflowGemmlowpWorkersPool&) = delete;
+  void operator=(const TensorflowGemmlowpWorkersPool&) = delete;
 };
 
 class TensorflowGemmContext : public gemmlowp::MultiThreadGemmContextBase {
@@ -959,7 +959,8 @@ class TensorflowGemmContext : public gemmlowp::MultiThreadGemmContextBase {
  private:
   TensorflowGemmlowpWorkersPool workers_pool_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(TensorflowGemmContext);
+  TensorflowGemmContext(const TensorflowGemmContext&) = delete;
+  void operator=(const TensorflowGemmContext&) = delete;
 };
 
 }  // namespace tensorflow

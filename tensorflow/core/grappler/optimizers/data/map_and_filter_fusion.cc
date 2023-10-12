@@ -240,7 +240,7 @@ Status MapAndFilterFusion::OptimizeAndCollectStats(Cluster* cluster,
   }
 
   TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(MapAndFilterFusion, "map_and_filter_fusion");

@@ -231,7 +231,7 @@ which we filter and crop each image to contain only one person .
     to learn more about pose estimation on the web.
 *   Check out this [tutorial](https://www.tensorflow.org/hub/tutorials/movenet)
     to learn about running MoveNet on Python using a model from TensorFlow Hub.
-*   Coral/EdgeTPU can make pose estimation run much faster on IoT devices. See
+*   Coral/EdgeTPU can make pose estimation run much faster on edge devices. See
     [EdgeTPU-optimized models](https://coral.ai/models/pose-estimation/) for
     more details.
 *   Read the PoseNet paper [here](https://arxiv.org/abs/1803.08225)

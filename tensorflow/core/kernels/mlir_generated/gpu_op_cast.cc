@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/kernels/mlir_generated/base_gpu_op.h"
 
 namespace tensorflow {
@@ -30,7 +30,9 @@ namespace tensorflow {
   FN(arg0, DT_UINT64);        \
   FN(arg0, DT_HALF);          \
   FN(arg0, DT_FLOAT);         \
-  FN(arg0, DT_DOUBLE)
+  FN(arg0, DT_DOUBLE);        \
+  FN(arg0, DT_COMPLEX64);     \
+  FN(arg0, DT_COMPLEX128)
 
 #define GENERATE_AND_REGISTER_CAST_GPU(input_type, output_type)               \
   GENERATE_UNARY_GPU_KERNEL2(Cast, input_type, output_type)                   \
@@ -53,6 +55,8 @@ CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, DT_UINT64)
 CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, DT_HALF)
 CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, DT_FLOAT)
 CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, DT_DOUBLE)
+CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, DT_COMPLEX64)
+CURRY_TYPES(GENERATE_AND_REGISTER_CAST_GPU, DT_COMPLEX128)
 
 #undef REGISTER_CAST_GPU
 #undef CURRY_TYPES

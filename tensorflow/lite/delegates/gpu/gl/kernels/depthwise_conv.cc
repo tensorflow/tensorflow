@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/kernels/depthwise_conv.h"
 
+#include <any>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -43,7 +46,7 @@ class DepthwiseConvolution : public NodeShader {
           "DepthWise Convolution does not support more than 1 runtime tensor");
     }
     const auto& attr =
-        absl::any_cast<const DepthwiseConvolution2DAttributes&>(ctx.op_attr);
+        std::any_cast<const DepthwiseConvolution2DAttributes&>(ctx.op_attr);
     auto weights = attr.weights.shape;
     const int offsets_count = weights.h * weights.w;
     const bool offsets_count_too_large = offsets_count > kMaxConstArraySize;
@@ -153,7 +156,7 @@ class DepthwiseConvolution : public NodeShader {
 }  // namespace
 
 std::unique_ptr<NodeShader> NewDepthwiseConvolutionNodeShader() {
-  return absl::make_unique<DepthwiseConvolution>();
+  return std::make_unique<DepthwiseConvolution>();
 }
 
 }  // namespace gl

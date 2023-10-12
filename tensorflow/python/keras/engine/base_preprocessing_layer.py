@@ -24,6 +24,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import data_adapter
 from tensorflow.python.keras.engine.base_layer import Layer
@@ -33,11 +34,9 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.trackable import base as trackable
 
 
-@keras_export('keras.layers.experimental.preprocessing.PreprocessingLayer')
 class PreprocessingLayer(Layer, metaclass=abc.ABCMeta):
   """Base class for Preprocessing Layers.
 
@@ -468,7 +467,7 @@ def convert_to_list(values, sparse_default_value=None):
         values, default_value=sparse_default_value)
     values = backend.get_value(dense_tensor)
 
-  if isinstance(values, ops.Tensor):
+  if isinstance(values, tensor.Tensor):
     values = backend.get_value(values)
 
   # We may get passed a ndarray or the code above may give us a ndarray.

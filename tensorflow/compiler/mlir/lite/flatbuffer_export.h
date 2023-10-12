@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
@@ -48,7 +49,8 @@ struct FlatbufferExportOptions {
 // Returns true on successful exporting, false otherwise.
 bool MlirToFlatBufferTranslateFunction(mlir::ModuleOp module,
                                        const FlatbufferExportOptions& options,
-                                       std::string* serialized_flatbuffer);
+                                       std::string* serialized_flatbuffer,
+                                       bool serialize_stablehlo_ops = false);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_EXPORT_H_

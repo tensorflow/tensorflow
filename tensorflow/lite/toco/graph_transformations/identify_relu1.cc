@@ -35,7 +35,7 @@ using util::GetSingleScalarInputIndexOfBinaryOp;
   const auto* op_0 = op_it->get();
   if (op_0->type != OperatorType::kMinimum &&
       op_0->type != OperatorType::kMaximum) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Get the paired op and ensure it's the counter to the first.
@@ -44,17 +44,17 @@ using util::GetSingleScalarInputIndexOfBinaryOp;
       (op_1->type != OperatorType::kMinimum &&
        op_1->type != OperatorType::kMaximum) ||
       op_0->type == op_1->type) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   const auto* min_op = op_0->type == OperatorType::kMinimum ? op_0 : op_1;
   const auto* max_op = op_0->type == OperatorType::kMaximum ? op_0 : op_1;
 
   if (min_op->inputs.size() != 2 || max_op->inputs.size() != 2) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (min_op->outputs.size() != 1 || max_op->outputs.size() != 1) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Get the original input to the min+max pair.
@@ -63,7 +63,7 @@ using util::GetSingleScalarInputIndexOfBinaryOp;
   int max_scalar_input_index =
       GetSingleScalarInputIndexOfBinaryOp(model, max_op, -1.0f);
   if (min_scalar_input_index == -1 || max_scalar_input_index == -1) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   int op_0_scalar_input_index =
       op_0 == min_op ? min_scalar_input_index : max_scalar_input_index;
@@ -79,7 +79,7 @@ using util::GetSingleScalarInputIndexOfBinaryOp;
   DeleteOpAndArrays(model, op_1);
 
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <list>
+#include <memory>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xrt/xrt_metrics.h"
@@ -125,7 +128,7 @@ class XRTMemoryManager::DeviceContext {
         status = swap_result_or.status();
         break;
       }
-      if (swap_result_or.ValueOrDie()) {
+      if (swap_result_or.value()) {
         swapped.push_back(it);
       }
     }
@@ -203,7 +206,7 @@ Status XRTMemoryManager::WorkingSet::LookupAndPin(
   TF_RETURN_IF_ERROR(
       tuple->PinAndSwapIn(memory_manager_.get(), backend, allocator).status());
   pinned_tuples_.push_back(std::move(tuple));
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ RefPtr<XRTMemoryManager> XRTMemoryManager::Get(ResourceMgr* rm) {
@@ -213,7 +216,7 @@ Status XRTMemoryManager::WorkingSet::LookupAndPin(
   TF_CHECK_OK(rm->LookupOrCreate<XRTMemoryManager>(
       *container, *name, &memory_manager, [](XRTMemoryManager** ret) {
         *ret = new XRTMemoryManager();
-        return Status::OK();
+        return OkStatus();
       }));
   return memory_manager;
 }
@@ -246,7 +249,7 @@ Status XRTMemoryManager::Release(int64_t handle) {
   if (device_context == nullptr || !device_context->Release(handle)) {
     return errors::NotFound("XRT memory handle not found: ", handle);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XRTMemoryManager::CompactAllocations(
@@ -256,7 +259,7 @@ Status XRTMemoryManager::CompactAllocations(
                                                    /*create_if_missing=*/false);
   return device_context != nullptr
              ? device_context->CompactAllocations(this, backend, allocator)
-             : Status::OK();
+             : OkStatus();
 }
 
 void XRTMemoryManager::ReleaseAllAllocations() {
@@ -316,7 +319,7 @@ XRTMemoryManager::DeviceContext* XRTMemoryManager::GetDeviceContext(
   }
   DeviceContext* device_context = device_contexts_[device_ordinal].get();
   if (device_context == nullptr && create_if_missing) {
-    device_contexts_[device_ordinal] = absl::make_unique<DeviceContext>();
+    device_contexts_[device_ordinal] = std::make_unique<DeviceContext>();
     device_context = device_contexts_[device_ordinal].get();
   }
   return device_context;
@@ -345,10 +348,10 @@ Status XRTMemoryManager::TryFreeMemoryStep(MemoryReclaimContext* mrctx,
       if (!free_size_or.ok()) {
         return status;
       }
-      size_t size = free_size_or.ValueOrDie();
+      size_t size = free_size_or.value();
       mrctx->free_size += size;
       if (size > 0) {
-        return Status::OK();
+        return OkStatus();
       }
     }
     mrctx->done_freeing = true;
@@ -358,7 +361,7 @@ Status XRTMemoryManager::TryFreeMemoryStep(MemoryReclaimContext* mrctx,
     if (device_context
             ->CompactAllocations(this, mrctx->backend, mrctx->allocator)
             .ok()) {
-      return Status::OK();
+      return OkStatus();
     }
   }
   return status;

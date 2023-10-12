@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <stdio.h>
 
-#include "third_party/eigen3/Eigen/Core"
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/relu_op_functor.h"
@@ -237,16 +237,18 @@ struct Relu<Device, qint8> {
 
 }  // namespace functor
 
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 #define DEFINE_GPU_NO_MLIR_KERNELS(T)          \
   template struct functor::Relu<GPUDevice, T>; \
   template struct functor::Elu<GPUDevice, T>;  \
   template struct functor::Selu<GPUDevice, T>;
 
-TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_NO_MLIR_KERNELS);
-
-#undef DEFINE_RELU_KERNELS
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
+TF_CALL_half(DEFINE_GPU_NO_MLIR_KERNELS);
+TF_CALL_float(DEFINE_GPU_NO_MLIR_KERNELS);
+TF_CALL_double(DEFINE_GPU_NO_MLIR_KERNELS);
 #endif
+TF_CALL_bfloat16(DEFINE_GPU_NO_MLIR_KERNELS);
+#undef DEFINE_GPU_NO_MLIR_KERNELS
 
 // Definition of the GPU implementations declared in relu_op.cc.
 #define DEFINE_GPU_KERNELS(T)                           \

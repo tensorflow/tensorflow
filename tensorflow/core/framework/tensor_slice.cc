@@ -72,7 +72,7 @@ Status TensorSlice::BuildTensorSlice(const TensorSliceProto& proto,
     output->lengths_.push_back(l);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TensorSlice::Parse(const string& str, TensorSlice* slice) {
@@ -105,7 +105,7 @@ Status TensorSlice::Parse(const string& str, TensorSlice* slice) {
     slice->lengths_.push_back(l);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void TensorSlice::Clear() {
@@ -295,7 +295,7 @@ Status TensorSlice::SliceTensorShape(const TensorShape& shape,
     }
   }
   // If we are here, we have successfully applied the shape.
-  return Status::OK();
+  return OkStatus();
 }
 
 const int64_t TensorSlice::kFullExtent = -1;

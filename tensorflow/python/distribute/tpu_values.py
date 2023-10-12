@@ -67,10 +67,6 @@ class TPUVariableMixin(object):
   def _get_as_operand(self):
     return self.read_value()
 
-  def _is_mirrored(self):
-    raise NotImplementedError(
-        "`TPUVariableMixin._is_mirrored()` must be implemented by subclasses.")
-
   @property
   def handle(self):
     """The handle by which this variable can be accessed."""
@@ -88,7 +84,8 @@ class TPUVariableMixin(object):
       if is_packed:
         val = [self._packed_var]
 
-      return tpu_context.get_replicated_var_handle(self._handle_id, val,
+      return tpu_context.get_replicated_var_handle(self._common_name,
+                                                   self._handle_id, val,
                                                    self._is_mirrored(),
                                                    is_packed)
 
@@ -151,9 +148,6 @@ class TPUVariableMixin(object):
 
 class TPUDistributedVariable(TPUVariableMixin, values.DistributedVariable):
   """DistributedVariable subclass for TPUStrategy."""
-
-  def _is_mirrored(self):
-    return self._policy._is_mirrored()  # pylint: disable=protected-access
 
   def assign_sub(self, value, use_locking=False, name=None, read_value=True):
     if values_util.is_saving_non_distributed():
@@ -342,8 +336,39 @@ class TPUMirroredVariable(TPUVariableMixin, values.MirroredVariable):
       return self._primary.scatter_update(*args, **kwargs)
     raise NotImplementedError
 
-  def _is_mirrored(self):
-    return True
+
+class TPULazyDistributedVariable(TPUDistributedVariable):
+  """TPU Mirrored variable to be initialized lazily in a batch."""
+
+  def _initialize_if_uninitialized(self):
+    if getattr(self, "_is_lazily_initialized", False):
+      return
+    self._lazy_scope.initialize_all()
+
+    self._is_lazily_initialized = True
+
+  def assign_sub(self, value, use_locking=False, name=None, read_value=True):
+    self._initialize_if_uninitialized()
+    return super().assign_sub(
+        value, use_locking, name, read_value
+    )
+
+  def assign_add(self, value, use_locking=False, name=None, read_value=True):
+    self._initialize_if_uninitialized()
+    return super().assign_add(
+        value, use_locking, name, read_value
+    )
+
+  def assign(self, value, use_locking=False, name=None, read_value=True):
+    self._initialize_if_uninitialized()
+
+    return super().assign(
+        value, use_locking, name, read_value
+    )
+
+  def read_value(self):
+    self._initialize_if_uninitialized()
+    return super().read_value()
 
 
 class TPUSyncOnReadVariable(TPUVariableMixin, values.SyncOnReadVariable):
@@ -371,9 +396,6 @@ class TPUSyncOnReadVariable(TPUVariableMixin, values.SyncOnReadVariable):
     else:
       return tpu_util.make_raw_assign_fn(
           gen_resource_variable_ops.assign_variable_op)(self, *args, **kwargs)
-
-  def _is_mirrored(self):
-    return False
 
 
 # Common method between OnWrite and Mirrored variables.
@@ -523,9 +545,6 @@ class TPUOnWritePolicy(values.OnWritePolicy):
                              "scatter_update", var, sparse_delta, use_locking,
                              name)
 
-  def _is_mirrored(self):
-    return True
-
 
 class TPUOnReadPolicy(values.OnReadPolicy):
   """Policy defined for `tf.VariableSynchronization.ON_READ` synchronization.
@@ -559,9 +578,6 @@ class TPUOnReadPolicy(values.OnReadPolicy):
     else:
       return tpu_util.make_raw_assign_fn(
           gen_resource_variable_ops.assign_variable_op)(var, *args, **kwargs)
-
-  def _is_mirrored(self):
-    return False
 
   def scatter_sub(self, *args, **kwargs):
     raise NotImplementedError

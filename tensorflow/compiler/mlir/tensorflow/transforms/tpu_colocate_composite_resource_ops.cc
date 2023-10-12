@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -24,19 +25,21 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
 namespace mlir {
 namespace TFTPU {
 namespace {
 
+#define GEN_PASS_DEF_TPUCOLOCATECOMPOSITERESOURCEOPSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Pass that co-locates resource ops that use composite device resources
 // (packed tensors) with the underlying physical TPU device.
 struct TPUColocateCompositeResourceOps
-    : public TF::TPUColocateCompositeResourceOpsPassBase<
+    : public impl::TPUColocateCompositeResourceOpsPassBase<
           TPUColocateCompositeResourceOps> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 // Wraps single op in `tf_device.launch` for explicit device assignment.
@@ -45,7 +48,7 @@ void WrapOpInLaunch(OpBuilder* builder, Location loc, Operation* op,
   builder->setInsertionPoint(op);
   auto launch = builder->create<tf_device::LaunchOp>(
       loc, builder->getStringAttr(device), op->getResultTypes());
-  launch.body().push_back(new Block);
+  launch.getBody().push_back(new Block);
   op->replaceAllUsesWith(launch);
 
   builder->setInsertionPointToEnd(&launch.GetBody());
@@ -79,7 +82,8 @@ llvm::SmallVector<Operation*, 4> GetResourceOpsUsingCompositeArgsInReplicate(
       // Account for pass-through identity ops.
       if (auto pass_through_identity =
               llvm::dyn_cast<TF::IdentityOp>(resource_user)) {
-        for (auto identity_user : pass_through_identity.output().getUsers()) {
+        for (auto identity_user :
+             pass_through_identity.getOutput().getUsers()) {
           new_resource_users.emplace_back(identity_user);
         }
       }
@@ -92,10 +96,9 @@ llvm::SmallVector<Operation*, 4> GetResourceOpsUsingCompositeArgsInReplicate(
 
 void ColocateCompositeResourceOpsInReplicate(
     tf_device::ReplicateOp replicate_op, OpBuilder* builder) {
-  auto devices = replicate_op.devices();
+  auto devices = replicate_op.getDevices();
   if (!devices) return;
-  if (!devices.getValue().get(tensorflow::GetDeviceAliasForLogicalCore(0)))
-    return;
+  if (!devices.value().get(tensorflow::GetDeviceAliasForLogicalCore(0))) return;
 
   const auto composite_resource_users =
       GetResourceOpsUsingCompositeArgsInReplicate(replicate_op);
@@ -105,11 +108,11 @@ void ColocateCompositeResourceOpsInReplicate(
   }
 }
 
-void TPUColocateCompositeResourceOps::runOnFunction() {
+void TPUColocateCompositeResourceOps::runOnOperation() {
   // Find all the executes first, since we will mutate the nodes around each
   // execute in the same tf_device.replicate op.
   llvm::SmallVector<tf_device::LaunchOp, 8> execute_launches;
-  getFunction().walk([&](tf_device::LaunchOp op) {
+  getOperation().walk([&](tf_device::LaunchOp op) {
     if (op.WrapsSingleOp() &&
         llvm::isa<TF::TPUExecuteOp, TF::TPUExecuteAndUpdateVariablesOp>(
             op.GetBody().front()))
@@ -127,7 +130,8 @@ void TPUColocateCompositeResourceOps::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTPUColocateCompositeResourceOps() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateTPUColocateCompositeResourceOps() {
   return std::make_unique<TPUColocateCompositeResourceOps>();
 }
 

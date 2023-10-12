@@ -39,7 +39,7 @@ class InterleaveDatasetParams : public DatasetParams {
         func_(std::move(func)),
         func_lib_(std::move(func_lib)),
         type_arguments_(std::move(type_arguments)) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
                                    input_dataset_params.iterator_prefix());
@@ -65,7 +65,7 @@ class InterleaveDatasetParams : public DatasetParams {
     }
     input_names->emplace_back(InterleaveDatasetOp::kCycleLength);
     input_names->emplace_back(InterleaveDatasetOp::kBlockLength);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -74,7 +74,7 @@ class InterleaveDatasetParams : public DatasetParams {
                     {"output_shapes", output_shapes_},
                     {"output_types", output_dtypes_},
                     {"metadata", ""}};
-    return Status::OK();
+    return OkStatus();
   }
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }
@@ -569,13 +569,13 @@ ITERATOR_SAVE_AND_RESTORE_TEST_P(InterleaveDatasetOpTest,
 TEST_F(InterleaveDatasetOpTest, InvalidCycleLength) {
   auto dataset_params = InterleaveDatasetParamsWithInvalidCycleLength();
   EXPECT_EQ(Initialize(dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(InterleaveDatasetOpTest, InvalidLength) {
   auto dataset_params = InterleaveDatasetParamsWithInvalidBlockLength();
   EXPECT_EQ(Initialize(dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

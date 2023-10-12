@@ -372,192 +372,234 @@ TEST_F(NonMaxSuppressionV2OpTest, TestEmptyInput) {
 // NonMaxSuppressionV3Op Tests
 //
 
+using NmsValidTypes =
+    ::testing::Types<std::pair<float, float>, std::pair<float, Eigen::half>,
+                     std::pair<Eigen::half, Eigen::half>,
+                     std::pair<Eigen::half, float> >;
+
+template <typename InputAndThresholdTypes>
 class NonMaxSuppressionV3OpTest : public OpsTestBase {
  protected:
+  using InputType = typename InputAndThresholdTypes::first_type;
+  using ThresholdType = typename InputAndThresholdTypes::second_type;
+
   void MakeOp() {
+    constexpr DataType kInputDataType = DataTypeToEnum<InputType>::value;
+    constexpr DataType kThresholdDataType =
+        DataTypeToEnum<ThresholdType>::value;
     TF_EXPECT_OK(NodeDefBuilder("non_max_suppression_op", "NonMaxSuppressionV3")
-                     .Input(FakeInput(DT_FLOAT))
-                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(kInputDataType))
+                     .Input(FakeInput(kInputDataType))
                      .Input(FakeInput(DT_INT32))
-                     .Input(FakeInput(DT_FLOAT))
-                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(kThresholdDataType))
+                     .Input(FakeInput(kThresholdDataType))
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
   }
 };
+TYPED_TEST_SUITE(NonMaxSuppressionV3OpTest, NmsValidTypes);
 
-TEST_F(NonMaxSuppressionV3OpTest, TestSelectFromThreeClusters) {
-  MakeOp();
-  AddInputFromArray<float>(
+TYPED_TEST(NonMaxSuppressionV3OpTest, TestSelectFromThreeClusters) {
+  using InputType = typename TestFixture::InputType;
+  using ThresholdType = typename TestFixture::ThresholdType;
+  this->MakeOp();
+  this->template AddInputFromList<InputType, float>(
       TensorShape({6, 4}),
       {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
        0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
-  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
-  AddInputFromArray<int>(TensorShape({}), {3});
-  AddInputFromArray<float>(TensorShape({}), {.5f});
-  AddInputFromArray<float>(TensorShape({}), {0.0f});
-  TF_ASSERT_OK(RunOpKernel());
+  this->template AddInputFromList<InputType>(TensorShape({6}),
+                                             {.9f, .75f, .6f, .95f, .5f, .3f});
+  this->template AddInputFromList<int>(TensorShape({}), {3});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {.5f});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {0.0f});
+  TF_ASSERT_OK(this->RunOpKernel());
 
-  Tensor expected(allocator(), DT_INT32, TensorShape({3}));
+  Tensor expected(this->allocator(), DT_INT32, TensorShape({3}));
   test::FillValues<int>(&expected, {3, 0, 5});
-  test::ExpectTensorEqual<int>(expected, *GetOutput(0));
+  test::ExpectTensorEqual<int>(expected, *(this->GetOutput(0)));
 }
 
-TEST_F(NonMaxSuppressionV3OpTest,
-       TestSelectFromThreeClustersWithScoreThreshold) {
-  MakeOp();
-  AddInputFromArray<float>(
+TYPED_TEST(NonMaxSuppressionV3OpTest,
+           TestSelectFromThreeClustersWithScoreThreshold) {
+  using InputType = typename TestFixture::InputType;
+  using ThresholdType = typename TestFixture::ThresholdType;
+  this->MakeOp();
+  this->template AddInputFromList<InputType, float>(
       TensorShape({6, 4}),
       {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
        0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
-  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
-  AddInputFromArray<int>(TensorShape({}), {3});
-  AddInputFromArray<float>(TensorShape({}), {0.5f});
-  AddInputFromArray<float>(TensorShape({}), {0.4f});
-  TF_ASSERT_OK(RunOpKernel());
+  this->template AddInputFromList<InputType>(TensorShape({6}),
+                                             {.9f, .75f, .6f, .95f, .5f, .3f});
+  this->template AddInputFromList<int>(TensorShape({}), {3});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {0.5f});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {0.4f});
+  TF_ASSERT_OK(this->RunOpKernel());
 
-  Tensor expected(allocator(), DT_INT32, TensorShape({2}));
+  Tensor expected(this->allocator(), DT_INT32, TensorShape({2}));
   test::FillValues<int>(&expected, {3, 0});
-  test::ExpectTensorEqual<int>(expected, *GetOutput(0));
+  test::ExpectTensorEqual<int>(expected, *(this->GetOutput(0)));
 }
 
-TEST_F(NonMaxSuppressionV3OpTest,
-       TestSelectFromThreeClustersWithScoreThresholdZeroScores) {
-  MakeOp();
-  AddInputFromArray<float>(
+TYPED_TEST(NonMaxSuppressionV3OpTest,
+           TestSelectFromThreeClustersWithScoreThresholdZeroScores) {
+  using InputType = typename TestFixture::InputType;
+  using ThresholdType = typename TestFixture::ThresholdType;
+  this->MakeOp();
+  this->template AddInputFromList<InputType, float>(
       TensorShape({6, 4}),
       {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
        0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
-  AddInputFromArray<float>(TensorShape({6}), {.1, 0, 0, .3, .2, -5.0});
+  this->template AddInputFromList<InputType, float>(TensorShape({6}),
+                                                    {.1, 0, 0, .3, .2, -5.0});
   // If we ask for more boxes than we actually expect to get back;
   // should still only get 2 boxes back.
-  AddInputFromArray<int>(TensorShape({}), {6});
-  AddInputFromArray<float>(TensorShape({}), {0.5f});
-  AddInputFromArray<float>(TensorShape({}), {-3.0f});
-  TF_ASSERT_OK(RunOpKernel());
+  this->template AddInputFromList<int>(TensorShape({}), {6});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {.5f});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {-3.0f});
+  TF_ASSERT_OK(this->RunOpKernel());
 
-  Tensor expected(allocator(), DT_INT32, TensorShape({2}));
+  Tensor expected(this->allocator(), DT_INT32, TensorShape({2}));
   test::FillValues<int>(&expected, {3, 0});
 
-  test::ExpectTensorEqual<int>(expected, *GetOutput(0));
+  test::ExpectTensorEqual<int>(expected, *(this->GetOutput(0)));
 }
 
-TEST_F(NonMaxSuppressionV3OpTest,
-       TestSelectFromThreeClustersFlippedCoordinates) {
-  MakeOp();
-  AddInputFromArray<float>(TensorShape({6, 4}),
-                           {1, 1,  0, 0,  0, 0.1f,  1, 1.1f,  0, .9f, 1, -0.1f,
+TYPED_TEST(NonMaxSuppressionV3OpTest,
+           TestSelectFromThreeClustersFlippedCoordinates) {
+  using InputType = typename TestFixture::InputType;
+  using ThresholdType = typename TestFixture::ThresholdType;
+  this->MakeOp();
+  this->template AddInputFromList<InputType, float>(
+      TensorShape({6, 4}), {1, 1,  0, 0,  0, 0.1f,  1, 1.1f,  0, .9f, 1, -0.1f,
                             0, 10, 1, 11, 1, 10.1f, 0, 11.1f, 1, 101, 0, 100});
-  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
-  AddInputFromArray<int>(TensorShape({}), {3});
-  AddInputFromArray<float>(TensorShape({}), {.5f});
-  AddInputFromArray<float>(TensorShape({}), {0.0f});
-  TF_ASSERT_OK(RunOpKernel());
+  this->template AddInputFromList<InputType>(TensorShape({6}),
+                                             {.9f, .75f, .6f, .95f, .5f, .3f});
+  this->template AddInputFromList<int>(TensorShape({}), {3});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {.5f});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {0.0f});
+  TF_ASSERT_OK(this->RunOpKernel());
 
-  Tensor expected(allocator(), DT_INT32, TensorShape({3}));
+  Tensor expected(this->allocator(), DT_INT32, TensorShape({3}));
   test::FillValues<int>(&expected, {3, 0, 5});
-  test::ExpectTensorEqual<int>(expected, *GetOutput(0));
+  test::ExpectTensorEqual<int>(expected, *(this->GetOutput(0)));
 }
 
-TEST_F(NonMaxSuppressionV3OpTest, TestSelectAtMostTwoBoxesFromThreeClusters) {
-  MakeOp();
-  AddInputFromArray<float>(
+TYPED_TEST(NonMaxSuppressionV3OpTest,
+           TestSelectAtMostTwoBoxesFromThreeClusters) {
+  using InputType = typename TestFixture::InputType;
+  using ThresholdType = typename TestFixture::ThresholdType;
+  this->MakeOp();
+  this->template AddInputFromList<InputType, float>(
       TensorShape({6, 4}),
       {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
        0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
-  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
-  AddInputFromArray<int>(TensorShape({}), {2});
-  AddInputFromArray<float>(TensorShape({}), {.5f});
-  AddInputFromArray<float>(TensorShape({}), {0.0f});
-  TF_ASSERT_OK(RunOpKernel());
+  this->template AddInputFromList<InputType>(TensorShape({6}),
+                                             {.9f, .75f, .6f, .95f, .5f, .3f});
+  this->template AddInputFromList<int>(TensorShape({}), {2});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {.5f});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {0.0f});
+  TF_ASSERT_OK(this->RunOpKernel());
 
-  Tensor expected(allocator(), DT_INT32, TensorShape({2}));
+  Tensor expected(this->allocator(), DT_INT32, TensorShape({2}));
   test::FillValues<int>(&expected, {3, 0});
-  test::ExpectTensorEqual<int>(expected, *GetOutput(0));
+  test::ExpectTensorEqual<int>(expected, *(this->GetOutput(0)));
 }
 
-TEST_F(NonMaxSuppressionV3OpTest,
-       TestSelectAtMostThirtyBoxesFromThreeClusters) {
-  MakeOp();
-  AddInputFromArray<float>(
+TYPED_TEST(NonMaxSuppressionV3OpTest,
+           TestSelectAtMostThirtyBoxesFromThreeClusters) {
+  using InputType = typename TestFixture::InputType;
+  using ThresholdType = typename TestFixture::ThresholdType;
+  this->MakeOp();
+  this->template AddInputFromList<InputType, float>(
       TensorShape({6, 4}),
       {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
        0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
-  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
-  AddInputFromArray<int>(TensorShape({}), {30});
-  AddInputFromArray<float>(TensorShape({}), {.5f});
-  AddInputFromArray<float>(TensorShape({}), {0.0f});
-  TF_ASSERT_OK(RunOpKernel());
+  this->template AddInputFromList<InputType>(TensorShape({6}),
+                                             {.9f, .75f, .6f, .95f, .5f, .3f});
+  this->template AddInputFromList<int>(TensorShape({}), {30});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {.5f});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {0.0f});
+  TF_ASSERT_OK(this->RunOpKernel());
 
-  Tensor expected(allocator(), DT_INT32, TensorShape({3}));
+  Tensor expected(this->allocator(), DT_INT32, TensorShape({3}));
   test::FillValues<int>(&expected, {3, 0, 5});
-  test::ExpectTensorEqual<int>(expected, *GetOutput(0));
+  test::ExpectTensorEqual<int>(expected, *(this->GetOutput(0)));
 }
 
-TEST_F(NonMaxSuppressionV3OpTest, TestSelectSingleBox) {
-  MakeOp();
-  AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
-  AddInputFromArray<float>(TensorShape({1}), {.9f});
-  AddInputFromArray<int>(TensorShape({}), {3});
-  AddInputFromArray<float>(TensorShape({}), {.5f});
-  AddInputFromArray<float>(TensorShape({}), {0.0f});
-  TF_ASSERT_OK(RunOpKernel());
+TYPED_TEST(NonMaxSuppressionV3OpTest, TestSelectSingleBox) {
+  using InputType = typename TestFixture::InputType;
+  using ThresholdType = typename TestFixture::ThresholdType;
+  this->MakeOp();
+  this->template AddInputFromList<InputType>(TensorShape({1, 4}), {0, 0, 1, 1});
+  this->template AddInputFromList<InputType>(TensorShape({1}), {.9f});
+  this->template AddInputFromList<int>(TensorShape({}), {3});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {0.5});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {0});
+  TF_ASSERT_OK(this->RunOpKernel());
 
-  Tensor expected(allocator(), DT_INT32, TensorShape({1}));
+  Tensor expected(this->allocator(), DT_INT32, TensorShape({1}));
   test::FillValues<int>(&expected, {0});
-  test::ExpectTensorEqual<int>(expected, *GetOutput(0));
+  test::ExpectTensorEqual<int>(expected, *(this->GetOutput(0)));
 }
 
-TEST_F(NonMaxSuppressionV3OpTest, TestSelectFromTenIdenticalBoxes) {
-  MakeOp();
+TYPED_TEST(NonMaxSuppressionV3OpTest, TestSelectFromTenIdenticalBoxes) {
+  using InputType = typename TestFixture::InputType;
+  using ThresholdType = typename TestFixture::ThresholdType;
+  this->MakeOp();
 
   int num_boxes = 10;
-  std::vector<float> corners(num_boxes * 4);
-  std::vector<float> scores(num_boxes);
+  std::vector<InputType> corners(num_boxes * 4);
+  std::vector<InputType> scores(num_boxes);
   for (int i = 0; i < num_boxes; ++i) {
-    corners[i * 4 + 0] = 0;
-    corners[i * 4 + 1] = 0;
-    corners[i * 4 + 2] = 1;
-    corners[i * 4 + 3] = 1;
-    scores[i] = .9;
+    corners[i * 4 + 0] = static_cast<InputType>(0);
+    corners[i * 4 + 1] = static_cast<InputType>(0);
+    corners[i * 4 + 2] = static_cast<InputType>(1);
+    corners[i * 4 + 3] = static_cast<InputType>(1);
+    scores[i] = static_cast<InputType>(.9);
   }
-  AddInputFromArray<float>(TensorShape({num_boxes, 4}), corners);
-  AddInputFromArray<float>(TensorShape({num_boxes}), scores);
-  AddInputFromArray<int>(TensorShape({}), {3});
-  AddInputFromArray<float>(TensorShape({}), {.5f});
-  AddInputFromArray<float>(TensorShape({}), {0.0f});
-  TF_ASSERT_OK(RunOpKernel());
+  this->template AddInputFromArray<InputType>(TensorShape({num_boxes, 4}),
+                                              corners);
+  this->template AddInputFromArray<InputType>(TensorShape({num_boxes}), scores);
+  this->template AddInputFromList<int>(TensorShape({}), {3});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {.5f});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {0.0f});
+  TF_ASSERT_OK(this->RunOpKernel());
 
-  Tensor expected(allocator(), DT_INT32, TensorShape({1}));
+  Tensor expected(this->allocator(), DT_INT32, TensorShape({1}));
   test::FillValues<int>(&expected, {0});
-  test::ExpectTensorEqual<int>(expected, *GetOutput(0));
+  test::ExpectTensorEqual<int>(expected, *(this->GetOutput(0)));
 }
 
-TEST_F(NonMaxSuppressionV3OpTest, TestInconsistentBoxAndScoreShapes) {
-  MakeOp();
-  AddInputFromArray<float>(
+TYPED_TEST(NonMaxSuppressionV3OpTest, TestInconsistentBoxAndScoreShapes) {
+  using InputType = typename TestFixture::InputType;
+  using ThresholdType = typename TestFixture::ThresholdType;
+  this->MakeOp();
+  this->template AddInputFromList<InputType, float>(
       TensorShape({6, 4}),
       {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
        0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
-  AddInputFromArray<float>(TensorShape({5}), {.9f, .75f, .6f, .95f, .5f});
-  AddInputFromArray<int>(TensorShape({}), {30});
-  AddInputFromArray<float>(TensorShape({}), {.5f});
-  AddInputFromArray<float>(TensorShape({}), {0.0f});
-  Status s = RunOpKernel();
+  this->template AddInputFromList<InputType>(TensorShape({5}),
+                                             {.9f, .75f, .6f, .95f, .5f});
+  this->template AddInputFromList<int>(TensorShape({}), {30});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {0.5});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {0});
+  Status s = this->RunOpKernel();
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(absl::StrContains(s.ToString(), "scores has incompatible shape"))
       << s;
 }
 
-TEST_F(NonMaxSuppressionV3OpTest, TestInvalidIOUThreshold) {
-  MakeOp();
-  AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
-  AddInputFromArray<float>(TensorShape({1}), {.9f});
-  AddInputFromArray<int>(TensorShape({}), {3});
-  AddInputFromArray<float>(TensorShape({}), {1.2f});
-  AddInputFromArray<float>(TensorShape({}), {0.0f});
-  Status s = RunOpKernel();
+TYPED_TEST(NonMaxSuppressionV3OpTest, TestInvalidIOUThreshold) {
+  using InputType = typename TestFixture::InputType;
+  using ThresholdType = typename TestFixture::ThresholdType;
+  this->MakeOp();
+  this->template AddInputFromList<InputType>(TensorShape({1, 4}), {0, 0, 1, 1});
+  this->template AddInputFromList<InputType>(TensorShape({1}), {.9f});
+  this->template AddInputFromList<int>(TensorShape({}), {3});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {1.2f});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {0});
+  Status s = this->RunOpKernel();
 
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
@@ -565,73 +607,90 @@ TEST_F(NonMaxSuppressionV3OpTest, TestInvalidIOUThreshold) {
       << s;
 }
 
-TEST_F(NonMaxSuppressionV3OpTest, TestEmptyInput) {
-  MakeOp();
-  AddInputFromArray<float>(TensorShape({0, 4}), {});
-  AddInputFromArray<float>(TensorShape({0}), {});
-  AddInputFromArray<int>(TensorShape({}), {30});
-  AddInputFromArray<float>(TensorShape({}), {.5f});
-  AddInputFromArray<float>(TensorShape({}), {0.0f});
-  TF_ASSERT_OK(RunOpKernel());
+TYPED_TEST(NonMaxSuppressionV3OpTest, TestEmptyInput) {
+  using InputType = typename TestFixture::InputType;
+  using ThresholdType = typename TestFixture::ThresholdType;
+  this->MakeOp();
+  this->template AddInputFromArray<InputType>(TensorShape({0, 4}), {});
+  this->template AddInputFromArray<InputType>(TensorShape({0}), {});
+  this->template AddInputFromList<int>(TensorShape({}), {30});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {.5f});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {0.0f});
+  TF_ASSERT_OK(this->RunOpKernel());
 
-  Tensor expected(allocator(), DT_INT32, TensorShape({0}));
+  Tensor expected(this->allocator(), DT_INT32, TensorShape({0}));
   test::FillValues<int>(&expected, {});
-  test::ExpectTensorEqual<int>(expected, *GetOutput(0));
+  test::ExpectTensorEqual<int>(expected, *(this->GetOutput(0)));
 }
 
 //
 // NonMaxSuppressionV4Op Tests
 //
 
+template <typename InputAndThresholdTypes>
 class NonMaxSuppressionV4OpTest : public OpsTestBase {
  protected:
+  using InputType = typename InputAndThresholdTypes::first_type;
+  using ThresholdType = typename InputAndThresholdTypes::second_type;
+
   void MakeOp() {
+    constexpr DataType kInputDataType = DataTypeToEnum<InputType>::value;
+    constexpr DataType kThresholdDataType =
+        DataTypeToEnum<ThresholdType>::value;
     TF_EXPECT_OK(NodeDefBuilder("non_max_suppression_op", "NonMaxSuppressionV4")
-                     .Input(FakeInput(DT_FLOAT))
-                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(kInputDataType))
+                     .Input(FakeInput(kInputDataType))
                      .Input(FakeInput(DT_INT32))
-                     .Input(FakeInput(DT_FLOAT))
-                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(kThresholdDataType))
+                     .Input(FakeInput(kThresholdDataType))
                      .Attr("pad_to_max_output_size", true)
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
   }
 };
+TYPED_TEST_SUITE(NonMaxSuppressionV4OpTest, NmsValidTypes);
 
-TEST_F(NonMaxSuppressionV4OpTest, TestSelectFromThreeClustersPadFive) {
-  MakeOp();
-  AddInputFromArray<float>(
+TYPED_TEST(NonMaxSuppressionV4OpTest, TestSelectFromThreeClustersPadFive) {
+  using InputType = typename TestFixture::InputType;
+  using ThresholdType = typename TestFixture::ThresholdType;
+  this->MakeOp();
+  this->template AddInputFromList<InputType, float>(
       TensorShape({6, 4}),
       {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
        0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
-  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
-  AddInputFromArray<int>(TensorShape({}), {5});
-  AddInputFromArray<float>(TensorShape({}), {.5f});
-  AddInputFromArray<float>(TensorShape({}), {0.0f});
-  TF_ASSERT_OK(RunOpKernel());
+  this->template AddInputFromList<InputType>(TensorShape({6}),
+                                             {.9f, .75f, .6f, .95f, .5f, .3f});
+  this->template AddInputFromList<int>(TensorShape({}), {5});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {.5f});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {0.0f});
+  TF_ASSERT_OK(this->RunOpKernel());
 
   const auto expected_indices = test::AsTensor<int>({3, 0, 5, 0, 0});
-  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(0));
+  test::ExpectTensorEqual<int>(expected_indices, *(this->GetOutput(0)));
   Tensor expected_num_valid = test::AsScalar<int>(3);
-  test::ExpectTensorEqual<int>(expected_num_valid, *GetOutput(1));
+  test::ExpectTensorEqual<int>(expected_num_valid, *(this->GetOutput(1)));
 }
 
-TEST_F(NonMaxSuppressionV4OpTest, TestSelectFromThreeClustersPadFiveScoreThr) {
-  MakeOp();
-  AddInputFromArray<float>(
+TYPED_TEST(NonMaxSuppressionV4OpTest,
+           TestSelectFromThreeClustersPadFiveScoreThr) {
+  using InputType = typename TestFixture::InputType;
+  using ThresholdType = typename TestFixture::ThresholdType;
+  this->MakeOp();
+  this->template AddInputFromList<InputType, float>(
       TensorShape({6, 4}),
       {0, 0,  1, 1,  0, 0.1f,  1, 1.1f,  0, -0.1f, 1, 0.9f,
        0, 10, 1, 11, 0, 10.1f, 1, 11.1f, 0, 100,   1, 101});
-  AddInputFromArray<float>(TensorShape({6}), {.9f, .75f, .6f, .95f, .5f, .3f});
-  AddInputFromArray<int>(TensorShape({}), {6});
-  AddInputFromArray<float>(TensorShape({}), {.5f});
-  AddInputFromArray<float>(TensorShape({}), {0.4f});
-  TF_ASSERT_OK(RunOpKernel());
+  this->template AddInputFromList<InputType>(TensorShape({6}),
+                                             {.9f, .75f, .6f, .95f, .5f, .3f});
+  this->template AddInputFromList<int>(TensorShape({}), {6});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {.5f});
+  this->template AddInputFromList<ThresholdType>(TensorShape({}), {0.4f});
+  TF_ASSERT_OK(this->RunOpKernel());
 
   const auto expected_indices = test::AsTensor<int>({3, 0, 0, 0, 0, 0});
-  test::ExpectTensorEqual<int>(expected_indices, *GetOutput(0));
+  test::ExpectTensorEqual<int>(expected_indices, *(this->GetOutput(0)));
   Tensor expected_num_valid = test::AsScalar<int>(2);
-  test::ExpectTensorEqual<int>(expected_num_valid, *GetOutput(1));
+  test::ExpectTensorEqual<int>(expected_num_valid, *(this->GetOutput(1)));
 }
 
 //

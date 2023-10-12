@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/big_little_affinity.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <map>
 #include <set>

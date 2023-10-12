@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_MLIR_ROUNDTRIP_FLAGS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_MLIR_ROUNDTRIP_FLAGS_H_
 
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/MapVector.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringMap.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -29,13 +29,19 @@ limitations under the License.
 
 namespace tensorflow {
 
-struct ArrayInfo {
+struct ArrayInfoBase {
   // The node type when the input node is imported. Typically needs to be
   // specified when passing arbitrary nodes (some node attributes are removed).
   DataType imported_dtype;
 
   // Node "shape" attribute value.
   TensorShapeProto shape;
+};
+
+struct ArrayInfo : public ArrayInfoBase {
+  using SubTypeInfo = ArrayInfoBase;
+  // DT_RESOURCE and DT_VARIANT have subtypes
+  std::vector<SubTypeInfo> subtypes;
 };
 
 struct GraphImportConfig {
@@ -66,12 +72,15 @@ struct GraphImportConfig {
   // If true, upgrade legacy features of the graph (for instance, functionalize
   // control-flow).
   bool upgrade_legacy = false;
-  // If true, functionalization is restricted to TPU nodes. This is only needed
-  // if upgrade_legacy is true and if upgrading legacy features of the graph
-  // (which includes functionalization) runs before TPU cluster extraction, as
-  // for example in the MLIR-based TPU bridge. Otherwise, this parameter should
-  // stay false.
-  bool restrict_functionalization_to_tpu_nodes = false;
+  // If true, functionalization is restricted to nodes that will be
+  // XLA-compiled. This is only needed if
+  // - `upgrade_legacy` is true
+  // - upgrading legacy features of the graph (which includes functionalization)
+  //   runs before compilation cluster extraction (as for MLIR-based TPU bridge)
+  // - session runtime is used (session runtime has issues with function names
+  //   rewritten by functionalization).
+  // Otherwise, this parameter should be set to false.
+  bool restrict_functionalization_to_compiled_nodes = false;
   // If true, enables shape inference on input.
   // TODO(jpienaar): This will be removed shortly.
   bool enable_shape_inference = true;
@@ -81,6 +90,15 @@ struct GraphImportConfig {
   // so make it opt-in to consider it unconditionally also when importing the
   // graph.
   bool unconditionally_use_set_output_shapes = false;
+  // If set, use the value as the device type and mark the function graph for
+  // XLA compilation.
+  string xla_compile_device_type;
+  // If true, enables moving ops to different devices or moving unsupported ops
+  // out of a compilation cluster.
+  bool enable_soft_placement = false;
+  // If true, a function attribute, `tf._original_func_name`, will be set in
+  // functions which contains the corresponding original TF function name.
+  bool set_original_tf_func_name = false;
 };
 
 struct GraphExportConfig {
@@ -93,6 +111,9 @@ struct GraphExportConfig {
   // Whether to export the entry function to function library instead of the
   // graph.
   bool export_entry_func_to_flib = false;
+  // Whether to export functions using the name set in the attribute
+  // `tf._original_func_name` if it exists.
+  bool export_original_tf_func_name = false;
 };
 
 // Parses the command line flag strings to the specification of nodes in
@@ -113,7 +134,7 @@ Status ParseInputArrayInfo(absl::string_view array_names,
 Status ParseInputArrayInfo(
     const std::vector<string>& node_names,
     const std::vector<string>& node_dtypes,
-    const std::vector<llvm::Optional<std::vector<int>>>& node_shapes,
+    const std::vector<std::optional<std::vector<int>>>& node_shapes,
     GraphImportConfig::InputArrays* inputs);
 
 // Parses shapes from the given string into shapes_vector which is a structured
@@ -121,7 +142,7 @@ Status ParseInputArrayInfo(
 // NOTE: If shapes_str is empty, shapes_vector will also be empty.
 Status ParseNodeShapes(
     absl::string_view shapes_str,
-    std::vector<llvm::Optional<std::vector<int>>>& shapes_vector);
+    std::vector<std::optional<std::vector<int>>>& shapes_vector);
 
 // Parses names from the given string into the names_vector.
 // NOTE: If names_str is empty, names_vector will also be empty.

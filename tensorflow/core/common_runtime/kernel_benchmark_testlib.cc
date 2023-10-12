@@ -66,7 +66,7 @@ Benchmark::Benchmark(const string& device, Graph* g,
   // threads for each new benchmark.
   LocalDevice::set_use_global_threadpool(false);
 
-  device_mgr_ = absl::make_unique<StaticDeviceMgr>(
+  device_mgr_ = std::make_unique<StaticDeviceMgr>(
       DeviceFactory::NewDevice(t, *options, "/job:localhost/replica:0/task:0"));
   device_ = device_mgr_->ListDevices()[0];
   CHECK(device_) << "Could not create a " << device << " device";
@@ -86,7 +86,7 @@ Benchmark::Benchmark(const string& device, Graph* g,
 
   const int graph_def_version = g->versions().producer();
 
-  flib_def_ = absl::make_unique<FunctionLibraryDefinition>(g->flib_def());
+  flib_def_ = std::make_unique<FunctionLibraryDefinition>(g->flib_def());
 
   pflr_ = std::unique_ptr<ProcessFunctionLibraryRuntime>(
       new ProcessFunctionLibraryRuntime(

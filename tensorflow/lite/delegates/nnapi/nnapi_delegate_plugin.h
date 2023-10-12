@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_NNAPI_NNAPI_DELEGATE_PLUGIN_H_
 #define TENSORFLOW_LITE_DELEGATES_NNAPI_NNAPI_DELEGATE_PLUGIN_H_
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 
 #ifdef __cplusplus
@@ -82,7 +82,7 @@ typedef struct NnapiDelegateVendorPlugin {
   // the operation. In case of success it returns kTfLiteOk and stores the
   // corresponding NNAPI operand indices and operation code through the mapping
   // utility interface. Returns kTfLiteError in case of failures during mapping.
-  TfLiteStatus (*MapNode)(const TfLiteContext* context, const TfLiteNode* node,
+  TfLiteStatus (*MapNode)(TfLiteContext* context, const TfLiteNode* node,
                           int node_index, NnapiMappingUtilCInterface* mapping,
                           ANeuralNetworksModel* model);
 

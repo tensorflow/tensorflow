@@ -1,6 +1,6 @@
 path: "tensorflow.__internal__.tracking.TrackableReference"
 tf_class {
-  is_instance: "<class \'tensorflow.python.training.tracking.base.TrackableReference\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.TrackableReference\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "name"

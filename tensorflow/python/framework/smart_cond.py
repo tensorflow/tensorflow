@@ -14,10 +14,10 @@
 # ==============================================================================
 """smart_cond and related utilities."""
 
-from tensorflow.python.client import pywrap_tf_session as c_api
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
+from tensorflow.python.ops import control_flow_case
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -54,8 +54,8 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):
     else:
       return false_fn()
   else:
-    return control_flow_ops.cond(pred, true_fn=true_fn, false_fn=false_fn,
-                                 name=name)
+    return cond.cond(pred, true_fn=true_fn, false_fn=false_fn,
+                     name=name)
 
 
 def smart_constant_value(pred):
@@ -70,13 +70,12 @@ def smart_constant_value(pred):
   Raises:
     TypeError: If `pred` is not a Tensor or bool.
   """
-  if isinstance(pred, ops.Tensor):
+  if isinstance(pred, tensor.Tensor):
     pred_value = tensor_util.constant_value(pred)
     # TODO(skyewm): consider folding this into tensor_util.constant_value.
     # pylint: disable=protected-access
     if pred_value is None:
-      pred_value = c_api.TF_TryEvaluateConstant_wrapper(pred.graph._c_graph,
-                                                        pred._as_tf_output())
+      pred_value = tensor_util.try_evaluate_constant(pred)
     # pylint: enable=protected-access
   elif pred in {0, 1}:  # Accept 1/0 as valid boolean values
     pred_value = bool(pred)
@@ -114,6 +113,10 @@ def smart_case(pred_fn_pairs, default=None, exclusive=False, name="smart_case"):
     TypeError: If `fns[i]` is not callable for any i, or `default` is not
                callable.
   """
-  return control_flow_ops._case_helper(  # pylint: disable=protected-access
-      smart_cond, pred_fn_pairs, default, exclusive, name,
+  return control_flow_case._case_helper(  # pylint: disable=protected-access
+      smart_cond,
+      pred_fn_pairs,
+      default,
+      exclusive,
+      name,
       allow_python_preds=True)

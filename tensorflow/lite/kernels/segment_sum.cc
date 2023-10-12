@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -77,7 +77,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                  data->type == kTfLiteInt32 || data->type == kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, segment_ids->type, kTfLiteInt32);
 
-  if (!IsConstantTensor(data) || !IsConstantTensor(segment_ids)) {
+  if (!IsConstantOrPersistentTensor(data) ||
+      !IsConstantOrPersistentTensor(segment_ids)) {
     SetTensorToDynamic(output);
     return kTfLiteOk;
   }
@@ -114,9 +115,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_SEGMENT_SUM(float);
       break;
     default:
-      context->ReportError(context,
-                           "Currently SegmentSum doesn't support type: %s",
-                           TfLiteTypeGetName(data->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Currently SegmentSum doesn't support type: %s",
+                         TfLiteTypeGetName(data->type));
       return kTfLiteError;
   }
 #undef TF_LITE_SEGMENT_SUM

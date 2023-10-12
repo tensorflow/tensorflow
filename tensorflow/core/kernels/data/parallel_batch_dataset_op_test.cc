@@ -60,7 +60,7 @@ class ParallelBatchDatasetParams : public DatasetParams {
                     ParallelBatchDatasetOp::kBatchSize,
                     ParallelBatchDatasetOp::kNumParallelCalls,
                     ParallelBatchDatasetOp::kDropRemainder};
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -71,7 +71,7 @@ class ParallelBatchDatasetParams : public DatasetParams {
         {"deterministic", deterministic_},
         {"metadata", ""},
     };
-    return Status::OK();
+    return OkStatus();
   };
 
   string dataset_type() const override {
@@ -477,7 +477,7 @@ TEST_F(ParallelBatchDatasetOpTest, InvalidParallelBatchSize) {
   auto parallel_batch_dataset_params =
       InvalidBatchSizeParallelBatchDatasetParams();
   EXPECT_EQ(Initialize(parallel_batch_dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

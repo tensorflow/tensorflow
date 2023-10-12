@@ -52,7 +52,28 @@ std::vector<Value*> GraphFloat32::variable_inputs() const {
 }
 
 std::vector<Value*> GraphFloat32::outputs() const {
-  return FilterValues([](const ValueDef& v) { return v.consumers.empty(); });
+  std::vector<Value*> values;
+  std::vector<Value*> values_known_graph_outputs;
+  values.reserve(values_.size());
+  values_known_graph_outputs.reserve(values_.size());
+  for (auto& v : values_) {
+    auto value_ptr = v.value.get();
+    if (value_ptr == nullptr) continue;
+    // Find v which meets one of the following conditions.
+    // 1. v doesn't have a consumer.
+    // 2. v has a consumer but it's also in known_graph_outputs_.
+    if (v.consumers.empty()) {
+      values.push_back(v.value.get());
+    } else if (std::find(known_graph_outputs_.begin(),
+                         known_graph_outputs_.end(),
+                         value_ptr) != known_graph_outputs_.end()) {
+      values_known_graph_outputs.push_back(v.value.get());
+    }
+  }
+  // Add known_graph_outputs later to provide compatibility in output ordering.
+  values.insert(values.end(), values_known_graph_outputs.begin(),
+                values_known_graph_outputs.end());
+  return values;
 }
 
 std::vector<Value*> GraphFloat32::FindInputs(NodeId id) const {
@@ -79,6 +100,10 @@ bool GraphFloat32::IsGraphInput(ValueId id) const {
 bool GraphFloat32::IsGraphOutput(ValueId id) const {
   if (id >= values_.size()) {
     return false;
+  }
+  if (std::find(known_graph_outputs_.begin(), known_graph_outputs_.end(),
+                values_[id].value.get()) != known_graph_outputs_.end()) {
+    return true;
   }
   return values_[id].consumers.empty();
 }
@@ -500,15 +525,17 @@ absl::Status ConnectTwoNodes(GraphFloat32* graph, const Node* from_node,
   return absl::OkStatus();
 }
 
-bool IsBatchMatchesForAllValues(const GraphFloat32& model) {
-  if (model.values().empty()) return true;
+absl::Status CheckBatchSizeForAllValues(const GraphFloat32& model) {
+  if (model.values().empty()) return absl::OkStatus();
   const int32_t b = model.values()[0]->tensor.shape.b;
   for (auto value : model.values()) {
     if (value->tensor.shape.b != b) {
-      return false;
+      return absl::InvalidArgumentError(
+          absl::StrCat("Batch size mismatch, expected ", b, " but got ",
+                       value->tensor.shape.b));
     }
   }
-  return true;
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

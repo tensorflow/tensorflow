@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/experimental/tac/hardwares/nnapi_hardware.h"
 
+#include <memory>
+
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/utils.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/device_transform_patterns.h"
@@ -37,8 +39,8 @@ mlir::RewritePatternSet NNAPIHardware::GetTransformations(
     MLIRContext* context) const {
   mlir::RewritePatternSet patterns(context);
 
-  patterns.insert<SquaredDifference, LowerPackIntoConcatReshape,
-                  ReduceMeanToAvgPool, InsertRequantForReduceMean>(context);
+  patterns.add<SquaredDifference, LowerPackIntoConcatReshape,
+               ReduceMeanToAvgPool, InsertRequantForReduceMean>(context);
   return patterns;
 }
 

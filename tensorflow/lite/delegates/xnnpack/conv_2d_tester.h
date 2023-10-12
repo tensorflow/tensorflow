@@ -20,7 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -28,6 +29,17 @@ namespace xnnpack {
 
 class Conv2DTester {
  public:
+  enum class WeightsType {
+    kFP32,
+    kFP16,
+    kTensorWiseQuantizedInt8,
+    kChannelWiseQuantizedInt8,
+  };
+  enum class BiasType {
+    kFP32,
+    kFP16,
+  };
+
   Conv2DTester() = default;
   Conv2DTester(const Conv2DTester&) = delete;
   Conv2DTester& operator=(const Conv2DTester&) = delete;
@@ -55,6 +67,19 @@ class Conv2DTester {
   }
 
   inline int32_t OutputChannels() const { return output_channels_; }
+
+  inline Conv2DTester& Groups(int32_t groups) {
+    EXPECT_EQ(InputChannels() % groups, 0);
+    EXPECT_EQ(OutputChannels() % groups, 0);
+    groups_ = groups;
+    return *this;
+  }
+
+  inline int32_t Groups() const { return groups_; }
+
+  inline int32_t KernelInputChannels() const {
+    return input_channels_ / groups_;
+  }
 
   inline Conv2DTester& InputHeight(int32_t input_height) {
     EXPECT_GT(input_height, 0);
@@ -149,26 +174,23 @@ class Conv2DTester {
   }
 
   inline Conv2DTester& FP16Weights() {
-    fp16_weights_ = true;
+    weights_type_ = WeightsType::kFP16;
+    bias_type_ = BiasType::kFP16;
     return *this;
   }
 
-  inline bool FP16Weights() const { return fp16_weights_; }
-
-  inline Conv2DTester& INT8Weights() {
-    int8_weights_ = true;
+  inline Conv2DTester& TensorWiseQuantizedInt8Weights() {
+    weights_type_ = WeightsType::kTensorWiseQuantizedInt8;
+    // Bias is stored in FP32 even when filter is quantized to INT8
+    bias_type_ = BiasType::kFP32;
     return *this;
   }
 
-  inline bool INT8Weights() const { return int8_weights_; }
-
-  inline Conv2DTester& INT8ChannelWiseWeights() {
-    int8_channel_wise_weights_ = true;
+  inline Conv2DTester& ChannelWiseQuantizedInt8Weights() {
+    weights_type_ = WeightsType::kChannelWiseQuantizedInt8;
+    // Bias is stored in FP32 even when filter is quantized to INT8
+    bias_type_ = BiasType::kFP32;
     return *this;
-  }
-
-  inline bool INT8ChannelWiseWeights() const {
-    return int8_channel_wise_weights_;
   }
 
   inline Conv2DTester& SparseWeights() {
@@ -213,10 +235,20 @@ class Conv2DTester {
     return *this;
   }
 
+  inline Conv2DTester& WeightsCache(
+      TfLiteXNNPackDelegateWeightsCache* weights_cache) {
+    weights_cache_ = weights_cache;
+    return *this;
+  }
+
   void Test(TfLiteDelegate* delegate) const;
 
- private:
   std::vector<char> CreateTfLiteModel() const;
+
+ private:
+  inline WeightsType WeightsType() const { return weights_type_; }
+
+  inline BiasType BiasType() const { return bias_type_; }
 
   inline ::tflite::Padding Padding() const { return padding_; }
 
@@ -227,6 +259,7 @@ class Conv2DTester {
   int32_t batch_size_ = 1;
   int32_t input_channels_ = 1;
   int32_t output_channels_ = 1;
+  int32_t groups_ = 1;
   int32_t input_height_ = 1;
   int32_t input_width_ = 1;
   int32_t kernel_height_ = 1;
@@ -235,13 +268,13 @@ class Conv2DTester {
   int32_t stride_width_ = 1;
   int32_t dilation_height_ = 1;
   int32_t dilation_width_ = 1;
-  bool fp16_weights_ = false;
-  bool int8_weights_ = false;
-  bool int8_channel_wise_weights_ = false;
+  enum WeightsType weights_type_ { WeightsType::kFP32 };
+  enum BiasType bias_type_ { BiasType::kFP32 };
   bool sparse_weights_ = false;
   ::tflite::Padding padding_ = ::tflite::Padding_VALID;
   ::tflite::ActivationFunctionType activation_ =
       ::tflite::ActivationFunctionType_NONE;
+  TfLiteXNNPackDelegateWeightsCache* weights_cache_ = nullptr;
 };
 
 }  // namespace xnnpack

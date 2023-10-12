@@ -19,11 +19,13 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOCO_ARGS_H_
 
 #include <functional>
+#include <string>
 #include <unordered_map>
 #include <vector>
-#include "tensorflow/lite/toco/toco_port.h"
+
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/lite/toco/toco_port.h"
 #include "tensorflow/lite/toco/toco_types.h"
 
 namespace toco {
@@ -191,7 +193,7 @@ struct ParsedTocoFlags {
   // WARNING: Experimental interface, subject to change
   Arg<bool> force_select_tf_ops = Arg<bool>(false);
   // WARNING: Experimental interface, subject to change
-  Arg<bool> unfold_batchmatmul = Arg<bool>(true);
+  Arg<bool> unfold_batchmatmul = Arg<bool>(false);
   // WARNING: Experimental interface, subject to change
   Arg<std::string> accumulation_type;
   // WARNING: Experimental interface, subject to change

@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/data/unbounded_thread_pool.h"
 
-#include "tensorflow/core/lib/core/blocking_counter.h"
+#include <atomic>
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {

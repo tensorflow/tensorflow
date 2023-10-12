@@ -23,7 +23,7 @@ TfLiteStatus ResizeBilinearOpBuilder::PopulateSubGraph(
     const TfLiteIntArray* inputs, const TfLiteIntArray* outputs,
     TfLiteContext* context) {
   if (inputs->size != 2) {
-    context->ReportError(context, "Expecting 2 inputs %d != 2\n", inputs->size);
+    TF_LITE_KERNEL_LOG(context, "Expecting 2 inputs %d != 2\n", inputs->size);
     return kTfLiteError;
   }
 
@@ -34,8 +34,8 @@ TfLiteStatus ResizeBilinearOpBuilder::PopulateSubGraph(
 
   const auto& size_tensor = context->tensors[inputs->data[1]];
   if (!IsConstantTensor(&size_tensor)) {
-    context->ReportError(context,
-                         "Hexagon Delegate doesn't support dynamic shape.\n");
+    TF_LITE_KERNEL_LOG(context,
+                       "Hexagon Delegate doesn't support dynamic shape.\n");
     return kTfLiteError;
   }
   // dims tensor.

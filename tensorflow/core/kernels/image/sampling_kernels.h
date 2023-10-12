@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_SAMPLING_KERNELS_H_
-#define TENSORFLOW_CORE_KERNELS_SAMPLING_KERNELS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_IMAGE_SAMPLING_KERNELS_H_
+#define TENSORFLOW_CORE_KERNELS_IMAGE_SAMPLING_KERNELS_H_
 
 #include <cmath>
 
@@ -189,4 +189,4 @@ inline MitchellCubicKernelFunc CreateMitchellCubicKernel() {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_SAMPLING_KERNELS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_IMAGE_SAMPLING_KERNELS_H_

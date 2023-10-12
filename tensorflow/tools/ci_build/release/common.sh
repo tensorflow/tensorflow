@@ -15,14 +15,14 @@
 # ==============================================================================
 # External `common.sh`
 
-# Keep in sync with tensorflow_estimator and configure.py.
+# Keeps Bazel versions of the build scripts.
 # LINT.IfChange
-LATEST_BAZEL_VERSION=4.2.2
+LATEST_BAZEL_VERSION=6.1.0
 # LINT.ThenChange(
-#   //tensorflow/opensource_only/configure.py,
-#   //tensorflow_estimator/google/kokoro/common.sh,
+#   //tensorflow/opensource_only/.bazelversion,
 #   //tensorflow/tools/ci_build/install/install_bazel.sh,
-#   //tensorflow/tools/ci_build/install/install_bazel_from_source.sh)
+#   //tensorflow/tools/ci_build/install/install_bazel_from_source.sh,
+#   //tensorflow_estimator/google/kokoro/common.sh)
 
 # Run flaky functions with retries.
 # run_with_retry cmd
@@ -62,7 +62,12 @@ function install_bazelisk {
   date
   case "$(uname -s)" in
     Darwin) local name=bazelisk-darwin-amd64 ;;
-    Linux)  local name=bazelisk-linux-amd64  ;;
+    Linux)
+      case "$(uname -m)" in
+       x86_64) local name=bazelisk-linux-amd64 ;;
+       aarch64) local name=bazelisk-linux-arm64 ;;
+       *) die "Unknown machine type: $(uname -m)" ;;
+      esac ;;
     *) die "Unknown OS: $(uname -s)" ;;
   esac
   mkdir -p "$HOME/bin"
@@ -263,9 +268,10 @@ function install_macos_pip_deps {
   ${PIP_CMD} list
   ${PIP_CMD} uninstall -y keras
   ${PIP_CMD} install -r tensorflow/tools/ci_build/release/requirements_mac.txt
-  # LINT.ThenChange(:linux_pip_installations_orig)
-  # LINT.ThenChange(:install_macos_pip_deps_no_venv)
-  # LINT.ThenChange(:linux_pip_installations)
+  # LINT.ThenChange(
+  #   :linux_pip_installations_orig,
+  #   :install_macos_pip_deps_no_venv,
+  #   :linux_pip_installations)
 }
 
 # This hack is unfortunately necessary for MacOS builds that use pip_new.sh
@@ -361,7 +367,7 @@ function copy_to_new_project_name {
   NEW_PROJECT_NAME_DASH="${NEW_PROJECT_NAME//_/-}"
 
   # We need to change the name in the METADATA file, but we need to ensure that
-  # all other occurences of the name stay the same, otherwise things such as
+  # all other occurrences of the name stay the same, otherwise things such as
   # URLs and depedencies might be broken (for example, replacing without care
   # might transform a `tensorflow_estimator` dependency into
   # `tensorflow_gpu_estimator`, which of course does not exist -- except by
@@ -419,13 +425,13 @@ function test_xml_summary_exit {
 }
 
 # Note: The Docker-based Ubuntu TF-nightly jobs do not use this list. They use
-# https://github.com/tensorflow/build/blob/master/tf_sig_build_dockerfiles/devel.usertools/wheel_verification.bats
+# //tensorflow/tools/tf_sig_build_dockerfiles/devel.usertools/wheel_verification.bats
 # instead. See go/tf-devinfra/docker.
 # CPU size
-MAC_CPU_MAX_WHL_SIZE=225M
+MAC_CPU_MAX_WHL_SIZE=240M
 WIN_CPU_MAX_WHL_SIZE=170M
 # GPU size
-WIN_GPU_MAX_WHL_SIZE=345M
+WIN_GPU_MAX_WHL_SIZE=360M
 
 function test_tf_whl_size() {
   WHL_PATH=${1}

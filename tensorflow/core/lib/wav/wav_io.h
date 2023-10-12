@@ -15,8 +15,8 @@ limitations under the License.
 
 // Functions to write audio in WAV format.
 
-#ifndef TENSORFLOW_LIB_WAV_WAV_IO_H_
-#define TENSORFLOW_LIB_WAV_WAV_IO_H_
+#ifndef TENSORFLOW_CORE_LIB_WAV_WAV_IO_H_
+#define TENSORFLOW_CORE_LIB_WAV_WAV_IO_H_
 
 #include <string>
 #include <vector>
@@ -72,7 +72,7 @@ Status DecodeLin16WaveAsFloatVector(const std::string& wav_string,
 
 // Handles moving the data index forward, validating the arguments, and avoiding
 // overflow or underflow.
-Status IncrementOffset(int old_offset, size_t increment, size_t max_size,
+Status IncrementOffset(int old_offset, int64_t increment, size_t max_size,
                        int* new_offset);
 
 // This function is only exposed in the header for testing purposes, as a
@@ -95,10 +95,10 @@ Status ReadValue(const std::string& data, T* value, int* offset) {
     }
   }
   *offset = new_offset;
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace wav
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_WAV_WAV_IO_H_
+#endif  // TENSORFLOW_CORE_LIB_WAV_WAV_IO_H_

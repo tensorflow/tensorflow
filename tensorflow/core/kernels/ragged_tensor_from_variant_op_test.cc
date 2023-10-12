@@ -463,7 +463,7 @@ TEST_F(RaggedTensorFromVariantKernelTest, InvalidInferredInputRaggedRank) {
       {component_variant_1, component_variant_2, component_variant_3,
        component_variant_4});
   EXPECT_TRUE(
-      absl::StartsWith(RunOpKernel().error_message(),
+      absl::StartsWith(RunOpKernel().message(),
                        "Inferred input_ragged_rank (output_ragged_rank - "
                        "encoded_variant.dims()) must be >= 0"));
 }
@@ -484,7 +484,7 @@ TEST_F(RaggedTensorFromVariantKernelTest, InputDimsAndRaggedRankAttrsMismatch) {
   BuildDecodeRaggedTensorGraph<int, int64_t>(
       input_ragged_rank, output_ragged_rank, TensorShape({2}),
       {variant_component_1, variant_component_2});
-  EXPECT_TRUE(absl::StartsWith(RunOpKernel().error_message(),
+  EXPECT_TRUE(absl::StartsWith(RunOpKernel().message(),
                                "output_ragged_rank must be equal to "
                                "input_ragged_rank + encoded_ragged.dims()"));
 }
@@ -495,7 +495,7 @@ TEST_F(RaggedTensorFromVariantKernelTest, InputDoesNotHoldRaggedTensorVariant) {
   BuildDecodeRaggedTensorGraph<int, int64_t>(
       input_ragged_rank, output_ragged_rank, TensorShape({2}), {1, 2});
   EXPECT_TRUE(absl::StartsWith(
-      RunOpKernel().error_message(),
+      RunOpKernel().message(),
       "Input Variant element at index 0 doesn't hold a RaggedTensorVariant"));
 }
 
@@ -512,7 +512,7 @@ TEST_F(RaggedTensorFromVariantKernelTest,
       input_ragged_rank, output_ragged_rank, TensorShape({1}),
       {variant_component_1});
   EXPECT_TRUE(
-      absl::StartsWith(RunOpKernel().error_message(),
+      absl::StartsWith(RunOpKernel().message(),
                        "Encoded input RaggedTensorVariant has ragged_rank=1.  "
                        "Expected ragged_rank=2."));
 }
@@ -530,7 +530,7 @@ TEST_F(RaggedTensorFromVariantKernelTest, RaggedSplitTypeMismatch) {
                                          TensorShape({1}),
                                          {variant_component_1});
   EXPECT_TRUE(absl::StartsWith(
-      RunOpKernel().error_message(),
+      RunOpKernel().message(),
       "Expected row_splits Tensor dtype: int32, found: int64"));
 }
 
@@ -544,7 +544,7 @@ TEST_F(RaggedTensorFromVariantKernelTest, RaggedSplitRankNotOne) {
   int output_ragged_rank = 2;
   BuildDecodeRaggedTensorGraph<int, int64_t>(
       input_ragged_rank, output_ragged_rank, TensorShape({1}), {encoded});
-  EXPECT_TRUE(absl::StartsWith(RunOpKernel().error_message(),
+  EXPECT_TRUE(absl::StartsWith(RunOpKernel().message(),
                                "Ragged splits must have rank 1"));
 }
 
@@ -559,7 +559,7 @@ TEST_F(RaggedTensorFromVariantKernelTest, RaggedValuesTypeMismatch) {
       input_ragged_rank, output_ragged_rank, TensorShape({1}),
       {variant_component_1});
   EXPECT_TRUE(
-      absl::StartsWith(RunOpKernel().error_message(),
+      absl::StartsWith(RunOpKernel().message(),
                        "Expected values Tensor dtype: string, found: int32"));
 }
 
@@ -571,7 +571,7 @@ TEST_F(RaggedTensorFromVariantKernelTest, RaggedValuesRankNotGreaterThanOne) {
   BuildDecodeRaggedTensorGraph<int, int64_t>(
       input_ragged_rank, output_ragged_rank, TensorShape({1}),
       {variant_component_1});
-  EXPECT_TRUE(absl::StartsWith(RunOpKernel().error_message(),
+  EXPECT_TRUE(absl::StartsWith(RunOpKernel().message(),
                                "Ragged values must have rank >= 1"));
 }
 
@@ -590,8 +590,39 @@ TEST_F(RaggedTensorFromVariantKernelTest, RaggedValuesRankMismatch) {
   BuildDecodeRaggedTensorGraph<int, int64_t>(
       input_ragged_rank, output_ragged_rank, TensorShape({2}),
       {variant_component_1, variant_component_2});
-  EXPECT_TRUE(absl::StartsWith(RunOpKernel().error_message(),
+  EXPECT_TRUE(absl::StartsWith(RunOpKernel().message(),
                                "Rank of values must match for all components"));
+}
+
+TEST_F(RaggedTensorFromVariantKernelTest, OutputRaggedRank0) {
+  auto variant_component_1 =
+      CreateVariantFromRagged<int, int64_t>({}, TensorShape({4}), {0, 1, 2, 3});
+  auto variant_component_2 =
+      CreateVariantFromRagged<int, int64_t>({}, TensorShape({4}), {4, 5, 6, 7});
+  int input_ragged_rank = -1;
+  int output_ragged_rank = 0;
+
+  Tensor expected_values(DT_INT32, TensorShape({2, 4}));
+  test::FillValues<int>(&expected_values, {0, 1, 2, 3, 4, 5, 6, 7});
+
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
+      input_ragged_rank, output_ragged_rank, TensorShape({2}),
+      {variant_component_1, variant_component_2});
+  TF_ASSERT_OK(RunOpKernel());
+  test::ExpectTensorEqual<int>(*GetOutput(0), expected_values);
+}
+
+TEST_F(RaggedTensorFromVariantKernelTest, OutputRaggedRank0Empty) {
+  int input_ragged_rank = -1;
+  int output_ragged_rank = 0;
+
+  Tensor expected_values(DT_INT32, TensorShape({0}));
+  test::FillValues<int>(&expected_values, {});
+
+  BuildDecodeRaggedTensorGraph<int, int64_t>(
+      input_ragged_rank, output_ragged_rank, TensorShape({0}), {});
+  TF_ASSERT_OK(RunOpKernel());
+  test::ExpectTensorEqual<int>(*GetOutput(0), expected_values);
 }
 
 TEST_F(RaggedTensorFromVariantKernelTest, ShapeFnTest) {

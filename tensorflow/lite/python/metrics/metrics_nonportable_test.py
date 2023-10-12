@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,6 +30,7 @@ from tensorflow.lite.python.convert import register_custom_opdefs
 from tensorflow.lite.python.metrics import converter_error_data_pb2
 from tensorflow.lite.python.metrics import metrics
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
@@ -38,13 +38,14 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.importer import import_graph_def
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import saved_model
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 
 
 class MetricsNonportableTest(test_util.TensorFlowTestCase):
@@ -181,7 +182,7 @@ class ConverterMetricsTest(test_util.TensorFlowTestCase):
   def _getIntegerQuantizeModel(self):
     np.random.seed(0)
 
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
 
     @tf.function(
         input_signature=[tf.TensorSpec(shape=[1, 5, 5, 3], dtype=tf.float32)])
@@ -354,7 +355,7 @@ def mock_ngrams(data, width, axis=-1, string_separator=' ', name=None):
 
       # Stack the slices.
       stack_axis = axis + 1 if axis >= 0 else axis
-      windowed_data = array_ops.stack(slices, stack_axis)
+      windowed_data = array_ops_stack.stack(slices, stack_axis)
 
       return string_ops.reduce_join(
           windowed_data, axis=axis, separator=string_separator)
@@ -411,6 +412,8 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
       # pylint: enable=g-assert-in-except
 
   def test_failure_at_PrepareCompositeFunctionsPass(self):
+    if context.is_tfrt_enabled():
+      self.skipTest('This test crashed with TFRT.')
 
     class NgramsLayer(tf.keras.layers.Layer):
 
@@ -489,8 +492,7 @@ class ConverterErrorMetricTest(test_util.TensorFlowTestCase,
     self.assertEqual(
         exported_error,
         "\'tf.CustomAdd\' op is neither a custom op nor a flex op\n"
-        "Error code: ERROR_NEEDS_CUSTOM_OPS"
-    )
+        'Error code: ERROR_NEEDS_CUSTOM_OPS')
 
   def test_unsupported_control_flow_v1(self):
     filename = resource_loader.get_path_to_datafile(

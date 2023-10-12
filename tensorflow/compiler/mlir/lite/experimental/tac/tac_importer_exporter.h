@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_TAC_IMPORTER_EXPORTER_H_
 
 #include "absl/status/statusor.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 
 namespace mlir {
@@ -27,10 +28,10 @@ namespace tac {
 // See TacModule in how to register it with the module and use it.
 class TacImporter {
  public:
-  virtual ~TacImporter() {}
+  virtual ~TacImporter() = default;
 
   // Imports and returns the Module for the imported program.
-  virtual absl::StatusOr<mlir::OwningModuleRef> Import() = 0;
+  virtual absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Import() = 0;
 };
 
 // Interface for exporting a module.
@@ -39,7 +40,7 @@ class TacImporter {
 // See TacModule in how to register it with the module and use it.
 class TacExporter {
  public:
-  virtual ~TacExporter() {}
+  virtual ~TacExporter() = default;
 
   // Imports and returns the Module for the imported program.
   virtual absl::Status Export(mlir::ModuleOp module) = 0;

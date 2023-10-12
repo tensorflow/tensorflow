@@ -79,6 +79,9 @@ TensorStorageType GetFastestStorageType(const GpuInfo& gpu_info);
 TensorStorageType GetStorageTypeWithMinimalMemoryConsumption(
     const GpuInfo& gpu_info);
 
+// Checks if image 2D creation from sub-buffer is supported.
+bool CanUseSubBufferForImage2d(const GpuInfo& gpu_info);
+
 absl::Status CreateEnvironment(Environment* result);
 
 }  // namespace cl

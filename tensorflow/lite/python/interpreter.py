@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,22 +41,13 @@ else:
 # pylint: enable=g-import-not-at-top
 
 
-class Delegate(object):
+class Delegate:
   """Python wrapper class to manage TfLiteDelegate objects.
 
-  The shared library is expected to have two functions:
-    TfLiteDelegate* tflite_plugin_create_delegate(
-        char**, char**, size_t, void (*report_error)(const char *))
-    void tflite_plugin_destroy_delegate(TfLiteDelegate*)
-
-  The first one creates a delegate object. It may return NULL to indicate an
-  error (with a suitable error message reported by calling report_error()).
-  The second one destroys delegate object and must be called for every
-  created delegate object. Passing NULL as argument value is allowed, i.e.
-
-    tflite_plugin_destroy_delegate(tflite_plugin_create_delegate(...))
-
-  always works.
+  The shared library is expected to have two functions,
+  tflite_plugin_create_delegate and tflite_plugin_destroy_delegate,
+  which should implement the API specified in
+  tensorflow/lite/delegates/external/external_delegate_interface.h.
   """
 
   def __init__(self, library, options=None):
@@ -86,6 +76,7 @@ class Delegate(object):
         ctypes.POINTER(ctypes.c_char_p), ctypes.c_int,
         ctypes.CFUNCTYPE(None, ctypes.c_char_p)
     ]
+    # The return type is really 'TfLiteDelegate*', but 'void*' is close enough.
     self._library.tflite_plugin_create_delegate.restype = ctypes.c_void_p
 
     # Convert the options from a dictionary to lists of char pointers.
@@ -96,7 +87,7 @@ class Delegate(object):
       options_keys[idx] = str(key).encode('utf-8')
       options_values[idx] = str(value).encode('utf-8')
 
-    class ErrorMessageCapture(object):
+    class ErrorMessageCapture:
 
       def __init__(self):
         self.message = ''
@@ -179,7 +170,7 @@ def load_delegate(library, options=None):
   return delegate
 
 
-class SignatureRunner(object):
+class SignatureRunner:
   """SignatureRunner class for running TFLite models using SignatureDef.
 
   This class should be instantiated through TFLite Interpreter only using
@@ -274,7 +265,7 @@ class SignatureRunner(object):
       + `index`: The tensor index in the interpreter.
       + `shape`: The shape of the tensor.
       + `shape_signature`: Same as `shape` for models with known/fixed shapes.
-        If any dimension sizes are unkown, they are indicated with `-1`.
+        If any dimension sizes are unknown, they are indicated with `-1`.
       + `dtype`: The numpy data type (such as `np.int32` or `np.uint8`).
       + `quantization`: Deprecated, use `quantization_parameters`. This field
         only works for per-tensor quantization, whereas
@@ -290,7 +281,8 @@ class SignatureRunner(object):
     """
     result = {}
     for input_name, tensor_index in self._inputs.items():
-      result[input_name] = self._interpreter._get_tensor_details(tensor_index)  # pylint: disable=protected-access
+      result[input_name] = self._interpreter._get_tensor_details(  # pylint: disable=protected-access
+          tensor_index, self._subgraph_index)
     return result
 
   def get_output_details(self):
@@ -303,7 +295,8 @@ class SignatureRunner(object):
     """
     result = {}
     for output_name, tensor_index in self._outputs:
-      result[output_name] = self._interpreter._get_tensor_details(tensor_index)  # pylint: disable=protected-access
+      result[output_name] = self._interpreter._get_tensor_details(  # pylint: disable=protected-access
+          tensor_index, self._subgraph_index)
     return result
 
 
@@ -353,7 +346,7 @@ def _get_op_resolver_id(op_resolver_type=OpResolverType.AUTO):
 
 
 @_tf_export('lite.Interpreter')
-class Interpreter(object):
+class Interpreter:
   """Interpreter interface for running TensorFlow Lite models.
 
   Models obtained from `TfLiteConverter` can be run in Python with
@@ -394,13 +387,16 @@ class Interpreter(object):
   Use `get_signature_runner()` for a more user-friendly inference API.
   """
 
-  def __init__(self,
-               model_path=None,
-               model_content=None,
-               experimental_delegates=None,
-               num_threads=None,
-               experimental_op_resolver_type=OpResolverType.AUTO,
-               experimental_preserve_all_tensors=False):
+  def __init__(
+      self,
+      model_path=None,
+      model_content=None,
+      experimental_delegates=None,
+      num_threads=None,
+      experimental_op_resolver_type=OpResolverType.AUTO,
+      experimental_preserve_all_tensors=False,
+      experimental_disable_delegate_clustering=False,
+  ):
     """Constructor.
 
     Args:
@@ -408,7 +404,7 @@ class Interpreter(object):
       model_content: Content of model.
       experimental_delegates: Experimental. Subject to change. List of
         [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
-          objects returned by lite.load_delegate().
+        objects returned by lite.load_delegate().
       num_threads: Sets the number of threads used by the interpreter and
         available to CPU kernels. If not set, the interpreter will use an
         implementation-dependent default number of threads. Currently, only a
@@ -428,6 +424,19 @@ class Interpreter(object):
         delegates are applied. If false, getting intermediate tensors could
         result in undefined values or None, especially when the graph is
         successfully modified by the Tensorflow Lite default delegate.
+      experimental_disable_delegate_clustering: If true, don't perform delegate
+        clustering during delegate graph partitioning phase. Disabling delegate
+        clustering will make the execution order of ops respect the
+        explicitly-inserted control dependencies in the graph (inserted via
+        `with tf.control_dependencies()`) since the TF Lite converter will drop
+        control dependencies by default. Most users shouldn't turn this flag to
+        True if they don't insert explicit control dependencies or the graph
+        execution order is expected. For automatically inserted control
+        dependencies (with `tf.Variable`, `tf.Print` etc), the user doesn't need
+        to turn this flag to True since they are respected by default. Note that
+        this flag is currently experimental, and it might be removed/updated if
+        the TF Lite converter doesn't drop such control dependencies in the
+        model. Default is False.
 
     Raises:
       ValueError: If the interpreter was unable to create.
@@ -452,10 +461,14 @@ class Interpreter(object):
       custom_op_registerers_by_func = [
           x for x in self._custom_op_registerers if not isinstance(x, str)
       ]
-      self._interpreter = (
-          _interpreter_wrapper.CreateWrapperFromFile(
-              model_path, op_resolver_id, custom_op_registerers_by_name,
-              custom_op_registerers_by_func, experimental_preserve_all_tensors))
+      self._interpreter = _interpreter_wrapper.CreateWrapperFromFile(
+          model_path,
+          op_resolver_id,
+          custom_op_registerers_by_name,
+          custom_op_registerers_by_func,
+          experimental_preserve_all_tensors,
+          experimental_disable_delegate_clustering,
+      )
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
     elif model_content and not model_path:
@@ -469,10 +482,14 @@ class Interpreter(object):
       # Since python strings are immutable then PyString_XX functions
       # will always return the same pointer.
       self._model_content = model_content
-      self._interpreter = (
-          _interpreter_wrapper.CreateWrapperFromBuffer(
-              model_content, op_resolver_id, custom_op_registerers_by_name,
-              custom_op_registerers_by_func, experimental_preserve_all_tensors))
+      self._interpreter = _interpreter_wrapper.CreateWrapperFromBuffer(
+          model_content,
+          op_resolver_id,
+          custom_op_registerers_by_name,
+          custom_op_registerers_by_func,
+          experimental_preserve_all_tensors,
+          experimental_disable_delegate_clustering,
+      )
     elif not model_content and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:
@@ -566,11 +583,12 @@ class Interpreter(object):
 
     return details
 
-  def _get_tensor_details(self, tensor_index):
+  def _get_tensor_details(self, tensor_index, subgraph_index):
     """Gets tensor details.
 
     Args:
       tensor_index: Tensor index of tensor to query.
+      subgraph_index: Index of the subgraph.
 
     Returns:
       A dictionary containing the following fields of the tensor:
@@ -590,15 +608,18 @@ class Interpreter(object):
       ValueError: If tensor_index is invalid.
     """
     tensor_index = int(tensor_index)
-    tensor_name = self._interpreter.TensorName(tensor_index)
-    tensor_size = self._interpreter.TensorSize(tensor_index)
-    tensor_size_signature = self._interpreter.TensorSizeSignature(tensor_index)
-    tensor_type = self._interpreter.TensorType(tensor_index)
-    tensor_quantization = self._interpreter.TensorQuantization(tensor_index)
+    subgraph_index = int(subgraph_index)
+    tensor_name = self._interpreter.TensorName(tensor_index, subgraph_index)
+    tensor_size = self._interpreter.TensorSize(tensor_index, subgraph_index)
+    tensor_size_signature = self._interpreter.TensorSizeSignature(
+        tensor_index, subgraph_index)
+    tensor_type = self._interpreter.TensorType(tensor_index, subgraph_index)
+    tensor_quantization = self._interpreter.TensorQuantization(
+        tensor_index, subgraph_index)
     tensor_quantization_params = self._interpreter.TensorQuantizationParameters(
-        tensor_index)
+        tensor_index, subgraph_index)
     tensor_sparsity_params = self._interpreter.TensorSparsityParameters(
-        tensor_index)
+        tensor_index, subgraph_index)
 
     if not tensor_type:
       raise ValueError('Could not get tensor details')
@@ -642,9 +663,9 @@ class Interpreter(object):
       A list of dictionaries containing tensor information.
     """
     tensor_details = []
-    for idx in range(self._interpreter.NumTensors()):
+    for idx in range(self._interpreter.NumTensors(0)):
       try:
-        tensor_details.append(self._get_tensor_details(idx))
+        tensor_details.append(self._get_tensor_details(idx, subgraph_index=0))
       except ValueError:
         pass
     return tensor_details
@@ -661,7 +682,7 @@ class Interpreter(object):
       + `index`: The tensor index in the interpreter.
       + `shape`: The shape of the tensor.
       + `shape_signature`: Same as `shape` for models with known/fixed shapes.
-        If any dimension sizes are unkown, they are indicated with `-1`.
+        If any dimension sizes are unknown, they are indicated with `-1`.
       + `dtype`: The numpy data type (such as `np.int32` or `np.uint8`).
       + `quantization`: Deprecated, use `quantization_parameters`. This field
         only works for per-tensor quantization, whereas
@@ -676,7 +697,8 @@ class Interpreter(object):
         sparse tensor. This is empty if the tensor is dense.
     """
     return [
-        self._get_tensor_details(i) for i in self._interpreter.InputIndices()
+        self._get_tensor_details(i, subgraph_index=0)
+        for i in self._interpreter.InputIndices()
     ]
 
   def set_tensor(self, tensor_index, value):
@@ -735,7 +757,8 @@ class Interpreter(object):
       described for `get_input_details()`.
     """
     return [
-        self._get_tensor_details(i) for i in self._interpreter.OutputIndices()
+        self._get_tensor_details(i, subgraph_index=0)
+        for i in self._interpreter.OutputIndices()
     ]
 
   def get_signature_list(self):
@@ -835,7 +858,7 @@ class Interpreter(object):
         signature_key = next(iter(self._signature_defs))
     return SignatureRunner(interpreter=self, signature_key=signature_key)
 
-  def get_tensor(self, tensor_index):
+  def get_tensor(self, tensor_index, subgraph_index=0):
     """Gets the value of the output tensor (get a copy).
 
     If you wish to avoid the copy, use `tensor()`. This function cannot be used
@@ -844,11 +867,13 @@ class Interpreter(object):
     Args:
       tensor_index: Tensor index of tensor to get. This value can be gotten from
         the 'index' field in get_output_details.
+      subgraph_index: Index of the subgraph to fetch the tensor. Default value
+        is 0, which means to fetch from the primary subgraph.
 
     Returns:
       a numpy array.
     """
-    return self._interpreter.GetTensor(tensor_index)
+    return self._interpreter.GetTensor(tensor_index, subgraph_index)
 
   def tensor(self, tensor_index):
     """Returns function that gives a numpy view of the current tensor buffer.

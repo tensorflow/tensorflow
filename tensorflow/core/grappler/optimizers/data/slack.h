@@ -45,7 +45,7 @@ class Slack : public TFDataOptimizerBase {
       return errors::InvalidArgument("Invalid `slack_period` parameter: ",
                                      slack_period_param);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status OptimizeAndCollectStats(Cluster* cluster, const GrapplerItem& item,

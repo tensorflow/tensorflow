@@ -18,8 +18,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_GRPC_H_
 
 #include <functional>
+#include <memory>
 
-#include "grpcpp/impl/codegen/async_generic_service.h"
+#include "grpcpp/generic/async_generic_service.h"
 #include "grpcpp/impl/codegen/async_stream.h"
 #include "grpcpp/impl/codegen/async_unary_call.h"
 #include "grpcpp/impl/codegen/client_callback.h"
@@ -67,7 +68,7 @@ class TpuCompilationCacheService final {
   }
   class StubInterface {
    public:
-    virtual ~StubInterface() {}
+    virtual ~StubInterface() = default;
     // This method requests the cached proto that the TPU execute op has
     // been instructed to execute.
     virtual ::grpc::Status GetTpuProgram(::grpc::ClientContext* context,

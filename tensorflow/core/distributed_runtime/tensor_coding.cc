@@ -101,9 +101,9 @@ Status TensorResponse::ParseFrom(Source* source) {
     ClearTensor();
   }
   already_used_ = true;
-  if (ParseFast(source)) return Status::OK();
+  if (ParseFast(source)) return OkStatus();
   meta_.Clear();
-  if (ParseSlow(source)) return Status::OK();
+  if (ParseSlow(source)) return OkStatus();
   return errors::InvalidArgument("Cannot parse tensor from response");
 }
 

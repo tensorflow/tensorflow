@@ -24,7 +24,7 @@ import re
 import site
 import traceback
 
-from tensorflow.core.protobuf import graph_debug_info_pb2
+from tensorflow.python.util import tf_stack
 
 _NAME_REGEX = r"[A-Za-z0-9_.][A-Za-z0-9_.\-/]*?"
 _TAG_REGEX = fr"{{{{(?P<type>{_NAME_REGEX}) (?P<name>{_NAME_REGEX})}}}}"
@@ -306,53 +306,22 @@ def create_graph_debug_info_def(func_named_operations):
   Raises:
     TypeError: If the arguments are not of the correct proto buffer type.
   """
-  # Creates an empty GraphDebugInfoDef proto.
-  graph_debug_info_def = graph_debug_info_pb2.GraphDebugInfo()
-
-  # Gets the file names and line numbers for the exported node names. Also
-  # collects the unique file names.
-  all_file_names = set()
-  node_to_trace = {}
+  builder = tf_stack.GraphDebugInfoBuilder()
   for func_name, op in func_named_operations:
-    try:
-      op_traceback = op.traceback
-    except AttributeError:
-      # Some ops synthesized on as part of function or control flow definition
-      # do not have tracebacks.
+    if op.traceback is None:
       continue
+    builder.AccumulateStackTrace(
+        func_name, op.name, _compute_useful_frames(op.traceback, 10)
+    )
 
-    # Gets the stack trace of the operation and then the file location.
-    node_name = op.name + "@" + func_name
-    node_to_trace[node_name] = _compute_useful_frames(op_traceback, 10)
-    for frame in node_to_trace[node_name]:
-      all_file_names.add(frame.filename)
-
-  # Sets the `files` field in the GraphDebugInfo proto
-  graph_debug_info_def.files.extend(all_file_names)
-
-  # Builds a mapping between file names and index of the `files` field, so we
-  # only store the indexes for the nodes in the GraphDebugInfo.
-  file_to_index = dict(
-      [(y, x) for x, y in enumerate(graph_debug_info_def.files)])
-
-  # Creates the FileLineCol proto for each node and sets the value in the
-  # GraphDebugInfo proto. We only store the file name index for each node to
-  # save the storage space.
-  for node_name, frames in node_to_trace.items():
-    trace_def = graph_debug_info_def.traces[node_name]
-    for frame in reversed(frames):
-      trace_def.file_line_cols.add(
-          file_index=file_to_index[frame.filename],
-          line=frame.lineno)
-
-  return graph_debug_info_def
+  return builder.Build()
 
 
 def _compute_field_dict(op):
   r"""Return a dictionary mapping interpolation tokens to values.
 
   Args:
-    op: op.Operation object having a _traceback member.
+    op: op.Operation object.
 
   Returns:
     A dictionary mapping string tokens to string values.  The keys are shown
@@ -385,10 +354,7 @@ def _compute_field_dict(op):
   device_summary = _compute_device_assignment_summary_from_op(op)
   combined_summary = "\n".join([colocation_summary, device_summary])
 
-  # Optional traceback info.
-  try:
-    tb = op.traceback
-  except AttributeError:
+  if op.traceback is None:
     # Some ops synthesized on as part of function or control flow definition
     # do not have tracebacks.
     filename = "<unknown>"
@@ -397,9 +363,9 @@ def _compute_field_dict(op):
     line = ""
     defined_at = "<unknown>"
   else:
-    frame = tb.last_user_frame()
+    frame = op.traceback.last_user_frame()
     filename = frame.filename
-    definition_traceback = traceback.format_list(tb.get_user_frames())
+    definition_traceback = traceback.format_list(op.traceback.get_user_frames())
     lineno = frame.lineno
     line = frame.line
     defined_at = f"{filename}:{lineno:d}"
@@ -443,7 +409,7 @@ def _build_node_error_message(op):
   return "\n".join(node_error_message)
 
 
-def interpolate(message, graph):
+def interpolate_graph(message, graph):
   """Interpolates an error message.
 
   The error message can contain tags of form `{{node_type node_name}}`

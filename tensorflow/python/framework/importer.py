@@ -24,6 +24,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated_args
@@ -194,7 +195,7 @@ def _ConvertInputMapValues(name, input_map):
   Raises:
     ValueError: if input map values cannot be converted due to empty name scope.
   """
-  if not all(isinstance(v, ops.Tensor) for v in input_map.values()):
+  if not all(isinstance(v, tensor.Tensor) for v in input_map.values()):
     if name == '':  # pylint: disable=g-explicit-bool-comparison
       raise ValueError(
           'tf.import_graph_def() requires a non-empty `name` if `input_map` '
@@ -207,10 +208,13 @@ def _ConvertInputMapValues(name, input_map):
 
 def _PopulateTFImportGraphDefOptions(options, prefix, input_map,
                                      return_elements,
-                                     validate_colocation_constraints):
+                                     validate_colocation_constraints,
+                                     propagate_device_spec=False):
   """Populates the TF_ImportGraphDefOptions `options`."""
   c_api.TF_ImportGraphDefOptionsSetPrefix(options, prefix)
   c_api.TF_ImportGraphDefOptionsSetUniquifyNames(options, True)
+  c_api.TF_ImportGraphDefOptionsSetPropagateDeviceSpec(options,
+                                                       propagate_device_spec)
 
   for input_src, input_dst in input_map.items():
     input_src = compat.as_str(input_src)
@@ -275,7 +279,7 @@ def _ProcessNewOps(graph):
     # implementing a compatibility function for device specs in python.
     for coloc_op_name in coloc_op_list:
       try:
-        coloc_op = graph._get_operation_by_name_unsafe(coloc_op_name)  # pylint: disable=protected-access
+        coloc_op = graph._get_operation_by_name(coloc_op_name)  # pylint: disable=protected-access
       except KeyError:
         # Do not error in TF2 if the colocation cannot be guaranteed
         if tf2.enabled() or control_flow_util.EnableControlFlowV2(graph):
@@ -409,10 +413,13 @@ def import_graph_def(graph_def,
 
 
 def import_graph_def_for_function(  # pylint: disable=invalid-name
-    graph_def, name=None):
+    graph_def, name=None, propagate_device_spec=False):
   """Like import_graph_def but does not validate colocation constraints."""
   return _import_graph_def_internal(
-      graph_def, validate_colocation_constraints=False, name=name)
+      graph_def,
+      validate_colocation_constraints=False,
+      name=name,
+      propagate_device_spec=propagate_device_spec)
 
 
 def _import_graph_def_internal(  # pylint: disable=invalid-name
@@ -421,7 +428,8 @@ def _import_graph_def_internal(  # pylint: disable=invalid-name
     return_elements=None,
     validate_colocation_constraints=True,
     name=None,
-    producer_op_list=None):
+    producer_op_list=None,
+    propagate_device_spec=False):
   """Imports the graph from `graph_def` into the current default `Graph`.
 
   This function provides a way to import a serialized TensorFlow
@@ -450,6 +458,8 @@ def _import_graph_def_internal(  # pylint: disable=invalid-name
       unrecognized attrs for ops in `graph_def` that have their default value
       according to `producer_op_list` will be removed. This will allow some more
       `GraphDef`s produced by later binaries to be accepted by earlier binaries.
+    propagate_device_spec: Whether to propagate assigned device information
+      when importing a graph from a GraphDef into the current default `Graph`.
 
   Returns:
     A list of `Operation` and/or `Tensor` objects from the imported graph,
@@ -487,7 +497,8 @@ def _import_graph_def_internal(  # pylint: disable=invalid-name
   scoped_options = c_api_util.ScopedTFImportGraphDefOptions()
   options = scoped_options.options
   _PopulateTFImportGraphDefOptions(options, prefix, input_map, return_elements,
-                                   validate_colocation_constraints)
+                                   validate_colocation_constraints,
+                                   propagate_device_spec)
 
   # _ProcessNewOps mutates the new operations. _mutation_lock ensures a
   # Session.run call cannot occur between creating the TF_Operations in the
@@ -496,8 +507,9 @@ def _import_graph_def_internal(  # pylint: disable=invalid-name
   with graph._mutation_lock():  # pylint: disable=protected-access
     with c_api_util.tf_buffer(graph_def.SerializeToString()) as serialized:
       try:
-        results = c_api.TF_GraphImportGraphDefWithResults(
-            graph._c_graph, serialized, options)  # pylint: disable=protected-access
+        with graph._c_graph.get() as c_graph:  # pylint: disable=protected-access
+          results = c_api.TF_GraphImportGraphDefWithResults(
+              c_graph, serialized, options)
         results = c_api_util.ScopedTFImportGraphDefResults(results)
       except errors.InvalidArgumentError as e:
         # Convert to ValueError for backwards compatibility.

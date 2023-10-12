@@ -20,7 +20,7 @@ import threading
 import numpy
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -29,12 +29,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
@@ -116,7 +117,7 @@ class VariableScopeTest(test.TestCase):
     self.assertEqual(
         set(expected_names), set(v.name for v in vs._vars.values()))
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # TypeError: Expected tf.group() expected Tensor arguments not 'None' with
   # type '<type 'NoneType'>'
   @test_util.run_in_graph_and_eager_modes
@@ -155,7 +156,7 @@ class VariableScopeTest(test.TestCase):
           scope.__exit__(None, None, None)
       scope.__exit__(None, None, None)
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # TypeError: Fetch argument <tf.Variable 'string:0' shape=() dtype=string>
   # has invalid type <class '...ResourceVariable'>, must be a string or Tensor.
   # (Can not convert a ResourceVariable into a Tensor or Operation.)
@@ -180,12 +181,12 @@ class VariableScopeTest(test.TestCase):
   def testGetVariableInGraphNestedUnderEagerContext(self):
     with context.eager_mode():
 
-      @function.defun
-      def f():
-        v = variable_scope.get_variable("should_be_resource", [])
+      @def_function.function
+      def f(v):
         self.assertEqual(type(v), resource_variable_ops.ResourceVariable)
 
-      f()
+      var = variable_scope.get_variable("should_be_resource", [])
+      f(var)
 
   def testEagerVariableStore(self):
     with context.eager_mode():
@@ -225,31 +226,7 @@ class VariableScopeTest(test.TestCase):
       for v in new_store.variables():
         self.assertEqual(v.numpy(), 1)
 
-  def testEagerVariableStoreWithEagerDefun(self):
-    with context.eager_mode():
-
-      @function.defun
-      def f():
-        x = constant_op.constant([[2.0]])
-        d1 = core_layers.Dense(
-            1, name="my_dense", kernel_initializer=init_ops.ones_initializer())
-        _ = d1(x)  # create variables
-        self.assertEqual(len(d1.variables), 2)
-        v1, v2 = d1.variables
-        d2 = core_layers.Dense(
-            1,
-            name="my_dense",
-            kernel_initializer=init_ops.ones_initializer(),
-            _reuse=True)
-        _ = d2(x)
-        self.assertEqual(len(d2.variables), 2)
-        v3, v4 = d2.variables
-        self.assertIs(v1, v3)
-        self.assertIs(v2, v4)
-
-      f()
-
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
   @test_util.run_in_graph_and_eager_modes
   def testEagerVariablesStoreAddsToCollections(self):
@@ -290,7 +267,7 @@ class VariableScopeTest(test.TestCase):
                           kernel_initializer=init_ops.ones_initializer())
       self.assertEqual(len(container.variables()), 2)
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # TypeError: Expected tf.group() expected Tensor arguments not 'None' with
   # type '<type 'NoneType'>'.
   @test_util.run_in_graph_and_eager_modes
@@ -309,7 +286,7 @@ class VariableScopeTest(test.TestCase):
     with self.assertRaises(error):
       variable_scope.get_variable("x4", initializer={})
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # InvalidArgumentError=: You must feed a value for placeholder tensor
   # 'ReadVariableOp/resource' with dtype resource
   @test_util.run_in_graph_and_eager_modes
@@ -333,7 +310,7 @@ class VariableScopeTest(test.TestCase):
       self.evaluate(variables_lib.global_variables_initializer())
       self.assertAllEqual(self.evaluate(x.value()), self.evaluate(y.value()))
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # InvalidArgumentError: /job:moo/replica:0/task:0/device:CPU:0 unknown device.
   @test_util.run_deprecated_v1
   def testVarScopeCachingDevice(self):
@@ -369,7 +346,7 @@ class VariableScopeTest(test.TestCase):
         v_tower = variable_scope.get_variable("v", [])
         self.assertFalse(v_tower.value().device.startswith(caching_device))
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # AttributeError: Tensor.name is meaningless when eager execution is enabled.
   @test_util.run_in_graph_and_eager_modes
   def testVarScopeRegularizer(self):
@@ -416,7 +393,7 @@ class VariableScopeTest(test.TestCase):
           losses = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
           self.assertEqual(3, len(losses))  # No new loss added.
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # ValueError: Tensor-typed variable initializers must either be wrapped in an
   # init_scope or callable...
   @test_util.run_in_graph_and_eager_modes
@@ -445,7 +422,7 @@ class VariableScopeTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, "don't match"):
       variable_scope.get_variable("s", initializer=init, dtype=dtypes.float64)
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # TypeError: Fetch argument <tf.Variable 'v0:0' shape=(1,) dtype=float32> has
   # invalid type <class '...ops.resource_variable_ops.ResourceVariable'>, must
   # be a string or Tensor. (Can not convert a ResourceVariable into a Tensor or
@@ -475,22 +452,24 @@ class VariableScopeTest(test.TestCase):
       self.evaluate(v0.initializer)
       self.evaluate(add)
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # AssertionError: True is not false (last assertFalse)
   @test_util.run_deprecated_v1
   def testEnableResourceVariables(self):
     old = variable_scope._DEFAULT_USE_RESOURCE
     try:
       variable_scope.enable_resource_variables()
-      self.assertTrue(isinstance(variables_lib.VariableV1(1.0),
-                                 resource_variable_ops.ResourceVariable))
+      self.assertIsInstance(
+          variable_v1.VariableV1(1.0),
+          resource_variable_ops.ResourceVariable)
       variable_scope.disable_resource_variables()
-      self.assertFalse(isinstance(variables_lib.VariableV1(1.0),
-                                  resource_variable_ops.ResourceVariable))
+      self.assertNotIsInstance(
+          variable_v1.VariableV1(1.0),
+          resource_variable_ops.ResourceVariable)
     finally:
       variable_scope._DEFAULT_USE_RESOURCE = old
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # TypeError: Fetch argument None has invalid type <type 'NoneType'>
   @test_util.run_deprecated_v1
   def testControlFlow(self):
@@ -512,7 +491,7 @@ class VariableScopeTest(test.TestCase):
         var_dict["v2"] = v2
         return v2 + v0
 
-      add = control_flow_ops.cond(
+      add = cond.cond(
           math_ops.less(v0, 10), var_in_then_clause, var_in_else_clause)
       v1 = var_dict["v1"]
       v2 = var_dict["v2"]
@@ -532,7 +511,7 @@ class VariableScopeTest(test.TestCase):
       self.evaluate(v0.initializer)
       self.evaluate(add)
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # TypeError: Expected tf.group() expected Tensor arguments not 'None' with
   # type '<type 'NoneType'>'.
   @test_util.run_in_graph_and_eager_modes
@@ -1122,7 +1101,7 @@ class VariableScopeTest(test.TestCase):
             self.assertEqual(
                 constant_op.constant([], name="c").name, "another/inner/c:0")
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
   # (different assertions failing after wrapping, in both execution modes)
   @test_util.run_in_graph_and_eager_modes
@@ -1175,7 +1154,7 @@ class VariableScopeTest(test.TestCase):
     self.assertEqual(varname_type[0], ("x", dtypes.float32))
     self.assertEqual(varname_type[1], ("y", dtypes.int64))
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
   @test_util.run_deprecated_v1
   def testGetCollection(self):
@@ -1232,7 +1211,7 @@ class VariableScopeTest(test.TestCase):
           "testGetCollection_foo/testGetCollection_a:0"
       ])
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
   @test_util.run_deprecated_v1
   def testGetTrainableVariablesWithGetVariable(self):
@@ -1271,20 +1250,20 @@ class VariableScopeTest(test.TestCase):
             "testGetTrainableVariables_foo/testGetTrainableVariables_f:0",
         ])
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
   @test_util.run_deprecated_v1
   def testGetTrainableVariablesWithVariable(self):
     with self.cached_session():
-      _ = variable_scope.variable(1.0, name="testGetTrainableVariables_a")
+      _ = variable_v1.VariableV1(1.0, name="testGetTrainableVariables_a")
       with variable_scope.variable_scope(
           "testGetTrainableVariables_foo") as scope:
-        _ = variable_scope.variable(1.0, name="testGetTrainableVariables_b")
-        _ = variable_scope.variable(
+        _ = variable_v1.VariableV1(1.0, name="testGetTrainableVariables_b")
+        _ = variable_v1.VariableV1(
             1.0, name="testGetTrainableVariables_c", trainable=False)
 
         # sync `ON_READ` sets trainable=False
-        _ = variable_scope.variable(
+        _ = variable_v1.VariableV1(
             1.0,
             name="testGetTrainableVariables_d",
             synchronization=variable_scope.VariableSynchronization.ON_READ)
@@ -1292,7 +1271,7 @@ class VariableScopeTest(test.TestCase):
             [v.name for v in scope.trainable_variables()],
             ["testGetTrainableVariables_foo/testGetTrainableVariables_b:0"])
 
-        _ = variable_scope.variable(
+        _ = variable_v1.VariableV1(
             1.0,
             name="testGetTrainableVariables_e",
             synchronization=variable_scope.VariableSynchronization.ON_READ,
@@ -1303,7 +1282,7 @@ class VariableScopeTest(test.TestCase):
         ])
 
         # All other sync values sets trainable=True
-        _ = variable_scope.variable(
+        _ = variable_v1.VariableV1(
             1.0,
             name="testGetTrainableVariables_f",
             synchronization=variable_scope.VariableSynchronization.ON_WRITE)
@@ -1313,7 +1292,7 @@ class VariableScopeTest(test.TestCase):
             "testGetTrainableVariables_foo/testGetTrainableVariables_f:0",
         ])
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
   @test_util.run_deprecated_v1
   def testGetGlobalVariables(self):
@@ -1326,7 +1305,7 @@ class VariableScopeTest(test.TestCase):
             ["testGetGlobalVariables_foo/"
              "testGetGlobalVariables_b:0"])
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
   @test_util.run_deprecated_v1
   def testGetLocalVariables(self):
@@ -1403,7 +1382,7 @@ def axis0_into3_partitioner(shape=None, **unused_kwargs):
 
 class VariableScopeWithPartitioningTest(test.TestCase):
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
   @test_util.run_deprecated_v1
   def testResultNameMatchesRequested(self):
@@ -1478,7 +1457,7 @@ class VariableScopeWithPartitioningTest(test.TestCase):
       with variable_scope.variable_scope(vs) as vs1:
         self.assertEqual(axis0_into2_partitioner, vs1.partitioner)
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # obtaining different results in the eager case compared to the graph one
   @test_util.run_deprecated_v1
   def testScalarIgnoresPartitioner(self):
@@ -1613,7 +1592,7 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
     self.assertEqual(v.name, "not_reused:0")
     self.assertEqual(v2.name, "reused:0")
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # ValueError: Fetch argument <tf.Tensor 'custom_getter/add:0' shape=(1, 2, 3)
   # dtype=float32> cannot be interpreted as a Tensor. (Tensor
   # Tensor("custom_getter/add:0", shape=(1, 2, 3), dtype=float32) is not an
@@ -1641,7 +1620,7 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
       np_vars, np_v = self.evaluate([true_vars, v])
       self.assertAllClose(np_v, sum(np_vars))
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
+  # Not converted to use wrap_function because of
   # ValueError: Fetch argument <tf.Tensor 'sum_getter_2/add:0' shape=(1, 2, 3)
   # dtype=float32> cannot be interpreted as a Tensor. (Tensor
   # Tensor("sum_getter_2/add:0", shape=(1, 2, 3), dtype=float32) is not an
@@ -1705,7 +1684,7 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
 
     with variable_scope.variable_creator_scope(creator_a):
       with variable_scope.variable_creator_scope(creator_b):
-        variable_scope.variable(1.0, name="one_name")
+        variable_v1.VariableV1(1.0, name="one_name")
 
     self.assertEqual(variable_names[0], "forced_name")
 

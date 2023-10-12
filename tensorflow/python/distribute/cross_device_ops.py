@@ -20,6 +20,7 @@ import multiprocessing.dummy
 import multiprocessing.pool
 import threading
 
+import numpy as np
 import six
 
 from tensorflow.python.client import device_lib
@@ -37,6 +38,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -58,7 +60,8 @@ def check_destinations(destinations):
   """
   # Calling bool() on a ResourceVariable is not allowed.
   if isinstance(destinations,
-                (resource_variable_ops.BaseResourceVariable, ops.Tensor)):
+                (resource_variable_ops.BaseResourceVariable,
+                 tensor_lib.Tensor)):
     return bool(destinations.device)
   return bool(destinations)
 
@@ -67,9 +70,9 @@ def validate_destinations(destinations):
   """Validates the `destination` is one of expected types."""
   if not isinstance(
       destinations,
-      (value_lib.DistributedValues, ops.Tensor, indexed_slices.IndexedSlices,
-       ps_values.AggregatingVariable, six.string_types,
-       tpu_values.TPUMirroredVariable
+      (value_lib.DistributedValues, tensor_lib.Tensor,
+       indexed_slices.IndexedSlices, ps_values.AggregatingVariable,
+       six.string_types, tpu_values.TPUMirroredVariable
       )) and not resource_variable_ops.is_resource_variable(destinations):
     raise ValueError("destinations must be one of a `DistributedValues` object,"
                      " a tf.Variable object, or a device string.")
@@ -91,9 +94,9 @@ def reduce_non_distributed_value(reduce_op,
   # If the same value is present on all replicas then the PerReplica value will
   # be a single value. We also handle the case when `value` is a single value
   # and equal to 0.
-  # TODO:(b/138823479): handle the tensor value properly.
-  if not tensor_util.is_tf_type(value) and value == 0:
-    return 0
+  # TODO(b/138823479): handle the tensor value properly.
+  if not tensor_util.is_tf_type(value) and np.all(value == 0):
+    return np.zeros(value.shape, dtype=value.dtype)
   # If there is only a single value and the reduce op is MEAN,
   # that value should be on all destinations.
   if reduce_op == reduce_util.ReduceOp.MEAN:
@@ -113,17 +116,18 @@ def reduce_non_distributed_value(reduce_op,
 
 def _make_tensor_into_per_replica(input_tensor):
   """Converts a single tensor into a PerReplica object."""
-  if isinstance(input_tensor, (tuple, list)):
-    raise ValueError("Cannot convert `input_tensor` to a `PerReplica` object, "
-                     "got %r but expected a object that is not a tuple or list."
-                     % (input_tensor,))
-  if isinstance(input_tensor, value_lib.PerReplica):
+  if isinstance(input_tensor, value_lib.DistributedValues):
     return input_tensor
-  elif hasattr(input_tensor, "device"):
+
+  # If input is not a Tensor, convert it to a Tensor first.
+  if not tensor_util.is_tensor(input_tensor):
+    input_tensor = ops.convert_to_tensor(input_tensor)
+
+  if hasattr(input_tensor, "device"):
     return value_lib.PerReplica((input_tensor,))
-  else:
-    raise ValueError("Cannot convert `input_tensor` to a `PerReplica` object "
-                     "because it doesn't have device set.")
+
+  raise ValueError("Cannot convert `input_tensor` to a `PerReplica` object "
+                   "because it doesn't have device set.")
 
 
 def _normalize_value_destination_pairs(value_destination_pairs):
@@ -298,8 +302,8 @@ class CrossDeviceOps(object):
     """
     if options is None:
       options = collective_util.Options()
-    if not isinstance(per_replica_value, value_lib.DistributedValues):
-      per_replica_value = _make_tensor_into_per_replica(per_replica_value)
+
+    per_replica_value = _make_tensor_into_per_replica(per_replica_value)
 
     validate_destinations(destinations)
 
@@ -347,8 +351,7 @@ class CrossDeviceOps(object):
     if options is None:
       options = collective_util.Options()
 
-    if not isinstance(per_replica_value, value_lib.DistributedValues):
-      per_replica_value = _make_tensor_into_per_replica(per_replica_value)
+    per_replica_value = _make_tensor_into_per_replica(per_replica_value)
 
     validate_destinations(destinations)
 
@@ -936,10 +939,11 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
 
   def _gather_implementation(self, per_replica_value, destinations, axis,
                              options):
-    logging.warning("gather/all_gather with NCCL or HierarchicalCopy is not "
-                    "supported. Falling back to gather on one device and "
-                    "then broadcast. We're working on a more efficient "
-                    "implementation.")
+    logging.log_first_n(
+        logging.WARN,
+        "gather/all_gather with NCCL or HierarchicalCopy is not supported. "
+        "Falling back to gather on one device and then broadcast. We're working"
+        " on a more efficient implementation.", 3)
     return ReductionToOneDevice()._gather(per_replica_value, destinations, axis,  # pylint: disable=protected-access
                                           options)
 
@@ -1101,8 +1105,6 @@ class CollectiveAllReduce(CrossDeviceOps):
       if not launcher.can_order_nccl():
         self._limited_nccl = True
 
-    self._pool = multiprocessing.pool.ThreadPool(len(self._devices))
-
     super(CollectiveAllReduce, self).__init__()
     self._canonicalize_devices = canonicalize_devices
 
@@ -1202,7 +1204,9 @@ class CollectiveAllReduce(CrossDeviceOps):
                                   device_id, options)
 
       with self._lock:
-        outputs_by_device = self._pool.map(thread_fn, list(range(num_devices)))
+        pool = multiprocessing.pool.ThreadPool(len(self._devices))
+        outputs_by_device = pool.map(thread_fn, list(range(num_devices)))
+        pool.close()
     else:
       outputs_by_device = []
       with self._lock:

@@ -16,9 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_SERVER_LIB_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_SERVER_LIB_H_
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
@@ -37,9 +43,11 @@ class GrpcDataServerBase {
   // Constructs a tf.data server with the specified port. If the port is 0, the
   // server will find an available port in `Start()`. The chosen port can be
   // found by calling `BoundPort()`.
-  GrpcDataServerBase(int requested_port, const std::string& protocol,
-                     const std::string server_type);
-  virtual ~GrpcDataServerBase() {}
+  GrpcDataServerBase(
+      int requested_port, const std::string& protocol,
+      const std::string& server_type,
+      std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options = {});
+  virtual ~GrpcDataServerBase() = default;
 
   // Starts the server running asynchronously.
   Status Start();
@@ -52,6 +60,9 @@ class GrpcDataServerBase {
 
   // Returns the port bound by the server. Only valid after calling Start().
   int BoundPort();
+
+  // Exports the server state to improve debuggability.
+  virtual ServerStateExport ExportState() const = 0;
 
  protected:
   virtual void AddDataServiceToBuilder(::grpc::ServerBuilder& builder) = 0;
@@ -75,17 +86,35 @@ class GrpcDataServerBase {
   std::unique_ptr<::grpc::Server> server_;
   // TensorFlow profiler service implementation.
   std::unique_ptr<grpc::ProfilerService::Service> profiler_service_ = nullptr;
+  std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> server_options_;
+};
+
+// A wrapper for `SnapshotStreamInfo` for use with pybind.
+struct SnapshotStreamInfoWrapper {
+  SnapshotStreamInfoWrapper() = default;
+  explicit SnapshotStreamInfoWrapper(const SnapshotStreamInfo& info)
+      : index(info.index()), state(info.state()) {}
+  int64_t index;
+  int64_t state;
 };
 
 class DispatchGrpcDataServer : public GrpcDataServerBase {
  public:
-  explicit DispatchGrpcDataServer(const experimental::DispatcherConfig& config);
+  explicit DispatchGrpcDataServer(
+      const experimental::DispatcherConfig& config,
+      std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options = {});
   ~DispatchGrpcDataServer() override;
 
-  // Returns the number of workers registerd with the dispatcher.
+  // Returns the number of workers registered with the dispatcher.
   Status NumWorkers(int* num_workers);
-  // Returns the number of active (non-finished) jobs running on the dispatcher.
-  size_t NumActiveJobs();
+  // Returns the number of active (non-finished) iterations running on the
+  // dispatcher.
+  size_t NumActiveIterations();
+  // Returns information about all the streams for the snapshot at `path`.
+  Status SnapshotStreams(const std::string& path,
+                         std::vector<SnapshotStreamInfoWrapper>* streams);
+
+  ServerStateExport ExportState() const override;
 
  protected:
   void AddDataServiceToBuilder(::grpc::ServerBuilder& builder) override;
@@ -97,13 +126,34 @@ class DispatchGrpcDataServer : public GrpcDataServerBase {
   GrpcDispatcherImpl* service_;
 };
 
+// A wrapper for `SnapshotTaskProgress` for use with pybind.
+struct SnapshotTaskProgressWrapper {
+  SnapshotTaskProgressWrapper() = default;
+  explicit SnapshotTaskProgressWrapper(const SnapshotTaskProgress& progress)
+      : snapshot_task_base_path(progress.snapshot_task().base_path()),
+        snapshot_task_stream_index(progress.snapshot_task().stream_index()),
+        completed(progress.completed()) {}
+  std::string snapshot_task_base_path;
+  int64_t snapshot_task_stream_index;
+  bool completed;
+};
+
 class WorkerGrpcDataServer : public GrpcDataServerBase {
  public:
-  explicit WorkerGrpcDataServer(const experimental::WorkerConfig& config);
+  explicit WorkerGrpcDataServer(
+      const experimental::WorkerConfig& config,
+      std::vector<std::unique_ptr<::grpc::ServerBuilderOption>> options = {});
   ~WorkerGrpcDataServer() override;
 
   // Returns the number of tasks currently being executed by the worker.
   Status NumTasks(int* num_tasks);
+
+  // Returns the progresses of the snapshot tasks currently being executed by
+  // the worker.
+  Status SnapshotTaskProgresses(
+      std::vector<SnapshotTaskProgressWrapper>* snapshot_task_progresses);
+
+  ServerStateExport ExportState() const override;
 
  protected:
   void AddDataServiceToBuilder(::grpc::ServerBuilder& builder) override;
@@ -111,6 +161,12 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
   void StopServiceInternal() override;
 
  private:
+  // If an alternative data transfer protocol is configured, tries to start a
+  // transfer server for it, adding an entry to `transfer_servers` if
+  // successful.
+  void MaybeStartAlternativeDataTransferServer(
+      std::vector<DataTransferServerInfo>& transfer_servers);
+
   const experimental::WorkerConfig config_;
   // Owned. We use a raw pointer because GrpcWorkerImpl is forward-declared.
   GrpcWorkerImpl* service_;

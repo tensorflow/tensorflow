@@ -45,6 +45,12 @@ REGISTER_OP("BatchFunction")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .Attr("batching_queue: string = ''")
+    // A separate set of batch options for the low priority requests, which is
+    // used for priority queue batching.
+    .Attr("low_priority_max_batch_size: int = 0")
+    .Attr("low_priority_batch_timeout_micros: int = 0")
+    .Attr("low_priority_allowed_batch_sizes: list(int) = []")
+    .Attr("low_priority_max_enqueued_batches: int = 0")
     .Attr("Tin: list(type)")
     .Attr("Tcaptured: list(type) >= 0")
     .Attr("Tout: list(type)")
@@ -88,7 +94,7 @@ REGISTER_OP("Batch")
           "batch_index",
           {c->MakeShape({shape_inference::DimensionOrConstant(c->UnknownDim()),
                          shape_inference::DimensionOrConstant(3)})}));
-      return Status::OK();
+      return OkStatus();
     })
     .SetIsDistributedCommunication();
 
@@ -106,7 +112,7 @@ REGISTER_OP("Unbatch")
       TF_RETURN_IF_ERROR(
           c->ReplaceDim(c->input(0), 0, c->UnknownDim(), &out_shape));
       c->set_output(0, out_shape);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("UnbatchGrad")
@@ -120,7 +126,7 @@ REGISTER_OP("UnbatchGrad")
     .Attr("T: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(2))));
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

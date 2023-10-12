@@ -40,7 +40,12 @@ namespace tensorflow {
 
 struct TfrtFunctionCompileOptions : public TfrtCompileOptions {
   // Currently only SavedModel API inference uses the tpu_fuse_ops option
-  TfrtFunctionCompileOptions() { tpu_fuse_ops = false; }
+  TfrtFunctionCompileOptions() {
+    tpu_fuse_ops = false;
+    // Currently grappler is not correctly applied in the eager execution of TF
+    // functions, as it may sometimes remove arguments and results.
+    enable_grappler = false;
+  }
 
   // If true, use ServingCoreSelector to pick TPU core. Otherwise, obtain core
   // location from assigned device name.

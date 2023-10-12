@@ -24,10 +24,12 @@ def tpu_py_test(
         tags = None,
         disable_v2 = False,
         disable_v3 = False,
+        disable_v3_4chips = True,
         disable_experimental = False,
         disable_mlir_bridge = True,
         disable_tfrt = None,
         args = [],
+        test_rule = native.py_test,
         **kwargs):
     """Generates identical unit test variants for various Cloud TPU versions.
 
@@ -38,6 +40,7 @@ def tpu_py_test(
         tags: BUILD tags to apply to tests.
         disable_v2: If true, don't generate TPU v2 tests.
         disable_v3: If true, don't generate TPU v3 tests.
+        disable_v3_4chips: If true, don't generate TPU v3 2x2 tests.
         disable_experimental: Unused.
         disable_mlir_bridge: Unused.
         disable_tfrt: Unused.
@@ -45,7 +48,7 @@ def tpu_py_test(
         **kwargs: Additional named arguments to apply to tests.
     """
 
-    native.py_test(
+    test_rule(
         **_get_kwargs_for_wrapping(
             name,
             tags,
@@ -53,3 +56,10 @@ def tpu_py_test(
             **kwargs
         )
     )
+
+def tpu_py_strict_test(**kwargs):
+    tpu_py_test(**kwargs)
+
+def internal_create_sanitizer_settings():
+    """Stub definition for an external rule."""
+    pass

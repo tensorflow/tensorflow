@@ -35,7 +35,7 @@ Status DeviceResolverDistributed::GetDeviceAttributes(
     return errors::NotFound(device, " not found");
   }
   *attributes = it->second;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DeviceResolverDistributed::GetAllDeviceAttributes(
@@ -51,7 +51,7 @@ Status DeviceResolverDistributed::GetAllDeviceAttributes(
   if (attributes->empty()) {
     return errors::NotFound(task, " not found in the cache");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DeviceResolverDistributed::UpdateDeviceAttributes(
@@ -70,7 +70,7 @@ Status DeviceResolverDistributed::UpdateDeviceAttributes(
           "This usually means the remote worker has restarted");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

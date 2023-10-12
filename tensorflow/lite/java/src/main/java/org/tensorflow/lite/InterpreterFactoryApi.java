@@ -18,6 +18,7 @@ package org.tensorflow.lite;
 import java.io.File;
 import java.nio.ByteBuffer;
 import org.checkerframework.checker.nullness.qual.NonNull;
+import org.tensorflow.lite.nnapi.NnApiDelegate;
 
 /**
  * Private interface specifying factory for constructing InterpreterApi instances. This interface is
@@ -38,7 +39,7 @@ public interface InterpreterFactoryApi {
    * @throws IllegalArgumentException if {@code modelFile} does not encode a valid TensorFlow Lite
    *     model.
    */
-  public InterpreterApi create(@NonNull File modelFile, InterpreterApi.Options options);
+  InterpreterApi create(@NonNull File modelFile, InterpreterApi.Options options);
 
   /**
    * Constructs an {@link InterpreterApi} instance, using the specified model and options. The model
@@ -52,14 +53,20 @@ public interface InterpreterFactoryApi {
    * @throws IllegalArgumentException if {@code byteBuffer} is not a {@code MappedByteBuffer} nor a
    *     direct {@code ByteBuffer} of nativeOrder.
    */
-  public InterpreterApi create(@NonNull ByteBuffer byteBuffer, InterpreterApi.Options options);
+  InterpreterApi create(@NonNull ByteBuffer byteBuffer, InterpreterApi.Options options);
 
   /** Returns the version of the underlying TensorFlowLite runtime. */
-  public String runtimeVersion();
+  String runtimeVersion();
 
   /**
    * Returns the version of the TensorFlowLite model schema that is supported by the underlying
    * TensorFlowLite runtime.
    */
-  public String schemaVersion();
+  String schemaVersion();
+
+  /**
+   * Instance method for constructing an NNAPI delegate implementation, using the TF Lite runtime
+   * from the InterpreterFactoryApi.
+   */
+  NnApiDelegate.PrivateInterface createNnApiDelegateImpl(NnApiDelegate.Options options);
 }

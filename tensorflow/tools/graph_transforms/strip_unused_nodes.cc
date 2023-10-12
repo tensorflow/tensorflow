@@ -69,7 +69,7 @@ Status TypeForPlaceholder(const TransformFuncContext& context,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ShapeForPlaceholder(const TransformFuncContext& context,
@@ -108,7 +108,7 @@ Status ShapeForPlaceholder(const TransformFuncContext& context,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -130,6 +130,7 @@ Status StripUnusedNodes(const GraphDef& input_graph_def,
   MapNamesToNodes(input_graph_def, &node_lookup);
 
   std::vector<string> current_inputs;
+  current_inputs.reserve(context.output_names.size());
   for (const string& output_name : context.output_names) {
     current_inputs.push_back(NodeNameFromInput(output_name));
   }
@@ -185,7 +186,7 @@ Status StripUnusedNodes(const GraphDef& input_graph_def,
       *(output_graph_def->mutable_node()->Add()) = node;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("strip_unused_nodes", StripUnusedNodes);

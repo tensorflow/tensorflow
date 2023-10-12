@@ -14,19 +14,11 @@
 # ==============================================================================
 """Tests for functions used to extract and analyze stacks."""
 
-import traceback
-
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_stack
 
 
 class TFStackTest(test.TestCase):
-
-  def testFormatStackSelfConsistency(self):
-    # Both defined on the same line to produce identical stacks.
-    stacks = tf_stack.extract_stack(), traceback.extract_stack()
-    self.assertEqual(
-        traceback.format_list(stacks[0]), traceback.format_list(stacks[1]))
 
   def testFrameSummaryEquality(self):
     frames1 = tf_stack.extract_stack()
@@ -48,9 +40,9 @@ class TFStackTest(test.TestCase):
     self.assertEqual(hash(tuple(frame1)), hash(tuple(frame2)))
 
   def testLastUserFrame(self):
-    trace = tf_stack.extract_stack()  # COMMENT
+    trace = tf_stack.extract_stack()
     frame = trace.last_user_frame()
-    self.assertRegex(frame.line, "# COMMENT")
+    self.assertRegex(repr(frame), 'testLastUserFrame')
 
   def testGetUserFrames(self):
 
@@ -61,8 +53,66 @@ class TFStackTest(test.TestCase):
 
     frames = func()  # CALLSITE
 
-    self.assertRegex(frames[-1].line, "# COMMENT")
-    self.assertRegex(frames[-2].line, "# CALLSITE")
+    self.assertRegex(repr(frames[-1]), 'func')
+    self.assertRegex(repr(frames[-2]), 'testGetUserFrames')
+
+  def testGetItem(self):
+    def func(n):
+      if n == 0:
+        return tf_stack.extract_stack()  # COMMENT
+      else:
+        return func(n - 1)
+
+    trace = func(5)
+    self.assertIn('func', repr(trace[-1]))
+
+    with self.assertRaises(IndexError):
+      _ = trace[-len(trace) - 1]
+
+    with self.assertRaises(IndexError):
+      _ = trace[len(trace)]
+
+  def testSourceMap(self):
+    source_map = tf_stack._tf_stack.PyBindSourceMap()
+
+    def func(n):
+      if n == 0:
+        return tf_stack._tf_stack.extract_stack(
+            source_map, tf_stack._tf_stack.PyBindFileSet()
+        )
+      else:
+        return func(n - 1)
+
+    trace = func(5)
+    source_map.update_to((
+        (
+            (trace[0].filename, trace[0].lineno),
+            ("filename", 42, "function_name"),
+        ),
+    ))
+    trace = list(func(5))
+    self.assertEqual(
+        str(trace[0]), 'File "filename", line 42, in function_name'
+    )
+
+  def testStackTraceBuilder(self):
+    stack1 = tf_stack.extract_stack()
+    stack2 = tf_stack.extract_stack()
+    stack3 = tf_stack.extract_stack()
+
+    builder = tf_stack.GraphDebugInfoBuilder()
+    builder.AccumulateStackTrace('func1', 'node1', stack1)
+    builder.AccumulateStackTrace('func2', 'node2', stack2)
+    builder.AccumulateStackTrace('func3', 'node3', stack3)
+    debug_info = builder.Build()
+
+    trace_map = tf_stack.LoadTracesFromDebugInfo(debug_info)
+    self.assertSameElements(
+        trace_map.keys(), ['node1@func1', 'node2@func2', 'node3@func3']
+    )
+
+    for trace in trace_map.values():
+      self.assertRegex(repr(trace), 'tf_stack_test.py', trace)
 
 
 if __name__ == "__main__":

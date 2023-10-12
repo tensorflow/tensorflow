@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_INTEGER_OPS_CONV_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_INTEGER_OPS_CONV_H_
 
+#include <algorithm>
+
 #include "tensorflow/lite/kernels/internal/common.h"
 
 namespace tflite {
@@ -48,7 +50,7 @@ inline void ConvPerChannel(
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int input_depth = MatchingDim(input_shape, 3, filter_shape, 3);
+  const int input_depth = input_shape.Dims(3);
   const int output_depth = MatchingDim(filter_shape, 0, output_shape, 3);
   if (bias_data) {
     TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
@@ -59,6 +61,12 @@ inline void ConvPerChannel(
   const int input_width = input_shape.Dims(2);
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
+  const int filter_input_depth = filter_shape.Dims(3);
+  const int groups = input_depth / filter_input_depth;
+  TFLITE_DCHECK_NE(groups, 0);
+  TFLITE_DCHECK_EQ(input_depth % filter_input_depth, 0);
+  const int filters_per_group = output_depth / groups;
+  TFLITE_DCHECK_NE(filters_per_group, 0);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
   for (int batch = 0; batch < batches; ++batch) {
@@ -67,6 +75,7 @@ inline void ConvPerChannel(
       for (int out_x = 0; out_x < output_width; ++out_x) {
         const int in_x_origin = (out_x * stride_width) - pad_width;
         for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
+          auto group = out_channel / filters_per_group;
           int32_t acc = 0;
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
             const int in_y = in_y_origin + dilation_height_factor * filter_y;
@@ -82,9 +91,11 @@ inline void ConvPerChannel(
                 continue;
               }
 
-              for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-                int32_t input_val = input_data[Offset(input_shape, batch, in_y,
-                                                      in_x, in_channel)];
+              for (int in_channel = 0; in_channel < filter_input_depth;
+                   ++in_channel) {
+                int32_t input_val =
+                    input_data[Offset(input_shape, batch, in_y, in_x,
+                                      in_channel + group * filter_input_depth)];
                 int32_t filter_val = filter_data[Offset(
                     filter_shape, out_channel, filter_y, filter_x, in_channel)];
                 // Accumulate with 32 bits accumulator.
@@ -124,6 +135,7 @@ inline void ConvPerChannel(
   }
 }
 
+
 // Fixed-point per-channel-quantization convolution reference kernel.
 // 16-bit data and 8-bit filter
 template <typename AccumScalar>
@@ -152,7 +164,7 @@ inline void ConvPerChannel(
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int input_depth = MatchingDim(input_shape, 3, filter_shape, 3);
+  const int input_depth = input_shape.Dims(3);
   const int output_depth = MatchingDim(filter_shape, 0, output_shape, 3);
   if (bias_data) {
     TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
@@ -163,6 +175,10 @@ inline void ConvPerChannel(
   const int input_width = input_shape.Dims(2);
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
+  const int filter_input_depth = filter_shape.Dims(3);
+  const int groups = input_depth / filter_input_depth;
+  TFLITE_DCHECK_EQ(input_depth % filter_input_depth, 0);
+  const int filters_per_group = output_depth / groups;
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
   for (int batch = 0; batch < batches; ++batch) {
@@ -171,6 +187,7 @@ inline void ConvPerChannel(
       for (int out_x = 0; out_x < output_width; ++out_x) {
         const int in_x_origin = (out_x * stride_width) - pad_width;
         for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
+          auto group = out_channel / filters_per_group;
           AccumScalar acc = 0;
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
             const int in_y = in_y_origin + dilation_height_factor * filter_y;
@@ -186,9 +203,11 @@ inline void ConvPerChannel(
                 continue;
               }
 
-              for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-                int32_t input_val = input_data[Offset(input_shape, batch, in_y,
-                                                      in_x, in_channel)];
+              for (int in_channel = 0; in_channel < filter_input_depth;
+                   ++in_channel) {
+                int32_t input_val =
+                    input_data[Offset(input_shape, batch, in_y, in_x,
+                                      in_channel + group * filter_input_depth)];
                 int32_t filter_val = filter_data[Offset(
                     filter_shape, out_channel, filter_y, filter_x, in_channel)];
                 // Accumulate with 64 bits accumulator.

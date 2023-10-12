@@ -21,13 +21,16 @@ limitations under the License.
 #include <algorithm>
 #include <list>
 #include <map>
+#include <memory>
+#include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
+#include "xla/stream_executor/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_context.h"
@@ -133,7 +136,8 @@ class PluggableDevice::StreamGroupFactory {
   // StreamGroupFactory cannot be created directly; Call
   // StreamGroupFactory::Global to get the global instance.
   StreamGroupFactory() = default;
-  TF_DISALLOW_COPY_AND_ASSIGN(StreamGroupFactory);
+  StreamGroupFactory(const StreamGroupFactory&) = delete;
+  void operator=(const StreamGroupFactory&) = delete;
 };
 
 PluggableDevice::PluggableDevice(
@@ -164,13 +168,13 @@ PluggableDevice::~PluggableDevice() {
 
 Status PluggableDevice::Init(const SessionOptions& options) {
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
-  auto executor_status = DeviceIdUtil::ExecutorForTfDeviceId(
+  auto executor_status = se::DeviceIdUtil::ExecutorForTfDeviceId(
       DeviceType(device_type()), platform, tf_device_id_);
   if (!executor_status.status().ok()) {
     return errors::Internal("Failed to get StreamExecutor for device",
                             tf_device_id_.value());
   }
-  executor_ = executor_status.ValueOrDie();
+  executor_ = executor_status.value();
 
   em_ = EventMgrFactory::Singleton()->GetEventMgr(executor_,
                                                   options.config.gpu_options());
@@ -180,7 +184,7 @@ Status PluggableDevice::Init(const SessionOptions& options) {
   device_context_ = new PluggableDeviceContext(
       0, stream_->compute, stream_->host_to_device, stream_->device_to_host,
       stream_->device_to_device);
-  pluggable_device_info_ = new GpuDeviceInfo;
+  pluggable_device_info_ = new DeviceBase::AcceleratorDeviceInfo;
   pluggable_device_info_->stream = stream_->compute;
   pluggable_device_info_->default_context = device_context_;
   pluggable_device_info_->event_mgr = em_;
@@ -188,7 +192,7 @@ Status PluggableDevice::Init(const SessionOptions& options) {
   TF_RETURN_IF_ERROR(DeviceIdManager::TfToPlatformDeviceId(
       DeviceType(device_type()), tf_device_id_, &platform_device_id));
   pluggable_device_info_->gpu_id = platform_device_id.value();
-  set_tensorflow_gpu_device_info(pluggable_device_info_);
+  set_tensorflow_accelerator_device_info(pluggable_device_info_);
 
   // Whether and how the PluggableDevice uses its own threadpool.
   // This option is experimental. Once we confirm the best setting, we
@@ -215,12 +219,12 @@ Status PluggableDevice::Init(const SessionOptions& options) {
     TF_RETURN_IF_ERROR(
         ReadInt64FromEnvVar("TF_GPU_THREAD_COUNT", 2, &device_thread_count));
     if (device_thread_mode == "gpu_private") {
-      thread_pool_.reset(new thread::ThreadPool(
+      thread_pool_ = std::make_unique<thread::ThreadPool>(
           options.env, ThreadOptions(),
           strings::StrCat("gpu_private_", tf_device_id_.value()),
           static_cast<int32>(device_thread_count),
           !options.config.experimental().disable_thread_spinning(),
-          /*allocator=*/nullptr));
+          /*allocator=*/nullptr);
       set_tensorflow_device_thread_pool(thread_pool_.get());
     } else if (device_thread_mode == "gpu_shared") {
       static thread::ThreadPool* thread_pool = new thread::ThreadPool(
@@ -237,7 +241,7 @@ Status PluggableDevice::Init(const SessionOptions& options) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Allocator* PluggableDevice::GetAllocator(AllocatorAttributes attr) {
@@ -322,8 +326,8 @@ Status PluggableDevice::MaybeCopyTensorToPluggableDevice(
     StatusCallback done) {
   if (alloc_attrs.on_host()) {
     *to = from;
-    done(Status::OK());
-    return Status::OK();
+    done(OkStatus());
+    return OkStatus();
   } else {
     if (!DMAHelper::CanUseDMA(&from)) {
       Status err = errors::Internal("PluggableDevice copy from non-DMA ",
@@ -355,7 +359,7 @@ Status PluggableDevice::MaybeCopyTensorToPluggableDevice(
 
     device_context_->CopyCPUTensorToDevice(
         &from, this, copy, std::move(wrapped_done), false /*sync_dst_compute*/);
-    return Status::OK();
+    return OkStatus();
   }
 }
 

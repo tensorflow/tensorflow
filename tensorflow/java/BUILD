@@ -15,6 +15,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],
 )
@@ -42,9 +43,7 @@ genrule(
 filegroup(
     name = "java_resources",
     srcs = [":version-info"],
-    visibility = [
-        "//tensorflow/java:__pkg__",
-    ],
+    visibility = ["//visibility:private"],
 )
 
 # NOTE(ashankar): Rule to include the Java API in the Android Inference Library
@@ -55,10 +54,7 @@ filegroup(
         "src/main/java/org/tensorflow/*.java",
         "src/main/java/org/tensorflow/types/*.java",
     ]),
-    visibility = [
-        "//tensorflow/java:__pkg__",
-        "//tensorflow/tools/android/inference_interface:__pkg__",
-    ],
+    visibility = ["//tensorflow/tools/android/inference_interface:__pkg__"],
 )
 
 java_plugin(
@@ -83,9 +79,7 @@ java_library(
 filegroup(
     name = "java_op_sources",
     srcs = glob(["src/main/java/org/tensorflow/op/**/*.java"]) + [":java_op_gen_sources"],
-    visibility = [
-        "//tensorflow/java:__pkg__",
-    ],
+    visibility = ["//visibility:private"],
 )
 
 tf_java_op_gen_srcjar(
@@ -292,9 +286,6 @@ tf_java_test(
     size = "small",
     srcs = ["src/test/java/org/tensorflow/TensorTest.java"],
     javacopts = JAVACOPTS,
-    tags = [
-        "noasan",  # TODO(b/177573611): enable after this is fixed.
-    ],
     test_class = "org.tensorflow.TensorTest",
     deps = [
         ":tensorflow",
@@ -448,6 +439,9 @@ tf_cc_binary(
             "-z defs",
             "-s",
             "-Wl,--version-script,$(location {})".format(LINKER_VERSION_SCRIPT),
+            # copybara:uncomment_begin(google-only)
+            # "-Wl,--undefined-version",
+            # copybara:uncomment_end
         ],
     }),
     linkshared = 1,

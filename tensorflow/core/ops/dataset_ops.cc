@@ -56,9 +56,12 @@ REGISTER_OP("TensorSliceDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("is_files: bool = false")
     .Attr("metadata: string = ''")
+    .Attr("replicate_on_split: bool = false")
     .SetDoNotOptimize()  // TODO(b/123753214): See comment in dataset_ops.cc.
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "Toutput_types"))
+    .SetForwardTypeFn(full_type::MultiaryUnstack(TFT_DATASET,
+                                                 full_type::UnstackTensor))
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("SparseTensorSliceDataset")
@@ -323,6 +326,22 @@ REGISTER_OP("FilterDataset")
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("ParallelFilterDataset")
+    .Input("input_dataset: variant")
+    .Input("other_arguments: Targuments")
+    .Input("num_parallel_calls: int64")
+    .Output("handle: variant")
+    .Attr("predicate: func")
+    // "true", "false", or "default".
+    .Attr("deterministic: string = 'default'")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("metadata: string = ''")
+    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
+                                                           "output_types"))
+    .SetShapeFn(shape_inference::ScalarShape);
+
 // This op is no longer supported.
 REGISTER_OP("FilterByLastComponentDataset")
     .Input("input_dataset: variant")
@@ -392,6 +411,8 @@ REGISTER_OP("BatchDatasetV2")
     .Attr("metadata: string = ''")
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
+    .SetForwardTypeFn(full_type::ContainerMap(TFT_DATASET, /*input_idx=*/0,
+                                              full_type::BatchTensor))
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // batch_size should be a scalar.
@@ -501,6 +522,7 @@ REGISTER_OP("RangeDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("metadata: string = ''")
+    .Attr("replicate_on_split: bool = false")
     .SetDoNotOptimize()  // TODO(b/123753214): See comment in dataset_ops.cc.
     .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
                                                            "output_types"))
@@ -513,6 +535,16 @@ REGISTER_OP("RangeDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("RewriteDataset")
+    .Input("input_dataset: variant")
+    .Input("rewrite_name: string")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_DATASET,
+                                                           "output_types"))
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("AnonymousSeedGenerator")
     .Input("seed: int64")
     .Input("seed2: int64")
@@ -522,12 +554,13 @@ REGISTER_OP("AnonymousSeedGenerator")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       c->set_output(1, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("DatasetCardinality")
     .Input("input_dataset: variant")
     .Output("cardinality: int64")
+    .Attr("cardinality_options: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("DeleteSeedGenerator")
@@ -544,7 +577,7 @@ REGISTER_OP("AnonymousRandomSeedGenerator")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       c->set_output(1, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 // Deprecated in favor of AnonymousSeedGenerator/DeleteSeedGenerator.
@@ -557,7 +590,7 @@ REGISTER_OP("DummySeedGenerator")
     .Output("handle: resource")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ShuffleDataset")
@@ -676,7 +709,7 @@ REGISTER_OP("AnonymousMemoryCache")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       c->set_output(1, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("DeleteMemoryCache")
@@ -688,7 +721,7 @@ REGISTER_OP("DummyMemoryCache")
     .Output("handle: resource")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CacheDataset")
@@ -816,6 +849,29 @@ REGISTER_OP("TFRecordDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("TFRecordDatasetV2")
+    .Input("filenames: string")
+    .Input("compression_type: string")
+    .Input("buffer_size: int64")
+    .Input("byte_offsets: int64")
+    .Attr("metadata: string = ''")
+    .Output("handle: variant")
+    .SetDoNotOptimize()  // TODO(b/123753214): See comment in dataset_ops.cc.
+    .SetTypeConstructor(full_type::UnaryTensorContainer(TFT_DATASET,
+                                                        TFT_STRING))
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // `filenames` must be a scalar or a vector.
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 1, &unused));
+      // `compression_type` could only be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      // `buffer_size` could only be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      // `byte_offsets` must be a scalar or a vector.
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(3), 1, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 REGISTER_OP("Iterator")
     .Output("handle: resource")
     .Attr("shared_name: string")
@@ -846,7 +902,7 @@ REGISTER_OP("AnonymousIteratorV2")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       c->set_output(1, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("AnonymousIteratorV3")
@@ -855,7 +911,7 @@ REGISTER_OP("AnonymousIteratorV3")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("DeleteIterator")
@@ -873,6 +929,8 @@ REGISTER_OP("DeleteMultiDeviceIterator")
 REGISTER_OP("MakeIterator")
     .Input("dataset: variant")
     .Input("iterator: resource")
+    .SetTypeConstructor(full_type::NoOutputs())
+    .SetReverseTypeFn(1, full_type::MapCovariant(TFT_DATASET, TFT_ITERATOR, 0))
     .SetShapeFn(shape_inference::NoOutputs);
 
 REGISTER_OP("OneShotIterator")
@@ -956,7 +1014,7 @@ REGISTER_OP("SerializeIterator")
     .Output("serialized: variant")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Vector(c->UnknownDim()));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("DeserializeIterator")
@@ -977,6 +1035,7 @@ REGISTER_OP("DatasetToGraphV2")
     .Attr("external_state_policy: int = 0")
     .Attr("strip_device_assignment: bool = false")
     .Output("graph: string")
+    .SetForwardTypeFn(full_type::Encode(TFT_STRING, 0))
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("OptimizeDataset")
@@ -1003,60 +1062,14 @@ REGISTER_OP("OptimizeDatasetV2")
                                                            "output_types"))
     .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("OptionalFromValue")
-    .Input("components: Toutput_types")
-    .Output("optional: variant")
-    .Attr("Toutput_types: list(type) >= 1")
-    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_OPTIONAL,
-                                                           "Toutput_types"))
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
-      std::vector<DataType> dtypes;
-      TF_RETURN_IF_ERROR(c->GetAttr("Toutput_types", &dtypes));
-      c->set_output(0, c->Scalar());
-      std::vector<shape_inference::ShapeAndType> shapes_and_types;
-      shapes_and_types.reserve(c->num_inputs());
-      const FullTypeDef& ret_types = c->ret_types();
-      for (int i = 0; i < c->num_inputs(); ++i) {
-        // TODO(mdan): output_type(i) == optional is incorrect.
-        // "Optional" is the type of the the whole container, not of individual
-        // elements.
-        //
-        // Why ret_types.args(0) and not args(i) --
-        // For example if Toutput_types is (int32, float32), then
-        // ret_types.args[0] (i.e. the 0th output) is
-        // Optional[Record[Tensor[int32, s1], Tensor[float32, s2]]]
-        // set_output_handle_shapes_and_types tracks the same thing, but in
-        // a transposed way:
-        // {ShapeAndType(in32, s1, Optional), ShapeAndType(in32, s2, Optional)}
-        // That should be corrected in the future (see todo above).
-        shapes_and_types.emplace_back(c->input(i), dtypes[i],
-                                      ret_types.args(0));
-      }
-      c->set_output_handle_shapes_and_types(0, shapes_and_types);
-      return Status::OK();
-    });
-
-REGISTER_OP("OptionalNone")
-    .Output("optional: variant")
-    .SetShapeFn(shape_inference::ScalarShape);
-
-REGISTER_OP("OptionalHasValue")
-    .Input("optional: variant")
-    .Output("has_value: bool")
-    .SetShapeFn(shape_inference::ScalarShape);
-
-REGISTER_OP("OptionalGetValue")
-    .Input("optional: variant")
-    .Output("components: output_types")
-    .Attr("output_types: list(type) >= 1")
-    .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(shape_inference::DatasetIteratorShape);
-
 REGISTER_OP("IteratorGetNextAsOptional")
     .Input("iterator: resource")
     .Output("optional: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .SetTypeConstructor(full_type::VariadicTensorContainer(TFT_OPTIONAL,
+                                                           "output_types"))
+    .SetForwardTypeFn(full_type::MapCovariant(TFT_ITERATOR, TFT_OPTIONAL, 0))
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ModelDataset")
@@ -1122,7 +1135,7 @@ REGISTER_OP("MapDefun")
             c->MakeShapeFromPartialTensorShape(s, &output_shape_handle));
         c->set_output(static_cast<int>(i), output_shape_handle);
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("WrapDatasetVariant")
@@ -1144,7 +1157,7 @@ REGISTER_OP("AnonymousMultiDeviceIterator")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       c->set_output(1, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("AnonymousMultiDeviceIteratorV3")
@@ -1154,7 +1167,7 @@ REGISTER_OP("AnonymousMultiDeviceIteratorV3")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("MultiDeviceIterator")
@@ -1185,6 +1198,7 @@ REGISTER_OP("MultiDeviceIteratorGetNextFromShard")
 REGISTER_OP("MultiDeviceIteratorToStringHandle")
     .Input("multi_device_iterator: resource")
     .Output("string_handle: string")
+    .SetForwardTypeFn(full_type::Encode(TFT_STRING, 0))
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("MultiDeviceIteratorFromStringHandle")
@@ -1192,6 +1206,7 @@ REGISTER_OP("MultiDeviceIteratorFromStringHandle")
     .Output("multi_device_iterator: resource")
     .Attr("output_types: list(type) >= 0 = []")
     .Attr("output_shapes: list(shape) >= 0 = []")
+    .SetForwardTypeFn(full_type::Decode(TFT_STRING, 0))
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("OptionsDataset")

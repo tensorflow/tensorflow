@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/fully_connected.h"
 
 #include <algorithm>
+#include <any>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -37,7 +40,7 @@ class FullyConnectedBuffers : public NodeShader {
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
     const auto& attr =
-        absl::any_cast<const FullyConnectedAttributes&>(ctx.op_attr);
+        std::any_cast<const FullyConnectedAttributes&>(ctx.op_attr);
 
     const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
     const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
@@ -119,7 +122,7 @@ class FullyConnectedBuffers : public NodeShader {
 }  // namespace
 
 std::unique_ptr<NodeShader> NewFullyConnectedNodeShader() {
-  return absl::make_unique<FullyConnectedBuffers>();
+  return std::make_unique<FullyConnectedBuffers>();
 }
 
 }  // namespace gl

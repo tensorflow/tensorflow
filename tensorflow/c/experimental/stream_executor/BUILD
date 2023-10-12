@@ -1,16 +1,15 @@
 # Description:
 # StreamExecutor C API.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -27,7 +26,7 @@ cc_library(
     hdrs = ["stream_executor.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/c:c_api_macros",
+        "//tensorflow/c:c_api_macros_hdrs",
         "//tensorflow/c:tf_status_headers",
     ],
 )
@@ -44,14 +43,10 @@ cc_library(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime/device:device_utils",
-        "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:strcat",
-        "//tensorflow/stream_executor:executor_cache",
-        "//tensorflow/stream_executor:multi_platform_manager",
-        "//tensorflow/stream_executor:platform",
-        "//tensorflow/stream_executor:stream_executor_internal",
-        "//tensorflow/stream_executor:stream_executor_pimpl",
-        "//tensorflow/stream_executor:timer",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:platform",
     ],
 )
 
@@ -69,8 +64,8 @@ cc_library(
         "//tensorflow/c:c_api_macros",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
-        "//tensorflow/stream_executor:executor_cache",
-        "//tensorflow/stream_executor/lib",
+        "@local_xla//xla/stream_executor",
+        "@local_xla//xla/stream_executor:stream_executor_internal",
     ],
 )
 
@@ -84,9 +79,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
-        "//tensorflow/stream_executor:multi_platform_manager",
-        "//tensorflow/stream_executor:stream",
-        "//tensorflow/stream_executor:stream_executor_pimpl",
+        "@local_xla//xla/stream_executor",
     ],
 )
 

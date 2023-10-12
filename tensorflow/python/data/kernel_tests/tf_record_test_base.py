@@ -327,3 +327,12 @@ class TFRecordTestBase(test_base.DatasetTestBase):
         writer.write(self._record(i, j))
       writer.close()
     return filenames
+
+  def _writeFile(self, name, data):
+    filename = os.path.join(self.get_temp_dir(), name)
+    writer = python_io.TFRecordWriter(filename)
+    for d in data:
+      writer.write(compat.as_bytes(str(d)))
+    writer.close()
+    return filename
+

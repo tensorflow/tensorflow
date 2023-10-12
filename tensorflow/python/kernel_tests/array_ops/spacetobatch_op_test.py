@@ -14,9 +14,12 @@
 # ==============================================================================
 """Functional tests for SpaceToBatch and BatchToSpace ops."""
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
@@ -90,38 +93,41 @@ class CppOpImpl(object):
     return gen_array_ops.batch_to_space(*args, **kwargs)
 
 
-class SpaceToBatchTest(test.TestCase, PythonOpImpl):
+class SpaceToBatchTest(test.TestCase, parameterized.TestCase, PythonOpImpl):
   """Tests input-output pairs for the SpaceToBatch and BatchToSpace ops.
 
   This uses the Python compatibility wrapper that forwards to space_to_batch_nd.
   """
 
-  def _testPad(self, inputs, paddings, block_size, outputs):
+  def _testPad(self,
+               inputs,
+               paddings,
+               block_size,
+               outputs,
+               dtype=dtypes.float32):
     with self.cached_session():
       # outputs = space_to_batch(inputs)
       x_tf = self.space_to_batch(
-          math_ops.cast(inputs, dtypes.float32),
-          paddings,
-          block_size=block_size)
+          math_ops.cast(inputs, dtype), paddings, block_size=block_size)
       self.assertAllEqual(x_tf, outputs)
       # inputs = batch_to_space(outputs)
       x_tf = self.batch_to_space(
-          math_ops.cast(outputs, dtypes.float32),
-          paddings,
-          block_size=block_size)
+          math_ops.cast(outputs, dtype), paddings, block_size=block_size)
       self.assertAllEqual(x_tf, inputs)
 
-  def _testOne(self, inputs, block_size, outputs):
+  def _testOne(self, inputs, block_size, outputs, dtype=dtypes.float32):
     paddings = np.zeros((2, 2), dtype=np.int32)
-    self._testPad(inputs, paddings, block_size, outputs)
+    self._testPad(inputs, paddings, block_size, outputs, dtype)
 
   # [1, 2, 2, 1] <-> [4, 1, 1, 1]
+  @parameterized.parameters(dtypes.float32, dtypes.float16, dtypes.bfloat16,
+                            dtypes.uint8)
   @test_util.run_deprecated_v1
-  def testSmallInput2x2(self):
+  def testSmallInput2x2(self, dtype):
     x_np = [[[[1], [2]], [[3], [4]]]]
     block_size = 2
     x_out = [[[[1]]], [[[2]]], [[[3]]], [[[4]]]]
-    self._testOne(x_np, block_size, x_out)
+    self._testOne(x_np, block_size, x_out, dtype)
 
   # [1, 2, 2, 1] <-> [1, 3, 3, 1] (padding) <-> [9, 1, 1, 1]
   @test_util.run_deprecated_v1
@@ -515,6 +521,27 @@ class SpaceToBatchNDErrorHandlingTest(test.TestCase):
         array_ops.placeholder(
             dtypes.float32, shape=(3, 2, 3, 2)), [2, 3], [[1, 1], [0, 0]])
     self.assertEqual([3 * 2 * 3, 2, 1, 2], t.get_shape().as_list())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testInvalidBlockShape(self):
+    tf_in = constant_op.constant(
+        -3.5e+35, shape=[10, 20, 20], dtype=dtypes.float32)
+    block_shape = constant_op.constant(-10, shape=[2], dtype=dtypes.int64)
+    paddings = constant_op.constant(0, shape=[2, 2], dtype=dtypes.int32)
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "block_shape must be positive"):
+      array_ops.space_to_batch_nd(tf_in, block_shape, paddings)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testOutputSizeOutOfBounds(self):
+    tf_in = constant_op.constant(
+        -3.5e+35, shape=[10, 19, 22], dtype=dtypes.float32)
+    block_shape = constant_op.constant(
+        1879048192, shape=[2], dtype=dtypes.int64)
+    paddings = constant_op.constant(0, shape=[2, 2], dtype=dtypes.int32)
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "Negative.* dimension size caused by overflow"):
+      array_ops.space_to_batch_nd(tf_in, block_shape, paddings)
 
 
 class SpaceToBatchGradientTest(test.TestCase, PythonOpImpl):

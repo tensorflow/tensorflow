@@ -110,12 +110,6 @@ opt<std::string> quant_stats_file_name("quant-stats",
                                        llvm::cl::value_desc("filename"),
                                        llvm::cl::init(""));
 
-// NOLINTNEXTLINE
-opt<bool> convert_tf_while_to_tfl_while(
-    "convert_tf_while_to_tfl_while",
-    llvm::cl::desc("Whether to legalize TF While to TFL While."),
-    llvm::cl::init(true));
-
 // A list of comma separated TF operators which are created by the user.
 // This must be used with `-emit-select-tf-ops=true`.
 // NOLINTNEXTLINE
@@ -130,7 +124,7 @@ opt<bool> unfold_batchmatmul(
     "unfold_batchmatmul",
     llvm::cl::desc(
         "Whether to unfold TF BatchMatMul to a set of TFL FullyConnected ops."),
-    llvm::cl::init(true));
+    llvm::cl::init(false));
 
 // NOLINTNEXTLINE
 opt<bool> unfold_large_splat_constant(
@@ -144,6 +138,13 @@ opt<bool> guarantee_all_funcs_one_use(
     "guarantee-all-funcs-one-use",
     llvm::cl::desc(
         "Whether to clone functions to ensure each function has a single use."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> enable_dynamic_update_slice(
+    "enable-dynamic-update-slice",
+    llvm::cl::desc("Whether to enable dynamic update slice op to convert "
+                   "TensorListSetItem op."),
     llvm::cl::init(false));
 
 // NOLINTNEXTLINE
@@ -162,4 +163,43 @@ opt<HloImportType> hlo_import_type(
 opt<bool> enable_hlo_to_tf_conversion(
     "enable-hlo-to-tf-conversion",
     llvm::cl::desc("Whether to enable the hlo to tf ops conversion."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> preserve_assert_op(
+    "preserve-assert-op",
+    llvm::cl::desc("Preserve AssertOp during tfl legalization."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> enable_stablehlo_conversion(
+    "enable-stablehlo-conversion",
+    llvm::cl::desc("Enable converting TF to Stablehlo."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> post_training_quantization(
+    "post-training-quantization",
+    llvm::cl::desc("Enable post_training_quantization."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> legalize_custom_tensor_list_ops(
+    "legalize-custom-tensor-list-ops",
+    llvm::cl::desc("Convert \"tf.TensorList*\" ops to \"tfl.custom_op\""
+                   "if they can all be supported."),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> serialize_stablehlo_ops(
+    "serialize-stablehlo-ops",
+    llvm::cl::desc("Wether serialize stablehlo ops or not"),
+    llvm::cl::init(true));
+
+// NOLINTNEXTLINE
+opt<bool> reduce_type_precision(
+    "reduce-type-precision",
+    llvm::cl::desc("Convert tensors to a lower precision if all values are "
+                   "within the reduced precision range. This could have side "
+                   "effects triggered by downstream packing algorithms."),
     llvm::cl::init(false));

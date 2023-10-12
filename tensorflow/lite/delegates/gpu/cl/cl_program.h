@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_CL_PROGRAM_H_
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/types/span.h"

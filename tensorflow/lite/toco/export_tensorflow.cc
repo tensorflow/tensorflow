@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "google/protobuf/map.h"
@@ -58,6 +59,10 @@ tensorflow::DataType GetTensorFlowDataType(ArrayDataType data_type,
       return tensorflow::DT_FLOAT;
     case ArrayDataType::kUint8:
       return tensorflow::DT_UINT8;
+    case ArrayDataType::kInt16:
+      return tensorflow::DT_INT16;
+    case ArrayDataType::kUint16:
+      return tensorflow::DT_UINT16;
     case ArrayDataType::kInt32:
       return tensorflow::DT_INT32;
     case ArrayDataType::kUint32:
@@ -2539,7 +2544,7 @@ void EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(Model* model) {
     FakeQuantOperator* fakequant_op = new FakeQuantOperator;
     fakequant_op->inputs = {wrapped_array_name};
     fakequant_op->outputs = {array_name};
-    fakequant_op->minmax.reset(new MinMax);
+    fakequant_op->minmax = std::make_unique<MinMax>();
     *fakequant_op->minmax = *array.minmax;
     const auto& it = FindOpWithInput(*model, array_name);
     model->operators.emplace(it, fakequant_op);

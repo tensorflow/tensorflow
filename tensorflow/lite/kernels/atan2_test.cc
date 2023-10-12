@@ -14,12 +14,9 @@
 
 #include <cmath>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace {
@@ -45,13 +42,9 @@ class Atan2Model : public tflite::SingleOpModel {
     y_ = AddInput(y);
     x_ = AddInput(x);
     output_ = AddOutput(output);
-    SetCustomOp("atan2", {}, ops::custom::Register_ATAN2);
+    SetBuiltinOp(BuiltinOperator_ATAN2, BuiltinOptions_NONE, 0);
     BuildInterpreter({GetShape(y_), GetShape(x_)});
   }
-
-  int y_;
-  int x_;
-  int output_;
 
   template <typename T>
   std::vector<T> GetOutput(
@@ -62,6 +55,11 @@ class Atan2Model : public tflite::SingleOpModel {
     Invoke();
     return ExtractVector<T>(output_);
   }
+
+ private:
+  int y_;
+  int x_;
+  int output_;
 };
 
 template <typename Float>

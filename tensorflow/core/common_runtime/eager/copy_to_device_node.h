@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_COPY_TO_DEVICE_NODE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_COPY_TO_DEVICE_NODE_H_
 
+#include <utility>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
@@ -59,7 +61,7 @@ class CopyToDeviceNode : public EagerNode {
       // If a mirror was added since we called HasLocalMirror then just return
       // and ignore the error.
       if (s.ok() || (s.code() == error::Code::ALREADY_EXISTS)) {
-        return Status::OK();
+        return OkStatus();
       }
       return s;
     } else {

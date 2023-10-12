@@ -45,7 +45,7 @@ class ToTFRecordOp : public AsyncOpKernel {
       return errors::InvalidArgument(argument_name, " must be a scalar");
     }
     *output = argument_t->scalar<T>()();
-    return Status::OK();
+    return OkStatus();
   }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
@@ -61,6 +61,7 @@ class ToTFRecordOp : public AsyncOpKernel {
   Status DoCompute(OpKernelContext* ctx) {
     tensorflow::ResourceTagger tag(kTFDataResourceTag,
                                    ctx->op_kernel().type_string());
+    metrics::RecordTFDataFetchOp("ToTFRecordOp");
     tstring filename;
     TF_RETURN_IF_ERROR(
         ParseScalarArgument<tstring>(ctx, "filename", &filename));
@@ -69,7 +70,7 @@ class ToTFRecordOp : public AsyncOpKernel {
                                                     &compression_type));
     std::unique_ptr<WritableFile> file;
     TF_RETURN_IF_ERROR(ctx->env()->NewWritableFile(filename, &file));
-    auto writer = absl::make_unique<io::RecordWriter>(
+    auto writer = std::make_unique<io::RecordWriter>(
         file.get(),
         io::RecordWriterOptions::CreateRecordWriterOptions(compression_type));
 
@@ -118,7 +119,7 @@ class ToTFRecordOp : public AsyncOpKernel {
       }
       components.clear();
     } while (!end_of_sequence);
-    return Status::OK();
+    return OkStatus();
   }
 
   BackgroundWorker background_worker_;

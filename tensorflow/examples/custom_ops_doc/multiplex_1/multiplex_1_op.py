@@ -24,7 +24,7 @@ from tensorflow.python.platform import resource_loader
 _multiplex_1_module = tf.load_op_library(
     resource_loader.get_path_to_datafile("multiplex_1_kernel.so"))
 
-examples_multiplex_dense = _multiplex_1_module.examples_multiplex_dense
+examples_multiplex_dense = _multiplex_1_module.examples1_multiplex_dense
 
 # In this example, this Python function is a trivial wrapper for the C++ Op:
 # it provides a public API and docstring that are equivalent to the API

@@ -97,6 +97,15 @@ class CollectiveOpsV2(object):
                                              group_key, instance_key, *args,
                                              **kwargs)
 
+  @staticmethod
+  def all_to_all(t, group_size, group_key, instance_key, *args, **kwargs):
+    group_size = array_ops.identity(group_size)
+    group_key = array_ops.identity(group_key)
+    instance_key = array_ops.identity(instance_key)
+    return _collective_ops.all_to_all_v2(
+        t, group_size, group_key, instance_key, *args, **kwargs
+    )
+
 
 device_combination = (
     combinations.combine(device='CPU', communication='RING', required_gpus=0) +
@@ -122,7 +131,7 @@ collective_op_combinations = combinations.combine(collective_op=[
 class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
-    _setup_context()
+    _setup_context(num_devices=16)
     super().setUp()
 
   def testReduce(self, collective_ops, device, communication):
@@ -231,9 +240,36 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
                 communication_hint=communication))
       return collectives
 
+    cpu_tokens = {}
+    for i in range(16):
+      with ops.device('/device:CPU:%d' % i):
+        cpu_tokens[i] = create_ordering_token()
+
+    @def_function.function
+    def run_all_gather_16devices():
+      group_size = 16
+      group_key = 3
+      instance_key = 1
+      collectives = []
+      for i in range(16):
+        with ops.device('/device:CPU:%d' % i):
+          collectives.append(
+              collective_ops.all_gather(
+                  constant_op.constant([i]),
+                  group_size,
+                  group_key,
+                  instance_key,
+                  ordering_token=cpu_tokens[i],
+                  communication_hint=communication))
+      return collectives
+
     self.assertAllClose(run_all_gather_1device(), [1.], rtol=1e-5, atol=1e-5)
     for result in run_all_gather_2devices():
       self.assertAllClose(result, [1., 1.], rtol=1e-5, atol=1e-5)
+
+    for result in run_all_gather_16devices():
+      self.assertAllClose(
+          result, list(range(16)), rtol=1e-5, atol=1e-5)
 
   def testBroadcast(self, collective_ops, device, communication):
     dev0 = '/device:%s:0' % device
@@ -270,6 +306,56 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
 
     for result in run_broadcast_2devices():
       self.assertAllClose(result, [1., 2., 3.], rtol=1e-5, atol=1e-5)
+
+  def testAllToAll(self, collective_ops, device, communication):
+    if str(collective_ops) == 'v1':
+      self.skipTest('CollectiveAllToAllV1 is not implemented.')
+    devices = ['/device:%s:0' % device, '/device:%s:1' % device]
+
+    tokens = {}
+    for dev in devices:
+      with ops.device(dev):
+        tokens[dev] = create_ordering_token()
+
+    @def_function.function
+    def run_all_to_all_1device():
+      with ops.device(devices[0]):
+        in_value = constant_op.constant([1.0])
+        group_size = 1
+        group_key = 1
+        instance_key = 1
+        return collective_ops.all_to_all(
+            in_value,
+            group_size,
+            group_key,
+            instance_key,
+            communication_hint=communication,
+            ordering_token=tokens[devices[0]],
+        )
+
+    @def_function.function
+    def run_all_to_all_2devices():
+      group_size = 2
+      group_key = 2
+      instance_key = 2
+      collectives = []
+      for i in range(2):
+        with ops.device(devices[i]):
+          collectives.append(
+              collective_ops.all_to_all(
+                  constant_op.constant([i, i]),
+                  group_size,
+                  group_key,
+                  instance_key,
+                  ordering_token=tokens[devices[i]],
+                  communication_hint=communication,
+              )
+          )
+      return collectives
+
+    self.assertAllClose(run_all_to_all_1device(), [1.0])
+    for result in run_all_to_all_2devices():
+      self.assertAllClose(result, [0.0, 1.0])
 
   def testInstanceKeyScopedUnderGroupKey(self, collective_ops, device,
                                          communication):
@@ -565,6 +651,132 @@ class XlaTest(test.TestCase, parameterized.TestCase):
     t1.join()
 
     self.assertAllEqual(results, [[2.], [2.]])
+
+  def testReduceSameGraph(self):
+    device0 = '/device:GPU:0'
+    device1 = '/device:GPU:1'
+    group_size = 2
+    group_key = 100
+    instance_key = 100
+    results = []
+
+    @def_function.function(jit_compile=True)
+    def func():
+
+      def all_reduce(device):
+
+        with ops.device(device):
+          token = create_ordering_token()
+
+          return _collective_ops.all_reduce_v2([1.],
+                                               group_size,
+                                               group_key,
+                                               instance_key,
+                                               ordering_token=token)
+
+      results.append(all_reduce(device0))
+      results.append(all_reduce(device1))
+      return results
+
+    # FIXME(b/204228837): the error shall no longer be about resources
+    # after multi-device support in jit_compile lands. This will likely
+    # becomes a deadlock near ResolveDeviceAssignment, or an error in the MLIR
+    # bridge on resetting CollectiveInfo.
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Trying to access resource'):
+      func()
+
+
+@combinations.generate(
+    combinations.combine(
+        required_physical_gpus=2, mode='eager', jit_compile=[True, False]))
+class GroupAssignmentTest(test.TestCase, parameterized.TestCase):
+
+  def testGroupAssignmentBeforeAllReduce(self, jit_compile):
+    device0 = '/device:GPU:0'
+    device1 = '/device:GPU:1'
+    instance_key = 100
+    results = []
+
+    group_assignment = [[0], [1]]
+
+    def all_reduce(device, device_index):
+
+      with ops.device(device):
+        token = create_ordering_token()
+
+      @def_function.function(jit_compile=jit_compile)
+      def f(device_index):
+        group_size, group_key = _collective_ops.assign_group_v2(
+            group_assignment=group_assignment,
+            device_index=device_index,
+            base_key=1)
+        return _collective_ops.all_reduce_v2([1.],
+                                             group_size,
+                                             group_key,
+                                             instance_key,
+                                             ordering_token=token)
+
+      with ops.device(device):
+        results.append(f(device_index))
+
+    t0 = threading.Thread(target=all_reduce, args=(device0, 0))
+    t1 = threading.Thread(target=all_reduce, args=(device1, 1))
+    t0.start()
+    t1.start()
+    t0.join()
+    t1.join()
+
+    self.assertAllEqual(results, [[1.], [1.]])
+
+  def testTwoGroupAssignmentBeforeAllReduce(self, jit_compile):
+    device0 = '/device:GPU:0'
+    device1 = '/device:GPU:1'
+    instance_key = 100
+    results = []
+
+    group_assignment1 = [[0], [1]]
+    group_assignment2 = [[0, 1]]
+
+    def all_reduce(device, device_index):
+
+      with ops.device(device):
+        token = create_ordering_token()
+
+      @def_function.function(jit_compile=jit_compile)
+      def f(device_index):
+        group_size, group_key = _collective_ops.assign_group_v2(
+            group_assignment=group_assignment1,
+            device_index=device_index,
+            base_key=1)
+        r1 = _collective_ops.all_reduce_v2([1.],
+                                           group_size,
+                                           group_key,
+                                           instance_key,
+                                           ordering_token=token)
+
+        group_size, group_key = _collective_ops.assign_group_v2(
+            group_assignment=group_assignment2,
+            device_index=device_index,
+            base_key=10000)
+        r2 = _collective_ops.all_reduce_v2([1.],
+                                           group_size,
+                                           group_key,
+                                           instance_key,
+                                           ordering_token=token)
+        return r1, r2
+
+      with ops.device(device):
+        results.append(f(device_index))
+
+    t0 = threading.Thread(target=all_reduce, args=(device0, 0))
+    t1 = threading.Thread(target=all_reduce, args=(device1, 1))
+    t0.start()
+    t1.start()
+    t0.join()
+    t1.join()
+
+    self.assertAllEqual(results, [[[1.], [2.]], [[1.], [2.]]])
 
 
 @combinations.generate(
@@ -1646,9 +1858,9 @@ class CollectiveOpsV3Test(test.TestCase, parameterized.TestCase):
     self.assertAllClose(result[0], [3.0, 1.0], rtol=1e-5, atol=1e-5)
 
 
-def _setup_context():
+def _setup_context(num_devices=4):
   context._reset_context()
-  test_util.set_logical_devices_to_at_least('CPU', 4)
+  test_util.set_logical_devices_to_at_least('CPU', num_devices)
   context.ensure_initialized()
   context.set_log_device_placement(True)
 

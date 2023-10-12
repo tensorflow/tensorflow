@@ -11,7 +11,7 @@ annotated:
 <img src="images/android_apple_banana.png" alt="Screenshot of Android example" width="30%">
 
 Note: (1) To integrate an existing model, try
-[TensorFlow Lite Task Library](https://www.tensorflow.org/lite/inference_with_metadata/task_library/object_detector).
+[TensorFlow Lite Task Library](../../inference_with_metadata/task_library/object_detector).
 (2) To customize a model, try
 [TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/guide/model_maker).
 
@@ -30,7 +30,7 @@ accompanying labels.
 starter model with Metadata</a>
 
 For more information about Metadata and associated fields (eg: `labels.txt`) see
-<a href="https://www.tensorflow.org/lite/convert/metadata#read_the_metadata_from_models">Read
+<a href="../../models/convert/metadata#read_the_metadata_from_models">Read
 the metadata from models</a>
 
 If you want to train a custom detection model for your own task, see
@@ -57,10 +57,11 @@ to integrate object detection models in just a few lines of code. You can also
 build your own custom inference pipeline using the
 [TensorFlow Lite Interpreter Java API](../../guide/inference#load_and_run_a_model_in_java).
 
-The Android example below demonstrates the implementation for both methods as
-[lib_task_api](https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android/lib_task_api)
+The Android example below demonstrates the implementation for both methods
+using
+[Task library](https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android_play_services)
 and
-[lib_interpreter](https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android/lib_interpreter),
+[interpreter API](https://github.com/tensorflow/examples/tree/eb925e460f761f5ed643d17f0c449e040ac2ac45/lite/examples/object_detection/android/lib_interpreter),
 respectively.
 
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android">View
@@ -340,14 +341,14 @@ SSD models from the
 can also be converted to TensorFlow Lite using the instructions
 [here](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tf2.md).
 It is important to note that detection models cannot be converted directly using
-the [TensorFlow Lite Converter](https://www.tensorflow.org/lite/convert), since
+the [TensorFlow Lite Converter](../../models/convert), since
 they require an intermediate step of generating a mobile-friendly source model.
 The scripts linked above perform this step.
 
 Both the
 [TF1](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tensorflowlite.md)
 &
-[TF2](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tensorflowlite.md)
+[TF2](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tf2.md)
 exporting scripts have parameters that can enable a larger number of output
 objects or slower, more-accurate post processing. Please use `--help` with the
 scripts to see an exhaustive list of supported arguments.
@@ -395,4 +396,4 @@ training your own models with the TensorFlow Object Detection API:
 Once trained, they can be converted to a TFLite-friendly format with the
 instructions here:
 [TF1](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tensorflowlite.md),
-[TF2](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tensorflowlite.md)
+[TF2](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tf2.md)

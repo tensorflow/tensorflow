@@ -26,6 +26,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import ctc_ops
@@ -302,7 +303,7 @@ class CTCLossTest(test.TestCase):
         sess.run(_ctc_loss_v2(labels, inputs, sequence_lengths))
 
 
-class CTCLossTestV2(test.TestCase):
+class CTCLossTestV2(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testCtcLossV2(self):
@@ -632,6 +633,57 @@ class CTCLossTestV2(test.TestCase):
               rtol=2e-06,
               atol=2e-06)
 
+  @parameterized.parameters((False, 0), (True, 0), (False, -1), (True, -1))
+  def testCtcLossDenseWithUndefinedStaticDimensions(self, unique, blank_index):
+    random_seed.set_random_seed(5)
+
+    # Trace without a batch size and number of frames
+    batch_size = None
+    num_labels = 6
+    label_length = 5
+    num_frames = None
+
+    @def_function.function
+    def func(labels, logits, label_lengths, logit_lengths):
+      unique_labels = ctc_ops.ctc_unique_labels(labels) if unique else None
+      return ctc_ops.ctc_loss_dense(
+          labels=labels,
+          logits=logits,
+          label_length=label_lengths,
+          logit_length=logit_lengths,
+          unique=unique_labels,
+          blank_index=blank_index)
+
+    labels_spec = tensor_spec.TensorSpec([batch_size, label_length],
+                                         dtypes.int64)
+    logits_spec = tensor_spec.TensorSpec([num_frames, batch_size, num_labels],
+                                         dtypes.float32)
+    label_lengths_spec = tensor_spec.TensorSpec([batch_size], dtypes.int64)
+    logit_lengths_spec = tensor_spec.TensorSpec([batch_size], dtypes.int64)
+
+    f = func.get_concrete_function(
+        labels_spec, logits_spec, label_lengths_spec, logit_lengths_spec)
+
+    # Execute with a defined batch size and number of frames
+    batch_size = 8
+    num_frames = 12
+
+    logits = random_ops.random_uniform([num_frames, batch_size, num_labels])
+    labels = random_ops.random_uniform(
+        [batch_size, label_length], minval=1, maxval=num_labels,
+        dtype=dtypes.int64)
+
+    label_lengths = random_ops.random_uniform(
+        [batch_size], minval=2, maxval=label_length, dtype=dtypes.int64)
+    label_mask = array_ops.sequence_mask(
+        label_lengths, maxlen=label_length, dtype=label_lengths.dtype)
+    labels *= label_mask
+
+    logit_lengths = constant_op.constant(
+        [num_frames] * batch_size, dtype=dtypes.int64)
+
+    f(labels, logits, label_lengths, logit_lengths)
+
   def testCollapseRepeated(self):
     collapsed, new_seq_lengths = ctc_ops.collapse_repeated(
         labels=[[1, 3, 3, 3, 0],
@@ -936,18 +988,20 @@ class CTCLossTestV2(test.TestCase):
           [[1.0, 2.0], [5.0, 8.0], [14.0, 20.0]], out)
 
 
-def _ctc_loss_v3(labels, logits, label_length, logit_length, use_gpu):
+def _ctc_loss_v3(labels, logits, label_length, logit_length, use_gpu,
+                 sparse=True):
   with test_util.device(use_gpu=use_gpu):
-    sparse_labels = ctc_ops.dense_labels_to_sparse(labels, label_length)
+    if sparse:
+      labels = ctc_ops.dense_labels_to_sparse(labels, label_length)
     with backprop.GradientTape() as t:
       t.watch(logits)
       ref_loss = ctc_ops.ctc_loss_v3(
-          labels=sparse_labels,
+          labels=labels,
           logits=logits,
           label_length=label_length,
           logit_length=logit_length,
           blank_index=0)
-    ref_grad = t.gradient(ref_loss, [logits])
+    ref_grad = t.gradient(ref_loss, logits)
     return ref_loss, ref_grad
 
 
@@ -999,6 +1053,78 @@ class CTCLossTestV3(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose(loss, ref_loss, atol=1e-6)
     self.assertAllClose(grad, ref_grad, atol=2e-6)
+
+  @parameterized.parameters([False, True])
+  def testCtcLossFp16(self, sparse_labels):
+    batch_size = 8
+    num_labels = 6
+    max_label_length = 5
+    num_frames = 12
+
+    labels = np.random.randint(1, num_labels, [batch_size, max_label_length])
+    labels = ops.convert_to_tensor(labels, dtypes.int64)
+    fp16_logits = np.random.uniform(size=[num_frames, batch_size, num_labels])
+    fp16_logits = ops.convert_to_tensor(fp16_logits, dtypes.float16)
+    label_length = np.random.randint(2, max_label_length, [batch_size])
+    label_length = ops.convert_to_tensor(label_length, dtypes.int64)
+
+    label_mask = array_ops.sequence_mask(
+        label_length, maxlen=max_label_length, dtype=label_length.dtype)
+    labels *= label_mask
+    logit_length = [num_frames] * batch_size
+
+    fp16_loss, fp16_grad = _ctc_loss_v3(
+        labels, fp16_logits, label_length, logit_length, use_gpu=True,
+        sparse=sparse_labels)
+    fp32_loss, fp32_grad = _ctc_loss_v3(
+        labels, math_ops.cast(fp16_logits, dtypes.float32), label_length,
+        logit_length, use_gpu=True, sparse=sparse_labels)
+
+    self.assertEqual(fp16_loss.dtype, dtypes.float16)
+    self.assertEqual(fp16_grad.dtype, dtypes.float16)
+    self.assertAllClose(
+        self.evaluate(fp16_loss),
+        self.evaluate(math_ops.cast(fp32_loss, dtypes.float16))
+    )
+    self.assertAllClose(
+        self.evaluate(fp16_grad),
+        self.evaluate(math_ops.cast(fp32_grad, dtypes.float16))
+    )
+
+  @parameterized.parameters([False, True])
+  def testCtcLossWithListLogits(self, sparse_labels):
+    batch_size = 8
+    num_labels = 6
+    max_label_length = 5
+    num_frames = 12
+
+    labels = np.random.randint(1, num_labels, [batch_size, max_label_length])
+    labels = ops.convert_to_tensor(labels, dtypes.int64)
+    logits = np.random.uniform(size=[num_frames, batch_size, num_labels])
+    label_length = np.random.randint(2, max_label_length, [batch_size])
+    label_length = ops.convert_to_tensor(label_length, dtypes.int64)
+
+    label_mask = array_ops.sequence_mask(
+        label_length, maxlen=max_label_length, dtype=label_length.dtype)
+    labels *= label_mask
+    logit_length = [num_frames] * batch_size
+    if sparse_labels:
+      labels = ctc_ops.dense_labels_to_sparse(labels, label_length)
+
+    list_loss = ctc_ops.ctc_loss_v3(
+        labels=labels,
+        logits=logits.tolist(),
+        label_length=label_length,
+        logit_length=logit_length,
+        blank_index=0)
+    tensor_loss = ctc_ops.ctc_loss_v3(
+        labels=labels,
+        logits=ops.convert_to_tensor(logits, dtypes.float32),
+        label_length=label_length,
+        logit_length=logit_length,
+        blank_index=0)
+
+    self.assertAllClose(self.evaluate(list_loss), self.evaluate(tensor_loss))
 
   @test_util.run_v2_only
   def testCtcLossAlgorithmFallback(self):

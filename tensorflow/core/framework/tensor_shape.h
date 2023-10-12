@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -171,7 +173,8 @@ class TensorShapeBase : public TensorShapeRep {
   /// Construct an empty TensorShape, or an unknown rank PartialTensorShape
   TensorShapeBase();
 
-  // TODO(mihaimaruseac): Mark this explicit in a subsequent change
+  // Cannot be made explicit because we rely on conversion between proto and
+  // `TensorShapeBase` throughtout the codebase (needs bigger cleanup)
   TensorShapeBase(const TensorShapeProto& proto);
 
   // These factory methods should be used instead of the constructors that take
@@ -260,7 +263,7 @@ class TensorShapeBase : public TensorShapeRep {
   /// Same as `RemoveLastDims` but returns a `Status`.
   /// Use if unsure is `0 <= n <= dims()`, to prevent `CHECK`-crashes.
   Status RemoveLastDimsWithStatus(int64_t n) {
-    if (TF_PREDICT_FALSE(n < dims())) {
+    if (TF_PREDICT_FALSE(n > dims())) {
       return errors::Internal("Expected dimension index to be at most ", dims(),
                               " got ", n);
     }
@@ -307,6 +310,7 @@ class TensorShapeBase : public TensorShapeRep {
 
   /// Fill `*proto` from `*this`.
   void AsProto(TensorShapeProto* proto) const;
+  TensorShapeProto AsProto() const;
 
   /// For iterating through the dimensions.
   TensorShapeIter<Shape> begin() const;
@@ -373,14 +377,18 @@ class TensorShape : public TensorShapeBase<TensorShape> {
     return BuildTensorShapeBase(proto, out);
   }
 
+  static StatusOr<TensorShape> BuildTensorShape(const TensorShapeProto& proto) {
+    TensorShape out;
+    TF_RETURN_IF_ERROR(BuildTensorShape(proto, &out));
+    return out;
+  }
+
   /// Allow a TensorShape to be used as a PartialTensorShape without copying
   operator const PartialTensorShape&() const;  // NOLINT(runtime/explicit)
 
   /// Returns true if `*this` and `b` have the same sizes. Ignores
   /// dimension names.
   bool IsSameSize(const TensorShape& b) const;
-  bool operator==(const TensorShape& b) const { return IsSameSize(b); }
-  bool operator!=(const TensorShape& b) const { return !IsSameSize(b); }
 
   /// Fill `*dsizes` from `*this`.
   /// Notice: Using IndexType=int32 in combination with To32Bit() can
@@ -432,6 +440,13 @@ class TensorShape : public TensorShapeBase<TensorShape> {
   // For access to TensorShapeBase(DataType).
   friend class Tensor;
 };
+
+inline bool operator==(const TensorShape& a, const TensorShape& b) {
+  return a.IsSameSize(b);
+}
+inline bool operator!=(const TensorShape& a, const TensorShape& b) {
+  return !(a == b);
+}
 
 /// Outputs `TensorShapeBase` to `std::ostream`.
 inline std::ostream& operator<<(std::ostream& os, const TensorShape& ts) {
@@ -542,6 +557,13 @@ class PartialTensorShape : public TensorShapeBase<PartialTensorShape> {
     return BuildTensorShapeBase(proto, out);
   }
 
+  static StatusOr<PartialTensorShape> BuildPartialTensorShape(
+      const TensorShapeProto& proto) {
+    PartialTensorShape out;
+    TF_RETURN_IF_ERROR(BuildTensorShapeBase(proto, &out));
+    return out;
+  }
+
   /// Add a dimension to the end ("inner-most"), returns a new
   /// PartialTensorShape.
   /// REQUIRES: `size >= -1`, where -1 means unknown
@@ -593,6 +615,11 @@ class PartialTensorShape : public TensorShapeBase<PartialTensorShape> {
     return TensorShapeUtils::MakeShape(dims, n, out);
   }
 };
+
+inline bool operator==(const PartialTensorShape& a,
+                       const PartialTensorShape& b) {
+  return a.IsIdenticalTo(b);
+}
 
 /// \brief Static helper routines for `PartialTensorShape`. Includes a few
 /// common predicates on a partially known tensor shape.
@@ -649,6 +676,7 @@ Status TensorShape::AsEigenDSizesWithStatus(
                             " dimensions");
   }
   *out = AsEigenDSizesCopy<NDIMS, IndexType>();
+  return OkStatus();
 }
 
 template <int NDIMS, typename IndexType>
@@ -661,11 +689,12 @@ template <int NDIMS, typename IndexType>
 Status TensorShape::AsEigenDSizesWithPaddingWithStatus(
     Eigen::DSizes<IndexType, NDIMS>* out) const {
   if (TF_PREDICT_FALSE(NDIMS < dims())) {
-    return errors::Internal("Asking for tensor of at least ", NDIMS,
+    return errors::Internal("Asking for tensor of at most ", NDIMS,
                             " dimensions from a tensor of ", dims(),
                             " dimensions");
   }
   *out = AsEigenDSizesCopyAndPad<NDIMS, IndexType>();
+  return OkStatus();
 }
 
 // ----------------------------------------------------------------------------

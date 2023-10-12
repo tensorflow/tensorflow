@@ -1,82 +1,26 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
-    default_visibility = [":__subpackages__"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = [
+        ":__subpackages__",
+        ":friends",
+        "//tensorflow/compiler/mlir:__subpackages__",
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/core:dependency_allowlist",
+        "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
-cc_library(
-    name = "import",
-    srcs = [
-        "functiondef_import.cc",
-        "functiondef_import.h",
-        "import.cc",
-    ],
-    hdrs = [
-        "import.h",
-    ],
-    visibility = [
-        "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
-        "//tensorflow/core:__subpackages__",
-        "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
-    ],
-    deps = [
-        ":convert_attributes",
-        ":convert_tensor",
-        ":convert_types",
-        "//tensorflow/core:core_cpu_base",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime:function_def_utils",
-        "//tensorflow/core/ir:Dialect",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:path",
-        "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
-    name = "export",
-    srcs = [
-        "export.cc",
-        "functiondef_export.cc",
-        "functiondef_export.h",
-    ],
-    hdrs = [
-        "export.h",
-    ],
-    visibility = [
-        "//tensorflow/core:__subpackages__",
-        "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
-    ],
-    deps = [
-        ":convert_attributes",
-        ":convert_tensor",
-        ":convert_types",
-        "//tensorflow/core:core_cpu_base",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_lite",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/ir:Dialect",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:statusor",
-        "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
+package_group(
+    name = "friends",
+    packages = [
+        "//learning/brain/contrib/tpu_modeling/inference_converter_v2/mlir/...",
+        "//waymo/ml/cn/...",
+        "//waymo/ml/compiler/mlir/...",
     ],
 )
 
@@ -137,7 +81,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/types:Dialect",
-        "//tensorflow/stream_executor/lib",
+        "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -160,11 +104,97 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:tstring",
-        "//tensorflow/stream_executor/lib",
+        "//tensorflow/core/platform:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:ml_dtypes",
+    ],
+)
+
+cc_library(
+    name = "savedmodel_import",
+    srcs = ["savedmodel_import.cc"],
+    hdrs = ["savedmodel_import.h"],
+    deps = [
+        ":graphdef_import",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "savedmodel_export",
+    srcs = ["savedmodel_export.cc"],
+    hdrs = ["savedmodel_export.h"],
+    deps = [
+        ":graphdef_export",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "graphdef_import",
+    srcs = [
+        "functiondef_import.cc",
+        "graphdef_import.cc",
+    ],
+    hdrs = [
+        "functiondef_import.h",
+        "graphdef_import.h",
+    ],
+    deps = [
+        ":convert_attributes",
+        ":convert_types",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir/types:Dialect",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "graphdef_export",
+    srcs = [
+        "functiondef_export.cc",
+        "graphdef_export.cc",
+    ],
+    hdrs = [
+        "functiondef_export.h",
+        "graphdef_export.h",
+    ],
+    deps = [
+        ":convert_attributes",
+        ":convert_types",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir/types:Dialect",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -178,17 +208,17 @@ cc_library(
         ":convert_tensor",
         ":convert_types",
         ":mangling",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+        "@local_xla//xla:status_macros",
     ],
 )
 
@@ -197,18 +227,20 @@ tf_cc_binary(
     name = "tfg-translate",
     srcs = ["tfg-translate.cc"],
     deps = [
-        ":export",
-        ":import",
+        ":graphdef_export",
+        ":graphdef_import",
         ":load_proto",
+        "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/core:ops",  # Ops need to be registered for import.
         "//tensorflow/core/ir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:Translation",
+        "@llvm-project//mlir:TranslateLib",
     ],
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = ["//tensorflow/core/ir:test_utilities"],
     driver = "//tensorflow/core/ir:run_lit.sh",
     exclude = [],

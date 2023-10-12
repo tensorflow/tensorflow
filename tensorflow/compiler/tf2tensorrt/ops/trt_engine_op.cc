@@ -33,8 +33,8 @@ namespace tensorflow {
 REGISTER_OP("TRTEngineOp")
     .Attr("serialized_segment: string")
     .Attr("segment_func: func = {}")
-    .Attr("InT: list({int8,float16,float32,int32})")
-    .Attr("OutT: list({int8,float16,float32,int32})")
+    .Attr("InT: list({bool,int8,float16,float32,int32,resource})")
+    .Attr("OutT: list({bool,int8,float16,float32,int32})")
     .Attr("input_shapes: list(shape) = []")
     .Attr("output_shapes: list(shape) = []")
     .Attr("max_cached_engines_count: int = 1")
@@ -57,7 +57,7 @@ REGISTER_OP("TRTEngineOp")
         c->set_output(i, output_shape_handle);
       }
 
-      return Status::OK();
+      return OkStatus();
     })
     // Deprecated attributes.
     .Attr("segment_funcdef_name: string = ''")

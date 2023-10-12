@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/experimental/tac/tflite_import_export.h"
 
+#include <memory>
+#include <set>
 #include <string>
 
 #include "absl/status/status.h"
@@ -43,7 +45,7 @@ void AttachCostPerDevice(mlir::ModuleOp module,
 
   module.walk([&](mlir::Operation* op) {
     if (!mlir::TFL::tac::IsNonConstOp(op) &&
-        !llvm::isa<ReturnOp, FuncOp, CallOpInterface>(op))
+        !llvm::isa<func::ReturnOp, func::FuncOp, CallOpInterface>(op))
       return;
 
     // Attach cost per target.
@@ -72,11 +74,13 @@ void AttachCostPerDevice(mlir::ModuleOp module,
 }  // namespace
 
 //////////// Importer ////////////
-absl::StatusOr<OwningModuleRef> TfLiteImporter::Import() {
+absl::StatusOr<OwningOpRef<mlir::ModuleOp>> TfLiteImporter::Import() {
   source_mgr_handler_ = std::make_unique<mlir::SourceMgrDiagnosticHandler>(
       source_mgr_, &context_);
-  return ImportFlatbufferOrMlir(options_.file_name, options_.input_mlir,
-                                &source_mgr_, &context_);
+  return ImportFlatbufferOrMlir(
+      options_.file_name, options_.input_mlir,
+      /*experimental_prune_unreachable_nodes_unconditionally=*/true,
+      &source_mgr_, &context_);
 }
 
 //////////// Exporter ////////////
@@ -107,7 +111,8 @@ absl::Status TfLiteExporter::Export(mlir::ModuleOp module) {
   }
 
   return mlir::TFL::tac::ExportFlatbufferOrMlir(options_.output_file_name,
-                                                options_.output_mlir, module);
+                                                options_.output_mlir, module,
+                                                /*enable_select_tf_ops=*/false);
 }
 
 }  // namespace tac

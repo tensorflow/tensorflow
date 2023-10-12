@@ -14,6 +14,8 @@
 # ==============================================================================
 """Operations for constructing RaggedTensors."""
 
+from typing import Union
+
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -32,8 +34,14 @@ from tensorflow.python.util.tf_export import tf_export
 #===============================================================================
 @tf_export("ragged.constant")
 @dispatch.add_dispatch_support
-def constant(pylist, dtype=None, ragged_rank=None, inner_shape=None,
-             name=None, row_splits_dtype=dtypes.int64):
+def constant(
+    pylist,
+    dtype=None,
+    ragged_rank=None,
+    inner_shape=None,
+    name=None,
+    row_splits_dtype=dtypes.int64,
+) -> Union[ragged_tensor.RaggedTensor, ops._EagerTensorBase, ops.Operation]:
   """Constructs a constant RaggedTensor from a nested Python list.
 
   Example:
@@ -85,8 +93,13 @@ def constant(pylist, dtype=None, ragged_rank=None, inner_shape=None,
 
 @tf_export(v1=["ragged.constant_value"])
 @dispatch.add_dispatch_support
-def constant_value(pylist, dtype=None, ragged_rank=None, inner_shape=None,
-                   row_splits_dtype="int64"):
+def constant_value(
+    pylist,
+    dtype=None,
+    ragged_rank=None,
+    inner_shape=None,
+    row_splits_dtype="int64",
+) -> Union[ragged_tensor_value.RaggedTensorValue, np.ndarray]:
   """Constructs a RaggedTensorValue from a nested Python list.
 
   Warning: This function returns a `RaggedTensorValue`, not a `RaggedTensor`.
@@ -188,6 +201,9 @@ def _constant_value(ragged_factory, inner_factory, pylist, dtype, ragged_rank,
     if max_depth > scalar_depth:
       raise ValueError("Invalid pylist=%r: empty list nesting is greater "
                        "than scalar value nesting" % pylist)
+    if ragged_rank is not None and max_depth < ragged_rank:
+      raise ValueError(f"Invalid pylist={pylist}, max depth smaller than "
+                       f"ragged_rank={ragged_rank}")
 
   # If both inner_shape and ragged_rank were specified, then check that
   # they are compatible with pylist.
@@ -321,7 +337,6 @@ def placeholder(dtype, ragged_rank, value_shape=None, name=None):
   Its value must be fed using the `feed_dict` optional argument to
   `Session.run()`, `Tensor.eval()`, or `Operation.run()`.
 
-  @compatibility{eager} Placeholders are not compatible with eager execution.
 
   Args:
     dtype: The data type for the `RaggedTensor`.
@@ -335,6 +350,20 @@ def placeholder(dtype, ragged_rank, value_shape=None, name=None):
 
   Raises:
     RuntimeError: if eager execution is enabled
+
+  @compatibility(TF2)
+  This API is not compatible with eager execution and `tf.function`. To migrate
+  to TF2, rewrite the code to be compatible with eager execution. Check the
+  [migration
+  guide](https://www.tensorflow.org/guide/migrate#1_replace_v1sessionrun_calls)
+  on replacing `Session.run` calls. In TF2, you can just pass tensors directly
+  into ops and layers. If you want to explicitly set up your inputs, also see
+  [Keras functional API](https://www.tensorflow.org/guide/keras/functional) on
+  how to use `tf.keras.Input` to replace `tf.compat.v1.ragged.placeholder`.
+  `tf.function` arguments also do the job of `tf.compat.v1.ragged.placeholder`.
+  For more details please read [Better
+  performance with tf.function](https://www.tensorflow.org/guide/function).
+  @end_compatibility
   """
   if ragged_rank == 0:
     return array_ops.placeholder(dtype, value_shape, name)

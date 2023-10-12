@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_EXTERNAL_EXTERNAL_DELEGATE_H_
 #define TENSORFLOW_LITE_DELEGATES_EXTERNAL_EXTERNAL_DELEGATE_H_
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,15 +24,19 @@ extern "C" {
 
 // TfLiteExternalDelegateOptions is a structure of key/value options to create
 // an external delegate.
-const int kMaxOptions = 256;
+#define kExternalDelegateMaxOptions 256
 typedef struct TfLiteExternalDelegateOptions {
   const char* lib_path;
   int count;
-  const char* keys[kMaxOptions];
-  const char* values[kMaxOptions];
-  TfLiteStatus (*insert)(TfLiteExternalDelegateOptions* options,
+  const char* keys[kExternalDelegateMaxOptions];
+  const char* values[kExternalDelegateMaxOptions];
+  TfLiteStatus (*insert)(struct TfLiteExternalDelegateOptions* options,
                          const char* key, const char* value);
 } TfLiteExternalDelegateOptions;
+
+// Insert key/value to the options.
+TfLiteStatus TfLiteExternalDelegateOptionsInsert(
+    TfLiteExternalDelegateOptions* options, const char* key, const char* value);
 
 // Populates TfLiteExternalDelegateOptions with the given shared library path.
 TfLiteExternalDelegateOptions TfLiteExternalDelegateOptionsDefault(

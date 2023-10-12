@@ -59,7 +59,7 @@ class MapDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
@@ -73,14 +73,6 @@ class MapDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override {
-    if (preserve_cardinality_) {
-      return input_->Cardinality();
-    } else {
-      return kUnknownCardinality;
-    }
-  }
-
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     if (preserve_cardinality_) {
       return input_->Cardinality(options);
@@ -91,7 +83,7 @@ class MapDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -150,7 +142,7 @@ class MapDatasetOp::Dataset : public DatasetBase {
          std::make_pair(kPreserveCardinality,
                         preserve_cardinality_attr)},  // Attrs
         output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -159,6 +151,8 @@ class MapDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
 
+    bool SymbolicCheckpointCompatible() const override { return true; }
+
     Status Initialize(IteratorContext* ctx) override {
       TF_RETURN_IF_ERROR(
           dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
@@ -166,18 +160,16 @@ class MapDatasetOp::Dataset : public DatasetBase {
           ctx, &instantiated_captured_func_);
     }
 
+    // NOTE(mrry): This method is thread-safe as long as `input_impl_` and `f`
+    // are thread-safe. However, if multiple threads enter this method,
+    // outputs may be observed in a non-deterministic order.
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
-      // NOTE(mrry): This method is thread-safe as long as
-      // `input_impl_` and `f` are thread-safe. However, if multiple
-      // threads enter this method, outputs may be observed in a
-      // non-deterministic order.
-
       std::vector<Tensor> args;
       TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &args, end_of_sequence));
       if (*end_of_sequence) {
-        return Status::OK();
+        return OkStatus();
       }
 
       Status s = instantiated_captured_func_->Run(ctx, std::move(args),
@@ -188,13 +180,12 @@ class MapDatasetOp::Dataset : public DatasetBase {
           // the dataset, we convert `OutOfRange` to `InvalidArgument` as the
           // former may be interpreted by a caller as the end of sequence.
           return errors::InvalidArgument(
-              "Function invocation produced OutOfRangeError: ",
-              s.error_message());
+              "Function invocation produced OutOfRangeError: ", s.message());
         } else {
           // `f` may deliberately raise `errors::OutOfRange` to indicate
           // that we should terminate the iteration early.
           *end_of_sequence = true;
-          return Status::OK();
+          return OkStatus();
         }
       } else {
         return s;
@@ -212,13 +203,13 @@ class MapDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
           dataset()->captured_func_->CheckExternalState()));
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:

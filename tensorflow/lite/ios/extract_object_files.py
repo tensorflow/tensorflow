@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# Lint as: python3
 """Module for extracting object files from a compiled archive (.a) file.
 
 This module provides functionality almost identical to the 'ar -x' command,

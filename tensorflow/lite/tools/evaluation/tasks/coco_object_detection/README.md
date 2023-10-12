@@ -42,7 +42,7 @@ The binary takes the following parameters:
 *   `model_file` : `string` \
     Path to the TFlite model file. It should accept images preprocessed in the
     Inception format, and the output signature should be similar to the
-    [SSD MobileNet model](https://www.tensorflow.org/lite/models/object_detection/overview#output.):
+    [SSD MobileNet model](https://www.tensorflow.org/lite/examples/object_detection/overview#output_signature.):
 
 *   `model_output_labels`: `string` \
     Path to labels that correspond to output of model. E.g. in case of

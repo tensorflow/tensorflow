@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/schema/builtin_ops_header/generator.h"
+
+#include <string>
+
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {

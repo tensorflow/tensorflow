@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/toco/args.h"
+
+#include <string>
+
 #include "absl/strings/str_split.h"
 
 namespace toco {

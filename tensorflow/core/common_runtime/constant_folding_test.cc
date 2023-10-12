@@ -169,7 +169,7 @@ TEST_F(ConstantFoldingTest, DeterministicFolding) {
     opt.generate_new_name = generate_new_name;
     TF_CHECK_OK(
         ConstantFold(opt, nullptr, Env::Default(), nullptr, &g, &was_mutated));
-    return Status::OK();
+    return OkStatus();
   };
 
   Graph g1(OpRegistry::Global());
@@ -691,7 +691,7 @@ class TestTFFileSystem : public ::tensorflow::NullFileSystem {
     const ::tensorflow::StringPiece sp = data_tensor_.tensor_data();
     *result = std::unique_ptr<::tensorflow::ReadOnlyMemoryRegion>(
         new TestReadOnlyMemoryRegion(sp.data(), sp.size()));
-    return ::tensorflow::Status::OK();
+    return OkStatus();
   }
 
  protected:
@@ -708,7 +708,7 @@ class TestTFEnvironment : public ::tensorflow::EnvWrapper {
     was_used_ = true;
     if (fname == "test://test") {
       *result = &test_filesystem_;
-      return ::tensorflow::Status::OK();
+      return OkStatus();
     }
     return tf_base::GetFileSystemForFile(fname, result);
   }

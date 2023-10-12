@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_TEST_UTIL_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_TEST_UTIL_H_
 
+#include <functional>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -24,10 +26,14 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/snapshot.pb.h"
 
 namespace tensorflow {
 namespace data {
 namespace testing {
+
+// Creates a local tempfile and returns the path.
+std::string LocalTempFilename();
 
 // Returns a test dataset representing
 // tf.data.Dataset.range(range). Useful for testing dataset graph execution.
@@ -42,6 +48,22 @@ DatasetDef RangeSquareDataset(int64_t range);
 DatasetDef RangeDatasetWithShardHint(int64_t range);
 
 // Returns a test dataset representing
+// tf.data.Dataset.range(100000000).repeat().
+DatasetDef InfiniteDataset();
+
+// Returns a test dataset representing
+// datasets = [tf.data.Dataset.from_tensor_slices(["a", "a", "a", "a", "a"]),
+//             tf.data.Dataset.from_tensor_slices(["b", "b", "b", "b", "b"]),
+//             tf.data.Dataset.from_tensor_slices(["c", "c", "c", "c", "c"])]
+// choice_dataset = tf.data.Dataset.range(3).repeat()
+// dataset = tf.data.Dataset.choose_from_datasets(datasets, choice_dataset)
+StatusOr<DatasetDef> ChooseFromDatasets();
+
+// Returns a distributed snapshot metadata for a dummy dataset.
+experimental::DistributedSnapshotMetadata
+CreateDummyDistributedSnapshotMetadata();
+
+// Returns a test dataset representing
 // tf.data.Dataset.from_tensor_slices(["filenames"]).interleave(
 //     lambda filepath: tf.data.TextLineDataset(filepath),
 //     cycle_length=10)
@@ -54,8 +76,8 @@ StatusOr<DatasetDef> InterleaveTextlineDataset(
 // Returns an error if `f()` returns an error.
 Status WaitWhile(std::function<StatusOr<bool>()> f);
 
-// TODO(yangchen): Make EqualsProto available in Googletest
-// (https://github.com/google/googletest/issues/1761).
+// TODO(b/229726259): Make EqualsProto available in Googletest
+// (Public feature request: https://github.com/google/googletest/issues/1761).
 class ProtoStringMatcher {
  public:
   explicit ProtoStringMatcher(const tensorflow::protobuf::Message& expected)

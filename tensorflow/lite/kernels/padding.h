@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_PADDING_H_
 #define TENSORFLOW_LITE_KERNELS_PADDING_H_
 
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {

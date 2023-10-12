@@ -22,7 +22,7 @@ limitations under the License.
 
 #include <unordered_map>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -30,6 +30,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
 using dnnl::algorithm;
 using dnnl::eltwise_forward;
@@ -37,32 +40,53 @@ using dnnl::memory;
 using dnnl::prop_kind;
 using dnnl::stream;
 
-using EltwiseFwdPd = dnnl::eltwise_forward::primitive_desc;
+using EltwiseFwdActivationPd = dnnl::eltwise_forward::primitive_desc;
 
 namespace tensorflow {
+#ifndef ENABLE_ONEDNN_V3
+#define GET_MEMORY_DESC(md) md.data
+#else
+#define GET_MEMORY_DESC(md) md
+#endif  // !ENABLE_ONEDNN_V3
 
+// TODO(tf-onednn): Consolidate this class with `MklEltWiseFwdParams`
+// in `mkl_relu_op.cc`.
+//
+// The implementation of this class is very similar to it and it
+// should be consolidated to one class
 template <typename T>
-class MklEltwiseFwdParams {
+class MklEltwiseFwdActivationParams {
  public:
   memory::dims src_dims;
   memory::desc src_md;
+#ifdef ENABLE_ONEDNN_V3
+  memory::desc dst_md;
+#endif  // ENABLE_ONEDNN_V3
   algorithm alg_kind;
   float alpha;
   float beta;
 
-  MklEltwiseFwdParams(memory::dims src_dims, memory::desc src_md,
-                      algorithm alg_kind, float alpha, float beta)
+  MklEltwiseFwdActivationParams(memory::dims src_dims, memory::desc src_md,
+#ifdef ENABLE_ONEDNN_V3
+                                memory::desc dst_md,
+#endif  // ENABLE_ONEDNN_V3
+                                algorithm alg_kind, float alpha, float beta)
       : src_dims(src_dims),
         src_md(src_md),
+#ifdef ENABLE_ONEDNN_V3
+        dst_md(dst_md),
+#endif  // ENABLE_ONEDNN_V3
         alg_kind(alg_kind),
         alpha(alpha),
-        beta(beta) {}
+        beta(beta) {
+  }
 };
 
 template <typename T>
-class MklEltwiseFwdPrimitive : public MklPrimitive {
+class MklEltwiseFwdActivationPrimitive : public MklPrimitive {
  public:
-  explicit MklEltwiseFwdPrimitive(const MklEltwiseFwdParams<T>& fwdParams)
+  explicit MklEltwiseFwdActivationPrimitive(
+      const MklEltwiseFwdActivationParams<T>& fwdParams)
       : MklPrimitive(engine(engine::kind::cpu, 0)) {
     // create eltwise primitive
     if (context_.eltwise_fwd == nullptr) {
@@ -70,12 +94,15 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
     }
   }
 
-  ~MklEltwiseFwdPrimitive() {}
+  ~MklEltwiseFwdActivationPrimitive() {}
 
   // Eltwise forward execute
   //   src_data:  input data buffer of src
   //   dst_data:  output data buffer of dst
   void Execute(const T* src_data, T* dst_data, OpKernelContext* op_context) {
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
+    mutex_lock lock(primitive_execution_mu_);
+#endif
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
@@ -95,18 +122,22 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
     context_.dst_mem->set_data_handle(DummyData);
   }
 
-  std::shared_ptr<EltwiseFwdPd> GetEltwiseFwdPd() { return context_.fwd_pd; }
+  std::shared_ptr<EltwiseFwdActivationPd> GetEltwiseFwdActivationPd() {
+    return context_.fwd_pd;
+  }
 
  private:
   // Primitive reuse context for eltwise Fwd ops: Relu, Elu, Tanh
-  struct EltwiseFwdContext {
+  struct EltwiseFwdActivationContext {
     // oneDNN memory
     std::shared_ptr<memory> src_mem;
     std::shared_ptr<memory> dst_mem;
 
     // desc & primitive desc
+#ifndef ENABLE_ONEDNN_V3
     std::shared_ptr<dnnl::eltwise_forward::desc> fwd_desc;
-    std::shared_ptr<EltwiseFwdPd> fwd_pd;
+#endif  // !ENABLE_ONEDNN_V3
+    std::shared_ptr<EltwiseFwdActivationPd> fwd_pd;
 
     // memory desc
     std::shared_ptr<memory::desc> src_md;
@@ -122,28 +153,39 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
 
     std::vector<std::unordered_map<int, memory>> fwd_primitives_args;
 
-    EltwiseFwdContext()
+    EltwiseFwdActivationContext()
         : src_mem(nullptr),
           dst_mem(nullptr),
+#ifndef ENABLE_ONEDNN_V3
           fwd_desc(nullptr),
+#endif  // !ENABLE_ONEDNN_V3
           fwd_pd(nullptr),
           src_md(nullptr),
           dst_md(nullptr),
           src_mpd(nullptr),
-          eltwise_fwd(nullptr) {}
+          eltwise_fwd(nullptr) {
+    }
   };
 
   // Eltwise forward primitive setup
-  void Setup(const MklEltwiseFwdParams<T>& fwdParams) {
+  void Setup(const MklEltwiseFwdActivationParams<T>& fwdParams) {
     // create memory descriptors for eltwise data with specified format
-    context_.src_md.reset(new memory::desc(fwdParams.src_md.data));
+    context_.src_md.reset(new memory::desc(GET_MEMORY_DESC(fwdParams.src_md)));
     context_.src_mpd.reset(new memory::desc(*context_.src_md));
 
     // Create an eltwise forward descriptor and primitive descriptor
+#ifndef ENABLE_ONEDNN_V3
     context_.fwd_desc.reset(new eltwise_forward::desc(
         prop_kind::forward, fwdParams.alg_kind, *context_.src_md,
         fwdParams.alpha, fwdParams.beta));
-    context_.fwd_pd.reset(new EltwiseFwdPd(*context_.fwd_desc, cpu_engine_));
+    context_.fwd_pd.reset(
+        new EltwiseFwdActivationPd(*context_.fwd_desc, cpu_engine_));
+#else
+    context_.dst_md.reset(new memory::desc(fwdParams.dst_md));
+    context_.fwd_pd.reset(new EltwiseFwdActivationPd(
+        cpu_engine_, prop_kind::forward, fwdParams.alg_kind, *context_.src_md,
+        *context_.dst_md, fwdParams.alpha, fwdParams.beta));
+#endif  // !ENABLE_ONEDNN_V3
     auto fwd_pd = context_.fwd_pd.get();
 
     // Create memory primitive based on dummy data
@@ -158,39 +200,43 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
     context_.fwd_primitives.push_back(*context_.eltwise_fwd);
   }
 
-  struct EltwiseFwdContext context_;
+  struct EltwiseFwdActivationContext context_;
+
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T>
-class MklEltwiseFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
+class MklEltwiseFwdActivationPrimitiveFactory : public MklPrimitiveFactory<T> {
  public:
-  static MklEltwiseFwdPrimitive<T>* Get(
-      const MklEltwiseFwdParams<T>& fwdParams) {
-    MklEltwiseFwdPrimitive<T>* eltwise_forward = nullptr;
+  static MklEltwiseFwdActivationPrimitive<T>* Get(
+      const MklEltwiseFwdActivationParams<T>& fwdParams) {
+    MklEltwiseFwdActivationPrimitive<T>* eltwise_forward = nullptr;
 
     // Get a eltwise fwd primitive from the cached pool
-    eltwise_forward = static_cast<MklEltwiseFwdPrimitive<T>*>(
-        MklEltwiseFwdPrimitiveFactory<T>::GetInstance().GetEltwiseFwd(
-            fwdParams));
+    eltwise_forward = static_cast<MklEltwiseFwdActivationPrimitive<T>*>(
+        MklEltwiseFwdActivationPrimitiveFactory<T>::GetInstance()
+            .GetEltwiseFwdActivation(fwdParams));
     if (eltwise_forward == nullptr) {
-      eltwise_forward = new MklEltwiseFwdPrimitive<T>(fwdParams);
-      MklEltwiseFwdPrimitiveFactory<T>::GetInstance().SetEltwiseFwd(
-          fwdParams, eltwise_forward);
+      eltwise_forward = new MklEltwiseFwdActivationPrimitive<T>(fwdParams);
+      MklEltwiseFwdActivationPrimitiveFactory<T>::GetInstance()
+          .SetEltwiseFwdActivation(fwdParams, eltwise_forward);
     }
 
     return eltwise_forward;
   }
 
-  static MklEltwiseFwdPrimitiveFactory& GetInstance() {
-    static MklEltwiseFwdPrimitiveFactory instance_;
+  static MklEltwiseFwdActivationPrimitiveFactory& GetInstance() {
+    static MklEltwiseFwdActivationPrimitiveFactory instance_;
     return instance_;
   }
 
  private:
-  MklEltwiseFwdPrimitiveFactory() {}
-  ~MklEltwiseFwdPrimitiveFactory() {}
+  MklEltwiseFwdActivationPrimitiveFactory() {}
+  ~MklEltwiseFwdActivationPrimitiveFactory() {}
 
-  static string CreateKey(const MklEltwiseFwdParams<T>& fwdParams) {
+  static string CreateKey(const MklEltwiseFwdActivationParams<T>& fwdParams) {
     string prefix = "eltwise_fwd";
     FactoryKeyCreator key_creator;
     key_creator.AddAsKey(prefix);
@@ -201,13 +247,14 @@ class MklEltwiseFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     return key_creator.GetKey();
   }
 
-  MklPrimitive* GetEltwiseFwd(const MklEltwiseFwdParams<T>& fwdParams) {
+  MklPrimitive* GetEltwiseFwdActivation(
+      const MklEltwiseFwdActivationParams<T>& fwdParams) {
     string key = CreateKey(fwdParams);
     return this->GetOp(key);
   }
 
-  void SetEltwiseFwd(const MklEltwiseFwdParams<T>& fwdParams,
-                     MklPrimitive* op) {
+  void SetEltwiseFwdActivation(
+      const MklEltwiseFwdActivationParams<T>& fwdParams, MklPrimitive* op) {
     string key = CreateKey(fwdParams);
     this->SetOp(key, op);
   }
@@ -254,11 +301,18 @@ class MklEltwiseFwdActivationOpBase : public OpKernel {
       // Create blocked memory descriptor
       src_md = MklDnnData<T>::CreateBlockedMemDesc(src_dims, src_strides);
 
+#ifdef ENABLE_ONEDNN_V3
+      memory::desc dst_md = src_md;
+#endif  // ENABLE_ONEDNN_V3
+
       // Try to get an eltwise forward primitive from caching pool
-      MklEltwiseFwdParams<T> fwdParams(src_dims, src_md, alg_kind, alpha_,
-                                       beta_);
-      MklEltwiseFwdPrimitive<T>* eltwise_fwd =
-          MklEltwiseFwdPrimitiveFactory<T>::Get(fwdParams);
+      MklEltwiseFwdActivationParams<T> fwdParams(src_dims, src_md,
+#ifdef ENABLE_ONEDNN_V3
+                                                 dst_md,
+#endif  // ENABLE_ONEDNN_V3
+                                                 alg_kind, alpha_, beta_);
+      MklEltwiseFwdActivationPrimitive<T>* eltwise_fwd =
+          MklEltwiseFwdActivationPrimitiveFactory<T>::Get(fwdParams);
 
       const T* src_data = src_tensor.flat<T>().data();
 
@@ -288,6 +342,8 @@ class MklEltwiseFwdActivationOpBase : public OpKernel {
 };
 
 // TODO : Implement Eltwise bwd / eltwiseGrad class
+
+#undef GET_MEMORY_DESC
 
 }  // namespace tensorflow
 

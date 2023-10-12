@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_SPRITE_H_
-#define TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_SPRITE_H_
+#ifndef TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_SPRITE_H_
+#define TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_SPRITE_H_
 
 #ifdef __RENDER_OPENGL__
 
@@ -192,11 +192,12 @@ class Sprite {
   int texture_width_;
   int texture_height_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Sprite);
+  Sprite(const Sprite&) = delete;
+  void operator=(const Sprite&) = delete;
 };
 
 }  // namespace tf_tracking
 
 #endif  // __RENDER_OPENGL__
 
-#endif  // TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_SPRITE_H_
+#endif  // TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_SPRITE_H_

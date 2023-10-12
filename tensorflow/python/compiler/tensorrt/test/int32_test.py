@@ -43,7 +43,7 @@ class ExcludeUnsupportedInt32Test(trt_test.TfTrtIntegrationTestBase):
     return self.BuildParams(self.GraphFn, dtypes.int32, [[100, 4]], [[100, 10]])
 
   def setUp(self):
-    super(trt_test.TfTrtIntegrationTestBase, self).setUp()  # pylint: disable=bad-super-call
+    super().setUp()
     # Disable layout optimizer, since it will convert BiasAdd with NHWC
     # format to NCHW format under four dimentional input.
     self.DisableNonTrtOptimizers()
@@ -79,7 +79,7 @@ class CalibrationInt32Support(trt_test.TfTrtIntegrationTestBase):
         run_params), 'test calibration and INT8'
 
   def ExpectedEnginesToBuild(self, run_params):
-    return ['TRTEngineOp_0']
+    return ['TRTEngineOp_000']
 
 
 if __name__ == '__main__':

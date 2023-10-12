@@ -71,7 +71,7 @@ Status RewriteFunctionCallNode(Node* n, Graph* g,
     fdef = flib_def.Find(func.name());
   } else if (n->type_string() == FunctionLibraryDefinition::kGradientOp) {
     VLOG(2) << "Skip SymbolicGradient lowering";
-    return Status::OK();
+    return OkStatus();
   } else {
     fdef = flib_def.Find(n->type_string());
   }
@@ -91,10 +91,10 @@ Status RewriteFunctionCallNode(Node* n, Graph* g,
         InlineFunctionBody(flib_def, g, n, fbody.get(), inline_options));
   } else {
     VLOG(2) << "Failed to inline function call node: "
-            << can_inline_function_call.error_message();
+            << can_inline_function_call.message();
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

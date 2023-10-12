@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -386,13 +387,32 @@ class RaggedCrossOp : public OpKernel {
 
     // Validate tensor shapes.
     for (int i = 0; i < num_ragged; ++i) {
-      if (!TensorShapeUtils::IsVector(ragged_values_list[i].shape())) {
-        return errors::InvalidArgument(
+      if (!TensorShapeUtils::IsVector(ragged_values_list[i].shape()) ||
+          !TensorShapeUtils::IsVector(ragged_splits_list[i].shape())) {
+        return absl::InvalidArgumentError(
             "tf.ragged.cross only supports inputs with rank=2.");
       }
-      if (!TensorShapeUtils::IsVector(ragged_splits_list[i].shape()) ||
-          (ragged_splits_list[i].NumElements() == 0)) {
-        return errors::InvalidArgument("Invalid RaggedTensor");
+      if (ragged_splits_list[i].NumElements() == 0) {
+        return absl::InvalidArgumentError(
+            "Invalid RaggedTensor: Ragged splits must be non-empty.");
+      }
+      auto flat_row_splits = ragged_splits_list[i].flat<SplitsType>();
+      if (flat_row_splits(0) != 0) {
+        return absl::InvalidArgumentError(
+            "Invalid RaggedTensor: Ragged splits must start from 0.");
+      }
+      int64_t num_values = ragged_values_list[i].NumElements();
+      if (flat_row_splits(flat_row_splits.size() - 1) != num_values) {
+        return absl::InvalidArgumentError(
+            "Invalid RaggedTensor: "
+            "Ragged splits must end with the number of values.");
+      }
+      for (int i = 1; i < flat_row_splits.size(); ++i) {
+        if (flat_row_splits(i - 1) > flat_row_splits(i)) {
+          return absl::InvalidArgumentError(
+              "Invalid RaggedTensor: "
+              "Ragged splits must be sorted in ascending order.");
+        }
       }
     }
     for (int i = 0; i < num_sparse; ++i) {
@@ -435,7 +455,7 @@ class RaggedCrossOp : public OpKernel {
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   // Calculate the batch size from any input tensor.  (We check that all input
@@ -514,7 +534,7 @@ class RaggedCrossOp : public OpKernel {
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   // Builds a RaggedReatureReader
@@ -548,7 +568,7 @@ class RaggedCrossOp : public OpKernel {
             new RaggedFeatureReader<tstring, int32>(values, splits));
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Builds a DenseFaggedReatureReader.
@@ -563,7 +583,7 @@ class RaggedCrossOp : public OpKernel {
                                      (features->size() + 1), ": ",
                                      values.dtype());
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Builds a SparseFaggedReatureReader.
@@ -582,7 +602,7 @@ class RaggedCrossOp : public OpKernel {
                                      (features->size() + 1), ": ",
                                      values.dtype());
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Allocates output tensors with proper size, and populates row_splits_out.
@@ -596,7 +616,11 @@ class RaggedCrossOp : public OpKernel {
     int64_t cross_count_total = 0;
     flat_row_splits(0) = 0;
     for (int64_t b = 0; b < batch_size; b++) {
-      cross_count_total += CrossCountByBatchIndex(features, b);
+      int64_t cross_count_by_batch_index = CrossCountByBatchIndex(features, b);
+      if (cross_count_by_batch_index < 0) {
+        return errors::InvalidArgument("Invalid RaggedTensor");
+      }
+      cross_count_total += cross_count_by_batch_index;
       flat_row_splits(b + 1) = cross_count_total;
     }
 
@@ -604,7 +628,7 @@ class RaggedCrossOp : public OpKernel {
     TF_RETURN_IF_ERROR(context->allocate_output(
         0, TensorShape({cross_count_total}), values_out));
 
-    return Status::OK();
+    return OkStatus();
   }
 
   // Returns number of crosses for a given batch_index
@@ -613,6 +637,8 @@ class RaggedCrossOp : public OpKernel {
     int64_t cross_count = 1;
     for (int i = 0; i < features.size(); ++i) {
       const auto feature_count = features[i]->FeatureCount(batch_index);
+      // If feature_count is invalid, return -1 to let caller know.
+      if (feature_count < 0) return -1;
       if (feature_count == 0) return 0;
       cross_count *= feature_count;
     }

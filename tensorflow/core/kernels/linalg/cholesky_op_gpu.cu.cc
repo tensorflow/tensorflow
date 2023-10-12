@@ -17,7 +17,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -98,7 +98,11 @@ class CholeskyOpGpu : public AsyncOpKernel {
 #if GOOGLE_CUDA
     cublasFillMode_t fill = CUBLAS_FILL_MODE_UPPER;
 #elif TENSORFLOW_USE_ROCM
+#if TF_ROCM_VERSION >= 40500
+    hipsolverFillMode_t fill = HIPSOLVER_FILL_MODE_UPPER;
+#else
     rocblas_fill fill = rocblas_fill_upper;
+#endif
 #endif
     // Validate inputs.
     OP_REQUIRES_ASYNC(
@@ -142,7 +146,6 @@ class CholeskyOpGpu : public AsyncOpKernel {
     const int64_t batch_size = input_reshaped.dimension(0);
     std::vector<DeviceLapackInfo> dev_info;
 
-#if CUDA_VERSION >= 9020
     // Decide whether to use the batched API.
     // TODO(rmlarsen): The value 128 was found to be optimal for the equivalent
     // split in matrix_solve_op. Tune this heuristic.
@@ -178,8 +181,6 @@ class CholeskyOpGpu : public AsyncOpKernel {
                 n /* num_lower_diags */, 0 /* num_upper_diags */,
                 input_reshaped, output_reshaped);
     } else {
-#endif
-
       dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "potrf"));
       for (int batch = 0; batch < batch_size; ++batch) {
         OP_REQUIRES_OK_ASYNC(
@@ -188,10 +189,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
                           &dev_info.back()(batch)),
             done);
       }
-
-#if CUDA_VERSION >= 9020
     }
-#endif
 
     // Register callback to check info after kernels finish.
     auto info_checker = [context, done, n](

@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/stateless_random_ops_v2.h"
 
 #include "tensorflow/core/framework/bounds_check.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -26,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/random_ops_util.h"
 #include "tensorflow/core/kernels/random_poisson_op.h"
 #include "tensorflow/core/kernels/stateless_random_ops.h"
+#include "tensorflow/core/kernels/stateless_random_ops_v2_util.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -45,94 +45,54 @@ namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 
-namespace {
+StatelessRandomOpBaseWithKeyCounter::StatelessRandomOpBaseWithKeyCounter(
+    OpKernelConstruction* ctx)
+    : OpKernel(ctx) {}
 
-template <typename T>
-Status GetScalar(const Tensor& tensor, int input_idx, T* result) {
-  auto dtype = DataTypeToEnum<T>::v();
-  if (tensor.dims() != 0) {
-    return errors::InvalidArgument("input ", std::to_string(input_idx),
-                                   " (0-based) must have shape [], not ",
-                                   tensor.shape().DebugString());
+void StatelessRandomOpBaseWithKeyCounter::Compute(OpKernelContext* ctx) {
+  OP_REQUIRES_VALUE(auto key_counter_alg, ctx,
+                    GetKeyCounterAlgFromInputs(ctx, 1, 2, 3));
+  auto key_t = std::get<0>(key_counter_alg);
+  auto counter_t = std::get<1>(key_counter_alg);
+  auto alg = std::get<2>(key_counter_alg);
+
+  TensorShape shape;
+  OP_REQUIRES_OK(ctx, tensor::MakeShape(ctx->input(0), &shape));
+
+  // Allocate output
+  Tensor* output;
+  OP_REQUIRES_OK(ctx, ctx->allocate_output(0, shape, &output));
+  if (shape.num_elements() == 0) {
+    return;
   }
-  if (tensor.dtype() != dtype) {
-    return errors::InvalidArgument("dtype of input ", std::to_string(input_idx),
-                                   " (0-based) must be ", DataTypeString(dtype),
-                                   ", not ", DataTypeString(tensor.dtype()));
-  }
-  *result = tensor.flat<T>()(0);
-  return Status::OK();
+
+  // Fill in the random numbers
+  Fill(ctx, alg, key_t, counter_t, output);
 }
 
-class StatelessRandomOpBase : public OpKernel {
- public:
-  explicit StatelessRandomOpBase(OpKernelConstruction* ctx) : OpKernel(ctx) {}
-
-  void Compute(OpKernelContext* ctx) override {
-    // Sanitize input
-    const Tensor& shape_t = ctx->input(0);
-    const Tensor& key_t = ctx->input(1);
-    const Tensor& counter_t = ctx->input(2);
-    const int alg_input_idx = 3;
-    const Tensor& alg_t = ctx->input(alg_input_idx);
-
-    int alg_id;
-    OP_REQUIRES_OK(ctx, GetScalar(alg_t, alg_input_idx, &alg_id));
-    Algorithm alg = Algorithm(alg_id);
-    if (alg == RNG_ALG_AUTO_SELECT) {
-      alg = RNG_ALG_PHILOX;
-    }
-
-    TensorShape shape;
-    OP_REQUIRES_OK(ctx, tensor::MakeShape(shape_t, &shape));
-    OP_REQUIRES_OK(ctx,
-                   CheckKeyCounterShape(alg, key_t.shape(), counter_t.shape()));
-
-    // Allocate output
-    Tensor* output;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, shape, &output));
-    if (shape.num_elements() == 0) {
-      return;
-    }
-
-    // Fill in the random numbers
-    Fill(ctx, alg, key_t, counter_t, output);
-  }
-
-  // The part of Compute that depends on device, type, and distribution
-  virtual void Fill(OpKernelContext* ctx, Algorithm alg, const Tensor& key,
-                    const Tensor& counter, Tensor* output) = 0;
-};
+namespace {
 
 template <typename Device, typename Distribution>
-class StatelessRandomOp : public StatelessRandomOpBase {
+class StatelessRandomOp : public StatelessRandomOpBaseWithKeyCounter {
  public:
-  using StatelessRandomOpBase::StatelessRandomOpBase;
+  using StatelessRandomOpBaseWithKeyCounter::
+      StatelessRandomOpBaseWithKeyCounter;
 
+ protected:
   void Fill(OpKernelContext* ctx, Algorithm alg, const Tensor& key,
             const Tensor& counter, Tensor* output) override {
-    typedef typename Distribution::ResultElementType T;
-    auto flat = output->flat<T>();
-    if (alg == RNG_ALG_PHILOX) {
-      // Reuse the compute kernels from the stateful random ops
-      auto key_data = key.flat<uint64>().data();
-      auto counter_data = counter.flat<uint64>().data();
-      functor::FillPhiloxRandom<Device, Distribution>()(
-          ctx, ctx->eigen_device<Device>(), key_data, counter_data,
-          random::PhiloxRandom() /*dummy*/, flat.data(), flat.size(),
-          Distribution());
-    } else {
-      OP_REQUIRES(ctx, false,
-                  errors::InvalidArgument("Unsupported algorithm id: ", alg));
-    }
+    FillRandomTensor<Device, Distribution>(ctx, alg, key, counter,
+                                           Distribution(), output);
   }
 };
 
 template <typename Device, typename IntType>
-class StatelessRandomUniformIntOp : public StatelessRandomOpBase {
+class StatelessRandomUniformIntOp : public StatelessRandomOpBaseWithKeyCounter {
  public:
-  using StatelessRandomOpBase::StatelessRandomOpBase;
+  using StatelessRandomOpBaseWithKeyCounter::
+      StatelessRandomOpBaseWithKeyCounter;
 
+ protected:
   void Fill(OpKernelContext* ctx, Algorithm alg, const Tensor& key,
             const Tensor& counter, Tensor* output) override {
     const Tensor& minval = ctx->input(4);
@@ -156,46 +116,25 @@ class StatelessRandomUniformIntOp : public StatelessRandomOpBase {
     typedef random::UniformDistribution<random::PhiloxRandom, IntType>
         Distribution;
     Distribution dist(lo, hi);
-
-    auto flat = output->flat<IntType>();
-    if (alg == RNG_ALG_PHILOX) {
-      // Reuse the compute kernels from the stateful random ops
-      auto key_data = key.flat<uint64>().data();
-      auto counter_data = counter.flat<uint64>().data();
-      functor::FillPhiloxRandom<Device, Distribution>()(
-          ctx, ctx->eigen_device<Device>(), key_data, counter_data,
-          random::PhiloxRandom() /*dummy*/, flat.data(), flat.size(), dist);
-    } else {
-      OP_REQUIRES(ctx, false,
-                  errors::InvalidArgument("Unsupported algorithm id: ", alg));
-    }
+    FillRandomTensor<Device, Distribution>(ctx, alg, key, counter, dist,
+                                           output);
   }
 };
 
 template <typename Device, typename IntType>
-class StatelessRandomUniformFullIntOp : public StatelessRandomOpBase {
+class StatelessRandomUniformFullIntOp
+    : public StatelessRandomOpBaseWithKeyCounter {
  public:
-  using StatelessRandomOpBase::StatelessRandomOpBase;
+  using StatelessRandomOpBaseWithKeyCounter::
+      StatelessRandomOpBaseWithKeyCounter;
 
+ protected:
   void Fill(OpKernelContext* ctx, Algorithm alg, const Tensor& key,
             const Tensor& counter, Tensor* output) override {
-    // Build distribution
     typedef random::UniformFullIntDistribution<random::PhiloxRandom, IntType>
         Distribution;
-    Distribution dist;
-
-    auto flat = output->flat<IntType>();
-    if (alg == RNG_ALG_PHILOX) {
-      // Reuse the compute kernels from the stateful random ops
-      auto key_data = key.flat<uint64>().data();
-      auto counter_data = counter.flat<uint64>().data();
-      functor::FillPhiloxRandom<Device, Distribution>()(
-          ctx, ctx->eigen_device<Device>(), key_data, counter_data,
-          random::PhiloxRandom() /*dummy*/, flat.data(), flat.size(), dist);
-    } else {
-      OP_REQUIRES(ctx, false,
-                  errors::InvalidArgument("Unsupported algorithm id: ", alg));
-    }
+    FillRandomTensor<Device, Distribution>(ctx, alg, key, counter,
+                                           Distribution(), output);
   }
 };
 
@@ -352,6 +291,7 @@ REGISTER_GET_KCA(CPU);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TF_CALL_half(REGISTER_GPU);
+TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
 TF_CALL_int32(REGISTER_INT_GPU);

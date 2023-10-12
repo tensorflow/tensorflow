@@ -16,14 +16,20 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 
 #include <algorithm>
+#include <array>
+#include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <queue>
+#include <random>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -37,12 +43,15 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -60,9 +69,13 @@ static mutex* get_dataset_experiment_registry_lock() {
   return &dataset_experiment_registry_lock;
 }
 
-static absl::flat_hash_map<string, int64_t>* get_dataset_experiments() {
-  static absl::flat_hash_map<string, int64_t>* experiments =
-      new absl::flat_hash_map<string, int64_t>;
+static absl::flat_hash_map<string,
+                           DatasetExperimentRegistry::ExperimentSelector>*
+get_dataset_experiments() {
+  static absl::flat_hash_map<
+      string, DatasetExperimentRegistry::ExperimentSelector>* experiments =
+      new absl::flat_hash_map<string,
+                              DatasetExperimentRegistry::ExperimentSelector>;
   return experiments;
 }
 
@@ -80,15 +93,17 @@ constexpr char kAutotuneBufferSizesOpt[] = "autotune_buffer_sizes";
 constexpr char kDisablePrefetchLegacyAutotuneOpt[] =
     "disable_prefetch_legacy_autotune";
 constexpr char kMakeSloppyOpt[] = "make_sloppy";
-constexpr char kUseChooseFastestOpt[] = "use_choose_fastest";
 constexpr char kBatchParallelizationOpt[] = "batch_parallelization";
 constexpr char kEnableGradientDescentOpt[] = "enable_gradient_descent";
 constexpr char kInjectPrefetchOpt[] = "inject_prefetch";
-constexpr char kInjectPrefetchEligibleOpt[] = "inject_prefetch_eligible";
+constexpr char kInjectIoPrefetchEligibleOpt[] = "inject_io_prefetch_eligible";
+constexpr char kInjectIoPrefetchOpt[] = "inject_io_prefetch";
 constexpr char kAutotuneOpt[] = "autotune";
 constexpr char kSlackOpt[] = "slack";
 constexpr char kSlackPeriodOpt[] = "slack_period";
 constexpr char kMakeDeterministicOpt[] = "make_deterministic";
+constexpr char kFilterParallelizationOpt[] = "filter_parallelization";
+constexpr char kWarmStartOpt[] = "warm_start";
 
 void DefaultOptimizationGraphRewrites(
     const Options& options, absl::flat_hash_set<tstring>* optimization_enabled,
@@ -117,6 +132,10 @@ void DefaultOptimizationGraphRewrites(
     if (optimization_options.optional_parallel_batch_case() !=
         OptimizationOptions::kParallelBatch) {
       optimization_default->insert(kParallelBatchOpt);
+    }
+    if (optimization_options.optional_inject_prefetch_case() !=
+        OptimizationOptions::kInjectPrefetch) {
+      optimization_default->insert(kInjectPrefetchOpt);
     }
   }
   if (OpDeterminismRequired()) {
@@ -154,6 +173,14 @@ void DefaultOptimizationGraphRewrites(
       optimization_disabled->insert(kMapParallelizationOpt);
     }
   }
+  if (optimization_options.optional_filter_parallelization_case() ==
+      OptimizationOptions::kFilterParallelization) {
+    if (optimization_options.filter_parallelization()) {
+      optimization_enabled->insert(kFilterParallelizationOpt);
+    } else {
+      optimization_disabled->insert(kFilterParallelizationOpt);
+    }
+  }
   if (optimization_options.optional_map_fusion_case() ==
       OptimizationOptions::kMapFusion) {
     if (optimization_options.map_fusion()) {
@@ -184,6 +211,14 @@ void DefaultOptimizationGraphRewrites(
       optimization_enabled->insert(kShuffleAndRepeatFusionOpt);
     } else {
       optimization_disabled->insert(kShuffleAndRepeatFusionOpt);
+    }
+  }
+  if (optimization_options.optional_inject_prefetch_case() ==
+      OptimizationOptions::kInjectPrefetch) {
+    if (optimization_options.inject_prefetch()) {
+      optimization_enabled->insert(kInjectPrefetchOpt);
+    } else {
+      optimization_disabled->insert(kInjectPrefetchOpt);
     }
   }
 }
@@ -217,7 +252,7 @@ Status VerifyTypeMatch(const DataType& expected, const DataType& received,
                                    ": expected ", DataTypeString(expected),
                                    " but got ", DataTypeString(received), ".");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status VerifyTypesMatch(const DataTypeVector& expected,
@@ -230,7 +265,7 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
   for (size_t i = 0; i < expected.size(); ++i) {
     TF_RETURN_IF_ERROR(VerifyTypeMatch(expected[i], received[i], i));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status VerifyTypesMatch(const DataTypeVector& expected,
@@ -243,7 +278,7 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
   for (size_t i = 0; i < expected.size(); ++i) {
     TF_RETURN_IF_ERROR(VerifyTypeMatch(expected[i], received[i].dtype(), i));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status VerifyShapeCompatible(const PartialTensorShape& expected,
@@ -253,7 +288,7 @@ Status VerifyShapeCompatible(const PartialTensorShape& expected,
                                    ": expected ", expected.DebugString(),
                                    " but got ", received.DebugString(), ".");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
@@ -267,7 +302,7 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
     TF_RETURN_IF_ERROR(VerifyShapeCompatible(expected[i], received[i], i));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
@@ -282,7 +317,7 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
         VerifyShapeCompatible(expected[i], received[i].shape(), i));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
@@ -319,13 +354,13 @@ Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
 Status IsFunctionStateful(const FunctionLibraryDefinition& library,
                           const FunctionDef& function_def) {
   if (!function_def.signature().is_stateful()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   for (const NodeDef& node_def : function_def.node_def()) {
     TF_RETURN_IF_ERROR(IsNodeStateful(library, node_def));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IsNodeStateful(const FunctionLibraryDefinition& library,
@@ -337,7 +372,7 @@ Status IsNodeStateful(const FunctionLibraryDefinition& library,
   if (!OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok() ||
       IsOpAllowlisted(op_def) || !op_def->is_stateful() ||
       op_def->name() == "Assert") {
-    return Status::OK();
+    return OkStatus();
   }
 
   if (op_def->name() == "If") {
@@ -351,7 +386,7 @@ Status IsNodeStateful(const FunctionLibraryDefinition& library,
     if (else_func != nullptr) {
       TF_RETURN_IF_ERROR(IsFunctionStateful(library, *else_func));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   if (op_def->name() == "While") {
@@ -365,7 +400,7 @@ Status IsNodeStateful(const FunctionLibraryDefinition& library,
     if (body_func != nullptr) {
       TF_RETURN_IF_ERROR(IsFunctionStateful(library, *body_func));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   return errors::FailedPrecondition(op_def->name(), " is stateful.");
@@ -402,7 +437,7 @@ Status DeterminismPolicy::FromString(const std::string& s,
     return errors::InvalidArgument("Unrecognized determinism policy: ", s);
   }
   *out = DeterminismPolicy(type);
-  return Status::OK();
+  return OkStatus();
 }
 
 DeterminismPolicy::DeterminismPolicy(bool is_deterministic) {
@@ -442,15 +477,15 @@ bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match) {
 }
 
 absl::flat_hash_set<string> GetExperiments() {
-  return GetExperiments(port::JobName(),
+  return GetExperiments(tsl::port::JobName(), tsl::port::TaskId(),
                         [](const tstring& str) { return Hash64(str); });
 }
 
 absl::flat_hash_set<string> GetExperiments(
-    const string& job_name, std::function<uint64(const string&)> hash_func) {
+    const string& job_name, int64_t task_id,
+    std::function<uint64_t(const string&)> hash_func) {
   absl::flat_hash_set<string> experiments;
-
-  if (job_name.empty()) {
+  if (job_name.empty() || task_id < 0) {
     return experiments;
   }
 
@@ -467,8 +502,7 @@ absl::flat_hash_set<string> GetExperiments(
   }
 
   // Identify opted out experiments.
-  absl::flat_hash_map<string, int64_t> live_experiments =
-      DatasetExperimentRegistry::Experiments();
+  auto live_experiments = DatasetExperimentRegistry::Experiments();
   absl::flat_hash_set<string> opt_outs;
   if (opt_outs_raw == "all") {
     for (const auto& pair : live_experiments) {
@@ -498,13 +532,19 @@ absl::flat_hash_set<string> GetExperiments(
     }
   }
 
+  if (opt_outs_raw == "all_except_opt_in") {
+    return experiments;
+  }
   // Stochastically include live experiments unless they are opted out.
-  for (const auto& pair : live_experiments) {
-    auto& experiment = pair.first;
-    if ((hash_func(strings::StrCat(job_name, experiment)) % 100 <
-         pair.second) &&
-        !opt_outs.contains(experiment)) {
-      experiments.insert(experiment);
+  for (const auto& [experiment_name, experiment_selector] : live_experiments) {
+    uint64_t name_hash = hash_func(strings::StrCat(job_name, experiment_name));
+    std::mt19937_64 rng{name_hash};
+    std::bernoulli_distribution d{0.5};
+    bool evens = d(rng);
+    if (experiment_selector.job_selector(name_hash) &&
+        experiment_selector.task_selector(task_id, evens) &&
+        !opt_outs.contains(experiment_name)) {
+      experiments.insert(experiment_name);
     }
   }
 
@@ -543,6 +583,13 @@ void GetOptimizations(const Options& options,
       optimizations_disabled->insert(kSlackOpt);
     }
   }
+  if (options.optional_warm_start_case() == Options::kWarmStart) {
+    if (options.warm_start()) {
+      optimizations_enabled->insert(kWarmStartOpt);
+    } else {
+      optimizations_disabled->insert(kWarmStartOpt);
+    }
+  }
 }
 
 Tensor MaybeCopySubSlice(const Tensor& tensor, int64 index) {
@@ -574,7 +621,7 @@ Status CopyPartialBatch(int64_t num_elements, const Tensor& value,
     for (size_t i = 0; i < num_elements; i++) {                   \
       output_t.template chip<0>(i) = value_t.template chip<0>(i); \
     }                                                             \
-    return Status::OK();                                          \
+    return OkStatus();                                            \
   }
     TF_CALL_DATASET_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
@@ -582,7 +629,7 @@ Status CopyPartialBatch(int64_t num_elements, const Tensor& value,
       return errors::InvalidArgument("Unsupported data type: ",
                                      DataTypeString(value.dtype()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
@@ -615,7 +662,7 @@ Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
       batch->emplace_back(std::move(t));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status WriteBatch(int64_t batch_size, int64_t num_elements,
@@ -640,7 +687,7 @@ Status WriteBatch(int64_t batch_size, int64_t num_elements,
                               strings::StrCat(kOutput, "_", i), (*batch)[i]));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReadStatus(const string& iterator_prefix, const string& prefix,
@@ -649,18 +696,18 @@ Status ReadStatus(const string& iterator_prefix, const string& prefix,
   TF_RETURN_IF_ERROR(reader->ReadScalar(
       FullName(iterator_prefix, strings::StrCat(prefix, "_", kCode)),
       &code_int));
-  error::Code code = static_cast<error::Code>(code_int);
+  absl::StatusCode code = static_cast<absl::StatusCode>(code_int);
 
-  if (code != error::Code::OK) {
+  if (code != absl::StatusCode::kOk) {
     tstring error_message;
     TF_RETURN_IF_ERROR(reader->ReadScalar(
         FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
         &error_message));
     *status = Status(code, error_message);
   } else {
-    *status = Status::OK();
+    *status = OkStatus();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status WriteStatus(const string& iterator_prefix, const string& prefix,
@@ -671,9 +718,9 @@ Status WriteStatus(const string& iterator_prefix, const string& prefix,
   if (!status.ok()) {
     TF_RETURN_IF_ERROR(writer->WriteScalar(
         FullName(iterator_prefix, strings::StrCat(prefix, "_", kMessage)),
-        status.error_message()));
+        std::string(status.message())));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ProcessBatch(int64_t batch_size, int64_t num_elements,
@@ -681,22 +728,22 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
                     IteratorContext* ctx, std::vector<Tensor>* output,
                     bool* end_of_sequence, std::vector<Tensor>* batch) {
   if (num_elements == 0) {
-    if (status.ok() || errors::IsOutOfRange(status)) {
+    if (status.ok() || absl::IsOutOfRange(status)) {
       *end_of_sequence = true;
-      return Status::OK();
+      return OkStatus();
     } else {
       *end_of_sequence = false;
       return status;
     }
   }
-  if (!status.ok() && !errors::IsOutOfRange(status)) {
+  if (!status.ok() && !absl::IsOutOfRange(status)) {
     *end_of_sequence = false;
     return status;
   }
   if (num_elements < batch_size) {
     if (drop_remainder) {
       *end_of_sequence = true;
-      return Status::OK();
+      return OkStatus();
     }
     for (size_t i = 0; i < batch->size(); ++i) {
       TensorShape component_shape((*batch)[i].shape());
@@ -716,7 +763,7 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
     *output = std::move(*batch);
   }
   *end_of_sequence = false;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CopyBatch(CopyBatchParams params,
@@ -767,13 +814,17 @@ Status CopyBatch(CopyBatchParams params,
           std::move(batch_elements.at(index)[component_index]),
           &batch_component, index);
     };
-    if (parallel_copy && first_element.AllocatedBytes() > (1 << 15)) {
+    const auto total_bytes =
+        first_element.AllocatedBytes() * num_batch_elements;
+    // Use parallelism for creating the batch as long as the final batch is at
+    // least 1MB.
+    if (parallel_copy && total_bytes >= (1 << 20)) {
       Status status;
       mutex status_mu;
-      BlockingCounter counter(num_batch_elements);
       const auto num_threads = params.runner_threadpool_size;
       const auto slice_size = num_batch_elements / num_threads;
       int64_t offset = 0;
+      BlockingCounter counter(num_threads);
       for (size_t i = 0; i < num_threads; ++i) {
         int64_t length = slice_size;
         // When the number of threads does not divide the number of elements
@@ -782,14 +833,15 @@ Status CopyBatch(CopyBatchParams params,
         if (i < num_batch_elements % num_threads) ++length;
         (*params.runner)([offset, length, &status, &status_mu, &counter,
                           &copy_element_fn]() {
+          Status s;
           for (size_t j = offset; j < offset + length; ++j) {
-            {
-              Status s = copy_element_fn(j);
-              mutex_lock l(status_mu);
-              status.Update(s);
-            }
-            counter.DecrementCount();
+            s.Update(copy_element_fn(j));
           }
+          {
+            mutex_lock l(status_mu);
+            status.Update(s);
+          }
+          counter.DecrementCount();
         });
         offset += length;
       }
@@ -801,20 +853,22 @@ Status CopyBatch(CopyBatchParams params,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 absl::flat_hash_set<tstring> CreateGraphRewriteConfigs(const Options& options) {
   absl::flat_hash_set<tstring> configs;
   const auto& autotune_options = options.autotune_options();
-  std::vector<tstring> autotune_only_optimizations = {
+  std::array<tstring, 9> autotune_only_optimizations = {
       kAutotuneBufferSizesOpt,
       kBatchParallelizationOpt,
       kDisablePrefetchLegacyAutotuneOpt,
       kEnableGradientDescentOpt,
+      kFilterParallelizationOpt,
       kMapParallelizationOpt,
       kInjectPrefetchOpt,
-      kInjectPrefetchEligibleOpt};
+      kInjectIoPrefetchEligibleOpt,
+      kInjectIoPrefetchOpt};
 
   if (autotune_options.optional_enabled_case() == AutotuneOptions::kEnabled &&
       !autotune_options.enabled()) {
@@ -868,33 +922,78 @@ bool ShouldApplyOptimizations(
 }
 
 int64 GetAutotuneDefaultParallelism(IteratorContext* ctx) {
-  if (GetExperiments().contains("initial_parallelism_value")) {
-    return std::min(kAutotuneDefaultParallelism, ctx->runner_threadpool_size());
+  return std::min(kAutotuneDefaultParallelism, ctx->runner_threadpool_size());
+}
+
+IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {
+  // Strips out any split providers so that they don't apply to sub-iterators.
+  if (ctx->split_providers().empty()) {
+    return *ctx;
   }
-  return ctx->runner_threadpool_size();
+  IteratorContext::Params params(ctx);
+  params.split_providers.clear();
+  return IteratorContext(std::move(params));
 }
 
 // static
 void DatasetExperimentRegistry::Register(const string& experiment,
-                                         int64_t rollout_pct) {
+                                         JobSelector job_selector,
+                                         TaskSelector task_selector) {
   mutex_lock l(*get_dataset_experiment_registry_lock());
-  get_dataset_experiments()->insert(std::make_pair(experiment, rollout_pct));
+  get_dataset_experiments()->insert(
+      std::make_pair(experiment, DatasetExperimentRegistry::ExperimentSelector{
+                                     job_selector, task_selector}));
 }
 
 // static
-absl::flat_hash_map<string, int64_t> DatasetExperimentRegistry::Experiments() {
+absl::flat_hash_map<string, DatasetExperimentRegistry::ExperimentSelector>
+DatasetExperimentRegistry::Experiments() {
   mutex_lock l(*get_dataset_experiment_registry_lock());
   return *get_dataset_experiments();
 }
 
+bool AllTasks(int64_t unused_task_id, bool unused_evens) { return true; }
+
+bool IndependentHostTasks(int64_t task_id, bool evens) {
+  int64_t lhs = task_id & 0x2;
+  int64_t rhs = 0x2;
+  return evens ? lhs != rhs : lhs == rhs;
+}
+
 namespace {
 
-REGISTER_DATASET_EXPERIMENT("initial_parallelism_value", 50);
-REGISTER_DATASET_EXPERIMENT("enable_bufferedio_v2", 100);
-REGISTER_DATASET_EXPERIMENT("inject_prefetch", 50);
-REGISTER_DATASET_EXPERIMENT("max_parallelism", 100);
-REGISTER_DATASET_EXPERIMENT("max_parallelism_v2", 0);
-REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism", 0);
+REGISTER_DATASET_EXPERIMENT("noop_task_level", RandomJobSamplePercentage<50>,
+                            IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("noop_job_level", RandomJobSamplePercentage<50>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations",
+                            RandomJobSamplePercentage<0>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization",
+                            RandomJobSamplePercentage<0>, IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt,
+                            RandomJobSamplePercentage<0>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism",
+                            RandomJobSamplePercentage<0>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("reduce_interleave_prefetch",
+                            RandomJobSamplePercentage<0>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("serialize_input_cycle_length",
+                            RandomJobSamplePercentage<0>, AllTasks);
+REGISTER_DATASET_EXPERIMENT("stage_based_autotune",
+                            RandomJobSamplePercentage<0>, IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("stage_based_autotune_v2",
+                            RandomJobSamplePercentage<0>, IndependentHostTasks);
+REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("file_locality", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("file_locality_v2", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("no_compression", RandomJobSamplePercentage<50>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("inject_io_prefetch", RandomJobSamplePercentage<0>,
+                            AllTasks);
+REGISTER_DATASET_EXPERIMENT("reduce_array_record_dataset_memory_usage",
+                            RandomJobSamplePercentage<1>, AllTasks);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

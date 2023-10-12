@@ -146,7 +146,7 @@ Status MapFusion::OptimizeAndCollectStats(Cluster* cluster,
   }
 
   TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(MapFusion, "map_fusion");

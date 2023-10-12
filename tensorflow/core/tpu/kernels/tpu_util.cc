@@ -14,10 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
+#include "xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/core/platform/random.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -83,7 +88,7 @@ Status DynamicShapesToTensorShapes(const OpInputList& dynamic_shapes,
     TF_RETURN_IF_ERROR(
         ShapeTensorToTensorShape(dynamic_shapes[i], &(*shapes)[i]));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
@@ -95,12 +100,12 @@ Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
         ShapeTensorToTensorShape(dynamic_shape.tensor(), &(*shapes)[i]));
     ++i;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 xla::StatusOr<std::unique_ptr<::grpc::ServerBuilder>> CreateServerBuilder(
     int serving_port) {
-  auto server_builder = absl::make_unique<::grpc::ServerBuilder>();
+  auto server_builder = std::make_unique<::grpc::ServerBuilder>();
   server_builder->AddListeningPort(
       absl::StrFormat("[::]:%d", serving_port),
       ::grpc::InsecureServerCredentials());  // NOLINT

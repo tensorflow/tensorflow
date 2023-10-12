@@ -18,8 +18,8 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/Eigen/Eigenvalues"
+#include "Eigen/Core"  // from @eigen_archive
+#include "Eigen/Eigenvalues"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -74,10 +74,12 @@ class EigOp : public LinearAlgebraOp<InputScalar, OutputScalar> {
     // This algorithm relies on denormals, so switch them back on locally.
     port::ScopedDontFlushDenormal dont_flush_denormals;
 
-    Eigen::ComplexEigenSolver<OutputMatrix> eig(
-        inputs[0],
-        compute_v_ ? Eigen::ComputeEigenvectors : Eigen::EigenvaluesOnly);
-    // TODO(rmlarsen): Output more detailed error info on failure.
+    using EigenSolver =
+        std::conditional_t<Eigen::NumTraits<InputScalar>::IsComplex,
+                           Eigen::ComplexEigenSolver<InputMatrix>,
+                           Eigen::EigenSolver<InputMatrix>>;
+    EigenSolver eig(inputs[0], /*computeEigenvectors=*/compute_v_);
+
     OP_REQUIRES(
         context, eig.info() == Eigen::Success,
         errors::InvalidArgument("Eigen decomposition was not "

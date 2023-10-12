@@ -1,30 +1,28 @@
-# buildifier: disable=same-origin-load
-load(
-    "//tensorflow/stream_executor:build_defs.bzl",
-    "if_gpu_is_configured",
-)
-
-# buildifier: disable=same-origin-load
 load(
     "//tensorflow:tensorflow.bzl",
+    "check_deps",
     "tf_cc_binary",
 )
 load(
-    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
+    "@local_xla//xla/stream_executor:build_defs.bzl",
+    "if_gpu_is_configured",
+)
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "if_llvm_system_z_available",
+    "tf_proto_library",
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
 load(
-    "//tensorflow/core/platform:build_config.bzl",
-    "if_llvm_aarch64_available",
-    "if_llvm_system_z_available",
-    "tf_proto_library",
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":friends"],
     licenses = ["notice"],
 )
@@ -34,7 +32,7 @@ package_group(
     packages = [
         # Edge TPU compiler needs to use some compiler passes from kernel_gen.
         "//platforms/darwinn/compiler/...",
-        "//tensorflow/compiler/mlir/...",
+        "//tensorflow/compiler/...",
         "//tensorflow/core/kernels/mlir_generated/...",
     ],
 )
@@ -45,68 +43,62 @@ cc_library(
     hdrs = ["kernel_creator.h"],
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
-        ":compile_cache_item_proto_cc",
-        "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:all_passes",
-        "//tensorflow/compiler/mlir/hlo:hlo_legalize_shape_ops_to_standard",
-        "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
-        "//tensorflow/compiler/mlir/hlo:legalize_to_linalg",
-        "//tensorflow/compiler/mlir/hlo:legalize_trigonometric_to_approximation",
-        "//tensorflow/compiler/mlir/hlo:lhlo",
-        "//tensorflow/compiler/mlir/hlo:lhlo_fuse_linalg",
-        "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_affine",
-        "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_gpu",
-        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:bufferize",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:gpu_passes",  # fixdeps: keep
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_tf_no_fallback",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:cuda_libdevice_path",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineToStandard",
-        "@llvm-project//mlir:AffineUtils",
-        "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:ArithmeticTransforms",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:ArithTransforms",
         "@llvm-project//mlir:BufferizationTransforms",
+        "@llvm-project//mlir:BuiltinToLLVMIRTranslation",
+        "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:ComplexToStandard",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncToLLVM",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:GPUToGPURuntimeTransforms",
+        "@llvm-project//mlir:GPUToLLVMIRTranslation",
         "@llvm-project//mlir:GPUToNVVMTransforms",
         "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:LLVMIRTransforms",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
-        "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:MemRefTransforms",
-        "@llvm-project//mlir:NVVMDialect",
         "@llvm-project//mlir:NVVMToLLVMIRTranslation",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:ROCDLDialect",
         "@llvm-project//mlir:ROCDLToLLVMIRTranslation",
         "@llvm-project//mlir:ReconcileUnrealizedCasts",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:SCFToGPUPass",
-        "@llvm-project//mlir:SCFToStandard",
+        "@llvm-project//mlir:SCFToControlFlow",
+        "@llvm-project//mlir:SCFToGPU",
         "@llvm-project//mlir:SCFTransforms",
-        "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:ShapeToStandard",
-        "@llvm-project//mlir:ShapeTransforms",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:StandardOpsTransforms",
-        "@llvm-project//mlir:StandardToLLVM",
-        "@llvm-project//mlir:ToLLVMIRTranslation",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",
+        "@local_xla//xla/mlir_hlo",
+        "@local_xla//xla/mlir_hlo:all_passes",  # fixdeps: keep
+        "@local_xla//xla/mlir_hlo:mhlo_passes",
+        "@local_xla//xla/mlir_hlo:transforms_gpu_passes",
+        "@local_xla//xla/mlir_hlo:transforms_passes",
+        "@stablehlo//:chlo_ops",
     ],
 )
 
+check_deps(
+    name = "hlo_to_kernel_check_deps",
+    disallowed_deps = ["@local_xla//xla:literal"],
+    deps = [":hlo_to_kernel"],
+)
+
 tf_cc_binary(
-    name = "tf_to_kernel",
-    srcs = ["tf_to_kernel.cc"],
+    name = "hlo_to_kernel",
+    srcs = ["hlo_to_kernel.cc"],
     visibility = [
-        "//tensorflow/compiler/mlir/tools/kernel_gen/tests/tf_to_kernel:__pkg__",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/tests/hlo_to_kernel:__pkg__",
         "//tensorflow/core/kernels/mlir_generated:__pkg__",
     ],
     deps = [
@@ -114,26 +106,27 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Analysis",
+        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:CodeGen",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:MC",
         "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
         "@llvm-project//llvm:X86Disassembler",  # fixdeps: keep
         "@llvm-project//mlir:ExecutionEngineUtils",
-        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
+        "@llvm-project//mlir:MemRefTransforms",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ToLLVMIRTranslation",
     ] + if_llvm_system_z_available([
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
-    ]) + if_llvm_aarch64_available([
-        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
     ]),
 )
 
@@ -142,17 +135,16 @@ tf_cc_binary(
     srcs = ["tools/kernel-gen-opt/kernel-gen-opt.cc"],
     visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen/tests:__subpackages__"],
     deps = [
-        "//tensorflow/compiler/mlir/hlo:all_passes",
-        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:gpu_passes",  # fixdeps: keep
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
+        "@local_xla//xla/mlir_hlo:all_passes",
+        "@local_xla//xla/mlir_hlo:gml_st",
+        "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
+        "@stablehlo//:register",
     ],
 )
 
@@ -171,13 +163,13 @@ cc_library(
         "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:strcat",
-        "//tensorflow/stream_executor:stream_header",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ExecutionEngine",
         "@llvm-project//mlir:ExecutionEngineUtils",
+        "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:mlir_runner_utils",
+        "@local_xla//xla/stream_executor",
     ],
 )
 
@@ -205,19 +197,20 @@ cc_library(
         "-DTENSORFLOW_USE_ROCM=1",
     ]),
     deps = [
-        "@llvm-project//mlir:mlir_runner_utils",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:mutex",
-        "//tensorflow/stream_executor:stream_header",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:mlir_runner_utils",
+        "@local_tsl//tsl/platform:hash",
+        "@local_xla//xla/stream_executor",
     ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
-        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
+        "@local_xla//xla/stream_executor/cuda:stream_executor_cuda",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
-        "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
+        "@local_xla//xla/stream_executor/rocm:stream_executor_rocm",
     ]),
 )
 

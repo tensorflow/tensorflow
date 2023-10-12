@@ -14,26 +14,35 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <memory>
+#include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tensorflow/core/tfrt/saved_model/saved_model.h"
 
+#if defined(PLATFORM_GOOGLE)
 ABSL_FLAG(bool, enable_optimizer, true,
           "enable optimizations in CoreRT dialect (e.g., constant-folding)");
 ABSL_FLAG(std::string, force_data_format, "",
           "force data format for all layout sensitive operations. Currently "
           "the supported formats are 'NHWC' and 'NCHW'");
 
-ABSL_FLAG(bool, enable_native_ops, true,
-          "If true, native ops will be used if they are implemented in TFRT. "
-          "If false, all ops are using fallback.");
-
 ABSL_FLAG(
     bool, enable_grappler, false,
     "If true, run grappler passes before importing the SavedModel into MLIR.");
+
+ABSL_FLAG(bool, enable_mlrt, false,
+          "If true, the runtime will use MLRT interpreter for host execution.");
+#endif
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -46,13 +55,24 @@ std::unique_ptr<tensorflow::tfrt_stub::Runtime> DefaultTfrtRuntime(
 }
 
 SavedModel::Options DefaultSavedModelOptions(
-    tensorflow::tfrt_stub::Runtime* runtime) {
+    tensorflow::tfrt_stub::Runtime* runtime,
+    std::optional<UserSavedModelOptions> user_options) {
   SavedModel::Options options(runtime);
   auto& compile_options = options.graph_execution_options.compile_options;
+#if defined(PLATFORM_GOOGLE)
+  options.graph_execution_options.enable_mlrt =
+      absl::GetFlag(FLAGS_enable_mlrt);
   compile_options.enable_optimizer = absl::GetFlag(FLAGS_enable_optimizer);
-  compile_options.enable_native_ops = absl::GetFlag(FLAGS_enable_native_ops);
   compile_options.enable_grappler = absl::GetFlag(FLAGS_enable_grappler);
   compile_options.force_data_format = absl::GetFlag(FLAGS_force_data_format);
+#endif
+
+  if (user_options) {
+    options.graph_execution_options.enable_mlrt = user_options->enable_mlrt;
+    compile_options.enable_optimizer = user_options->enable_optimizer;
+    compile_options.enable_grappler = user_options->enable_grappler;
+    compile_options.force_data_format = user_options->force_data_format;
+  }
   return options;
 }
 
@@ -67,10 +87,10 @@ TFRTSavedModelTest::TFRTSavedModelTest(
   CHECK(runtime_);
   auto options = DefaultSavedModelOptions(runtime_.get());
 
-  tensorflow::Status status;
-  saved_model_ = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
-                                                /*tags=*/{"serve"}, &status);
-  TF_DCHECK_OK(status);
+  auto saved_model = SavedModelImpl::LoadSavedModel(options, saved_model_dir,
+                                                    /*tags=*/{"serve"});
+  TF_DCHECK_OK(saved_model.status());
+  saved_model_ = *std::move(saved_model);
 }
 
 // Compute the results using TF1 session loaded from the saved model. In
@@ -134,7 +154,7 @@ void ComputeCurrentTFResult(const std::string& saved_model_dir,
 }
 
 void ExpectTensorEqual(const tensorflow::Tensor& x, const tensorflow::Tensor& y,
-                       absl::optional<double> error) {
+                       std::optional<double> error) {
   DCHECK_EQ(x.dtype(), y.dtype());
   VLOG(1) << "TFRT result: " << x.DebugString();
   VLOG(1) << "TF result  : " << y.DebugString();
@@ -154,6 +174,28 @@ void ExpectTensorEqual(const tensorflow::Tensor& x, const tensorflow::Tensor& y,
       tensorflow::test::ExpectEqual(x, y);
       break;
   }
+}
+
+SavedModel::Options DefaultTpuModelOptions(
+    tensorflow::tfrt_stub::Runtime* runtime,
+    tensorflow::TfrtDeviceInfraTarget device_target) {
+  SavedModel::Options options(runtime);
+#if defined(PLATFORM_GOOGLE)
+  options.graph_execution_options.enable_mlrt =
+      absl::GetFlag(FLAGS_enable_mlrt);
+#endif
+  auto& compile_options = options.graph_execution_options.compile_options;
+  compile_options.variable_device =
+      "/job:localhost/replica:0/task:0/device:CPU:0";
+  compile_options.enable_optimizer = false;
+  compile_options.enable_grappler = true;
+  compile_options.device_target = device_target;
+  compile_options.hoist_invariant_ops = true;
+  compile_options.sink_in_invariant_ops = true;
+  compile_options.cost_threshold =
+      1024;  // Servo currently uses 1024 as threshold for TPU models
+
+  return options;
 }
 
 }  // namespace tfrt_stub

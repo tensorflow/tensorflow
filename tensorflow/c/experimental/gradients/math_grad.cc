@@ -61,7 +61,7 @@ class AddGradientFunction : public GradientFunction {
 
     grad_inputs[0]->Ref();
     grad_inputs[1]->Ref();
-    return Status::OK();
+    return OkStatus();
   }
   ~AddGradientFunction() override {}
 };
@@ -82,7 +82,7 @@ class ExpGradientFunction : public GradientFunction {
     name = "Mul_Exp_Grad";
     TF_RETURN_IF_ERROR(
         Mul(ctx, conj_output, grad_outputs[0], &grad_inputs[0], name.c_str()));
-    return Status::OK();
+    return OkStatus();
   }
   ~ExpGradientFunction() override {}
 
@@ -101,7 +101,7 @@ class SqrtGradientFunction : public GradientFunction {
     std::string name = "Sqrt_Grad";
     TF_RETURN_IF_ERROR(SqrtGrad(ctx, sqrt_.get(), grad_outputs[0],
                                 &grad_inputs[0], name.c_str()));
-    return Status::OK();
+    return OkStatus();
   }
   ~SqrtGradientFunction() override {}
 
@@ -199,7 +199,7 @@ class MatMulGradientFunction : public GradientFunction {
 
     // Gradient for B
     grad_inputs[1] = matmul_B_output;
-    return Status::OK();
+    return OkStatus();
   }
   ~MatMulGradientFunction() override {
     for (auto input : forward_inputs_) {
@@ -229,7 +229,7 @@ class NegGradientFunction : public GradientFunction {
     std::string name = "Neg_Grad";
     TF_RETURN_IF_ERROR(
         ops::Neg(ctx, grad_outputs[0], &grad_inputs[0], name.c_str()));
-    return Status::OK();
+    return OkStatus();
   }
   ~NegGradientFunction() override {}
 };
@@ -257,7 +257,7 @@ class SubGradientFunction : public GradientFunction {
     TF_RETURN_IF_ERROR(
         ops::Neg(ctx, grad_outputs[0], &grad_inputs[1], name.c_str()));
 
-    return Status::OK();
+    return OkStatus();
   }
   ~SubGradientFunction() override {}
 };
@@ -294,7 +294,7 @@ class MulGradientFunction : public GradientFunction {
     name = "Mul_Grad_B";
     TF_RETURN_IF_ERROR(Mul(ctx, forward_inputs_[0], upstream_grad,
                            &grad_inputs[1], name.c_str()));
-    return Status::OK();
+    return OkStatus();
   }
   ~MulGradientFunction() override {
     for (auto input : forward_inputs_) {
@@ -359,7 +359,7 @@ class Log1pGradientFunction : public GradientFunction {
     TF_RETURN_IF_ERROR(
         Div(ctx, upstream_grad, Conj_XP1.get(), &grad_inputs[0], name.c_str()));
 
-    return Status::OK();
+    return OkStatus();
   }
   ~Log1pGradientFunction() override {
     for (auto input : forward_inputs_) {
@@ -427,7 +427,7 @@ class DivNoNanGradientFunction : public GradientFunction {
     TF_RETURN_IF_ERROR(DivNoNan(ctx, UZ.get(), Y, &grad_inputs[1],
                                 name.c_str()));  // -U*Z / Y
 
-    return Status::OK();
+    return OkStatus();
   }
   ~DivNoNanGradientFunction() override {
     for (auto input : forward_inputs_) {

@@ -41,15 +41,20 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import cond_v2
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_case
+from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops import while_v2
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import constants
@@ -57,8 +62,8 @@ from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import simple_save
 from tensorflow.python.saved_model.load import load
 from tensorflow.python.saved_model.save import save
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.training.saver import export_meta_graph
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 
@@ -169,7 +174,7 @@ class VariablesToConstantsTest(test.TestCase):
       root: AutoTrackable object with original ConcreteFunction.
       output_func: frozen ConcreteFunction.
     """
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
     input_func = root.f.get_concrete_function()
 
@@ -199,7 +204,7 @@ class VariablesToConstantsTest(test.TestCase):
 
     # Save the converted ConcreteFunction as a signature.
     save_dir = os.path.join(self.get_temp_dir(), "frozen_saved_model")
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = converted_concrete_func
     save(root, save_dir, {"mykey": converted_concrete_func})
 
@@ -213,7 +218,7 @@ class VariablesToConstantsTest(test.TestCase):
   def testConstSavedModel(self):
     """Test a basic model with constants while saving/loading the SavedModel."""
     input_data = {"x": constant_op.constant(1., shape=[1])}
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(lambda x: 2. * x)
     to_save = root.f.get_concrete_function(input_data["x"])
 
@@ -234,7 +239,7 @@ class VariablesToConstantsTest(test.TestCase):
   def testVariableModel(self):
     """Test a basic model with Variables."""
     input_data = {"x": constant_op.constant(1., shape=[1])}
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v1 = variables.Variable(3.)
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
@@ -251,7 +256,7 @@ class VariablesToConstantsTest(test.TestCase):
   def testScalarModel(self):
     """Test a basic model with Variables."""
     input_data = {"x": constant_op.constant(1., shape=[])}
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v1 = variables.Variable(3.)
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
@@ -268,7 +273,7 @@ class VariablesToConstantsTest(test.TestCase):
   def testVariableSavedModel(self):
     """Test a basic model with Variables with saving/loading the SavedModel."""
     input_data = {"x": constant_op.constant(1., shape=[1])}
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v1 = variables.Variable(3.)
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
@@ -290,7 +295,7 @@ class VariablesToConstantsTest(test.TestCase):
   def testMultiFunctionModel(self):
     """Test a basic model with multiple tf.functions."""
 
-    class BasicModel(tracking.AutoTrackable):
+    class BasicModel(autotrackable.AutoTrackable):
 
       def __init__(self):
         self.y = None
@@ -324,9 +329,9 @@ class VariablesToConstantsTest(test.TestCase):
     with export_graph.as_default():
       start = array_ops.placeholder(
           shape=[1, 1], dtype=dtypes.float32, name="start")
-      distractor = variables.RefVariable(-1., name="distractor")
-      v = variables.RefVariable(3., name="v")
-      local_variable = variables.VariableV1(
+      distractor = ref_variable.RefVariable(-1., name="distractor")
+      v = ref_variable.RefVariable(3., name="v")
+      local_variable = variable_v1.VariableV1(
           1.,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           trainable=False,
@@ -354,7 +359,7 @@ class VariablesToConstantsTest(test.TestCase):
     fn = imported.signatures["serving_default"]
 
     output_func = convert_to_constants.convert_variables_to_constants_v2(fn)
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     self._testConvertedFunction(root, fn, output_func, input_data)
 
   @test_util.run_v2_only
@@ -378,7 +383,7 @@ class VariablesToConstantsTest(test.TestCase):
         tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool)
     ])
     def model(x, b):
-      return control_flow_ops.cond(
+      return cond.cond(
           b, true_fn=lambda: true_fn(x), false_fn=lambda: false_fn(x))
 
     root, output_func = self._freezeModel(model)
@@ -445,7 +450,7 @@ class VariablesToConstantsTest(test.TestCase):
         tensor_spec.TensorSpec(shape=[2, 2], dtype=dtypes.float32)
     ])
     def model(x):
-      return control_flow_ops.while_loop(condition, body, [x])
+      return while_loop.while_loop(condition, body, [x])
 
     root, output_func = self._freezeModel(model)
 
@@ -519,8 +524,8 @@ class VariablesToConstantsTest(test.TestCase):
         tensor_spec.TensorSpec(shape=[10, 3], dtype=dtypes.float32),
     ])
     def model(i, x):
-      return control_flow_ops.switch_case(i, [
-          lambda: branch0(x), lambda: branch1(x), lambda: branch2(x)])
+      return control_flow_switch_case.switch_case(
+          i, [lambda: branch0(x), lambda: branch1(x), lambda: branch2(x)])
 
     root, output_func = self._freezeModel(model)
     self._testConvertedFunction(root, root.f, output_func, input_data)
@@ -538,7 +543,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
       root: AutoTrackable object with original ConcreteFunction.
       output_func: frozen ConcreteFunction.
     """
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
     input_func = root.f.get_concrete_function()
 
@@ -568,7 +573,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
 
     # Save the converted ConcreteFunction as a signature.
     save_dir = os.path.join(self.get_temp_dir(), "frozen_saved_model")
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = converted_concrete_func
     save(root, save_dir, {"mykey": converted_concrete_func})
 
@@ -581,7 +586,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
   def testRaiseErrorInEagerMode(self):
     """Test the raised exception in Eager mode."""
     input_data = {"x": constant_op.constant(1., shape=[1])}
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v1 = variables.Variable(3.)
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
@@ -597,7 +602,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
     with ops.Graph().as_default():
       with session_lib.Session() as sess:
         input_data = {"x": constant_op.constant(1., shape=[1])}
-        root = tracking.AutoTrackable()
+        root = autotrackable.AutoTrackable()
         root.v1 = variables.Variable(3.)
         root.v2 = variables.Variable(2.)
         root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
@@ -616,7 +621,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
     with ops.Graph().as_default():
       with session_lib.Session() as sess:
         input_data = {"x": constant_op.constant(1., shape=[1])}
-        root = tracking.AutoTrackable()
+        root = autotrackable.AutoTrackable()
         root.v1 = variables.Variable(3.)
         root.v2 = variables.Variable(2.)
         root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
@@ -644,7 +649,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
     with ops.Graph().as_default():
       with session_lib.Session() as sess:
         input_data = {"x": constant_op.constant(1., shape=[1])}
-        root = tracking.AutoTrackable()
+        root = autotrackable.AutoTrackable()
         root.f = def_function.function(lambda x: 2. * x)
         to_save = root.f.get_concrete_function(input_data["x"])
 
@@ -666,7 +671,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
     with ops.Graph().as_default():
       with session_lib.Session() as sess:
         input_data = {"x": constant_op.constant(1., shape=[1])}
-        root = tracking.AutoTrackable()
+        root = autotrackable.AutoTrackable()
         root.v1 = variables.Variable(3.)
         root.v2 = variables.Variable(2.)
         root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
@@ -688,7 +693,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
   def testMultiFunctionModel(self):
     """Test a basic model with multiple tf.functions."""
 
-    class BasicModel(tracking.AutoTrackable):
+    class BasicModel(autotrackable.AutoTrackable):
 
       def __init__(self):
         self.y = None
@@ -743,7 +748,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
             tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool)
         ])
         def model(x, b):
-          return control_flow_ops.cond(
+          return cond.cond(
               b, true_fn=lambda: true_fn(x), false_fn=lambda: false_fn(x))
 
         root, output_func = self._freezeModel(model)
@@ -816,7 +821,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
             tensor_spec.TensorSpec(shape=[2, 2], dtype=dtypes.float32)
         ])
         def model(x):
-          return control_flow_ops.while_loop(condition, body, [x])
+          return while_loop.while_loop(condition, body, [x])
 
         root, output_func = self._freezeModel(model)
 
@@ -898,7 +903,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
             tensor_spec.TensorSpec(shape=[10, 3], dtype=dtypes.float32),
         ])
         def model(i, x):
-          return control_flow_ops.switch_case(
+          return control_flow_switch_case.switch_case(
               i, [lambda: branch0(x), lambda: branch1(x), lambda: branch2(x)])
 
         root, output_func = self._freezeModel(model)
@@ -1097,8 +1102,8 @@ class ConvertVariablesToConstantsSessionTest(test.TestCase):
         y = variable_scope.get_variable("var_y", initializer=2.0)
         f1 = lambda: variable_scope.get_variable("var_f1", initializer=17.0)
         f2 = lambda: variable_scope.get_variable("var_f2", initializer=23.0)
-        cond_node = control_flow_ops.case([(gen_math_ops.less(x, y), f1)],
-                                          default=f2)
+        cond_node = control_flow_case.case([(gen_math_ops.less(x, y), f1)],
+                                           default=f2)
         _ = math_ops.multiply(cond_node, 2.0, name="output_node")
 
         with session_lib.Session() as sess:
@@ -1295,8 +1300,8 @@ class ConvertVariablesToConstantsSessionTest(test.TestCase):
         control_flow_v2_toggles.disable_control_flow_v2()
         x = variable_scope.get_variable("x", initializer=1.0)
         y = variable_scope.get_variable("y", initializer=2.0)
-        _ = control_flow_ops.case([(gen_math_ops.less(x, y), lambda: x)],
-                                  default=lambda: y)
+        _ = control_flow_case.case([(gen_math_ops.less(x, y), lambda: x)],
+                                   default=lambda: y)
       with session_lib.Session() as sess:
         sess.run(variables.global_variables_initializer())
         variable_graph_def = sess.graph.as_graph_def()
@@ -1346,8 +1351,8 @@ class ConvertVariablesToConstantsSessionTest(test.TestCase):
         a = variable_scope.get_variable("a", initializer=2.0)
         x = variable_scope.get_variable("x", initializer=1.0)
         y = variable_scope.get_variable("y", initializer=2.0)
-        _ = control_flow_ops.case([(gen_math_ops.less(x, y), lambda: a)],
-                                  default=lambda: y)
+        _ = control_flow_case.case([(gen_math_ops.less(x, y), lambda: a)],
+                                   default=lambda: y)
         control_flow_v2_toggles.disable_control_flow_v2()
       with session_lib.Session() as sess:
         sess.run(variables.global_variables_initializer())
@@ -1408,8 +1413,8 @@ class ConvertVariablesToConstantsSessionTest(test.TestCase):
         control_flow_v2_toggles.enable_control_flow_v2()
         x = variable_scope.get_variable("x", initializer=1.0)
         y = variable_scope.get_variable("y", initializer=2.0)
-        _ = control_flow_ops.case([(gen_math_ops.less(x, y), lambda: x)],
-                                  default=lambda: y)
+        _ = control_flow_case.case([(gen_math_ops.less(x, y), lambda: x)],
+                                   default=lambda: y)
         control_flow_v2_toggles.disable_control_flow_v2()
       with session_lib.Session() as sess:
         sess.run(variables.global_variables_initializer())
@@ -1456,9 +1461,9 @@ class ConvertVariablesToConstantsSessionTest(test.TestCase):
         y = variable_scope.get_variable("y", initializer=2.0)
         z = variable_scope.get_variable("z", initializer=3.0)
         # pylint: disable=g-long-lambda
-        _ = control_flow_ops.case(
+        _ = control_flow_case.case(
             [(gen_math_ops.less(x, y), lambda: x)],
-            default=lambda: control_flow_ops.case(
+            default=lambda: control_flow_case.case(
                 [(gen_math_ops.less(z, y), lambda: z)], default=lambda: y))
         # pylint: enable=g-long-lambda
         control_flow_v2_toggles.disable_control_flow_v2()

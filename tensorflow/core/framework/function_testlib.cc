@@ -113,7 +113,7 @@ FunctionDef RandomUniform() {
         "RandomUniform",
         {"random_uniform/shape"},
         {{"T", DT_INT32},
-         {"Tout", DT_FLOAT},
+         {"dtype", DT_FLOAT},
          {"seed", 87654321},
          {"seed2", 42}}}});
 }
@@ -311,6 +311,24 @@ FunctionDef XTimesFour() {
       {
           {{"x2"}, "XTimesTwo", {"x"}, {{"T", "$T"}}},
           {{"y"}, "XTimesTwo", {"x2:y:0"}, {{"T", "$T"}}},
+      },
+      {{"y", "y:y:0"}});
+}
+
+FunctionDef XTimesFourInt32() {
+  return FDH::Create(
+      // Name
+      "XTimesFourInt32",
+      // Args
+      {"x: int32"},
+      // Return values
+      {"y: int32"},
+      // Attr def
+      {},
+      // Nodes
+      {
+          {{"x2"}, "XTimesTwoInt32", {"x"}},
+          {{"y"}, "XTimesTwoInt32", {"x2:y:0"}},
       },
       {{"y", "y:y:0"}});
 }

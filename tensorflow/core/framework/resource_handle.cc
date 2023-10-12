@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_handle.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -25,6 +29,22 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
+
+namespace {
+std::string DtypeAndShapesToString(
+    const std::vector<DtypeAndPartialTensorShape>& dtype_and_shapes) {
+  std::vector<std::string> dtype_and_shape_strings;
+  dtype_and_shape_strings.reserve(dtype_and_shapes.size());
+  for (const DtypeAndPartialTensorShape& dtype_and_shape : dtype_and_shapes) {
+    // Note that it is a bit unfortunate to return int/enum as dtype, given we
+    // can't directly use DataTypeString due to circular dependency.
+    dtype_and_shape_strings.push_back(
+        absl::StrFormat("DType enum: %d, Shape: %s", dtype_and_shape.dtype,
+                        dtype_and_shape.shape.DebugString()));
+  }
+  return absl::StrFormat("[ %s ]", absl::StrJoin(dtype_and_shape_strings, ","));
+}
+}  // namespace
 
 // Must be declared here for pre-C++17 compatibility.
 /* static */ constexpr const char* ResourceHandle::ANONYMOUS_NAME;
@@ -76,7 +96,7 @@ Status ResourceHandle::FromProto(const ResourceHandleProto& proto) {
     dtypes_and_shapes.push_back(DtypeAndPartialTensorShape{dtype, shape});
   }
   dtypes_and_shapes_ = std::move(dtypes_and_shapes);
-  return Status::OK();
+  return OkStatus();
 }
 
 string ResourceHandle::SerializeAsString() const {
@@ -92,15 +112,18 @@ bool ResourceHandle::ParseFromString(const string& s) {
 
 string ResourceHandle::DebugString() const {
   return absl::StrFormat(
-      "device: %s container: %s name: %s hash_code: 0x%X maybe_type_name %s",
+      "device: %s container: %s name: %s hash_code: 0x%X maybe_type_name %s, "
+      "dtype and shapes : %s",
       device(), container(), name(), hash_code(),
-      port::Demangle(maybe_type_name()));
+      port::Demangle(maybe_type_name()),
+      DtypeAndShapesToString(dtypes_and_shapes()));
 }
 string ResourceHandle::SummarizeValue() const {
   return absl::StrFormat(
       "ResourceHandle(name=\"%s\", device=\"%s\", container=\"%s\", "
-      "type=\"%s\")",
-      name(), device(), container(), port::Demangle(maybe_type_name()));
+      "type=\"%s\", dtype and shapes : \"%s\")",
+      name(), device(), container(), port::Demangle(maybe_type_name()),
+      DtypeAndShapesToString(dtypes_and_shapes()));
 }
 
 ResourceHandle ResourceHandle::MakeRefCountingHandle(
@@ -115,8 +138,9 @@ ResourceHandle ResourceHandle::MakeRefCountingHandle(
   // and they get process-unique handle names.
   result.set_container("Anonymous");
   result.set_definition_stack_trace(definition_stack_trace);
-  result.set_name(
-      absl::StrFormat("Resource-%d-at-%p", GenerateUniqueId(), resource));
+  auto resource_id = GenerateUniqueId();
+  std::string handle_name = resource->MakeRefCountingHandleName(resource_id);
+  result.set_name(handle_name);
   result.set_hash_code(type_index.hash_code());
   result.set_maybe_type_name(type_index.name());
   result.set_dtypes_and_shapes(dtypes_and_shapes);
@@ -133,7 +157,7 @@ Status ResourceHandle::ValidateType(const TypeIndex& type_index) const {
         port::Demangle(type_index.name()), "' (hash code ",
         type_index.hash_code(), ")");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 std::atomic<int64_t> ResourceHandle::current_id_;

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -84,7 +85,7 @@ Status PopulateTensorFromResponse(const RecvBufResponse& response,
 
   // If there are no transport options, then the tensor has already been
   // copied into request.buf_ptr.
-  if (!has_transport_options) return Status::OK();
+  if (!has_transport_options) return OkStatus();
 
   const int64_t total_bytes = cpu_tensor->TotalBytes();
   int64_t num_bytes = 0;
@@ -100,7 +101,7 @@ Status PopulateTensorFromResponse(const RecvBufResponse& response,
                             " bytes, expected: ", cpu_tensor->TotalBytes());
   }
   PopulateTensorFromExtra(extra, cpu_tensor);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -139,7 +140,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
 
   Tensor* dst_tensor = nullptr;
   Device* cpu_dev = nullptr;
-  if (to_device->tensorflow_gpu_device_info()) {
+  if (to_device->tensorflow_accelerator_device_info()) {
     // Move the bytes into a CPU tensor then use tensor-to-tensor copy.
     // Use GPU-registered memory for the CPU tensor so the transfer
     // goes faster.
@@ -191,7 +192,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
             return;
           }
 
-          if (to_device->tensorflow_gpu_device_info()) {
+          if (to_device->tensorflow_accelerator_device_info()) {
             AllocatorAttributes cpu_attr;
             cpu_attr.set_gpu_compatible(true);
             CopyTensor::ViaDMA("",  // edge name (non-existent)
@@ -235,7 +236,7 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
     const StatusCallback& done) {
   if (peer_task == task_name_) {
     // Fast path if the peer is the worker itself.
-    done(Status::OK());
+    done(OkStatus());
     return;
   }
   // We send a GetStatus RPC to check the health of a peer task. If the RPC
@@ -245,7 +246,7 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
   WorkerInterface* wi = worker_cache_->GetOrCreateWorker(peer_task);
   if (wi == nullptr) {
     done(errors::InvalidArgument(peer_task,
-                                 " not found. It's probably in valid. The "
+                                 " not found. It's probably invalid. The "
                                  "valid form is /job:xxx/replica:0/task:N"));
     return;
   }
@@ -277,11 +278,11 @@ void CollectiveRemoteAccessDistributed::CheckPeerHealth(
               break;
             }
           }
-        } else if (errors::IsNotFound(s)) {
+        } else if (absl::IsNotFound(s)) {
           // Skip validating device incarnation if we don't know what the
           // incarnation should be. The device attribute is cached after the
           // first collective.
-          s = Status::OK();
+          s = OkStatus();
         }
         delete opts;
         delete req;

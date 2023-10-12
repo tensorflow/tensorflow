@@ -512,7 +512,7 @@ TEST(Model, InsertNodeAfter) {
 
 TEST(BatchMatchingTest, EmptyGraph) {
   GraphFloat32 graph;
-  ASSERT_TRUE(IsBatchMatchesForAllValues(graph));
+  EXPECT_TRUE(CheckBatchSizeForAllValues(graph).ok());
 }
 
 TEST(BatchMatchingTest, AllMatch) {
@@ -521,7 +521,7 @@ TEST(BatchMatchingTest, AllMatch) {
   Value* b = graph.NewValue();
   a->tensor.shape = BHWC(1, 1, 1, 1);
   b->tensor.shape = BHWC(1, 1, 1, 1);
-  ASSERT_TRUE(IsBatchMatchesForAllValues(graph));
+  EXPECT_TRUE(CheckBatchSizeForAllValues(graph).ok());
 }
 
 TEST(BatchMatchingTest, NotAllMatch) {
@@ -530,7 +530,30 @@ TEST(BatchMatchingTest, NotAllMatch) {
   Value* b = graph.NewValue();
   a->tensor.shape = BHWC(1, 1, 1, 1);
   b->tensor.shape = BHWC(2, 1, 1, 1);
-  ASSERT_FALSE(IsBatchMatchesForAllValues(graph));
+  EXPECT_EQ(CheckBatchSizeForAllValues(graph).code(),
+            absl::StatusCode::kInvalidArgument);
+}
+
+TEST(Model, KnownGraphOutput) {
+  // graph_input -> node1 -> graph_output1 -> node2 -> graph_output2
+  GraphFloat32 graph;
+  Node* node1 = graph.NewNode();
+  Node* node2 = graph.NewNode();
+  Value* graph_input = graph.NewValue();
+  Value* graph_output1 = graph.NewValue();
+  Value* graph_output2 = graph.NewValue();
+  ASSERT_TRUE(graph.AddConsumer(node1->id, graph_input->id).ok());
+  ASSERT_TRUE(graph.SetProducer(node1->id, graph_output1->id).ok());
+  ASSERT_TRUE(graph.AddConsumer(node2->id, graph_output1->id).ok());
+  ASSERT_TRUE(graph.SetProducer(node2->id, graph_output2->id).ok());
+  graph.AddKnownGraphOutput(graph_output1);
+  graph.AddKnownGraphOutput(graph_output2);
+
+  EXPECT_THAT(graph.nodes(), ElementsAre(node1, node2));
+  EXPECT_THAT(graph.inputs(), UnorderedElementsAre(graph_input));
+  // `graph_output2` should appear first than the known graph output
+  // `graph_output1` for the compatibility.
+  EXPECT_THAT(graph.outputs(), ElementsAre(graph_output2, graph_output1));
 }
 
 }  // namespace

@@ -27,7 +27,6 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/api.h"
-#include "tensorflow/lite/delegates/gpu/cl/serialization.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 

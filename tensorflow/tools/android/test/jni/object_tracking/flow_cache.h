@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_FLOW_CACHE_H_
-#define TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_FLOW_CACHE_H_
+#ifndef TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_FLOW_CACHE_H_
+#define TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_FLOW_CACHE_H_
 
 #include "tensorflow/tools/android/test/jni/object_tracking/config.h"
 #include "tensorflow/tools/android/test/jni/object_tracking/geom.h"
@@ -297,9 +297,10 @@ class FlowCache {
   // The cached displacement values.
   Image<Point2f>* displacements_[kNumCacheLevels];
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FlowCache);
+  FlowCache(const FlowCache&) = delete;
+  void operator=(const FlowCache&) = delete;
 };
 
 }  // namespace tf_tracking
 
-#endif  // TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_FLOW_CACHE_H_
+#endif  // TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_FLOW_CACHE_H_

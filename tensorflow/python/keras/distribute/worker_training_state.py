@@ -15,7 +15,8 @@
 """Training state management."""
 
 import os
-
+from tensorflow.python.checkpoint import checkpoint as trackable_util
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -24,8 +25,6 @@ from tensorflow.python.keras.distribute import distributed_file_utils
 from tensorflow.python.keras.utils import mode_keys
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
-from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.tracking import util as trackable_util
 
 # Constant for `tf.keras.Model` attribute to store the epoch at which the most
 # recently saved checkpoint was saved.

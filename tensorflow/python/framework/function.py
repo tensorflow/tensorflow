@@ -29,6 +29,7 @@ from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
@@ -38,8 +39,37 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 
 
+# TODO(b/136040013): Drop support for Defun.
 class Defun(object):
-  """Decorator used to define TensorFlow functions.
+  """Obsolete. Slated for deletion. Please use tf.function instead.
+
+  Known feature gaps while migrating to tf.function (could be outdated):
+  - tf.function doesn’t support Send/Recv capability since it doesn’t share
+    rendezvous with the main graph but always creates a new one.
+  - tf.function doesn’t support custom gradient function directly, instead you
+    need to define the function inside a tf.custom_gradient wrapper together
+    with the gradient function.
+  - Unlike Defun, Keras layers used inside a tf.function need to be created only
+    once to avoid variable recreation.
+  - Defun respects the device assignments and applies them to the function body
+    but tf.function needs it to be done manually.
+  - Defun might prune out unused ops automatically but tf.function doesn't.
+
+  Limitations of Defun:
+  - Original source locations are not preserved so errors do not include
+    full/valid stack traces.
+  - Only supports linear sequence of arguments and return values, putting the
+    burden on the caller to pack/unpack everything across a Defun boundary into
+    tuples (as opposed to passing list and dict-like structures directly).
+  - Does not support overloading or late-bound specializations.
+  - Has its own way for defining gradient overrides which does not follow
+    current conventions.
+  - Cannot support imperative control flow or automatic control dependencies.
+  - Does not reflect statefulness in the graph and has a calling convention that
+    differs from how more modern tools interact.
+  - Is only compatible with graph building mode.
+
+  Decorator used to define TensorFlow functions.
 
   Use this decorator to make a Python function usable directly as a TensorFlow
   function.
@@ -219,6 +249,7 @@ class _DefinedFunction(object):
   Attributes:
     name: The function name.
     definition: The definition of this function. A FunctionDef proto.
+    cached_definition: Same as definition. Needed to match AtomicFunction API.
     grad_func_name: If not None, the name of this function's gradient function.
     python_grad_func: A python callable implementing the gradient of
       the function python-side.
@@ -311,20 +342,25 @@ class _DefinedFunction(object):
     return self._func_name
 
   @property
+  def cached_definition(self):
+    return self.definition
+
+  @property
   def definition(self):
     """Function definition proto."""
     self._create_definition_if_needed()
     if self._c_func:
       with c_api_util.tf_buffer() as buf:
-        c_api.TF_FunctionToFunctionDef(self._c_func.func, buf)
-        fdef = function_pb2.FunctionDef()
-        proto_data = c_api.TF_GetBuffer(buf)
-        fdef.ParseFromString(compat.as_bytes(proto_data))
-        with ops.init_scope():
-          if context.executing_eagerly():
-            context.add_function(self._c_func.func)
-            self._function_deleter = _DefinedFunctionDeleter(
-                fdef.signature.name)
+        with self._c_func.get() as func:
+          c_api.TF_FunctionToFunctionDef(func, buf)
+          fdef = function_pb2.FunctionDef()
+          proto_data = c_api.TF_GetBuffer(buf)
+          fdef.ParseFromString(compat.as_bytes(proto_data))
+          with ops.init_scope():
+            if context.executing_eagerly():
+              context.add_c_function(func)
+              self._function_deleter = _DefinedFunctionDeleter(
+                  fdef.signature.name)
       return fdef
     return self._definition
 
@@ -416,6 +452,7 @@ class _DefinedFunction(object):
         base_func_name += ("_%s" % self._grad_func.name)
     kwargs_attr = _parse_kwargs_as_attrs(base_func_name, **self._extra_kwargs)
 
+    # FIXME(feyu): C API is always enabled now. The if-true branch never runs.
     if not temp_graph._c_graph:  # pylint: disable=protected-access
       # Build the FunctionDef
       self._definition = graph_to_function_def.graph_to_function_def(
@@ -447,19 +484,20 @@ class _DefinedFunction(object):
                       if self._out_names else [])
       description = self._func.__doc__ or None
       # pylint: disable=protected-access
-      c_func = c_api.TF_GraphToFunction_wrapper(
-          temp_graph._c_graph,
-          base_func_name,
-          self._func_name is None,  # append_hash_to_fn_name
-          None,  # opers
-          [t._as_tf_output() for t in temp_graph.inputs],
-          [t._as_tf_output() for t in temp_graph.outputs],
-          output_names,
-          [], # control_outputs
-          [], # control_output_names
-          None,  # opts
-          description)
-      self._c_func = c_api_util.ScopedTFFunction(c_func)
+      with temp_graph._c_graph.get() as c_graph:
+        c_func = c_api.TF_GraphToFunction_wrapper(
+            c_graph,
+            base_func_name,
+            self._func_name is None,  # append_hash_to_fn_name
+            None,  # opers
+            [t._as_tf_output() for t in temp_graph.inputs],
+            [t._as_tf_output() for t in temp_graph.outputs],
+            output_names,
+            [],  # control_outputs
+            [],  # control_output_names
+            None,  # opts
+            description)
+      self._c_func = c_api_util.ScopedTFFunction(c_func, base_func_name)
       # pylint: enable=protected-access
       self._set_c_attrs(kwargs_attr)
 
@@ -486,8 +524,9 @@ class _DefinedFunction(object):
       serialized = attr_value.SerializeToString()
       # TODO(skyewm): this creates and deletes a new TF_Status for every attr.
       # It might be worth creating a convenient way to re-use the same status.
-      c_api.TF_FunctionSetAttrValueProto(self._c_func.func, compat.as_str(name),
-                                         serialized)
+      with self._c_func.get() as func:
+        c_api.TF_FunctionSetAttrValueProto(func, compat.as_str(name),
+                                           serialized)
 
   def _create_hash_str(self, input_arg, output_arg, node_def):
     """Creates an 8-character string unique to this input.
@@ -549,7 +588,7 @@ class _DefinedFunction(object):
 
     # Ensures related sub-routines are defined in 'g', too.
     for f in self._sub_functions.values():
-      f.add_to_graph(g)
+      g._add_function_recursive(f)  # pylint: disable=protected-access
 
     # Adds its gradient function, too.
     if self._grad_func:
@@ -668,7 +707,7 @@ class _OverloadedFunction(object):
     args = list(args)
     for (i, x) in enumerate(args):
       x = ops.convert_to_tensor(x)
-      if not isinstance(x, ops.Tensor):
+      if not isinstance(x, tensor_lib.Tensor):
         raise ValueError(f"Expected a Tensor but got {x} with type {type(x)}.")
       input_types.append(x.dtype)
       args[i] = x
@@ -853,12 +892,14 @@ class _FuncGraph(ops.Graph):
       if handle_data:
         handle_data = handle_data.SerializeToString()
     else:
-      handle_data = c_api.GetHandleShapeAndType(tensor.graph._c_graph,
-                                                tensor._as_tf_output())
+      with tensor.graph._c_graph.get() as c_graph:
+        handle_data = c_api.GetHandleShapeAndType(c_graph,
+                                                  tensor._as_tf_output())
 
     if handle_data:
-      c_api.SetHandleShapeAndType(ph.graph._c_graph, ph._as_tf_output(),
-                                  compat.as_bytes(handle_data))
+      with ph.graph._c_graph.get() as c_graph:
+        c_api.SetHandleShapeAndType(c_graph, ph._as_tf_output(),
+                                    compat.as_bytes(handle_data))
     # pylint: enable=protected-access
     self.inputs.append(ph)
     self._captured[tensor.ref()] = ph
@@ -873,7 +914,7 @@ class _FuncGraph(ops.Graph):
     op = self._add_op_and_parents(tensor.op)
     return op.outputs[tensor.value_index]
 
-  def _add_op_and_parents(self, op):
+  def _add_op_and_parents(self, op: ops.Operation):
     # pylint: disable=protected-access
     op_def = graph_to_function_def._get_op_def(op)
     if op._is_stateful and op not in self._allowlisted_stateful_ops:
@@ -1008,13 +1049,13 @@ def _is_guaranteed_const(tensor):
 
   class Work(object):
 
-    def __init__(self, op, leaving):
+    def __init__(self, op: ops.Operation, leaving):
       self.op = op
       self.leaving = leaving
 
   is_guaranteed_const = lambda op: op.node_def.op == "GuaranteeConst"
   constants = set([])
-  def all_inputs_const(op):
+  def all_inputs_const(op: ops.Operation):
     # If all inputs of an op are guaranteed constants, then we can infer that
     # the op produces a constant as well.
     return op.inputs and all(inp.op in constants for inp in op.inputs)
@@ -1122,7 +1163,7 @@ def _from_definition(fdef, grad_func=None):
   # pylint: disable=protected-access
   serialized = fdef.SerializeToString()
   c_func = c_api.TF_FunctionImportFunctionDef(serialized)
-  result._c_func = c_api_util.ScopedTFFunction(c_func)
+  result._c_func = c_api_util.ScopedTFFunction(c_func, func_name)
   result._extra_inputs = []
   result._op_def = fdef.signature
   # pylint: enable=protected-access
@@ -1336,15 +1377,9 @@ _DTYPE_TO_STR = {
     dtypes.qint16: "qi16",
     dtypes.quint16: "qu16",
     dtypes.qint32: "qi32",
-    dtypes.bfloat16: "b16"
+    dtypes.bfloat16: "b16",
+    dtypes.float8_e5m2: "f8e5m2",
+    dtypes.float8_e4m3fn: "f8e4m3fn",
+    dtypes.int4: "i4",
+    dtypes.uint4: "u4",
 }
-
-
-def function_def_from_tf_function(c_func):
-  """Converts a SWIG-wrapped TF_Function* to a FunctionDef proto."""
-  with c_api_util.tf_buffer() as buf:
-    c_api.TF_FunctionToFunctionDef(c_func, buf)
-    data = c_api.TF_GetBuffer(buf)
-  fdef = function_pb2.FunctionDef()
-  fdef.ParseFromString(compat.as_bytes(data))
-  return fdef

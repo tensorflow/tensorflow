@@ -15,6 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_UTILS_THREAD_POOL_H_
 #define TENSORFLOW_CORE_TFRT_UTILS_THREAD_POOL_H_
 
+#include <functional>
+#include <string>
+#include <utility>
+
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
@@ -35,7 +39,9 @@ class TfThreadPool : public thread::ThreadPoolInterface {
     underlying_threadpool_.ScheduleWithHint(std::move(fn), start, end);
   }
 
-  void Cancel() override {}
+  void Cancel() override {
+    underlying_threadpool_.AsEigenThreadPool()->Cancel();
+  }
 
   int NumThreads() const override {
     return underlying_threadpool_.NumThreads();

@@ -16,11 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_TF_TFL_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_TF_TFL_PASSES_H_
 
-#include "llvm/ADT/Optional.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
-#include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 
 namespace tensorflow {
@@ -39,7 +36,6 @@ void AddTFToTFLConversionPasses(llvm::StringRef saved_model_dir,
 // to inject more information in the middle of the conversion before resuming it
 // (like freezing variables for example).
 void AddPreVariableFreezingTFToTFLConversionPasses(
-    llvm::StringRef saved_model_dir, const toco::TocoFlags& toco_flags,
     const mlir::TFL::PassConfig& pass_config,
     mlir::OpPassManager* pass_manager);
 
@@ -55,16 +51,15 @@ void AddPostVariableFreezingTFToTFLConversionPasses(
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
                                 mlir::OpPassManager* pass_manager);
 
-// Add the Quantization passes, specified in the quant_specs, into a pass
+// Add the Quantization passes, specified in the pass_config, into a pass
 // manager.
-void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
+void AddQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
                            mlir::OpPassManager& pass_manager);
 
-// Add the DynamicRangeQuantization passes, specified in the quant_specs, into a
+// Add the DynamicRangeQuantization passes, specified in the pass_config, into a
 // pass manager.
-void AddDynamicRangeQuantizationPasses(
-    const mlir::TFL::QuantizationSpecs& quant_specs,
-    mlir::OpPassManager& pass_manager);
+void AddDynamicRangeQuantizationPasses(const mlir::TFL::PassConfig& pass_config,
+                                       mlir::OpPassManager& pass_manager);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TF_TFL_PASSES_H_

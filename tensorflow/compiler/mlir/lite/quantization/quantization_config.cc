@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 
+#include <algorithm>
 #include <ios>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -42,7 +44,7 @@ static bool IsQuantizationType(tensorflow::DataType dtype) {
 }
 
 namespace mlir {
-namespace TFL {
+namespace quant {
 namespace {
 bool GetBooleanSpecs(const std::string& bool_val) {
   bool result;
@@ -65,7 +67,7 @@ void ParseCustomOpSpecs(absl::string_view node_names,
     auto node_specification = node_infos[1];
     CustomOpInfo new_node_info;
     switch (update_option) {
-      case CustomOpUpdateOptions::kINputIndices: {
+      case CustomOpUpdateOptions::kInputIndices: {
         std::vector<std::string> indices =
             absl::StrSplit(node_specification, '-');
         for (auto& cur_index : indices) {
@@ -92,7 +94,7 @@ bool ParseInputNodeQuantSpecs(absl::string_view node_names,
                               absl::string_view inference_type,
                               QuantizationSpecs* quant_specs) {
   std::vector<std::string> input_nodes = absl::StrSplit(node_names, ',');
-  std::vector<llvm::Optional<double>> node_mins;
+  std::vector<std::optional<double>> node_mins;
   if (!min_values.empty()) {
     std::vector<std::string> node_mins_str = absl::StrSplit(min_values, ',');
     for (int i = 0, e = node_mins_str.size(); i < e; i++) {
@@ -104,7 +106,7 @@ bool ParseInputNodeQuantSpecs(absl::string_view node_names,
     }
   }
 
-  std::vector<llvm::Optional<double>> node_maxs;
+  std::vector<std::optional<double>> node_maxs;
   if (!max_values.empty()) {
     std::vector<std::string> node_maxs_str = absl::StrSplit(max_values, ',');
     for (int i = 0, e = node_maxs_str.size(); i < e; i++) {
@@ -126,11 +128,11 @@ bool ParseInputNodeQuantSpecs(absl::string_view node_names,
                                 quant_specs);
 }
 
-bool GetInputNodeQuantSpecs(
-    const std::vector<std::string>& node_names,
-    const std::vector<llvm::Optional<double>>& node_mins,
-    const std::vector<llvm::Optional<double>>& node_maxs,
-    tensorflow::DataType inference_type, QuantizationSpecs* quant_specs) {
+bool GetInputNodeQuantSpecs(const std::vector<std::string>& node_names,
+                            const std::vector<std::optional<double>>& node_mins,
+                            const std::vector<std::optional<double>>& node_maxs,
+                            tensorflow::DataType inference_type,
+                            QuantizationSpecs* quant_specs) {
   quant_specs->inference_type = inference_type;
 
   // If min/max are not specified, just return;
@@ -157,5 +159,5 @@ bool GetInputNodeQuantSpecs(
   return false;
 }
 
-}  // namespace TFL
+}  // namespace quant
 }  // namespace mlir

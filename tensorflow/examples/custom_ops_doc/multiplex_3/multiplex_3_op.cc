@@ -52,7 +52,7 @@ REGISTER_OP("Examples>MultiplexSparse")
       c->set_output(0, c->Matrix(num_rows, dense_rank));
       c->set_output(1, c->Vector(num_rows));
       c->set_output(2, c->Vector(dense_rank));
-      return tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     })
     .Doc(R"doc(
 Return elements chosen from `a` or `b` depending on `cond`.
@@ -60,9 +60,9 @@ Return elements chosen from `a` or `b` depending on `cond`.
 This is similar to `np.where` and `tf.where`, but simplified to only handle
 the case of sparse tensors that are vectors, no optional parameters,
 no broadcasting, etc.. Elements for `a` are chosen if there is a `true` `cond`
-value at the same positon. Elements for `a` are chosen if there is not a `true`
-`cond` value at the same positon, i.e., if either there is a `false` `cond` value
-or the `cond` value is not specified.
+value at the same position. Elements for `b` are chosen if there is not a `true`
+`cond` value at the same position, i.e., if either there is a `false` `cond`
+value or the `cond` value is not specified.
 
 Indices must be ordered as described by tf.sparse_reorder.
 

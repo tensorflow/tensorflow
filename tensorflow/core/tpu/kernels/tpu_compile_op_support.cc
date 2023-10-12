@@ -14,73 +14,96 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 
+#include <cstdint>
+#include <memory>
+#include <optional>
 #include <string>
+#include <utility>
+#include <variant>
+#include <vector>
 
-#include "tensorflow/compiler/xla/debug_options_flags.h"
-#include "tensorflow/compiler/xla/service/computation_layout.h"
-#include "tensorflow/compiler/xla/service/computation_placer.h"
-#include "tensorflow/compiler/xla/service/dump.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
-#include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
-#include "tensorflow/stream_executor/tpu/proto_helper.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/service/computation_layout.h"
+#include "xla/service/computation_placer.h"
+#include "xla/service/dump.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/status_macros.h"
+#include "xla/xla.pb.h"
+#include "xla/xla_data.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compile.pb.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tpu {
-using ::stream_executor::port::Status;
-using ::stream_executor::port::StatusOr;
+
 using ::xla::ComputationLayout;
 using ::xla::DebugOptions;
 using ::xla::DeviceAssignment;
 using ::xla::HloModuleConfig;
 using ::xla::HloSharding;
-using ::xla::InvalidArgument;
 using ::xla::ProgramShape;
 using ::xla::Shape;
 using ::xla::ShapeTree;
 using ::xla::ShapeUtil;
 
-Status ValidateResultShape(const Shape& client_shape,
-                           const Shape& result_shape) {
+absl::Status ValidateResultShape(const Shape& client_shape,
+                                 const Shape& result_shape) {
   TF_RETURN_IF_ERROR(
       xla::ShapeUtil::ValidateShapeWithOptionalLayout(client_shape));
   if (!xla::ShapeUtil::Compatible(client_shape, result_shape)) {
-    return InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrFormat(
         "Shape used to set computation result layout %s is not compatible "
         "with result shape %s",
         xla::ShapeUtil::HumanStringWithLayout(client_shape),
-        xla::ShapeUtil::HumanString(result_shape));
+        xla::ShapeUtil::HumanString(result_shape)));
   }
-  return Status::OK();
+  return absl::OkStatus();
 }
 
-StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
+absl::StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
     const ProgramShape& program_shape, absl::Span<const Shape> argument_shapes,
-    absl::optional<const Shape> result_layout,
-    absl::optional<const DeviceAssignment> device_assignment, int replica_count,
+    std::optional<const Shape> result_layout,
+    std::optional<const DeviceAssignment> device_assignment, int replica_count,
     int num_partitions, const DebugOptions* debug_options, const int* seed,
     const int* launch_id, const bool* alias_passthrough_params,
     const xla::FusionConfigCollection* fusion_config_collection,
     const std::vector<std::vector<bool>>* fusion_config) {
-  auto config = absl::make_unique<HloModuleConfig>(program_shape);
+  auto config = std::make_unique<HloModuleConfig>(program_shape);
   ComputationLayout* computation_layout =
       config->mutable_entry_computation_layout();
   if (program_shape.parameters_size() != argument_shapes.size()) {
-    return InvalidArgument("computation takes %d parameters, but %u given",
-                           program_shape.parameters_size(),
-                           argument_shapes.size());
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "computation takes %d parameters, but %u given",
+        program_shape.parameters_size(), argument_shapes.size()));
   }
   for (int i = 0; i < argument_shapes.size(); ++i) {
     // Verify that shape of arguments matches the shape of the arguments in the
     // ProgramShape.
     if (!ShapeUtil::Compatible(argument_shapes[i],
                                program_shape.parameters(i))) {
-      return InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrFormat(
           "Argument does not match shape of computation parameter %d: want "
           "%s, got %s",
           i, ShapeUtil::HumanString(program_shape.parameters(i)),
-          ShapeUtil::HumanString(argument_shapes[i]));
+          ShapeUtil::HumanString(argument_shapes[i])));
     }
     TF_RETURN_IF_ERROR(
         computation_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
@@ -133,11 +156,11 @@ StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
   return std::move(config);
 }
 
-StatusOr<std::unique_ptr<xla::HloModuleConfig>> CreateModuleConfig(
+absl::StatusOr<std::unique_ptr<xla::HloModuleConfig>> CreateModuleConfig(
     const xla::ProgramShape& program_shape,
     absl::Span<const Shape> argument_shapes,
-    absl::optional<const Shape> result_layout,
-    absl::optional<const DeviceAssignment> device_assignment, int replica_count,
+    std::optional<const Shape> result_layout,
+    std::optional<const DeviceAssignment> device_assignment, int replica_count,
     int num_partitions, const DebugOptions* debug_options) {
   return CreateModuleConfig(program_shape, argument_shapes, result_layout,
                             device_assignment, replica_count, num_partitions,
@@ -192,13 +215,13 @@ Shape GetPerDeviceShape(const Shape& shape, const HloSharding& sharding,
     dimensions[i] = limit[i] - offset[i];
   }
   if (shape.has_layout()) {
-    return xla::ShapeUtil::MakeShapeWithLayout(shape.element_type(), dimensions,
-                                               shape.layout().minor_to_major());
+    return xla::ShapeUtil::MakeShapeWithDenseLayout(
+        shape.element_type(), dimensions, shape.layout().minor_to_major());
   }
   return xla::ShapeUtil::MakeShape(shape.element_type(), dimensions);
 }
 
-Status AddVariableUpdatesToCores(
+absl::Status AddVariableUpdatesToCores(
     const TPUCompileMetadataProto& metadata,
     const XlaCompiler::CompilationResult& compilation_result,
     const std::vector<ShardingAndIndex>& arg_core_mapping,
@@ -236,7 +259,7 @@ Status AddVariableUpdatesToCores(
             for (int64_t core :
                  proto_arg.sharding().tile_assignment_devices()) {
               xla::Shape per_core_shape =
-                  GetPerDeviceShape(shape, sharding_or.ValueOrDie(), core);
+                  GetPerDeviceShape(shape, sharding_or.value(), core);
               add_to_core(core, per_core_shape);
             }
           } else {
@@ -268,10 +291,10 @@ Status AddVariableUpdatesToCores(
       }
     }
   }
-  return Status::OK();
+  return absl::OkStatus();
 }
 
-Status ComputeOutputShapesForEachCore(
+absl::Status ComputeOutputShapesForEachCore(
     const tpu::TPUCompileMetadataProto& metadata,
     const XlaCompiler::CompilationResult& compilation_result,
     std::vector<std::vector<xla::Shape>>* per_core_output_shapes) {
@@ -295,7 +318,7 @@ Status ComputeOutputShapesForEachCore(
       TF_RET_CHECK(sharding_or.ok());
       for (int64_t core : retval.sharding().tile_assignment_devices()) {
         xla::Shape per_core_shape =
-            GetPerDeviceShape(shape, sharding_or.ValueOrDie(), core);
+            GetPerDeviceShape(shape, sharding_or.value(), core);
         add_shape_to_core(core, std::move(per_core_shape));
       }
     } else {
@@ -306,13 +329,13 @@ Status ComputeOutputShapesForEachCore(
       }
     }
   }
-  return Status::OK();
+  return absl::OkStatus();
 }
 
-Status CreateHloModules(
+absl::Status CreateHloModules(
     const TPUCompileMetadataProto& metadata,
     const tensorflow::XlaCompiler::CompilationResult& compilation_result,
-    const absl::optional<xla::DeviceAssignment>& device_assignment,
+    const std::optional<xla::DeviceAssignment>& device_assignment,
     std::vector<std::unique_ptr<xla::HloModule>>* hlo_modules) {
   TF_RET_CHECK(
       compilation_result.computation->proto().has_host_program_shape());
@@ -336,11 +359,11 @@ Status CreateHloModules(
   DumpHloModuleIfEnabled(*hlo_module, "before_optimizations");
   hlo_modules->push_back(std::move(hlo_module));
 
-  return Status::OK();
+  return absl::OkStatus();
 }
 
-StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
-    const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
+absl::StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
+    const std::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
     const TPUCompileMetadataProto& metadata,
     const std::vector<TensorShape>& arg_shapes) {
   VLOG(1) << "CreateTpuCompilationRequest.";
@@ -349,12 +372,12 @@ StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
   compilation_request.set_use_mlir(use_mlir);
   if (use_mlir) {
     VLOG(1) << "Serializing MlirModule";
-    const MlirToHloArgs& mlir_computation = absl::get<0>(computation);
+    const MlirToHloArgs& mlir_computation = std::get<0>(computation);
     *compilation_request.mutable_mlir_module() =
-        string(mlir_computation.mlir_module);
+        std::string(mlir_computation.mlir_module);
   } else {
     VLOG(1) << "Serializing FunctionDefinitionLibrary";
-    const FunctionToHloArgs& function_computation = absl::get<1>(computation);
+    const FunctionToHloArgs& function_computation = std::get<1>(computation);
     *compilation_request.mutable_fdef_lib() =
         function_computation.flib_def->ToProto();
     compilation_request.set_graph_def_version(
@@ -365,14 +388,14 @@ StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
     // to avoid passing guaranteed_constants over C_API.
     if (function_computation.guaranteed_constants.index() == 0) {
       absl::Span<const TensorProto* const> guaranteed_constants =
-          absl::get<0>(function_computation.guaranteed_constants);
+          std::get<0>(function_computation.guaranteed_constants);
       for (const TensorProto* constant : guaranteed_constants) {
         *compilation_request.add_guaranteed_constants() = *constant;
       }
     } else {
       CHECK_EQ(function_computation.guaranteed_constants.index(), 1);
       const OpInputList& guaranteed_constants =
-          *absl::get<1>(function_computation.guaranteed_constants);
+          *std::get<1>(function_computation.guaranteed_constants);
       for (const Tensor& constant : guaranteed_constants) {
         constant.AsProtoTensorContent(
             compilation_request.add_guaranteed_constants());
@@ -390,10 +413,10 @@ StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
   return compilation_request;
 }
 
-Status CompileOpMetadataFromContext(OpKernelConstruction* ctx,
-                                    TPUCompileMetadataProto* metadata,
-                                    NameAttrList* function_name,
-                                    std::string* mlir_module) {
+absl::Status CompileOpMetadataFromContext(OpKernelConstruction* ctx,
+                                          TPUCompileMetadataProto* metadata,
+                                          NameAttrList* function_name,
+                                          std::string* mlir_module) {
   CHECK_NE(metadata, nullptr);
 
   int num_computations;
@@ -402,7 +425,8 @@ Status CompileOpMetadataFromContext(OpKernelConstruction* ctx,
   std::string metadata_string;
   TF_RETURN_IF_ERROR(ctx->GetAttr("metadata", &metadata_string));
   if (!metadata->ParsePartialFromString(metadata_string)) {
-    return errors::InvalidArgument("Unable to parse TPUCompileMetadataProto");
+    return absl::InvalidArgumentError(
+        "Unable to parse TPUCompileMetadataProto");
   }
 
   if (function_name != nullptr) {
@@ -414,39 +438,42 @@ Status CompileOpMetadataFromContext(OpKernelConstruction* ctx,
   }
 
   if (num_computations != metadata->num_cores_per_replica()) {
-    return errors::InvalidArgument(
-        "num_computations must be equal to "
-        "num_cores_per_replica in the 'metadata' "
-        "attribute (",
-        num_computations, " vs ", metadata->num_cores_per_replica(), ")");
+    return absl::InvalidArgumentError(
+        absl::StrFormat("num_computations must be equal to "
+                        "num_cores_per_replica in the 'metadata' "
+                        "attribute (%d vs %d)",
+                        num_computations, metadata->num_cores_per_replica()));
   }
 
   if (metadata->has_device_assignment()) {
-    StatusOr<std::unique_ptr<DeviceAssignment>> device_assignment_or_error =
-        DeviceAssignment::Deserialize(metadata->device_assignment());
+    absl::StatusOr<std::unique_ptr<DeviceAssignment>>
+        device_assignment_or_error =
+            DeviceAssignment::Deserialize(metadata->device_assignment());
     TF_RETURN_IF_ERROR(device_assignment_or_error.status());
     const DeviceAssignment& device_assignment =
-        *device_assignment_or_error.ValueOrDie();
+        *device_assignment_or_error.value();
     const int num_replicas = metadata->num_replicas();
     if (device_assignment.replica_count() != num_replicas) {
-      return errors::InvalidArgument(
-          "Device assignment replica_count != num_replicas; ",
-          device_assignment.replica_count(), " vs ", num_replicas);
+      return absl::InvalidArgumentError(absl::StrFormat(
+          "Device assignment replica_count != num_replicas; %d vs %d",
+          device_assignment.replica_count(), num_replicas));
     }
     if (device_assignment.computation_count() !=
         metadata->num_cores_per_replica()) {
-      return errors::InvalidArgument(
-          "Device assignment computation_count != num_cores_per_replica; ",
-          device_assignment.computation_count(), " vs ",
-          metadata->num_cores_per_replica());
+      return absl::InvalidArgumentError(
+          absl::StrFormat("Device assignment computation_count != "
+                          "num_cores_per_replica; %d vs %d",
+                          device_assignment.computation_count(),
+                          metadata->num_cores_per_replica()));
     }
   }
-  return Status::OK();
+  return absl::OkStatus();
 }
 
-Status ComputeArgumentShapes(const tpu::TPUCompileMetadataProto& metadata,
-                             const std::vector<TensorShape>& dynamic_shapes,
-                             std::vector<TensorShape>* arg_shapes) {
+absl::Status ComputeArgumentShapes(
+    const tpu::TPUCompileMetadataProto& metadata,
+    const std::vector<TensorShape>& dynamic_shapes,
+    std::vector<TensorShape>* arg_shapes) {
   arg_shapes->resize(metadata.args_size());
   int dynamic_shape_pos = 0;
   for (int i = 0; i < metadata.args_size(); ++i) {
@@ -468,18 +495,19 @@ Status ComputeArgumentShapes(const tpu::TPUCompileMetadataProto& metadata,
           << "Too few dynamic shapes";
       shape = dynamic_shapes[dynamic_shape_pos++];
       if (!static_shape.IsCompatibleWith(shape)) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Mismatch between static and dynamic shape for argument. Static "
             "shape: ",
             static_shape.DebugString(),
-            "; dynamic shape: ", shape.DebugString());
+            "; dynamic shape: ", shape.DebugString()));
       }
     }
   }
   // Checks we consumed all of the dynamic shapes.
   TF_RET_CHECK(dynamic_shape_pos == dynamic_shapes.size())
       << "Too many dynamic shapes";
-  return Status::OK();
+  return absl::OkStatus();
 }
+
 }  // namespace tpu
 }  // namespace tensorflow

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_context.h"
 
+#include <functional>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_util.h"
@@ -50,10 +52,10 @@ void PluggableDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
 
 Status PluggableDeviceContext::ThenExecute(Device* device, se::Stream* stream,
                                            std::function<void()> func) {
-  const DeviceBase::GpuDeviceInfo* device_info =
-      device->tensorflow_gpu_device_info();
+  const DeviceBase::AcceleratorDeviceInfo* device_info =
+      device->tensorflow_accelerator_device_info();
   device_info->event_mgr->ThenExecute(stream, func);
-  return Status::OK();
+  return OkStatus();
 }
 
 bool PluggableDeviceContext::IsPluggableDevice() { return true; }

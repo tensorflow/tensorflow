@@ -17,6 +17,9 @@ package org.tensorflow.lite;
 
 import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import java.io.File;
 import java.nio.ByteBuffer;
@@ -30,6 +33,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime;
+import org.tensorflow.lite.acceleration.ValidatedAccelerationConfig;
 
 /** Unit tests for {@link org.tensorflow.lite.InterpreterApi}. */
 @RunWith(JUnit4.class)
@@ -94,6 +98,41 @@ public final class InterpreterApiTest {
   }
 
   @Test
+  public void testInterpreterWithoutAccelerationConfig() throws Exception {
+    FloatBuffer parsedOutput = FloatBuffer.allocate(1);
+    InterpreterApi.Options options = new InterpreterApi.Options(TEST_OPTIONS);
+    assertThat(options.getAccelerationConfig()).isNull();
+
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, options)) {
+      // Not setting acceleration config has no effect on an interpreter.
+      assertThat(interpreter).isNotNull();
+
+      interpreter.run(2.37f, parsedOutput);
+      assertThat(parsedOutput.get(0)).isWithin(0.1f).of(7.11f);
+    }
+  }
+
+  @Test
+  public void testInterpreterWithAccelerationConfig() throws Exception {
+    InterpreterApi.Options options = new InterpreterApi.Options(TEST_OPTIONS);
+
+    // Mock the acceleration config interface.
+    ValidatedAccelerationConfig accelerationConfig = mock(ValidatedAccelerationConfig.class);
+
+    // Set the acceleration config
+    options.setAccelerationConfig(accelerationConfig);
+
+    // Verify that the config was set
+    assertThat(options.getAccelerationConfig()).isEqualTo(accelerationConfig);
+
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, options)) {
+      assertThat(interpreter).isNotNull();
+      // Verify that the apply method was invoked
+      verify(accelerationConfig).apply(any());
+    }
+  }
+
+  @Test
   public void testInterpreterWithNullOptions() throws Exception {
     try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, null)) {
       assertThat(interpreter).isNotNull();
@@ -101,12 +140,15 @@ public final class InterpreterApiTest {
       assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
       assertThat(interpreter.getOutputTensorCount()).isEqualTo(1);
       assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getClass().getCanonicalName()).contains("org.tensorflow.lite");
     } catch (IllegalStateException e) {
       // This can occur when this code is not linked against the TF Lite runtime.
       // Verify that the error message has some hints about how to link
       // against the runtime ("org.tensorflow:tensorflow-lite:<version>").
       assertThat(e).hasMessageThat().contains("org.tensorflow");
       assertThat(e).hasMessageThat().contains("tensorflow-lite");
+      assertThat(e).hasMessageThat().doesNotContain("com.google.android.gms");
+      assertThat(e).hasMessageThat().doesNotContain("play-services-tflite-java");
     }
   }
 
@@ -120,12 +162,15 @@ public final class InterpreterApiTest {
       assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
       assertThat(interpreter.getOutputTensorCount()).isEqualTo(1);
       assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getClass().getCanonicalName()).contains("org.tensorflow.lite");
     } catch (IllegalStateException e) {
       // This can occur when this code is not linked against the TF Lite runtime.
       // Verify that the error message has some hints about how to link
       // against the runtime ("org.tensorflow:tensorflow-lite:<version>").
       assertThat(e).hasMessageThat().contains("org.tensorflow");
       assertThat(e).hasMessageThat().contains("tensorflow-lite");
+      assertThat(e).hasMessageThat().doesNotContain("com.google.android.gms");
+      assertThat(e).hasMessageThat().doesNotContain("play-services-tflite-java");
     }
   }
 
@@ -139,13 +184,28 @@ public final class InterpreterApiTest {
       assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
       assertThat(interpreter.getOutputTensorCount()).isEqualTo(1);
       assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getClass().getCanonicalName()).contains("com.google.android.gms");
     } catch (IllegalStateException e) {
-      // This can occur when this code is not linked against the TF Lite runtime.
+      // This can occur when this code is not linked against the right TF Lite runtime client.
       // Verify that the error message has some hints about how to link in the
       // client library for TF Lite in Google Play Services
       // ("com.google.android.gms:play-services-tflite-java:<version>").
       assertThat(e).hasMessageThat().contains("com.google.android.gms");
       assertThat(e).hasMessageThat().contains("play-services-tflite-java");
+      assertThat(e).hasMessageThat().doesNotContain("org.tensorflow:tensorflow-lite");
+    }
+  }
+
+  @Test
+  public void testRuntimePreferSystemOverApplication() throws Exception {
+    InterpreterApi.Options options =
+        new InterpreterApi.Options().setRuntime(TfLiteRuntime.PREFER_SYSTEM_OVER_APPLICATION);
+    try (InterpreterApi interpreter = InterpreterApi.create(MODEL_BUFFER, options)) {
+      assertThat(interpreter).isNotNull();
+      assertThat(interpreter.getInputTensorCount()).isEqualTo(1);
+      assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getOutputTensorCount()).isEqualTo(1);
+      assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
     }
   }
 
@@ -172,7 +232,7 @@ public final class InterpreterApiTest {
   public void testRunWithDirectByteBufferModel() throws Exception {
     ByteBuffer byteBuffer = ByteBuffer.allocateDirect(MODEL_BUFFER.capacity());
     byteBuffer.order(ByteOrder.nativeOrder());
-    byteBuffer.put(MODEL_BUFFER.duplicate());  // Use duplicate to avoid updating MODEL_BUFFER.
+    byteBuffer.put(MODEL_BUFFER.duplicate()); // Use duplicate to avoid updating MODEL_BUFFER.
     try (InterpreterApi interpreter = InterpreterApi.create(byteBuffer, TEST_OPTIONS)) {
       float[] oneD = {1.23f, 6.54f, 7.81f};
       float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
@@ -190,7 +250,7 @@ public final class InterpreterApiTest {
   public void testRunWithInvalidByteBufferModel() throws Exception {
     ByteBuffer byteBuffer = ByteBuffer.allocate(MODEL_BUFFER.capacity());
     byteBuffer.order(ByteOrder.nativeOrder());
-    byteBuffer.put(MODEL_BUFFER.duplicate());  // Use duplicate to avoid updating MODEL_BUFFER.
+    byteBuffer.put(MODEL_BUFFER.duplicate()); // Use duplicate to avoid updating MODEL_BUFFER.
     try {
       InterpreterApi.create(byteBuffer, TEST_OPTIONS);
       fail();

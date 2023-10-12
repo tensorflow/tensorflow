@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "StatelessIf"
   input_arg {
     name: "cond"

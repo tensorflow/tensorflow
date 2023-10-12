@@ -16,6 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_CORE_THREADPOOL_INTERFACE_H_
 #define TENSORFLOW_CORE_LIB_CORE_THREADPOOL_INTERFACE_H_
 
-#include "tensorflow/core/platform/threadpool_interface.h"
+#include "tensorflow/core/platform/threadpool_interface.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_CORE_LIB_CORE_THREADPOOL_INTERFACE_H_

@@ -25,7 +25,8 @@ limitations under the License.
 
 #include <memory>
 #include <vector>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -166,7 +167,8 @@ class ReverseSequenceOp : public OpKernel {
   int32 batch_dim_;
   int32 seq_dim_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ReverseSequenceOp);
+  ReverseSequenceOp(const ReverseSequenceOp&) = delete;
+  void operator=(const ReverseSequenceOp&) = delete;
 };
 
 #define REGISTER_REVERSE_SEQUENCE(type, len_type)                \
@@ -180,8 +182,7 @@ class ReverseSequenceOp : public OpKernel {
   REGISTER_REVERSE_SEQUENCE(type, int32);   \
   REGISTER_REVERSE_SEQUENCE(type, int64_t);
 
-TF_CALL_NUMBER_TYPES(REGISTER_REVERSE_SEQUENCE_LEN);
-TF_CALL_bool(REGISTER_REVERSE_SEQUENCE_LEN);
+TF_CALL_POD_STRING_TYPES(REGISTER_REVERSE_SEQUENCE_LEN);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

@@ -1,0 +1,84 @@
+path: "tensorflow.__internal__.distribute.ShardedVariable"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.sharded_variable.ShardedVariable\'>"
+  is_instance: "<class \'tensorflow.python.distribute.sharded_variable.ShardedVariableMixin\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "is_sharded_variable"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "variables"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'variables\', \'name\'], varargs=None, keywords=None, defaults=[\'ShardedVariable\'], "
+  }
+  member_method {
+    name: "assign"
+    argspec: "args=[\'self\', \'value\', \'use_locking\', \'name\', \'read_value\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\'], "
+  }
+  member_method {
+    name: "assign_add"
+    argspec: "args=[\'self\', \'delta\', \'use_locking\', \'name\', \'read_value\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'True\'], "
+  }
+  member_method {
+    name: "assign_sub"
+    argspec: "args=[\'self\', \'delta\', \'use_locking\', \'name\', \'read_value\'], varargs=None, keywords=None, defaults=[\'False\', \'None\', \'True\'], "
+  }
+  member_method {
+    name: "batch_scatter_update"
+    argspec: "args=[\'self\', \'sparse_delta\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "numpy"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "scatter_add"
+    argspec: "args=[\'self\', \'sparse_delta\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "scatter_div"
+    argspec: "args=[\'self\', \'sparse_delta\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "scatter_max"
+    argspec: "args=[\'self\', \'sparse_delta\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "scatter_min"
+    argspec: "args=[\'self\', \'sparse_delta\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "scatter_mul"
+    argspec: "args=[\'self\', \'sparse_delta\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "scatter_sub"
+    argspec: "args=[\'self\', \'sparse_delta\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "scatter_update"
+    argspec: "args=[\'self\', \'sparse_delta\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "sparse_read"
+    argspec: "args=[\'self\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

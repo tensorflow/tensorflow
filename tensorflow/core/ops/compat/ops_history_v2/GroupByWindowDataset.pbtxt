@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "GroupByWindowDataset"
   input_arg {
     name: "input_dataset"

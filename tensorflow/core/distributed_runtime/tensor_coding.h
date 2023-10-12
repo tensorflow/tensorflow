@@ -25,7 +25,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class Allocator;
 class DeviceBase;
 class TensorProto;
 

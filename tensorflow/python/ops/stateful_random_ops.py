@@ -14,21 +14,24 @@
 # ==============================================================================
 """Operations for generating random numbers."""
 
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops_util
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.stateless_random_ops import Algorithm
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -55,12 +58,21 @@ SEED_SIZE = 16  # in units of SEED_TYPE
 
 STATE_TYPE = SEED_TYPE
 ALGORITHM_TYPE = STATE_TYPE
-PHILOX_STATE_SIZE = 3
-THREEFRY_STATE_SIZE = 2
 
 
-RNG_ALG_PHILOX = Algorithm.PHILOX.value
-RNG_ALG_THREEFRY = Algorithm.THREEFRY.value
+# The following sizes are all in unit of uint64.
+PHILOX_KEY_SIZE = 1
+THREEFRY_KEY_SIZE = 1
+PHILOX_COUNTER_SIZE = 2
+THREEFRY_COUNTER_SIZE = 1
+PHILOX_STATE_SIZE = PHILOX_COUNTER_SIZE + PHILOX_KEY_SIZE
+THREEFRY_STATE_SIZE = THREEFRY_COUNTER_SIZE + THREEFRY_KEY_SIZE
+
+
+RNG_ALG_PHILOX = random_ops_util.Algorithm.PHILOX.value
+RNG_ALG_THREEFRY = random_ops_util.Algorithm.THREEFRY.value
+
+
 DEFAULT_ALGORITHM = RNG_ALG_PHILOX
 
 
@@ -126,31 +138,31 @@ def _make_1d_state(state_size, seed):
 
 
 def _get_counter_size(alg):
-  if alg == RNG_ALG_PHILOX:
-    return 2
-  elif alg == RNG_ALG_THREEFRY:
-    return 1
+  if alg == random_ops_util.Algorithm.PHILOX.value:
+    return PHILOX_COUNTER_SIZE
+  elif alg == random_ops_util.Algorithm.THREEFRY.value:
+    return THREEFRY_COUNTER_SIZE
+  elif alg == random_ops_util.Algorithm.AUTO_SELECT.value:
+    # For AUTO_SELECT, we'll manage the counter as if it's for Philox.
+    return PHILOX_COUNTER_SIZE
   else:
-    raise ValueError(
-        f"Argument `alg` got unsupported value {alg}. Supported values are "
-        f"{RNG_ALG_PHILOX} for the Philox algorithm and {RNG_ALG_THREEFRY} for "
-        f"the ThreeFry algorithm.")
+    raise ValueError(stateless_random_ops.unsupported_alg_error_msg(alg))
 
 
 def _get_state_size(alg):
-  if alg == RNG_ALG_PHILOX:
+  if alg == random_ops_util.Algorithm.PHILOX.value:
     return PHILOX_STATE_SIZE
-  elif alg == RNG_ALG_THREEFRY:
+  elif alg == random_ops_util.Algorithm.THREEFRY.value:
     return THREEFRY_STATE_SIZE
+  elif alg == random_ops_util.Algorithm.AUTO_SELECT.value:
+    # For AUTO_SELECT, we'll manage the state as if it's for Philox.
+    return PHILOX_STATE_SIZE
   else:
-    raise ValueError(
-        f"Argument `alg` got unsupported value {alg}. Supported values are "
-        f"{RNG_ALG_PHILOX} for the Philox algorithm and {RNG_ALG_THREEFRY} for "
-        f"the ThreeFry algorithm.")
+    raise ValueError(stateless_random_ops.unsupported_alg_error_msg(alg))
 
 
 def _check_state_shape(shape, alg):
-  if isinstance(alg, ops.Tensor) and not context.executing_eagerly():
+  if isinstance(alg, tensor.Tensor) and not context.executing_eagerly():
     return
   shape.assert_is_compatible_with([_get_state_size(int(alg))])
 
@@ -179,7 +191,7 @@ def create_rng_state(seed, alg):
   Returns:
     a 1-D numpy array whose size depends on the algorithm.
   """
-  alg = stateless_random_ops.convert_alg_to_int(alg)
+  alg = random_ops_util.convert_alg_to_int(alg)
   return _make_state_from_seed(seed, alg)
 
 
@@ -199,14 +211,14 @@ def _convert_to_state_tensor(t):
 
 
 def get_replica_id():
-  rctx = ds_context.get_replica_context()
+  rctx = distribute_lib.get_replica_context()
   if rctx is None:
     return None
   return rctx.replica_id_in_sync_group
 
 
 @tf_export("random.Generator", "random.experimental.Generator")
-class Generator(tracking.AutoTrackable):
+class Generator(autotrackable.AutoTrackable):
   """Random-number generator.
 
   Example:
@@ -354,7 +366,7 @@ class Generator(tracking.AutoTrackable):
     if alg is None:
       # TODO(b/170668986): more sophisticated algorithm selection
       alg = DEFAULT_ALGORITHM
-    alg = stateless_random_ops.convert_alg_to_int(alg)
+    alg = random_ops_util.convert_alg_to_int(alg)
     state = create_rng_state(seed, alg)
     return cls(state=state, alg=alg)
 
@@ -377,7 +389,7 @@ class Generator(tracking.AutoTrackable):
     if alg is None:
       # TODO(b/170668986): more sophisticated algorithm selection
       alg = DEFAULT_ALGORITHM
-    alg = stateless_random_ops.convert_alg_to_int(alg)
+    alg = random_ops_util.convert_alg_to_int(alg)
     state = non_deterministic_ints(shape=[_get_state_size(alg)],
                                    dtype=SEED_TYPE)
     return cls(state=state, alg=alg)
@@ -401,7 +413,7 @@ class Generator(tracking.AutoTrackable):
     """
     counter = _convert_to_state_tensor(counter)
     key = _convert_to_state_tensor(key)
-    alg = stateless_random_ops.convert_alg_to_int(alg)
+    alg = random_ops_util.convert_alg_to_int(alg)
     counter.shape.assert_is_compatible_with([_get_state_size(alg) - 1])
     key.shape.assert_is_compatible_with([])
     key = array_ops.reshape(key, [1])
@@ -434,8 +446,8 @@ class Generator(tracking.AutoTrackable):
         the same random state) across all architectures (CPU, GPU, XLA etc).
     """
     # TODO(b/175072242): Remove distribution-strategy dependencies in this file.
-    if ds_context.has_strategy():
-      self._distribution_strategy = ds_context.get_strategy()
+    if distribute_lib.has_strategy():
+      self._distribution_strategy = distribute_lib.get_strategy()
     else:
       self._distribution_strategy = None
     if copy_from is not None:
@@ -446,7 +458,7 @@ class Generator(tracking.AutoTrackable):
       self._alg = copy_from.algorithm
     else:
       assert alg is not None and state is not None
-      alg = stateless_random_ops.convert_alg_to_int(alg)
+      alg = random_ops_util.convert_alg_to_int(alg)
       if isinstance(state, variables.Variable):
         _check_state_shape(state.shape, alg)
         self._state_var = state
@@ -560,15 +572,13 @@ class Generator(tracking.AutoTrackable):
         counter-based; otherwise it raises a ValueError.
     """
     alg = self.algorithm
-    if alg == RNG_ALG_PHILOX or alg == RNG_ALG_THREEFRY:
+    if alg in (a.value for a in random_ops_util.Algorithm):
       return self._state_var[-1]
     else:
-      raise ValueError(
-          f"This generator uses an unsupported algorithm {alg}. Supported "
-          f"values are {RNG_ALG_PHILOX} for the Philox algorithm and "
-          f"{RNG_ALG_THREEFRY} for the ThreeFry algorithm.")
+      raise ValueError(stateless_random_ops.unsupported_alg_error_msg(alg))
 
   def _skip_single_var(self, var, delta):
+    resource_variable_ops.variable_accessed(var)
     # TODO(wangpeng): Cache the cast algorithm instead of casting everytime.
     return gen_stateful_random_ops.rng_read_and_skip(
         var.handle,
@@ -597,28 +607,28 @@ class Generator(tracking.AutoTrackable):
       # replica.
       return update_fn(self.state)
     if self._distribution_strategy is not None:
-      with ds_context.enter_or_assert_strategy(self._distribution_strategy):
-        if ds_context.in_cross_replica_context():
+      with distribute_lib.enter_or_assert_strategy(self._distribution_strategy):
+        if distribute_lib.in_cross_replica_context():
           # Code that operates on all replicas of a variable cannot be saved
           # without retracing.
           values_util.mark_as_unsaveable()
-        if (ds_context.in_cross_replica_context() or
+        if (distribute_lib.in_cross_replica_context() or
             "CentralStorage" in type(self._distribution_strategy).__name__):
           # In cross-replica context we need to use strategy.extended.update.
           # In CentralStorageStrategy we also need to use
           # strategy.extended.update (even for replica context),
           # because variable updates here must be within merge_call.
-          return ds_context.get_strategy().extended.update(
+          return distribute_lib.get_strategy().extended.update(
               self.state, update_fn)
     return update_fn(self.state)
 
   def _preprocess_key(self, key):
     if self._distribution_strategy is None:
       return key
-    with ds_context.enter_or_assert_strategy(self._distribution_strategy):
+    with distribute_lib.enter_or_assert_strategy(self._distribution_strategy):
       replica_id = get_replica_id()
       if replica_id is not None:
-        replica_id = array_ops.stack([replica_id, 0], axis=0)
+        replica_id = array_ops_stack.stack([replica_id, 0], axis=0)
         replica_id = math_ops.cast(replica_id, dtypes.uint64)
         # Conceptually: key = hash(key, replica_id)
         key = gen_stateless_random_ops_v2.stateless_random_uniform_full_int_v2(
@@ -896,17 +906,14 @@ class Generator(tracking.AutoTrackable):
       A tensor of shape [2, count] and dtype int64.
     """
     alg = self.algorithm
-    if alg == RNG_ALG_PHILOX or alg == RNG_ALG_THREEFRY:
+    if alg in (a.value for a in random_ops_util.Algorithm):
       keys = self._make_int64_keys(shape=[count])
       # The two seeds for stateless random ops don't have individual semantics
       # and are scrambled together, so setting one to zero is fine.
       zeros = array_ops.zeros_like(keys)
-      return array_ops.stack([keys, zeros])
+      return array_ops_stack.stack([keys, zeros])
     else:
-      raise ValueError(
-          f"This generator uses an unsupported algorithm {alg}. Supported "
-          f"values are {RNG_ALG_PHILOX} for the Philox algorithm and "
-          f"{RNG_ALG_THREEFRY} for the ThreeFry algorithm.")
+      raise ValueError(stateless_random_ops.unsupported_alg_error_msg(alg))
 
   def split(self, count=1):
     """Returns a list of independent `Generator` objects.
@@ -951,15 +958,12 @@ class Generator(tracking.AutoTrackable):
       return [0] * (_get_state_size(alg) - 1) + [key]
 
     alg = self.algorithm
-    if alg == RNG_ALG_PHILOX or alg == RNG_ALG_THREEFRY:
+    if alg in (a.value for a in random_ops_util.Algorithm):
       keys = self._make_int64_keys(shape=[count])
       return [Generator(state=_key_to_state(alg, key), alg=alg)
-              for key in array_ops.unstack(keys, num=count)]
+              for key in array_ops_stack.unstack(keys, num=count)]
     else:
-      raise ValueError(
-          f"This generator uses an unsupported algorithm {alg}. Supported "
-          f"values are {RNG_ALG_PHILOX} for the Philox algorithm and "
-          f"{RNG_ALG_THREEFRY} for the ThreeFry algorithm.")
+      raise ValueError(stateless_random_ops.unsupported_alg_error_msg(alg))
 
 
 # It's not safe to create TF ops before `init_google` is called, so this is

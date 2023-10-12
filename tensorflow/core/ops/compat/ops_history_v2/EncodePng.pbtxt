@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "EncodePng"
   input_arg {
     name: "image"

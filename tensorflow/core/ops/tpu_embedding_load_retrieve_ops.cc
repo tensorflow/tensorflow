@@ -26,8 +26,6 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 
-using OptimizationAlgorithm = OptimizationParameters::ParametersCase;
-
 REGISTER_OP("LoadTPUEmbeddingAdagradParameters")
     .Input("parameters: float32")
     .Input("accumulators: float32")

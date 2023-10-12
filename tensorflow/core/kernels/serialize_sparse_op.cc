@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/kernels/reshape_util.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/util/sparse/group_iterator.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
@@ -108,7 +107,7 @@ bool SerializeSparseOp<Variant>::IsExpensive() {
 template <>
 Status SerializeSparseOp<tstring>::Initialize(Tensor* result) {
   *result = Tensor(DT_STRING, TensorShape({3}));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
@@ -117,7 +116,7 @@ Status SerializeSparseOp<tstring>::Serialize(const Tensor& input,
   TensorProto proto;
   input.AsProtoTensorContent(&proto);
   *result = proto.SerializeAsString();
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_KERNEL_BUILDER(Name("SerializeSparse")
@@ -128,14 +127,14 @@ REGISTER_KERNEL_BUILDER(Name("SerializeSparse")
 template <>
 Status SerializeSparseOp<Variant>::Initialize(Tensor* result) {
   *result = Tensor(DT_VARIANT, TensorShape({3}));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
 Status SerializeSparseOp<Variant>::Serialize(const Tensor& input,
                                              Variant* result) {
   *result = input;
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_KERNEL_BUILDER(Name("SerializeSparse")
@@ -214,7 +213,7 @@ struct SerializeGroups<T, tstring> {
       serialize_empty_element(empty_b);
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -329,7 +328,7 @@ struct SerializeGroups<T, Variant> {
       serialize_empty_element(empty_b);
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 

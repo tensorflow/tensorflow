@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "StatelessRandomGetAlg"
   output_arg {
     name: "alg"

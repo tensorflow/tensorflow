@@ -22,7 +22,6 @@ import platform
 import re
 
 import numpy as np
-import six
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
@@ -52,7 +51,7 @@ def _glob(glob_pattern):
     return gfile.Glob(glob_pattern)
 
 
-class InconvertibleTensorProto(object):
+class InconvertibleTensorProto:
   """Represents a TensorProto that cannot be converted to np.ndarray."""
 
   def __init__(self, tensor_proto, initialized=True):
@@ -266,7 +265,7 @@ def device_path_to_device_name(device_dir):
       for path_item in path_items])
 
 
-class DebugTensorDatum(object):
+class DebugTensorDatum:
   """A single tensor dumped by TensorFlow Debugger (tfdbg).
 
   Contains metadata about the dumped tensor, including `timestamp`,
@@ -455,7 +454,7 @@ class WatchKeyDoesNotExistInDebugDumpDirError(ValueError):
   pass
 
 
-class DebugDumpDir(object):
+class DebugDumpDir:
   """Data set from a debug-dump directory on filesystem.
 
   An instance of `DebugDumpDir` contains all `DebugTensorDatum` instances
@@ -573,7 +572,7 @@ class DebugDumpDir(object):
 
   def _calculate_t0(self):
     """Calculate the first timestamp across all devices."""
-    t0s = [t0 for t0 in six.itervalues(self._t0s) if t0 is not None]
+    t0s = [t0 for t0 in self._t0s.values() if t0 is not None]
     self._t0 = min(t0s) if t0s else None
 
   def _load_core_metadata(self):
@@ -719,7 +718,7 @@ class DebugDumpDir(object):
     if len(self.devices()) == 1:
       return self._dump_tensor_data[self.devices()[0]]
     else:
-      all_devices_data = six.itervalues(self._dump_tensor_data)
+      all_devices_data = self._dump_tensor_data.values()
       data = []
       for device_data in all_devices_data:
         data.extend(device_data)

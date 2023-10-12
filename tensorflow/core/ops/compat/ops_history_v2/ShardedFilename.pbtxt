@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "ShardedFilename"
   input_arg {
     name: "basename"

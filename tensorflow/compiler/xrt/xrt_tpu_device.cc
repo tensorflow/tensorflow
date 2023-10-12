@@ -31,14 +31,14 @@ namespace tensorflow {
   if (*rm == nullptr) {
     return errors::Internal("No Tpu resource manager.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XRTTpuDeviceAccessor::ScopedRef::Acquire(int device_ordinal) {
   TF_ASSIGN_OR_RETURN(node_context_,
                       tpu::TpuNodeContext::Create(device_ordinal));
   ordinal_ = device_ordinal;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XRTTpuDeviceAccessor::ScopedRef::Acquire(OpKernelContext* ctx) {

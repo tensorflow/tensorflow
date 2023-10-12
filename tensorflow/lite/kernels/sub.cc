@@ -20,8 +20,8 @@ limitations under the License.
 #include <algorithm>
 #include <limits>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/sub.h"
@@ -458,7 +458,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     EvalQuantized<kernel_type>(context, node, params, data, input1, input2,
                                output);
   } else {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context,
         "output type %d is not supported, requires float|uint8|int32 types.",
         output->type);
@@ -471,20 +471,50 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace sub
 
 TfLiteRegistration* Register_SUB_REF() {
-  static TfLiteRegistration r = {sub::Init, sub::Free, sub::Prepare,
-                                 sub::Eval<sub::kReference>};
+  static TfLiteRegistration r = {
+      sub::Init,
+      sub::Free,
+      sub::Prepare,
+      sub::Eval<sub::kReference>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared};
   return &r;
 }
 
 TfLiteRegistration* Register_SUB_GENERIC_OPT() {
-  static TfLiteRegistration r = {sub::Init, sub::Free, sub::Prepare,
-                                 sub::Eval<sub::kGenericOptimized>};
+  static TfLiteRegistration r = {
+      sub::Init,
+      sub::Free,
+      sub::Prepare,
+      sub::Eval<sub::kGenericOptimized>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared};
   return &r;
 }
 
 TfLiteRegistration* Register_SUB_NEON_OPT() {
-  static TfLiteRegistration r = {sub::Init, sub::Free, sub::Prepare,
-                                 sub::Eval<sub::kNeonOptimized>};
+  static TfLiteRegistration r = {
+      sub::Init,
+      sub::Free,
+      sub::Prepare,
+      sub::Eval<sub::kNeonOptimized>,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0,
+      /*registration_external=*/nullptr,
+      /*async_kernel=*/nullptr,
+      kTfLiteInplaceOpInput0Shared | kTfLiteInplaceOpInput1Shared};
   return &r;
 }
 

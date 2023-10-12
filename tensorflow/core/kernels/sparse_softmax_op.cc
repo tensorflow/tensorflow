@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <numeric>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -126,6 +126,7 @@ class SparseSoftmaxOp : public OpKernel {
       Name("SparseSoftmax").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       SparseSoftmaxOp<CPUDevice, T>)
 
+REGISTER_KERNEL(Eigen::half);
 REGISTER_KERNEL(float);
 REGISTER_KERNEL(double);
 #undef REGISTER_KERNEL

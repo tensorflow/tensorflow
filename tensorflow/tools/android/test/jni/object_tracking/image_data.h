@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_DATA_H_
-#define TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_DATA_H_
+#ifndef TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_IMAGE_DATA_H_
+#define TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_IMAGE_DATA_H_
 
 #include <stdint.h>
 
@@ -256,9 +256,10 @@ class ImageData {
   mutable bool pyramid_sqrt2_computed_[kNumPyramidLevels * 2];
   mutable Image<uint8_t>* pyramid_sqrt2_[kNumPyramidLevels * 2];
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ImageData);
+  ImageData(const ImageData&) = delete;
+  void operator=(const ImageData&) = delete;
 };
 
 }  // namespace tf_tracking
 
-#endif  // TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_DATA_H_
+#endif  // TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_IMAGE_DATA_H_

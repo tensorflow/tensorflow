@@ -20,7 +20,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/util.h"
@@ -91,6 +91,8 @@ class SimplePlanner : public MemoryPlanner {
   TfLiteStatus AcquireNonPersistentMemory() override;
   bool HasNonPersistentMemory() override { return true; };
   void DumpDebugInfo(const std::vector<int>& execution_plan) const override{};
+  void GetAllocInfo(size_t* arena_size,
+                    size_t* arena_persist_size) const override{};
 
  private:
   // Free all the all allocations.

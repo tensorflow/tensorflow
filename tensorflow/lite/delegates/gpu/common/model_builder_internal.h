@@ -18,14 +18,14 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/operation_parser.h"
 
 namespace tflite {
 namespace gpu {
 
 // Returns a new TFLiteOperationParser object which parses the TFLite operator
-// in the the given TfLiteRegistration object.
+// in the given TfLiteRegistration object.
 std::unique_ptr<TFLiteOperationParser> NewOperationParser(
     const TfLiteRegistration* registration, bool allow_quant_ops = false,
     const absl::flat_hash_set<TfLiteBuiltinOperator>* excluded_ops = nullptr);

@@ -611,6 +611,23 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           axis=[-3, -2, -1],
           keepdims=False,
           expected=sum([1, 2, 3, 4, 5, 6, 7, 8, 9])),
+      # Test case for GitHub issue 56222, small variance
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_variance,
+          rt_input=[[[0.214441], [0.214441], [0.214441], [0.214441], [0.214441],
+                     [0.214441], [0.214441]]],
+          axis=[1],
+          keepdims=False,
+          expected=[[0.0]],
+      ),
+      dict(
+          ragged_reduce_op=ragged_math_ops.reduce_std,
+          rt_input=[[[0.214441], [0.214441], [0.214441], [0.214441], [0.214441],
+                     [0.214441], [0.214441]]],
+          axis=[1],
+          keepdims=False,
+          expected=[[0.0]],
+      ),
   )
   def testReduce(self, ragged_reduce_op, rt_input, axis, keepdims, expected):
     rt_input = ragged_factory_ops.constant(rt_input)

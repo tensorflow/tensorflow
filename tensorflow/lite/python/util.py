@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,12 +19,9 @@ import datetime
 import sys
 
 from absl import logging
-import six
-from six.moves import range
-
 import flatbuffers
+
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
-from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
 from tensorflow.lite.python import conversion_metadata_schema_py_generated as conversion_metadata_fb
 from tensorflow.lite.python import schema_py_generated as schema_fb
@@ -33,11 +29,11 @@ from tensorflow.lite.python import schema_util
 from tensorflow.lite.python import tflite_keras_util as _tflite_keras_util
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
+from tensorflow.lite.tools import flatbuffer_utils
 from tensorflow.python.eager import function
 from tensorflow.python.framework import convert_to_constants as _convert_to_constants
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation as _error_interpolation
-from tensorflow.python.framework import graph_util as tf_graph_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.training.saver import export_meta_graph as _export_meta_graph
 
@@ -117,7 +113,7 @@ def get_tensor_name(tensor):
   Returns:
     str
   """
-  parts = six.ensure_str(tensor.name).split(":")
+  parts = tensor.name.split(":")
   if len(parts) > 2:
     raise ValueError("Tensor name invalid. Expect 0 or 1 colon, got {0}".format(
         len(parts) - 1))
@@ -153,7 +149,7 @@ def get_tensors_from_tensor_names(graph, tensor_names):
   tensors = []
   invalid_tensors = []
   for name in tensor_names:
-    if not isinstance(name, six.string_types):
+    if not isinstance(name, str):
       raise ValueError("Invalid type for a tensor name in the provided graph. "
                        "Expected type for a tensor name is 'str', instead got "
                        "type '{}' for tensor name '{}'".format(
@@ -176,7 +172,7 @@ def set_tensor_shapes(tensors, shapes):
   """Sets Tensor shape for each tensor if the shape is defined.
 
   Args:
-    tensors: TensorFlow ops.Tensor.
+    tensors: TensorFlow tensor.Tensor.
     shapes: Dict of strings representing input tensor names to list of
       integers representing input shapes (e.g., {"foo": : [1, 16, 16, 3]}).
 
@@ -266,7 +262,7 @@ def _convert_op_hints_if_present(sess, graph_def, output_tensors,
   if is_frozen_graph(sess):
     raise ValueError("Try to convert op hints, needs unfrozen graph.")
   output_arrays = [get_tensor_name(tensor) for tensor in output_tensors]
-  graph_def = tf_graph_util.convert_variables_to_constants(
+  graph_def = _convert_to_constants.convert_variables_to_constants(
       sess, graph_def, output_arrays + hinted_outputs_nodes)
   graph_def = convert_op_hints_to_stubs(graph_def=graph_def)
   return graph_def
@@ -306,8 +302,9 @@ def freeze_graph(sess, input_tensors, output_tensors):
 
   if not is_frozen_graph(sess):
     output_node_names = [tensor.name.split(":")[0] for tensor in output_tensors]
-    return tf_graph_util.convert_variables_to_constants(sess, graph_def,
-                                                        output_node_names)
+    return _convert_to_constants.convert_variables_to_constants(
+        sess, graph_def, output_node_names
+    )
   else:
     return sess.graph_def
 
@@ -325,8 +322,7 @@ def is_frozen_graph(sess):
     Bool.
   """
   for op in sess.graph.get_operations():
-    if six.ensure_str(op.type).startswith("Variable") or six.ensure_str(
-        op.type).endswith("VariableOp"):
+    if op.type.startswith("Variable") or op.type.endswith("VariableOp"):
       return False
   return True
 
@@ -354,7 +350,7 @@ def build_debug_info_func(original_graph):
           useful_ops.append((func, original_graph.get_operation_by_name(name)))
         else:
           sub_func = original_graph._get_function(func)  # pylint: disable=protected-access
-          if isinstance(sub_func, function._EagerDefinedFunction):  # pylint: disable=protected-access
+          if isinstance(sub_func, function.AtomicFunction):  # pylint: disable=protected-access
             useful_ops.append(
                 (func, sub_func.graph.get_operation_by_name(name)))
           else:
@@ -383,18 +379,8 @@ def convert_debug_info_func(saved_debug_info):
 
   def f(original_nodes):
     """Function to create `GraphDebugInfo` for the given `original_nodes`."""
-    if not saved_debug_info:
-      return None
-
-    output_debug_info = graph_debug_info_pb2.GraphDebugInfo()
-    # All the files are copied over, so the index wouldn't be changed.
-    output_debug_info.files[:] = saved_debug_info.files
-    # We only copy over the debug info for the input nodes
-    for func, node in original_nodes:
-      debug_key = node + "@" + func
-      output_debug_info.traces[debug_key].CopyFrom(
-          saved_debug_info.traces[debug_key])
-    return output_debug_info
+    del original_nodes
+    return saved_debug_info
 
   return f
 
@@ -924,8 +910,15 @@ def _remove_redundant_quantize_ops_per_subgraph(model, subgraph_index,
         for output in signature_def.outputs:
           if output.tensorIndex == op.outputs[0]:
             output.tensorIndex = op.inputs[0]
+      deleted_tensor = requantize_op.inputs[0]
       # Reset the input of the requantize op to the float input
       requantize_op.inputs[0] = op.inputs[0]
+      # Migrate other operator users to output tensor of requantize op
+      for op_user in operators:
+        if deleted_tensor in op_user.inputs and op_user != requantize_op:
+          for idx, input_tensor in enumerate(op_user.inputs):
+            if input_tensor == deleted_tensor:
+              op_user.inputs[idx] = requantize_op.outputs[0]
       operators.remove(op)
 
   # Remove all the quant ops which connect to the output dequant op.
@@ -983,18 +976,17 @@ def modify_model_io_type(
   return _convert_model_from_object_to_bytearray(model_object)
 
 
-def get_sparsity_modes(model_buffer):
+def get_sparsity_modes(model_object):
   """Get sparsity modes used in a tflite model.
 
   The sparsity modes are listed in conversion_metadata.fbs file.
 
   Args:
-    model_buffer: A tflite model.
+    model_object: A tflite model in object form.
 
   Returns:
     The list of sparsity modes used in the model.
   """
-  model_object = _convert_model_from_bytearray_to_object(model_buffer)
   if not model_object or not model_object.metadata:
     return []
 
@@ -1016,21 +1008,17 @@ def get_sparsity_modes(model_buffer):
   return list(result)
 
 
-def populate_conversion_metadata(model_buffer, metadata):
+def populate_conversion_metadata(model_object, metadata):
   """Add or update conversion metadata to a tflite model.
 
   Args:
-    model_buffer: A tflite model.
+    model_object: A tflite model in object form.
     metadata: The conversion metadata.
 
   Returns:
-    A tflite model with embedded conversion metadata.
+    A tflite model object with embedded conversion metadata.
   """
   try:
-    model_object = _convert_model_from_bytearray_to_object(model_buffer)
-    if not model_object:
-      return model_buffer
-
     metadata_builder = flatbuffers.Builder(0)
     metadata_builder.Finish(metadata.Pack(metadata_builder))
     buffer_field = schema_fb.BufferT()
@@ -1043,7 +1031,7 @@ def populate_conversion_metadata(model_buffer, metadata):
       for meta in model_object.metadata:
         if meta.name.decode("utf-8") == CONVERSION_METADATA_FIELD_NAME:
           model_object.buffers[meta.buffer] = buffer_field
-          return _convert_model_from_object_to_bytearray(model_object)
+          return model_object
 
     if not model_object.buffers:
       model_object.buffers = []
@@ -1054,9 +1042,9 @@ def populate_conversion_metadata(model_buffer, metadata):
     metadata_field.buffer = len(model_object.buffers) - 1
     model_object.metadata.append(metadata_field)
 
-    return _convert_model_from_object_to_bytearray(model_object)
+    return model_object
   except Exception:  # pylint: disable=broad-except
-    return model_buffer
+    return model_object
 
 
 def get_conversion_metadata(model_buffer):
@@ -1068,7 +1056,7 @@ def get_conversion_metadata(model_buffer):
   Returns:
     The conversion metadata or None if it is not populated.
   """
-  model_object = _convert_model_from_bytearray_to_object(model_buffer)
+  model_object = flatbuffer_utils.convert_bytearray_to_object(model_buffer)
   if not model_object or not model_object.metadata:
     return None
 

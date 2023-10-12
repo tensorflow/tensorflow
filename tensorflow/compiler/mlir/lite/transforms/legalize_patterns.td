@@ -16,22 +16,24 @@ limitations under the License.
 // TFLite legalization patterns
 
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
-include "mlir/Dialect/StandardOps/IR/Ops.td"
+include "mlir/IR/PatternBase.td"
+include "mlir/Dialect/Arith/IR/ArithOps.td"
+include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
+include "tensorflow/compiler/mlir/lite/utils/utils.td"
 
 def CreateEmptyBoolAttr : NativeCodeCall<"::mlir::BoolAttr()">;
 
-def NonOpaqueElementsAttr : ElementsAttrBase<
-  CPred<"!$_self.isa<OpaqueElementsAttr>()">,
+def DenseElementsAttr : ElementsAttrBase<
+  CPred<"$_self.isa<DenseElementsAttr>()">,
   "non-opaque constant tensor">;
 
 def F32ElementsAttr : ElementsAttrBase<
-  CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
+  CPred<"$_self.cast<ElementsAttr>().getShapedType().getElementType().isF32()">, "float constant tensor">;
 
 def Int64ElementsAttr : ElementsAttrBase<
-  CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isInteger(64)">, "Int 64 constant tensor">;
+  CPred<"$_self.cast<ElementsAttr>().getShapedType().getElementType().isInteger(64)">, "Int 64 constant tensor">;
 
 // Extract the ith int element from an ArrayAttr $0 as an 32-bit IntegerAttr
 // with builder.
@@ -47,6 +49,10 @@ def ConvertToQuantTypeFromAttrs : NativeCodeCall<
 // Converts an integer attribute $0 to 32-bit with builder.
 def convertIntAttrTo32Bit : NativeCodeCall<
     "$_builder.getI32IntegerAttr($0.cast<IntegerAttr>().getInt())">;
+
+// Builds a constant bool attribute.
+class GetBoolAttr<int value> :
+    NativeCodeCall<"$_builder.getBoolAttr(" # value #")">;
 
 // Converts an integer attribute $0 to 64-bit with builder.
 def convertIntAttrTo64Bit : NativeCodeCall<
@@ -64,13 +70,12 @@ def ExtractSingleElementAsInt32 : NativeCodeCall<
 def CreateTFCastToInt32Op : NativeCodeCall<
   "CreateCastToInt32($0, $_loc, $_builder)">;
 
-// Checks whether the given operation has static shapes and same shapes of all inputs.
-def HasSameStaticShapesPred : CPred<"HasSameStaticShapes($0.getDefiningOp())">;
-def HasSameStaticShapes : Constraint<HasSameStaticShapesPred, "op must have static same input shapes">;
-def HasNotSameStaticShapes : Constraint<Neg<HasSameStaticShapesPred>, "op must have not static same input shapes">;
-
 def CreateNoneValue : NativeCodeCall<
-  "$_builder.create<mlir::ConstantOp>($0.getLoc(), $_builder.getNoneType(), $_builder.getUnitAttr())">;
+  "$_builder.create<TFL::NoValueOp>($0.getLoc(), $_builder.getUnitAttr())">;
+
+// Creates an int32 constant op from an integer attribute $0.
+def CreateInt32ConstOpFromIntAttr
+  : NativeCodeCall<"$_builder.create<TF::ConstOp>($_loc, DenseElementsAttr::get(RankedTensorType::get({}, $_builder.getI32Type()), {static_cast<int32_t>($0.cast<IntegerAttr>().getInt())}))">;
 
 //===----------------------------------------------------------------------===//
 // Nullary ops patterns.
@@ -84,17 +89,34 @@ def LegalizeTFConstToTFLConst: Pat<(TF_ConstOp:$res ElementsAttr:$value),
 
 // Convert to std constant for statically shaped, non-opaque constants.
 def ConvertTfConstToStdConst : Pat<
-  (TF_ConstOp:$res NonOpaqueElementsAttr:$value),
+  (TF_ConstOp:$res DenseElementsAttr:$value),
   (Arith_ConstantOp $value),
-  [(AnyStaticShapeTensor $res)], (addBenefit 10)>;
+  [(AnyStaticShapeTensor $res)], [], (addBenefit 10)>;
 
 //===----------------------------------------------------------------------===//
 // Unary ops patterns.
 //===----------------------------------------------------------------------===//
 def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">;
+def IsDataFormatNCHW : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NCHW\"">;
+
+class I32VectorElementsAttr<int len> : ElementsAttrBase<
+  CPred<"$_self.isa<DenseIntElementsAttr>() &&"
+      "$_self.cast<DenseIntElementsAttr>().getType()."
+      "getElementType().isSignlessInteger(32)">,
+  "32-bit int elements attribute of shape [" # len # "]"> {
+
+  let storageType = [{ DenseIntElementsAttr }];
+  let returnType = [{ DenseIntElementsAttr }];
+
+  let constBuilderCall = "DenseElementsAttr::get("
+    "RankedTensorType::get({" # len # "}, $_builder.getIntegerType(32)), $0)";
+}
 
 // Constraint that Attr has values [1, X, Y, 1]
 def IsIntList1XY1 : AttrConstraint<CPred<"TFIntListIs1XY1($_self)">>;
+
+// Constraint that Attr has values [1, 1, X, Y]
+def IsIntList11XY : AttrConstraint<CPred<"TFIntListIs11XY($_self)">>;
 
 // Constraint that values in list attribute are all ones.
 def IsAllOnes : AttrConstraint<CPred<"TFIntListIsAllOnes($_self)">>;
@@ -104,6 +126,10 @@ def IsSameOrValid : AttrConstraint<
     CPred<"$_self.cast<StringAttr>().getValue() == \"SAME\" || " #
           "$_self.cast<StringAttr>().getValue() == \"VALID\"">,
     "'SAME' or 'VALID' paddings">;
+
+def TFL_GetMirrorPaddingType : NativeCodeCall<
+    "mlir::TFL::MirrorPaddingTypeAttr::get($_builder.getContext(), " #
+        "GetTFLMirrorPaddingFromString($0));">;
 
 def LegalizeAbs : Pat<(TF_AbsOp $arg), (TFL_AbsOp $arg)>;
 def LegalizeAddN : Pat<(TF_AddNOp $inputs), (TFL_AddNOp $inputs)>;
@@ -120,6 +146,28 @@ def LegalizeAveragePool : Pat<(TF_AvgPoolOp $value,
               /*stride_h=*/ExtractI32At<1>:$strides,
               /*stride_w=*/ExtractI32At<2>:$strides,
               /*fused_activation_function=*/TFL_AF_None)>;
+
+def LegalizeNCHWAveragePool : Pat<(
+              TF_AvgPoolOp:$src_op
+              $value,
+              IsIntList11XY:$ksize,
+              IsIntList11XY:$strides,
+              $padding,
+              IsDataFormatNCHW:$format),
+          (TFL_TransposeOp
+            (TFL_AveragePool2DOp
+              (TFL_TransposeOp $value,
+                (Arith_ConstantOp
+                  ConstantAttr<I32VectorElementsAttr<4>, "{0, 2, 3, 1}">)),
+              /*filter_height=*/ExtractI32At<2>:$ksize,
+              /*filter_width=*/ExtractI32At<3>:$ksize,
+              /*padding=*/$padding,
+              /*stride_h=*/ExtractI32At<2>:$strides,
+              /*stride_w=*/ExtractI32At<3>:$strides,
+              /*fused_activation_function=*/TFL_AF_None,
+              (returnType (GetTransposedType<"{0, 2, 3, 1}"> $src_op))),
+              (Arith_ConstantOp
+                  ConstantAttr<I32VectorElementsAttr<4>, "{0, 3, 1, 2}">))>;
 
 def LegalizeArgMax : Pat<(TF_ArgMaxOp $input, $dim),
                          (TFL_ArgMaxOp $input, $dim)>;
@@ -179,6 +227,29 @@ def LegalizeMaxPool2D : Pat<
               /*filter_height=*/ExtractI32At<1>:$ksize,
               /*fused_activation_function=*/TFL_AF_None)>;
 
+def LegalizeNCHWMaxPool2D : Pat<
+          (TF_MaxPoolOp:$src_op
+              $value,
+              IsIntList11XY:$ksize,
+              IsIntList11XY:$strides,
+              $padding,
+              $explicit_paddings,
+              IsDataFormatNCHW:$format),
+          (TFL_TransposeOp
+            (TFL_MaxPool2DOp
+              (TFL_TransposeOp $value,
+                (Arith_ConstantOp
+                  ConstantAttr<I32VectorElementsAttr<4>, "{0, 2, 3, 1}">)),
+              /*padding=*/$padding,
+              /*stride_w=*/ExtractI32At<3>:$strides,
+              /*stride_h=*/ExtractI32At<2>:$strides,
+              /*filter_width=*/ExtractI32At<3>:$ksize,
+              /*filter_height=*/ExtractI32At<2>:$ksize,
+              /*fused_activation_function=*/TFL_AF_None,
+              (returnType (GetTransposedType<"{0, 2, 3, 1}"> $src_op))),
+            (Arith_ConstantOp
+              ConstantAttr<I32VectorElementsAttr<4>, "{0, 3, 1, 2}">))>;
+
 def LegalizeMaximum : Pat<(TF_MaximumOp $arg1, $arg2),
                           (TFL_MaximumOp $arg1, $arg2)>;
 
@@ -195,6 +266,16 @@ def LegalizeRange : Pat<(TF_RangeOp $start, $limit, $delta),
                         (TFL_RangeOp $start, $limit, $delta)>;
 def LegalizeRelu6 : Pat<(TF_Relu6Op $arg), (TFL_Relu6Op $arg)>;
 def LegalizeRelu : Pat<(TF_ReluOp $arg), (TFL_ReluOp $arg)>;
+// TFL Relu doesn't support I32/I64 type, so legalizes TF Relu to TFL Maximum.
+def LegalizeReluI32 :
+  Pat<(TF_ReluOp TensorOf<[I32]>:$arg),
+      (TFL_MaximumOp $arg,
+        (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[]>,"0">))>;
+def LegalizeReluI64 :
+  Pat<(TF_ReluOp TensorOf<[I64]>:$arg),
+      (TFL_MaximumOp $arg,
+        (Arith_ConstantOp
+          ConstantAttr<RankedI64ElementsAttr<[]>,"static_cast<int64_t>(0)">))>;
 def LegalizeReverseSequence : Pat<
   (TF_ReverseSequenceOp $input, $seq_lengths, $seq_dim, $batch_dim),
   (TFL_ReverseSequenceOp $input, $seq_lengths,
@@ -205,15 +286,25 @@ def LegalizeSqrt : Pat<(TF_SqrtOp $arg), (TFL_SqrtOp $arg)>;
 def LegalizeSquare : Pat<(TF_SquareOp $arg), (TFL_SquareOp $arg)>;
 def LegalizeSegmentSum : Pat<(TF_SegmentSumOp $data, $segment_ids),
                              (TFL_SegmentSumOp $data, (CreateTFCastToInt32Op $segment_ids))>;
+foreach UnsortedSegmentOp = [
+  [TF_UnsortedSegmentSumOp, TFL_UnsortedSegmentSumOp],
+  [TF_UnsortedSegmentMaxOp, TFL_UnsortedSegmentMaxOp],
+  [TF_UnsortedSegmentMinOp, TFL_UnsortedSegmentMinOp],
+  [TF_UnsortedSegmentProdOp, TFL_UnsortedSegmentProdOp]] in {
+  def Legalize#UnsortedSegmentOp[0] :
+     Pat<(UnsortedSegmentOp[0] $data, $segment_ids, $num_segments),
+              (UnsortedSegmentOp[1] $data, (CreateTFCastToInt32Op $segment_ids),
+                  (CreateTFCastToInt32Op $num_segments))>;
+}
 def LegalizeSelect : Pat<(TF_SelectOp $cond, $x, $y),
                          (TFL_SelectOp $cond, $x, $y)>;
 def LegalizeSelectV2SameStaticShape : Pat<(TF_SelectV2Op:$src_op $cond, $x, $y),
     (TFL_SelectOp $cond, $x, $y),
-    [(HasSameStaticShapes $src_op)]>;
+    [(OpHasSameStaticShapes $src_op)]>;
 def LegalizeSelectV2NotSameStaticShape : Pat<
   (TF_SelectV2Op:$src_op $cond, $x, $y),
   (TFL_SelectV2Op $cond, $x, $y),
-  [(HasNotSameStaticShapes $src_op)]>;
+  [(OpHasNotSameStaticShapes $src_op)]>;
 def LegalizeShape : Pat<(TF_ShapeOp $arg), (TFL_ShapeOp $arg)>;
 def LegalizeSigmoid : Pat<(TF_SigmoidOp $arg), (TFL_LogisticOp $arg)>;
 def LegalizeSin : Pat<(TF_SinOp F32Tensor:$arg), (TFL_SinOp $arg)>;
@@ -352,6 +443,16 @@ def LegalizeSum : Pat<(TF_SumOp $arg, $axes, BoolAttr:$arg2),
 def LegalizeTopKV2 : Pat<(TF_TopKV2Op $input, $k, $ignored_sorted),
                          (TFL_TopKV2Op $input, $k)>;
 
+def ReductionDimensionIsLastDim : Constraint<CPred<"($0.cast<IntegerAttr>().getInt() == "
+  "$1.getType().cast<ShapedType>().getRank() - 1 || $0.cast<IntegerAttr>().getInt() == -1)">>;
+
+// Legalizes TF_ApproxTopKOp to TFL_TopKV2Op with the following constraints:
+//    1. It computes max k
+//    2. The reduction dimension is the last dim of the input.
+def LegalizeApproxTopK : Pat<(TF_ApproxTopKOp $input, $k, $reduction_dimenstion, $ignored_recall_target, /*is_max_k*/ConstBoolAttrTrue, $ignored_reduction_input_size_override, $ignored_aggregate_to_topk),
+                         (TFL_TopKV2Op $input, (CreateInt32ConstOpFromIntAttr $k)),
+                         [(ReductionDimensionIsLastDim $reduction_dimenstion, $input)]>;
+
 def LegalizeMin : Pat<
   (TF_MinOp $arg0, $axes, BoolAttr:$arg2),
   (TFL_ReduceMinOp $arg0, (CreateTFCastToInt32Op $axes), $arg2)>;
@@ -403,8 +504,8 @@ def LegalizeResizeNearestNeighbor : Pat<
   (TFL_ResizeNearestNeighborOp $images, $size, $align_corners,
     $half_pixel_centers)>;
 
-def LegalizeMirrorPad : Pat<(TF_MirrorPadOp $arg0, $arg1, $cst),
-                            (TFL_MirrorPadOp $arg0, $arg1, $cst)>;
+def LegalizeMirrorPad : Pat<(TF_MirrorPadOp $arg0, $arg1, $mode),
+                            (TFL_MirrorPadOp $arg0, $arg1, (TFL_GetMirrorPaddingType $mode))>;
 
 def LegalizeSparseToDense : Pat<
   (TF_SparseToDenseOp $sparse_indices, $output_shape, $sparse_values,
@@ -438,19 +539,6 @@ def LegalizeNonMaxSuppressionV5 : Pat<
 def LegalizeMatrixDiag : Pat<(TF_MatrixDiagOp $diagonal),
                              (TFL_MatrixDiagOp $diagonal)>;
 
-class I32VectorElementsAttr<int len> : ElementsAttrBase<
-  CPred<"$_self.isa<DenseIntElementsAttr>() &&"
-      "$_self.cast<DenseIntElementsAttr>().getType()."
-      "getElementType().isSignlessInteger(32)">,
-  "32-bit int elements attribute of shape [" # len # "]"> {
-
-  let storageType = [{ DenseIntElementsAttr }];
-  let returnType = [{ DenseIntElementsAttr }];
-
-  let constBuilderCall = "DenseElementsAttr::get("
-    "RankedTensorType::get({" # len # "}, $_builder.getIntegerType(32)), $0)";
-}
-
 def LegalizeConv2DBackpropInput : Pat<
   (TF_Conv2DBackpropInputOp $input_sizes, $filter, $out_backprop,
      IsIntList1XY1:$strides,
@@ -460,13 +548,14 @@ def LegalizeConv2DBackpropInput : Pat<
      IsDataFormatNHWC:$data_format,
      IsAllOnes:$dilations),
   (TFL_TransposeConvOp $input_sizes,
-     (TF_TransposeOp $filter,
+     (TFL_TransposeOp $filter,
        (Arith_ConstantOp ConstantAttr<I32VectorElementsAttr<4>, "{2, 0, 1, 3}">)),
      $out_backprop,
      /*bias=*/ (CreateNoneValue $input_sizes),
      /*padding=*/ $padding,
      /*stride_h=*/ ExtractI32At<1>:$strides,
-     /*stride_w=*/ ExtractI32At<2>:$strides)>;
+     /*stride_w=*/ ExtractI32At<2>:$strides,
+     /*fused_activation_function=*/TFL_AF_None)>;
 
 def IsRankZeroAttr
   : CPred<"$_self.cast<DenseElementsAttr>().getType().getRank() == 0">;
@@ -512,7 +601,8 @@ def LegalizeStridedSlice : Pat<
     (CreateTFCastToInt32Op $strides), (convertIntAttrTo32Bit $begin_mask),
     (convertIntAttrTo32Bit $end_mask), (convertIntAttrTo32Bit $ellipsis_mask),
     (convertIntAttrTo32Bit $new_axis_mask),
-    (convertIntAttrTo32Bit $shrink_axis_mask))>;
+    (convertIntAttrTo32Bit $shrink_axis_mask),
+    (GetBoolAttr<false>))>;
 
 def LegalizeRfft2d : Pat<
   (TF_RFFT2DOp $input, $fft_length),
@@ -542,3 +632,31 @@ def LegalizeMultinomial : Pat<
   (TF_MultinomialOp $logits, $num_samples, $seed, $seed2),
   (TFL_MultinomialOp $logits, $num_samples, (convertIntAttrTo64Bit $seed),
    (convertIntAttrTo64Bit $seed2))>;
+
+def LegalizeXlaDynamicUpdateSlice : Pat<
+  (TF_XlaDynamicUpdateSliceOp $operand, $update, $start_indices),
+  (TFL_DynamicUpdateSliceOp $operand, $update, $start_indices)>;
+
+def LegalizeAtan2 : Pat<(TF_Atan2Op $y, $x), (TFL_Atan2Op $y, $x)>;
+
+def LegalizeSign : Pat<(TF_SignOp $x), (TFL_SignOp $x)>;
+
+def LegalizeBitcast : Pat<(TF_BitcastOp $x), (TFL_BitcastOp $x)>;
+
+def LegalizeBitwiseXor : Pat<(TF_BitwiseXorOp $l, $r),
+                             (TFL_BitwiseXorOp $l, $r)>;
+
+def LegalizeRightShift : Pat<(TF_RightShiftOp $l, $r),
+                             (TFL_RightShiftOp $l, $r)>;
+
+// =============================================================================
+// Training OPs
+// =============================================================================
+
+// `grad = dy * y * (1 - y)`, where `y = sigmoid(x)`
+def LegalizeSigmoidGrad : Pat<(TF_SigmoidGradOp $y, $dy),
+  (TFL_MulOp $dy, (TFL_MulOp $y, (TFL_SubOp
+        (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
+        $y, TFL_AF_None),
+  TFL_AF_None), TFL_AF_None)>;
+

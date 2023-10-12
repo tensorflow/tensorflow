@@ -49,6 +49,11 @@ class SummaryAudioOp : public OpKernel {
     float sample_rate = sample_rate_attr_;
     if (!has_sample_rate_attr_) {
       const Tensor& sample_rate_tensor = c->input(2);
+      OP_REQUIRES(c,
+                  sample_rate_tensor.IsAligned() &&
+                      sample_rate_tensor.NumElements() == 1,
+                  errors::InvalidArgument(
+                      "sample_rate must be rank-0 or contain a single value"));
       sample_rate = sample_rate_tensor.scalar<float>()();
     }
     OP_REQUIRES(c, sample_rate > 0.0f,

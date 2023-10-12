@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <functional>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -74,10 +74,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   switch (type) {
     case kTfLiteFloat32:
     case kTfLiteInt32:
+    case kTfLiteInt16:
+    case kTfLiteInt8:
       break;
     default:
-      context->ReportError(context, "Type '%s' is not supported by floor_div.",
-                           TfLiteTypeGetName(type));
+      TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by floor_div.",
+                         TfLiteTypeGetName(type));
       return kTfLiteError;
   }
   output->type = type;
@@ -104,7 +106,7 @@ TfLiteStatus EvalImpl(TfLiteContext* context, bool requires_broadcast,
   // Validate the denominator.
   for (int i = 0; i < NumElements(input2); ++i) {
     if (std::equal_to<T>()(denominator_data[i], 0)) {
-      context->ReportError(context, "Division by 0");
+      TF_LITE_KERNEL_LOG(context, "Division by 0");
       return kTfLiteError;
     }
   }
@@ -138,6 +140,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
   switch (input1->type) {
+    case kTfLiteInt8: {
+      return EvalImpl<int8_t>(context, data->requires_broadcast, input1, input2,
+                              output);
+    }
+    case kTfLiteInt16: {
+      return EvalImpl<int16_t>(context, data->requires_broadcast, input1,
+                               input2, output);
+    }
     case kTfLiteInt32: {
       return EvalImpl<int32_t>(context, data->requires_broadcast, input1,
                                input2, output);
@@ -147,8 +157,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                              output);
     }
     default: {
-      context->ReportError(context, "Type '%s' is not supported by floor_div.",
-                           TfLiteTypeGetName(input1->type));
+      TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by floor_div.",
+                         TfLiteTypeGetName(input1->type));
       return kTfLiteError;
     }
   }

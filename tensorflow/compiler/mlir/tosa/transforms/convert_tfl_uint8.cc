@@ -27,8 +27,11 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <numeric>
+#include <utility>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -49,15 +52,16 @@ limitations under the License.
 namespace mlir {
 namespace tosa {
 namespace {
-#define GEN_PASS_CLASSES
+
+#define GEN_PASS_DEF_TOSACONVERTTFLUINT8PASS
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
 
 // Performs lowering to TOSA dialect.
 class ConvertUint8ToInt8
-    : public TosaConvertTFLUint8PassBase<ConvertUint8ToInt8> {
+    : public impl::TosaConvertTFLUint8PassBase<ConvertUint8ToInt8> {
  public:
-  explicit ConvertUint8ToInt8() {}
-  void runOnFunction() override;
+  explicit ConvertUint8ToInt8() = default;
+  void runOnOperation() override;
 };
 
 struct ConvertUint8QConstOp : public RewritePattern {
@@ -70,14 +74,13 @@ struct ConvertUint8QConstOp : public RewritePattern {
 
     // Skip if it's not ranked tensor type.
     auto output_type =
-        tfl_qconst_op.getResult().getType().dyn_cast<mlir::RankedTensorType>();
+        dyn_cast<mlir::RankedTensorType>(tfl_qconst_op.getResult().getType());
     if (!output_type)
       return builder.notifyMatchFailure(op, "not ranked tensor");
 
     // Skip if output is not per-tensor quantized type.
-    auto output_element_type =
-        output_type.getElementType()
-            .dyn_cast<mlir::quant::UniformQuantizedType>();
+    auto output_element_type = dyn_cast<mlir::quant::UniformQuantizedType>(
+        output_type.getElementType());
     if (!output_element_type) return failure();
 
     // Skip if output is not uint8.
@@ -87,7 +90,7 @@ struct ConvertUint8QConstOp : public RewritePattern {
     }
 
     mlir::DenseElementsAttr src_dense_attr =
-        tfl_qconst_op.value().cast<DenseElementsAttr>();
+        tfl_qconst_op.getValue().cast<DenseElementsAttr>();
 
     double type_range_min =
         static_cast<double>(output_element_type.getStorageTypeMin() -
@@ -129,7 +132,7 @@ struct ConvertUint8QConstOp : public RewritePattern {
 };
 
 LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
-                                         mlir::FuncOp &function) {
+                                         mlir::func::FuncOp &function) {
   size_t num_blocks_in_main = 0;
   mlir::Region *region = function.getCallableRegion();
   OpBuilder builder(&context);
@@ -151,12 +154,11 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
 
     // Insert rescale uint8->int8 after placeholders.
     for (Value arg : bb.getArguments()) {
-      auto uint8_type = arg.getType().dyn_cast<mlir::ShapedType>();
+      auto uint8_type = dyn_cast<mlir::ShapedType>(arg.getType());
       if (!uint8_type) continue;
 
-      auto uint8_element_type =
-          uint8_type.getElementType()
-              .dyn_cast<mlir::quant::UniformQuantizedType>();
+      auto uint8_element_type = dyn_cast<mlir::quant::UniformQuantizedType>(
+          uint8_type.getElementType());
       if (!uint8_element_type) continue;
 
       if (uint8_element_type.isSigned() ||
@@ -193,9 +195,9 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
           function.getLoc(), int8_type, arg,
           builder.getI32IntegerAttr(uint8_zp),
           builder.getI32IntegerAttr(int8_zp),
-          builder.getI32ArrayAttr({1 << 30}), builder.getI32ArrayAttr({30}),
-          builder.getBoolAttr(true), builder.getBoolAttr(false),
-          builder.getBoolAttr(false));
+          builder.getDenseI32ArrayAttr({1 << 30}),
+          builder.getDenseI32ArrayAttr({30}), builder.getBoolAttr(true),
+          builder.getBoolAttr(false), builder.getBoolAttr(false));
 
       Operation *op_rescale_op = static_cast<Operation *>(rescale_op);
       bb.push_front(op_rescale_op);
@@ -215,13 +217,12 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
     for (auto &op : bb) {
       for (Value output_val : op.getResults()) {
         // Skip if output value is not RankedTensorType.
-        auto output_type = output_val.getType().dyn_cast<mlir::ShapedType>();
+        auto output_type = dyn_cast<mlir::ShapedType>(output_val.getType());
         if (!output_type) continue;
 
         // Skip if output value is not per-tensor quantized element type.
-        auto output_element_type =
-            output_type.getElementType()
-                .dyn_cast<mlir::quant::UniformQuantizedType>();
+        auto output_element_type = dyn_cast<mlir::quant::UniformQuantizedType>(
+            output_type.getElementType());
         if (!output_element_type) continue;
 
         // Skip if output is not uint8.
@@ -266,12 +267,12 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
       Value input_val = defining_op->getResult(0);
 
       // Check if graph output is uint8 type.
-      auto uint8_output_type = output_types[i].dyn_cast<mlir::ShapedType>();
+      auto uint8_output_type = dyn_cast<mlir::ShapedType>(output_types[i]);
       if (!uint8_output_type) continue;
 
       auto uint8_output_element_type =
-          uint8_output_type.getElementType()
-              .dyn_cast<mlir::quant::UniformQuantizedType>();
+          dyn_cast<mlir::quant::UniformQuantizedType>(
+              uint8_output_type.getElementType());
       if (!uint8_output_element_type) continue;
 
       if (uint8_output_element_type.isSigned() ||
@@ -280,12 +281,12 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
 
       // Check if output coming into terminator is int8 type.
       auto int8_output_type =
-          terminator->getOperand(i).getType().dyn_cast<mlir::ShapedType>();
+          dyn_cast<mlir::ShapedType>(terminator->getOperand(i).getType());
       if (!int8_output_type) continue;
 
       auto int8_output_element_type =
-          int8_output_type.getElementType()
-              .dyn_cast<mlir::quant::UniformQuantizedType>();
+          dyn_cast<mlir::quant::UniformQuantizedType>(
+              int8_output_type.getElementType());
       if (!int8_output_element_type) continue;
 
       if (!int8_output_element_type.isSigned() ||
@@ -311,9 +312,9 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
           function.getLoc(), uint8_output_type, input_val,
           builder.getI32IntegerAttr(int8_zp),
           builder.getI32IntegerAttr(uint8_zp),
-          builder.getI32ArrayAttr({1 << 30}), builder.getI32ArrayAttr({30}),
-          builder.getBoolAttr(true), builder.getBoolAttr(false),
-          builder.getBoolAttr(false));
+          builder.getDenseI32ArrayAttr({1 << 30}),
+          builder.getDenseI32ArrayAttr({30}), builder.getBoolAttr(true),
+          builder.getBoolAttr(false), builder.getBoolAttr(false));
 
       Operation *op_rescale_op = static_cast<Operation *>(rescale_op);
       bb.push_back(op_rescale_op);
@@ -326,13 +327,13 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
   return success();
 }
 
-void ConvertUint8ToInt8::runOnFunction() {
+void ConvertUint8ToInt8::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto &ctx = getContext();
-  auto func = getFunction();
+  mlir::func::FuncOp func = getOperation();
 
   // Convert uint8 const tensor. const needs to be handled specifically.
-  patterns.insert<ConvertUint8QConstOp>(&ctx);
+  patterns.add<ConvertUint8QConstOp>(&ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Replace uint8 tensor in the graph and insert rescale as needed.
@@ -341,7 +342,7 @@ void ConvertUint8ToInt8::runOnFunction() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createConvertTFLUint8Pass() {
+std::unique_ptr<OperationPass<func::FuncOp>> createConvertTFLUint8Pass() {
   return std::make_unique<ConvertUint8ToInt8>();
 }
 

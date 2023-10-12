@@ -15,11 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/master_session.h"
 
+#include <algorithm>
+#include <functional>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/profile_handler.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
@@ -39,7 +44,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/graph/graph_partition.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -51,14 +55,16 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tsl/protobuf/coordination_config.pb.h"
 
 namespace tensorflow {
 
@@ -330,7 +336,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   // destructor and does not wait for the rpc completion.
   void DeregisterPartitions();
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ReffedClientGraph);
+  ReffedClientGraph(const ReffedClientGraph&) = delete;
+  void operator=(const ReffedClientGraph&) = delete;
 };
 
 Status MasterSession::ReffedClientGraph::RegisterPartitions(
@@ -522,18 +529,17 @@ class RunManyGraphs {
     Call* call = get(index);
     call->done = true;
     auto resp = call->resp.get();
-    if (resp->status_code() != error::Code::OK) {
+    if (resp->status_code() != absl::StatusCode::kOk) {
       // resp->status_code will only be non-OK if s.ok().
       mutex_lock l(mu_);
       Status resp_status = call->resp->status();
       ReportBadStatus(errors::CreateWithUpdatedMessage(
           resp_status, strings::StrCat("From ", *call->worker_name, ":\n",
-                                       resp_status.error_message())));
+                                       resp_status.message())));
     } else if (!s.ok()) {
       mutex_lock l(mu_);
       ReportBadStatus(errors::CreateWithUpdatedMessage(
-          s, strings::StrCat("From ", *call->worker_name, ":\n",
-                             s.error_message())));
+          s, strings::StrCat("From ", *call->worker_name, ":\n", s.message())));
     }
     pending_.DecrementCount();
   }
@@ -605,7 +611,8 @@ class RunManyGraphs {
     status_group_.Update(s);
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RunManyGraphs);
+  RunManyGraphs(const RunManyGraphs&) = delete;
+  void operator=(const RunManyGraphs&) = delete;
 };
 
 Status AddSendFromClientRequest(const RunStepRequestWrapper& client_req,
@@ -863,7 +870,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
     }
     fetch_proto->Swap(&iter->second);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -914,7 +921,8 @@ class CleanupBroadcastHelper {
   // Callback to be called when all operations complete.
   StatusCallback done_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CleanupBroadcastHelper);
+  CleanupBroadcastHelper(const CleanupBroadcastHelper&) = delete;
+  void operator=(const CleanupBroadcastHelper&) = delete;
 };
 
 }  // namespace
@@ -959,7 +967,7 @@ void MasterSession::ReffedClientGraph::ProcessStats(int64_t step_id,
     }
     ph->StepDone(pss->start_micros, pss->end_micros,
                  Microseconds(0) /*cleanup_time*/, 0 /*total_runops*/,
-                 Status::OK());
+                 OkStatus());
   }
   // Assemble all stats for this timeline into a merged StepStats.
   if (pss->collect_timeline) {
@@ -1083,7 +1091,7 @@ Status MasterSession::ReffedClientGraph::CheckFetches(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Asynchronously deregisters subgraphs on the workers, without waiting for the
@@ -1296,7 +1304,7 @@ Status MasterSession::CreateWorkerSessions(const ClusterDef& cluster_def) {
     // Request and responses used for a given worker.
     CreateWorkerSessionRequest request;
     CreateWorkerSessionResponse response;
-    Status status = Status::OK();
+    Status status = OkStatus();
   };
   BlockingCounter done(worker_names.size());
   std::vector<WorkerGroup> workers(worker_names.size());
@@ -1317,7 +1325,7 @@ Status MasterSession::CreateWorkerSessions(const ClusterDef& cluster_def) {
   const int64_t client_device_incarnation =
       devices_->client_device()->attributes().incarnation();
 
-  Status status = Status::OK();
+  Status status = OkStatus();
   // Create all the workers & kick off the computations.
   for (size_t i = 0; i < worker_names.size(); ++i) {
     workers[i].name = &worker_names[i];
@@ -1370,8 +1378,24 @@ Status MasterSession::CreateWorkerSessions(const ClusterDef& cluster_def) {
       workers[i].request.set_isolate_session_state(
           session_opts_.config.isolate_session_state());
     }
-    *workers[i].request.mutable_coordination_service_config() =
-        session_opts_.config.experimental().coordination_config();
+    CoordinationServiceConfig coordination_config;
+    // Enable coordination service in session options by default if
+    // unspecified in non-local targets.
+    if (session_opts_.target != "local" &&
+        !session_opts_.config.experimental().has_coordination_config()) {
+      coordination_config.set_service_type("standalone");
+    } else {
+      coordination_config =
+          session_opts_.config.experimental().coordination_config();
+    }
+    // Specify master task as coordination service leader.
+    coordination_config.set_service_leader(task_name);
+    *workers[i]
+         .request.mutable_server_def()
+         ->mutable_default_session_config()
+         ->mutable_experimental()
+         ->mutable_coordination_config() = coordination_config;
+
     if (session_opts_.config.experimental()
             .share_session_state_in_clusterspec_propagation()) {
       // In a dynamic cluster, the ClusterSpec info is usually propagated by
@@ -1415,7 +1439,7 @@ Status MasterSession::DeleteWorkerSessions() {
     // Request and responses used for a given worker.
     DeleteWorkerSessionRequest request;
     DeleteWorkerSessionResponse response;
-    Status status = Status::OK();
+    Status status = OkStatus();
   };
   BlockingCounter done(worker_names.size());
   std::vector<WorkerGroup> workers(worker_names.size());
@@ -1429,7 +1453,7 @@ Status MasterSession::DeleteWorkerSessions() {
     }
   });
 
-  Status status = Status::OK();
+  Status status = OkStatus();
   // Create all the workers & kick off the computations.
   for (size_t i = 0; i < worker_names.size(); ++i) {
     workers[i].name = &worker_names[i];
@@ -1477,7 +1501,7 @@ Status MasterSession::ListDevices(ListDevicesResponse* resp) const {
       *(resp->add_local_device()) = dev->attributes();
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MasterSession::Extend(const ExtendSessionRequest* req,
@@ -1506,7 +1530,7 @@ Status MasterSession::Extend(const ExtendSessionRequest* req,
     ++graph_version_;
     resp->set_new_graph_version(graph_version_);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 WorkerCacheInterface* MasterSession::get_worker_cache() const {
@@ -1547,7 +1571,7 @@ Status MasterSession::StartStep(const BuildGraphOptions& opts, bool is_partial,
     (*out_rcg)->Ref();
     *out_count = (*out_rcg)->get_and_increment_execution_count();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void MasterSession::ClearRunsTable(std::vector<ReffedClientGraph*>* to_unref,
@@ -1630,7 +1654,7 @@ Status MasterSession::PartialRunSetup(const PartialRunSetupRequest* req,
   TF_RETURN_IF_ERROR(BuildAndRegisterPartitions(rcg));
 
   resp->set_partial_run_handle(handle);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MasterSession::Run(CallOptions* opts, const RunStepRequestWrapper& req,
@@ -1703,7 +1727,7 @@ Status MasterSession::BuildAndRegisterPartitions(ReffedClientGraph* rcg) {
 
   TF_RETURN_IF_ERROR(rcg->RegisterPartitions(std::move(popts)));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MasterSession::DoPartialRun(CallOptions* opts,
@@ -1864,7 +1888,7 @@ Status MasterSession::CreateDebuggerState(
       debug_options.global_step(), rcg_execution_count, rcg_execution_count,
       input_names, output_names, target_names));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void MasterSession::FillPerStepState(MasterSession::ReffedClientGraph* rcg,
@@ -1912,7 +1936,7 @@ Status MasterSession::PostRunCleanup(MasterSession::ReffedClientGraph* rcg,
     }
     // Schedule post-processing and cleanup to be done asynchronously.
     rcg->ProcessStats(step_id, pss, ph.get(), run_options, out_run_metadata);
-  } else if (errors::IsCancelled(s)) {
+  } else if (absl::IsCancelled(s)) {
     mutex_lock l(mu_);
     if (closed_) {
       if (garbage_collected_) {
@@ -2025,7 +2049,7 @@ Status MasterSession::MakeCallable(const MakeCallableRequest& req,
   }
 
   resp->set_handle(handle);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MasterSession::DoRunCallable(CallOptions* opts, ReffedClientGraph* rcg,
@@ -2099,7 +2123,7 @@ Status MasterSession::ReleaseCallable(const ReleaseCallableRequest& req,
   if (to_unref != nullptr) {
     to_unref->Unref();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MasterSession::Close() {
@@ -2125,7 +2149,7 @@ Status MasterSession::Close() {
       LOG(WARNING) << s;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void MasterSession::GarbageCollect() {

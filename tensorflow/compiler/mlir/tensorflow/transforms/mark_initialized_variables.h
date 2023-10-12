@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_MARK_INITIALIZED_VARIABLES_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_MARK_INITIALIZED_VARIABLES_H_
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/core/public/session.h"
 
@@ -27,7 +28,7 @@ namespace tf_saved_model {
 // If 'session' is NULL the function is no-op.
 // Returns failure in case fetching variables from session failed, success
 // otherwise.
-LogicalResult MarkInitializedVariablesInFunction(FuncOp function,
+LogicalResult MarkInitializedVariablesInFunction(func::FuncOp function,
                                                  tensorflow::Session* session);
 // Apply `MarkInitializedVariablesInFunction` to every non-empty function in the
 // module.

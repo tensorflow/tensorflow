@@ -21,18 +21,17 @@ limitations under the License.
 #include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_options.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
 
 namespace tflite {
 namespace acceleration {
-
-using ::tflite::nnapi::NnApiSupportLibrary;
 
 // This class is used to store the results of a GetBestAcceleration and
 // information on the events used to take the decision.
@@ -287,11 +286,12 @@ class MiniBenchmarkImpl : public MiniBenchmark {
     }
 
     const std::string local_event_fp = LocalEventStorageFileName(settings);
-    best_acceleration_selector_.reset(new MemoizedBestAccelerationSelector(
-        *settings_, model_namespace, model_id, local_event_fp));
+    best_acceleration_selector_ =
+        std::make_unique<MemoizedBestAccelerationSelector>(
+            *settings_, model_namespace, model_id, local_event_fp);
 
-    storage_.reset(new FlatbufferStorage<MiniBenchmarkEvent>(
-        local_event_fp, tflite::DefaultErrorReporter()));
+    storage_ = std::make_unique<FlatbufferStorage<MiniBenchmarkEvent>>(
+        local_event_fp, tflite::DefaultErrorReporter());
     storage_->Read();
     for (int i = storage_->Count() - 1; i >= 0; i--) {
       auto* event = storage_->Get(i);
@@ -456,13 +456,17 @@ class MiniBenchmarkImpl : public MiniBenchmark {
   }
 
   MinibenchmarkStatus GetNnApiSlPointerIfPresent(
-      const NnApiSupportLibrary** nnapi_sl) {
+      const NnApiSLDriverImplFL5** nnapi_sl) {
     *nnapi_sl = nullptr;
     const auto& settings_to_test = *settings_->settings_to_test();
     for (const auto* setting_to_test : settings_to_test) {
-      if (setting_to_test->nnapi_settings()) {
-        const NnApiSupportLibrary* curr_nnapi_sl_handle =
-            reinterpret_cast<const NnApiSupportLibrary*>(
+      // Check that there are not two different NNAPI-with-SL configurations
+      // with different support library instances.
+      if (setting_to_test->delegate() == Delegate_NNAPI &&
+          setting_to_test->nnapi_settings() &&
+          setting_to_test->nnapi_settings()->support_library_handle()) {
+        const NnApiSLDriverImplFL5* curr_nnapi_sl_handle =
+            reinterpret_cast<const NnApiSLDriverImplFL5*>(
                 setting_to_test->nnapi_settings()->support_library_handle());
 
         if (*nnapi_sl != nullptr && *nnapi_sl != curr_nnapi_sl_handle) {
@@ -490,26 +494,16 @@ class MiniBenchmarkImpl : public MiniBenchmark {
   void CreateValidatorIfNececessary() {
     if (validator_) return;
 
-    const NnApiSupportLibrary* nnapi_sl;
+    ValidatorRunnerOptions options =
+        CreateValidatorRunnerOptionsFrom(*settings_);
     MinibenchmarkStatus get_nnapi_sl_status =
-        GetNnApiSlPointerIfPresent(&nnapi_sl);
+        GetNnApiSlPointerIfPresent(&options.nnapi_sl);
     if (get_nnapi_sl_status != kMinibenchmarkSuccess) {
       LogInitializationFailure(get_nnapi_sl_status);
       return;
     }
+    validator_ = std::make_unique<ValidatorRunner>(options);
 
-    if (settings_->model_file()->fd() <= 0) {
-      validator_ = std::make_unique<ValidatorRunner>(
-          settings_->model_file()->filename()->str(),
-          settings_->storage_paths()->storage_file_path()->str(),
-          settings_->storage_paths()->data_directory_path()->str(), nnapi_sl);
-    } else {
-      validator_ = std::make_unique<ValidatorRunner>(
-          settings_->model_file()->fd(), settings_->model_file()->offset(),
-          settings_->model_file()->length(),
-          settings_->storage_paths()->storage_file_path()->str(),
-          settings_->storage_paths()->data_directory_path()->str(), nnapi_sl);
-    }
     MinibenchmarkStatus status = validator_->Init();
     if (status == kMinibenchmarkValidationEntrypointSymbolNotFound) {
       TFLITE_LOG_PROD_ONCE(TFLITE_LOG_ERROR,
@@ -553,6 +547,6 @@ std::unique_ptr<MiniBenchmark> CreateMiniBenchmarkImpl(
       new MiniBenchmarkImpl(settings, model_namespace, model_id));
 }
 
-TFLITE_REGISTER_MINI_BENCMARK_FACTORY_FUNCTION(Impl, CreateMiniBenchmarkImpl);
+TFLITE_REGISTER_MINI_BENCHMARK_FACTORY_FUNCTION(Impl, CreateMiniBenchmarkImpl);
 }  // namespace acceleration
 }  // namespace tflite

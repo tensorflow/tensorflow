@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_SELECTORS_SUBGRAPH_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -39,7 +40,11 @@ struct GPUOperationWithRefs {
 
 struct GPUOperationsSubgraph {
   std::vector<GPUOperationWithRefs> operations;
-  std::vector<std::pair<BHWC, TensorDescriptor>> new_tensors;
+  std::vector<TensorDescriptor> new_tensors;
+
+  int AddTensor(const TensorDescriptor& desc);
+  int AddTensor(const BHWC& shape, const TensorDescriptor& desc);
+  int AddTensor(const OHWI& shape, const TensorDescriptor& desc);
 };
 
 std::unique_ptr<GPUOperation>* InitSingleOpSubgraph(

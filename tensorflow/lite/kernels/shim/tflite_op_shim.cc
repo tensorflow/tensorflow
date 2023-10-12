@@ -15,14 +15,19 @@ limitations under the License.
 #include "tensorflow/lite/kernels/shim/tflite_op_shim.h"
 
 #include <cstdint>
+#include <cstring>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/shim/status_macros.h"
+#include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 namespace shim {
@@ -84,7 +89,7 @@ ConstTensorViewOr TfLiteInvokeContext::GetInput(const int idx) const {
         absl::StrCat("input tensor is null during invocation. idx: ", idx));
   SH_ASSIGN_OR_RETURN(const TfLiteTensorView& tensor_view,
                       TensorView::New(tflite_tensor));
-  return absl::make_unique<const TfLiteTensorView>(tensor_view);
+  return std::make_unique<const TfLiteTensorView>(tensor_view);
 }
 
 TensorViewOr TfLiteInvokeContext::GetOutput(const int idx,
@@ -97,7 +102,13 @@ TensorViewOr TfLiteInvokeContext::GetOutput(const int idx,
   if (tflite_tensor == nullptr)
     return absl::InternalError(
         absl::StrCat("output tensor is null during invocation. idx: ", idx));
-  if (tflite_tensor->data.raw == nullptr) {
+  if (tflite_tensor->data.raw == nullptr ||
+      tflite_tensor->allocation_type == kTfLiteDynamic) {
+    // Clear out string tensor so previous values are not copied.
+    if (tflite_tensor->type == kTfLiteString) {
+      tflite::DynamicBuffer buf;
+      buf.WriteToTensor(tflite_tensor, /*new_shape=*/nullptr);
+    }
     TfLiteIntArray* output_shape_array =
         ShapeToTfLiteShape(output_shape.value());
     context_->ResizeTensor(context_, tflite_tensor, output_shape_array);
@@ -106,7 +117,7 @@ TensorViewOr TfLiteInvokeContext::GetOutput(const int idx,
   }
   SH_ASSIGN_OR_RETURN(TfLiteTensorView tensor_view,
                       TensorView::New(tflite_tensor));
-  return absl::make_unique<TfLiteTensorView>(std::move(tensor_view));
+  return std::make_unique<TfLiteTensorView>(std::move(tensor_view));
 }
 
 int TfLiteInvokeContext::NumInputs() const {
@@ -155,7 +166,7 @@ ConstTensorViewOr TfLiteShapeInferenceContext::GetInputTensor(
   if (::tflite::IsConstantTensor(tflite_tensor)) {
     SH_ASSIGN_OR_RETURN(const TfLiteTensorView& tensor_view,
                         TensorView::New(tflite_tensor));
-    return absl::make_unique<const TfLiteTensorView>(tensor_view);
+    return std::make_unique<const TfLiteTensorView>(tensor_view);
   } else {
     return absl::FailedPreconditionError(absl::StrCat(
         "input tensor is unavailable during shape inference. idx: ", idx));

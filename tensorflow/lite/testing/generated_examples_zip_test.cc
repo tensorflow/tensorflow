@@ -18,6 +18,7 @@ limitations under the License.
 #include <fstream>
 #include <map>
 #include <sstream>
+#include <string>
 #include <tuple>
 #include <utility>
 
@@ -66,9 +67,6 @@ using BrokenTestMap =
 // TODO(ahentz): make sure we clean this list up frequently.
 const BrokenTestMap& GetKnownBrokenTests() {
   static const BrokenTestMap* const kBrokenTests = new BrokenTestMap({
-      // Select kernel doesn't support broadcasting yet.
-      {R"(^\/where.*1,2,3,1)", {"134692786", false}},
-
       // TODO(b/194364155): TF and TFLite have different behaviors when output
       // nan values in LocalResponseNorm ops.
       {R"(^\/local_response_norm.*alpha=-3.*beta=2)", {"194364155", true}},
@@ -164,15 +162,15 @@ class ArchiveEnvironment : public ::testing::Environment {
     proc.SetChannelAction(tensorflow::CHAN_STDOUT, tensorflow::ACTION_PIPE);
     proc.SetChannelAction(tensorflow::CHAN_STDERR, tensorflow::ACTION_PIPE);
     if (!proc.Start())
-      return tensorflow::Status(tensorflow::error::UNKNOWN,
+      return tensorflow::Status(absl::StatusCode::kUnknown,
                                 "unzip couldn't start");
     string out, err;
     int status = proc.Communicate(nullptr, &out, &err);
     if (WEXITSTATUS(status) == 0) {
       *out_dir = dir;
-      return tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     } else {
-      return tensorflow::Status(tensorflow::error::UNKNOWN,
+      return tensorflow::Status(absl::StatusCode::kUnknown,
                                 "unzip failed. "
                                 "stdout:\n" +
                                     out + "\nstderr:\n" + err);
@@ -185,9 +183,9 @@ class ArchiveEnvironment : public ::testing::Environment {
     if (env->LocalTempFilename(temporary)) {
       TF_CHECK_OK(env->CreateDir(*temporary));
       temporary_directories_.push_back(*temporary);
-      return tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
-    return tensorflow::Status(tensorflow::error::UNKNOWN,
+    return tensorflow::Status(absl::StatusCode::kUnknown,
                               "make temporary directory failed");
   }
 
@@ -223,16 +221,16 @@ tensorflow::Status ReadManifest(const string& original_file, const string& dir,
   }
   if (!added) {
     string message = "Test had no examples: " + original_file;
-    return tensorflow::Status(tensorflow::error::UNKNOWN, message);
+    return tensorflow::Status(absl::StatusCode::kUnknown, message);
   }
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Get a list of tests from either zip or tar file
 std::vector<string> UnarchiveAndFindTestNames(const string& zip_file,
                                               const string& tar_file) {
   if (zip_file.empty() && tar_file.empty()) {
-    TF_CHECK_OK(tensorflow::Status(tensorflow::error::UNKNOWN,
+    TF_CHECK_OK(tensorflow::Status(absl::StatusCode::kUnknown,
                                    "Neither zip_file nor tar_file was given"));
   }
   string decompress_tmp_dir;

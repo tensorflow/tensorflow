@@ -15,6 +15,7 @@
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -270,6 +271,44 @@ class SquareLinearOperatorKroneckerTest(
         is_non_singular=True,
     )
     self.check_tape_safe(operator)
+
+  def test_convert_variables_to_tensors(self):
+    matrix_1 = variables_module.Variable([[1., 0.], [0., 1.]])
+    matrix_2 = variables_module.Variable([[2., 0.], [0., 2.]])
+    operator = kronecker.LinearOperatorKronecker(
+        [
+            linalg.LinearOperatorFullMatrix(
+                matrix_1, is_non_singular=True),
+            linalg.LinearOperatorFullMatrix(
+                matrix_2, is_non_singular=True),
+        ],
+        is_non_singular=True,
+    )
+    with self.cached_session() as sess:
+      sess.run([x.initializer for x in operator.variables])
+      self.check_convert_variables_to_tensors(operator)
+
+  def test_composite_gradients(self):
+    with backprop.GradientTape() as tape:
+      op1 = linalg.LinearOperatorFullMatrix(
+          [[1., 0.], [0., 1.]], is_non_singular=True)
+      op2 = linalg.LinearOperatorFullMatrix(
+          [[2., 0.], [0., 2.]], is_non_singular=True)
+      tape.watch([op1, op2])
+      operator = kronecker.LinearOperatorKronecker(
+          [op1, op2], is_non_singular=True)
+
+      x = self.make_x(op1, adjoint=False)
+      y = op1.matmul(x)
+      connected_grad, disconnected_grad, composite_grad = tape.gradient(
+          y, [op1, op2, operator])
+
+    disconnected_component_grad = composite_grad.operators[1].to_dense()
+    self.assertAllClose(connected_grad.to_dense(),
+                        composite_grad.operators[0].to_dense())
+    self.assertAllClose(disconnected_component_grad,
+                        array_ops.zeros_like(disconnected_component_grad))
+    self.assertIsNone(disconnected_grad)
 
 
 if __name__ == "__main__":

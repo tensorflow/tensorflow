@@ -244,7 +244,7 @@ class LstmOpTest : public ::testing::TestWithParam<bool> {
         lstm->SetInput(b * num_inputs, batch_start, batch_end);
       }
 
-      lstm->Invoke();
+      ASSERT_EQ(lstm->Invoke(), kTfLiteOk);
 
       std::vector<float> expected;
       ASSERT_EQ(num_batches, lstm_golden_output_[i].size());
@@ -1115,7 +1115,7 @@ TEST_F(LstmOpTest, Cifg_Peephole_Projection_LayerNorm) {
   VerifyGoldens(&lstm, 0.00001f);
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST_F(LstmOpTest, InvalidTypes) {
   const int n_batch = 1;
   const int n_input = 2;

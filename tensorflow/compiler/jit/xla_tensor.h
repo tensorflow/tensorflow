@@ -19,8 +19,8 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/service/shaped_buffer.h"
+#include "xla/client/local_client.h"
+#include "xla/service/shaped_buffer.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -96,9 +96,9 @@ class XlaTensor {
 
  private:
   // The optional contained ShapedBuffer.
-  absl::optional<xla::ScopedShapedBuffer> shaped_buffer_;
+  std::optional<xla::ScopedShapedBuffer> shaped_buffer_;
   // An optional host tensor value.
-  absl::optional<Tensor> host_tensor_;
+  std::optional<Tensor> host_tensor_;
   // An optional event that is triggered when the tensor's content has been
   // defined. If this event is nullptr, it is assumed that the tensor's content
   // is always defined.

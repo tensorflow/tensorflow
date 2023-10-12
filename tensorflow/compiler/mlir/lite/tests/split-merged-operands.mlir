@@ -1,6 +1,6 @@
 // RUN: tf-opt -tfl-split-merged-operands %s | FileCheck %s
 
-func @testSingleLstm(%arg0: tensor<4x4xf32>, %arg1: tensor<4xf32>, %arg2: tensor<4x4x4xf32>) -> tensor<4x4x4xf32> {
+func.func @testSingleLstm(%arg0: tensor<4x4xf32>, %arg1: tensor<4xf32>, %arg2: tensor<4x4x4xf32>) -> tensor<4x4x4xf32> {
   // CHECK-LABEL: testSingleLstm
   // CHECK-DAG:  %[[CST_0:.*]] = "tfl.pseudo_const"() {value = dense<0.000000e+00> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
   // CHECK-DAG:  %[[CST_1:.*]] = "tfl.pseudo_const"() {value = dense<0.000000e+00> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
@@ -8,10 +8,10 @@ func @testSingleLstm(%arg0: tensor<4x4xf32>, %arg1: tensor<4xf32>, %arg2: tensor
 
   %0 = "tfl.pseudo_const" () {value = dense<0.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32> loc("Const")
   %1 = "tfl.unidirectional_sequence_lstm"(%arg2, %arg0, %arg0, %arg0, %arg0, %arg0, %arg0, %arg0, %arg0, %arg1, %arg1, %arg1, %arg1, %arg1, %arg1, %arg1, %arg0, %arg1, %0, %0, %arg0, %arg0, %arg0, %arg0) {fused_activation_function = "NONE", time_major = true} : (tensor<4x4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4x4xf32>
-  return %1 : tensor<4x4x4xf32>
+  func.return %1 : tensor<4x4x4xf32>
 }
 
-func @testMultipleLstms(%arg0: tensor<4x4xf32>, %arg1: tensor<4xf32>, %arg2: tensor<4x4x4xf32>) -> tensor<4x4x4xf32> {
+func.func @testMultipleLstms(%arg0: tensor<4x4xf32>, %arg1: tensor<4xf32>, %arg2: tensor<4x4x4xf32>) -> tensor<4x4x4xf32> {
   // CHECK-LABEL: testMultipleLstms
   // CHECK-DAG:  %[[CST_0:.*]] = "tfl.pseudo_const"() {value = dense<0.000000e+00> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
   // CHECK-DAG:  %[[CST_1:.*]] = "tfl.pseudo_const"() {value = dense<0.000000e+00> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
@@ -23,5 +23,5 @@ func @testMultipleLstms(%arg0: tensor<4x4xf32>, %arg1: tensor<4xf32>, %arg2: ten
   %0 = "tfl.pseudo_const" () {value = dense<0.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32> loc("Const")
   %1 = "tfl.unidirectional_sequence_lstm"(%arg2, %arg0, %arg0, %arg0, %arg0, %arg0, %arg0, %arg0, %arg0, %arg1, %arg1, %arg1, %arg1, %arg1, %arg1, %arg1, %arg0, %arg1, %0, %0, %arg0, %arg0, %arg0, %arg0) {fused_activation_function = "NONE", time_major = true} : (tensor<4x4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4x4xf32>
   %2 = "tfl.unidirectional_sequence_lstm"(%1, %arg0, %arg0, %arg0, %arg0, %arg0, %arg0, %arg0, %arg0, %arg1, %arg1, %arg1, %arg1, %arg1, %arg1, %arg1, %arg0, %arg1, %0, %0, %arg0, %arg0, %arg0, %arg0) {fused_activation_function = "NONE", time_major = true} : (tensor<4x4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>, tensor<4x4xf32>, tensor<4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4x4xf32>
-  return %2 : tensor<4x4x4xf32>
+  func.return %2 : tensor<4x4x4xf32>
 }

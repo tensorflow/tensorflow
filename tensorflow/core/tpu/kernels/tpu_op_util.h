@@ -18,7 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
@@ -37,7 +37,8 @@ TpuCompilationCacheKey CreateCompilationCacheKey(
     uint64 mlir_module_fingerprint, const OpInputList& guaranteed_constants,
     const std::vector<TensorShape>& dynamic_shapes,
     const TPUCompileMetadataProto& metadata,
-    const TpuMeshStateInterface& mesh_state);
+    const TpuMeshStateInterface& mesh_state, uint64_t session_id = 0,
+    ResourceMgr* resource_mgr = nullptr);
 }  // namespace tpu
 }  // namespace tensorflow
 

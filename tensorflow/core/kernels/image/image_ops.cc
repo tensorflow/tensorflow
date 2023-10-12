@@ -96,11 +96,12 @@ void DoImageProjectiveTransformOp(OpKernelContext* ctx,
   }
 
   Tensor* output_t;
+  TensorShape output_shape;
   OP_REQUIRES_OK(
-      ctx, ctx->allocate_output(0,
-                                TensorShape({images_t.dim_size(0), out_height,
-                                             out_width, images_t.dim_size(3)}),
-                                &output_t));
+      ctx, TensorShape::BuildTensorShape({images_t.dim_size(0), out_height,
+                                          out_width, images_t.dim_size(3)},
+                                         &output_shape));
+  OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output_t));
   auto output = output_t->tensor<T, 4>();
   auto images = images_t.tensor<T, 4>();
   auto transform = transform_t.matrix<float>();

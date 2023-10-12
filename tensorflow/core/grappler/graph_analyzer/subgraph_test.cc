@@ -41,7 +41,7 @@ TEST(SubgraphTest, Comparison) {
   (*graph.add_node()) = MakeNodeConst("node1");
   (*graph.add_node()) = MakeNodeConst("node2");
   GenNodeMap map;
-  ASSERT_THAT(GenNode::BuildGraphInMap(graph, &map), Eq(Status::OK()));
+  ASSERT_THAT(GenNode::BuildGraphInMap(graph, &map), Eq(OkStatus()));
   auto gn1 = map["node1"].get();
   auto gn2 = map["node2"].get();
   ASSERT_THAT(gn1, Ne(nullptr));
@@ -64,7 +64,7 @@ TEST(SubgraphTest, Comparison) {
 
 TEST(SubgraphTest, EmptyIteration) {
   NodeDef node1 = MakeNodeConst("node1");
-  auto gn1 = absl::make_unique<GenNode>(&node1);
+  auto gn1 = std::make_unique<GenNode>(&node1);
   Subgraph::Identity id1;
   id1.insert(gn1.get());
   Subgraph sg1(id1);
@@ -88,7 +88,7 @@ TEST(SubgraphTest, Iteration) {
   node3->add_input("^node3");  // The control link goes back to self.
 
   GenNodeMap map;
-  ASSERT_THAT(GenNode::BuildGraphInMap(graph, &map), Eq(Status::OK()));
+  ASSERT_THAT(GenNode::BuildGraphInMap(graph, &map), Eq(OkStatus()));
   ASSERT_THAT(map.find("node3"), Ne(map.end()));
 
   Subgraph::Identity id;
@@ -151,7 +151,7 @@ TEST(SubgraphTest, IterationSamePort) {
   (*graph.add_node()) = MakeNodeAddN("node3", "node1", "node2");
 
   GenNodeMap map;
-  ASSERT_THAT(GenNode::BuildGraphInMap(graph, &map), Eq(Status::OK()));
+  ASSERT_THAT(GenNode::BuildGraphInMap(graph, &map), Eq(OkStatus()));
   ASSERT_THAT(map.find("node3"), Ne(map.end()));
 
   Subgraph::Identity id;
@@ -201,7 +201,7 @@ TEST(SubgraphTest, IterationSameNode) {
   (*graph.add_node()) = MakeNodeAddN("node3", "node1", "node2");
 
   GenNodeMap map;
-  ASSERT_THAT(GenNode::BuildGraphInMap(graph, &map), Eq(Status::OK()));
+  ASSERT_THAT(GenNode::BuildGraphInMap(graph, &map), Eq(OkStatus()));
   ASSERT_THAT(map.find("node3"), Ne(map.end()));
 
   Subgraph::Identity id;
@@ -252,7 +252,7 @@ TEST(SubgraphTest, ExtendSet) {
   node3->add_input("^node3");  // The control link goes back to self.
 
   GenNodeMap map;
-  ASSERT_THAT(GenNode::BuildGraphInMap(graph, &map), Eq(Status::OK()));
+  ASSERT_THAT(GenNode::BuildGraphInMap(graph, &map), Eq(OkStatus()));
   ASSERT_THAT(map.find("node2"), Ne(map.end()));
   ASSERT_THAT(map.find("node3"), Ne(map.end()));
 
@@ -301,7 +301,7 @@ TEST(SubgraphTest, ExtractForSignature) {
   node3->add_input("^node3");  // The control link goes back to self.
 
   GenNodeMap map;
-  ASSERT_THAT(GenNode::BuildGraphInMap(graph, &map), Eq(Status::OK()));
+  ASSERT_THAT(GenNode::BuildGraphInMap(graph, &map), Eq(OkStatus()));
   ASSERT_THAT(map.find("node1"), Ne(map.end()));
   ASSERT_THAT(map.find("node2"), Ne(map.end()));
   ASSERT_THAT(map.find("node3"), Ne(map.end()));

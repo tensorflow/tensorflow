@@ -87,7 +87,7 @@ class MultiplexDenseOp : public OpKernel {
         ctx, ctx->allocate_output(0, b_values_tensor.shape(), &output_tensor));
     auto output = output_tensor->template flat<T>();
 
-    const auto b_values = b_values_tensor.flat<T>();
+    const auto b_values = b_values_tensor.template flat<T>();
     // np.select style behavior, `cond` and `a_values` are lists of tensors.
     // Also works for the np.where style case where there is only one `cond`
     // and one `a_values` tensor.
@@ -97,8 +97,8 @@ class MultiplexDenseOp : public OpKernel {
       for (int64_t list_index = 0; list_index < num_cond_a_; list_index++) {
         const auto& cond_tensor = ctx->input(list_index);
         const auto& a_values_tensor = ctx->input(num_cond_a_ + list_index);
-        const auto cond = cond_tensor.flat<bool>();
-        const auto a_values = a_values_tensor.flat<T>();
+        const auto cond = cond_tensor.template flat<bool>();
+        const auto a_values = a_values_tensor.template flat<T>();
         if (cond(i)) {
           output(i) = a_values(i);
           flag = true;

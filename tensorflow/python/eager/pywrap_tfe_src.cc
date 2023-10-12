@@ -14,36 +14,53 @@ limitations under the License.
 ==============================================================================*/
 
 #include <atomic>
+#include <cstdint>
 #include <cstring>
+#include <functional>
+#include <limits>
+#include <list>
+#include <memory>
+#include <set>
+#include <sstream>
+#include <string>
 #include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/debugging/leak_check.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_replace.h"
-#include "absl/types/variant.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/c/c_api.h"
-#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tape.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/tf_attrtype.h"
+#include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/compactptrset.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/stack_frame.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/managed_stack_trace.h"
@@ -51,13 +68,17 @@ limitations under the License.
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/py_util.h"
-#include "tensorflow/python/lib/core/safe_ptr.h"
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 #include "tensorflow/python/util/stack_trace.h"
 #include "tensorflow/python/util/util.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/stringprintf.h"
+#include "tsl/platform/thread_annotations.h"
+#include "tsl/profiler/lib/traceme.h"
 
 using tensorflow::Status;
 using tensorflow::string;
-using tensorflow::strings::Printf;
+using tsl::strings::Printf;
 
 namespace {
 // NOTE: Items are retrieved from and returned to these unique_ptrs, and they
@@ -74,11 +95,13 @@ namespace {
 struct OpDeleter {
   void operator()(TFE_Op* op) const { TFE_DeleteOp(op); }
 };
-thread_local std::unordered_map<TFE_Context*,
-                                std::unique_ptr<TFE_Op, OpDeleter>>
-    thread_local_eager_operation_map;                             // NOLINT
-thread_local std::unique_ptr<TF_Status> thread_local_tf_status =  // NOLINT
-    nullptr;
+
+thread_local std::unordered_map<TFE_Context*,                        // NOLINT
+                                std::unique_ptr<TFE_Op, OpDeleter>>  // NOLINT
+    thread_local_eager_operation_map;                                // NOLINT
+
+thread_local tensorflow::TF_StatusPtr thread_local_tf_status(  // NOLINT
+    nullptr, tensorflow::internal::TF_StatusDeleter());        // NOLINT
 
 std::unique_ptr<TFE_Op, OpDeleter> ReleaseThreadLocalOp(TFE_Context* ctx) {
   auto it = thread_local_eager_operation_map.find(ctx);
@@ -94,9 +117,10 @@ TFE_Op* GetOp(TFE_Context* ctx, const char* op_or_function_name,
   if (!op) {
     op.reset(tensorflow::wrap(tensorflow::unwrap(ctx)->CreateOperation()));
   }
-  status->status =
-      tensorflow::unwrap(op.get())->Reset(op_or_function_name, raw_device_name);
-  if (!status->status.ok()) {
+  tsl::Set_TF_Status_from_Status(
+      status, tensorflow::unwrap(op.get())->Reset(op_or_function_name,
+                                                  raw_device_name));
+  if (TF_GetCode(status) != TF_OK) {
     op.reset();
   }
   return op.release();
@@ -228,20 +252,19 @@ struct FastPathOpExecInfo {
   tensorflow::gtl::FlatMap<string, tensorflow::DataType> cached_dtypes;
 };
 
-#define PARSE_VALUE(fn_name, type, check_fn, parse_fn)                       \
-  bool fn_name(const string& key, PyObject* py_value, TF_Status* status,     \
-               type* value) {                                                \
-    if (check_fn(py_value)) {                                                \
-      *value = static_cast<type>(parse_fn(py_value));                        \
-      return true;                                                           \
-    } else {                                                                 \
-      TF_SetStatus(status, TF_INVALID_ARGUMENT,                              \
-                   tensorflow::strings::StrCat(                              \
-                       "Expecting " #type " value for attr ", key, ", got ", \
-                       py_value->ob_type->tp_name)                           \
-                       .c_str());                                            \
-      return false;                                                          \
-    }                                                                        \
+#define PARSE_VALUE(fn_name, type, check_fn, parse_fn)                      \
+  bool fn_name(const string& key, PyObject* py_value, TF_Status* status,    \
+               type* value) {                                               \
+    if (check_fn(py_value)) {                                               \
+      *value = static_cast<type>(parse_fn(py_value));                       \
+      return true;                                                          \
+    } else {                                                                \
+      TF_SetStatus(status, TF_INVALID_ARGUMENT,                             \
+                   absl::StrCat("Expecting " #type " value for attr ", key, \
+                                ", got ", py_value->ob_type->tp_name)       \
+                       .c_str());                                           \
+      return false;                                                         \
+    }                                                                       \
   }
 
 #if PY_MAJOR_VERSION >= 3
@@ -256,6 +279,13 @@ PARSE_VALUE(ParseFloatValue, float, PyFloat_Check, PyFloat_AsDouble)
 #if PY_MAJOR_VERSION < 3
 bool ParseInt64Value(const string& key, PyObject* py_value, TF_Status* status,
                      int64_t* value) {
+  if (py_value == nullptr) {
+    TF_SetStatus(
+        status, TF_INVALID_ARGUMENT,
+        absl::StrCat("Expecting int or long value for attr ", key, "."))
+        .c_str();
+    return false;
+  }
   if (PyInt_Check(py_value)) {
     *value = static_cast<int64_t>(PyInt_AsLong(py_value));
     return true;
@@ -263,11 +293,10 @@ bool ParseInt64Value(const string& key, PyObject* py_value, TF_Status* status,
     *value = static_cast<int64_t>(PyLong_AsLong(py_value));
     return true;
   }
-  TF_SetStatus(
-      status, TF_INVALID_ARGUMENT,
-      tensorflow::strings::StrCat("Expecting int or long value for attr ", key,
-                                  ", got ", py_value->ob_type->tp_name)
-          .c_str());
+  TF_SetStatus(status, TF_INVALID_ARGUMENT,
+               absl::StrCat("Expecting int or long value for attr ", key,
+                            ", got ", py_value->ob_type->tp_name)
+                   .c_str());
   return false;
 }
 #endif
@@ -303,11 +332,10 @@ bool ParseDimensionValue(const string& key, PyObject* py_value,
       PyObject_GetAttrString(py_value, "_value"));
   if (dimension_value == nullptr) {
     PyErr_Clear();
-    TF_SetStatus(
-        status, TF_INVALID_ARGUMENT,
-        tensorflow::strings::StrCat("Expecting a Dimension for attr ", key,
-                                    ", got ", py_value->ob_type->tp_name)
-            .c_str());
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 absl::StrCat("Expecting a Dimension for attr ", key, ", got ",
+                              py_value->ob_type->tp_name)
+                     .c_str());
     return false;
   }
 
@@ -320,12 +348,12 @@ bool ParseDimensionValue(const string& key, PyObject* py_value,
 }
 
 bool ParseStringValue(const string& key, PyObject* py_value, TF_Status* status,
-                      tensorflow::StringPiece* value) {
+                      absl::string_view* value) {
   if (PyBytes_Check(py_value)) {
     Py_ssize_t size = 0;
     char* buf = nullptr;
     if (PyBytes_AsStringAndSize(py_value, &buf, &size) < 0) return false;
-    *value = tensorflow::StringPiece(buf, size);
+    *value = absl::string_view(buf, size);
     return true;
   }
 #if PY_MAJOR_VERSION >= 3
@@ -333,22 +361,28 @@ bool ParseStringValue(const string& key, PyObject* py_value, TF_Status* status,
     Py_ssize_t size = 0;
     const char* buf = PyUnicode_AsUTF8AndSize(py_value, &size);
     if (buf == nullptr) return false;
-    *value = tensorflow::StringPiece(buf, size);
+    *value = absl::string_view(buf, size);
     return true;
   }
 #endif
-  TF_SetStatus(
-      status, TF_INVALID_ARGUMENT,
-      tensorflow::strings::StrCat("Expecting a string value for attr ", key,
-                                  ", got ", py_value->ob_type->tp_name)
-          .c_str());
+  TF_SetStatus(status, TF_INVALID_ARGUMENT,
+               absl::StrCat("Expecting a string value for attr ", key, ", got ",
+                            py_value->ob_type->tp_name)
+                   .c_str());
   return false;
 }
 
 bool ParseBoolValue(const string& key, PyObject* py_value, TF_Status* status,
                     unsigned char* value) {
-  *value = PyObject_IsTrue(py_value);
-  return true;
+  if (PyBool_Check(py_value)) {
+    *value = PyObject_IsTrue(py_value);
+    return true;
+  }
+  TF_SetStatus(status, TF_INVALID_ARGUMENT,
+               absl::StrCat("Expecting bool value for attr ", key, ", got ",
+                            py_value->ob_type->tp_name)
+                   .c_str());
+  return false;
 }
 
 // The passed in py_value is expected to be an object of the python type
@@ -363,11 +397,10 @@ bool ParseTypeValue(const string& key, PyObject* py_value, TF_Status* status,
       PyObject_GetAttrString(py_value, "_type_enum"));
   if (py_type_enum == nullptr) {
     PyErr_Clear();
-    TF_SetStatus(
-        status, TF_INVALID_ARGUMENT,
-        tensorflow::strings::StrCat("Expecting a DType.dtype for attr ", key,
-                                    ", got ", py_value->ob_type->tp_name)
-            .c_str());
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 absl::StrCat("Expecting a DType.dtype for attr ", key,
+                              ", got ", py_value->ob_type->tp_name)
+                     .c_str());
     return false;
   }
 
@@ -379,29 +412,41 @@ bool SetOpAttrList(TFE_Context* ctx, TFE_Op* op, const char* key,
                    tensorflow::gtl::FlatMap<string, int64_t>* attr_list_sizes,
                    TF_Status* status) {
   if (!PySequence_Check(py_list)) {
-    TF_SetStatus(
-        status, TF_INVALID_ARGUMENT,
-        tensorflow::strings::StrCat("Expecting sequence value for attr ", key,
-                                    ", got ", py_list->ob_type->tp_name)
-            .c_str());
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 absl::StrCat("Expecting sequence value for attr ", key,
+                              ", got ", py_list->ob_type->tp_name)
+                     .c_str());
     return false;
   }
   const int num_values = PySequence_Size(py_list);
   if (attr_list_sizes != nullptr) (*attr_list_sizes)[key] = num_values;
 
-#define PARSE_LIST(c_type, parse_fn)                                      \
-  std::unique_ptr<c_type[]> values(new c_type[num_values]);               \
-  for (int i = 0; i < num_values; ++i) {                                  \
-    tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i));   \
-    if (!parse_fn(key, py_value.get(), status, &values[i])) return false; \
+#define SEQUENCE_ITEM_NULL_CHECK(c_type, item)                               \
+  if (!item) {                                                               \
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,                                \
+                 absl::StrCat("Expecting sequence of " #c_type " for attr ", \
+                              key, ", got ", py_list->ob_type->tp_name)      \
+                     .c_str());                                              \
+    return false;                                                            \
+  }
+
+#define PARSE_LIST(c_type, parse_fn)                                    \
+  std::unique_ptr<c_type[]> values(new c_type[num_values]);             \
+  for (int i = 0; i < num_values; ++i) {                                \
+    tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i)); \
+    SEQUENCE_ITEM_NULL_CHECK(c_type, py_value);                         \
+    if (!parse_fn(key, py_value.get(), status, &values[i])) {           \
+      return false;                                                     \
+    }                                                                   \
   }
 
   if (type == TF_ATTR_STRING) {
     std::unique_ptr<const void*[]> values(new const void*[num_values]);
     std::unique_ptr<size_t[]> lengths(new size_t[num_values]);
     for (int i = 0; i < num_values; ++i) {
-      tensorflow::StringPiece value;
+      absl::string_view value;
       tensorflow::Safe_PyObjectPtr py_value(PySequence_ITEM(py_list, i));
+      SEQUENCE_ITEM_NULL_CHECK(string, py_value);
       if (!ParseStringValue(key, py_value.get(), status, &value)) return false;
       values[i] = value.data();
       lengths[i] = value.size();
@@ -431,9 +476,9 @@ bool SetOpAttrList(TFE_Context* ctx, TFE_Op* op, const char* key,
         if (!PySequence_Check(py_value.get())) {
           TF_SetStatus(
               status, TF_INVALID_ARGUMENT,
-              tensorflow::strings::StrCat(
-                  "Expecting None or sequence value for element", i,
-                  " of attr ", key, ", got ", py_value->ob_type->tp_name)
+              absl::StrCat("Expecting None or sequence value for element", i,
+                           " of attr ", key, ", got ",
+                           py_value->ob_type->tp_name)
                   .c_str());
           return false;
         }
@@ -479,7 +524,7 @@ bool SetOpAttrList(TFE_Context* ctx, TFE_Op* op, const char* key,
     }
     TFE_OpSetAttrShapeList(op, key, dims.get(), num_dims.get(), num_values,
                            status);
-    if (!status->status.ok()) return false;
+    if (TF_GetCode(status) != TF_OK) return false;
   } else if (type == TF_ATTR_FUNC) {
     std::unique_ptr<const TFE_Op*[]> funcs(new const TFE_Op*[num_values]);
     for (int i = 0; i < num_values; ++i) {
@@ -492,14 +537,14 @@ bool SetOpAttrList(TFE_Context* ctx, TFE_Op* op, const char* key,
       //     (which is what the various "defun" or "Defun" decorators do).
       // And in the future also allow an object that can encapsulate
       // the function name and its attribute values.
-      tensorflow::StringPiece func_name;
+      absl::string_view func_name;
       if (!ParseStringValue(key, py_value.get(), status, &func_name)) {
         PyObject* name_attr = PyObject_GetAttrString(py_value.get(), "name");
         if (name_attr == nullptr ||
             !ParseStringValue(key, name_attr, status, &func_name)) {
           TF_SetStatus(
               status, TF_INVALID_ARGUMENT,
-              tensorflow::strings::StrCat(
+              absl::StrCat(
                   "unable to set function value attribute from a ",
                   py_value.get()->ob_type->tp_name,
                   " object. If you think this is an error, please file an "
@@ -510,15 +555,14 @@ bool SetOpAttrList(TFE_Context* ctx, TFE_Op* op, const char* key,
         }
       }
       funcs[i] = TFE_NewOp(ctx, func_name.data(), status);
-      if (!status->status.ok()) return false;
+      if (TF_GetCode(status) != TF_OK) return false;
     }
     TFE_OpSetAttrFunctionList(op, key, funcs.get(), num_values);
-    if (!status->status.ok()) return false;
+    if (TF_GetCode(status) != TF_OK) return false;
   } else {
-    TF_SetStatus(status, TF_UNIMPLEMENTED,
-                 tensorflow::strings::StrCat("Attr ", key,
-                                             " has unhandled list type ", type)
-                     .c_str());
+    TF_SetStatus(
+        status, TF_UNIMPLEMENTED,
+        absl::StrCat("Attr ", key, " has unhandled list type ", type).c_str());
     return false;
   }
 #undef PARSE_LIST
@@ -529,9 +573,9 @@ TFE_Op* GetFunc(TFE_Context* ctx, const tensorflow::NameAttrList& func,
                 TF_Status* status) {
   TFE_Op* func_op = TFE_NewOp(ctx, func.name().data(), status);
   for (const auto& attr : func.attr()) {
-    if (!status->status.ok()) return nullptr;
+    if (TF_GetCode(status) != TF_OK) return nullptr;
     SetOpAttrValueScalar(ctx, func_op, attr.second, attr.first.data(), status);
-    if (!status->status.ok()) return nullptr;
+    if (TF_GetCode(status) != TF_OK) return nullptr;
   }
   return func_op;
 }
@@ -636,7 +680,7 @@ bool SetOpAttrScalar(TFE_Context* ctx, TFE_Op* op, const char* key,
                      tensorflow::gtl::FlatMap<string, int64_t>* attr_list_sizes,
                      TF_Status* status) {
   if (type == TF_ATTR_STRING) {
-    tensorflow::StringPiece value;
+    absl::string_view value;
     if (!ParseStringValue(key, py_value, status, &value)) return false;
     TFE_OpSetAttrString(op, key, value.data(), value.size());
   } else if (type == TF_ATTR_INT) {
@@ -665,9 +709,8 @@ bool SetOpAttrScalar(TFE_Context* ctx, TFE_Op* op, const char* key,
     } else {
       if (!PySequence_Check(py_value)) {
         TF_SetStatus(status, TF_INVALID_ARGUMENT,
-                     tensorflow::strings::StrCat(
-                         "Expecting None or sequence value for attr", key,
-                         ", got ", py_value->ob_type->tp_name)
+                     absl::StrCat("Expecting None or sequence value for attr",
+                                  key, ", got ", py_value->ob_type->tp_name)
                          .c_str());
         return false;
       }
@@ -680,16 +723,19 @@ bool SetOpAttrScalar(TFE_Context* ctx, TFE_Op* op, const char* key,
       for (int i = 0; i < num_dims; ++i) {
         tensorflow::Safe_PyObjectPtr inner_py_value(
             PySequence_ITEM(py_value, i));
+        // If an error is generated when iterating through object, we can
+        // sometimes get a nullptr.
         if (inner_py_value.get() == Py_None) {
           dims[i] = -1;
-        } else if (!ParseDimensionValue(key, inner_py_value.get(), status,
+        } else if (inner_py_value.get() == nullptr ||
+                   !ParseDimensionValue(key, inner_py_value.get(), status,
                                         &dims[i])) {
           return false;
         }
       }
       TFE_OpSetAttrShape(op, key, dims.get(), num_dims, status);
     }
-    if (!status->status.ok()) return false;
+    if (TF_GetCode(status) != TF_OK) return false;
   } else if (type == TF_ATTR_FUNC) {
     // Allow:
     // (1) String function name, OR
@@ -699,14 +745,14 @@ bool SetOpAttrScalar(TFE_Context* ctx, TFE_Op* op, const char* key,
     //     (which is what the various "defun" or "Defun" decorators do).
     // And in the future also allow an object that can encapsulate
     // the function name and its attribute values.
-    tensorflow::StringPiece func_name;
+    absl::string_view func_name;
     if (!ParseStringValue(key, py_value, status, &func_name)) {
       PyObject* name_attr = PyObject_GetAttrString(py_value, "name");
       if (name_attr == nullptr ||
           !ParseStringValue(key, name_attr, status, &func_name)) {
         TF_SetStatus(
             status, TF_INVALID_ARGUMENT,
-            tensorflow::strings::StrCat(
+            absl::StrCat(
                 "unable to set function value attribute from a ",
                 py_value->ob_type->tp_name,
                 " object. If you think this is an error, please file an issue "
@@ -720,8 +766,7 @@ bool SetOpAttrScalar(TFE_Context* ctx, TFE_Op* op, const char* key,
   } else {
     TF_SetStatus(
         status, TF_UNIMPLEMENTED,
-        tensorflow::strings::StrCat("Attr ", key, " has unhandled type ", type)
-            .c_str());
+        absl::StrCat("Attr ", key, " has unhandled type ", type).c_str());
     return false;
   }
   return true;
@@ -761,7 +806,7 @@ void SetOpAttrs(TFE_Context* ctx, TFE_Op* op, PyObject* attrs, int start_index,
 #endif
     unsigned char is_list = 0;
     const TF_AttrType type = TFE_OpGetAttrType(op, key, &is_list, out_status);
-    if (!out_status->status.ok()) return;
+    if (TF_GetCode(out_status) != TF_OK) return;
     if (is_list != 0) {
       if (!SetOpAttrList(ctx, op, key, py_value, type, nullptr, out_status))
         return;
@@ -783,7 +828,7 @@ void SetOpAttrWithDefaults(
     TF_Status* status) {
   unsigned char is_list = 0;
   const TF_AttrType type = TFE_OpGetAttrType(op, attr_name, &is_list, status);
-  if (!status->status.ok()) return;
+  if (TF_GetCode(status) != TF_OK) return;
   if (attr_value == Py_None) {
     if (is_list != 0) {
       SetOpAttrListDefault(ctx, op, attr, attr_name, type, attr_list_sizes,
@@ -824,7 +869,17 @@ PyObject* gradient_function = nullptr;
 // Python function that returns output gradients given input gradients.
 PyObject* forward_gradient_function = nullptr;
 
-static std::atomic<int64_t> _uid;
+static std::atomic<int64_t> _uid = ATOMIC_VAR_INIT(int64_t{0});
+
+// This struct is responsible for marking thread_local storage as destroyed.
+// Access to the `alive` field in already-destroyed ThreadLocalDestructionMarker
+// is safe because it's a trivial type, so long as nobody creates a new
+// thread_local in the space where now-destroyed marker used to be.
+// Hopefully creating new thread_locals while destructing a thread is rare.
+struct ThreadLocalDestructionMarker {
+  ~ThreadLocalDestructionMarker() { alive = false; }
+  bool alive = true;
+};
 
 }  // namespace
 
@@ -864,35 +919,37 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
   TFE_Op* op = GetOp(ctx, op_name, device_name, out_status);
 
   auto cleaner = tensorflow::gtl::MakeCleanup([ctx, op] { ReturnOp(ctx, op); });
-  if (!out_status->status.ok()) return;
+  if (TF_GetCode(out_status) != TF_OK) return;
 
-  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace(
-      tensorflow::StackTrace::kStackTraceInitialSize));
+  tensorflow::unwrap(op)->SetStackTrace(
+      tensorflow::ManagedStackTrace(tensorflow::GetStackTrace(
+          tensorflow::StackTrace::kStackTraceInitialSize)));
 
-  for (int i = 0; i < inputs->size() && out_status->status.ok(); ++i) {
+  for (int i = 0; i < inputs->size() && TF_GetCode(out_status) == TF_OK; ++i) {
     TFE_OpAddInput(op, inputs->at(i), out_status);
   }
-  if (cancellation_manager && out_status->status.ok()) {
+  if (cancellation_manager && TF_GetCode(out_status) == TF_OK) {
     TFE_OpSetCancellationManager(op, cancellation_manager, out_status);
   }
-  if (out_status->status.ok()) {
+  if (TF_GetCode(out_status) == TF_OK) {
     SetOpAttrs(ctx, op, attrs, 0, out_status);
   }
   Py_BEGIN_ALLOW_THREADS;
 
   int num_outputs = outputs->size();
 
-  if (out_status->status.ok()) {
+  if (TF_GetCode(out_status) == TF_OK) {
     TFE_Execute(op, outputs->data(), &num_outputs, out_status);
   }
 
-  if (out_status->status.ok()) {
+  if (TF_GetCode(out_status) == TF_OK) {
     outputs->resize(num_outputs);
   } else {
-    TF_SetStatus(out_status, TF_GetCode(out_status),
-                 tensorflow::strings::StrCat(TF_Message(out_status),
-                                             " [Op:", op_name, "]")
-                     .c_str());
+    tsl::Set_TF_Status_from_Status(
+        out_status,
+        tensorflow::errors::CreateWithUpdatedMessage(
+            tsl::StatusFromTF_Status(out_status),
+            absl::StrCat(TF_Message(out_status), " [Op:", op_name, "]")));
   }
 
   Py_END_ALLOW_THREADS;
@@ -975,7 +1032,7 @@ void RaiseFallbackException(const char* message) {
 
   PyErr_SetString(
       PyExc_RuntimeError,
-      tensorflow::strings::StrCat(
+      absl::StrCat(
           "Fallback exception type not set, attempting to fallback due to ",
           message)
           .data());
@@ -987,9 +1044,10 @@ std::string FormatErrorStatusStackTrace(const tensorflow::Status& status) {
   tensorflow::DCheckPyGilState();
   DCHECK(!status.ok());
 
-  if (status.stack_trace().empty()) return status.error_message();
+  std::vector<tensorflow::StackFrame> stack_trace =
+      tensorflow::errors::GetStackTrace(status);
 
-  const std::vector<tensorflow::StackFrame>& stack_trace = status.stack_trace();
+  if (stack_trace.empty()) return std::string(status.message());
 
   PyObject* linecache = PyImport_ImportModule("linecache");
   PyObject* getline =
@@ -1003,7 +1061,7 @@ std::string FormatErrorStatusStackTrace(const tensorflow::Status& status) {
     PyObject* line_str_obj = PyObject_CallFunction(
         getline, const_cast<char*>("si"), stack_frame.file_name.c_str(),
         stack_frame.line_number);
-    tensorflow::StringPiece line_str = TFE_GetPythonString(line_str_obj);
+    absl::string_view line_str = TFE_GetPythonString(line_str_obj);
     tensorflow::str_util::RemoveWhitespaceContext(&line_str);
     result << "  File \"" << stack_frame.file_name << "\", line "
            << stack_frame.line_number << ", in " << stack_frame.function_name
@@ -1016,25 +1074,28 @@ std::string FormatErrorStatusStackTrace(const tensorflow::Status& status) {
   Py_DecRef(getline);
   Py_DecRef(linecache);
 
-  result << '\n' << status.error_message();
+  result << '\n' << status.message();
   return result.str();
 }
 
+namespace tensorflow {
+
 int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
-  if (status->status.ok()) return 0;
+  if (TF_GetCode(status) == TF_OK) return 0;
   const char* msg = TF_Message(status);
   if (exception == nullptr) {
     tensorflow::mutex_lock l(exception_class_mutex);
     if (exception_class != nullptr) {
       tensorflow::Safe_PyObjectPtr payloads(PyDict_New());
       for (const auto& payload :
-           tensorflow::errors::GetPayloads(status->status)) {
+           tensorflow::errors::GetPayloads(StatusFromTF_Status(status))) {
         PyDict_SetItem(payloads.get(),
                        PyBytes_FromString(payload.first.c_str()),
                        PyBytes_FromString(payload.second.c_str()));
       }
       tensorflow::Safe_PyObjectPtr val(Py_BuildValue(
-          "siO", FormatErrorStatusStackTrace(status->status).c_str(),
+          "siO",
+          FormatErrorStatusStackTrace(StatusFromTF_Status(status)).c_str(),
           TF_GetCode(status), payloads.get()));
       if (PyErr_Occurred()) {
         // NOTE: This hides the actual error (i.e. the reason `status` was not
@@ -1054,10 +1115,12 @@ int MaybeRaiseExceptionFromTFStatus(TF_Status* status, PyObject* exception) {
   return -1;
 }
 
+}  // namespace tensorflow
+
 int MaybeRaiseExceptionFromStatus(const tensorflow::Status& status,
                                   PyObject* exception) {
   if (status.ok()) return 0;
-  const char* msg = status.error_message().c_str();
+  const char* msg = tsl::NullTerminatedMessage(status);
   if (exception == nullptr) {
     tensorflow::mutex_lock l(exception_class_mutex);
     if (exception_class != nullptr) {
@@ -1163,20 +1226,20 @@ class PyTapeTensor {
       : id_(id), dtype_(dtype), shape_(shape) {}
   PyTapeTensor(int64_t id, tensorflow::DataType dtype, PyObject* shape)
       : id_(id), dtype_(dtype), shape_(shape) {
-    Py_INCREF(absl::get<1>(shape_));
+    Py_INCREF(std::get<1>(shape_));
   }
   PyTapeTensor(const PyTapeTensor& other) {
     id_ = other.id_;
     dtype_ = other.dtype_;
     shape_ = other.shape_;
     if (shape_.index() == 1) {
-      Py_INCREF(absl::get<1>(shape_));
+      Py_INCREF(std::get<1>(shape_));
     }
   }
 
   ~PyTapeTensor() {
     if (shape_.index() == 1) {
-      Py_DECREF(absl::get<1>(shape_));
+      Py_DECREF(std::get<1>(shape_));
     }
   }
   PyObject* GetShape() const;
@@ -1195,7 +1258,7 @@ class PyTapeTensor {
   // PyObject is the tensor itself. This is used to support tf.shape(tensor) for
   // partially-defined shapes and tf.zeros_like(tensor) for variant-dtype
   // tensors.
-  absl::variant<tensorflow::TensorShape, PyObject*> shape_;
+  std::variant<tensorflow::TensorShape, PyObject*> shape_;
 };
 
 static PyTapeTensor TapeTensorFromTensor(PyObject* tensor);
@@ -1210,33 +1273,33 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   tensorflow::Status Initialize() {
     num_elements_ = PyObject_GetAttrString(py_vspace_, "num_elements_fn");
     if (num_elements_ == nullptr) {
-      return tensorflow::errors::InvalidArgument("invalid vspace");
+      return absl::InvalidArgumentError("invalid vspace");
     }
     aggregate_fn_ = PyObject_GetAttrString(py_vspace_, "aggregate_fn");
     if (aggregate_fn_ == nullptr) {
-      return tensorflow::errors::InvalidArgument("invalid vspace");
+      return absl::InvalidArgumentError("invalid vspace");
     }
     zeros_fn_ = PyObject_GetAttrString(py_vspace_, "zeros_fn");
     if (zeros_fn_ == nullptr) {
-      return tensorflow::errors::InvalidArgument("invalid vspace");
+      return absl::InvalidArgumentError("invalid vspace");
     }
     zeros_like_fn_ = PyObject_GetAttrString(py_vspace_, "zeros_like_fn");
     if (zeros_like_fn_ == nullptr) {
-      return tensorflow::errors::InvalidArgument("invalid vspace");
+      return absl::InvalidArgumentError("invalid vspace");
     }
     ones_fn_ = PyObject_GetAttrString(py_vspace_, "ones_fn");
     if (ones_fn_ == nullptr) {
-      return tensorflow::errors::InvalidArgument("invalid vspace");
+      return absl::InvalidArgumentError("invalid vspace");
     }
     ones_like_fn_ = PyObject_GetAttrString(py_vspace_, "ones_like_fn");
     if (ones_like_fn_ == nullptr) {
-      return tensorflow::errors::InvalidArgument("invalid vspace");
+      return absl::InvalidArgumentError("invalid vspace");
     }
     graph_shape_fn_ = PyObject_GetAttrString(py_vspace_, "graph_shape_fn");
     if (graph_shape_fn_ == nullptr) {
-      return tensorflow::errors::InvalidArgument("invalid vspace");
+      return absl::InvalidArgumentError("invalid vspace");
     }
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   ~PyVSpace() override {
@@ -1313,7 +1376,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   Status BuildOnesLike(const PyTapeTensor& t,
                        PyObject** result) const override {
     *result = t.OnesLike();
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   PyObject* Zeros(PyObject* shape, PyObject* dtype) const {
@@ -1358,7 +1421,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     PyObject* py_result = (*backward_function)(grads, unneeded_gradients);
     Py_DECREF(grads);
     if (py_result == nullptr) {
-      return tensorflow::errors::Internal("gradient function threw exceptions");
+      return absl::InternalError("gradient function threw exceptions");
     }
     PyObject* seq =
         PySequence_Fast(py_result, "expected a sequence of gradients");
@@ -1386,7 +1449,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
     }
     Py_DECREF(seq);
     Py_DECREF(py_result);
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   void DeleteGradient(PyObject* tensor) const final { Py_XDECREF(tensor); }
@@ -1436,7 +1499,7 @@ PyObject* TFE_Py_RegisterVSpace(PyObject* e) {
 
 PyObject* PyTapeTensor::GetShape() const {
   if (shape_.index() == 0) {
-    auto& shape = absl::get<0>(shape_);
+    auto& shape = std::get<0>(shape_);
     PyObject* py_shape = PyTuple_New(shape.dims());
     for (int i = 0; i < shape.dims(); ++i) {
       PyTuple_SET_ITEM(py_shape, i, PyLong_FromLong(shape.dim_size(i)));
@@ -1445,12 +1508,12 @@ PyObject* PyTapeTensor::GetShape() const {
     return py_shape;
   }
 
-  return py_vspace->GraphShape(absl::get<1>(shape_));
+  return py_vspace->GraphShape(std::get<1>(shape_));
 }
 
 PyObject* PyTapeTensor::OnesLike() const {
   if (shape_.index() == 1) {
-    PyObject* tensor = absl::get<1>(shape_);
+    PyObject* tensor = std::get<1>(shape_);
     return py_vspace->OnesLike(tensor);
   }
   PyObject* py_shape = GetShape();
@@ -1469,7 +1532,7 @@ PyObject* PyTapeTensor::ZerosLike() const {
     Py_RETURN_NONE;
   }
   if (shape_.index() == 1) {
-    PyObject* tensor = absl::get<1>(shape_);
+    PyObject* tensor = std::get<1>(shape_);
     return py_vspace->ZerosLike(tensor);
   }
   PyObject* py_shape = GetShape();
@@ -1714,7 +1777,12 @@ static PyTypeObject TFE_Py_VariableWatcher_Type = {
 // stack.
 tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>* GetTapeSet() {
   thread_local std::unique_ptr<tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>>
-      tape_set = nullptr;
+      tape_set;
+  thread_local ThreadLocalDestructionMarker marker;
+  if (!marker.alive) {
+    // This thread is being destroyed. It is unsafe to access tape_set.
+    return nullptr;
+  }
   if (tape_set == nullptr) {
     tape_set.reset(new tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>);
   }
@@ -1725,7 +1793,13 @@ tensorflow::gtl::CompactPointerSet<TFE_Py_VariableWatcher*>*
 GetVariableWatcherSet() {
   thread_local std::unique_ptr<
       tensorflow::gtl::CompactPointerSet<TFE_Py_VariableWatcher*>>
-      variable_watcher_set = nullptr;
+      variable_watcher_set;
+  thread_local ThreadLocalDestructionMarker marker;
+  if (!marker.alive) {
+    // This thread is being destroyed. It is unsafe to access
+    // variable_watcher_set.
+    return nullptr;
+  }
   if (variable_watcher_set == nullptr) {
     variable_watcher_set.reset(
         new tensorflow::gtl::CompactPointerSet<TFE_Py_VariableWatcher*>);
@@ -1789,7 +1863,12 @@ class AccumulatorSet {
 };
 
 AccumulatorSet* GetAccumulatorSet() {
-  thread_local std::unique_ptr<AccumulatorSet> accumulator_set{nullptr};
+  thread_local std::unique_ptr<AccumulatorSet> accumulator_set;
+  thread_local ThreadLocalDestructionMarker marker;
+  if (!marker.alive) {
+    // This thread is being destroyed. It is unsafe to access accumulator_set.
+    return nullptr;
+  }
   if (accumulator_set == nullptr) {
     accumulator_set.reset(new AccumulatorSet);
   }
@@ -1914,7 +1993,9 @@ PyObject* TFE_Py_TapeSetIsEmpty() {
 
 void TFE_Py_TapeSetRemove(PyObject* tape) {
   auto* stack = GetTapeSet();
-  stack->erase(reinterpret_cast<TFE_Py_Tape*>(tape));
+  if (stack != nullptr) {
+    stack->erase(reinterpret_cast<TFE_Py_Tape*>(tape));
+  }
   // We kept a reference to the tape in the set to ensure it wouldn't get
   // deleted under us; cleaning it up here.
   Py_DECREF(tape);
@@ -1998,7 +2079,7 @@ PyObject* TFE_Py_TapeSetShouldRecordBackprop(PyObject* tensors) {
   if (!TensorShapesAndDtypes(tensors, &tensor_ids, &dtypes)) {
     return nullptr;
   }
-  auto tape_set = *GetTapeSet();
+  auto& tape_set = *GetTapeSet();
   for (TFE_Py_Tape* tape : tape_set) {
     if (tape->tape->ShouldRecord(tensor_ids, dtypes)) {
       Py_RETURN_TRUE;
@@ -2009,7 +2090,7 @@ PyObject* TFE_Py_TapeSetShouldRecordBackprop(PyObject* tensors) {
 }
 
 PyObject* TFE_Py_ForwardAccumulatorPushState() {
-  auto forward_accumulators = *GetAccumulatorSet();
+  auto& forward_accumulators = *GetAccumulatorSet();
   for (TFE_Py_ForwardAccumulator* accumulator : forward_accumulators) {
     accumulator->accumulator->PushState();
   }
@@ -2017,7 +2098,7 @@ PyObject* TFE_Py_ForwardAccumulatorPushState() {
 }
 
 PyObject* TFE_Py_ForwardAccumulatorPopState() {
-  auto forward_accumulators = *GetAccumulatorSet();
+  auto& forward_accumulators = *GetAccumulatorSet();
   for (TFE_Py_ForwardAccumulator* accumulator : forward_accumulators) {
     accumulator->accumulator->PopState();
   }
@@ -2039,7 +2120,7 @@ PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors) {
   // gradients are possible.
   bool some_tape_watching = false;
   if (CouldBackprop()) {
-    auto tape_set = *GetTapeSet();
+    auto& tape_set = *GetTapeSet();
     for (TFE_Py_Tape* tape : tape_set) {
       if (tape->tape->ShouldRecord(tensor_ids, dtypes)) {
         if (tape->tape->IsPersistent() || some_tape_watching) {
@@ -2052,7 +2133,7 @@ PyObject* TFE_Py_TapeSetPossibleGradientTypes(PyObject* tensors) {
     }
   }
   if (CouldForwardprop()) {
-    auto forward_accumulators = *GetAccumulatorSet();
+    auto& forward_accumulators = *GetAccumulatorSet();
     for (TFE_Py_ForwardAccumulator* accumulator : forward_accumulators) {
       if (accumulator->accumulator->ShouldRecord(tensor_ids, dtypes)) {
         if (some_tape_watching) {
@@ -2290,9 +2371,12 @@ std::vector<tensorflow::DataType> MakeTensorDtypeList(PyObject* tensors) {
 
 PyObject* ForwardAccumulatorDeleteGradient(PyObject* tensor_id,
                                            PyObject* weak_tensor_ref) {
-  int64_t parsed_tensor_id = MakeInt(tensor_id);
-  for (TFE_Py_ForwardAccumulator* accumulator : *GetAccumulatorSet()) {
-    accumulator->accumulator->DeleteGradient(parsed_tensor_id);
+  auto* accumulator_set = GetAccumulatorSet();
+  if (accumulator_set != nullptr) {
+    int64_t parsed_tensor_id = MakeInt(tensor_id);
+    for (TFE_Py_ForwardAccumulator* accumulator : *accumulator_set) {
+      accumulator->accumulator->DeleteGradient(parsed_tensor_id);
+    }
   }
   Py_DECREF(weak_tensor_ref);
   Py_DECREF(tensor_id);
@@ -2440,7 +2524,7 @@ tensorflow::Status ParseTangentOutputs(
     PyObject* user_output, std::vector<PyObject*>* output_tangents) {
   if (user_output == Py_None) {
     // No connected gradients.
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   tensorflow::Safe_PyObjectPtr fast_result(
       PySequence_Fast(user_output, "expected a sequence of forward gradients"));
@@ -2460,7 +2544,7 @@ tensorflow::Status ParseTangentOutputs(
       output_tangents->push_back(item);
     }
   }
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Calls the registered forward_gradient_function, computing `output_tangents`
@@ -2723,7 +2807,13 @@ PyObject* TFE_Py_TapeSetRecordOperationBackprop(PyObject* op_type,
 }
 
 void TFE_Py_TapeSetDeleteTrace(int64_t tensor_id) {
-  for (TFE_Py_Tape* tape : *GetTapeSet()) {
+  auto* tape_set = GetTapeSet();
+  if (tape_set == nullptr) {
+    // Current thread is being destructed, and the tape set has already
+    // been cleared.
+    return;
+  }
+  for (TFE_Py_Tape* tape : *tape_set) {
     tape->tape->DeleteTrace(tensor_id);
   }
 }
@@ -2804,14 +2894,16 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
     }
   }
   std::vector<PyObject*> result(sources_vec.size());
-  status->status = tape_obj->tape->ComputeGradient(
-      *py_vspace, target_vec, sources_vec, source_tensors_that_are_targets,
-      outgrad_vec, absl::MakeSpan(result));
-  if (!status->status.ok()) {
+  tsl::Set_TF_Status_from_Status(
+      status,
+      tape_obj->tape->ComputeGradient(*py_vspace, target_vec, sources_vec,
+                                      source_tensors_that_are_targets,
+                                      outgrad_vec, absl::MakeSpan(result)));
+  if (TF_GetCode(status) != TF_OK) {
     if (PyErr_Occurred()) {
       // Do not propagate the erroneous status as that would swallow the
       // exception which caused the problem.
-      status->status = tensorflow::Status::OK();
+      tsl::Set_TF_Status_from_Status(status, ::tensorflow::OkStatus());
     }
     return nullptr;
   }
@@ -2884,8 +2976,11 @@ PyObject* TFE_Py_ForwardAccumulatorSetAdd(PyObject* accumulator) {
 }
 
 void TFE_Py_ForwardAccumulatorSetRemove(PyObject* accumulator) {
-  GetAccumulatorSet()->erase(
-      reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator));
+  auto* accumulator_set = GetAccumulatorSet();
+  if (accumulator_set != nullptr) {
+    accumulator_set->erase(
+        reinterpret_cast<TFE_Py_ForwardAccumulator*>(accumulator));
+  }
   Py_DECREF(accumulator);
 }
 
@@ -2915,7 +3010,7 @@ PyObject* TFE_Py_PackJVPs(PyObject* tensors) {
     tensorflow::Safe_PyObjectPtr empty_list(PyList_New(0));
     return PyTuple_Pack(2, empty_tuple.get(), empty_list.get());
   }
-  auto accumulators = *GetAccumulatorSet();
+  auto& accumulators = *GetAccumulatorSet();
   tensorflow::Safe_PyObjectPtr tensors_fast(
       PySequence_Fast(tensors, "Expected a sequence of input Tensors."));
   if (tensors_fast == nullptr || PyErr_Occurred()) {
@@ -3013,7 +3108,7 @@ enum FastPathExecuteArgIndex {
   FAST_PATH_EXECUTE_ARG_INPUT_START = 3
 };
 
-PyObject* GetPythonObjectFromString(tensorflow::StringPiece s) {
+PyObject* GetPythonObjectFromString(absl::string_view s) {
 #if PY_MAJOR_VERSION >= 3
   return PyUnicode_FromStringAndSize(s.data(), s.size());
 #else
@@ -3337,10 +3432,12 @@ bool ReadVariableOp(const FastPathOpExecInfo& parent_op_exec_info,
 
   TFE_Op* op = TFE_NewOp(parent_op_exec_info.ctx, "ReadVariableOp", status);
   auto cleaner = tensorflow::gtl::MakeCleanup([op] { TFE_DeleteOp(op); });
-  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) return false;
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(status, nullptr))
+    return false;
 
   TFE_OpSetDevice(op, parent_op_exec_info.device_name, status);
-  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) return false;
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(status, nullptr))
+    return false;
 
   // Set dtype
   DCHECK(PyObject_HasAttrString(input, "_dtype"));
@@ -3355,12 +3452,14 @@ bool ReadVariableOp(const FastPathOpExecInfo& parent_op_exec_info,
   tensorflow::Safe_PyObjectPtr handle(PyObject_GetAttrString(input, "_handle"));
   if (!EagerTensor_CheckExact(handle.get())) return false;
   TFE_OpAddInput(op, EagerTensor_Handle(handle.get()), status);
-  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) return false;
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(status, nullptr))
+    return false;
 
   int num_retvals = 1;
   TFE_TensorHandle* output_handle;
   TFE_Execute(op, &output_handle, &num_retvals, status);
-  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) return false;
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(status, nullptr))
+    return false;
 
   // Always create the py object (and correctly DECREF it) from the returned
   // value, else the data will leak.
@@ -3421,7 +3520,7 @@ bool ConvertToTensor(
   TFE_TensorHandle* handle = tensorflow::ConvertToEagerTensor(
       op_exec_info.ctx, input, dtype_hint, op_exec_info.device_name);
   if (handle == nullptr) {
-    return MaybeRaiseExceptionFromTFStatus(status, nullptr);
+    return tensorflow::MaybeRaiseExceptionFromTFStatus(status, nullptr);
   }
 
   output_handle->reset(EagerTensorFromHandle(handle));
@@ -3476,7 +3575,7 @@ bool AddInputToOp(FastPathOpExecInfo* op_exec_info, PyObject* input,
   }
 
   TFE_OpAddInput(op, input_handle, status);
-  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
     return false;
   }
 
@@ -3654,12 +3753,13 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
     ReturnOp(ctx, op);
   });
 
-  if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
+  if (tensorflow::MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
     return nullptr;
   }
 
-  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace(
-      tensorflow::StackTrace::kStackTraceInitialSize));
+  tensorflow::unwrap(op)->SetStackTrace(
+      tensorflow::ManagedStackTrace(tensorflow::GetStackTrace(
+          tensorflow::StackTrace::kStackTraceInitialSize)));
 
   const tensorflow::OpDef* op_def = tensorflow::unwrap(op)->OpDef();
   if (op_def == nullptr) return nullptr;
@@ -3703,11 +3803,11 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
     // TODO(nareshmodi): Maybe include the index as part of the
     // OpRegistrationData.
     for (const auto& attr : op_def->attr()) {
-      if (tensorflow::StringPiece(attr_name) == attr.name()) {
+      if (absl::string_view(attr_name) == attr.name()) {
         SetOpAttrWithDefaults(ctx, op, attr, attr_name, py_attr_value,
                               &attr_list_sizes, status);
 
-        if (!status->status.ok()) {
+        if (TF_GetCode(status) != TF_OK) {
           VLOG(1) << "Falling back to slow path for Op \"" << op_def->name()
                   << "\" since we are unable to set the value for attr \""
                   << attr.name() << "\" due to: " << TF_Message(status);
@@ -3820,7 +3920,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
         attr_value[j] = TFE_TensorHandleDataType(input_handle);
 
         TFE_OpAddInput(op, input_handle, status);
-        if (MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
+        if (tensorflow::MaybeRaiseExceptionFromTFStatus(status, nullptr)) {
           return nullptr;
         }
 
@@ -3879,14 +3979,16 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   TFE_Execute(op, retvals.data(), &num_retvals, status);
   Py_END_ALLOW_THREADS;
 
-  if (!status->status.ok()) {
+  if (TF_GetCode(status) != TF_OK) {
     // Augment the status with the op_name for easier debugging similar to
     // TFE_Py_Execute.
-    status->status = tensorflow::errors::CreateWithUpdatedMessage(
-        status->status, tensorflow::strings::StrCat(
-                            TF_Message(status), " [Op:",
-                            TFE_GetPythonString(op_exec_info.op_name), "]"));
-    MaybeRaiseExceptionFromTFStatus(status, nullptr);
+    tsl::Set_TF_Status_from_Status(
+        status,
+        tensorflow::errors::CreateWithUpdatedMessage(
+            tsl::StatusFromTF_Status(status),
+            absl::StrCat(TF_Message(status), " [Op:",
+                         TFE_GetPythonString(op_exec_info.op_name), "]")));
+    tensorflow::MaybeRaiseExceptionFromTFStatus(status, nullptr);
     return nullptr;
   }
 
@@ -4004,18 +4106,9 @@ namespace {
 // object currently active. This object is opaque and wrapped inside a Python
 // Capsule. However, the EagerContext object it holds is tracked by the
 // global_c_eager_context object.
+// Also see common_runtime/eager/context.cc.
 PyObject* global_py_eager_context = nullptr;
-
-// This object tracks the EagerContext owned by global_py_eager_context. Since
-// the vast majority of the Python API is dependent on that
-// global_py_eager_context (including memory management), the Py object owns the
-// C object, so this pointer is non-owning.
-TFE_Context* global_c_eager_context = nullptr;
 }  // namespace
-
-void TFE_Py_SetCEagerContext(TFE_Context* ctx) { global_c_eager_context = ctx; }
-
-TFE_Context* GetCEagerContext() { return global_c_eager_context; }
 
 PyObject* TFE_Py_SetEagerContext(PyObject* py_context) {
   Py_XDECREF(global_py_eager_context);

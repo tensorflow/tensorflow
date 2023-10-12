@@ -80,7 +80,7 @@ def get_operator_type(op_name, conversion_log):
     return "SELECT OP"
 
 
-class HTMLGenerator(object):
+class HTMLGenerator:
   """Utility class to generate an HTML report."""
 
   def __init__(self, html_template_path, export_report_path):

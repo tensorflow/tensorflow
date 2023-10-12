@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/prelu_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -35,55 +36,22 @@ absl::Status PReLUAlphaTest(TestExecutionEnvironment* env) {
   parameters.shape = Linear(2);
   parameters.data = {0.5f, -2.0f};
   attr.alpha = parameters;
-  attr.clip = 0.0;
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePReLU(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 2), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({0.0f, 2.0f, -1.0f, 3.0f}, dst_tensor.data, eps));
-    }
-  }
-  return absl::OkStatus();
-}
-
-absl::Status PReLUAlphaClipTest(TestExecutionEnvironment* env) {
-  TensorFloat32 src_tensor;
-  src_tensor.shape = BHWC(1, 2, 1, 2);
-  src_tensor.data = {0.0f, -1.0f, -2.0f, 3.0f};
-
-  PReLUAttributes attr;
-  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> parameters;
-  parameters.shape = Linear(2);
-  parameters.data = {0.5f, -2.0f};
-  attr.alpha = parameters;
-  attr.clip = 0.7f;
-
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
-      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
-      OperationDef op_def;
-      op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
-      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
-      TensorFloat32 dst_tensor;
-      GPUOperation operation = CreatePReLU(env->GetGpuInfo(), op_def, attr);
-      RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
-          BHWC(1, 2, 1, 2), &dst_tensor));
-      RETURN_IF_ERROR(
-          PointWiseNear({0.0f, 2.0f, -1.0f, 0.7f}, dst_tensor.data, eps));
     }
   }
   return absl::OkStatus();
@@ -99,20 +67,19 @@ absl::Status PReLUHWCAlphaTest(TestExecutionEnvironment* env) {
   hwc_tensor.shape = HWC(2, 1, 2);
   hwc_tensor.data = {0.5f, -2.0f, 0.7f, 4.7f};
   attr.alpha = hwc_tensor;
-  attr.clip = 0.0;
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreatePReLU(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 2), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({0.0f, 2.0f, -1.4f, 3.0f}, dst_tensor.data, eps));

@@ -16,7 +16,7 @@
 
 import os
 import warnings
-
+from tensorflow.python.checkpoint import graph_view
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
@@ -35,10 +35,8 @@ from tensorflow.python.saved_model import builder as saved_model_builder
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import save as save_lib
 from tensorflow.python.training import saver as saver_lib
-from tensorflow.python.training.tracking import graph_view
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import keras_export
 
 # To avoid circular dependencies between keras/engine and keras/saving,
 # code in keras/saving must delay imports.
@@ -60,7 +58,6 @@ sequential = LazyLoader(
 SAVED_MODEL_FILENAME_JSON = 'saved_model.json'
 
 
-@keras_export(v1=['keras.experimental.export_saved_model'])
 def export_saved_model(model,
                        saved_model_path,
                        custom_objects=None,
@@ -371,7 +368,6 @@ def _assert_same_non_optimizer_objects(model, model_graph, clone, clone_graph): 
   return True
 
 
-@keras_export(v1=['keras.experimental.load_from_saved_model'])
 def load_from_saved_model(saved_model_path, custom_objects=None):
   """Loads a keras Model from a SavedModel created by `export_saved_model()`.
 

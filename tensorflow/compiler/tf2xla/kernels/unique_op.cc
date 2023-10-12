@@ -15,6 +15,9 @@ limitations under the License.
 
 #include <sys/types.h>
 
+#include <memory>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/types/optional.h"
@@ -23,17 +26,17 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/client/lib/comparators.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/comparison_util.h"
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/lib/arithmetic.h"
+#include "xla/client/lib/comparators.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/xla_builder.h"
+#include "xla/client/xla_computation.h"
+#include "xla/comparison_util.h"
+#include "xla/literal.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -99,7 +102,7 @@ class UniqueOpBase : public XlaOpKernel {
       auto limit = xla::ConstantR0<int32_t>(builder.get(), size);
       xla::Lt(counter, limit);
 
-      cond = builder->Build().ConsumeValueOrDie();
+      cond = builder->Build().value();
     }
 
     {
@@ -132,7 +135,7 @@ class UniqueOpBase : public XlaOpKernel {
       counter = counter + xla::One(builder.get(), xla::S32);
 
       xla::Tuple(builder.get(), {counter, data_stack, mask_stack, accum_stack});
-      body = builder->Build().ConsumeValueOrDie();
+      body = builder->Build().value();
     }
 
     auto zero = xla::Zero(ctx->builder(), xla::S32);
@@ -145,9 +148,13 @@ class UniqueOpBase : public XlaOpKernel {
     xla::XlaOp input = ctx->Input(0);
     StatusOr<xla::Shape> input_shape_or = ctx->builder()->GetShape(input);
     OP_REQUIRES_OK(ctx, input_shape_or.status());
-    auto input_shape = input_shape_or.ValueOrDie();
+    auto input_shape = input_shape_or.value();
+    axis = axis < 0 ? axis + input_shape.rank() : axis;
+    OP_REQUIRES(ctx, 0 <= axis && axis < input_shape.rank(),
+                errors::InvalidArgument("axis has to be between [0, ",
+                                        input_shape.rank(), ")"));
     auto aux = MoveAxis(input, axis, 0, input_shape);
-    auto aux_shape = ctx->builder()->GetShape(aux).ValueOrDie();
+    auto aux_shape = ctx->builder()->GetShape(aux).value();
     int64_t leading_size = aux_shape.dimensions(0);
     int64_t product = 1;
     for (int64_t i = 1; i < aux_shape.rank(); ++i) {
@@ -174,8 +181,8 @@ class UniqueOpBase : public XlaOpKernel {
     sort_keys.push_back(iota);
     sort_types.push_back(xla::S32);
 
-    std::vector<absl::optional<xla::XlaOp (*)(xla::XlaOp, xla::XlaOp,
-                                              absl::Span<const int64_t>)>>
+    std::vector<std::optional<xla::XlaOp (*)(xla::XlaOp, xla::XlaOp,
+                                             absl::Span<const int64_t>)>>
         generators(sort_types.size(), xla::LtTotalOrder);
     auto lt_chain = xla::CreateScalarComparisonComputation(
         "UniqueV2Lt", sort_types, generators, ctx->builder());

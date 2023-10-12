@@ -13,27 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_IMAGENON_MAX_SUPPRESSION_OP_H_
-#define TENSORFLOW_CORE_KERNELS_IMAGENON_MAX_SUPPRESSION_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_IMAGE_NON_MAX_SUPPRESSION_OP_H_
+#define TENSORFLOW_CORE_KERNELS_IMAGE_NON_MAX_SUPPRESSION_OP_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
-namespace functor {
-
-template <typename Device, typename T>
-struct NonMaxSuppression {
-  void operator()(const Device& d, typename TTypes<float, 2>::ConstTensor boxes,
-                  typename TTypes<float, 1>::ConstTensor scores,
-                  float iou_threshold, float score_threshold,
-                  int max_output_size,
-                  typename TTypes<int, 1>::Tensor selected_indices);
-};
-
-}  // namespace functor
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 extern const int kNmsBoxesPerTread;
@@ -59,4 +47,4 @@ Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_IMAGENON_MAX_SUPPRESSION_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_IMAGE_NON_MAX_SUPPRESSION_OP_H_

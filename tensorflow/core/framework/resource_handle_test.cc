@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/resource_handle.h"
 
+#include <memory>
 #include <string>
 
+#include "tensorflow/core/framework/resource_handle.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -60,6 +63,25 @@ TEST_F(ResourceHandleTest, RefCounting) {
     EXPECT_EQ(resource->RefCount(), 1);
   }
   EXPECT_FALSE(alive);
+}
+
+TEST_F(ResourceHandleTest, SummarizeValue) {
+  ResourceHandleProto proto;
+  TensorShapeProto shape;
+  shape.add_dim()->set_size(4);
+  shape.add_dim()->set_size(8);
+  proto.set_device("cpu:0");
+  proto.set_container("test_container");
+  proto.set_name("test_var");
+  auto dtypes_and_shapes = proto.add_dtypes_and_shapes();
+  dtypes_and_shapes->set_dtype(DT_INT32);
+  dtypes_and_shapes->mutable_shape()->MergeFrom(shape);
+
+  auto handle = std::make_unique<ResourceHandle>(proto);
+  EXPECT_EQ(handle->SummarizeValue(),
+            "ResourceHandle(name=\"test_var\", device=\"cpu:0\", "
+            "container=\"test_container\", type=\"\", dtype and shapes : \"[ "
+            "DType enum: 3, Shape: [4,8] ]\")");
 }
 
 }  // namespace

@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_model.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_model_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/profiling_info.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tuning_type.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
+#include "tensorflow/lite/delegates/gpu/metal/inference_context_generated.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_device.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
@@ -62,15 +64,20 @@ class InferenceContext {
   // IMPORTANT: If InitFromGraph used, RunGraphTransforms must be applied for
   // this graph upfront, otherwise not guaranteed correct behavior
   absl::Status InitFromGraph(const CreateGpuModelInfo& create_info,
-                             const GraphFloat32& graph,
-                             id<MTLDevice> device_id);
+                             const GraphFloat32& graph, id<MTLDevice> device_id,
+                             std::vector<uint8_t>* serialized_model = nullptr);
 
   // Applies specific transformations to the graph before the
   // initialization. These transformations are either impossible or useless in
   // other backends.
   absl::Status InitFromGraphWithTransforms(
       const CreateGpuModelInfo& create_info, GraphFloat32* graph,
-      id<MTLDevice> device_id);
+      id<MTLDevice> device_id,
+      std::vector<uint8_t>* serialized_model = nullptr);
+
+  absl::Status RestoreDeserialized(
+      const absl::Span<const uint8_t> serialized_model, id<MTLDevice> device_id,
+      CreateGpuModelInfo* create_info = nullptr);
 
   /// Inserts all GPU compute tasks into the command encoder.
   /// @param inputOutputBuffers Must be created and passed into the method
@@ -134,6 +141,15 @@ class InferenceContext {
     kExternal
   };
 
+  flatbuffers::Offset<data::InferenceContext> Encode(
+      MetalDevice* device,
+      flatbuffers::Offset<tflite::gpu::data::GpuModel> gpu_model_fb,
+      flatbuffers::FlatBufferBuilder* builder);
+
+  absl::Status Decode(MetalDevice* device,
+                      const data::InferenceContext* fb_inference);
+
+  void CopyFromGpuModel(GpuModel* gpu_model);
   absl::Status CompileOperations(MetalDevice* device);
   void PrepareExternal();
 
@@ -145,7 +161,7 @@ class InferenceContext {
   absl::Status UpdateParams(const GpuInfo& gpu_info);
   void GetUsages(const std::function<bool(ValueId)>& functor,
                  std::map<ValueId, int2>* usages);
-  TensorMemoryType GetTensorMemoryType(ValueId id);
+  TensorMemoryType GetTensorMemoryType(const GpuInfo& gpu_info, ValueId id);
   absl::Status Tune(TuningType tuning_type, MetalDevice* device);
 
   absl::flat_hash_map<ValueId, TensorDescriptor> tensors_descs_;
@@ -169,7 +185,8 @@ class InferenceContext {
   std::map<ValueId, MetalSpatialTensor> strong_shape_tensors_;
   std::map<ValueId, ValueId> graph_ids_to_strong_shape_tensors_;
 
-  id<MTLIndirectCommandBuffer> icb_ = nullptr;
+  id<MTLIndirectCommandBuffer> icb_ API_AVAILABLE(ios(13.0), macos(11.00),
+                                                  tvos(13.0)) = nullptr;
   id<MTLDevice> device_ = nullptr;
 };
 

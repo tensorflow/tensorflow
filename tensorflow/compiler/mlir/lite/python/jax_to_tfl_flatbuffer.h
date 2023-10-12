@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_PYTHON_JAX_TO_TFL_FLATBUFFER_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_PYTHON_JAX_TO_TFL_FLATBUFFER_H_
 
+#include <string>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"

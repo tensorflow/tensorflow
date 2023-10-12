@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tf.data service ops where servers are started late or preempted."""
+import multiprocessing
 import threading
 import time
 
@@ -78,7 +79,8 @@ class FaultToleranceTest(data_service_test_base.TestBase,
     cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 100
     ds = self.make_distributed_range_dataset(
-        num_elements, cluster, processing_mode="distributed_epoch")
+        num_elements, cluster,
+        processing_mode=data_service_ops.ShardingPolicy.DYNAMIC)
     iterator = iter(ds)
     results = []
     for _ in range(num_elements // 2):
@@ -98,7 +100,7 @@ class FaultToleranceTest(data_service_test_base.TestBase,
     ds = dataset_ops.Dataset.range(num_elements)
     ds = ds.repeat(repetitions)
     ds = self.make_distributed_dataset(
-        ds, cluster, processing_mode="distributed_epoch")
+        ds, cluster, processing_mode=data_service_ops.ShardingPolicy.DYNAMIC)
 
     iterator = iter(ds)
     results = []
@@ -197,7 +199,7 @@ class FaultToleranceTest(data_service_test_base.TestBase,
   @combinations.generate(test_base.eager_only_combinations())
   def testAddWorkerMidJob(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
-    num_elements = 100
+    num_elements = 2 * multiprocessing.cpu_count() + 100
     ds = self.make_distributed_range_dataset(num_elements, cluster)
     iterator = iter(ds)
     results = []
@@ -215,6 +217,28 @@ class FaultToleranceTest(data_service_test_base.TestBase,
 
     self.assertCountEqual(2 * list(range(num_elements)), results)
 
+  @combinations.generate(test_base.eager_only_combinations())
+  def testRemoveMoreWorkersThanMaxOutstandingRequests(self):
+    num_workers = 5
+    cluster = data_service_test_base.TestCluster(num_workers)
+    num_elements = 2**55  # Effectively infinite
+    ds = self.make_distributed_range_dataset(
+        num_elements, cluster, max_outstanding_requests=1)
+    iterator = iter(ds)
+    zeros_seen = 0
+    # Read until we've read from all workers. Each worker produces a zero first.
+    while zeros_seen < num_workers:
+      if next(iterator).numpy() == 0:
+        zeros_seen += 1
+
+    for i in range(num_workers - 1):
+      cluster.stop_worker(i)
+
+    # Read additional elements to make sure that stopping 4/5 workers doesn't
+    # result in a hang.
+    for _ in range(10):
+      next(iterator).numpy()
+
   @combinations.generate(
       combinations.times(test_base.eager_only_combinations(),
                          combinations.combine(use_same_port=[True, False]),
@@ -224,7 +248,7 @@ class FaultToleranceTest(data_service_test_base.TestBase,
         num_workers=1,
         work_dir=work_dir,
         fault_tolerant_mode=fault_tolerant_mode)
-    num_elements = 100
+    num_elements = 2 * multiprocessing.cpu_count() + 100
     ds = self.make_distributed_range_dataset(num_elements, cluster)
     iterator = iter(ds)
     # Read halfway through the dataset.
@@ -251,13 +275,12 @@ class FaultToleranceTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testChangeProcessingModeAfterRestart(self):
-    self.skipTest("b/170910141")
     cluster = data_service_test_base.TestCluster(num_workers=1)
     num_elements = 100
     range_dataset = dataset_ops.Dataset.range(num_elements)
     ds = range_dataset.apply(
         data_service_ops.distribute(
-            processing_mode="parallel_epochs",
+            processing_mode=data_service_ops.ShardingPolicy.OFF,
             service=cluster.dispatcher_address(),
             job_name="test"))
     iterator = iter(ds)
@@ -266,11 +289,12 @@ class FaultToleranceTest(data_service_test_base.TestBase,
     cluster.restart_dispatcher()
     ds = range_dataset.apply(
         data_service_ops.distribute(
-            processing_mode="distributed_epoch",
+            processing_mode=data_service_ops.ShardingPolicy.DYNAMIC,
             service=cluster.dispatcher_address(),
             job_name="test"))
-    with self.assertRaisesOpError("already an existing job with that name "
-                                  "using processing mode <parallel_epochs>"):
+    with self.assertRaisesOpError(
+        "Tried to create job with name test, but found an existing job with "
+        "different parameters"):
       next(iter(ds)).numpy()
 
   @combinations.generate(
@@ -287,7 +311,6 @@ class FaultToleranceTest(data_service_test_base.TestBase,
     it = iter(ds)
     cluster.add_worker()
     self.assertAllEqual(next(it), tensor)
-
 
 if __name__ == "__main__":
   test.main()

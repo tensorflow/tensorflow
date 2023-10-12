@@ -523,7 +523,8 @@ TEST(NNOpsTest, FractionalPool_ShapeFn) {
                        .Finalize(&op.node_def));
     };
 
-    set_op(std::vector<float>{2.0f, 1, 1 / 1.5f, 1 / 2.0f});
+    // pooling_ratio must >= 1.0
+    set_op(std::vector<float>{2.0f, 1, 1.5f, 4.0f});
 
     // Rank check.
     INFER_ERROR("must be rank 4", op, "[?,?,?]");
@@ -532,11 +533,11 @@ TEST(NNOpsTest, FractionalPool_ShapeFn) {
     INFER_OK(op, "?", "[?,?,?,?];[?];[?]");
     INFER_OK(op, "[?,?,?,?]", "[?,?,?,?];[?];[?]");
 
-    INFER_OK(op, "[10,20,30,40]", "[5,20,45,80];[20];[45]");
-    INFER_OK(op, "[?,20,30,40]", "[?,20,45,80];[20];[45]");
-    INFER_OK(op, "[10,?,30,40]", "[5,?,45,80];[?];[45]");
-    INFER_OK(op, "[10,20,?,40]", "[5,20,?,80];[20];[?]");
-    INFER_OK(op, "[10,20,30,?]", "[5,20,45,?];[20];[45]");
+    INFER_OK(op, "[10,20,30,40]", "[5,20,20,10];[20];[20]");
+    INFER_OK(op, "[?,20,30,40]", "[?,20,20,10];[20];[20]");
+    INFER_OK(op, "[10,?,30,40]", "[5,?,20,10];[?];[20]");
+    INFER_OK(op, "[10,20,?,40]", "[5,20,?,10];[20];[?]");
+    INFER_OK(op, "[10,20,30,?]", "[5,20,20,?];[20];[20]");
 
     // Wrong number of values for pooling_ratio.
     set_op(std::vector<float>{.5, 1.0, 1.5});

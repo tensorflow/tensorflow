@@ -18,14 +18,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xrt/xrt_state.h"
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/compiler/xla/service/backend.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/service/backend.h"
+#include "xla/status_macros.h"
 #include "tensorflow/compiler/xrt/xrt_memory_manager.h"
 
 namespace tensorflow {
@@ -93,7 +94,7 @@ Status AllocateScopedShapedBuffer(
   // The ScopedShapedBuffer frees the buffers that have so far been allocated if
   // it goes out of scope. That's useful if we return early as the result of an
   // error allocating one of the later buffers.
-  *buffer = absl::make_unique<xla::ScopedShapedBuffer>(
+  *buffer = std::make_unique<xla::ScopedShapedBuffer>(
       shape, on_device_shape, allocator, device_ordinal);
   for (auto& index_to_buffer : (*buffer)->buffers()) {
     const xla::Shape& subshape =
@@ -112,7 +113,7 @@ Status AllocateScopedShapedBuffer(
   TF_RETURN_IF_ERROR(
       transfer_manager->WriteTupleIndexTables(stream.get(), *(buffer->get())));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -191,7 +192,7 @@ void XRTTupleAllocation::ReleaseBuffers() {
   (*allocation)
       ->InitializeFromShapedBuffer(shaped_buffer, allocator, device_ordinal);
   (*allocation)->SetDeviceMemorySize();
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ Status XRTTupleAllocation::CreateUninitialized(
@@ -214,7 +215,7 @@ void XRTTupleAllocation::ReleaseBuffers() {
   (*allocation)
       ->InitializeFromShapedBuffer(shaped_buffer, allocator, device_ordinal);
   (*allocation)->SetDeviceMemorySize();
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ Status XRTTupleAllocation::CreateFromBuffer(
@@ -227,7 +228,7 @@ void XRTTupleAllocation::ReleaseBuffers() {
   (*allocation)
       ->InitializeFromShapedBuffer(shaped_buffer, allocator, device_ordinal);
   (*allocation)->SetDeviceMemorySize();
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ Status XRTTupleAllocation::CreateFromBuffer(
@@ -283,7 +284,7 @@ xla::StatusOr<bool> XRTTupleAllocation::SwapOut(xla::Backend* backend,
     xla::Literal literal(on_host_shape());
     TF_RETURN_IF_ERROR(StoreToLiteral(backend, &literal));
     ReleaseBuffers();
-    literal_ = absl::make_unique<xla::Literal>(std::move(literal));
+    literal_ = std::make_unique<xla::Literal>(std::move(literal));
     return true;
   }
   return false;
@@ -398,7 +399,7 @@ const se::DeviceMemoryBase& XRTTupleAllocation::root_allocation() const {
             });
   }
   (*allocation)->SetDeviceMemorySize();
-  return Status::OK();
+  return OkStatus();
 }
 
 void XRTTupleAllocation::SetDeviceMemorySize() {
@@ -447,9 +448,9 @@ void XRTTupleAllocation::SetDeviceMemorySize() {
                 index.ToString());
           }
         }
-        return Status::OK();
+        return OkStatus();
       }));
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ Status XRTTupleAllocation::MakeTuple(
@@ -477,7 +478,7 @@ void XRTTupleAllocation::SetDeviceMemorySize() {
   // writes index tables will be happy lower down.
   xla::Shape spine_shape = elements.shape();
   xla::LayoutUtil::SetToDefaultLayout(&spine_shape);
-  auto new_tuple_buffers = absl::make_unique<xla::ScopedShapedBuffer>(
+  auto new_tuple_buffers = std::make_unique<xla::ScopedShapedBuffer>(
       spine_shape, spine_shape, allocator, device_ordinal);
   TF_RETURN_IF_ERROR(elements.ForEachElementWithStatus(
       [&](const xla::ShapeIndex& index, const ExpandedTupleInput& element) {
@@ -494,7 +495,7 @@ void XRTTupleAllocation::SetDeviceMemorySize() {
           // of it.
           new_tuple_buffers->set_buffer(std::move(buffer), index);
         }
-        return Status::OK();
+        return OkStatus();
       }));
   // Transfer from the ScopedShapedBuffer to a ShapedBuffer, which does not own
   // the newly-allocated index tables. Right now there's no owner for the new
@@ -553,7 +554,7 @@ void XRTTupleAllocation::SetDeviceMemorySize() {
   // Get another reference since allocation_tmp will be Unrefed automatically on
   // exit.
   (*allocation)->Ref();
-  return Status::OK();
+  return OkStatus();
 }
 
 bool XRTTupleAllocation::IsExclusiveOwner() const {
@@ -644,7 +645,7 @@ Status XRTTupleAllocation::AliasBufferFrom(const XRTTupleAllocation& source,
     }
     dest_buffer->Unref();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 xla::StatusOr<xla::ExecutionInput> XRTTupleAllocation::ToExecutionInput(

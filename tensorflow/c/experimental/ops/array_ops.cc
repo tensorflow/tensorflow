@@ -34,9 +34,10 @@ namespace ops {
 //
 // Description:
 Status Identity(AbstractContext* ctx, AbstractTensorHandle* const input,
-                AbstractTensorHandle** output, const char* name) {
+                AbstractTensorHandle** output, const char* name,
+                const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op_ptr->Reset("Identity", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("Identity", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(input));
   int num_retvals = 1;
@@ -65,9 +66,10 @@ Status Identity(AbstractContext* ctx, AbstractTensorHandle* const input,
 //   ```
 Status IdentityN(AbstractContext* ctx,
                  absl::Span<AbstractTensorHandle* const> input,
-                 absl::Span<AbstractTensorHandle*> output, const char* name) {
+                 absl::Span<AbstractTensorHandle*> output, const char* name,
+                 const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op_ptr->Reset("IdentityN", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("IdentityN", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInputList(input));
   int num_retvals = output.size();
@@ -79,9 +81,10 @@ Status IdentityN(AbstractContext* ctx,
 //
 // Description:
 Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* const x,
-                 AbstractTensorHandle** y, const char* name) {
+                 AbstractTensorHandle** y, const char* name,
+                 const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op_ptr->Reset("ZerosLike", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("ZerosLike", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(x));
   int num_retvals = 1;
@@ -102,10 +105,10 @@ Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* const x,
 //   shape(t) ==> [2, 2, 3]
 //   ```
 Status Shape(AbstractContext* ctx, AbstractTensorHandle* const input,
-             AbstractTensorHandle** output, DataType out_type,
-             const char* name) {
+             AbstractTensorHandle** output, DataType out_type, const char* name,
+             const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op_ptr->Reset("Shape", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("Shape", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(input));
   TF_RETURN_IF_ERROR(op_ptr->SetAttrType("out_type", out_type));
@@ -149,9 +152,10 @@ Status Shape(AbstractContext* ctx, AbstractTensorHandle* const input,
 //   size 1.
 Status ExpandDims(AbstractContext* ctx, AbstractTensorHandle* const input,
                   AbstractTensorHandle* const dim,
-                  AbstractTensorHandle** output, const char* name) {
+                  AbstractTensorHandle** output, const char* name,
+                  const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op_ptr->Reset("ExpandDims", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("ExpandDims", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(input));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(dim));
@@ -164,9 +168,10 @@ Status ExpandDims(AbstractContext* ctx, AbstractTensorHandle* const input,
 //
 // Description:
 Status OnesLike(AbstractContext* ctx, AbstractTensorHandle* const x,
-                AbstractTensorHandle** y, const char* name) {
+                AbstractTensorHandle** y, const char* name,
+                const char* raw_device_name) {
   AbstractOperationPtr op_ptr(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(op_ptr->Reset("OnesLike", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(op_ptr->Reset("OnesLike", raw_device_name));
   TF_RETURN_IF_ERROR(MaybeSetOpName(op_ptr.get(), name));
   TF_RETURN_IF_ERROR(op_ptr->AddInput(x));
   int num_retvals = 1;

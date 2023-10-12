@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import saved_model
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
@@ -26,6 +25,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 
@@ -52,7 +52,11 @@ class TRTEngineOpInputOutputShapeTest(trt_test.TfTrtIntegrationTestBase):
                                 self)._GetInferGraph(*args, **kwargs)
 
     def get_func_from_saved_model(saved_model_dir):
-      saved_model_loaded = saved_model.load.load(
+      try:  # Necessary for `bazel run ...`
+        saved_model_load_fn = load.load
+      except AttributeError:  # All the other cases
+        saved_model_load_fn = load
+      saved_model_loaded = saved_model_load_fn(
           saved_model_dir, tags=[tag_constants.SERVING])
       graph_func = saved_model_loaded.signatures[
           signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
@@ -82,7 +86,7 @@ class TRTEngineOpInputOutputShapeTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["TRTEngineOp_0"]
+    return ["TRTEngineOp_000"]
 
 
 if __name__ == "__main__":

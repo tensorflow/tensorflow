@@ -25,9 +25,9 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/model.h"
 
 #define TFLITE_SCHEMA_VERSION 3
 
@@ -286,11 +286,11 @@ TfLiteStatus ReconstituteConstantTensorsIntoFlatbuffer(
             sizeof(int8_t) * data.size());
         output_buffers.push_back(CreateBuffer(*new_model_builder, data_buffer));
       } else if (type == kTfLiteFloat32) {
-        std::vector<float_t> data;
+        std::vector<float> data;
         GenerateRandomGaussianData(num_elements, -1, 1, &data);
         auto data_buffer = new_model_builder->CreateVector(
             reinterpret_cast<const uint8_t*>(data.data()),
-            sizeof(float_t) * data.size());
+            sizeof(float) * data.size());
         output_buffers.push_back(CreateBuffer(*new_model_builder, data_buffer));
       } else if (type == kTfLiteInt32) {
         std::vector<int32_t> data;

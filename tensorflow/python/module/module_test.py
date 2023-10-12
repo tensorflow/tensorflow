@@ -19,7 +19,6 @@ import collections
 import itertools
 
 from absl.testing import parameterized
-import six
 
 from tensorflow.python import tf2
 from tensorflow.python.distribute import ps_values
@@ -168,7 +167,7 @@ class TestModuleNaming(test_util.TensorFlowTestCase):
 
       def __getattr__(self, name):
         scope_names.append((name, get_name_scope()))
-        return super(GetAttrModule, self).__getattr__(name)
+        return super().__getattr__(name)
 
     mod = GetAttrModule()
     with self.assertRaises(AttributeError):
@@ -182,7 +181,7 @@ class TestModuleNaming(test_util.TensorFlowTestCase):
 
       def __getattribute__(self, name):
         scope_names.append((name, get_name_scope()))
-        return super(GetAttributeModule, self).__getattribute__(name)
+        return super().__getattribute__(name)
 
     mod = GetAttributeModule()
     with self.assertRaises(AttributeError):
@@ -357,7 +356,7 @@ class ErrorModule(module.Module):
 
   def __init__(self, call_super, raise_in_constructor=True):
     if call_super:
-      super(ErrorModule, self).__init__()
+      super().__init__()
     if raise_in_constructor:
       raise ErrorModuleError("Deliberate error!")
 
@@ -368,7 +367,7 @@ class ErrorModule(module.Module):
 class RecursiveModule(module.Module):
 
   def __init__(self, depth, trainable=True):
-    super(RecursiveModule, self).__init__(name="badger")
+    super().__init__(name="badger")
     with self.name_scope:
       self.child = None
       if depth > 1:
@@ -376,8 +375,7 @@ class RecursiveModule(module.Module):
       self.w = variables.Variable(1.0, trainable=trainable, name="mushroom")
 
 
-@six.add_metaclass(abc.ABCMeta)
-class AbstractModule(module.Module):
+class AbstractModule(module.Module, metaclass=abc.ABCMeta):
 
   @abc.abstractmethod
   def __call__(self, x):
@@ -394,7 +392,7 @@ class ConcreteModule(AbstractModule):
 class TreeModule(module.Module):
 
   def __init__(self, name=None):
-    super(TreeModule, self).__init__(name=name)
+    super().__init__(name=name)
     self._leaves = []
 
   @module.Module.with_name_scope
@@ -452,7 +450,7 @@ class ModuleWithFunctionAnnotatedCall(module.Module):
 class PropertyModule(module.Module):
 
   def __init__(self):
-    super(PropertyModule, self).__init__()
+    super().__init__()
     self._setter_scope_name = None
 
   @property
@@ -568,7 +566,7 @@ class FlattenTest(parameterized.TestCase, test_util.TensorFlowTestCase):
 class LayerModule(module.Module):
 
   def __init__(self):
-    super(LayerModule, self).__init__()
+    super().__init__()
     self._trainable_variables = [
         variables.Variable(1., name="a"),
         variables.Variable(2., name="b"),
@@ -591,7 +589,7 @@ class LayerModule(module.Module):
             attribute_traversal_key=key_function))
 
 
-class MemberType(object):
+class MemberType:
   """A simple type to search for."""
   pass
 
@@ -599,7 +597,7 @@ class MemberType(object):
 class SimpleModule(module.Module):
 
   def __init__(self, create_child=True, container_type=list):
-    super(SimpleModule, self).__init__()
+    super().__init__()
     self.z = MemberType()
     self.a = container_type([MemberType(), MemberType()])
     if create_child:

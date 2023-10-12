@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/stateful_random_ops.h"
 
 #include <cmath>
+#include <functional>
+#include <tuple>
+#include <utility>
 
 #include "tensorflow/compiler/tf2xla/kernels/random_ops_util.h"
 #include "tensorflow/compiler/tf2xla/lib/random.h"
@@ -24,46 +27,48 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/math.h"
-#include "tensorflow/compiler/xla/client/lib/prng.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/lib/math.h"
+#include "xla/client/lib/prng.h"
+#include "xla/client/xla_builder.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/math/math_util.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
 
-xla::BitGeneratorTy BitGen(Algorithm alg) {
-  if (alg == RNG_ALG_PHILOX) {
-    return [=](xla::XlaOp key, xla::XlaOp state, const xla::Shape& shape) {
-      state =
-          xla::ConcatInDim(key.builder(), {xla::Reshape(key, {1}), state}, 0);
-      xla::XlaOp result =
-          xla::RngBitGenerator(xla::RandomAlgorithm::RNG_PHILOX, state, shape);
-      xla::XlaOp data = xla::GetTupleElement(result, 1);
-      xla::XlaOp new_state =
-          xla::Slice(xla::GetTupleElement(result, 0), {1}, {3}, {1});
-      return xla::RngOutput{data, new_state};
-    };
-  } else {
-    return [=](xla::XlaOp key, xla::XlaOp state, const xla::Shape& shape) {
-      state = xla::ConcatScalars(key.builder(), {key, state});
-      xla::XlaOp result = xla::RngBitGenerator(
-          xla::RandomAlgorithm::RNG_THREE_FRY, state, shape);
-      xla::XlaOp data = xla::GetTupleElement(result, 1);
-      xla::XlaOp new_state = xla::Reshape(
-          xla::Slice(xla::GetTupleElement(result, 0), {1}, {2}, {1}), {});
-      return xla::RngOutput{data, new_state};
-    };
+xla::BitGeneratorTy BitGen(xla::RandomAlgorithm alg) {
+  switch (alg) {
+    case xla::RandomAlgorithm::RNG_PHILOX:
+      return [=](xla::XlaOp key, xla::XlaOp state, const xla::Shape& shape) {
+        state =
+            xla::ConcatInDim(key.builder(), {xla::Reshape(key, {1}), state}, 0);
+        xla::XlaOp result = xla::RngBitGenerator(alg, state, shape);
+        xla::XlaOp data = xla::GetTupleElement(result, 1);
+        xla::XlaOp new_state =
+            xla::Slice(xla::GetTupleElement(result, 0), {1}, {3}, {1});
+        return xla::RngOutput{data, new_state};
+      };
+    case xla::RandomAlgorithm::RNG_THREE_FRY:  // fall through
+    case xla::RandomAlgorithm::RNG_DEFAULT:    // fall through
+    default:
+      return [=](xla::XlaOp key, xla::XlaOp state, const xla::Shape& shape) {
+        state = xla::ConcatScalars(key.builder(), {key, state});
+        xla::XlaOp result = xla::RngBitGenerator(alg, state, shape);
+        xla::XlaOp data = xla::GetTupleElement(result, 1);
+        xla::XlaOp new_state = xla::Reshape(
+            xla::Slice(xla::GetTupleElement(result, 0), {1}, {2}, {1}), {});
+        return xla::RngOutput{data, new_state};
+      };
   }
 }
 
-xla::RngOutput StatefulRngUniform(Algorithm alg, xla::XlaOp key,
+xla::RngOutput StatefulRngUniform(xla::RandomAlgorithm alg, xla::XlaOp key,
                                   xla::XlaOp initial_state,
                                   const xla::Shape& shape, xla::XlaOp minval,
                                   xla::XlaOp maxval) {
@@ -89,7 +94,8 @@ xla::RngOutput StatefulRngUniform(Algorithm alg, xla::XlaOp key,
   }
 }
 
-xla::RngOutput StatefulRngUniformFullInt(Algorithm alg, xla::XlaOp key,
+xla::RngOutput StatefulRngUniformFullInt(xla::RandomAlgorithm alg,
+                                         xla::XlaOp key,
                                          xla::XlaOp initial_state,
                                          const xla::Shape& shape) {
   xla::PrimitiveType type = shape.element_type();
@@ -114,14 +120,18 @@ xla::RngOutput StatefulRngUniformFullInt(Algorithm alg, xla::XlaOp key,
 
 using SamplerReturnType = StatusOr<xla::RngOutput>;
 
-int64_t GetMinStateSize(Algorithm alg) {
-  if (alg == RNG_ALG_PHILOX) {
-    return PHILOX_MIN_STATE_SIZE;
+int64_t GetMinStateSize(xla::RandomAlgorithm alg) {
+  switch (alg) {
+    case xla::RandomAlgorithm::RNG_PHILOX:
+      return PHILOX_MIN_STATE_SIZE;
+    case xla::RandomAlgorithm::RNG_THREE_FRY:  // fall through
+    case xla::RandomAlgorithm::RNG_DEFAULT:    // fall through
+    default:
+      return THREEFRY_MIN_STATE_SIZE;
   }
-  return THREEFRY_MIN_STATE_SIZE;
 }
 
-Status CheckStateShape(Algorithm alg, const TensorShape& shape) {
+Status CheckStateShape(xla::RandomAlgorithm alg, const TensorShape& shape) {
   if (shape.dims() != 1) {
     return errors::InvalidArgument(
         "RNG state must have one and only one dimension, not ", shape.dims());
@@ -132,38 +142,55 @@ Status CheckStateShape(Algorithm alg, const TensorShape& shape) {
     return errors::InvalidArgument("The size of the state must be at least ",
                                    min_state_size, "; got ", state_size);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
-std::pair<xla::XlaOp, xla::XlaOp> StateAndKeyFromVariable(Algorithm alg,
-                                                          xla::XlaOp var) {
-  if (alg == RNG_ALG_THREEFRY) {
-    static constexpr int kStateSize = 1;
-    auto state = BitcastConvertType(
-        xla::Reshape(xla::Slice(var, {0}, {kStateSize}, {1}), {}), xla::U64);
-    auto key = BitcastConvertType(
-        xla::Reshape(xla::Slice(var, {kStateSize}, {kStateSize + 1}, {1}), {}),
-        xla::U64);
-    return std::make_pair(state, key);
-  } else {
-    static constexpr int kStateSize = 2;
-    auto state =
-        BitcastConvertType(xla::Slice(var, {0}, {kStateSize}, {1}), xla::U64);
-    auto key = xla::Reshape(
-        BitcastConvertType(xla::Slice(var, {kStateSize}, {kStateSize + 1}, {1}),
-                           xla::U64),
-        {});
-    return std::make_pair(state, key);
+StatusOr<xla::RandomAlgorithm> ResolveAlg(int alg_id) {
+  switch (alg_id) {
+    case RNG_ALG_PHILOX:
+      return xla::RandomAlgorithm::RNG_PHILOX;
+    case RNG_ALG_THREEFRY:
+      return xla::RandomAlgorithm::RNG_THREE_FRY;
+    case RNG_ALG_AUTO_SELECT:
+      // For AUTO_SELECT, we'll manage the counter as if it's for Philox.
+      return xla::RandomAlgorithm::RNG_PHILOX;
+    default:
+      return errors::InvalidArgument("Unsupported algorithm id: ", alg_id);
   }
 }
 
-xla::XlaOp StateAndKeyToVariable(Algorithm alg, xla::XlaOp state,
-                                 xla::XlaOp key) {
+StatusOr<xla::RandomAlgorithm> GetAlg(XlaOpKernelContext* ctx,
+                                      int alg_input_idx) {
+  TF_ASSIGN_OR_RETURN(auto alg_id, GetAlgId(ctx, alg_input_idx));
+  return ResolveAlg(alg_id);
+}
+
+std::pair<xla::XlaOp, xla::XlaOp> CounterAndKeyFromVariable(
+    xla::RandomAlgorithm alg, xla::XlaOp var) {
+  auto counter_size = GetCounterSize(alg);
+  auto counter =
+      BitcastConvertType(xla::Slice(var, {0}, {counter_size}, {1}), xla::U64);
+  if (counter_size == 1) {
+    counter = xla::Reshape(counter, {});
+  }
+  // Slicing by [-1:] may be slightly better than by
+  // [counter_size:counter_size+1], but -1 requires var_size.
+  auto key = BitcastConvertType(
+      xla::Slice(var, {counter_size}, {counter_size + 1}, {1}), xla::U64);
+  key = xla::Reshape(key, {});
+  return std::make_pair(counter, key);
+}
+
+xla::XlaOp CounterAndKeyToVariable(xla::RandomAlgorithm alg, xla::XlaOp state,
+                                   xla::XlaOp key) {
   auto builder = state.builder();
-  if (alg == RNG_ALG_THREEFRY) {
-    return ConcatScalars(builder, {state, key});
-  } else {
-    return ConcatInDim(builder, {state, xla::Reshape(key, {1})}, 0);
+  switch (alg) {
+    case xla::RandomAlgorithm::RNG_PHILOX:
+      return ConcatInDim(builder, {state, xla::Reshape(key, {1})}, 0);
+    case xla::RandomAlgorithm::RNG_THREE_FRY:  // fall through
+    case xla::RandomAlgorithm::RNG_DEFAULT:    // fall through
+    default:
+      return ConcatScalars(builder, {state, key});
   }
 }
 
@@ -172,19 +199,9 @@ xla::XlaOp StateAndKeyToVariable(Algorithm alg, xla::XlaOp state,
 Status CompileImpl(
     XlaOpKernelContext* ctx, int state_input_idx, int alg_input_idx,
     int shape_input_idx,
-    std::function<SamplerReturnType(Algorithm, xla::XlaOp, xla::XlaOp,
-                                    TensorShape)> const& sampler) {
-  auto alg_shape = ctx->InputShape(alg_input_idx);
-  if (alg_shape.dims() != 0) {
-    return errors::InvalidArgument("algorithm must be of shape [], not ",
-                                   alg_shape.DebugString());
-  }
-  xla::Literal alg_literal;
-  TF_RETURN_IF_ERROR(ctx->ConstantInput(alg_input_idx, &alg_literal));
-  Algorithm alg = Algorithm(alg_literal.Get<int64_t>({}));
-  if (!(alg == RNG_ALG_THREEFRY || alg == RNG_ALG_PHILOX)) {
-    return errors::InvalidArgument("Unsupported algorithm id: ", alg);
-  }
+    std::function<SamplerReturnType(xla::RandomAlgorithm, xla::XlaOp,
+                                    xla::XlaOp, TensorShape)> const& sampler) {
+  TF_ASSIGN_OR_RETURN(auto alg, GetAlg(ctx, alg_input_idx));
 
   xla::XlaOp var;
   TensorShape var_shape;
@@ -195,22 +212,22 @@ Status CompileImpl(
   TF_RETURN_IF_ERROR(ctx->ConstantInputAsShape(shape_input_idx, &shape));
   xla::XlaOp state;
   xla::XlaOp key;
-  std::tie(state, key) = StateAndKeyFromVariable(alg, var);
+  std::tie(state, key) = CounterAndKeyFromVariable(alg, var);
   auto status_or_value = sampler(alg, state, key, shape);
   if (!status_or_value.ok()) {
     return status_or_value.status();
   }
-  xla::RngOutput value_state = status_or_value.ConsumeValueOrDie();
+  xla::RngOutput value_state = std::move(status_or_value).value();
   state = value_state.state;
   ctx->SetOutput(0, value_state.value);
-  var = StateAndKeyToVariable(alg, state, key);
+  var = CounterAndKeyToVariable(alg, state, key);
   xla::PrimitiveType state_element_type;
   TF_RETURN_IF_ERROR(
       DataTypeToPrimitiveType(STATE_ELEMENT_DTYPE, &state_element_type));
   var = BitcastConvertType(var, state_element_type);
   TF_RETURN_IF_ERROR(
       ctx->AssignVariable(state_input_idx, STATE_ELEMENT_DTYPE, var));
-  return Status::OK();
+  return OkStatus();
 }
 
 class StatefulUniformOp : public XlaOpKernel {
@@ -221,11 +238,11 @@ class StatefulUniformOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* builder = ctx->builder();
-    auto sampler = [builder, this](Algorithm alg, xla::XlaOp state,
+    auto sampler = [builder, this](xla::RandomAlgorithm alg, xla::XlaOp state,
                                    xla::XlaOp key,
                                    TensorShape shape) -> SamplerReturnType {
+      auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
       xla::Shape xla_shape;
-      DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
       TF_RETURN_IF_ERROR(TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
       xla::PrimitiveType rng_primitive_type = xla_shape.element_type();
       xla::RngOutput uniform_state = StatefulRngUniform(
@@ -245,15 +262,16 @@ class StatefulUniformOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatefulUniformOp);
+  StatefulUniformOp(const StatefulUniformOp&) = delete;
+  void operator=(const StatefulUniformOp&) = delete;
 };
 
 // TODO(wangpeng): Support plain float16 to get rid of the `TypeConstraint`.
 REGISTER_XLA_OP(Name("StatefulUniform")
                     .CompileTimeConstantInput("algorithm")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype",
-                                    {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16}),
+                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_HALF,
+                                              DT_BFLOAT16}),
                 StatefulUniformOp);
 
 class StatefulStandardNormalOp : public XlaOpKernel {
@@ -266,10 +284,10 @@ class StatefulStandardNormalOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     auto sampler =
         // Needs explicit lambda return type because it fails to be inferred.
-        [this](Algorithm alg, xla::XlaOp state, xla::XlaOp key,
+        [this](xla::RandomAlgorithm alg, xla::XlaOp state, xla::XlaOp key,
                TensorShape shape) -> SamplerReturnType {
+      auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
       xla::Shape xla_shape;
-      DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
       TF_RETURN_IF_ERROR(TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
       xla::RngOutput value_state = xla::NormalFloatingPointDistribution(
           key, state, BitGen(alg), xla_shape);
@@ -284,15 +302,16 @@ class StatefulStandardNormalOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatefulStandardNormalOp);
+  StatefulStandardNormalOp(const StatefulStandardNormalOp&) = delete;
+  void operator=(const StatefulStandardNormalOp&) = delete;
 };
 
 // TODO(wangpeng): Support plain float16 to get rid of the `TypeConstraint`.
 REGISTER_XLA_OP(Name("StatefulStandardNormalV2")
                     .CompileTimeConstantInput("algorithm")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype",
-                                    {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16}),
+                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_HALF,
+                                              DT_BFLOAT16}),
                 StatefulStandardNormalOp);
 
 class StatefulTruncatedNormalOp : public XlaOpKernel {
@@ -306,10 +325,11 @@ class StatefulTruncatedNormalOp : public XlaOpKernel {
     xla::XlaBuilder* builder = ctx->builder();
     auto sampler =
         // Needs explicit lambda return type because it fails to be inferred.
-        [builder, this](Algorithm alg, xla::XlaOp state, xla::XlaOp key,
+        [builder, this](xla::RandomAlgorithm alg, xla::XlaOp state,
+                        xla::XlaOp key,
                         TensorShape shape) -> SamplerReturnType {
+      auto rng_dtype = MaybeConvertBF16ToF32(dtype_);
       xla::Shape xla_shape;
-      DataType rng_dtype = dtype_ == DT_DOUBLE ? DT_DOUBLE : DT_FLOAT;
       TF_RETURN_IF_ERROR(TensorShapeToXLAShape(rng_dtype, shape, &xla_shape));
 
       xla::RngOutput uniform_result = StatefulRngUniform(
@@ -330,15 +350,16 @@ class StatefulTruncatedNormalOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatefulTruncatedNormalOp);
+  StatefulTruncatedNormalOp(const StatefulTruncatedNormalOp&) = delete;
+  void operator=(const StatefulTruncatedNormalOp&) = delete;
 };
 
 // TODO(wangpeng): Support plain float16 to get rid of the `TypeConstraint`.
 REGISTER_XLA_OP(Name("StatefulTruncatedNormal")
                     .CompileTimeConstantInput("algorithm")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype",
-                                    {DT_DOUBLE, DT_FLOAT, DT_BFLOAT16}),
+                    .TypeConstraint("dtype", {DT_DOUBLE, DT_FLOAT, DT_HALF,
+                                              DT_BFLOAT16}),
                 StatefulTruncatedNormalOp);
 
 class StatefulUniformIntOp : public XlaOpKernel {
@@ -350,9 +371,10 @@ class StatefulUniformIntOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaOp minval = ctx->Input(3);
     xla::XlaOp maxval = ctx->Input(4);
-    auto sample_with_threefry =
-        [minval, maxval, this](Algorithm alg, xla::XlaOp state, xla::XlaOp key,
-                               TensorShape shape) -> SamplerReturnType {
+    auto sample_with_threefry = [minval, maxval, this](
+                                    xla::RandomAlgorithm alg, xla::XlaOp state,
+                                    xla::XlaOp key,
+                                    TensorShape shape) -> SamplerReturnType {
       xla::Shape xla_shape;
       TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype_, shape, &xla_shape));
       return StatefulRngUniform(alg, key, state, xla_shape, minval, maxval);
@@ -365,7 +387,8 @@ class StatefulUniformIntOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatefulUniformIntOp);
+  StatefulUniformIntOp(const StatefulUniformIntOp&) = delete;
+  void operator=(const StatefulUniformIntOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StatefulUniformInt")
@@ -383,8 +406,8 @@ class StatefulUniformFullIntOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    auto sample_with_threefry = [this](Algorithm alg, xla::XlaOp state,
-                                       xla::XlaOp key,
+    auto sample_with_threefry = [this](xla::RandomAlgorithm alg,
+                                       xla::XlaOp state, xla::XlaOp key,
                                        TensorShape shape) -> SamplerReturnType {
       xla::Shape xla_shape;
       TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype_, shape, &xla_shape));
@@ -398,7 +421,8 @@ class StatefulUniformFullIntOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatefulUniformFullIntOp);
+  StatefulUniformFullIntOp(const StatefulUniformFullIntOp&) = delete;
+  void operator=(const StatefulUniformFullIntOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StatefulUniformFullInt")
@@ -408,14 +432,17 @@ REGISTER_XLA_OP(Name("StatefulUniformFullInt")
                                     {DT_INT32, DT_UINT32, DT_INT64, DT_UINT64}),
                 StatefulUniformFullIntOp);
 
-xla::XlaOp IncreaseCounter(Algorithm const& alg, xla::XlaOp counter,
+xla::XlaOp IncreaseCounter(xla::RandomAlgorithm const& alg, xla::XlaOp counter,
                            xla::XlaOp delta) {
   // Multiplying 256 to be consistent with the CPU/GPU kernels
   delta = delta * ConstantR0WithType(delta.builder(), xla::U64, 256);
-  if (alg == RNG_ALG_PHILOX) {
-    return xla::PhiloxIncreaseCounter(counter, delta);
-  } else {
-    return counter + delta;
+  switch (alg) {
+    case xla::RandomAlgorithm::RNG_PHILOX:
+      return xla::PhiloxIncreaseCounter(counter, delta);
+    case xla::RandomAlgorithm::RNG_THREE_FRY:  // fall through
+    case xla::RandomAlgorithm::RNG_DEFAULT:    // fall through
+    default:
+      return counter + delta;
   }
 }
 
@@ -438,11 +465,8 @@ class RngSkipOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->ReadVariableInput(state_input_idx, STATE_ELEMENT_DTYPE,
                                           &var_shape, &var));
-    xla::Literal alg_literal;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(alg_input_idx, &alg_literal));
-    Algorithm alg = Algorithm(alg_literal.Get<AlgEnumType>({}));
-    OP_REQUIRES(ctx, alg == RNG_ALG_THREEFRY || alg == RNG_ALG_PHILOX,
-                errors::InvalidArgument("Unsupported algorithm id: ", alg));
+    // GetAlg will treat RNG_ALG_AUTO_SELECT as RNG_ALG_PHILOX.
+    OP_REQUIRES_VALUE(auto alg, ctx, GetAlg(ctx, alg_input_idx));
     OP_REQUIRES_OK(ctx, CheckStateShape(alg, var_shape));
     if (read_old_value) {
       auto counter_size = GetCounterSize(alg);
@@ -458,11 +482,11 @@ class RngSkipOp : public XlaOpKernel {
     }
     xla::XlaOp counter;
     xla::XlaOp key;
-    std::tie(counter, key) = StateAndKeyFromVariable(alg, var);
+    std::tie(counter, key) = CounterAndKeyFromVariable(alg, var);
     xla::XlaOp delta = ctx->Input(delta_input_idx);
     delta = BitcastConvertType(delta, xla::U64);
     auto new_counter = IncreaseCounter(alg, counter, delta);
-    var = StateAndKeyToVariable(alg, new_counter, key);
+    var = CounterAndKeyToVariable(alg, new_counter, key);
     xla::PrimitiveType state_element_type;
     OP_REQUIRES_OK(
         ctx, DataTypeToPrimitiveType(STATE_ELEMENT_DTYPE, &state_element_type));
@@ -472,7 +496,8 @@ class RngSkipOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RngSkipOp);
+  RngSkipOp(const RngSkipOp&) = delete;
+  void operator=(const RngSkipOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("RngSkip").CompileTimeConstantInput("algorithm"),

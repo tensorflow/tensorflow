@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "pybind11/pybind11.h"
+#include <string>
+
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/lite/python/analyzer_wrapper/model_analyzer.h"
 
 PYBIND11_MODULE(_pywrap_analyzer_wrapper, m) {

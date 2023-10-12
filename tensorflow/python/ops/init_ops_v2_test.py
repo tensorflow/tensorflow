@@ -381,8 +381,8 @@ class VarianceScalingInitializerTest(InitializersTest):
       self.assertTrue(mock_random_normal.called)
 
     self.assertEqual(x.shape, partition_shape)
-    self.assertNear(np.mean(x), expect_mean, err=1e-3)
-    self.assertNear(np.var(x), expect_var, err=1e-3)
+    self.assertNear(np.mean(x), expect_mean, err=2e-3)
+    self.assertNear(np.var(x), expect_var, err=2e-3)
 
 
 class OrthogonalInitializerTest(InitializersTest):

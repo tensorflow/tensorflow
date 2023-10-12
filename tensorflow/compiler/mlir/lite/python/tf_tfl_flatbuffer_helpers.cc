@@ -14,11 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/python/tf_tfl_flatbuffer_helpers.h"
 
+#include <optional>
 #include <ostream>
+#include <string>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -28,27 +32,28 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tsl/platform/statusor.h"
 
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 namespace tensorflow {
 namespace internal {
 namespace {
 
-using ::mlir::TFL::ReducedPrecisionSupport;
+using ::mlir::quant::ReducedPrecisionSupport;
 
 // Op def string for TFLite_Detection_PostProcess Op.
 const char kDetectionPostProcessOp[] =
@@ -124,6 +129,8 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
       return DT_INT8;
     case toco::IODataType::INT16:
       return DT_INT16;
+    case toco::IODataType::UINT16:
+      return DT_UINT16;
     case toco::IODataType::INT32:
       return DT_INT32;
     case toco::IODataType::UINT32:
@@ -182,10 +189,10 @@ Status RegisterCustomBuiltinOps(const std::vector<string> extra_tf_opdefs) {
     tensorflow::OpRegistry::Global()->Register(
         [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
-          return Status::OK();
+          return OkStatus();
         });
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -202,11 +209,11 @@ Status RegisterAllCustomOps(const toco::TocoFlags& toco_flags) {
 
 Status PopulateQuantizationSpecs(
     const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
-    mlir::TFL::QuantizationSpecs* quant_specs, std::vector<string>* node_names,
-    std::vector<string>* node_dtypes,
-    std::vector<llvm::Optional<std::vector<int>>>* node_shapes,
-    std::vector<llvm::Optional<double>>* node_mins,
-    std::vector<llvm::Optional<double>>* node_maxs) {
+    mlir::quant::QuantizationSpecs* quant_specs,
+    std::vector<string>* node_names, std::vector<string>* node_dtypes,
+    std::vector<std::optional<std::vector<int>>>* node_shapes,
+    std::vector<std::optional<double>>* node_mins,
+    std::vector<std::optional<double>>* node_maxs) {
   quant_specs->inference_input_type =
       ConvertIODataTypeToDataType(toco_flags.inference_input_type());
   tensorflow::DataType inference_type =
@@ -230,7 +237,7 @@ Status PopulateQuantizationSpecs(
           DataType_Name(ConvertIODataTypeToDataType(toco_data_type)));
     }
     if (flag.shape().unknown_rank()) {
-      node_shapes->push_back(llvm::None);
+      node_shapes->push_back(std::nullopt);
     } else {
       node_shapes->push_back(std::vector<int>(flag.shape().dims().begin(),
                                               flag.shape().dims().end()));
@@ -244,14 +251,14 @@ Status PopulateQuantizationSpecs(
         node_mins->push_back(min_max.first);
         node_maxs->push_back(min_max.second);
       } else {
-        node_mins->push_back(llvm::None);
-        node_maxs->push_back(llvm::None);
+        node_mins->push_back(std::nullopt);
+        node_maxs->push_back(std::nullopt);
       }
     }
   }
 
-  if (mlir::TFL::GetInputNodeQuantSpecs(*node_names, *node_mins, *node_maxs,
-                                        inference_type, quant_specs)) {
+  if (mlir::quant::GetInputNodeQuantSpecs(*node_names, *node_mins, *node_maxs,
+                                          inference_type, quant_specs)) {
     return errors::InvalidArgument("Failed to get input quant spec.");
   }
 
@@ -302,10 +309,11 @@ Status PopulateQuantizationSpecs(
   if (toco_flags.has_default_ranges_max()) {
     quant_specs->default_ranges.second = toco_flags.default_ranges_max();
   }
-  if (toco_flags.enable_mlir_dynamic_range_quantizer()) {
-    quant_specs->enable_mlir_dynamic_range_quantizer = true;
-  }
-  return ::tensorflow::Status::OK();
+  quant_specs->enable_mlir_dynamic_range_quantizer =
+      toco_flags.enable_mlir_dynamic_range_quantizer();
+  quant_specs->enable_mlir_variable_quantization =
+      toco_flags.enable_mlir_variable_quantization();
+  return OkStatus();
 }
 
 // Dumps the op graph of the `module` to `filename` in DOT format.
@@ -321,14 +329,15 @@ Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
     return errors::Unknown("Failed to dump Op Graph from MLIR module.");
   }
   output->keep();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvertMLIRToTFLiteFlatBuffer(
     const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
-    mlir::OwningModuleRef module, const mlir::TFL::PassConfig& pass_config,
+    mlir::OwningOpRef<mlir::ModuleOp> module,
+    const mlir::TFL::PassConfig& pass_config,
     const std::unordered_set<std::string>& saved_model_tags, string* result,
-    llvm::Optional<tensorflow::Session*> session) {
+    std::optional<tensorflow::Session*> session) {
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
         module.get(),
@@ -338,6 +347,18 @@ Status ConvertMLIRToTFLiteFlatBuffer(
 
   mlir::TFL::PassConfig pass_config_copy = pass_config;
   pass_config_copy.outline_tf_while = true;
+
+  // Checks whether the model contains an `XlaCallModuleOp` operation which
+  // is a wrapper around StableHLO.
+  // This option is mutually exclusive to `enable_stablehlo_conversion`, the
+  // latter of which takes precedence.
+  // TODO(b/290109282): explore removing the enable_hlo_to_tf_conversion flag
+  // entirely, such that the added passes are no-ops in the non-shlo case.
+  module->walk([&](mlir::TF::XlaCallModuleOp xla_call_module_op) {
+    pass_config_copy.enable_hlo_to_tf_conversion = true;
+    mlir::WalkResult::interrupt();
+  });
+
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, toco_flags, pass_config_copy,
       saved_model_tags, model_flags.saved_model_dir(), session, result);

@@ -25,12 +25,6 @@ import unittest
 
 import six
 
-_portpicker_import_error = None
-try:
-  import portpicker  # pylint: disable=g-import-not-at-top
-except (ImportError, ModuleNotFoundError) as _error:  # pylint: disable=invalid-name
-  _portpicker_import_error = _error
-  portpicker = None
 
 # pylint: disable=g-import-not-at-top
 from tensorflow.core.protobuf import config_pb2
@@ -38,8 +32,8 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import multi_process_runner
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
-from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
+from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import remote
 from tensorflow.python.framework import errors
@@ -56,28 +50,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 original_run_std_server = dc._run_std_server  # pylint: disable=protected-access
-
-ASSIGNED_PORTS = set()
-lock = threading.Lock()
-
-
-def pick_unused_port():
-  """Returns an unused and unassigned local port."""
-  if _portpicker_import_error:
-    raise _portpicker_import_error  # pylint: disable=raising-bad-type
-
-  global ASSIGNED_PORTS
-  with lock:
-    while True:
-      try:
-        port = portpicker.pick_unused_port()
-      except portpicker.NoFreePortFoundError:
-        raise unittest.SkipTest('Flakes in portpicker library do not represent '
-                                'TensorFlow errors.')
-      if port > 10000 and port not in ASSIGNED_PORTS:
-        ASSIGNED_PORTS.add(port)
-        logging.info('Using local port %r', port)
-        return port
+pick_unused_port = test_util.pick_unused_port
 
 
 def _create_cluster(num_workers,
@@ -92,8 +65,7 @@ def _create_cluster(num_workers,
                     ps_name='ps',
                     chief_name='chief'):
   """Creates and starts local servers and returns the cluster_spec dict."""
-  if _portpicker_import_error:
-    raise _portpicker_import_error  # pylint: disable=raising-bad-type
+
   worker_ports = [pick_unused_port() for _ in range(num_workers)]
   ps_ports = [pick_unused_port() for _ in range(num_ps)]
 
@@ -227,7 +199,7 @@ class MultiProcessCluster(object):
     self._mpr_manager = multi_process_runner.manager()
 
     def task_function(start_events, finish_events):
-      cluster_resolver = TFConfigClusterResolver()
+      cluster_resolver = tfconfig_cluster_resolver.TFConfigClusterResolver()
       cluster_spec = cluster_resolver.cluster_spec()
       task_type = cluster_resolver.task_type
       task_id = cluster_resolver.task_id
@@ -369,7 +341,7 @@ def create_multi_process_cluster(num_workers,
       has_eval=has_eval)
 
   cluster = MultiProcessCluster(
-      SimpleClusterResolver(
+      cluster_resolver_lib.SimpleClusterResolver(
           server_lib.ClusterSpec(cluster_spec), rpc_layer=rpc_layer),
       stream_output=stream_output,
       collective_leader=collective_leader)
@@ -424,9 +396,6 @@ def create_cluster_spec(has_chief=False,
   # {'evaluator': ['localhost:23381']}
   ```
   """
-  if _portpicker_import_error:
-    raise _portpicker_import_error  # pylint: disable=raising-bad-type
-
   cluster_spec = {}
   if has_chief:
     cluster_spec['chief'] = ['localhost:%s' % pick_unused_port()]

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <initializer_list>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -110,7 +111,7 @@ inline void RunGraphTransformations(
     Model* model, const std::string& msg,
     const GraphTransformationsSet& transformations) {
   auto s = RunGraphTransformationsWithStatus(model, msg, transformations);
-  CHECK(s.ok()) << s.error_message();
+  CHECK(s.ok()) << s.message();
 }
 
 #define DECLARE_GRAPH_TRANSFORMATION(GTName)                     \

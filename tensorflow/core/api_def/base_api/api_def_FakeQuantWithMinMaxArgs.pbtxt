@@ -1,7 +1,12 @@
 op {
   graph_op_name: "FakeQuantWithMinMaxArgs"
-  summary: "Fake-quantize the \'inputs\' tensor, type float to \'outputs\' tensor of same type."
+  summary: "Fake-quantize the \'inputs\' tensor, type float to \'outputs\' tensor of same shape and type."
   description: <<END
+
+  Quantization is called fake since the output is still in floating point.
+  The API converts inputs into values within the range [min and max] and returns
+  as output.
+
 Attributes
 
 *   `[min; max]` define the clamping range for the `inputs` data.
@@ -21,7 +26,26 @@ the behavior can be unexpected:
 *   If `min <= 0 <= max`: `scale = (max - min) / (2^num_bits - 1) `,
 `min_adj = scale * round(min / scale)` and `max_adj = max + min_adj - min`.
 
-Quantization is called fake since the output is still in floating point.
+
+Examples
+
+```python
+
+inp = tf.constant ([10.03, -10.23, 3])
+out = tf.quantization.fake_quant_with_min_max_args(inp, min=-5, max=5,
+                                                   num_bits=16)
+print(out)
+
+#  Output:
+#  tf.Tensor([ 4.9999237 -5.0000763  3.0000763], shape=(3,), dtype=float32)
+```
+
+Raises:
+  * InvalidArgumentError:
+    - If num_bits are outside of range [2, 16].
+    - If min >= max.
+  * ValueError: If `inputs` are of any other type than float32.
+
 END
 }
 

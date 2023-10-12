@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 # Create a benchmark test target of a TensorFlow C++ test (tf_cc_*_test)
 def tf_cc_logged_benchmark(
@@ -6,7 +6,6 @@ def tf_cc_logged_benchmark(
         target = None,
         benchmarks = "..",
         tags = [],
-        test_log_output_prefix = "",
         benchmark_type = "cpp_microbenchmark",
         **kwargs):
     if not name:
@@ -24,7 +23,7 @@ def tf_cc_logged_benchmark(
 
     all_tags = tags + ["benchmark-test", "local", "manual", "regression-test"]
 
-    tf_py_test(
+    tf_py_strict_test(
         name = name,
         tags = all_tags,
         size = "large",
@@ -38,9 +37,15 @@ def tf_cc_logged_benchmark(
         data = [
             target,
         ],
-        main = "run_and_gather_logs.py",
+        main = "//tensorflow/tools/test:run_and_gather_logs.py",
         deps = [
-            "//tensorflow/tools/test:run_and_gather_logs",
+            "@absl_py//absl:app",
+            "@absl_py//absl/flags",
+            "//tensorflow/core:protos_all_py_pb2",
+            "//tensorflow/python/platform:gfile",
+            "//tensorflow/python/platform:test",
+            "//tensorflow/python/platform:tf_logging",
+            "//tensorflow/tools/test:run_and_gather_logs_main_lib",
         ],
         **kwargs
     )
@@ -51,7 +56,6 @@ def tf_py_logged_benchmark(
         target = None,
         benchmarks = "..",
         tags = [],
-        test_log_output_prefix = "",
         **kwargs):
     # For now generating a py benchmark is the same as generating a C++
     # benchmark target. In the future this may change, so we have
@@ -61,7 +65,6 @@ def tf_py_logged_benchmark(
         target = target,
         benchmarks = benchmarks,
         tags = tags,
-        test_log_output_prefix = test_log_output_prefix,
         benchmark_type = "python_benchmark",
         **kwargs
     )

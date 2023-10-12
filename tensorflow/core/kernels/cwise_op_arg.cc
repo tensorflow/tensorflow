@@ -23,11 +23,8 @@ namespace tensorflow {
                               .TypeConstraint<R>("Tout"), \
                           UnaryOp<D##Device, functor::get_angle<C>>);
 
-#if !defined(MLIR_GENERATED_CPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
 REGISTER_COMPLEX(CPU, float, complex64);
 REGISTER_COMPLEX(CPU, double, complex128);
-#endif
 
 #if GOOGLE_CUDA
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)

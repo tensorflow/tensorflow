@@ -16,16 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_ITERATOR_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_ITERATOR_OPS_H_
 
-#include "tensorflow/core/common_runtime/function.h"
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/metric_utils.h"
+#include "tensorflow/core/data/tfdataz_metrics.h"
 #include "tensorflow/core/data/unbounded_thread_pool.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
-#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/platform/refcount.h"
 
 namespace tensorflow {
 namespace data {
@@ -52,7 +56,8 @@ class IteratorResource : public ResourceBase {
                  bool* end_of_sequence);
 
   // Saves a checkpoint of the state of the iterator through the given `writer`.
-  Status Save(SerializationContext* ctx, IteratorStateWriter* writer);
+  Status Save(OpKernelContext* ctx, ExternalStatePolicy external_state_policy,
+              IteratorStateWriter* writer);
 
   // Restores the state of the iterator from a checkpoint created by `Save`.
   Status Restore(OpKernelContext* ctx, IteratorStateReader* reader);
@@ -83,16 +88,13 @@ class IteratorResource : public ResourceBase {
         : flib_def_(std::move(flib_def)),
           flr_(flr),
           pflr_(std::move(pflr)),
-          function_handle_cache_(absl::make_unique<FunctionHandleCache>(flr)),
-          iterator_(std::move(iterator)) {}
+          function_handle_cache_(std::make_unique<FunctionHandleCache>(flr)),
+          iterator_(std::move(iterator)),
+
+          id_registry_(std::make_shared<MemoryCheckpoint::IdRegistry>()),
+          checkpoint_(MemoryCheckpoint::CreateRootCheckpoint(id_registry_)) {}
 
     ~State() { cancellation_manager_.StartCancel(); }
-
-    // Downcasts the given `IteratorBase` to a `DatasetBaseIterator`, and uses
-    // it to set the `iterator` field.
-    void DowncastAndSetIterator(std::unique_ptr<IteratorBase> it) {
-      iterator_.reset(static_cast<DatasetBaseIterator*>(it.release()));
-    }
 
     std::shared_ptr<FunctionLibraryDefinition> flib_def() { return flib_def_; }
 
@@ -112,6 +114,22 @@ class IteratorResource : public ResourceBase {
 
     DatasetBaseIterator* iterator() { return iterator_.get(); }
 
+    const MemoryCheckpoint& checkpoint() const { return checkpoint_; }
+
+    DatasetBase* dataset() { return dataset_.get(); }
+
+    // Downcasts the given `IteratorBase` to a `DatasetBaseIterator`, and uses
+    // it to set the `iterator` and the `dataset` field.
+    void DowncastAndSetIteratorAndDataset(std::unique_ptr<IteratorBase> it,
+                                          const DatasetBase* dataset);
+
+    // Merges the given checkpoint with the checkpoint of this state.
+    void MergeCheckpoint(MemoryCheckpoint* other);
+
+    std::shared_ptr<MemoryCheckpoint::IdRegistry> id_registry() {
+      return id_registry_;
+    }
+
    private:
     std::shared_ptr<FunctionLibraryDefinition> flib_def_;
     FunctionLibraryRuntime* flr_ = nullptr;  // not owned
@@ -120,22 +138,21 @@ class IteratorResource : public ResourceBase {
     ResourceMgr resource_mgr_;
     CancellationManager cancellation_manager_;
     std::unique_ptr<DatasetBaseIterator> iterator_;
+    core::RefCountPtr<DatasetBase> dataset_;
+    std::shared_ptr<MemoryCheckpoint::IdRegistry> id_registry_;
+    MemoryCheckpoint checkpoint_;
   };
 
+  IteratorMetricsCollector metrics_collector_;
+  std::shared_ptr<TfDatazMetricsCollector> tf_dataz_metrics_collector_;
   UnboundedThreadPool unbounded_thread_pool_;
+
   mutex mu_;
-  // Records the number of currently active `GetNext()` calls.
-  uint64 num_get_next_calls_ TF_GUARDED_BY(mu_) = 0;
-  // Records the start time (in microseconds) of the first `GetNext()` call that
-  // followed the last period of inactivity.
-  uint64 get_next_start_time_us_ TF_GUARDED_BY(mu_) = 0;
-  // Records the end time (in microseconds) of the most recent `GetNext()` call.
-  uint64 get_next_end_time_us_ TF_GUARDED_BY(mu_) = 0;
+  const Env& env_;
   const std::unique_ptr<DeviceMgr> device_mgr_ TF_GUARDED_BY(mu_);
   std::shared_ptr<State> iterator_state_ TF_GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
-  const bool collect_metrics_;
 };
 
 class IteratorHandleOp : public OpKernel {
@@ -304,8 +321,7 @@ class SerializeIteratorOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  private:
-  SerializationContext::ExternalStatePolicy external_state_policy_ =
-      SerializationContext::ExternalStatePolicy::kWarn;
+  ExternalStatePolicy external_state_policy_ = ExternalStatePolicy::POLICY_WARN;
 };
 
 class DeserializeIteratorOp : public OpKernel {

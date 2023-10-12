@@ -111,7 +111,7 @@ class DirectSession : public Session {
   ::tensorflow::Status Close() override;
   ::tensorflow::Status LocalDeviceManager(const DeviceMgr** output) override {
     *output = device_mgr_.get();
-    return ::tensorflow::Status::OK();
+    return OkStatus();
   }
 
   void ExportCostModels(CostModelManager::CostModelMap* cost_models) {
@@ -274,7 +274,7 @@ class DirectSession : public Session {
   // multiple pools are configured.
   bool ShouldUseRunHandlerPool(const RunOptions& run_options) const;
 
-  ::tensorflow::Status ExtendLocked(GraphDef graph)
+  ::tensorflow::Status ExtendLocked(GraphDef&& graph)
       TF_EXCLUSIVE_LOCKS_REQUIRED(graph_state_lock_);
 
   ::tensorflow::Status ResourceHandleToInputTensor(
@@ -313,7 +313,7 @@ class DirectSession : public Session {
   ::tensorflow::Status CheckNotClosed() {
     mutex_lock l(closed_lock_);
     if (closed_) return errors::Cancelled("Session has been closed.");
-    return ::tensorflow::Status::OK();
+    return OkStatus();
   }
 
   ::tensorflow::Status CheckGraphCreated(const char* method) {
@@ -322,7 +322,7 @@ class DirectSession : public Session {
       return errors::InvalidArgument(
           "Session was not created with a graph before ", method, "!");
     }
-    return ::tensorflow::Status::OK();
+    return OkStatus();
   }
 
   ::tensorflow::Status CreateDebuggerState(
@@ -438,7 +438,8 @@ class DirectSession : public Session {
   // pool according to other specifications of RunOptions and ConfigProto.
   bool run_in_caller_thread_ = false;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DirectSession);
+  DirectSession(const DirectSession&) = delete;
+  void operator=(const DirectSession&) = delete;
 
   // EXPERIMENTAL: debugger (tfdbg) related
   friend class DebugGateway;

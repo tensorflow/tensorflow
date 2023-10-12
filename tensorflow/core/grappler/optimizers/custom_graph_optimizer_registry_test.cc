@@ -35,13 +35,13 @@ class TestGraphOptimizer : public CustomGraphOptimizer {
  public:
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    return Status::OK();
+    return OkStatus();
   }
   string name() const override { return kTestOptimizerName; }
   bool UsesFunctionLibrary() const override { return false; }
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override {
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -89,13 +89,13 @@ class TestPluginGraphOptimizer : public CustomGraphOptimizer {
  public:
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    return Status::OK();
+    return OkStatus();
   }
   string name() const override { return kTestPluginOptimizerName; }
   bool UsesFunctionLibrary() const override { return false; }
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override {
-    return Status::OK();
+    return OkStatus();
   }
 };
 

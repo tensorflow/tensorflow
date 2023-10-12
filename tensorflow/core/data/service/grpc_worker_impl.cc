@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "grpcpp/server_builder.h"
 #include "grpcpp/server_context.h"
+#include "tensorflow/core/data/service/export.pb.h"
 #include "tensorflow/core/data/service/worker_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/platform/errors.h"
@@ -39,17 +41,22 @@ GrpcWorkerImpl::GrpcWorkerImpl(const experimental::WorkerConfig& config,
   VLOG(1) << "Registered data service worker";
 }
 
-Status GrpcWorkerImpl::Start(const std::string& worker_address,
-                             const std::string& transfer_address) {
+Status GrpcWorkerImpl::Start(
+    const std::string& worker_address,
+    const std::vector<DataTransferServerInfo>& transfer_servers) {
   worker_address_ = worker_address;
-  TF_RETURN_IF_ERROR(impl_->Start(worker_address, transfer_address));
+  TF_RETURN_IF_ERROR(impl_->Start(worker_address, transfer_servers));
   LocalWorkers::Add(worker_address, impl_);
-  return Status::OK();
+  return OkStatus();
 }
 
 void GrpcWorkerImpl::Stop() {
   LocalWorkers::Remove(worker_address_);
   impl_->Stop();
+}
+
+WorkerStateExport GrpcWorkerImpl::ExportState() const {
+  return impl_->ExportState();
 }
 
 #define HANDLER(method)                                                 \
@@ -61,6 +68,7 @@ void GrpcWorkerImpl::Stop() {
 HANDLER(ProcessTask);
 HANDLER(GetElement);
 HANDLER(GetWorkerTasks);
+HANDLER(GetSnapshotTaskProgresses);
 #undef HANDLER
 
 }  // namespace data

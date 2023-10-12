@@ -19,16 +19,18 @@ import os
 import six
 from six.moves.urllib.error import URLError
 
-from tensorflow.python import framework
+from tensorflow.core.protobuf.tpu import topology_pb2
 from tensorflow.python.client import session
 from tensorflow.python.distribute.cluster_resolver.tpu import tpu_cluster_resolver as resolver
-from tensorflow.python.eager.context import LogicalDevice
+from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
+
 mock = test.mock
 
 try:
@@ -273,10 +275,10 @@ class TPUClusterResolverTest(test.TestCase):
         credentials=None,
         service=self.mock_service_client(tpu_map=tpu_map))
 
-    with self.assertRaises(ValueError) as context:
+    with self.assertRaises(ValueError) as error_context:
       cluster_resolver.cluster_spec()
 
-    self.assertIn('Could not lookup TPU metadata', str(context.exception))
+    self.assertIn('Could not lookup TPU metadata', str(error_context.exception))
 
   def testNewNetworkEndpointFormat(self):
     tpu_map = {
@@ -605,20 +607,20 @@ class TPUClusterResolverTest(test.TestCase):
               1: [1, 2]
           })
 
-  @mock.patch.object(framework.config, 'list_logical_devices')
+  @mock.patch.object(config, 'list_logical_devices')
   @mock.patch.object(session.BaseSession, 'list_devices')
   @mock.patch.object(resolver, 'is_running_in_gce', mock_is_not_running_in_gce)
   def testNumAcceleratorsSuccess(self, mock_list_devices,
                                  mock_eager_list_devices):
     devices = [
-        LogicalDevice('/job:tpu_worker/task:0/device:TPU:0', 'TPU'),
-        LogicalDevice('/job:tpu_worker/task:1/device:TPU:1', 'TPU'),
-        LogicalDevice('/job:tpu_worker/task:2/device:TPU:0', 'TPU'),
-        LogicalDevice('/job:tpu_worker/task:3/device:TPU:1', 'TPU'),
-        LogicalDevice('/job:tpu_worker/task:0/device:TPU:4', 'TPU'),
-        LogicalDevice('/job:tpu_worker/task:1/device:TPU:5', 'TPU'),
-        LogicalDevice('/job:tpu_worker/task:2/device:TPU:4', 'TPU'),
-        LogicalDevice('/job:tpu_worker/task:3/device:TPU:5', 'TPU'),
+        context.LogicalDevice('/job:tpu_worker/task:0/device:TPU:0', 'TPU'),
+        context.LogicalDevice('/job:tpu_worker/task:1/device:TPU:1', 'TPU'),
+        context.LogicalDevice('/job:tpu_worker/task:2/device:TPU:0', 'TPU'),
+        context.LogicalDevice('/job:tpu_worker/task:3/device:TPU:1', 'TPU'),
+        context.LogicalDevice('/job:tpu_worker/task:0/device:TPU:4', 'TPU'),
+        context.LogicalDevice('/job:tpu_worker/task:1/device:TPU:5', 'TPU'),
+        context.LogicalDevice('/job:tpu_worker/task:2/device:TPU:4', 'TPU'),
+        context.LogicalDevice('/job:tpu_worker/task:3/device:TPU:5', 'TPU'),
     ]
     device_list = [
         session._DeviceAttributes(d.name, d.device_type, 1024, 0)
@@ -660,7 +662,7 @@ class TPUClusterResolverTest(test.TestCase):
         service=self.mock_service_client(tpu_map=tpu_map))
     self.assertEqual(cluster_resolver.num_accelerators(), {'TPU': 2})
 
-  @mock.patch.object(framework.config, 'list_logical_devices')
+  @mock.patch.object(config, 'list_logical_devices')
   @mock.patch.object(session.BaseSession, 'list_devices')
   @mock.patch.object(resolver, 'is_running_in_gce', mock_is_not_running_in_gce)
   def testNumAcceleratorsRetryFailure(self, mock_list_devices,
@@ -705,6 +707,21 @@ class TPUClusterResolverTest(test.TestCase):
   def testLocalTpuResolver(self):
     cr = resolver.TPUClusterResolver(tpu='local')
     self.assertEqual(cr.get_master(), '')
+
+  def testTpuTopology(self):
+    cluster_resolver = resolver.TPUClusterResolver(tpu='local')
+    self.assertIsNone(cluster_resolver._tpu_topology)
+
+    # Test set with tpu topology proto.
+    cluster_resolver.set_tpu_topology(
+        serialized_tpu_topology=topology_pb2.TopologyProto(
+            mesh_shape=[1, 1, 1, 1]).SerializeToString())
+    self.assertIsInstance(cluster_resolver.tpu_hardware_feature,
+                          topology_pb2.TPUHardwareFeature)
+
+  def testEnvironment(self):
+    cluster_resolver = resolver.TPUClusterResolver(tpu='local')
+    self.assertEqual(cluster_resolver.environment, '')
 
 
 if __name__ == '__main__':

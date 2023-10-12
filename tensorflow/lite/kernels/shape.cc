@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -55,8 +55,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       output->type = kTfLiteInt64;
       break;
     default:
-      context->ReportError(context, "Unknown shape output data type: %d",
-                           params->out_type);
+      TF_LITE_KERNEL_LOG(context, "Unknown shape output data type: %d",
+                         params->out_type);
       return kTfLiteError;
   }
 

@@ -15,19 +15,20 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFR_INTEGRATION_TFR_DECOMPOSE_CTX_H_
 #define TENSORFLOW_COMPILER_MLIR_TFR_INTEGRATION_TFR_DECOMPOSE_CTX_H_
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/framework/function.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tfr {
 
 extern const char* const kTFRLibEnv;
 
-using stream_executor::port::StatusOr;
+using tsl::StatusOr;
 
 // An wrapper for all the objects used to decompose a module (graph mode) and
 // node_def (eager mode). Note that this class owns the decomposition library.

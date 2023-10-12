@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_cluster_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
@@ -27,18 +28,21 @@ namespace TFTPU {
 
 namespace {
 
-constexpr char kTPUReplicateAttr[] = "_tpu_replicate";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kClassAttr[] = "_class";
 
+#define GEN_PASS_DEF_TPUCLEANUPCLUSTERATTRIBUTESPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class TPUCleanupClusterAttributesPass
-    : public TF::TPUCleanupClusterAttributesPassBase<
+    : public impl::TPUCleanupClusterAttributesPassBase<
           TPUCleanupClusterAttributesPass> {
  public:
   void runOnOperation() override {
     auto traverse_op = [&](Operation* op, tf_device::ClusterOp tpu_cluster) {
       if (isa<tf_device::ClusterOp>(op)) return WalkResult::advance();
-      op->removeAttr(kTPUReplicateAttr);
+      op->removeAttr(TF::kReplicationInfoAttr);
+      op->removeAttr(TF::kCompileDeviceTypeAttr);
       // This attribute is used for op colocation. Since all ops are located
       // on a single device cluster, this private attribute is no longer
       // needed.

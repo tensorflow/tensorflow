@@ -90,7 +90,7 @@ class PeerFailureTest(test.TestCase):
     # TODO(b/151232436): Always raise UnavailableError when a peer fails.
     with self.assertRaises(
         (tf.errors.UnavailableError, tf.errors.DeadlineExceededError)):
-      mpr.join(timeout=30)
+      mpr.join(timeout=60)
 
   def test_reduce_small_tensor(self):
     # This test simulates the case when a worker fails before or during reducing
@@ -124,7 +124,7 @@ class PeerFailureTest(test.TestCase):
     # TODO(b/151232436): Always raise UnavailableError when a peer fails.
     with self.assertRaises(
         (tf.errors.UnavailableError, tf.errors.DeadlineExceededError)):
-      mpr.join(timeout=30)
+      mpr.join(timeout=60)
 
 
 class PeerFailureRecoverTest(test.TestCase):

@@ -13,22 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/tpu/ops/tpu_embedding_ops.h"
+
 #include <array>
 #include <string>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/protobuf/tpu/optimization_parameters.pb.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 #include "tensorflow/core/tpu/ops/tpu_embedding_shape_util.h"
 #include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
 #include "tensorflow/core/tpu/tpu_embedding_output_layout_utils.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace tensorflow {
 
@@ -36,111 +42,83 @@ using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 using tensorflow::tpu::TPUEmbeddingConfiguration;
 
-REGISTER_OP("_ExecuteTPUEmbeddingPartitioner")
+REGISTER_OP("ExecuteTPUEmbeddingPartitioner")
     .Output("common_config: string")
     .Attr("config: string")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) -> Status {
-      string config_string;
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
+      std::string config_string;
       TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
       TPUEmbeddingConfiguration config;
       TF_RET_CHECK(config.ParseFromString(config_string));
       if (config.mode() == TPUEmbeddingConfiguration::UNSPECIFIED) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "TPUEmbeddingConfiguration.mode is INVALID.  Must be INFERENCE, "
             "TRAINING, or BACKWARD_PASS_ONLY");
       }
       c->set_output(0, c->Scalar());
-      return ::tensorflow::Status::OK();
-    })
-    .Doc(R"doc(
+      return absl::OkStatus();
+    });
 
-An op that executes the TPUEmbedding partitioner on the central configuration
-device and computes the HBM size (in bytes) required for TPUEmbedding operation.
-
-common_config: A string-encoded tpu_embedding::CommonConfiguration proto
-containing metadata about the TPUEmbedding partitioner output and
-the HBM size (in bytes) required for operation.
-config: An TPUEmbeddingConfiguration proto serialized to a string,
-describing the desired TPUEmbedding configuration.
-)doc");
-
-REGISTER_OP("_ConfigureTPUEmbeddingMemory")
+REGISTER_OP("ConfigureTPUEmbeddingMemory")
     .Input("common_config: string")
-    .Output("task_host_config: string")
-    .Attr("config: string")
+    .Output("memory_config: string")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) -> Status {
-      string config_string;
-      TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
-      TPUEmbeddingConfiguration config;
-      TF_RET_CHECK(config.ParseFromString(config_string));
-      if (config.mode() == TPUEmbeddingConfiguration::UNSPECIFIED) {
-        return errors::InvalidArgument(
-            "TPUEmbeddingConfiguration.mode is INVALID.  Must be INFERENCE, "
-            "TRAINING, or BACKWARD_PASS_ONLY");
-      }
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
       TF_RET_CHECK(c->num_inputs() == 1);
       // Validate that all the input shape is compatible.
       ShapeHandle input(c->Scalar());
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), input, &input));
       c->set_output(0, c->Scalar());
-      return ::tensorflow::Status::OK();
-    })
-    .Doc(R"doc(
+      return absl::OkStatus();
+    });
 
-An op that configures the TPUEmbedding software on a host.
-
-common_config: A string-encoded tpu_embedding CommonConfiguration proto
-containing metadata about the TPUEmbedding partitioner output and the HBM
-size (in bytes) required for operation.
-task_host_config: A string-encoded tpu_embedding PerHostConfiguration proto
-containing metadata about the memory allocations reserved for TPUEmbedding.
-config: An TPUEmbeddingConfiguration proto serialized to a string,
-describing the desired TPUEmbedding configuration.
-)doc");
-
-REGISTER_OP("_ConfigureTPUEmbeddingHost")
-    .Input("common_config: string")
-    .Input("task_host_config: N * string")
-    .Output("host_config: string")
+REGISTER_OP("CollateTPUEmbeddingMemory")
+    .Input("memory_configs: N * string")
+    .Output("merged_memory_config: string")
     .Attr("N: int >= 1")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
+      TF_RET_CHECK(c->num_inputs() > 0);
+      ShapeHandle input(c->Scalar());
+      // Validate that all the inputs are compatible with the correct
+      // vector shape.
+      for (int i = 0; i < c->num_inputs(); ++i) {
+        TF_RETURN_IF_ERROR(c->Merge(c->input(i), input, &input));
+      }
+      c->set_output(0, c->Scalar());
+      return absl::OkStatus();
+    });
+
+REGISTER_OP("ConfigureTPUEmbeddingHost")
+    .Input("common_config: string")
+    .Input("memory_config: string")
+    .Output("network_config: string")
     .Attr("config: string")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) -> Status {
-      string config_string;
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
+      std::string config_string;
       TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
       TPUEmbeddingConfiguration config;
       TF_RET_CHECK(config.ParseFromString(config_string));
       if (config.mode() == TPUEmbeddingConfiguration::UNSPECIFIED) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "TPUEmbeddingConfiguration.mode is INVALID.  Must be INFERENCE, "
             "TRAINING, or BACKWARD_PASS_ONLY");
       }
-      TF_RET_CHECK(c->num_inputs() > 0);
+      TF_RET_CHECK(c->num_inputs() == 2);
       ShapeHandle input(c->Scalar());
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), input, &input));
+      TF_RETURN_IF_ERROR(c->Merge(c->input(1), input, &input));
       c->set_output(0, c->Scalar());
-      return ::tensorflow::Status::OK();
-    })
-    .Doc(R"doc(
+      return absl::OkStatus();
+    });
 
-An op that configures the TPUEmbedding software on a host.
-
-common_config: A string-encoded tpu_embedding CommonConfiguration proto
-containing metadata about the TPUEmbedding partitioner output.
-task_host_config: A string-encoded tpu_embedding PerHostConfiguration proto from
-each host containing metadata about the memory allocations reserved for
-TPUEmbedding.
-config: An TPUEmbeddingConfiguration proto serialized to a string,
-describing the desired TPUEmbedding configuration.
-)doc");
-
-REGISTER_OP("_ConnectInterTPUEmbeddingCommunication")
-    .Input("host_config: N * string")
+REGISTER_OP("ConnectTPUEmbeddingHosts")
+    .Input("network_configs: N * string")
     .Attr("N: int >= 1")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) -> Status {
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
       TF_RET_CHECK(c->num_inputs() > 0);
       ShapeHandle input(c->Scalar());
       // Validate that all the inputs are compatible with the correct
@@ -148,72 +126,54 @@ REGISTER_OP("_ConnectInterTPUEmbeddingCommunication")
       for (int i = 0; i < c->num_inputs(); ++i) {
         TF_RETURN_IF_ERROR(c->Merge(c->input(i), input, &input));
       }
-      return ::tensorflow::Status::OK();
-    })
-    .Doc(R"doc(
+      return absl::OkStatus();
+    });
 
-An op that sets up communication between TPUEmbedding host software instances after
-ConfigureTPUEmbeddingHost has been called on each host.
-
-host_config: A string-encoded tpu_embedding PerHostConfiguration proto read
-from each host containing metadata about the RPC port used for communication
-with that host.
-)doc");
-
-REGISTER_OP("_FinalizeTPUEmbeddingSystemConfiguration")
-    .Input("host_config: N * string")
-    .Attr("N: int >= 1")
+REGISTER_OP("FinalizeTPUEmbedding")
+    .Input("common_config: string")
+    .Input("memory_config: string")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) -> Status {
-      ShapeHandle input(c->Scalar());
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
       // Validate that all the inputs are compatible with the correct
       // vector shape.
-      for (int i = 0; i < c->num_inputs(); ++i) {
-        TF_RETURN_IF_ERROR(c->Merge(c->input(i), input, &input));
-      }
-      return ::tensorflow::Status::OK();
-    })
-    .Doc(R"doc(
-
-An op that finalizes the TPUEmbedding system configuration after
-ConfigureTPUEmbeddingHost has been called on each host.
-
-host_config: A string-encoded tpu_embedding PerHostConfiguration proto read
-from each host containing metadata about the HBM base byte address reserved for
-the TPUEmbedding on that host.
-)doc");
+      TF_RET_CHECK(c->num_inputs() == 2);
+      ShapeHandle input(c->Scalar());
+      TF_RETURN_IF_ERROR(c->Merge(c->input(0), input, &input));
+      TF_RETURN_IF_ERROR(c->Merge(c->input(1), input, &input));
+      return absl::OkStatus();
+    });
 
 // After configuring the TPU system (detailed in tpu_configuration_ops.cc),
-// you may, if desired, run _ExecuteTPUEmbeddingPartitioner,
-// _ConfigureTPUEmbeddingHost, _ConnectInterTPUEmbeddingCommunication and
-// _FinalizeTPUEmbeddingSystemConfiguration Ops to configure the TPUEmbeddings.
+// you may, if desired, run ExecuteTPUEmbeddingPartitioner,
+// ConfigureTPUEmbeddingHost, _ConnectInterTPUEmbeddingCommunication and
+// FinalizeTPUEmbedding Ops to configure the TPUEmbeddings.
 //
-// 1) The _ExecuteTPUEmbeddingPartitioner Op runs on TPU_SYSTEM of task 0. It
+// 1) The ExecuteTPUEmbeddingPartitioner Op runs on TPU_SYSTEM of task 0. It
 //    runs the embedding layer partitioner and computes the HBM size (in bytes)
 //    needed for TPUEmbedding operation. Note that this Op does not need to wait
 //    until the entire TPU system is configured, rather it only needs to wait
 //    till _ConfigureDistributedTPU completes. Also stores the HBM size and the
 //    embedding partitioner output in the system metadata where it can be used
 //    while compiling embedding Ops for TPU.
-// 2) The _ConfigureTPUEmbeddingMemory Op runs on TPU:0 of all tasks. Using the
-//    output of the _ExecuteTPUEmbeddingPartitioner Op, it allocates HBM memory,
-//    initializes the TPUEmbeddingManager and store the HBM buffer
-//    configuration.
-// 3) The _ConfigureTPUEmbeddingHost Op runs on TPU:0 of all tasks. Using the
-//    output of the _ExecuteTPUEmbeddingPartitioner Op, it builds the program
-//    that executes on the TPUEmbeddings, configures the TPUEmbedding hardware
-//    and sets up the TPUEmbedding host software. Using the output of the
-//    _ConfigureTPUEmbeddingMemory Op that it receives from all tasks, it
-//    checks that HBM segment sizes are equal, and combines each task's
-//    allocation info to create a global map of HBM base addresses. It uses that
-//    to initialize the TPUEmbeddingManager, and also provides the hostname:port
-//    for inter-TPUEmbedding agreement of minibatch sizing.
-// 4) The _ConnectInterTPUEmbeddingCommunication Op runs on TPU:0 of all tasks.
-//    It uses the hostname:port output from all _ConfigureTPUEmbeddingHost Ops
-//    to form all-to-all connections between all tasks for inter-TPUEmbedding
-//    agreement.
-// 5) The _FinalizeTPUEmbeddingSystemConfiguration Op runs on TPU_SYSTEM of
-//    task 0. It takes as input the outputs from all _ConfigureTPUEmbeddingHost
+// 2) The ConfigureTPUEmbeddingMemory Op runs on the TPU:0's host device of all
+//    tasks. Using the output of the ExecuteTPUEmbeddingPartitioner Op, it
+//    allocates HBM memory, initializes the TPUEmbeddingManager and store the
+//    HBM buffer configuration.
+// 3) The ConfigureTPUEmbeddingHost Op runs on the TPU:0's host device of all
+//    tasks. Using the output of the ExecuteTPUEmbeddingPartitioner Op, it
+//    builds the program that executes on the TPUEmbeddings, configures the
+//    TPUEmbedding hardware and sets up the TPUEmbedding host software. Using
+//    the output of the ConfigureTPUEmbeddingMemory Op that it receives from all
+//    tasks, it checks that HBM segment sizes are equal, and combines each
+//    task's allocation info to create a global map of HBM base addresses. It
+//    uses that to initialize the TPUEmbeddingManager, and also provides the
+//    hostname:port for inter-TPUEmbedding agreement of minibatch sizing.
+// 4) The _ConnectInterTPUEmbeddingCommunication Op runs on the TPU:0's host
+//    device of all tasks. It uses the hostname:port output from all
+//    ConfigureTPUEmbeddingHost Ops to form all-to-all connections between all
+//    tasks for inter-TPUEmbedding agreement.
+// 5) The FinalizeTPUEmbedding Op runs on TPU_SYSTEM of
+//    task 0. It takes as input the outputs from all ConfigureTPUEmbeddingHost
 //    Ops and validates that the HBM base address (in bytes) used for
 //    TPUEmbedding operation is the same. Also stores the common HBM base
 //    address in the system metadata where it can be used while compiling
@@ -277,8 +237,8 @@ REGISTER_OP("LoadAllTPUEmbeddingParameters")
     .Attr("num_shards: int")
     .Attr("shard_id: int")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) -> Status {
-      string config_string;
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
+      std::string config_string;
       TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
       TPUEmbeddingConfiguration config;
       TF_RET_CHECK(config.ParseFromString(config_string));
@@ -309,7 +269,7 @@ REGISTER_OP("LoadAllTPUEmbeddingParameters")
             c->WithRank(accumulators[0][table_id], 2, &parameter_shape));
 
         std::vector<tpu::StateVariableSpecification> state_variable_specs;
-        Status status = tpu::GetOptimizationAlgorithmStateVariables(
+        absl::Status status = tpu::GetOptimizationAlgorithmStateVariables(
             config.table_descriptor(table_id).optimization_parameters(),
             &state_variable_specs);
         TF_RET_CHECK(status.ok());
@@ -343,7 +303,7 @@ REGISTER_OP("LoadAllTPUEmbeddingParameters")
               c->WithValue(c->NumElements(accumulator_i_shape), 0, &dim));
         }
       }
-      return tensorflow::Status::OK();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("RetrieveAllTPUEmbeddingParameters")
@@ -360,8 +320,8 @@ REGISTER_OP("RetrieveAllTPUEmbeddingParameters")
     .Attr("num_shards: int")
     .Attr("shard_id: int")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) -> Status {
-      string config_string;
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
+      std::string config_string;
       TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
       TPUEmbeddingConfiguration config;
       TF_RET_CHECK(config.ParseFromString(config_string));
@@ -400,7 +360,7 @@ REGISTER_OP("RetrieveAllTPUEmbeddingParameters")
               c->set_output(absl::StrCat("auxiliary", i), output_handles));
         }
       }
-      return ::tensorflow::Status::OK();
+      return absl::OkStatus();
     });
 
 REGISTER_OP("EnqueueTPUEmbeddingBatch")
@@ -410,53 +370,48 @@ REGISTER_OP("EnqueueTPUEmbeddingBatch")
     .Attr("device_ordinal: int = -1")
     .Attr("combiners: list(string) = []")
     .SetIsStateful()
-    .SetShapeFn([](InferenceContext* c) -> Status {
+    .SetShapeFn([](InferenceContext* c) -> absl::Status {
       std::vector<std::string> combiners;
       TF_RETURN_IF_ERROR(c->GetAttr("combiners", &combiners));
       int n;
       TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
       if (!combiners.empty() && combiners.size() != n) {
-        return errors::InvalidArgument("Invalid length of combiners. Have ",
-                                       combiners.size(), " but expected 0 or ",
-                                       n);
+        return absl::InvalidArgumentError(
+            absl::StrCat("Invalid length of combiners. Have ", combiners.size(),
+                         " but expected 0 or ", n));
       }
 
-      return Status::OK();
+      return absl::OkStatus();
     });
 
-REGISTER_OP("_RecvTPUEmbeddingActivations")
+REGISTER_OP("XlaRecvTPUEmbeddingActivations")
     .Input("deduplication_data: variant")
     .Output("outputs: num_tables * float32")
     .Attr("num_tables: int >= 1")
     .Attr("config: string")
     .SetIsStateful()
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       int num_tables;
       TF_RETURN_IF_ERROR(c->GetAttr("num_tables", &num_tables));
       if (c->num_outputs() != num_tables) {
-        return errors::InvalidArgument(absl::StrFormat(
-            "Number of outputs: %d of the _RecvTPUEmbeddingActivations node "
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Number of outputs: %d of the XlaRecvTPUEmbeddingActivations node "
             "does not match the num_tables attribute: %d.",
             c->num_outputs(), num_tables));
       }
-      string config_string;
+      std::string config_string;
       TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
       tpu::TPUEmbeddingConfiguration config;
       if (!config.ParseFromString(config_string)) {
-        return errors::InvalidArgument(
-            "Malformed config attribute in the _RecvTPUEmbeddingActivations "
+        return absl::InvalidArgumentError(
+            "Malformed config attribute in the XlaRecvTPUEmbeddingActivations "
             "node.");
       }
       std::vector<TensorShapeProto> output_shapes;
-      if (config.feature_descriptor_size() == 0) {
-        TF_RETURN_IF_ERROR(ComputeOutputTensorShapes(config, &output_shapes));
-      } else {
-        TF_RETURN_IF_ERROR(
-            ComputeOutputTensorShapesFromFeature(config, &output_shapes));
-      }
+      TF_RETURN_IF_ERROR(ComputeOutputTensorShapes(config, &output_shapes));
       if (c->num_outputs() != output_shapes.size()) {
-        return errors::InvalidArgument(absl::StrFormat(
-            "Number of outputs: %d of the _RecvTPUEmbeddingActivations node "
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Number of outputs: %d of the XlaRecvTPUEmbeddingActivations node "
             "does not match the number of tables or features in the TPU "
             "embedding config: %d.",
             c->num_outputs(), output_shapes.size()));
@@ -467,31 +422,10 @@ REGISTER_OP("_RecvTPUEmbeddingActivations")
             c->MakeShapeFromShapeProto(output_shapes[i], &output_shape));
         c->set_output(i, output_shape);
       }
-      return Status::OK();
-    })
-    .Doc(R"doc(
-An op that receives embeddng activations on the TPU.
+      return absl::OkStatus();
+    });
 
-The TPU system performs the embedding lookups and aggregations. The results of
-these aggregations are visible to the Tensorflow Graph as the outputs of a
-_RecvTPUEmbeddingActivations Op. This op returns a list containing one
-Tensor of activations per table specified in the model.
-
-deduplication_data: A Tensor with type=DT_VARIANT containing the deduplication
-    data. The tensor is an XLA nested tuple containing N elements (where N is
-    the ratio of the number of embedding to tensor cores per TPU chip). Each
-    element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
-    contains indices (DT_UINT32) for embedding lookup on the TensorCore or
-    weights (DT_FLOAT) to apply to the output of the embedding lookup operation.
-outputs: A TensorList of embedding activations containing one Tensor per
-    embedding table in the model.
-num_tables: The number of output activation tensors. If feature descriptor is
-    present in the tpu embedding config, it is equal to the number of features
-    otherwise equal to number of embedding tables in the model.
-config: Serialized TPUEmbeddingConfiguration proto.
-)doc");
-
-REGISTER_OP("_SendTPUEmbeddingGradients")
+REGISTER_OP("XlaSendTPUEmbeddingGradients")
     .Input("gradients: NumTables * float32")
     .Input("learning_rates: NumLearningRateTags * float32")
     .Input("deduplication_data: variant")
@@ -499,7 +433,7 @@ REGISTER_OP("_SendTPUEmbeddingGradients")
     .Attr("NumLearningRateTags: int >= 0 = 0")
     .Attr("config: string")
     .SetIsStateful()
-    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
       int learning_rate_tag_count;
       TF_RETURN_IF_ERROR(
           c->GetAttr("NumLearningRateTags", &learning_rate_tag_count));
@@ -512,47 +446,116 @@ REGISTER_OP("_SendTPUEmbeddingGradients")
             c->WithRank(learning_rates[i], 0, &learning_rates_shape));
       }
 
-      return Status::OK();
-    })
-    .Doc(R"doc(
-An op that performs gradient updates of embedding tables.
+      return absl::OkStatus();
+    });
 
-The gradients argument is a TensorList having the same length and shapes as the
-return value of _RecvTPUEmbeddingActivations, but contains gradients of the
-model's loss with respect to the embedding activations. The embedding tables are
-updated from these gradients via the optimizer specified in the
-TPUEmbeddingConfiguration proto given to tpu.initialize_system.
-
-gradients: A TensorList of gradients with which to update embedding tables.
-learning_rates: A TensorList of learning rates used for updating the embedding
-    tables via the optimizer. The length of the TensorList must be equal to the
-    number of dynamic learning rate tags specified in the
-    TPUEmbeddingConfiguration proto.
-deduplication_data: A Tensor with type=DT_VARIANT containing the deduplication
-    data. The tensor is an XLA nested tuple containing N elements (where N is
-    the ratio of the number of embedding to tensor cores per TPU chip). Each
-    element of the nested tuple is a tuple of rank 1 tensors. Each tensor either
-    contains indices (DT_UINT32) for embedding lookup on the TensorCore or
-    weights (DT_FLOAT) to apply to the output of the embedding lookup operation.
-config: Serialized TPUEmbeddingConfiguration proto.
-)doc");
-
-REGISTER_OP("_RecvTPUEmbeddingDeduplicationData")
+REGISTER_OP("XlaRecvTPUEmbeddingDeduplicationData")
     .Output("output: variant")
     .Attr("config: string")
     .SetIsStateful()
-    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
-    .Doc(R"doc(
-Receives deduplication data (indices and weights) from the embedding core.
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
 
-The deduplication data is a Tensor with type=DT_VARIANT. The tensor itself is an
-XLA nested tuple containing N elements (where N is the ratio of the number of
-embedding to tensor cores per TPU chip). Each element of the nested tuple is a
-tuple of rank 1 tensors. Each tensor either contains indices (DT_UINT32) for
-embedding lookup on the TensorCore or weights (DT_FLOAT) to apply to the output
-of the embedding lookup operation.
+// XlaRecvTPUEmbeddingDeduplicationData returns `output` of an XLA tuple, which
+// consists of integer and floating point values. For cases that users needs
+// static shape output, this XLA tuple can not be returned. Therefore we create
+// a pair of conversion operations, to convert deduplication data (XLA tuple)
+// to tensors and vice versa.
+// `SplitDedupData` is to split deduplication data XLA tuple into integer and
+// floating point tensors. Here we assume deduplication data XLA tuple only
+// has two type of elements. We infer output shapes of these two tensors with
+// `tuple_mask`, which is a serialized proto of 2-D int tensor. The first column
+// of `tuple_mask` is consisted by 0 and 1, where 0 means integer type, 1 means
+// floating point type. The second column is length of span, summation of these
+// spans should be equal to number of elements in deduplication data XLA tuple.
+// For example, `tuple_mask` of tuple (1, 2, 0.1, 3) is [[0, 2], [1, 1], [0, 1]]
 
-config: Serialized TPUEmbeddingConfiguration proto.
-)doc");
+REGISTER_OP("SplitDedupData")
+    .Input("input: variant")
+    .Output("integer_tensor: integer_type")
+    .Output("float_tensor: float_type")
+    .Attr("integer_type: {int32, int64, uint32, uint64}")
+    .Attr("float_type: {half, bfloat16, float}")
+    .Attr("tuple_mask: string")
+    .Attr("config: string = ''")
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      std::string tuple_mask_str;
+      TF_RETURN_IF_ERROR(c->GetAttr("tuple_mask", &tuple_mask_str));
+
+      tensorflow::TensorProto tuple_mask_tensor;
+      if (!tuple_mask_tensor.ParseFromString(tuple_mask_str)) {
+        return absl::InvalidArgumentError(
+            "Malformed `tuple_mask` attr in SplitDedupData Op.");
+      }
+      const tensorflow::TensorShapeProto& tuple_tensor_shape =
+          tuple_mask_tensor.tensor_shape();
+      const int num_tuple_elements = tuple_tensor_shape.dim(0).size();
+      if (num_tuple_elements == 0) {
+        c->set_output(0, c->MakeShape({c->MakeDim(0)}));
+        c->set_output(1, c->MakeShape({c->MakeDim(0)}));
+        return absl::OkStatus();
+      }
+
+      const int tuple_mask_rank = tuple_tensor_shape.dim_size();
+      if (tuple_mask_rank != 2) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "`tuple_mask` TensorProto must be a rank-2 tensor, but get ",
+            tuple_mask_rank));
+      }
+      TF_RET_CHECK(tuple_mask_tensor.int_val_size() == 2 * num_tuple_elements);
+
+      int integer_offset = 0;  // Offset of integer elements in tuple.
+      int float_offset = 0;    // Offset of floating elements in tuple.
+      for (int i = 0; i < num_tuple_elements; i++) {
+        const int element_type = tuple_mask_tensor.int_val(2 * i);
+        const int span_size = tuple_mask_tensor.int_val(2 * i + 1);
+
+        if (element_type == DedupTupleElementType::kInteger) {
+          integer_offset += span_size;
+        } else if (element_type == DedupTupleElementType::kFloat) {
+          float_offset += span_size;
+        } else {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Unexpected type of element in deduplication tuple, enum = ",
+              element_type, ", which is not integer or floating."));
+        }
+      }
+
+      std::string config_string;
+      TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
+      if (!config_string.empty()) {
+        tpu::TPUEmbeddingConfiguration config;
+        if (!config.ParseFromString(config_string)) {
+          return absl::InvalidArgumentError(
+              "Malformed config attribute in the SplitDedupData node.");
+        }
+      }
+
+      const shape_inference::DimensionHandle integer_tensor_dim =
+          c->MakeDim(integer_offset);
+      const shape_inference::DimensionHandle float_tensor_dim =
+          c->MakeDim(float_offset);
+      c->set_output(0, c->MakeShape({integer_tensor_dim}));
+      c->set_output(1, c->MakeShape({float_tensor_dim}));
+      return absl::OkStatus();
+    });
+
+// `MergeDedupData` is to merge outputs of `SplitDedupData` back to an XLA tuple
+// as deduplication data, with respect to `tuple_mask`.
+
+REGISTER_OP("MergeDedupData")
+    .Input("integer_tensor: integer_type")
+    .Input("float_tensor: float_type")
+    .Output("output: variant")
+    .Attr("tuple_mask: string")
+    .Attr("integer_type: {int32, int64, uint32, uint64}")
+    .Attr("float_type: {half, bfloat16, float}")
+    .Attr("config: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
+
+REGISTER_OP("ComputeDedupDataTupleMask")
+    .Output("output_shape: int32")
+    .Attr("config: string")
+    .SetIsStateful()
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
 
 }  // namespace tensorflow

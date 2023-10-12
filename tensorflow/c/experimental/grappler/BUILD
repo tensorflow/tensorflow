@@ -8,6 +8,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
@@ -34,6 +35,8 @@ cc_library(
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:c_api_macros",
+        "//tensorflow/c:tf_buffer",
+        "//tensorflow/c:tf_buffer_internal",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
@@ -42,10 +45,11 @@ cc_library(
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
-        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@local_tsl//tsl/platform:env",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -55,6 +59,7 @@ tf_cc_test(
     deps = [
         ":grappler",
         "//tensorflow/c:c_api_internal",
+        "//tensorflow/c:tf_buffer_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

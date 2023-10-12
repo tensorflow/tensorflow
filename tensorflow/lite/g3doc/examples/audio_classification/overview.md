@@ -18,7 +18,7 @@ Android.
 Note: (1) To integrate an existing model, try
 [TensorFlow Lite Task Library](https://www.tensorflow.org/lite/inference_with_metadata/task_library/audio_classifier).
 (2) To customize a model, try
-[TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/tutorials/model_maker_audio_classification).
+[TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/models/modify/model_maker/audio_classification).
 
 ## Get started
 
@@ -26,15 +26,15 @@ If you are new to TensorFlow Lite and are working with Android, we recommend
 exploring the following example applications that can help you get started.
 
 You can leverage the out-of-box API from
-[TensorFlow Lite Task Library](../../inference_with_metadata/task_library/audio_classifier)
+[TensorFlow Lite Task Library](../../inference_with_metadata/task_library/audio_classifier.md)
 to integrate audio classification models in just a few lines of code. You can
 also build your own custom inference pipeline using the
-[TensorFlow Lite Support Library](../../inference_with_metadata/lite_support).
+[TensorFlow Lite Support Library](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/inference_with_metadata/lite_support.md).
 
 The Android example below demonstrates the implementation using the
-[TFLite Task Library](https://github.com/tensorflow/examples/tree/master/lite/examples/sound_classification/android)
+[TFLite Task Library](https://github.com/tensorflow/examples/tree/master/lite/examples/audio_classification/android)
 
-<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/sound_classification/android">View
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/audio_classification/android">View
 Android example</a>
 
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/sound_classification/ios">View
@@ -66,7 +66,7 @@ There are two versions of the YAMNet model converted to TFLite:
     Learning, Web and Mobile deployment. It also has a more complex output.
 
 *   [YAMNet/classification](https://tfhub.dev/google/lite-model/yamnet/classification/tflite/1)
-    is a quantized version with a simpler fixed lengh frame input (15600
+    is a quantized version with a simpler fixed length frame input (15600
     samples) and return a single vector of scores for 521 audio event classes.
 
 ### Inputs
@@ -122,7 +122,7 @@ recognize classes not in the original set. For example, you could re-train the
 model to detect multiple bird songs. To do this, you will need a set of training
 audios for each of the new labels you wish to train. The recommended way is to
 use
-[TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/tutorials/model_maker_audio_classification)
+[TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/models/modify/model_maker/audio_classification)
 library which simplifies the process of training a TensorFlow Lite model using
 custom dataset, in a few lines of codes. It uses transfer learning to reduce the
 amount of required training data and time. You can also learn from

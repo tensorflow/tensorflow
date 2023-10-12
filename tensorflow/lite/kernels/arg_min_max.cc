@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <functional>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -39,7 +39,7 @@ constexpr int kOutputTensor = 0;
 TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* input,
                           const TfLiteTensor* axis, TfLiteTensor* output) {
   int axis_value;
-  // Retrive all 8 bytes when axis type is kTfLiteInt64 to avoid data loss.
+  // Retrieve all 8 bytes when axis type is kTfLiteInt64 to avoid data loss.
   if (axis->type == kTfLiteInt64) {
     axis_value = static_cast<int>(*GetTensorData<int64_t>(axis));
   } else {
@@ -115,7 +115,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
 
-  if (IsConstantTensor(axis)) {
+  if (IsConstantOrPersistentTensor(axis)) {
     TF_LITE_ENSURE_STATUS(ResizeOutput(context, input, axis, output));
   } else {
     SetTensorToDynamic(output);

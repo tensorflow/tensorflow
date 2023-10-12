@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 
+#include <initializer_list>
+
 #include <gtest/gtest.h>
 
 namespace tflite {
@@ -74,6 +76,120 @@ TEST(RunStridedSlicePadIndices, Pad3) {
                             {1, 1, 1, 4},  // expected_end
                             {1, 1, 1, 2}   // expected_stride
   );
+}
+
+TEST(StridedSliceStartForAxis, NegativeOOBIndex) {
+  StridedSliceParams params{};
+  params.begin_mask = 0;
+  params.end_mask = 0;
+  params.start_indices[0] = -11;
+  params.strides[0] = 1;
+  int start = strided_slice::StridedSliceStartForAxis(
+      params, RuntimeShape({10}), /*axis=*/0);
+  EXPECT_EQ(start, 0);
+}
+
+TEST(StridedSliceStartForAxis, NegativeOneTheBoundaryIndex) {
+  StridedSliceParams params{};
+  params.begin_mask = 0;
+  params.end_mask = 0;
+  params.start_indices[0] = -10;
+  params.strides[0] = 1;
+  int start = strided_slice::StridedSliceStartForAxis(
+      params, RuntimeShape({10}), /*axis=*/0);
+  EXPECT_EQ(start, 0);
+}
+
+TEST(StridedSliceStartForAxis, NegativeWithinBoundsIndex) {
+  StridedSliceParams params{};
+  params.begin_mask = 0;
+  params.end_mask = 0;
+  params.start_indices[0] = -9;
+  params.strides[0] = 1;
+  int start = strided_slice::StridedSliceStartForAxis(
+      params, RuntimeShape({10}), /*axis=*/0);
+  EXPECT_EQ(start, 1);
+}
+
+TEST(StridedSliceStartForAxis, MinusOneIndex) {
+  StridedSliceParams params{};
+  params.begin_mask = 0;
+  params.end_mask = 0;
+  params.start_indices[0] = -1;
+  params.strides[0] = 1;
+  int start = strided_slice::StridedSliceStartForAxis(
+      params, RuntimeShape({10}), /*axis=*/0);
+  EXPECT_EQ(start, 9);
+}
+
+TEST(StridedSliceStartForAxis, ZeroIndex) {
+  StridedSliceParams params{};
+  params.begin_mask = 0;
+  params.end_mask = 0;
+  params.start_indices[0] = 0;
+  params.strides[0] = 1;
+  int start = strided_slice::StridedSliceStartForAxis(
+      params, RuntimeShape({10}), /*axis=*/0);
+  EXPECT_EQ(start, 0);
+}
+
+TEST(StridedSliceStartForAxis, OneIndex) {
+  StridedSliceParams params{};
+  params.begin_mask = 0;
+  params.end_mask = 0;
+  params.start_indices[0] = 1;
+  params.strides[0] = 1;
+  int start = strided_slice::StridedSliceStartForAxis(
+      params, RuntimeShape({10}), /*axis=*/0);
+  EXPECT_EQ(start, 1);
+}
+
+TEST(StridedSliceStartForAxis, PositiveBoundaryIndex) {
+  StridedSliceParams params{};
+  params.begin_mask = 0;
+  params.end_mask = 0;
+  params.start_indices[0] = 9;
+  params.strides[0] = 1;
+  int start = strided_slice::StridedSliceStartForAxis(
+      params, RuntimeShape({10}), /*axis=*/0);
+  EXPECT_EQ(start, 9);
+}
+
+TEST(StridedSliceStartForAxis, PositiveOOBIndexSizeofArray) {
+  StridedSliceParams params{};
+  params.begin_mask = 0;
+  params.end_mask = 0;
+  params.start_indices[0] = 10;
+  params.strides[0] = 1;
+  int start = strided_slice::StridedSliceStartForAxis(
+      params, RuntimeShape({10}), /*axis=*/0);
+  EXPECT_EQ(start, 10);
+}
+
+TEST(StridedSliceStartForAxis, PositiveOOBIndex) {
+  StridedSliceParams params{};
+  params.begin_mask = 0;
+  params.end_mask = 0;
+  params.start_indices[0] = 11;
+  params.strides[0] = 1;
+  int start = strided_slice::StridedSliceStartForAxis(
+      params, RuntimeShape({10}), /*axis=*/0);
+  EXPECT_EQ(start, 10);
+}
+
+TEST(StridedSliceStartForAxis, TenFourMinus1) {
+  StridedSliceParams params{};
+  params.begin_mask = 0;
+  params.end_mask = 0;
+  params.start_indices[0] = 5;
+  params.stop_indices[0] = 2;
+  params.strides[0] = -1;
+  int start = strided_slice::StridedSliceStartForAxis(params, RuntimeShape({4}),
+                                                      /*axis=*/0);
+  int stop = strided_slice::StridedSliceEndForAxis(params, RuntimeShape({4}),
+                                                   /*axis=*/0, start);
+  EXPECT_EQ(start, 3);
+  EXPECT_EQ(stop, 2);
 }
 
 }  // namespace

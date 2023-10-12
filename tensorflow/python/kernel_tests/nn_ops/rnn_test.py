@@ -29,6 +29,7 @@ from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
@@ -133,7 +134,7 @@ class RNNTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, "must be a vector"):
       rnn.dynamic_rnn(
           cell,
-          array_ops.stack(inputs),
+          array_ops_stack.stack(inputs),
           dtype=dtypes.float32,
           sequence_length=[[4]])
 

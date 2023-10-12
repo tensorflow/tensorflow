@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "AutoShardDataset"
   input_arg {
     name: "input_dataset"

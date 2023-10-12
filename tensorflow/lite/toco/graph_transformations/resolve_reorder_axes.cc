@@ -16,12 +16,13 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -84,7 +85,7 @@ void ReorderAxes(AxesOrder input_axes_order, AxesOrder output_axes_order,
   auto it = model->operators.begin() + op_index;
   auto* op = it->get();
   if (op->type != OperatorType::kReorderAxes) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   auto* reorder_op = static_cast<ReorderAxesOperator*>(op);
 
@@ -95,11 +96,11 @@ void ReorderAxes(AxesOrder input_axes_order, AxesOrder output_axes_order,
   auto& input_array = model->GetArray(input_array_name);
   auto& output_array = model->GetArray(output_array_name);
   if (!input_array.buffer) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   // Yield until output dims have been resolved.
   if (!output_array.has_shape()) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   // Reorder the input array dims and buffer data
   if (input_array.buffer->type == ArrayDataType::kFloat) {
@@ -123,7 +124,7 @@ void ReorderAxes(AxesOrder input_axes_order, AxesOrder output_axes_order,
   RenameArray(model, output_array_name, input_array_name);
 
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

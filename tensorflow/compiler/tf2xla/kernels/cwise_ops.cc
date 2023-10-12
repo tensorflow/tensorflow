@@ -17,15 +17,19 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
 
+#include <algorithm>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/shape.h"
+#include "xla/client/client_library.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/xla_builder.h"
+#include "xla/shape.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -36,8 +40,8 @@ namespace tensorflow {
 void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
   TensorShape lhs_shape = ctx->InputShape(0);
   TensorShape rhs_shape = ctx->InputShape(1);
-  xla::Shape lhs_xla_shape = ctx->InputXlaShape(0).ValueOrDie();
-  xla::Shape rhs_xla_shape = ctx->InputXlaShape(1).ValueOrDie();
+  xla::Shape lhs_xla_shape = ctx->InputXlaShape(0).value();
+  xla::Shape rhs_xla_shape = ctx->InputXlaShape(1).value();
   // Fetch the expressions containing the input tensors.
   auto lhs_handle = ctx->Input(0);
   auto rhs_handle = ctx->Input(1);
@@ -157,7 +161,7 @@ void XlaBinaryOp::Compile(XlaOpKernelContext* ctx) {
     xla::XlaOp error = rhs.builder()->ReportError(rhs_output.status());
     return {error, error};
   }
-  return {lhs_output.ValueOrDie(), rhs_output.ValueOrDie()};
+  return {lhs_output.value(), rhs_output.value()};
 }
 
 }  // namespace tensorflow

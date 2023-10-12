@@ -26,7 +26,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/c/checkpoint_reader.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/profiler/internal/tfprof_node.h"
 #include "tensorflow/core/profiler/internal/tfprof_show.h"
@@ -41,7 +40,7 @@ class TFScope : public TFShow {
  public:
   explicit TFScope(checkpoint::CheckpointReader* ckpt_reader)
       : TFShow(ckpt_reader), root_(nullptr) {}
-  ~TFScope() override {}
+  ~TFScope() override = default;
 
   void AddNode(TFGraphNode* node) override;
 
@@ -56,14 +55,14 @@ class TFScope : public TFShow {
   std::vector<ScopeNode*> SearchRoot(std::vector<ScopeNode*> roots,
                                      const std::vector<string>& regexes);
 
-  std::vector<ScopeNode*> PrintScope(const std::vector<ScopeNode*> roots,
+  std::vector<ScopeNode*> PrintScope(std::vector<ScopeNode*> roots,
                                      const Options& opts, int depth,
                                      int last_ident);
 
   std::vector<ScopeNode*> Account(const std::vector<ScopeNode*>& roots,
                                   const Options& opts);
 
-  void Format(const std::vector<ScopeNode*> roots, string* display_str,
+  void Format(std::vector<ScopeNode*> roots, string* display_str,
               GraphNodeProto* proto);
 
   ScopeNode* root_;

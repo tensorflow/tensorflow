@@ -15,7 +15,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_weights.h"
 
 #include <algorithm>
+#include <iostream>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "llvm/ADT/Twine.h"
@@ -42,7 +45,7 @@ using mlir::lite::QuantizeWeights;
 constexpr bool kUseUpdatedHybridSchemeDefault = true;
 
 std::unique_ptr<ModelT> CreateMutableModelFromFile(const Model* input_model) {
-  auto copied_model = absl::make_unique<ModelT>();
+  auto copied_model = std::make_unique<ModelT>();
   input_model->UnPackTo(copied_model.get(), nullptr);
   return copied_model;
 }

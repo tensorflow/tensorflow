@@ -17,13 +17,14 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "tensorflow/core/kernels/split_lib_gpu.h"
+
 #include <stdio.h>
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/gpu_device_array_gpu.h"
 #include "tensorflow/core/kernels/split_lib.h"
-#include "tensorflow/core/kernels/split_lib_gpu.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
@@ -52,7 +53,6 @@ void SplitCustom<Device, T>::operator()(
   template struct Split<Eigen::GpuDevice, T, 3>;
 
 TF_CALL_int64(DEFINE_GPU_KERNELS);
-TF_CALL_bfloat16(DEFINE_GPU_KERNELS);
 TF_CALL_uint8(DEFINE_GPU_KERNELS);
 TF_CALL_GPU_ALL_TYPES(DEFINE_GPU_KERNELS);
 
@@ -61,7 +61,6 @@ TF_CALL_GPU_ALL_TYPES(DEFINE_GPU_KERNELS);
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
 TF_CALL_COMPLEX_TYPES(DEFINE_GPU_KERNELS);
-TF_CALL_bfloat16(DEFINE_GPU_KERNELS);
 
 #undef DEFINE_GPU_KERNELS
 
@@ -245,15 +244,14 @@ void SplitVOpGPULaunch<T, IntType>::Run(
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 TF_CALL_COMPLEX_TYPES(REGISTER_GPU_KERNEL);
-TF_CALL_bfloat16(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 #define REGISTER_GPU_KERNEL(T)                 \
+  template struct SplitVOpGPULaunch<T, int8>;  \
   template struct SplitVOpGPULaunch<T, int32>; \
   template struct SplitVOpGPULaunch<T, int64>;
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 TF_CALL_COMPLEX_TYPES(REGISTER_GPU_KERNEL);
-TF_CALL_bfloat16(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 }  // namespace tensorflow

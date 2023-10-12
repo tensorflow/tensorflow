@@ -16,7 +16,7 @@ limitations under the License.
 #include <stdint.h>
 #include <string.h>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -61,10 +61,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       memset(GetTensorData<float>(output), 0, num_elements * sizeof(float));
       break;
     default:
-      context->ReportError(context,
-                           "ZerosLike only currently supports int64, int32, "
-                           "and float32, got %d.",
-                           input->type);
+      TF_LITE_KERNEL_LOG(context,
+                         "ZerosLike only currently supports int64, int32, "
+                         "and float32, got %d.",
+                         input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

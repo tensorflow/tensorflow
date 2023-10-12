@@ -50,7 +50,7 @@ namespace toco {
   // First look for the final DynamicStitch.
   auto op_it = model->operators.begin() + op_index;
   if (op_it->get()->type != OperatorType::kDynamicStitch) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   auto* stitch_op = static_cast<DynamicStitchOperator*>(op_it->get());
 
@@ -77,7 +77,7 @@ namespace toco {
           "Skipping because indices input %s into "
           "%s is unexpected",
           LogName(*op), LogName(*stitch_op));
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
     if (!indices_partition_op) {
       indices_partition_op = static_cast<DynamicPartitionOperator*>(op);
@@ -88,7 +88,7 @@ namespace toco {
             "Skipping because indices input %s into "
             "%s is from a different source op than others",
             LogName(*op), LogName(*stitch_op));
-        return ::tensorflow::Status::OK();
+        return ::tensorflow::OkStatus();
       }
     }
   }
@@ -97,12 +97,12 @@ namespace toco {
   // The data for the indices must be a constant range of the array shape.
   if (!IsConstantParameterArray(*model, indices_partition_op->inputs[0])) {
     AddMessageF("Skipping because indices partition data is non-constant");
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   auto& indices_data_array = model->GetArray(indices_partition_op->inputs[0]);
   if (indices_data_array.data_type == ArrayDataType::kNone) {
     // Yield until data types are propagated.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   CHECK(indices_data_array.data_type == ArrayDataType::kInt32)
       << "Indices partition inputs must be int32";
@@ -122,7 +122,7 @@ namespace toco {
           "Skipping because data input %s into %s "
           "is unexpected",
           LogName(*op), LogName(*stitch_op));
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
     gather_ops.push_back(static_cast<GatherOperator*>(op));
   }
@@ -137,7 +137,7 @@ namespace toco {
           "Skipping because data input %s into "
           "%s is unexpected",
           LogName(*op), LogName(*gather_op));
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
     if (!data_partition_op) {
       data_partition_op = static_cast<DynamicPartitionOperator*>(op);
@@ -148,7 +148,7 @@ namespace toco {
             "Skipping because data input %s into "
             "%s is from a different source op than others",
             LogName(*op), LogName(*gather_op));
-        return ::tensorflow::Status::OK();
+        return ::tensorflow::OkStatus();
       }
     }
   }
@@ -242,7 +242,7 @@ namespace toco {
   DeleteOpAndArrays(model, data_partition_op);
   DeleteOpAndArrays(model, stitch_op);
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

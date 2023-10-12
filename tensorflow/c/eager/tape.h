@@ -23,6 +23,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/config/flag_defs.h"
+#include "tensorflow/core/config/flags.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -376,6 +378,13 @@ inline bool IsDtypeTrainable(DataType dtype) {
     case DT_RESOURCE:
     case DT_VARIANT:
       return true;
+    case DT_QINT8:
+    case DT_QINT16:
+    case DT_QINT32:
+    case DT_QUINT8:
+    case DT_QUINT16:
+      return tensorflow::flags::Global()
+          .enable_quantized_dtypes_training.value();
     default:
       return false;
   }
@@ -644,7 +653,7 @@ Status InitialGradients(
       (*result)[id].push_back(output_gradients[i]);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(agarwal): use an automatic mechanism for handling None arguments to
@@ -893,7 +902,7 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Gradient, typename BackwardFunction, typename TapeTensor>
@@ -1041,10 +1050,10 @@ Status ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
     call_state_.top().backward_tape->RecordOperation(
         op_type, output_tensors, input_tensor_id, input_dtypes,
         backward_function_getter, backward_function_deleter);
-    return Status::OK();
+    return OkStatus();
   }
   if (!ShouldRecord(input_tensor_id, input_dtypes)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // We may need to allocate zero inputs for trainable dtypes we don't have JVPs
@@ -1109,7 +1118,7 @@ Status ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Gradient, typename BackwardFunction, typename TapeTensor>

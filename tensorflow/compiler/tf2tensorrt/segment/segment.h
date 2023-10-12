@@ -42,7 +42,7 @@ struct SegmentOptions {
   bool use_implicit_batch = true;
   // The maximum batch size used to build the engines in the graph, when
   // use_implicit_batch is true.
-  absl::optional<int> maximum_batch_size = absl::nullopt;
+  std::optional<int> maximum_batch_size = std::nullopt;
   // When use_implicit_batch is false or when we are building dynamic engines,
   // we allow dynamic non-batch dimensions.
   bool allow_dynamic_non_batch_dim = false;

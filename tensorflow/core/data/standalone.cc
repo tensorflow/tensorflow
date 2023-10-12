@@ -17,26 +17,43 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/root_dataset.h"
+#include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
-#include "tensorflow/core/util/ptr_util.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/refcount.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -56,12 +73,59 @@ OpKernelContext::Params CreateParams(
 
 }  // namespace
 
+Iterator::Iterator(IteratorBase* iterator, IteratorContext* ctx,
+                   SerializationContext* serialization_ctx)
+    : iterator_(iterator), ctx_(ctx), serialization_ctx_(serialization_ctx) {}
+
 Status Iterator::GetNext(std::vector<Tensor>* outputs, bool* end_of_input) {
   return iterator_->GetNext(ctx_.get(), outputs, end_of_input);
 }
 
-Iterator::Iterator(IteratorBase* iterator, IteratorContext* ctx)
-    : iterator_(iterator), ctx_(ctx) {}
+StatusOr<std::vector<Tensor>> Iterator::Save() {
+  VariantTensorDataWriter writer;
+  TF_RETURN_IF_ERROR(iterator_->Save(serialization_ctx_.get(), &writer));
+  std::vector<std::unique_ptr<VariantTensorData>> data;
+  writer.ReleaseData(&data);
+
+  std::vector<Tensor> serialized;
+  for (size_t i = 0; i < data.size(); ++i) {
+    Tensor tensor(DT_VARIANT, TensorShape({1}));
+    IteratorStateVariant variant;
+    TF_RETURN_IF_ERROR(variant.InitializeFromVariantData(std::move(data[i])));
+    tensor.vec<Variant>()(0) = std::move(variant);
+    serialized.push_back(std::move(tensor));
+  }
+  return serialized;
+}
+
+Status Iterator::Restore(const std::vector<Tensor>& saved_iterator) {
+  std::vector<const VariantTensorData*> data;
+  data.reserve(saved_iterator.size());
+  for (int i = 0; i < saved_iterator.size(); ++i) {
+    auto saved_vec = saved_iterator[i].vec<Variant>();
+    auto* variant = saved_vec(0).get<IteratorStateVariant>();
+    if (!variant) {
+      return errors::Internal(
+          "Cannot initialize an iterator from tensor ",
+          saved_vec(0).DebugString(),
+          ". Expected a variant tensor of type IteratorStateVariant.");
+    }
+    data.push_back(variant->GetData());
+  }
+  VariantTensorDataReader reader(data);
+  return iterator_->Restore(ctx_.get(), &reader);
+}
+
+std::optional<double> Iterator::GetProcessingTimeNsec() const {
+  if (ctx_->model() == nullptr) return std::nullopt;
+
+  double processing_time_nsec =
+      ctx_->model()->ComputeSnapshotProcessingTimeNsec();
+  if (processing_time_nsec > 0)
+    return processing_time_nsec;
+  else
+    return std::nullopt;
+}
 
 Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
                           std::unique_ptr<Dataset>* result) {
@@ -69,23 +133,24 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
   TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, nullptr));
 
   // Instantiate enough of the TF runtime to run `graph` on a single CPU device.
-  auto device_mgr = absl::make_unique<StaticDeviceMgr>(DeviceFactory::NewDevice(
+  auto device_mgr = std::make_unique<StaticDeviceMgr>(DeviceFactory::NewDevice(
       "CPU", params.session_options, "/job:localhost/replica:0/task:0"));
   Device* device = device_mgr->ListDevices()[0];
   // Create a copy of the `FunctionLibraryDefinition` to extend lifetime beyond
   // the lifetime of `graph`.
-  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
+  auto flib_def = std::make_unique<FunctionLibraryDefinition>(
       OpRegistry::Global(), graph_def.library());
-  auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+  auto pflr = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, flib_def.get(), OptimizerOptions{},
       /*thread_pool=*/nullptr, /*parent=*/nullptr,
       /*session_metadata=*/nullptr,
-      Rendezvous::Factory{
-          [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
-            *r = new IntraProcessRendezvous(device_mgr);
-            return Status::OK();
-          }});
+      Rendezvous::Factory{[](const int64_t, const DeviceMgr* device_mgr,
+                             tsl::core::RefCountPtr<Rendezvous>* r) {
+        *r = tsl::core::RefCountPtr<Rendezvous>(
+            new IntraProcessRendezvous(device_mgr));
+        return OkStatus();
+      }});
 
   string fetch_node = "";
   for (const auto& node : graph_def.node()) {
@@ -116,10 +181,10 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
   OpKernelContext ctx(&op_params, /*num_outputs=*/0);
   TF_RETURN_IF_ERROR(data::FinalizeDataset(&ctx, dataset, &finalized_dataset));
   core::ScopedUnref unref(finalized_dataset);
-  *result = WrapUnique(new Dataset(finalized_dataset, device_mgr.release(),
-                                   pflr.release(), flib_def.release(),
-                                   pool.release(), std::move(runner)));
-  return Status::OK();
+  *result = absl::WrapUnique(new Dataset(
+      finalized_dataset, dataset, device_mgr.release(), pflr.release(),
+      flib_def.release(), pool.release(), std::move(runner)));
+  return OkStatus();
 }  // static
 
 Status Dataset::MakeIterator(
@@ -142,15 +207,23 @@ Status Dataset::MakeIterator(
             std::back_inserter(params.split_providers));
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
-  ctx = absl::make_unique<IteratorContext>(std::move(params));
+  // The model should only be created if autotuning is on.
+  if (ShouldUseAutotuning(finalized_dataset_->options())) {
+    params.model = std::make_shared<model::Model>();
+  }
+  params.run_mode = RunMode::STANDALONE;
+  ctx = std::make_unique<IteratorContext>(std::move(params));
+  SerializationContext::Params serialization_params(&op_ctx);
+  auto serialization_ctx =
+      std::make_unique<SerializationContext>(std::move(serialization_params));
 
   // Create the iterator from the dataset.
   std::unique_ptr<IteratorBase> iterator;
-  TF_RETURN_IF_ERROR(dataset_->MakeIterator(ctx.get(), /*parent=*/nullptr,
-                                            "Iterator", &iterator));
-  *result = WrapUnique(new Iterator(iterator.release(), ctx.release()));
-
-  return Status::OK();
+  TF_RETURN_IF_ERROR(finalized_dataset_->MakeIterator(
+      ctx.get(), /*parent=*/nullptr, "Iterator", &iterator));
+  *result = absl::WrapUnique(new Iterator(iterator.release(), ctx.release(),
+                                          serialization_ctx.release()));
+  return OkStatus();
 }
 
 Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {
@@ -159,28 +232,33 @@ Status Dataset::MakeIterator(std::unique_ptr<Iterator>* result) {
 
 Status Dataset::MakeSplitProviders(
     std::vector<std::unique_ptr<SplitProvider>>* result) {
-  return dataset_->MakeSplitProviders(result);
+  return finalized_dataset_->MakeSplitProviders(result);
 }
 
-const DatasetBase* Dataset::Get() const { return dataset_; }
+const DatasetBase* Dataset::Get() const { return finalized_dataset_; }
 
-Dataset::Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,
-                 ProcessFunctionLibraryRuntime* pflr,
+Dataset::Dataset(DatasetBase* finalized_dataset, DatasetBase* original_dataset,
+                 DeviceMgr* device_mgr, ProcessFunctionLibraryRuntime* pflr,
                  FunctionLibraryDefinition* flib_def, thread::ThreadPool* pool,
                  std::function<void(std::function<void()>)> runner)
-    : dataset_(dataset),
+    : finalized_dataset_(finalized_dataset),
+      original_dataset_(original_dataset),
       device_mgr_(device_mgr),
       flib_def_(flib_def),
       pflr_(pflr),
       interop_threadpool_(pool),
       runner_(std::move(runner)),
       unbounded_thread_pool_(Env::Default(), "tf_data_standalone") {
-  dataset_->Ref();
+  finalized_dataset_->Ref();
+  original_dataset_->Ref();
   function_handle_cache_ =
-      absl::make_unique<FunctionHandleCache>(pflr_->GetFLR("/device:CPU:0"));
+      std::make_unique<FunctionHandleCache>(pflr_->GetFLR("/device:CPU:0"));
 }
 
-Dataset::~Dataset() { dataset_->Unref(); }
+Dataset::~Dataset() {
+  finalized_dataset_->Unref();
+  original_dataset_->Unref();
+}
 
 }  // namespace standalone
 }  // namespace data

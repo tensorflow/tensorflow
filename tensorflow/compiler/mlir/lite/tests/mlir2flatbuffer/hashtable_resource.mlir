@@ -33,8 +33,8 @@
 // CHECK: } ]
 // CHECK: }
 
-func @main() -> tensor<*x!tf_type.resource> {
+func.func @main() -> tensor<*x!tf_type.resource> {
   %0 = "tf.HashTableV2"() {container = "" , shared_name= "table", use_node_name_sharing = false, key_dtype = i32, value_dtype = i32 } : () -> tensor<*x!tf_type.resource>
-  return %0 : tensor<*x!tf_type.resource>
+  func.return %0 : tensor<*x!tf_type.resource>
 }
 

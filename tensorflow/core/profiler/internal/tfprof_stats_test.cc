@@ -15,20 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/internal/tfprof_stats.h"
 
+#include <memory>
 #include <utility>
 
-#include "tensorflow/c/checkpoint_reader.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
 #include "tensorflow/core/profiler/tfprof_log.pb.h"
 #include "tensorflow/core/profiler/tfprof_options.h"
 #include "tensorflow/core/profiler/tfprof_output.pb.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -64,8 +61,9 @@ class TFProfStatsTest : public ::testing::Test {
     CHECK(TF_GetCode(status) == TF_OK);
     TF_DeleteStatus(status);
 
-    tf_stats_.reset(new TFStats(std::move(graph_pb), std::move(run_meta_pb),
-                                std::move(op_log_pb), std::move(ckpt_reader)));
+    tf_stats_ =
+        std::make_unique<TFStats>(std::move(graph_pb), std::move(run_meta_pb),
+                                  std::move(op_log_pb), std::move(ckpt_reader));
     tf_stats_->BuildAllViews();
   }
 

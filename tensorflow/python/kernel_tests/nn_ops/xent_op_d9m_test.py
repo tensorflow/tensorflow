@@ -100,7 +100,9 @@ class XentOpDeterministicTest(xent_op_test_base.XentOpTestBase):
   @test_util.run_in_graph_and_eager_modes
   def testForward(self):
     with self.cached_session():
-      for dtype in [np.float16, np.float32, np.float64]:
+      for dtype in [np.float16, np.float32, np.float64,  \
+        dtypes.bfloat16.as_numpy_dtype]:
+
         for trial in range(5):
           seed = 123 + trial
           labels, logits = self._generateInputs(
@@ -114,7 +116,8 @@ class XentOpDeterministicTest(xent_op_test_base.XentOpTestBase):
   @test_util.run_in_graph_and_eager_modes
   def testBackward(self):
     with self.cached_session():
-      for dtype in [np.float16, np.float32, np.float64]:
+      for dtype in [np.float16, np.float32, np.float64,  \
+        dtypes.bfloat16.as_numpy_dtype]:
         labels, logits = self._generateInputs(dtype, seed=456)
         output_shape = labels.shape[0]
 

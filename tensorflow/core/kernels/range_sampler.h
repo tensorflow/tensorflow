@@ -28,9 +28,11 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace tensorflow {
-
+namespace tsl {
 class Env;
+}  // namespace tsl
+namespace tensorflow {
+using Env = tsl::Env;
 
 // Abstract subclass for sampling from the set of non-negative integers
 // [0, range)
@@ -210,16 +212,12 @@ class UnigramSampler : public RangeSampler {
 // distribution by applying a distortion power to the weights.
 class FixedUnigramSampler : public RangeSampler {
  public:
+  FixedUnigramSampler(int64_t range, float distortion, int32_t num_reserved_ids,
+                      int32_t num_shards, int32_t shard);
   // The vocab_file is assumed to be a CSV, with the last entry of each row a
   // value representing the counts or probabilities for the corresponding ID.
-  FixedUnigramSampler(Env* env, int64_t range, const string& vocab_file,
-                      float distortion, int32_t num_reserved_ids,
-                      int32_t num_shards, int32_t shard);
-
-  FixedUnigramSampler(int64_t range, const std::vector<float>& unigrams,
-                      float distortion, int32_t num_reserved_ids,
-                      int32_t num_shards, int32_t shard);
-
+  Status SetDistributionSampler(Env* env, const string& vocab_file);
+  Status SetDistributionSampler(const std::vector<float>& unigrams);
   float Probability(int64_t value) const override;
 
   int64_t Sample(random::SimplePhilox* rnd) const override;
@@ -237,7 +235,7 @@ class FixedUnigramSampler : public RangeSampler {
   // such smaller range, identified by the shard number.
   int32 num_shards_;
   int32 shard_;
-
+  float distortion_;
   // Fill the sampler with the appropriate number of reserved IDs.
   void FillReservedIds(int32_t num_reserved_ids);
   // Load IDs to sample from a CSV file. It is assumed that the last item of

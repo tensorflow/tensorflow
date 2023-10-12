@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/clusters/single_machine.h"
 
+#include <memory>
+
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -27,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
 
 namespace tensorflow {
@@ -49,8 +50,8 @@ class SingleMachineTest : public ::testing::Test {
 #ifdef THREAD_SANITIZER
     timeout_s *= 5;
 #endif
-    cluster_.reset(
-        new SingleMachine(timeout_s, 3 /* num_cpu_cores */, 0 /* num_gpus */));
+    cluster_ = std::make_unique<SingleMachine>(timeout_s, 3 /* num_cpu_cores */,
+                                               0 /* num_gpus */);
     TF_CHECK_OK(cluster_->EnablePeakMemoryStats());
     TF_CHECK_OK(cluster_->Provision());
   }
@@ -630,7 +631,7 @@ TEST_F(SingleMachineTest, PeakMemoryStatsNotEnabled) {
   Status s = cluster.GetPeakMemoryUsage(&device_peak_memory);
   TF_CHECK_OK(cluster.Shutdown());
   ASSERT_FALSE(s.ok());
-  EXPECT_EQ(s.code(), errors::Code::INVALID_ARGUMENT);
+  EXPECT_TRUE(errors::IsInvalidArgument(s));
 }
 #endif
 

@@ -25,12 +25,15 @@ import threading
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.dtensor.python import api as dtensor_api
+from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import profiler as _profiler
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -40,11 +43,12 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import summary_op_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.trackable import resource
 from tensorflow.python.training import training_util
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
+
 
 # Name for graph collection of summary writer init ops, which is only exposed
 # as a legacy API for tf.contrib.summary in TF 1.x.
@@ -306,14 +310,22 @@ class SummaryWriter(metaclass=abc.ABCMeta):
 class _ResourceSummaryWriter(SummaryWriter):
   """Implementation of SummaryWriter using a SummaryWriterInterface resource."""
 
-  def __init__(self, create_fn, init_op_fn):
-    self._resource = create_fn()
-    self._init_op = init_op_fn(self._resource)
+  def __init__(self, create_fn, init_op_fn, mesh=None):
+    if mesh is not None:
+      with dtensor_api.default_mesh(mesh.host_mesh()):
+        self._resource = create_fn()
+        self._init_op = init_op_fn(self._resource)
+    else:
+      self._resource = create_fn()
+      self._init_op = init_op_fn(self._resource)
+
     self._closed = False
     if context.executing_eagerly():
       self._set_up_resource_deleter()
     else:
       ops.add_to_collection(_SUMMARY_WRITER_INIT_COLLECTION_NAME, self._init_op)
+
+    self._mesh = mesh
 
   # Extension point to be overridden by subclasses to customize deletion.
 
@@ -360,26 +372,30 @@ class _ResourceSummaryWriter(SummaryWriter):
 
 
 class _MultiMetaclass(
-    type(_ResourceSummaryWriter), type(tracking.TrackableResource)):
+    type(_ResourceSummaryWriter), type(resource.TrackableResource)):
   pass
 
 
 class _TrackableResourceSummaryWriter(
     _ResourceSummaryWriter,
-    tracking.TrackableResource,
+    resource.TrackableResource,
     metaclass=_MultiMetaclass):
   """A `_ResourceSummaryWriter` subclass that implements `TrackableResource`."""
 
-  def __init__(self, create_fn, init_op_fn):
+  def __init__(self, create_fn, init_op_fn, mesh=None):
     # Resolve multiple inheritance via explicit calls to __init__() on parents.
-    tracking.TrackableResource.__init__(self, device="/CPU:0")
+    resource.TrackableResource.__init__(self, device="/CPU:0")
     self._create_fn = create_fn
     self._init_op_fn = init_op_fn
     # Pass .resource_handle into _ResourceSummaryWriter parent class rather than
     # create_fn, to ensure it accesses the resource handle only through the
     # cached property so that everything is using a single resource handle.
     _ResourceSummaryWriter.__init__(
-        self, create_fn=lambda: self.resource_handle, init_op_fn=init_op_fn)
+        self,
+        create_fn=lambda: self.resource_handle,
+        init_op_fn=init_op_fn,
+        mesh=mesh,
+    )
 
   # Override for TrackableResource implementation.
   def _create_resource(self):
@@ -493,28 +509,35 @@ def initialize(
 
 
 @tf_export("summary.create_file_writer", v1=[])
-def create_file_writer_v2(logdir,
-                          max_queue=None,
-                          flush_millis=None,
-                          filename_suffix=None,
-                          name=None,
-                          experimental_trackable=False):
+def create_file_writer_v2(
+    logdir,
+    max_queue=None,
+    flush_millis=None,
+    filename_suffix=None,
+    name=None,
+    experimental_trackable=False,
+    experimental_mesh=None,
+):
   """Creates a summary file writer for the given log directory.
 
   Args:
     logdir: a string specifying the directory in which to write an event file.
-    max_queue: the largest number of summaries to keep in a queue; will
-     flush once the queue gets bigger than this. Defaults to 10.
+    max_queue: the largest number of summaries to keep in a queue; will flush
+      once the queue gets bigger than this. Defaults to 10.
     flush_millis: the largest interval between flushes. Defaults to 120,000.
     filename_suffix: optional suffix for the event file name. Defaults to `.v2`.
     name: a name for the op that creates the writer.
     experimental_trackable: a boolean that controls whether the returned writer
       will be a `TrackableResource`, which makes it compatible with SavedModel
       when used as a `tf.Module` property.
+    experimental_mesh: a `tf.experimental.dtensor.Mesh` instance. When running
+      with DTensor, the mesh (experimental_mesh.host_mesh()) will be used for
+      bringing all the DTensor logging from accelerator to CPU mesh.
 
   Returns:
     A SummaryWriter object.
   """
+  # TODO(b/291655717): Revisit the experimental_mesh once we have soft placment.
   if logdir is None:
     raise ValueError("Argument `logdir` cannot be None")
   inside_function = ops.inside_function()
@@ -554,10 +577,12 @@ def create_file_writer_v2(logdir,
           filename_suffix=filename_suffix)
       if experimental_trackable:
         return _TrackableResourceSummaryWriter(
-            create_fn=create_fn, init_op_fn=init_op_fn)
+            create_fn=create_fn, init_op_fn=init_op_fn, mesh=experimental_mesh
+        )
       else:
         return _ResourceSummaryWriter(
-            create_fn=create_fn, init_op_fn=init_op_fn)
+            create_fn=create_fn, init_op_fn=init_op_fn, mesh=experimental_mesh
+        )
 
 
 def create_file_writer(logdir,
@@ -756,13 +781,21 @@ def write(tag, tensor, step=None, metadata=None, name=None):
       with ops.device("cpu:0"):
         summary_tensor = tensor() if callable(tensor) else array_ops.identity(
             tensor)
+        # For DTensor, the device scope above doesn't work, we need to
+        # explicitly copy the resource tensor to host mesh, which is a cpu
+        # mesh.
+        writer = _summary_state.writer
+        summary_value = _maybe_convert_tensor_to_dtensor(writer, summary_tensor)
+        step_value = _maybe_convert_tensor_to_dtensor(writer, step)
+
         write_summary_op = gen_summary_ops.write_summary(
-            _summary_state.writer._resource,  # pylint: disable=protected-access
-            step,
-            summary_tensor,
+            writer._resource,  # pylint: disable=protected-access
+            step_value,
+            summary_value,
             tag,
             serialized_metadata,
-            name=scope)
+            name=scope,
+        )
         with ops.control_dependencies([write_summary_op]):
           return constant_op.constant(True)
 
@@ -992,10 +1025,14 @@ def graph_v1(param, step=None, name=None):
   Raises:
     TypeError: If `param` isn't already a `tf.Tensor` in graph mode.
   """
-  if not context.executing_eagerly() and not isinstance(param, ops.Tensor):
-    raise TypeError("graph() needs a argument `param` to be tf.Tensor "
-                    "(e.g. tf.placeholder) in graph mode, but received "
-                    f"param={param} of type {type(param).__name__}.")
+  if not context.executing_eagerly() and not isinstance(
+      param, tensor_lib.Tensor
+  ):
+    raise TypeError(
+        "graph() needs a argument `param` to be tf.Tensor "
+        "(e.g. tf.placeholder) in graph mode, but received "
+        f"param={param} of type {type(param).__name__}."
+    )
   writer = _summary_state.writer
   if writer is None:
     return control_flow_ops.no_op()
@@ -1111,12 +1148,35 @@ def flush(writer=None, name=None):
   Returns:
     The created `tf.Operation`.
   """
+  del name  # unused
   if writer is None:
     writer = _summary_state.writer
     if writer is None:
       return control_flow_ops.no_op()
   if isinstance(writer, SummaryWriter):
     return writer.flush()
+  raise ValueError("Invalid argument to flush(): %r" % (writer,))
+
+
+def legacy_raw_flush(writer=None, name=None):
+  """Legacy version of flush() that accepts a raw resource tensor for `writer`.
+
+  Do not use this function in any new code. Not supported and not part of the
+  public TF APIs.
+
+  Args:
+    writer: The `tf.summary.SummaryWriter` to flush. If None, the current
+      default writer will be used instead; if there is no current writer, this
+      returns `tf.no_op`. For this legacy version only, also accepts a raw
+      resource tensor pointing to the underlying C++ writer resource.
+    name: Ignored legacy argument for a name for the operation.
+
+  Returns:
+    The created `tf.Operation`.
+  """
+  if writer is None or isinstance(writer, SummaryWriter):
+    # Forward to the TF2 implementation of flush() when possible.
+    return flush(writer, name)
   else:
     # Legacy fallback in case we were passed a raw resource tensor.
     with ops.device("cpu:0"):
@@ -1147,7 +1207,7 @@ def _serialize_graph(arbitrary_graph):
 def _choose_step(step):
   if step is None:
     return training_util.get_or_create_global_step()
-  if not isinstance(step, ops.Tensor):
+  if not isinstance(step, tensor_lib.Tensor):
     return ops.convert_to_tensor(step, dtypes.int64)
   return step
 
@@ -1272,7 +1332,7 @@ def trace_on(graph=True, profiler=False):  # pylint: disable=redefined-outer-nam
 
   Must be invoked in eager mode.
 
-  When enabled, TensorFlow runtime will collection information that can later be
+  When enabled, TensorFlow runtime will collect information that can later be
   exported and consumed by TensorBoard. The trace is activated across the entire
   TensorFlow runtime and affects all threads of execution.
 
@@ -1381,3 +1441,12 @@ def trace_off():
       _profiler.stop()
     except _profiler.ProfilerNotRunningError:
       pass
+
+
+def _maybe_convert_tensor_to_dtensor(writer, tensor):
+  if getattr(writer, "_mesh", None) is not None:
+    mesh = writer._mesh.host_mesh()  # pylint: disable=protected-access
+    tensor = dtensor_api.copy_to_mesh(
+        tensor, layout_lib.Layout.replicated(mesh, rank=tensor.shape.rank)
+    )
+  return tensor

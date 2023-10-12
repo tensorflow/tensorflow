@@ -53,7 +53,7 @@ Status TapeOperation::SetDeviceName(const char* name) {
 Status TapeOperation::AddInput(AbstractTensorHandle* input) {
   TF_RETURN_IF_ERROR(parent_op_->AddInput(input));
   forward_op_.inputs.push_back(input);
-  return Status::OK();
+  return OkStatus();
 }
 Status TapeOperation::AddInputList(
     absl::Span<AbstractTensorHandle* const> inputs) {
@@ -61,7 +61,7 @@ Status TapeOperation::AddInputList(
   for (auto input : inputs) {
     forward_op_.inputs.push_back(input);
   }
-  return Status::OK();
+  return OkStatus();
 }
 Status TapeOperation::SetAttrString(const char* attr_name, const char* data,
                                     size_t length) {
@@ -211,7 +211,7 @@ Status TapeOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
   TF_RETURN_IF_ERROR(registry_.Lookup(forward_op_, &backward_fn));
   tape_->RecordOperation(forward_op_.inputs, forward_op_.outputs,
                          backward_fn.release(), parent_op_->Name());
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace gradients

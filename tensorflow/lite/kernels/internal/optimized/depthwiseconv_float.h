@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
 
+#include <algorithm>
+
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -768,7 +770,7 @@ void FloatDepthwiseConvAccumRow(int stride, int dilation_factor,
                                 const float* filter_data,
                                 int out_x_buffer_start, int out_x_buffer_end,
                                 int output_depth, float* acc_buffer) {
-  ruy::profiler::ScopeLabel label(__PRETTY_FUNCTION__);
+  ruy::profiler::ScopeLabel label(TFLITE_PRETTY_FUNCTION);
   // Consistency check parameters. This is important in particular to ensure
   // that we keep the number of template instantiations minimal, so we don't
   // increase binary size unnecessarily.

@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "AssignAddVariableOp"
   input_arg {
     name: "resource"

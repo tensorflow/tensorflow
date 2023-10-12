@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +18,6 @@ import os
 
 from absl.testing import parameterized
 import numpy as np
-from six.moves import zip
 import tensorflow as tf
 
 from tensorflow.lite.python.interpreter import Interpreter
@@ -31,7 +29,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 
 
 class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -89,7 +87,7 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     return signature_runner(**inputs)
 
   def _getSimpleVariableModel(self):
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v1 = variables.Variable(3.)
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
@@ -97,7 +95,7 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def _getSimpleModelWithVariables(self):
 
-    class SimpleModelWithOneVariable(tracking.AutoTrackable):
+    class SimpleModelWithOneVariable(autotrackable.AutoTrackable):
       """Basic model with 1 variable."""
 
       def __init__(self):
@@ -113,7 +111,7 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def _getMultiFunctionModel(self):
 
-    class BasicModel(tracking.AutoTrackable):
+    class BasicModel(autotrackable.AutoTrackable):
       """Basic model with multiple functions."""
 
       def __init__(self):
@@ -142,7 +140,7 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def _getMultiFunctionModelWithSharedWeight(self):
 
-    class BasicModelWithSharedWeight(tracking.AutoTrackable):
+    class BasicModelWithSharedWeight(autotrackable.AutoTrackable):
       """Model with multiple functions and a shared weight."""
 
       def __init__(self):
@@ -166,7 +164,7 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def _getMatMulModelWithSmallWeights(self):
 
-    class MatMulModelWithSmallWeights(tracking.AutoTrackable):
+    class MatMulModelWithSmallWeights(autotrackable.AutoTrackable):
       """MatMul model with small weights and relatively large biases."""
 
       def __init__(self):
@@ -247,3 +245,45 @@ class ModelTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     scores = tf.keras.layers.Flatten(name=output_name)(x)
     model = tf.keras.Model(input_tensor, scores)
     return model, input_name, output_name
+
+  def _createReadAssignModel(self, number_of_states=2):
+    dtype = float
+
+    class ReadAssign(tf.keras.layers.Layer):
+      """ReadAssign model for the variable quantization test."""
+
+      def __init__(self, number_of_states=2, **kwargs):
+        super().__init__(**kwargs)
+        self.number_of_states = number_of_states
+
+      def build(self, input_shape):
+        super().build(input_shape)
+
+        state_shape = (1, 2, 3)
+        self.states = [None] * self.number_of_states
+        for i in range(self.number_of_states):
+          self.states[i] = self.add_weight(
+              name=f'states{i}',
+              shape=state_shape,
+              trainable=False,
+              initializer=tf.zeros_initializer,
+              dtype=dtype,
+          )
+
+      def call(self, inputs):
+
+        for state in self.states:
+          memory = tf.keras.backend.concatenate([state, inputs], 1)
+          new_state = memory[:, : state.shape[1], :]
+          state.assign(new_state)
+
+        return inputs
+
+    def calibration_gen():
+      for _ in range(5):
+        yield [np.random.uniform(-1, 1, size=(1, 2, 3)).astype(np.float32)]
+
+    inputs = tf.keras.layers.Input(shape=(2, 3), batch_size=1, dtype=dtype)
+    outputs = ReadAssign(number_of_states)(inputs)
+    model = tf.keras.Model(inputs, outputs)
+    return model, calibration_gen

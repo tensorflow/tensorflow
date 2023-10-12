@@ -24,12 +24,12 @@ namespace toco {
   *modified = false;
   auto conv_it = model->operators.begin() + op_index;
   if (conv_it->get()->type != OperatorType::kConv) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   auto* conv_op = static_cast<ConvOperator*>(conv_it->get());
   if (conv_op->outputs.size() < 2) {
     // Conv op does not have im2col.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Drop the im2col array.
@@ -39,7 +39,7 @@ namespace toco {
   AddMessageF("Dropped an im2col array for %s", LogName(*conv_op));
 
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

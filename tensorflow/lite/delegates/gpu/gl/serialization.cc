@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/serialization.h"
 
+#include <string>
+#include <utility>
+#include <variant>
+
 #include "absl/types/variant.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -259,7 +263,7 @@ struct ObjectSizeTypeGetter {
   data::ObjectSize operator()(const uint2&) const {
     return data::ObjectSize::Uint2;
   }
-  data::ObjectSize operator()(const uint32_t&) const {
+  data::ObjectSize operator()(const uint32_t) const {
     return data::ObjectSize::Uint1;
   }
 };
@@ -334,12 +338,12 @@ void SerializedCompiledModelBuilder::AddProgram(
     std::vector<Offset<data::UniformParameter>> offsets;
     for (const Variable& param : parameters) {
       auto name = builder_.CreateString(param.name);
-      auto data = absl::visit(ParameterValueGetter{&builder_}, param.value);
+      auto data = std::visit(ParameterValueGetter{&builder_}, param.value);
       data::UniformParameterBuilder builder(builder_);
       builder.add_name(name);
-      builder.add_data_type(absl::visit(DataVariantTypeGetter{}, param.value));
+      builder.add_data_type(std::visit(DataVariantTypeGetter{}, param.value));
       builder.add_data(data);
-      builder.add_type(absl::visit(ParameterTypeGetter{}, param.value));
+      builder.add_type(std::visit(ParameterTypeGetter{}, param.value));
       offsets.push_back(builder.Finish());
     }
     fb_params = builder_.CreateVector(offsets);
@@ -349,17 +353,17 @@ void SerializedCompiledModelBuilder::AddProgram(
   {
     std::vector<Offset<data::Object>> offsets;
     for (const Object& object : objects) {
-      auto object_variant = absl::visit(ObjectGetter{&builder_}, object.object);
-      auto size = absl::visit(ObjectSizeGetter{&builder_}, object.size);
+      auto object_variant = std::visit(ObjectGetter{&builder_}, object.object);
+      auto size = std::visit(ObjectSizeGetter{&builder_}, object.size);
 
       data::ObjectBuilder builder(builder_);
       builder.add_access(ToFB(object.access));
       builder.add_binding(object.binding);
       builder.add_type(ToFB(object.object_type));
       builder.add_data_type(ToFB(object.data_type));
-      builder.add_size_type(absl::visit(ObjectSizeTypeGetter{}, object.size));
+      builder.add_size_type(std::visit(ObjectSizeTypeGetter{}, object.size));
       builder.add_size(size);
-      builder.add_object_type(absl::visit(ObjectTypeGetter{}, object.object));
+      builder.add_object_type(std::visit(ObjectTypeGetter{}, object.object));
       builder.add_object(object_variant);
       offsets.push_back(builder.Finish());
     }

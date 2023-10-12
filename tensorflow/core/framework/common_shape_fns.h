@@ -35,7 +35,7 @@ Status GetWindowedOutputSizeFromDims(InferenceContext* c,
 
 // The V2 version computes the same outputs with arbitrary dilation_rate, and
 // supports EXPLICIT padding. For detailed equations, refer to the comments
-// for GetWindowedOutputSizeV2(). The 'padding_before' and 'padding_after'
+// for GetWindowedOutputSize(). The 'padding_before' and 'padding_after'
 // parameters are only used if padding_type == EXPLICIT.
 Status GetWindowedOutputSizeFromDimsV2(
     InferenceContext* c, DimensionHandle input_size,
@@ -52,7 +52,7 @@ inline Status UnchangedShapeWithRank(shape_inference::InferenceContext* c,
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), rank, &out));
   c->set_output(0, out);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Transfers shape of input(0) to output(0), after asserting its rank >= <rank>.
@@ -61,7 +61,7 @@ inline Status UnchangedShapeWithRankAtLeast(
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), rank, &out));
   c->set_output(0, out);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Transfers shape of input(0) to output(0), after asserting its rank <= <rank>.
@@ -70,18 +70,18 @@ inline Status UnchangedShapeWithRankAtMost(shape_inference::InferenceContext* c,
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), rank, &out));
   c->set_output(0, out);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Shape function for use with ops no outputs.
 inline Status NoOutputs(shape_inference::InferenceContext* c) {
-  return Status::OK();
+  return OkStatus();
 }
 
 // Shape function for ops that output a single scalar value.
 inline Status ScalarShape(shape_inference::InferenceContext* c) {
   c->set_output(0, c->Scalar());
-  return Status::OK();
+  return OkStatus();
 }
 
 // Shape function for binary ops where both inputs and the output match.
@@ -89,7 +89,7 @@ inline Status MergeBothInputsShapeFn(InferenceContext* c) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(1), &out));
   c->set_output(0, out);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Shape function for dataset iterators.
@@ -121,6 +121,9 @@ Status BiasAddShape(shape_inference::InferenceContext* c);
 
 // Shape function for BiasAddGrad-like operations.
 Status BiasAddGradShape(shape_inference::InferenceContext* c);
+
+// Shape function for general Convolution operation
+Status ConvShape(shape_inference::InferenceContext* c);
 
 // Shape function for Conv2D-like operations that support explicit padding.
 Status Conv2DShapeWithExplicitPadding(shape_inference::InferenceContext* c);
@@ -206,7 +209,7 @@ Status UnknownShape(shape_inference::InferenceContext* c);
 Status ReductionShape(shape_inference::InferenceContext* c);
 
 // Shape function for unsorted segment operations.
-Status UnsortedSegmentReductionShapeFn(InferenceContext* c);
+Status SegmentReductionWithNumSegmentsShapeFn(InferenceContext* c);
 
 // Shape function for concat operations.
 // <num_inputs_to_concat> is the number of inputs to concatenate and are taken
@@ -237,7 +240,7 @@ inline Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c,
   TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
       c, c->input(0), c->input(1), true, &out));
   c->set_output(output_index, out);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Shape function for binary operators that broadcast their inputs.
@@ -278,6 +281,12 @@ Status SparseReduceShapeFn(InferenceContext* c);
 
 // Shape function for QuantizedConv2D op.
 Status QuantizedConv2DShape(InferenceContext* c);
+
+// Shape function for _QuantizedConv2D op/fusion.
+Status FusedQuantizedConv2DShape(InferenceContext* c);
+
+// Shape function for _QuantizedDepthwiseConv2D op/fusion.
+Status FusedQuantizedDepthwiseConv2D(InferenceContext* c);
 
 // Shape function for QuantizedAvgPool op
 Status QuantizedAvgPoolShape(InferenceContext* c);

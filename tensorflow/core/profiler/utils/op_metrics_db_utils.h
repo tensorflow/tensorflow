@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tsl/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -62,6 +63,26 @@ class OpMetricsDbBuilder {
   OpMetricsDb* db_;
 };
 
+// Helps build an op metrics database (borrowed) from XEvents,
+class XEventsOpMetricsDbBuilder {
+ public:
+  // Add OpMetric from XEventVisitor.
+  void AddOpMetric(const tsl::profiler::XEventVisitor& xevent);
+
+  // Finalize OpMetricDb and add total time and Idle op.
+  OpMetricsDb Finalize(uint64_t total_time);
+
+  // Finalize OpMetricDb, but the total time is unknown at the moment, So ignore
+  // the total time and Idle Op and will be handled by the caller.
+  OpMetricsDb Finalize();
+
+ private:
+  using OpMetricBySymbol =
+      absl::flat_hash_map</*symbol_id=*/uint64_t, OpMetrics>;
+  absl::flat_hash_map</*program_id=*/uint64_t, OpMetricBySymbol>
+      flat_op_metric_;
+};
+
 // Sets the total time for OpMetricsDb, ensuring idle time is not negative.
 inline void SetTotalTimePs(OpMetricsDb& db, uint64_t total_time_ps) {
   db.set_total_time_ps(std::max(db.total_op_time_ps(), total_time_ps));
@@ -78,8 +99,12 @@ double IdleTimeRatio(const OpMetricsDb& db);
 // Returns the idle time in picoseconds.
 uint64 IdleTimePs(const OpMetricsDb& db);
 
-// Adds an op representing idle time, i.e., the amount of time spent without any
-// op execution.
+// Populates an OpMetrics record representing idle time, i.e., the amount of
+// time spent without any op execution.
+void SetIdleOp(uint64_t idle_time_ps, OpMetrics& metrics);
+
+// Adds an OpMetrics record representing idle time, i.e., the amount of time
+// spent without any op execution.
 // REQUIRED: All ops must have been added to the database and the total time
 // must have been set.
 void AddIdleOp(OpMetricsDb& db);
@@ -87,6 +112,11 @@ void AddIdleOp(OpMetricsDb& db);
 // Returns true if the given metrics represents idle time.
 inline bool IsIdleOp(const OpMetrics& metrics) {
   return metrics.category() == kIdle;
+}
+
+// Returns the time spent in children (nested) ops.
+inline uint64_t ChildrenTimePs(const OpMetrics& metrics) {
+  return metrics.time_ps() - metrics.self_time_ps();
 }
 
 // Returns the ratio of time spent sending data from the host to the device

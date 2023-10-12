@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for dynamic sharding."""
+import collections
 from absl.testing import parameterized
 import numpy as np
 
@@ -36,7 +37,8 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     return self.make_distributed_dataset(
         dataset,
         cluster,
-        processing_mode=data_service_ops.ShardingPolicy.DYNAMIC)
+        processing_mode=data_service_ops.ShardingPolicy.DYNAMIC,
+        job_name="job_name")
 
   @combinations.generate(test_base.default_test_combinations())
   def testBasic(self):
@@ -44,6 +46,19 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     num_elements = 100
     ds = dataset_ops.Dataset.range(num_elements)
     ds = self._make_dynamic_sharding_dataset(ds, cluster)
+    self.assertDatasetProduces(
+        ds, list(range(num_elements)), assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNoJobName(self):
+    cluster = data_service_test_base.TestCluster(num_workers=2)
+    num_elements = 100
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = self.make_distributed_dataset(
+        ds,
+        cluster,
+        processing_mode=data_service_ops.ShardingPolicy.DYNAMIC,
+        job_name=None)
     self.assertDatasetProduces(
         ds, list(range(num_elements)), assert_items_equal=True)
 
@@ -85,12 +100,40 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(ds, elements, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testRepeat(self):
+  def testGroupByWindow(self):
+    # Verify that split providers are not propagated into iterators created for
+    # the reduce datasets created by the reduce_fn in group_by_window.
+    cluster = data_service_test_base.TestCluster(num_workers=2)
+    elements = [1, 5, 0]
+    ds = dataset_ops.Dataset.from_tensor_slices(elements)
+
+    def reduce_fn(_, window):
+      return dataset_ops.Dataset.zip((window, dataset_ops.Dataset.range(100)))
+
+    ds = ds.group_by_window(lambda x: 0, reduce_fn, window_size=3)
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
+    # This will fail if the tensor_slices split provider is propagated into the
+    # `reduce_fn`, since the `zip` requires either 0 or 2 split providers.
+    self.getDatasetOutput(ds)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testRepeatBeforeDistribution(self):
     cluster = data_service_test_base.TestCluster(num_workers=2)
     num_repeats = 5
     num_elements = 20
     ds = dataset_ops.Dataset.range(num_elements).repeat(num_repeats)
     ds = self._make_dynamic_sharding_dataset(ds, cluster)
+    self.assertDatasetProduces(
+        ds, num_repeats * list(range(num_elements)), assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testRepeatAfterDistribution(self):
+    cluster = data_service_test_base.TestCluster(num_workers=2)
+    num_repeats = 5
+    num_elements = 20
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
+    ds = ds.repeat(num_repeats)
     self.assertDatasetProduces(
         ds, num_repeats * list(range(num_elements)), assert_items_equal=True)
 
@@ -182,6 +225,26 @@ class DynamicShardingTest(data_service_test_base.TestBase,
         ds, list(zip(range(smaller_num_elements), range(smaller_num_elements))))
 
   @combinations.generate(test_base.default_test_combinations())
+  def testImbalancedZipAndRepeat(self):
+    smaller_num_elements = 200
+    larger_num_elements = 1000
+    repetitions = 3
+
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    a = dataset_ops.Dataset.range(smaller_num_elements)
+    b = dataset_ops.Dataset.range(larger_num_elements)
+
+    ds = dataset_ops.Dataset.zip((a, b))
+    ds = ds.repeat(repetitions)
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
+
+    expected = repetitions * (
+        list(zip(range(smaller_num_elements), range(smaller_num_elements)))
+    )
+
+    self.assertDatasetProduces(ds, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testImbalancedZipMultiWorker(self):
     smaller_num_elements = 200
     larger_num_elements = 1000
@@ -235,7 +298,7 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     ds = ds.take(num_samples)
 
     freqs = np.zeros([classes])
-    for v in self.getDatasetOutput(ds):
+    for v in self.getDatasetOutput(ds, requires_initialization=True):
       freqs[v] += 1
 
     self.assertGreater(freqs[0], freqs[1])
@@ -252,11 +315,32 @@ class DynamicShardingTest(data_service_test_base.TestBase,
     choice_dataset = dataset_ops.Dataset.from_tensor_slices(choice_array)
     ds = dataset_ops.Dataset.choose_from_datasets(datasets, choice_dataset)
     ds = self._make_dynamic_sharding_dataset(ds, cluster)
-    expected = [words[i] for i in choice_array]
+    expected = [words[i] for i in choice_array] * num_workers
 
     assert_items_equal = (num_workers > 1)
     self.assertDatasetProduces(
         ds, expected, assert_items_equal=assert_items_equal)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testEnumerateReplicateOnSplit(self):
+    num_workers = 3
+    cluster = data_service_test_base.TestCluster(num_workers)
+    ds = dataset_ops.Dataset.from_tensor_slices(["a", "b", "c"]).repeat()
+    ds = ds.enumerate()
+    ds = self._make_dynamic_sharding_dataset(ds, cluster)
+    get_next = self.getNext(ds)
+
+    counts = collections.defaultdict(int)
+    while True:
+      i, _ = self.evaluate(get_next())
+      counts[i] += 1
+      # Read until all workers have reached enumeration index 10.
+      if counts[10] == num_workers:
+        break
+
+    for i in range(10):
+      self.assertEqual(counts[i], num_workers)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),

@@ -59,7 +59,7 @@ Status MakeResourceHandleToOutput(OpKernelContext* context, int output_index,
       context->allocate_output(output_index, TensorShape({}), &handle));
   handle->scalar<ResourceHandle>()() =
       MakeResourceHandle(container, name, *context->device(), type_index);
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace internal {
@@ -70,7 +70,7 @@ Status ValidateDevice(OpKernelContext* ctx, const ResourceHandle& p) {
         "Trying to access resource ", p.name(), " located in device ",
         p.device(), " from device ", ctx->device()->attributes().name());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace internal
@@ -82,7 +82,7 @@ Status ResourceMgr::InsertDebugTypeName(uint64 hash_code,
     return errors::AlreadyExists("Duplicate hash code found for type ",
                                  type_name);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 const char* ResourceMgr::DebugTypeName(uint64 hash_code) const {
@@ -142,11 +142,11 @@ void ResourceMgr::Clear() {
   {
     mutex_lock l(mu_);
     tmp_containers = std::move(containers_);
+    containers_.clear();  // reinitialize after move.
   }
   for (const auto& p : tmp_containers) {
     delete p.second;
   }
-  tmp_containers.clear();
 }
 
 string ResourceMgr::DebugString() const {
@@ -217,7 +217,7 @@ Status ResourceMgr::DoCreate(const string& container_name, TypeIndex type,
   auto st = container->insert(std::move(key_and_value));
   if (st.second) {
     TF_RETURN_IF_ERROR(InsertDebugTypeName(type.hash_code(), type.name()));
-    return Status::OK();
+    return OkStatus();
   }
   return errors::AlreadyExists("Resource ", container_name, "/", name, "/",
                                type.name());
@@ -257,7 +257,7 @@ Status ResourceMgr::DoLookup(const string& container, uint64 type_hash_code,
                             type_name, " has been destroyed.");
   }
   *resource = ptr;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ResourceMgr::PopResourceAndName(const string& container,
@@ -277,7 +277,7 @@ Status ResourceMgr::PopResourceAndName(const string& container,
   }
   std::swap(resource_and_name, iter->second);
   b->erase(iter);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ResourceMgr::DoDelete(const string& container, uint64 type_hash_code,
@@ -295,7 +295,7 @@ Status ResourceMgr::DoDelete(const string& container, uint64 type_hash_code,
         "This indicates ref-counting ResourceHandle is exposed to weak "
         "ResourceHandle code paths.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ResourceMgr::DoDelete(const string& container, TypeIndex type,
@@ -313,7 +313,7 @@ Status ResourceMgr::Cleanup(const string& container) {
     tf_shared_lock l(mu_);
     if (!gtl::FindOrNull(containers_, container)) {
       // Nothing to cleanup.
-      return Status::OK();
+      return OkStatus();
     }
   }
   Container* b = nullptr;
@@ -322,14 +322,14 @@ Status ResourceMgr::Cleanup(const string& container) {
     auto iter = containers_.find(container);
     if (iter == containers_.end()) {
       // Nothing to cleanup, it's OK (concurrent cleanup).
-      return Status::OK();
+      return OkStatus();
     }
     b = iter->second;
     containers_.erase(iter);
   }
   CHECK(b != nullptr);
   delete b;
-  return Status::OK();
+  return OkStatus();
 }
 
 static bool IsValidContainerName(StringPiece s) {
@@ -371,7 +371,7 @@ Status ContainerInfo::Init(ResourceMgr* rmgr, const NodeDef& ndef,
     static std::atomic<int64_t> counter(0);
     name_ = strings::StrCat("_", counter.fetch_add(1), "_", ndef.name());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 string ContainerInfo::DebugString() const {
@@ -380,16 +380,30 @@ string ContainerInfo::DebugString() const {
                          "]");
 }
 
+// TODO(b/228388547) users of this method should be migrated to the ones below.
 const ResourceHandle& HandleFromInput(OpKernelContext* ctx, int input) {
   return ctx->input(input).flat<ResourceHandle>()(0);
+}
+
+Status HandleFromInput(OpKernelContext* ctx, int input,
+                       ResourceHandle* handle) {
+  TF_ASSIGN_OR_RETURN(const Tensor* tensor, ctx->get_input(input));
+  if (tensor->NumElements() == 0) {
+    return absl::InvalidArgumentError("Empty resource handle");
+  }
+  *handle = tensor->flat<ResourceHandle>()(0);
+  return OkStatus();
 }
 
 Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
                        ResourceHandle* handle) {
   const Tensor* tensor;
   TF_RETURN_IF_ERROR(ctx->input(input, &tensor));
+  if (tensor->NumElements() == 0) {
+    return absl::InvalidArgumentError("Empty resource handle");
+  }
   *handle = tensor->flat<ResourceHandle>()(0);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
@@ -398,7 +412,7 @@ Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
   if (p.IsRefCounting()) {
     TF_ASSIGN_OR_RETURN(*value, p.GetResource<ResourceBase>());
     (*value)->Ref();
-    return Status::OK();
+    return OkStatus();
   }
   return ctx->resource_manager()->Lookup(p, value);
 }
@@ -406,7 +420,7 @@ Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
 Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
   if (p.IsRefCounting()) {
-    return Status::OK();
+    return OkStatus();
   }
   return ctx->resource_manager()->Delete(p);
 }

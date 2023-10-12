@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_REDUCE_TEST_COMMON_H_
 #define TENSORFLOW_LITE_KERNELS_REDUCE_TEST_COMMON_H_
 
+#include <initializer_list>
+
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -37,6 +39,10 @@ class BaseOpModel : public SingleOpModel {
   std::vector<float> GetDequantizedOutput() {
     return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
                          GetZeroPoint(output_));
+  }
+
+  const TfLiteTensor* GetOutputTensor(int index) {
+    return interpreter_->output_tensor(index);
   }
 
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
@@ -77,6 +83,28 @@ class BaseConstOpModel : public BaseOpModel {
       SymmetricInt16Scaling(output);
     }
     input_ = AddInput(input);
+    axis_ = AddConstInput(TensorType_INT32, axis, axis_shape);
+    output_ = AddOutput(output);
+    SetBuiltinOp(op_code, BuiltinOptions_ReducerOptions,
+                 CreateReducerOptions(builder_, keep_dims).Union());
+    BuildInterpreter({GetShape(input_)});
+  }
+};
+
+// Model for the tests case where the input and axis are const tensors.
+template <typename InputType, BuiltinOperator op_code,
+          bool symmetric_int16_scaling = false>
+class BaseFullyConstOpModel : public BaseOpModel {
+ public:
+  BaseFullyConstOpModel(TensorData input, std::vector<InputType> input_data,
+                        TensorData output,
+                        std::initializer_list<int> axis_shape,
+                        std::initializer_list<int> axis, bool keep_dims) {
+    if (symmetric_int16_scaling) {
+      SymmetricInt16Scaling(input);
+      SymmetricInt16Scaling(output);
+    }
+    input_ = AddConstInput(input, input_data);
     axis_ = AddConstInput(TensorType_INT32, axis, axis_shape);
     output_ = AddOutput(output);
     SetBuiltinOp(op_code, BuiltinOptions_ReducerOptions,

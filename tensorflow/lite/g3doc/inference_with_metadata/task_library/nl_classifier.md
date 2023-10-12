@@ -18,11 +18,11 @@ classification models.
 The following models are guaranteed to be compatible with the `NLClassifier`
 API.
 
-*   The <a href="../../models/text_classification/overview.md">movie review
+*   The <a href="../../examples/text_classification/overview">movie review
     sentiment classification</a> model.
 
 *   Models with `average_word_vec` spec created by
-    [TensorFlow Lite Model Maker for text Classfication](https://www.tensorflow.org/lite/tutorials/model_maker_text_classification).
+    [TensorFlow Lite Model Maker for text Classification](https://www.tensorflow.org/lite/models/modify/model_maker/text_classification).
 
 *   Custom models that meet the
     [model compatibility requirements](#model-compatibility-requirements).
@@ -54,9 +54,9 @@ dependencies {
     // Other dependencies
 
     // Import the Task Vision Library dependency (NNAPI is included)
-    implementation 'org.tensorflow:tensorflow-lite-task-text:0.3.0'
+    implementation 'org.tensorflow:tensorflow-lite-task-text:0.4.4'
     // Import the GPU delegate plugin Library for GPU inference
-    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.3.0'
+    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.4.4'
 }
 ```
 
@@ -94,7 +94,7 @@ Add the TensorFlowLiteTaskText pod in Podfile
 ```
 target 'MySwiftAppWithTaskAPI' do
   use_frameworks!
-  pod 'TensorFlowLiteTaskText', '~> 0.2.0'
+  pod 'TensorFlowLiteTaskText', '~> 0.4.4'
 end
 ```
 
@@ -122,21 +122,46 @@ for more details.
 ```c++
 // Initialization
 NLClassifierOptions options;
-options.mutable_base_options()->mutable_model_file()->set_file_name(model_file);
+options.mutable_base_options()->mutable_model_file()->set_file_name(model_path);
 std::unique_ptr<NLClassifier> classifier = NLClassifier::CreateFromOptions(options).value();
 
-// Run inference
-std::vector<core::Category> categories = classifier->Classify(kInput);
+// Run inference with your input, `input_text`.
+std::vector<core::Category> categories = classifier->Classify(input_text);
 ```
 
 See the
 [source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/cc/task/text/nlclassifier/nl_classifier.h)
 for more details.
 
+## Run inference in Python
+
+### Step 1: Install the pip package
+
+```
+pip install tflite-support
+```
+
+### Step 2: Using the model
+
+```python
+# Imports
+from tflite_support.task import text
+
+# Initialization
+classifier = text.NLClassifier.create_from_file(model_path)
+
+# Run inference
+text_classification_result = classifier.classify(text)
+```
+
+See the
+[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/python/task/text/nl_classifier.py)
+for more options to configure `NLClassifier`.
+
 ## Example results
 
 Here is an example of the classification results of the
-[movie review model](https://www.tensorflow.org/lite/models/text_classification/overview).
+[movie review model](https://www.tensorflow.org/lite/examples/text_classification/overview).
 
 Input: "What a waste of my time."
 
@@ -154,9 +179,9 @@ with your own model and test data.
 ## Model compatibility requirements
 
 Depending on the use case, the `NLClassifier` API can load a TFLite model with
-or without [TFLite Model Metadata](../../convert/metadata.md). See examples of
-creating metadata for natural language classifiers using the
-[TensorFlow Lite Metadata Writer API](../../convert/metadata_writer_tutorial.ipynb#nl_classifiers).
+or without [TFLite Model Metadata](../../models/convert/metadata). See examples
+of creating metadata for natural language classifiers using the
+[TensorFlow Lite Metadata Writer API](../../models/convert/metadata_writer_tutorial.ipynb#nl_classifiers).
 
 The compatible models should meet the following requirements:
 
@@ -165,11 +190,11 @@ The compatible models should meet the following requirements:
     -   Input of the model should be either a kTfLiteString tensor raw input
         string or a kTfLiteInt32 tensor for regex tokenized indices of raw input
         string.
-    -   If input type is kTfLiteString, no [Metadata](../../convert/metadata.md)
-        is required for the model.
+    -   If input type is kTfLiteString, no
+        [Metadata](../../models/convert/metadata) is required for the model.
     -   If input type is kTfLiteInt32, a `RegexTokenizer` needs to be set up in
         the input tensor's
-        [Metadata](https://www.tensorflow.org/lite/convert/metadata_writer_tutorial#natural_language_classifiers).
+        [Metadata](https://www.tensorflow.org/lite/models/convert/metadata_writer_tutorial#natural_language_classifiers).
 
 *   Output score tensor:
     (kTfLiteUInt8/kTfLiteInt8/kTfLiteInt16/kTfLiteFloat32/kTfLiteFloat64)
@@ -180,11 +205,11 @@ The compatible models should meet the following requirements:
         corresponding platforms
 
     -   Can have an optional associated file in the output tensor's
-        corresponding [Metadata](../../convert/metadata.md) for category labels,
-        the file should be a plain text file with one label per line, and the
-        number of labels should match the number of categories as the model
-        outputs. See the
-        [exmaple label file](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/python/tests/testdata/nl_classifier/labels.txt).
+        corresponding [Metadata](../../models/convert/metadata) for category
+        labels, the file should be a plain text file with one label per line,
+        and the number of labels should match the number of categories as the
+        model outputs. See the
+        [example label file](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/python/tests/testdata/nl_classifier/labels.txt).
 
 *   Output label tensor: (kTfLiteString/kTfLiteInt32)
 

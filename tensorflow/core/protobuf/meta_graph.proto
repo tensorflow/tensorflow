@@ -5,6 +5,7 @@ package tensorflow;
 import "google/protobuf/any.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/op_def.proto";
+import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 import "tensorflow/core/protobuf/saved_object_graph.proto";
@@ -17,9 +18,6 @@ option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
-// NOTE: This protocol buffer is evolving, and will go through revisions in the
-// coming months.
-//
 // Protocol buffer containing the following which are necessary to restart
 // training, run inference. It can be used to serialize/de-serialize memory
 // objects necessary for running computation in a graph when crossing the
@@ -328,6 +326,8 @@ message SignatureDef {
   // method_name. This is commonly used to support multi-headed computation,
   // where a single graph computation may return multiple results.
   string method_name = 3;
+  // Named input to corresponding default values if any.
+  map<string, TensorProto> defaults = 4;
 }
 
 // An asset file def for a single file or a set of sharded files with the same

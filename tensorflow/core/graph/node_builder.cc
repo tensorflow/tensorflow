@@ -153,7 +153,7 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
 
   if (created_node != nullptr) *created_node = node;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void NodeBuilder::AddIndexError(const Node* node, int i) {

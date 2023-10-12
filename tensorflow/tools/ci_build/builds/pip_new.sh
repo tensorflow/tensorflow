@@ -185,8 +185,8 @@ update_test_filter_tags() {
   add_test_filter_tag -no_pip -nopip
   # MacOS filter tags
   if [[ ${OS_TYPE} == "macos" ]]; then
-    remove_test_filter_tag nomac no_mac
-    add_test_filter_tag -nomac -no_mac
+    remove_test_filter_tag nomac no_mac mac_excluded
+    add_test_filter_tag -nomac -no_mac -mac_excluded
   fi
   echo "Final test filter tags: ${TF_TEST_FILTER_TAGS}"
 }
@@ -325,9 +325,16 @@ if [[ -z "$PYTHON_BIN_PATH" ]]; then
   die "PYTHON_BIN_PATH was not provided. Did you run configure?"
 fi
 
-# TODO(mihaimaruseac): Find a better place for this
-# It seems that now TB is needed to build TF API, so install it.
-${PYTHON_BIN_PATH} -m pip install tb-nightly
+if [[ "$IS_NIGHTLY" == 1 ]]; then
+  ${PYTHON_BIN_PATH} -m pip install tb-nightly
+else
+  ${PYTHON_BIN_PATH} -m pip install tensorboard
+fi
+
+if [[ "x${PY_MAJOR_MINOR_VER}x" == "x3.8x" ]]; then
+  ${PYTHON_BIN_PATH} -m pip uninstall -y protobuf
+  ${PYTHON_BIN_PATH} -m pip install "protobuf < 4"
+fi
 
 # Bazel build the file.
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
@@ -523,6 +530,8 @@ run_test_with_bazel() {
 
   if [[ "${IS_OSS_SERIAL}" == "1" ]]; then
     remove_test_filter_tag -no_oss
+    remove_test_filter_tag -oss_excluded
+    remove_test_filter_tag -oss_serial
     add_test_filter_tag oss_serial
   else
     add_test_filter_tag -oss_serial
@@ -762,12 +771,10 @@ if [[ ${OS_TYPE} == "ubuntu" ]] && \
   for WHL_PATH in $(ls ${PIP_WHL_DIR}/*.whl); do
     # Repair the wheels for cpu manylinux2010/manylinux2014
     echo "auditwheel repairing ${WHL_PATH}"
-    auditwheel repair --plat ${AUDITWHEEL_TARGET_PLAT}_x86_64 -w "${WHL_DIR}" "${WHL_PATH}"
+    auditwheel repair --plat ${AUDITWHEEL_TARGET_PLAT}_$(uname -m) -w "${WHL_DIR}" "${WHL_PATH}"
 
-    WHL_BASE_NAME=$(basename "${WHL_PATH}")
-    AUDITED_WHL_NAME="${WHL_DIR}"/$(echo "${WHL_BASE_NAME//linux/${AUDITWHEEL_TARGET_PLAT}}")
-    if [[ -f ${AUDITED_WHL_NAME} ]]; then
-      WHL_PATH=${AUDITED_WHL_NAME}
+    if [[ $(ls ${WHL_DIR} | grep ${AUDITWHEEL_TARGET_PLAT} | wc -l) == 1 ]] ; then
+      WHL_PATH=${WHL_DIR}/$(ls ${WHL_DIR} | grep ${AUDITWHEEL_TARGET_PLAT})
       echo "Repaired ${AUDITWHEEL_TARGET_PLAT} wheel file at: ${WHL_PATH}"
     else
       die "WARNING: Cannot find repaired wheel."

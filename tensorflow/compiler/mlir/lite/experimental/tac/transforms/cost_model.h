@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string>
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/experimental/tac/common/targets.h"
 
 namespace mlir {
@@ -37,7 +37,7 @@ namespace tac {
 float GetCostForOp(Operation* op, const std::string& hardware);
 
 // Get the estimated cost for the whole function under the given hardware.
-float GetCostForFunc(FuncOp* func, const std::string& hardware);
+float GetCostForFunc(func::FuncOp* func, const std::string& hardware);
 
 // Get the transfer cost given from & to hardware info.
 // We will only calculate for the "necessary" tensor transferred.
@@ -49,13 +49,13 @@ float GetCostForFunc(FuncOp* func, const std::string& hardware);
 //           to_graph
 // So only out2 & out3 are counted.
 float GetTransferCost(const std::string& from_hardware_str,
-                      const std::string& to_hardware_str, CallOp from_graph,
-                      CallOp to_graph);
+                      const std::string& to_hardware_str,
+                      func::CallOp from_graph, func::CallOp to_graph);
 
 // Get the cross quantization/dequantization boundary cost.
 float GetQuantDequantCost(InferenceType from_inference_type,
-                          InferenceType to_inference_type, CallOp from_graph,
-                          CallOp to_graph);
+                          InferenceType to_inference_type,
+                          func::CallOp from_graph, func::CallOp to_graph);
 
 }  // namespace tac
 }  // namespace TFL

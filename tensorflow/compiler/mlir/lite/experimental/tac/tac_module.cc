@@ -16,8 +16,10 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/experimental/tac/hardwares/target_hardware.h"
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/passes.h"
@@ -32,8 +34,9 @@ namespace {
 void AddExportTFLPass(mlir::OpPassManager* pass_manager, bool enable_inliner) {
   if (enable_inliner) pass_manager->addPass(mlir::createInlinerPass());
   pass_manager->addPass(mlir::createSymbolDCEPass());
-  pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
-  pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+  pass_manager->addNestedPass<mlir::func::FuncOp>(
+      mlir::createCanonicalizerPass());
+  pass_manager->addNestedPass<mlir::func::FuncOp>(mlir::createCSEPass());
 }
 }  // namespace
 
@@ -55,7 +58,8 @@ void TacModule::AddTACPass(mlir::OpPassManager* pass_manager,
     pass_manager->addPass(mlir::TFL::CreatePrepareTFPass(
         /*unfold_batch_matmul=*/true,
         /*allow_bf16_and_f16_type_legalization=*/false));
-    pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+    pass_manager->addNestedPass<mlir::func::FuncOp>(
+        mlir::createCanonicalizerPass());
     pass_manager->addPass(
         mlir::TFL::CreateLegalizeTFPass(/*run_tfl_runtime_verification=*/true));
     pass_manager->addPass(
@@ -77,7 +81,7 @@ const tac::TargetHardware* TacModule::GetTargetHardware(
 }
 
 absl::Status TacModule::RunTacPasses(mlir::ModuleOp* module, bool debug_mode) {
-  mlir::PassManager pm(module->getContext(),
+  mlir::PassManager pm((*module)->getName(),
                        mlir::OpPassManager::Nesting::Implicit);
   AddTACPass(&pm, options_.hardware_backends);
   if (!debug_mode) {

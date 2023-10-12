@@ -21,7 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "unicode/appendable.h"  // from @icu
 #include "unicode/schriter.h"  // from @icu
 #include "unicode/uchar.h"  // from @icu
@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/bcast.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
@@ -238,7 +237,7 @@ Status GetErrorOptions(OpKernelConstruction* ctx, ErrorOptions* out) {
                                     &(out->replace_control_chars)));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 inline bool ShouldHandleFormatError(const ErrorOptions& error_options,
@@ -263,7 +262,7 @@ class UnicodeTranscodeOp : public OpKernel {
     // at execution time (and to warm any data caches the converter needs).
     // This instance is not used.
     std::unique_ptr<WrappedConverter> input_encoder =
-        absl::make_unique<WrappedConverter>();
+        std::make_unique<WrappedConverter>();
     input_encoder->init(input_encoding_);
     OP_REQUIRES(ctx, input_encoder->converter_,
                 errors::InvalidArgument(
@@ -363,7 +362,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
     // at execution time (and to warm any data caches the converter needs).
     // This instance is not used.
     std::unique_ptr<WrappedConverter> input_encoder =
-        absl::make_unique<WrappedConverter>();
+        std::make_unique<WrappedConverter>();
     input_encoder->init(input_encoding_);
     OP_REQUIRES(ctx, input_encoder->converter_,
                 errors::InvalidArgument(
@@ -409,7 +408,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
     const auto& input_vec = input_tensor->flat<tstring>();
 
     std::unique_ptr<WrappedConverter> input_encoder =
-        absl::make_unique<WrappedConverter>();
+        std::make_unique<WrappedConverter>();
     input_encoder->init(input_encoding_);
     OP_REQUIRES(ctx, input_encoder->converter_,
                 errors::InvalidArgument(

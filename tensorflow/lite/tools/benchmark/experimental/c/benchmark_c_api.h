@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_BENCHMARK_EXPERIMENTAL_C_BENCHMARK_C_API_H_
 #define TENSORFLOW_LITE_TOOLS_BENCHMARK_EXPERIMENTAL_C_BENCHMARK_C_API_H_
 
-#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
 
 // -----------------------------------------------------------------------------
 // Experimental C APIs for the benchmark tool, mainly intended to be used for
@@ -35,7 +35,7 @@ typedef enum {
 } TfLiteBenchmarkRunType;
 
 // -----------------------------------------------------------------------------
-// C APIs corresponding to tensorflow::Stat<int64_t> type.
+// C APIs corresponding to tsl::Stat<int64_t> type.
 // -----------------------------------------------------------------------------
 typedef struct TfLiteBenchmarkInt64Stat {
   bool empty;

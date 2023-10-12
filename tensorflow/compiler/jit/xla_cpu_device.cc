@@ -16,6 +16,8 @@ limitations under the License.
 // Registers the XLA_CPU device, which is an XlaDevice instantiation that runs
 // operators using XLA via the XLA "Host" (CPU) backend.
 
+#include <array>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -43,11 +45,11 @@ Status XlaCpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
   if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {
     VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set "
                "and XLA device creation not requested";
-    return Status::OK();
+    return OkStatus();
   }
 
   devices->push_back(absl::StrCat("/physical_device:", DEVICE_XLA_CPU, ":0"));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaCpuDeviceFactory::CreateDevices(
@@ -56,7 +58,7 @@ Status XlaCpuDeviceFactory::CreateDevices(
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
   if (!flags->tf_xla_enable_xla_devices && !XlaDevicesCreationRequired()) {
     VLOG(1) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
-    return Status::OK();
+    return OkStatus();
   }
   bool compile_on_demand = flags->tf_xla_compile_on_demand;
 
@@ -94,30 +96,30 @@ Status XlaCpuDeviceFactory::CreateDevices(
   XlaShapeLayoutHelpers::ShapeDeterminationFns shape_representation_fns{
       UseNoPreferenceLayoutFn(), IdentityShapeRepresentationFn()};
   options.shape_determination_fns = {shape_representation_fns};
-  auto device = absl::make_unique<XlaDevice>(session_options, options);
+  auto device = std::make_unique<XlaDevice>(session_options, options);
 
-  // Setting GpuDeviceInfo because eager runtime relies on the device
-  // context in tensorflow_gpu_device_info(). Also,
-  // tensorflow_gpu_device_info() == nullptr is used as an IsCPU test.
+  // Setting AcceleratorDeviceInfo because eager runtime relies on the device
+  // context in tensorflow_accelerator_device_info(). Also,
+  // tensorflow_accelerator_device_info() == nullptr is used as an IsCPU test.
   // We need XlaCpuDevice to be treated not as CPU because it allocates
   // XlaTensors, not regular Tensors.
-  Status status = device->UseGpuDeviceInfo();
+  Status status = device->UseAcceleratorDeviceInfo();
   if (!status.ok()) {
     errors::AppendToMessage(&status, "while setting up ", DEVICE_GPU_XLA_JIT);
     return status;
   }
   devices->push_back(std::move(device));
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_CPU, XlaCpuDeviceFactory);
 
 // Kernel registrations
 
-constexpr std::array<DataType, 16> kAllXlaCpuTypes = {
+constexpr std::array<DataType, 18> kAllXlaCpuTypes = {
     {DT_UINT8, DT_QUINT8, DT_UINT16, DT_INT8, DT_QINT8, DT_INT16, DT_INT32,
      DT_QINT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64,
-     DT_COMPLEX128, DT_BOOL, DT_BFLOAT16}};
+     DT_COMPLEX128, DT_BOOL, DT_BFLOAT16, DT_INT4, DT_UINT4}};
 
 REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_CPU, XlaLocalLaunchOp, kAllXlaCpuTypes);
 REGISTER_XLA_COMPILE_KERNEL(DEVICE_XLA_CPU, XlaCompileOp, kAllXlaCpuTypes);

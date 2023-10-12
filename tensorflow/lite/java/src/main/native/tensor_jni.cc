@@ -19,14 +19,17 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/lite/core/shims/c/common.h"
-#include "tensorflow/lite/core/shims/cc/interpreter.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
-#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/string_util.h"
 
+#if !TFLITE_DISABLE_SELECT_JAVA_APIS
+#include "tensorflow/lite/signature_runner.h"
+#endif
+
+using tflite::Interpreter;
 using tflite::jni::ThrowException;
-using tflite_shims::Interpreter;
 
 namespace tflite {
 // Convenience handle for obtaining a TfLiteTensor given an interpreter and
@@ -37,7 +40,7 @@ namespace tflite {
 // invalidate all TfLiteTensor* handles during inference or allocation.
 class TensorHandleImpl {
  public:
-  virtual ~TensorHandleImpl() {}
+  virtual ~TensorHandleImpl() = default;
   virtual TfLiteTensor* tensor() const = 0;
   virtual int index() const { return -1; }
 };
@@ -83,12 +86,14 @@ class SignatureRunnerTensorHandle : public TensorHandleImpl {
 class TensorHandle {
  public:
   TensorHandle(Interpreter* interpreter, int tensor_index) {
-    impl_.reset(new InterpreterTensorHandle(interpreter, tensor_index));
+    impl_ =
+        std::make_unique<InterpreterTensorHandle>(interpreter, tensor_index);
   }
 
 #if !TFLITE_DISABLE_SELECT_JAVA_APIS
   TensorHandle(SignatureRunner* runner, const char* name, bool is_input) {
-    impl_.reset(new SignatureRunnerTensorHandle(runner, name, is_input));
+    impl_ =
+        std::make_unique<SignatureRunnerTensorHandle>(runner, name, is_input);
   }
 #endif
 

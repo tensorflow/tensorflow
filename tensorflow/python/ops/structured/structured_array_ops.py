@@ -1,4 +1,3 @@
-# Lint as python3
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,17 +16,36 @@
 
 from typing import Sequence
 
+from tensorflow.core.config import flags
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.ragged import dynamic_ragged_shape
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged.row_partition import RowPartition
 from tensorflow.python.ops.structured.structured_tensor import StructuredTensor
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
+
+
+@dispatch.dispatch_for_api(array_ops.shape_v2)
+def shape_v2(input: StructuredTensor, out_type=dtypes.int32,  # pylint: disable=redefined-builtin
+             name=None) -> dynamic_ragged_shape.DynamicRaggedShape:
+  """Returns a DynamicRaggedShape containing the shape of the input."""
+  del name
+  return input._ragged_shape.with_dtype(out_type)  # pylint: disable=protected-access
+
+
+@dispatch.dispatch_for_api(array_ops.shape)
+def shape_v1(input: StructuredTensor, name=None,  # pylint: disable=redefined-builtin
+             out_type=dtypes.int32) -> dynamic_ragged_shape.DynamicRaggedShape:
+  """Returns a DynamicRaggedShape containing the shape of the input."""
+  del name
+  return input._ragged_shape.with_dtype(out_type)  # pylint: disable=protected-access
 
 
 @dispatch.dispatch_for_types(array_ops.expand_dims, StructuredTensor)
@@ -187,25 +205,35 @@ def random_shuffle(value, seed=None, name=None):
 
 
 @dispatch.dispatch_for_types(array_ops.size_v2, StructuredTensor)
-def size_v2(input, out_type=dtypes.int32, name=None):
+def size_v2(input, out_type=None, name=None):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor."""
+  if out_type is None:
+    if flags.config().tf_shape_default_int64.value():
+      out_type = dtypes.int64
+    else:
+      out_type = dtypes.int32
   return size(input, name=name, out_type=out_type)
 
 
 # pylint: disable=protected-access
 @dispatch.dispatch_for_types(array_ops.size, StructuredTensor)
-def size(input, name=None, out_type=dtypes.int32):
+def size(input, name=None, out_type=None):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor."""
+  if out_type is None:
+    if flags.config().tf_shape_default_int64.value():
+      out_type = dtypes.int64
+    else:
+      out_type = dtypes.int32
   with ops.name_scope(name, 'size', [input]) as name:
-    if not input._row_partitions:
-      if input._nrows is not None:
-        return math_ops.cast(input._nrows, out_type)  # vector.
+    if not input.row_partitions:
+      if input.nrows() is not None:
+        return math_ops.cast(input.nrows(), out_type)  # vector.
       else:
         return math_ops.cast(1, out_type)  # scalar.
     # 2D and up.
-    nvals = input._row_partitions[-1].nvals()
+    nvals = input.row_partitions[-1].nvals()
     if nvals is None or out_type is None:
       return nvals
     return math_ops.cast(nvals, dtype=out_type)
@@ -221,7 +249,7 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
 
 # pylint: disable=protected-access
 @dispatch.dispatch_for_types(array_ops.zeros_like_v2, StructuredTensor)
-def zeros_like_v2(input, dtype=None, name=None):  # pylint: disable=redefined-builtin
+def zeros_like_v2(input, dtype=None, name=None, layout=None):  # pylint: disable=redefined-builtin
   """Replace every object with a zero.
 
   Example:
@@ -236,23 +264,29 @@ def zeros_like_v2(input, dtype=None, name=None):  # pylint: disable=redefined-bu
     input: a structured tensor.
     dtype: the dtype of the resulting zeros. (default is tf.float32)
     name: a name for the op.
+    layout: Optional Layout. Only supports replicated layout.
+
   Returns:
     a tensor of zeros of the same shape.
   """
+  if layout is not None and not layout.is_fully_replicated():
+    raise ValueError(
+        f'StructuredTensor only allows replicated layout. got {layout}'
+    )
   if dtype is None:
     dtype = dtypes.float32
   with ops.name_scope(name, 'zeros_like', [input]) as name:
-    if not input._row_partitions:
-      if input._nrows is not None:
-        return array_ops.zeros([input._nrows], dtype)  # vector.
+    if not input.row_partitions:
+      if input.nrows() is not None:
+        return array_ops.zeros([input.nrows()], dtype, layout=layout)  # vector.
       else:
-        return array_ops.zeros([], dtype)  # scalar.
+        return array_ops.zeros([], dtype, layout=layout)  # scalar.
     # 2D and up.
-    last_row_partition = input._row_partitions[-1]
+    last_row_partition = input.row_partitions[-1]
 
     result = ragged_tensor.RaggedTensor._from_nested_row_partitions(
         array_ops.zeros(last_row_partition.nvals(), dtype=dtype),
-        input._row_partitions)
+        input.row_partitions)
     return result
 
 
@@ -266,7 +300,7 @@ def ones_like(tensor, dtype=None, name=None, optimize=True):
 
 # pylint: disable=protected-access
 @dispatch.dispatch_for_types(array_ops.ones_like_v2, StructuredTensor)
-def ones_like_v2(input, dtype=None, name=None):  # pylint: disable=redefined-builtin
+def ones_like_v2(input, dtype=None, name=None, layout=None):  # pylint: disable=redefined-builtin
   """Replace every object with a zero.
 
   Example:
@@ -281,23 +315,30 @@ def ones_like_v2(input, dtype=None, name=None):  # pylint: disable=redefined-bui
     input: a structured tensor.
     dtype: the dtype of the resulting zeros. (default is tf.float32)
     name: a name for the op.
+    layout: Optional Layout. Only supports replicated layout.
+
   Returns:
     a tensor of zeros of the same shape.
   """
+  if layout is not None and not layout.is_fully_replicated():
+    raise ValueError(
+        f'StructuredTensor only allows replicated layout. got {layout}'
+    )
+
   if dtype is None:
     dtype = dtypes.float32
   with ops.name_scope(name, 'ones_like', [input]) as name:
-    if not input._row_partitions:
-      if input._nrows is not None:
-        return array_ops.ones([input._nrows], dtype)  # vector.
+    if not input.row_partitions:
+      if input.nrows() is not None:
+        return array_ops.ones([input.nrows()], dtype, layout=layout)  # vector.
       else:
-        return array_ops.ones([], dtype)  # scalar.
+        return array_ops.ones([], dtype, layout=layout)  # scalar.
     # 2D and up.
-    last_row_partition = input._row_partitions[-1]
+    last_row_partition = input.row_partitions[-1]
 
     result = ragged_tensor.RaggedTensor._from_nested_row_partitions(
         array_ops.ones(last_row_partition.nvals(), dtype=dtype),
-        input._row_partitions)
+        input.row_partitions)
     return result
 
 
@@ -475,7 +516,7 @@ def _structured_tensor_from_row_partitions(shape, row_partitions):
 # pylint: disable=protected_access
 def _all_nested_row_partitions(rt):
   """Returns all nested row partitions in rt, including for dense dimensions."""
-  if isinstance(rt, ops.Tensor):
+  if isinstance(rt, tensor_lib.Tensor):
     if rt.shape.rank <= 1:
       return ()
     else:
@@ -489,7 +530,7 @@ def _all_nested_row_partitions(rt):
 
 def _structured_tensor_like(t):
   """Create a StructuredTensor with the shape of a (composite) tensor."""
-  if isinstance(t, ops.Tensor):
+  if isinstance(t, tensor_lib.Tensor):
     return _structured_tensor_from_dense_tensor(t)
   if ragged_tensor.is_ragged(t):
     return StructuredTensor.from_fields(

@@ -16,6 +16,9 @@
 import os
 
 from absl.testing import parameterized
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
+from tensorflow.python.checkpoint import checkpoint_management
+from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import scan_ops
@@ -23,6 +26,7 @@ from tensorflow.python.data.experimental.ops import take_while_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
+from tensorflow.python.eager import test
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -35,9 +39,6 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
-from tensorflow.python.platform import test
-from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.tracking import util as trackable_utils
 
 
 # TODO(jsimsa): Add missing test combinations.
@@ -292,17 +293,22 @@ class CheckpointTest(test_base.DatasetTestBase, parameterized.TestCase):
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
-  @combinations.generate(test_base.eager_only_combinations())
-  def testSaveRestoreOneShotIterator(self):
+  @combinations.generate(combinations.times(
+      test_base.eager_only_combinations(),
+      combinations.combine(enable_async_ckpt=[True, False])
+  ))
+  def testSaveRestoreOneShotIterator(self, enable_async_ckpt):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3, 4, 5, 6]).map(
         math_ops.square).batch(2)
     iterator = iter(dataset)
     get_next = iterator.get_next
+    ckpt_options = checkpoint_options.CheckpointOptions(
+        experimental_enable_async_checkpoint=enable_async_ckpt)
     checkpoint = trackable_utils.Checkpoint(iterator=iterator)
     self.assertAllEqual([1, 4], get_next())
-    save_path = checkpoint.save(checkpoint_prefix)
+    save_path = checkpoint.save(checkpoint_prefix, options=ckpt_options)
     self.assertAllEqual([9, 16], get_next())
     self.assertAllEqual([25, 36], get_next())
     checkpoint.restore(save_path).run_restore_ops()
@@ -311,8 +317,11 @@ class CheckpointTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       get_next()
 
-  @combinations.generate(test_base.eager_only_combinations())
-  def testSaveRestoreMultipleIterator(self):
+  @combinations.generate(combinations.times(
+      test_base.eager_only_combinations(),
+      combinations.combine(enable_async_ckpt=[True, False])
+  ))
+  def testSaveRestoreMultipleIterator(self, enable_async_ckpt):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     dataset = dataset_ops.Dataset.from_tensor_slices(
@@ -325,13 +334,15 @@ class CheckpointTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset_2 = dataset_ops.Dataset.range(10)
     iterator_3 = iter(dataset_2)
     get_next_3 = iterator_3.get_next
+    ckpt_options = checkpoint_options.CheckpointOptions(
+        experimental_enable_async_checkpoint=enable_async_ckpt)
     checkpoint = trackable_utils.Checkpoint(
         iterator_1=iterator_1, iterator_2=iterator_2, iterator_3=iterator_3)
     self.assertAllEqual([1, 4], get_next_1())
     self.assertAllEqual(0, get_next_3())
     self.assertAllEqual(1, get_next_3())
     self.assertAllEqual(2, get_next_3())
-    save_path = checkpoint.save(checkpoint_prefix)
+    save_path = checkpoint.save(checkpoint_prefix, options=ckpt_options)
     self.assertAllEqual([1, 4], get_next_2())
     self.assertAllEqual([9, 16], get_next_2())
     self.assertAllEqual(3, get_next_3())
@@ -340,21 +351,26 @@ class CheckpointTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertAllEqual([1, 4], get_next_2())
     self.assertAllEqual(3, get_next_3())
 
-  @combinations.generate(test_base.eager_only_combinations())
-  def testRestoreExhaustedIterator(self):
+  @combinations.generate(combinations.times(
+      test_base.eager_only_combinations(),
+      combinations.combine(enable_async_ckpt=[True, False])
+  ))
+  def testRestoreExhaustedIterator(self, enable_async_ckpt):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     dataset = dataset_ops.Dataset.range(3)
     iterator = iter(dataset)
     get_next = iterator.get_next
+    ckpt_options = checkpoint_options.CheckpointOptions(
+        experimental_enable_async_checkpoint=enable_async_ckpt)
     checkpoint = trackable_utils.Checkpoint(iterator=iterator)
     self.assertAllEqual(0, get_next())
     self.assertAllEqual(1, get_next())
-    save_path = checkpoint.save(checkpoint_prefix)
+    save_path = checkpoint.save(checkpoint_prefix, options=ckpt_options)
     self.assertAllEqual(2, get_next())
     checkpoint.restore(save_path).run_restore_ops()
     self.assertAllEqual(2, get_next())
-    save_path = checkpoint.save(checkpoint_prefix)
+    save_path = checkpoint.save(checkpoint_prefix, options=ckpt_options)
     checkpoint.restore(save_path).run_restore_ops()
     with self.assertRaises(errors.OutOfRangeError):
       get_next()

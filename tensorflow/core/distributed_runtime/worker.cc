@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/worker.h"
 
+#include <utility>
+
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_util.h"
@@ -27,11 +29,14 @@ limitations under the License.
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/device_profiler_session.h"
-#include "tensorflow/core/protobuf/distributed_runtime_payloads.pb.h"
+#include "tsl/protobuf/distributed_runtime_payloads.pb.h"
 
 namespace tensorflow {
 
-Worker::Worker(WorkerEnv* env) : env_(env), recent_request_ids_(100000) {
+Worker::Worker(WorkerEnv* env)
+    : env_(env), recent_request_ids_(100000, env_->experimental_num_shards) {
+  DCHECK_GT(env_->experimental_num_shards, 0);
+
   // Enable log history collection in StatusGroup so that recent warning and
   // error log messages will be attached to the root error status to be
   // forwarded to the master.
@@ -48,7 +53,7 @@ void Worker::GetStatusAsync(CallOptions* opts, const GetStatusRequest* request,
   for (auto& d : devices) {
     response->add_device_attributes()->Swap(&d);
   }
-  done(Status::OK());
+  done(OkStatus());
 }
 
 void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
@@ -57,8 +62,7 @@ void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
   Status s = env_->session_mgr->CreateSession(
       request->session_handle(), request->server_def(),
       request->cluster_device_attributes(), request->isolate_session_state(),
-      request->master_task(), request->master_incarnation(),
-      request->coordination_service_config());
+      request->master_task(), request->master_incarnation());
   done(s);
 }
 
@@ -110,16 +114,17 @@ void Worker::DeregisterGraphAsync(const DeregisterGraphRequest* request,
 }
 
 void Worker::AbortStep(int64_t step_id) {
-  RemoteRendezvous* rendez = env_->rendezvous_mgr->Find(step_id);
+  tsl::core::RefCountPtr<RemoteRendezvous> rendez =
+      env_->rendezvous_mgr->Find(step_id);
   // Do not abort if it's a context global instance for eager op-by-op execution
   if (rendez->IsRemoteEagerContextDefault()) return;
-  SchedNonBlockingClosureAfter(1000000, [rendez, step_id]() {
+  SchedNonBlockingClosureAfter(1000000, [rendez = std::move(rendez),
+                                         step_id]() {
     // Delay a bit before aborting the step. This way, the root
     // cause may return first back to the client instead of this
     // cancellation generated abort error.
     rendez->StartAbort(errors::Aborted("Step ", step_id,
                                        " cancelled.  Cancelling rendezvous."));
-    rendez->Unref();
   });
 }
 
@@ -137,7 +142,7 @@ Status Worker::PrepareRunGraph(RunGraphRequestWrapper* req,
   for (size_t i = 0; i < req->num_recvs(); ++i) {
     out->insert({req->recv_key(i), empty_tensor});
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void Worker::RunGraphAsync(CallOptions* opts, RunGraphRequestWrapper* request,
@@ -146,7 +151,7 @@ void Worker::RunGraphAsync(CallOptions* opts, RunGraphRequestWrapper* request,
   if (request->store_errors_in_response_body()) {
     done = [response, done](const Status& status) {
       response->set_status(status);
-      done(Status::OK());
+      done(OkStatus());
     };
   }
   if (request->is_partial()) {
@@ -360,13 +365,13 @@ void Worker::CleanupGraphAsync(const CleanupGraphRequest* request,
   if (env_->collective_executor_mgr) {
     env_->collective_executor_mgr->Cleanup(step_id);
   }
-  for (Device* d : env_->local_devices) {
+  for (Device* d : env_->device_mgr->ListDevices()) {
     ScopedAllocatorMgr* sam = d->GetScopedAllocatorMgr();
     if (sam) {
       sam->Cleanup(step_id);
     }
   }
-  done(Status::OK());
+  done(OkStatus());
 }
 
 void Worker::CleanupAllAsync(const CleanupAllRequest* request,
@@ -375,7 +380,7 @@ void Worker::CleanupAllAsync(const CleanupAllRequest* request,
   std::vector<string> containers;
   for (const auto& c : request->container()) containers.push_back(c);
   env_->device_mgr->ClearContainers(containers);
-  done(Status::OK());
+  done(OkStatus());
 }
 
 void Worker::LoggingAsync(const LoggingRequest* request,
@@ -484,7 +489,7 @@ Status Worker::PrepareRecvTensor(const Rendezvous::ParsedKey& parsed,
           distributed_runtime::WorkerPossiblyRestarted().SerializeAsString()}});
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void Worker::RecvTensorAsync(CallOptions* opts,

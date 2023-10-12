@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -29,7 +30,6 @@ limitations under the License.
 namespace tensorflow {
 
 class BufRendezvous;
-class CancellationManager;
 class CompleteGroupRequest;
 class CompleteGroupResponse;
 class CompleteInstanceRequest;
@@ -48,6 +48,7 @@ enum CollectiveType {
   GATHER_COLLECTIVE,
   PERMUTE_COLLECTIVE,
   ALL_TO_ALL_COLLECTIVE,
+  REDUCE_SCATTER_COLLECTIVE,
   UNDEFINED_COLLECTIVE,
 };
 
@@ -122,6 +123,8 @@ struct CollImplDetails {
 struct CollInstanceParams {
   // Identifies all participating graph nodes.
   int32 instance_key = -1;
+  // The full identifier includes both instance_key and step_id.
+  int64_t step_id = 0;
   CollectiveType type = UNDEFINED_COLLECTIVE;
   DataType data_type = DT_FLOAT;
   TensorShape shape = {0};
@@ -155,6 +158,7 @@ struct CollectiveParams : public core::RefCounted {
   OpKernel* final_op = nullptr;  // reduction only
   string ToString() const;
   bool run_group_initialization = true;
+  bool is_stateless = false;
 };
 
 class CollectiveExecutor;
@@ -385,7 +389,8 @@ class CollectiveExecutor : public core::RefCounted {
   static OpKernelContext::Params* CtxParams(OpKernelContext* ctx);
   CollectiveExecutorMgrInterface* cem_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CollectiveExecutor);
+  CollectiveExecutor(const CollectiveExecutor&) = delete;
+  void operator=(const CollectiveExecutor&) = delete;
 };
 
 struct CollectiveContext {

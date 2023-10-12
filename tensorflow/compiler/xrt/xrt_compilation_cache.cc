@@ -17,10 +17,13 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <functional>
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
+#include "xla/client/local_client.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/random/random.h"
 
@@ -99,7 +102,7 @@ Status XRTCompilationCache::Release(int64_t uid) {
           << (cache_.size() - entries_by_last_use_.size()) << " entries ("
           << marked_for_eviction_entries_ << ").";
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void XRTCompilationCache::DiscardEntryRef(CompiledSubgraph* entry) {
@@ -279,7 +282,7 @@ Status XRTCompilationCache::Lookup(
   CompiledSubgraph* cache_entry = iter->second;
   *entry = std::unique_ptr<XRTCompilationCacheEntryRef>(
       new EntryRefImpl(this, cache_entry));
-  return Status::OK();
+  return OkStatus();
 }
 
 string XRTCompilationCache::DebugString() const {
@@ -296,7 +299,7 @@ xla::StatusOr<RefPtr<XRTCompilationCache>> GetOrCreateCompilationCache(
       rm->default_container(), kXRTCompilationCacheResourceName, &cache,
       [&](XRTCompilationCache** new_cache) {
         *new_cache = new XRTCompilationCache(max_number_of_entries);
-        return Status::OK();
+        return OkStatus();
       }));
   return RefPtr<XRTCompilationCache>(cache);
 }

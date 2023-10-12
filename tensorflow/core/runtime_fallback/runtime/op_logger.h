@@ -15,10 +15,11 @@ limitations under the License.
 
 // This file defines a logger for op names.
 
-#ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_KERNEL_H_
-#define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_KERNEL_H_
+#ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_LOGGER_H_
+#define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_LOGGER_H_
 
 #include <memory>
+#include <string>
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -37,19 +38,20 @@ namespace tfd {
 class OpLogger : public tfrt::SharedContext {
  public:
   explicit OpLogger(tfrt::HostContext* host)
-      : op_names_(absl::make_unique<tfrt::ConcurrentVector<std::string>>(8)) {}
+      : op_names_(std::make_unique<tfrt::ConcurrentVector<std::string>>(8)) {}
 
   void LogOp(tfrt::string_view op_name) {
     op_names_->emplace_back(op_name.str());
   }
 
   tfrt::ArrayRef<std::string> GetLoggedOps() const {
-    return op_names_->ToArrayRef();
+    absl::Span<const std::string> span = op_names_->ToConstSpan();
+    return tfrt::ArrayRef<std::string>(span.data(), span.size());
   }
 
   // Cannot be called concurrently with any API in this class.
   void Clear() {
-    op_names_ = absl::make_unique<tfrt::ConcurrentVector<std::string>>(8);
+    op_names_ = std::make_unique<tfrt::ConcurrentVector<std::string>>(8);
   }
 
  private:
@@ -59,4 +61,4 @@ class OpLogger : public tfrt::SharedContext {
 }  // namespace tfd
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_KERNEL_H_
+#endif  // TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_LOGGER_H_

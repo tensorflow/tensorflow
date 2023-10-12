@@ -39,7 +39,7 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.saved_model.save import save
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.training.training_util import write_graph
 
 
@@ -459,7 +459,7 @@ class TfLiteConvertV2Test(TestModels):
   @test_util.run_v2_only
   def testSavedModel(self):
     input_data = constant_op.constant(1., shape=[1])
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(lambda x: 2. * x)
     to_save = root.f.get_concrete_function(input_data)
 

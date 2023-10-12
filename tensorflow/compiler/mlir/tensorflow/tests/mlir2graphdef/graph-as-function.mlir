@@ -1,6 +1,6 @@
 // RUN: tf-mlir-translate -mlir-to-graphdef %s -tf-graph-as-function -o - | FileCheck %s
 
-func @main(%arg0: tensor<*x!tf_type.resource>, %arg1: tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>>, %arg2: tensor<*xf32>, %arg3: tensor<2x4x6x8xi32>) -> (tensor<f32>, tensor<f32>)
+func.func @main(%arg0: tensor<*x!tf_type.resource>, %arg1: tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>>, %arg2: tensor<*xf32>, %arg3: tensor<2x4x6x8xi32>) -> (tensor<f32>, tensor<f32>)
 attributes {tf.entry_function = {inputs = "args_0,args_1,args_2,args_3", outputs = "rets_0_RetVal,rets_1_RetVal"}} {
   %graph:2 = tf_executor.graph {
     %0:2 = tf_executor.island wraps "tf.Const"() {device = "", dtype = "tfdtype$DT_FLOAT", value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32> loc("const")
@@ -8,16 +8,16 @@ attributes {tf.entry_function = {inputs = "args_0,args_1,args_2,args_3", outputs
     %2:2 = tf_executor.island wraps "tf.StatefulPartitionedCall"(%0#0, %arg1) {Tin = ["tfdtype$DT_FLOAT", "tfdtype$DT_RESOURCE"], Tout = ["tfdtype$DT_FLOAT"], _gradient_op_type = "PartitionedCall-1205", config = "", config_proto = "\0A\07\0A\03GPU\10\00\0A\07\0A\03CPU\10\012\02J\008\01", device = "", executor_type = "", f = @function0} : (tensor<f32>, tensor<*x!tf_type.resource<tensor<3x3x1x32xf32>>>) -> tensor<f32> loc("statefulpartitionedcall")
     tf_executor.fetch %1#0, %2#0 : tensor<f32>, tensor<f32>
   }
-  return %graph#0, %graph#1 : tensor<f32>, tensor<f32>
+  func.return %graph#0, %graph#1 : tensor<f32>, tensor<f32>
 }
 
-func @function0(%arg0: tensor<*xf32>, %arg1: tensor<*x!tf_type.resource>) -> tensor<*xf32>
+func.func @function0(%arg0: tensor<*xf32>, %arg1: tensor<*x!tf_type.resource>) -> tensor<*xf32>
 attributes {tf.signature.is_stateful} {
   %graph = tf_executor.graph {
     %0:2 = tf_executor.island wraps "tf.Identity"(%arg0) {T = "tfdtype$DT_FLOAT", device = ""} : (tensor<*xf32>) -> tensor<*xf32> loc("Identity@function0")
     tf_executor.fetch %0#0 : tensor<*xf32>
   }
-  return %graph : tensor<*xf32>
+  func.return %graph : tensor<*xf32>
 }
 
 // CHECK:      node {

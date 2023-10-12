@@ -151,6 +151,10 @@ message GenericStepTimeBreakdown {
 }
 
 message InputPipelineAnalysisResult {
+  // tag : indicate the format of step_details and step_time_breakdown.
+  // true if google confidential format, otherwise it is in the format of
+  // PerGenericStepDetails and GenericStepTimeBreakdown respectively.
+  bool tag = 16;
   // Hardware type.
   string hardware_type = 9;
   // Summary of all step duration across all cores.

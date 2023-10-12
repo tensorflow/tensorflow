@@ -271,7 +271,7 @@ TEST(RnnOpTest, BlackBoxTest) {
     rnn.SetInput(0, batch_start, batch_end);
     rnn.SetInput(rnn.input_size(), batch_start, batch_end);
 
-    rnn.Invoke();
+    ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
     float* golden_start = rnn_golden_output + i * rnn.num_units();
     float* golden_end = golden_start + rnn.num_units();
@@ -300,7 +300,7 @@ TEST_P(HybridRnnOpTest, BlackBoxTestUint8) {
     rnn.SetInput(0, batch_start, batch_end);
     rnn.SetInput(rnn.input_size(), batch_start, batch_end);
 
-    rnn.Invoke();
+    ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
     float* golden_start = rnn_golden_output + i * rnn.num_units();
     float* golden_end = golden_start + rnn.num_units();
@@ -328,7 +328,7 @@ TEST_P(HybridRnnOpTest, BlackBoxTestInt8) {
     rnn.SetInput(0, batch_start, batch_end);
     rnn.SetInput(rnn.input_size(), batch_start, batch_end);
 
-    rnn.Invoke();
+    ASSERT_EQ(rnn.Invoke(), kTfLiteOk);
 
     float* golden_start = rnn_golden_output + i * rnn.num_units();
     float* golden_end = golden_start + rnn.num_units();

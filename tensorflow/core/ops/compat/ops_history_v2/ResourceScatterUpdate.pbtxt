@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "ResourceScatterUpdate"
   input_arg {
     name: "resource"

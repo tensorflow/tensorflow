@@ -24,14 +24,14 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/minimal_logging.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
@@ -67,7 +67,7 @@ class Calibrator {
       : node_ptr_opinfo_map_(node_ptr_opinfo_map),
         logging_op_resolver_(std::move(logging_op_resolver)),
         error_reporter_(error_reporter) {
-    logger_ = absl::make_unique<Logger>();
+    logger_ = std::make_unique<Logger>();
   }
 
   // Returns the wrapped kernel invoke function |TfLiteRegistration.invoke|.
@@ -86,6 +86,7 @@ class Calibrator {
 
   std::vector<const TfLiteNode*> GetNodesUnderCalibration() {
     std::vector<const TfLiteNode*> nodes;
+    nodes.reserve(node_ptr_opinfo_map_.size());
     for (const auto& entry : node_ptr_opinfo_map_) {
       nodes.push_back(entry.first);
     }
@@ -170,7 +171,7 @@ class GlobalCalibratorRegistry {
           "Failed to create calibrator, context already registered.");
       return kTfLiteError;
     }
-    auto calibrator = absl::make_unique<Calibrator>(
+    auto calibrator = std::make_unique<Calibrator>(
         node_to_opinfo, std::move(logging_op_resolver), reporter);
     calibrator_registry_[context] = std::move(calibrator);
     *calibrator_ptr = calibrator_registry_.at(context).get();
@@ -218,7 +219,7 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
   Calibrator* calibrator = GetCalibratorRegistry()->GetCalibrator(node);
 
   if (!calibrator) {
-    context->ReportError(context, "No calibrator found for context.");
+    TF_LITE_KERNEL_LOG(context, "No calibrator found for context.");
     return kTfLiteError;
   }
 
@@ -374,13 +375,15 @@ TfLiteStatus BuildLoggingInterpreter(
     std::unique_ptr<Interpreter>* interpreter,
     std::unique_ptr<CalibrationReader>* calibration_reader) {
   return BuildLoggingInterpreter(model.GetModel(), model.error_reporter(),
-                                 op_resolver, interpreter, calibration_reader);
+                                 op_resolver, interpreter, calibration_reader,
+                                 model.allocation());
 }
 
 TfLiteStatus BuildLoggingInterpreter(
     const tflite::Model* tflite_model, ErrorReporter* error_reporter,
     const OpResolver& op_resolver, std::unique_ptr<Interpreter>* interpreter,
-    std::unique_ptr<CalibrationReader>* calibration_reader) {
+    std::unique_ptr<CalibrationReader>* calibration_reader,
+    const Allocation* allocation) {
   if (error_reporter == nullptr) {
     // Make sure error_reporter is valid.
     error_reporter = DefaultErrorReporter();
@@ -455,11 +458,12 @@ TfLiteStatus BuildLoggingInterpreter(
 
   // Prepare the logging op resolver to use |LoggingEval| for kernel
   // invocations.
-  auto logging_op_resolver = absl::make_unique<LoggingOpResolver>(
+  auto logging_op_resolver = std::make_unique<LoggingOpResolver>(
       builtin_op_and_versions, custom_op_and_versions, op_resolver, LoggingEval,
       error_reporter);
-  tflite::InterpreterBuilder(tflite_model, *logging_op_resolver,
-                             error_reporter)(interpreter);
+  tflite::InterpreterBuilder(tflite_model, *logging_op_resolver, error_reporter,
+                             /*options_experimental=*/nullptr,
+                             allocation)(interpreter);
 
   if (!(*interpreter)) {
     error_reporter->Report("Failed to construct interpreter");

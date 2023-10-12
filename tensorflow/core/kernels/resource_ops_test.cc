@@ -53,7 +53,15 @@ class MockHandleCreationOpKernel : public OpKernel {
       : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
+        errors::InvalidArgument("Expected argument 0 to be a scalar. Received",
+                                ctx->input(0).DebugString()));
     bool* alive = reinterpret_cast<bool*>(ctx->input(0).scalar<int64_t>()());
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(ctx->input(1).shape()),
+        errors::InvalidArgument("Expected argument 1 to be a scalar. Received",
+                                ctx->input(1).DebugString()));
     int payload = ctx->input(1).scalar<int>()();
     AllocatorAttributes attr;
     Tensor handle_tensor;
@@ -105,7 +113,7 @@ TEST_F(MockHandleCreationOpTest, RefCounting) {
   ResourceBase* base = output_handle.resource().get();
   EXPECT_TRUE(base);
   EXPECT_EQ(base->RefCount(), 1);
-  MockResource* mock = output_handle.GetResource<MockResource>().ValueOrDie();
+  MockResource* mock = output_handle.GetResource<MockResource>().value();
   EXPECT_TRUE(mock);
   EXPECT_EQ(mock->payload_, payload);
   EXPECT_EQ(base->RefCount(), 1);

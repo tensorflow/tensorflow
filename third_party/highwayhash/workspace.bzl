@@ -5,8 +5,8 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 def repo():
     tf_http_archive(
         name = "highwayhash",
-        urls = tf_mirror_urls("https://github.com/google/highwayhash/archive/fd3d9af80465e4383162e4a7c5e2f406e82dd968.tar.gz"),
-        sha256 = "9c3e0e87d581feeb0c18d814d98f170ff23e62967a2bd6855847f0b2fe598a37",
-        strip_prefix = "highwayhash-fd3d9af80465e4383162e4a7c5e2f406e82dd968",
+        urls = tf_mirror_urls("https://github.com/google/highwayhash/archive/c13d28517a4db259d738ea4886b1f00352a3cc33.tar.gz"),
+        sha256 = "c0e2b9931fbcce3bfbcd7999c3c114f404ac0f8b89775a5bbccbcaa501868e58",
+        strip_prefix = "highwayhash-c13d28517a4db259d738ea4886b1f00352a3cc33",
         build_file = "//third_party/highwayhash:highwayhash.BUILD",
     )

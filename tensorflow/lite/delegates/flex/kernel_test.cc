@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/kernel.h"
 
+#include <functional>
+#include <initializer_list>
+#include <memory>
+#include <utility>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/flex/delegate.h"
@@ -48,7 +53,9 @@ class KernelTest : public testing::FlexModelTest {
   static constexpr int kTwos = 2;  // This is the index of a tensor of 2's.
   static constexpr int kMaxTensors = 30;
 
-  KernelTest() { interpreter_.reset(new Interpreter(&error_reporter_)); }
+  KernelTest() {
+    interpreter_ = std::make_unique<Interpreter>(&error_reporter_);
+  }
 
   void ApplyFlexDelegate(std::unique_ptr<FlexDelegate> delegate = nullptr) {
     auto flex_delegate = FlexDelegate::Create(std::move(delegate));

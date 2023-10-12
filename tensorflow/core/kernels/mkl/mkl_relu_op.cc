@@ -14,11 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/nn_ops.cc.
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
+// TODO(intel-tf): This file is no longer used and needs to be removed.
+// This file will be an empty compilation unit when building with oneDNN v3.x
+// (default behavior). It can be compiled only when building with oneDNN v2.x.
 
 #include <unordered_map>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -26,6 +29,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/mkl_util.h"
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
+#include "tensorflow/core/platform/mutex.h"
+#endif
 
 using dnnl::algorithm;
 using dnnl::eltwise_forward;
@@ -74,6 +80,9 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
   //   dst_data:  output data buffer of dst
   void Execute(const T* src_data, T* dst_data,
                std::shared_ptr<stream> fwd_stream) {
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
+    mutex_lock lock(primitive_execution_mu_);
+#endif
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *fwd_stream);
@@ -153,6 +162,10 @@ class MklEltwiseFwdPrimitive : public MklPrimitive {
   }
 
   struct EltwiseFwdContext context_;
+
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T>
@@ -249,6 +262,9 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
   //   diff_src_data:  output data buffer of diff_src
   void Execute(const T* src_data, const T* diff_dst_data, T* diff_src_data,
                std::shared_ptr<stream> bwd_stream) {
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
+    mutex_lock lock(primitive_execution_mu_);
+#endif
 #ifndef ENABLE_ONEDNN_OPENMP
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)), *bwd_stream);
@@ -354,6 +370,10 @@ class MklEltwiseBwdPrimitive : public MklPrimitive {
   }
 
   struct EltwiseBwdContext context_;
+
+#if defined(DNNL_AARCH64_USE_ACL) && defined(ENABLE_ONEDNN_OPENMP)
+  mutex primitive_execution_mu_;
+#endif
 };
 
 template <typename T>
@@ -459,11 +479,17 @@ class MklReluOpBase : public OpKernel {
       // Try to get an eltwise forward primitive from caching pool
       MklEltwiseFwdParams<T> fwdParams(src_dims, src_md, alg_kind, alpha_,
                                        beta_);
+      // Create the oneDNN wrapper over Eigen threadpool and set max threads
+      // in oneDNN.
+      Eigen::ThreadPoolInterface* eigen_interface =
+          EigenThreadPoolFromTfContext(context);
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       MklEltwiseFwdPrimitive<T>* eltwise_fwd =
           MklEltwiseFwdPrimitiveFactory<T>::Get(fwdParams);
       auto eltwise_fwd_pd = eltwise_fwd->GetEltwiseFwdPd();
       std::shared_ptr<stream> fwd_cpu_stream;
-      MklDnnThreadPool eigen_tp(context);
+
       fwd_cpu_stream.reset(CreateStream(&eigen_tp, eltwise_fwd->GetEngine()));
       // Check if src needs to be reordered
       bool is_src_reordered = false;
@@ -665,12 +691,16 @@ class MklReluGradOpBase : public OpKernel {
       MklEltwiseBwdParams<T> bwdParams(src_dims, common_md, alg_kind, alpha_,
                                        beta_, GetTypeOfInputTensorFromFwdOp());
 
+      Eigen::ThreadPoolInterface* eigen_interface =
+          EigenThreadPoolFromTfContext(context);
+      tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                     ThreadPoolUseCallerThread());
       MklEltwiseBwdPrimitive<T>* eltwise_bwd =
           MklEltwiseBwdPrimitiveFactory<T>::Get(bwdParams);
 
       auto eltwise_bwd_pd = eltwise_bwd->GetEltwiseBwdPd();
       std::shared_ptr<stream> bwd_cpu_stream;
-      MklDnnThreadPool eigen_tp(context);
+
       bwd_cpu_stream.reset(CreateStream(&eigen_tp, eltwise_bwd->GetEngine()));
       // check whether need reorder for src / diff_dst
       const T* src_data = src_tensor.flat<T>().data();
@@ -1210,4 +1240,4 @@ TF_CALL_bfloat16(REGISTER_LeakyRelu_MKL_SUPPORTED_KERNELS_TYPES);
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

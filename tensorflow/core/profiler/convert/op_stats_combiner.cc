@@ -15,17 +15,21 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_stats_combiner.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
 #include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/power_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
+#include "tensorflow/core/profiler/protobuf/topology.pb.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/step_intersection.h"
@@ -56,8 +60,6 @@ void CombinePerCoreStepInfo(
     hlo_metrics_db_complete_steps_only_combiner->Combine(src.hlo_metrics_db());
   }
   hlo_metrics_db_per_step_combiner->Combine(src.hlo_metrics_db());
-  CombineCoreIdMap(src_host_id, src.flow_db_per_core(),
-                   dst->mutable_flow_db_per_core());
   CombineCoreIdMap(src_host_id, src.all_reduce_db_per_core(),
                    dst->mutable_all_reduce_db_per_core());
   CombineCoreIdMap(src_host_id, src.core_id_to_replica_id_map(),
@@ -80,39 +82,63 @@ void CombineStepDatabase(
   }
 }
 
+void CombinePowerMetrics(const RunEnvironment& src, RunEnvironment* dst) {
+  const size_t src_hosts = src.hostnames_size();
+  const size_t dst_hosts = dst->hostnames_size();
+  const double src_weight = src_hosts * 1.0 / (src_hosts + dst_hosts);
+  const double dst_weight = dst_hosts * 1.0 / (src_hosts + dst_hosts);
+  // Always assume src/dst have the same number of power components.
+  for (const auto& src_metric : src.power_metrics().power_component_metrics()) {
+    for (auto& dst_metric :
+         *dst->mutable_power_metrics()->mutable_power_component_metrics()) {
+      if (src_metric.component_name() != dst_metric.component_name()) continue;
+      dst_metric.set_max_power(
+          std::max(src_metric.max_power(), dst_metric.max_power()));
+      dst_metric.set_avg_power(src_metric.avg_power() * src_weight +
+                               dst_metric.avg_power() * dst_weight);
+    }
+  }
+}
+
 void CombineRunEnvironment(const RunEnvironment& src, RunEnvironment* dst) {
   dst->mutable_hostnames()->insert(src.hostnames().begin(),
                                    src.hostnames().end());
   dst->set_host_count(dst->hostnames_size());
   if (src.device_type() != "CPU") {
     dst->set_device_type(src.device_type());
-    // TODO(b/111402648): Batch size may differ per-core. Currently, we report
-    // the max batch size. We need to come up with a better measure.
-    dst->set_per_core_batch_size(
-        std::max(src.per_core_batch_size(), dst->per_core_batch_size()));
     dst->set_device_core_count(src.device_core_count() +
                                dst->device_core_count());
     // Replica count and num cores per replica must be same for all copies.
     dst->set_replica_count(std::max(src.replica_count(), dst->replica_count()));
     dst->set_num_cores_per_replica(
         std::max(src.num_cores_per_replica(), dst->num_cores_per_replica()));
-    *dst->mutable_topology() = src.topology();
+    *dst->mutable_system_topology() = src.system_topology();
   } else if (dst->device_type().empty()) {
     dst->set_device_type(src.device_type());
   }
   dst->set_task_count(src.task_count() + dst->task_count());
-  (*dst->mutable_host_independent_job_info()) = src.host_independent_job_info();
+  // Only overwrite the dst if profile_duration_ms in dst is not defined or
+  // is zero and profile_duration_ms in src is greater than zero.
+  if (src.host_independent_job_info().profile_duration_ms() > 0) {
+    (*dst->mutable_host_independent_job_info()) =
+        src.host_independent_job_info();
+  }
   for (const auto& job_info : src.host_dependent_job_info()) {
     *(dst->add_host_dependent_job_info()) = job_info;
   }
   dst->set_host_trace_level(src.host_trace_level());
+  dst->set_is_training(src.is_training());
+  CombinePowerMetrics(src, dst);
 }
 
 // Combines the src PerfEnv into the dst PerfEnv.
 void CombinePerfEnv(const PerfEnv& src, PerfEnv* dst) {
   dst->set_peak_tera_flops_per_second(src.peak_tera_flops_per_second());
-  dst->set_peak_hbm_bw_giga_bytes_per_second(
-      src.peak_hbm_bw_giga_bytes_per_second());
+  if (src.peak_bws_giga_bytes_per_second_size() > 0 &&
+      dst->peak_bws_giga_bytes_per_second_size() == 0) {
+    *dst->mutable_peak_bws_giga_bytes_per_second() =
+        src.peak_bws_giga_bytes_per_second();
+  }
   dst->set_ridge_point(src.ridge_point());
 }
 
@@ -132,7 +158,10 @@ void CombineOpStats(
     OpMetricsDbCombiner* hlo_metrics_db_complete_steps_only_combiner,
     std::vector<OpMetricsDbCombiner>* hlo_metrics_db_per_step_combiners) {
   // Combine host_metrics_db.
-  host_op_metrics_db_combiner->Combine(src.host_op_metrics_db());
+  // Host OpMetricsDb does not need to update the number of cores a certain op
+  // occurs.
+  host_op_metrics_db_combiner->Combine(src.host_op_metrics_db(),
+                                       /*update_num_cores=*/false);
   // Combine device_metrics_db.
   device_op_metrics_db_combiner->Combine(src.device_op_metrics_db());
 
@@ -163,6 +192,12 @@ void CombineOpStats(
   // Combine the mapping from core ID to details.
   CombineCoreIdMap(src_host_id, src.core_id_to_details(),
                    dst->mutable_core_id_to_details());
+
+  // Combine performance counter result.
+  dst->mutable_performance_counter_result()
+      ->set_matrix_unit_utilization_percent(
+          dst->performance_counter_result().matrix_unit_utilization_percent() +
+          src.performance_counter_result().matrix_unit_utilization_percent());
 }
 
 }  // namespace
@@ -209,6 +244,12 @@ StepIntersection ComputeStepIntersectionToMergeOpStats(
 void CombineAllOpStats(const std::vector<OpStatsInfo>& all_op_stats_info,
                        const StepIntersection& step_intersection,
                        OpStats* combined_op_stats) {
+  // A shortcut code path for a single OpStats. There is no need to merge.
+  if (all_op_stats_info.size() == 1) {
+    *combined_op_stats = *all_op_stats_info[0].op_stats;
+    return;
+  }
+
   StepDatabaseResult* combined_step_db = combined_op_stats->mutable_step_db();
   // Initialize the StepDatabaseResult field that depends on the number of
   // steps.
@@ -219,9 +260,6 @@ void CombineAllOpStats(const std::vector<OpStatsInfo>& all_op_stats_info,
   combined_step_db->set_num_steps_dropped(step_intersection.StepsDropped());
 
   combined_step_db->set_empty_intersect(step_intersection.EmptyIntersect());
-
-  // Set the default value of per_core_batch_size in <combined_op_stats>
-  combined_op_stats->mutable_run_environment()->set_per_core_batch_size(-1);
 
   // Initialize all the OpMetricsDbCombiners.
   OpMetricsDbCombiner host_op_metrics_db_combiner(
@@ -254,6 +292,13 @@ void CombineAllOpStats(const std::vector<OpStatsInfo>& all_op_stats_info,
   // keeps only the top kernel reports with long kernel duration.
   SortAndKeepTopKDurationKernelReportsInDb(
       combined_op_stats->mutable_kernel_stats_db());
+
+  // Process performance counter results.
+  combined_op_stats->mutable_performance_counter_result()
+      ->set_matrix_unit_utilization_percent(
+          combined_op_stats->performance_counter_result()
+              .matrix_unit_utilization_percent() /
+          all_op_stats_info.size());
 }
 
 }  // namespace profiler

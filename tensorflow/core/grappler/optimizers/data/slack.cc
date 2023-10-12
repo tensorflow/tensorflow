@@ -85,7 +85,7 @@ Status Slack::RecursivelyHandleOp(const MutableGraphView& graph,
     } else {
       AddNodeAttr("slack_period", slack_period_, dataset_node);
     }
-    return Status::OK();
+    return OkStatus();
   }
   if (IsDatasetNodeOfType(*dataset_node, kPassThroughOps)) {
     NodeDef* input_node = graph_utils::GetInputNode(*dataset_node, graph, 0);
@@ -97,12 +97,12 @@ Status Slack::RecursivelyHandleOp(const MutableGraphView& graph,
       NodeDef* input_node = graph_utils::GetInputNode(*dataset_node, graph, i);
       TF_RETURN_IF_ERROR(RecursivelyHandleOp(graph, input_node));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   LOG(WARNING) << "Could not find a final `prefetch` in the input pipeline to "
                   "which to introduce slack.";
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Slack::OptimizeAndCollectStats(Cluster* cluster,
@@ -119,8 +119,7 @@ Status Slack::OptimizeAndCollectStats(Cluster* cluster,
   // If the GrapplerItem is derived from a FunctionDef, we don't optimize it,
   // because we only want to add slack to the prefetch on the main dataset
   // pipeline.
-  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph))
-    return Status::OK();
+  if (graph_utils::IsItemDerivedFromFunctionDef(item, graph)) return OkStatus();
 
   if (item.fetch.size() != 1) {
     return errors::InvalidArgument(

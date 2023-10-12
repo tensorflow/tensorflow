@@ -200,8 +200,8 @@ class ResourceMgr {
   template <typename T, bool use_dynamic_cast = false>
   Status LookupMany(absl::Span<std::pair<const string*, const string*> const>
                         containers_and_names,
-                    std::vector<std::unique_ptr<T, core::RefCountDeleter>>*
-                        resources) const TF_MUST_USE_RESULT;
+                    std::vector<core::RefCountPtr<T>>* resources) const
+      TF_MUST_USE_RESULT;
 
   // If "container" has a resource "name", returns it in
   // "*resource". Otherwise, invokes creator() to create the resource.
@@ -266,7 +266,8 @@ class ResourceMgr {
     core::RefCountPtr<ResourceBase> GetResource() const;
 
    private:
-    TF_DISALLOW_COPY_AND_ASSIGN(ResourceAndName);
+    ResourceAndName(const ResourceAndName&) = delete;
+    void operator=(const ResourceAndName&) = delete;
   };
   typedef absl::flat_hash_map<Key, ResourceAndName, KeyHash, KeyEqual>
       Container;
@@ -322,7 +323,8 @@ class ResourceMgr {
   // Map from type hash_code to type name.
   std::unordered_map<uint64, string> debug_type_names_ TF_GUARDED_BY(mu_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ResourceMgr);
+  ResourceMgr(const ResourceMgr&) = delete;
+  void operator=(const ResourceMgr&) = delete;
 };
 
 // Makes a resource handle with the specified type for a given container /
@@ -366,6 +368,12 @@ Status MakeResourceHandleToOutput(OpKernelContext* context, int output_index,
 
 // Returns a resource handle from a numbered op input.
 const ResourceHandle& HandleFromInput(OpKernelContext* ctx, int input);
+
+// Safely returns a resource handle from a numbered op input.
+// Prevents segfault by checking for empty resource handle.
+Status HandleFromInput(OpKernelContext* ctx, int input, ResourceHandle* handle);
+// Returns a resource handle by name, as defined in the OpDef.
+// Also prevents segfault by checking for empty resource handle.
 Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
                        ResourceHandle* handle);
 
@@ -658,7 +666,7 @@ template <typename T, bool use_dynamic_cast>
 Status ResourceMgr::LookupMany(
     absl::Span<std::pair<const string*, const string*> const>
         containers_and_names,
-    std::vector<std::unique_ptr<T, core::RefCountDeleter>>* resources) const {
+    std::vector<core::RefCountPtr<T>>* resources) const {
   CheckDeriveFromResourceBase<T>();
   tf_shared_lock l(mu_);
   resources->resize(containers_and_names.size());
@@ -671,7 +679,7 @@ Status ResourceMgr::LookupMany(
       (*resources)[i].reset(resource);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Simple wrapper to allow conditional dynamic / static casts.
@@ -768,7 +776,7 @@ template <typename T>
 Status ValidateDeviceAndType(OpKernelContext* ctx, const ResourceHandle& p) {
   TF_RETURN_IF_ERROR(internal::ValidateDevice(ctx, p));
   TF_RETURN_IF_ERROR(p.ValidateType<T>());
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace internal
@@ -795,7 +803,7 @@ Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
     TF_ASSIGN_OR_RETURN(*value, p.GetResource<T>());
     // Transfers out a new reference.
     (*value)->Ref();
-    return Status::OK();
+    return OkStatus();
   }
 
   return ctx->resource_manager()->Lookup<T, use_dynamic_cast>(p.container(),
@@ -816,7 +824,7 @@ Status LookupResource(OpKernelContext* ctx, const ResourceHandle& p,
   TF_RETURN_IF_ERROR(LookupResource<T, false>(ctx, p, &raw_ptr));
   value->reset(raw_ptr);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Similar to Lookup, but looks up multiple resources at once, with only a
@@ -863,7 +871,7 @@ Status LookupOrCreateResource(OpKernelContext* ctx, const ResourceHandle& p,
   TF_RETURN_IF_ERROR(LookupOrCreateResource<T>(ctx, p, &raw_ptr, creator));
   value->reset(raw_ptr);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Deletes the resource pointed by "p", using the resource manager in "ctx".
@@ -874,7 +882,7 @@ Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
   // NOTE(feyu): if we can convert all resources handle to ref-counting, then
   // DeleteResource can be removed.
   if (p.IsRefCounting()) {
-    return Status::OK();
+    return OkStatus();
   }
   return ctx->resource_manager()->Delete<T>(p.container(), p.name());
 }

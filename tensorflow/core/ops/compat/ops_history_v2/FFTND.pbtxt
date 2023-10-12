@@ -1,0 +1,51 @@
+op 	 {
+  name: "FFTND"
+  input_arg {
+    name: "input"
+    type: DT_COMPLEX64
+  }
+  input_arg {
+    name: "fft_length"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "axes"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type: DT_COMPLEX64
+  }
+}
+op {
+  name: "FFTND"
+  input_arg {
+    name: "input"
+    type_attr: "Tcomplex"
+  }
+  input_arg {
+    name: "fft_length"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "axes"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "Tcomplex"
+  }
+  attr {
+    name: "Tcomplex"
+    type: "type"
+    default_value {
+      type: DT_COMPLEX64
+    }
+    allowed_values {
+      list {
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}

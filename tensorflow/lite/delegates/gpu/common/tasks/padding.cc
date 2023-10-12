@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
 
@@ -50,6 +51,7 @@ std::string GetPaddingCode(const OperationDef& op_def,
     c += "  int linear_id = GLOBAL_ID_0;\n";
     c += "  int X = linear_id / args.dst_tensor.Batch();\n";
     c += "  int B = linear_id % args.dst_tensor.Batch();\n";
+    c += "  args.src_tensor.SetBatchRef(B);\n";
     c += "  args.dst_tensor.SetBatchRef(B);\n";
   } else {
     c += "  int X = GLOBAL_ID_0;\n";
@@ -60,17 +62,19 @@ std::string GetPaddingCode(const OperationDef& op_def,
        "Z >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
   c += "  } \n";
-  c += "  FLT4 result = INIT_FLT4(0.0);\n";
+  c += "  args.src_tensor::type result = (" +
+       ToCLDataType(op_def.src_tensors[0].GetDataType(), /*vec_size*/ 4) +
+       ")(" + std::to_string(attr.constant_values) + ");\n";
   c += "  int s_x = X - args.prepended_x;\n";
   c += "  int s_y = Y - args.prepended_y;\n";
-  if (op_def.src_tensors[0].HasAxis(Axis::BATCH)) {
+  if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
     c += "  int s_b = " + dst_batch + " - args.prepended_w;\n";
     c += "  args.src_tensor.SetBatchRef(s_b);\n";
   }
   if (attr.type == PaddingContentType::REFLECT) {
     c += "  s_x = reflect_coord(s_x, args.src_tensor.Width());\n";
     c += "  s_y = reflect_coord(s_y, args.src_tensor.Height());\n";
-    if (op_def.src_tensors[0].HasAxis(Axis::BATCH)) {
+    if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
       c += "  int s_b = reflect_coord(s_b, args.src_tensor.Batch());\n";
     }
     if (attr.prepended.c == 0 && attr.appended.c == 0) {
@@ -90,15 +94,15 @@ std::string GetPaddingCode(const OperationDef& op_def,
              "0, "
              "args.src_tensor.Channels() - "
              "1);\n";
-        c += "    FLT4 t = args.src_tensor.Read(s_x, s_y, s_z / 4);\n";
-        c += "    result" + s + " = SELECT_BY_INDEX_FROM_FLT4(t, s_z % 4);\n";
+        c += "    args.src_tensor.ReadPerChannel(result" + s +
+             ", s_x, s_y, s_z);\n";
         c += "  }\n";
       }
     }
   } else {
     c += "  bool inside_x = s_x >= 0 && s_x < args.src_tensor.Width();\n";
     c += "  bool inside_y = s_y >= 0 && s_y < args.src_tensor.Height();\n";
-    if (op_def.src_tensors[0].HasAxis(Axis::BATCH)) {
+    if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
       c += "  inside_y = inside_y && (s_b >= 0 && s_b < "
            "args.src_tensor.Batch());\n";
     }
@@ -106,7 +110,8 @@ std::string GetPaddingCode(const OperationDef& op_def,
     if (attr.prepended.c == 0 && attr.appended.c == 0) {
       // optimized case
       c += "    result = args.src_tensor.Read(s_x, s_y, Z);\n";
-    } else if (attr.prepended.c % 4 == 0) {
+    } else if (attr.prepended.c % 4 == 0 &&
+               attr.prepended.b == attr.appended.b) {
       c += "    int s_z = Z - args.prepended_z / 4;\n";
       c += "    if (s_z >= 0 && s_z < args.src_tensor.Slices()) {\n";
       c += "      result = args.src_tensor.Read(s_x, s_y, s_z);\n";
@@ -119,8 +124,8 @@ std::string GetPaddingCode(const OperationDef& op_def,
         c += "    int channel = start_channel + " + std::to_string(i) + ";\n";
         c += "    int s_z = channel - args.prepended_z;\n";
         c += "    if (s_z >= 0 && s_z < args.src_tensor.Channels()) {\n";
-        c += "      FLT4 t = args.src_tensor.Read(s_x, s_y, s_z / 4);\n";
-        c += "      result" + s + " = SELECT_BY_INDEX_FROM_FLT4(t, s_z % 4);\n";
+        c += "      args.src_tensor.ReadPerChannel(result" + s +
+             ", s_x, s_y, s_z);\n";
         c += "    }\n";
         c += "    }\n";
       }

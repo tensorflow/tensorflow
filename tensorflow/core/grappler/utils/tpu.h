@@ -21,8 +21,9 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-// Check if the graphdef contains nodes that indicate TPU execution.
-bool IsTPUGraphDef(const GraphDef& def);
+// Check if the graphdef contains nodes that indicate a graph processed by the
+// legacy TPU bridge.
+bool IsLegacyTPUBridgeGraphDef(const GraphDef& def);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

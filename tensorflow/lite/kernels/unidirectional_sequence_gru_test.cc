@@ -128,7 +128,7 @@ TEST(GRUTest, SimpleTest) {
                         0.19530584, 0.116550304, 0.13599132});
   m.SetCandidateBias({0.89837056, 0.54769796, 0.63364106});
 
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 
   EXPECT_THAT(m.GetOutputShape(), ElementsAre(n_time, n_batch, n_output));
   EXPECT_THAT(m.GetOutput(),

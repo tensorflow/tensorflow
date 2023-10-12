@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <map>
 #include <set>
+#include <string>
 
 #include "tensorflow/lite/delegates/gpu/common/kernel_info.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -48,6 +49,7 @@ class Reduce : public GPUOperation {
 
  private:
   std::string GetReduceKernelCode(const OperationDef& op_def,
+                                  const GpuInfo& gpu_info,
                                   const int3& work_group_size,
                                   const std::vector<Axis>& axis_to_reduce,
                                   OperationType op_type);

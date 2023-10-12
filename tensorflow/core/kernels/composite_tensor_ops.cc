@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/kernels/composite_tensor_variant.h"
@@ -66,7 +67,16 @@ class CompositeTensorVariantToComponents : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     Tensor encoded_t = context->input(0);
+    OP_REQUIRES(
+        context, encoded_t.flat<Variant>().size() > 0,
+        errors::InvalidArgument("Input `encoded` must not be an empty variant "
+                                "tensor, but got ",
+                                encoded_t.DebugString()));
     auto* encoded = encoded_t.flat<Variant>()(0).get<CompositeTensorVariant>();
+    OP_REQUIRES(context, encoded != nullptr,
+                errors::InvalidArgument("The input `encoded` is not a valid "
+                                        "CompositeTensorVariant tensor, got ",
+                                        encoded_t.DebugString()));
 
     // Check that the encoded TypeSpec is compatible with the expected TypeSpec.
     // For now, we just check that the class matches.

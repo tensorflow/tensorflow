@@ -20,10 +20,8 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
@@ -125,7 +123,8 @@ class Dimension {
 
   friend class InferenceContext;
   friend class ShapeManager;
-  TF_DISALLOW_COPY_AND_ASSIGN(Dimension);
+  Dimension(const Dimension&) = delete;
+  void operator=(const Dimension&) = delete;
 };
 
 class DimensionHandle {
@@ -165,7 +164,8 @@ class Shape {
   friend class InferenceContext;
   friend class ::tensorflow::grappler::SymbolicShapeManager;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Shape);
+  Shape(const Shape&) = delete;
+  void operator=(const Shape&) = delete;
 };
 
 class ShapeHandle {
@@ -443,6 +443,7 @@ class InferenceContext {
   // Fills the output proto with the shape defined by the handle.
   // "proto" is expected to be empty prior to the call.
   void ShapeHandleToProto(ShapeHandle handle, TensorShapeProto* proto);
+  TensorShapeProto ShapeHandleToProto(ShapeHandle handle);
 
   // Returns true if the rank and all dimensions of the Shape are known.
   bool FullyDefined(ShapeHandle s);
@@ -566,6 +567,7 @@ class InferenceContext {
 
   // Returns in <out> a new shape corresponding to <shape>.
   Status MakeShapeFromTensorShape(const TensorShape& shape, ShapeHandle* out);
+  StatusOr<ShapeHandle> MakeShapeFromShapeTensor(const TensorShape& shape);
 
   // Returns a new dimension of the given size.  The returned value is owned by
   // this context.
@@ -690,7 +692,7 @@ class InferenceContext {
     return output_handle_shapes_and_types_[idx].get();
   }
 
-  // Returns the inputs handle shapes and types, for the resource tensor output
+  // Returns the inputs handle shapes and types, for the resource tensor input
   // at index <idx>. Returns NULL if the shape and types were not available.
   const std::vector<ShapeAndType>* input_handle_shapes_and_types(int idx) {
     return input_handle_shapes_and_types_[idx].get();
@@ -698,8 +700,8 @@ class InferenceContext {
 
   void set_output_handle_shapes_and_types(
       int idx, const std::vector<ShapeAndType>& shapes_and_types) {
-    output_handle_shapes_and_types_[idx].reset(
-        new std::vector<ShapeAndType>(shapes_and_types));
+    output_handle_shapes_and_types_[idx] =
+        absl::make_unique<std::vector<ShapeAndType>>(shapes_and_types);
   }
 
   // Note that shape functions should usually call MakeShapeFromShapeTensor,
@@ -769,12 +771,12 @@ class InferenceContext {
 
   Status ReturnUnknownShape(ShapeHandle* out) {
     *out = UnknownShape();
-    return Status::OK();
+    return OkStatus();
   }
   Status ReturnCreatedShape(const std::vector<DimensionHandle>& dims,
                             ShapeHandle* out) {
     *out = MakeShape(dims);
-    return Status::OK();
+    return OkStatus();
   }
 
   // Adds additional context to the given status.
@@ -861,7 +863,8 @@ class InferenceContext {
   std::vector<std::pair<ShapeHandle, ShapeHandle>> merged_shapes_;
   std::vector<std::pair<DimensionHandle, DimensionHandle>> merged_dims_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(InferenceContext);
+  InferenceContext(const InferenceContext&) = delete;
+  void operator=(const InferenceContext&) = delete;
 };
 
 // -----------------------------------------------------------------------------

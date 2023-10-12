@@ -17,8 +17,10 @@ import os
 import threading
 
 from absl.testing import parameterized
-
+from tensorflow.python.checkpoint import checkpoint as tracking
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -29,18 +31,15 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import collective_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateful_random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
-from tensorflow.python.tpu import tpu_strategy_util
-from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.tracking import util as tracking
 from tensorflow.python.util import nest
 
 # When running collectives asynchronously, we need to give each parallel device
@@ -85,8 +84,8 @@ class _Dense(module.Module):
     if self.kernel is None:
       self.kernel = variables.Variable(
           array_ops.ones(
-              array_ops.stack([self.output_size,
-                               array_ops.shape(x)[-1]])))
+              array_ops_stack.stack([self.output_size,
+                                     array_ops.shape(x)[-1]])))
       self.bias = variables.Variable(array_ops.ones([self.output_size]))
     return math_ops.matmul(x, self.kernel, transpose_b=True) + self.bias
 
@@ -98,7 +97,7 @@ class _VirtualDeviceTestCase(test.TestCase):
     ctx = context.context()
     if ctx.list_physical_devices("TPU"):
       self.device_type = "TPU"
-      tpu_strategy_util.initialize_tpu_system()
+      tpu_cluster_resolver.initialize_tpu_system()
     elif ctx.list_physical_devices("GPU"):
       self.device_type = "GPU"
       gpus = ctx.list_physical_devices(self.device_type)
@@ -276,51 +275,6 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
       context._reset_context()
       config.set_synchronous_execution(previous)
 
-  @parameterized.named_parameters(
-      [("RunFunctionsEagerly", True),
-       ("", False)])
-  def test_cond(self, run_functions_eagerly):
-    try:
-      def_function.run_functions_eagerly(run_functions_eagerly)
-      pred = self.device.pack(
-          [constant_op.constant(True), constant_op.constant(False)])
-      capture = self.device.pack(
-          [constant_op.constant([1.]), constant_op.constant([2.])])
-      with self.device:
-        result = control_flow_ops.cond(
-            pred,
-            def_function.function(lambda: capture * 2.),
-            def_function.function(lambda: capture * 4.))
-      self.assertAllClose(
-          [[2.], [8.]], self.device.unpack(result))
-    finally:
-      def_function.run_functions_eagerly(False)
-
-  def test_cond_with_variable(self):
-    pred = self.device.pack(
-        [constant_op.constant(True), constant_op.constant(False)])
-    capture = self.device.pack(
-        [constant_op.constant([1.]), constant_op.constant([2.])])
-    with self.device:
-      v = None
-      @def_function.function
-      def true_branch():
-        nonlocal v
-        if v is None:
-          v = variables.Variable(constant_op.constant(2.))
-        return v * capture
-      result = control_flow_ops.cond(
-          pred, true_branch, def_function.function(lambda: capture * 4.))
-    self.assertAllClose(
-        [[2.], [8.]], self.device.unpack(result))
-    self.assertAllClose(
-        [2., 2.], self.device.unpack(v))
-    # There are two unique variable handles with separate storage.
-    h1, _ = self.device.unpack(v.handle)
-    gen_resource_variable_ops.assign_variable_op(h1, constant_op.constant(3.))
-    self.assertAllClose(
-        [3., 2.], self.device.unpack(v))
-
   def test_collective_broadcast_in_function(self):
     if self.device_type == "TPU":
       self.skipTest("ParallelDevice broadcast collectives on TPUs need work")
@@ -342,8 +296,11 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
             c.shape, c.dtype, group_size=2, group_key=1, instance_key=1)
         return r0
 
-      return control_flow_ops.switch_case(
-          device_id, branch_fns={0: send, 1: recv})
+      return control_flow_switch_case.switch_case(
+          device_id, branch_fns={
+              0: send,
+              1: recv
+          })
 
     with self.device:
       result = broadcast_send_recv(self.device.device_ids)

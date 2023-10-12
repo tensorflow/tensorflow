@@ -50,7 +50,7 @@ auto OpGradientInfoInit(const T &a) {
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 362> a = {{
+  static std::array<OpIndexInfo, 363> a = {{
       {"Acosh"},
       {"AllToAll", 1, {0}},
       {"ApproximateEqual"},
@@ -96,9 +96,6 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"CropAndResize", 1, {3}},
       {"CrossReplicaSum", 1, {0}},
       {"Cumsum", 1, {0}},
-      {"DebugGradientIdentity"},
-      {"DebugGradientRefIdentity"},
-      {"DebugIdentityV2"},
       {"DecodeBase64"},
       {"DecodePaddedRaw"},
       {"DecodeProtoV2"},
@@ -235,8 +232,11 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"QueueDequeueMany"},
       {"QueueDequeueUpTo"},
       {"QueueSize"},
+      {"RaggedFillEmptyRows"},
       {"RaggedRange"},
       {"RandomCrop"},
+      {"RandomIndexShuffle"},
+      {"RandomShuffle"},
       {"RandomStandardNormal"},
       {"RandomUniform"},
       {"Range"},
@@ -335,6 +335,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"StatelessParameterizedTruncatedNormal", 1, {1}},
       {"StatelessRandomBinomial"},
       {"StatelessRandomGammaV2", 1, {1}},
+      {"StatelessRandomGammaV3", 3, {1, 2, 3}},
       {"StatelessRandomNormal"},
       {"StatelessRandomNormalV2"},
       {"StatelessRandomPoisson"},
@@ -392,7 +393,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
       {"TensorScatterAdd", 2, {0, 2}},
       {"TensorScatterSub", 2, {0, 2}},
       {"TensorScatterUpdate", 1, {0}},
-      {"TensorStridedSliceUpdate", 2, {0, 4}},
+      {"TensorStridedSliceUpdate", 1, {0}},
       {"TensorSummary"},
       {"TensorSummaryV2"},
       {"TextLineReader"},
@@ -425,7 +426,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 480> a = {{
+  static std::array<OpIndexInfo, 482> a = {{
       {"Abs"},
       {"AccumulateNV2"},
       {"Acos"},
@@ -434,6 +435,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"AddV2"},
       {"AllToAll"},
       {"Angle"},
+      {"ApproxTopK", 1, {0}},
       {"ApproximateEqual"},
       {"ArgMax"},
       {"ArgMin"},
@@ -480,6 +482,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"Ceil"},
       {"CheckNumerics"},
       {"CheckNumericsV2"},
+      {"ClipByValue"},
       {"CollectivePermute"},
       {"Complex"},
       {"CompositeTensorVariantFromComponents"},
@@ -501,9 +504,6 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"CrossReplicaSum"},
       {"Cumprod"},
       {"Cumsum"},
-      {"DebugGradientIdentity"},
-      {"DebugGradientRefIdentity"},
-      {"DebugIdentityV2"},
       {"DecodeBase64"},
       {"DecodePaddedRaw"},
       {"DecodeRaw"},
@@ -685,12 +685,15 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"QueueSize"},
       {"RFFT"},
       {"RFFT2D"},
+      {"RaggedFillEmptyRows", 3, {0, 1, 2}},
       {"RaggedGather"},
       {"RaggedRange"},
       {"RaggedTensorToSparse"},
       {"RaggedTensorToTensor"},
       {"RaggedTensorToVariant"},
       {"RandomCrop"},
+      {"RandomIndexShuffle"},
+      {"RandomShuffle"},
       {"RandomStandardNormal"},
       {"RandomUniform"},
       {"Range"},

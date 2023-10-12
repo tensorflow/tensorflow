@@ -37,7 +37,8 @@ class RunnerInterface {
   virtual ~RunnerInterface() {}
   virtual Status Join() = 0;
   virtual Status ExportCostGraph(CostGraphDef* cost_graph) const {
-    return Status(error::INVALID_ARGUMENT, "No cost model to export.");
+    return Status(absl::StatusCode::kInvalidArgument,
+                  "No cost model to export.");
   }
   /// Returns true iff the runner is running, i.e. if it is trying to populate
   /// its queue.
@@ -123,7 +124,8 @@ class Coordinator {
   std::vector<std::unique_ptr<RunnerInterface>> runners_
       TF_GUARDED_BY(runners_lock_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Coordinator);
+  Coordinator(const Coordinator&) = delete;
+  void operator=(const Coordinator&) = delete;
 };
 
 }  // namespace tensorflow

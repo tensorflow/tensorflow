@@ -177,7 +177,7 @@ Status CommonSubgraphElimination::DedupComputations(GraphDef* optimized_graph) {
   GraphTopologyView graph_view;
   if (!graph_view.InitializeFromGraph(*optimized_graph).ok()) {
     LOG(WARNING) << "Failed to initialize GraphTopologyView.";
-    return Status::OK();
+    return OkStatus();
   }
 
   // If either node or rep feeds an inplace op, deduping them may cause data
@@ -270,7 +270,7 @@ Status CommonSubgraphElimination::DedupComputations(GraphDef* optimized_graph) {
     EraseNodesFromGraph(duplicates, optimized_graph);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CommonSubgraphElimination::Optimize(Cluster* /*cluster*/,

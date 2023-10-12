@@ -218,5 +218,28 @@ class ScatterNdTensorTest(xla_test.XLATestCase):
         np.array([1, 11, 1, 10, 9, 1, 1, 12], dtype=np.float32))
 
 
+class ScatterNdTensorScalarUpdateTest(xla_test.XLATestCase):
+
+  def _runScatter(self, op):
+    indices_np = np.array([[4], [3], [1], [7]], dtype=np.int32)
+    updates_np = np.array(9, dtype=np.float32)
+    with self.session() as sess, self.test_scope():
+      indices = array_ops.placeholder(indices_np.dtype, shape=indices_np.shape)
+      updates = array_ops.placeholder(updates_np.dtype, shape=updates_np.shape)
+      t = array_ops.ones([8], dtype=np.float32)
+
+      out = op(t, indices, updates)
+      return sess.run(out, feed_dict={indices: indices_np, updates: updates_np})
+
+  def testUpdate(self):
+    self.assertAllEqual(
+        self._runScatter(array_ops.tensor_scatter_update),
+        np.array([1, 9, 1, 9, 9, 1, 1, 9], dtype=np.float32))
+
+  def testAdd(self):
+    self.assertAllEqual(
+        self._runScatter(array_ops.tensor_scatter_add),
+        np.array([1, 10, 1, 10, 10, 1, 1, 10], dtype=np.float32))
+
 if __name__ == "__main__":
   test.main()

@@ -42,7 +42,7 @@ class ParallelMapDatasetParams : public DatasetParams {
         use_inter_op_parallelism_(use_inter_op_parallelism),
         deterministic_(deterministic),
         preserve_cardinality_(preserve_cardinality) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     op_version_ = kOpVersion;
     name_utils::IteratorPrefixParams params;
     params.op_version = op_version_;
@@ -65,7 +65,7 @@ class ParallelMapDatasetParams : public DatasetParams {
           absl::StrCat(ParallelMapDatasetOp::kOtherArguments, "_", i));
     }
     input_names->emplace_back(ParallelMapDatasetOp::kNumParallelCalls);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -77,7 +77,7 @@ class ParallelMapDatasetParams : public DatasetParams {
                     {"deterministic", deterministic_},
                     {"preserve_cardinality", preserve_cardinality_},
                     {"metadata", ""}};
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override {
@@ -408,7 +408,7 @@ ITERATOR_SAVE_AND_RESTORE_TEST_P(ParallelMapDatasetOpTest,
 TEST_F(ParallelMapDatasetOpTest, InvalidNumParallelCalls) {
   auto dataset_params = ParallelMapDatasetParamsWithInvalidNumParallelCalls();
   EXPECT_EQ(Initialize(dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

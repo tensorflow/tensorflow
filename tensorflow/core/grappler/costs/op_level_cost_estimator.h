@@ -16,12 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_OP_LEVEL_COST_ESTIMATOR_H_
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_OP_LEVEL_COST_ESTIMATOR_H_
 
+#include <cstdint>
+#include <functional>
+#include <map>
 #include <numeric>
+#include <set>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "tensorflow/core/grappler/costs/cost_estimator.h"
 #include "tensorflow/core/grappler/costs/op_context.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
@@ -29,8 +36,9 @@ namespace grappler {
 
 bool GetTensorShapeProtoFromTensorProto(const TensorProto& tensor_proto,
                                         TensorShapeProto* tensor_shape_proto);
-TensorShapeProto MaybeGetMinimumShape(const TensorShapeProto& original_shape,
-                                      int rank, bool* found_unknown_shapes);
+std::vector<int64_t> MaybeGetMinimumShape(
+    const TensorShapeProto& original_shape, int rank,
+    bool* found_unknown_shapes);
 
 // Node costs; an intermediate structure used within op level cost estimator.
 struct NodeCosts {
@@ -114,12 +122,12 @@ class OpLevelCostEstimator {
   // Top-level method cost function (PredictCosts calls this method to get
   // NodeCosts, and then converts it to Costs). PredictNodeCosts() calls other
   // Predict methods depending on op types.
-  Status PredictNodeCosts(const OpContext& op_context,
-                          NodeCosts* node_costs) const;
+  absl::Status PredictNodeCosts(const OpContext& op_context,
+                                NodeCosts* node_costs) const;
 
   // Predict cost of an op for which no accurate estimator is defined.
-  Status PredictCostOfAnUnknownOp(const OpContext& op_context,
-                                  NodeCosts* node_costs) const;
+  absl::Status PredictCostOfAnUnknownOp(const OpContext& op_context,
+                                        NodeCosts* node_costs) const;
 
   // This family of routines predicts the costs to
   // perform the specified TensorFlow Op on the
@@ -131,64 +139,67 @@ class OpLevelCostEstimator {
   // Implementation of costs other than
   // execution_time is optional, depending on the
   // device.
-  Status PredictNaryOp(const OpContext& op_context,
-                       NodeCosts* node_costs) const;
-  Status PredictConv2D(const OpContext& op_context,
-                       NodeCosts* node_costs) const;
-  Status PredictCwiseOp(const OpContext& op_context,
-                        NodeCosts* node_costs) const;
-  Status PredictConv2DBackpropInput(const OpContext& op_context,
-                                    NodeCosts* node_costs) const;
-  Status PredictConv2DBackpropFilter(const OpContext& op_context,
-                                     NodeCosts* node_costs) const;
-  Status PredictFusedConv2DBiasActivation(const OpContext& op_context,
-                                          NodeCosts* node_costs) const;
-  Status PredictMatMul(const OpContext& op_context,
-                       NodeCosts* node_costs) const;
-  Status PredictSparseTensorDenseMatMul(const OpContext& op_context,
-                                        NodeCosts* node_costs) const;
-  Status PredictNoOp(const OpContext& op_context, NodeCosts* node_costs) const;
-  Status PredictIdentity(const OpContext& op_context,
-                         NodeCosts* node_costs) const;
-  Status PredictVariable(const OpContext& op_context,
-                         NodeCosts* node_costs) const;
-  Status PredictBatchMatMul(const OpContext& op_context,
-                            NodeCosts* node_costs) const;
-  Status PredictMetadata(const OpContext& op_context,
-                         NodeCosts* node_costs) const;
-  Status PredictGatherOrSlice(const OpContext& op_context,
-                              NodeCosts* node_costs) const;
-  Status PredictScatter(const OpContext& op_context,
-                        NodeCosts* node_costs) const;
-  Status PredictMaxPool(const OpContext& op_context,
-                        NodeCosts* node_costs) const;
-  Status PredictMaxPoolGrad(const OpContext& op_context,
-                            NodeCosts* node_costs) const;
-  Status PredictAvgPool(const OpContext& op_context,
-                        NodeCosts* node_costs) const;
-  Status PredictAvgPoolGrad(const OpContext& op_context,
-                            NodeCosts* node_costs) const;
-  Status PredictFusedBatchNorm(const OpContext& op_context,
-                               NodeCosts* node_costs) const;
-  Status PredictFusedBatchNormGrad(const OpContext& op_context,
-                                   NodeCosts* node_costs) const;
-  Status PredictEinsum(const OpContext& op_context,
-                       NodeCosts* node_costs) const;
-  Status PredictAssignVariableOps(const OpContext& op_context,
-                                  NodeCosts* node_costs) const;
-  Status PredictPureMemoryOp(const OpContext& op_context,
+  absl::Status PredictNaryOp(const OpContext& op_context,
                              NodeCosts* node_costs) const;
-  Status PredictSoftmax(const OpContext& op_context,
-                        NodeCosts* node_costs) const;
-  Status PredictResizeBilinear(const OpContext& op_context,
-                               NodeCosts* node_costs) const;
-  Status PredictCropAndResize(const OpContext& op_context,
+  absl::Status PredictConv2D(const OpContext& op_context,
+                             NodeCosts* node_costs) const;
+  absl::Status PredictCwiseOp(const OpContext& op_context,
                               NodeCosts* node_costs) const;
+  absl::Status PredictConv2DBackpropInput(const OpContext& op_context,
+                                          NodeCosts* node_costs) const;
+  absl::Status PredictConv2DBackpropFilter(const OpContext& op_context,
+                                           NodeCosts* node_costs) const;
+  absl::Status PredictFusedConv2DBiasActivation(const OpContext& op_context,
+                                                NodeCosts* node_costs) const;
+  absl::Status PredictMatMul(const OpContext& op_context,
+                             NodeCosts* node_costs) const;
+  absl::Status PredictSparseTensorDenseMatMul(const OpContext& op_context,
+                                              NodeCosts* node_costs) const;
+  absl::Status PredictNoOp(const OpContext& op_context,
+                           NodeCosts* node_costs) const;
+  absl::Status PredictIdentity(const OpContext& op_context,
+                               NodeCosts* node_costs) const;
+  absl::Status PredictVariable(const OpContext& op_context,
+                               NodeCosts* node_costs) const;
+  absl::Status PredictBatchMatMul(const OpContext& op_context,
+                                  NodeCosts* node_costs) const;
+  absl::Status PredictMetadata(const OpContext& op_context,
+                               NodeCosts* node_costs) const;
+  absl::Status PredictGatherOrSlice(const OpContext& op_context,
+                                    NodeCosts* node_costs) const;
+  absl::Status PredictScatter(const OpContext& op_context,
+                              NodeCosts* node_costs) const;
+  absl::Status PredictMaxPool(const OpContext& op_context,
+                              NodeCosts* node_costs) const;
+  absl::Status PredictMaxPoolGrad(const OpContext& op_context,
+                                  NodeCosts* node_costs) const;
+  absl::Status PredictAvgPool(const OpContext& op_context,
+                              NodeCosts* node_costs) const;
+  absl::Status PredictAvgPoolGrad(const OpContext& op_context,
+                                  NodeCosts* node_costs) const;
+  absl::Status PredictFusedBatchNorm(const OpContext& op_context,
+                                     NodeCosts* node_costs) const;
+  absl::Status PredictFusedBatchNormGrad(const OpContext& op_context,
+                                         NodeCosts* node_costs) const;
+  absl::Status PredictEinsum(const OpContext& op_context,
+                             NodeCosts* node_costs) const;
+  absl::Status PredictAssignVariableOps(const OpContext& op_context,
+                                        NodeCosts* node_costs) const;
+  absl::Status PredictPureMemoryOp(const OpContext& op_context,
+                                   NodeCosts* node_costs) const;
+  absl::Status PredictSoftmax(const OpContext& op_context,
+                              NodeCosts* node_costs) const;
+  absl::Status PredictResizeBilinear(const OpContext& op_context,
+                                     NodeCosts* node_costs) const;
+  absl::Status PredictCropAndResize(const OpContext& op_context,
+                                    NodeCosts* node_costs) const;
+
+  int64_t GetSoftmaxComputeOps(const OpContext& op_context) const;
 
   // Generic cost prediction method for fused operations.
-  Status PredictFusedOp(const OpContext& op_context,
-                        const std::vector<OpContext>& fused_op_contexts,
-                        NodeCosts* node_costs) const;
+  absl::Status PredictFusedOp(const OpContext& op_context,
+                              const std::vector<OpContext>& fused_op_contexts,
+                              NodeCosts* node_costs) const;
 
   // Utility function for safe division. Returns 0
   // if rhs is 0 or negative.
@@ -235,6 +246,10 @@ class OpLevelCostEstimator {
   static int64_t CountMatMulOperations(const OpInfo& op_info,
                                        bool* found_unknown_shapes);
   static int64_t CountMatMulOperations(const OpInfo& op_info,
+                                       MatMulDimensions* mat_mul,
+                                       bool* found_unknown_shapes);
+  static int64_t CountMatMulOperations(const OpInfo& op_info, bool transpose_a,
+                                       bool transpose_b,
                                        MatMulDimensions* mat_mul,
                                        bool* found_unknown_shapes);
   bool GenerateBatchMatmulContextFromEinsum(const OpContext& einsum_context,
@@ -290,7 +305,7 @@ class OpLevelCostEstimator {
       bool* found_unknown_shapes);
 
   // For Pooling, FusedBatchNorm, and their grad ops.
-  static StatusOr<ConvolutionDimensions> OpDimensionsFromInputs(
+  static absl::StatusOr<ConvolutionDimensions> OpDimensionsFromInputs(
       const TensorShapeProto& original_image_shape, const OpInfo& op_info,
       bool* found_unknown_shapes);
 
@@ -306,14 +321,14 @@ class OpLevelCostEstimator {
       DataType type, const std::vector<int64_t>& dims);
 
   // Helper method for building common case NodeCosts.
-  static Status PredictDefaultNodeCosts(const int64_t num_compute_ops,
-                                        const OpContext& op_context,
-                                        bool* found_unknown_shapes,
-                                        NodeCosts* node_costs);
+  static absl::Status PredictDefaultNodeCosts(int64_t num_compute_ops,
+                                              const OpContext& op_context,
+                                              bool* found_unknown_shapes,
+                                              NodeCosts* node_costs);
 
  protected:
   std::map<string, int> elementwise_ops_;
-  typedef std::function<Status(const OpContext& op_context, NodeCosts*)>
+  typedef std::function<absl::Status(const OpContext& op_context, NodeCosts*)>
       CostImpl;
   std::map<string, CostImpl> device_cost_impl_;
   // If true, assume compute and memory overlap; hence, the op cost is max of

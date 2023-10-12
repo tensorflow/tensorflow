@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
 
+#include <memory>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -76,7 +77,8 @@ void RemoteExecuteNode::RunAsync(StatusCallback done) {
   }
 
   eager_client_->StreamingEnqueueAsync(
-      call_opts.get(), request_.get(), response.get(),
+      eager_context_->Executor().StreamingEnqueue(), call_opts.get(),
+      request_.get(), response.get(),
       [inputs, retvals, call_opts, response, device,
        context_view_id = context_view_id_, rpc_description, cm, token,
        done](const Status& status) {

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <vector>
+
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/InitLLVM.h"
@@ -59,7 +61,7 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
             "GetLstmOpQuantSpec<TFL::UnidirectionalSequenceLSTMOp>(lstm_op);\n";
   OUT(2) << "}\n";
 
-  OUT(2) << "auto spec = absl::make_unique<quant::OpQuantSpec>();\n";
+  OUT(2) << "auto spec = std::make_unique<quant::OpQuantSpec>();\n";
   llvm::SmallVector<llvm::StringRef, 3> matches;
   for (auto *def : defs) {
     Operator op(def);

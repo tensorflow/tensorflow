@@ -38,7 +38,7 @@ Status CandidateSamplerShapeFn(InferenceContext* c) {
   c->set_output(0, num_sampled_v);
   c->set_output(1, c->Matrix(batch_size, num_true));
   c->set_output(2, num_sampled_v);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -160,7 +160,7 @@ REGISTER_OP("ComputeAccidentalHits")
       c->set_output(0, v);
       c->set_output(1, v);
       c->set_output(2, v);
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

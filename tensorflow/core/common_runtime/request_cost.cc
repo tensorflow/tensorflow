@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/request_cost.h"
 
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 
 namespace tensorflow {
@@ -34,6 +37,16 @@ void RequestCost::RecordCost(
 absl::flat_hash_map<std::string, absl::Duration> RequestCost::GetCosts() const {
   absl::MutexLock lock(&mutex_);
   return cost_map_;
+}
+
+void RequestCost::RecordBatchMetrics(const BatchMetrics& batch_metrics) {
+  absl::MutexLock lock(&mutex_);
+  batch_metrics_.push_back(batch_metrics);
+}
+
+std::vector<RequestCost::BatchMetrics> RequestCost::GetBatchMetrics() const {
+  absl::MutexLock lock(&mutex_);
+  return batch_metrics_;
 }
 
 }  // namespace tensorflow

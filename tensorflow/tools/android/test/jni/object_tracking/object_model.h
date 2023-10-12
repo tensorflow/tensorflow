@@ -19,8 +19,8 @@ limitations under the License.
 
 // Contains ObjectModelBase declaration.
 
-#ifndef TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_OBJECT_MODEL_H_
-#define TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_OBJECT_MODEL_H_
+#ifndef TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_OBJECT_MODEL_H_
+#define TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_OBJECT_MODEL_H_
 
 #ifdef __RENDER_OPENGL__
 #include <GLES/gl.h>
@@ -80,7 +80,8 @@ class ObjectModelBase {
   const std::string name_;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ObjectModelBase);
+  ObjectModelBase(const ObjectModelBase&) = delete;
+  void operator=(const ObjectModelBase&) = delete;
 };
 
 template <typename DetectorType>
@@ -93,9 +94,10 @@ class ObjectModel : public ObjectModelBase {
  protected:
   const DetectorType* const detector_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ObjectModel<DetectorType>);
+  ObjectModel<DetectorType>(const ObjectModel<DetectorType>&) = delete;
+  void operator=(const ObjectModel<DetectorType>&) = delete;
 };
 
 }  // namespace tf_tracking
 
-#endif  // TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_OBJECT_MODEL_H_
+#endif  // TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_OBJECT_MODEL_H_

@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "ScatterNd"
   input_arg {
     name: "indices"

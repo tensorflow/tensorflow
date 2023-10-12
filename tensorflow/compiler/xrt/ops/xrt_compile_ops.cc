@@ -27,7 +27,7 @@ REGISTER_OP("XRTCompile")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());
       c->set_output(1, c->UnknownShapeOfRank(1));
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(
         R"(

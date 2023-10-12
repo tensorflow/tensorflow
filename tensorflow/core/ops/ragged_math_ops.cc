@@ -75,7 +75,7 @@ Status RaggedRangeShapeFn(InferenceContext* c) {
 
   // `rt_dense_values` is rank 1, but size can't be calculated statically.
   c->set_output(1, c->UnknownShapeOfRank(1));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

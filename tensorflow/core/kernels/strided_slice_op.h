@@ -18,11 +18,12 @@ limitations under the License.
 
 // Functor definition for StridedSliceOp, must be compilable by nvcc.
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/strided_slice_op.h"
 
 namespace tensorflow {
 namespace functor {
@@ -91,12 +92,18 @@ struct StridedSliceAssign {
                   typename TTypes<T, NDIMS>::ConstTensor input,
                   const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& start_indices,
                   const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& stop_indices,
-                  const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& strides) {
+                  const Eigen::DSizes<Eigen::DenseIndex, NDIMS>& strides,
+                  const StridedSliceAssignBCast& bcast) {
     MaybeWith32BitIndexing<Device>(
         [&](auto output32, auto input32, const auto& start_indices32,
             const auto& stop_indices32, const auto& strides32) {
-          output32.stridedSlice(start_indices32, stop_indices32, strides32)
-              .device(d) = input32;
+          if (bcast.IsBroadcastingRequired()) {
+            output32.stridedSlice(start_indices32, stop_indices32, strides32)
+                .device(d) = input32.broadcast(bcast.bcast());
+          } else {
+            output32.stridedSlice(start_indices32, stop_indices32, strides32)
+                .device(d) = input32;
+          }
         },
         output, input, start_indices, stop_indices, strides);
   }

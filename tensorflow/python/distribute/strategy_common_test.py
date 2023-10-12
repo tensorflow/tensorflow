@@ -18,13 +18,12 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import test_util
-from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute.collective_all_reduce_strategy import CollectiveAllReduceStrategy
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -52,7 +51,7 @@ class StrategyTest(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def f():
-      return ds_context.get_replica_context().replica_id_in_sync_group
+      return distribute_lib.get_replica_context().replica_id_in_sync_group
 
     @def_function.function
     def g():
@@ -62,6 +61,29 @@ class StrategyTest(test.TestCase, parameterized.TestCase):
       return strategy.run(f)
 
     g()
+
+  def testMergeCallInitScope(self, strategy):
+    with strategy.scope():
+
+      @def_function.function
+      def fn():
+
+        def merge_fn(unused_strat):
+
+          y = constant_op.constant(11)
+          return y
+
+        def replica_fn():
+
+          with ops.init_scope():
+            y = distribute_lib.get_replica_context().merge_call(merge_fn)
+            z = y + 1
+            return z
+
+        return strategy.run(replica_fn)
+
+      result = strategy.experimental_local_results(fn())
+      self.assertAllClose(result, [12] * _get_num_replicas_per_client(strategy))
 
 
 @combinations.generate(
@@ -154,7 +176,7 @@ class StrategyLocalResultTest(test.TestCase):
     @def_function.function
     def model_fn():
       return distribution.extended._get_local_replica_id(
-          ds_context.get_replica_context().replica_id_in_sync_group)
+          distribute_lib.get_replica_context().replica_id_in_sync_group)
 
     with distribution.scope():
       result = distribution.run(model_fn)
@@ -167,7 +189,7 @@ class StrategyLocalResultTest(test.TestCase):
     @def_function.function
     def model_fn():
       replica_id = distribution.extended._get_local_replica_id(
-          ds_context.get_replica_context().replica_id_in_sync_group)
+          distribute_lib.get_replica_context().replica_id_in_sync_group)
       return {
           'a': math_ops.cast(replica_id + 1, dtype=float),
           'b': math_ops.cast(replica_id + 2, dtype=float)
@@ -260,7 +282,7 @@ class ReplicaCtxUpdateTest(test.TestCase, parameterized.TestCase):
     def replica_fn():
       value = array_ops.constant(2.)
       python_literal = 1.
-      replica_context = ds_context.get_replica_context()
+      replica_context = distribute_lib.get_replica_context()
       fn_sets = {
           'assign': lambda var, value: var.assign(value),
           'assign_add': lambda var, value: var.assign_add(value),
@@ -381,6 +403,51 @@ class ReplicaCtxAllReduceTest(test.TestCase, parameterized.TestCase):
         nest.map_structure(ops.convert_to_tensor, got),
         nest.map_structure(ops.convert_to_tensor, expect))
 
+  def testSyncOnReadVariableInput(self, strategy, tf_function):
+    if (not strategy_test_lib.is_mirrored_strategy(strategy) and
+        not strategy_test_lib.is_multi_worker_mirrored_strategy(strategy) and
+        not strategy_test_lib.is_tpu_strategy(strategy)):
+      self.skipTest('Skip strategies not using SyncOnReadVariables.')
+    if (strategy_test_lib.is_tpu_strategy(strategy) and
+        tf_function is combinations.no_tf_function):
+      self.skipTest('Skip TPUStrategy + eager combination.')
+    if (strategy_test_lib.is_multi_worker_mirrored_strategy(strategy) and
+        tf_function is combinations.tf_function):
+      self.skipTest('Skip MWMS + graph combination until b/228512201 is fixed.')
+
+    with strategy.scope():
+      var = variables.Variable(
+          0.0,
+          synchronization=variables.VariableSynchronization.ON_READ,
+          aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA)
+
+    @tf_function
+    def replica_fn():
+      replica_context = distribute_lib.get_replica_context()
+      replica_id = replica_context.replica_id_in_sync_group
+      var.assign(math_ops.cast(replica_id, dtype=float) * 3.0)
+
+      return replica_context.all_reduce(reduce_util.ReduceOp.SUM, var)
+
+    if strategy_test_lib.is_multi_worker_mirrored_strategy(strategy):
+      client_local_replica_num = strategy.extended._num_devices_per_worker
+    else:
+      client_local_replica_num = strategy.num_replicas_in_sync
+
+    workers_num = strategy.num_replicas_in_sync
+    expected_sum = sum(range(workers_num)) * 3.0
+
+    # Expand the values on each replica if multiple devices are used; otherwise
+    # simple read the value of the Tensor.
+    result = strategy.run(replica_fn)
+    if hasattr(result, 'values'):
+      result = result.values
+    result = nest.flatten(result)
+
+    # Iterate through all replicas and verify the reduce sum result.
+    for i in range(client_local_replica_num):
+      self.assertEqual(result[i].numpy(), expected_sum)
+
 
 @combinations.generate(
     combinations.combine(
@@ -405,7 +472,7 @@ class AllReduceTest(test.TestCase, parameterized.TestCase):
 
       def replica_fn():
         value = array_ops.identity(1.0)
-        rep_ctx = ds_context.get_replica_context()
+        rep_ctx = distribute_lib.get_replica_context()
         reduced = rep_ctx.all_reduce(reduce_util.ReduceOp.SUM, value)
         return reduced
 
@@ -426,7 +493,7 @@ class AllReduceTest(test.TestCase, parameterized.TestCase):
             values=array_ops.identity([[1.0]]),
             indices=array_ops.identity([0]),
             dense_shape=array_ops.identity([5, 1]))
-        rep_ctx = ds_context.get_replica_context()
+        rep_ctx = distribute_lib.get_replica_context()
         reduced = rep_ctx.all_reduce(reduce_util.ReduceOp.MEAN, value)
         return reduced
 
@@ -459,7 +526,7 @@ class AllReduceTest(test.TestCase, parameterized.TestCase):
             values=array_ops.identity([[2.0]]),
             indices=array_ops.identity([0]),
             dense_shape=array_ops.identity([5, 1]))
-        rep_ctx = ds_context.get_replica_context()
+        rep_ctx = distribute_lib.get_replica_context()
         reduced = rep_ctx.all_reduce(reduce_util.ReduceOp.SUM, [value1, value2])
         return reduced
 
@@ -502,7 +569,7 @@ class AllReduceTest(test.TestCase, parameterized.TestCase):
                      values=array_ops.identity([[2.0]]),
                      indices=array_ops.identity([1]),
                      dense_shape=array_ops.identity([5, 1])))
-        rep_ctx = ds_context.get_replica_context()
+        rep_ctx = distribute_lib.get_replica_context()
         reduced = rep_ctx.all_reduce(reduce_util.ReduceOp.SUM, value)
         return reduced
 
@@ -675,8 +742,8 @@ class StrategyClusterResolverTest(test.TestCase, parameterized.TestCase):
     # CollectiveAllReduceStrategy and TPUStrategy must have a cluster resolver.
     # `None` otherwise.
     resolver = strategy.cluster_resolver
-    if not isinstance(strategy, CollectiveAllReduceStrategy) and not isinstance(
-        strategy, tpu_strategy.TPUStrategy):
+    if (not isinstance(strategy, CollectiveAllReduceStrategy) and
+        not strategy_test_lib.is_tpu_strategy(strategy)):
       self.assertIsNone(resolver)
       return
 

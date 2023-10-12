@@ -1,6 +1,7 @@
 load("//tensorflow/compiler/mlir/tfr:build_defs.bzl", "gen_op_bindings")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":friends",
     ],
@@ -10,7 +11,6 @@ package(
 package_group(
     name = "friends",
     packages = [
-        "//learning/brain/experimental/mlir/tfr/...",
         "//tensorflow/compiler/mlir/...",
     ],
 )

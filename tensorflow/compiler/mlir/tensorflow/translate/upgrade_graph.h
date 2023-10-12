@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
@@ -34,7 +33,7 @@ Status GenerateResourceSharedNameIfEmpty(
 // Upgrade the `graph` and `flib_def` by applying control flow
 // functionalization.
 Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
-                          bool restrict_functionalization_to_tpu_nodes);
+                          bool restrict_functionalization_to_compiled_nodes);
 
 }  // namespace tensorflow
 

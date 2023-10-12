@@ -1,0 +1,94 @@
+path: "tensorflow.experimental.RowPartition"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.ragged.row_partition.RowPartition\'>"
+  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "static_nrows"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "static_nvals"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "static_uniform_row_length"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'row_splits\', \'row_lengths\', \'value_rowids\', \'nrows\', \'uniform_row_length\', \'nvals\', \'internal\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'False\'], "
+  }
+  member_method {
+    name: "from_row_lengths"
+    argspec: "args=[\'cls\', \'row_lengths\', \'validate\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "from_row_limits"
+    argspec: "args=[\'cls\', \'row_limits\', \'validate\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "from_row_splits"
+    argspec: "args=[\'cls\', \'row_splits\', \'validate\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "from_row_starts"
+    argspec: "args=[\'cls\', \'row_starts\', \'nvals\', \'validate\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "from_uniform_row_length"
+    argspec: "args=[\'cls\', \'uniform_row_length\', \'nvals\', \'nrows\', \'validate\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "from_value_rowids"
+    argspec: "args=[\'cls\', \'value_rowids\', \'nrows\', \'validate\', \'dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "is_uniform"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "nrows"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "nvals"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "offsets_in_rows"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "row_lengths"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "row_limits"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "row_splits"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "row_starts"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "uniform_row_length"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "value_rowids"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_dtype"
+    argspec: "args=[\'self\', \'dtype\'], varargs=None, keywords=None, defaults=None"
+  }
+}

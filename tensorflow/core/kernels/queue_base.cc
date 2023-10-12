@@ -44,7 +44,7 @@ Status HandleSliceToElement(const Tensor& parent, Tensor* element,
   }
   auto parent_as_matrix = parent.flat_outer_dims<T>();
   element->flat<T>() = parent_as_matrix.chip(index, 0);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -74,7 +74,7 @@ Status QueueBase::ValidateTupleCommon(const Tuple& tuple) const {
           DataTypeString(tuple[i].dtype()));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // static
@@ -96,7 +96,7 @@ Status QueueBase::MatchesNodeDefOp(const NodeDef& node_def,
                                    "' that does not match type of Node '",
                                    node_def.name(), "': ", node_def.op());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status QueueBase::MatchesNodeDefCapacity(const NodeDef& node_def,
@@ -109,7 +109,7 @@ Status QueueBase::MatchesNodeDefCapacity(const NodeDef& node_def,
                                    capacity, " but requested capacity was ",
                                    requested_capacity);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status QueueBase::MatchesNodeDefTypes(const NodeDef& node_def) const {
@@ -123,7 +123,7 @@ Status QueueBase::MatchesNodeDefTypes(const NodeDef& node_def) const {
                                    " but requested component types were ",
                                    DataTypeSliceString(requested_dtypes));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status QueueBase::MatchesNodeDefShapes(const NodeDef& node_def) const {
@@ -136,7 +136,7 @@ Status QueueBase::MatchesNodeDefShapes(const NodeDef& node_def) const {
                                    " but requested component shapes were ",
                                    ShapeListString(requested_shapes));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(mrry): If these checks become a bottleneck, find a way to
@@ -153,7 +153,7 @@ Status QueueBase::ValidateTuple(const Tuple& tuple) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(mrry): If these checks become a bottleneck, find a way to
@@ -182,7 +182,7 @@ Status QueueBase::ValidateManyTuple(const Tuple& tuple) {
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void QueueBase::Cancel(Action action, CancellationManager* cancellation_manager,

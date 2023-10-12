@@ -67,8 +67,8 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -216,10 +216,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   for (int i = 0; i < num_lookups; i++) {
     int idx = ids->data.i32[i];
     if (idx >= num_rows || idx < 0) {
-      context->ReportError(context,
-                           "Embedding Lookup Sparse: index out of bounds. "
-                           "Got %d, and bounds are [0, %d]",
-                           idx, num_rows - 1);
+      TF_LITE_KERNEL_LOG(context,
+                         "Embedding Lookup Sparse: index out of bounds. "
+                         "Got %d, and bounds are [0, %d]",
+                         idx, num_rows - 1);
       return kTfLiteError;
     }
 

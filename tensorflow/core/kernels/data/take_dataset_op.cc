@@ -61,19 +61,6 @@ string TakeDataset::DebugString() const {
   return name_utils::DatasetDebugString(TakeDatasetOp::kDatasetType);
 }
 
-int64_t TakeDataset::CardinalityInternal() const {
-  int64_t n = input_->Cardinality();
-  if (n == kUnknownCardinality) {
-    return kUnknownCardinality;
-  }
-  if (n == kInfiniteCardinality) {
-    return count_;
-  } else if (count_ == kInfiniteCardinality) {
-    return n;
-  }
-  return std::min(n, count_);
-}
-
 int64_t TakeDataset::CardinalityInternal(CardinalityOptions options) const {
   int64_t n = input_->Cardinality(options);
   if (n == kUnknownCardinality) {
@@ -84,14 +71,13 @@ int64_t TakeDataset::CardinalityInternal(CardinalityOptions options) const {
   } else if (count_ == kInfiniteCardinality) {
     return n;
   }
-
   return std::min(n, count_);
 }
 
 Status TakeDataset::InputDatasets(
     std::vector<const DatasetBase*>* inputs) const {
   inputs->push_back(input_);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TakeDataset::CheckExternalState() const {
@@ -108,10 +94,13 @@ class TakeDataset::EmptyIterator : public DatasetIterator<TakeDataset> {
  public:
   explicit EmptyIterator(const Params& params)
       : DatasetIterator<TakeDataset>(params) {}
+
+  bool SymbolicCheckpointCompatible() const override { return true; }
+
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) override {
     *end_of_sequence = true;
-    return Status::OK();
+    return OkStatus();
   }
 
  protected:
@@ -123,12 +112,12 @@ class TakeDataset::EmptyIterator : public DatasetIterator<TakeDataset> {
 
   Status SaveInternal(SerializationContext* ctx,
                       IteratorStateWriter* writer) override {
-    return Status::OK();
+    return OkStatus();
   }
 
   Status RestoreInternal(IteratorContext* ctx,
                          IteratorStateReader* reader) override {
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -136,6 +125,8 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
  public:
   explicit FiniteIterator(const Params& params)
       : DatasetIterator<TakeDataset>(params), i_(0) {}
+
+  bool SymbolicCheckpointCompatible() const override { return true; }
 
   Status Initialize(IteratorContext* ctx) override {
     return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
@@ -146,20 +137,20 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
     mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
     if (!input_impl_) {
       *end_of_sequence = true;
-      return Status::OK();
+      return OkStatus();
     }
     while (dataset()->count_ < 0 || i_ < dataset()->count_) {
       TF_RETURN_IF_ERROR(
           input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
       if (!*end_of_sequence) {
         ++i_;
-        return Status::OK();
+        return OkStatus();
       }
       break;
     }
     *end_of_sequence = true;
     input_impl_.reset();
-    return Status::OK();
+    return OkStatus();
   }
 
  protected:
@@ -172,25 +163,28 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
   Status SaveInternal(SerializationContext* ctx,
                       IteratorStateWriter* writer) override {
     mutex_lock l(mu_);
-    TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIndex), i_));
+    TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kCurIndex, i_));
+    TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kInputImplEmpty,
+                                           static_cast<int64_t>(!input_impl_)));
     if (input_impl_) {
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-    } else {
-      TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status RestoreInternal(IteratorContext* ctx,
                          IteratorStateReader* reader) override {
     mutex_lock l(mu_);
-    TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCurIndex), &i_));
-    if (!reader->Contains(full_name(kInputImplEmpty))) {
+    TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kCurIndex, &i_));
+    int64_t input_empty;
+    TF_RETURN_IF_ERROR(
+        reader->ReadScalar(prefix(), kInputImplEmpty, &input_empty));
+    if (!static_cast<bool>(input_empty)) {
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
     } else {
       input_impl_.reset();
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -204,10 +198,10 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
 std::unique_ptr<IteratorBase> TakeDataset::MakeIteratorInternal(
     const string& prefix) const {
   if (count_ == 0) {
-    return absl::make_unique<EmptyIterator>(EmptyIterator::Params{
+    return std::make_unique<EmptyIterator>(EmptyIterator::Params{
         this, name_utils::IteratorPrefix(kEmptyTake, prefix)});
   } else {
-    return absl::make_unique<FiniteIterator>(FiniteIterator::Params{
+    return std::make_unique<FiniteIterator>(FiniteIterator::Params{
         this, name_utils::IteratorPrefix(kFiniteTake, prefix)});
   }
 }
@@ -220,7 +214,7 @@ Status TakeDataset::AsGraphDefInternal(SerializationContext* ctx,
   Node* count = nullptr;
   TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
   TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node, count}, output));
-  return Status::OK();
+  return OkStatus();
 }
 
 TakeDatasetOp::TakeDatasetOp(OpKernelConstruction* ctx)

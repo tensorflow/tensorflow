@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "SdcaOptimizerV2"
   input_arg {
     name: "sparse_example_indices"

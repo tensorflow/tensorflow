@@ -83,8 +83,13 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
     out.SetUsrMem(in_dims, out_strides, out_tensor);
 
     std::vector<primitive> net;
+    // Create the oneDNN wrapper over Eigen threadpool and set max threads
+    // in oneDNN.
+    Eigen::ThreadPoolInterface* eigen_interface =
+        EigenThreadPoolFromTfContext(context);
+    tsl::OneDnnThreadPool eigen_tp(eigen_interface,
+                                   ThreadPoolUseCallerThread());
     auto* prim = FindOrCreateReorder<T>(in.GetUsrMem(), out.GetUsrMem());
-    MklDnnThreadPool eigen_tp(context);
     transpose_stream.reset(CreateStream(&eigen_tp, prim->GetEngine()));
     in.SetUsrMemDataHandle(&in_tensor, transpose_stream);
     out.SetUsrMemDataHandle(out_tensor, transpose_stream);
@@ -94,7 +99,7 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
         {{DNNL_ARG_FROM, *in.GetUsrMem()}, {DNNL_ARG_TO, *out.GetUsrMem()}});
     execute_primitives(net, transpose_stream, net_args);
 
-    return Status::OK();
+    return OkStatus();
   } catch (dnnl::error& e) {
     string error_msg = "Status: " + std::to_string(e.status) +
                        ", message: " + std::string(e.message) + ", in file " +

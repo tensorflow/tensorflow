@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -86,9 +85,9 @@ NodeDef* AddScalarConstNodeHelper(
 
   (*node.mutable_attr())["dtype"].set_type(dtype);
   std::unique_ptr<tensorflow::TensorProto> tensor =
-      tensorflow::MakeUnique<tensorflow::TensorProto>();
+      std::make_unique<tensorflow::TensorProto>();
   std::unique_ptr<tensorflow::TensorShapeProto> tensor_shape =
-      tensorflow::MakeUnique<tensorflow::TensorShapeProto>();
+      std::make_unique<tensorflow::TensorShapeProto>();
   tensor->set_allocated_tensor_shape(tensor_shape.release());
   tensor->set_dtype(dtype);
   add_value(tensor.get());
@@ -190,7 +189,7 @@ Status GetScalarConstNodeValueHelper(
 
   get_value(tensor);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
@@ -317,7 +316,8 @@ void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph,
   node->set_name(std::move(name));
 }
 
-void SetUniqueGraphFunctionName(StringPiece prefix, FunctionDefLibrary* library,
+void SetUniqueGraphFunctionName(StringPiece prefix,
+                                const FunctionDefLibrary* library,
                                 FunctionDef* function) {
   string name = string(prefix);
   int id = library->function_size();
@@ -360,7 +360,7 @@ Status EnsureNodeNamesUnique(Graph* g) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetFetchNode(const MutableGraphView& graph, const GrapplerItem& item,
@@ -373,7 +373,7 @@ Status GetFetchNode(const MutableGraphView& graph, const GrapplerItem& item,
 
   *fetch_node = graph.GetNode(item.fetch.at(0));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool IsItemDerivedFromFunctionDef(const GrapplerItem& item,
@@ -430,6 +430,11 @@ const auto* kSloppyAttrOps = new absl::flat_hash_set<string>{
     "ParseExampleDataset",
 };
 
+const auto* kReplicateOnSplitAttrOps = new absl::flat_hash_set<string>{
+    "TensorSliceDataset",
+    "RangeDataset",
+};
+
 const auto* kDeterministicAttrOps = new absl::flat_hash_set<string>{
     "LegacyParallelInterleaveDatasetV2",
     "ParallelInterleaveDatasetV3",
@@ -440,6 +445,10 @@ const auto* kDeterministicAttrOps = new absl::flat_hash_set<string>{
 }  // anonymous namespace
 
 bool HasSloppyAttr(const string& op) { return kSloppyAttrOps->contains(op); }
+
+bool HasReplicateOnSplitAttr(const string& op) {
+  return kReplicateOnSplitAttrOps->contains(op);
+}
 
 bool HasDeterministicAttr(const string& op) {
   return kDeterministicAttrOps->contains(op);
@@ -457,7 +466,7 @@ Status SetMetadataName(const std::string& name, NodeDef* node) {
   }
   *metadata.mutable_name() = name;
   metadata.SerializeToString((*node->mutable_attr())["metadata"].mutable_s());
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace graph_utils

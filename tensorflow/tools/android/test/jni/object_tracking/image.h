@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_H_
-#define TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_H_
+#ifndef TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_IMAGE_H_
+#define TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_IMAGE_H_
 
 #include <stdint.h>
 
@@ -322,7 +322,8 @@ class Image {
   // TODO(andrewharp): Make sure that stride is honored in all code.
   const int stride_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Image);
+  Image(const Image&) = delete;
+  void operator=(const Image&) = delete;
 };
 
 template <typename t>
@@ -338,4 +339,4 @@ inline std::ostream& operator<<(std::ostream& stream, const Image<t>& image) {
 
 }  // namespace tf_tracking
 
-#endif  // TENSORFLOW_EXAMPLES_ANDROID_JNI_OBJECT_TRACKING_IMAGE_H_
+#endif  // TENSORFLOW_TOOLS_ANDROID_TEST_JNI_OBJECT_TRACKING_IMAGE_H_

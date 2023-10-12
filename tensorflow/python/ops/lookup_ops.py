@@ -11,18 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#==============================================================================
+# ==============================================================================
 """Lookup operations."""
 # pylint: disable=g-bad-name
 import collections
 import functools
 import uuid
 
+from tensorflow.python.checkpoint import saveable_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -33,13 +35,13 @@ from tensorflow.python.ops import string_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_lookup_ops import *
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.saved_model import registration
-from tensorflow.python.training.saver import BaseSaverBuilder
+from tensorflow.python.trackable import asset
 # pylint: enable=wildcard-import
-from tensorflow.python.training.tracking import base as trackable_base
-from tensorflow.python.training.tracking import resource
-from tensorflow.python.training.tracking import tracking as trackable
+from tensorflow.python.trackable import base as trackable_base
+from tensorflow.python.trackable import resource
+from tensorflow.python.training.saver import BaseSaverBuilder
+from tensorflow.python.types import internal
 from tensorflow.python.util import compat as compat_util
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
@@ -240,8 +242,9 @@ class InitializableLookupTableBase(LookupInterface):
         types.
     """
     key_tensor = keys
-    if isinstance(keys,
-                  (sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
+    # TODO(b/296302236): Remove RaggedTensor check by adding ragged
+    # dispatching.
+    if isinstance(keys, (sparse_tensor.SparseTensor, internal.RaggedTensor)):
       key_tensor = keys.values
 
     if keys.dtype.base_dtype != self._key_dtype:
@@ -258,7 +261,9 @@ class InitializableLookupTableBase(LookupInterface):
     values.set_shape(key_tensor.get_shape())
     if isinstance(keys, sparse_tensor.SparseTensor):
       return sparse_tensor.SparseTensor(keys.indices, values, keys.dense_shape)
-    elif isinstance(keys, ragged_tensor.RaggedTensor):
+    # TODO(b/296302236): Remove RaggedTensor check by adding ragged
+    # dispatching.
+    elif isinstance(keys, internal.RaggedTensor):
       return keys.with_values(values)
     else:
       return values
@@ -705,7 +710,7 @@ class TextFileInitializer(TableInitializerBase):
       ValueError: when the filename is empty, or when the table key and value
       data types do not match the expected data types.
     """
-    if not isinstance(filename, ops.Tensor) and not filename:
+    if not isinstance(filename, tensor_lib.Tensor) and not filename:
       raise ValueError("`filename` argument required for tf.lookup.TextFileInitializer")
 
     self._filename_arg = filename
@@ -713,7 +718,7 @@ class TextFileInitializer(TableInitializerBase):
     value_dtype = dtypes.as_dtype(value_dtype)
 
     if key_index < -2:
-      raise ValueError("`key_index` should be >= -2, received: {key_index}.")
+      raise ValueError(f"`key_index` should be >= -2, received: {key_index}.")
 
     if key_index == TextFileIndex.LINE_NUMBER and key_dtype != dtypes.int64:
       raise ValueError("`key_dtype` must be int64 if `key_index` is "
@@ -745,7 +750,7 @@ class TextFileInitializer(TableInitializerBase):
     self._delimiter = delimiter
     self._name = name
     self._filename = self._track_trackable(
-        trackable.Asset(filename), "_filename")
+        asset.Asset(filename), "_filename")
     self._offset = value_index_offset
 
     super(TextFileInitializer, self).__init__(key_dtype, value_dtype)
@@ -1146,8 +1151,9 @@ class IdTableWithHashBuckets(LookupInterface):
       raise TypeError(f"Dtype of argument `keys` must be {self._key_dtype}, "
                       f"received: {keys.dtype}")
     values = keys
-    if isinstance(keys,
-                  (sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
+    # TODO(b/296302236): Remove RaggedTensor check by adding ragged
+    # dispatching.
+    if isinstance(keys, (sparse_tensor.SparseTensor, internal.RaggedTensor)):
       values = keys.values
     if self._table and (self._table.key_dtype.base_dtype == dtypes.int64):
       values = math_ops.cast(values, dtypes.int64)
@@ -1172,7 +1178,9 @@ class IdTableWithHashBuckets(LookupInterface):
           ids = buckets
     if isinstance(keys, sparse_tensor.SparseTensor):
       return sparse_tensor.SparseTensor(keys.indices, ids, keys.dense_shape)
-    elif isinstance(keys, ragged_tensor.RaggedTensor):
+    # TODO(b/296302236): Remove RaggedTensor check by adding ragged
+    # dispatching.
+    elif isinstance(keys, internal.RaggedTensor):
       return keys.with_values(ids)
     return ids
 
@@ -1369,8 +1377,9 @@ class StaticVocabularyTable(LookupInterface):
       raise TypeError(f"Dtype of argument `keys` must be {self._key_dtype}, "
                       f"received: {keys.dtype}")
     values = keys
-    if isinstance(keys,
-                  (sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
+    # TODO(b/296302236): Remove RaggedTensor check by adding ragged
+    # dispatching.
+    if isinstance(keys, (sparse_tensor.SparseTensor, internal.RaggedTensor)):
       values = keys.values
     if self._table and (self._table.key_dtype.base_dtype == dtypes.int64):
       values = math_ops.cast(values, dtypes.int64)
@@ -1390,7 +1399,9 @@ class StaticVocabularyTable(LookupInterface):
         ids = buckets
     if isinstance(keys, sparse_tensor.SparseTensor):
       return sparse_tensor.SparseTensor(keys.indices, ids, keys.dense_shape)
-    elif isinstance(keys, ragged_tensor.RaggedTensor):
+    # TODO(b/296302236): Remove RaggedTensor check by adding ragged
+    # dispatching.
+    elif isinstance(keys, internal.RaggedTensor):
       return keys.with_values(ids)
     return ids
 
@@ -1498,7 +1509,7 @@ def index_table_from_file(vocabulary_file=None,
         num_oov_buckets)
   if vocab_size is not None and vocab_size < 1:
     vocab_file_value = vocabulary_file
-    if isinstance(vocabulary_file, ops.Tensor):
+    if isinstance(vocabulary_file, tensor_lib.Tensor):
       vocab_file_value = tensor_util.constant_value(vocabulary_file) or "?"
     raise ValueError("`vocab_size` must be greater than 0, got %d for "
                      "vocabulary_file: %s." % (vocab_size, vocab_file_value))
@@ -1783,6 +1794,7 @@ def index_to_string_table_from_tensor(vocabulary_list,
 
 
 @tf_export("lookup.experimental.MutableHashTable")
+@saveable_compat.legacy_saveable_name("table")
 class MutableHashTable(LookupInterface):
   """A generic mutable hash table implementation.
 
@@ -2038,15 +2050,38 @@ class MutableHashTable(LookupInterface):
             self.resource_handle, self._key_dtype, self._value_dtype)
     return exported_keys, exported_values
 
-  def _gather_saveables_for_checkpoint(self):
-    """For object-based checkpointing."""
-    return {
-        "table":
-            functools.partial(
-                MutableHashTable._Saveable, table=self, name=self._name,
-                table_name=self._name)
-    }
+  def _serialize_to_tensors(self):
+    """Implements checkpointing protocols for `Trackable`."""
+    tensors = self.export()
+    return {"-keys": tensors[0], "-values": tensors[1]}
 
+  def _restore_from_tensors(self, restored_tensors):
+    """Implements checkpointing protocols for `Trackable`."""
+    with ops.name_scope("%s_table_restore" % self._name):
+      with ops.colocate_with(self.resource_handle):
+        return gen_lookup_ops.lookup_table_import_v2(
+            self.resource_handle,
+            restored_tensors["-keys"],
+            restored_tensors["-values"])
+
+  def _copy_trackable_to_cpu(self, object_map):
+    """Implements checkpointing protocols for `Trackable`."""
+    if self not in object_map:
+      # If self is not already populated in object map, instantiate the copy
+      object_map[self] = MutableHashTable(
+          self._key_dtype,
+          self._value_dtype,
+          self._default_value,
+          self._name,
+          self._checkpoint,
+          self._is_anonymous
+      )
+
+    # Copy values from `self` to copy of `self`
+    serialized = self._serialize_to_tensors()
+    object_map[self]._restore_from_tensors(serialized)  # pylint: disable=protected-access
+
+    # This class is needed for `MutableHashTable(checkpoint=True)`.
   class _Saveable(BaseSaverBuilder.SaveableObject):
     """SaveableObject implementation for DenseHashTable."""
 
@@ -2071,6 +2106,7 @@ class MutableHashTable(LookupInterface):
 
 
 @tf_export("lookup.experimental.DenseHashTable")
+@saveable_compat.legacy_saveable_name("table")
 class DenseHashTable(LookupInterface):
   """A mutable hash table with faster lookups and higher memory usage.
 
@@ -2366,15 +2402,41 @@ class DenseHashTable(LookupInterface):
 
     return exported_keys, exported_values
 
-  def _gather_saveables_for_checkpoint(self):
-    """For object-based checkpointing."""
-    return {
-        "table":
-            functools.partial(
-                DenseHashTable._Saveable, table=self, name=self._name,
-                table_name=self._name)
-    }
+  def _serialize_to_tensors(self):
+    """Implements checkpointing interface in `Trackable`."""
+    tensors = self.export()
+    return {"-keys": tensors[0], "-values": tensors[1]}
 
+  def _restore_from_tensors(self, restored_tensors):
+    """Implements checkpointing interface in `Trackable`."""
+    with ops.name_scope("%s_table_restore" % self._name):
+      with ops.colocate_with(self.resource_handle):
+        return gen_lookup_ops.lookup_table_import_v2(
+            self.resource_handle,
+            restored_tensors["-keys"],
+            restored_tensors["-values"])
+
+  def _copy_trackable_to_cpu(self, object_map):
+    """Implements checkpointing protocols for `Trackable`."""
+    if self not in object_map:
+      # If self is not already populated in object map, instantiate the copy
+      object_map[self] = DenseHashTable(
+          self._key_dtype,
+          self._value_dtype,
+          self._default_value,
+          self._empty_key,
+          self._deleted_key,
+          self._initial_num_buckets,
+          self._name,
+          self._checkpoint,
+          self._is_anonymous
+      )
+
+    # Copy values from `self` to copy of `self`
+    serialized = self._serialize_to_tensors()
+    object_map[self]._restore_from_tensors(serialized)  # pylint: disable=protected-access
+
+  # This class is needed for `DenseHashTable(checkpoint=True)`.
   class _Saveable(BaseSaverBuilder.SaveableObject):
     """SaveableObject implementation for DenseHashTable."""
 

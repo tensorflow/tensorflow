@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "TPUReshardVariables"
   input_arg {
     name: "vars"

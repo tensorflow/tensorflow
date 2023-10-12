@@ -13,29 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_IR_IMPORTEXPORT_EXPORT_UTILS_H_
-#define TENSORFLOW_CORE_IR_IMPORTEXPORT_EXPORT_UTILS_H_
+#ifndef TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVERT_ATTRIBUTES_H_
+#define TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVERT_ATTRIBUTES_H_
 
-#include "absl/container/flat_hash_set.h"
+#include <string>
+
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseSet.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/resource_handle.pb.h"
 #include "tensorflow/core/ir/dialect.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace mlir {
 namespace tfg {
 
 // Convert the list of MLIR Attributes `attrs` to the `tensorflow::AttrValueMap`
 // `values`.
-tensorflow::Status ConvertAttributes(
-    const llvm::ArrayRef<NamedAttribute> attrs,
-    const absl::flat_hash_set<absl::string_view>& attrs_to_ignore,
-    bool remove_ref_type, tensorflow::AttrValueMap* values);
+tensorflow::Status ConvertAttributes(ArrayRef<NamedAttribute> attrs,
+                                     ArrayRef<StringRef> attrs_to_ignore,
+                                     bool remove_ref_type,
+                                     tensorflow::AttrValueMap* values);
 
 // Convert the MLIR attribute `attr` and return a `tensorflow::AttrValue`.
 tensorflow::StatusOr<tensorflow::AttrValue> ConvertAttribute(Attribute attr);
@@ -53,15 +54,34 @@ ShapeAttr ConvertTypeToTensorShapeAttr(const Type& type);
 // exclused in this function because the function might be renamed when the
 // function definition is imported.
 tensorflow::StatusOr<Attribute> ConvertNonFuncAttributeValue(
-    const tensorflow::AttrValue& value, Builder& builder,
-    TFGraphDialect* tfgDialect);
+    const tensorflow::AttrValue& value, Builder& builder);
 
 // Converts all kinds of AttrValue proto into an MLIR attribute.
 tensorflow::StatusOr<Attribute> ConvertAttributeValue(
-    const tensorflow::AttrValue& value, Builder& builder,
-    TFGraphDialect* tfgDialect);
+    const tensorflow::AttrValue& value, Builder& builder);
+
+// Convert the MLIR FullTyoe attribute `attr` and return a
+// `tensorflow::FullTypeDef`.
+tensorflow::StatusOr<tensorflow::FullTypeDef> ConvertAttribute(
+    tf_type::FullTypeAttr full_type);
+
+// Converts fulltype proto to attribute.
+tensorflow::StatusOr<::mlir::tf_type::FullTypeAttr> ConvertAttribute(
+    const tensorflow::FullTypeDef& full_type, Builder& builder);
+
+// Convert an array of handle data (pairs of data types and shapes) to an array
+// attribute of tensor types.
+tensorflow::StatusOr<ArrayAttr> ConvertHandleData(
+    Builder builder,
+    const tensorflow::protobuf::RepeatedPtrField<
+        tensorflow::ResourceHandleProto_DtypeAndShape>& handle_data);
+
+// Convert an array of handle data into the `handle_data` field of the provided
+// ArgDef. Each entry of the array is expected to be a TensorType.
+tensorflow::Status ConvertHandleData(ArrayAttr handle_data_arr,
+                                     tensorflow::OpDef::ArgDef* arg);
 
 }  // namespace tfg
 }  // namespace mlir
 
-#endif  // TENSORFLOW_CORE_IR_IMPORTEXPORT_EXPORT_UTILS_H_
+#endif  // TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVERT_ATTRIBUTES_H_

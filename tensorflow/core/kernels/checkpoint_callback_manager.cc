@@ -24,11 +24,9 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/regexp.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/stringpiece.h"
-#include "tensorflow/core/platform/types.h"
+#include "tsl/platform/regexp.h"
 
 namespace tensorflow {
 namespace checkpoint {
@@ -38,7 +36,7 @@ const absl::string_view kCheckpointCallbackManagerResourceName =
 
 namespace {
 
-const absl::string_view kCheckpointFileRegex = "^part-[0-9]*-of-[0-9]*$";
+const absl::string_view kCheckpointFileRegex = "^part-[0-9]*-of-[0-9]*";
 const absl::string_view kCheckpointTempDirRegex = "-[0-9]*_temp$";
 const absl::string_view kCheckpointDirRegex = "-[0-9]*$";
 const absl::string_view kCheckpointTempDirSuffix = "_temp";
@@ -60,6 +58,11 @@ void TriggerSaveCallbackIfFileNotExist(absl::string_view checkpoint_id,
   StatusOr<std::string> save_content = callback(checkpoint_id);
   if (!save_content.ok()) {
     LOG(WARNING) << save_content.status();
+    return;
+  }
+
+  // An empty string means nothing to be saved.
+  if (save_content->empty()) {
     return;
   }
 
@@ -139,57 +142,88 @@ CheckpointCallbackManager::GetCheckpointIdAndPathFromPrefix(
 
 Status CheckpointCallbackManager::RegisterSaveCallback(
     absl::string_view file_extension, SaveCallback callback) {
-  return save_callbacks_.try_emplace(file_extension, std::move(callback)).second
-             ? Status::OK()
-             : errors::AlreadyExists("A callback already exists.");
+  SaveCallback lazy_callback = nullptr;
+  std::string checkpoint_id;
+  std::string checkpoint_dir;
+  {
+    mutex_lock l(mu_);
+    if (!save_callbacks_.try_emplace(file_extension, std::move(callback))
+             .second) {
+      return errors::AlreadyExists("A callback already exists.");
+    }
+
+    // If last_saved_checkpoint_id_and_dir_ is not empty,
+    // tries to trigger save callback lazily.
+    if (!last_saved_checkpoint_id_and_dir_.first.empty()) {
+      lazy_callback = save_callbacks_[file_extension];
+      checkpoint_id = last_saved_checkpoint_id_and_dir_.first;
+      checkpoint_dir = last_saved_checkpoint_id_and_dir_.second;
+    }
+  }
+
+  if (lazy_callback != nullptr) {
+    TriggerSaveCallbackIfFileNotExist(checkpoint_id, checkpoint_dir,
+                                      file_extension, lazy_callback);
+  }
+  return OkStatus();
 }
 
 bool CheckpointCallbackManager::DoesSaveCallbackExist(
     absl::string_view file_extension) {
+  tf_shared_lock l(mu_);
   return save_callbacks_.contains(file_extension);
 }
 
 Status CheckpointCallbackManager::RegisterRestoreCallback(
     absl::string_view file_extension, RestoreCallback callback) {
-  if (!restore_callbacks_.try_emplace(file_extension, std::move(callback))
-           .second) {
-    return errors::AlreadyExists("A callback already exists.");
-  }
-
+  RestoreCallback lazy_callback = nullptr;
   std::string checkpoint_id;
   std::string checkpoint_dir;
-
   {
-    tf_shared_lock l(mu_);
-    checkpoint_id = last_restored_checkpoint_id_and_dir_.first;
-    checkpoint_dir = last_restored_checkpoint_id_and_dir_.second;
+    mutex_lock l(mu_);
+    if (!restore_callbacks_.try_emplace(file_extension, std::move(callback))
+             .second) {
+      return errors::AlreadyExists("A callback already exists.");
+    }
+
+    // If last_restored_checkpoint_id_and_dir_ is not empty,
+    // tries to trigger restore callback lazily.
+    if (!last_restored_checkpoint_id_and_dir_.first.empty()) {
+      lazy_callback = restore_callbacks_[file_extension];
+      checkpoint_id = last_restored_checkpoint_id_and_dir_.first;
+      checkpoint_dir = last_restored_checkpoint_id_and_dir_.second;
+    }
   }
 
-  // If last_restored_checkpoint_id_and_dir_ is not empty,
-  // tries to trigger restore callback lazily.
-  if (!checkpoint_id.empty()) {
+  if (lazy_callback != nullptr) {
     TriggerRestoreCallbackIfFileExists(checkpoint_id, checkpoint_dir,
-                                       file_extension,
-                                       restore_callbacks_[file_extension]);
+                                       file_extension, lazy_callback);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool CheckpointCallbackManager::DoesRestoreCallbackExist(
     absl::string_view file_extension) {
+  tf_shared_lock l(mu_);
   return restore_callbacks_.contains(file_extension);
 }
 
 void CheckpointCallbackManager::Save(absl::string_view prefix) {
-  if (save_callbacks_.empty()) return;
-
   StatusOr<std::pair<std::string, std::string>> id_and_dir =
       GetCheckpointIdAndPathFromPrefix(prefix);
   if (!id_and_dir.ok()) {
     return;
   }
 
-  for (const auto& name_and_callback : save_callbacks_) {
+  // Create a copy to avoid holding lock while calling a callback.
+  absl::flat_hash_map<std::string, SaveCallback> copy_of_save_callbacks;
+  {
+    mutex_lock l(mu_);
+    last_saved_checkpoint_id_and_dir_ = *id_and_dir;
+    copy_of_save_callbacks = save_callbacks_;
+  }
+
+  for (const auto& name_and_callback : copy_of_save_callbacks) {
     TriggerSaveCallbackIfFileNotExist(id_and_dir->first, id_and_dir->second,
                                       name_and_callback.first,
                                       name_and_callback.second);
@@ -203,12 +237,19 @@ void CheckpointCallbackManager::Restore(absl::string_view prefix) {
     return;
   }
 
+  // Create a copy to avoid holding lock while calling a callback.
+  absl::flat_hash_map<std::string, RestoreCallback> copy_of_restore_callbacks;
   {
     mutex_lock l(mu_);
+    if (*id_and_dir == last_restored_checkpoint_id_and_dir_) {
+      // We don't want to trigger restore callback function multiple times.
+      return;
+    }
     last_restored_checkpoint_id_and_dir_ = *id_and_dir;
+    copy_of_restore_callbacks = restore_callbacks_;
   }
 
-  for (const auto& name_and_callback : restore_callbacks_) {
+  for (const auto& name_and_callback : copy_of_restore_callbacks) {
     TriggerRestoreCallbackIfFileExists(id_and_dir->first, id_and_dir->second,
                                        name_and_callback.first,
                                        name_and_callback.second);

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/function.h"
@@ -81,6 +82,15 @@ GraphDef GetRangeSquareDatasetDef(const int64_t range) {
 TEST(GraphUtilTest, GetFetchNode) {
   GraphDef graph = GetRangeSquareDatasetDef(10);
   TF_ASSERT_OK_AND_ASSIGN(std::string dataset_node, GetDatasetNode(graph));
+  std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
+      GetGrapplerItem(&graph, &dataset_node, /*add_fake_sinks=*/false);
+  EXPECT_THAT(grappler_item->fetch, ElementsAre("Sink"));
+}
+
+TEST(GraphUtilTest, GetFetchNodeDef) {
+  GraphDef graph = GetRangeSquareDatasetDef(10);
+  TF_ASSERT_OK_AND_ASSIGN(NodeDef dataset_nodedef, GetDatasetNodeDef(graph));
+  std::string dataset_node = dataset_nodedef.name();
   std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
       GetGrapplerItem(&graph, &dataset_node, /*add_fake_sinks=*/false);
   EXPECT_THAT(grappler_item->fetch, ElementsAre("Sink"));

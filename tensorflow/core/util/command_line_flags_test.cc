@@ -42,6 +42,7 @@ TEST(CommandLineFlagsTest, BasicUsage) {
   int64_t some_int64_set_via_hook = 21474836479;  // max int32 is 2147483647
   bool some_switch_set_directly = false;
   bool some_switch_set_via_hook = true;
+  bool some_switch_set_capitalized = false;
   string some_name_set_directly = "something_a";
   string some_name_set_via_hook = "something_b";
   float some_float_set_directly = -23.23f;
@@ -53,6 +54,7 @@ TEST(CommandLineFlagsTest, BasicUsage) {
                                       "--some_int64_set_via_hook=214748364710",
                                       "--some_switch_set_directly",
                                       "--some_switch_set_via_hook=false",
+                                      "--some_switch_set_capitalized=True",
                                       "--some_name_set_directly=somethingelse",
                                       "--some_name_set_via_hook=anythingelse",
                                       "--some_float_set_directly=42.0",
@@ -89,6 +91,8 @@ TEST(CommandLineFlagsTest, BasicUsage) {
                 return true;
               },
               some_switch_set_via_hook, "some switch set via hook"),
+          Flag("some_switch_set_capitalized", &some_switch_set_capitalized,
+               "some switch set capitalized"),
           Flag("some_name_set_directly", &some_name_set_directly,
                "some name set directly"),
           Flag(
@@ -116,6 +120,7 @@ TEST(CommandLineFlagsTest, BasicUsage) {
   EXPECT_EQ(214748364710, some_int64_set_via_hook);
   EXPECT_EQ(true, some_switch_set_directly);
   EXPECT_EQ(false, some_switch_set_via_hook);
+  EXPECT_EQ(true, some_switch_set_capitalized);
   EXPECT_EQ("somethingelse", some_name_set_directly);
   EXPECT_EQ("anythingelse", some_name_set_via_hook);
   EXPECT_NEAR(42.0f, some_float_set_directly, 1e-5f);

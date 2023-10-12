@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "Skipgram"
   output_arg {
     name: "vocab_word"

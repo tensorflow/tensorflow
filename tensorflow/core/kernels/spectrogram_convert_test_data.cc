@@ -34,7 +34,7 @@ Status ConvertCsvToRaw(const string& input_filename) {
                                    input_filename);
   }
   LOG(INFO) << "Wrote raw file to " << output_filename;
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace wav

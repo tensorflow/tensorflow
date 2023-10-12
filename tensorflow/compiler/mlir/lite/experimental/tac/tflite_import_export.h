@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_TFLITE_IMPORT_EXPORT_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_TFLITE_IMPORT_EXPORT_H_
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -38,7 +39,7 @@ class TfLiteImporter : public mlir::TFL::tac::TacImporter {
 
   explicit TfLiteImporter(const Options& options) : options_(options) {}
 
-  absl::StatusOr<mlir::OwningModuleRef> Import() override;
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> Import() override;
 
  private:
   Options options_;

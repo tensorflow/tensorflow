@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/threadpool.h"
@@ -57,7 +58,7 @@ struct UpperBoundFunctor<CPUDevice, T, OutType> {
     int64_t cost_per_unit =
         kCostMultiplier * batch_size * Log2Ceiling(num_inputs);
     thread_pool->ParallelFor(num_values, cost_per_unit, work_fn);
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -86,7 +87,7 @@ struct LowerBoundFunctor<CPUDevice, T, OutType> {
     int64_t cost_per_unit =
         kCostMultiplier * batch_size * Log2Ceiling(num_inputs);
     thread_pool->ParallelFor(num_values, cost_per_unit, work_fn);
-    return Status::OK();
+    return OkStatus();
   }
 };
 }  // namespace functor
@@ -100,18 +101,28 @@ class UpperBoundOp : public OpKernel {
     const Tensor& sorted_inputs_t = ctx->input(0);
     const Tensor& values_t = ctx->input(1);
 
-    // inputs must be at least a matrix
+    // Inputs must be a matrix
+    // This replicates the shape requirements for the op in array_ops.cc
     OP_REQUIRES(
-        ctx, sorted_inputs_t.shape().dims() >= 2,
-        errors::InvalidArgument("sorted input argument must be a matrix"));
+        ctx, sorted_inputs_t.shape().dims() == 2,
+        errors::InvalidArgument(absl::StrCat(
+            "Shape must be rank 2 but is rank ", sorted_inputs_t.shape().dims(),
+            " for "
+            "`sorted_inputs` argument")));
+    // Values must be a matrix
+    // This replicates the shape requirements for the op in array_ops.cc
+    OP_REQUIRES(ctx, values_t.shape().dims() == 2,
+                errors::InvalidArgument(absl::StrCat(
+                    "Shape must be rank 2 but is rank ",
+                    values_t.shape().dims(), " for `values` argument")));
     // must have same batch dim_size for both
     OP_REQUIRES(ctx, sorted_inputs_t.dim_size(0) == values_t.dim_size(0),
-                Status(error::INVALID_ARGUMENT,
+                Status(absl::StatusCode::kInvalidArgument,
                        "Leading dim_size of both tensors must match."));
 
     // this is required because we do indexing in int32 on the GPU
     OP_REQUIRES(ctx, values_t.NumElements() < std::numeric_limits<int>::max(),
-                Status(error::INVALID_ARGUMENT,
+                Status(absl::StatusCode::kInvalidArgument,
                        "values tensor size must less than INT_MAX"));
 
     Tensor* output_t;
@@ -129,6 +140,14 @@ class UpperBoundOp : public OpKernel {
     auto output = output_t->template flat<OutType>();
     const auto sorted_inputs = sorted_inputs_t.template flat<T>();
     const auto values = values_t.template flat<T>();
+
+    // For empty inputs, all values will be placed at the zeroth position.
+    if (sorted_inputs.size() == 0) {
+      functor::SetZeroFunctor<Device, OutType> set_zero;
+      set_zero(ctx->eigen_device<Device>(), output);
+      return;
+    }
+
     OP_REQUIRES_OK(
         ctx, functor::UpperBoundFunctor<Device, T, OutType>::Compute(
                  ctx, sorted_inputs, values, sorted_inputs_t.dim_size(0),
@@ -145,18 +164,28 @@ class LowerBoundOp : public OpKernel {
     const Tensor& sorted_inputs_t = ctx->input(0);
     const Tensor& values_t = ctx->input(1);
 
-    // inputs must be at least a matrix
+    // Inputs must be a matrix
+    // This replicates the shape requirements for the op in array_ops.cc
     OP_REQUIRES(
-        ctx, sorted_inputs_t.shape().dims() >= 2,
-        errors::InvalidArgument("sorted input argument must be a matrix"));
+        ctx, sorted_inputs_t.shape().dims() == 2,
+        errors::InvalidArgument(absl::StrCat(
+            "Shape must be rank 2 but is rank ", sorted_inputs_t.shape().dims(),
+            " for "
+            "`sorted_inputs` argument")));
+    // Values must be a matrix
+    // This replicates the shape requirements for the op in array_ops.cc
+    OP_REQUIRES(ctx, values_t.shape().dims() == 2,
+                errors::InvalidArgument(absl::StrCat(
+                    "Shape must be rank 2 but is rank ",
+                    values_t.shape().dims(), " for `values` argument")));
     // must have same batch dim_size for both
     OP_REQUIRES(ctx, sorted_inputs_t.dim_size(0) == values_t.dim_size(0),
-                Status(error::INVALID_ARGUMENT,
+                Status(absl::StatusCode::kInvalidArgument,
                        "Leading dim_size of both tensors must match."));
 
     // this is required because we do indexing in int32 on the GPU
     OP_REQUIRES(ctx, values_t.NumElements() < std::numeric_limits<int>::max(),
-                Status(error::INVALID_ARGUMENT,
+                Status(absl::StatusCode::kInvalidArgument,
                        "values tensor size must less than INT_MAX"));
 
     Tensor* output_t;
@@ -174,6 +203,14 @@ class LowerBoundOp : public OpKernel {
     auto output = output_t->template flat<OutType>();
     const auto sorted_inputs = sorted_inputs_t.template flat<T>();
     const auto values = values_t.template flat<T>();
+
+    // For empty inputs, all values will be placed at the zeroth position.
+    if (sorted_inputs.size() == 0) {
+      functor::SetZeroFunctor<Device, OutType> set_zero;
+      set_zero(ctx->eigen_device<Device>(), output);
+      return;
+    }
+
     OP_REQUIRES_OK(
         ctx, functor::LowerBoundFunctor<Device, T, OutType>::Compute(
                  ctx, sorted_inputs, values, sorted_inputs_t.dim_size(0),

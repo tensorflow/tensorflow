@@ -16,8 +16,10 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOCO_LOGGING_CONVERSION_LOG_UTIL_H_
 
 #include <map>
+#include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/lite/toco/logging/toco_conversion_log.pb.h"
 #include "tensorflow/lite/toco/model.h"
 
@@ -25,7 +27,7 @@ namespace toco {
 
 // This function scans through the error message string, extracts the part about
 // missing ops and prunes away all other information in the error info.
-std::string SanitizeErrorMessage(const std::string& error_message);
+std::string SanitizeErrorMessage(absl::string_view error_message);
 
 // Populates the TocoConversionLog proto after analyzing the model.
 void PopulateConversionLog(const Model& model, TocoConversionLog* log);

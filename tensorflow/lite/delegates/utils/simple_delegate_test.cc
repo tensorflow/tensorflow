@@ -13,21 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <memory>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/delegates/utils/dummy_delegate/dummy_delegate.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/builtin_op_kernels.h"
 
 namespace tflite {
 namespace {
 class TestDelegate : public ::testing::Test {
  protected:
   void SetUp() override {
-    interpreter_.reset(new Interpreter);
+    interpreter_ = std::make_unique<Interpreter>();
     interpreter_->AddTensors(5);
     interpreter_->SetInputs({0, 1});
     interpreter_->SetOutputs({3, 4});

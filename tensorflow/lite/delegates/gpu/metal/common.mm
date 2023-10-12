@@ -55,6 +55,70 @@ absl::Status CreateComputeProgram(id<MTLDevice> device, const std::string& code,
   return absl::OkStatus();
 }
 
+absl::Status CreateComputeProgramWithArgumentBuffer(
+    id<MTLDevice> device, const std::string& code, const std::string& function_name,
+    const std::map<std::string, std::string>& macros, id<MTLComputePipelineState>* program,
+    id<MTLArgumentEncoder>* arguments_encoder) {
+  if (@available(macOS 10.13, iOS 11.0, tvOS 11.0, *)) {
+    id<MTLFunction> function;
+    RETURN_IF_ERROR(CreateFunction(device, code, "ComputeFunction", macros, &function));
+    *arguments_encoder = [function newArgumentEncoderWithBufferIndex:0];
+    if (!*arguments_encoder) {
+      return absl::InternalError("Failed to get MTLArgumentEncoder.");
+    }
+    MTLComputePipelineDescriptor* pipeline_desc = [[MTLComputePipelineDescriptor alloc] init];
+    pipeline_desc.computeFunction = function;
+    NSError* error = nil;
+    *program = [device newComputePipelineStateWithDescriptor:pipeline_desc
+                                                     options:MTLPipelineOptionNone
+                                                  reflection:nullptr
+                                                       error:&error];
+    if (!*program) {
+      NSString* error_string =
+          [NSString stringWithFormat:@"newComputePipelineStateWithDescriptor: %@",
+                                     [error localizedDescription]];
+      return absl::InternalError([error_string UTF8String]);
+    }
+    return absl::OkStatus();
+  } else {
+    return absl::InternalError("Metal argument buffers available since ios 11, tvos 11 or macos "
+                               "10.13.");
+  }
+}
+
+absl::Status CreateComputeProgramWithICBSupport(id<MTLDevice> device, const std::string& code,
+                                                const std::string& function_name,
+                                                const std::map<std::string, std::string>& macros,
+                                                id<MTLComputePipelineState>* program,
+                                                id<MTLArgumentEncoder>* arguments_encoder) {
+  if (@available(macOS 11.00, iOS 13.0, tvOS 13.0, *)) {
+    id<MTLFunction> function;
+    RETURN_IF_ERROR(CreateFunction(device, code, "ComputeFunction", macros, &function));
+    *arguments_encoder = [function newArgumentEncoderWithBufferIndex:0];
+    if (!*arguments_encoder) {
+      return absl::InternalError("Failed to get MTLArgumentEncoder.");
+    }
+    MTLComputePipelineDescriptor* pipeline_desc = [[MTLComputePipelineDescriptor alloc] init];
+    pipeline_desc.computeFunction = function;
+    pipeline_desc.supportIndirectCommandBuffers = TRUE;
+    NSError* error = nil;
+    *program = [device newComputePipelineStateWithDescriptor:pipeline_desc
+                                                     options:MTLPipelineOptionNone
+                                                  reflection:nullptr
+                                                       error:&error];
+    if (!*program) {
+      NSString* error_string =
+          [NSString stringWithFormat:@"newComputePipelineStateWithDescriptor: %@",
+                                     [error localizedDescription]];
+      return absl::InternalError([error_string UTF8String]);
+    }
+    return absl::OkStatus();
+  } else {
+    return absl::InternalError("Indirect compute command buffer available since ios 13, tvos 13 "
+                               "or macos 11.00");
+  }
+}
+
 absl::Status CreateFunction(id<MTLDevice> device, const std::string& code,
                             const std::string& function_name,
                             const std::map<std::string, std::string>& macros,
@@ -62,7 +126,11 @@ absl::Status CreateFunction(id<MTLDevice> device, const std::string& code,
   MTLCompileOptions* options = [[MTLCompileOptions alloc] init];
 
   // Runtime checks for the iOS version independently of minimum target iOS.
-  if (@available(macOS 10.14, iOS 12.0, tvOS 12.0, *)) {
+  if (@available(macOS 11.0, iOS 14.0, tvOS 14.0, *)) {
+    [options setLanguageVersion:MTLLanguageVersion2_3];
+  } else if (@available(macOS 10.15, iOS 13.0, tvOS 13.0, *)) {
+    [options setLanguageVersion:MTLLanguageVersion2_2];
+  } else if (@available(macOS 10.14, iOS 12.0, tvOS 12.0, *)) {
     [options setLanguageVersion:MTLLanguageVersion2_1];
   } else if (@available(macOS 10.13, iOS 11.0, tvOS 11.0, *)) {
     [options setLanguageVersion:MTLLanguageVersion2_0];
@@ -162,6 +230,8 @@ MTLPixelFormat DataTypeToRGBAPixelFormat(DataType type, bool normalized) {
       return MTLPixelFormatRGBA32Sint;
     case DataType::UINT32:
       return MTLPixelFormatRGBA32Uint;
+    case DataType::BOOL:
+      return MTLPixelFormatRGBA8Uint;
     default:
       return MTLPixelFormatInvalid;
   }
