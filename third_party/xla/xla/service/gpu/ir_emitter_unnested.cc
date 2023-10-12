@@ -3117,6 +3117,11 @@ Status IrEmitterUnnested::EmitOp(
     return OkStatus();
   }
 
+  if (mlir::isa<mlir::lmhlo::CommandBufferOp>(op)) {
+    // TODO(b/304824183): Emit a command buffer thunk when it's implemented.
+    return InternalError("Command buffer is unimplemented");
+  }
+
   // Point to point communication operations are only implemented as XLA
   // GPU runtime custom calls.
   bool is_gpu_runtime = ir_emitter_context_->debug_options()
