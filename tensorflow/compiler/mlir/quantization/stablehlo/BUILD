@@ -34,6 +34,7 @@ cc_library(
         "passes/prepare_srq_quantize.cc",
         "passes/prepare_srq_quantize.inc",
         "passes/quantize_weight.cc",
+        "passes/unfuse_mhlo_batch_norm.cc",
     ],
     hdrs = [
         "passes/passes.h",
@@ -60,6 +61,7 @@ cc_library(
         "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo:mhlo_passes",
         "@stablehlo//:stablehlo_ops",
     ],
     # Alwayslink is required for registering the MLIR passes.

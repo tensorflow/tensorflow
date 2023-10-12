@@ -1,4 +1,4 @@
-/* Copyright 2023 The StableHLO Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,3 +30,6 @@ def PrepareSrqQuantizePass : Pass<"stablehlo-prepare-srq-quantize", "mlir::func:
   ];
 }
 
+def UnfuseMhloBatchNormPass : Pass<"stablehlo-unfuse-mhlo-batch-norm", "mlir::func::FuncOp"> {
+  let summary = "Unfuses batch normalization into arithmetic ops.";
+}
