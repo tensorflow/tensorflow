@@ -1056,8 +1056,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
-  const DebugOptions& debug_options = module->config().debug_options();
-  TF_RETURN_IF_ERROR(LoadAutotuneResultsFromFile(debug_options));
+  TF_RETURN_IF_ERROR(
+      LoadAutotuneResultsFromFile(module->config().debug_options()));
 
   const std::optional<std::string> unoptimized_fingerprint =
       MaybeUploadUnoptimizedGpuSymbols(
@@ -1092,7 +1092,8 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     MaybeUploadGpuSymbolMapping(*unoptimized_fingerprint,
                                 *optimized_fingerprint);
   }
-  TF_RETURN_IF_ERROR(SerializeAutotuneResultsToFile(debug_options));
+  TF_RETURN_IF_ERROR(
+      SerializeAutotuneResultsToFile(module->config().debug_options()));
 
   return std::move(module);
 }
