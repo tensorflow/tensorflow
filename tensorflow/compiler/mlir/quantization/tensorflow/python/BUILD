@@ -141,8 +141,7 @@ pytype_strict_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:importer",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/ops:variables",
