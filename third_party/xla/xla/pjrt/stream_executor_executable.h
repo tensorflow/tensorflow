@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PJRT_STREAM_EXECUTOR_UNLOADED_EXECUTABLE_H_
-#define XLA_PJRT_STREAM_EXECUTOR_UNLOADED_EXECUTABLE_H_
+#ifndef XLA_PJRT_STREAM_EXECUTOR_EXECUTABLE_H_
+#define XLA_PJRT_STREAM_EXECUTOR_EXECUTABLE_H_
 
 #include "absl/status/status.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -22,12 +22,9 @@ limitations under the License.
 #include "xla/service/compiler.h"
 
 namespace xla {
-// TODO(b/300657649): Rename existing PjRtStreamExecutorExecutable to
-// PjRtStreamExecutorLoadedExecutable, and this one to
-// PjRtStreamExecutorExecutable.
-class StreamExecutorUnloadedExecutable : public PjRtExecutable {
+class StreamExecutorExecutable : public PjRtExecutable {
  public:
-  StreamExecutorUnloadedExecutable(
+  StreamExecutorExecutable(
       const CompileOptions& compile_options,
       std::vector<std::unique_ptr<xla::AotCompilationResult>> executables,
       int num_replicas, int num_partitions, absl::string_view name)
@@ -75,4 +72,4 @@ class StreamExecutorUnloadedExecutable : public PjRtExecutable {
 };
 }  // namespace xla
 
-#endif  // XLA_PJRT_STREAM_EXECUTOR_UNLOADED_EXECUTABLE_H_
+#endif  // XLA_PJRT_STREAM_EXECUTOR_EXECUTABLE_H_

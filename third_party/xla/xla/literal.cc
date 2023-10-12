@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/literal.h"
 
 #include <algorithm>
-#include <cmath>
 #include <complex>
 #include <cstdint>
 #include <cstring>
@@ -1608,7 +1607,7 @@ template <typename NativeSrcT, typename NativeDestT>
 void ConvertBetweenNativeTypes(absl::Span<const NativeSrcT> src_data,
                                void* dst_base) {
   static_assert(!std::is_same_v<NativeSrcT, NativeDestT>);
-  auto converter = [](NativeSrcT src) {
+  auto converter = [](NativeSrcT src) -> NativeDestT {
     // C++ [conv.bool]p1:
     //   A prvalue of arithmetic [...] type can be converted to a prvalue of
     //   type bool. A zero value [...] is converted to false; any other value is
@@ -1627,10 +1626,14 @@ void ConvertBetweenNativeTypes(absl::Span<const NativeSrcT> src_data,
       if (src != src) {
         return NativeDestT{0};
       }
-      src = std::clamp(
-          src,
-          static_cast<NativeSrcT>(std::numeric_limits<NativeDestT>::lowest()),
-          static_cast<NativeSrcT>(std::numeric_limits<NativeDestT>::max()));
+      if (src >=
+          static_cast<NativeSrcT>(std::numeric_limits<NativeDestT>::max())) {
+        return std::numeric_limits<NativeDestT>::max();
+      }
+      if (src <=
+          static_cast<NativeSrcT>(std::numeric_limits<NativeDestT>::lowest())) {
+        return std::numeric_limits<NativeDestT>::lowest();
+      }
     }
     return static_cast<NativeDestT>(src);
   };

@@ -668,7 +668,8 @@ class MIOpenSupport : public dnn::DnnSupport {
       ScratchAllocator* scratch_allocator,
       std::vector<dnn::ProfileResult>* out_algorithms);
 
-  SE_DISALLOW_COPY_AND_ASSIGN(MIOpenSupport);
+  MIOpenSupport(const MIOpenSupport&) = delete;
+  void operator=(const MIOpenSupport&) = delete;
 };
 
 // A helper function to decide whether to use

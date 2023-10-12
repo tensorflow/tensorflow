@@ -261,7 +261,8 @@ class GatherOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(GatherOp);
+  GatherOp(const GatherOp&) = delete;
+  void operator=(const GatherOp&) = delete;
 
   // The number of batch dimensions, as passed in the batch_dims attribute.
   // It must be less than or equal to rank(indices).

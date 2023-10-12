@@ -168,8 +168,8 @@ func.func @scf.forall_private_var(%t: tensor<10xf32>) -> f32 {
   // CHECK: scf.forall
 
   // Load from the copy and store into the shared output.
-  // CHECK:   %[[subview:.*]] = memref.subview %[[t]]
-  // CHECK:   memref.load %[[t_copy]]
+  // CHECK:   %[[subview:.*]] = memref.subview %[[t_copy]]
+  // CHECK:   memref.load %[[t]]
   // CHECK:   memref.store %{{.*}}, %[[subview]]
   %0 = scf.forall (%tid) = (%c0) to (%c2) step (%c1)
       shared_outs (%o = %t) -> (tensor<10xf32>) {

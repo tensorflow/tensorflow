@@ -85,6 +85,18 @@ foreach pair  = [[MHLO_AndOp, CHLO_BroadcastAndOp, TF_BitwiseAndOp],
   def : Pat<(pair[1] TF_IntTensor:$l, TF_IntTensor:$r, $broadcast_dimensions),
             (pair[2] $l, $r),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
+  def : Pat<(pair[0] (MHLO_BroadcastInDimOp:$output
+                                            TF_IntTensor:$bcast_operand,
+                                            $broadcast_dimensions),
+                      TF_IntTensor:$r),
+            (pair[2] $bcast_operand, $r),
+            [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
+  def : Pat<(pair[0] TF_IntTensor:$l,
+                     (MHLO_BroadcastInDimOp:$output
+                                            TF_IntTensor:$bcast_operand,
+                                            $broadcast_dimensions)),
+            (pair[2] $l, $bcast_operand),
+            [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
 }
 
 foreach pair  = [[MHLO_AndOp, CHLO_BroadcastAndOp, TF_LogicalAndOp],
@@ -300,6 +312,22 @@ foreach p = [[TF_EqualOp, MHLO_ComparisonDirectionValue<"EQ">],
              [TF_NotEqualOp, MHLO_ComparisonDirectionValue<"NE">]] in {
   def : Pat<(MHLO_CompareOp $l, $r, p[1], IsMhloTFCompareType:$type),
             (p[0] $l, $r, ConstBoolAttrTrue)>;
+  def : Pat<(MHLO_CompareOp (MHLO_BroadcastInDimOp:$output
+                              $bcast_operand,
+                              $broadcast_dimensions),
+                            $r,
+                            p[1],
+                            IsMhloTFCompareType:$type),
+            (p[0] $bcast_operand, $r, ConstBoolAttrTrue),
+            [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
+  def : Pat<(MHLO_CompareOp $l,
+                            (MHLO_BroadcastInDimOp:$output
+                              $bcast_operand,
+                              $broadcast_dimensions),
+                            p[1],
+                            IsMhloTFCompareType:$type),
+            (p[0] $l, $bcast_operand, ConstBoolAttrTrue),
+            [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
 }
 
 foreach p = [[TF_GreaterEqualOp, CHLO_ComparisonDirectionValue<"GE">],

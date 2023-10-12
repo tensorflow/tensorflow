@@ -50,7 +50,7 @@ Status CallNestedComputation(llvm::IRBuilder<>* builder,
 StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalars(
     llvm::IRBuilder<>* builder, IrEmitterContext& ir_emitter_context,
     const HloComputation& computation,
-    absl::Span<llvm::Value* const> parameter_scalars);
+    absl::Span<llvm::Value* const> parameter_elements);
 
 // Like CallNestedComputationWithScalars, but parameters are scalar addresses.
 StatusOr<std::vector<llvm::Value*>> CallNestedComputationWithScalarAddrs(

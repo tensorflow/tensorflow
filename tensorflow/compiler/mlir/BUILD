@@ -247,11 +247,14 @@ tf_cc_test(
     srcs = ["mlir_graph_optimization_pass_test.cc"],
     deps = [
         ":mlir_graph_optimization_pass",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:optimization_registry",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/lib/monitoring:cell_reader",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
 )

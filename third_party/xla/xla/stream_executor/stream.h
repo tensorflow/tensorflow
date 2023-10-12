@@ -29,6 +29,7 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/numeric_options.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/stream_executor/temporary_memory_manager.h"
@@ -1364,6 +1366,11 @@ class Stream {
   // Returns a debugging string "[stream=0x...,impl=0x...]".
   std::string DebugStreamPointers() const;
 
+  void SetPriority(StreamPriority priority);
+  void SetPriority(int priority);
+
+  std::variant<StreamPriority, int> priority() const;
+
  private:
   template <typename... Args>
   friend struct ThenBlasImpl;  // for implementing ThenBlasXXX.
@@ -1492,7 +1499,8 @@ class Stream {
     }
   }
 
-  SE_DISALLOW_COPY_AND_ASSIGN(Stream);
+  Stream(const Stream &) = delete;
+  void operator=(const Stream &) = delete;
 };
 
 ////////////

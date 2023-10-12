@@ -5,6 +5,8 @@ licenses(["notice"])
 
 exports_files(["LICENSE.txt"])
 
+load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "cuda_library",
@@ -13,6 +15,44 @@ load(
     "@local_config_nccl//:build_defs.bzl",
     "cuda_rdc_library",
     "gen_device_srcs",
+)
+
+NCCL_MAJOR = 2
+
+NCCL_MINOR = 16
+
+NCCL_PATCH = 5
+
+NCCL_VERSION = NCCL_MAJOR * 10000 + NCCL_MINOR * 100 + NCCL_PATCH  # e.g., 21605
+
+expand_template(
+    name = "nccl_header_version",
+    out = "src/nccl.h",
+    substitutions = {
+        "${nccl:Major}": str(NCCL_MAJOR),
+        "${nccl:Minor}": str(NCCL_MINOR),
+        "${nccl:Patch}": str(NCCL_PATCH),
+        "${nccl:Suffix}": "\"\"",
+        "${nccl:Version}": str(NCCL_VERSION),
+    },
+    template = "src/nccl.h.in",
+)
+
+# This additional header allows us to determine the configured NCCL version
+# without including the rest of NCCL.
+write_file(
+    name = "nccl_config_header",
+    out = "nccl_config.h",
+    content = [
+        "#define TF_NCCL_VERSION \"{}\"".format(NCCL_MAJOR),
+    ],
+)
+
+cc_library(
+    name = "nccl_config",
+    hdrs = ["nccl_config.h"],
+    include_prefix = "third_party/nccl",
+    visibility = ["//visibility:public"],
 )
 
 cc_library(

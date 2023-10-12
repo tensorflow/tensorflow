@@ -196,6 +196,9 @@ class TfrtCpuClient final : public PjRtClient {
       absl::string_view serialized,
       std::optional<CompileOptions> options) override;
 
+  StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
+      Status error, const Shape& shape, PjRtDevice* device) override;
+
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) override;
 

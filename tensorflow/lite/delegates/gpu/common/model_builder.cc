@@ -433,8 +433,8 @@ class ClampOperationsParser : public TFLiteOperationParser {
     // We replace clamp(...) with sequence of elementwise ops:
     // substaction -> usual relu with alpha = 0.0 -> addition.
     // node_sub = v0 = v - a // add op (add -a)
-    // node_relu = v1 = clamp(v0, 0.0, clip); // relu op alpha = 0.0,
-    // clip = b - a;
+    // node_relu = v1 = clamp(v0, 0.0, activation_max); // relu op alpha = 0.0,
+    // activation_max = b - a;
     // node_add = v2 = v1 + a // add op (add a)
     Node* node_sub = graph->NewNode();
     Node* node_relu = graph->NewNode();
@@ -447,7 +447,7 @@ class ClampOperationsParser : public TFLiteOperationParser {
 
     ReLUAttributes relu_attr;
     relu_attr.alpha = 0.0f;
-    relu_attr.clip = clamp_b_ - clamp_a_;
+    relu_attr.activation_max = clamp_b_ - clamp_a_;
     node_relu->operation.type = ToString(OperationType::RELU);
     node_relu->operation.attributes = relu_attr;
 
@@ -1943,7 +1943,8 @@ class QuantizeOperationParser : public TFLiteOperationParser {
 
 class ReLUOperationParser : public TFLiteOperationParser {
  public:
-  explicit ReLUOperationParser(int clip) : clip_(clip) {}
+  explicit ReLUOperationParser(int activation_min, int activation_max)
+      : activation_min_(activation_min), activation_max_(activation_max) {}
 
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
@@ -1963,13 +1964,15 @@ class ReLUOperationParser : public TFLiteOperationParser {
     const TfLiteLeakyReluParams* tf_options;
     auto status = RetrieveBuiltinData(tflite_node, &tf_options);
     attr.alpha = status.ok() ? tf_options->alpha : 0;
-    attr.clip = clip_;
+    attr.activation_min = activation_min_;
+    attr.activation_max = activation_max_;
     node->operation.attributes = attr;
     return reader->AddOutputs(node);
   }
 
  private:
-  const int clip_;
+  const int activation_min_;
+  const int activation_max_;
 };
 
 class ResamplerOperationParser : public TFLiteOperationParser {
@@ -3207,13 +3210,13 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       }
       break;
     case kTfLiteBuiltinRelu:
-      return std::make_unique<ReLUOperationParser>(0);
+      return std::make_unique<ReLUOperationParser>(0, 0);
     case kTfLiteBuiltinRelu6:
-      return std::make_unique<ReLUOperationParser>(6);
+      return std::make_unique<ReLUOperationParser>(0, 6);
     case kTfLiteBuiltinReluN1To1:
-      return std::make_unique<ClampOperationsParser>(-1.0, 1.0);
+      return std::make_unique<ReLUOperationParser>(-1.0, 1.0);
     case kTfLiteBuiltinLeakyRelu:
-      return std::make_unique<ReLUOperationParser>(0);
+      return std::make_unique<ReLUOperationParser>(0, 0);
     case kTfLiteBuiltinPrelu:
       return std::make_unique<PReLUOperationParser>();
     case kTfLiteBuiltinReshape:

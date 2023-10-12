@@ -34,7 +34,8 @@ namespace stream_executor::gpu {
 // implementation (it's backed by CUDA or HIP graphs on NVIDIA and AMD devices).
 class GpuCommandBuffer : public internal::CommandBufferInterface {
  public:
-  GpuCommandBuffer(GpuExecutor* parent, GpuGraphHandle graph);
+  GpuCommandBuffer(CommandBuffer::Mode mode, GpuExecutor* parent,
+                   GpuGraphHandle graph);
   ~GpuCommandBuffer() override;
 
   tsl::Status Trace(Stream* stream,
@@ -47,6 +48,8 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                    const DeviceMemoryBase& src,
                                    uint64_t size) override;
+
+  CommandBuffer::Mode mode() const override { return mode_; }
 
   tsl::Status Finalize() override;
 
@@ -79,6 +82,9 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
                 "GpuGraphHandle must be a pointer");
   static_assert(std::is_pointer_v<GpuGraphExecHandle>,
                 "GpuGraphExecHandle must be a pointer");
+
+  CommandBuffer::Mode mode_;
+  bool finalized_ = false;
 
   GpuExecutor* parent_;                // not owned, must outlive *this
   GpuGraphHandle graph_ = nullptr;     // owned handle

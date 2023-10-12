@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/log/log.h"
@@ -26,7 +27,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
+#include "xla/service/gpu/hlo_traversal.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -140,17 +143,34 @@ absl::Duration ProducerInputAccessTime(
   return ret;
 }
 
-// Use HloFusionAnalysis for computing the actual number of threads that the
-// IR emitter will use. Return std::nullopt if this data is not available.
-std::optional<int64_t> EstimateThreadCount(
-    const HloInstruction* instr, const se::DeviceDescription& gpu_device_info) {
-  auto fusion = DynCast<const HloFusionInstruction>(instr);
-  if (fusion == nullptr) return std::nullopt;
-  auto analysis = HloFusionAnalysis::Create(fusion, &gpu_device_info);
-  if (!analysis.ok()) return std::nullopt;
-  auto launch_dimensions = analysis->GetLaunchDimensions();
-  if (!launch_dimensions.ok()) return std::nullopt;
-  return launch_dimensions->launch_bound();
+// Uses HloFusionAnalysis for computing the actual number of threads that the
+// IR emitter for the fusion of `producer` and `consumer` will use. Returns
+// std::nullopt if this data is not available.
+std::optional<int64_t> EstimateFusionThreadCount(
+    const HloInstruction& producer, const HloInstruction& consumer,
+    const se::DeviceDescription& device_info) {
+  auto roots = consumer.opcode() == HloOpcode::kFusion
+                   ? GetFusionRoots(*consumer.fused_instructions_computation())
+                   : std::vector<const HloInstruction*>{&consumer};
+  auto fusion_analysis = HloFusionAnalysis::Create(
+      FusionBackendConfig::default_instance(), std::move(roots),
+      MakeProducerConsumerFusion(producer, consumer), &device_info);
+  if (fusion_analysis.ok()) {
+    VLOG(10) << "Fusion analysis for " << producer.ToString() << " and "
+             << consumer.ToString() << " successful.";
+    auto launch_dimensions = fusion_analysis->GetLaunchDimensions();
+    if (launch_dimensions.ok()) {
+      VLOG(10) << "Launch dimensions for " << producer.ToString() << " and "
+               << consumer.ToString() << ": " << launch_dimensions->ToString()
+               << ".";
+      return launch_dimensions->launch_bound();
+    }
+  } else {
+    VLOG(10) << "Fusion analysis for " << producer.ToString() << " and "
+             << consumer.ToString() << " unsuccessful.";
+  }
+
+  return std::nullopt;
 }
 
 absl::Duration ComputeTime(const se::DeviceDescription& gpu_device_info,
@@ -178,7 +198,16 @@ EstimateRunTimeData EstimateRunTimeImpl(
   int64_t flops = cost_analysis->flop_count(*instr);
   float bytes_written = cost_analysis->output_bytes_accessed(*instr);
   float bytes_read = cost_analysis->bytes_accessed(*instr) - bytes_written;
-  float num_threads = ShapeUtil::ElementsInRecursive(instr->shape());
+  int64_t num_threads = ShapeUtil::ElementsInRecursive(instr->shape());
+
+  auto fusion_analysis = HloFusionAnalysis::Create(
+      FusionBackendConfig::default_instance(), {instr}, DefaultFusionBoundaryFn,
+      cost_analysis->device_info_);
+  if (fusion_analysis.ok() && fusion_analysis->GetLaunchDimensions().ok()) {
+    VLOG(10) << "Launch dimensions for unfused producer: "
+             << fusion_analysis->GetLaunchDimensions()->ToString() << ".";
+    num_threads = fusion_analysis->GetLaunchDimensions()->launch_bound();
+  }
 
   const absl::Duration compute_time =
       ComputeTime(*device_info, /*n_flops=*/flops, /*n_threads=*/num_threads);
@@ -199,7 +228,8 @@ EstimateRunTimeData EstimateRunTimeImpl(
     LOG(INFO) << "Output write time: " << write_time;
   }
 
-  return {flops, bytes_written, num_threads, write_time, exec_time};
+  return {flops, bytes_written, static_cast<float>(num_threads), write_time,
+          exec_time};
 }
 
 }  // namespace
@@ -238,8 +268,8 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
     // make it complete.
     int64_t num_threads =
         producer_data.elements_out * utilization_by_this_consumer;
-    if (auto thread_count =
-            EstimateThreadCount(fused_consumer, *cost_analysis->device_info_)) {
+    if (auto thread_count = EstimateFusionThreadCount(
+            *producer, *fused_consumer, *cost_analysis->device_info_)) {
       num_threads = std::min(*thread_count, num_threads);
     }
     const absl::Duration compute_time_by_this_consumer = ComputeTime(

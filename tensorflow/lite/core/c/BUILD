@@ -550,6 +550,7 @@ cc_test(
         ":c_api_experimental",
         ":common",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/delegates:delegate_test_util",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",

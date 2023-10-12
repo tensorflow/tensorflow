@@ -50,8 +50,13 @@ if _module_dir:
 setattr(_current_module, "estimator", estimator)
 
 # Lazy load Keras v2
+_tf_uses_legacy_keras = (
+    _os.environ.get("TF_USE_LEGACY_KERAS", None) in ("true", "True", "1"))
 setattr(_current_module, "keras", _KerasLazyLoader(globals(), mode="v2"))
-_module_dir = _module_util.get_parent_dir_for_name("keras.api._v2.keras")
+if _tf_uses_legacy_keras:
+  _module_dir = _module_util.get_parent_dir_for_name("tf_keras.api._v2.keras")
+else:
+  _module_dir = _module_util.get_parent_dir_for_name("keras.api._v2.keras")
 _current_module.__path__ = [_module_dir] + _current_module.__path__
 
 

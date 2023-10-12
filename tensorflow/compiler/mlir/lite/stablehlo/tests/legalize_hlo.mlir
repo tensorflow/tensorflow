@@ -429,6 +429,18 @@ func.func @bitwise_or(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi3
 // CHECK:           return %[[VAL_2]] : tensor<1x4xi8>
 // CHECK:         }
 func.func @bitwise_or_broadcast(%arg0: tensor<1xi8>, %arg1: tensor<1x4xi8>) -> tensor<1x4xi8> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1]> : tensor<1xi64>} : (tensor<1xi8>) -> tensor<1x4xi8>
+  %1 = mhlo.or %0, %arg1 : tensor<1x4xi8>
+  func.return %1 : tensor<1x4xi8>
+}
+
+// CHECK-LABEL:   func @bitwise_or_broadcast_chlo(
+// CHECK-SAME:                                    %[[VAL_0:.*]]: tensor<1xi8>,
+// CHECK-SAME:                                    %[[VAL_1:.*]]: tensor<1x4xi8>) -> tensor<1x4xi8> {
+// CHECK:           %[[VAL_2:.*]] = "tf.BitwiseOr"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1xi8>, tensor<1x4xi8>) -> tensor<1x4xi8>
+// CHECK:           return %[[VAL_2]] : tensor<1x4xi8>
+// CHECK:         }
+func.func @bitwise_or_broadcast_chlo(%arg0: tensor<1xi8>, %arg1: tensor<1x4xi8>) -> tensor<1x4xi8> {
   %0 = "chlo.broadcast_or"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi8>, tensor<1x4xi8>) -> tensor<1x4xi8>
   func.return %0 : tensor<1x4xi8>
 }
@@ -442,6 +454,29 @@ func.func @bitwise_or_broadcast(%arg0: tensor<1xi8>, %arg1: tensor<1x4xi8>) -> t
 func.func @bitwise_or_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?xi32> {
   %0 = "chlo.broadcast_or"(%arg0, %arg1) : (tensor<?xi32>, tensor<1xi32>) -> tensor<?xi32>
   func.return %0 : tensor<?xi32>
+}
+
+// CHECK-LABEL:   func @bitwise_xor(
+// CHECK-SAME:                      %[[VAL_0:.*]]: tensor<4xi32>,
+// CHECK-SAME:                      %[[VAL_1:.*]]: tensor<4xi32>) -> tensor<4xi32> {
+// CHECK:           %[[VAL_2:.*]] = "tf.BitwiseXor"(%[[VAL_0]], %[[VAL_1]]) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+// CHECK:           return %[[VAL_2]] : tensor<4xi32>
+// CHECK:         }
+func.func @bitwise_xor(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
+  %0 = mhlo.xor %arg0, %arg1 : tensor<4xi32>
+  func.return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL:   func @bitwise_xor_broadcast(
+// CHECK-SAME:                                %[[VAL_0:.*]]: tensor<1xi8>,
+// CHECK-SAME:                                %[[VAL_1:.*]]: tensor<1x4xi8>) -> tensor<1x4xi8> {
+// CHECK:           %[[VAL_2:.*]] = "tf.BitwiseXor"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1xi8>, tensor<1x4xi8>) -> tensor<1x4xi8>
+// CHECK:           return %[[VAL_2]] : tensor<1x4xi8>
+// CHECK:         }
+func.func @bitwise_xor_broadcast(%arg0: tensor<1xi8>, %arg1: tensor<1x4xi8>) -> tensor<1x4xi8> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1]> : tensor<1xi64>} : (tensor<1xi8>) -> tensor<1x4xi8>
+  %1 = mhlo.xor %0, %arg1 : tensor<1x4xi8>
+  func.return %1 : tensor<1x4xi8>
 }
 
 // CHECK-LABEL:   func @bitwise_and(
@@ -462,6 +497,18 @@ func.func @bitwise_and(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi
 // CHECK:           return %[[VAL_2]] : tensor<1x4xi8>
 // CHECK:         }
 func.func @bitwise_and_broadcast(%arg0: tensor<1xi8>, %arg1: tensor<1x4xi8>) -> tensor<1x4xi8> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1]> : tensor<1xi64>} : (tensor<1xi8>) -> tensor<1x4xi8>
+  %1 = mhlo.and %0, %arg1 : tensor<1x4xi8>
+  func.return %1 : tensor<1x4xi8>
+}
+
+// CHECK-LABEL:   func @bitwise_and_broadcast_chlo(
+// CHECK-SAME:                                     %[[VAL_0:.*]]: tensor<1xi8>,
+// CHECK-SAME:                                     %[[VAL_1:.*]]: tensor<1x4xi8>) -> tensor<1x4xi8> {
+// CHECK:           %[[VAL_2:.*]] = "tf.BitwiseAnd"(%[[VAL_0]], %[[VAL_1]]) : (tensor<1xi8>, tensor<1x4xi8>) -> tensor<1x4xi8>
+// CHECK:           return %[[VAL_2]] : tensor<1x4xi8>
+// CHECK:         }
+func.func @bitwise_and_broadcast_chlo(%arg0: tensor<1xi8>, %arg1: tensor<1x4xi8>) -> tensor<1x4xi8> {
   %0 = "chlo.broadcast_and"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi8>, tensor<1x4xi8>) -> tensor<1x4xi8>
   func.return %0 : tensor<1x4xi8>
 }
@@ -642,12 +689,24 @@ func.func @equal_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?
 }
 
 // CHECK-LABEL:   func @equal_broadcast(
-// CHECK-SAME:                          %[[VAL_0:.*]]: tensor<1xi32>,
+// CHECK-SAME:                          %[[VAL_0:.*]]: tensor<1x1xi32>,
 // CHECK-SAME:                          %[[VAL_1:.*]]: tensor<1x2xi32>) -> tensor<1x2xi1> {
+// CHECK:           %[[VAL_2:.*]] = "tf.Equal"(%[[VAL_0]], %[[VAL_1]]) {incompatible_shape_error = true} : (tensor<1x1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+// CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
+// CHECK:         }
+func.func @equal_broadcast(%arg0: tensor<1x1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x1xi32>) -> tensor<1x2xi32>
+  %1 = "mhlo.compare"(%0, %arg1) {comparison_direction = #mhlo<comparison_direction EQ>} : (tensor<1x2xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+  func.return %1 : tensor<1x2xi1>
+}
+
+// CHECK-LABEL:   func @equal_broadcast_chlo(
+// CHECK-SAME:                               %[[VAL_0:.*]]: tensor<1xi32>,
+// CHECK-SAME:                               %[[VAL_1:.*]]: tensor<1x2xi32>) -> tensor<1x2xi1> {
 // CHECK:           %[[VAL_2:.*]] = "tf.Equal"(%[[VAL_0]], %[[VAL_1]]) {incompatible_shape_error = true} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
 // CHECK:         }
-func.func @equal_broadcast(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
+func.func @equal_broadcast_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
   %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #chlo<comparison_direction EQ>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   func.return %0 : tensor<1x2xi1>
 }
@@ -693,12 +752,24 @@ func.func @notequal(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> 
 }
 
 // CHECK-LABEL:   func @notequal_broadcast(
-// CHECK-SAME:                             %[[VAL_0:.*]]: tensor<1xi32>,
+// CHECK-SAME:                             %[[VAL_0:.*]]: tensor<1x1xi32>,
 // CHECK-SAME:                             %[[VAL_1:.*]]: tensor<1x2xi32>) -> tensor<1x2xi1> {
+// CHECK:           %[[VAL_2:.*]] = "tf.NotEqual"(%[[VAL_0]], %[[VAL_1]]) {incompatible_shape_error = true} : (tensor<1x1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+// CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
+// CHECK:         }
+func.func @notequal_broadcast(%arg0: tensor<1x1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
+  %0 = "mhlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x1xi32>) -> tensor<1x2xi32>
+  %1 = "mhlo.compare"(%0, %arg1) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<1x2xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
+  return %1 : tensor<1x2xi1>
+}
+
+// CHECK-LABEL:   func @notequal_broadcast_chlo(
+// CHECK-SAME:                                  %[[VAL_0:.*]]: tensor<1xi32>,
+// CHECK-SAME:                                  %[[VAL_1:.*]]: tensor<1x2xi32>) -> tensor<1x2xi1> {
 // CHECK:           %[[VAL_2:.*]] = "tf.NotEqual"(%[[VAL_0]], %[[VAL_1]]) {incompatible_shape_error = true} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
 // CHECK:           return %[[VAL_2]] : tensor<1x2xi1>
 // CHECK:         }
-func.func @notequal_broadcast(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
+func.func @notequal_broadcast_chlo(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi1> {
   %0 = "chlo.broadcast_compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = #chlo<comparison_direction NE>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi1>
   func.return %0 : tensor<1x2xi1>
 }
@@ -2742,6 +2813,34 @@ func.func @convert_conv2d_resize_perferred(%arg0: tensor<1x56x1248x16xf32>, %arg
     window_strides = dense<[1, 1]> : tensor<2xi64>} : (tensor<1x56x1248x16xf32>, tensor<3x1x16x1xf32>) -> tensor<1x111x1248x16xf32>
   func.return %0 : tensor<1x111x1248x16xf32>
 }
+
+// CHECK-LABEL:   func @convert_conv2d_back_prop_input_same_pad(
+// CHECK-SAME:                         %[[VAL_0:.*]]: tensor<1x256x256x2xf32>,
+// CHECK-SAME:                         %[[VAL_1:.*]]: tensor<4x4x2x2xf32>) -> tensor<1x512x512x2xf32> {
+// CHECK:           %[[VAL_3:.*]] = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK:           %[[VAL_4:.*]] = "tf.ReverseV2"(%[[VAL_1]], %[[VAL_3]]) : (tensor<4x4x2x2xf32>, tensor<2xi64>) -> tensor<4x4x2x2xf32>
+// CHECK:           %[[VAL_2:.*]] = "tf.Const"() {value = dense<[1, 512, 512, 2]> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK:           %[[VAL_5:.*]] = "tf.Conv2DBackpropInput"(%[[VAL_2]], %[[VAL_4]], %[[VAL_0]]) {data_format = "NHWC", dilations = [1, 1, 1, 1], explicit_paddings = [], padding = "SAME", strides = [1, 2, 2, 1], use_cudnn_on_gpu = true} : (tensor<4xi32>, tensor<4x4x2x2xf32>, tensor<1x256x256x2xf32>) -> tensor<1x512x512x2xf32>
+// CHECK:           return %[[VAL_5]] : tensor<1x512x512x2xf32>
+// CHECK:         }
+func.func @convert_conv2d_back_prop_input_same_pad(%arg0: tensor<1x256x256x2xf32>, %arg1: tensor<4x4x2x2xf32>) -> tensor<1x512x512x2xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[0, 1, o, i]->[b, 0, 1, f]>, feature_group_count = 1 : i64, lhs_dilation = dense<2> : tensor<2xi64>, padding = dense<[[2, 2], [2, 2]]> : tensor<2x2xi64>,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>], rhs_dilation = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>
+  } : (tensor<1x256x256x2xf32>, tensor<4x4x2x2xf32>) -> tensor<1x512x512x2xf32>
+  func.return %0 : tensor<1x512x512x2xf32>
+}
+
+// CHECK-LABEL:   func @convert_conv2d_back_prop_input_negative_pad(
+// CHECK-NOT:       "tf.Conv2DBackpropInput"
+func.func @convert_conv2d_back_prop_input_negative_pad(%arg0: tensor<1x256x256x2xf32>, %arg1: tensor<4x4x2x2xf32>) -> tensor<1x504x504x2xf32> {
+  %0 = "mhlo.convolution"(%arg0, %arg1) {batch_group_count = 1 : i64,
+    dimension_numbers = #mhlo.conv<[b, 0, 1, f]x[0, 1, o, i]->[b, 0, 1, f]>, feature_group_count = 1 : i64, lhs_dilation = dense<2> : tensor<2xi64>, padding = dense<[[-2, -2], [-2, -2]]> : tensor<2x2xi64>,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>], rhs_dilation = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>
+  } : (tensor<1x256x256x2xf32>, tensor<4x4x2x2xf32>) -> tensor<1x504x504x2xf32>
+  func.return %0 : tensor<1x504x504x2xf32>
+}
+
 
 // CHECK-LABEL:   func @convert_conv2d_back_prop_input(
 // CHECK-SAME:                         %[[VAL_0:.*]]: tensor<8x4x4x32xf32>,

@@ -709,13 +709,22 @@ TEST_F(AutoShardingTest, DISABLED_AddMeshShape2D) {
   RunAddAutoShardingWithOptions(option, 4, 2);
 }
 
-TEST_F(AutoShardingTest, DISABLED_AddMeshShape3D) {
+TEST_F(AutoShardingTest, AddMeshShape3D) {
   AutoShardingOption option;
   option.enable = true;
   option.device_mesh_shape = {2, 2, 2};
   option.device_mesh_alpha = {1.0, 1.0, 1.0};
   option.device_mesh_beta = {0.01, 0.5, 1.0};
   RunAddAutoShardingWithOptions(option, 2);
+}
+
+TEST_F(AutoShardingTest, LargeSize) {
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {1, 2, 4, 7};
+  option.device_mesh_alpha = {1.0, 1.0, 1.0, 1.0};
+  option.device_mesh_beta = {1.0, 1.0, 1.0, 1.0};
+  RunMatMulAutoShardingWithOptions(option, 8, 2);
 }
 
 TEST_F(AutoShardingTest, InvalidOptions) {
@@ -725,13 +734,6 @@ TEST_F(AutoShardingTest, InvalidOptions) {
   option.device_mesh_shape = {1, 2, 4};
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 0.5};
-  EXPECT_FALSE(option.CheckAndSetup().ok());
-  RunMatMulAutoShardingWithOptionsExpectFail(option);
-
-  // Size is too large.
-  option.device_mesh_shape = {1, 2, 4, 7};
-  option.device_mesh_alpha = {1.0, 1.0, 1.0, 1.0};
-  option.device_mesh_beta = {1.0, 1.0, 1.0, 1.0};
   EXPECT_FALSE(option.CheckAndSetup().ok());
   RunMatMulAutoShardingWithOptionsExpectFail(option);
 

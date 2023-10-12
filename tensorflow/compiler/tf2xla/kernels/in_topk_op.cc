@@ -104,7 +104,8 @@ class InTopKOp : public XlaOpKernel {
   DataType targets_dtype_;
   xla::PrimitiveType targets_type_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(InTopKOp);
+  InTopKOp(const InTopKOp&) = delete;
+  void operator=(const InTopKOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("InTopKV2")

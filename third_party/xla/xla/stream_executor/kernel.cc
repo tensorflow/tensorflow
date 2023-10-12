@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/strip.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_internal.h"
 #include "tsl/platform/demangle.h"
 
 namespace stream_executor {

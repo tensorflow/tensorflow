@@ -27,13 +27,11 @@ limitations under the License.
 
 namespace xla {
 // Implements the interfaces that are needed for the registered compiler.
-// TODO(b/285385306): current implementation purely relies on the `client`
-// Compile() functions and ignores the `topology` parameter.
 class StreamExecutorGpuCompiler : public PjRtCompiler {
  public:
   // If `gpu_target_config` is nullopt, the compiler has to compile with device,
-  // i.e. calling of `Compile` should depend on the passed-in client's runtime
-  // device information.
+  // i.e. calling of `Compile` should depend on the passed-in client's
+  // compilation functionality.
   explicit StreamExecutorGpuCompiler(const std::optional<gpu::GpuTargetConfig>
                                          gpu_target_config = std::nullopt)
       : gpu_target_config_(gpu_target_config) {}

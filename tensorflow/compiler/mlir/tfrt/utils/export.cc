@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/tf_dialect_to_executor.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -43,12 +44,13 @@ absl::Status ExportFunctionDefs(
         {{"module_name", absl::string_view(module.getName().value_or("?"))}});
   });
 
+  TF_RETURN_IF_ERROR(
+      tensorflow::tf2xla::v1::ExportFromTensorflowDialectToExecutor(module));
+
   {
     mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
 
     mlir::PassManager pm(module.getContext());
-
-    mlir::TF::AddGraphExportLoweringPasses(pm);
     pm.addPass(mlir::CreateBreakUpIslandsPass());
 
     if (mlir::failed(pm.run(module))) {

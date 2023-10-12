@@ -25,6 +25,16 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "tsl/platform/types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tsl/platform/types.h"
+
+#if GOOGLE_CUDA
+#include "xla/stream_executor/cuda/cuda_blas_lt.h"
+#endif
+
+#if TF_HIPBLASLT
+#include "xla/stream_executor/rocm/hip_blas_lt.h"
+#define CUDA_R_32F HIPBLAS_R_32F
+#endif
 
 #if GOOGLE_CUDA
 #include "xla/stream_executor/cuda/cuda_blas_lt.h"
@@ -96,8 +106,7 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
     const DataType& dtype);
 
 StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
-    se::Stream* stream, const BlasLtMatmulPlanParams& params,
-    absl::Mutex** pmu,
+    se::Stream* stream, const BlasLtMatmulPlanParams& params, absl::Mutex** pmu,
     std::optional<int> max_algorithm_count = std::nullopt);
 
 template <typename T>

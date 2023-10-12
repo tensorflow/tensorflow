@@ -1829,7 +1829,7 @@ class TestCustomAllocation : public InterpreterTest {
   }
 
   // Actual initialized allocation is more than num_bytes, to account for
-  // required_allocation.
+  // required_alignment.
   TfLiteCustomAllocation NewCustomAlloc(size_t num_bytes,
                                         int required_alignment) {
     // Extra memory to ensure alignment.

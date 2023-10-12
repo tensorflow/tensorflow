@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
+#include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
@@ -818,6 +819,37 @@ PJRT_Buffer_MemoryLayout GetMemoryLayout(const PJRT_Api* api,
   args.buffer = buffer;
   LogFatalIfPjrtError(api->PJRT_Buffer_GetMemoryLayout(&args), api);
   return args.layout;
+}
+
+xla::StatusOr<xla::Shape> BuildXlaShapeFromC(PJRT_Buffer_Type element_type,
+                                             const int64_t* dims,
+                                             size_t num_dims,
+                                             PJRT_Buffer_MemoryLayout* layout) {
+  xla::Shape shape =
+      xla::ShapeUtil::MakeShape(ConvertFromPjRtBufferType(element_type),
+                                absl::Span<const int64_t>(dims, num_dims));
+  xla::Layout cpp_layout;
+  if (layout != nullptr) {
+    switch (layout->type) {
+      case PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled: {
+        TF_ASSIGN_OR_RETURN(cpp_layout, ConvertToLayout(layout->tiled));
+        break;
+      }
+      case PJRT_Buffer_MemoryLayout_Type::
+          PJRT_Buffer_MemoryLayout_Type_Strides: {
+        TF_RETURN_IF_ERROR(absl::InvalidArgumentError(
+            "PJRT_Buffer_MemoryLayout_Type_Strides is not supported to be "
+            "converted to a xla::Shape"));
+        break;
+      }
+      default: {
+        TF_RETURN_IF_ERROR(absl::InvalidArgumentError(absl::StrCat(
+            "Unexpected PJRT_Buffer_MemoryLayout_Type type: ", layout->type)));
+      }
+    }
+    *shape.mutable_layout() = cpp_layout;
+  }
+  return shape;
 }
 
 }  // namespace pjrt

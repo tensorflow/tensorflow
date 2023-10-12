@@ -112,9 +112,9 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
             dlts.push_back(*mlir::sparse_tensor::buildLevelType(
                 mlir::sparse_tensor::LevelFormat::Singleton, ordered, unique));
             break;
-          case DimLevelType::DIM_COMPRESSED_WITH_HI:
+          case DimLevelType::DIM_LOOSE_COMPRESSED:
             dlts.push_back(*mlir::sparse_tensor::buildLevelType(
-                mlir::sparse_tensor::LevelFormat::CompressedWithHi, ordered,
+                mlir::sparse_tensor::LevelFormat::LooseCompressed, ordered,
                 unique));
             break;
           default:

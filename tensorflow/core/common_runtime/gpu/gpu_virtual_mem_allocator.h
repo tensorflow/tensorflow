@@ -106,7 +106,8 @@ class GpuVirtualMemAllocator : public tsl::SubAllocator {
   // List of mappings, sorted by va.
   std::vector<Mapping> mappings_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GpuVirtualMemAllocator);
+  GpuVirtualMemAllocator(const GpuVirtualMemAllocator&) = delete;
+  void operator=(const GpuVirtualMemAllocator&) = delete;
 };
 
 }  // namespace tensorflow

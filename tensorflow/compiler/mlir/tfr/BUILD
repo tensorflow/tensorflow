@@ -336,6 +336,10 @@ tf_py_strict_test(
 tf_python_pybind_extension(
     name = "tfr_wrapper",
     srcs = ["python/tfr_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "tfr_wrapper.pyi",
+    ],
     deps = [
         ":tfr",
         "//tensorflow/compiler/mlir/tensorflow",

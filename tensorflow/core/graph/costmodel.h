@@ -232,7 +232,8 @@ class CostModel {
 
   TensorShapeProto unknown_shape_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CostModel);
+  CostModel(const CostModel&) = delete;
+  void operator=(const CostModel&) = delete;
 };
 
 }  // namespace tensorflow

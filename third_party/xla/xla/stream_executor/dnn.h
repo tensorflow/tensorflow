@@ -1232,6 +1232,10 @@ class VersionInfo {
     return a.as_tuple() != b.as_tuple();
   }
 
+  std::string ToString() const {
+    return absl::StrCat(major_, ".", minor_, ".", patch_);
+  }
+
  private:
   int major_;
   int minor_;
@@ -2589,7 +2593,8 @@ class DnnSupport {
     return ::tsl::OkStatus();
   }
 
-  SE_DISALLOW_COPY_AND_ASSIGN(DnnSupport);
+  DnnSupport(const DnnSupport&) = delete;
+  void operator=(const DnnSupport&) = delete;
 };
 
 }  // namespace dnn

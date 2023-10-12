@@ -519,6 +519,33 @@ cc_test(
 )
 
 cc_library(
+    name = "tensor_slice_util",
+    hdrs = [
+        "tensor_slice_util.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels/internal:runtime_shape",
+        "//tensorflow/lite/kernels/internal:tensor_ctypes",
+    ],
+)
+
+cc_test(
+    name = "tensor_slice_util_test",
+    size = "small",
+    srcs = ["tensor_slice_util_test.cc"],
+    deps = [
+        ":tensor_slice_util",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels/internal:runtime_shape",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "kernel_util",
     srcs = [
         "kernel_util.cc",
@@ -753,6 +780,7 @@ BUILTIN_KERNEL_DEPS = [
     ":cpu_backend_threadpool",
     ":kernel_util",
     ":rng_util",
+    ":tensor_slice_util",
     ":lstm_eval",
     ":lstm_shared",
     ":op_macros",

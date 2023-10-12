@@ -94,36 +94,6 @@ bool HasTPUDevice(const DeviceSet& device_set) {
   return false;
 }
 
-// Check if the `graph` has parameter serverjobs and resource variable arguments
-// that are on parameter servers
-bool HasPsWithResourceVariable(const Graph& graph) {
-  // Check parameter serverjobs and resource variable arguments that are
-  // on parameter servers.
-  const std::string jobType = "ps";
-  const std::string nodeType = "_Arg";
-  const std::string attrKey = "T";
-  for (const Node* node : graph.nodes()) {
-    if (node->type_string() == nodeType) {
-      auto device_name = node->assigned_device_name();
-      DeviceNameUtils::ParsedName device;
-      if (DeviceNameUtils::ParseFullName(device_name, &device) &&
-          device.has_job && device.job == jobType) {
-        for (const auto& attr : node->attrs()) {
-          auto attr_key = attr.first;
-          auto attr_value = attr.second;
-          if (attr_key == attrKey &&
-              attr_value.value_case() == AttrValue::kType &&
-              attr_value.type() == DT_RESOURCE) {
-            return true;
-            break;
-          }
-        }
-      }
-    }
-  }
-  return false;
-}
-
 // Check that graph has tf.StatefulPartitionedCall op with _XlaMustCompile.
 bool HasQualifiedNonTPUOp(const Graph& graph) {
   const std::string kStatefulPartitionedCallOp = "StatefulPartitionedCall";
@@ -138,13 +108,6 @@ bool HasQualifiedNonTPUOp(const Graph& graph) {
     }
   }
   return false;
-}
-
-// Check if non TPU pipeline should be used
-bool EnableNonTpuBridge(const Graph& graph) {
-  // Remark that this is staging change. It will be expanded later for further
-  // check based on the requirement.
-  return HasPsWithResourceVariable(graph) && HasQualifiedNonTPUOp(graph);
 }
 
 }  // namespace
@@ -164,15 +127,7 @@ MlirOptimizationPassState GetPassStateImpl(
     const FunctionLibraryDefinition& function_library) {
   // Skip MLIR TF/XLA Bridge if no TPU devices and no qualified CPU/GPU
   // graphs are found.
-  if (!run_tpu_bridge && !EnableNonTpuBridge(graph)) {
-    // Only record CPU/GPU graphs that are qualified but filtered out
-    if (HasQualifiedNonTPUOp(graph)) {
-      metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-          /*device type*/ "cpu/gpu",
-          /*bridge version*/ "tfxla",
-          /*fallback_enabled*/ false,
-          /*result*/ "invalid_graph");
-    }
+  if (!run_tpu_bridge && !HasQualifiedNonTPUOp(graph)) {
     VLOG(3) << "Skipping MLIR CPU/GPU Bridge, "
                "graph is not qualified to run the bridge";
     return MlirOptimizationPassState::Disabled;

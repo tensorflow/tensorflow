@@ -46,14 +46,13 @@ class GpuPerformanceModelTest : public HloTestBase {
     };
   }
 
-  se::DeviceDescription dev_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
-
  public:
   GpuHloCostAnalysis::Options options_{ShapeSizeBytesFunction(),
                                        /*per_second_rates=*/{},
                                        /*count_multiple_input_accesses=*/true};
   // The reference times in the test cases below are measured
   // on A6000 by profiling the execution of the HLOs.
+  se::DeviceDescription dev_info_{TestGpuDeviceInfo::RTXA6000DeviceInfo()};
   GpuHloCostAnalysis analysis_{options_, &dev_info_};
   GpuPerformanceModelTest() : HloTestBase() {}
 };
@@ -237,6 +236,83 @@ TEST_F(GpuPerformanceModelTest, UnusedParameter) {
   GpuPerformanceModel::RunTimes t =
       GpuPerformanceModel::EstimateRunTimes(root, &analysis_);
   EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 2, 1);
+}
+
+TEST_F(GpuPerformanceModelTest, ComputeBoundReducesWithSameLaunchDimensions) {
+  // We compare two compute-bound reduces that do ~the same amount of compute
+  // and have the same launch dimensions. The result should be approximately
+  // the same runtime.
+  // TODO(csigg): Once we take occupancy into account for memory bandwidth, we
+  // can make this more realistic.
+  absl::string_view small_large_reduce_hlo = R"(
+HloModule testmodule
+
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  log0 = f32[] log(p0)
+  log1 = f32[] log(log0)
+  log2 = f32[] log(log1)
+  log3 = f32[] log(log2)
+  log4 = f32[] log(log3)
+  ROOT max = f32[] maximum(log4, p1)
+}
+
+ENTRY fusion {
+  c = f32[] constant(-inf)
+  p0 = f32[150,32,128] parameter(0)
+  reduce.1 = f32[150,32] reduce(p0, c), dimensions={2}, to_apply=max
+  ROOT reduce.2 = f32[150] reduce(reduce.1, c), dimensions={1}, to_apply=max
+}
+)";
+
+  absl::string_view large_small_reduce_hlo = R"(
+HloModule testmodule
+
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  log0 = f32[] log(p0)
+  log1 = f32[] log(log0)
+  log2 = f32[] log(log1)
+  log3 = f32[] log(log2)
+  log4 = f32[] log(log3)
+  ROOT max = f32[] maximum(log4, p1)
+}
+
+ENTRY fusion {
+  c = f32[] constant(-inf)
+  p0 = f32[150,128,32] parameter(0)
+  reduce.1 = f32[150,128] reduce(p0, c), dimensions={2}, to_apply=max
+  ROOT reduce.2 = f32[150] reduce(reduce.1, c), dimensions={1}, to_apply=max
+}
+)";
+
+  auto run = [&](absl::string_view hlo_text)
+      -> StatusOr<GpuPerformanceModel::RunTimes> {
+    TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+    GpuHloCostAnalysis analysis(options_, &dev_info_);
+    TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&analysis));
+
+    auto* producer =
+        module->entry_computation()->GetInstructionWithName("reduce.1");
+    std::vector<HloInstruction*> consumers{
+        module->entry_computation()->GetInstructionWithName("reduce.2")};
+
+    return GpuPerformanceModel::EstimateRunTimes(producer, &analysis,
+                                                 consumers);
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(auto large_small_reduce_runtime,
+                          run(small_large_reduce_hlo));
+  TF_ASSERT_OK_AND_ASSIGN(auto small_large_reduce_runtime,
+                          run(large_small_reduce_hlo));
+
+  // Ignoring memory access patterns and occupancy, the runtime should be about
+  // the same.
+  EXPECT_NEAR(absl::ToInt64Microseconds(large_small_reduce_runtime.time_fused),
+              absl::ToInt64Microseconds(small_large_reduce_runtime.time_fused),
+              2);
 }
 
 }  // namespace

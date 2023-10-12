@@ -1,5 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary", "tf_cc_test")
 
 # Note: keep the following lines separate due to the way copybara works
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
@@ -126,6 +126,33 @@ cc_library(
 )
 
 cc_library(
+    name = "lower_cluster_to_runtime_ops",
+    srcs = ["transforms/lower_cluster_to_runtime_ops.cc"],
+    hdrs = [
+        "transforms/lower_cluster_to_runtime_ops.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
+        "//tensorflow/core:lib_proto_parsing",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@local_tsl//tsl/platform:status",
+    ],
+)
+
+tf_cc_test(
+    name = "lower_cluster_to_runtime_ops_test",
+    srcs = ["transforms/lower_cluster_to_runtime_ops_test.cc"],
+    deps = [
+        ":lower_cluster_to_runtime_ops",
+        "//tensorflow/core:test",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "corert_converter",
     srcs = [
         "transforms/corert_converter.cc",
@@ -222,6 +249,7 @@ cc_library(
         ":corert_converter",
         ":cost_analysis",
         ":fallback_converter",
+        ":lower_cluster_to_runtime_ops",
         ":tensor_array_side_effect_analysis",
         ":tfrt_pipeline_options",
         ":tpu_passes",
@@ -705,6 +733,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:export_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tf2xla/api/v1:tf_dialect_to_executor",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",

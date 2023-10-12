@@ -172,8 +172,20 @@ cc_library(
     srcs = ["tf_dialect_to_executor.cc"],
     hdrs = ["tf_dialect_to_executor.h"],
     deps = [
+        "//tensorflow/compiler/jit:flags_headers",
+        "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
+        "//tensorflow/compiler/mlir/tf2xla/internal:logging_hooks",
+        "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
         "@local_tsl//tsl/platform:status",
     ],
 )
@@ -181,10 +193,20 @@ cc_library(
 tf_cc_test(
     name = "tf_dialect_to_executor_test",
     srcs = ["tf_dialect_to_executor_test.cc"],
+    data = [
+        "testdata/empty_func.mlir",
+        "testdata/invalid_executor.mlir",
+    ],
     deps = [
         ":tf_dialect_to_executor",
+        "//tensorflow/compiler/mlir:register_common_dialects",
+        "//tensorflow/core/platform:resource_loader",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
         "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:status",
     ],
 )

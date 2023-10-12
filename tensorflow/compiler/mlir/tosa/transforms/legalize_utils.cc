@@ -80,8 +80,7 @@ std::optional<Value> buildReshapeWithDynamicDims(PatternRewriter& rewriter,
   llvm::SmallVector<int64_t> static_dims;
 
   if (output_type.hasRank()) {
-    static_dims.append(output_type.getShape().begin(),
-                       output_type.getShape().end());
+    static_dims = tensorflow::ConvertMlirShapeToTF(output_type.getShape());
   } else {
     static_dims.resize(dims.size(), tensorflow::kTFDynamicSize);
   }

@@ -107,7 +107,8 @@ class InfeedDequeueOp : public XlaOpKernel {
   DataType dtype_;
   xla::Shape xla_shape_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(InfeedDequeueOp);
+  InfeedDequeueOp(const InfeedDequeueOp&) = delete;
+  void operator=(const InfeedDequeueOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("InfeedDequeue"), InfeedDequeueOp);
@@ -156,7 +157,8 @@ class InfeedDequeueTupleOp : public XlaOpKernel {
   std::vector<xla::Shape> xla_shapes_;
   xla::Shape tuple_shape_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(InfeedDequeueTupleOp);
+  InfeedDequeueTupleOp(const InfeedDequeueTupleOp&) = delete;
+  void operator=(const InfeedDequeueTupleOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("InfeedDequeueTuple"), InfeedDequeueTupleOp);

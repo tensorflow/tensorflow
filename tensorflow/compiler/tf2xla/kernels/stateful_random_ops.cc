@@ -262,7 +262,8 @@ class StatefulUniformOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatefulUniformOp);
+  StatefulUniformOp(const StatefulUniformOp&) = delete;
+  void operator=(const StatefulUniformOp&) = delete;
 };
 
 // TODO(wangpeng): Support plain float16 to get rid of the `TypeConstraint`.
@@ -301,7 +302,8 @@ class StatefulStandardNormalOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatefulStandardNormalOp);
+  StatefulStandardNormalOp(const StatefulStandardNormalOp&) = delete;
+  void operator=(const StatefulStandardNormalOp&) = delete;
 };
 
 // TODO(wangpeng): Support plain float16 to get rid of the `TypeConstraint`.
@@ -348,7 +350,8 @@ class StatefulTruncatedNormalOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatefulTruncatedNormalOp);
+  StatefulTruncatedNormalOp(const StatefulTruncatedNormalOp&) = delete;
+  void operator=(const StatefulTruncatedNormalOp&) = delete;
 };
 
 // TODO(wangpeng): Support plain float16 to get rid of the `TypeConstraint`.
@@ -384,7 +387,8 @@ class StatefulUniformIntOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatefulUniformIntOp);
+  StatefulUniformIntOp(const StatefulUniformIntOp&) = delete;
+  void operator=(const StatefulUniformIntOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StatefulUniformInt")
@@ -417,7 +421,8 @@ class StatefulUniformFullIntOp : public XlaOpKernel {
  private:
   DataType dtype_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatefulUniformFullIntOp);
+  StatefulUniformFullIntOp(const StatefulUniformFullIntOp&) = delete;
+  void operator=(const StatefulUniformFullIntOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("StatefulUniformFullInt")
@@ -491,7 +496,8 @@ class RngSkipOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RngSkipOp);
+  RngSkipOp(const RngSkipOp&) = delete;
+  void operator=(const RngSkipOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("RngSkip").CompileTimeConstantInput("algorithm"),

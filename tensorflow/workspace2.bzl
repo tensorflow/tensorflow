@@ -331,7 +331,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "gif",
         build_file = "//third_party:gif.BUILD",
-        patch_file = ["//third_party:gif_fix_strtok_r.patch"],
+        patch_file = [
+            "//third_party:gif_fix_strtok_r.patch",
+            "//third_party:gif_fix_image_counter.patch",
+        ],
         sha256 = "31da5562f44c5f15d63340a09a4fd62b48c45620cd302f77a6d9acf0077879bd",
         strip_prefix = "giflib-5.2.1",
         system_build_file = "//third_party/systemlibs:gif.BUILD",
@@ -728,8 +731,8 @@ def _tf_repositories():
     # https://github.com/bazelbuild/rules_swift/releases
     tf_http_archive(
         name = "build_bazel_rules_swift",
-        sha256 = "12057b7aa904467284eee640de5e33853e51d8e31aae50b3fb25d2823d51c6b8",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_swift/releases/download/1.0.0/rules_swift.1.0.0.tar.gz"),
+        sha256 = "32f95dbe6a88eb298aaa790f05065434f32a662c65ec0a6aabdaf6881e4f169f",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_swift/releases/download/1.5.0/rules_swift.1.5.0.tar.gz"),
     )
 
     # https://github.com/bazelbuild/apple_support/releases

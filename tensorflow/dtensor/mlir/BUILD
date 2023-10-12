@@ -1,9 +1,10 @@
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+
 # MLIR passes for DTensor support.
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -265,6 +266,7 @@ cc_library(
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/platform:status",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/client:sharding_builder",
     ],
@@ -280,11 +282,13 @@ cc_library(
         ":device_utils",
         ":layout_parsing",
         ":op_utils",
+        ":shape_utils",
         ":spmd_expander_common",
         ":tf_dtensor_dialect",
         ":value_utils",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/core/platform:errors",
         "//tensorflow/dtensor/cc:constants",

@@ -36,8 +36,8 @@ TEST(GetExecutableOptionTest, Basic) {
   EXPECT_EQ(build_option.result_layout()->ToString(),
             xla_output_shape.ToString());
   EXPECT_EQ(build_option.alias_passthrough_params(), true);
-  EXPECT_EQ(build_option.debug_options().xla_detailed_logging_and_dumping(),
-            true);
+  EXPECT_EQ(build_option.debug_options().xla_detailed_logging(), true);
+  EXPECT_EQ(build_option.debug_options().xla_enable_dumping(), true);
 }
 
 TEST(GetExecutableOptionTest, DefaultDeviceOrdinal) {

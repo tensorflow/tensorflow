@@ -121,8 +121,7 @@ se::blas::DataType GetScaleType(se::blas::DataType c_type,
 
 StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
     se::Stream* stream, const BlasLtMatmulPlanParams& params,
-    absl::Mutex** ppmu,
-    std::optional<int> max_algorithm_count) {
+    absl::Mutex** ppmu, std::optional<int> max_algorithm_count) {
   static const int64_t max_scratch_size =
       GetWorkspaceLimit(1LL << 32);  // 4GB by default
   static const int64_t max_autotune_algorithm_count =
@@ -192,8 +191,8 @@ StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
 
     // `A` and `B` swapped (see above re. column-major output).
     se::gpu::BlasLt::MatmulPlan plan{std::move(op_desc), std::move(b_desc),
-                                      std::move(a_desc), std::move(c_desc),
-                                      std::move(d_desc)};
+                                     std::move(a_desc), std::move(c_desc),
+                                     std::move(d_desc)};
     TF_ASSIGN_OR_RETURN(
         auto preference,
         se::gpu::BlasLt::MatmulPreference::Create(max_scratch_size));

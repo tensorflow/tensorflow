@@ -52,7 +52,7 @@ struct AutoShardingSolverRequest {
   std::vector<std::vector<double>> v;
   std::vector<std::string> instruction_names;
   std::optional<int64_t> solver_timeout_in_seconds;
-  std::optional<double> overbudget_coeff;
+  std::optional<double> overbudget_coeff = 1e6;
   std::optional<double> makespan_coeff;
   std::optional<double> max_departures;
   bool crash_at_infinity_costs_check = false;

@@ -83,8 +83,8 @@ filegroup(
         "scratch_allocator.h",
         "stream.h",
         "stream_executor.h",
-        "stream_executor_internal.h",
-        "stream_executor_pimpl.h",
+        "stream_executor_internal.h",  # TODO(ezhulenev): Remove private header
+        "stream_executor_pimpl.h",  # TODO(ezhulenev): Remove private header
         "temporary_device_memory.h",
         "temporary_memory_manager.h",
         "trace_listener.h",
@@ -421,6 +421,7 @@ cc_library(
         ":device_memory",
         ":platform",
         ":stream_executor_headers",
+        ":stream_executor_internal",
         "//xla/stream_executor/platform",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
