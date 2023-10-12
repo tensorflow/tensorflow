@@ -35,8 +35,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/service/dump.h"
 #include "xla/service/fusion_node_indexing_evaluation.h"
 #include "xla/service/fusion_queue.h"
+#include "xla/service/gpu/fusion_process_dump.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/gpu_performance_model.h"
@@ -72,10 +74,12 @@ class GpuPriorityFusionQueue : public FusionQueue {
   GpuPriorityFusionQueue(
       HloComputation* computation,
       const GpuHloCostAnalysis::Options& cost_analysis_options,
-      const se::DeviceDescription* device_info, const CanFuseCallback& can_fuse)
+      const se::DeviceDescription* device_info, const CanFuseCallback& can_fuse,
+      FusionProcessDumpProto* fusion_process_dump)
       : computation_(computation),
         cost_analysis_(cost_analysis_options, device_info),
-        can_fuse_(can_fuse) {
+        can_fuse_(can_fuse),
+        fusion_process_dump_(fusion_process_dump) {
     VLOG(2) << "Running full HLO cost analysis for " << computation_->name();
     TF_CHECK_OK(computation_->Accept(&cost_analysis_));
 
@@ -135,6 +139,15 @@ class GpuPriorityFusionQueue : public FusionQueue {
   void OnFusingInstruction(HloInstruction* fusion,
                            HloInstruction* original_producer,
                            HloInstruction* original_consumer) override {
+    if (fusion_process_dump_) {
+      auto* fusion_step = fusion_process_dump_->add_fusion_steps();
+
+      // Explicit std::string is needed for OSS proto implementation.
+      fusion_step->set_fusion_name(std::string(fusion->name()));
+      fusion_step->set_producer_name(std::string(original_producer->name()));
+      fusion_step->set_consumer_name(std::string(original_consumer->name()));
+    }
+
     // The original consumer was replaced with the fusion, but it's pointer can
     // still be referenced somewhere, for example, in to_update_priority_.
     // Priority recomputation is called before DCE. Remove all references to
@@ -292,6 +305,10 @@ class GpuPriorityFusionQueue : public FusionQueue {
   // avoid recomputing priorities multiple times before we dequeue a new
   // producer.
   absl::flat_hash_set<HloInstruction*> to_update_priority_;
+
+  // Proto with structured logs of fusion decisions. Used only for debugging. If
+  // null, logging is disabled.
+  FusionProcessDumpProto* fusion_process_dump_;
 };
 
 }  // namespace
@@ -315,6 +332,25 @@ class GpuPriorityFusionQueue : public FusionQueue {
       break;
   }
   return InstructionFusion::IsExpensive(instruction);
+}
+
+StatusOr<bool> GpuPriorityFusion::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  bool dump_enabled = DumpingEnabledForHloModule(*module);
+  if (dump_enabled) {
+    fusion_process_dump_ = std::make_unique<FusionProcessDumpProto>();
+  }
+
+  auto result = InstructionFusion::Run(module, execution_threads);
+
+  if (dump_enabled) {
+    DumpPerModuleProtobufToFile(*module, *fusion_process_dump_,
+                                module->config().debug_options(),
+                                "priority_fusion_dump");
+  }
+
+  return result;
 }
 
 FusionDecision GpuPriorityFusion::ShouldFuseInexpensiveChecks(
@@ -399,7 +435,8 @@ std::unique_ptr<FusionQueue> GpuPriorityFusion::GetFusionQueue(
       computation, cost_analysis_options_, &device_info_,
       [this](HloInstruction* consumer, int64_t operand_index) {
         return ShouldFuse(consumer, operand_index);
-      }));
+      },
+      fusion_process_dump_.get()));
 }
 
 }  // namespace gpu
