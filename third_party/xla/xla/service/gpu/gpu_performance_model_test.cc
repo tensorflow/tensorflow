@@ -111,7 +111,7 @@ ENTRY e {
   double recorded_cycles = root->backend_config<FusionBackendConfig>()
                                ->reification_cost()
                                .end_to_end_cycles();
-  EXPECT_NEAR(recorded_cycles, 8.1, 0.1);
+  EXPECT_NEAR(recorded_cycles, 257.7, 0.1);
 }
 
 TEST_F(GpuPerformanceModelTest, LargeReadWrite) {

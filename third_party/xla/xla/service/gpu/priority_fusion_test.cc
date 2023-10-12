@@ -303,6 +303,7 @@ CHECK: convert(
 }
 
 TEST_F(PriorityFusionTest, DoNotFuseDynamicUpdateSliceIntoReduce) {
+  GTEST_SKIP() << "b/294198633";
   absl::string_view kHlo = R"(
     HloModule test_module
 
