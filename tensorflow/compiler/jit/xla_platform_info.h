@@ -96,7 +96,8 @@ class XlaPlatformInfo {
   // set an artificial refcount of one.
   std::shared_ptr<se::DeviceMemoryAllocator> device_allocator_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaPlatformInfo);
+  XlaPlatformInfo(const XlaPlatformInfo&) = delete;
+  void operator=(const XlaPlatformInfo&) = delete;
 };
 
 // Returns a set containing the device ids contained in visible_device_list or

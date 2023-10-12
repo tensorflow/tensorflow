@@ -83,7 +83,8 @@ class XlaLocalLaunchOp : public XlaLocalLaunchBase {
   ~XlaLocalLaunchOp() override;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaLocalLaunchOp);
+  XlaLocalLaunchOp(const XlaLocalLaunchOp&) = delete;
+  void operator=(const XlaLocalLaunchOp&) = delete;
 };
 
 class XlaCompileOp : public OpKernel {
