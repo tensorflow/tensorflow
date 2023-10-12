@@ -1,6 +1,6 @@
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("@local_tsl//tsl/platform:build_config.bzl", "tf_platform_deps")
-load("//xla/mlir/backends/gpu2:build_config.bzl", "if_gpu2", "if_not_gpu2")
+load("//xla/mlir/backends/gpu2:build_config.bzl", "if_gpu2", "if_not_gpu2")  # maybe @unused in OSS
+load("@local_tsl//tsl/platform:build_config.bzl", "tf_platform_deps")  # maybe @unused in OSS
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")  # maybe @unused in OSS
 
 package(
     default_visibility = ["//visibility:public"],

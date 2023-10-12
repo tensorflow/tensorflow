@@ -1,5 +1,5 @@
-load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
-load("//xla:glob_lit_test.bzl", "glob_lit_tests")
+load("//xla:glob_lit_test.bzl", "glob_lit_tests")  # maybe @unused in OSS
+load("@local_tsl//tsl:tsl.default.bzl", "filegroup")  # maybe @unused in OSS
 
 package(
     default_visibility = ["//visibility:public"],

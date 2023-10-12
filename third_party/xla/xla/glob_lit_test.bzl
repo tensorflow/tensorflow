@@ -26,7 +26,14 @@ _ALWAYS_EXCLUDE = [
     "**/* */**",
 ]
 
-def _run_lit_test(name, data, size, tags, driver, features, exec_properties):
+def _run_lit_test(
+        name,
+        data,
+        size,
+        tags,
+        driver,  # @unused
+        features,
+        exec_properties):
     """Runs lit on all tests it can find in `data` under xla/.
 
     Note that, due to Bazel's hermetic builds, lit only sees the tests that

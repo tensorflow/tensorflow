@@ -1,6 +1,6 @@
-load("//xla:strict.default.bzl", "py_strict_library", "py_strict_test")
-load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
+load("//xla:strict.default.bzl", "py_strict_library", "py_strict_test")  # maybe @unused in OSS
 load("//xla:xla.bzl", "xla_py_proto_library")
+load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 
 package(
     default_visibility = ["//visibility:public"],

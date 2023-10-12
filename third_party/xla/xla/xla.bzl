@@ -30,9 +30,8 @@ def clean_dep(target):
     # Label() call appears, i.e. @org_tensorflow.
     return str(Label(target))
 
-def xla_py_proto_library(**kwargs):
+def xla_py_proto_library(**_kwargs):
     # Note: we don't currently define a proto library target for Python in OSS.
-    _ignore = kwargs
     pass
 
 ORC_JIT_MEMORY_MAPPER_TARGETS = []

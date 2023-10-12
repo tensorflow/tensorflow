@@ -1,6 +1,6 @@
-load("//xla:xla.bzl", "xla_cc_binary")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")  # maybe @unused in OSS
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("//xla:xla.bzl", "xla_cc_binary")  # maybe @unused in OSS
 
 package(
     default_visibility = ["//visibility:public"],
@@ -21,7 +21,6 @@ config_setting(
 )
 
 # copybara:uncomment_begin(not supported in OSS build)
-#
 # build_test(
 #     name = "xla-gpu2-opt_build_test",
 #     targets = [":xla-gpu2-opt"],
