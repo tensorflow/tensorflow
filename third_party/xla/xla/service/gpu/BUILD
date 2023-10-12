@@ -1966,6 +1966,7 @@ xla_cc_test(
     deps = [
         ":gpu_device_info_for_tests",
         ":gpu_hlo_cost_analysis",
+        ":hlo_fusion_analysis",
         ":priority_fusion",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
