@@ -54,7 +54,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":device_compatibility_check",
-        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training/experimental:mixed_precision_global_state",
     ],
 )
@@ -135,6 +136,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/framework",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras",
         "//tensorflow/python/ops:cond",
