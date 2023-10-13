@@ -26,7 +26,7 @@ if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
 fi
 
 # Download libtpu.so for tensorflow-tpu builds only.
-if [[ "$TFCI_LIBTPU_DOWNLOAD_VERSION_ENABLE" == 1 ]]; then
+if [[ "$TFCI_LIBTPU_DOWNLOAD_ENABLE" == 1 ]]; then
   wget -P ./tensorflow/lib/ "$TFCI_LIBTPU_DOWNLOAD_URL"
 fi
 
