@@ -117,6 +117,20 @@ absl::Status AtomicallyWriteTFRecords(absl::string_view filename,
   return absl::OkStatus();
 }
 
+absl::Status AtomicallyWriteTFRecords(absl::string_view filename,
+                                      const std::vector<Tensor>& tensors,
+                                      absl::string_view compression,
+                                      absl::string_view temp_file,
+                                      tsl::Env* env) {
+  snapshot_util::TFRecordWriter writer(std::string(temp_file),
+                                       std::string(compression),
+                                       /*overwrite_existing=*/true);
+  TF_RETURN_IF_ERROR(writer.Initialize(env));
+  TF_RETURN_IF_ERROR(writer.WriteTensors(tensors));
+  TF_RETURN_IF_ERROR(writer.Close());
+  return env->RenameFile(std::string(temp_file), std::string(filename));
+}
+
 absl::StatusOr<std::vector<std::string>> GetChildren(
     absl::string_view directory, tsl::Env* env) {
   std::vector<std::string> files, result;

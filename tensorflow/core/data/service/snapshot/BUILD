@@ -66,6 +66,7 @@ tf_cc_test(
     srcs = ["file_utils_test.cc"],
     deps = [
         ":file_utils",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

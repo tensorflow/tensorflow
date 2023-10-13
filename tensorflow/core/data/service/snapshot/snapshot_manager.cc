@@ -435,14 +435,8 @@ absl::Status SnapshotManager::RecoverSplit(const std::string& temp_split_file,
   TF_ASSIGN_OR_RETURN(Tensor split, GetNextSplit(split_provider));
   // Uses the same temp file for split recovery. If the dispatcher fails during
   // recovery, there will be at most one temporary files for the same split.
-  // TODO(b/250921378): Consider moving this to file_utils.h.
-  snapshot_util::TFRecordWriter writer(temp_split_file,
-                                       std::string(kSplitFileCompression),
-                                       /*overwrite_existing=*/true);
-  TF_RETURN_IF_ERROR(writer.Initialize(env_));
-  TF_RETURN_IF_ERROR(writer.WriteTensors({split}));
-  TF_RETURN_IF_ERROR(writer.Close());
-  return env_->RenameFile(temp_split_file, recovered_split_file);
+  return AtomicallyWriteTFRecords(recovered_split_file, {split},
+                                  kSplitFileCompression, temp_split_file, env_);
 }
 
 absl::StatusOr<Tensor> SnapshotManager::GetNextSplit(
