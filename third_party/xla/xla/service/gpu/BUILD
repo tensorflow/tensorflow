@@ -432,6 +432,7 @@ cc_library(
         "//xla:comparison_util",
         "//xla:literal",
         "//xla:shape_util",
+        "//xla:status",
         "//xla:status_macros",
         "//xla:statusor",
         "//xla:util",

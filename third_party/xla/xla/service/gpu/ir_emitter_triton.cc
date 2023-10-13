@@ -99,6 +99,7 @@ limitations under the License.
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
@@ -1016,7 +1017,7 @@ struct Side {
 
 class MatMulEmitterHelper {
  public:
-  MatMulEmitterHelper(mlir::OpBuilder builder, absl::string_view libdevice_path,
+  MatMulEmitterHelper(absl::string_view libdevice_path,
                       const HloDotInstruction* dot_instr,
                       ImplicitLocOpBuilder& b, Type index_ty, MatMulDims dims,
                       const MatMulLaunchConfig& launch_config,
@@ -1272,8 +1273,8 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
   const MatMulLaunchConfig launch_config(config, *dot_instr, dims);
   VLOG(6) << analysis.ToString();
 
-  MatMulEmitterHelper emitter(builder, libdevice_path, dot_instr, b, index_ty,
-                              dims, launch_config, analysis);
+  MatMulEmitterHelper emitter(libdevice_path, dot_instr, b, index_ty, dims,
+                              launch_config, analysis);
 
   constexpr int group_m = 8;
   const int64_t width = group_m * launch_config.grid_n;
