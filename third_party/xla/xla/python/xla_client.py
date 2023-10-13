@@ -338,14 +338,17 @@ class ShapeIndex:
 """
 
 
-def shape_from_pyval(pyval):
+def shape_from_pyval(pyval, layout: Sequence[int] | None = None):
   """Returns a Shape that describes a tuple-tree of Numpy arrays."""
 
   def convert(pyval):
     if isinstance(pyval, tuple):
+      if layout is not None:
+        raise NotImplementedError(
+            'shape_from_pyval does not support layouts for tuple shapes')
       return Shape.tuple_shape(tuple(convert(elt) for elt in pyval))
     else:
-      return Shape.array_shape(pyval.dtype, np.shape(pyval))
+      return Shape.array_shape(pyval.dtype, np.shape(pyval), layout)
 
   return convert(pyval)
 

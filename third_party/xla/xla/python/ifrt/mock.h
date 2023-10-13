@@ -228,6 +228,8 @@ class MockExecutable final
               (const, final));
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetOutputShardings, (),
               (const, final));
+  MOCK_METHOD(StatusOr<std::vector<Layout>>, GetParameterLayouts, (),
+              (const, final));
   MOCK_METHOD(StatusOr<std::vector<std::shared_ptr<HloModule>>>, GetHloModules,
               (), (const, final));
   MOCK_METHOD((StatusOr<absl::flat_hash_map<std::string, CostAnalysisValue>>),
@@ -251,6 +253,8 @@ class MockLoadedExecutable final
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetParameterShardings, (),
               (const, final));
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetOutputShardings, (),
+              (const, final));
+  MOCK_METHOD(StatusOr<std::vector<Layout>>, GetParameterLayouts, (),
               (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::vector<absl::string_view>>>,
               GetOutputMemoryKinds, (), (const, final));

@@ -20,6 +20,7 @@ import itertools
 import re
 import threading
 import traceback
+from typing import Sequence
 import unittest
 
 from absl import flags
@@ -505,6 +506,80 @@ def TestFactory(xla_backend,
           c, arguments=[arg0, arg1], expected=[arg1 - arg0])
 
   tests.append(ParametersTest)
+
+  class LayoutsTest(ComputationTest):
+    """Tests related to getting and setting on-device memory layouts."""
+
+    @unittest.skipIf(pathways, "not implemented")
+    @unittest.skipIf(pathways_ifrt, "check fails")
+    def testGetArgumentLayouts(self):
+      # Create computation with a few parameters.
+      c = self._NewComputation()
+      param_count = 0
+
+      def MakeArg(shape, dtype):
+        nonlocal param_count
+        shape = xla_client.Shape.array_shape(np.dtype(dtype), shape)
+        param = ops.Parameter(c, param_count, shape)
+        param_count += 1
+        return param
+
+      p0 = MakeArg((2, 3, 4), np.float32)
+      MakeArg((3, 2), np.int32)
+      MakeArg((), np.float64)
+
+      ops.Add(p0, ops.Constant(c, np.ones((2, 3, 4), np.float32)))
+      executable = self.backend.compile(
+          xla_computation_to_mlir_module(c.build()))
+
+      # Test that compiled executable returns plausible layouts.
+      layouts: Sequence[xla_client.Layout] = executable.get_parameter_layouts()
+      self.assertLen(layouts, 3)
+      self.assertLen(layouts[0].minor_to_major(), 3)
+      self.assertLen(layouts[1].minor_to_major(), 2)
+      self.assertEmpty(layouts[2].minor_to_major())
+
+    @unittest.skipIf(pathways, "not implemented")
+    def testSetArgumentLayouts(self):
+      # Create computation with custom input layouts.
+      c = self._NewComputation()
+      param_count = 0
+
+      def MakeArg(shape, dtype, layout):
+        nonlocal param_count
+        arr = np.arange(np.prod(shape), dtype=dtype).reshape(shape)
+        param = ops.Parameter(c, param_count,
+                              xla_client.shape_from_pyval(arr, layout))
+        param_count += 1
+        shape = xla_client.Shape.array_shape(np.dtype(dtype), shape, layout)
+        return arr, param, shape
+
+      arg0, p0, shape0 = MakeArg((2, 3, 4), np.float32, (1, 2, 0))
+      arg1, p1, shape1 = MakeArg((3, 2), np.int32, (0, 1))
+      arg2, p2, shape2 = MakeArg((), np.float64, ())
+
+      ops.Tuple(c, [
+          ops.Add(p0, ops.Constant(c, np.ones(arg0.shape, arg0.dtype))),
+          ops.Add(p1, ops.Constant(c, np.ones(arg1.shape, arg1.dtype))),
+          ops.Add(p2, ops.Constant(c, np.ones(arg2.shape, arg2.dtype))),
+      ])
+
+      # We also need to set the input layouts in the compile options.
+      options = xla_client.CompileOptions()
+      options.argument_layouts = [shape0, shape1, shape2]
+      executable = self.backend.compile(
+          xla_computation_to_mlir_module(c.build()), compile_options=options)
+
+      # Test that compiled executable has expected layouts.
+      expected_layouts: Sequence[xla_client.Shape] = [shape0, shape1, shape2]
+      actual_layouts: Sequence[xla_client.Layout] = (
+          executable.get_parameter_layouts())
+      self.assertEqual(len(actual_layouts), len(expected_layouts))
+      for actual, expected in zip(actual_layouts, expected_layouts):
+        self.assertEqual(actual.minor_to_major(),
+                         expected.layout().minor_to_major())
+
+  tests.append(LayoutsTest)
 
   class BufferTest(ComputationTest):
     """Tests focusing on execution with Buffers."""
