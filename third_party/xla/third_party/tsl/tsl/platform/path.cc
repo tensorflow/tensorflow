@@ -26,13 +26,16 @@ limitations under the License.
 #include <unistd.h>
 #endif
 
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/scanner.h"
+#include "tsl/platform/str_util.h"
 #include "tsl/platform/strcat.h"
+#include "tsl/platform/stringpiece.h"
 #include "tsl/platform/types.h"
 
 namespace tsl {
@@ -346,6 +349,31 @@ string GetTempFilename(const string& extension) {
 #endif
 }
 
+namespace {
+// This is private to the file, because it's possibly too limited to be useful
+// externally.
+bool StartsWithSegment(tsl::StringPiece path, tsl::StringPiece segment) {
+  return tsl::str_util::StartsWith(path, segment) &&
+         (path.size() == segment.size() ||
+          path.at(segment.size()) == internal::kPathSep[0]);
+}
+}  // namespace
+
+bool GetTestWorkspaceDir(string* dir) {
+  const char* srcdir = getenv("TEST_SRCDIR");
+  if (srcdir == nullptr) {
+    return false;
+  }
+  const char* workspace = getenv("TEST_WORKSPACE");
+  if (workspace == nullptr) {
+    return false;
+  }
+  if (dir != nullptr) {
+    *dir = tsl::io::JoinPath(srcdir, workspace);
+  }
+  return true;
+}
+
 bool GetTestUndeclaredOutputsDir(string* dir) {
   const char* outputs_dir = getenv("TEST_UNDECLARED_OUTPUTS_DIR");
   if (outputs_dir == nullptr) {
@@ -355,6 +383,28 @@ bool GetTestUndeclaredOutputsDir(string* dir) {
     *dir = outputs_dir;
   }
   return true;
+}
+
+bool ResolveTestPrefixes(tsl::StringPiece path, string& resolved_path) {
+  constexpr tsl::StringPiece kTestWorkspaceSegment = "TEST_WORKSPACE";
+  constexpr tsl::StringPiece kOutputDirSegment = "TEST_UNDECLARED_OUTPUTS_DIR";
+
+  if (StartsWithSegment(path, kTestWorkspaceSegment)) {
+    if (!GetTestWorkspaceDir(&resolved_path)) {
+      return false;
+    }
+    resolved_path += path.substr(kTestWorkspaceSegment.size());
+    return true;
+  } else if (StartsWithSegment(path, kOutputDirSegment)) {
+    if (!GetTestUndeclaredOutputsDir(&resolved_path)) {
+      return false;
+    }
+    resolved_path += path.substr(kOutputDirSegment.size());
+    return true;
+  } else {
+    resolved_path = path;
+    return true;
+  }
 }
 
 }  // namespace io

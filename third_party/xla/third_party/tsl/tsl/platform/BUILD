@@ -236,6 +236,7 @@ cc_library(
         ":logging",
         ":mutex",
         ":scanner",
+        ":str_util",
         ":strcat",
         ":stringpiece",
         ":types",
@@ -1350,7 +1351,10 @@ tsl_cc_test(
     srcs = ["path_test.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        ":env",
+        ":env_impl",
         ":path",
+        ":stringpiece",
         ":test",
         ":test_main",
     ],
