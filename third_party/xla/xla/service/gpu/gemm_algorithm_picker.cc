@@ -194,25 +194,25 @@ StatusOr<AutotuneResult> GetBestBlasAlgorithm(
 
 namespace {
 
-StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
+StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
     GemmBackendConfig_Epilogue epilogue) {
   switch (epilogue) {
     case GemmBackendConfig::DEFAULT:
-      return se::cuda::BlasLt::Epilogue::kDefault;
+      return se::gpu::BlasLt::Epilogue::kDefault;
     case GemmBackendConfig::RELU:
-      return se::cuda::BlasLt::Epilogue::kReLU;
+      return se::gpu::BlasLt::Epilogue::kReLU;
     case GemmBackendConfig::GELU:
-      return se::cuda::BlasLt::Epilogue::kGELU;
+      return se::gpu::BlasLt::Epilogue::kGELU;
     case GemmBackendConfig::GELU_AUX:
-      return se::cuda::BlasLt::Epilogue::kGELUWithAux;
+      return se::gpu::BlasLt::Epilogue::kGELUWithAux;
     case GemmBackendConfig::BIAS:
-      return se::cuda::BlasLt::Epilogue::kBias;
+      return se::gpu::BlasLt::Epilogue::kBias;
     case GemmBackendConfig::BIAS_RELU:
-      return se::cuda::BlasLt::Epilogue::kBiasThenReLU;
+      return se::gpu::BlasLt::Epilogue::kBiasThenReLU;
     case GemmBackendConfig::BIAS_GELU:
-      return se::cuda::BlasLt::Epilogue::kBiasThenGELU;
+      return se::gpu::BlasLt::Epilogue::kBiasThenGELU;
     case GemmBackendConfig::BIAS_GELU_AUX:
-      return se::cuda::BlasLt::Epilogue::kBiasThenGELUWithAux;
+      return se::gpu::BlasLt::Epilogue::kBiasThenGELUWithAux;
     default:
       return InternalError("Unsupported Epilogue.");
   }
@@ -268,12 +268,13 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
   if (IsCublasLtMatmul(*gemm)) {
     bool has_matrix_bias = config.beta != 0.;
 
-    TF_ASSIGN_OR_RETURN(bool has_vector_bias, cublas_lt::EpilogueAddsVectorBias(
-                                                  gemm_config.epilogue()));
-
     TF_ASSIGN_OR_RETURN(
-        bool has_aux_output,
-        cublas_lt::EpilogueHasAuxiliaryOutput(gemm_config.epilogue()));
+        bool has_vector_bias,
+        xla::gpu::gpublas_lt::EpilogueAddsVectorBias(gemm_config.epilogue()));
+
+    TF_ASSIGN_OR_RETURN(bool has_aux_output,
+                        xla::gpu::gpublas_lt::EpilogueHasAuxiliaryOutput(
+                            gemm_config.epilogue()));
 
     TF_ASSIGN_OR_RETURN(auto epilogue,
                         AsBlasLtEpilogue(gemm_config.epilogue()));
@@ -297,24 +298,23 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
                                                   autotune_config, rng_state));
     }
 
-    TF_ASSIGN_OR_RETURN(auto plan,
-                        cublas_lt::MatmulPlan::From(config, epilogue));
     TF_ASSIGN_OR_RETURN(
-        std::vector<se::cuda::BlasLt::MatmulAlgorithm> algorithms,
-        plan.GetAlgorithms(stream));
+        auto plan, se::gpu::BlasLt::GetMatmulPlan(stream, config, epilogue));
+
+    TF_ASSIGN_OR_RETURN(auto algorithms, plan->GetAlgorithms());
 
     TF_ASSIGN_OR_RETURN(
         best_algorithm,
-        GetBestAlgorithm<se::cuda::BlasLt::MatmulAlgorithm>(
+        GetBestAlgorithm<se::gpu::BlasLt::MatmulAlgorithm>(
             stream, buffer_allocator, gemm->ToString(), autotune_config,
             lhs_buffer, rhs_buffer, output_buffer, algorithms, output_shape,
             hlo_module_config, gemm_config.beta(),
-            [&](const se::cuda::BlasLt::MatmulAlgorithm& algorithm)
+            [&](const se::gpu::BlasLt::MatmulAlgorithm& algorithm)
                 -> StatusOr<se::blas::ProfileResult> {
               se::OwningScratchAllocator<> scratch_allocator(
                   stream->parent()->device_ordinal(), allocator);
               se::blas::ProfileResult profile_result;
-              TF_RETURN_IF_ERROR(plan.ExecuteOnStream(
+              TF_RETURN_IF_ERROR(plan->ExecuteOnStream(
                   stream, lhs_buffer, rhs_buffer, output_buffer, output_buffer,
                   bias_buffer, aux_buffer, a_scale_buffer, b_scale_buffer,
                   c_scale_buffer, d_scale_buffer, d_amax_buffer, algorithm,
@@ -354,7 +354,7 @@ StatusOr<AutotuneResult> DoGemmAutotuneNoCache(
   return best_algorithm;
 }
 
-#endif
+#endif  // (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 
 // Do Gemm Autotune without stream executor. Use results from autotune cache
 // only.

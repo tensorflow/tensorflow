@@ -805,11 +805,11 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmul(
 
   TF_ASSIGN_OR_RETURN(
       bool has_vector_bias,
-      xla::gpu::cublas_lt::EpilogueAddsVectorBias(config.epilogue()));
+      xla::gpu::gpublas_lt::EpilogueAddsVectorBias(config.epilogue()));
 
   TF_ASSIGN_OR_RETURN(
       bool has_aux_output,
-      xla::gpu::cublas_lt::EpilogueHasAuxiliaryOutput(config.epilogue()));
+      xla::gpu::gpublas_lt::EpilogueHasAuxiliaryOutput(config.epilogue()));
 
   TF_RET_CHECK(custom_call->operand_count() ==
                2 + int{has_matrix_bias} + int{has_vector_bias});
@@ -869,7 +869,7 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmulF8(
   TF_RET_CHECK(ops_num == 6 || ops_num == 7 || ops_num == 8);
   TF_ASSIGN_OR_RETURN(
       bool has_vector_bias,
-      xla::gpu::cublas_lt::EpilogueAddsVectorBias(config.epilogue()));
+      xla::gpu::gpublas_lt::EpilogueAddsVectorBias(config.epilogue()));
 
   bool has_damax = custom_call->shape().IsTuple();
   bool has_matrix_bias = config.beta() != 0.;

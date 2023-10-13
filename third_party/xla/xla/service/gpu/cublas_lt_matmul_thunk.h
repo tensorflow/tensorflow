@@ -25,12 +25,6 @@ limitations under the License.
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
 #include "tsl/platform/statusor.h"
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_blas_lt.h"
-#else
-#include "rocm/rocm_config.h"
-#include "xla/stream_executor/rocm/hip_blas_lt.h"
-#endif  // GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
@@ -54,12 +48,12 @@ class CublasLtMatmulThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  StatusOr<cublas_lt::MatmulPlan*> GetMatmulPlan(
+  StatusOr<se::gpu::BlasLt::MatmulPlan*> GetMatmulPlan(
       const stream_executor::Stream* stream);
 
   absl::Mutex matmul_plans_cache_mutex_;
   absl::flat_hash_map<const stream_executor::Stream*,
-                      std::unique_ptr<cublas_lt::MatmulPlan>>
+                      se::gpu::BlasLt::MatmulPlanPtr>
       matmul_plans_cache_ ABSL_GUARDED_BY(matmul_plans_cache_mutex_);
 
   GemmConfig gemm_config_;

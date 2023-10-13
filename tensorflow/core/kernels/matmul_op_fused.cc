@@ -216,7 +216,7 @@ se::blas::AlgorithmConfig AutotuneMatmul(
       BlasScratchAllocator scratch_allocator(context);
 
       Status cublaslt_launch =
-          launch_func(scratch_allocator, profile_algorithm, &profile_result);
+          launch_func(scratch_allocator, i, &profile_result);
 
       VLOG(4) << "  Autotune algorithm " << i
               << " result: " << profile_result.elapsed_time_in_ms()
@@ -569,28 +569,27 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     OP_REQUIRES_OK(context, plan_and_algorithms_or.status());
     absl::MutexLock lock(pmu);
     const auto* plan_and_algorithms = std::move(plan_and_algorithms_or).value();
-    const auto& plan = plan_and_algorithms->plan;
     const auto& algorithms = plan_and_algorithms->algorithms;
     OP_REQUIRES(context, algorithms.size() > 0,
                 errors::InvalidArgument("No matmul algorithm returned!"));
 
     auto launch_func = [&](BlasScratchAllocator& scratch_allocator,
-                           const se::gpu::BlasLt::MatmulAlgorithm& algorithm,
+                           size_t alg_idx,
                            se::blas::ProfileResult* profile_result) {
-      return DoBlasLtMatmul(stream, plan, a_ptr, b_ptr, c_ptr, algorithm,
-                            scratch_allocator, bias_ptr, profile_result);
+      return DoBlasLtMatmul(stream, *plan_and_algorithms, a_ptr, b_ptr, c_ptr,
+                            alg_idx, scratch_allocator, bias_ptr,
+                            profile_result);
     };
 
-    se::gpu::BlasLt::MatmulAlgorithm algorithm = algorithms[0];
+    size_t alg_idx = 0;
     if (use_autotune) {
-      se::blas::AlgorithmConfig algorithm_config =
+      auto algorithm_config =
           AutotuneMatmul(algorithms, matmul_params, context, launch_func);
 
-      se::blas::AlgorithmType algorithm_idx = algorithm_config.algorithm();
-      algorithm = algorithms[algorithm_idx];
+      alg_idx = algorithm_config.algorithm();
     }
 
-    OP_REQUIRES_OK(context, launch_func(scratch_allocator, algorithm, nullptr));
+    OP_REQUIRES_OK(context, launch_func(scratch_allocator, alg_idx, nullptr));
 #endif
   }
 };

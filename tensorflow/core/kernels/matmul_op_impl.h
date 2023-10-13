@@ -626,36 +626,32 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         absl::MutexLock lock(pmu);
         const auto* plan_and_algorithms =
             std::move(plan_and_algorithms_or).value();
-        const auto& plan = plan_and_algorithms->plan;
-        const auto& algorithms = plan_and_algorithms->algorithms;
-        se::gpu::BlasLt* blas_lt = se::gpu::GetBlasLt(stream);
-        OP_REQUIRES(context, blas_lt != nullptr,
-                    errors::Internal("blaslt not supported"));
+        auto n_algorithms = plan_and_algorithms->algorithms.size();
 
         se::blas::AlgorithmConfig algorithm_config(se::blas::kNoAlgorithm);
         if (!use_autotune) {
           algorithm_config.set_algorithm(0);
         } else if (!AutoTuneBatchMatmul::GetInstance()->Find(
                        matmul_params, &algorithm_config)) {
-          VLOG(4) << "Autotuning BlasLtMatmul over " << algorithms.size()
+          VLOG(4) << "Autotuning BlasLtMatmul over " << n_algorithms
                   << " algorithms.";
           se::blas::ProfileResult best_result;
           se::blas::ProfileResult profile_result;
 
-          for (size_t i = 0; i != algorithms.size(); ++i) {
-            const auto& profile_algorithm = algorithms[i];
+          for (size_t i = 0; i != n_algorithms; ++i) {
             // Create a new scratch allocator with every autotuning run so that
             // scratch space is deallocated between runs.
             BlasScratchAllocator scratch_allocator(context, max_scratch_size);
             Status cublas_launch_status =
-                DoBlasLtMatmul(stream, plan, *a_ptrs[0], *b_ptrs[0], *c_ptrs[0],
-                               profile_algorithm, scratch_allocator,
+                DoBlasLtMatmul(stream, *plan_and_algorithms, *a_ptrs[0],
+                               *b_ptrs[0], *c_ptrs[0], i, scratch_allocator,
                                /*bias = */ {}, &profile_result);
 
             VLOG(4) << "  Autotune algorithm " << i
                     << " result: " << profile_result.elapsed_time_in_ms()
                     << " ms, valid=" << profile_result.is_valid()
-                    << ", workspace_size=" << profile_algorithm.workspace_size;
+                    << ", workspace_size="
+                    << plan_and_algorithms->algorithms[i].workspace_size;
 
             if (cublas_launch_status.ok() && profile_result.is_valid() &&
                 profile_result.elapsed_time_in_ms() <
@@ -676,10 +672,8 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                                                      algorithm_config);
         }
         se::blas::AlgorithmType algorithm_idx = algorithm_config.algorithm();
-        OP_REQUIRES(context,
-                    0 <= algorithm_idx && algorithm_idx < algorithms.size(),
+        OP_REQUIRES(context, 0 <= algorithm_idx && algorithm_idx < n_algorithms,
                     errors::Internal("Missing/invalid BatchMatmul algorithm"));
-        const auto& algorithm = algorithms[algorithm_idx];
         BlasScratchAllocator scratch_allocator(context, max_scratch_size);
         VLOG(4) << "Calling BlasLtMatMul: a.shape=(" << bcast.x_batch_size()
                 << ", " << in_x.dim_size(1) << ", " << in_x.dim_size(2)
@@ -690,8 +684,9 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                 << "adj_x = " << adj_x << "adj_y = " << adj_y;
 
         OP_REQUIRES_OK(
-            context, DoBlasLtMatmul(stream, plan, *a_ptrs[0], *b_ptrs[0],
-                                    *c_ptrs[0], algorithm, scratch_allocator));
+            context,
+            DoBlasLtMatmul(stream, *plan_and_algorithms, *a_ptrs[0], *b_ptrs[0],
+                           *c_ptrs[0], algorithm_idx, scratch_allocator));
       } else {  // requires mixed broadcasting
         const std::vector<int64_t>& a_batch_indices = bcast.x_batch_indices();
         const std::vector<int64_t>& b_batch_indices = bcast.y_batch_indices();

@@ -104,7 +104,7 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
   RegisterSendRecvCustomCalls(registry);
   RegisterTopkCustomCall(registry);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA || TF_HIPBLASLT
   RegisterMatmulCustomCalls(registry);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
@@ -134,7 +134,7 @@ void RegisterXlaGpuTypeIdNames(TypeIDNameRegistry& registry) {
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
   registry.Register<Tagged<se::gpu::BlasLt::Epilogue>>(
-      "__type_id_se_cublas_lt_epilogue");
+      "__type_id_se_gpublas_lt_epilogue");
   RegisterFusedAttentionTypeIdNames(registry);
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
 }
@@ -436,15 +436,17 @@ Status GpuRuntimeExecutable::Execute(
   GemmConfigs::Snapshot gemm_configs = gemm_configs_.snapshot();
   FftPlans::Snapshot fft_plans = fft_plans_.snapshot();
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA || TF_HIPBLASLT
   MatmulPlans::Snapshot matmul_plans = cublas_lt_matmul_plans_.snapshot();
+#endif
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   StreamExecutorFusedAttentionRunners::Snapshot fused_attention_runners =
       fused_attention_runners_(executor)->snapshot();
   StreamExecutorFusedAttentionBackwardRunners::Snapshot
       fused_attention_backward_runners =
           fused_attention_backward_runners_(executor)->snapshot();
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
   // Initialize state required for running functions exported from FFI modules.
   TF_ASSIGN_OR_RETURN(FfiStateVector ffi_state,
@@ -455,14 +457,15 @@ Status GpuRuntimeExecutable::Execute(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
       &ffi_state, &binary, &kernels, &gemm_configs, &conv_runners,
       &collectives_, &fft_plans, &send_recv_events, &gpu_lock,
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-      // Auxiliary data that is available only if compiled with CUDA support.
+#if GOOGLE_CUDA || TF_HIPBLASLT
       &matmul_plans,
+#endif
 #if GOOGLE_CUDA
       // Auxiliary data that is available only if compiled with CUDA support
       // only.
       &fused_attention_runners, &fused_attention_backward_runners,
 #endif  // GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       &graph_instances, &execution_count, &ordinal_to_fallback,
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       &concurrent_region_status,
