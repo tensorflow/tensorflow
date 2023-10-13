@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_cost_model_stats_collection.h"
+#include "xla/service/gpu/model/gpu_cost_model_stats_collection.h"
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
@@ -22,7 +22,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/gpu_performance_model.h"
+#include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/statusor.h"
 #include "tsl/platform/status.h"
 

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_performance_model.h"
+#include "xla/service/gpu/model/gpu_performance_model.h"
 
 #include <algorithm>
 #include <cmath>
@@ -31,15 +31,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_fusible.h"
-#include "xla/service/gpu/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 
 #if GOOGLE_CUDA
-#include "third_party/nvml/nvml.h"
+#include "third_party/gpus/cuda/nvml/include/nvml.h"
 #endif  // GOOGLE_CUDA
 namespace xla {
 namespace gpu {

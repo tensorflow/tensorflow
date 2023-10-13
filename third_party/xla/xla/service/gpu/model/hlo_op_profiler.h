@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_HLO_OP_PROFILER_H_
-#define XLA_SERVICE_GPU_HLO_OP_PROFILER_H_
+#ifndef XLA_SERVICE_GPU_MODEL_HLO_OP_PROFILER_H_
+#define XLA_SERVICE_GPU_MODEL_HLO_OP_PROFILER_H_
 
 #include <cstdint>
 #include <memory>
@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/service/gpu/hlo_op_profile.pb.h"
+#include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
@@ -52,4 +52,4 @@ class HloOpProfiler {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_HLO_OP_PROFILER_H_
+#endif  // XLA_SERVICE_GPU_MODEL_HLO_OP_PROFILER_H_

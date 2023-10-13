@@ -13,21 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_GPU_PERFORMANCE_MODEL_H_
-#define XLA_SERVICE_GPU_GPU_PERFORMANCE_MODEL_H_
+#ifndef XLA_SERVICE_GPU_MODEL_GPU_PERFORMANCE_MODEL_H_
+#define XLA_SERVICE_GPU_MODEL_GPU_PERFORMANCE_MODEL_H_
 
 #include <array>
 #include <vector>
 
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
 
 #if GOOGLE_CUDA
 #include <dlfcn.h>
 
-#include "third_party/nvml/nvml.h"
+#include "third_party/gpus/cuda/nvml/include/nvml.h"
 // Below is a list of function pointers to be used
 // for querying device properties through nvml library.
 #define NVML_FUNCTOR(name, rettype, args) rettype(*xla_##name) args = nullptr;
@@ -157,4 +157,4 @@ class GpuPerformanceWithCollectiveModel : public GpuPerformanceModel {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_GPU_PERFORMANCE_MODEL_H_
+#endif  // XLA_SERVICE_GPU_MODEL_GPU_PERFORMANCE_MODEL_H_

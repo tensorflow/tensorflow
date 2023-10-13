@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/hlo_op_profiler.h"
+#include "xla/service/gpu/model/hlo_op_profiler.h"
 
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/tests/hlo_test_base.h"

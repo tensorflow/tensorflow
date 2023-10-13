@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/analytical_latency_estimator.h"
+#include "xla/service/gpu/model/analytical_latency_estimator.h"
 
 #include <memory>
 #include <utility>
@@ -22,8 +22,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
-#include "xla/service/gpu/gpu_hlo_cost_analysis.h"
-#include "xla/service/gpu/gpu_performance_model.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/stream_executor/device_description.h"

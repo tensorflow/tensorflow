@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/analytical_latency_estimator.h"
+#include "xla/service/gpu/model/analytical_latency_estimator.h"
 
 #include <algorithm>
 #include <cstdint>

@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_FUSION_MERGER_H_
 
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/stream_executor/device_description.h"
 

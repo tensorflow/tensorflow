@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/fusion_queue.h"
 #include "xla/service/gpu/fusion_process_dump.pb.h"
-#include "xla/service/gpu/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/service/instruction_fusion.h"

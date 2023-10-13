@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/hlo_op_profiler.h"
+#include "xla/service/gpu/model/hlo_op_profiler.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -32,7 +32,7 @@ limitations under the License.
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/hlo_op_profile.pb.h"
+#include "xla/service/gpu/model/hlo_op_profile.pb.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner.h"
 #include "xla/shape.h"

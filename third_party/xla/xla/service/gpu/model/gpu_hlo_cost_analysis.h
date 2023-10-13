@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_GPU_HLO_COST_ANALYSIS_H_
-#define XLA_SERVICE_GPU_GPU_HLO_COST_ANALYSIS_H_
+#ifndef XLA_SERVICE_GPU_MODEL_GPU_HLO_COST_ANALYSIS_H_
+#define XLA_SERVICE_GPU_MODEL_GPU_HLO_COST_ANALYSIS_H_
 
 #include <memory>
 
@@ -106,4 +106,4 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_GPU_HLO_COST_ANALYSIS_H_
+#endif  // XLA_SERVICE_GPU_MODEL_GPU_HLO_COST_ANALYSIS_H_
