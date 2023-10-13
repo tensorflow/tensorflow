@@ -500,6 +500,63 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   }
 }
 
+TEST_F(AutoShardingTest, GatherTest) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %entry {
+  %param0 = f32[256,1024]{0,1} parameter(0)
+  %param1 = s32[128,512,1]{2,1,0} parameter(1)
+  ROOT %gather = f32[128,512,1024]{2,1,0} gather(f32[256,1024]{0,1} %param0, s32[128,512,1]{2,1,0} %param1), offset_dims={2}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2, slice_sizes={1,1024}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* gather = FindInstruction(module.get(), "gather");
+  ASSERT_NE(gather, nullptr);
+  EXPECT_THAT(
+      gather,
+      op::Sharding("{devices=[2,1,1,2]0,1,2,3 last_tile_dim_replicate}"));
+  auto gather_sharding = gather->sharding();
+  TF_EXPECT_OK(gather_sharding.Validate(gather->shape(), 4));
+}
+
+TEST_F(AutoShardingTest, GatherTestNoReshard) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %entry {
+  get-tuple-element = s8[1000,128]{1,0} parameter(0)
+  reshape = s32[8,1,1]{2,1,0} parameter(1)
+  gather = s8[8,1,128]{2,1,0} gather(get-tuple-element, reshape), offset_dims={2}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2, slice_sizes={1,128}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {1, 1, 8};
+  option.device_mesh_ids = {0, 1, 2, 3, 4, 5, 6, 7};
+  option.device_mesh_alpha = {1.0, 1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0, 1.0};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(10) << module->ToString();
+  EXPECT_TRUE(changed);
+  auto* gather = FindInstruction(module.get(), "gather");
+  auto* param0 = FindInstruction(module.get(), "get-tuple-element");
+  ASSERT_NE(gather, nullptr);
+  ASSERT_NE(param0, nullptr);
+  EXPECT_THAT(gather, op::Sharding("{devices=[8,1,1]0,1,2,3,4,5,6,7}"));
+  EXPECT_THAT(param0, op::Sharding("{devices=[8,1]0,1,2,3,4,5,6,7}"));
+  TF_EXPECT_OK(gather->sharding().Validate(gather->shape(), 8));
+  // Ensure no resharding op is created for operand 0 of gather in this case.
+  EXPECT_EQ(param0, gather->operand(0));
+}
+
 TEST_F(AutoShardingTest, MatmulMeshShape1DMeshShape) {
   AutoShardingOption option;
   option.enable = true;
