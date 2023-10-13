@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Transforms/FuncConversions.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
@@ -1118,6 +1119,26 @@ class ConvertGenericOp : public ConversionPattern {
   }
 };
 
+// TypeConverter for converting UQ type to int type.
+class UQTypeConverter : public TypeConverter {
+ public:
+  UQTypeConverter() {
+    addConversion([](Type type) -> Type {
+      auto to_legal_type = [](Type type) {
+        if (auto uq_type = dyn_cast<quant::UniformQuantizedType>(type)) {
+          return uq_type.getStorageType();
+        }
+        return type;
+      };
+      if (auto shaped = type.dyn_cast<ShapedType>()) {
+        return shaped.clone(to_legal_type(shaped.getElementType()));
+      } else {
+        return to_legal_type(type);
+      }
+    });
+  }
+};
+
 // Performs conversion of MHLO quant ops to primitive ops.
 void ConvertMHLOQuantToInt::runOnOperation() {
   Operation *op = getOperation();
@@ -1130,18 +1151,23 @@ void ConvertMHLOQuantToInt::runOnOperation() {
                ConvertUniformQuantizedDotGeneralOp,
                ConvertUniformQuantizedConvolutionOp, ConvertGenericOp>(context);
 
+  // uq->int convert patterns for func.func and func.return.
+  UQTypeConverter converter;
+  populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                 converter);
+  populateReturnOpTypeConversionPattern(patterns, converter);
+
   ConversionTarget target(*op->getContext());
-  // An addDynamicallyLegalDialect callback that declares a given operation as
-  // legal only if its all operands and results are non-quantized types.
-  auto is_legal = [](Operation *op) {
-    auto is_not_quant = [](Type type) {
-      return !getElementTypeOrSelf(type).isa<quant::UniformQuantizedType>();
-    };
-    return llvm::all_of(op->getOperandTypes(), is_not_quant) &&
-           llvm::all_of(op->getResultTypes(), is_not_quant);
-  };
+  auto is_legal = [&converter](Operation *op) { return converter.isLegal(op); };
   target.addDynamicallyLegalDialect<mhlo::MhloDialect>(is_legal);
   target.addDynamicallyLegalDialect<chlo::ChloDialect>(is_legal);
+  target.addDynamicallyLegalDialect<func::FuncDialect>(
+      [&converter](Operation *op) {
+        if (auto func = dyn_cast<func::FuncOp>(op)) {
+          return converter.isSignatureLegal(func.getFunctionType());
+        }
+        return converter.isLegal(op);
+      });
 
   LogicalResult result =
       applyPartialConversion(op, target, std::move(patterns));
