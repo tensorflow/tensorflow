@@ -438,6 +438,45 @@ class ListOpsTest(parameterized.TestCase):
     self.assertEqual(tf_out.shape, output_tensor.shape)
     self.assertTrue((tf_out == output_tensor).numpy().all())
 
+  @parameterized.named_parameters(
+      ("OneD", [2]),
+      ("TwoD", [2, 2]),
+      ("3D", [2, 3, 4]),
+      ("Scalar", []),
+  )
+  def test_push_back_stack(self, element_shape):
+    @tf.function(
+        input_signature=[
+            tf.TensorSpec(shape=tf.TensorShape(element_shape), dtype=tf.int32)
+        ]
+    )
+    def push_back_stack(x) -> tf.Tensor:
+      l = list_ops.empty_tensor_list(tf.TensorShape(None), tf.int32)
+      for unused_i in range(10):
+        l = list_ops.tensor_list_push_back(l, x)
+      return list_ops.tensor_list_stack(l, tf.int32)
+
+    interpreter = self._get_interpreter_from_c_func(push_back_stack)
+
+    input_index = interpreter.get_input_details()[0]["index"]
+    interpreter.resize_tensor_input(input_index, element_shape)
+    interpreter.allocate_tensors()
+
+    input_tensor = np.ndarray(shape=element_shape, dtype=np.int32)
+    input_tensor.fill(0)
+    interpreter.set_tensor(input_index, input_tensor)
+
+    interpreter.invoke()
+
+    output_tensor = interpreter.get_tensor(
+        interpreter.get_output_details()[0]["index"]
+    )
+
+    tf_out = push_back_stack(input_tensor)
+    self.assertEqual(tf_out.dtype, output_tensor.dtype)
+    self.assertEqual(tf_out.shape, output_tensor.shape)
+    self.assertTrue((tf_out == output_tensor).numpy().all())
+
 
 if __name__ == "__main__":
   googletest.main()

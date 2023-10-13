@@ -122,6 +122,22 @@ struct ConvertTensorListPopBack
   }
 };
 
+struct ConvertTensorListPushBack
+    : public OpRewritePattern<TF::TensorListPushBackOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::TensorListPushBackOp op,
+                                PatternRewriter& rewriter) const override {
+    // It is currently not possible to easily pack the output of a multi-result
+    // op into an op with a single varidic output in `.td`.
+    auto converted = rewriter.create<TFL::CustomOp>(
+        op->getLoc(), op->getResultTypes(), op->getOperands(),
+        "TensorListPushBack", TFL::ConstBytesAttr::get(getContext(), ""));
+    rewriter.replaceOp(op, converted.getResults());
+    return success();
+  }
+};
+
 bool IsOpSupported(mlir::Operation* op) {
   // Op is vacuously "supported" if it is not a tensorlist op.
   StringRef op_name = op->getName().getStringRef();
@@ -157,6 +173,9 @@ bool IsOpSupported(mlir::Operation* op) {
   }
   if (auto pop_back = llvm::dyn_cast_or_null<TF::TensorListPopBackOp>(op)) {
     element_type = pop_back.getElementDtype();
+  }
+  if (auto push_back = llvm::dyn_cast_or_null<TF::TensorListPushBackOp>(op)) {
+    element_type = push_back.getElementDtype();
   }
 
   if (!element_type.has_value()) return false;
@@ -213,6 +232,7 @@ class LegalizeTensorListPass
     RewritePatternSet patterns(&getContext());
     populateWithGenerated(patterns);
     patterns.add<ConvertTensorListPopBack>(&getContext());
+    patterns.add<ConvertTensorListPushBack>(&getContext());
     (void)applyPatternsAndFoldGreedily(module, std::move(patterns));
   }
 };
