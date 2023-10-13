@@ -960,6 +960,8 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
           instr, *loop_iteration_idx_, while_body, level_to_operate_on,
           invariant_loop_parameters_);
       if (!chain_collected.has_value()) {
+        VLOG(5) << "Skipping " << instr->name()
+                << " because didn't find compatible slice of parameter";
         continue;
       }
       move_infos_.push_back(
