@@ -41,7 +41,7 @@ namespace gpu_plugin {
 #define PJRT_GPU_PLUGIN_PLATFORM_NAME "CUDA"
 
 PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_Create_Args", PJRT_Client_Create_Args_STRUCT_SIZE,
       args->struct_size));
 
@@ -122,7 +122,7 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
 
 PJRT_Error* PJRT_Gpu_Register_Custom_Call(
     PJRT_Gpu_Register_Custom_Call_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Gpu_Register_Custom_Call_Args",
       PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE, args->struct_size));
   std::string function_name(args->function_name, args->function_name_size);
