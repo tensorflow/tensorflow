@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -tfrt-lower-cluster-to-runtime-ops -split-input-file -verify-diagnostics %s | FileCheck %s
+// RUN: tf-tfrt-opt -tfrt-lower-cluster-to-runtime-ops-tpu -split-input-file -verify-diagnostics %s | FileCheck %s
 
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
 

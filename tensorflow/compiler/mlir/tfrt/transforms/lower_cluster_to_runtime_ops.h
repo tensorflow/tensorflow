@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/core/lib/core/status.h"
+#include "tsl/framework/device_type.h"
 
 namespace tensorflow {
 namespace tfrt_compiler {
@@ -30,16 +31,19 @@ namespace tfrt_compiler {
 //
 // Input:
 //     Tensorflow Dialect MLIR with tf_device.cluster ops and virtual devices.
+//     xla_device_type - The device type that is being targeted.
 // Output:
 //     Tensorflow Dialect MLIR with Runtime specific ops. All tf_device.cluster
 //     ops are removed. Physical devices are assigned to ops instead of virtual
 //     devices.
 tensorflow::Status RunLowerClusterToRuntimeOpsPassPipeline(
-    mlir::ModuleOp module, llvm::StringRef module_name = llvm::StringRef());
+    mlir::ModuleOp module, tsl::DeviceType xla_device_type,
+    llvm::StringRef module_name = llvm::StringRef());
 
 // The same API as RunLowerClusterToRuntimeOpsPassPipeline but as an MLIR pass
 // pipeline.
-void RegisterLowerClusterToRuntimeOpsPassPipeline();
+void RegisterTPULowerClusterToRuntimeOpsPassPipeline();
+void RegisterNonTPULowerClusterToRuntimeOpsPassPipeline();
 
 }  // namespace tfrt_compiler
 }  // namespace tensorflow

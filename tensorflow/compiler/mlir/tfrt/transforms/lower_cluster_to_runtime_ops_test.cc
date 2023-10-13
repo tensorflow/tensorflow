@@ -31,10 +31,13 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
+#include "tsl/framework/device_type.h"
 #include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
@@ -46,6 +49,7 @@ using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::OwningOpRef;
 using mlir::func::FuncOp;
+using tsl::DeviceType;
 
 std::string TestDataPath() {
   return tensorflow::GetDataDependencyFilepath(
@@ -89,13 +93,51 @@ class LowerClusterToRuntimeOpsTest : public ::testing::Test {
 TEST_F(LowerClusterToRuntimeOpsTest, SanityCheck) {
   TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
 
-  TF_EXPECT_OK(RunLowerClusterToRuntimeOpsPassPipeline(*mlir_module_));
+  TF_EXPECT_OK(RunLowerClusterToRuntimeOpsPassPipeline(
+      *mlir_module_, DeviceType(DEVICE_TPU_XLA_JIT)));
 }
 
-TEST_F(LowerClusterToRuntimeOpsTest, LowersClusterOps) {
+TEST_F(LowerClusterToRuntimeOpsTest, LowersClusterOpsTPU) {
   TF_ASSERT_OK(CreateMlirModule("basic_cluster.mlir"));
 
-  TF_EXPECT_OK(RunLowerClusterToRuntimeOpsPassPipeline(*mlir_module_));
+  TF_EXPECT_OK(RunLowerClusterToRuntimeOpsPassPipeline(
+      *mlir_module_, DeviceType(DEVICE_TPU_XLA_JIT)));
+
+  FuncOp main = mlir_module_->lookupSymbol<FuncOp>("main");
+  ASSERT_TRUE(main);
+
+  bool has_cluster_op = false;
+  main.walk([&](mlir::tf_device::ClusterOp) {
+    has_cluster_op = true;
+    return mlir::WalkResult::interrupt();
+  });
+
+  EXPECT_FALSE(has_cluster_op);
+}
+
+TEST_F(LowerClusterToRuntimeOpsTest, LowersClusterOpsCPU) {
+  TF_ASSERT_OK(CreateMlirModule("basic_cluster.mlir"));
+
+  TF_EXPECT_OK(RunLowerClusterToRuntimeOpsPassPipeline(
+      *mlir_module_, DeviceType(DEVICE_CPU_XLA_JIT)));
+
+  FuncOp main = mlir_module_->lookupSymbol<FuncOp>("main");
+  ASSERT_TRUE(main);
+
+  bool has_cluster_op = false;
+  main.walk([&](mlir::tf_device::ClusterOp) {
+    has_cluster_op = true;
+    return mlir::WalkResult::interrupt();
+  });
+
+  EXPECT_FALSE(has_cluster_op);
+}
+
+TEST_F(LowerClusterToRuntimeOpsTest, LowersClusterOpsGPU) {
+  TF_ASSERT_OK(CreateMlirModule("basic_cluster.mlir"));
+
+  TF_EXPECT_OK(RunLowerClusterToRuntimeOpsPassPipeline(
+      *mlir_module_, DeviceType(DEVICE_GPU_XLA_JIT)));
 
   FuncOp main = mlir_module_->lookupSymbol<FuncOp>("main");
   ASSERT_TRUE(main);
@@ -112,7 +154,9 @@ TEST_F(LowerClusterToRuntimeOpsTest, LowersClusterOps) {
 TEST_F(LowerClusterToRuntimeOpsTest, ErrorsWithBadCluster) {
   TF_ASSERT_OK(CreateMlirModule("malformed_cluster.mlir"));
 
-  EXPECT_FALSE(RunLowerClusterToRuntimeOpsPassPipeline(*mlir_module_).ok());
+  EXPECT_FALSE(RunLowerClusterToRuntimeOpsPassPipeline(
+                   *mlir_module_, DeviceType(DEVICE_TPU_XLA_JIT))
+                   .ok());
 }
 
 TEST_F(LowerClusterToRuntimeOpsTest, DumpsPipelinePasses) {
@@ -125,7 +169,8 @@ TEST_F(LowerClusterToRuntimeOpsTest, DumpsPipelinePasses) {
 
   TF_ASSERT_OK(CreateMlirModule("basic_cluster.mlir"));
 
-  TF_EXPECT_OK(RunLowerClusterToRuntimeOpsPassPipeline(*mlir_module_));
+  TF_EXPECT_OK(RunLowerClusterToRuntimeOpsPassPipeline(
+      *mlir_module_, DeviceType(DEVICE_TPU_XLA_JIT)));
 
   TF_ASSERT_OK(env_->GetChildren(test_dir_, &files));
   EXPECT_THAT(files, ::testing::SizeIs(15));

@@ -139,15 +139,14 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core/tpu:tpu_defs",
         "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -163,10 +162,12 @@ tf_cc_test(
         ":lower_cluster_to_runtime_ops",
         "//tensorflow/compiler/mlir:register_common_dialects",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/core/tpu:tpu_defs",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -174,7 +175,6 @@ tf_cc_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_tsl//tsl/platform:status",
     ],
 )
 

@@ -65,7 +65,9 @@ int main(int argc, char **argv) {
   tensorflow::RegisterGpuDialects(&registry);
 
   tfrt::RegisterTFRTDialects(registry);
-  tensorflow::tfrt_compiler::RegisterLowerClusterToRuntimeOpsPassPipeline();
+  tensorflow::tfrt_compiler::RegisterTPULowerClusterToRuntimeOpsPassPipeline();
+  tensorflow::tfrt_compiler::
+      RegisterNonTPULowerClusterToRuntimeOpsPassPipeline();
 
   return failed(
       mlir::MlirOptMain(argc, argv, "TensorFlow TFRT pass driver\n", registry));

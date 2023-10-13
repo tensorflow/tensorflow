@@ -29,7 +29,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
+#include "tsl/framework/device_type.h"
 
 namespace tensorflow {
 namespace tfrt_compiler {
@@ -59,8 +62,8 @@ void EnablePassIRPrinting(PassManager& pm, const std::string& dump_group_name,
   pm.enableTiming();
 }
 
-void AddLowerClusterToRuntimeOpsPassPipeline(OpPassManager& pm,
-                                             llvm::StringRef module_name) {
+void AddTPULowerClusterToRuntimeOpsPassPipeline(OpPassManager& pm,
+                                                llvm::StringRef module_name) {
   pm.addPass(mlir::TFTPU::CreateTPURewritePass(module_name));
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addNestedPass<FuncOp>(mlir::TFDevice::CreateEmbeddingProgramKeyPass());
@@ -77,19 +80,47 @@ void AddLowerClusterToRuntimeOpsPassPipeline(OpPassManager& pm,
   }
 }
 
-void CreateLowerClusterToRuntimeOpsPassPipeline(
+void AddNonTPULowerClusterToRuntimeOpsPassPipeline(OpPassManager& pm) {
+  // Rewrite cluster functions into XLA launch ops.
+  if (tensorflow::GetMlirCommonFlags()
+          ->tf_mlir_enable_generic_outside_compilation) {
+    pm.addPass(mlir::TFDevice::CreateXlaRewriteV2Pass());
+  } else {
+    pm.addPass(mlir::TFDevice::CreateXlaRewritePass());
+  }
+  // Re-run the canonicalizer pass as some cleanup during resource op lifting
+  // pass opens up some opportunities for canonicalization of cluster ops.
+  // Specifically, we want to eliminate pass through results from the cluster
+  // op.
+  pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
+
+  pm.addNestedPass<FuncOp>(mlir::createCSEPass());
+  pm.addPass(mlir::createSymbolDCEPass());
+}
+
+void CreateTPULowerClusterToRuntimeOpsPassPipeline(
     OpPassManager& pm, const StandardPipelineOptions& options) {
-  AddLowerClusterToRuntimeOpsPassPipeline(pm, /*module_name=*/"");
+  AddTPULowerClusterToRuntimeOpsPassPipeline(pm, /*module_name=*/"");
+}
+
+void CreateNonTPULowerClusterToRuntimeOpsPassPipeline(
+    OpPassManager& pm, const StandardPipelineOptions& options) {
+  AddNonTPULowerClusterToRuntimeOpsPassPipeline(pm);
 }
 
 }  // namespace
 
 absl::Status RunLowerClusterToRuntimeOpsPassPipeline(
-    mlir::ModuleOp module, llvm::StringRef module_name) {
+    mlir::ModuleOp module, tsl::DeviceType xla_device_type,
+    llvm::StringRef module_name) {
   PassManager runtime_lowering(module.getContext());
   ::tensorflow::applyTensorflowAndCLOptions(runtime_lowering);
 
-  AddLowerClusterToRuntimeOpsPassPipeline(runtime_lowering, module_name);
+  if (xla_device_type == DeviceType(DEVICE_TPU_XLA_JIT)) {
+    AddTPULowerClusterToRuntimeOpsPassPipeline(runtime_lowering, module_name);
+  } else {
+    AddNonTPULowerClusterToRuntimeOpsPassPipeline(runtime_lowering);
+  }
 
   mlir::StatusScopedDiagnosticHandler diag_handler(
       module.getContext(), /*propagate=*/false,
@@ -124,13 +155,25 @@ absl::Status RunLowerClusterToRuntimeOpsPassPipeline(
   return diag_handler.ConsumeStatus();
 }
 
-void RegisterLowerClusterToRuntimeOpsPassPipeline() {
+// TODO(b/305211853): Unify the CPU/TPU/GPU Execution Ops and thus these two
+// passes should merge together.
+void RegisterTPULowerClusterToRuntimeOpsPassPipeline() {
   static mlir::PassPipelineRegistration<StandardPipelineOptions> pipeline(
-      "tfrt-lower-cluster-to-runtime-ops",
+      "tfrt-lower-cluster-to-runtime-ops-tpu",
       "Run all the passes involved after the clustering transformations from "
       "the TF2XLA Bridge. Takes as input a Module with tf_device.cluster ops "
-      "and outputs TFRT runtime ops such as TPUCompile",
-      CreateLowerClusterToRuntimeOpsPassPipeline);
+      "and outputs TFRT runtime ops such as TPUCompile. This pipeline is for "
+      "TPU.",
+      CreateTPULowerClusterToRuntimeOpsPassPipeline);
+}
+
+void RegisterNonTPULowerClusterToRuntimeOpsPassPipeline() {
+  static mlir::PassPipelineRegistration<StandardPipelineOptions> pipeline(
+      "tfrt-lower-cluster-to-runtime-ops-non-tpu",
+      "Run all the passes involved after the clustering transformations from "
+      "the TF2XLA Bridge. Takes as input a Module with tf_device.cluster ops "
+      "and outputs TFRT runtime ops such as XlaLaunch. This is for CPU/GPU",
+      CreateNonTPULowerClusterToRuntimeOpsPassPipeline);
 }
 
 }  // namespace tfrt_compiler
