@@ -73,15 +73,6 @@ inline bool DefaultOneDnnPolicy() {
 #elif defined(PLATFORM_WINDOWS) && defined(PLATFORM_IS_X86)
   return true;
 #elif defined(__linux__)
-  return port::TestCPUFeature(port::CPUFeature::AVX512_VNNI) ||
-         port::TestCPUFeature(port::CPUFeature::AVX512_BF16) ||
-         port::TestCPUFeature(port::CPUFeature::AVX_VNNI) ||
-         port::TestCPUFeature(port::CPUFeature::AMX_TILE) ||
-         port::TestCPUFeature(port::CPUFeature::AMX_INT8) ||
-         port::TestCPUFeature(port::CPUFeature::AMX_BF16) ||
-         port::TestAarch64CPU(
-             port::Aarch64CPU::ARM_NEOVERSE_V1);  // ARM NEOVERSE V1
-#else
   return false;
 #endif  // !defined(INTEL_MKL)
 }
