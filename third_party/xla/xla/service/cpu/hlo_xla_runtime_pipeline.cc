@@ -108,7 +108,6 @@ void AddSparsificationPasses(mlir::OpPassManager& pm, bool new_deallocator,
   pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
   pm.addPass(mlir::createSparsificationAndBufferizationPass(
       GetBufferizationOptions(new_deallocator), sparsification_options,
-      mlir::SparseTensorConversionOptions(),
       /*createSparseDeallocs=*/false,
       /*enableRuntimeLibrary=*/false,
       /*enableBufferInitialization=*/false,
