@@ -37,7 +37,7 @@ namespace stream_executor {
       std::unique_ptr<internal::CommandBufferInterface> command_buffer,
       executor->implementation()->GetCommandBufferImplementation(mode));
 
-  CommandBuffer cmd(std::move(command_buffer));
+  CommandBuffer cmd(executor, std::move(command_buffer));
   return cmd;
 }
 
@@ -67,8 +67,9 @@ namespace stream_executor {
 }
 
 CommandBuffer::CommandBuffer(
+    StreamExecutor* executor,
     std::unique_ptr<internal::CommandBufferInterface> implementation)
-    : implementation_(std::move(implementation)) {}
+    : executor_(executor), implementation_(std::move(implementation)) {}
 
 tsl::Status CommandBuffer::Launch(const ThreadDim& threads,
                                   const BlockDim& blocks,
