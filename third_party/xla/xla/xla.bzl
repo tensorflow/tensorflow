@@ -56,6 +56,7 @@ def xla_cc_binary(deps = None, copts = tsl_copts(), **kwargs):
         "//xla/service/gpu/model:hlo_op_profile_proto_cc_impl",
         "//xla/stream_executor:device_description_proto_cc_impl",
         "//xla/stream_executor:stream_executor_impl",
+        "//xla/stream_executor/gpu:gpu_init_impl",
         "@local_tsl//tsl/platform:env_impl",
         "@local_tsl//tsl/platform:tensor_float_32_utils",
         "@local_tsl//tsl/profiler/utils:time_utils_impl",
