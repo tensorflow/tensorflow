@@ -27,11 +27,12 @@ namespace mlir::quant::stablehlo {
 // Creates a pass that quantizes weight component of StableHLO graph.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizeWeightPass(
     const ::stablehlo::quantization::QuantizationComponentSpec&
-        quantization_component_spec);
+        quantization_component_spec = {});
 
-// Creates a pass that prepares static range quantization of StableHLO graph.
-std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareSrqQuantizePass(
-    ::stablehlo::quantization::QuantizationOptions quantization_options);
+// Creates an instance of the StableHLO dialect PrepareQuantize pass without any
+// arguments. Preset method of SRQ is set to the quantization option by default.
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
+    bool enable_per_channel_quantization = true, int bit_width = 8);
 
 // Adds generated pass default constructors or options definitions.
 #define GEN_PASS_DECL

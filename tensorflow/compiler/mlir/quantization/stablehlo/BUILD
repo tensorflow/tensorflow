@@ -1,11 +1,9 @@
 # Placeholder: load py_proto_library
-load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
+load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/compiler/mlir/quantization/stablehlo:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
-
-# TODO(b/264218457): Create stablehlo-quantization-opt and register passes to actually test.
 
 package_group(
     name = "internal_visibility_allowlist_package",
@@ -31,8 +29,7 @@ package(
 cc_library(
     name = "passes",
     srcs = [
-        "passes/prepare_srq_quantize.cc",
-        "passes/prepare_srq_quantize.inc",
+        "passes/prepare_quantize.cc",
         "passes/quantize_weight.cc",
         "passes/unfuse_mhlo_batch_norm.cc",
     ],
@@ -42,17 +39,16 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":fill_quantization_options",
-        ":prepare_srq_quantize_inc_gen",
         ":quantization_options_proto_cc",
         ":stablehlo_passes_inc_gen",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core/platform:path",
         "@eigen_archive//:eigen3",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -67,33 +63,6 @@ cc_library(
     # Alwayslink is required for registering the MLIR passes.
     # TODO(b/255530126): Split the pass registration from the definitions to avoid binary size bloat.
     alwayslink = True,
-)
-
-td_library(
-    name = "quant_td_files",
-    srcs = [
-        "passes/prepare_srq_quantize.td",
-    ],
-    compatible_with = get_compatible_with_portable(),
-    deps = [
-        "@llvm-project//mlir:ArithOpsTdFiles",
-        "@llvm-project//mlir:FuncTdFiles",
-        "@stablehlo//:stablehlo_ops_td_files",
-    ],
-)
-
-gentbl_cc_library(
-    name = "prepare_srq_quantize_inc_gen",
-    compatible_with = get_compatible_with_portable(),
-    tbl_outs = [
-        (
-            ["-gen-rewriters"],
-            "passes/prepare_srq_quantize.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "passes/prepare_srq_quantize.td",
-    deps = [":quant_td_files"],
 )
 
 gentbl_cc_library(
