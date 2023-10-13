@@ -163,16 +163,11 @@ Status PluginTracer::CollectData(XSpace* space) {
   args.buffer = nullptr;
   RETURN_STATUS_IF_PLUGIN_PROFILER_ERROR(profiler_api_->collect_data(&args),
                                          profiler_api_);
-  // Prepare an appropriately sized buffer.
   if (args.buffer_size_in_bytes > 0) {
     std::vector<uint8_t> buffer(args.buffer_size_in_bytes);
-    args.buffer = buffer.data();
-    RETURN_STATUS_IF_PLUGIN_PROFILER_ERROR(profiler_api_->collect_data(&args),
-                                           profiler_api_);
-    // Deserialize XSpace from the buffer and return it.
-    XSpace tpu_space;
-    tpu_space.ParseFromArray(buffer.data(), buffer.size());
-    for (XPlane& tpu_plane : *tpu_space.mutable_planes()) {
+    XSpace xspace;
+    xspace.ParseFromArray(args.buffer, args.buffer_size_in_bytes);
+    for (XPlane& tpu_plane : *xspace.mutable_planes()) {
       XPlane* plane = space->add_planes();
       plane->Swap(&tpu_plane);
     }
