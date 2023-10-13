@@ -131,6 +131,7 @@ cc_library(
     hdrs = [
         "transforms/lower_cluster_to_runtime_ops.h",
     ],
+    compatible_with = get_compatible_with_portable(),  # copybara: comment
     deps = [
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir/tensorflow:bridge_logger",

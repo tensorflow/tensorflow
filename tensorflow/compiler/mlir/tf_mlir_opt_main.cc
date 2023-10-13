@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/mlprogram_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/lower_cluster_to_runtime_ops.h"
 #include "tensorflow/compiler/mlir/tosa/tf_passes.h"
 #include "tensorflow/compiler/mlir/tosa/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
@@ -63,6 +64,9 @@ int main(int argc, char **argv) {
   tensorflow::RegisterConvertMlirToXlaHloPipelineWithDefaults();
   tensorflow::RegisterGraphOptimizationPasses();
   tensorflow::RegisterMlProgramPasses();
+  tensorflow::tfrt_compiler::RegisterTPULowerClusterToRuntimeOpsPassPipeline();
+  tensorflow::tfrt_compiler::
+      RegisterNonTPULowerClusterToRuntimeOpsPassPipeline();
 
   mlir::DialectRegistry registry;
   mlir::RegisterCommonToolingDialects(registry);
