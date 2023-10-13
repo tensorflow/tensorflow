@@ -182,6 +182,7 @@ cc_library(
         ":pjrt_c_api_hdrs",
         ":pjrt_c_api_macros",
     ],
+    alwayslink = 1,
 )
 
 # PJRT GPU plugin. Can be configured to be built for CUDA or ROCM.
