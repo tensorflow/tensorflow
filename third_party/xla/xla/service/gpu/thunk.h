@@ -16,13 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_THUNK_H_
 #define XLA_SERVICE_GPU_THUNK_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -100,6 +103,15 @@ class Thunk {
     kFusedMHA
   };
 
+  // TODO(ezhulenev): This should become a part of StreamExecutor library, but
+  // for now we keep it here as a Thunk implementation detail. It's not yet
+  // clear what else should become a part of "executable source", we likely
+  // need to keep some information about available symbols and signatures.
+  struct ExecutableSource {
+    std::string_view text;             // PTX for NVIDIA backend
+    absl::Span<const uint8_t> binary;  // CUBIN for NVIDIA backends
+  };
+
   struct ThunkInfo {
     explicit ThunkInfo(mlir::Operation* op) : op(op) {}
     std::optional<int64_t> profile_index;
@@ -134,8 +146,7 @@ class Thunk {
   // This may be called multiple times.  Its main purpose is to give us a chance
   // to do initialization outside of ExecuteOnStream() so that the
   // time spent initializing doesn't count towards our execution profile.
-  virtual Status Initialize(const GpuExecutable& /*executable*/,
-                            se::StreamExecutor* /*executor*/) {
+  virtual Status Initialize(se::StreamExecutor*, ExecutableSource) {
     return OkStatus();
   }
 

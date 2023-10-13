@@ -814,8 +814,9 @@ Status GpuExecutable::ExecuteThunksOrXlaRuntime(
 
   if (thunks_) {
     se::StreamExecutor* executor = run_options->stream()->parent();
+    Thunk::ExecutableSource executable_source = {text_, binary_};
     for (const std::unique_ptr<Thunk>& thunk : *thunks_) {
-      TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
+      TF_RETURN_IF_ERROR(thunk->Initialize(executor, executable_source));
     }
 
     return ExecuteThunks(

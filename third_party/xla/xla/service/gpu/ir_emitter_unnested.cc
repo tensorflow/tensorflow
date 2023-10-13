@@ -176,8 +176,7 @@ class UnreachableThunk : public Thunk {
   UnreachableThunk(const UnreachableThunk&) = delete;
   UnreachableThunk& operator=(const UnreachableThunk&) = delete;
 
-  Status Initialize(const GpuExecutable& executable,
-                    se::StreamExecutor* executor) final {
+  Status Initialize(se::StreamExecutor*, ExecutableSource) final {
     return tsl::errors::Internal(error_message_);
   }
 
