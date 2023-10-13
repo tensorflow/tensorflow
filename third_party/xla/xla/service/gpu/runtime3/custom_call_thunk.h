@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_CUSTOM_CALL_THUNK_H_
-#define XLA_SERVICE_GPU_CUSTOM_CALL_THUNK_H_
+#ifndef XLA_SERVICE_GPU_RUNTIME3_CUSTOM_CALL_THUNK_H_
+#define XLA_SERVICE_GPU_RUNTIME3_CUSTOM_CALL_THUNK_H_
 
 #include "xla/service/custom_call_status_internal.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -67,4 +67,4 @@ class CustomCallThunk : public Thunk {
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_CUSTOM_CALL_THUNK_H_
+#endif  // XLA_SERVICE_GPU_RUNTIME3_CUSTOM_CALL_THUNK_H_
