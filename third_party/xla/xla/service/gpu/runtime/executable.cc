@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/conv_reorder.h"
 #include "xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "xla/service/gpu/runtime/custom_call.h"
+#include "xla/service/gpu/runtime/custom_call_registry.h"
 #include "xla/service/gpu/runtime/fft.h"
 #include "xla/service/gpu/runtime/fused_attention.h"
 #include "xla/service/gpu/runtime/gemm.h"
@@ -90,6 +91,10 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
   RegisterXlaFfiStreamProvider(GetXlaFfiGpuStream);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+  // Register custom calls from a static XLA:GPU registry.
+  RegisterDirectCustomCalls(registry);
+
+  // Register builtin XLA:GPU custom calls (aka GPU runtime).
   RegisterKernelLaunchCustomCalls(registry);
   RegisterTracingCustomCalls(registry);
   RegisterFftCustomCalls(registry);
