@@ -42,7 +42,8 @@ struct AotResult {
   tfrt::BefBuffer bef;
   // TODO(b/296466237): Investigate whether the whole FunctionDefLibrary should
   // be put here.
-  // XLA cluster functions generated during bridge and their nested functions.
+  // XLA cluster functions corresponding to `XlaLaunch` op, generated during
+  // bridge.
   std::vector<FunctionDef> xla_functions;
 };
 

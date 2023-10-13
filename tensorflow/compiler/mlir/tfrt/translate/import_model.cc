@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
@@ -57,13 +58,17 @@ namespace {
 
 // Exports all XLA functions in the form of XlaLaunch, and their nested
 // functions.
-StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(mlir::ModuleOp module) {
+StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(
+    mlir::ModuleOp module, std::vector<std::string>* added_xla_function_names) {
   // Find all XLA functions.
   std::vector<std::string> xla_functions;
   module.walk([&](mlir::TF::XlaLaunchOp xla_launch_op) {
     std::string func_name =
         xla_launch_op.getFunctionAttr().getRootReference().str();
     xla_functions.push_back(func_name);
+    if (added_xla_function_names != nullptr) {
+      added_xla_function_names->push_back(func_name);
+    }
   });
 
   // Convert all XLA functions and their nested functions.
@@ -334,13 +339,11 @@ tensorflow::Status AddXlaFunctions(
     tfrt_stub::FallbackState* fallback_state, mlir::ModuleOp mlir_module,
     std::vector<std::string>* added_xla_function_names) {
   if (fallback_state != nullptr) {
-    TF_ASSIGN_OR_RETURN(const std::vector<FunctionDef> xla_func_defs,
-                        ExportXlaFunctions(mlir_module));
+    TF_ASSIGN_OR_RETURN(
+        const std::vector<FunctionDef> xla_func_defs,
+        ExportXlaFunctions(mlir_module, added_xla_function_names));
     for (const auto& func_def : xla_func_defs) {
       TF_RETURN_IF_ERROR(fallback_state->AddFunctionDef(func_def));
-      if (added_xla_function_names != nullptr) {
-        added_xla_function_names->push_back(func_def.signature().name());
-      }
     }
   }
 
