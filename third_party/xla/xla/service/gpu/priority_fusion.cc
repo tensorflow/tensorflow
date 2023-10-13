@@ -178,14 +178,6 @@ class GpuPriorityFusionQueue : public FusionQueue {
       if (!operand->IsFusible()) {
         continue;
       }
-      // We only update the priority for the operand when its user count has
-      // changed, which is the main cause of priority change. The priority could
-      // change in other cases, but we skip them to improve compile time.
-      auto user_count_it = producer_user_count_.find(operand);
-      if (user_count_it != producer_user_count_.end() &&
-          user_count_it->second == operand->user_count()) {
-        continue;
-      }
       producer_user_count_[operand] = operand->user_count();
       to_update_priority_.insert(operand);
     }
@@ -353,64 +345,57 @@ StatusOr<bool> GpuPriorityFusion::Run(
   return result;
 }
 
-FusionDecision GpuPriorityFusion::ShouldFuseInexpensiveChecks(
-    HloInstruction* consumer, int64_t operand_index) {
+FusionDecision GpuPriorityFusion::ShouldFuse(HloInstruction* consumer,
+                                             int64_t operand_index) {
+  auto isFusible = [](const HloInstruction& instr) {
+    // Side-effecting operations are not fusible.
+    if (!instr.IsFusible()) {
+      return false;
+    }
+
+    // Element-wise operations are always fusible.
+    if (instr.IsElementwise()) {
+      return true;
+    }
+
+    // Other non-elementwise ops also supported by elemental fusion.
+    switch (instr.opcode()) {
+      case HloOpcode::kFusion:
+        return instr.fusion_kind() != HloInstruction::FusionKind::kCustom;
+
+      case HloOpcode::kCopy:
+      case HloOpcode::kIota:
+      case HloOpcode::kConstant:
+      case HloOpcode::kReduce:
+      case HloOpcode::kBitcast:
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kConcatenate:
+      case HloOpcode::kDynamicSlice:
+      case HloOpcode::kDynamicUpdateSlice:
+      case HloOpcode::kGather:
+      case HloOpcode::kPad:
+      case HloOpcode::kReduceWindow:
+      case HloOpcode::kReshape:
+      case HloOpcode::kReverse:
+      case HloOpcode::kScatter:
+      case HloOpcode::kSlice:
+      case HloOpcode::kTranspose:
+        return true;
+      default:
+        return false;
+    }
+  };
+
   HloInstruction* producer = consumer->mutable_operand(operand_index);
-
-  // Cost condition: not fuse (simple, expensive producers) and (consumers who
-  // reuse operand elements).
-  if (producer->opcode() != HloOpcode::kFusion && is_expensive(*producer) &&
-      ReusesOperandElements(consumer, operand_index)) {
-    return "the producer is expensive, and the consumer reuses inputs";
+  if (!isFusible(*producer)) {
+    return "the producer is not fusible";
   }
 
-  // Do not fuse into fusions if the resulting kernel would suffer from
-  // uncoalesced reads due to a transposed memory access pattern.
-  if (IsInputFusibleReduction(*consumer) &&
-      IsPhysicallyTransposing(*producer)) {
-    return "fusing the producer would break read coalescing";
-  }
-
-  if (auto fusible = IsProducerConsumerFusible(*producer, *consumer);
-      !fusible) {
-    return fusible;
-  }
-
-  if (CreatesHeavyComputation(*producer, *consumer)) {
-    return "the fusion would create a heavy computation";
+  if (!isFusible(*consumer)) {
+    return "the consumer is not fusible";
   }
 
   return InstructionFusion::ShouldFuse(consumer, operand_index);
-}
-
-FusionDecision GpuPriorityFusion::ShouldFuse(HloInstruction* consumer,
-                                             int64_t operand_index) {
-  if (auto fusible = ShouldFuseInexpensiveChecks(consumer, operand_index);
-      !fusible) {
-    return fusible;
-  }
-
-  auto producer = consumer->operand(operand_index);
-
-  // The following checks are potentially expensive.
-  if (auto fusible = FusionFitsInBudget(*consumer, *producer, device_info_,
-                                        /*is_consumer_producer_fusion=*/true);
-      !fusible) {
-    return fusible;
-  }
-
-  // Also check that our emitter can handle the fusion node. We currently can
-  // have exponential time/memory requirements for emitting certain fusion
-  // kernels, in which case we don't want to fuse.
-  // TODO(b/119692968): Remove this once we have fixed our fusion emitter.
-  // TODO(kramerb): Re-enable caching of FusionNodeIndexingEvaluation. It
-  // doesn't get invalidated when fusions are merged.
-  if (consumer->opcode() == HloOpcode::kFusion &&
-      FusionNodeIndexingEvaluation(consumer).CodeDuplicationTooHigh(producer)) {
-    return "the fusion would result in an overly large code duplication";
-  }
-
-  return {};
 }
 
 HloInstruction::FusionKind GpuPriorityFusion::ChooseKind(

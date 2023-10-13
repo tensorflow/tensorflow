@@ -332,6 +332,94 @@ ENTRY fusion {
               2);
 }
 
+TEST_F(GpuPerformanceModelTest, FusingTransposeIntoReduceIsSlow) {
+  constexpr absl::string_view kHlo = R"(
+HloModule testmodule
+
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(p0, p1)
+}
+
+ENTRY fusion {
+  c = f32[] constant(-inf)
+  p0 = f32[1500,32,128] parameter(0)
+  transpose.1 = f32[1500,128,32] transpose(p0), dimensions={0,2,1}
+  ROOT reduce.1 = f32[1500,32] reduce(transpose.1, c), dimensions={1}, to_apply=max
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  auto* producer =
+      module->entry_computation()->GetInstructionWithName("transpose.1");
+  std::vector<HloInstruction*> consumers{
+      module->entry_computation()->GetInstructionWithName("reduce.1")};
+  GpuPerformanceModel::RunTimes t =
+      GpuPerformanceModel::EstimateRunTimes(producer, &analysis_, consumers);
+
+  EXPECT_NEAR(absl::ToInt64Microseconds(t.time_unfused), 105, 10);
+  EXPECT_NEAR(absl::ToInt64Microseconds(t.time_fused), 1030, 10);
+}
+
+TEST_F(GpuPerformanceModelTest, DusScalesWithUpdates) {
+  constexpr absl::string_view kHlo = R"(
+HloModule testmodule
+
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(p0, p1)
+}
+
+fusion.1 {
+  p0 = f32[1073741824] parameter(0)
+  p1 = f32[1024,1048576] parameter(1)
+  p2 = s32[] parameter(2)
+  c0 = f32[] constant(0)
+
+  r = f32[1024] reduce(p1, c0), dimensions={1}, to_apply=max
+  ROOT dus.1 = f32[1073741824] dynamic-update-slice(p0, r, p2)
+}
+
+fusion.2 {
+  p0 = f32[1024] parameter(0)
+  p1 = f32[1024,1048576] parameter(1)
+  p2 = s32[] parameter(2)
+  c0 = f32[] constant(0)
+
+  r = f32[1024] reduce(p1, c0), dimensions={1}, to_apply=max
+  ROOT dus.1 = f32[1024] dynamic-update-slice(p0, r, p2)
+}
+
+ENTRY main {
+  p0 = f32[1073741824] parameter(0)
+  p1 = f32[1024,1048576] parameter(1)
+  p2 = s32[] parameter(2)
+  p3 = f32[1024] parameter(3)
+
+  dus1 = f32[1073741824] fusion(p0, p1, p2), kind=kInput, calls=fusion.1
+  dus2 = f32[1024] fusion(p3, p1, p2), kind=kInput, calls=fusion.2
+
+  ROOT tuple = (f32[1073741824], f32[1024]) tuple(dus1, dus2)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
+  ASSERT_IS_OK(module->entry_computation()->Accept(&analysis_));
+
+  GpuPerformanceModel::RunTimes t1 = GpuPerformanceModel::EstimateRunTimes(
+      module->entry_computation()->root_instruction()->operand(0), &analysis_);
+  GpuPerformanceModel::RunTimes t2 = GpuPerformanceModel::EstimateRunTimes(
+      module->entry_computation()->root_instruction()->operand(1), &analysis_);
+
+  // DUS scales with the size of the updates, so these two fusions should have
+  // the same cost.
+  EXPECT_NEAR(absl::ToInt64Microseconds(t1.time_unfused),
+              absl::ToInt64Microseconds(t2.time_unfused), 10);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

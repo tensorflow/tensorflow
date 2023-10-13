@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -79,6 +80,7 @@ class GpuPerformanceModel {
       const GpuHloCostAnalysis* cost_analysis,
       const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
       const HloInstruction* producer,
+      std::optional<HloFusionAnalysis>& fusion_analysis,
       const HloInstruction* fused_consumer = nullptr);
 };
 

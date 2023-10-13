@@ -66,11 +66,6 @@ class GpuPriorityFusion : public InstructionFusion {
       const HloInstruction* producer, const HloInstruction* consumer) override;
 
  private:
-  // This method is called by ShouldFuse() to do all the computationally
-  // inexpensive checks whether we should fuse the operand into 'consumer'.
-  FusionDecision ShouldFuseInexpensiveChecks(HloInstruction* consumer,
-                                             int64_t operand_index);
-
   HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
                                   HloInstruction* producer) override;
 

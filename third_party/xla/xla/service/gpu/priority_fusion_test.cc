@@ -134,12 +134,6 @@ CHECK-NEXT: ROOT {{.*}} tuple(%[[FUSION_0]], %[[FUSION_1]])
 }
 
 TEST_F(PriorityFusionTest, FuseWideningConvertIntoConsumers) {
-  // Because of the bitcast consumer, the convert is currently fused only with
-  // the log, resulting in three fusions:
-  //   1. add + convert
-  //   2. multiply
-  //   3. bitcast
-  // This is a bug.
   absl::string_view kHlo = R"(
     HloModule test_module
 
@@ -155,10 +149,102 @@ TEST_F(PriorityFusionTest, FuseWideningConvertIntoConsumers) {
   RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
 CHECK:      ENTRY
 CHECK-NEXT: %[[PARAM:.*]] = f16[512]{0} parameter(0)
-CHECK-NEXT: %[[FUSION:.*]] = f32[512]{0} fusion(%[[PARAM]])
-CHECK-NEXT: %[[MUL:.*]] = f32[512]{0} multiply(%[[FUSION]], %[[FUSION]])
-CHECK-NEXT: %[[BITCAST:.*]] = s32[512]{0} bitcast(%[[FUSION]])
-CHECK-NEXT: ROOT %{{.*}} = (f32[512]{0}, s32[512]{0}) tuple(%[[MUL]], %[[BITCAST]])
+CHECK-NEXT: %[[FUSION_F32:.*]] = f32[512]{0} fusion(%[[PARAM]])
+CHECK-NEXT: %[[FUSION_S32:.*]] = s32[512]{0} fusion(%[[PARAM]])
+CHECK-NEXT: ROOT %{{.*}} = (f32[512]{0}, s32[512]{0}) tuple(%[[FUSION_F32]], %[[FUSION_S32]])
+  )");
+}
+
+TEST_F(PriorityFusionTest, FuseConvertIntoReduce) {
+  absl::string_view kHlo = R"(
+    HloModule test_module
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add.13235 = f32[] add(p0, p1)
+    }
+
+    ENTRY main {
+      param_0_0.79 = bf16[1024,8192]{1,0} parameter(0)
+      param_1_0.79 = bf16[1024,8192]{1,0} parameter(1)
+      param_2.483 = f32[8192]{0} parameter(2)
+      param_4.2892 = bf16[1024,8192]{1,0} parameter(3)
+      convert.21854 = f32[1024,8192]{1,0} convert(param_0_0.79)
+      convert.21855 = f32[1024,8192]{1,0} convert(param_1_0.79)
+      constant_7773 = f32[] constant(0)
+      broadcast.14555 = f32[1024,8192]{1,0} broadcast(param_2.483), dimensions={1}
+      multiply.6906 = f32[1024,8192]{1,0} multiply(broadcast.14555, convert.21854)
+      reduce.4813 = f32[1024]{0} reduce(multiply.6906, constant_7773), dimensions={1}, to_apply=add
+      convert.13970 = bf16[1024]{0} convert(reduce.4813)
+      convert.21534 = f32[1024,8192]{1,0} convert(param_4.2892)
+      multiply.6910.clone.1 = f32[1024,8192]{1,0} multiply(broadcast.14555, convert.21534)
+      reduce.4811.clone.1 = f32[1024]{0} reduce(multiply.6910.clone.1, constant_7773), dimensions={1}, to_apply=add
+      convert.13967.clone.1 = bf16[1024]{0} convert(reduce.4811.clone.1)
+      multiply.6908.clone.1 = f32[1024,8192]{1,0} multiply(broadcast.14555, convert.21855)
+      reduce.4812.clone.1 = f32[1024]{0} reduce(multiply.6908.clone.1, constant_7773), dimensions={1}, to_apply=add
+      convert.13969.clone.1 = bf16[1024]{0} convert(reduce.4812.clone.1)
+      ROOT fusion.241 = (bf16[1024]{0}, bf16[1024]{0}, bf16[1024]{0}) tuple(convert.13970, convert.13967.clone.1, convert.13969.clone.1)
+    })";
+
+  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
+CHECK-COUNT-3: ROOT {{.*}} convert(
+CHECK: ENTRY %main
+CHECK-COUNT-3: fusion
+  )");
+}
+
+TEST_F(PriorityFusionTest, ReductionEpilogueFusionRegressionTest) {
+  // Regression test for epilogue fusion of convert+bitcast into a reduction.
+  absl::string_view kHlo = R"(
+    HloModule test_module
+
+    add {
+      rhs.407 = f32[] parameter(1)
+      lhs.407 = f32[] parameter(0)
+      ROOT add.24451 = f32[] add(lhs.407, rhs.407)
+    }
+
+    ENTRY main {
+      param_1.15162 = f32[2752]{0} parameter(1)
+      convert.44829 = bf16[2752]{0} convert(param_1.15162)
+      bitcast.24686 = bf16[1,1,2752]{2,1,0} bitcast(convert.44829)
+      convert.44468 = f32[1,1,2752]{2,1,0} convert(bitcast.24686)
+      constant_13722 = bf16[] constant(1)
+      convert.17451 = f32[] convert(constant_13722)
+      broadcast.17565 = f32[1,1,2752]{2,1,0} broadcast(convert.17451), dimensions={}
+      negate.167 = f32[1,1,2752]{2,1,0} negate(convert.44468)
+      exponential.569 = f32[1,1,2752]{2,1,0} exponential(negate.167)
+      add.1850 = f32[1,1,2752]{2,1,0} add(broadcast.17565, exponential.569)
+      divide.1376 = f32[1,1,2752]{2,1,0} divide(broadcast.17565, add.1850)
+      multiply.9709 = f32[1,1,2752]{2,1,0} multiply(convert.44468, divide.1376)
+      param_0.15005 = f32[2752]{0} parameter(0)
+      convert.44826 = bf16[2752]{0} convert(param_0.15005)
+      bitcast.24683 = bf16[1,1,2752]{2,1,0} bitcast(convert.44826)
+      convert.44467 = f32[1,1,2752]{2,1,0} convert(bitcast.24683)
+      multiply.9708 = f32[1,1,2752]{2,1,0} multiply(multiply.9709, convert.44467)
+      convert.16959 = bf16[1,1,2752]{2,1,0} convert(multiply.9708)
+      fusion.3203 = bf16[2752]{0} bitcast(convert.16959)
+      convert.15093 = f32[2752]{0} convert(fusion.3203)
+      broadcast.13841 = f32[8192,2752]{1,0} broadcast(convert.15093), dimensions={1}
+      param_0.15525 = bf16[8192,2752]{1,0} parameter(2)
+      convert.13738 = f32[8192,2752]{1,0} convert(param_0.15525)
+      multiply.6422 = f32[8192,2752]{1,0} multiply(broadcast.13841, convert.13738)
+      constant_14382 = f32[] constant(0)
+      fusion.339 = f32[8192]{0} reduce(multiply.6422, constant_14382), dimensions={1}, to_apply=add
+      convert.44633 = bf16[8192]{0} convert(fusion.339)
+      ROOT bitcast.24487 = bf16[1,1,8192]{2,1,0} bitcast(convert.44633)
+    }
+                                                     )";
+
+  EXPECT_THAT(
+      RunAndGetFusionKinds(kHlo),
+      ::testing::ElementsAre(HloFusionAnalysis::EmitterFusionKind::kLoop,
+                             HloFusionAnalysis::EmitterFusionKind::kReduction));
+
+  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
+CHECK: ENTRY
+CHECK: ROOT {{.*}} fusion(
   )");
 }
 
@@ -232,8 +318,8 @@ TEST_F(PriorityFusionTest, DoNotFuseTransposeIntoReduce) {
   using Kind = HloFusionAnalysis::EmitterFusionKind;
   EXPECT_THAT(RunAndGetFusionKinds(kHlo),
               ::testing::UnorderedElementsAre(
-                  Kind::kReduction, Kind::kReduction, Kind::kLoop, Kind::kLoop,
-                  Kind::kTranspose, Kind::kTranspose, Kind::kTranspose));
+                  Kind::kReduction, Kind::kReduction, Kind::kTranspose,
+                  Kind::kTranspose, Kind::kTranspose));
 }
 
 TEST_F(PriorityFusionTest, DoNotFuseReduceIntoReduce) {
@@ -253,12 +339,13 @@ TEST_F(PriorityFusionTest, DoNotFuseReduceIntoReduce) {
       ROOT r1 = f32[8,4]{1,0} reduce(r0, c0), dimensions={2}, to_apply=add
     })";
 
-  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_),
-                            std::nullopt /* no change expected */);
+  RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
+CHECK: ROOT {{.*}} reduce(
+CHECK: ROOT {{.*}} reduce(
+  )");
 }
 
-TEST_F(PriorityFusionTest, ConvertNotFusedIntoReduce) {
-  // Documents behavior that converts are not epilogue fused into reduces.
+TEST_F(PriorityFusionTest, ConvertFusedIntoReduce) {
   absl::string_view kHlo = R"(
     HloModule test_module
 
@@ -291,14 +378,10 @@ TEST_F(PriorityFusionTest, ConvertNotFusedIntoReduce) {
     })";
 
   RunAndFilecheckHloRewrite(kHlo, std::move(priority_fusion_), R"(
-CHECK-COUNT-3: ROOT {{.*}} reduce(
+CHECK-COUNT-3: ROOT {{.*}} convert(
 CHECK: ENTRY %main
-CHECK: fusion(
-CHECK: convert(
-CHECK: fusion(
-CHECK: convert(
-CHECK: fusion(
-CHECK: convert(
+CHECK-COUNT-3: fusion(
+CHECK-NOT: fusion(
   )");
 }
 

@@ -1072,11 +1072,11 @@ xla_cc_test(
     name = "ir_emission_utils_test",
     srcs = ["ir_emission_utils_test.cc"],
     deps = [
+        ":hlo_traversal",
         ":ir_emission_utils",
         "//xla:util",
         "//xla/mlir_hlo:lhlo",
         "//xla/tests:hlo_test_base",
-        "//xla/tests:test_utils",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

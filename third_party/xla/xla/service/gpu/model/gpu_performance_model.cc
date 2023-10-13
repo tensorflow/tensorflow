@@ -34,8 +34,6 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
-#include "xla/service/hlo_dataflow_analysis.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 
 #if GOOGLE_CUDA
@@ -72,13 +70,25 @@ bool FusionUsesParameterElementwiseFromRoot(
 // n_bytes_net is small.
 absl::Duration ReadTime(const se::DeviceDescription& gpu_device_info,
                         int64_t num_blocks, int64_t n_bytes_net,
-                        int64_t n_bytes_total) {
+                        int64_t n_bytes_total, PrimitiveType element_type,
+                        bool coalesced) {
   float bandwidth = gpu_device_info.memory_bandwidth();
   if (n_bytes_net < gpu_device_info.l2_cache_size()) {
     bandwidth *= kL2CacheSpeedup;
     if (n_bytes_net < kL1CacheSizePerSM * gpu_device_info.core_count()) {
       bandwidth *= kL1CacheSpeedup;
     }
+  } else if (!coalesced) {
+    int64_t element_size_bytes =
+        element_type == PrimitiveType::TUPLE ||
+                element_type == PrimitiveType::TOKEN
+            ? 4 /* Dummy value. TODO(jreiffers): Model this case. */
+            : ShapeUtil::ByteSizeOfPrimitiveType(element_type);
+    constexpr int kCacheLineSizeBytes = 128;
+    // Assume we use one element from the cache line and waste the remaining
+    // bandwidth. For example, if we're reading f32s, we use 1/32nd of the cache
+    // line.
+    bandwidth /= kCacheLineSizeBytes / element_size_bytes;
   }
   // Limit the bandwidth for low occupancy cases. Each SM can issue at most one
   // 32B memory transaction per clock. H100 needs at least 56.8 active SMs
@@ -192,8 +202,31 @@ std::optional<HloFusionAnalysis> AnalyzeFusion(
 // that the IR emitter will use.
 LaunchDimensions EstimateFusionLaunchDimensions(
     int64_t estimated_num_threads,
-    std::optional<HloFusionAnalysis>& fusion_analysis) {
+    std::optional<HloFusionAnalysis>& fusion_analysis,
+    const se::DeviceDescription& device_info) {
   if (fusion_analysis) {
+    // TODO(jreiffers): This is the wrong place for this DUS analysis.
+    const HloInstruction* dus = nullptr;
+    for (const auto* root : fusion_analysis->fusion_roots()) {
+      if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
+        dus = root;
+      } else if (root->opcode() == HloOpcode::kBitcast &&
+                 root->operand(0)->opcode() == HloOpcode::kDynamicUpdateSlice) {
+        dus = root->operand(0);
+      } else {
+        dus = nullptr;
+        break;
+      }
+    }
+
+    if (dus) {
+      if (auto dims =
+              CalculateLaunchDimensions(dus->operand(1)->shape(), device_info);
+          dims.ok()) {
+        return dims.value();
+      }
+    }
+
     auto launch_dimensions = fusion_analysis->GetLaunchDimensions();
     if (launch_dimensions.ok()) return *launch_dimensions;
   }
@@ -215,13 +248,14 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
 
   auto fusion_analysis = AnalyzeFusion(*instr, *cost_analysis->device_info_);
   LaunchDimensions launch_dimensions = EstimateFusionLaunchDimensions(
-      ShapeUtil::ElementsInRecursive(instr->shape()), fusion_analysis);
+      ShapeUtil::ElementsInRecursive(instr->shape()), fusion_analysis,
+      *device_info);
   int64_t num_threads = launch_dimensions.launch_bound();
 
   absl::Duration compute_time = ComputeTime(*device_info, flops, num_threads);
   absl::Duration read_time = ProducerInputAccessTime(
       cost_analysis, *device_info, launch_dimensions.num_blocks(),
-      /*producer=*/instr);
+      /*producer=*/instr, fusion_analysis);
   absl::Duration write_time =
       absl::Seconds(1.0f * bytes_written / device_info->memory_bandwidth());
   absl::Duration exec_time = std::max(compute_time, read_time + write_time);
@@ -245,17 +279,23 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
 /*static*/ absl::Duration GpuPerformanceModel::ProducerInputAccessTime(
     const GpuHloCostAnalysis* cost_analysis,
     const se::DeviceDescription& gpu_device_info, int64_t num_blocks,
-    const HloInstruction* producer, const HloInstruction* fused_consumer) {
+    const HloInstruction* producer,
+    std::optional<HloFusionAnalysis>& fusion_analysis,
+    const HloInstruction* fused_consumer) {
   absl::Duration ret = absl::ZeroDuration();
   float producer_output_utilization = 1.f;
   ConstHloInstructionSet consumer_operands;
+  bool consumer_transposes = false;
   if (fused_consumer) {
+    consumer_transposes = IsPhysicallyTransposing(*fused_consumer);
     producer_output_utilization = cost_analysis->operand_utilization(
         *fused_consumer, fused_consumer->operand_index(producer));
     for (const HloInstruction* op : fused_consumer->operands()) {
       consumer_operands.insert(op);
     }
   }
+
+  bool producer_transposes = IsPhysicallyTransposing(*producer);
   for (int i = 0; i < producer->operand_count(); ++i) {
     // Information about data read taking into account utilization.
     // If `operand_utilization` is 0, `operand_bytes_accessed` should be also 0.
@@ -299,10 +339,19 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
         }
       }
     }
+
+    // TODO(jreiffers): We should be checking each operand here.
+    bool coalesced = (fusion_analysis &&
+                      fusion_analysis->GetEmitterFusionKind() ==
+                          HloFusionAnalysis::EmitterFusionKind::kTranspose) ||
+                     (!producer_transposes && !consumer_transposes);
+    const auto& operand_shape = producer->operand(i)->shape();
+
     CHECK_LE(common_utilization, producer_output_utilization);
     float n_bytes_total = operand_bytes_accessed *
                           (producer_output_utilization - common_utilization);
-    ret += ReadTime(gpu_device_info, num_blocks, n_bytes_net, n_bytes_total);
+    ret += ReadTime(gpu_device_info, num_blocks, /*n_bytes_net=*/n_bytes_net,
+                    n_bytes_total, operand_shape.element_type(), coalesced);
   }
   return ret;
 }
@@ -349,17 +398,16 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
     //
     // TODO(shyshkov): Add calculations for consumer epilogue in the formula to
     // make it complete.
-    auto analysis_fused = AnalyzeProducerConsumerFusion(
-        *producer, *fused_consumer, *cost_analysis->device_info_);
-    auto analysis_unfused =
-        AnalyzeFusion(*fused_consumer, *cost_analysis->device_info_);
+    auto analysis_fused =
+        AnalyzeProducerConsumerFusion(*producer, *fused_consumer, *device_info);
+    auto analysis_unfused = AnalyzeFusion(*fused_consumer, *device_info);
 
     LaunchDimensions launch_dimensions_fused = EstimateFusionLaunchDimensions(
         producer_data.num_threads * utilization_by_this_consumer,
-        analysis_fused);
+        analysis_fused, *device_info);
     LaunchDimensions launch_dimensions_unfused = EstimateFusionLaunchDimensions(
         ShapeUtil::ElementsInRecursive(fused_consumer->shape()),
-        analysis_unfused);
+        analysis_unfused, *device_info);
 
     absl::Duration compute_time_by_this_consumer = ComputeTime(
         *device_info, producer_data.flops * utilization_by_this_consumer,
@@ -370,8 +418,8 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
     // reduce -> broadcast -> elementwise fusion will recompute the reduce. We
     // don't currently have an analysis that is able to detect these cases.
     absl::Duration input_access_time_by_this_consumer = ProducerInputAccessTime(
-        cost_analysis, *device_info, launch_dimensions_unfused.num_blocks(),
-        producer, fused_consumer);
+        cost_analysis, *device_info, launch_dimensions_fused.num_blocks(),
+        producer, analysis_fused, fused_consumer);
 
     exec_time_fused += std::max(compute_time_by_this_consumer,
                                 input_access_time_by_this_consumer);
@@ -379,12 +427,11 @@ GpuPerformanceModel::RunTimes GpuPerformanceModel::EstimateRunTimes(
     int64_t n_bytes_total = std::llround(producer_data.bytes_written *
                                          utilization_by_this_consumer);
     int64_t n_bytes_net = std::min(producer_data.bytes_written, n_bytes_total);
-    // This assumes the consumer's launch grid is the same in the fused and
-    // unfused case. This should be the case most of the time, unless the hero
-    // is in the producer.
-    producer_output_read_time_unfused +=
-        ReadTime(*device_info, launch_dimensions_fused.num_blocks(),
-                 n_bytes_net, n_bytes_total);
+
+    producer_output_read_time_unfused += ReadTime(
+        *device_info, launch_dimensions_unfused.num_blocks(), n_bytes_net,
+        n_bytes_total, fused_consumer->shape().element_type(),
+        /*coalesced=*/!IsPhysicallyTransposing(*fused_consumer));
   }
 
   absl::Duration time_unfused =
