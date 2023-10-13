@@ -520,6 +520,7 @@ cc_test(
 
 cc_library(
     name = "tensor_slice_util",
+    srcs = ["tensor_slice_util.cc"],
     hdrs = [
         "tensor_slice_util.h",
     ],
