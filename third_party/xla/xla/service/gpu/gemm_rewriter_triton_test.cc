@@ -833,6 +833,45 @@ ENTRY e {
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
 }
 
+TEST_F(GemmRewriterTritonTest, BinaryElementwiseOfBroadcastIsFused) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p2 = f32[3072] parameter(2)
+  b = f32[8192,3072] broadcast(p2), dimensions={1}
+  p0 = f16[8192,3072] parameter(0)
+  p0c = f32[8192,3072] convert(p0)
+  a = f32[8192,3072] add(p0c, b)
+  p1 = f32[3072,768] parameter(1)
+  ROOT r = f32[8192,768] dot(a, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  EXPECT_TRUE(GemmRewriterTriton(cc).Run(module.get()).value());
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())));
+}
+
+TEST_F(GemmRewriterTritonTest,
+       BinaryElementwiseOfUnsupportedBroadcastIsNotFused) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p2 = f32[768] parameter(2)
+  b = f32[8192,768,4] broadcast(p2), dimensions={1}
+  s = f32[8192,3072] bitcast(b)
+  p0 = f16[8192,3072] parameter(0)
+  p0c = f32[8192,3072] convert(p0)
+  a = f32[8192,3072] add(p0c, s)
+  p1 = f32[3072,768] parameter(1)
+  ROOT r = f32[8192,768] dot(a, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  EXPECT_FALSE(GemmRewriterTriton(cc).Run(module.get()).value());
+}
+
 class GemmRewriterTritonLevel2Test : public GemmRewriterTritonTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
