@@ -1166,6 +1166,7 @@ cc_library(
         "//tensorflow/core/common_runtime:device_set",
         "@com_google_absl//absl/base",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
     ],
     alwayslink = 1,
 )

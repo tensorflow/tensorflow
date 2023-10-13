@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "absl/base/call_once.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
@@ -109,6 +111,17 @@ bool HasQualifiedNonTPUOp(const Graph& graph) {
     }
   }
   return false;
+}
+
+bool HasTPUPartitionedCallOpInModule(mlir::ModuleOp module) {
+  bool has_tpu_partitioned_call = false;
+  for (auto func_op : module.getOps<mlir::func::FuncOp>()) {
+    func_op->walk([&](mlir::TF::TPUPartitionedCallOp op) {
+      has_tpu_partitioned_call = true;
+    });
+    if (has_tpu_partitioned_call) break;
+  }
+  return has_tpu_partitioned_call;
 }
 
 }  // namespace
@@ -231,6 +244,10 @@ Status MlirBridgePass::Run(const std::string& function_name,
     return OkStatus();
   }
 
+  if (HasTPUPartitionedCallOpInModule(module)) {
+    VLOG(1) << "This is an inference module.";
+  }
+
   // TODO(b/241853328): Add caching of pass state and call logging/metrics
   // related to graph analysis from here.
   auto pass_state =
@@ -322,6 +339,10 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
     VLOG(1) << "Skipping MLIR TPU Bridge V1 Compat, no TPU devices or TPU ops "
                "found";
     return OkStatus();
+  }
+
+  if (HasTPUPartitionedCallOpInModule(module)) {
+    VLOG(1) << "This is an inference module.";
   }
 
   MlirOptimizationPassState pass_state =
