@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
@@ -80,6 +81,10 @@ void FindFusionArguments(
     absl::Span<const HloInstruction* const> roots,
     const FusionBoundaryFn& boundary,
     const std::function<void(const HloInstruction& producer)>& visit);
+
+// Returns all predecessors of node that lie within the boundary.
+absl::InlinedVector<const HloInstruction*, 2> FindPredecessors(
+    const HloInstruction& node, const FusionBoundaryFn& boundary);
 
 }  // namespace gpu
 }  // namespace xla

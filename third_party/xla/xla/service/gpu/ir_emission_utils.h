@@ -139,10 +139,14 @@ Shape GetShape(mlir::Value value);
 // `is_boundary` returns `true` for edges that are on the boundary of the
 // fusion, i.e., they go from an instruction inside the fusion to one outside,
 // or vice versa.
+// Note: when this is called with a fusion instruction, it will traverse into
+// the fusion (unless the boundary function stops it).
 const HloInstruction& FindNonTrivialHero(
     const HloInstruction& instr,
     const std::function<bool(const HloInstruction& producer,
                              const HloInstruction& consumer)>& is_boundary);
+// Like above, with the default boundary function. Additionally, this will not
+// traverse into `instr`'s computation if it is a fusion.
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
 
 /// Description of how to emit a given transposition.

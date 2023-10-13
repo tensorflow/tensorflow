@@ -902,9 +902,8 @@ bool IsRealReductionHero(const HloInstruction& root,
     return false;
   }
   return &root == &hero ||
-         (hero.user_count() == 1 &&
-          ReductionIsRaceFree(hero.GetModule()->config(),
-                              GetReductionKindAndContiguousComponents(hero)));
+         ReductionIsRaceFree(hero.GetModule()->config(),
+                             GetReductionKindAndContiguousComponents(hero));
 }
 
 }  // namespace gpu
