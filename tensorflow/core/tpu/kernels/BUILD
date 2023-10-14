@@ -1,8 +1,10 @@
 # TPU Kernel Implementations
 
+# Placeholder: load py_proto_library
 load(
     "//tensorflow:tensorflow.bzl",
     "if_libtpu",
+    "if_oss",
     "tf_cc_test",
     "tf_copts",
     "tf_gen_op_wrapper_py",
@@ -1407,6 +1409,43 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
+cc_library(
+    name = "sparse_core_layout",
+    srcs = ["sparse_core_layout.cc"],
+    hdrs = ["sparse_core_layout.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":sparse_core_layout_proto_cc",
+        "//tensorflow/compiler/jit:flags_headers",
+        "//tensorflow/compiler/jit/kernels:xla_ops",
+        "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:fingerprint",
+        "@local_tsl//tsl/platform:stringpiece",
+    ],
+)
+
+tf_cc_test(
+    name = "sparse_core_layout_test",
+    srcs = ["sparse_core_layout_test.cc"],
+    tags = if_oss([
+        "manual",
+        "no_oss",
+    ]),  # b/169705709, no protobuf matchers in OSS.
+    deps = [
+        ":sparse_core_layout",
+        ":sparse_core_layout_proto_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 tf_cc_test(
     name = "sparse_core_ops_utils_test",
     srcs = ["sparse_core_ops_utils_test.cc"],
@@ -1464,3 +1503,22 @@ cc_library(
         "@local_xla//xla/stream_executor:multi_platform_manager",
     ],
 )
+
+tf_proto_library(
+    name = "sparse_core_layout_proto",
+    srcs = ["sparse_core_layout.proto"],
+    has_services = False,
+    cc_api_version = 2,
+    create_go_proto = False,
+    create_java_proto = False,
+    create_kotlin_proto = False,
+    visibility = ["//visibility:public"],
+)
+
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "sparse_core_layout_py_pb2",
+#     api_version = 2,
+#     deps = [":sparse_core_layout_proto"],
+# )
+# copybara:uncomment_end
