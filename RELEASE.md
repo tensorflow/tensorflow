@@ -16,7 +16,8 @@
     *   **Windows x64 & x86 packages:**
         *   oneDNN optimizations are *enabled by default* on X86 CPUs
     *   To explicitly enable or disable oneDNN optimizations, set the environment variable `TF_ENABLE_ONEDNN_OPTS` to `1` (enable) or `0` (disable) before running TensorFlow. To fall back to default settings, unset the environment variable.
-    *   oneDNN optimizations can yield slightly different numerical results from without oneDNN optimizations due to floating-point round-off errors from different computation approaches and orders.
+    *   oneDNN optimizations can yield slightly different numerical results compared to when oneDNN optimizations are disabled due to floating-point round-off errors from
+ different computation approaches and orders.
     *   To verify if oneDNN optimizations are on, look for a message with *"oneDNN custom operations are on"* in the log. If the exact phrase is not there, it means they are off.
 
 * Making the `tf.function` type system fully available:
