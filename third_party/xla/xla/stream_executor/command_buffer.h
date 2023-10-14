@@ -120,6 +120,9 @@ class CommandBuffer {
   // Returns command buffer execution mode.
   Mode mode() const;
 
+  // Returns command buffer state.
+  State state() const;
+
   internal::CommandBufferInterface* implementation() {
     return implementation_.get();
   }

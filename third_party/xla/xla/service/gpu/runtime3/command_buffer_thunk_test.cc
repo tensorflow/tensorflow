@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/runtime3/command_buffer_thunk.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -134,6 +135,22 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
   // Copy `b` data back to host.
   std::vector<int32_t> dst(4, 0);
   stream.ThenMemcpy(dst.data(), b, byte_length);
+
+  ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
+
+  // Prepare buffer allocation for updating command buffer: c=0
+  se::DeviceMemory<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+  stream.ThenMemZero(&c, byte_length);
+
+  // Update buffer allocation #1 to buffer `c`.
+  allocations = BufferAllocations({a, c}, 0, executor->GetAllocator());
+
+  // Thunk execution should automatically update underlying command buffer.
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+
+  // Copy `c` data back to host.
+  std::fill(dst.begin(), dst.end(), 0);
+  stream.ThenMemcpy(dst.data(), c, byte_length);
 
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
 }

@@ -88,6 +88,10 @@ CommandBuffer::Mode CommandBuffer::mode() const {
   return implementation_->mode();
 }
 
+CommandBuffer::State CommandBuffer::state() const {
+  return implementation_->state();
+}
+
 tsl::Status CommandBuffer::Finalize() { return implementation_->Finalize(); }
 
 tsl::Status CommandBuffer::Update() { return implementation_->Update(); }

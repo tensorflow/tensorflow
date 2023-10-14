@@ -57,6 +57,9 @@ Status CommandBufferCmdSequence::Initialize(
 Status CommandBufferCmdSequence::Record(
     const CommandBufferCmd::RecordParams& params,
     se::CommandBuffer* command_buffer) {
+  if (command_buffer->state() == se::CommandBuffer::State::kFinalized) {
+    TF_RETURN_IF_ERROR(command_buffer->Update());
+  }
   for (auto& cmd : commands_) {
     TF_RETURN_IF_ERROR(cmd->Record(params, command_buffer));
   }
