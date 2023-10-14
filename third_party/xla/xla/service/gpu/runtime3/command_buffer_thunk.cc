@@ -38,6 +38,23 @@ CommandBufferThunk::CommandBufferThunk(CommandBufferCmdSequence commands,
     : Thunk(Thunk::kCommandBuffer, std::move(thunk_info)),
       commands_(std::move(commands)) {}
 
+Status CommandBufferThunk::Initialize(se::StreamExecutor* executor,
+                                      ExecutableSource executable_source) {
+  return commands_.Initialize(executor, executable_source);
+}
+
+Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
+  se::StreamExecutor* executor = params.stream->parent();
+  TF_ASSIGN_OR_RETURN(State * state, GetOrCreateCommandBuffer(executor));
+
+  absl::MutexLock lock(&state->mutex);
+
+  CommandBufferCmd::RecordParams record_params = {params.buffer_allocations};
+  TF_RETURN_IF_ERROR(commands_.Record(record_params, &state->command_buffer));
+
+  return executor->Submit(params.stream, state->command_buffer);
+}
+
 StatusOr<CommandBufferThunk::State*>
 CommandBufferThunk::GetOrCreateCommandBuffer(se::StreamExecutor* executor) {
   absl::MutexLock lock(&mutex_);
@@ -53,18 +70,6 @@ CommandBufferThunk::GetOrCreateCommandBuffer(se::StreamExecutor* executor) {
       executor, std::make_unique<State>(std::move(command_buffer)));
 
   return emplaced.first->second.get();
-}
-
-Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
-  se::StreamExecutor* executor = params.stream->parent();
-  TF_ASSIGN_OR_RETURN(State * state, GetOrCreateCommandBuffer(executor));
-
-  absl::MutexLock lock(&state->mutex);
-
-  CommandBufferCmd::RecordParams record_params = {params.buffer_allocations};
-  TF_RETURN_IF_ERROR(commands_.Record(record_params, &state->command_buffer));
-
-  return executor->Submit(params.stream, state->command_buffer);
 }
 
 }  // namespace xla::gpu

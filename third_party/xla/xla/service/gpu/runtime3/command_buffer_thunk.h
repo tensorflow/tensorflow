@@ -35,6 +35,7 @@ class CommandBufferThunk : public Thunk {
   explicit CommandBufferThunk(CommandBufferCmdSequence commands,
                               ThunkInfo thunk_info);
 
+  Status Initialize(se::StreamExecutor*, ExecutableSource) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:

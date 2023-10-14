@@ -81,7 +81,7 @@ Status LaunchCmd::Initialize(se::StreamExecutor* executor,
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<se::KernelBase> kernel,
                       CreateKernel(kernel_name_, args_.size(), source.text,
-                                   source.data, executor, shmem_bytes_));
+                                   source.binary, executor, shmem_bytes_));
 
   kernels_.emplace(executor, std::move(kernel));
   return OkStatus();

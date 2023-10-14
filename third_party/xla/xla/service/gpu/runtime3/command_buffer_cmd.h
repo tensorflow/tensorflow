@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/kernel.h"
@@ -43,18 +43,14 @@ namespace xla::gpu {
 // buffer by recording commands into it.
 class CommandBufferCmd {
  public:
+  using ExecutableSource = Thunk::ExecutableSource;
+
   // Run time parameters required for recording commands into the command
   // buffer. For example when we emit command buffer cmd sequence from an HLO
   // module, we only know the buffer slices required for HLO operations, but the
   // concrete device pointers become available only at run time.
   struct RecordParams {
     const BufferAllocations* buffer_allocations;
-  };
-
-  // TODO(ezhulenev): Move it into GpuExecutable.
-  struct ExecutableSource {
-    std::string_view text;
-    absl::Span<const uint8_t> data;
   };
 
   // Prepares a command for recording on a given executor. We split it into a

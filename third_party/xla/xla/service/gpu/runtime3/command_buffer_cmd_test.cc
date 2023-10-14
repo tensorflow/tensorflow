@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/stream_executor/multi_platform_manager.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/types.h"  // IWYU pragma: keep
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/test.h"
@@ -114,7 +113,7 @@ TEST(CommandBufferCmdTest, LaunchCmd) {
 
   // Initialize command sequence and load device kernels.
   CommandBufferCmd::ExecutableSource source = {
-      /*text=*/se::cuda::internal::kAddI32Kernel, /*data=*/{}};
+      /*text=*/se::cuda::internal::kAddI32Kernel, /*binary=*/{}};
   TF_ASSERT_OK(commands.Initialize(executor, source));
 
   BufferAllocations allocations({a, b}, 0, executor->GetAllocator());
