@@ -106,14 +106,12 @@ class FusedMatMulOpTest : public OpsTestBase {
     TF_ASSERT_OK(res);
     
     res = session->Run({}, {fetch}, {}, &unfused_tensors);
-    if (last_status != nullptr) {
+    if (res != ::tsl::OkStatus() && last_status != nullptr) {
       *last_status = res;
-    } else {
-      TF_ASSERT_OK(res);
-    }
-    if (!unfused_tensors.empty()) {
-      *output = unfused_tensors[0];
-    }
+      return;
+    } 
+    TF_ASSERT_OK(res);
+    *output = unfused_tensors[0];
   }
 
   void RunMatMulWithBias(const Tensor& lhs_data, const Tensor& rhs_data,
@@ -301,7 +299,7 @@ class FusedMatMulOpTest : public OpsTestBase {
                                          bool transpose_b,
                                          const string& activation) {
 
-    bool allow_gpu_device = true;//activation == "Relu" || (this->TValueType == DT_HALF);
+    bool allow_gpu_device = activation == "Relu" || (this->TValueType == DT_HALF);
     const BiasAddGraphRunner run_default = [&](const Tensor& input_data,
                                                const Tensor& filter_data,
                                                const Tensor& bias_data,
@@ -379,16 +377,16 @@ static auto GetActivations(DataType dtype) {
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul256x128x64WithActivation) {
 
-  // for (const string& activation : GetActivations(this->TValueType)) {
-  //     this->VerifyConv2DWithBiasAndActivation(256, 128, 64, false, false,
-  //                                           activation);
-  //     this->VerifyConv2DWithBiasAndActivation(256, 128, 64, true, false,
-  //                                           activation);
-  //     this->VerifyConv2DWithBiasAndActivation(256, 128, 64, false, true,
-  //                                           activation);
-  //     this->VerifyConv2DWithBiasAndActivation(256, 128, 64, true, true,
-  //                                           activation);
-  // }
+  for (const string& activation : GetActivations(this->TValueType)) {
+      this->VerifyConv2DWithBiasAndActivation(256, 128, 64, false, false,
+                                            activation);
+      this->VerifyConv2DWithBiasAndActivation(256, 128, 64, true, false,
+                                            activation);
+      this->VerifyConv2DWithBiasAndActivation(256, 128, 64, false, true,
+                                            activation);
+      this->VerifyConv2DWithBiasAndActivation(256, 128, 64, true, true,
+                                            activation);
+  }
 }
 
 TYPED_TEST_P(FusedMatMulWithBiasOpTest, MatMul1x256x256WithActivation) {
