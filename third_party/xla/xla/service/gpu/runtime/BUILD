@@ -680,7 +680,7 @@ cc_library(
         "//xla/runtime:executable",
         "//xla/service:executable",
         "//xla/service/gpu:gpu_asm_opts_util",
-        "//xla/service/gpu:triangular_solve_thunk",
+        "//xla/service/gpu/runtime3:triangular_solve_thunk",
         "@local_tsl//tsl/platform:human_readable_json",
     ],
 )

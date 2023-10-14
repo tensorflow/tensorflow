@@ -13,11 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/triangular_solve_thunk.h"
+#include "xla/service/gpu/runtime3/triangular_solve_thunk.h"
 
-#include <string>
-
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/service/gpu/precompiled_kernels.h"
 #include "xla/stream_executor/blas.h"

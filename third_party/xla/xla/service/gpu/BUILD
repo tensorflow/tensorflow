@@ -345,10 +345,10 @@ cc_library(
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
     ] + if_gpu_is_configured([
-        ":triangular_solve_thunk",
         ":cublas_lt_matmul_thunk",
         ":ir_emitter_triton",
         "//xla/service/gpu/runtime3:cholesky_thunk",
+        "//xla/service/gpu/runtime3:triangular_solve_thunk",
     ]),
 )
 
@@ -1008,7 +1008,7 @@ cc_library(
     ] + if_gpu_is_configured([
         ":precompiled_kernels",
         "//xla/service/gpu/runtime3:cholesky_thunk",
-        ":triangular_solve_thunk",
+        "//xla/service/gpu/runtime3:triangular_solve_thunk",
     ]) + if_cuda_is_configured([
         "//xla/stream_executor/cuda:cublas_plugin",
         "//xla/stream_executor/cuda:cuda_stream",
@@ -1101,33 +1101,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:statusor",
     ],
-)
-
-# TODO(ezhulenev): Extract `RunTriangularSolve` into a separate library.
-cc_library(
-    name = "triangular_solve_thunk",
-    srcs = if_gpu_is_configured(["triangular_solve_thunk.cc"]),
-    hdrs = if_gpu_is_configured(["triangular_solve_thunk.h"]),
-    visibility = ["//visibility:public"],
-    deps = if_gpu_is_configured([
-        ":buffer_allocations",
-        ":cusolver_context",
-        ":precompiled_kernels",
-        ":thunk",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla/service:buffer_assignment",
-        "//xla/hlo/ir:hlo",
-        "@local_tsl//tsl/platform:logging",
-        "//xla/stream_executor",
-        "//xla/stream_executor:device_memory",
-        "//xla/stream_executor/gpu:gpu_asm_opts",
-    ]) + ["@local_tsl//tsl/platform:status"],
 )
 
 cc_library(
