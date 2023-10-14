@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+from __future__ import annotations
+
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Type, Union
 
 import numpy
@@ -75,7 +77,7 @@ def execute_with_python_values_replicated(
     executable: LoadedExecutable, arguments: Sequence[Sequence[Any]],
     backend: Client) -> Sequence[Sequence[numpy.ndarray]]: ...
 
-def shape_from_pyval(pyval: Any) -> Any: ...
+def shape_from_pyval(pyval: Any, layout: Sequence[int] | None = None) -> Any: ...
 
 def heap_profile(client: Client) -> bytes:
   ...

@@ -14,6 +14,8 @@
 # ==============================================================================
 """An XLA client in Python."""
 
+from __future__ import annotations
+
 import atexit
 import contextlib
 import enum  # pylint: disable=g-bad-import-order
