@@ -594,7 +594,7 @@ Event::Status GpuExecutor::PollForEventStatus(Event* event) {
 bool GpuExecutor::AllocateStream(Stream* stream) {
   absl::MutexLock l(&alive_gpu_streams_mu_);
   bool out = AsGpuStream(stream)->Init();
-  alive_gpu_streams_[stream->implementation()->GpuStreamHack()] = stream;
+  alive_gpu_streams_[stream->platform_specific_handle().stream] = stream;
   return out;
 }
 
