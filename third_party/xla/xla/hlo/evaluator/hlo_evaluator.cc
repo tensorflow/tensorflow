@@ -3460,6 +3460,7 @@ StatusOr<Literal> TryParseAndEvaluateWhileInductionVar(
       const Shape& shape = while_hlo->shape().tuple_shapes(i);
       while_result_elements[i] =
           Literal::CreateFromShapeWithUnknownLeafArrays(shape);
+      while_result_element_ptrs.push_back(&while_result_elements[i]);
     }
   }
   return LiteralUtil::MakeTuple(while_result_element_ptrs);
