@@ -316,7 +316,6 @@ bool IsOpTypeAllowedTf2XlaFallback(const TypeID& type_id) {
             TypeID::get<TF::StatelessRandomUniformIntV2Op>(),
             TypeID::get<TF::StatelessTruncatedNormalOp>(),
             TypeID::get<TF::StatelessTruncatedNormalV2Op>(),
-            TypeID::get<TF::StoreMinibatchStatisticsInFdoOp>(),
             TypeID::get<TF::StridedSliceOp>(),
             TypeID::get<TF::SubOp>(),
             TypeID::get<TF::SvdOp>(),
