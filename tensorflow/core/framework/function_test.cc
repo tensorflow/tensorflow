@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/function.h"
 
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -25,11 +27,14 @@ limitations under the License.
 #include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/stack_frame.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -41,6 +46,9 @@ namespace {
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::Eq;
+using ::testing::Ne;
+using ::testing::NotNull;
+using ::testing::UnorderedElementsAreArray;
 
 // A helper class to make AttrSlice from initializer lists
 class Attrs {
@@ -1045,7 +1053,7 @@ TEST(Canonicalize, Basic) {
 }
 
 TEST(FunctionLibraryDefinitionTest, Contains) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
 
   EXPECT_FALSE(lib_def.Contains("XTimes16"));
@@ -1053,7 +1061,7 @@ TEST(FunctionLibraryDefinitionTest, Contains) {
 }
 
 TEST(FunctionLibraryDefinitionTest, Find) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
 
   EXPECT_EQ(lib_def.Find("XTimes16"), nullptr);
@@ -1069,7 +1077,7 @@ TEST(FunctionLibraryDefinitionTest, Find) {
 }
 
 TEST(FunctionLibraryDefinitionTest, LookUp) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
 
   const OpDef* op_def;
@@ -1088,7 +1096,7 @@ TEST(FunctionLibraryDefinitionTest, LookUp) {
 }
 
 TEST(FunctionLibraryDefinitionTest, AddFunctionDef) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
 
   // Test lookup of existing function.
@@ -1135,7 +1143,7 @@ TEST(FunctionLibraryDefinitionTest, AddGradientDef) {
 }
 
 TEST(FunctionLibraryDefinitionTest, RemoveFunction) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
 
   Status s = lib_def.RemoveFunction("XTimes16");
@@ -1148,7 +1156,7 @@ TEST(FunctionLibraryDefinitionTest, RemoveFunction) {
 }
 
 TEST(FunctionLibraryDefinitionTest, Clear) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XAddX()));
 
@@ -1323,7 +1331,8 @@ TEST(FunctionLibraryDefinitionTest, AddLibraryDefinition_Atomic_GradConflict) {
 }
 
 TEST(FunctionLibraryDefinitionTest, ToProto) {
-  FunctionLibraryDefinition lib_def1(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def1(OpRegistry::Global(),
+                                     FunctionDefLibrary());
   TF_CHECK_OK(lib_def1.AddFunctionDef(test::function::XTimesTwo()));
   TF_CHECK_OK(lib_def1.AddFunctionDef(test::function::WXPlusB()));
 
@@ -1343,7 +1352,7 @@ TEST(FunctionLibraryDefinitionTest, ToProto) {
 }
 
 TEST(FunctionLibraryDefinitionTest, ListFunctionNames) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::WXPlusB()));
 
@@ -1506,7 +1515,7 @@ TEST(FunctionLibraryDefinitionTest, ReachableDefinitions) {
 }
 
 TEST(FunctionLibraryDefinitionTest, AddAndFindOptimizedFunctionGraph) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   EXPECT_EQ(lib_def.FindOptimizedFunctionGraph("test"), nullptr);
   OptimizedFunctionGraph proto;
   lib_def.AddOptimizedFunctionGraph("test", proto);
@@ -1514,7 +1523,7 @@ TEST(FunctionLibraryDefinitionTest, AddAndFindOptimizedFunctionGraph) {
 }
 
 TEST(FunctionLibraryDefinitionTest, MoveTest) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), FunctionDefLibrary());
   const OptimizedFunctionGraph proto;
   lib_def.AddOptimizedFunctionGraph("test", proto);
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
@@ -1522,6 +1531,63 @@ TEST(FunctionLibraryDefinitionTest, MoveTest) {
   FunctionLibraryDefinition copy_lib_def = std::move(lib_def);
   EXPECT_TRUE(copy_lib_def.Contains("XTimesTwo"));
   EXPECT_NE(copy_lib_def.FindOptimizedFunctionGraph("test"), nullptr);
+}
+
+TEST(FunctionLibraryDefinitionTest, ConstructFromGraphDef) {
+  // Prepare GraphDef with FunctionDefLibrary and associated stackt traces.
+  FunctionDefLibrary library;
+  *library.add_function() = test::function::XTimesTwo();
+  *library.add_function() = test::function::XTimesFour();
+  GraphDef graph_def;
+  *graph_def.mutable_library() = library;
+  GraphDebugInfoBuilder builder;
+  StackTracesMap x2_expected_traces;
+  x2_expected_traces["two"] =
+      std::make_shared<FrozenStackTrace>(std::vector<StackFrame>{
+          {"alpha.cc", 20, "bar"}, {"x.cc", 5, "x"}, {"beta.cc", 30, "sop"}});
+  StackTracesMap x4_expected_traces;
+  x4_expected_traces["y"] =
+      std::make_shared<FrozenStackTrace>(std::vector<StackFrame>{
+          {"beta.cc", 10, "foo"},
+          {"x.cc", 5, "x"},  // duplicate one frame exactly
+          {"gamma.cc", 123, "bell"},
+      });
+  builder.AccumulateStackTracesMap(x2_expected_traces, "@XTimesTwo");
+  builder.AccumulateStackTracesMap(x4_expected_traces, "@XTimesFour");
+  *graph_def.mutable_debug_info() = builder.Build();
+
+  // This is the constructor being tested. It should pull the stack traces from
+  // the GraphDef, and populate the FunctionLibraryDefinition's FunctionRecords
+  // with them.
+  FunctionLibraryDefinition lib_def(OpRegistry::Global(), graph_def);
+
+  // Check that expected stack traces exist and are correctly mapped.
+  EXPECT_THAT(lib_def.ListFunctionNames(),
+              UnorderedElementsAreArray({"XTimesTwo", "XTimesFour"}));
+  const core::RefCountPtr<FunctionRecord> x2_record =
+      lib_def.FindRecord("XTimesTwo");
+  EXPECT_THAT(x2_record.get(), NotNull());
+  const StackTracesMap& x2_traces = x2_record->stack_traces();
+  const auto& two_it = x2_traces.find("two");
+  EXPECT_THAT(two_it, Ne(x2_traces.end()));
+  if (two_it != x2_traces.end()) {
+    EXPECT_THAT(two_it->second->ToString({}),
+                Eq("File \"alpha.cc\", line 20, in bar\n"
+                   "File \"x.cc\", line 5, in x\n"
+                   "File \"beta.cc\", line 30, in sop"));
+  }
+  const core::RefCountPtr<FunctionRecord> x4_record =
+      lib_def.FindRecord("XTimesFour");
+  EXPECT_THAT(x4_record, NotNull());
+  const StackTracesMap& x4_traces = x4_record->stack_traces();
+  const auto& y_it = x4_traces.find("y");
+  EXPECT_THAT(y_it, Ne(x4_traces.end()));
+  if (y_it != x4_traces.end()) {
+    EXPECT_THAT(y_it->second->ToString({}),
+                Eq("File \"beta.cc\", line 10, in foo\n"
+                   "File \"x.cc\", line 5, in x\n"
+                   "File \"gamma.cc\", line 123, in bell"));
+  }
 }
 
 // TODO(skyewm): this could be more thorough
