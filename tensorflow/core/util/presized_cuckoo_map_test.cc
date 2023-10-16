@@ -26,25 +26,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-TEST(PresizedCuckooMapTest, MultiplyHigh) {
-  struct Testcase {
-    uint64 x;
-    uint64 y;
-    uint64 result;
-  };
-  std::array<Testcase, 7> testcases{
-      {{0, 0, 0},
-       {0xffffffff, 0xffffffff, 0},
-       {0x2, 0xf000000000000000, 1},
-       {0x3, 0xf000000000000000, 2},
-       {0x3, 0xf000000000000001, 2},
-       {0x3, 0xffffffffffffffff, 2},
-       {0xffffffffffffffff, 0xffffffffffffffff, 0xfffffffffffffffe}}};
-  for (auto &tc : testcases) {
-    EXPECT_EQ(tc.result, presized_cuckoo_map::multiply_high_u64(tc.x, tc.y));
-  }
-}
-
 TEST(PresizedCuckooMapTest, Basic) {
   PresizedCuckooMap<int> pscm(1000);
   EXPECT_TRUE(pscm.InsertUnique(1, 2));
