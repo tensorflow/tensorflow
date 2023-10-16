@@ -3855,6 +3855,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
