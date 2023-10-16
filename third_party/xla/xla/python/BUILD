@@ -957,6 +957,7 @@ cc_library(
     deps = [
         # placeholder for index annotation deps
         "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "//xla/pjrt:lru_cache",
         "@pybind11",
