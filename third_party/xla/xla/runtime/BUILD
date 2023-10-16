@@ -115,9 +115,7 @@ cc_library(
     srcs = ["aot_ffi_c_symbols.cc"],
     hdrs = ["aot_ffi_c_symbols.h"],
     visibility = ["//visibility:public"],
-    deps = [
-        ":aot_ffi_execution_context",
-    ],
+    deps = [":aot_ffi_execution_context"],
 )
 
 cc_library(
@@ -310,41 +308,6 @@ cc_library(
         "@llvm-project//llvm:SystemZAsmParser",  # fixdeps: keep
         "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
     ]),
-)
-
-cc_library(
-    name = "ffi",
-    srcs = ["ffi.cc"],
-    hdrs = ["ffi.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":custom_call",
-        ":module",
-        "//xla/runtime/ffi:ffi_c_api_hdrs",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-xla_cc_test(
-    name = "ffi_test",
-    srcs = ["ffi_test.cc"],
-    deps = [
-        ":arguments",
-        ":async_runtime",
-        ":custom_call_registry",
-        ":ffi",
-        ":jit_executable",
-        ":results",
-        "//xla/mlir/runtime/transforms:compilation_pipeline_gpu",
-        "//xla/runtime/ffi:ffi_api",
-        "//xla/runtime/ffi:ffi_c_api_hdrs",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:test",
-        "@local_tsl//tsl/platform:test_main",
-    ],
 )
 
 cc_library(
