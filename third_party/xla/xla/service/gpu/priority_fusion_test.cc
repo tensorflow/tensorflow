@@ -490,5 +490,41 @@ TEST_F(PriorityFusionTest, SingleTransposeFusion) {
               ::testing::ElementsAre(Kind::kTranspose));
 }
 
+TEST_F(PriorityFusionTest, DontFuseIntoFirstOperandOfScatter) {
+  auto module = *ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    add {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    ENTRY FuseIntoScatter {
+      p0 = s32[3,3] parameter(0)
+      operand = s32[3,3] add(p0, p0)
+      p1 = s32[2] parameter(1)
+      indices = s32[2] add(p1, p1)
+      p2 = s32[2,3] parameter(2)
+      updates = s32[2,3] add(p2, p2)
+      scatter = s32[3,3] scatter(operand, indices, updates),
+          to_apply=add,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+      ROOT add = s32[3,3] add(scatter, scatter)
+    })");
+
+  EXPECT_TRUE(priority_fusion_.Run(module.get()).value());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(root, GmockMatch(m::Add(m::Fusion(&fusion), m::Fusion())));
+  EXPECT_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kInput);
+  EXPECT_THAT(fusion->fused_expression_root(),
+              GmockMatch(m::Scatter(m::Parameter(), m::Add(), m::Add())));
+}
+
 }  // namespace gpu
 }  // namespace xla
