@@ -699,25 +699,6 @@ xla_cc_test(
 )
 
 cc_library(
-    name = "tf_allocator_adapter",
-    srcs = ["tf_allocator_adapter.cc"],
-    hdrs = ["tf_allocator_adapter.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":device_memory",
-        ":device_memory_allocator",
-        ":platform",
-        ":stream_executor_headers",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/framework:allocator",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-cc_library(
     name = "lazy_op_runner",
     hdrs = ["lazy_op_runner.h"],
     visibility = ["//visibility:public"],

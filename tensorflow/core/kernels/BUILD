@@ -557,7 +557,7 @@ tf_cuda_library(
         "@local_xla//xla/stream_executor/gpu:redzone_allocator",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
-        "@local_xla//xla/stream_executor:tf_allocator_adapter",
+        "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
     ]),
 )
 
@@ -3482,7 +3482,7 @@ tf_kernel_library(
         ":matmul_util",
         "@local_xla//xla/stream_executor/gpu:gpu_asm_opts",
         "@local_xla//xla/stream_executor/gpu:redzone_allocator",
-        "@local_xla//xla/stream_executor:tf_allocator_adapter",
+        "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
         "//tensorflow/core/profiler/lib:scoped_annotation",
         ":numeric_options_utils",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
@@ -4087,7 +4087,7 @@ tf_kernel_library(
         "@local_xla//xla/stream_executor/cuda:cublas_plugin",
         "@local_xla//xla/stream_executor/cuda:cudnn_plugin",
         "@local_xla//xla/stream_executor/gpu:gpu_asm_opts",
-        "@local_xla//xla/stream_executor:tf_allocator_adapter",
+        "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
         "@local_xla//xla/stream_executor",
         "//tensorflow/core/platform:stream_executor",
     ]) + if_cuda_or_rocm([
