@@ -2183,7 +2183,9 @@ class ConvertReduceOpToTfArgMinMax
             reduction_indices,
             /*keep_dim=*/rewriter.getBoolAttr(false));
       } else {
-        static_assert(false, "Only TF::MaxOp and TF::MinOp are supported.");
+        static_assert(std::is_same_v<TfReduce, TF::MaxOp> ||
+            std::is_same_v<TfReduce, TF::MinOp>,
+            "Only TF::MaxOp and TF::MinOp are supported.");
       }
       auto tf_argreduce_op = rewriter.create<TfArgReduce>(
           reduce_op.getLoc(), reduce_op->getResult(1).getType(), operand,
