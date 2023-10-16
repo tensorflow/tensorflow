@@ -409,7 +409,7 @@ class Node {
 
   // Returns the node output.
   Node* output() const { return output_; }
-  bool output_deleted() { return output_weak_ptr_.expired(); }
+  std::shared_ptr<Node> output_shared() { return output_weak_ptr_.lock(); }
 
   // Returns the parameter value.
   double parameter_value(const string& name) const TF_LOCKS_EXCLUDED(mu_) {
