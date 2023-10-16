@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/tests/hlo_test_base.h"
@@ -1137,6 +1138,54 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   EXPECT_THAT(copy_after, op::Sharding("{devices=[2,2]0,1,2,3}"));
 }
 
+TEST_F(AutoShardingTest, DISABLED_AutoShardingKeepUserShardingTupleReduce) {
+  const char* const hlo_string = R"(
+HloModule module
+%func (lhs_value: f32[], lhs_index: s32[], rhs_value: f32[], rhs_index: s32[]) -> (f32[], s32[]) {
+  %lhs_value = f32[] parameter(0)
+  %rhs_value = f32[] parameter(2)
+  %compare.a = pred[] compare(f32[] %lhs_value, f32[] %rhs_value), direction=GE
+  %select.a = f32[] select(pred[] %compare.a, f32[] %lhs_value, f32[] %rhs_value)
+  %compare.b = pred[] compare(f32[] %lhs_value, f32[] %rhs_value), direction=EQ
+  %lhs_index = s32[] parameter(1)
+  %rhs_index = s32[] parameter(3)
+  %minimum = s32[] minimum(s32[] %lhs_index, s32[] %rhs_index)
+  %select.b = s32[] select(pred[] %compare.a, s32[] %lhs_index, s32[] %rhs_index)
+  %select.c = s32[] select(pred[] %compare.b, s32[] %minimum, s32[] %select.b)
+  ROOT %tuple = (f32[], s32[]) tuple(f32[] %select.a, s32[] %select.c)
+}
+
+ENTRY %entry {
+  %param0 = f32[1,16,40]{2,1,0} parameter(0)
+  %iota = s32[1,16,40]{2,1,0} iota(), iota_dimension=2
+  %constant.a = f32[] constant(-inf)
+  %constant.b = s32[] constant(0)
+  %reduce = (f32[1,16]{1,0}, s32[1,16]{1,0}) reduce(f32[1,16,40]{2,1,0} %param0, s32[1,16,40]{2,1,0} %iota, f32[] %constant.a, s32[] %constant.b), dimensions={2}, to_apply=%func,
+    sharding={{devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}, {devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  // Keep all users shardings.
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  EXPECT_TRUE(changed);
+  auto* reduce = FindInstruction(module.get(), "reduce");
+  ASSERT_NE(reduce, nullptr);
+  EXPECT_THAT(reduce, op::Sharding(
+                          "{{devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}, "
+                          "{devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}}"));
+  auto sharding = reduce->sharding();
+  TF_EXPECT_OK(sharding.Validate(reduce->shape(), 4));
+  auto* param0 = FindInstruction(module.get(), "param0");
+  ASSERT_NE(param0, nullptr);
+  // There are multiple valid shardings, and we only
+  EXPECT_FALSE(param0->sharding().IsReplicated());
+}
+
 TEST_F(AutoShardingTest, DISABLED_TupleParameter) {
   const char* const hlo_string = R"(
 HloModule module
@@ -1166,6 +1215,267 @@ ENTRY %tupleparameter {
   TF_EXPECT_OK(tuple_param->sharding().Validate(tuple_param->shape(), 4));
 }
 
+// CRASHES
+TEST_F(AutoShardingTest, DISABLED_GetTupleElementWithUserShardingTest) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%while_cond {
+  %param0 = (u32[],f32[16,256,256]{2,1,0},f32[16,256,256]{2,1,0}) parameter(0)
+  %count = u32[] get-tuple-element((u32[],f32[16,256,256]{2,1,0},f32[16,256,256]{2,1,0}) %param0), index=0
+  %limit = u32[] constant(2)
+  ROOT %lt = pred[] compare(%count, %limit), direction=LT
+}
+
+%while_body {
+  %param0 = (u32[],f32[16,256,256]{2,1,0},f32[16,256,256]{2,1,0}) parameter(0)
+  %count = u32[] get-tuple-element((u32[],f32[16,256,256]{2,1,0},f32[16,256,256]{2,1,0}) %param0), index=0
+  %v1 = f32[16,256,256]{2,1,0} get-tuple-element((u32[],f32[16,256,256]{2,1,0},f32[16,256,256]{2,1,0}) %param0), index=1
+  %v2 = f32[16,256,256]{2,1,0} get-tuple-element((u32[],f32[16,256,256]{2,1,0},f32[16,256,256]{2,1,0}) %param0), index=2
+
+  %dot = f32[16,256,256]{2,1,0} dot(f32[16,256,256]{2,1,0} %v1, f32[16,256,256]{2,1,0} %v2), lhs_contracting_dims={2}, rhs_contracting_dims={2}, lhs_batch_dims={0}, rhs_batch_dims={0}
+  %dot_tanh = f32[16,256,256]{2,1,0} tanh(f32[16,256,256]{2,1,0} %dot)
+  %dot_cos = f32[16,256,256]{2,1,0} cosine(f32[16,256,256]{2,1,0} %dot)
+  ROOT %result = (u32[],f32[16,256,256]{2,1,0},f32[16,256,256]{2,1,0}) tuple(%count, %dot_tanh, %dot_cos)
+}
+
+ENTRY %entry (param0: f32[16,256,256], param1: f32[16,256,256]) -> f32[16,256,256] {
+  %param0 = f32[16,256,256]{2,1,0} parameter(0), sharding={devices=[2,1,2]0,1,2,3}
+  %param1 = f32[16,256,256]{2,1,0} parameter(1), sharding={devices=[2,1,2]0,1,2,3}
+
+  %zero = u32[] constant(0)
+  %init = (u32[], f32[16,256,256], f32[16,256,256]) tuple(%zero, %param0, %param1)
+  %while.1 = (u32[],f32[16,256,256]{2,1,0},f32[16,256,256]{2,1,0})  while(%init), body=%while_body, condition=%while_cond
+  %tuple1 = f32[16,256,256]{2,1,0} get-tuple-element((u32[], f32[16,256,256]{2,1,0}, f32[16,256,256]{2,1,0}) %while.1), index=1, sharding={devices=[2,2,1]0,2,1,3}
+  ROOT %tanh = f32[16,256,256]{2,1,0} tanh(f32[16,256,256]{2,1,0} %tuple1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  option.preserve_shardings =
+      AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
+  option.enable = true;
+  option.device_mesh_shape = {2, 1, 2};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_alpha = {1.0, 1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0, 1.0};
+  auto changed_or = AutoSharding(option).Run(module.get());
+  EXPECT_FALSE(changed_or.ok());
+}
+
+TEST_F(AutoShardingTest, While) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%cond {
+  %vars.cond = (u32[], bf16[2,2048,768], bf16[128,512,2048], bf16[128,512,768], s32[]) parameter(0)
+  %count.cond = u32[] get-tuple-element(%vars.cond), index=0
+  %limit = u32[] constant(2)
+  ROOT %lt = pred[] compare(%count.cond, %limit), direction=LT
+}
+
+%body {
+  %param = (u32[], bf16[2,2048,768], bf16[128,512,2048], bf16[128,512,768], s32[]) parameter(0)
+  %i0 = s32[] constant(0)
+  %count = u32[] get-tuple-element(%param), index=0
+  %gte0 = bf16[2,2048,768]{2,1,0} get-tuple-element(%param), index=1
+  %index = s32[] get-tuple-element(%param), index=4
+  %ds = bf16[1,2048,768]{2,1,0} dynamic-slice(%gte0, s32[] %index, s32[] %i0, s32[] %i0), dynamic_slice_sizes={1,2048,768}
+  %rhs = bf16[2048,768]{1,0} reshape(%ds)
+  %lhs = bf16[128,512,2048]{2,1,0} get-tuple-element(%param), index=2
+  %dot = bf16[128,512,768]{2,1,0} dot(bf16[128,512,2048]{2,1,0} %lhs, bf16[2048,768]{1,0} %rhs), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  ROOT %tuple = (u32[], bf16[2,2048,768], bf16[128,512,2048], bf16[128,512,768], s32[]) tuple(%count, %gte0, %lhs, %dot, index)
+}
+
+ENTRY %entry {
+  %p0 = bf16[2048,768] parameter(0)
+  %p1 = bf16[128,512,2048] parameter(1)
+  %p2 = bf16[128,512,768] parameter(2)
+  %reshape0 = bf16[1,2048,768] reshape(%p0)
+  %concat0 = bf16[2,2048,768] concatenate(%reshape0, %reshape0), dimensions={0}
+  %zero = u32[] constant(0)
+  %p3 = s32[] parameter(3)
+  %init = (u32[], bf16[2,2048,768], bf16[128,512,2048], bf16[128,512,768], s32[]) tuple(%zero, %concat0, %p1, %p2, %p3)
+  %while = (u32[], bf16[2, 2048, 768], bf16[128,512,2048], bf16[128,512,768], s32[]) while(%init), body=%body, condition=%cond
+  ROOT %result = bf16[128,512,768] get-tuple-element(%while), index=3
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(0) << module->ToString();
+  EXPECT_TRUE(changed);
+  auto* while_op = FindInstruction(module.get(), "while");
+  ASSERT_NE(while_op, nullptr);
+  // There could be multiple valid sharding for this test. So we only check
+  // that the shardings are the same for while op related instructions.
+  for (size_t i = 0; i < while_op->while_body()
+                             ->root_instruction()
+                             ->sharding()
+                             .tuple_elements()
+                             .size();
+       i++) {
+    const HloSharding& root_sharding = while_op->while_body()
+                                           ->root_instruction()
+                                           ->sharding()
+                                           .tuple_elements()
+                                           .at(i);
+    EXPECT_EQ(while_op->while_body()
+                  ->parameter_instruction(0)
+                  ->sharding()
+                  .tuple_elements()
+                  .at(i)
+                  .ToString(),
+              root_sharding.ToString());
+    EXPECT_EQ(while_op->while_condition()
+                  ->parameter_instruction(0)
+                  ->sharding()
+                  .tuple_elements()
+                  .at(i)
+                  .ToString(),
+              root_sharding.ToString());
+  }
+}
+
+TEST_F(AutoShardingTest, DynamicSlice) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %entry {
+  %param0 = s32[] parameter(0)
+  %arg_tuple = (s32[], f32[4,256,1024]{2,1,0}, f32[2]{0}, f32[2]{0}, f32[2]{0}, /*index=5*/f32[2]{0}, f32[2]{0}, f32[2]{0}, f32[2,4,256,1024]{3,2,1,0}, f32[2,4096]{1,0}, /*index=10*/f32[2,1024,4096]{2,1,0}, f32[2,1024]{1,0}, f32[2,4096,1024]{2,1,0}, f32[2,1024]{1,0}, f32[2,1024]{1,0}, /*index=15*/f32[2,1024]{1,0}, f32[2,1024]{1,0}, f32[2,4,256]{2,1,0}, f32[2,1024,4,256]{3,2,1,0}, f32[2,256]{1,0}, /*index=20*/f32[2,1024]{1,0}, f32[2,1024,4,256]{3,2,1,0}, f32[2,4,256]{2,1,0}, f32[2,1024,4,256]{3,2,1,0}, f32[2,4,256]{2,1,0}, /*index=25*/f32[2,1024,4,256]{3,2,1,0}, f32[2,4096]{1,0}, f32[2,1024,4096]{2,1,0}, f32[2,1024]{1,0}, f32[2,4096,1024]{2,1,0}, /*index=30*/f32[2,1024]{1,0}, f32[2,1024]{1,0}, f32[2,1024]{1,0}, f32[2,1024]{1,0}, f32[2,4,256]{2,1,0}, /*index=35*/f32[2,1024,4,256]{3,2,1,0}, f32[2,256]{1,0}, f32[2,1024]{1,0}, f32[2,1024,4,256]{3,2,1,0}, f32[2,4,256]{2,1,0}, /*index=40*/f32[2,1024,4,256]{3,2,1,0}, f32[2,4,256]{2,1,0}, f32[2,1024,4,256]{3,2,1,0}, f32[4,1,256,256]{3,2,1,0}, f32[4,256,1]{2,1,0}, /*index=45*/f32[4,256,1]{2,1,0}, f32[4,256,1]{2,1,0}, f32[4,256,1]{2,1,0}, f32[4,256,1]{2,1,0}, f32[], /*index=50*/f32[], f32[4,256,1]{2,1,0}, f32[], f32[]) parameter(1)
+  %constant.a = s32[] constant(2)
+  %constant.b = s32[] constant(0)
+  %compare = pred[] compare(s32[] %param0, s32[] %constant.b), direction=LT
+  %add = s32[] add(s32[] %param0, s32[] %constant.a)
+  %select = s32[] select(pred[] %compare, s32[] %add, s32[] %param0)
+  %get-tuple-element = f32[2,1024]{1,0} get-tuple-element((s32[], f32[4,256,1024]{2,1,0}, f32[2]{0}, f32[2]{0}, f32[2]{0}, /*index=5*/f32[2]{0}, f32[2]{0}, f32[2]{0}, f32[2,4,256,1024]{3,2,1,0}, f32[2,4096]{1,0}, /*index=10*/f32[2,1024,4096]{2,1,0}, f32[2,1024]{1,0}, f32[2,4096,1024]{2,1,0}, f32[2,1024]{1,0}, f32[2,1024]{1,0}, /*index=15*/f32[2,1024]{1,0}, f32[2,1024]{1,0}, f32[2,4,256]{2,1,0}, f32[2,1024,4,256]{3,2,1,0}, f32[2,256]{1,0}, /*index=20*/f32[2,1024]{1,0}, f32[2,1024,4,256]{3,2,1,0}, f32[2,4,256]{2,1,0}, f32[2,1024,4,256]{3,2,1,0}, f32[2,4,256]{2,1,0}, /*index=25*/f32[2,1024,4,256]{3,2,1,0}, f32[2,4096]{1,0}, f32[2,1024,4096]{2,1,0}, f32[2,1024]{1,0}, f32[2,4096,1024]{2,1,0}, /*index=30*/f32[2,1024]{1,0}, f32[2,1024]{1,0}, f32[2,1024]{1,0}, f32[2,1024]{1,0}, f32[2,4,256]{2,1,0}, /*index=35*/f32[2,1024,4,256]{3,2,1,0}, f32[2,256]{1,0}, f32[2,1024]{1,0}, f32[2,1024,4,256]{3,2,1,0}, f32[2,4,256]{2,1,0}, /*index=40*/f32[2,1024,4,256]{3,2,1,0}, f32[2,4,256]{2,1,0}, f32[2,1024,4,256]{3,2,1,0}, f32[4,1,256,256]{3,2,1,0}, f32[4,256,1]{2,1,0}, /*index=45*/f32[4,256,1]{2,1,0}, f32[4,256,1]{2,1,0}, f32[4,256,1]{2,1,0}, f32[4,256,1]{2,1,0}, f32[], /*index=50*/f32[], f32[4,256,1]{2,1,0}, f32[], f32[]) %arg_tuple), index=16
+  ROOT %dynamic-slice = f32[1,1024]{1,0} dynamic-slice(f32[2,1024]{1,0} %get-tuple-element, s32[] %select, s32[] %constant.b), dynamic_slice_sizes={1,1024}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(0) << module->ToString();
+  EXPECT_TRUE(changed);
+}
+
+TEST_F(AutoShardingTest, Alias) {
+  const char* const hlo_string = R"(
+HloModule module, input_output_alias={ {0}: (0, {}, may-alias), {1}: (1, {}, may-alias), {2}: (2, {}, may-alias), {3}: (3, {}, may-alias)}
+
+ENTRY %entry {
+  param.0 = u32[] parameter(0)
+  param.1 = f32[32]{0} parameter(1)
+  param.2 = f32[32]{0} parameter(2)
+  param.3 = f32[1000]{0} parameter(3)
+  ROOT tuple = (u32[], f32[32]{0}, f32[32]{0}, f32[1000]{0}) tuple(param.0, param.1, param.2, param.3)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(0) << module->ToString();
+  EXPECT_TRUE(changed);
+}
+
+TEST_F(AutoShardingTest, AliasTupleParameter) {
+  const char* const hlo_string = R"(
+HloModule module, input_output_alias={ {0}: (0, {0}, may-alias), {1}: (0, {1}, may-alias), {2}: (0, {2}, may-alias), {3}: (0, {3}, may-alias)}
+
+ENTRY %entry {
+  arg_tuple.1 = (u32[], f32[32]{0}, f32[32]{0}, f32[1000]{0}) parameter(0)
+  get-tuple-element.0 = u32[] get-tuple-element(arg_tuple.1), index=0
+  get-tuple-element.1 = f32[32]{0} get-tuple-element(arg_tuple.1), index=1
+  get-tuple-element.2 = f32[32]{0} get-tuple-element(arg_tuple.1), index=2
+  get-tuple-element.3 = f32[1000]{0} get-tuple-element(arg_tuple.1), index=3
+  ROOT tuple = (u32[], f32[32]{0}, f32[32]{0}, f32[1000]{0}) tuple(get-tuple-element.0, get-tuple-element.1, get-tuple-element.2, get-tuple-element.3)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(0) << module->ToString();
+  EXPECT_TRUE(changed);
+}
+
+TEST_F(AutoShardingTest, JaxRandomUniform) {
+  const char* const hlo_string = R"(
+HloModule module
+clone {
+  lhs.1 = u32[] parameter(0)
+  rhs.1 = u32[] parameter(2)
+  or.2 = u32[] or(lhs.1, rhs.1)
+  lhs.0 = u32[] parameter(1)
+  rhs.0 = u32[] parameter(3)
+  or.3 = u32[] or(lhs.0, rhs.0)
+  ROOT tuple.23 = (u32[], u32[]) tuple(or.2, or.3)
+}
+
+ENTRY %entry {
+  shift-left = u32[2,2]{1,0} parameter(0)
+  select = u32[2,2]{1,0} parameter(1)
+  constant.a = u32[] parameter(2)
+  reduce = (u32[2]{0}, u32[2]{0}) reduce(shift-left, select, constant.a, constant.a), dimensions={1}, to_apply=clone
+  rng-bit-generator = u32[8,512]{1,0} rng-bit-generator(reduce), algorithm=rng_default
+  constant.b = u32[] constant(9)
+  broadcast.a = u32[8,512]{1,0} broadcast(constant.b), dimensions={}, sharding={replicated}
+  shift-right-logical = u32[8,512]{1,0} shift-right-logical(rng-bit-generator, broadcast.a)
+  constant.c = u32[] constant(1065353216)
+  broadcast.b = u32[8,512]{1,0} broadcast(constant.c), dimensions={}, sharding={replicated}
+  or = u32[8,512]{1,0} or(shift-right-logical, broadcast.b)
+  bitcast-convert = f32[8,512]{1,0} bitcast-convert(or)
+  constant.d = f32[] constant(1)
+  broadcast.c = f32[8,512]{1,0} broadcast(constant.d), dimensions={}, sharding={replicated}
+  subtract = f32[8,512]{1,0} subtract(bitcast-convert, broadcast.c)
+  constant.e = f32[] constant(0)
+  broadcast.d = f32[8,512]{1,0} broadcast(constant.e), dimensions={}, sharding={replicated}
+  ROOT maximum = f32[8,512]{1,0} maximum(subtract, broadcast.d)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {2, 2};
+  option.device_mesh_ids = {0, 1, 2, 3};
+  option.device_mesh_alpha = {1.0, 1.0};
+  option.device_mesh_beta = {0.01, 1.0};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(0) << module->ToString();
+  EXPECT_TRUE(changed);
+  EXPECT_TRUE(module->entry_computation()->root_instruction()->has_sharding());
+  auto* tuple_operand = FindInstruction(module.get(), "reduce");
+  ASSERT_NE(tuple_operand, nullptr);
+  EXPECT_THAT(tuple_operand, op::Sharding("{{replicated}, {replicated}}"));
+}
+
 TEST_F(AutoShardingTest, Reshape) {
   const char* const hlo_string = R"(
 HloModule module
@@ -1189,6 +1499,25 @@ ENTRY %entry {
   std::iota(option.device_mesh_ids.begin(), option.device_mesh_ids.end(), 0);
   option.device_mesh_alpha = {1.0, 1.0};
   option.device_mesh_beta = {0.01, 1.0};
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
+  VLOG(1) << module->ToString();
+  EXPECT_TRUE(changed);
+}
+
+TEST_F(AutoShardingTest, Broadcast) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param.0 = s32[32]{0} parameter(0)
+  ROOT broadcast = s32[512,1024,1024,32]{3,2,1,0} broadcast(s32[32]{0} %param.0), dimensions={3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AutoShardingOption option;
+  option.enable = true;
+  option.device_mesh_shape = {1, 1, 64};
+  option.memory_budget_per_device = 1025 * 1024 * 1024;  // 1025MB
   TF_ASSERT_OK_AND_ASSIGN(bool changed, AutoSharding(option).Run(module.get()));
   VLOG(1) << module->ToString();
   EXPECT_TRUE(changed);
