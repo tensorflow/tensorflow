@@ -249,6 +249,10 @@ def TPUVariableRuntimeReformattingPass : Pass<"tf-tpu-variable-runtime-reformatt
       }
     ```
   }];
+  let dependentDialects = [
+    "mhlo::MhloDialect",
+    "tf_device::TensorFlowDeviceDialect"
+  ];
 }
 
 def TPUShardingIdentificationPass : Pass<"tf-tpu-sharding-identification", "ModuleOp"> {
@@ -437,6 +441,11 @@ def EmbeddingProgramKeyPass : Pass<"tf-embedding-program-key", "mlir::func::Func
      }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> ()
    ```
   }];
+
+  let dependentDialects = [
+    "mhlo::MhloDialect",
+    "tf_device::TensorFlowDeviceDialect"
+  ];
 }
 
 def EmbeddingSequencingPass : Pass<"tf-embedding-sequencing", "mlir::ModuleOp"> {
@@ -1709,6 +1718,10 @@ def TPURewritePass : Pass<"tf-tpu-rewrite", "ModuleOp"> {
            "Whether to serialize TPUCompileMetadataProto metadata in 'tf._TPUCompileMlir' op as a proto debug string">
   ];
 
+  let dependentDialects = [
+    "mhlo::MhloDialect",
+    "tf_device::TensorFlowDeviceDialect"
+  ];
   let constructor = "TFTPU::CreateTPURewritePass()";
 }
 
@@ -1849,6 +1862,11 @@ def TPUMergeVariablesWithExecutePass : Pass<"tf-tpu-merge-variables-with-execute
     as the `TPUExecute` op.
   }];
 
+  let dependentDialects = [
+    "mhlo::MhloDialect",
+    "tf_device::TensorFlowDeviceDialect"
+  ];
+
   let constructor = "TFTPU::CreateTPUMergeVariablesWithExecutePass()";
 }
 
@@ -1861,6 +1879,11 @@ def ExtractTPUCopyWithDynamicShapeOpPass : Pass<"tf-extract-tpu-copy-with-dynami
     them in `tf_device.launch` with tpu device attribute so that ops can be
     run on TPU instead of CPU while still being compiled on host.
   }];
+
+  let dependentDialects = [
+    "mhlo::MhloDialect",
+    "tf_device::TensorFlowDeviceDialect"
+  ];
 
   let constructor = "TFTPU::CreateExtractTPUCopyWithDynamicShapeOpPass()";
 }
@@ -1932,6 +1955,11 @@ def ReplicateInvariantOpHoistingPass : Pass<"tf-replicate-invariant-op-hoisting"
     }
     ```
   }];
+
+  let dependentDialects = [
+    "mhlo::MhloDialect",
+    "tf_device::TensorFlowDeviceDialect"
+  ];
 
   let constructor = "TFDevice::CreateReplicateInvariantOpHoistingPass()";
 }
@@ -2418,6 +2446,10 @@ def TPUColocateCompositeResourceOpsPass : Pass<"tf-tpu-colocate-composite-resour
       }) {...} : () -> tensor<4xf32>
     ```
   }];
+  let dependentDialects = [
+    "mhlo::MhloDialect",
+    "tf_device::TensorFlowDeviceDialect"
+  ];
 }
 
 def TPUDevicePropagationPass : Pass<"tf-tpu-device-propagation", "mlir::func::FuncOp"> {
