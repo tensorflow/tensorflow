@@ -19,7 +19,6 @@ import re
 from typing import Optional, Sequence
 import unittest
 
-from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.mlir.stablehlo import stablehlo
@@ -42,7 +41,7 @@ def serialize(module_str: str) -> tuple[str, int]:
   return byte_str, xla.call_module_maximum_supported_version()
 
 
-class XlaCallModuleOpTest(xla_test.XLATestCase, parameterized.TestCase):
+class XlaCallModuleOpTest(xla_test.XLATestCase):
 
   def _assertOpOutputMatchesExpected(self,
                                      op,
@@ -213,29 +212,23 @@ module @jit_f.0 {
 
     self._assertOpOutputMatchesExpected(f, (x,), (np.sin(x), x.shape[1]))
 
-  @parameterized.named_parameters(
-      dict(testcase_name='_' + dim_var_type,
-           dim_var_type=dim_var_type)
-      for dim_var_type in ('i32', 'i64')
-  )
-  def test_poly_basic(self, *, dim_var_type: str):
+  def test_poly_basic(self):
     x = np.arange(6, dtype=np.float32).reshape((2, 3))
 
     def f(x):  # x: f32[2, b]
       # (sin(x), x.shape[1])
-      module, version = serialize(f"""
-module @jit_f.0 attributes {{jax.uses_shape_polymorphism = true}} {{
-  func.func public @main(%arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<{dim_var_type}>) {{
-    %arg0_new_i32 = "stablehlo.get_dimension_size"(%arg1) {{dimension = 1 : i64}} : (tensor<2x?xf32>) -> tensor<i32>
-    %arg0_new = stablehlo.convert %arg0_new_i32 : (tensor<i32>) -> tensor<{dim_var_type}>
-    %0, %1 = call @dyn_main(%arg0_new, %arg1) : (tensor<{dim_var_type}>, tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<{dim_var_type}>)
-    return %0, %1 : tensor<2x?xf32>, tensor<{dim_var_type}>
-  }}
-  func.func private @dyn_main(%arg0: tensor<{dim_var_type}>, %arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<{dim_var_type}>) {{
+      module, version = serialize("""
+module @jit_f.0 attributes {jax.uses_shape_polymorphism = true} {
+  func.func public @main(%arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>) {
+    %arg0_new = "stablehlo.get_dimension_size"(%arg1) {dimension = 1 : i64} : (tensor<2x?xf32>) -> tensor<i32>
+    %0, %1 = call @dyn_main(%arg0_new, %arg1) : (tensor<i32>, tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>)
+    return %0, %1 : tensor<2x?xf32>, tensor<i32>
+  }
+  func.func private @dyn_main(%arg0: tensor<i32>, %arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>) {
     %0 = stablehlo.sine %arg1 : tensor<2x?xf32>
-    return %0, %arg0 : tensor<2x?xf32>, tensor<{dim_var_type}>
-  }}
-}}
+    return %0, %arg0 : tensor<2x?xf32>, tensor<i32>
+  }
+}
 """)
       return xla.call_module([x],
                              module=module, version=version,
@@ -315,33 +308,27 @@ module @jit_f.0 attributes {jax.uses_shape_polymorphism = true} {
     ):
       self._assertOpOutputMatchesExpected(f, (x_bad_shape, y), (x_bad_shape,))
 
-  @parameterized.named_parameters(
-      dict(testcase_name='_' + platform_idx_type,
-           platform_idx_type=platform_idx_type)
-      for platform_idx_type in ('i32', 'i64')
-  )
-  def test_platforms_basic(self, *, platform_idx_type: str):
+  def test_platforms_basic(self):
     x = np.float32(0.)
 
     #  returns x + 2. on CPU, x + 3. on GPU (CUDA or ROCM) and x + 4. on TPU
-    module, version = serialize(f"""
-module @jit_f.0 {{
-  func.func public @main(%arg_platform_idx: tensor<{platform_idx_type}>, %arg0: tensor<f32>) -> tensor<f32> {{
-    %0 = stablehlo.convert %arg_platform_idx : (tensor<{platform_idx_type}>) -> tensor<i32>
-    %to_add = "stablehlo.case"(%0) ({{
+    module, version = serialize("""
+module @jit_f.0 {
+  func.func public @main(%arg_platform_idx: tensor<i32>, %arg0: tensor<f32>) -> tensor<f32> {
+    %to_add = "stablehlo.case"(%arg_platform_idx) ({
       %cpu_val = stablehlo.constant dense<2.> : tensor<f32>
       stablehlo.return %cpu_val : tensor<f32>
-    }}, {{
+    }, {
       %gpu_val = stablehlo.constant dense<3.> : tensor<f32>
       stablehlo.return %gpu_val : tensor<f32>
-    }}, {{
+    }, {
       %tpu_val = stablehlo.constant dense<4.> : tensor<f32>
       stablehlo.return %tpu_val : tensor<f32>
-    }}) : (tensor<i32>) -> tensor<f32>
-    %1 = stablehlo.add %arg0, %to_add : tensor<f32>
-    return %1 : tensor<f32>
-  }}
-}}
+    }) : (tensor<i32>) -> tensor<f32>
+    %0 = stablehlo.add %arg0, %to_add : tensor<f32>
+    return %0 : tensor<f32>
+  }
+}
 """)
 
     platforms = ['CPU', 'CUDA', 'ROCM', 'TPU']
@@ -507,15 +494,15 @@ module @jit_f_jax attributes {jax.uses_shape_polymorphism = true} {
         ),
     )
 
-  def platforms_errors_platform_index_i16(self):
-    module_str = self.platforms_errors_module_str.replace('i32', 'i16')
+  def platforms_errors_platform_index_i64(self):
+    module_str = self.platforms_errors_module_str.replace('i32', 'i64')
     self.platforms_errors_helper(
         module_str=module_str,
         expected_error=errors.InvalidArgumentError,
         expected_error_message=(
             'Module argument at index 0 should be a 0-dimensional '
-            '32-bit or 64-bit integer-tensor platform index argument '
-            '.* has type tensor<i16>'
+            '32-bit integer-tensor platform index argument .* has type '
+            'tensor<i64>'
         ),
     )
 
