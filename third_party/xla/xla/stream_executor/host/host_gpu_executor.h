@@ -151,8 +151,6 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
 
-  void* GpuContextHack() override { return nullptr; }
-
  private:
   // Size of thread stacks for streams in bytes. '0' means "the default size".
   size_t thread_stack_size_in_bytes_ = 0;

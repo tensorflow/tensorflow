@@ -396,14 +396,11 @@ class StreamExecutorInterface {
     return absl::UnimplementedError("Command buffers are not implemented");
   }
 
-  // Returns the CUDA or ROCm context associated with this StreamExecutor
-  // platform implementation.
-  //
-  // WARNING: checks that the underlying platform is, in fact, CUDA or ROCm,
-  // causing a fatal error if it is not. This hack is made available solely for
-  // use from distbelief code, which temporarily has strong ties to CUDA or ROCm
-  // as a platform.
-  virtual void* GpuContextHack() { return nullptr; }
+  // Returns a pointer to a platform specific context associated with this
+  // object if it exists, or nullptr otherwise. This is available via
+  // StreamExecutor public API as StreamExecuto::PlatformSpecificHandle, and
+  // should not be accessed directly outside of a StreamExecutor package.
+  virtual void* platform_specific_context() { return nullptr; }
 
   // Return allocator statistics.
   virtual std::optional<AllocatorStats> GetAllocatorStats() {

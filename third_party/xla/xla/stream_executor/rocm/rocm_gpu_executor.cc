@@ -744,7 +744,7 @@ GpuExecutor::GetCommandBufferImplementation(CommandBuffer::Mode mode) {
   return std::make_unique<GpuCommandBuffer>(mode, /*parent=*/this, graph);
 }
 
-void* GpuExecutor::GpuContextHack() { return context_; }
+void* GpuExecutor::platform_specific_context() { return context_; }
 
 GpuContext* GpuExecutor::gpu_context() { return context_; }
 

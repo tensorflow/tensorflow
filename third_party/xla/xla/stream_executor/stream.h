@@ -101,7 +101,7 @@ struct Quantization;
 // Thread-safe post-initialization.
 class Stream {
  public:
-  // Platform specific handle for the underlying resources behind a Stream
+  // Platform specific handle to the underlying resources behind a stream
   // implementation (e.g. it gives access to CUstream for CUDA platform).
   struct PlatformSpecificHandle {
     void *stream = nullptr;  // will be nullptr if not supported

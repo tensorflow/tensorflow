@@ -261,7 +261,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   tsl::StatusOr<std::unique_ptr<internal::CommandBufferInterface>>
   GetCommandBufferImplementation(CommandBuffer::Mode mode) override;
 
-  void* GpuContextHack() override;
+  void* platform_specific_context() override;
 
   GpuContext* gpu_context();
 

@@ -311,7 +311,6 @@ Status NVPTXCompiler::AddTritonGemmAutotuningPasses(
   return OkStatus();
 }
 
-
 namespace {
 // Try to load ptx from files defined in the FLAGS. If successful, return true.
 bool MaybeLoadPtxFromFile(const HloModuleConfig module_config,
@@ -714,7 +713,7 @@ StatusOr<std::vector<uint8_t>> NVPTXCompiler::LinkModules(
     images.push_back({"", std::move(module)});
   }
   auto context = static_cast<se::gpu::GpuContext*>(
-      stream_exec->implementation()->GpuContextHack());
+      stream_exec->platform_specific_handle().context);
 
   TF_ASSIGN_OR_RETURN(LinkingMethod linking_method,
                       ChooseLinkingMethod(ptxas_config.preferred_cuda_dir));

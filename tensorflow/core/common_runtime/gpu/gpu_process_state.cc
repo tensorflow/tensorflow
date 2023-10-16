@@ -128,7 +128,7 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
                                   {});
   } else {
     auto* gpu_context = reinterpret_cast<stream_executor::gpu::GpuContext*>(
-        executor->implementation()->GpuContextHack());
+        executor->platform_specific_handle().context);
 
     absl::flat_hash_set<tsl::PlatformDeviceId> platform_peer_gpu_ids;
     platform_peer_gpu_ids.reserve(peer_gpu_ids.size());
