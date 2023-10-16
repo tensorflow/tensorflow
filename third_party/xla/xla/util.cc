@@ -511,4 +511,14 @@ void PackInt4(absl::Span<const char> input, absl::Span<char> output) {
   }
 }
 
+void UnpackInt4(absl::Span<const char> input, absl::Span<char> output) {
+  CHECK_EQ(input.size(), CeilOfRatio(output.size(), size_t{2}));
+  for (size_t i = 0; i < output.size(); ++i) {
+    if (i % 2 == 0) {
+      output[i] = (input[i / 2] >> 4) & 0xf;
+    } else {
+      output[i] = input[i / 2] & 0xf;
+    }
+  }
+}
 }  // namespace xla
