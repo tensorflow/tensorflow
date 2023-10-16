@@ -2786,26 +2786,6 @@ xla_test(
     ],
 )
 
-# TODO(ezhulenev): Move this tests to xla/tests once all XLA backends
-# support XLA runtime FFI calls.
-xla_test(
-    name = "xla_ffi_test",
-    srcs = ["xla_ffi_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":hlo_test_base",
-        ":literal_test_util",
-        ":test_macros_header",
-        "//xla/pjrt:mlir_to_hlo",
-        "//xla/runtime:ffi",  # fixdeps: keep
-        "//xla/runtime/ffi:ffi_api",
-        "//xla/service:custom_call_target_registry",  # fixdeps: keep
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
 xla_cc_test(
     name = "tile_assignment_test",
     srcs = ["tile_assignment_test.cc"],
