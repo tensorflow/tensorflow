@@ -305,7 +305,6 @@ Status CompileModuleToLlvmIrImpl(
   results->llvm_module = std::make_unique<llvm::Module>("", *llvm_context);
   results->llvm_module->setTargetTriple(target_triple);
   results->llvm_module->setDataLayout(data_layout);
-  std::cerr << hlo_module->ToString();
 
   TF_ASSIGN_OR_RETURN(
       results->buffer_assignment,
