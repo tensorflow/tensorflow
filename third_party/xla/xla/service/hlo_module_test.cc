@@ -233,7 +233,8 @@ ENTRY entry () -> s32[] {
   HloComputation* cloned_computation =
       cloned_module->GetComputationWithName("add_s32.clone");
   HloInstruction* cloned_custom_call =
-      cloned_module->entry_computation()->GetInstructionWithName("custom-call");
+      cloned_module->entry_computation()->GetInstructionWithName(
+          "custom-call.clone");
 
   EXPECT_TRUE(cloned_computation->IsCustomCallComputation());
   EXPECT_EQ(cloned_computation->CustomCallInstruction(), cloned_custom_call);
@@ -273,7 +274,8 @@ ENTRY entry () -> s32[] {
   HloComputation* cloned_computation_1 =
       cloned_module->GetComputationWithName("add_s32_1.clone");
   HloInstruction* cloned_custom_call =
-      cloned_module->entry_computation()->GetInstructionWithName("custom-call");
+      cloned_module->entry_computation()->GetInstructionWithName(
+          "custom-call.clone");
 
   EXPECT_TRUE(cloned_computation_0->IsCustomCallComputation());
   EXPECT_EQ(cloned_computation_0->CustomCallInstruction(), cloned_custom_call);
@@ -301,7 +303,8 @@ ENTRY main {
   HloComputation* cloned_computation =
       cloned_module->GetComputationWithName("fused_computation.clone");
   HloInstruction* cloned_fusion_instr =
-      cloned_module->entry_computation()->GetInstructionWithName("fusion");
+      cloned_module->entry_computation()->GetInstructionWithName(
+          "fusion.clone");
 
   EXPECT_TRUE(cloned_computation->IsFusionComputation());
   EXPECT_EQ(cloned_computation->FusionInstruction(), cloned_fusion_instr);
