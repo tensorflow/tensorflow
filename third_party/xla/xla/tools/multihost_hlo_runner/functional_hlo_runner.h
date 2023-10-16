@@ -28,8 +28,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
+#include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/statusor.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/logging.h"
 #include "tsl/platform/statusor.h"
@@ -210,6 +212,12 @@ class FunctionalHloRunner {
   // Create a PjRtClient which mocks multi-hosts GPU run
   static StatusOr<std::unique_ptr<PjRtClient>> CreateMockGpuClient(
       int num_nodes = 1);
+
+  // Create a PjRtClient which can run HLOs on GPUs distributed across several
+  // nodes.
+  static StatusOr<std::unique_ptr<PjRtClient>> CreateGpuClient(
+      std::shared_ptr<xla::DistributedRuntimeClient> distributed_client,
+      int node_id, int num_nodes);
 
   // Loads an ExecutionOptions proto (which can be used in RawCompileOptions).
   static StatusOr<ExecutionOptions> LoadExecutionOptions(
