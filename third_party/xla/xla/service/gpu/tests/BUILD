@@ -923,3 +923,69 @@ xla_cc_test(
         "@local_tsl//tsl/platform:test",
     ],
 )
+
+# This library is here to be reused by tests.
+cc_library(
+    name = "simple_optimization_test",
+    testonly = True,
+    srcs = ["simple_optimization_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@local_tsl//tsl/lib/core:status_test_util",
+    ],
+)
+
+# This shows that tests can load an autotune cache.
+#
+# If the GPU used for running the test is different from the one in the cache, then the cache will
+# be loaded, but not used.
+xla_test(
+    name = "load_autotune_results_using_execpath_test",
+    srcs = [],
+    backends = ["gpu"],
+    # Data dependency must be declared for the cache.
+    data = ["test_autotune_cache.textproto"],
+    env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=" +
+                        "$(execpath test_autotune_cache.textproto)"},
+    deps = [":simple_optimization_test"],
+)
+
+# This shows that tests can load an autotune cache using the TEST_WORKSPACE prefix.
+#
+# This also works from the command line, by specifying this arguments:
+# --test_env=XLA_FLAGS=--xla_gpu_load_autotune_results_from=TEST_WORKSPACE/my/package/autotune_results_test.textproto.
+#
+# If the GPU used for running the test is different from the one in the cache, then the cache will
+# be loaded, but not used.
+xla_test(
+    name = "load_autotune_results_from_test_workspace_test",
+    srcs = [],
+    backends = ["gpu"],
+    # Data dependency must be declared for the cache.
+    data = ["test_autotune_cache.textproto"],
+    env = {"XLA_FLAGS": "--xla_gpu_load_autotune_results_from=TEST_WORKSPACE/" +
+                        package_name() +
+                        "/test_autotune_cache.textproto"},
+    deps = [":simple_optimization_test"],
+)
+
+# This shows that tests can dump an autotune cache into their output directory.
+#
+# This also works from the command line, by specifying these arguments:
+# --test_env=XLA_FLAGS=--xla_gpu_dump_autotune_results_to=TEST_UNDECLARED_OUTPUTS_DIR/autotune_cache.textproto
+# --test_sharding_strategy=disabled
+xla_test(
+    name = "dump_autotune_results_to_test_outputs_test",
+    srcs = [],
+    backends = ["gpu"],
+    env = {"XLA_FLAGS": "--xla_gpu_dump_autotune_results_to=" +
+                        "TEST_UNDECLARED_OUTPUTS_DIR/autotune_cache.textproto"},
+    # Sharding must be disabled to correctly dump the autotune cache for all test.
+    shard_count = 1,
+    deps = [":simple_optimization_test"],
+)

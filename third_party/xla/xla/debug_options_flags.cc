@@ -1215,14 +1215,16 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "File to write autotune results to. It will be a binary file unless the "
       "name ends with .txt or .textproto. Warning: The results are written at "
       "every compilation, possibly multiple times per process. This only works "
-      "on CUDA."));
+      "on CUDA. In tests, the TEST_UNDECLARED_OUTPUTS_DIR prefix can be used "
+      "to write to their output directory."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_load_autotune_results_from",
       string_setter_for(&DebugOptions::set_xla_gpu_load_autotune_results_from),
       debug_options->xla_gpu_load_autotune_results_from(),
       "File to load autotune results from. It will be considered a binary file "
       "unless the name ends with .txt or .textproto. It will be loaded at most "
-      "once per process. This only works on CUDA."));
+      "once per process. This only works on CUDA. In tests, the TEST_WORKSPACE "
+      "prefix can be used to load files from their data dependencies."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_auto_spmd_partitioning_memory_budget_gb",
       int32_setter_for(
