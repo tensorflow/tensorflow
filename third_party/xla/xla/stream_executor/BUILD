@@ -78,7 +78,6 @@ filegroup(
         "multi_platform_manager.h",
         "numeric_options.h",
         "platform.h",
-        "plugin_registry.h",
         "scratch_allocator.h",
         "stream.h",
         "stream_executor.h",
