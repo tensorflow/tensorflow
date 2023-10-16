@@ -16,11 +16,8 @@ limitations under the License.
 #include "xla/stream_executor/plugin_registry.h"
 
 #include "absl/base/const_init.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/stream_executor/multi_platform_manager.h"
-#include "tsl/platform/errors.h"
 
 namespace stream_executor {
 
