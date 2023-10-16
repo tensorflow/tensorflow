@@ -718,7 +718,7 @@ bool GpuExecutor::AllocateStream(Stream* stream) {
 void GpuExecutor::DeallocateStream(Stream* stream) {
   GpuStream* cuda_stream = AsGpuStream(stream);
   absl::MutexLock l(&alive_gpu_streams_mu_);
-  alive_gpu_streams_.erase(cuda_stream->GpuStreamHack());
+  alive_gpu_streams_.erase(cuda_stream->platform_specific_stream());
   if (!cuda_stream->IsIdle()) {
     LOG(ERROR) << "Deallocating stream with pending work";
   }

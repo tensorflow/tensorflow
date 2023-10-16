@@ -298,7 +298,7 @@ std::variant<StreamPriority, int> Stream::priority() const {
 
 Stream::PlatformSpecificHandle Stream::platform_specific_handle() const {
   PlatformSpecificHandle handle;
-  handle.stream = implementation_->GpuStreamHack();
+  handle.stream = implementation_->platform_specific_stream();
   return handle;
 }
 
