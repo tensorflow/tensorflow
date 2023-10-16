@@ -510,7 +510,11 @@ CompileMany(const AutotuneConfig& config, AutotunerCompileUtil& util,
            gemm_config_set.configs) {
         thread_pool->Schedule([&, fusion] {
           StatusOr<bool> has_executable = compile(fusion, conf);
-          TF_CHECK_OK(has_executable.status());
+          TF_CHECK_OK(has_executable.status())
+              << "Failure occured when compiling fusion " << fusion->name()
+              << " with config '" << conf.ShortDebugString()
+              << "'\nFused HLO computation:\n"
+              << fusion->fused_instructions_computation()->ToString();
           log(has_executable.value());
           counter.DecrementCount();
         });
