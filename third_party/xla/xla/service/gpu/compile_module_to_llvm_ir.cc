@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/mlir/backends/gpu/transforms/passes.h"
-#include "xla/mlir/backends/gpu2/transforms/passes.h"
 #include "xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "xla/mlir_hlo/transforms/gpu_passes.h"
 #include "xla/service/buffer_assignment.h"
@@ -138,25 +137,6 @@ static Status LowerToXlaGpuRuntime(
   return OkStatus();
 }
 
-// Lowers MLIR module to the XLA:GPU experimental runtime (IREE input dialects).
-static Status LowerToXlaGpu2Runtime(mlir::ModuleOp module,
-                                    llvm::StringRef entry_function_name,
-                                    llvm::ArrayRef<int64_t> buffer_sizes,
-                                    ThunkSequence* thunk_sequence,
-                                    const DebugOptions& debug_options) {
-  mlir::PassManager pm(module->getName(), mlir::PassManager::Nesting::Implicit);
-
-  Gpu2PipelineOpts opts;
-  populateGpu2RuntimePasses(pm, thunk_sequence, opts);
-
-  if (pm.run(module).failed()) {
-    return InternalError(
-        "Failed to lower LMHLO to XLA:GPU runtime input dialects.");
-  }
-
-  return OkStatus();
-}
-
 void ForAllThunks(const std::function<void(Thunk*)>& fn,
                   ThunkSequence* thunk_sequence) {
   for (std::unique_ptr<Thunk>& thunk : *thunk_sequence) {
@@ -221,31 +201,6 @@ StatusOr<GpuExecutable::OwnedGpuRuntimeProgram> LowerToJitRt(
   return std::make_unique<GpuRuntimeProgram>(
       entry_function_name.str(), std::move(module_str), buffer_sizes.vec(),
       module_config.debug_options());
-}
-
-StatusOr<GpuExecutable::OwnedGpu2RuntimeProgram> LowerToXlaGpu2Runtime(
-    std::unique_ptr<mlir::MLIRContext> ctx,
-    mlir::OwningOpRef<mlir::ModuleOp> module,
-    llvm::StringRef entry_function_name, llvm::ArrayRef<int64_t> buffer_sizes,
-    const HloModuleConfig& module_config,
-    std::unique_ptr<ThunkSequence> thunk_sequence,
-    const HloModule* hlo_module_for_dump) {
-  // Forward collective (NCCL) attributes for use by the lowering pipeline.
-  ForwardCollectiveAttrs(*module, entry_function_name, module_config);
-
-  TF_RETURN_IF_ERROR(LowerToXlaGpu2Runtime(
-      *module, {entry_function_name.data(), entry_function_name.size()},
-      buffer_sizes, thunk_sequence.get(), module_config.debug_options()));
-
-  if (hlo_module_for_dump != nullptr) {
-    std::string module_str = llvm_ir::DumpToString(*module);
-    DumpToFileInDirOrStdout(*hlo_module_for_dump, "gpu_rt_host", "mlir",
-                            module_str);
-  }
-
-  return std::make_unique<Gpu2RuntimeProgram>(
-      std::move(ctx), std::move(module), entry_function_name.str(),
-      buffer_sizes.vec(), module_config.debug_options());
 }
 
 StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
@@ -464,17 +419,6 @@ Status CompileModuleToLlvmIrImpl(
                      hlo_module->config(), ir_emitter->ConsumeThunkSequence(),
                      /*hlo_module_for_dump=*/hlo_module,
                      gpu_device_info.gpu_compute_capability()));
-    return OkStatus();
-  }
-
-  if (IsXlaGpu2RuntimeEnabled(hlo_module->config())) {
-    TF_ASSIGN_OR_RETURN(
-        results->executable,
-        LowerToXlaGpu2Runtime(std::move(mlir_context), std::move(mlir_module),
-                              entry_function.getName(), buffer_sizes,
-                              hlo_module->config(),
-                              ir_emitter->ConsumeThunkSequence(),
-                              /*hlo_module_for_dump=*/hlo_module));
     return OkStatus();
   }
 
