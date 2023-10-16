@@ -1,7 +1,7 @@
 # Description: Utilities.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -176,9 +176,8 @@ tf_cc_test(
         "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:fixed_array",
-        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/time",
-        "@com_google_absl//absl/utility",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

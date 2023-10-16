@@ -224,13 +224,6 @@ class BasicBatchScheduler : public BatchScheduler<TaskType> {
     // to 128.
     bool enable_large_batch_splitting = false;
 
-    // If true, inputs split happens lazily after dequeue and not on the
-    // critical path of enqueue.
-    //
-    // Must be false if `enable_large_batch_splitting` is false; elsewise errors
-    // are returned at queue creation time.
-    bool enable_lazy_split = false;
-
     // `split_input_task_func` specifies how to split `input_task` into
     // `output_tasks`.
     //
@@ -332,7 +325,6 @@ Status BasicBatchScheduler<TaskType>::Create(
       options.enable_large_batch_splitting;
   shared_scheduler_queue_options.split_input_task_func =
       options.split_input_task_func;
-  shared_scheduler_queue_options.enable_lazy_split = options.enable_lazy_split;
   shared_scheduler_queue_options.max_execution_batch_size =
       options.max_execution_batch_size;
   std::unique_ptr<BatchScheduler<TaskType>> shared_scheduler_queue;
