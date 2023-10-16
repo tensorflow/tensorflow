@@ -186,6 +186,26 @@ cc_library(
 )
 
 cc_library(
+    name = "cub_sort",
+    srcs = ["cub_sort.cc"],
+    hdrs = ["cub_sort.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":support",
+        "//xla/runtime:custom_call",
+        "//xla/runtime:custom_call_registry",
+        "//xla/runtime:executable",
+        "//xla/runtime:memref_view",
+        "//xla/service:executable",
+        "//xla/stream_executor:device_memory",
+        "@com_google_absl//absl/status",
+    ] + if_cuda_is_configured([
+        "//xla/service/gpu:cub_sort_thunk",
+    ]),
+)
+
+cc_library(
     name = "custom_call",
     srcs = ["custom_call.cc"],
     hdrs = ["custom_call.h"],
@@ -231,6 +251,7 @@ cc_library(
         ":concurrent_region",
         ":conv",
         ":conv_reorder",
+        ":cub_sort",
         ":cublas_lt_matmul",
         ":custom_call",
         ":custom_call_registry",

@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/gpu/runtime/concurrent_region.h"
 #include "xla/service/gpu/runtime/conv.h"
 #include "xla/service/gpu/runtime/conv_reorder.h"
+#include "xla/service/gpu/runtime/cub_sort.h"
 #include "xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "xla/service/gpu/runtime/custom_call.h"
 #include "xla/service/gpu/runtime/custom_call_registry.h"
@@ -115,6 +116,7 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
 #if GOOGLE_CUDA
   RegisterFusedAttentionCustomCalls(registry);
   RegisterFusedAttentionBackwardCustomCalls(registry);
+  RegisterCubSortCustomCalls(registry);
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Graph launch kernels depend on Cuda Graph API.

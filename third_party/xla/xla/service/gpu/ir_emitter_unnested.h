@@ -142,6 +142,7 @@ class IrEmitterUnnested : public IrEmitter {
           hlo_for_lmhlo);
   Status EmitFusedMHAThunk(mlir::Operation* op);
   Status EmitFusedMHABackwardThunk(mlir::Operation* op);
+  Status EmitCubDeviceRadixSort(mlir::Operation* op);
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCholeskyThunk(mlir::Operation* op);
@@ -319,6 +320,8 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitSliceToDynamic(mlir::Operation* op);
 
   StatusOr<BufferAllocation::Slice> GetAllocationSlice(mlir::Value v);
+  StatusOr<std::vector<BufferAllocation::Slice>> GetAllocationSlices(
+      mlir::OperandRange operands);
 
   int64_t ByteSizeOf(const Shape& shape) const {
     return llvm_ir::ByteSizeOf(
