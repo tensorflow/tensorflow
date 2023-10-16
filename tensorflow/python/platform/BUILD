@@ -313,6 +313,7 @@ py_strict_library(
     name = "tf_logging",
     srcs = ["tf_logging.py"],
     visibility = visibility + [
+        "//learning/brain/contrib/learn:__pkg__",
         "//learning/brain/mobile/lite/lstm:__pkg__",
         "//third_party/py/tf_slim/training:__pkg__",
     ],
