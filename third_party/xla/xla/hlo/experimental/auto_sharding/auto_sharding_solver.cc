@@ -35,6 +35,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/time/time.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/util.h"
@@ -134,6 +135,22 @@ AutoShardingSolverResult SolveAndExtractSolution(
     const std::vector<std::vector<MPVariable*>>& e,
     const MPVariable* overbudget_var, const MPVariable* makespan_var,
     MPSolver& solver);
+
+double MinimumMemoryBudgetRequired(const AutoShardingSolverRequest& request) {
+  double minimum_memory_budget_required_estimate = 0.0;
+  for (LivenessIdx time_idx = 0; time_idx < request.live.size(); ++time_idx) {
+    double minimum_memory_budget_required_estimate_local = 0.0;
+    for (NodeIdx node_idx : request.live[time_idx]) {
+      const std::vector<double>& m = request.m[node_idx];
+      const double fixed_memory_cost = *std::min_element(m.begin(), m.end());
+      minimum_memory_budget_required_estimate_local += fixed_memory_cost;
+    }
+    minimum_memory_budget_required_estimate =
+        std::max(minimum_memory_budget_required_estimate,
+                 minimum_memory_budget_required_estimate_local);
+  }
+  return minimum_memory_budget_required_estimate;
+}
 
 // We formulate the auto sharding process as the following ILP problem:
 // Variables:
@@ -335,43 +352,33 @@ AutoShardingSolverResult CallORToolsSolver(
   }
   // c.
   if (request.memory_budget > 0) {
-    int64_t minimum_memory_budget_required_estimate = 0;
+    const double minimum_memory_budget_required_estimate =
+        MinimumMemoryBudgetRequired(request);
+    const double minimum_memory_overbudget = std::max(
+        0.0, minimum_memory_budget_required_estimate - request.memory_budget);
     for (LivenessIdx time_idx = 0; time_idx < request.live.size(); ++time_idx) {
-      int64_t minimum_memory_budget_required_estimate_local = 0;
-      std::string str = "[";
-      double total_fixed_memory_cost = 0.0;  // Amount consumed "no matter what"
-      for (NodeIdx node_idx : request.live[time_idx]) {
-        absl::StrAppend(&str, node_idx, ", ");
-        total_fixed_memory_cost += *std::min_element(
-            request.m[node_idx].begin(), request.m[node_idx].end());
-      }
-      str += "]";
+      const std::string str =
+          absl::StrCat("[", absl::StrJoin(request.live[time_idx], ", "), "]");
+      double upper_bound = request.memory_budget;
+      if (overbudget_var) upper_bound += minimum_memory_overbudget;
       MPConstraint* constraint = solver->MakeRowConstraint(
-          -MPSolver::infinity(),
-          request.memory_budget - total_fixed_memory_cost,
+          -MPSolver::infinity(), upper_bound,
           absl::StrCat("mem[", time_idx, "] = ", str));
-      if (overbudget_var) {
-        constraint->SetCoefficient(overbudget_var, -1.0);
-      }
+      if (overbudget_var) constraint->SetCoefficient(overbudget_var, -1.0);
       for (NodeIdx node_idx : request.live[time_idx]) {
-        auto fixed_memory_cost = *std::min_element(request.m[node_idx].begin(),
-                                                   request.m[node_idx].end());
-        minimum_memory_budget_required_estimate_local += fixed_memory_cost;
         for (NodeStrategyIdx j = 0; j < s[node_idx].size(); ++j) {
-          double accumulated_coefficient =
+          const double accumulated_coefficient =
               constraint->GetCoefficient(s[node_idx][j]);
           constraint->SetCoefficient(
-              s[node_idx][j], accumulated_coefficient + request.m[node_idx][j] -
-                                  fixed_memory_cost);
+              s[node_idx][j], accumulated_coefficient + request.m[node_idx][j]);
         }
       }
-      minimum_memory_budget_required_estimate =
-          std::max(minimum_memory_budget_required_estimate,
-                   minimum_memory_budget_required_estimate_local);
     }
     if (overbudget_var) {
       solver->MutableObjective()->SetCoefficient(overbudget_var,
                                                  *request.overbudget_coeff);
+      solver->MutableObjective()->SetOffset(*request.overbudget_coeff *
+                                            minimum_memory_overbudget);
     }
     LOG(INFO) << "Minimum memory budget estimate: "
               << minimum_memory_budget_required_estimate;
@@ -596,6 +603,7 @@ AutoShardingSolverResult SolveAndExtractSolution(
   if (overbudget_var) {
     unsalted_objective +=
         *request.overbudget_coeff * overbudget_var->solution_value();
+    unsalted_objective += solver.Objective().offset();
   }
   if (makespan_var) {
     unsalted_objective +=
