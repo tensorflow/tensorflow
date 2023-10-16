@@ -83,15 +83,20 @@ class BatchInputTaskHandle : public BatchTask {
 };
 
 // BatchInputTask encapsulates a input (`input_task`) to be batched and the
-// information to get task splits after it's enqueued.
+// information to get task splits after it's enqueued, so as to support lazy
+// split of a task.
 //
-// Input split could reduce excessive padding for efficiency.
+// Input split could reduce excessive padding for efficiency; lazy split
+// moves task-split out of the critical path of enqueue and dequeue and reduces
+// contention.
 //
 // BatchInputTask is thread safe.
 //
 // Usage
 //
 // ... a deque with frequent enqueue and dequeue operations ...
+// ... Note, a deque of Batch of BatchInputTaskHandle is used to form batches
+//     at enqueue time (split is lazy at deque time);
 // ... For use cases to form batches at dequeue time, we can use a deque of
 //     BatchInputTaskHandle directly, and "peek" metadata to form a batch by
 //     then.
@@ -99,6 +104,21 @@ class BatchInputTaskHandle : public BatchTask {
 //     TF_GUARDED_BY(mu_);
 //
 // std::unique_ptr<TaskType> input_task;
+//
+// ... Enqueue path ...
+//
+// {
+//   mutex_lock l(mu_);
+//   std::shared_ptr<BatchInputTask<TaskType>> batch_input_task =
+//       ConstructLazyBatchWithoutSplit(input_task);
+//
+//   std::vector<std::unique_ptr<BatchInputTaskHandle<TaskType>>> task_handles;
+//   input_batch->ToTaskHandles(&task_handles);
+//   for (int i = 0; i < task_handles.size(); ++i) {
+//     EnqueueTaskHandleIntoDeque(deque_);
+//   }
+//
+// ... Dequeue path ...
 // std::unique_ptr<Batch<BatchInputTaskHandle<TaskType>>> handles_to_schedule;
 // {
 //    mutex_lock l(mu_);
