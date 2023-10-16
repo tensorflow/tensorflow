@@ -150,6 +150,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/data:serialization_utils",
         "//tensorflow/core/data/service:common_proto_cc",
         "//tensorflow/core/data/service:dispatcher_client",
         "//tensorflow/core/data/service:test_util",
