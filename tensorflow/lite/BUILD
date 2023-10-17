@@ -1378,6 +1378,7 @@ bzl_library(
 cc_library_with_tflite(
     name = "namespace",
     hdrs = ["namespace.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//visibility:public",
     ],
