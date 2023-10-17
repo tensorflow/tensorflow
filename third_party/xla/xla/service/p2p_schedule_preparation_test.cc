@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/log/log.h"
@@ -238,6 +239,11 @@ TEST_F(P2PSchedulePreparationTest, WhileP2PIsHostNotMainTransformed) {
   VLOG(10) << module->ToString();
   VerifyP2PNotTransformed(module.get());
   VerifyUnpipelinedP2P(module.get(), ".1");
+  // Verify that while-loop is scheduled after Send-done even though the
+  // while-loop only contains host P2P operations.
+  HloInstruction* send_done = FindInstruction(module.get(), "send-done.1");
+  HloInstruction* while_loop = FindInstruction(module.get(), "while-result");
+  EXPECT_EQ(while_loop->control_predecessors()[0], send_done);
 }
 
 TEST_F(P2PSchedulePreparationTest, MainP2PIsHostNotWhileTransformed) {
@@ -267,8 +273,8 @@ TEST_F(P2PSchedulePreparationTest, NestedP2PChainTransformed) {
   VerifyUnpipelinedP2P(module.get(), ".1");
 
   HloInstruction* send_done = FindInstruction(module.get(), "send-done.1");
-  HloInstruction* recv_data = FindInstruction(module.get(), "recv-data.1");
-  EXPECT_EQ(recv_data->control_predecessors()[0], send_done);
+  HloInstruction* recv_user = FindInstruction(module.get(), "while-result");
+  EXPECT_EQ(recv_user->control_predecessors()[0], send_done);
 }
 
 // Returns an HLO module string for testing pipelined P2P chains. The string
@@ -280,7 +286,8 @@ TEST_F(P2PSchedulePreparationTest, NestedP2PChainTransformed) {
 //    pipelined P2P chain.
 //
 std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
-                                        bool other_p2p_in_while = false) {
+                                        bool other_p2p_in_while = false,
+                                        bool deadlock_in_while = false) {
   // This is to support the while-loop with nested P2P chains called from the
   // main computation.
   constexpr char kWhileForMain[] = R"(
@@ -317,7 +324,9 @@ std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
   // This is the result for the main computation, if it doesn't have another
   // while-loop with nested P2P chains.
   constexpr char kUnnestedResult[] = R"(
-  ROOT entry-result = f32[1, 1024, 1024] get-tuple-element(while-result), index=1
+  while-result-1 = f32[1, 1024, 1024] get-tuple-element(while-result), index=1
+  ROOT collective-permute.2 = f32[1, 1024, 1024] collective-permute(while-result-1),
+    source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}}
 )";
 
   // This is the result for the main computation, if it has another while-loop
@@ -362,7 +371,9 @@ std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
     d = f32[1, 1024, 1024] tan(c)
     s = f32[1, 1024, 1024] dot(c, d), lhs_batch_dims={0},
       lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
-    new-data = f32[1, 1024, 1024] add(c, s)
+    collective-permute.1 = f32[1, 1024, 1024] collective-permute(s),
+      source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}}
+    new-data = f32[1, 1024, 1024] add(c, collective-permute.1)
 
     recv-done.1 = (f32[1, 1024, 1024], token[]) recv-done(recv.1), channel_id=1
     new-recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done.1), index=0
@@ -425,6 +436,48 @@ std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
   }
 )";
 
+  constexpr char kPipelinedWhileBodyDeadlock[] = R"(
+  while-body {
+    param = (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) parameter(0)
+    count = get-tuple-element(param), index=0
+    send-data = get-tuple-element(param), index=1
+    recv-data = get-tuple-element(param), index=2
+
+    collective-permute.1 = f32[1, 1024, 1024] collective-permute(send-data),
+      source_target_pairs={{0,1}, {1,2}, {2,3}, {3,4}}
+    after-all.1 = token[] after-all()
+    send.1 = (f32[1, 1024, 1024], u32[], token[]) send(collective-permute.1, after-all.1),
+      channel_id=1, frontend_attributes={
+      _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
+    }
+    send-done.1 = token[] send-done(send.1), channel_id=1
+    recv.1 = (f32[1, 1024, 1024], u32[], token[]) recv(after-all.1), channel_id=1,
+      frontend_attributes={
+       _xla_send_recv_source_target_pairs="{{0,1}, {1,2}, {2,3}, {3,4}}"
+    }
+
+    c1 = u32[] constant(1)
+    new-count = u32[] add(count, c1)
+    replica = u32[] replica-id()
+    c10 = u32[] constant(10)
+    sum = u32[] add(replica, c10)
+    sum2 = u32[] add(sum, count)
+    conv = f32[] convert(sum2)
+    p = f32[1, 1024, 1024] broadcast(conv), dimensions={}
+    b = f32[1, 1024, 1024] add(p, recv-data)
+    c = f32[1, 1024, 1024] multiply(b, b)
+    d = f32[1, 1024, 1024] tan(c)
+    s = f32[1, 1024, 1024] dot(c, d), lhs_batch_dims={0},
+      lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+    new-data = f32[1, 1024, 1024] add(c, s)
+
+    recv-done.1 = (f32[1, 1024, 1024], token[]) recv-done(recv.1), channel_id=1
+    new-recv-data = f32[1, 1024, 1024] get-tuple-element(recv-done.1), index=0
+
+    ROOT body-result = (u32[], f32[1, 1024, 1024], f32[1, 1024, 1024]) tuple(new-count, new-data, new-recv-data)
+  }
+)";
+
   constexpr char kModuleTemplate[] = R"(
   HloModule test
 
@@ -473,11 +526,26 @@ std::string GetPipelinedP2PModuleString(bool nested_p2p_in_main = false,
 
   const char* while_str = nested_p2p_in_main ? kWhileForMain : kEmpty;
   const char* pipelined_while_body_str =
-      other_p2p_in_while ? kPipelinedWhileBodyWithOtherP2P
-                         : kPipelinedWhileBodyWithoutOtherP2P;
+      deadlock_in_while
+          ? kPipelinedWhileBodyDeadlock
+          : (other_p2p_in_while ? kPipelinedWhileBodyWithOtherP2P
+                                : kPipelinedWhileBodyWithoutOtherP2P);
   const char* result_str = nested_p2p_in_main ? kNestedResult : kUnnestedResult;
   return absl::StrFormat(kModuleTemplate, while_str, pipelined_while_body_str,
                          result_str);
+}
+
+TEST_F(P2PSchedulePreparationTest, PipelinedP2PChainDeadlocked) {
+  std::string kModuleStr = GetPipelinedP2PModuleString(
+      /*nested_p2p_in_main=*/false, /*other_p2p_in_while=*/false,
+      /*deadlock_in_while=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule((kModuleStr)));
+  P2PSchedulePreparation preparation;
+  auto status = preparation.Run(module.get());
+  EXPECT_EQ(status.ok(), false);
+  EXPECT_THAT(status.status().message(),
+              ::testing::HasSubstr("deadlock in input HLO"));
 }
 
 TEST_F(P2PSchedulePreparationTest, UnnestedPipelinedP2PChainTransformed) {
@@ -493,6 +561,22 @@ TEST_F(P2PSchedulePreparationTest, UnnestedPipelinedP2PChainTransformed) {
   VerifyPipelinedP2PChild(module.get(), ".1");
   // Verify the pipelined P2P chain in the main computation.
   VerifyPipelinedP2PParent(module.get(), ".2");
+
+  // Verify in the while-body collective-permute is scheduled after Send-done
+  // and before Recv.
+  HloInstruction* send_done_1 = FindInstruction(module.get(), "send-done.1");
+  HloInstruction* recv = FindInstruction(module.get(), "recv.1");
+  HloInstruction* collective_1 =
+      FindInstruction(module.get(), "collective-permute.1");
+  EXPECT_EQ(collective_1->control_predecessors()[0], send_done_1);
+  EXPECT_EQ(1, absl::c_count(recv->control_predecessors(), collective_1));
+
+  // Verify in the main computation collective-permute is scheduled after the
+  // Send-done for the pipelined while-loop.
+  HloInstruction* send_done_2 = FindInstruction(module.get(), "send-done.2");
+  HloInstruction* collective_2 =
+      FindInstruction(module.get(), "collective-permute.2");
+  EXPECT_EQ(collective_2->control_predecessors()[0], send_done_2);
 }
 
 TEST_F(P2PSchedulePreparationTest, NestedPipelinedP2PChainTransformed) {
@@ -513,12 +597,10 @@ TEST_F(P2PSchedulePreparationTest, NestedPipelinedP2PChainTransformed) {
   VerifyUnpipelinedP2P(module.get(), ".3");
 
   // Verify that the while-loop with nested P2P is schedule after the last
-  // send-done of the pipeline P2P chain. This is expressed by making
-  // send-done.2 a control predecessor of while-result-1, which is the init
-  // value for the while-loop.
+  // Send-done of the pipeline P2P chain.
   HloInstruction* send_done = FindInstruction(module.get(), "send-done.2");
-  HloInstruction* while_input = FindInstruction(module.get(), "while-result-1");
-  EXPECT_EQ(while_input->control_predecessors()[0], send_done);
+  HloInstruction* while_user = FindInstruction(module.get(), "while-result-2");
+  EXPECT_EQ(while_user->control_predecessors()[0], send_done);
 }
 
 TEST_F(P2PSchedulePreparationTest,
