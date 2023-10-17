@@ -120,13 +120,6 @@ void CreateTPUBridgePipeline(OpPassManager &pm, llvm::StringRef module_name) {
       pm, module_name);
 }
 
-tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
-                             llvm::StringRef module_name) {
-  return tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
-      module, tensorflow::tf2xla::v2::XLA_TPU_JIT, fallback_enabled,
-      module_name);
-}
-
 }  // namespace TFTPU
 
 namespace TF {

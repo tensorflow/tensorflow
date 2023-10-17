@@ -15,6 +15,9 @@ package_group(
     name = "tf2xla_users",
     packages = [
         "//tensorflow/compiler/mlir/quantization/stablehlo/...",
+        "//learning/serving/contrib/tfrt/mlir/saved_model_analysis",
+        "//tensorflow/compiler/mlir/tfrt",
+        "//tensorflow/compiler/tf2xla",
         # Legacy due to where the bridge currently runs. This should go away.
         "//tensorflow/compiler/mlir/tensorflow/transforms",
     ],

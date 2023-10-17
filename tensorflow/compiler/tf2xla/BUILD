@@ -1160,6 +1160,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:bridge",
         "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
         "//tensorflow/compiler/mlir/tf2xla/api/v1:cluster_tf",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:cluster_tf",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v1/cluster_tf.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -277,7 +278,9 @@ Status MlirBridgePass::Run(const std::string& function_name,
     }
     VLOG(1) << "Running MLIR TPU Bridge";
     mlir_bridge_gauge_v2->GetCell()->Set(true);
-    return mlir::TFTPU::TPUBridge(module, fallback_enabled, function_name);
+    return tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
+        module, tf2xla::v2::DeviceType::XLA_TPU_JIT,
+        /*is_in_fallback_enabled_mode=*/fallback_enabled, function_name);
   }
   VLOG(1) << "Running MLIR CPU/GPU Bridge";
   return mlir::TF::RunTFXLABridge(module, function_name);
