@@ -409,6 +409,7 @@ setup(
         'Development Status :: 5 - Production/Stable',
         # TODO(angerson) Add IFTTT when possible
         'Environment :: GPU :: NVIDIA CUDA :: 12',
+        'Environment :: GPU :: NVIDIA CUDA :: 12 :: 12.2',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
