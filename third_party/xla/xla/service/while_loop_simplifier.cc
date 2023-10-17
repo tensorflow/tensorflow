@@ -15,25 +15,32 @@ limitations under the License.
 
 #include "xla/service/while_loop_simplifier.h"
 
+#include <cstdint>
 #include <optional>
+#include <utility>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/comparison_util.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/call_inliner.h"
+#include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/service/while_loop_analysis.h"
 #include "xla/statusor.h"
 #include "xla/union_find.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -41,6 +48,73 @@ namespace xla {
 namespace m = match;
 using hlo_query::ContainsInstrWithOpcode;
 using std::optional;
+
+// This function removes trivial compare hlo instructions inside the while body.
+// Assuming a while loop with known trip count, k, loop induction variable i,
+// and the initial loop induction value c, a compare(i,x) instruction is trivial
+// if:
+//   1) x is a constant and x >= k + c.
+//   2) x is a constant x <= c.
+static StatusOr<bool> TryRemoveTrivialCompare(HloInstruction* while_op) {
+  std::optional<int64_t> indvar_index = GetLoopInductionVarTupleIdx(while_op);
+  if (indvar_index.has_value()) {
+    if (while_op->operand(0)->operand(*indvar_index)->IsConstant()) {
+      const HloConstantInstruction* init_value_hlo =
+          Cast<HloConstantInstruction>(
+              while_op->operand(0)->operand(*indvar_index));
+      std::optional<int64_t> trip_count = MatchTrivialLoopTripCount(
+          while_op, indvar_index.value(), init_value_hlo->literal());
+
+      if (trip_count.has_value()) {
+        std::optional<int64_t> init_value =
+            LiteralUtil::LiteralAsScalarInt64(init_value_hlo->literal());
+        for (HloInstruction* body_instr :
+             while_op->while_body()->instructions()) {
+          HloInstruction* constant;
+          if (Match(body_instr,
+                    m::Compare(m::GetTupleElement(m::Parameter(),
+                                                  indvar_index.value()),
+                               m::Constant(&constant).IsConstantScalar()))) {
+            std::optional<int64_t> constant_value =
+                LiteralUtil::LiteralAsScalarInt64(constant->literal());
+            if (constant_value.has_value()) {
+              // x <= c && i >= c --> i > x
+              if (constant_value.value() <= init_value.value()) {
+                if (body_instr->comparison_direction() ==
+                    ComparisonDirection::kLt) {
+                  TF_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
+                      body_instr, MakeScalarLike(body_instr, false)));
+                  return true;
+                } else if (body_instr->comparison_direction() ==
+                           ComparisonDirection::kGt) {
+                  TF_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
+                      body_instr, MakeScalarLike(body_instr, true)));
+                  return true;
+                }
+              }
+              // x >= c + k && i < c + k --> i < x
+              if (constant_value.value() >=
+                  init_value.value() + trip_count.value()) {
+                if (body_instr->comparison_direction() ==
+                    ComparisonDirection::kLt) {
+                  TF_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
+                      body_instr, MakeScalarLike(body_instr, true)));
+                  return true;
+                } else if (body_instr->comparison_direction() ==
+                           ComparisonDirection::kGt) {
+                  TF_RETURN_IF_ERROR(while_op->while_body()->ReplaceInstruction(
+                      body_instr, MakeScalarLike(body_instr, false)));
+                  return true;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return false;
+}
 
 // A helper function that copy the frontend attributes from the old while op to
 // the new one.
@@ -1388,6 +1462,12 @@ StatusOr<bool> WhileLoopSimplifier::Run(
     }
 
     TF_ASSIGN_OR_RETURN(result, TryRemoveConstantParams(while_op));
+    changed |= result;
+    if (result) {
+      continue;
+    }
+
+    TF_ASSIGN_OR_RETURN(result, TryRemoveTrivialCompare(while_op));
     changed |= result;
     if (result) {
       continue;

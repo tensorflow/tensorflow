@@ -22,8 +22,7 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/service/algebraic_simplifier.h"
-#include "xla/service/hlo_cse.h"
+#include "xla/literal_util.h"
 #include "xla/service/hlo_dce.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/tuple_simplifier.h"
@@ -1010,6 +1009,113 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedParamsDespiteSendRecv) {
   EXPECT_TRUE(ShapeUtil::Equal(
       new_while->while_condition()->parameter_instruction(0)->shape(),
       new_while_shape));
+}
+
+TEST_F(WhileLoopSimplifierTest, RemoveTrivialCompare) {
+  const std::string hlo_template = R"(
+  HloModule RemoveTrivialCompare
+  RemoveTrivialCompare.body {
+    loop_var = (pred[], s32[]) parameter(0)
+  
+    get-tuple-element.2 = s32[] get-tuple-element((pred[], s32[]) loop_var), index=1
+      
+    cons = s32[] constant({{LOOP_CONSTANT}})
+    comp = pred[] compare(get-tuple-element.2, cons), direction={{DIRECTION}}
+      
+    constant.1 = s32[] constant(1)
+    add = s32[] add(s32[] get-tuple-element.2, s32[] constant.1)
+    ROOT tuple = (pred[], s32[]) tuple(comp,
+      s32[] add)
+  }
+  RemoveTrivialCompare.loop_condition {
+    constant.2 = s32[] constant(10)
+    param0 = (pred[], s32[]) parameter(0)
+    get-tuple-element = s32[] get-tuple-element((pred[], s32[]) param0),
+      index=1
+    ROOT equal-to = pred[] compare(s32[] get-tuple-element, s32[] constant.2), direction=LT
+  }
+  ENTRY RemoveTrivialCompare {
+    constant.3 = s32[] constant(1)
+    t = pred[] constant(true)
+    tuple.1 = (pred[], s32[]) tuple(t, s32[] constant.3)
+    ROOT while = (pred[], s32[]) while((pred[], s32[]) tuple.1),
+      condition=RemoveTrivialCompare.loop_condition,
+      body=RemoveTrivialCompare.body
+  }
+  )";
+
+  for (std::string dir : {"LT", "GT"}) {
+    for (int i = 1; i > -5; i--) {
+      std::string hlo_string = absl::StrReplaceAll(
+          hlo_template,
+          {{"{{LOOP_CONSTANT}}", absl::StrCat(i)}, {"{{DIRECTION}}", dir}});
+
+      auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+      EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).value());
+      HloInstruction* while_instr = FindFirstWhile(m.get());
+      EXPECT_THAT(while_instr->while_body()->root_instruction(),
+                  op::Tuple(op::Constant(), _));
+      EXPECT_TRUE(while_instr->while_body()
+                      ->root_instruction()
+                      ->operand(0)
+                      ->literal()
+                      .IsAll(dir == "GT"));
+    }
+
+    for (int i = 11; i < 15; i++) {
+      std::string hlo_string = absl::StrReplaceAll(
+          hlo_template,
+          {{"{{LOOP_CONSTANT}}", absl::StrCat(i)}, {"{{DIRECTION}}", dir}});
+
+      auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+      EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).value());
+      HloInstruction* while_instr = FindFirstWhile(m.get());
+      EXPECT_THAT(while_instr->while_body()->root_instruction(),
+                  op::Tuple(op::Constant(), _));
+      EXPECT_TRUE(while_instr->while_body()
+                      ->root_instruction()
+                      ->operand(0)
+                      ->literal()
+                      .IsAll(dir == "LT"));
+    }
+  }
+}
+
+TEST_F(WhileLoopSimplifierTest, NotRemoveCompare) {
+  const std::string hlo_string = R"(
+  HloModule RemoveTrivialCompare
+  RemoveTrivialCompare.body {
+    loop_var = (pred[], s32[]) parameter(0)
+  
+    get-tuple-element.2 = s32[] get-tuple-element((pred[], s32[]) loop_var), index=1
+      
+    five = s32[] constant(5)
+    comp = pred[] compare(get-tuple-element.2, five), direction=LT
+      
+    constant.1 = s32[] constant(1)
+    add = s32[] add(s32[] get-tuple-element.2, s32[] constant.1)
+    ROOT tuple = (pred[], s32[]) tuple(comp,
+      s32[] add)
+  }
+  RemoveTrivialCompare.loop_condition {
+    constant.2 = s32[] constant(10)
+    param0 = (pred[], s32[]) parameter(0)
+    get-tuple-element = s32[] get-tuple-element((pred[], s32[]) param0),
+      index=1
+    ROOT equal-to = pred[] compare(s32[] get-tuple-element, s32[] constant.2), direction=LT
+  }
+  ENTRY RemoveTrivialCompare {
+    constant.3 = s32[] constant(0)
+    t = pred[] constant(true)
+    tuple.1 = (pred[], s32[]) tuple(t, s32[] constant.3)
+    ROOT while = (pred[], s32[]) while((pred[], s32[]) tuple.1),
+      condition=RemoveTrivialCompare.loop_condition,
+      body=RemoveTrivialCompare.body
+  }
+  )";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_string).value();
+  EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
 }
 
 }  // namespace
