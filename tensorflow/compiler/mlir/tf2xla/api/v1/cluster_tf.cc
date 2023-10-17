@@ -93,7 +93,8 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
 tensorflow::Status RunTFXLABridge(
     ModuleOp module,
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder,
-    llvm::StringRef module_name = llvm::StringRef()) {
+    llvm::StringRef module_name = llvm::StringRef(),
+    llvm::StringRef dump_prefix = "tf_xla_bridge_v1") {
   // Explicitly check that the TensorFlow dialect can constant fold ops.
   // Constant folding is essential for the bridge. Without this check, the
   // bridge may fail with an error that is difficult to understand and not
@@ -117,10 +118,10 @@ tensorflow::Status RunTFXLABridge(
 
   if (VLOG_IS_ON(1) ||
       DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain)) {
-    ::tensorflow::DumpMlirOpToFile(
-        DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
-                                             "tf_xla_bridge_before"),
-        module, llvm::StringRef(), &bridge);
+    ::tensorflow::DumpMlirOpToFile(DEBUG_DATA_DUMPER()->GetDumpFilename(
+                                       module_name.str(), kDebugGroupMain,
+                                       "_" + dump_prefix.str() + "_before_"),
+                                   module, llvm::StringRef(), &bridge);
   }
 
   if (VLOG_IS_ON(2) ||
@@ -135,10 +136,10 @@ tensorflow::Status RunTFXLABridge(
 
   if (VLOG_IS_ON(1) ||
       DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain)) {
-    ::tensorflow::DumpMlirOpToFile(
-        DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
-                                             "tf_xla_bridge_after"),
-        module, llvm::StringRef(), &bridge);
+    ::tensorflow::DumpMlirOpToFile(DEBUG_DATA_DUMPER()->GetDumpFilename(
+                                       module_name.str(), kDebugGroupMain,
+                                       "_" + dump_prefix.str() + "_after_"),
+                                   module, llvm::StringRef(), &bridge);
   }
 
   return diag_handler.ConsumeStatus();
@@ -154,7 +155,8 @@ tensorflow::Status RunSessionTf2xlaClusteringBridge(ModuleOp module) {
 
   bool fallback_enabled = false;
   Status bridge_status = RunTFXLABridge(
-      module, [](OpPassManager &pm) { CreateTPUBridgePipelineV1(pm); });
+      module, [](OpPassManager &pm) { CreateTPUBridgePipelineV1(pm); },
+      /*module_name=*/"", /*dump_prefix=*/"tf_xla_bridge_v1");
 
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       "tpu", "v1", fallback_enabled,

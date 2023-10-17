@@ -57,7 +57,8 @@ constexpr char kBridgeComponent[] = "TFXLABridge";
 tensorflow::Status RunTFXLABridge(
     ModuleOp module,
     llvm::function_ref<void(OpPassManager &pm)> pipeline_builder,
-    llvm::StringRef module_name = llvm::StringRef()) {
+    llvm::StringRef module_name = llvm::StringRef(),
+    llvm::StringRef dump_prefix = "tf_xla_bridge_v2") {
   // Explicitly check that the TensorFlow dialect can constant fold ops.
   // Constant folding is essential for the bridge. Without this check, the
   // bridge may fail with an error that is difficult to understand and not
@@ -83,7 +84,7 @@ tensorflow::Status RunTFXLABridge(
       DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain)) {
     ::tensorflow::DumpMlirOpToFile(
         DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
-                                             "tf_xla_bridge_before"),
+                                             dump_prefix.str() + "_before_"),
         module, llvm::StringRef(), &bridge);
   }
 
@@ -101,7 +102,7 @@ tensorflow::Status RunTFXLABridge(
       DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain)) {
     ::tensorflow::DumpMlirOpToFile(
         DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
-                                             "tf_xla_bridge_after"),
+                                             dump_prefix.str() + "_after_"),
         module, llvm::StringRef(), &bridge);
   }
 
@@ -127,7 +128,7 @@ tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
       [module_name](OpPassManager &pm) {
         CreateTPUBridgePipeline(pm, module_name);
       },
-      module_name);
+      module_name, /*dump_prefix=*/"tf_xla_bridge_v2_tpu");
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       "tpu", "v2", fallback_enabled,
       bridge_status.ok() ? "success" : "failure");
@@ -166,7 +167,7 @@ tensorflow::Status RunNonTPUBridge(ModuleOp module,
         tensorflow::tf2xla::internal::AddNonTPUBridgeClusteringPipelinePasses(
             pm);
       },
-      module_name);
+      module_name, /*dump_prefix=*/"tf_xla_bridge_v2_nontpu");
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       /*device type*/ "cpu/gpu", /*bridge version*/ "tfxla",
       /*fallback_enabled*/ false,
