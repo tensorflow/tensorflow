@@ -1,0 +1,69 @@
+import tensorflow as tf
+from tensorflow.keras import layers
+
+# Gather and preprocess the dataset
+dataset = ...
+
+# Define the generator model
+def build_generator():
+    model = tf.keras.Sequential()
+    model.add(layers.Dense(256, input_shape=(100,)))
+    model.add(layers.LeakyReLU(alpha=0.2))
+    model.add(layers.Dense(512))
+    model.add(layers.LeakyReLU(alpha=0.2))
+    model.add(layers.Dense(1024))
+    model.add(layers.LeakyReLU(alpha=0.2))
+    model.add(layers.Dense(784, activation='tanh'))
+    model.add(layers.Reshape((28, 28, 1)))
+    return model
+
+generator = build_generator()
+
+# Define the discriminator model
+def build_discriminator():
+    model = tf.keras.Sequential()
+    model.add(layers.Flatten(input_shape=(28, 28, 1)))
+    model.add(layers.Dense(512))
+    model.add(layers.LeakyReLU(alpha=0.2))
+    model.add(layers.Dense(256))
+    model.add(layers.LeakyReLU(alpha=0.2))
+    model.add(layers.Dense(1, activation='sigmoid'))
+    return model
+
+discriminator = build_discriminator()
+
+# Define the loss function and optimizer
+loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+generator_optimizer = tf.keras.optimizers.Adam(1e-4)
+discriminator_optimizer = tf.keras.optimizers.Adam(1e-4)
+
+# Train the generator and discriminator models
+@tf.function
+def train_step(real_images):
+    noise = tf.random.normal([BATCH_SIZE, 100])
+
+    with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+        generated_images = generator(noise, training=True)
+
+        real_output = discriminator(real_images, training=True)
+        generated_output = discriminator(generated_images, training=True)
+
+        gen_loss = generator_loss(generated_output)
+        disc_loss = discriminator_loss(real_output, generated_output)
+
+    gradients_of_generator = gen_tape.gradient(gen_loss, generator.trainable_variables)
+    gradients_of_discriminator = disc_tape.gradient(disc_loss, discriminator.trainable_variables)
+
+    generator_optimizer.apply_gradients(zip(gradients_of_generator, generator.trainable_variables))
+    discriminator_optimizer.apply_gradients(zip(gradients_of_discriminator, discriminator.trainable_variables))
+
+# Generate new graphic designs
+def generate_designs(num_designs):
+    noise = tf.random.normal([num_designs, 100])
+    generated_images = generator(noise, training=False)
+    return generated_images
+
+# Example usage
+num_designs = 10
+generated_designs = generate_designs(num_designs)
+
