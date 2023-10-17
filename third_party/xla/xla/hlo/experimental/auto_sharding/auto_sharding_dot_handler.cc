@@ -132,16 +132,16 @@ class HandlerBase {
                    const DimMap& lhs_dim_map, const DimMap& rhs_dim_map,
                    const Array<int64_t>& device_mesh, double compute_cost = 0,
                    double communication_cost = 0,
-                   bool is_contraction_split = false) {
+                   bool use_sharding_propagation = true) {
     if (!CheckDims(lhs_, lhs_dim_map) || !CheckDims(rhs_, rhs_dim_map)) return;
     HloSharding lhs_spec =
-        is_contraction_split
-            ? CreateInputSpec(lhs_, lhs_dim_map, device_mesh)
-            : CreateInputSpecUsingShardingPropagation(0, output_spec);
+        use_sharding_propagation
+            ? CreateInputSpecUsingShardingPropagation(0, output_spec)
+            : CreateInputSpec(lhs_, lhs_dim_map, device_mesh);
     HloSharding rhs_spec =
-        is_contraction_split
-            ? CreateInputSpec(rhs_, rhs_dim_map, device_mesh)
-            : CreateInputSpecUsingShardingPropagation(1, output_spec);
+        use_sharding_propagation
+            ? CreateInputSpecUsingShardingPropagation(1, output_spec)
+            : CreateInputSpec(rhs_, rhs_dim_map, device_mesh);
     AppendNewStrategy(name, output_spec, {lhs_spec, rhs_spec}, compute_cost,
                       communication_cost);
   }
@@ -272,7 +272,7 @@ class DotHandler : public HandlerBase {
       double communication_cost =
           cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[1]);
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
-                  communication_cost, /* is_contraction_split */ true);
+                  communication_cost, /* use_sharding_propagation */ false);
     };
     Enumerate(func, lhs_space_dims_.size(), lhs_con_dims_.size());
   }
@@ -295,7 +295,7 @@ class DotHandler : public HandlerBase {
       double communication_cost =
           cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[0]);
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
-                  communication_cost, /* is_contraction_split */ true);
+                  communication_cost, /* use_sharding_propagation */ false);
     };
     Enumerate(func, rhs_space_dims_.size(), lhs_con_dims_.size());
   }
@@ -392,7 +392,7 @@ class DotHandler : public HandlerBase {
       double communication_cost =
           cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[1]);
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
-                  communication_cost, /* is_contraction_split */ true);
+                  communication_cost, /* use_sharding_propagation */ false);
     };
     Enumerate(func, lhs_con_dims_.size(), lhs_batch_dims_.size());
   }
@@ -416,7 +416,7 @@ class DotHandler : public HandlerBase {
       double communication_cost = cluster_env_.AllReduceCost(
           memory_cost, e.mesh_dims[0], e.mesh_dims[1]);
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
-                  communication_cost, /* is_contraction_split */ true);
+                  communication_cost, /* use_sharding_propagation */ false);
     };
     EnumerateHalf(func, lhs_con_dims_.size(), lhs_con_dims_.size());
   }
@@ -438,7 +438,7 @@ class DotHandler : public HandlerBase {
           cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[0]);
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_,
                   compute_cost, communication_cost,
-                  /* is_contraction_split */ true);
+                  /* use_sharding_propagation */ false);
     };
     Enumerate(func, lhs_con_dims_.size(), 1);
   }
@@ -487,7 +487,7 @@ class DotHandler : public HandlerBase {
             cluster_env_.AllReduceCost(memory_cost, mesh_dim);
         MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map,
                     device_mesh_1d_, 0, communication_cost,
-                    /* is_contraction_split */ true);
+                    /* use_sharding_propagation */ false);
       }
     }
   }
@@ -657,7 +657,8 @@ class ConvHandler : public HandlerBase {
       HloSharding output_spec =
           Tile(ins_->shape(), {out_batch_dim_, out_out_channel_dim_},
                e.mesh_dims, device_mesh_);
-      MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_);
+      MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
+                  0, /* use_sharding_propagation */ false);
     };
     EnumerateHalf(func);
   }
@@ -679,7 +680,7 @@ class ConvHandler : public HandlerBase {
       double communication_cost =
           cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[1]);
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
-                  communication_cost, /* is_contraction_split */ true);
+                  communication_cost, /* use_sharding_propagation */ false);
     };
     EnumerateHalf(func);
   }
@@ -699,7 +700,7 @@ class ConvHandler : public HandlerBase {
       double communication_cost =
           cluster_env_.AllReduceCost(memory_cost, e.mesh_dims[0]);
       MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
-                  communication_cost, /* is_contraction_split */ true);
+                  communication_cost, /* use_sharding_propagation */ false);
     };
     EnumerateHalf(func);
   }
@@ -717,7 +718,8 @@ class ConvHandler : public HandlerBase {
         std::string name = absl::StrFormat("Si = Si x R @ 0");
         HloSharding output_spec =
             Tile(ins_->shape(), {out_batch_dim_}, {mesh_dim}, device_mesh_1d_);
-        MaybeAppend(name, output_spec, lhs_dim_map, {}, device_mesh_1d_);
+        MaybeAppend(name, output_spec, lhs_dim_map, {}, device_mesh_1d_, 0, 0,
+                    /* use_sharding_propagation */ false);
       }
 
       // R = Sk x Sk @ (allreduce @ 0)
@@ -733,7 +735,7 @@ class ConvHandler : public HandlerBase {
                                     cluster_env_.AllReduceCost(memory_cost, 1);
         MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map,
                     device_mesh_1d_, 0, communication_cost,
-                    /* is_contraction_split */ true);
+                    /* use_sharding_propagation */ false);
       }
     }
   }
@@ -749,7 +751,8 @@ class ConvHandler : public HandlerBase {
       HloSharding output_spec =
           Tile(ins_->shape(), {out_batch_dim_, out_out_channel_dim_},
                e.mesh_dims, device_mesh_);
-      MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_);
+      MaybeAppend(name, output_spec, lhs_dim_map, rhs_dim_map, device_mesh_, 0,
+                  0, /* use_sharding_propagation */ false);
     };
     EnumerateHalf(func);
   }
