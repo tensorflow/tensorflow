@@ -2874,4 +2874,46 @@ TEST_F(LatencyHidingSchedulerTest, DepthPressureReduction) {
   EXPECT_LT(PositionInVector(new_instruction_sequence, g),
             PositionInVector(new_instruction_sequence, f));
 }
+
+TEST_F(LatencyHidingSchedulerTest, RerunWithSmallerMemoryLimit) {
+  absl::string_view hlo_string = R"(
+    HloModule rerun_scheduler_test, is_scheduled=true
+    ENTRY main {
+     p0 = bf16[8]{0} parameter(0)
+     c = bf16[] constant(0)
+     b = bf16[43]{0} broadcast(c), dimensions={}
+     s = bf16[1]{0} slice(b), slice={[0:1]}
+     cp = bf16[8]{0} collective-permute(p0), source_target_pairs={{0,1},{1,2},{2,3}}
+    ROOT tuple = (bf16[8]{0}, bf16[1]{0}) tuple(cp, s)
+  }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  HloComputation* entry_computation = hlo_module->entry_computation();
+  std::vector<HloInstruction*> original_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.memory_limit = 140;
+  sched_config.rerun = 1;
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config).ok());
+  // LatencyHidingScheduler runs an additional "rerun" iteration because the
+  // peak memory usage after the first run was 152 bytes (> 140 bytes), so it
+  // sets the new limit to 126 and obtains a peak memory usage of 104 bytes at
+  // the end of the rerun. In the first run, collective-permute overlaps the
+  // slice op, whereas in the rerun, it does not overlap anything.
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(entry_computation).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+  const HloInstruction* s = FindInstruction(hlo_module.get(), "s");
+  const HloInstruction* cps =
+      FindInstruction(hlo_module.get(), "collective-permute-start");
+  EXPECT_LT(PositionInVector(new_instruction_sequence, s),
+            PositionInVector(new_instruction_sequence, cps));
+}
 }  // namespace xla
