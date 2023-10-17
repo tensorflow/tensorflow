@@ -2844,3 +2844,32 @@ def PrintPass : Pass<"tf-print", "ModuleOp"> {
   }];
   let constructor = "TF::CreatePrintPass()";
 }
+
+def MoveTpuCompileToFrontPass : Pass<"tf-move-tpu-compile-to-front", "mlir::func::FuncOp"> {
+  let summary = "Moves compile ops to the front.";
+  let description = [{
+    Moves all _TPUCompileMlir ops as far to the front as possible. For example,
+    if we have:
+
+      %0 = "tf.OpA"(...)
+      %1 = "tf._TPUCompileMlir"(...)
+      %2 = "tf.OpB"(...)
+      "SomeRegionOp"() ({
+        "tf._TPUCompileMlir"(...)
+      })
+
+   then after the pass, this will have been transformed to:
+
+      %1 = "tf._TPUCompileMlir"(...)
+      "SomeRegionOp"() ({
+        "tf._TPUCompileMlir"(...)
+      })
+      %0 = "tf.OpA"(...)
+      %2 = "tf.OpB"(...)
+
+    Note that this will only move the ops if it's possible to do so. If there's
+    a data or control dependency prevening the reordering, it will leave the ops
+    where they are.
+  }];
+  let constructor = "TF::CreateMoveTpuCompileToFrontPass()";
+}

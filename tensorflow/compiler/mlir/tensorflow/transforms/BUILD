@@ -486,6 +486,7 @@ cc_library(
         "mark_input_output_aliases.cc",
         "materialize_mlir_passthrough_op.cc",
         "merge_control_flow.cc",
+        "move_tpu_compile_to_front.cc",
         "name_anonymous_iterators.cc",
         "optimize.cc",
         "order_by_dialect.cc",
