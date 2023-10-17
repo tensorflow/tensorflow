@@ -2122,7 +2122,7 @@ class ConvertReduceOpToTfAny
   }
 };
 
-template <typename TfReduce, typename TfArgReduce>
+template <typename TfReduce, typename TfArgReduce, typename TfBooleanReduce>
 class ConvertReduceOpToTfArgMinMax
     : public OpConversionPattern<mhlo::ReduceOp> {
  public:
@@ -2171,20 +2171,10 @@ class ConvertReduceOpToTfArgMinMax
     if (operand_type.getElementType().isInteger(1)) {
       // TF does not support min or max on boolean (int1) arguments.
       // Use AnyOp for MaxOp and AllOp for MinOp.
-      Value tf_reduce_op;
-      if constexpr (std::is_same_v<TfReduce, TF::MaxOp>) {
-        tf_reduce_op = rewriter.create<TF::AnyOp>(
-            reduce_op.getLoc(), reduce_op->getResult(0).getType(), operand,
-            reduction_indices,
-            /*keep_dim=*/rewriter.getBoolAttr(false));
-      } else if constexpr (std::is_same_v<TfReduce, TF::MinOp>) {
-        tf_reduce_op = rewriter.create<TF::AllOp>(
-            reduce_op.getLoc(), reduce_op->getResult(0).getType(), operand,
-            reduction_indices,
-            /*keep_dim=*/rewriter.getBoolAttr(false));
-      } else {
-        static_assert(false, "Only TF::MaxOp and TF::MinOp are supported.");
-      }
+      auto tf_reduce_op = rewriter.create<TfBooleanReduce>(
+          reduce_op.getLoc(), reduce_op->getResult(0).getType(), operand,
+          reduction_indices,
+          /*keep_dim=*/rewriter.getBoolAttr(false));
       auto tf_argreduce_op = rewriter.create<TfArgReduce>(
           reduce_op.getLoc(), reduce_op->getResult(1).getType(), operand,
           reduction_indices);
@@ -2302,7 +2292,7 @@ class ConvertReduceOpToTfArgMinMax
 };
 
 class ConvertReduceOpToTfArgmax
-    : public ConvertReduceOpToTfArgMinMax<TF::MaxOp, TF::ArgMaxOp> {
+    : public ConvertReduceOpToTfArgMinMax<TF::MaxOp, TF::ArgMaxOp, TF::AnyOp> {
  public:
   using ConvertReduceOpToTfArgMinMax::ConvertReduceOpToTfArgMinMax;
 
@@ -2328,7 +2318,7 @@ class ConvertReduceOpToTfArgmax
 };
 
 class ConvertReduceOpToTfArgmin
-    : public ConvertReduceOpToTfArgMinMax<TF::MinOp, TF::ArgMinOp> {
+    : public ConvertReduceOpToTfArgMinMax<TF::MinOp, TF::ArgMinOp, TF::AllOp> {
  public:
   using ConvertReduceOpToTfArgMinMax::ConvertReduceOpToTfArgMinMax;
 
