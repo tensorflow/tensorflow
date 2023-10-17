@@ -60,6 +60,10 @@ alias(
 cc_library(
     name = "profiler_factory",
     hdrs = ["profiler_factory.h"],
+    visibility = [
+        "//perftools/accelerators/xprof/xprofilez/tpu:__pkg__",
+        "//tensorflow/c/experimental/pluggable_profiler:__pkg__",
+    ],
     deps = [
         ":profiler_interface",
         "@local_tsl//tsl/profiler/lib:profiler_factory",
