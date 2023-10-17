@@ -427,6 +427,130 @@ void UpdateCompileOptions(SavedModel::Options& options) {
 
 }  // namespace
 
+tensorflow::Status SavedModelImpl::ImportMlir(
+    const Options& options, const tensorflow::MetaGraphDef& meta_graph_def,
+    absl::string_view saved_model_dir, mlir::MLIRContext& context,
+    mlir::OwningOpRef<mlir::ModuleOp>& mlir_module,
+    std::unique_ptr<FallbackState>& fallback_state) {
+  auto session_options =
+      CreateDefaultSessionOptions(options.graph_execution_options);
+  // Set optimize_for_static_graph to true since we won't extend the graph
+  // later. If optimize_for_static_graph is set to false, FallbackState will
+  // keep an extra unused copy of the graph, which unnecessarily consumes
+  // memory.
+  session_options.config.mutable_experimental()->set_optimize_for_static_graph(
+      true);
+  LOG_FIRST_N(INFO, 10) << "SessionOptions: "
+                        << session_options.config.DebugString();
+  LOG_FIRST_N(INFO, 10) << "GraphExecutionOptions: "
+                        << options.graph_execution_options;
+
+  // Creating the fallback_state using the original function def library
+  // without applying placer or grappler, it is OK for now because it's only
+  // used for captured functions in certain tf.data ops
+  const auto& fdef_lib = meta_graph_def.graph_def().library();
+
+  if (options.graph_execution_options.compile_options.device_target ==
+      TfrtDeviceInfraTarget::kCpu) {
+    ASSIGN_OR_RETURN_IN_IMPORT(
+        fallback_state,
+        FallbackState::CreateWithCpuDevice(session_options, fdef_lib));
+  } else {
+    ASSIGN_OR_RETURN_IN_IMPORT(
+        fallback_state, FallbackState::Create(session_options, fdef_lib));
+  }
+
+  if (AotPackageExists(saved_model_dir)) {
+    LOG(INFO) << "Found AoT package. Load and deserialize MLIR module.";
+
+    TF_RETURN_IF_ERROR(
+        DeserializeAoTMlirModule(saved_model_dir, &context, &mlir_module));
+  } else {
+    ASSIGN_OR_RETURN_IN_IMPORT(
+        mlir_module,
+        ImportSavedModel(
+            &context, meta_graph_def, *fallback_state,
+            std::string(saved_model_dir),
+            /*import_user_signatures=*/!options.enable_lazy_loading,
+            options.graph_execution_options.run_placer_grappler_on_functions));
+  }
+
+  return OkStatus();
+}
+
+tensorflow::Status SavedModelImpl::CompileMlir(
+    const Options& options, const tensorflow::MetaGraphDef& meta_graph_def,
+    absl::string_view saved_model_dir,
+    mlir::OwningOpRef<mlir::ModuleOp>& mlir_module,
+    std::unique_ptr<FallbackState>& fallback_state, mlrt::bc::Buffer& bytecode,
+    tfrt::BefBuffer& bef, OpKernelRunnerTable& op_kernel_runner_table,
+    tfd::FallbackResourceArray& fallback_resource_array,
+    InitializersAndSignatures& initializers_and_signatures,
+    std::unique_ptr<GraphExecutor>& graph_executor) {
+  auto kernel_registry = std::make_unique<mlrt::KernelRegistry>();
+  ASSIGN_OR_RETURN_IN_COMPILE(initializers_and_signatures,
+                              GetInitializersAndSignatures(mlir_module.get()));
+
+  // If lazy loading is enabled, the user signatures are not exported via MLIR
+  // module, so we need to get them from the proto.
+  // TODO(b/187228559): Unify the code paths for populating the signature map.
+  if (options.enable_lazy_loading) {
+    GetSignaturesFromSignatureDef(initializers_and_signatures.signature_map,
+                                  meta_graph_def.signature_def(), options);
+  }
+
+  // Creates a ResourceContext and populate it with per model resource from
+  // Runtime.
+  auto resource_context = std::make_unique<tfrt::ResourceContext>();
+  ModelRuntimeContext model_context(&options.graph_execution_options,
+                                    std::string(saved_model_dir),
+                                    resource_context.get());
+
+  {
+    model_context.set_meta_graph_def(&meta_graph_def);
+    TF_RETURN_IF_ERROR(
+        options.graph_execution_options.runtime->CreateRuntimeResources(
+            model_context));
+
+    model_context.set_meta_graph_def(nullptr);
+  }
+
+  GetDefaultInputValue(meta_graph_def.signature_def(), model_context,
+                       initializers_and_signatures.signature_map);
+
+  if (AotPackageExists(saved_model_dir)) {
+    LOG(INFO) << "Found AoT package. Load and deserialize BEF.";
+
+    ASSIGN_OR_RETURN_IN_COMPILE(
+        bef, LoadAotPackages(options.graph_execution_options.compile_options,
+                             mlir_module.get(), std::string(saved_model_dir),
+                             fallback_state.get()));
+  } else {
+    tensorflow::tf_mlrt::RegisterTfMlrtKernels(*kernel_registry);
+    tensorflow::tf_mlrt::RegisterTfMlrtBatchKernels(*kernel_registry);
+
+    if (options.graph_execution_options.enable_mlrt) {
+      ASSIGN_OR_RETURN_IN_COMPILE(
+          bytecode, tensorflow::mlrt_compiler::ConvertTfMlirToBytecode(
+                        options.graph_execution_options.compile_options,
+                        *fallback_state, mlir_module.get(), model_context));
+    } else {
+      RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
+          options.graph_execution_options.compile_options, mlir_module.get(),
+          &bef, model_context, fallback_state.get()));
+    }
+  }
+
+  ASSIGN_OR_RETURN_WITH_STAGE_INFO(
+      "graph_executor creation", graph_executor,
+      GraphExecutor::Create(options.graph_execution_options, *fallback_state,
+                            std::move(resource_context),
+                            meta_graph_def.graph_def(),
+                            std::move(kernel_registry)));
+
+  return OkStatus();
+}
+
 tensorflow::StatusOr<std::unique_ptr<SavedModel>>
 SavedModelImpl::LoadSavedModel(Options options,
                                absl::string_view saved_model_dir,
@@ -461,50 +585,10 @@ SavedModelImpl::LoadSavedModel(Options options,
 
   // Step 1: Import saved model from a proto to an MLIR module.
   const auto import_start_time = absl::Now();
-  auto session_options =
-      CreateDefaultSessionOptions(options.graph_execution_options);
-  // Set optimize_for_static_graph to true since we won't extend the graph
-  // later. If optimize_for_static_graph is set to false, FallbackState will
-  // keep an extra unused copy of the graph, which unnecessarily consumes
-  // memory.
-  session_options.config.mutable_experimental()->set_optimize_for_static_graph(
-      true);
-  LOG_FIRST_N(INFO, 10) << "SessionOptions: "
-                        << session_options.config.DebugString();
-  LOG_FIRST_N(INFO, 10) << "GraphExecutionOptions: "
-                        << options.graph_execution_options;
-
-  // Creating the fallback_state using the original function def library
-  // without applying placer or grappler, it is OK for now because it's only
-  // used for captured functions in certain tf.data ops
-  const auto& fdef_lib = meta_graph_def.graph_def().library();
-
-  std::unique_ptr<FallbackState> fallback_state;
-  if (options.graph_execution_options.compile_options.device_target ==
-      TfrtDeviceInfraTarget::kCpu) {
-    ASSIGN_OR_RETURN_IN_IMPORT(
-        fallback_state,
-        FallbackState::CreateWithCpuDevice(session_options, fdef_lib));
-  } else {
-    ASSIGN_OR_RETURN_IN_IMPORT(
-        fallback_state, FallbackState::Create(session_options, fdef_lib));
-  }
-
   mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
-  if (AotPackageExists(saved_model_dir)) {
-    LOG(INFO) << "Found AoT package. Load and deserialize MLIR module.";
-
-    TF_RETURN_IF_ERROR(
-        DeserializeAoTMlirModule(saved_model_dir, &context, &mlir_module));
-  } else {
-    ASSIGN_OR_RETURN_IN_IMPORT(
-        mlir_module,
-        ImportSavedModel(
-            &context, meta_graph_def, *fallback_state,
-            std::string(saved_model_dir),
-            /*import_user_signatures=*/!options.enable_lazy_loading,
-            options.graph_execution_options.run_placer_grappler_on_functions));
-  }
+  std::unique_ptr<FallbackState> fallback_state;
+  TF_RETURN_IF_ERROR(ImportMlir(options, meta_graph_def, saved_model_dir,
+                                context, mlir_module, fallback_state));
   // TODO(b/278143179): Upload module w/o control flow.
   SymbolUids symbol_uids;
   symbol_uids.tf_symbol_uid = MaybeUploadMlirToXsymbol(mlir_module.get());
@@ -518,73 +602,16 @@ SavedModelImpl::LoadSavedModel(Options options,
 
   // Step 2: Compile the MLIR module from TF dialect to TFRT dialect (in BEF).
   const auto compile_start_time = absl::Now();
-  ASSIGN_OR_RETURN_IN_COMPILE(auto initializers_and_signatures,
-                              GetInitializersAndSignatures(mlir_module.get()));
-
-  // If lazy loading is enabled, the user signatures are not exported via MLIR
-  // module, so we need to get them from the proto.
-  // TODO(b/187228559): Unify the code paths for populating the signature map.
-  if (options.enable_lazy_loading) {
-    GetSignaturesFromSignatureDef(initializers_and_signatures.signature_map,
-                                  meta_graph_def.signature_def(), options);
-  }
-
-  auto runner_table = std::make_unique<OpKernelRunnerTable>();
-  auto resource_array = std::make_unique<tfd::FallbackResourceArray>();
-
-  auto kernel_registry = std::make_unique<mlrt::KernelRegistry>();
-
-  // Creates a ResourceContext and populate it with per model resource from
-  // Runtime.
-  auto resource_context = std::make_unique<tfrt::ResourceContext>();
-  ModelRuntimeContext model_context(&options.graph_execution_options,
-                                    std::string(saved_model_dir),
-                                    resource_context.get());
-
-  {
-    model_context.set_meta_graph_def(&meta_graph_def);
-    TF_RETURN_IF_ERROR(
-        options.graph_execution_options.runtime->CreateRuntimeResources(
-            model_context));
-
-    model_context.set_meta_graph_def(nullptr);
-  }
-
-  GetDefaultInputValue(meta_graph_def.signature_def(), model_context,
-                       initializers_and_signatures.signature_map);
-
   mlrt::bc::Buffer bytecode;
   tfrt::BefBuffer bef;
-  if (AotPackageExists(saved_model_dir)) {
-    LOG(INFO) << "Found AoT package. Load and deserialize BEF.";
-
-    ASSIGN_OR_RETURN_IN_COMPILE(
-        bef, LoadAotPackages(options.graph_execution_options.compile_options,
-                             mlir_module.get(), saved_model_dir_string,
-                             fallback_state.get()));
-  } else {
-    tensorflow::tf_mlrt::RegisterTfMlrtKernels(*kernel_registry);
-    tensorflow::tf_mlrt::RegisterTfMlrtBatchKernels(*kernel_registry);
-
-    if (options.graph_execution_options.enable_mlrt) {
-      ASSIGN_OR_RETURN_IN_COMPILE(
-          bytecode, tensorflow::mlrt_compiler::ConvertTfMlirToBytecode(
-                        options.graph_execution_options.compile_options,
-                        *fallback_state, mlir_module.get(), model_context));
-    } else {
-      RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
-          options.graph_execution_options.compile_options, mlir_module.get(),
-          &bef, model_context, fallback_state.get()));
-    }
-  }
-
-  ASSIGN_OR_RETURN_WITH_STAGE_INFO(
-      "graph_executor creation", auto graph_executor,
-      GraphExecutor::Create(options.graph_execution_options, *fallback_state,
-                            std::move(resource_context),
-                            std::move(*meta_graph_def.mutable_graph_def()),
-                            std::move(kernel_registry)));
-
+  auto runner_table = std::make_unique<OpKernelRunnerTable>();
+  auto resource_array = std::make_unique<tfd::FallbackResourceArray>();
+  InitializersAndSignatures initializers_and_signatures;
+  std::unique_ptr<GraphExecutor> graph_executor;
+  TF_RETURN_IF_ERROR(CompileMlir(options, meta_graph_def, saved_model_dir,
+                                 mlir_module, fallback_state, bytecode, bef,
+                                 *runner_table, *resource_array,
+                                 initializers_and_signatures, graph_executor));
   symbol_uids.tfrt_symbol_uid = MaybeUploadMlirToXsymbol(mlir_module.get());
   const auto compile_duration = absl::Now() - compile_start_time;
   saved_model_compile_time_seconds->GetCell(saved_model_dir_string)
