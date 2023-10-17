@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/collective_ops_utils.h"
+#include "xla/service/flatten_call_graph.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
@@ -259,6 +260,16 @@ StatusOr<bool> LoopDoubleBufferTransformer::Run(
   }
 
   VLOG(2) << "LoopDoubleBufferTransformer output: " << module->ToString();
+
+  // Run necessary cleanup to ensure LoopDoubleBufferTransformer behaves
+  // correctly.
+  if (changed) {
+    // The call graph will not be flat if one of the loops that was unrolled
+    // contains any kind of call to another computation---since the call will
+    // be duplicated, thereby adding a second callsite for that computation.
+    TF_RETURN_IF_ERROR(
+        FlattenCallGraph().Run(module, execution_threads).status());
+  }
 
   return changed;
 }
