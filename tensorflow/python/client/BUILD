@@ -305,6 +305,7 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/platform:build_info",
         "//tensorflow/python/platform:tf_logging",
     ],
