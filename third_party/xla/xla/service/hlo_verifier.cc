@@ -434,6 +434,7 @@ static Status CheckCommonAllGatherInvariants(HloInstruction* hlo,
                                                ag->use_global_device_ids()));
   TF_RETURN_IF_ERROR(CheckReplicaGroups(ag, group_mode));
   TF_RET_CHECK(ag->all_gather_dimension() >= 0);
+  TF_RET_CHECK(ag->operand_count() >= 1);
 
   int64_t shard_count;
   for (int64_t i = 0; i < ag->operand_count(); ++i) {
@@ -521,6 +522,7 @@ Status ShapeVerifier::HandleReduceScatter(HloInstruction* hlo) {
                                                ars->use_global_device_ids()));
   TF_RETURN_IF_ERROR(CheckReplicaGroups(ars, group_mode));
   TF_RET_CHECK(ars->scatter_dimension() >= 0);
+  TF_RET_CHECK(ars->operand_count() >= 1);
 
   for (int64_t i = 0; i < ars->operand_count(); ++i) {
     TF_RET_CHECK(ars->scatter_dimension() < ars->operand(i)->shape().rank());
