@@ -81,14 +81,6 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
   internal::AddBridgeClusteringPipelinePasses(nested_module);
   tensorflow::tfrt_compiler::AddTPULowerClusterToRuntimeOpsPassPipeline(
       nested_module);
-
-  pm.addPass(mlir::tf_executor::CreateTFExecutorTPUV1IslandInliningPass());
-  // There are cases where we don't consume all compilation and replication
-  // attributes like we do for the V2 pipeline, so we need to convert them
-  // from unified to legacy attributes before they get exposed to outside of
-  // the bridge.
-  pm.addNestedPass<FuncOp>(
-      mlir::TFTPU::CreateConvertToLegacyCompileAndReplicateAttributesPass());
 }
 
 // Run the TF XLA Bridge based on the input pipeline, which can be either TPU
@@ -170,6 +162,31 @@ tensorflow::Status RunSessionTf2xlaClusteringBridge(ModuleOp module) {
                             bridge_status.ToString())
         .IgnoreError();
     return bridge_status;
+  }
+
+  Status export_preparation_status = RunTFXLABridge(
+      module,
+      [](OpPassManager &pm) {
+        pm.addPass(
+            mlir::tf_executor::CreateTFExecutorTPUV1IslandInliningPass());
+        // There are cases where we don't consume all compilation and
+        // replication attributes like we do for the V2 pipeline, so we need to
+        // convert them from unified to legacy attributes before they get
+        // exposed to outside of the bridge.
+        pm.addNestedPass<FuncOp>(
+            mlir::TFTPU::
+                CreateConvertToLegacyCompileAndReplicateAttributesPass());
+      },
+      /*module_name=*/"",
+      /*dump_prefix=*/"tf_xla_bridge_v1_export_preparation");
+  if (!export_preparation_status.ok()) {
+    VLOG(2) << "V1 Clustering Bridge Export preparation failed: "
+            << export_preparation_status;
+    tsl::error_logging::Log(kBridgeComponent,
+                            "TFXLA_PHASE_ONE_MLIR_TPU_V1_COMPAT_BRIDGE",
+                            export_preparation_status.ToString())
+        .IgnoreError();
+    return export_preparation_status;
   }
 
   return tensorflow::tf2xla::v1::ExportFromTensorflowDialectToExecutor(module);
