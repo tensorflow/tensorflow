@@ -156,6 +156,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
+        "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:lower_cluster_to_runtime_ops",
         "//tensorflow/compiler/mlir/tf2xla/internal:clustering_bridge_passes",
         "//tensorflow/compiler/mlir/tf2xla/internal:logging_hooks",
         "//tensorflow/compiler/mlir/tf2xla/internal/inference:inference_metrics_pass",

@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/lower_cluster_to_runtime_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
@@ -78,6 +79,8 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
   pm.addPass(mlir::tf_executor::CreateTFExecutorTPUV1IslandOutliningPass());
   OpPassManager &nested_module = pm.nest<ModuleOp>();
   internal::AddBridgeClusteringPipelinePasses(nested_module);
+  tensorflow::tfrt_compiler::AddTPULowerClusterToRuntimeOpsPassPipeline(
+      nested_module);
 
   pm.addPass(mlir::tf_executor::CreateTFExecutorTPUV1IslandInliningPass());
   // There are cases where we don't consume all compilation and replication

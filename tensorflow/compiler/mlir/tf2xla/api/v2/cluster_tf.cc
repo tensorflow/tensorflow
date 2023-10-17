@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/lower_cluster_to_runtime_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -115,6 +116,8 @@ void CreateTPUBridgePipeline(OpPassManager &pm, llvm::StringRef module_name) {
       mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
   tensorflow::tf2xla::internal::AddBridgeClusteringPipelinePasses(pm,
                                                                   module_name);
+  tensorflow::tfrt_compiler::AddTPULowerClusterToRuntimeOpsPassPipeline(
+      pm, module_name);
 }
 
 tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
@@ -166,6 +169,8 @@ tensorflow::Status RunNonTPUBridge(ModuleOp module,
       [](OpPassManager &pm) {
         tensorflow::tf2xla::internal::AddNonTPUBridgeClusteringPipelinePasses(
             pm);
+        tensorflow::tfrt_compiler::
+            AddNonTPULowerClusterToRuntimeOpsPassPipeline(pm);
       },
       module_name, /*dump_prefix=*/"tf_xla_bridge_v2_nontpu");
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(

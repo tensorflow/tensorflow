@@ -876,6 +876,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:lower_cluster_to_runtime_ops",
         "//tensorflow/compiler/mlir/tf2xla/api/v1:tf_dialect_to_executor",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:cluster_tf",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:device_type_proto_cc",

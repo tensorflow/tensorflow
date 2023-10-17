@@ -28,14 +28,14 @@ TEST(ClusteringBridgePassesTest, AddsBridgePasses) {
   OpPassManager pass_manager;
   AddBridgeClusteringPipelinePasses(pass_manager);
 
-  EXPECT_EQ(pass_manager.size(), 54);
+  EXPECT_EQ(pass_manager.size(), 46);
 }
 
 TEST(ClusteringBridgePassesTest, AddsNonTPUBridgePasses) {
   OpPassManager pass_manager;
   AddNonTPUBridgeClusteringPipelinePasses(pass_manager);
 
-  EXPECT_EQ(pass_manager.size(), 18);
+  EXPECT_EQ(pass_manager.size(), 14);
 }
 
 };  // namespace internal

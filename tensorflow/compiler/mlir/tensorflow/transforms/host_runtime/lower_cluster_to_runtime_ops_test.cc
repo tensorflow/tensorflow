@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -47,6 +48,7 @@ namespace {
 using mlir::DialectRegistry;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
+using mlir::OpPassManager;
 using mlir::OwningOpRef;
 using mlir::func::FuncOp;
 using tsl::DeviceType;
@@ -174,6 +176,20 @@ TEST_F(LowerClusterToRuntimeOpsTest, DumpsPipelinePasses) {
 
   TF_ASSERT_OK(env_->GetChildren(test_dir_, &files));
   EXPECT_THAT(files, ::testing::SizeIs(15));
+}
+
+TEST_F(LowerClusterToRuntimeOpsTest, AddsTPUPipelinePasses) {
+  OpPassManager pass_manager;
+  AddTPULowerClusterToRuntimeOpsPassPipeline(pass_manager);
+
+  EXPECT_EQ(pass_manager.size(), 8);
+}
+
+TEST_F(LowerClusterToRuntimeOpsTest, AddsNonTPUPipelinePasses) {
+  OpPassManager pass_manager;
+  AddNonTPULowerClusterToRuntimeOpsPassPipeline(pass_manager);
+
+  EXPECT_EQ(pass_manager.size(), 4);
 }
 
 }  // namespace

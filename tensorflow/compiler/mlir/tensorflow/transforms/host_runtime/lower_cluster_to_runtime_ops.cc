@@ -62,13 +62,15 @@ void EnablePassIRPrinting(PassManager& pm, const std::string& dump_group_name,
   pm.enableTiming();
 }
 
+}  // namespace
+
 void AddTPULowerClusterToRuntimeOpsPassPipeline(OpPassManager& pm,
                                                 llvm::StringRef module_name) {
   pm.addPass(mlir::TFTPU::CreateTPURewritePass(module_name));
   pm.addPass(mlir::createSymbolDCEPass());
-  pm.addNestedPass<FuncOp>(mlir::TFDevice::CreateEmbeddingProgramKeyPass());
   pm.addNestedPass<FuncOp>(
       mlir::TFDevice::CreateReplicateInvariantOpHoistingPass());
+  pm.addNestedPass<FuncOp>(mlir::TFDevice::CreateEmbeddingProgramKeyPass());
   pm.addPass(mlir::TFTPU::CreateTPUMergeVariablesWithExecutePass());
   pm.addNestedPass<FuncOp>(
       mlir::TFTPU::CreateExtractTPUCopyWithDynamicShapeOpPass());
@@ -80,7 +82,8 @@ void AddTPULowerClusterToRuntimeOpsPassPipeline(OpPassManager& pm,
   }
 }
 
-void AddNonTPULowerClusterToRuntimeOpsPassPipeline(OpPassManager& pm) {
+void AddNonTPULowerClusterToRuntimeOpsPassPipeline(
+    OpPassManager& pm, llvm::StringRef module_name) {
   // Rewrite cluster functions into XLA launch ops.
   if (tensorflow::GetMlirCommonFlags()
           ->tf_mlir_enable_generic_outside_compilation) {
@@ -105,10 +108,8 @@ void CreateTPULowerClusterToRuntimeOpsPassPipeline(
 
 void CreateNonTPULowerClusterToRuntimeOpsPassPipeline(
     OpPassManager& pm, const StandardPipelineOptions& options) {
-  AddNonTPULowerClusterToRuntimeOpsPassPipeline(pm);
+  AddNonTPULowerClusterToRuntimeOpsPassPipeline(pm, /*module_name=*/"");
 }
-
-}  // namespace
 
 absl::Status RunLowerClusterToRuntimeOpsPassPipeline(
     mlir::ModuleOp module, tsl::DeviceType xla_device_type,
@@ -119,7 +120,8 @@ absl::Status RunLowerClusterToRuntimeOpsPassPipeline(
   if (xla_device_type == DeviceType(DEVICE_TPU_XLA_JIT)) {
     AddTPULowerClusterToRuntimeOpsPassPipeline(runtime_lowering, module_name);
   } else {
-    AddNonTPULowerClusterToRuntimeOpsPassPipeline(runtime_lowering);
+    AddNonTPULowerClusterToRuntimeOpsPassPipeline(runtime_lowering,
+                                                  module_name);
   }
 
   mlir::StatusScopedDiagnosticHandler diag_handler(

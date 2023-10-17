@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/lower_cluster_to_runtime_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
@@ -115,6 +116,8 @@ void CreateTPUBridgePipeline(OpPassManager &pm, llvm::StringRef module_name) {
       TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
   tensorflow::tf2xla::internal::AddBridgeClusteringPipelinePasses(pm,
                                                                   module_name);
+  tensorflow::tfrt_compiler::AddTPULowerClusterToRuntimeOpsPassPipeline(
+      pm, module_name);
 }
 
 tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,

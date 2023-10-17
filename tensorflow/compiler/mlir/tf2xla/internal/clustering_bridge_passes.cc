@@ -160,21 +160,6 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
   pm.addPass(mlir::TFTPU::CreateTPUAnnotateDynamicShapeInputsPass());
   pm.addNestedPass<FuncOp>(
       mlir::TF::CreateHoistReplicateInvariantResourceWritesPass());
-
-  pm.addPass(mlir::TFTPU::CreateTPURewritePass(module_name));
-  pm.addPass(mlir::createSymbolDCEPass());
-  pm.addNestedPass<FuncOp>(
-      mlir::TFDevice::CreateReplicateInvariantOpHoistingPass());
-  pm.addNestedPass<FuncOp>(mlir::TFDevice::CreateEmbeddingProgramKeyPass());
-  pm.addPass(mlir::TFTPU::CreateTPUMergeVariablesWithExecutePass());
-  pm.addNestedPass<FuncOp>(
-      mlir::TFTPU::CreateExtractTPUCopyWithDynamicShapeOpPass());
-  pm.addNestedPass<FuncOp>(
-      mlir::TFTPU::CreateTPUColocateCompositeResourceOps());
-  if (tensorflow::GetMlirCommonFlags()
-          ->tf_mlir_enable_tpu_variable_runtime_reformatting_pass) {
-    pm.addPass(mlir::TFTPU::CreateTPUVariableRuntimeReformattingPass());
-  }
 }
 
 void NoCanonicalization(OpPassManager& pm) {}
@@ -238,21 +223,6 @@ void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
   }
   // Outline clusters into cluster functions.
   pm.addPass(mlir::TFDevice::CreateClusterOutliningPass());
-  // Rewrite cluster functions into XLA  launch ops.
-  if (tensorflow::GetMlirCommonFlags()
-          ->tf_mlir_enable_generic_outside_compilation) {
-    pm.addPass(mlir::TFDevice::CreateXlaRewriteV2Pass());
-  } else {
-    pm.addPass(mlir::TFDevice::CreateXlaRewritePass());
-  }
-  // Re-run the canonicalizer pass as some cleanup during resource op lifting
-  // pass opens up some opportunities for canonicalization of cluster ops.
-  // Specifically, we want to eliminate pass through results from the cluster
-  // op.
-  pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
-
-  pm.addNestedPass<FuncOp>(mlir::createCSEPass());
-  pm.addPass(mlir::createSymbolDCEPass());
 }
 
 };  // namespace internal

@@ -5,6 +5,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/compiler/mlir:__pkg__",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:__pkg__",
         "//tensorflow/compiler/mlir/tf2xla/api:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
     ],
@@ -22,6 +23,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
@@ -61,5 +63,6 @@ tf_cc_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
     ],
 )
