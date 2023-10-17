@@ -1932,7 +1932,7 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
 
 
 # pylint: disable=line-too-long
-def _get_diff_for_monotonic_comparison(x, compare_op):
+def _get_results_for_monotonic_comparison(x, compare_op):
   """Gets the difference x[1:] - x[:-1]."""
   x = array_ops.reshape(x, [-1])
   if not is_numeric_tensor(x):
@@ -2019,7 +2019,7 @@ def is_non_decreasing(x, name=None):
     TypeError: if `x` is not a numeric tensor.
   """
   with ops.name_scope(name, 'is_non_decreasing', [x]):
-    diff = _get_diff_for_monotonic_comparison(x, math_ops.greater_equal)
+    diff = _get_results_for_monotonic_comparison(x, math_ops.greater_equal)
     # When len(x) = 1, diff = [], less_equal = [], and reduce_all([]) = True.
     return math_ops.reduce_all(diff)
 
@@ -2061,7 +2061,7 @@ def is_strictly_increasing(x, name=None):
     TypeError: if `x` is not a numeric tensor.
   """
   with ops.name_scope(name, 'is_strictly_increasing', [x]):
-    diff = _get_diff_for_monotonic_comparison(x, math_ops.greater)
+    diff = _get_results_for_monotonic_comparison(x, math_ops.greater)
     # When len(x) = 1, diff = [], less = [], and reduce_all([]) = True.
     return math_ops.reduce_all(diff)
 
