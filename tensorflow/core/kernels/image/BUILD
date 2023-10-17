@@ -31,7 +31,6 @@ package(
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
     ],
-    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -196,7 +195,10 @@ tf_kernel_library(
     deps = IMAGE_DEPS + [
         "//tensorflow/core:framework_internal",
         "//tensorflow/core/util:determinism_for_kernels",
-    ],
+    ] + if_cuda_or_rocm([
+        "//tensorflow/core/platform:stream_executor",
+        "@local_xla//xla/stream_executor/cuda:cuda_activation",
+    ]),
 )
 
 tf_kernel_library(
@@ -223,7 +225,11 @@ tf_kernel_library(
 tf_kernel_library(
     name = "encode_png_op",
     prefix = "encode_png_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core/util:overflow",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:mutex",
+    ],
 )
 
 tf_kernel_library(
@@ -254,6 +260,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "generate_box_proposals_op",
+    features = ["-layering_check"],
     gpu_srcs = ["generate_box_proposals_op.cu.cc"],
     deps = ["//tensorflow/core/kernels:gpu_prim_hdrs"] + if_cuda_or_rocm([
         ":non_max_suppression_op_gpu",
@@ -262,8 +269,12 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "non_max_suppression_op",
+    features = ["-layering_check"],
     prefix = "non_max_suppression_op",
-    deps = IMAGE_DEPS + ["//tensorflow/core/kernels:gpu_prim_hdrs"],
+    deps = IMAGE_DEPS + ["//tensorflow/core/kernels:gpu_prim_hdrs"] + if_cuda_or_rocm([
+        "@com_google_absl//absl/strings",
+        "@local_xla//xla/stream_executor",
+    ]),
 )
 
 tf_kernel_library(
