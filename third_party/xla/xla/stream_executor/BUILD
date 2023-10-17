@@ -78,8 +78,6 @@ filegroup(
         "multi_platform_manager.h",
         "numeric_options.h",
         "platform.h",
-        "plugin.h",
-        "plugin_registry.h",
         "scratch_allocator.h",
         "stream.h",
         "stream_executor.h",
@@ -270,12 +268,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "plugin",
-    hdrs = ["plugin.h"],
-    visibility = ["//visibility:public"],
-)
-
 #===--------------------------------------------------------------------------------------------===#
 # StreamExecutor platform-dependent interfaces
 #===--------------------------------------------------------------------------------------------===#
@@ -319,13 +311,8 @@ filegroup(
 )
 
 #===--------------------------------------------------------------------------------------------===#
-# StreamExecutor implementation
-#===--------------------------------------------------------------------------------------------===#
-
-# TODO(ezhulenev): We need a clear separation between StreamExecutor "core" (event, stream, etc.),
-# and plugins (FFT, Blas, etc.). We should not be mixing headers and implementation of core
-# libraries with plugins. Today `stream_executor` exports all plugin headers, and we should remove
-# this, however it requires more work to break dependency from "core" to plugin implementation.
+# StreamExecutor internal implementation (visible to StreamExecutor platform implementations)
+#===--------------------------------------------------------------------------------------------===#'
 
 # This header-only library is an internal implementation detail of StreamExecutor (to break
 # dependency cycles between internal libraries). All StreamExecutor clients should depend on a
@@ -341,6 +328,34 @@ cc_library(
         "@com_google_protobuf//:protobuf",  # indirectly-used by dnn.h
     ]),
 )
+
+cc_library(
+    name = "plugin_registry",
+    srcs = ["plugin_registry.cc"],
+    hdrs = ["plugin_registry.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":blas",
+        ":dnn",
+        ":fft",
+        ":platform",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:status",
+        "@local_tsl//tsl/platform:statusor",
+    ],
+)
+
+#===--------------------------------------------------------------------------------------------===#
+# StreamExecutor private implementation (has private visibility)
+#===--------------------------------------------------------------------------------------------===#
+
+# TODO(ezhulenev): We need a clear separation between StreamExecutor "core" (event, stream, etc.),
+# and plugins (FFT, Blas, etc.). We should not be mixing headers and implementation of core
+# libraries with plugins. Today `stream_executor` exports all plugin headers, and we should remove
+# this, however it requires more work to break dependency from "core" to plugin implementation.
 
 # Targets that implement StreamExecutor APIs are private, and should not be used outside of
 # `stream_executor` package. Clients should depend on `stream_executor` (headers and
@@ -611,28 +626,6 @@ cc_library(
 )
 
 cc_library(
-    name = "plugin_registry",
-    srcs = ["plugin_registry.cc"],
-    hdrs = ["plugin_registry.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":blas",
-        ":dnn",
-        ":fft",
-        ":multi_platform_manager",
-        ":platform",
-        ":stream_executor_headers",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
-    ],
-)
-
-cc_library(
     name = "dnn",
     srcs = ["dnn.cc"],
     hdrs = ["dnn.h"],
@@ -702,25 +695,6 @@ xla_cc_test(
         ":dnn",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
-    ],
-)
-
-cc_library(
-    name = "tf_allocator_adapter",
-    srcs = ["tf_allocator_adapter.cc"],
-    hdrs = ["tf_allocator_adapter.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":device_memory",
-        ":device_memory_allocator",
-        ":platform",
-        ":stream_executor_headers",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/framework:allocator",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
     ],
 )
 

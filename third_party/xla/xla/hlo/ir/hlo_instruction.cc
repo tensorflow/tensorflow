@@ -2074,6 +2074,38 @@ bool HloInstruction::HasSideEffect() const {
          execution_threads_set.contains(execution_thread);
 }
 
+void HloInstruction::AddSuffixToInstructionName(const std::string& suffix) {
+  // If an instruction is cloned multiple times avoid names like
+  // foo.suffix.suffix.suffix. Instead of repeating the suffix add a numeric
+  // suffix. Specifically, the clone of foo.suffix is named foo.suffix2, the
+  // clone of foo.suffix2 is named foo.suffix3 and so on.
+  const std::string dot_suffix = "." + suffix;
+  size_t index = name().rfind(dot_suffix);
+  if (index == std::string::npos) {
+    // Existing name does not include ".suffix".
+    this->name_ = absl::StrCat(name(), dot_suffix);
+  } else {
+    // Existing name includes ".suffix". Determine if substring after
+    // ".suffix" is numeric and should be replaced with an incremented number.
+    auto after_suffix = name().substr(index + dot_suffix.size());
+    if (after_suffix.empty()) {
+      // Existing name ends in ".suffix". New name should end in ".suffix2".
+      this->name_ = absl::StrCat(name(), "2");
+    } else {
+      // If names ends with .suffix[0-9]+ then replace with a suffix with the
+      // numeric value incremented.
+      int64_t numeric_suffix;
+      if (absl::SimpleAtoi(after_suffix, &numeric_suffix)) {
+        this->name_ =
+            StrCat(name().substr(0, index), dot_suffix, numeric_suffix + 1);
+      } else {
+        // Substring after ".suffix" is non-numeric.
+        this->name_ = absl::StrCat(name(), dot_suffix);
+      }
+    }
+  }
+}
+
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
@@ -2281,6 +2313,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
                  ? context->module()->DeepCloneComputation(callee, context)
                  : callee;
     });
+    if (!context->suffix().empty()) {
+      clone->AddSuffixToInstructionName(context->suffix());
+    }
   }
   return clone;
 }
@@ -2321,35 +2356,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
   if (suffix.empty()) {
     clone->name_.assign(name().begin(), name().end());
   } else {
-    // If an instruction is cloned multiple times avoid names like
-    // foo.suffix.suffix.suffix. Instead of repeating the suffix add a numeric
-    // suffix. Specifically, the clone of foo.suffix is named foo.suffix2, the
-    // clone of foo.suffix2 is named foo.suffix3 and so on.
-    const std::string dot_suffix = "." + suffix;
-    size_t index = name().rfind(dot_suffix);
-    if (index == std::string::npos) {
-      // Existing name does not include ".suffix".
-      clone->name_ = absl::StrCat(name(), dot_suffix);
-    } else {
-      // Existing name includes ".suffix". Determine if substring after
-      // ".suffix" is numeric and should be replaced with an incremented number.
-      auto after_suffix = name().substr(index + dot_suffix.size());
-      if (after_suffix.empty()) {
-        // Existing name ends in ".suffix". New name should end in ".suffix2".
-        clone->name_ = absl::StrCat(name(), "2");
-      } else {
-        // If names ends with .suffix[0-9]+ then replace with a suffix with the
-        // numeric value incremented.
-        int64_t numeric_suffix;
-        if (absl::SimpleAtoi(after_suffix, &numeric_suffix)) {
-          clone->name_ =
-              StrCat(name().substr(0, index), dot_suffix, numeric_suffix + 1);
-        } else {
-          // Substring after ".suffix" is non-numeric.
-          clone->name_ = absl::StrCat(name(), dot_suffix);
-        }
-      }
-    }
+    clone->AddSuffixToInstructionName(suffix);
   }
   return clone;
 }
@@ -3055,7 +3062,8 @@ void PrintNameInternal(Printer* printer, absl::string_view name,
   printer->Append(PrintName(name, options.print_ids()));
 }
 
-void PrintCycle(const HloInstruction* child, DFSStack* dfs_stack) {
+std::string PrintCycle(const HloInstruction* child, DFSStack* dfs_stack,
+                       bool ignore_control_predecessors) {
   // This set contains HloInstructions from the top of `DFSStack` that might
   // belong to the cycle, i.e. if  DFSStack :=[back,...,child,...,top], then
   // `subgraph` := {child,...,top}.
@@ -3068,30 +3076,41 @@ void PrintCycle(const HloInstruction* child, DFSStack* dfs_stack) {
   absl::flat_hash_set<const HloInstruction*> visited;
   absl::InlinedVector<const HloInstruction*, 16> dfs;
   dfs.push_back(child);
-  while (!dfs.empty()) {
+  std::string result;
+  while (!dfs.empty() && result.empty()) {
     bool found_next_instr = false;
-    for (const auto& user : dfs.back()->users()) {
-      if (user == child) {
-        dfs.push_back(child);
-        LOG(INFO) << "\n\nDirected cycle:\n  "
-                  << absl::StrJoin(
-                         dfs, "\n  ",
-                         [](std::string* out, const HloInstruction* instr) {
-                           absl::StrAppend(out, instr->name());
-                         });
-        return;
-      }
-      if (!subgraph.contains(user) || visited.contains(user)) {
-        continue;
-      }
-      visited.insert(user);
-      dfs.push_back(user);
-      found_next_instr = true;
+    auto process_users_or_successors =
+        [&](const std::vector<HloInstruction*>& users_or_successors) {
+          for (const auto& user : users_or_successors) {
+            if (user == child) {
+              dfs.push_back(child);
+              result = "\n\nDirected cycle:\n  " +
+                       absl::StrJoin(
+                           dfs, "\n ",
+                           [](std::string* out, const HloInstruction* instr) {
+                             absl::StrAppend(out, instr->name());
+                           });
+              return;
+            }
+            if (!subgraph.contains(user) || visited.contains(user)) {
+              continue;
+            }
+            visited.insert(user);
+            dfs.push_back(user);
+            found_next_instr = true;
+          }
+        };
+    const HloInstruction* back = dfs.back();
+    process_users_or_successors(back->users());
+    if (!ignore_control_predecessors) {
+      process_users_or_successors(back->control_successors());
     }
     if (!found_next_instr) {
       dfs.pop_back();
     }
   }
+
+  return result;
 }
 
 }  // namespace
@@ -4028,20 +4047,20 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
     const size_t old_dfs_stack_size = dfs_stack.size();
     for (HloInstruction* child : current_node->operands()) {
       if (!ABSL_PREDICT_TRUE(PushDFSChild(visitor, &dfs_stack, child))) {
-        PrintCycle(child, &dfs_stack);
         return FailedPrecondition(
-            "A cycle is detected while visiting instruction %s",
-            current_node->ToString());
+            "A cycle is detected while visiting instruction %s %s",
+            current_node->ToString(),
+            PrintCycle(child, &dfs_stack, ignore_control_predecessors));
       }
     }
 
     if (!ignore_control_predecessors) {
       for (HloInstruction* child : current_node->control_predecessors()) {
         if (!ABSL_PREDICT_TRUE(PushDFSChild(visitor, &dfs_stack, child))) {
-          PrintCycle(child, &dfs_stack);
           return FailedPrecondition(
-              "A cycle is detected while visiting instruction %s",
-              current_node->ToString());
+              "A cycle is detected while visiting instruction %s %s",
+              current_node->ToString(),
+              PrintCycle(child, &dfs_stack, ignore_control_predecessors));
         }
       }
     }
@@ -4056,10 +4075,11 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
             called_computation->root_instruction();
         if (!ABSL_PREDICT_TRUE(
                 PushDFSChild(visitor, &dfs_stack, root_instruction))) {
-          PrintCycle(root_instruction, &dfs_stack);
           return FailedPrecondition(
-              "A cycle is detected while visiting instruction %s",
-              current_node->ToString());
+              "A cycle is detected while visiting instruction %s %s",
+              current_node->ToString(),
+              PrintCycle(root_instruction, &dfs_stack,
+                         ignore_control_predecessors));
         }
       }
     }

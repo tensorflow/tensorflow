@@ -68,7 +68,7 @@ cc_library(
         "//xla/stream_executor:device_mem_allocator",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream_executor_internal",
-        "//xla/stream_executor:tf_allocator_adapter",
+        "//xla/stream_executor/integrations:tf_allocator_adapter",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",

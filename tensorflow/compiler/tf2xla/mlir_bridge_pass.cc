@@ -341,10 +341,6 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
     return OkStatus();
   }
 
-  if (HasTPUPartitionedCallOpInModule(module)) {
-    VLOG(1) << "This is an inference module.";
-  }
-
   MlirOptimizationPassState pass_state =
       GetPassState(/*device_set=*/nullptr, options.session_options->config,
                    **options.graph, *options.flib_def);
@@ -361,7 +357,16 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
     return OkStatus();
   }
 
-  VLOG(1) << "Running MLIR TPU Bridge V1 Compat";
+  // 1) If the MLIR module contains a TPUPartitionedCall, we skip here
+  // 2) When TPUPartitionedCall starts executing, it calls MLIR bridge as a
+  // part of PRE_PLACEMENT optimization
+  // 3) This MLIR bridge version is V1 Compat
+  if (HasTPUPartitionedCallOpInModule(module)) {
+    VLOG(1)
+        << "Skipping MLIR TPU Bridge V1 Compat. This is an inference graph, V1 "
+           "Compat should be used during execution of TPUPartitionedCall.";
+    return OkStatus();
+  }
 
   if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
     // We set `uses_uninitialized_resource_args` to false here because the first
@@ -373,6 +378,8 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
                      /*uses_uninitialized_resource_args=*/false,
                      /*is_v1_compat=*/true);
   }
+
+  VLOG(1) << "Running MLIR TPU Bridge V1 Compat";
 
   mlir_bridge_gauge_v1->GetCell()->Set(true);
   return tensorflow::tf2xla::v1::RunSessionTf2xlaClusteringBridge(module);

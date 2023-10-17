@@ -150,7 +150,6 @@ cc_library(
     hdrs = ["kernel_utils.h"],
     visibility = [
         ":internal",
-        # copybara:uncomment "//learning/brain/experimental/tfrt:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
     ],

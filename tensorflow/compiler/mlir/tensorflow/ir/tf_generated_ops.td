@@ -19930,7 +19930,7 @@ array([[1, 2, 3, 1, 2, 3],
   }];
 
   let arguments = (ins
-    Arg<TF_Tensor, [{1-D or higher.}]>:$input,
+    Arg<TF_Tensor, [{Can be of any rank.}]>:$input,
     Arg<TF_I32OrI64Tensor, [{1-D. Length must be the same as the number of dimensions in `input`}]>:$multiples
   );
 

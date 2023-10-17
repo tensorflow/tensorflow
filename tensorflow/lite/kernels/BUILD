@@ -2868,11 +2868,11 @@ cc_library(
     hdrs = ["subgraph_test_util.h"],
     deps = [
         ":kernel_util",
-        ":variable_op_kernels",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:interpreter_test_util",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",

@@ -54533,7 +54533,7 @@ func ThreadUnsafeUnigramCandidateSampler(scope *Scope, true_classes tf.Output, n
 //
 // Arguments:
 //
-//	input: 1-D or higher.
+//	input: Can be of any rank.
 //	multiples: 1-D. Length must be the same as the number of dimensions in `input`
 func Tile(scope *Scope, input tf.Output, multiples tf.Output) (output tf.Output) {
 	if scope.Err() != nil {

@@ -272,6 +272,7 @@ cc_library(
         "//xla:types",
         "//xla:util",
         "//xla/stream_executor",
+        "//xla/stream_executor:plugin_registry",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:host_or_device_scalar",
         "//xla/stream_executor:stream_executor_headers",

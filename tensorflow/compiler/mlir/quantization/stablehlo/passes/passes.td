@@ -43,3 +43,26 @@ def PrepareQuantizePass : Pass<"stablehlo-prepare-quantize", "mlir::func::FuncOp
 def UnfuseMhloBatchNormPass : Pass<"stablehlo-unfuse-mhlo-batch-norm", "mlir::func::FuncOp"> {
   let summary = "Unfuses batch normalization into arithmetic ops.";
 }
+
+def LiftQuantizableSpotsAsFunctionsPass : Pass<"stablehlo-lift-quantizable-spots-as-functions", "mlir::ModuleOp"> {
+  let summary = "Replace quantization candidates with composite functions into the module.";
+  let description = [{
+    Mark frequent fusible patterns as functions for quantization targets.
+    In addition to brining performance benefits by reducing q/dq op overhead in non-full quantization,
+    this brings higher accuracy by keeping a smaller range when quantizing ops
+    that disperse values. (ex: convolution, dot_general)
+  }];
+  let dependentDialects = [
+      "mlir::stablehlo::StablehloDialect",
+      "TF::TensorFlowDialect",
+  ];
+}
+
+def QuantizePass : Pass<"stablehlo-quantize", "mlir::func::FuncOp"> {
+  let summary = "Applies static-range quantization on ops.";
+  let dependentDialects = [
+    "mlir::stablehlo::StablehloDialect",
+    "mlir::quant::QuantizationDialect",
+    "mlir::quantfork::QuantizationForkDialect",
+  ];
+}

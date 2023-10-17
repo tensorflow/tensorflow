@@ -75,6 +75,15 @@ class TritonGemmTest : public GpuCodegenTest {
   }
 };
 
+class TritonGemmTestWithoutTritonGemmAny : public TritonGemmTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = TritonGemmTest::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_triton_gemm_any(false);
+    return debug_options;
+  }
+};
+
 class TritonFilecheckTest : public TritonGemmTest {
  public:
   StatusOr<bool> CreateTritonIrAndFileCheck(
@@ -716,7 +725,7 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
 }
 
-TEST_F(TritonGemmTest, SkipU8) {
+TEST_F(TritonGemmTestWithoutTritonGemmAny, SkipU8) {
   const std::string hlo_text = R"(
 HloModule t
 
@@ -734,7 +743,7 @@ ENTRY e {
 )");
 }
 
-TEST_F(TritonGemmTest, SkipF32F32) {
+TEST_F(TritonGemmTestWithoutTritonGemmAny, SkipF32F32) {
   const std::string hlo_text = R"(
 HloModule t
 

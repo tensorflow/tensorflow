@@ -289,32 +289,6 @@ Status TransferManager::WriteRootTupleIndexTable(
                                     &device_memory);
 }
 
-Status TransferManager::TransferBufferFromDevice(
-    se::Stream* stream, const se::DeviceMemoryBase& source, int64_t size,
-    void* destination) {
-  if (source.size() < size) {
-    return FailedPrecondition(
-        "Source allocation on device not large enough for data transfer: "
-        "%d < %d",
-        source.size(), size);
-  }
-  stream->ThenMemcpy(destination, source, size);
-  return OkStatus();
-}
-
-Status TransferManager::TransferBufferToDevice(
-    se::Stream* stream, int64_t size, const void* source,
-    se::DeviceMemoryBase* destination) {
-  if (destination->size() < size) {
-    return FailedPrecondition(
-        "Destination allocation on device not large enough for data transfer: "
-        "%d < %d",
-        destination->size(), size);
-  }
-  stream->ThenMemcpy(destination, source, size);
-  return OkStatus();
-}
-
 StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
     const Shape& on_host_shape, se::DeviceMemoryAllocator* allocator,
     int device_ordinal, DeviceShapeRepresentationFn shape_representation_fn) {

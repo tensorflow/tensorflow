@@ -109,7 +109,7 @@ cc_library(
         "@local_xla//xla/service:shaped_buffer",
         "@local_xla//xla/stream_executor",
         "@local_xla//xla/stream_executor:device_memory_allocator",
-        "@local_xla//xla/stream_executor:tf_allocator_adapter",
+        "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
     ],
 )
 

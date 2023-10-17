@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_TF_ALLOCATOR_ADAPTER_H_
-#define XLA_STREAM_EXECUTOR_TF_ALLOCATOR_ADAPTER_H_
+#ifndef XLA_STREAM_EXECUTOR_INTEGRATIONS_TF_ALLOCATOR_ADAPTER_H_
+#define XLA_STREAM_EXECUTOR_INTEGRATIONS_TF_ALLOCATOR_ADAPTER_H_
 
 #include <memory>
 #include <tuple>
@@ -153,4 +153,4 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
 
 }  // namespace stream_executor
 
-#endif  // XLA_STREAM_EXECUTOR_TF_ALLOCATOR_ADAPTER_H_
+#endif  // XLA_STREAM_EXECUTOR_INTEGRATIONS_TF_ALLOCATOR_ADAPTER_H_

@@ -207,7 +207,7 @@ tf_cuda_library(
                 "//tensorflow/compiler/jit:pjrt_device_context",
                 "@local_xla//xla/pjrt/gpu:gpu_helpers",
                 "@local_xla//xla/pjrt/gpu:se_gpu_pjrt_client",
-                "@local_xla//xla/stream_executor:tf_allocator_adapter",
+                "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
                 "//tensorflow/core/tfrt/common:pjrt_util",
             ],
             "//conditions:default": [],

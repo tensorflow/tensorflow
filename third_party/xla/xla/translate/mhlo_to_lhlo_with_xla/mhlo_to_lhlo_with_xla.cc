@@ -569,6 +569,9 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
   if (xla::gpu::IsBwdCustomCallTofMHA(*instr)) {
     return EmitDnnfMHABackward(custom_call_instr);
   }
+  if (xla::gpu::IsCubDeviceRadixSort(*instr)) {
+    return EmitCubDeviceRadixSort(custom_call_instr);
+  }
 
   // For custom call, if there are any token operands or results, they will not
   // be represented in LHLO so we need to remember the mapping. First create
@@ -1142,6 +1145,17 @@ LhloDialectEmitter::EmitDnnConvolutionReorderVectorized(
         CreateOpWithoutAttrs<lmhlo_gpu::CudnnConvReorderFilterOp>(custom_call));
     return set_common_attributes(reorder_filter);
   }
+}
+
+xla::StatusOr<Operation*> LhloDialectEmitter::EmitCubDeviceRadixSort(
+    const xla::HloCustomCallInstruction* custom_call) {
+  TF_ASSIGN_OR_RETURN(
+      auto radix_sort_op,
+      CreateOpWithoutAttrs<lmhlo_gpu::RadixSortOp>(custom_call));
+  TF_ASSIGN_OR_RETURN(xla::SortOptions options,
+                      custom_call->backend_config<xla::SortOptions>());
+  radix_sort_op.setDescendingAttr(builder_.getBoolAttr(options.descending()));
+  return radix_sort_op.getOperation();
 }
 
 tsl::StatusOr<Operation*> LhloDialectEmitter::EmitDnnfMHA(

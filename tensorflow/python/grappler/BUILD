@@ -587,6 +587,10 @@ cuda_py_strict_test(
 tf_python_pybind_extension(
     name = "_pywrap_graph_analyzer",
     srcs = ["graph_analyzer_tool_wrapper.cc"],
+    enable_stub_generation = True,
+    pytype_srcs = [
+        "_pywrap_graph_analyzer.pyi",
+    ],
     deps = [
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",
         "@pybind11",

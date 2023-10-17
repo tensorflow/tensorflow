@@ -24,7 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "xla/runtime/executable.h"
-#include "xla/runtime/ffi.h"
 #include "xla/runtime/jit_executable.h"
 #include "xla/runtime/module_registry.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -89,7 +88,6 @@ struct GpuRuntimeProgram {
 // details.
 class GpuRuntimeExecutable {
   using ModulesState = ::xla::runtime::ModulesState;
-  using FfiModulesState = ::xla::runtime::ffi::FfiModulesState;
 
  public:
   // Creates GpuRuntimeExecutable from the Xla Gpu Program.
@@ -122,14 +120,12 @@ class GpuRuntimeExecutable {
   GpuRuntimeExecutable(std::string module_name,
                        std::vector<int64_t> buffer_sizes,
                        std::unique_ptr<runtime::JitExecutable> jit_executable,
-                       DebugOptions debug_options, ModulesState modules_state,
-                       FfiModulesState ffi_modules_state);
+                       DebugOptions debug_options, ModulesState modules_state);
 
   GpuRuntimeExecutable(std::string module_name,
                        std::vector<int64_t> buffer_sizes,
                        std::unique_ptr<runtime::Executable> aot_executable,
-                       DebugOptions debug_options, ModulesState modules_state,
-                       FfiModulesState ffi_modules_state);
+                       DebugOptions debug_options, ModulesState modules_state);
 
   std::string module_name_;
 
@@ -184,9 +180,6 @@ class GpuRuntimeExecutable {
 
   // Keep an executable state for all registered runtime modules.
   ModulesState modules_state_;
-
-  // Keeps an executable state for all registered FFI modules.
-  FfiModulesState ffi_modules_state_;
 
   // Dynamic custom calls exported from XLA runtime modules (and FFI modules).
   runtime::DynamicCustomCallRegistry dynamic_custom_calls_;

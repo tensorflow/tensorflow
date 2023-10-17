@@ -120,6 +120,7 @@ cc_library(
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
         "@local_xla//xla/client:compile_only_client",
+        "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
         "@local_xla//xla/pjrt:compile_options_proto_cc",
     ],
 )

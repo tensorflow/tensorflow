@@ -3997,15 +3997,44 @@ cc_library(
         ":transfer_manager",
         "//xla:literal",
         "//xla:shape_util",
+        "//xla:status",
         "//xla:status_macros",
         "//xla:types",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:logging",
     ],
     alwayslink = True,  # Contains per-platform transfer manager registration
+)
+
+xla_cc_test(
+    name = "generic_transfer_manager_test",
+    srcs = ["generic_transfer_manager_test.cc"],
+    deps = [
+        ":generic_transfer_manager",
+        ":shaped_buffer",
+        ":transfer_manager",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_tree",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla/stream_executor",
+        "//xla/stream_executor/host:host_platform",
+        "//xla/stream_executor/host:host_platform_id",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/platform:statusor",
+        "@local_tsl//tsl/platform:test",
+    ],
 )
 
 cc_library(

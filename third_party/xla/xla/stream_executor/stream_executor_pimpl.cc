@@ -157,6 +157,13 @@ StreamExecutor::~StreamExecutor() {
   }
 }
 
+StreamExecutor::PlatformSpecificHandle
+StreamExecutor::platform_specific_handle() const {
+  PlatformSpecificHandle handle;
+  handle.context = implementation_->platform_specific_context();
+  return handle;
+}
+
 tsl::Status StreamExecutor::Init(DeviceOptions device_options) {
   TF_RETURN_IF_ERROR(
       implementation_->Init(device_ordinal_, std::move(device_options)));

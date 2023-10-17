@@ -130,6 +130,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
+#include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/translate/mhlo_to_hlo/attribute_exporter.h"
@@ -145,6 +146,7 @@ limitations under the License.
 #include "tsl/protobuf/dnn.pb.h"
 
 #if GOOGLE_CUDA || TF_HIPBLASLT
+#include "xla/service/gpu/cub_sort_thunk.h"
 #include "xla/service/gpu/cublas_lt_matmul_thunk.h"
 #include "xla/service/gpu/ir_emitter_triton.h"
 #endif  // GOOGLE_CUDA || TF_HIPBLASLT
@@ -336,8 +338,23 @@ std::unique_ptr<IrEmitterUnnested> IrEmitterUnnested::Create(
 
 StatusOr<BufferAllocation::Slice> IrEmitterUnnested::GetAllocationSlice(
     mlir::Value v) {
+  if (ir_emitter_context_->emit_ir_from_hlo()) {
+    return InternalError(
+        "Getting buffer allocation for MLIR when emitting from HLO");
+  }
   return xla::gpu::GetAllocationSlice(v, ir_emitter_context_->allocations(),
                                       nullptr);
+}
+
+StatusOr<std::vector<BufferAllocation::Slice>>
+IrEmitterUnnested::GetAllocationSlices(mlir::OperandRange operands) {
+  std::vector<BufferAllocation::Slice> slices;
+  slices.reserve(operands.size());
+  for (mlir::Value operand : operands) {
+    TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSlice(operand));
+    slices.push_back(slice);
+  }
+  return slices;
 }
 
 Status IrEmitterUnnested::EmitUnreachable(mlir::Operation* op,
@@ -1013,6 +1030,32 @@ Status IrEmitterUnnested::EmitConvolutionReorderThunk(mlir::Operation* op) {
   return OkStatus();
 }
 
+Status IrEmitterUnnested::EmitCubDeviceRadixSort(mlir::Operation* op) {
+  auto radix_sort_op = mlir::cast<mlir::lmhlo_gpu::RadixSortOp>(op);
+  if (radix_sort_op.getInputs().size() != 1 &&
+      radix_sort_op.getInputs().size() != 2) {
+    return InternalError("Invalid number of operands for radix sort");
+  }
+
+  TF_ASSIGN_OR_RETURN(std::vector<BufferAllocation::Slice> operands,
+                      GetAllocationSlices(radix_sort_op.getInputs()));
+  TF_ASSIGN_OR_RETURN(std::vector<BufferAllocation::Slice> results,
+                      GetAllocationSlices(radix_sort_op.getOutput()));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice scratch,
+                      GetAllocationSlice(radix_sort_op.getScratch()));
+
+  auto thunk = std::make_unique<CubSortThunk>(
+      Thunk::ThunkInfo::WithProfileAnnotation(op),
+      GetShape(op->getOperand(0)).element_type(),
+      radix_sort_op.getInputs().size() == 2
+          ? std::optional(GetShape(op->getOperand(1)).element_type())
+          : std::nullopt,
+      operands, results, scratch, radix_sort_op.getDescending());
+
+  AddThunkToThunkSequence(std::move(thunk));
+  return OkStatus();
+}
+
 Status IrEmitterUnnested::EmitFusedMHAThunk(mlir::Operation* op) {
   using mlir::dyn_cast;
   using mlir::lmhlo_gpu::fusedMHAOp;
@@ -1291,6 +1334,13 @@ Status IrEmitterUnnested::EmitFusedMHABackwardThunk(mlir::Operation* op) {
 }
 #endif  // GOOGLE_CUDA
 
+StatusOr<BufferAllocation::Slice> IrEmitterUnnested::GetAllocationSliceForHlo(
+    const HloInstruction* instr, const ShapeIndex& index) const {
+  const BufferAssignment& buffer_assignment =
+      ir_emitter_context_->buffer_assignment();
+  return buffer_assignment.GetUniqueSlice(instr, index);
+}
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
   auto cholesky_op = mlir::cast<mlir::lmhlo_gpu::CholeskyOp>(op);
@@ -1339,6 +1389,58 @@ Status IrEmitterUnnested::EmitCholeskyThunk(mlir::Operation* op) {
   } else {
     AddThunkToThunkSequence(std::make_unique<SequentialThunk>(
         Thunk::ThunkInfo::WithProfileAnnotation(op), std::move(thunks)));
+  }
+
+  return OkStatus();
+}
+
+Status IrEmitterUnnested::EmitCholeskyThunk(const HloInstruction* instr) {
+  TF_ASSIGN_OR_RETURN(CholeskyOptions options,
+                      instr->backend_config<CholeskyOptions>());
+  const Shape& shape = instr->operand(0)->shape();
+  int ndim = shape.dimensions_size();
+  CHECK_GE(ndim, 2);
+  int64_t n = shape.dimensions(ndim - 1);
+
+  const absl::Span<const int64_t>& dims = shape.dimensions();
+  int64_t batch_size =
+      std::accumulate(dims.begin(), dims.end() - 2, int64_t{1},
+                      [](int64_t a, int64_t b) { return a * b; });
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice operand_buffer,
+                      GetAllocationSliceForHlo(instr->operand(0), {}));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a_buffer,
+                      GetAllocationSliceForHlo(instr, {0}));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice workspace_buffer,
+                      GetAllocationSliceForHlo(instr, {1}));
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice info_buffer,
+                      GetAllocationSliceForHlo(instr, {2}));
+
+  ThunkSequence thunks;
+
+  // TODO(b/304613751): We need to construct real ThunkInfo from instr for Xprof
+  // integration.
+  if (operand_buffer != a_buffer) {
+    thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
+        Thunk::ThunkInfo(nullptr),
+        /*source_buffer=*/operand_buffer,
+        /*destination_buffer=*/a_buffer,
+        /*mem_size=*/ShapeUtil::ByteSizeOf(shape),
+        /*source_value=*/nullptr,
+        /*destination_value=*/nullptr));
+  }
+
+  thunks.push_back(std::make_unique<CholeskyThunk>(
+      Thunk::ThunkInfo(nullptr), options,
+      PtxOptsFromDebugOptions(ir_emitter_context_->debug_options()), a_buffer,
+      workspace_buffer, info_buffer, shape.element_type(), batch_size, n));
+
+  // Elide the sequential thunk if there's no copy.
+  if (thunks.size() == 1) {
+    AddThunkToThunkSequence(std::move(thunks[0]));
+  } else {
+    AddThunkToThunkSequence(std::make_unique<SequentialThunk>(
+        Thunk::ThunkInfo(nullptr), std::move(thunks)));
   }
 
   return OkStatus();
@@ -2986,6 +3088,9 @@ Status IrEmitterUnnested::EmitOp(
   if (mlir::isa<mlir::lmhlo_gpu::fusedMHABackwardOp>(op)) {
     return EmitFusedMHABackwardThunk(op);
   }
+  if (mlir::isa<mlir::lmhlo_gpu::RadixSortOp>(op)) {
+    return EmitCubDeviceRadixSort(op);
+  }
 #endif  // GOOGLE_CUDA
 
   if (mlir::isa<mlir::lmhlo_gpu::ConvForwardOp,
@@ -2999,7 +3104,11 @@ Status IrEmitterUnnested::EmitOp(
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (mlir::isa<mlir::lmhlo_gpu::CholeskyOp>(op)) {
-    return EmitCholeskyThunk(op);
+    if (ir_emitter_context_->emit_ir_from_hlo()) {
+      return EmitCholeskyThunk(hlo_for_lmhlo.at(op));
+    } else {
+      return EmitCholeskyThunk(op);
+    }
   }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

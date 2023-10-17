@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
-#include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/errors.h"

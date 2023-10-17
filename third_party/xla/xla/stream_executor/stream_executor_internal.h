@@ -32,11 +32,14 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "xla/stream_executor/allocator_stats.h"
+#include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/device_options.h"
+#include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/event.h"
+#include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_cache_config.h"
 #include "xla/stream_executor/kernel_spec.h"
@@ -44,7 +47,6 @@ limitations under the License.
 #include "xla/stream_executor/module_spec.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/trace_listener.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
@@ -186,9 +188,11 @@ class StreamInterface {
     return StreamPriority::Default;
   }
 
-  // Returns the GPU stream associated with this platform's stream
-  // implementation, or nullptr otherwise.
-  virtual void* GpuStreamHack() { return nullptr; }
+  // Returns a pointer to a platform specific stream associated with this object
+  // if it exists, or nullptr otherwise. This is available via Stream public API
+  // as Stream::PlatformSpecificHandle, and should not be accessed directly
+  // outside of a StreamExecutor package.
+  virtual void* platform_specific_stream() { return nullptr; }
 
  private:
   StreamInterface(const StreamInterface&) = delete;
@@ -394,14 +398,11 @@ class StreamExecutorInterface {
     return absl::UnimplementedError("Command buffers are not implemented");
   }
 
-  // Returns the CUDA or ROCm context associated with this StreamExecutor
-  // platform implementation.
-  //
-  // WARNING: checks that the underlying platform is, in fact, CUDA or ROCm,
-  // causing a fatal error if it is not. This hack is made available solely for
-  // use from distbelief code, which temporarily has strong ties to CUDA or ROCm
-  // as a platform.
-  virtual void* GpuContextHack() { return nullptr; }
+  // Returns a pointer to a platform specific context associated with this
+  // object if it exists, or nullptr otherwise. This is available via
+  // StreamExecutor public API as StreamExecuto::PlatformSpecificHandle, and
+  // should not be accessed directly outside of a StreamExecutor package.
+  virtual void* platform_specific_context() { return nullptr; }
 
   // Return allocator statistics.
   virtual std::optional<AllocatorStats> GetAllocatorStats() {

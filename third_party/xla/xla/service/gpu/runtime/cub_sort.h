@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,19 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_PLUGIN_H_
-#define XLA_STREAM_EXECUTOR_PLUGIN_H_
+#ifndef XLA_SERVICE_GPU_RUNTIME_CUB_SORT_H_
+#define XLA_SERVICE_GPU_RUNTIME_CUB_SORT_H_
 
-namespace stream_executor {
+#include "xla/runtime/custom_call_registry.h"
 
-// Enumeration to list the supported types of plugins / support libraries.
-enum class PluginKind {
-  kInvalid,
-  kBlas,
-  kDnn,
-  kFft,
-};
+namespace xla {
+namespace gpu {
 
-}  // namespace stream_executor
+// Registers XLA Gpu runtime CUB sort custom calls.
+void RegisterCubSortCustomCalls(runtime::DirectCustomCallRegistry& registry);
 
-#endif  // XLA_STREAM_EXECUTOR_PLUGIN_H_
+}  // namespace gpu
+}  // namespace xla
+
+#endif  // XLA_SERVICE_GPU_RUNTIME_CUB_SORT_H_

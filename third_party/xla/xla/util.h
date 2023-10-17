@@ -726,10 +726,18 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
 std::pair<float, float> SplitF64ToF32(double x);
 
 // Takes a sequence of unpacked int4 values, such that every byte stores one
-// int4 value, and packs them so every byte stores two int4 values. 'input'
-// should have num_elements bytes; 'output' should have (num_elements+1)/2
-// bytes.
+// int4 value in the low-order four bits, and packs them so every byte stores
+// two int4 values. 'input' should have num_elements bytes; 'output' should have
+// (num_elements+1)/2 bytes. The high-order four bits of each byte in 'input'
+// are ignored.
 void PackInt4(absl::Span<const char> input, absl::Span<char> output);
+
+// Takes a sequence of packed int4 values, such that every byte stores two
+// int4 values, and unpacks them so every byte stores one int4 value in the
+// low-order four bits. 'input' should have (num_elements+1)/2 bytes; 'output'
+// should have num_elements bytes. The high-order 4-bits in each output are
+// zero.
+void UnpackInt4(absl::Span<const char> input, absl::Span<char> output);
 
 class HloInstruction;
 class HloModule;

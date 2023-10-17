@@ -376,9 +376,8 @@ llvm::SmallVector<mlir::APInt> ReadAsHostEndian(ArrayRef<uint8_t> bytes) {
 
   const char* data_ptr = reinterpret_cast<const char*>(bytes.data());
   for (int i = 0; i < elem_count; i++) {
-    T val = llvm::support::endian::readNext<
-        T, llvm::support::endian::system_endianness(),
-        llvm::support::unaligned>(data_ptr);
+    T val = llvm::support::endian::readNext<T, llvm::endianness::native,
+                                            llvm::support::unaligned>(data_ptr);
     ret.push_back(mlir::APInt(sizeof(T) * 8, val));
   }
   return ret;
@@ -425,9 +424,9 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
       const char* data = reinterpret_cast<const char*>(buffer.data());
 
       for (int i = 0; i < elem_count; i++) {
-        uint16_t bit_repr = llvm::support::endian::readNext<
-            uint16_t, llvm::support::endian::system_endianness(),
-            llvm::support::unaligned>(data);
+        uint16_t bit_repr =
+            llvm::support::endian::readNext<uint16_t, llvm::endianness::native,
+                                            llvm::support::unaligned>(data);
         values.push_back(Eigen::numext::bit_cast<Eigen::half>(bit_repr));
       }
 
@@ -443,9 +442,9 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
       const char* data = reinterpret_cast<const char*>(buffer.data());
 
       for (int i = 0; i < elem_count; i++) {
-        uint32_t bit_repr = llvm::support::endian::readNext<
-            uint32_t, llvm::support::endian::system_endianness(),
-            llvm::support::unaligned>(data);
+        uint32_t bit_repr =
+            llvm::support::endian::readNext<uint32_t, llvm::endianness::native,
+                                            llvm::support::unaligned>(data);
         values.push_back(absl::bit_cast<float>(bit_repr));
       }
       return mlir::ElementsAttr(
@@ -460,9 +459,9 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
       const char* data = reinterpret_cast<const char*>(buffer.data());
 
       for (int i = 0; i < elem_count; i++) {
-        uint64_t bit_repr = llvm::support::endian::readNext<
-            uint64_t, llvm::support::endian::system_endianness(),
-            llvm::support::unaligned>(data);
+        uint64_t bit_repr =
+            llvm::support::endian::readNext<uint64_t, llvm::endianness::native,
+                                            llvm::support::unaligned>(data);
         values.push_back(absl::bit_cast<double>(bit_repr));
       }
       return mlir::ElementsAttr(

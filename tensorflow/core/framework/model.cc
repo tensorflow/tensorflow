@@ -2361,8 +2361,11 @@ void Model::Optimize(AutotuneAlgorithm algorithm,
 
 void Model::RemoveNode(std::shared_ptr<Node> node) {
   if (node) {
-    if (node->output() && !node->output_deleted()) {
-      node->output()->remove_input(node);
+    if (node->output()) {
+      std::shared_ptr<Node> output_shared = node->output_shared();
+      if (output_shared) {
+        output_shared->remove_input(node);
+      }
     }
     VLOG(3) << "Removing " << node->long_name();
   }

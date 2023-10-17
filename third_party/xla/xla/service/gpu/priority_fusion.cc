@@ -395,6 +395,13 @@ FusionDecision GpuPriorityFusion::ShouldFuse(HloInstruction* consumer,
     return "the consumer is not fusible";
   }
 
+  // Scatter is special as it has no elemental version but is still input
+  // fusible. Block attempts to create scatter fusions we can't codegen.
+  if (auto can_fuse = CanEmitInputFusedScatter(*producer, *consumer);
+      !can_fuse) {
+    return can_fuse;
+  }
+
   return InstructionFusion::ShouldFuse(consumer, operand_index);
 }
 

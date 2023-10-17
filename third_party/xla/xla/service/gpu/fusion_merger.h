@@ -48,7 +48,7 @@ namespace gpu {
 // the differences in memory read and written and the number of consumers. The
 // FusionMeger pass takes this into account when making fusion decisions.
 //
-// The pass traverses the HLO module in reverse post-order (defs before uses).
+// The pass traverses the HLO module in post-order (defs before uses).
 // Fusion instructions are merged into their users if some conditions are met:
 // * The result of merging the fusion instruction into its users would not
 //   increase bytes transferred.

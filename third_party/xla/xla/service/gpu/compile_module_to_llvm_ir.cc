@@ -365,15 +365,23 @@ Status CompileModuleToLlvmIrImpl(
   auto entry_function = mlir::cast<mlir::func::FuncOp>(
       mlir_module->lookupSymbol(hlo_module->entry_computation()->name()));
 
-  TF_RETURN_IF_ERROR(GetMlirAllocationInfo(
-      entry_function, &results->allocations, &results->output_info,
-      &results->output_shape, &results->entry_func_attrs));
+  // TODO(b/304613751): Add this flag to xla flags.
+  constexpr bool emit_ir_from_hlo = false;
 
   IrEmitterContext ir_emitter_context(
-      hlo_module, /*buffer_assignment=*/nullptr, platform_name, gpu_device_info,
-      mlir_context.get(), results->llvm_module.get());
+      hlo_module, emit_ir_from_hlo ? results->buffer_assignment.get() : nullptr,
+      platform_name, gpu_device_info, mlir_context.get(),
+      results->llvm_module.get(), emit_ir_from_hlo);
 
-  ir_emitter_context.set_allocations(results->allocations);
+  if (emit_ir_from_hlo) {
+    TF_RET_CHECK(!IsXlaRuntimeExecutableEnabled(hlo_module->config()));
+    results->allocations = results->buffer_assignment->Allocations();
+  } else {
+    TF_RETURN_IF_ERROR(GetMlirAllocationInfo(
+        entry_function, &results->allocations, &results->output_info,
+        &results->output_shape, &results->entry_func_attrs));
+    ir_emitter_context.set_allocations(results->allocations);
+  }
 
   auto ir_emitter = IrEmitterUnnested::Create(&ir_emitter_context);
 
