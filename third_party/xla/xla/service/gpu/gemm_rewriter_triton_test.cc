@@ -51,6 +51,12 @@ class GemmRewriterTritonTest : public HloTestBase {
       : HloTestBase(/*verifier_layout_sensitive=*/true,
                     /*allow_mixed_precision_in_hlo_verifier=*/false) {}
 
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_triton_gemm_any(false);
+    return debug_options;
+  }
+
   se::GpuComputeCapability gpu_version_{
       se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0}};
 };
@@ -875,7 +881,8 @@ ENTRY e {
 class GemmRewriterTritonLevel2Test : public GemmRewriterTritonTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        GemmRewriterTritonTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_fusion_level(2);
     return debug_options;
   }
