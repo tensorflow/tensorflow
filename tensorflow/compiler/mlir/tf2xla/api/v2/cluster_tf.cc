@@ -85,7 +85,7 @@ tensorflow::Status RunTFXLABridge(
       DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain)) {
     ::tensorflow::DumpMlirOpToFile(
         DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
-                                             dump_prefix.str() + "_before_"),
+                                             dump_prefix.str() + "_before"),
         module, llvm::StringRef(), &bridge);
   }
 
@@ -103,7 +103,7 @@ tensorflow::Status RunTFXLABridge(
       DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain)) {
     ::tensorflow::DumpMlirOpToFile(
         DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
-                                             dump_prefix.str() + "_after_"),
+                                             dump_prefix.str() + "_after"),
         module, llvm::StringRef(), &bridge);
   }
 
