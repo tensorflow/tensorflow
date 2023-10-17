@@ -346,13 +346,13 @@ ENTRY main {
   absl::flat_hash_set<int64_t> channel_ids;
   for (HloInstruction* ar : while_instruction->while_body()->instructions()) {
     if (ar->opcode() == HloOpcode::kAllReduceStart) {
-      // We expect that after unrolling, allreduces should not have any control
+      // We expect that after unrolling, all-reduces should not have any control
       // deps.
       EXPECT_EQ(ar->control_predecessors().size(), 0);
       channel_ids.insert(*(ar->channel_id()));
     }
   }
-  // we expect that all 2 allreduces will have different channel ids.
+  // we expect that all 2 all-reduces will have different channel ids.
   EXPECT_EQ(channel_ids.size(), 2);
 }
 
