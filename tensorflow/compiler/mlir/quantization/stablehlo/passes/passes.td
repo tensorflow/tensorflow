@@ -57,3 +57,12 @@ def LiftQuantizableSpotsAsFunctionsPass : Pass<"stablehlo-lift-quantizable-spots
       "TF::TensorFlowDialect",
   ];
 }
+
+def QuantizePass : Pass<"stablehlo-quantize", "mlir::func::FuncOp"> {
+  let summary = "Applies static-range quantization on ops.";
+  let dependentDialects = [
+    "mlir::stablehlo::StablehloDialect",
+    "mlir::quant::QuantizationDialect",
+    "mlir::quantfork::QuantizationForkDialect",
+  ];
+}
