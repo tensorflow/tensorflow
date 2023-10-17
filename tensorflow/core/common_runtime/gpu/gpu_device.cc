@@ -83,7 +83,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
-#include "xla/stream_executor/device_host_allocator.h"
+#include "xla/stream_executor/integrations/device_host_allocator.h"
 #endif  // TF_GPU_USE_PJRT
 #include "xla/stream_executor/gpu/gpu_stream.h"
 #include "xla/stream_executor/platform/dso_loader.h"

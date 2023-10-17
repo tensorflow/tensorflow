@@ -71,7 +71,7 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/platform:stream_executor",
-        "@local_xla//xla/stream_executor:device_mem_allocator",
+        "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
     ],
 )
 

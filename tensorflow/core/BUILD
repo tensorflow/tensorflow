@@ -1242,7 +1242,7 @@ filegroup(
         "//tensorflow/core/util:lib_internal_public_hdrs",
         "@local_tsl//tsl/lib/io:legacy_lib_internal_public_headers",
         "@local_tsl//tsl/platform:lib_internal_public_hdrs",
-        "@local_xla//xla/stream_executor:device_mem_allocator_headers",
+        "@local_xla//xla/stream_executor/integrations:device_mem_allocator_headers",
     ],
     visibility = ["//visibility:private"],
 )

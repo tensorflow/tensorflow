@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_DEVICE_MEM_ALLOCATOR_H_
-#define XLA_STREAM_EXECUTOR_DEVICE_MEM_ALLOCATOR_H_
+#ifndef XLA_STREAM_EXECUTOR_INTEGRATIONS_DEVICE_MEM_ALLOCATOR_H_
+#define XLA_STREAM_EXECUTOR_INTEGRATIONS_DEVICE_MEM_ALLOCATOR_H_
 
 #include <vector>
 
@@ -93,4 +93,4 @@ class DeviceMemAllocator : public tsl::SubAllocator {
 
 }  // namespace stream_executor
 
-#endif  // XLA_STREAM_EXECUTOR_DEVICE_MEM_ALLOCATOR_H_
+#endif  // XLA_STREAM_EXECUTOR_INTEGRATIONS_DEVICE_MEM_ALLOCATOR_H_

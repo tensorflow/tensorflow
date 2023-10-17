@@ -295,22 +295,6 @@ cc_library(
 )
 
 #===--------------------------------------------------------------------------------------------===#
-# Exporting headers for Tensorflow
-#===--------------------------------------------------------------------------------------------===#
-
-# Tensorflow device memory allocators are aliases for StreamExecutor allocators, we export
-# headers for Tensorflow to build shared libraries in OSS.
-
-filegroup(
-    name = "device_mem_allocator_headers",
-    srcs = [
-        "device_host_allocator.h",
-        "device_mem_allocator.h",
-    ],
-    visibility = ["//visibility:public"],
-)
-
-#===--------------------------------------------------------------------------------------------===#
 # StreamExecutor internal implementation (visible to StreamExecutor platform implementations)
 #===--------------------------------------------------------------------------------------------===#'
 
@@ -524,22 +508,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/stream_executor/platform",
-    ],
-)
-
-cc_library(
-    name = "device_mem_allocator",
-    hdrs = [
-        "device_host_allocator.h",
-        "device_mem_allocator.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":stream_executor",
-        "@local_tsl//tsl/framework:allocator",
-        "@local_tsl//tsl/framework:device_id",
-        "@local_tsl//tsl/platform:macros",
-        "@local_tsl//tsl/profiler/lib:traceme",
     ],
 )
 

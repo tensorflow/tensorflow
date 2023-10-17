@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_STREAM_EXECUTOR_DEVICE_HOST_ALLOCATOR_H_
-#define XLA_STREAM_EXECUTOR_DEVICE_HOST_ALLOCATOR_H_
+#ifndef XLA_STREAM_EXECUTOR_INTEGRATIONS_DEVICE_HOST_ALLOCATOR_H_
+#define XLA_STREAM_EXECUTOR_INTEGRATIONS_DEVICE_HOST_ALLOCATOR_H_
 
 #include <vector>
 
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/framework/allocator.h"
-#include "tsl/platform/macros.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace stream_executor {
@@ -83,4 +82,4 @@ class DeviceHostAllocator : public tsl::SubAllocator {
 
 }  // namespace stream_executor
 
-#endif  // XLA_STREAM_EXECUTOR_DEVICE_HOST_ALLOCATOR_H_
+#endif  // XLA_STREAM_EXECUTOR_INTEGRATIONS_DEVICE_HOST_ALLOCATOR_H_
