@@ -71,7 +71,7 @@ class GetMinibatchesInCsrWithPhysicalReplicaOp : public OpKernel {
   int feature_width_ = 1;
   int64_t num_sc_per_chip_;
   std::string table_name_;
-  std::unique_ptr<SparseCoreOpsStatsHandler> sprase_core_ops_stats_handler_;
+  std::unique_ptr<SparseCoreOpsStatsHandler> sparse_core_ops_stats_handler_;
 
  private:
   int num_replica_ = 1;
@@ -105,7 +105,7 @@ class GetMinibatchSplitsWithPhysicalReplicaOp : public OpKernel {
 
   std::string device_name_;
   std::string table_name_;
-  std::unique_ptr<SparseCoreOpsStatsHandler> sprase_core_ops_stats_handler_;
+  std::unique_ptr<SparseCoreOpsStatsHandler> sparse_core_ops_stats_handler_;
   bool allow_id_dropping_for_minibatching_ = false;
   bool allow_id_shuffling_for_minibatching_ = false;
 
