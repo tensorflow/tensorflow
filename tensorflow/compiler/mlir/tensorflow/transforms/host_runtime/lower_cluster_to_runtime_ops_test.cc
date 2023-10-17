@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tfrt/transforms/lower_cluster_to_runtime_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/lower_cluster_to_runtime_ops.h"
 
 #include <string>
 #include <vector>
@@ -53,7 +53,7 @@ using tsl::DeviceType;
 
 std::string TestDataPath() {
   return tensorflow::GetDataDependencyFilepath(
-      "tensorflow/compiler/mlir/tfrt/transforms/testdata/");
+      "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/testdata/");
 }
 
 class LowerClusterToRuntimeOpsTest : public ::testing::Test {

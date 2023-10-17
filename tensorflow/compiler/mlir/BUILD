@@ -59,10 +59,10 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_test_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_passes",  # buildcleaner:keep
+        "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:lower_cluster_to_runtime_ops",
         "//tensorflow/compiler/mlir/tf2xla:compile_mlir_util",
         "//tensorflow/compiler/mlir/tf2xla/transforms:tf_xla_passes",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf",
-        "//tensorflow/compiler/mlir/tfrt:lower_cluster_to_runtime_ops",
         "//tensorflow/compiler/mlir/tosa:tf_passes",
         "//tensorflow/compiler/mlir/tosa:tf_tfl_passes",
         "//tensorflow/compiler/mlir/tosa:tfl_passes",

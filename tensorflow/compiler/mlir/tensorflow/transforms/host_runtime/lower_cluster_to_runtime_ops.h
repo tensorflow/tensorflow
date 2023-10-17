@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LOWER_CLUSTER_TO_RUNTIME_OPS_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LOWER_CLUSTER_TO_RUNTIME_OPS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_HOST_RUNTIME_LOWER_CLUSTER_TO_RUNTIME_OPS_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_HOST_RUNTIME_LOWER_CLUSTER_TO_RUNTIME_OPS_H_
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -48,4 +48,4 @@ void RegisterNonTPULowerClusterToRuntimeOpsPassPipeline();
 }  // namespace tfrt_compiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_LOWER_CLUSTER_TO_RUNTIME_OPS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_HOST_RUNTIME_LOWER_CLUSTER_TO_RUNTIME_OPS_H_
