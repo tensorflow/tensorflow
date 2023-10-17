@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
@@ -199,9 +200,9 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
               ir_emitter_context, suggested_kernel_name,
               kernel_arguments.args(), fusion_op.getInputBuffers().size(),
               launch_dims, builder);
-          TF_RETURN_IF_ERROR(EmitKernel(
-              ir_emitter_context, elemental_emitter, fusion_op, fusion,
-              launch_dims, std::move(inputs), std::move(outputs), builder, i));
+          TF_RETURN_IF_ERROR(EmitKernel(ir_emitter_context, elemental_emitter,
+                                        fusion, launch_dims, std::move(inputs),
+                                        std::move(outputs), builder, i));
           // TODO(jreiffers): Return shmem_bytes from EmitKernel when
           // converting the Triton emitters to this infrastructure.
           return KernelReuseCache::Entry{kernel->getName().str(), launch_dims,
