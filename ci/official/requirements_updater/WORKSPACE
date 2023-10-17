@@ -42,6 +42,7 @@ python_register_multi_toolchains(
         "3.9",
         "3.10",
         "3.11",
+        "3.12",
     ],
     register_coverage_tool = True,
 )
