@@ -107,6 +107,12 @@ ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
                        bool low_latency_hint, Eigen::Allocator* allocator) {
   CHECK_GE(num_threads, 1);
 
+#ifdef DNNL_AARCH64_USE_ACL
+  if(num_threads == std::thread::hardware_concurrency() && num_threads >= 16){
+    num_threads = num_threads - 1;
+  }
+#endif  // DNNL_AARCH64_USE_ACL
+
 #ifdef TENSORFLOW_THREADSCALING_EXPERIMENTAL
   CHECK_GT(absl::GetFlag(FLAGS_tensorflow_num_threads_scale_factor), 0);
   num_threads *= absl::GetFlag(FLAGS_tensorflow_num_threads_scale_factor);

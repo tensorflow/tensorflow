@@ -166,6 +166,7 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@eigen_archive//:eigen3",
     ],
+    copts = tsl_copts()
 )
 
 cc_library(
