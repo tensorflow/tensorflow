@@ -116,9 +116,9 @@ REQUIRED_PACKAGES = [
     # dependencies on the release branch is updated to the stable releases (RC
     # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
-    'tb-nightly ~= 2.15.0.a',
-    'tf-estimator-nightly ~= 2.14.0.dev',
-    'keras-nightly ~= 2.15.0.dev',
+    'tensorboard >= 2.15, < 2.16',
+    'tensorflow_estimator >= 2.15.0rc0, < 2.16',
+    'keras >= 2.15.0rc0, < 2.16'
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
