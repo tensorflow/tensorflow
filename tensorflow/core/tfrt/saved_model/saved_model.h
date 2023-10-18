@@ -28,9 +28,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -235,26 +232,6 @@ class SavedModelImpl final : public SavedModel {
 
   std::optional<FunctionMetadata> GetFunctionMetadata(
       absl::string_view func_name) const override;
-
-  // Imports saved model from MetaGraphDef to an MLIR module.
-  static tensorflow::Status ImportMlir(
-      const Options& options, const tensorflow::MetaGraphDef& meta_graph_def,
-      absl::string_view saved_model_dir, mlir::MLIRContext& context,
-      mlir::OwningOpRef<mlir::ModuleOp>& mlir_module,
-      std::unique_ptr<FallbackState>& fallback_state);
-
-  // Compiles the MLIR module from TF dialect to TFRT dialect (in BEF or MLRT
-  // bytecode).
-  static tensorflow::Status CompileMlir(
-      const Options& options, const tensorflow::MetaGraphDef& meta_graph_def,
-      absl::string_view saved_model_dir,
-      mlir::OwningOpRef<mlir::ModuleOp>& mlir_module,
-      std::unique_ptr<FallbackState>& fallback_state,
-      mlrt::bc::Buffer& bytecode, tfrt::BefBuffer& bef,
-      OpKernelRunnerTable& op_kernel_runner_table,
-      tfd::FallbackResourceArray& fallback_resource_array,
-      InitializersAndSignatures& initializers_and_signatures,
-      std::unique_ptr<GraphExecutor>& graph_executor);
 
   tensorflow::Status Run(const RunOptions& run_options, absl::string_view name,
                          absl::Span<const tensorflow::Tensor> inputs,
