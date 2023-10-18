@@ -272,9 +272,6 @@ void AddStridedSliceOpIfRequired(ConversionState& state,
 
 // Util that casts 'val' to Int32 by adding a tfl cast Op.
 Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter);
-
-// Returns the shape of the given value in a Constant Op.
-arith::ConstantOp ShapeToConst(PatternRewriter& rewriter, Value value);
 }  // namespace odml
 }  // namespace mlir
 

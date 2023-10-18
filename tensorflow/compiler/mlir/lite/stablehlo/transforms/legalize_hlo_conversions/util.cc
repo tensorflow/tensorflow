@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
@@ -445,16 +444,6 @@ Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
   }
   return rewriter.create<TFL::CastOp>(
       loc, UnrankedTensorType::get(new_ele_type), val);
-}
-
-// TODO: b/304006579 - group util functions to util.td.
-// Returns the shape of the given value in a Constant Op.
-arith::ConstantOp ShapeToConst(PatternRewriter& rewriter, Value value) {
-  ArrayRef<int64_t> shape = value.getType().cast<ShapedType>().getShape();
-  auto attr_type = RankedTensorType::get({static_cast<int64_t>(shape.size())},
-                                         rewriter.getIntegerType(64));
-  auto attr = DenseElementsAttr::get(attr_type, shape);
-  return rewriter.create<arith::ConstantOp>(value.getLoc(), attr_type, attr);
 }
 
 }  // namespace odml

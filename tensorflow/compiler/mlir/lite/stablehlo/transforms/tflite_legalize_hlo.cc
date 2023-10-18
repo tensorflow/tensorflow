@@ -67,8 +67,7 @@ void LegalizeHloToTfLitePass::runOnOperation() {
   // Converted MHLO ops should be marked illegal here.
   // TODO: b/304003568 - Add TF_TransposeOp folding logic to tflite.
   target.addIllegalOp<mhlo::PadOp, mhlo::DotGeneralOp, mhlo::DotOp,
-                      mhlo::TransposeOp, mhlo::ReshapeOp,
-                      mhlo::DynamicReshapeOp>();
+                      mhlo::TransposeOp>();
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {
     getOperation().emitError("mhlo to TFLite legalization failed.");
