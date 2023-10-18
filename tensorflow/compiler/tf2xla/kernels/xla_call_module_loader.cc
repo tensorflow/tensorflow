@@ -165,16 +165,19 @@ tsl::Status SetPlatformIndex(mlir::func::FuncOp main, int platform_index) {
   mlir::RankedTensorType arg_ranked_type =
       platform_index_arg.getType().dyn_cast<mlir::RankedTensorType>();
   if (!arg_ranked_type || arg_ranked_type.getRank() != 0 ||
-      !arg_ranked_type.getElementType().isSignlessInteger(32)) {
+      !(arg_ranked_type.getElementType().isSignlessInteger(32) ||
+        arg_ranked_type.getElementType().isSignlessInteger(64))) {
     return absl::InvalidArgumentError(
         absl::StrCat("Module argument at index 0 should be a 0-dimensional "
-                     "32-bit integer-tensor platform index argument but "
-                     "has type ",
+                     "32-bit or 64-bit integer-tensor platform index argument "
+                     "but has type ",
                      mlir::debugString(platform_index_arg.getType())));
   }
+  bool is_32_bit = arg_ranked_type.getElementType().isSignlessInteger(32);
+  auto const_attr = is_32_bit ? op_builder.getI32IntegerAttr(platform_index)
+                              : op_builder.getI64IntegerAttr(platform_index);
   auto platform_index_op = op_builder.create<mlir::stablehlo::ConstantOp>(
-      platform_index_arg.getLoc(),
-      op_builder.getI32IntegerAttr(platform_index));
+      platform_index_arg.getLoc(), const_attr);
   platform_index_arg.replaceAllUsesWith(platform_index_op);
 
   main.eraseArgument(0);
@@ -218,8 +221,9 @@ tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> XlaCallModuleLoader::Create(
 // for %arg_dim0 and one for %arg_dim1. E.g., ['0.0', '0.1'] specifies that
 // %arg_dim0 should be set to the size of axis 0 or array argument 0 (%arg0),
 // while %arg_dim1 should be set to the size of axis 1.
-// The platform index argument must be a 0-dimensional 32-bit integer, and the
-// dimension arguments must be 0-dimensional tensors of integer type.
+// The platform index argument must be a 0-dimensional 32-bit or 64-bit integer,
+// and the dimension arguments must be 0-dimensional 32-bit or 64-bit integer
+// tensors.
 //
 // We create a new "main" function as follows:
 //   func public main(%arg0: f32[?, ?, 8]) {
@@ -290,25 +294,24 @@ tsl::Status XlaCallModuleLoader::AddMainWrapper() {
           arg_type.dyn_cast<mlir::RankedTensorType>();
       if (!arg_ranked_type ||
           !arg_ranked_type.getElementType().dyn_cast<mlir::IntegerType>() ||
-          !arg_ranked_type.getShape().empty()) {
+          !arg_ranked_type.getShape().empty() ||
+          !(arg_ranked_type.getElementTypeBitWidth() == 32 ||
+            arg_ranked_type.getElementTypeBitWidth() == 64)) {
         std::string argument_type =
             (i < nr_platform_args) ? "platform index" : "dimension";
         return absl::InvalidArgumentError(absl::StrCat(
             "Module argument at index ", i,
-            " should be a 0-dimensional integer-tensor ", argument_type,
-            " argument but has type ", mlir::debugString(arg_type)));
+            " should be a 0-dimensional 32-bit or 64-bit integer-tensor ",
+            argument_type, " argument but has type ",
+            mlir::debugString(arg_type)));
       }
       if (i < nr_platform_args) {
-        if (arg_ranked_type.getElementTypeBitWidth() != 32) {
-          return absl::InvalidArgumentError(
-              absl::StrCat("Module argument at index ", i,
-                           " should be a 0-dimensional 32-bit integer-tensor"
-                           " platform index argument but has type ",
-                           mlir::debugString(arg_type)));
-        }
+        bool is_32_bit = arg_ranked_type.getElementType().isSignlessInteger(32);
+        auto const_attr = is_32_bit
+                              ? op_builder.getI32IntegerAttr(platform_index_)
+                              : op_builder.getI64IntegerAttr(platform_index_);
         call_args[i] = op_builder.create<mlir::stablehlo::ConstantOp>(
-            block_args[0].getLoc(),
-            op_builder.getI32IntegerAttr(platform_index_));
+            block_args[0].getLoc(), const_attr);
       } else {
         TF_ASSIGN_OR_RETURN(
             call_args[i],
