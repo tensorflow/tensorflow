@@ -409,10 +409,14 @@ DataServiceWorkerImpl::MakeDataset(const DatasetDef& dataset_def,
   GraphDef graph = dataset_def.graph();
   if (compression_disabled_at_runtime) {
     RemoveCompressionMapRewriter remove_compression_map_rewriter;
+    VLOG(2) << "Applying compression map rewrite. GraphDef: "
+            << graph.DebugString();
     TF_ASSIGN_OR_RETURN(
         graph, remove_compression_map_rewriter.ApplyRemoveCompressionMapRewrite(
                    graph));
   }
+  VLOG(2) << "Applying autoshard rewrite. TaskDef: " << task_def.DebugString()
+          << ", GraphDef: " << graph.DebugString();
   TF_ASSIGN_OR_RETURN(AutoShardRewriter auto_shard_rewriter,
                       AutoShardRewriter::Create(task_def));
   // `ApplyAutoShardRewrite` does nothing if auto-sharding is disabled.
