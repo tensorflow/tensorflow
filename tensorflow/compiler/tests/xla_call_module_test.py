@@ -164,55 +164,6 @@ module @jit_f.0 {
 
     self._assertOpOutputMatchesExpected(f, (x, y), (np.sin(x), np.cos(y)))
 
-  # TODO(b/283439649): remove dim_args_spec support
-  def test_dim_var_basic(self):
-    x = np.arange(6, dtype=np.float32).reshape((2, 3))
-
-    def f(x):  # x: f32[2, b]
-      # Module takes another argument which is the value of b
-      # (sin(x), x.shape[1])
-      module, _ = serialize("""
-module @jit_f.0 {
-  func.func public @main(%arg0: tensor<i32>, %arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>) {
-    %0 = stablehlo.sine %arg1 : tensor<2x?xf32>
-    return %0, %arg0 : tensor<2x?xf32>, tensor<i32>
-  }
-}
-""")
-      return gen_xla_ops.xla_call_module(
-          [x],
-          version=4,
-          module=module,
-          Tout=[x.dtype, np.int32],
-          Sout=[(None, 3), ()],
-          dim_args_spec=['0.1'])
-
-    self._assertOpOutputMatchesExpected(f, (x,), (np.sin(x), x.shape[1]))
-
-  # TODO(b/283439649): remove dim_args_spec support
-  def test_dim_var_basic_dim_arg_i64(self):
-    x = np.arange(6, dtype=np.float32).reshape((2, 3))
-
-    def f(x):  # x: f32[2, b]
-      # Module takes another argument which is the value of b
-      # (sin(x), x.shape[1])
-      module, _ = serialize("""
-module @jit_f.0 {
-  func.func public @main(%arg0: tensor<i64>, %arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i64>) {
-    %0 = stablehlo.sine %arg1 : tensor<2x?xf32>
-    return %0, %arg0 : tensor<2x?xf32>, tensor<i64>
-  }
-}
-""")
-      return gen_xla_ops.xla_call_module(
-          [x],
-          module=module, version=4,
-          Tout=[x.dtype, np.int64],
-          Sout=[(None, 3), ()],
-          dim_args_spec=['0.1'])
-
-    self._assertOpOutputMatchesExpected(f, (x,), (np.sin(x), x.shape[1]))
-
   # TODO(b/305813026): asan test failure for the i64 test variant.
   @parameterized.named_parameters(
       dict(testcase_name='_' + dim_var_type,
