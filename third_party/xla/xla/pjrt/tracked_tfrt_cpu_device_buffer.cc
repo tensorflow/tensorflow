@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/runtime/cpu_event.h"
-#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
+#include "tsl/concurrency/async_value_ref.h"
 
 namespace xla {
 namespace {
@@ -34,21 +34,21 @@ using ::xla::runtime::CpuEvent;
 // Returns an AsyncValueRef<CpuEvent> that will be ready after all the async
 // values in `events` are ready. If errors occurs, one of the errors will be
 // propagated through the returned async value.
-tfrt::AsyncValueRef<CpuEvent> AfterAll(
-    absl::Span<const tfrt::AsyncValueRef<CpuEvent>> events) {
-  if (events.empty()) return tfrt::MakeAvailableAsyncValueRef<CpuEvent>();
+tsl::AsyncValueRef<CpuEvent> AfterAll(
+    absl::Span<const tsl::AsyncValueRef<CpuEvent>> events) {
+  if (events.empty()) return tsl::MakeAvailableAsyncValueRef<CpuEvent>();
 
   struct State {
-    State(int count, tfrt::AsyncValueRef<CpuEvent> after_all)
+    State(int count, tsl::AsyncValueRef<CpuEvent> after_all)
         : count(count), after_all(std::move(after_all)) {}
     std::atomic<int> count;
-    tfrt::AsyncValueRef<CpuEvent> after_all;
+    tsl::AsyncValueRef<CpuEvent> after_all;
 
     absl::Mutex mutex;
     std::string error_message;
   };
 
-  auto after_all = tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
+  auto after_all = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
   auto* state = new State(events.size(), after_all);
 
   for (auto& event : events) {
@@ -77,7 +77,7 @@ tfrt::AsyncValueRef<CpuEvent> AfterAll(
 TrackedTfrtCpuDeviceBuffer::TrackedTfrtCpuDeviceBuffer(
     bool is_tuple,
     absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers,
-    absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> definition_events,
+    absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> definition_events,
     std::function<void()> on_delete_callback)
     : TrackedTfrtCpuDeviceBuffer(is_tuple, std::move(buffers),
                                  AfterAll(definition_events),
@@ -86,7 +86,7 @@ TrackedTfrtCpuDeviceBuffer::TrackedTfrtCpuDeviceBuffer(
 TrackedTfrtCpuDeviceBuffer::TrackedTfrtCpuDeviceBuffer(
     bool is_tuple,
     absl::InlinedVector<std::shared_ptr<MaybeOwningCpuMemory>, 4> buffers,
-    tfrt::AsyncValueRef<CpuEvent> definition_event,
+    tsl::AsyncValueRef<CpuEvent> definition_event,
     std::function<void()> on_delete_callback)
     : is_tuple_(is_tuple),
       buffers_(std::move(buffers)),
@@ -127,7 +127,7 @@ std::shared_ptr<MaybeOwningCpuMemory> TrackedTfrtCpuDeviceBuffer::Buffer(
 }
 
 void TrackedTfrtCpuDeviceBuffer::AddUsageEvents(
-    absl::Span<tfrt::AsyncValueRef<CpuEvent>> events) {
+    absl::Span<tsl::AsyncValueRef<CpuEvent>> events) {
   // Periodically remove available usage events to prevent memory blowup.
   if (usage_events_.size() >= 1024) {
     int i = 0;
@@ -147,7 +147,7 @@ void TrackedTfrtCpuDeviceBuffer::AddUsageEvents(
   }
 }
 
-absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4>
+absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>
 TrackedTfrtCpuDeviceBuffer::LockUseAndTransferUsageEvents() {
   return std::move(usage_events_);
 }
