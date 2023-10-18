@@ -134,7 +134,7 @@ def forward_compatibility_horizon(year, month, day):
   with older binaries, new features can be gated with:
 
   ```python
-  if compat.forward_compatible(year=2018, month=08, date=01):
+  if compat.forward_compatible(year=2018, month=08, day=01):
     generate_graph_with_new_features()
   else:
     generate_graph_so_older_binaries_can_consume_it()
