@@ -35,6 +35,7 @@ cc_library(
         "passes/prepare_quantize.cc",
         "passes/quantize.cc",
         "passes/quantize_weight.cc",
+        "passes/restore_function_name.cc",
         "passes/unfuse_mhlo_batch_norm.cc",
     ],
     hdrs = [

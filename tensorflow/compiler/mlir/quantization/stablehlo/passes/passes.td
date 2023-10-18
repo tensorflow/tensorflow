@@ -66,3 +66,8 @@ def QuantizePass : Pass<"stablehlo-quantize", "mlir::func::FuncOp"> {
     "mlir::quantfork::QuantizationForkDialect",
   ];
 }
+
+
+def RestoreFunctionNamePass : Pass<"stablehlo-restore-function-name", "ModuleOp"> {
+  let summary = "Restores function name from XlaCallModule op.";
+}

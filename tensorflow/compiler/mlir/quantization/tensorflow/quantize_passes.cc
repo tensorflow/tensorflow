@@ -250,8 +250,7 @@ void AddQuantizePtqPostCalibrationStablehloPasses(
   // the StableHLO functions to the top level module. This is needed for
   // StableHLO quantization.
   pm.addPass(mlir::TF::CreateXlaCallModuleDeserializationPass());
-  // TODO: b/299545788 - Include RestoreFunctionNameFromXlaCallModuleOpPass as
-  // in bug.
+  pm.addPass(mlir::quant::stablehlo::createRestoreFunctionNamePass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
   AddStaticRangeQuantizationPass(pm, quantization_options,
