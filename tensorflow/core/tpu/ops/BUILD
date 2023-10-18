@@ -219,8 +219,7 @@ cc_library(
         "tpu_copy_with_dynamic_shape_op.cc",
     ],
     deps = [
-        "//tensorflow/core/framework:op",
-        "//tensorflow/core/framework:shape_inference",
+        "//tensorflow/core:framework",
         "//tensorflow/core/lib/core:status",
     ],
     alwayslink = 1,

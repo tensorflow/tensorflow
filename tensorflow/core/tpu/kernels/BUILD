@@ -1387,8 +1387,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":sparse_core_xla_flags_defaults",
-        "//tensorflow/compiler/jit:flags_headers",
-        "//tensorflow/compiler/jit/kernels:xla_ops",
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/algorithm:container",

@@ -45,6 +45,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "TPUEmbeddingV2"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TableConfig"
     mtype: "<type \'type\'>"
   }
