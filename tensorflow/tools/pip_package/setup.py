@@ -121,7 +121,7 @@ REQUIRED_PACKAGES = [
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
     'tb-nightly ~= 2.15.0.a',
     'tf-estimator-nightly ~= 2.14.0.dev',
-    'keras-nightly ~= 2.15.0.dev',
+    'keras-nightly ~= 3.0.0.dev',
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
