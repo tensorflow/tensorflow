@@ -37,8 +37,11 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/util/debug_data_dumper.h"
+#include "tsl/framework/device_type.h"
 #include "tsl/platform/error_logging.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 
 namespace tensorflow {
@@ -116,8 +119,30 @@ void CreateTPUBridgePipeline(OpPassManager &pm, llvm::StringRef module_name) {
       mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
   tensorflow::tf2xla::internal::AddBridgeClusteringPipelinePasses(pm,
                                                                   module_name);
-  tensorflow::tfrt_compiler::AddTPULowerClusterToRuntimeOpsPassPipeline(
-      pm, module_name);
+}
+
+tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
+                                       bool fallback_enabled,
+                                       absl::Status status) {
+  if (status.ok()) {
+    return status;
+  }
+
+  VLOG(2) << error_prefix << " " << status;
+  tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+      /*device_type=*/"tpu", /*bridge_version=*/"v2",
+      /*fallback_enabled=*/fallback_enabled,
+      /*result=*/"failure");
+
+  tsl::OkOrSetErrorCounterPayload(
+      tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_1,
+      status);
+
+  tsl::error_logging::Log(kBridgeComponent, "TFXLA_PHASE_ONE_MLIR_TPU_BRIDGE",
+                          status.ToString())
+      .IgnoreError();
+
+  return status;
 }
 
 tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
@@ -126,36 +151,35 @@ tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
       << "TPU Bridge called stack trace is "
       << "(NOTE: this is not an error; rather the stack trace for debugging) : "
       << tensorflow::CurrentStackTrace();
-  Status bridge_status = RunTFXLABridge(
+  Status clustering_status = RunTFXLABridge(
       module,
       [module_name](OpPassManager &pm) {
         CreateTPUBridgePipeline(pm, module_name);
       },
       module_name, /*dump_prefix=*/"tf_xla_bridge_v2_tpu");
-  tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      "tpu", "v2", fallback_enabled,
-      bridge_status.ok() ? "success" : "failure");
-  tsl::OkOrSetErrorCounterPayload(
-      tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_1,
-      bridge_status);
-  if (!bridge_status.ok()) {
-    tsl::error_logging::Log(kBridgeComponent, "TFXLA_PHASE_ONE_MLIR_TPU_BRIDGE",
-                            bridge_status.ToString())
-        .IgnoreError();
-    return bridge_status;
-  }
+
+  TF_RETURN_IF_ERROR(RecordIfErrorStatus(/*error_prefix=*/"clustering_v2",
+                                         fallback_enabled, clustering_status));
+
+  Status runtime_lowering_status =
+      tensorflow::tfrt_compiler::RunLowerClusterToRuntimeOpsPassPipeline(
+          module, tsl::DeviceType(DEVICE_TPU_XLA_JIT), module_name);
+  TF_RETURN_IF_ERROR(RecordIfErrorStatus(/*error_prefix=*/"runtime_lowering_v2",
+                                         fallback_enabled,
+                                         runtime_lowering_status));
 
   Status export_status =
       tensorflow::tf2xla::v2::ExportFromTensorflowDialectToExecutor(
           module, module_name);
-  if (!export_status.ok()) {
-    tsl::error_logging::Log(kBridgeComponent,
-                            "TFXLA_PHASE_ONE_MLIR_TPU_BRIDGE_EXPORT",
-                            export_status.ToString())
-        .IgnoreError();
-  }
+  TF_RETURN_IF_ERROR(RecordIfErrorStatus(/*error_prefix=*/"export_to_executor",
+                                         fallback_enabled, export_status));
 
-  return export_status;
+  tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+      /*device_type=*/"tpu", /*bridge_version=*/"v2",
+      /*fallback_enabled=*/fallback_enabled,
+      /*result=*/"success");
+
+  return absl::OkStatus();
 }
 
 tensorflow::Status RunNonTPUBridge(ModuleOp module,

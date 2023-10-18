@@ -107,7 +107,6 @@ cc_library(
     deps = [
         ":device_type_proto_cc",
         ":tf_dialect_to_executor",
-        "//tensorflow/compiler/mlir/tensorflow:bridge_logger",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
@@ -121,6 +120,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:stacktrace",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/tpu:tpu_defs",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
@@ -129,6 +129,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:error_logging",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
     ],
 )
@@ -145,6 +146,7 @@ tf_cc_test(
         "//tensorflow/compiler/mlir:register_common_dialects",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_lib",
+        "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/platform:resource_loader",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",

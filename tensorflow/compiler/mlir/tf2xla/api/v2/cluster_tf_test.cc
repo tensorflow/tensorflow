@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/resource_loader.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/status.h"
@@ -38,17 +39,21 @@ namespace tf2xla {
 namespace v2 {
 namespace {
 
-using mlir::DialectRegistry;
-using mlir::MLIRContext;
-using mlir::ModuleOp;
-using mlir::OwningOpRef;
-using mlir::WalkResult;
-using mlir::func::FuncOp;
+using ::mlir::DialectRegistry;
+using ::mlir::MLIRContext;
+using ::mlir::ModuleOp;
+using ::mlir::OwningOpRef;
+using ::mlir::WalkResult;
+using ::mlir::func::FuncOp;
+using ::tensorflow::monitoring::testing::CellReader;
 
 std::string TestDataPath() {
   return tensorflow::GetDataDependencyFilepath(
       "tensorflow/compiler/mlir/tf2xla/api/v2/testdata/");
 }
+
+static constexpr char kCompilationStreamz[] =
+    "/tensorflow/core/tf_mlir_bridge_first_phase_count";
 
 class FunctionClusterTensorflowDialectTest : public ::testing::Test {
  public:
@@ -76,6 +81,8 @@ class FunctionClusterTensorflowDialectTest : public ::testing::Test {
 };
 
 TEST_F(FunctionClusterTensorflowDialectTest, ClustersTf) {
+  CellReader<int64_t> compilation_status(kCompilationStreamz);
+
   TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
 
   TF_EXPECT_OK(
@@ -92,9 +99,13 @@ TEST_F(FunctionClusterTensorflowDialectTest, ClustersTf) {
   });
 
   EXPECT_TRUE(has_graph_op);
+  EXPECT_EQ(
+      compilation_status.Delta("tpu", "v2", "fallback_disabled", "success"), 1);
 }
 
 TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFCPU) {
+  CellReader<int64_t> compilation_status(kCompilationStreamz);
+
   TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
 
   TF_EXPECT_OK(
@@ -111,9 +122,15 @@ TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFCPU) {
   });
 
   EXPECT_TRUE(has_graph_op);
+
+  EXPECT_EQ(compilation_status.Delta("cpu/gpu", "tfxla", "fallback_disabled",
+                                     "success"),
+            1);
 }
 
 TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFGPU) {
+  CellReader<int64_t> compilation_status(kCompilationStreamz);
+
   TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
 
   TF_EXPECT_OK(
@@ -130,6 +147,10 @@ TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFGPU) {
   });
 
   EXPECT_TRUE(has_graph_op);
+
+  EXPECT_EQ(compilation_status.Delta("cpu/gpu", "tfxla", "fallback_disabled",
+                                     "success"),
+            1);
 }
 
 }  // namespace
