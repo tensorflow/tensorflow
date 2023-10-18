@@ -2338,9 +2338,6 @@ class HloInstruction {
     kFalseComputationIndex = 1,
   };
 
-  // Change instruction's name to have a given suffix.
-  void AddSuffixToInstructionName(const std::string& suffix);
-
  private:
   friend class HloComputation;
   // Wrapper class of string format and protobuf format of BackendConfig.

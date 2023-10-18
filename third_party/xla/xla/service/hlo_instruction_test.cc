@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_instruction.h"
 
-#include <cstddef>
 #include <optional>
 #include <set>
 #include <string>
@@ -25,7 +24,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
-#include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/literal.h"
@@ -751,13 +749,8 @@ TEST_F(HloInstructionTest, PreserveMetadataInFusionAndClone) {
   EXPECT_TRUE(protobuf_util::ProtobufEquals(
       metadata, fusion->fused_expression_root()->operand(0)->metadata()));
 
-  std::string new_name = "foobarfoo";
-  HloCloneContext context(module.get(), new_name);
-  auto cloned = fusion->CloneWithNewOperands(fusion->shape(), {}, &context);
+  auto cloned = fusion->CloneWithNewOperands(fusion->shape(), {});
   EXPECT_TRUE(protobuf_util::ProtobufEquals(metadata, fusion->metadata()));
-
-  size_t index = cloned->name().rfind(new_name);
-  EXPECT_TRUE(index != std::string::npos);
 }
 
 TEST_F(HloInstructionTest, BinaryCallOp) {
