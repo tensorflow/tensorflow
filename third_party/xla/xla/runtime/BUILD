@@ -43,10 +43,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/base:dynamic_annotations",
+        "@local_tsl//tsl/concurrency:async_value",
+        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:platform_port",
-        "@tf_runtime//:async_value",
-        "@tf_runtime//:ref_count",
     ],
 )
 
@@ -55,9 +55,9 @@ xla_cc_test(
     srcs = ["async_runtime_test.cc"],
     deps = [
         ":async_runtime",
+        "@local_tsl//tsl/concurrency:async_value",
         "@local_tsl//tsl/platform:test",
         "@local_tsl//tsl/platform:test_main",
-        "@tf_runtime//:async_value",
     ],
 )
 
@@ -141,7 +141,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@eigen_archive//:eigen3",
         "@llvm-project//llvm:Support",
-        "@tf_runtime//:async_value",
+        "@local_tsl//tsl/concurrency:async_value",
     ],
 )
 
@@ -327,7 +327,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
-        "@tf_runtime//:async_value",
+        "@local_tsl//tsl/concurrency:async_value",
     ],
 )
 
