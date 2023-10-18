@@ -40,6 +40,8 @@ jobs:
         include:
           - pyver: '3.11'
             experimental: true
+          - pyver: '3.12'
+            experimental: true
     steps:
       - name: Stop old running containers (if any)
         shell: bash

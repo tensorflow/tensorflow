@@ -122,7 +122,7 @@ def initialize_rbe_configs():
         compiler_prefix = "/usr/bin",
         rocm_version = "5.3",  # Any version will do.
         os = "ubuntu20.04-manylinux2014-multipython",
-        python_versions = ["3.7", "3.8", "3.9", "3.10", "3.11"],
+        python_versions = ["3.7", "3.8", "3.9", "3.10", "3.11", "3.12"],
         python_install_path = "/usr/local",
     )
 

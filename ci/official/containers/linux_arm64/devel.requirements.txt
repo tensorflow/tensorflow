@@ -11,7 +11,7 @@ flatbuffers ~= 23.1.21
 google_pasta ~= 0.2
 h5py ~= 3.8.0
 numpy ~= 1.22; python_version < '3.11'
-numpy ~= 1.23.2; python_version >= '3.11' # Earliest version for Python 3.11
+numpy ~= 1.23.2; python_version >= '3.11' # Earliest version for Python 3.11+
 opt_einsum ~= 3.3.0
 packaging ~= 21.3
 protobuf >=3.20.3,<5.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5
@@ -28,7 +28,7 @@ gast == 0.4.0
 grpcio ~= 1.49.1
 portpicker ~= 1.5.2
 scipy ~= 1.7.2; python_version < '3.11'
-scipy ~= 1.9.2; python_version >= '3.11' # Earliest version for Python 3.11
+scipy ~= 1.9.2; python_version >= '3.11' # Earliest version for Python 3.11+
 # Required for TFLite import from JAX tests
 jax ~= 0.3.24
 jaxlib ~= 0.3.24; platform.machine != 'aarch64'
@@ -45,5 +45,5 @@ junitparser ~= 2.2.0
 lxml ~= 4.9.1
 pylint ~= 2.13.9
 
-# For using Python 3.11 with Bazel 6
+# For using Python 3.11+ with Bazel 6
 lit ~= 16.0.5.post0
