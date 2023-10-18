@@ -442,6 +442,9 @@ LogicalResult matchAndRewriteDotLikeHybridOp(
           .template cast<quant::UniformQuantizedType>();
   auto res_float32_tensor_type =
       op.getResult().getType().template cast<TensorType>();
+  auto rhs_float32_tensor_type =
+      op.getRhs().getType().template cast<TensorType>().clone(
+          rewriter.getF32Type());
 
   // Get scales and zero points for rhs.
   Value rhs_zero_point = rewriter.create<mhlo::ConstantOp>(
@@ -453,24 +456,18 @@ LogicalResult matchAndRewriteDotLikeHybridOp(
 
   // Dequantize rhs_float32_tensor.
   Value rhs_float32_tensor = rewriter.create<mhlo::ConvertOp>(
-      op->getLoc(), res_float32_tensor_type, rhs);
+      op->getLoc(), rhs_float32_tensor_type, rhs);
   rhs_float32_tensor = rewriter.create<chlo::BroadcastSubOp>(
-      op->getLoc(), res_float32_tensor_type, rhs_float32_tensor, rhs_zero_point,
+      op->getLoc(), rhs_float32_tensor_type, rhs_float32_tensor, rhs_zero_point,
       nullptr);
   rhs_float32_tensor = rewriter.create<chlo::BroadcastMulOp>(
-      op->getLoc(), res_float32_tensor_type, rhs_float32_tensor,
+      op->getLoc(), rhs_float32_tensor_type, rhs_float32_tensor,
       rhs_scale_constant, nullptr);
 
   // Execute conversion target op.
   SmallVector<Value, 2> operands{lhs_float32_tensor, rhs_float32_tensor};
-  Value res_float32 = rewriter.create<OpType>(
-      op->getLoc(), res_float32_tensor_type, operands, op->getAttrs());
-
-  Value half = rewriter.create<mhlo::ConstantOp>(
-      op->getLoc(), rewriter.getF32FloatAttr(0.5f));
-  res_float32 = rewriter.create<chlo::BroadcastAddOp>(
-      op->getLoc(), res_float32_tensor_type, res_float32, half, nullptr);
-  rewriter.replaceOpWithNewOp<mhlo::FloorOp>(op, res_float32);
+  rewriter.replaceOpWithNewOp<OpType>(op, res_float32_tensor_type, operands,
+                                      op->getAttrs());
   return success();
 }
 

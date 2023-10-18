@@ -1091,8 +1091,8 @@ func.func @conv2d_static(
 
 // -----
 
-// CHECK-LABEL: func @uniform_quantized_conv2d_static_padding
-func.func @uniform_quantized_conv2d_static_padding(
+// CHECK-LABEL: func @conv2d_static_padding
+func.func @conv2d_static_padding(
     %arg0: tensor<128x28x28x1x!quant.uniform<i8:f32, 2.000000e+00:4>>,
     %arg1: tensor<3x3x1x128x!quant.uniform<i8:f32, 3.000000e+00:0>>
   ) -> tensor<128x29x33x128x!quant.uniform<i32:f32, 1.000000e+00:5>> {
@@ -1297,9 +1297,7 @@ func.func @dot_hybrid(
   // CHECK: %[[VAL1:.*]] = mhlo.convert %[[VAL0:.*]] : (tensor<?x?xi8>) -> tensor<?x?xf32>
   // CHECK: %[[VAL3:.*]] = chlo.broadcast_subtract %[[VAL1]], %[[VAL2:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
   // CHECK: %[[VAL5:.*]] = chlo.broadcast_multiply %[[VAL3]], %[[VAL4:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
-  // CHECK: %[[VAL7:.*]] = "mhlo.dot"(%[[VAL6:.*]], %[[VAL5]]) : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
-  // CHECK: %[[VAL9:.*]] = chlo.broadcast_add %[[VAL7]], %[[VAL8:.*]] : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
-  // CHECK: %[[VAL10:.*]] = mhlo.floor %[[VAL9]] : tensor<?x?xf32>
+  // CHECK: %[[VAL7:.*]] = "mhlo.dot"(%arg0, %[[VAL5]]) : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
   %1 = "mhlo.dot" (%arg0, %arg1): (
       tensor<?x?xf32>, tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<?x?xf32>
   return %1: tensor<?x?xf32>
@@ -1329,6 +1327,39 @@ func.func @dot_hybrid_lhs_type_not_float(
       tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>, tensor<?x?xf32>
     ) -> tensor<?x?x!quant.uniform<i8:f32, 1.000000e+00:3>>
   return
+}
+
+// -----
+
+// CHECK-LABEL: func @conv2d_static_hybrid
+func.func @conv2d_static_hybrid(
+    %arg0: tensor<128x28x28x1xf32>,
+    %arg1: tensor<3x3x1x128x!quant.uniform<i8:f32, 3.000000e+00:1>>
+  ) -> tensor<128x26x26x128xf32> {
+  // CHECK-DAG: %[[ZP:.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[SCALE:.*]] = mhlo.constant dense<3.000000e+00> : tensor<f32>
+  // CHECK: %[[RHS:.*]] = mhlo.convert %arg1 : (tensor<3x3x1x128xi8>) -> tensor<3x3x1x128xf32>
+  // CHECK: %[[SUB:.*]] = chlo.broadcast_subtract %[[RHS]], %[[ZP]]
+  // CHECK: %[[MUL:.*]] = chlo.broadcast_multiply %[[SUB]], %[[SCALE]]
+  // CHECK: mhlo.convolution(%arg0, %[[MUL]])
+  // CHECK-SAME: dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]
+  // CHECK-SAME: stride = [1, 1], pad = {{\[}}[0, 0], [0, 0]]
+  // CHECK-SAME: lhs_dilate = [1, 1], rhs_dilate = [1, 1]}
+  // CHECK-SAME: {batch_group_count = 1 : i64, feature_group_count = 1 : i64}
+  // CHECK-SAME: : (tensor<128x28x28x1xf32>, tensor<3x3x1x128xf32>) -> tensor<128x26x26x128xf32>
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {
+      stride = [1, 1], pad = [[0, 0], [0, 0]],
+      lhs_dilate = [1, 1],
+      rhs_dilate = [1, 1]
+    }
+    {
+      batch_group_count = 1 : i64,
+      feature_group_count = 1 : i64
+    } : (tensor<128x28x28x1xf32>, tensor<3x3x1x128x!quant.uniform<i8:f32, 3.000000e+00:1>>)
+    -> tensor<128x26x26x128xf32>
+  return %0 : tensor<128x26x26x128xf32>
 }
 
 // -----
@@ -1462,7 +1493,7 @@ func.func @min_mix_uq_type1(
 
 // -----
 
-func.func @uniform_quantize_min_dequantize_mix_uq_type2(
+func.func @min_mix_uq_type2(
     %arg0: tensor<1x2x!quant.uniform<i8:f32, 2.000000e+00:3>>
   ) -> tensor<1x2x!quant.uniform<i8:f32, 1.000000e+00:2>> {
   // expected-error@+1 {{failed to legalize operation 'mhlo.minimum' that was explicitly marked illegal}}
