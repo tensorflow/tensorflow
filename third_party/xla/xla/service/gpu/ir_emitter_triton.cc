@@ -630,7 +630,8 @@ StatusOr<Value> EmitScope(
       TF_RET_CHECK(values.contains(hlo)) << hlo->ToString();
       continue;
     } else if (hlo->opcode() == HloOpcode::kConstant) {
-      result = EmitConstant(b, *hlo);
+      // Splat makes it a tensor to avoid type mismatches.
+      result = Splat(b, EmitConstant(b, *hlo), {});
     } else if (hlo->opcode() == HloOpcode::kBroadcast) {
       result = EmitBroadcast(b, analysis, scope, tiled_dimensions, *hlo,
                              values[hlo->operand(0)]);

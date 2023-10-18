@@ -938,6 +938,29 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_F(TritonGemmTestAny, DoAddConstantToScalarAndBroadcastThat) {
+  const std::string hlo_text = R"(
+HloModule t
+
+ENTRY e {
+  p0 = f32[] parameter(0)
+  p1 = f32[5,5] parameter(1)
+  %constant = f32[] constant(8)
+  add = add(p0, constant)
+  broadcast = f32[5,5] broadcast(add), dimensions={}
+  ROOT _ = f32[5,5] dot(broadcast, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  MatchOptimizedHlo(hlo_text, R"(
+; CHECK: fusion
+; CHECK-SAME: kind=kCustom
+; CHECK-SAME: block_m
+)");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
 TEST_F(TritonGemmTest, SameInput) {
   const std::string hlo_text = R"(
 HloModule m
