@@ -89,7 +89,6 @@ cc_library(
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/profiler/lib:connected_traceme",
         "@local_tsl//tsl/util:env_var",
-        "@tf_runtime//:hostcontext",
     ] + if_cuda_or_rocm([
         "//xla/service/gpu:gpu_compiler",
     ]) + if_cuda([
@@ -133,7 +132,6 @@ xla_cc_test(
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
-        "@tf_runtime//:hostcontext",
     ],
 )
 
