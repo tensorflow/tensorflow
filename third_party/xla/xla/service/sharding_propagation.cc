@@ -2290,12 +2290,12 @@ bool ShardingPropagation::InferShardingFromOperands(
         const HloInstruction* operand = instruction->operand(i);
         if (operand->has_sharding()) {
           if (operand->shape().IsTuple()) {
-            for (int64_t i = 0, e = ShapeUtil::GetLeafCount(operand->shape());
-                 i < e; ++i) {
-              if (is_more_specific(operand->sharding().tuple_elements()[i],
-                                   sub_shardings[sub_sharding_index + i])) {
-                sub_shardings[sub_sharding_index + i] =
-                    operand->sharding().tuple_elements()[i];
+            for (int64_t j = 0, e = ShapeUtil::GetLeafCount(operand->shape());
+                 j < e; ++j) {
+              if (is_more_specific(operand->sharding().tuple_elements()[j],
+                                   sub_shardings[sub_sharding_index + j])) {
+                sub_shardings[sub_sharding_index + j] =
+                    operand->sharding().tuple_elements()[j];
               }
             }
           } else {
