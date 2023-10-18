@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -58,6 +59,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/saved_model/utils/serialize_bef_utils.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/core/tpu/virtual_device.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/file_system_helper.h"
@@ -80,6 +82,38 @@ void UpdateCompileOptions(AotOptions& options) {
   options.graph_execution_options->compile_options
       .fuse_get_resource_ops_in_hoisting =
       !options.graph_execution_options->enable_mlrt;
+}
+
+Status CompileTfGraphToHlo(
+    const FunctionLibraryDefinition* flib_def, const NameAttrList& function,
+    int graph_def_version, const std::vector<XlaCompiler::Argument>& args,
+    bool has_ref_vars, bool may_alias_resource_update,
+    XlaCompiler::Options* options,
+    XlaCompiler::CompilationResult** compilation_result) {
+  // Construct a GPU device.
+  DeviceAttributes device_proto;
+  device_proto.set_name("/job:localhost/replica:0/task:0/device:GPU:0");
+  device_proto.set_device_type(DEVICE_GPU);
+  auto device =
+      std::make_unique<VirtualDevice>(tensorflow::Env::Default(), device_proto);
+
+  XlaPlatformInfo platform_info(DEVICE_GPU, se::cuda::kCudaPlatformId, nullptr,
+                                nullptr, nullptr);
+  *options = GenerateCompilerOptionsForPjRt(
+      flib_def, graph_def_version, device.get(), platform_info, nullptr);
+  // Set device type correctly so that compilation can find kernels.
+  options->device_type = DeviceType("XLA_GPU_JIT");
+
+  XlaCompiler::CompileOptions compile_options =
+      GenerateCompileOptions(has_ref_vars, may_alias_resource_update);
+  TfGraphToHloCompiler compiler(*options);
+  auto compilation_status =
+      compiler.Compile(compile_options, function, args, *compilation_result);
+  if ((*compilation_result)->computation == nullptr) {
+    LOG(ERROR) << compilation_status;
+    return compilation_status;
+  }
+  return absl::OkStatus();
 }
 
 AotOptions::AotOptions() : graph_execution_options(nullptr) {}
@@ -245,33 +279,10 @@ StatusOr<std::unique_ptr<xla::PjRtExecutable>> AotCompileToGpuPjRtExecutable(
     bool has_ref_vars, bool may_alias_resource_update,
     const stream_executor::GpuTargetConfigProto& gpu_target_config,
     XlaCompiler::CompilationResult** compilation_result) {
-  // Construct a virtual GPU device.
-  DeviceAttributes device_proto;
-  device_proto.set_name("/job:localhost/replica:0/task:0/device:GPU:0");
-  device_proto.set_device_type(DEVICE_GPU);
-  auto device =
-      std::make_unique<VirtualDevice>(tensorflow::Env::Default(), device_proto);
-  const XlaPlatformInfo platform_info(
-      DeviceType(device->device_type()), se::cuda::kCudaPlatformId,
-      /*xla_device_metadata=*/nullptr, /*pjrt_device_metadata=*/nullptr,
-      /*device_allocator=*/nullptr);
-
-  XlaCompiler::Options options = GenerateCompilerOptionsForPjRt(
-      flib_def, graph_def_version, device.get(), platform_info,
-      /*pjrt_device_compiler=*/nullptr);
-  // Set device type correctly so that compilation can find kernels.
-  options.device_type = DeviceType("XLA_GPU_JIT");
-
-  XlaCompiler::CompileOptions compile_options =
-      GenerateCompileOptions(has_ref_vars, may_alias_resource_update);
-
-  TfGraphToHloCompiler compiler(options);
-  auto compilation_status =
-      compiler.Compile(compile_options, function, args, *compilation_result);
-  if ((*compilation_result)->computation == nullptr) {
-    LOG(ERROR) << compilation_status;
-    return compilation_status;
-  }
+  XlaCompiler::Options options;
+  TF_RETURN_IF_ERROR(CompileTfGraphToHlo(
+      flib_def, function, graph_def_version, args, has_ref_vars,
+      may_alias_resource_update, &options, compilation_result));
 
   xla::gpu::GpuTargetConfig gpu_config(gpu_target_config);
   xla::StreamExecutorGpuCompiler pjrt_gpu_compiler(gpu_config);
@@ -282,5 +293,29 @@ StatusOr<std::unique_ptr<xla::PjRtExecutable>> AotCompileToGpuPjRtExecutable(
       GetPjRtCompileOptions(options, **compilation_result);
   return pjrt_gpu_compiler.Compile(
       pjrt_options, *((*compilation_result)->computation), topology, nullptr);
+}
+
+StatusOr<std::string> AotCompileToGpuPjRtLoadedExecutableWithDevice(
+    const FunctionLibraryDefinition* flib_def, const NameAttrList& function,
+    int graph_def_version, const std::vector<XlaCompiler::Argument>& args,
+    bool has_ref_vars, bool may_alias_resource_update,
+    XlaCompiler::CompilationResult** compilation_result) {
+  TF_ASSIGN_OR_RETURN(auto client, xla::GetStreamExecutorGpuClient(
+                                       true, /*allocator_config=*/{},
+                                       /*node_id=*/0));
+  auto se_client = absl::WrapUnique(
+      tensorflow::down_cast<xla::StreamExecutorGpuClient*>(client.release()));
+
+  XlaCompiler::Options options;
+  TF_RETURN_IF_ERROR(CompileTfGraphToHlo(
+      flib_def, function, graph_def_version, args, has_ref_vars,
+      may_alias_resource_update, &options, compilation_result));
+
+  const xla::CompileOptions pjrt_options =
+      GetPjRtCompileOptions(options, **compilation_result);
+  TF_ASSIGN_OR_RETURN(
+      auto executable,
+      se_client->Compile(*((*compilation_result)->computation), pjrt_options));
+  return se_client->SerializeExecutable(*executable);
 }
 }  // namespace tensorflow::tfrt_stub

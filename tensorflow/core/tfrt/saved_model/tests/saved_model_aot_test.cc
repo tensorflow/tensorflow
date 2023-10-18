@@ -91,14 +91,20 @@ std::vector<XlaCompiler::Argument> SampleArgsForAddXY() {
   return args;
 }
 
-TEST(SavedModelAotTest, AotCompileTfFunctionToExecutable) {
-  DeviceSetup device_setup;
-  TF_ASSERT_OK_AND_ASSIGN(auto fdef, SampleFunctionAddXY("foo"));
+StatusOr<NameAttrList> GetFunctionAndSetupDevice(DeviceSetup& device_setup) {
+  TF_ASSIGN_OR_RETURN(auto fdef, SampleFunctionAddXY("foo"));
   device_setup.AddDevicesAndSetUp({DEVICE_GPU}, fdef);
 
   NameAttrList func_attr = NameAttrList();
   func_attr.set_name("foo");
   *func_attr.mutable_attr() = fdef.attr();
+  return func_attr;
+}
+
+TEST(SavedModelAotTest, AotCompileTfFunctionToExecutable) {
+  DeviceSetup device_setup;
+  TF_ASSERT_OK_AND_ASSIGN(NameAttrList func_attr,
+                          GetFunctionAndSetupDevice(device_setup));
   const FunctionLibraryDefinition* lib_def =
       device_setup.flr()->GetFunctionLibraryDefinition();
 
@@ -116,6 +122,25 @@ TEST(SavedModelAotTest, AotCompileTfFunctionToExecutable) {
                                     &compilation_result_ptr));
   EXPECT_TRUE(compilation_result.computation != nullptr);
   EXPECT_TRUE(pjrt_executable != nullptr);
+}
+
+TEST(SavedModelAotTest, AotCompileTfFunctionToLoadedExecutableWithDevice) {
+  DeviceSetup device_setup;
+  TF_ASSERT_OK_AND_ASSIGN(NameAttrList func_attr,
+                          GetFunctionAndSetupDevice(device_setup));
+  const FunctionLibraryDefinition* lib_def =
+      device_setup.flr()->GetFunctionLibraryDefinition();
+
+  XlaCompiler::CompilationResult compilation_result;
+  XlaCompiler::CompilationResult* compilation_result_ptr = &compilation_result;
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::string serialized_pjrt_executable,
+      AotCompileToGpuPjRtLoadedExecutableWithDevice(
+          lib_def, func_attr, 0, SampleArgsForAddXY(),
+          /*has_ref_vars=*/true,
+          /*may_alias_resource_update=*/true, &compilation_result_ptr));
+  EXPECT_TRUE(compilation_result.computation != nullptr);
+  EXPECT_FALSE(serialized_pjrt_executable.empty());
 }
 
 }  // namespace

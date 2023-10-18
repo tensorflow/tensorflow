@@ -63,6 +63,7 @@ cc_library(
         "//tensorflow/core/tfrt/utils",
         "//tensorflow/core/tpu:virtual_device",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@local_tsl//tsl/platform:env",

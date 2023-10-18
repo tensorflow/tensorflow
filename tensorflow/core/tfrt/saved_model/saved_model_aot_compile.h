@@ -71,6 +71,14 @@ StatusOr<std::unique_ptr<xla::PjRtExecutable>> AotCompileToGpuPjRtExecutable(
     const stream_executor::GpuTargetConfigProto& gpu_target_config,
     XlaCompiler::CompilationResult** compilation_result);
 
+// Returns serialized PJRT loaded GPU executable. This function requires GPU
+// device to be present during compilation.
+StatusOr<std::string> AotCompileToGpuPjRtLoadedExecutableWithDevice(
+    const FunctionLibraryDefinition* flib_def, const NameAttrList& function,
+    int graph_def_version, const std::vector<XlaCompiler::Argument>& args,
+    bool has_ref_vars, bool may_alias_resource_update,
+    XlaCompiler::CompilationResult** compilation_result);
+
 }  // namespace tensorflow::tfrt_stub
 
 #endif  // TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_AOT_COMPILE_H_
