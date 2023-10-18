@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import unittest
-
 from absl.testing import parameterized
 import numpy as np
 import tensorflow as tf
@@ -340,7 +338,6 @@ class ListOpsTest(parameterized.TestCase):
     self.assertEqual(tf_out.shape, tfl_out.shape)
     self.assertTrue((tf_out == tfl_out).numpy().all())
 
-  @unittest.skip("Not implemented yet.")
   @parameterized.named_parameters(
       ("1D", [4]),
       ("2D", [2, 2]),
@@ -366,7 +363,6 @@ class ListOpsTest(parameterized.TestCase):
     self.assertEqual(tf_out.shape, tfl_out.shape)
     self.assertTrue((tf_out == tfl_out).numpy().all())
 
-  @unittest.skip("Not implemented yet.")
   @parameterized.named_parameters(
       ("StaticSameShape", [2, 2], [2, 2]),
       ("FullyDefinedAndUnranked", [2, 2], None),
@@ -394,7 +390,6 @@ class ListOpsTest(parameterized.TestCase):
     self.assertEqual(tf_out.shape, tfl_out.shape)
     self.assertTrue((tf_out == tfl_out).numpy().all())
 
-  @unittest.skip("Not implemented yet.")
   @parameterized.named_parameters(
       ("AllStaticShapesEqual", [2, 2], [2, 2], [2, 2]),
       ("ListShapesUnranked", None, None, [3, 3]),
@@ -432,7 +427,6 @@ class ListOpsTest(parameterized.TestCase):
     self.assertEqual(tf_out.shape, tfl_out.shape)
     self.assertTrue((tf_out == tfl_out).numpy().all())
 
-  @unittest.skip("Not implemented yet.")
   @parameterized.named_parameters(
       ("AllStaticShapesEqual", [2, 2], [2, 2], [2, 2], [2, 2]),
       ("UrankedListShapes", None, None, [2, 2], [2, 2]),

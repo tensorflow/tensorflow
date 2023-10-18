@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -46,24 +48,30 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace {
+using ::mlir::MLIRContext;
+using ::mlir::Operation;
+using ::mlir::TensorType;
+using ::mlir::Type;
+using ::mlir::Value;
+using ::mlir::TF::VariantType;
+using ::mlir::TFL::ConstBytesAttr;
 
-mlir::TFL::ConstBytesAttr SerializeOptionsToBytes(
-    mlir::MLIRContext* context, const std::vector<uint8_t>& options) {
+ConstBytesAttr SerializeOptionsToBytes(MLIRContext* context,
+                                       const std::vector<uint8_t>& options) {
   std::string content;
   content.assign(reinterpret_cast<const char*>(options.data()), options.size());
-  return mlir::TFL::ConstBytesAttr::get(context, content);
+  return ConstBytesAttr::get(context, content);
 }
 
-mlir::TFL::ConstBytesAttr CreateListReserveOptions(
-    mlir::MLIRContext* context, tflite::TensorType element_type) {
+ConstBytesAttr CreateListReserveOptions(MLIRContext* context,
+                                        tflite::TensorType element_type) {
   std::vector<uint8_t> options;
   options.push_back(element_type);
   return SerializeOptionsToBytes(context, options);
 }
 
-std::optional<mlir::Type> GetSingularVariantBaseType(mlir::Value val) {
-  auto val_t =
-      mlir::getElementTypeOrSelf(val).dyn_cast_or_null<mlir::TF::VariantType>();
+std::optional<Type> GetSingularVariantBaseType(Value val) {
+  auto val_t = mlir::getElementTypeOrSelf(val).dyn_cast_or_null<VariantType>();
   if (!val_t) {
     return std::nullopt;
   }
@@ -74,15 +82,13 @@ std::optional<mlir::Type> GetSingularVariantBaseType(mlir::Value val) {
   return subtypes[0].getElementType();
 }
 
-}  // namespace
-
-// Create an `mlir::TFL::ConstBytesAttr` which encodes the options
+// Create an `ConstBytesAttr` which encodes the options
 // for the `tf.custom` tensor list op to be created. If the given
 // op is not a `tf.TensorList*` op, return empty, although this case
 // should never be trigged in practice since patterns are only applied
 // on `tf.TensorList*` ops.
-std::optional<mlir::TFL::ConstBytesAttr> CustomOptions(
-    mlir::MLIRContext* context, mlir::Operation* op) {
+std::optional<ConstBytesAttr> CustomOptions(MLIRContext* context,
+                                            mlir::Operation* op) {
   if (auto reserve =
           llvm::dyn_cast_or_null<mlir::TF::TensorListReserveOp>(op)) {
     tflite::TensorType tflite_type =
@@ -98,6 +104,27 @@ std::optional<mlir::TFL::ConstBytesAttr> CustomOptions(
   }
   return {};
 }
+
+bool HasVariantInputOrOutput(Operation* op) {
+  const bool has_variant_input = llvm::any_of(op->getOperands(), [](Value val) {
+    return val.getType().cast<TensorType>().getElementType().isa<VariantType>();
+  });
+  const bool has_variant_output =
+      llvm::any_of(op->getResultTypes(), [](Type t) {
+        return t.cast<TensorType>().getElementType().isa<VariantType>();
+      });
+  return has_variant_input || has_variant_output;
+}
+
+// There are 2 standard tf ops which are not TensorList ops that may take as
+// input a tensorlist. These are tf.AddN and tf.ZeroesLike. Since the runtime
+// implementation of a tensorlist are not compatible between tf and tflite
+// we cannot use tflite tensorlist kernels until these cases are handled.
+bool IsNonTensorListVariantOp(Operation* op) {
+  return llvm::isa<mlir::TF::ZerosLikeOp>(op) && HasVariantInputOrOutput(op);
+}
+
+}  // namespace
 
 namespace mlir {
 namespace TFL {
@@ -138,7 +165,33 @@ struct ConvertTensorListPushBack
   }
 };
 
+struct ConvertVariantAddNOp : public OpRewritePattern<TF::AddNOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::AddNOp op,
+                                PatternRewriter& rewriter) const override {
+    if (!HasVariantInputOrOutput(op.getOperation())) {
+      return failure();
+    }
+    auto converted = rewriter.create<TFL::CustomOp>(
+        op->getLoc(), op->getResultTypes(), op->getOperands(), "VariantAddN",
+        TFL::ConstBytesAttr::get(getContext(), ""));
+    rewriter.replaceOp(op, converted.getResults());
+    return success();
+  }
+};
+
 bool IsOpSupported(mlir::Operation* op) {
+  if (auto addn = llvm::dyn_cast_or_null<TF::AddNOp>(op)) {
+    if (HasVariantInputOrOutput(op)) {
+      std::optional<mlir::Type> element_type =
+          GetSingularVariantBaseType(op->getOperand(0));
+      if (element_type.has_value()) {
+        return element_type->isF32() || element_type->isInteger(32);
+      }
+    }
+  }
+
   // Op is vacuously "supported" if it is not a tensorlist op.
   StringRef op_name = op->getName().getStringRef();
   if (!op_name.contains("TensorList")) return true;
@@ -185,29 +238,6 @@ bool IsOpSupported(mlir::Operation* op) {
          element_type->isInteger(32) || element_type->isInteger(1);
 }
 
-bool HasVariantInputOrOutput(Operation* op) {
-  const bool has_variant_input = llvm::any_of(op->getOperands(), [](Value val) {
-    return val.getType()
-        .cast<TensorType>()
-        .getElementType()
-        .isa<TF::VariantType>();
-  });
-  const bool has_variant_output =
-      llvm::any_of(op->getResultTypes(), [](Type t) {
-        return t.cast<TensorType>().getElementType().isa<TF::VariantType>();
-      });
-  return has_variant_input || has_variant_output;
-}
-
-// There are 2 standard tf ops which are not TensorList ops that may take as
-// input a tensorlist. These are tf.AddN and tf.ZeroesLike. Since the runtime
-// implementation of a tensorlist are not compatible between tf and tflite
-// we cannot use tflite tensorlist kernels until these cases are handled.
-bool IsNonTensorListVariantOp(Operation* op) {
-  return llvm::isa<TF::AddNOp, TF::ZerosLikeOp>(op) &&
-         HasVariantInputOrOutput(op);
-}
-
 // Only legalize TensorFlow TensorList ops if all TensorList ops are supported
 // natively.
 class LegalizeTensorListPass
@@ -233,6 +263,7 @@ class LegalizeTensorListPass
     populateWithGenerated(patterns);
     patterns.add<ConvertTensorListPopBack>(&getContext());
     patterns.add<ConvertTensorListPushBack>(&getContext());
+    patterns.add<ConvertVariantAddNOp>(&getContext());
     (void)applyPatternsAndFoldGreedily(module, std::move(patterns));
   }
 };
