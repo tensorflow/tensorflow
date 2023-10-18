@@ -1562,7 +1562,7 @@ void SubgraphBuilder::BuildMultiInputIfSubgraph(Subgraph* subgraph,
   params->then_subgraph_index = 1;
   params->else_subgraph_index = 2;
   auto* if_reg = ops::builtin::Register_IF();
-  if_reg->builtin_code = kTfLiteBuiltinWhile;
+  if_reg->builtin_code = kTfLiteBuiltinIf;
 
   int node_index;
   subgraph->AddNodeWithParameters(input_tensors, output_tensors, {}, nullptr, 0,
