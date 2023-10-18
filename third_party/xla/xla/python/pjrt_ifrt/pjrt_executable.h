@@ -46,7 +46,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
+#include "tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {

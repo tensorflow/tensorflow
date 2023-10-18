@@ -57,9 +57,9 @@ cc_library(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@tf_runtime//:ref_count",
     ],
 )
 
@@ -78,11 +78,11 @@ cc_library(
         "//xla/python/pjrt_ifrt:xla_ifrt",
         "@com_google_absl//absl/types:span",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@tf_runtime//:ref_count",
     ],
     alwayslink = True,
 )

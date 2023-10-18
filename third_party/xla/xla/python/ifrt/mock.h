@@ -40,7 +40,7 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/test.h"
-#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
+#include "tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {

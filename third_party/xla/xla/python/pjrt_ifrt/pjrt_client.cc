@@ -27,8 +27,8 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_array.h"
 #include "xla/python/pjrt_ifrt/pjrt_tuple.h"
 #include "xla/util.h"
+#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/statusor.h"
-#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace xla {
 namespace ifrt {
