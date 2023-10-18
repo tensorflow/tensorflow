@@ -1702,6 +1702,19 @@ FusionDecision CanTritonHandleGEMM(const HloInstruction& dot,
     return "No non-contracting dimensions.";
   }
 
+  for (int operand_number = 0; operand_number <= 1; ++operand_number) {
+    // This pass relies on dot decomposer which ensures that all non-contracting
+    // dimensions are merged into one. Using NonContractingDimensionIndex is
+    // sufficient.
+    const int64_t nc_size =
+        dot.operand(operand_number)
+            ->shape()
+            .dimensions(NonContractingDimensionIndex(dot, operand_number));
+    if (nc_size <= 1) {
+      return "Trivial non-contracting dimensions.";
+    }
+  }
+
   return FusionDecision{};
 }
 
