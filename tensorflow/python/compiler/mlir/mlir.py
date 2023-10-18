@@ -20,8 +20,10 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export('mlir.experimental.convert_graph_def')
 def convert_graph_def(
-    graph_def, pass_pipeline='tf-standard-pipeline', show_debug_info=False
-):
+    graph_def: tf.compat.v1.GraphDef,
+    pass_pipeline: str = 'tf-standard-pipeline',
+    show_debug_info: bool = False
+) -> str:
   """Import a GraphDef and convert it to a textual MLIR module.
 
   This API is only intended for inspecting the internals of TensorFlow and the
@@ -42,7 +44,20 @@ def convert_graph_def(
     InvalidArgumentError: if graph_def is invalid or cannot be converted to
       MLIR.
   """
-  return pywrap_mlir.import_graphdef(graph_def, pass_pipeline, show_debug_info)
+
+  def _import_graph_def(graph_def: tf.compat.v1.GraphDef) -> mlir.IRModule:
+    return pywrap_mlir.import_graphdef(graph_def)
+
+  def _run_pass_pipeline(module: mlir.IRModule, pass_pipeline: str) -> mlir.IRModule:
+    return pywrap_mlir.experimental_run_pass_pipeline(module, pass_pipeline)
+
+  def _convert_mlir_module_to_text(module: mlir.IRModule, show_debug_info: bool) -> str:
+    return module._print(show_debug_info=show_debug_info)
+
+  module = _import_graph_def(graph_def)
+  module = _run_pass_pipeline(module, pass_pipeline)
+  return _convert_mlir_module_to_text(module, show_debug_info)
+
 
 
 @tf_export('mlir.experimental.convert_function')
