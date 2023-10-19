@@ -1418,11 +1418,9 @@ Status IrEmitterUnnested::EmitCholeskyThunk(const HloInstruction* instr) {
 
   ThunkSequence thunks;
 
-  // TODO(b/304613751): We need to construct real ThunkInfo from instr for Xprof
-  // integration.
   if (operand_buffer != a_buffer) {
     thunks.push_back(std::make_unique<DeviceToDeviceCopyThunk>(
-        Thunk::ThunkInfo(nullptr),
+        Thunk::ThunkInfo::WithProfileAnnotation(instr),
         /*source_buffer=*/operand_buffer,
         /*destination_buffer=*/a_buffer,
         /*mem_size=*/ShapeUtil::ByteSizeOf(shape),
@@ -1431,7 +1429,7 @@ Status IrEmitterUnnested::EmitCholeskyThunk(const HloInstruction* instr) {
   }
 
   thunks.push_back(std::make_unique<CholeskyThunk>(
-      Thunk::ThunkInfo(nullptr), options,
+      Thunk::ThunkInfo::WithProfileAnnotation(instr), options,
       PtxOptsFromDebugOptions(ir_emitter_context_->debug_options()), a_buffer,
       workspace_buffer, info_buffer, shape.element_type(), batch_size, n));
 
@@ -1440,7 +1438,7 @@ Status IrEmitterUnnested::EmitCholeskyThunk(const HloInstruction* instr) {
     AddThunkToThunkSequence(std::move(thunks[0]));
   } else {
     AddThunkToThunkSequence(std::make_unique<SequentialThunk>(
-        Thunk::ThunkInfo(nullptr), std::move(thunks)));
+        Thunk::ThunkInfo::WithProfileAnnotation(instr), std::move(thunks)));
   }
 
   return OkStatus();

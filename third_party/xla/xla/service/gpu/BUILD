@@ -743,6 +743,7 @@ cc_library(
     deps = [
         ":buffer_allocations",
         ":gpu_executable_run_options",
+        "//xla/hlo/ir:hlo",
         "//xla/service:executable",
         "//xla/stream_executor",
         "//xla/translate/mhlo_to_hlo:location_exporter",

@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_format.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/translate/mhlo_to_hlo/location_exporter.h"
 
 namespace xla {
@@ -127,6 +128,14 @@ Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(mlir::Operation* op) {
   ThunkInfo thunk_info(op);
   thunk_info.profile_annotation = absl::StrFormat(
       "Thunk:#hlo_op=%s#", mlir::mhlo::GetDebugNameFromLocation(op->getLoc()));
+  return thunk_info;
+}
+
+Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(
+    const HloInstruction* instr) {
+  ThunkInfo thunk_info(nullptr);
+  thunk_info.profile_annotation =
+      absl::StrFormat("Thunk:#hlo_op=%s#", instr->name());
   return thunk_info;
 }
 
