@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/service/compiler.h"
-#include "xla/service/gpu/gpu_target_config.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -356,13 +355,14 @@ StatusOr<std::unique_ptr<xla::PjRtExecutable>> AotCompileToGpuPjRtExecutable(
       flib_def, function, graph_def_version, args, has_ref_vars,
       may_alias_resource_update, &options, compilation_result));
 
-  xla::gpu::GpuTargetConfig gpu_config(gpu_target_config);
-  xla::StreamExecutorGpuCompiler pjrt_gpu_compiler(gpu_config);
+  xla::Compiler::TargetConfig gpu_config(gpu_target_config);
+  xla::StreamExecutorGpuCompiler pjrt_gpu_compiler;
   // Create a trivial topology, which won't be used.
   xla::StreamExecutorGpuTopologyDescription topology(
       xla::CudaId(), xla::CudaName(), "fake_device", {0});
-  const xla::CompileOptions pjrt_options =
+  xla::CompileOptions pjrt_options =
       GetPjRtCompileOptions(options, **compilation_result);
+  pjrt_options.target_config = gpu_config;
   return pjrt_gpu_compiler.Compile(
       pjrt_options, *((*compilation_result)->computation), topology, nullptr);
 }

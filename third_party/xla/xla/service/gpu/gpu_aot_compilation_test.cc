@@ -83,7 +83,7 @@ ENTRY main {
   auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
 
   // Stream executor is not passed as an option.
-  GpuTargetConfig gpu_target_config(stream_exec);
+  Compiler::TargetConfig gpu_target_config(stream_exec);
   AotCompilationOptions aot_options(compiler.PlatformId());
   aot_options.set_target_config(gpu_target_config);
 
