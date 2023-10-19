@@ -58,6 +58,15 @@ def LiftQuantizableSpotsAsFunctionsPass : Pass<"stablehlo-lift-quantizable-spots
   ];
 }
 
+def ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOpsPass : Pass<"stablehlo-replace-stablehlo-ops-in-main-function-with-xla-call-module-ops", "mlir::ModuleOp"> {
+  let summary = "Replaces the StableHLO ops with a separate XlaCallModuleOps.";
+  let description = [{
+     Replaces the StableHLO ops in the main function block with
+     tf.XlaCallModuleOps as separate subgraphs. Wires them back to the main
+     function block to be compatible with SavedModel structure.
+  }];
+}
+
 def QuantizePass : Pass<"stablehlo-quantize", "mlir::func::FuncOp"> {
   let summary = "Applies static-range quantization on ops.";
   let dependentDialects = [

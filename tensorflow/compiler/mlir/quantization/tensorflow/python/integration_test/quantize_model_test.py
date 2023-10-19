@@ -2384,8 +2384,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     # StableHLO export passes.
     with self.assertRaisesRegex(  # pylint: disable=g-error-prone-assert-raises
         Exception,
-        "failed to legalize operation 'func.func' that was explicitly marked"
-        ' illegal',
+        "Failed to convert MLIR to GraphDef. op node 'quantfork.stats' was not"
+        ' a TF op',
     ):
       converted_model = quantize_model.quantize(
           self._input_saved_model_path,
