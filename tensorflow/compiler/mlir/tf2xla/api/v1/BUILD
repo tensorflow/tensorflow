@@ -184,12 +184,14 @@ cc_library(
         "//tensorflow/core/platform:stacktrace",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@local_tsl//tsl/platform:error_logging",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -199,11 +201,13 @@ tf_cc_test(
     data = [
         "testdata/empty_func.mlir",
         "testdata/invalid_executor.mlir",
+        "testdata/multiple_submodules.mlir",
     ],
     deps = [
         ":cluster_tf",
         "//tensorflow/compiler/mlir:register_common_dialects",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_lib",
+        "//tensorflow/core/lib/monitoring:cell_reader",
         "//tensorflow/core/platform:resource_loader",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -211,6 +215,7 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@local_tsl//tsl/lib/core:status_test_util",
+        "@local_tsl//tsl/lib/monitoring:test_utils",
         "@local_tsl//tsl/platform:status",
     ],
 )
