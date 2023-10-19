@@ -1467,10 +1467,12 @@ StatusOr<bool> WhileLoopSimplifier::Run(
       continue;
     }
 
-    TF_ASSIGN_OR_RETURN(result, TryRemoveTrivialCompare(while_op));
-    changed |= result;
-    if (result) {
-      continue;
+    if (simplify_compare_instrs_) {
+      TF_ASSIGN_OR_RETURN(result, TryRemoveTrivialCompare(while_op));
+      changed |= result;
+      if (result) {
+        continue;
+      }
     }
 
     // We can't remove while loops that contain send/recv nodes, because we rely

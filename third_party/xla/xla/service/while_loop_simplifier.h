@@ -49,12 +49,19 @@ namespace xla {
 //
 class WhileLoopSimplifier : public HloModulePass {
  public:
-  ~WhileLoopSimplifier() override {}
+  explicit WhileLoopSimplifier(bool simplify_compare_instrs = false)
+      : simplify_compare_instrs_(simplify_compare_instrs) {}
+
+  ~WhileLoopSimplifier() override = default;
   absl::string_view name() const override { return "simplify-while-loops"; }
   using HloPassInterface::Run;
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  // Whether to remove trivial compare instructions inside while loops.
+  const bool simplify_compare_instrs_;
 };
 
 }  // namespace xla

@@ -1051,7 +1051,9 @@ TEST_F(WhileLoopSimplifierTest, RemoveTrivialCompare) {
           {{"{{LOOP_CONSTANT}}", absl::StrCat(i)}, {"{{DIRECTION}}", dir}});
 
       auto m = ParseAndReturnVerifiedModule(hlo_string).value();
-      EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).value());
+      EXPECT_TRUE(WhileLoopSimplifier(/*simplify_compare_instrs=*/true)
+                      .Run(m.get())
+                      .value());
       HloInstruction* while_instr = FindFirstWhile(m.get());
       EXPECT_THAT(while_instr->while_body()->root_instruction(),
                   op::Tuple(op::Constant(), _));
@@ -1068,7 +1070,9 @@ TEST_F(WhileLoopSimplifierTest, RemoveTrivialCompare) {
           {{"{{LOOP_CONSTANT}}", absl::StrCat(i)}, {"{{DIRECTION}}", dir}});
 
       auto m = ParseAndReturnVerifiedModule(hlo_string).value();
-      EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).value());
+      EXPECT_TRUE(WhileLoopSimplifier(/*simplify_compare_instrs=*/true)
+                      .Run(m.get())
+                      .value());
       HloInstruction* while_instr = FindFirstWhile(m.get());
       EXPECT_THAT(while_instr->while_body()->root_instruction(),
                   op::Tuple(op::Constant(), _));
@@ -1115,7 +1119,9 @@ TEST_F(WhileLoopSimplifierTest, NotRemoveCompare) {
   )";
 
   auto m = ParseAndReturnVerifiedModule(hlo_string).value();
-  EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).value());
+  EXPECT_FALSE(WhileLoopSimplifier(/*simplify_compare_instrs=*/true)
+                   .Run(m.get())
+                   .value());
 }
 
 }  // namespace
