@@ -13,14 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstring>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -30,7 +34,12 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/cc/constant_fold.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "xla/error_spec.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
@@ -38,7 +47,12 @@ limitations under the License.
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/tfrt_cpu_pjrt_client.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace mlir::quant::stablehlo {
@@ -58,6 +72,81 @@ class ConvertTfQuantToMhloIntTest : public ::testing::Test {
         xla::GetTfrtCpuClient(/*asynchronous=*/false, /*cpu_device_count=*/1));
     device_ = pjrt_client_->addressable_devices().front();
     CHECK(device_);
+  }
+
+  // Evaluate return value of a function using TF kernel.
+  // This assumes that the module op has only 1 function and it has TF ops only.
+  absl::StatusOr<std::shared_ptr<xla::Literal>> EvaluateTfFunction(
+      absl::string_view program,
+      absl::Span<const xla::Literal* const> arguments) {
+    auto module_op = parseSourceString<ModuleOp>(program, ctx_.get());
+    CHECK(module_op);
+    auto func_op = llvm::dyn_cast<func::FuncOp>(
+        *module_op->getBodyRegion().getOps().begin());
+    if (!func_op) {
+      return absl::InternalError("Input MLIR must have only 1 func");
+    }
+    if (arguments.size() != func_op.getNumArguments()) {
+      return absl::InternalError("Input argument has wrong size");
+    }
+
+    // Convert input xla::Literal arguments to tf.Const, this allows using
+    // constant folding to evaluate function return value.
+    mlir::OpBuilder builder(func_op);
+    for (int i = 0; i < arguments.size(); ++i) {
+      const xla::Literal* const xla_literal = arguments[i];
+      tensorflow::TensorShape shape;
+      TF_ASSIGN_OR_RETURN(auto data_type,
+                          tensorflow::EncodePrimitiveTypeAsDataType(
+                              xla_literal->shape().element_type()));
+      TF_RETURN_IF_ERROR(
+          tensorflow::XLAShapeToTensorShape(xla_literal->shape(), &shape));
+      tensorflow::Tensor tensor(data_type, shape);
+      std::memcpy(static_cast<char*>(tensor.data()),
+                  xla_literal->untyped_data(),
+                  xla::ShapeUtil::ByteSizeOfPrimitiveType(
+                      xla_literal->shape().element_type()) *
+                      xla_literal->element_count());
+      TF_ASSIGN_OR_RETURN(auto attrs,
+                          tensorflow::ConvertTensor(tensor, &builder));
+      auto cst = builder.create<TF::ConstOp>(func_op->getLoc(), attrs);
+      func_op.getArgument(i).replaceAllUsesWith(cst);
+    }
+
+    // Constant fold the func.Return op's producer op to evaluate the return
+    // value. The evaluation will use TF kernels.
+    // This assumes that func.Return is the last op in the function and it
+    // returns only 1 value.
+    auto& return_op = func_op.getFunctionBody().getBlocks().back().back();
+    if (!llvm::isa<func::ReturnOp>(return_op) ||
+        return_op.getNumOperands() != 1) {
+      return absl::InternalError(
+          "Func must have ReturnOp as last op and must return 1 value");
+    }
+    auto def_op = return_op.getOperand(0).getDefiningOp();
+    auto fold_results = ConstantFoldOpIfPossible(def_op);
+    if (fold_results.size() != 1 ||
+        !llvm::isa<TF::ConstOp>(fold_results[0].getDefiningOp())) {
+      return absl::InternalError("Failed to evaluate TF ops");
+    }
+
+    // Convert output tensor back to xla::Literal.
+    tensorflow::Tensor tensor;
+    TF_RETURN_IF_ERROR(tensorflow::ConvertToTensor(
+        llvm::dyn_cast<TF::ConstOp>(fold_results[0].getDefiningOp()).getValue(),
+        &tensor));
+    xla::Shape xla_shape;
+    TF_RETURN_IF_ERROR(tensorflow::TensorShapeToXLAShape(
+        tensor.dtype(), tensor.shape(), &xla_shape));
+    xla::PjRtClient::HostBufferSemantics host_buffer_semantics =
+        xla::PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes;
+    TF_ASSIGN_OR_RETURN(
+        auto buffer,
+        pjrt_client_->BufferFromHostBuffer(
+            tensor.data(), xla_shape.element_type(), xla_shape.dimensions(),
+            /*byte_strides=*/std::nullopt, host_buffer_semantics,
+            /*on_done_with_host_buffer=*/nullptr, device_));
+    return buffer->ToLiteralSync();
   }
 
   absl::StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileProgram(
@@ -98,6 +187,22 @@ class ConvertTfQuantToMhloIntTest : public ::testing::Test {
     return result[0][0]->ToLiteralSync();
   }
 
+  void ExecuteAndCompareResultsWithTfKernel(
+      absl::string_view program,
+      absl::Span<const xla::Literal* const> arguments,
+      float error_tolerance = 0.1) {
+    TF_ASSERT_OK_AND_ASSIGN(auto executable, this->CompileProgram(program));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto result_literal,
+        this->ExecuteProgramAndReturnSingleResult(executable.get(), arguments));
+
+    TF_ASSERT_OK_AND_ASSIGN(auto expected,
+                            this->EvaluateTfFunction(program, arguments));
+    EXPECT_TRUE(xla::LiteralTestUtil::Near(*expected, *result_literal,
+                                           xla::ErrorSpec(error_tolerance)));
+  }
+
   std::unique_ptr<MLIRContext> ctx_;
   std::unique_ptr<xla::PjRtClient> pjrt_client_;
   xla::PjRtDevice* device_;
@@ -121,16 +226,9 @@ func.func @main(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   } : (tensor<4x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<4xf32>
   return %1 : tensor<4xf32>
 })mlir";
-  TF_ASSERT_OK_AND_ASSIGN(auto executable, this->CompileProgram(kProgram));
-
   auto arg0 =
       xla::LiteralUtil::CreateR1<float>({100.0f, 20000.0f, -2409.0f, -25.1f});
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto result_literal,
-      this->ExecuteProgramAndReturnSingleResult(executable.get(), {&arg0}));
-  xla::LiteralTestUtil::ExpectR1Near<float>({100.0f, 1240.0f, -1310.0f, -30.0f},
-                                            *result_literal,
-                                            xla::ErrorSpec(0.001f));
+  ExecuteAndCompareResultsWithTfKernel(kProgram, {&arg0});
 }
 
 TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeConvolution) {
@@ -179,19 +277,10 @@ func.func @main(%input: tensor<1x2x2x1xf32>, %filter: tensor<2x1x1x1xf32>) -> te
     } : (tensor<1x2x2x1x!tf_type.qint32>, tensor<f32>, tensor<i32>) -> tensor<1x2x2x1xf32>
     return %output : tensor<1x2x2x1xf32>
 })mlir";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto executable, this->CompileProgram(kProgram));
-
   auto input = xla::LiteralUtil::CreateR4<float>(
       {{{{14.f}, {-100.f}}, {{-200.f}, {350.f}}}});
   auto filter = xla::LiteralUtil::CreateR4<float>({{{{4.1f}}}, {{{-2.f}}}});
-
-  TF_ASSERT_OK_AND_ASSIGN(auto result_literal,
-                          this->ExecuteProgramAndReturnSingleResult(
-                              executable.get(), {&input, &filter}));
-  xla::LiteralTestUtil::ExpectR4Near<float>(
-      {{{{458.f}, {-1126.f}}, {{-806.f}, {1433.f}}}}, *result_literal,
-      xla::ErrorSpec(1.f));
+  ExecuteAndCompareResultsWithTfKernel(kProgram, {&input, &filter});
 }
 
 TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeConvolutionHybrid) {
@@ -219,19 +308,14 @@ func.func @main(%input: tensor<1x2x2x1xf32>, %filter: tensor<2x1x1x1xf32>) -> te
       tensor<f32>, tensor<i32>) -> tensor<1x2x2x1xf32>
     return %0 : tensor<1x2x2x1xf32>
 })mlir";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto executable, this->CompileProgram(kProgram));
-
   auto input = xla::LiteralUtil::CreateR4<float>(
       {{{{14.f}, {-100.f}}, {{-200.f}, {350.f}}}});
   auto filter = xla::LiteralUtil::CreateR4<float>({{{{4.1f}}}, {{{-2.f}}}});
-
-  TF_ASSERT_OK_AND_ASSIGN(auto result_literal,
-                          this->ExecuteProgramAndReturnSingleResult(
-                              executable.get(), {&input, &filter}));
-  xla::LiteralTestUtil::ExpectR4Near<float>(
-      {{{{461}, {-1116.f}}, {{-817.f}, {1431.f}}}}, *result_literal,
-      xla::ErrorSpec(1.f));
+  // The large tolerance here is expected because
+  // tf.UniformQuantizedConvolutionHybrid does DRQ. But StableHLO hybrid ops
+  // does weight-only.
+  ExecuteAndCompareResultsWithTfKernel(kProgram, {&input, &filter},
+                                       /*error_tolerance=*/5.0);
 }
 
 TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeDot) {
@@ -276,18 +360,12 @@ func.func @main(%input: tensor<1x2xf32>, %filter: tensor<2x3xf32>) -> tensor<1x3
     } : (tensor<1x3x!tf_type.qint32>, tensor<f32>, tensor<i32>) -> tensor<1x3xf32>
     return %output : tensor<1x3xf32>
 })mlir";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto executable, this->CompileProgram(kProgram));
-
   auto input = xla::LiteralUtil::CreateR2<float>({{50.f, -100.f}});
   auto filter =
       xla::LiteralUtil::CreateR2<float>({{1.f, 2.f, 3.f}, {-1.f, -3.f, 1.f}});
-
-  TF_ASSERT_OK_AND_ASSIGN(auto result_literal,
-                          this->ExecuteProgramAndReturnSingleResult(
-                              executable.get(), {&input, &filter}));
-  xla::LiteralTestUtil::ExpectR2Near<float>(
-      {{150.f, 400.f, 50.f}}, *result_literal, xla::ErrorSpec(2.f));
+  // TODO: b/306265272 - Figure out why there is a large difference.
+  ExecuteAndCompareResultsWithTfKernel(kProgram, {&input, &filter},
+                                       /*error_tolerance=*/1.0);
 }
 
 TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeDotHybrid) {
@@ -310,18 +388,10 @@ func.func @main(%input: tensor<1x2xf32>, %filter: tensor<2x3xf32>) -> tensor<1x3
     } : (tensor<1x2xf32>, tensor<2x3x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<1x3xf32>
     return %0 : tensor<1x3xf32>
 })mlir";
-
-  TF_ASSERT_OK_AND_ASSIGN(auto executable, this->CompileProgram(kProgram));
-
   auto input = xla::LiteralUtil::CreateR2<float>({{50.f, -100.f}});
   auto filter =
       xla::LiteralUtil::CreateR2<float>({{1.f, 2.f, 3.f}, {-1.f, -3.f, 1.f}});
-
-  TF_ASSERT_OK_AND_ASSIGN(auto result_literal,
-                          this->ExecuteProgramAndReturnSingleResult(
-                              executable.get(), {&input, &filter}));
-  xla::LiteralTestUtil::ExpectR2Near<float>(
-      {{150.f, 400.f, 50.f}}, *result_literal, xla::ErrorSpec(2.f));
+  ExecuteAndCompareResultsWithTfKernel(kProgram, {&input, &filter});
 }
 
 }  // namespace
