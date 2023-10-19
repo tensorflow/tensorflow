@@ -18,17 +18,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "xla/stream_executor/blas.h"
 #include "rocm/rocm_config.h"
-#if TF_ROCM_VERSION < 60000
-#define hipblasltDatatype_t hipblasDatatype_t
-#define HIPBLASLT_R_16F HIPBLAS_R_16F
-#define HIPBLASLT_R_16B HIPBLAS_R_16B
-#define HIPBLASLT_R_32F HIPBLAS_R_32F
-#define HIPBLASLT_R_64F HIPBLAS_R_64F
-#define HIPBLASLT_R_8I HIPBLAS_R_8I
-#define HIPBLASLT_R_32I HIPBLAS_R_32I
-#define HIPBLASLT_C_32F HIPBLAS_R_32F
-#define HIPBLASLT_C_64F HIPBLAS_R_64F
-#endif
 
 #if TF_HIPBLASLT
 

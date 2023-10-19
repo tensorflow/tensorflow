@@ -32,19 +32,8 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-<<<<<<< HEAD
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_blas_lt.h"
-#include "xla/stream_executor/scratch_allocator.h"
-
-#elif TENSORFLOW_USE_ROCM
-=======
 
 #if TENSORFLOW_USE_ROCM
->>>>>>> google/master
 #include "rocm/rocm_config.h"
 #endif
 

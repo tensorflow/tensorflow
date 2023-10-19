@@ -23,35 +23,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "xla/stream_executor/device_memory.h"
-<<<<<<< HEAD
-#include "tsl/platform/types.h"
-#include "tensorflow/core/framework/types.h"
-#include "tsl/platform/types.h"
-
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_blas_lt.h"
-#endif
-
-#if TF_HIPBLASLT
-#include "xla/stream_executor/rocm/hip_blas_lt.h"
-#define CUDA_R_32F HIPBLAS_R_32F
-#endif
-
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_blas_lt.h"
-#endif
-
-#if TF_HIPBLASLT
-#include "xla/stream_executor/rocm/hip_blas_lt.h"
-#define CUDA_R_32F HIPBLAS_R_32F
-#endif
-
-=======
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "tensorflow/core/framework/types.h"
 #include "tsl/platform/types.h"
 
->>>>>>> google/master
 namespace tensorflow {
 
 // Get a workspace limit from the environment variable, which is in MB.
@@ -96,31 +71,6 @@ H AbslHashValue(H h, const BlasLtMatmulPlanParams& params) {
   return H::combine(std::move(h), internal::AsTuple(params));
 }
 
-<<<<<<< HEAD
-struct PlanAndAlgorithms {
-  se::gpu::BlasLt::MatmulPlan plan;
-  std::vector<se::gpu::BlasLt::MatmulAlgorithm> algorithms;
-};
-
-// Thread-safe map from matmul parameters to their corresponding plan and
-// algorithms.
-class BlasLtMatmulPlanMap {
- public:
-  const PlanAndAlgorithms* Find(const BlasLtMatmulPlanParams& params) const;
-  const PlanAndAlgorithms* Insert(const BlasLtMatmulPlanParams& params,
-                                  PlanAndAlgorithms value);
-
-  mutable absl::Mutex mu_;
- private:
-  absl::flat_hash_map<BlasLtMatmulPlanParams, PlanAndAlgorithms>
-      params_plan_map_ ABSL_GUARDED_BY(mu_);
-};
-
-StatusOr<se::blas::ComputationType> GetBlasComputationType(
-    const DataType& dtype);
-
-=======
->>>>>>> google/master
 StatusOr<const PlanAndAlgorithms*> GetPlanAndAlgorithms(
     se::Stream* stream, const BlasLtMatmulPlanParams& params, absl::Mutex** pmu,
     std::optional<int> max_algorithm_count = std::nullopt);
@@ -152,6 +102,6 @@ Status DoBlasLtMatmul(se::Stream* stream, const PlanAndAlgorithms& paa,
 
 }  // namespace tensorflow
 
-#endif
+#endif // GOOGLE_CUDA || TF_HIPBLASLT
 
 #endif  // TENSORFLOW_CORE_KERNELS_MATMUL_UTIL_H_

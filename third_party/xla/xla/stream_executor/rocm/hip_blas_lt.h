@@ -23,25 +23,7 @@ limitations under the License.
 #include "rocm/rocm_config.h"
 #if TF_HIPBLASLT
 
-<<<<<<< HEAD
-#if TF_ROCM_VERSION < 60000
-#define hipblasltDatatype_t hipblasDatatype_t
-#define HIPBLASLT_R_16F HIPBLAS_R_16F
-#define HIPBLASLT_R_16B HIPBLAS_R_16B
-#define HIPBLASLT_R_32F HIPBLAS_R_32F
-#define HIPBLASLT_R_64F HIPBLAS_R_64F
-#define HIPBLASLT_R_8I HIPBLAS_R_8I
-#define HIPBLASLT_R_32I HIPBLAS_R_32I
-#define HIPBLASLT_C_32F HIPBLAS_R_32F
-#define HIPBLASLT_C_64F HIPBLAS_R_64F
-#endif
-
-#include "xla/status.h"
-=======
-#include "rocm/rocm_config.h"
->>>>>>> google/master
 #include "xla/stream_executor/rocm/hip_blas_utils.h"
-#include "xla/stream_executor/rocm/hipblaslt_wrapper.h"
 
 namespace stream_executor {
 
@@ -57,29 +39,10 @@ class BlasLt : public gpu::BlasLt {
       std::unique_ptr<std::remove_pointer_t<T>, hipblasStatus_t (*)(T)>;
 
  public:
-<<<<<<< HEAD
-  class MatrixLayout {
-   public:
-    enum class Order { kRowMajor, kColumnMajor };
-
-    // If `leading_dim_stride` is not specified, it defaults to:
-    //  - `num_cols` if `order == kRowMajor`,
-    //  - `num_rows` if `order == kColumnMajor`.
-    // If `batch_stride` is not specified, it defaults to `num_rows * num_cols`
-    // if `batch_size > 1`, otherwise `0`.
-    static tsl::StatusOr<MatrixLayout> Create(
-        blas::DataType type, size_t num_rows, size_t num_cols, Order order,
-        size_t batch_size = 1,
-        std::optional<int64_t> leading_dim_stride = std::nullopt,
-        std::optional<int64_t> batch_stride = std::nullopt);
-
-    hipblasltDatatype_t type() const;
-=======
   struct MatrixLayout {
     static tsl::StatusOr<MatrixLayout> Create(const gpu::MatrixLayout& m);
->>>>>>> google/master
 
-    hipblasDatatype_t type() const { return HIPBLAS_R_32F; }
+    hipblasltDatatype_t type() const { return HIPBLASLT_R_32F; }
     hipblasLtMatrixLayout_t get() const { return handle_.get(); }
 
    private:
@@ -98,20 +61,13 @@ class BlasLt : public gpu::BlasLt {
         Epilogue epilogue = Epilogue::kDefault,
         PointerMode pointer_mode = PointerMode::kHost);
 
-<<<<<<< HEAD
-    hipblasLtComputeType_t compute_type() const;
-    hipblasltDatatype_t scale_type() const;
-    hipblasPointerMode_t pointer_mode() const;
-
-=======
     hipblasLtComputeType_t compute_type() const {
       return HIPBLASLT_COMPUTE_F32;
     }
-    hipblasDatatype_t scale_type() const { return HIPBLAS_R_32F; }
+    hipblasltDatatype_t scale_type() const { return HIPBLASLT_R_32F; }
     hipblasPointerMode_t pointer_mode() const {
       return HIPBLAS_POINTER_MODE_HOST;
     }
->>>>>>> google/master
     hipblasLtMatmulDesc_t get() const { return handle_.get(); }
 
    private:

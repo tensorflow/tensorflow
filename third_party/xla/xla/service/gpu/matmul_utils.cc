@@ -46,14 +46,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "xla/stream_executor/host_or_device_scalar.h"
-<<<<<<< HEAD
-#include "tsl/platform/tensor_float_32_utils.h"
-#elif TENSORFLOW_USE_ROCM
-#include "rocm/rocm_config.h"
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
 #endif  // GOOGLE_CUDA
->>>>>>> google/master
 
 namespace xla {
 namespace gpu {
@@ -702,119 +695,6 @@ StatusOr<bool> EpilogueHasAuxiliaryOutput(GemmBackendConfig_Epilogue epilogue) {
   }
 }
 
-<<<<<<< HEAD
-}  // namespace cublas_lt
-
-StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype) {
-  switch (dtype) {
-    case F8E5M2:
-      return se::blas::DataType::kF8E5M2;
-    case F8E4M3FN:
-      return se::blas::DataType::kF8E4M3FN;
-    case S8:
-      return se::blas::DataType::kInt8;
-    case F16:
-      return se::blas::DataType::kHalf;
-    case BF16:
-      return se::blas::DataType::kBF16;
-    case F32:
-      return se::blas::DataType::kFloat;
-    case S32:
-      return se::blas::DataType::kInt32;
-    case F64:
-      return se::blas::DataType::kDouble;
-    case C64:
-      return se::blas::DataType::kComplexFloat;
-    case C128:
-      return se::blas::DataType::kComplexDouble;
-    default:
-      return InternalError("AsBlasDataType: unsupported type: %s",
-                           primitive_util::LowercasePrimitiveTypeName(dtype));
-  }
-}
-
-#if GOOGLE_CUDA || TF_HIPBLASLT
-
-namespace {
-
-StatusOr<se::gpu::BlasLt::MatrixLayout> AsBlasLtMatrixLayout(
-    const MatrixLayout& layout) {
-  TF_ASSIGN_OR_RETURN(se::blas::DataType dtype, AsBlasDataType(layout.dtype));
-
-  auto order = (layout.order == MatrixLayout::Order::kColumnMajor)
-                   ? se::gpu::BlasLt::MatrixLayout::Order::kColumnMajor
-                   : se::gpu::BlasLt::MatrixLayout::Order::kRowMajor;
-
-  return se::gpu::BlasLt::MatrixLayout::Create(
-      dtype, layout.num_rows, layout.num_cols, order, layout.batch_size,
-      layout.leading_dim_stride, layout.batch_stride);
-}
-
-#if TF_HIPBLASLT
-#if TF_ROCM_VERSION < 60000
-using cudaDataType_t = hipblasDatatype_t;
-#define CUDA_R_16BF HIPBLAS_R_16B
-#define CUDA_R_16F HIPBLAS_R_16F
-#define CUDA_R_32F HIPBLAS_R_32F
-#define CUDA_R_64F HIPBLAS_R_64F
-#define CUDA_C_32F HIPBLAS_C_32F
-#define CUDA_C_64F HIPBLAS_C_64F
-#else
-using cudaDataType_t = hipblasltDatatype_t;
-#define CUDA_R_16BF HIPBLASLT_R_16B
-#define CUDA_R_16F HIPBLASLT_R_16F
-#define CUDA_R_32F HIPBLASLT_R_32F
-#define CUDA_R_64F HIPBLASLT_R_64F
-#define CUDA_C_32F HIPBLASLT_C_32F
-#define CUDA_C_64F HIPBLASLT_C_64F
-#endif
-#endif
-
-template <cudaDataType_t CudaT>
-struct CudaToNativeT;
-
-#if CUDA_VERSION >= 11080
-template <>
-struct CudaToNativeT<CUDA_R_8F_E4M3> {
-  using type = tsl::float8_e4m3fn;
-};
-template <>
-struct CudaToNativeT<CUDA_R_8F_E5M2> {
-  using type = tsl::float8_e5m2;
-};
-#endif
-
-template <>
-struct CudaToNativeT<CUDA_R_16BF> {
-  using type = Eigen::bfloat16;
-};
-template <>
-struct CudaToNativeT<CUDA_R_16F> {
-  using type = Eigen::half;
-};
-template <>
-struct CudaToNativeT<CUDA_R_32F> {
-  using type = float;
-};
-template <>
-struct CudaToNativeT<CUDA_R_64F> {
-  using type = double;
-};
-template <>
-struct CudaToNativeT<CUDA_C_32F> {
-  using type = complex64;
-};
-template <>
-struct CudaToNativeT<CUDA_C_64F> {
-  using type = complex128;
-};
-
-}  // namespace
-
-namespace cublas_lt {
-
-=======
->>>>>>> google/master
 StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
     mlir::lmhlo_gpu::CublasLtMatmulEpilogue epilogue) {
   switch (epilogue) {

@@ -275,20 +275,12 @@ module @jit_f.0 attributes {jax.uses_shape_polymorphism = true} {
   def test_platforms_basic(self, *, platform_idx_type: str):
     x = np.float32(0.)
 
-<<<<<<< HEAD
-    #  returns x + 2. on CPU, x + 3. on GPU (CUDA) and x + 4. on TPU and ROCM
-    module, version = serialize("""
-module @jit_f.0 {
-  func.func public @main(%arg_platform_idx: tensor<i32>, %arg0: tensor<f32>) -> tensor<f32> {
-    %to_add = "stablehlo.case"(%arg_platform_idx) ({
-=======
     #  returns x + 2. on CPU, x + 3. on GPU (CUDA or ROCM) and x + 4. on TPU
     module, version = serialize(f"""
 module @jit_f.0 {{
   func.func public @main(%arg_platform_idx: tensor<{platform_idx_type}>, %arg0: tensor<f32>) -> tensor<f32> {{
     %0 = stablehlo.convert %arg_platform_idx : (tensor<{platform_idx_type}>) -> tensor<i32>
     %to_add = "stablehlo.case"(%0) ({{
->>>>>>> google/master
       %cpu_val = stablehlo.constant dense<2.> : tensor<f32>
       stablehlo.return %cpu_val : tensor<f32>
     }}, {{
