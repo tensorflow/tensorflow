@@ -219,6 +219,10 @@ auto* tf_data_service_snapshot_bytes_committed =
         "/tensorflow/data/service/snapshot_bytes_committed",
         "tf.data service distributed snapshot committed bytes.");
 
+auto* tf_data_service_snapshot_op_counter = tsl::monitoring::Counter<2>::New(
+    "/tensorflow/data/service/snapshot_op",
+    "Number times a tf.data snapshot is saved/loaded.", "path", "op");
+
 auto* tf_data_service_data_transfer_protocol_used =
     tsl::monitoring::Counter<1>::New(
         "/tensorflow/data/service/data_transfer_protocol_used",
@@ -614,6 +618,11 @@ void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes) {
 
 void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes) {
   tf_data_service_snapshot_bytes_committed->GetCell()->IncrementBy(bytes);
+}
+
+void RecordTFDataServiceSnapshotOp(const std::string& path,
+                                   const std::string& op) {
+  tf_data_service_snapshot_op_counter->GetCell(path, op)->IncrementBy(1);
 }
 
 void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers) {
