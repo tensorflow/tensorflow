@@ -3511,7 +3511,8 @@ cc_library(
     deps = if_cuda_or_rocm([
         "@com_google_absl//absl/container:flat_hash_map", 
         "@local_xla//xla:status_macros",
-        "@local_xla//xla/stream_executor/cuda:cublas_plugin",
+        "@local_xla//xla:xla_data_proto_cc",
+        "@local_xla//xla/stream_executor/gpu:gpu_blas_lt",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:tensor_float_32_hdr_lib",

@@ -6,7 +6,7 @@ load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//xla:xla.bzl", "xla_cc_test", "xla_export_hlo_deps")
 load(
     "//xla/service/gpu:build_defs.bzl",
-    "build_cub_sort_kernels",
+    "build_cub_sort_kernels", 
     "get_cub_sort_kernel_types",
 )
 load(
@@ -260,9 +260,9 @@ cc_library(
     name = "ir_emitter_unnested",
     srcs = ["ir_emitter_unnested.cc"],
     hdrs = ["ir_emitter_unnested.h"],
-    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]) + if_rocm_hipblaslt([
-        "TF_HIPBLASLT=1",
-    ]),
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + 
+                    if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]) + 
+                    if_rocm_hipblaslt(["TF_HIPBLASLT=1"]),
     visibility = ["//visibility:public"],
     deps = [
         ":backend_configs_cc",
@@ -1118,17 +1118,34 @@ cc_library(
     srcs = if_gpu_is_configured(["cub_sort_thunk.cc"]),
     hdrs = if_gpu_is_configured(["cub_sort_thunk.h"]),
     visibility = ["//visibility:public"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
     deps = if_gpu_is_configured([
         ":buffer_allocations",
         ":thunk",
         "@com_google_absl//absl/log:check",
-        "@local_config_cuda//cuda:cuda_headers",
+        ":gpu_prim_hdrs",
         "//xla/service:buffer_assignment",
         "//xla:shape_util",
         "//xla/stream_executor:device_memory",
         "//xla:status",
         "//xla:xla_data_proto_cc",
     ] + [":cub_sort_kernel_" + suffix for suffix in get_cub_sort_kernel_types()]),
+)
+
+cc_library(
+    name = "gpu_prim_hdrs",
+    hdrs = ["gpu_prim.h"],
+    deps = [
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/platform:bfloat16",
+    ] +    
+    if_cuda_is_configured([
+        "@local_config_cuda//cuda:cub_headers",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocprim",
+    ]),
 )
 
 build_cub_sort_kernels(
@@ -1139,7 +1156,7 @@ build_cub_sort_kernels(
     deps = if_gpu_is_configured([
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_config_cuda//cuda:cuda_headers",  #cub
+        ":gpu_prim_hdrs",
     ]),
 )
 

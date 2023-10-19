@@ -94,14 +94,13 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
 #if GOOGLE_CUDA
   RegisterFusedAttentionCustomCalls(registry);
   RegisterFusedAttentionBackwardCustomCalls(registry);
-  RegisterCubSortCustomCalls(registry);
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Graph launch kernels depend on Cuda Graph API.
   RegisterGraphLaunchCustomCalls(registry);
   RegisterConcurrentRegionCustomCalls(registry);
   RegisterStreamSynchronizationCustomCalls(registry);
-
+  RegisterCubSortCustomCalls(registry);
   RegisterXlaClassicCustomCalls(registry);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }
