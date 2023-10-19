@@ -48,6 +48,10 @@ class CommandBufferInterface;
 // device.
 class CommandBuffer {
  public:
+  ~CommandBuffer();
+  CommandBuffer(CommandBuffer&&);
+  CommandBuffer& operator=(CommandBuffer&&);
+
   // Command buffer state:
   //
   //   (1) kCreate:    a new command buffer under construction
@@ -135,9 +139,6 @@ class CommandBuffer {
   const internal::CommandBufferInterface* implementation() const {
     return implementation_.get();
   }
-
-  CommandBuffer(CommandBuffer&&) = default;
-  CommandBuffer& operator=(CommandBuffer&&) = default;
 
  private:
   CommandBuffer(

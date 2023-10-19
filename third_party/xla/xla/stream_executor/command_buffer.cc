@@ -31,6 +31,10 @@ limitations under the License.
 
 namespace stream_executor {
 
+CommandBuffer::~CommandBuffer() = default;
+CommandBuffer::CommandBuffer(CommandBuffer&&) = default;
+CommandBuffer& CommandBuffer::operator=(CommandBuffer&&) = default;
+
 /*static*/ tsl::StatusOr<CommandBuffer> CommandBuffer::Create(
     StreamExecutor* executor, Mode mode) {
   TF_ASSIGN_OR_RETURN(
