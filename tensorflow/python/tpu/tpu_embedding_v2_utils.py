@@ -1021,14 +1021,19 @@ class TableConfig:
 
   """
 
-  def __init__(self,
-               vocabulary_size: int,
-               dim: int,
-               initializer: Optional[Callable[[Any], None]] = None,
-               optimizer: Optional[_Optimizer] = None,
-               combiner: Text = "mean",
-               name: Optional[Text] = None,
-               quantization_config: QuantizationConfig = None):
+  def __init__(
+      self,
+      vocabulary_size: int,
+      dim: int,
+      initializer: Optional[Callable[[Any], None]] = None,
+      optimizer: Optional[_Optimizer] = None,
+      combiner: Text = "mean",
+      name: Optional[Text] = None,
+      quantization_config: QuantizationConfig = None,
+      # TODO(b/295372790): Change the type to SparseCoreTableLayout after it is
+      # open sourced.
+      layout: Optional[Any] = None,
+  ):
     """Embedding table configuration.
 
     Args:
@@ -1054,6 +1059,9 @@ class TableConfig:
       quantization_config: The simulated quantization config. An instance of
         `tf.tpu.experimental.embedding.QuantizationConfig`. See the class for
         more documentation.
+      layout: If the table already has its layout computed, you can pass it in
+        here. Otherwise, we will compute it for you. Most users should leave
+        this as None.
 
     Returns:
       `TableConfig`.
@@ -1100,6 +1108,7 @@ class TableConfig:
     self.combiner = combiner
     self.name = name
     self.quantization_config = quantization_config
+    self.layout = layout
 
   def __repr__(self):
     # If using the default initializer, just print "None" for clarity.
