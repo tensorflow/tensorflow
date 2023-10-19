@@ -993,7 +993,6 @@ tf_py_strict_test(
         ":pywrap_saved_model",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
