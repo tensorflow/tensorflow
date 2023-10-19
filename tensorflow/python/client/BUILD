@@ -123,11 +123,7 @@ tf_python_pybind_extension(
 
 py_strict_library(
     name = "client",
-    srcs = [
-        "client_lib.py",
-        "device_lib.py",
-        "timeline.py",
-    ],
+    srcs = ["client_lib.py"],
     srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
@@ -205,7 +201,7 @@ cuda_py_strict_test(
     ],
     python_version = "PY3",
     deps = [
-        ":client",
+        ":device_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
@@ -463,8 +459,8 @@ cuda_py_strict_test(
     ],
     xla_enable_strict_auto_jit = False,  # Graph structure is different with autojit
     deps = [
-        ":client",
         ":session",
+        ":timeline",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
