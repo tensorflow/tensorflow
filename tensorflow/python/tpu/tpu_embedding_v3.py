@@ -1510,9 +1510,9 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
 
     partitioned_tensors = self.enqueue(features, weights)
 
-    result = self.dequeue(partitioned_tensors)
-
     context.Exit()
+
+    result = self.dequeue(partitioned_tensors)
 
     return result
 
