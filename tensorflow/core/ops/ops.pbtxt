@@ -1,4 +1,4 @@
-op 	 {
+op {
   name: "Abort"
   attr {
     name: "error_msg"
@@ -9329,6 +9329,18 @@ op {
     name: "batch_size"
     type: DT_INT64
   }
+}
+op {
+  name: "ComputeDedupDataSize"
+  output_arg {
+    name: "num_elements"
+    type: DT_INT32
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  is_stateful: true
 }
 op {
   name: "ComputeDedupDataTupleMask"
