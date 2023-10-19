@@ -40,6 +40,8 @@ cc_library(
     hdrs = EIGEN_HEADERS,
     defines = [
         "EIGEN_MAX_ALIGN_BYTES=64",
+        "EIGEN_ALLOW_UNALIGNED_SCALARS",  # TODO(b/296071640): Remove when underlying bugs are fixed.
+        "EIGEN_USE_AVX512_GEMM_KERNELS=0",  # TODO(b/238649163): Remove this once no longer necessary.
     ],
     includes = [
         ".",  # Third-party libraries include eigen relative to its root.
