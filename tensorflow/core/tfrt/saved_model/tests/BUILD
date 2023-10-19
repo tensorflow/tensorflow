@@ -14,6 +14,7 @@ package(
 package_group(
     name = "internal",
     packages = [
+        # copybara:uncomment "//learning/brain/tfrt/...",
         "//tensorflow/core/tfrt/saved_model/tests/...",
         "//tensorflow/core/tfrt/tfrt_session/...",
         "//tensorflow/core/tfrt/utils/debug/...",
