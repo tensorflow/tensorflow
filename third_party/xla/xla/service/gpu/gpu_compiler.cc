@@ -178,6 +178,7 @@ limitations under the License.
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "xla/service/stable_sort_expander.h"
 #include "xla/service/stochastic_convert_decomposer.h"
+#include "xla/service/sub_byte_normalization.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/transpose_folding.h"
 #include "xla/service/tuple_simplifier.h"
@@ -471,6 +472,9 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     pipeline.AddPass<OperandUpcaster>(upcaster_filter);
     pipeline.AddPass<ResultCaster>(upcaster_filter);
 
+    pipeline.AddPass<SubByteNormalization>(
+        SubByteNormalization::SET_ELEMENT_SIZE);
+
     // Expand random number generation.
     pipeline.AddPass<RngExpander>();
     pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
@@ -727,6 +731,10 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     pipeline.AddPass<GpuLayoutAssignment>(
         hlo_module->mutable_entry_computation_layout(), stream_exec,
         &layout_constraints);
+    // Run SubByteNormalization because GpuLayoutAssignment may modify a
+    // Layout's element_size_in_bits field.
+    pipeline.AddPass<SubByteNormalization>(
+        SubByteNormalization::SET_ELEMENT_SIZE);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 

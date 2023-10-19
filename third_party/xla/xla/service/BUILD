@@ -3554,6 +3554,7 @@ cc_library(
     deps = [
         ":hlo_creation_utils",
         ":hlo_pass",
+        "//xla:shape_util",
         "//xla/hlo/ir:hlo",
     ],
 )
@@ -4854,9 +4855,10 @@ cc_library(
         ":hlo_verifier",
         "//xla:shape_util",
         "//xla:status",
-        "//xla:util",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
@@ -7076,6 +7078,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":hlo_pass",
+        "//xla:shape_layout",
+        "//xla:shape_util",
         "//xla:statusor",
         "//xla/hlo/ir:hlo",
         "@com_google_absl//absl/container:flat_hash_set",

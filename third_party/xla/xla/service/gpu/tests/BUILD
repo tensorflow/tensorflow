@@ -985,3 +985,14 @@ xla_test(
     shard_count = 1,
     deps = [":simple_optimization_test"],
 )
+
+xla_cc_test(
+    name = "gpu_int4_test",
+    srcs = ["gpu_int4_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":gpu_codegen_test",
+        "@local_tsl//tsl/platform:test",
+        "@local_tsl//tsl/platform:test_main",
+    ],
+)

@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -271,13 +272,19 @@ StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
                         fusion_arguments.push_back(&argument);
                       });
 
+  auto is_4bit = [](const HloInstruction* arg) {
+    return primitive_util::Is4BitType(arg->shape().element_type());
+  };
+  bool has_4_bit_input = absl::c_any_of(fusion_arguments, is_4bit);
+  bool has_4_bit_output = absl::c_any_of(hlo_roots, is_4bit);
+
   std::optional<TransposeDescription> tiled_transpose_hero =
       FindConsistentTransposeHero(hlo_roots, heroes);
 
   return HloFusionAnalysis(std::move(backend_config), std::move(hlo_roots),
                            std::move(boundary_fn), std::move(fusion_arguments),
-                           std::move(heroes), device_info,
-                           tiled_transpose_hero);
+                           std::move(heroes), device_info, tiled_transpose_hero,
+                           has_4_bit_input, has_4_bit_output);
 }
 
 // static
@@ -306,6 +313,14 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     return EmitterFusionKind::kTriton;
   }
 #endif
+
+  if (has_4_bit_input_ || has_4_bit_output_) {
+    // Only loop fusions currently can handle int4 inputs/outputs, due to the
+    // special handling with IrArray needed to deal with two values occupying a
+    // single byte.
+    return EmitterFusionKind::kLoop;
+  }
+
   for (auto [root, hero] : llvm::zip(fusion_roots_, fusion_heroes_)) {
     if (IsRealReductionHero(*root, *hero)) {
       return EmitterFusionKind::kReduction;
@@ -457,6 +472,16 @@ const LaunchDimensionsConfig* HloFusionAnalysis::GetLoopFusionConfig() {
   if (num_elements >= n_threads_max &&
       !MayPreventVectorization(fusion_roots_, fusion_boundary_fn_)) {
     unroll_factor = ComputeMaxUnrollFactor(num_elements);
+  }
+  if (has_4_bit_output_ && unroll_factor == 1) {
+    // Ensure a single thread writes to a byte containing two int4 values. The
+    // HLO Verifier ensures each int4 array has an even number of elements so
+    // it's safe to set the unroll_factor to 2. Setting unroll_factor is safe
+    // even if MayPreventVectorization returns false, as the
+    // MayPreventVectorization check is an optimization, not a correctness
+    // requirement.
+    CHECK_EQ(num_elements % 2, 0);
+    unroll_factor = 2;
   }
   VLOG(2) << "Unroll factor: " << unroll_factor;
 
