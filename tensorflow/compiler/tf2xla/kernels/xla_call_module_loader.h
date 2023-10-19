@@ -35,7 +35,6 @@ class XlaCallModuleLoader {
  public:
   static tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> Create(
       mlir::MLIRContext* context, int version, std::string module_str,
-      std::vector<std::string> dim_args_spec,
       std::vector<std::string> disabled_checks,
       std::vector<std::string> platforms, std::string loading_platform,
       int num_invocation_args, bool main_has_token_input_output);
@@ -82,7 +81,6 @@ class XlaCallModuleLoader {
   // Initializes the loader with the given serialized module string.
   tsl::Status LoadAndPreprocessModule(mlir::MLIRContext* context, int version,
                                       std::string module_str,
-                                      std::vector<std::string> dim_args_spec,
                                       std::vector<std::string> disabled_checks,
                                       std::vector<std::string> platforms,
                                       std::string loading_platform,
@@ -99,7 +97,6 @@ class XlaCallModuleLoader {
   // Index in platforms of the current platform, or -1 if module does not take
   // a platform index arg.
   int platform_index_;
-  std::vector<std::string> dim_args_spec_;
   // The disabled checks at loading time, including those from the
   // disabled_checks attribute and the TF_XLA_FLAGS environment variable.
   std::vector<std::string> loading_disabled_checks_;

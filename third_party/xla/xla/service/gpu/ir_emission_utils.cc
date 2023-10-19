@@ -24,8 +24,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -763,8 +765,18 @@ const HloInstruction& FindNonTrivialHero(
   // chains are bound to be quite small, as we restrict the number of users as
   // well. Note that no memoization is needed due to user number constraints: we
   // never have to revisit same nodes.
-  while (IsIntermediate(idx) && !is_boundary(*idx->operand(0), *idx)) {
-    idx = idx->operand(0);
+  auto get_intermediate_arg = [&](const HloInstruction* node) {
+    if (node->opcode() == HloOpcode::kFusion ||
+        node->opcode() == HloOpcode::kParameter) {
+      auto preds = FindPredecessors(*node, is_boundary);
+      return preds.size() == 1 ? preds.front() : nullptr;
+    }
+    return IsIntermediate(node) && !is_boundary(*node->operand(0), *node)
+               ? node->operand(0)
+               : nullptr;
+  };
+  while (auto* arg = get_intermediate_arg(idx)) {
+    idx = arg;
   }
 
   const HloInstruction* transpose = nullptr;
@@ -796,22 +808,25 @@ const HloInstruction& FindNonTrivialHero(
 }
 
 const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
+  // It doesn't really make sense to call this function with a fusion, but it
+  // happens. Return the fusion itself for historical reasons.
+  // TODO(jreiffers): Clean this up.
+  if (instr.opcode() == HloOpcode::kFusion) return instr;
   return FindNonTrivialHero(instr, [](const HloInstruction& producer,
                                       const HloInstruction& consumer) {
     return consumer.opcode() == HloOpcode::kParameter;
   });
 }
 
-void LogAndVerify(const llvm::Module* m) {
-  if (VLOG_IS_ON(5)) {
-    XLA_VLOG_LINES(5, llvm_ir::DumpToString(m));
-  }
+void VLogModule(int level, const llvm::Module& module) {
+  XLA_VLOG_LINES(level, llvm_ir::DumpToString(&module));
+}
 
-  std::string llir_str;
-  llvm::raw_string_ostream llir_stream(llir_str);
-  bool broken = llvm::verifyModule(*m, &llir_stream);
-  llir_stream.flush();
-  CHECK(!broken) << llir_str;
+void VerifyModule(const llvm::Module& module) {
+  std::string error_str;
+  llvm::raw_string_ostream error_stream(error_str);
+  bool broken = llvm::verifyModule(module, &error_stream);
+  CHECK(!broken) << error_str;
 }
 
 llvm::Type* GetIndexTypeForKernel(const HloInstruction* hlo,

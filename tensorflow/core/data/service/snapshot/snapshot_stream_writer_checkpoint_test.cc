@@ -18,6 +18,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
@@ -28,11 +30,8 @@ limitations under the License.
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/lib/io/compression.h"
 #include "tsl/platform/env.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/random.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace tensorflow {
@@ -43,10 +42,10 @@ using ::testing::UnorderedElementsAre;
 using ::testing::ValuesIn;
 using ::tsl::testing::IsOkAndHolds;
 
-StatusOr<std::string> CreateSnapshotDirectory() {
+absl::StatusOr<std::string> CreateSnapshotDirectory() {
   std::string snapshot_path;
   if (!Env::Default()->LocalTempFilename(&snapshot_path)) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Failed to create local temp file for snapshot.");
   }
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(
@@ -54,8 +53,8 @@ StatusOr<std::string> CreateSnapshotDirectory() {
   return snapshot_path;
 }
 
-StatusOr<int64_t> NumCheckpoints(const std::string& snapshot_path,
-                                 int64_t stream_index) {
+absl::StatusOr<int64_t> NumCheckpoints(const std::string& snapshot_path,
+                                       int64_t stream_index) {
   std::string checkpoints_directory =
       CheckpointsDirectory(snapshot_path, stream_index);
   std::vector<std::string> checkpoint_filenames;

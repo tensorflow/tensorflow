@@ -262,7 +262,7 @@ StatusOr<HloFusionAnalysis> HloFusionAnalysis::Create(
   std::vector<const HloInstruction*> heroes;
   heroes.reserve(hlo_roots.size());
   for (auto* root : hlo_roots) {
-    heroes.push_back(&FindNonTrivialHero(*root));
+    heroes.push_back(&FindNonTrivialHero(*root, boundary_fn));
   }
 
   std::vector<const HloInstruction*> fusion_arguments;
@@ -306,12 +306,10 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     return EmitterFusionKind::kTriton;
   }
 #endif
-  const auto& roots = fusion_roots();
-
-  if (absl::c_any_of(roots, [](const HloInstruction* root) {
-        return IsRealReductionHero(*root, FindNonTrivialHero(*root));
-      })) {
-    return EmitterFusionKind::kReduction;
+  for (auto [root, hero] : llvm::zip(fusion_roots_, fusion_heroes_)) {
+    if (IsRealReductionHero(*root, *hero)) {
+      return EmitterFusionKind::kReduction;
+    }
   }
 
   // We expect that the last dimension is swapped with a different dimension.
@@ -319,15 +317,15 @@ HloFusionAnalysis::EmitterFusionKind HloFusionAnalysis::GetEmitterFusionKind()
     return EmitterFusionKind::kTranspose;
   }
 
-  if (roots.size() > 1) {
-    if (IsInputFusibleNonStridedSlices(roots) &&
-        AllSliceInputsAreCompatible(roots)) {
+  if (fusion_roots_.size() > 1) {
+    if (IsInputFusibleNonStridedSlices(fusion_roots_) &&
+        AllSliceInputsAreCompatible(fusion_roots_)) {
       return EmitterFusionKind::kInputSlices;
     }
     return EmitterFusionKind::kLoop;
   }
 
-  if (roots[0]->opcode() == HloOpcode::kScatter) {
+  if (fusion_roots_[0]->opcode() == HloOpcode::kScatter) {
     return EmitterFusionKind::kScatter;
   }
 

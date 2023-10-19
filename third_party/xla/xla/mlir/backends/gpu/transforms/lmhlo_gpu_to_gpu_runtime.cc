@@ -62,6 +62,7 @@ using mlir::lmhlo_gpu::CublasLtMatmulOp;
 using mlir::lmhlo_gpu::CudnnConvReorderFilterAndBiasOp;
 using mlir::lmhlo_gpu::CudnnConvReorderFilterOp;
 using mlir::lmhlo_gpu::GEMMOp;
+using mlir::lmhlo_gpu::RadixSortOp;
 
 using xla::runtime::CustomCallDeclarations;
 
@@ -855,6 +856,39 @@ class FusedAttentionBackwardOpLowering
   using FusedAttentionBackwardLowering::FusedAttentionBackwardLowering;
 };
 
+class RadixSortOpLowering : public OpRewritePattern<RadixSortOp> {
+ private:
+  static constexpr const char kSortKeysTarget[] = "xla.gpu.radix_sort_keys";
+  static constexpr const char kSortPairsTarget[] = "xla.gpu.radix_sort_pairs";
+
+ public:
+  explicit RadixSortOpLowering(MLIRContext* ctx,
+                               CustomCallDeclarations& custom_calls)
+      : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
+
+  LogicalResult matchAndRewrite(RadixSortOp op,
+                                PatternRewriter& rewriter) const override {
+    // Get or create a custom call function declaration.
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    func::FuncOp callee = custom_calls_.GetOrCreate(
+        b, op.getOperands().size() == 3 ? kSortKeysTarget : kSortPairsTarget,
+        op);
+
+    // Convert radix sort to a function call.
+    auto call = rewriter.create<func::CallOp>(op.getLoc(), callee.getName(),
+                                              TypeRange(), op.getOperands());
+    call->setAttr(b.getStringAttr("descending"), op.getDescendingAttr());
+
+    // Erase the original operation.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+
+ private:
+  CustomCallDeclarations& custom_calls_;
+};
+
 //===----------------------------------------------------------------------===//
 
 void ConvertLmhloGpuToGpuRuntimePass::runOnOperation() {
@@ -885,6 +919,7 @@ void ConvertLmhloGpuToGpuRuntimePass::runOnOperation() {
   patterns.insert<CudnnConvReorderFilterOpLowering>(ctx, custom_calls);
   patterns.insert<CudnnConvReorderFilterAndBiasOpLowering>(ctx, custom_calls);
   patterns.insert<CholeskyOpLowering>(ctx, custom_calls);
+  patterns.insert<RadixSortOpLowering>(ctx, custom_calls);
 
   // Each unique fused_attention operation in the module will get assigned a
   // uid.

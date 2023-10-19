@@ -84,8 +84,8 @@ limitations under the License.
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_copy_node.h"
-#include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
+#include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 #endif  // IS_MOBILE_PLATFORM
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
@@ -1540,20 +1540,29 @@ Status GetOrCreateKernelAndDevice(
     TF_RETURN_IF_ERROR(
         kernel->Init(ctx.LogDevicePlacement(), ndef, graph_collector));
 
+    // Exclude tf.data op kernels from being cached. The reason for this is
+    // that tf.data op kernels that accept a user-defined function will have a
+    // unique cache key every time they are executed (because the user-defined
+    // function is traced every time). Caching such kernels provides no
+    // benefit and in some cases results in linear memory growth of use
+    // programs that build input pipeline graphs in a loop.
+    const OpDef* op_def;
     if (op->is_function()) {
-      ctx.AddKernelToCache(cache_key, kernel.get());
-    } else {
-      // Exclude tf.data op kernels from being cached. The reason for this is
-      // that tf.data op kernels that accept a user-defined function will have a
-      // unique cache key every time they are executed (because the user-defined
-      // function is traced every time). Caching such kernels provides no
-      // benefit and in some cases results in linear memory growth of use
-      // programs that build input pipeline graphs in a loop.
-      const OpDef* op_def;
-      TF_RETURN_IF_ERROR(OpDefForOp(op->Name().data(), &op_def));
-      if (KernelCacheEnabled(*op_def)) {
-        ctx.AddKernelToCache(cache_key, kernel.get());
+      const FunctionDef* function_def =
+          op->EagerContext().FuncLibDef()->Find(op->Name());
+      if (function_def != nullptr) {
+        op_def = &(function_def->signature());
+      } else {
+        TF_RETURN_IF_ERROR(OpDefForOp(op->Name().c_str(), &op_def));
       }
+    } else {
+      TF_RETURN_IF_ERROR(OpDefForOp(op->Name().data(), &op_def));
+    }
+    if (op_def != nullptr && KernelCacheEnabled(*op_def)) {
+      // TODO(intel-tf): Implement an eviction policy to prevent potential
+      // memory growth (https://github.com/tensorflow/tensorflow/issues/58676)
+      VLOG(2) << "Caching op " << op->Name();
+      ctx.AddKernelToCache(cache_key, kernel.get());
     }
   }
 
@@ -1578,7 +1587,7 @@ Status CreateUnshapedOutput(
 #if defined(IS_MOBILE_PLATFORM)
   return errors::Unimplemented(
       "Remote outputs are not available on mobile devices.");
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
   int64_t op_id;
   if (eager_func_params.has_value()) {
     op_id = eager_func_params.value().op_id;
@@ -1621,7 +1630,7 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
 #if defined(IS_MOBILE_PLATFORM)
     return errors::Unimplemented(
         "Cross-process functions are not supported on mobile devices.");
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
     const int64_t op_id = ctx.RemoteMgr()->NextOpId();
     eager_func_params = EagerFunctionParams{
         op_id, /* is_component_function= */ false, /* step_id= */ std::nullopt};
@@ -2043,7 +2052,7 @@ Status GetKernelOutputs(
 #if defined(IS_MOBILE_PLATFORM)
         return errors::Unimplemented(
             "Remote outputs are not available on mobile devices.");
-#else  // !IS_MOBILE_PLATFORM
+#else   // !IS_MOBILE_PLATFORM
         TF_RETURN_IF_ERROR(retvals[i]->SetRemoteShape(
             std::get<TensorShape>(ret), retvals[i]->device(),
             ctx->GetContextViewId()));

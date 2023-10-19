@@ -22,6 +22,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_reachability.h"
+#include "xla/literal.h"
+#include "xla/literal_util.h"
 #include "xla/service/pattern_matcher.h"
 
 namespace xla {
@@ -317,44 +319,6 @@ optional<int64_t> GetLoopInductionVarTupleIdx(const HloInstruction* while_op) {
   return indvar_tuple_idx;
 }
 
-// Converts the given literal to a scalar int64_t, if possible.
-//
-// Fails if the literal is not an integral type or if the value it contains
-// cannot be represented in an int64_t.
-static optional<int64_t> LiteralAsScalarInt64(const Literal& l) {
-  if (!ShapeUtil::IsEffectiveScalar(l.shape())) {
-    VLOG(2) << "literal is not an effective scalar: " << l.ToString();
-    return nullopt;
-  }
-  switch (l.shape().element_type()) {
-    case S8:
-      return l.GetFirstElement<int8_t>();
-    case S16:
-      return l.GetFirstElement<int16_t>();
-    case S32:
-      return l.GetFirstElement<int32_t>();
-    case S64:
-      return l.GetFirstElement<int64_t>();
-    case U8:
-      return l.GetFirstElement<uint8_t>();
-    case U16:
-      return l.GetFirstElement<uint16_t>();
-    case U32:
-      return l.GetFirstElement<uint32_t>();
-    case U64: {
-      uint64_t v = l.GetFirstElement<uint64_t>();
-      if (v > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
-        VLOG(2) << "uint64_t literal is out of range for int64_t: " << v;
-        return nullopt;
-      }
-      return v;
-    }
-    default:
-      VLOG(2) << "literal is of non-integral type " << l.shape().ToString();
-      return nullopt;
-  }
-}
-
 // Computes a + b, returning nullopt if it overflows.
 optional<int64_t> CheckedAdd(int64_t a, int64_t b) {
   // Overflow occurred iff `a` and `b` have the same sign and `a + b` has a
@@ -381,16 +345,12 @@ optional<int64_t> CheckedSubtract(int64_t a, int64_t b) {
   return result;
 }
 
-// Check if
-//  - `i` is initialized to a scalar constant K (namely, `indvar_init`),
-//  - the while condition does `i < N` or `i <= N`, and
-//  - the while body does `i++`.
-// If so, it's trivial to compute the loop bound.
-static optional<int64_t> PatternMatchLoopTripCount(
-    const HloInstruction* while_op, int64_t indvar_tuple_idx,
-    const Literal& indvar_init) {
+optional<int64_t> MatchTrivialLoopTripCount(const HloInstruction* while_op,
+                                            int64_t indvar_tuple_idx,
+                                            const Literal& indvar_init) {
   // First, find the scalar constant K that `i` is initialized to.
-  optional<int64_t> indvar_init_val = LiteralAsScalarInt64(indvar_init);
+  optional<int64_t> indvar_init_val =
+      LiteralUtil::LiteralAsScalarInt64(indvar_init);
   if (!indvar_init_val) {
     VLOG(2) << "Pattern-match failed: induction variable init is not a "
                "constant scalar representable as an int64_t: "
@@ -430,7 +390,7 @@ static optional<int64_t> PatternMatchLoopTripCount(
   // Note: If this succeeds, the constant `N` is representable as an int64_t --
   // that is, if it's an XLA U64, it fits within an int64_t.
   optional<int64_t> while_cond_bound_val =
-      LiteralAsScalarInt64(while_cond_bound->literal());
+      LiteralUtil::LiteralAsScalarInt64(while_cond_bound->literal());
   if (!while_cond_bound_val) {
     VLOG(2) << "Pattern-match failed: while condition induction variable is "
                "not a constant scalar representable as an int64_t.";
@@ -509,7 +469,7 @@ optional<int64_t> ComputeWhileLoopTripCount(const HloInstruction* while_op,
   Literal indvar_iter_val = std::move(indvar_init_result).value();
 
   // First, try to pattern-match.
-  if (auto trip_count = PatternMatchLoopTripCount(while_op, *indvar_tuple_idx,
+  if (auto trip_count = MatchTrivialLoopTripCount(while_op, *indvar_tuple_idx,
                                                   indvar_iter_val)) {
     return trip_count;
   }

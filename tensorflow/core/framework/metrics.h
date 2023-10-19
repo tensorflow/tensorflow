@@ -79,8 +79,17 @@ monitoring::GaugeCell<std::function<std::string()>>* GetTFDataModelGauge(
 // Records the number of bytes fetched from tf.data.Dataset iterator.
 void RecordTFDataBytesFetched(int64_t num_bytes);
 
-// Records the number of times tf.data experiment is applied to input pipelines.
+// Records the number of times a tf.data experiment was applied.
 void RecordTFDataExperiment(const string& name);
+
+// Records the number of times a tf.data experiment could have been applied.
+void RecordTFDataExperimentLive(const string& name);
+
+// Records the number of times a tf.data experiment was opted into.
+void RecordTFDataExperimentOptIn(const string& experiment_name);
+
+// Records the number of times a tf.data experiment was opted out of.
+void RecordTFDataExperimentOptOut(const string& experiment_name);
 
 // Records the time (in microseconds) spent generating an element and
 // transferring it over the network for the given protocol.

@@ -151,6 +151,12 @@ bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
 // reordering helper (required for int8x32 convolutions).
 bool IsCudnnConvolutionReorder(const HloInstruction& hlo);
 
+// CUB library calls.
+// Reference: https://nvlabs.github.io/cub/
+extern const absl::string_view kCubDeviceRadixSortTarget;
+
+bool IsCubDeviceRadixSort(const HloInstruction& hlo);
+
 // The fused_mha_rewriter phase where each of the MHA signatures are pattern
 // matched and rewritten into a custom-call with specific custom-call target.
 // The custom-call target specifies the MHA signature. For example,  BMM1 - Bias

@@ -19,9 +19,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "absl/base/call_once.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v1/cluster_tf.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/metrics.h"
@@ -108,6 +112,17 @@ bool HasQualifiedNonTPUOp(const Graph& graph) {
     }
   }
   return false;
+}
+
+bool HasTPUPartitionedCallOpInModule(mlir::ModuleOp module) {
+  bool has_tpu_partitioned_call = false;
+  for (auto func_op : module.getOps<mlir::func::FuncOp>()) {
+    func_op->walk([&](mlir::TF::TPUPartitionedCallOp op) {
+      has_tpu_partitioned_call = true;
+    });
+    if (has_tpu_partitioned_call) break;
+  }
+  return has_tpu_partitioned_call;
 }
 
 }  // namespace
@@ -230,6 +245,10 @@ Status MlirBridgePass::Run(const std::string& function_name,
     return OkStatus();
   }
 
+  if (HasTPUPartitionedCallOpInModule(module)) {
+    VLOG(1) << "This is an inference module.";
+  }
+
   // TODO(b/241853328): Add caching of pass state and call logging/metrics
   // related to graph analysis from here.
   auto pass_state =
@@ -259,7 +278,9 @@ Status MlirBridgePass::Run(const std::string& function_name,
     }
     VLOG(1) << "Running MLIR TPU Bridge";
     mlir_bridge_gauge_v2->GetCell()->Set(true);
-    return mlir::TFTPU::TPUBridge(module, fallback_enabled, function_name);
+    return tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
+        module, tf2xla::v2::DeviceType::XLA_TPU_JIT,
+        /*is_in_fallback_enabled_mode=*/fallback_enabled, function_name);
   }
   VLOG(1) << "Running MLIR CPU/GPU Bridge";
   return mlir::TF::RunTFXLABridge(module, function_name);
@@ -339,9 +360,17 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
     return OkStatus();
   }
 
-  VLOG(1) << "Running MLIR TPU Bridge V1 Compat";
+  // 1) If the MLIR module contains a TPUPartitionedCall, we skip here
+  // 2) When TPUPartitionedCall starts executing, it calls MLIR bridge as a
+  // part of PRE_PLACEMENT optimization
+  // 3) This MLIR bridge version is V1 Compat
+  if (HasTPUPartitionedCallOpInModule(module)) {
+    VLOG(1)
+        << "Skipping MLIR TPU Bridge V1 Compat. This is an inference graph, V1 "
+           "Compat should be used during execution of TPUPartitionedCall.";
+    return OkStatus();
+  }
 
-  bool fallback_enabled = false;
   if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
     // We set `uses_uninitialized_resource_args` to false here because the first
     // phase of the bridge is not affected by uninitialized resource args.
@@ -351,12 +380,12 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
                      options.session_options->config,
                      /*uses_uninitialized_resource_args=*/false,
                      /*is_v1_compat=*/true);
-    fallback_enabled = true;
   }
 
-  mlir_bridge_gauge_v1->GetCell()->Set(true);
+  VLOG(1) << "Running MLIR TPU Bridge V1 Compat";
 
-  return mlir::TFTPU::TPUBridgeV1Compat(module, fallback_enabled);
+  mlir_bridge_gauge_v1->GetCell()->Set(true);
+  return tensorflow::tf2xla::v1::RunSessionTf2xlaClusteringBridge(module);
 }
 
 }  // namespace tensorflow

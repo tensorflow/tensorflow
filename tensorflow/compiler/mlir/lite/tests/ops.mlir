@@ -134,7 +134,7 @@ func.func @testAddN(tensor<? x f32>, tensor<? x f32>, tensor<? x f32>) -> tensor
 // test invalid AddN
 func.func @testAddNWrongOperandResultType(tensor<? x f16>, tensor<? x f16>, tensor<? x f16>) -> tensor<? x f16> {
 ^bb0(%arg0: tensor<? x f16>, %arg1: tensor<? x f16>, %arg2: tensor<? x f16>):
-  // expected-error @+1 {{'tfl.add_n' op operand #0 must be tensor of 32-bit float or 32-bit signless integer}}
+  // expected-error @+1 {{'tfl.add_n' op operand #0 must be variadic of tensor of 32-bit float or 32-bit signless integer}}
   %0 = "tfl.add_n"(%arg0, %arg1, %arg2): (tensor<? x f16>, tensor<? x f16>, tensor<? x f16>) -> tensor<? x f16>
   func.return %0 : tensor<? x f16>
 }

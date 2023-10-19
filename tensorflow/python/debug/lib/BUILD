@@ -683,7 +683,7 @@ cuda_py_strict_test(
         ":debug_data",
         ":debug_utils",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client",
+        "//tensorflow/python/client:device_lib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",

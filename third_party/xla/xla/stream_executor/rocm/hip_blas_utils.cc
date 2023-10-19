@@ -30,6 +30,8 @@ limitations under the License.
 #define HIPBLASLT_C_64F HIPBLAS_R_64F
 #endif
 
+#if TF_HIPBLASLT
+
 namespace stream_executor {
 namespace rocm {
 
@@ -89,3 +91,5 @@ hipblasOperation_t AsHipblasOperation(blas::Transpose trans) {
 
 }  // namespace rocm
 }  // namespace stream_executor
+
+#endif  // #TF_HIPBLASLT

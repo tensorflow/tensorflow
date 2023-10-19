@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -66,11 +67,27 @@ TEST(CudaCommandBufferTest, LaunchSingleKernel) {
 
   ASSERT_TRUE(executor->Submit(&stream, cmd_buffer).ok());
 
-  // Copy data back to host.
+  // Copy `c` data back to host.
   std::vector<int32_t> dst(4, 42);
   stream.ThenMemcpy(dst.data(), c, byte_length);
 
   std::vector<int32_t> expected = {3, 3, 3, 3};
+  ASSERT_EQ(dst, expected);
+
+  // Prepare argument for graph update: d = 0
+  DeviceMemory<int32_t> d = executor->AllocateArray<int32_t>(length, 0);
+  stream.ThenMemZero(&d, byte_length);
+
+  // Update command buffer to write into `d` buffer.
+  ASSERT_TRUE(cmd_buffer.Update().ok());
+  ASSERT_TRUE(cmd_buffer.Launch(add, ThreadDim(), BlockDim(4), a, b, d).ok());
+  ASSERT_TRUE(cmd_buffer.Finalize().ok());
+
+  ASSERT_TRUE(executor->Submit(&stream, cmd_buffer).ok());
+
+  // Copy `d` data back to host.
+  std::fill(dst.begin(), dst.end(), 42);
+  stream.ThenMemcpy(dst.data(), d, byte_length);
   ASSERT_EQ(dst, expected);
 }
 
@@ -120,9 +137,10 @@ TEST(CudaCommandBufferTest, TraceSingleKernel) {
 // Performance benchmarks below
 //===----------------------------------------------------------------------===//
 
-// In all benchmarks we construct command buffers in nested mode because we
+// In benchmarks we construct command buffers in nested mode when we
 // do not want to measure graph executable instantiation overhead.
-static constexpr auto nested = CommandBuffer::Mode::kNested;  // NOLINT
+static constexpr auto nested = CommandBuffer::Mode::kNested;    // NOLINT
+static constexpr auto primary = CommandBuffer::Mode::kPrimary;  // NOLINT
 
 #define BENCHMARK_SIZES(NAME) \
   BENCHMARK(NAME)->Arg(8)->Arg(32)->Arg(128)->Arg(512)->Arg(1024);
@@ -174,10 +192,39 @@ static void BM_TraceCommandBuffer(benchmark::State& state) {
       return tsl::OkStatus();
     };
 
-    CHECK_OK(CommandBuffer::Trace(executor, launch_kernels));
+    CHECK_OK(CommandBuffer::Trace(executor, launch_kernels, nested));
   }
 }
 
 BENCHMARK_SIZES(BM_TraceCommandBuffer);
+
+static void BM_UpdateCommandBuffer(benchmark::State& state) {
+  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  MultiKernelLoaderSpec spec(/*arity=*/3);
+  spec.AddCudaPtxInMemory(internal::kAddI32Kernel, "add");
+
+  AddI32Kernel add(executor);
+  CHECK_OK(executor->GetKernel(spec, &add));
+
+  DeviceMemory<int32_t> b = executor->AllocateArray<int32_t>(1, 0);
+
+  auto cmd_buffer = CommandBuffer::Create(executor, primary).value();
+  for (int i = 1; i < state.range(0); ++i) {
+    CHECK_OK(cmd_buffer.Launch(add, ThreadDim(), BlockDim(4), b, b, b));
+  }
+  CHECK_OK(cmd_buffer.Finalize());
+
+  for (auto s : state) {
+    CHECK_OK(cmd_buffer.Update());
+    for (int i = 1; i < state.range(0); ++i) {
+      CHECK_OK(cmd_buffer.Launch(add, ThreadDim(), BlockDim(4), b, b, b));
+    }
+    CHECK_OK(cmd_buffer.Finalize());
+  }
+}
+
+BENCHMARK_SIZES(BM_UpdateCommandBuffer);
 
 }  // namespace stream_executor::cuda

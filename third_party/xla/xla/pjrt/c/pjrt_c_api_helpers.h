@@ -152,11 +152,13 @@ xla::Status ValidateCreateOptions(
     const absl::flat_hash_map<std::string, PJRT_NamedValue_Type>&
         expected_name_and_types);
 
-// Helper function for checking C API argument struct sizes. Returns a non-OK
-// status if the expected and actual sizes aren't equal (i.e. no ABI
-// compatibility guarantees).
-xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
-                                     size_t expected_size, size_t actual_size);
+// Helper function for checking the actual C API argument struct size is greater
+// than or equal to the expected size. The actual struct size can be larger if
+// it comes from a forwards-compatible caller built at a later version than this
+// check. Returns a non-OK status if the expected is smaller.
+xla::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
+                                             size_t expected_size,
+                                             size_t actual_size);
 
 absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api);
 absl::string_view GetPlatformName(PJRT_Client* client, const PJRT_Api* api);

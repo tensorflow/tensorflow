@@ -133,6 +133,11 @@ FusionDecision FusionHeroesAreCompatible(const HloInstruction* hero1,
 FusionDecision ShapesCompatibleForMultiOutputFusion(
     const HloInstruction& instr1, const HloInstruction& instr2);
 
+// Whether fusing producer into consumer creates a scatter fusion that cannot be
+// handled by the scatter emitter.
+FusionDecision CanEmitInputFusedScatter(const HloInstruction& producer,
+                                        const HloInstruction& consumer);
+
 // Whether the instructions are compatible for producer-consumer fusion
 // i.e. whether the producer and consumer are loop/input fusible and
 // they are not library calls.

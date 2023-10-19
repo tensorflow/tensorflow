@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -82,6 +83,9 @@ void AddQuantizeQatPasses(
         mlir::TF::CreateUnrollBatchMatMulPassPass());
   }
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  if (quantization_options.experimental_enable_tpu_model_support()) {
+    AddConvertTpuToCpuModelPasses(pm);
+  }
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertTfXlaOpToTfOpPass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -226,7 +230,8 @@ void AddQuantizePtqPostCalibrationPasses(
 // TODO: b/298581932 - Add tests for passes below once migration is complete.
 void AddQuantizePtqPreCalibrationStablehloPasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options) {
-  // TODO: b/299545835 - Merge LiftQuantizableSpotsAsFunctionsPass here.
+  pm.addPass(
+      mlir::quant::stablehlo::createLiftQuantizableSpotsAsFunctionsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateInsertCustomAggregationOpsPass(
           quantization_options.calibration_options()));
@@ -245,8 +250,7 @@ void AddQuantizePtqPostCalibrationStablehloPasses(
   // the StableHLO functions to the top level module. This is needed for
   // StableHLO quantization.
   pm.addPass(mlir::TF::CreateXlaCallModuleDeserializationPass());
-  // TODO: b/299545788 - Include RestoreFunctionNameFromXlaCallModuleOpPass as
-  // in bug.
+  pm.addPass(mlir::quant::stablehlo::createRestoreFunctionNamePass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateConvertCustomAggregationOpToQuantStatsPass());
   AddStaticRangeQuantizationPass(pm, quantization_options,

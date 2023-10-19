@@ -242,6 +242,8 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:span",
         "@local_xla//xla:xla_data_proto_cc",
         "@local_xla//xla/client:compile_only_client",

@@ -994,13 +994,13 @@ while_body {
   select.1348 = s32[] select(compare.747, add.232, add.231)
   dynamic-slice.k = bf16[1,1,2,128] dynamic-slice(get-tuple-element.k, select.1348, constant.2561, constant.2561, constant.2561), dynamic_slice_sizes={1,1,2,128}
   r = bf16[1,2,128] reshape(dynamic-slice.k)
-  a = bf16[1,2,128] add(r, r)
+  a = bf16[1,2,128] add(r, r), control-predecessors={constant.2559}
   ag = bf16[1,8,128] all-gather(a), dimensions={1}, replica_groups={}
   dynamic-slice.99 = bf16[1,8,128] dynamic-slice(get-tuple-element.395, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,8,128}
   mul = bf16[1,8,128] multiply(dynamic-slice.99, ag)
   ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
   dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, ar.1, select.1348, constant.2561, constant.2561)
-  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,1,2,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.k)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,1,2,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.k), control-predecessors={a}
 }
 
 ENTRY entry {
@@ -1026,6 +1026,19 @@ ENTRY entry {
         return HloPredicateIsOp<HloOpcode::kWhile>(instruction);
       });
   EXPECT_EQ(while_count, 1);
+  const HloInstruction* while_instr =
+      FindInstruction(module.get(), HloOpcode::kWhile);
+  const HloInstruction* tuple = while_instr->operand(0);
+  EXPECT_TRUE(tuple->HasControlDependencies());
+  EXPECT_EQ(tuple->control_predecessors().size(), 1);
+  const HloInstruction* add_instr = tuple->control_predecessors()[0];
+  EXPECT_EQ(add_instr->opcode(), HloOpcode::kAdd);
+  const HloComputation* comp = while_instr->while_body();
+  const HloInstruction* root_loop = comp->root_instruction();
+  EXPECT_TRUE(root_loop->HasControlDependencies());
+  EXPECT_EQ(root_loop->control_predecessors().size(), 1);
+  const HloInstruction* add_instr_loop = root_loop->control_predecessors()[0];
+  EXPECT_EQ(add_instr_loop->opcode(), HloOpcode::kAdd);
 }
 
 TEST_F(CollectivePipelinerTest,
@@ -1398,7 +1411,7 @@ while_body {
   %b = bf16[1,8,128] broadcast(c), dimensions={}
   %a = bf16[1,8,128] add(ar.1, b)
   dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, a, select.1348, constant.2561, constant.2561)
-  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.35)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.35), control-predecessors={select.1348}
 }
 
 ENTRY entry {
@@ -1416,7 +1429,16 @@ ENTRY entry {
                            /*process_different_sized_ops=*/true,
                            CollectivePipeliner::kForwardSink)
                   .value());
-  XLA_VLOG_LINES(0, module->ToString());
+  XLA_VLOG_LINES(1, module->ToString());
+  const HloInstruction* while_instr =
+      FindInstruction(module.get(), HloOpcode::kWhile);
+  const HloComputation* comp = while_instr->while_body();
+  const HloInstruction* root_loop = comp->root_instruction();
+  EXPECT_TRUE(root_loop->HasControlDependencies());
+  EXPECT_EQ(root_loop->control_predecessors().size(), 1);
+  const HloInstruction* select_instr_loop =
+      root_loop->control_predecessors()[0];
+  EXPECT_EQ(select_instr_loop->opcode(), HloOpcode::kSelect);
 }
 
 TEST_F(CollectivePipelinerTest,
@@ -1757,11 +1779,11 @@ while_body {
   bc = bf16[1,8,128] broadcast(c2)
   ar.1 = bf16[1,8,128] all-reduce(mul), replica_groups={}, to_apply=add, channel_id=1
   ar.2 = bf16[1,8,128] all-reduce(ar.1), replica_groups={}, to_apply=add, channel_id=1
-  mul2 = bf16[1,8,128] multiply(ar.1, bc)
+  mul2 = bf16[1,8,128] multiply(ar.1, bc), control-predecessors={ar.1}
   mul3 = bf16[1,8,128] multiply(mul2, ar.2)
   mul4 = bf16[1,8,128] multiply(mul3, mul)
   dynamic-update-slice.35 = bf16[3,8,128] dynamic-update-slice(get-tuple-element.395, mul4, select.1348, constant.2561, constant.2561)
-  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.5)
+  ROOT tuple = (s32[], bf16[3,8,128], bf16[3,8,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.5), control-predecessors={ar.1}
 }
 
 ENTRY entry {

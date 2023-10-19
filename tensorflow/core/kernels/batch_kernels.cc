@@ -19,9 +19,11 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/function.h"
@@ -69,38 +71,38 @@ const int64_t kInitialInflightBatches = 2;
 const int64_t kBatchesToAverageOver = 10;
 const int64_t kMaxInflightBatches = 64;
 
-auto* batch_op_split_usage = monitoring::Gauge<string, 1>::New(
-    "/tensorflow/serving/batching/enable_large_batch_splitting",
-    "Tracks the usage of attribute `enable_large_batch_splitting` for "
-    "BatchFunction kernel in a saved model.",
-    "model_name");
-
 void RecordBatchSplitUsage(
-    absl::optional<bool> maybe_enable_large_batch_splitting,
-    const string& model_name) {
+    std::optional<bool> maybe_enable_large_batch_splitting,
+    absl::string_view model_name) {
+  static auto* cell = monitoring::Gauge<std::string, 1>::New(
+      "/tensorflow/serving/batching/enable_large_batch_splitting",
+      "Tracks the usage of attribute `enable_large_batch_splitting` for "
+      "BatchFunction kernel in a saved model.",
+      "model_name");
   if (maybe_enable_large_batch_splitting.has_value()) {
     if (maybe_enable_large_batch_splitting.value()) {
-      batch_op_split_usage->GetCell(model_name)->Set("true");
+      cell->GetCell(std::string(model_name))->Set("true");
     } else {
-      batch_op_split_usage->GetCell(model_name)->Set("false");
+      cell->GetCell(std::string(model_name))->Set("false");
     }
   } else {
-    batch_op_split_usage->GetCell(model_name)->Set("unset");
+    cell->GetCell(std::string(model_name))->Set("unset");
   }
 }
 
 void RecordBatchParamNumBatchThreads(int64_t num_batch_threads,
-                                     const string& model_name) {
+                                     absl::string_view model_name) {
   static auto* cell = monitoring::Gauge<int64_t, 1>::New(
       "/tensorflow/serving/batching/num_batch_threads",
       "Tracks the number of batch threads of a model.", "model_name");
-  cell->GetCell(model_name)->Set(num_batch_threads);
+  cell->GetCell(std::string(model_name))->Set(num_batch_threads);
 }
 
-const string& GetModelName(OpKernelContext* ctx) {
-  static string* kModelNameUnset = new string("model_name_unset");
-  if (!ctx->session_metadata()) return *kModelNameUnset;
-  if (ctx->session_metadata()->name().empty()) return *kModelNameUnset;
+absl::string_view GetModelName(OpKernelContext* ctx) {
+  if (ctx->session_metadata() == nullptr ||
+      ctx->session_metadata()->name().empty()) {
+    return "model_name_unset";
+  }
   return ctx->session_metadata()->name();
 }
 

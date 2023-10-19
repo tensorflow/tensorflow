@@ -602,6 +602,43 @@ void LiteralBase::Piece::DeallocateBuffers() {
   }
 }
 
+template <typename NativeT>
+void LiteralBase::Piece::CopyElementsWithDynamicBound(
+    const LiteralBase::Piece& src) {
+  auto& dest_shape = subshape();
+  auto& src_shape = src.subshape();
+
+  // At least one shape has to be static as bound.
+  CHECK(dest_shape.is_static() || src_shape.is_static());
+  auto& bound_shape = dest_shape.is_static() ? src_shape : dest_shape;
+  if (ShapeUtil::IsZeroElementArray(dest_shape)) {
+    return;
+  }
+  if (dest_shape.rank() == 1) {
+    // Fast path for rank 1 arrays.
+    int64_t count = std::min(GetDynamicSize(0), src.GetDynamicSize(0));
+    std::copy_n(src.data<NativeT>().begin(), count, data<NativeT>().begin());
+    return;
+  }
+  std::vector<int64_t> index(dest_shape.rank());
+  do {
+    bool out_of_bound = false;
+    for (int64_t i = 0; i < index.size(); ++i) {
+      // Do not copy elements beyond dynamic bound.
+      if (index[i] >= GetDynamicSize(i) || index[i] >= src.GetDynamicSize(i)) {
+        out_of_bound = true;
+      }
+    }
+    if (out_of_bound) {
+      continue;
+    }
+    data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(dest_shape,
+                                                                  index)] =
+        src.data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(
+            src_shape, index)];
+  } while (IndexUtil::BumpIndices(bound_shape, absl::MakeSpan(index)));
+}
+
 Status LiteralBase::Piece::CopyFrom(const LiteralBase::Piece& src,
                                     bool only_dynamic_bound) {
   CHECK(subshape_ != nullptr);
@@ -1782,43 +1819,6 @@ StatusOr<Literal> LiteralBase::ConvertToShape(const Shape& dest_shape) const {
         literal.MoveFrom(std::move(elements[i]), /*dest_shape_index=*/{i}));
   }
   return literal;
-}
-
-template <typename NativeT>
-void LiteralBase::Piece::CopyElementsWithDynamicBound(
-    const LiteralBase::Piece& src) {
-  auto& dest_shape = subshape();
-  auto& src_shape = src.subshape();
-
-  // At least one shape has to be static as bound.
-  CHECK(dest_shape.is_static() || src_shape.is_static());
-  auto& bound_shape = dest_shape.is_static() ? src_shape : dest_shape;
-  if (ShapeUtil::IsZeroElementArray(dest_shape)) {
-    return;
-  }
-  if (dest_shape.rank() == 1) {
-    // Fast path for rank 1 arrays.
-    int64_t count = std::min(GetDynamicSize(0), src.GetDynamicSize(0));
-    std::copy_n(src.data<NativeT>().begin(), count, data<NativeT>().begin());
-    return;
-  }
-  std::vector<int64_t> index(dest_shape.rank());
-  do {
-    bool out_of_bound = false;
-    for (int64_t i = 0; i < index.size(); ++i) {
-      // Do not copy elements beyond dynamic bound.
-      if (index[i] >= GetDynamicSize(i) || index[i] >= src.GetDynamicSize(i)) {
-        out_of_bound = true;
-      }
-    }
-    if (out_of_bound) {
-      continue;
-    }
-    data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(dest_shape,
-                                                                  index)] =
-        src.data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(
-            src_shape, index)];
-  } while (IndexUtil::BumpIndices(bound_shape, absl::MakeSpan(index)));
 }
 
 template <typename NativeT>

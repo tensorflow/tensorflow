@@ -16,7 +16,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/grappler/graph_analyzer/graph_analyzer_tool.h"
 
-PYBIND11_MODULE(_pywrap_graph_analyzer_tool, m) {
+PYBIND11_MODULE(_pywrap_graph_analyzer, m) {
   m.def("GraphAnalyzer",
         &tensorflow::grappler::graph_analyzer::GraphAnalyzerTool);
 }

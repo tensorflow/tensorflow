@@ -260,6 +260,9 @@ cc_library(
         ":gpu_stream",
         "//xla/stream_executor:stream_executor_headers",
         "//xla/stream_executor:stream_executor_internal",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@local_tsl//tsl/platform:status",
     ] + if_cuda_is_configured([
         "//xla/stream_executor/cuda:cuda_driver",
@@ -458,4 +461,32 @@ cc_library(
     ]) + if_rocm_is_configured([
         "//xla/stream_executor/rocm:rocm_driver",
     ]) + ["@com_google_absl//absl/strings"],
+)
+
+cc_library(
+    name = "gpu_blas_lt",
+    srcs = ["gpu_blas_lt.cc"],
+    hdrs = ["gpu_blas_lt.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured([
+        "TENSORFLOW_USE_ROCM=1",
+    ]),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:status",
+        "//xla:status_macros",
+        "//xla:statusor",
+        "//xla:types",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/stream_executor:host_or_device_scalar",
+        "//xla/stream_executor:stream_executor_headers",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/platform:statusor",
+    ] + if_cuda_is_configured([
+        "@local_tsl//tsl/platform:tensor_float_32_hdr_lib",
+    ]) + if_static([
+        "@local_tsl//tsl/platform:tensor_float_32_utils",
+    ]),
 )

@@ -182,5 +182,19 @@ TEST_F(HloExpandTest, UnsupportedOutputFormat) {
   EXPECT_THAT(stderr_output_, testing::HasSubstr(expected_string));
 }
 
+TEST_F(HloExpandTest, VerificationFailure) {
+  std::string hlo_path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
+                                           "tests", "invalid_concat.hlo");
+  std::vector<std::string> additional_flags = {"--verify_hlo", hlo_path};
+  HloOpt(additional_flags);
+
+  const std::string& expected_string =
+      "Cannot concatenate arrays that differ in dimensions";
+
+  EXPECT_TRUE(exited_normally_);
+  EXPECT_EQ(exit_status_, 1);
+  EXPECT_THAT(stderr_output_, testing::HasSubstr(expected_string));
+}
+
 }  // namespace
 }  // namespace xla

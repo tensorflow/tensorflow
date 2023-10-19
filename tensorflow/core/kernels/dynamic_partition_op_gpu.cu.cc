@@ -299,19 +299,25 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
     TensorReference partition_ref(partition_count);
     auto wrapped_callback = [this, c, &data, &partitions, indices_out,
                              partition_ref, cpu_tensor, done]() {
-      auto stream = c->op_device_context()->stream();
-      ScopedActivateExecutorContext scoped_activation{stream->parent()};
+      {
+        auto stream = c->op_device_context()->stream();
+        ScopedActivateExecutorContext scoped_activation{stream->parent()};
 
-      OpOutputList outputs;
-      this->AllocateOutputs(c, &data, &partitions, &cpu_tensor, &outputs, done);
-      if (!c->status().ok()) {
+        OpOutputList outputs;
+        this->AllocateOutputs(c, &data, &partitions, &cpu_tensor, &outputs,
+                              done);
+        if (!c->status().ok()) {
+          partition_ref.Unref();
+          return;
+        }
+        int32 N = partitions.NumElements();
+        int64 slice_size = data.NumElements() / N;
+        this->GatherSlices(c, &data, &indices_out, N, slice_size, outputs);
         partition_ref.Unref();
-        return;
-      }
-      int32 N = partitions.NumElements();
-      int64 slice_size = data.NumElements() / N;
-      this->GatherSlices(c, &data, &indices_out, N, slice_size, outputs);
-      partition_ref.Unref();
+      }  // Release ScopedActivateExecutorContext to prevent deadlock when done
+         // inlines another Op kernel, which may assume the original cuda
+         // Context.
+
       done();
     };
 

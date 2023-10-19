@@ -25,6 +25,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
@@ -414,34 +415,13 @@ void SubgraphBuilder::BuildCounterOnlySubgraph(Subgraph* subgraph) {
   AddAddNode(subgraph, kInputCounter, kConstRhs, kOutputCounter);
 }
 
-void SubgraphBuilder::BuildAddSubgraph(Subgraph* subgraph) {
-  const int kInput1 = 0;
-  const int kInput2 = 1;
-  const int kOutput = 2;
-  const int kTensorCount = 3;
-  // kInput1(0) --> +---+
-  //                |ADD| --> kOutput(2)
-  // kInput2(1) --> +---+
-
-  int first_new_tensor_index;
-  ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
-            kTfLiteOk);
-  ASSERT_EQ(first_new_tensor_index, 0);
-  ASSERT_EQ(subgraph->SetInputs({kInput1, kInput2}), kTfLiteOk);
-  ASSERT_EQ(subgraph->SetOutputs({kOutput}), kTfLiteOk);
-
-  SetupTensor(subgraph, kInput1, kTfLiteInt32);
-  SetupTensor(subgraph, kInput2, kTfLiteInt32);
-  SetupTensor(subgraph, kOutput, kTfLiteInt32);
-
+void SubgraphBuilder::BuildAddSubgraph(Subgraph* subgraph,
+                                       const TfLiteType operand_type) {
   TfLiteAddParams* params =
       reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
   params->activation = kTfLiteActNone;
-  auto* add_reg = ops::builtin::Register_ADD();
-  add_reg->builtin_code = kTfLiteBuiltinAdd;
-  int node_index;
-  subgraph->AddNodeWithParameters({kInput1, kInput2}, {kOutput}, {}, nullptr, 0,
-                                  params, add_reg, &node_index);
+  BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_ADD, kTfLiteBuiltinAdd,
+                        params, operand_type, operand_type, operand_type);
 }
 
 // This body subgraph has arena and dynamic output tensors which are not in
@@ -554,17 +534,17 @@ void SubgraphBuilder::BuildDynamicOpTriggersAllocationOfUnsedInputSubgraph(
   AddAddNode(subgraph, kIntermediateTensor0, kOutputValue1, kOutputValue0);
 }
 
-enum OpType { kMax, kMin };
-
-template <OpType op_type>
-static void BuildMinMaxSubgraph(Subgraph* subgraph) {
-  const int kInput1 = 0;
-  const int kInput2 = 1;
-  const int kOutput = 2;
-  const int kTensorCount = 3;
+void SubgraphBuilder::BuildBinaryOpSubgraph(
+    Subgraph* subgraph, TfLiteRegistration* (*Register_OP)(),
+    const TfLiteBuiltinOperator builtin_code, void* const params,
+    const TfLiteType input1_type, const TfLiteType input2_type,
+    const TfLiteType output_type) {
+  enum { kInput1, kInput2, kOutput, kTensorCount };
   // kInput1(0) --> +---+
-  //                |Op| --> kOutput(2)
+  //                | OP| --> kOutput(2)
   // kInput2(1) --> +---+
+
+  ASSERT_NE(Register_OP, nullptr);
 
   int first_new_tensor_index;
   ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
@@ -573,29 +553,33 @@ static void BuildMinMaxSubgraph(Subgraph* subgraph) {
   ASSERT_EQ(subgraph->SetInputs({kInput1, kInput2}), kTfLiteOk);
   ASSERT_EQ(subgraph->SetOutputs({kOutput}), kTfLiteOk);
 
-  SetupTensor(subgraph, kInput1, kTfLiteInt32);
-  SetupTensor(subgraph, kInput2, kTfLiteInt32);
-  SetupTensor(subgraph, kOutput, kTfLiteInt32);
+  SetupTensor(subgraph, kInput1, input1_type);
+  SetupTensor(subgraph, kInput2, input2_type);
+  SetupTensor(subgraph, kOutput, output_type);
 
-  TfLiteRegistration* reg;
-  if (op_type == kMax) {
-    reg = ops::builtin::Register_MAXIMUM();
-    reg->builtin_code = kTfLiteBuiltinMaximum;
-  } else if (op_type == kMin) {
-    reg = ops::builtin::Register_MINIMUM();
-    reg->builtin_code = kTfLiteBuiltinMinimum;
-  }
+  TfLiteRegistration* reg = Register_OP();
+  reg->builtin_code = builtin_code;
   int node_index;
   subgraph->AddNodeWithParameters({kInput1, kInput2}, {kOutput}, {}, nullptr, 0,
-                                  nullptr, reg, &node_index);
+                                  params, reg, &node_index);
 }
 
-void SubgraphBuilder::BuildMaximumSubgraph(Subgraph* subgraph) {
-  BuildMinMaxSubgraph<OpType::kMax>(subgraph);
+void SubgraphBuilder::BuildMaximumSubgraph(Subgraph* subgraph,
+                                           const TfLiteType operand_type) {
+  BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_MAXIMUM,
+                        kTfLiteBuiltinMaximum, /*params=*/nullptr,
+                        /*input1_type=*/operand_type,
+                        /*input2_type=*/operand_type,
+                        /*output_type=*/operand_type);
 }
 
-void SubgraphBuilder::BuildMinimumSubgraph(Subgraph* subgraph) {
-  BuildMinMaxSubgraph<OpType::kMin>(subgraph);
+void SubgraphBuilder::BuildMinimumSubgraph(Subgraph* subgraph,
+                                           const TfLiteType operand_type) {
+  BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_MINIMUM,
+                        kTfLiteBuiltinMinimum, /*params=*/nullptr,
+                        /*input1_type=*/operand_type,
+                        /*input2_type=*/operand_type,
+                        /*output_type=*/operand_type);
 }
 
 void SubgraphBuilder::BuildOutputIsSecondInputSubgraph(Subgraph* subgraph) {
@@ -618,34 +602,15 @@ void SubgraphBuilder::BuildOutputIsSecondInputSubgraph(Subgraph* subgraph) {
 }
 
 // Build a subgraph with an mul op. Helper function for testing.
-void SubgraphBuilder::BuildMulSubgraph(Subgraph* subgraph) {
-  const int kInput1 = 0;
-  const int kInput2 = 1;
-  const int kOutput = 2;
-  const int kTensorCount = 3;
-  // kInput1(0) --> +---+
-  //                |MUL| --> kOutput(2)
-  // kInput2(1) --> +---+
-
-  int first_new_tensor_index;
-  ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
-            kTfLiteOk);
-  ASSERT_EQ(first_new_tensor_index, 0);
-  ASSERT_EQ(subgraph->SetInputs({kInput1, kInput2}), kTfLiteOk);
-  ASSERT_EQ(subgraph->SetOutputs({kOutput}), kTfLiteOk);
-
-  SetupTensor(subgraph, kInput1, kTfLiteInt32);
-  SetupTensor(subgraph, kInput2, kTfLiteInt32);
-  SetupTensor(subgraph, kOutput, kTfLiteInt32);
-
+void SubgraphBuilder::BuildMulSubgraph(Subgraph* subgraph,
+                                       TfLiteType operand_type) {
   TfLiteMulParams* params =
       reinterpret_cast<TfLiteMulParams*>(malloc(sizeof(TfLiteMulParams)));
   params->activation = kTfLiteActNone;
-  auto* mul_reg = ops::builtin::Register_MUL();
-  mul_reg->builtin_code = kTfLiteBuiltinMul;
-  int node_index;
-  subgraph->AddNodeWithParameters({kInput1, kInput2}, {kOutput}, {}, nullptr, 0,
-                                  params, mul_reg, &node_index);
+  BuildBinaryOpSubgraph(subgraph, ops::builtin::Register_MUL, kTfLiteBuiltinMul,
+                        params, /*input1_type=*/operand_type,
+                        /*input2_type=*/operand_type,
+                        /*output_type=*/operand_type);
 }
 
 // Build a subgraph with a pad op. Helper function for testing.
@@ -1597,7 +1562,7 @@ void SubgraphBuilder::BuildMultiInputIfSubgraph(Subgraph* subgraph,
   params->then_subgraph_index = 1;
   params->else_subgraph_index = 2;
   auto* if_reg = ops::builtin::Register_IF();
-  if_reg->builtin_code = kTfLiteBuiltinWhile;
+  if_reg->builtin_code = kTfLiteBuiltinIf;
 
   int node_index;
   subgraph->AddNodeWithParameters(input_tensors, output_tensors, {}, nullptr, 0,

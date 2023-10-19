@@ -18,7 +18,6 @@ package_group(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [":internal"],
-    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -33,9 +32,12 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/utils:tensor_util",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@tf_runtime//:bef",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
@@ -112,9 +114,11 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tensor_metadata",
+        ":type_util",
         "//tensorflow/c:tf_datatype",
         "//tensorflow/core/framework:tensor_shape",
         "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:tstring",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
@@ -139,6 +143,7 @@ tf_cc_test(
     deps = [
         ":type_util",
         "@tf_runtime//:core_runtime",
+        "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
     ] + select({
@@ -196,7 +201,15 @@ tf_cc_test(
     deps = [
         ":attr_util",
         "//tensorflow/c:tf_tensor",
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:node_def_util",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:errors",
+        "@tf_runtime//:bef",
+        "@tf_runtime//:bef_attr_encoder",
         "@tf_runtime//:core_runtime",
+        "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
     ] + select({

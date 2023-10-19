@@ -494,6 +494,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@dlpack",
         "@local_config_python//:python_headers",  # buildcleaner: keep
+        "@local_tsl//tsl/platform:errors",
         "@pybind11",
     ],
 )
@@ -874,20 +875,33 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = ["//visibility:public"],
     deps = [
+        ":exceptions",
         ":status_casters",
         ":types",
         ":xplane_to_profile_instructions",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/strings",
         "//xla:status",
         "//xla/backends/profiler:profiler_backends",
         "//xla/backends/profiler/cpu:python_tracer",
+        "//xla/backends/profiler/plugin:plugin_tracer",
+        "//xla/backends/profiler/plugin:profiler_c_api_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
         "//xla/python/profiler/internal:traceme_wrapper",
+        "@local_tsl//tsl/profiler/lib:profiler_factory",
+        "@local_tsl//tsl/profiler/lib:profiler_interface",
         "@local_tsl//tsl/profiler/lib:profiler_session",
         "@local_tsl//tsl/profiler/rpc:profiler_server_impl",
         "@local_tsl//tsl/profiler/rpc/client:capture_profile",
         "@local_tsl//tsl/profiler/rpc/client:profiler_client_impl",
         "@pybind11",
-    ],
+    ] + select({
+        ":gpu_enabled": [
+            "//xla/backends/profiler/gpu:device_tracer",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -948,6 +962,7 @@ cc_library(
     deps = [
         # placeholder for index annotation deps
         "@com_google_absl//absl/cleanup",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "//xla/pjrt:lru_cache",
         "@pybind11",

@@ -136,6 +136,7 @@ tf_cc_test(
         ":remote_mgr",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",

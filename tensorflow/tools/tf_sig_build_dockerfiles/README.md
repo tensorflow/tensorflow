@@ -153,6 +153,7 @@ For ROCM
     For CUDA
     ```bash
     docker run --name tf -w /tf/tensorflow -it -d \
+      --env TF_PYTHON_VERSION=3.9 \
       -v "/tmp/packages:/tf/pkg" \
       -v "/tmp/tensorflow:/tf/tensorflow" \
       -v "/tmp/bazelcache:/tf/cache" \

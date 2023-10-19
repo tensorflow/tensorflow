@@ -37,7 +37,6 @@ class LoopFusion : public KernelFusionEmitterBase {
  protected:
   Status EmitKernel(IrEmitterContext& ir_emitter_context,
                     ElementalIrEmitter& elemental_emitter,
-                    mlir::lmhlo::FusionOp fusion_op,
                     const HloFusionInstruction& fusion,
                     const LaunchDimensions& launch_dims,
                     std::vector<llvm_ir::IrArray> inputs,

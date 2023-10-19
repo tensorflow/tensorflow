@@ -1250,7 +1250,7 @@ filegroup(
         "//tensorflow/core/util:lib_internal_public_hdrs",
         "@local_tsl//tsl/lib/io:legacy_lib_internal_public_headers",
         "@local_tsl//tsl/platform:lib_internal_public_hdrs",
-        "@local_xla//xla/stream_executor:device_mem_allocator_headers",
+        "@local_xla//xla/stream_executor/integrations:device_mem_allocator_headers",
     ],
     visibility = ["//visibility:private"],
 )
@@ -1481,7 +1481,7 @@ cc_library(
         "@local_xla//xla/service:buffer_assignment_proto_cc_impl",
         "@local_xla//xla/service/memory_space_assignment:memory_space_assignment_proto_cc_impl",
         "@local_xla//xla/service/gpu:backend_configs_cc_impl",
-        "@local_xla//xla/service/gpu:hlo_op_profile_proto_cc_impl",
+        "@local_xla//xla/service/gpu/model:hlo_op_profile_proto_cc_impl",
         "@local_xla//xla/stream_executor:device_description_proto_cc_impl",
     ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps(),
     # Alwayslink causes a cc_binary to "always link" in the

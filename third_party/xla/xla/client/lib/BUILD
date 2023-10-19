@@ -1,8 +1,8 @@
 # Common computation builders for XLA.
 
+load("//xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
 load("@local_tsl//tsl:tsl.default.bzl", "filegroup")
 load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
-load("//xla/tests:build_defs.bzl", "generate_backend_suites", "xla_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -307,9 +307,28 @@ cc_library(
     deps = [
         ":constants",
         "//xla:shape_util",
+        "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/client:xla_builder",
+    ],
+)
+
+xla_test(
+    name = "prng_test",
+    srcs = ["prng_test.cc"],
+    deps = [
+        ":constants",
+        ":prng",
+        "//xla:shape_util",
+        "//xla:statusor",
+        "//xla:test",
+        "//xla:xla_data_proto_cc",
+        "//xla/client:xla_builder",
+        "//xla/tests:client_library_test_base",
+        "//xla/tests:test_macros_header",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/status",
     ],
 )
 

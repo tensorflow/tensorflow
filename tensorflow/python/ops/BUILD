@@ -593,6 +593,7 @@ tf_gen_op_strict_wrapper_private_py(
         "//tensorflow/python/kernel_tests/array_ops:__pkg__",
         "//tensorflow/python/kernel_tests/control_flow:__pkg__",
         "//tensorflow/python/kernel_tests/variables:__pkg__",
+        "//tensorflow/python/tpu/google/sparse_core:__pkg__",
         "//tensorflow/python/training:__pkg__",
     ],
 )
@@ -933,6 +934,7 @@ py_strict_library(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 

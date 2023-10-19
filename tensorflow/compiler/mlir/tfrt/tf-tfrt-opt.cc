@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/host_runtime/lower_cluster_to_runtime_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_dialect.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/tf_mlrt_ops.h"
@@ -64,6 +65,10 @@ int main(int argc, char **argv) {
   tensorflow::RegisterGpuDialects(&registry);
 
   tfrt::RegisterTFRTDialects(registry);
+  tensorflow::tfrt_compiler::RegisterTPULowerClusterToRuntimeOpsPassPipeline();
+  tensorflow::tfrt_compiler::
+      RegisterNonTPULowerClusterToRuntimeOpsPassPipeline();
+
   return failed(
       mlir::MlirOptMain(argc, argv, "TensorFlow TFRT pass driver\n", registry));
 }

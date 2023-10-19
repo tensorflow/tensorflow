@@ -60,7 +60,7 @@ class CUDABlas : public blas::BlasSupport {
 
   TENSORFLOW_STREAM_EXECUTOR_GPU_BLAS_SUPPORT_OVERRIDES
 
-  BlasLt &blas_lt() { return blas_lt_; }
+  BlasLt *GetBlasLt() override { return &blas_lt_; }
 
  private:
   // Tells cuBLAS to enqueue the BLAS operation onto a particular Stream.
@@ -119,7 +119,7 @@ class CUDABlas : public blas::BlasSupport {
   // cuBLAS library handle on the device.
   cublasHandle_t blas_ ABSL_GUARDED_BY(mu_);
 
-  BlasLt blas_lt_;
+  cuda::BlasLt blas_lt_;
 
   CUDABlas(const CUDABlas &) = delete;
   void operator=(const CUDABlas &) = delete;

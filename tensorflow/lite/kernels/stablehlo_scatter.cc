@@ -241,7 +241,6 @@ TfLiteStatus EvalWithTypes(TfLiteContext* context, TfLiteNode* node) {
         GatherIndex(update_index, update_scatter_dims);
 
     // Read the index_vector_dim dimension with the other dimension indices set.
-    // Let's say the contents after reading are {s1, s2}
     Index<IndexType> start_index =
         ReadIndexVector(scatter_indices, scatter_indices_shape,
                         update_scatter_index, data->index_vector_dim);

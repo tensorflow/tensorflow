@@ -150,6 +150,8 @@ struct StrategyVector {
   // Used when is_tuple == True. A vector of pointers, each pointer is one
   // StrategyVector for one value in the output Tuple
   std::vector<std::unique_ptr<StrategyVector>> childs;
+  // The index of this instruction in the HLO operand (or tuple shape) list.
+  std::optional<int64_t> tuple_element_idx;
 
   std::string ToString(size_t indention = 0) const {
     std::string str;
@@ -193,6 +195,8 @@ struct StrategyVector {
 
 // Type aliases.
 using LivenessSet = std::vector<std::vector<const HloValue*>>;
+// A liveness set using node indices instead of HLO values.
+using LivenessNodeSet = std::vector<std::vector<NodeIdx>>;
 // Map an instruction to its strategy vector.
 using StrategyMap =
     StableHashMap<const HloInstruction*, std::unique_ptr<StrategyVector>>;

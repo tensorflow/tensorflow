@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package xla.gpu;
+
+message FusionStep {
+  // Name of the resulting fusion. Can be the same as producer or consumer.
+  string fusion_name = 1;
+
+  // Name of the producer instruction before fusion.
+  string producer_name = 2;
+
+  // Name of the consumer instruction before fusion.
+  string consumer_name = 3;
+}
+
+message FusionProcessDumpProto {
+  repeated FusionStep fusion_steps = 1;
+}

@@ -1066,7 +1066,7 @@ func.func private @testIfElse(f32) -> f32
 // Test invalid tf.If operation
 func.func @testInvalidIfOp(tensor<i1>, f32) -> f32 {
 ^bb0(%arg0: tensor<i1>, %arg1: f32):
-  // expected-error @+1 {{operand #1 must be tensor of tf.dtype values}}
+  // expected-error @+1 {{operand #1 must be variadic of tensor of tf.dtype values}}
   %1 = "tf.If"(%arg0, %arg1) {
     then_branch = @testIfThen,
     else_branch = @testIfElse,
@@ -2486,7 +2486,7 @@ func.func @testValidShapeN(%arg0 : tensor<1x32x32x16xf32>, %arg1 : tensor<*xf32>
 // -----
 
 func.func @testShapeNWrongResultElemType(%arg0: tensor<1x32x32x16xf32>) -> tensor<4xf32> {
-  // expected-error @+1 {{result #1 must be tensor of 32/64-bit signed integer values}}
+  // expected-error @+1 {{result #1 must be variadic of tensor of 32/64-bit signed integer values}}
   %0:2 = "tf.ShapeN"(%arg0, %arg0) : (tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>) -> (tensor<4xi32>, tensor<4xf32>)
   func.return %0#1 : tensor<4xf32>
 }
