@@ -1243,8 +1243,30 @@ bool DatasetOpKernel::IsDatasetOp(const OpDef& op_def) {
   if (op_def.output_arg_size() != 1) return false;
   if (op_def.output_arg(0).type() != DT_VARIANT) return false;
   absl::string_view op_name = op_def.name();
+
+  // When running eager ops as a function, we check if the current op is a
+  // Dataset op by unwrapping it. Below are some example op names when running
+  // eager ops as a function:
+  // 1. __wrapped__MapDataset_Targuments_0_device<...>
+  // 2. __wrapped__FlatMapDataset_Targuments_0_device<...>
+  // 3. __wrapped__ParallelMapDatasetV2_Targuments_0_device<...>
+  //
+  // Below are the corresponding unwrapped op names:
+  // 1. MapDataset
+  // 2. FlatMapDataset
+  // 3. ParallelMapDatasetV2
+
+  std::vector<std::string> v1, v2;  // Declared here so that v2 outlives op_name
+  if (absl::StartsWith(op_name, "__wrapped__")) {
+    v1 = absl::StrSplit(op_name, "__wrapped__", absl::SkipEmpty());
+    if (v1.empty()) return false;
+    v2 = absl::StrSplit(v1[0], "_", absl::SkipEmpty());
+    op_name = v2.empty() ? v1[0] : v2[0];
+  }
+
   if (op_name == "DatasetFromGraph") return true;
   if (absl::EndsWith(op_name, "Dataset")) return true;
+
   // Check if the suffix matches "DatasetV[0-9]+".
   size_t index = op_name.length() - 1;
   while (index >= 0 && isdigit(op_name[index])) {
