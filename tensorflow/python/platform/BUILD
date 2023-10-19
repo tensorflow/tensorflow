@@ -303,7 +303,7 @@ py_strict_library(
     srcs = ["gfile.py"],
     visibility = visibility + ["//third_party/py/tf_slim/training:__pkg__"],
     deps = [
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
