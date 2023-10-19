@@ -4354,11 +4354,10 @@ cc_library(
         ":ir_emission_utils",
         "//xla:shape_util",
         "//xla:statusor",
+        "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo:lhlo",
-        "//xla/mlir_hlo:transforms_gpu_passes",
         "//xla/service:buffer_assignment",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
     ],
 )

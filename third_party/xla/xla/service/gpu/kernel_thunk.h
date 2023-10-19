@@ -54,7 +54,8 @@ class KernelThunk : public Thunk {
   // `mlir::memref::ViewOp`).
   KernelThunk(mlir::Operation* op, std::string kernel_name,
               absl::Span<const KernelArgument> kernel_arguments,
-              LaunchDimensions launch_dimensions, int64_t shmem_bytes);
+              LaunchDimensions launch_dimensions, int64_t shmem_bytes,
+              bool emit_ir_from_hlo = false);
   KernelThunk(const KernelThunk&) = delete;
   KernelThunk& operator=(const KernelThunk&) = delete;
   ~KernelThunk() override = default;
