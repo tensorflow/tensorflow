@@ -183,6 +183,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:stacktrace",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/tpu:tpu_defs",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
