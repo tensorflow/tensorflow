@@ -242,7 +242,7 @@ LogicalResult ConvertTFLGeluOp::matchAndRewrite(
 
     Value table_const = getTosaConst8bitTable(
         rewriter, op, in_quant_type.getScale(), in_quant_type.getZeroPoint(),
-        out_quant_type.getScale(), out_quant_type.getZeroPoint()
+        out_quant_type.getScale(), out_quant_type.getZeroPoint(),
         approximate ? tflite::reference_ops::GeluTransformApproximate
                     : tflite::reference_ops::GeluTransform);
 
