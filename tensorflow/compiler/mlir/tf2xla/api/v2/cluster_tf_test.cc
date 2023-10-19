@@ -123,9 +123,9 @@ TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFCPU) {
 
   EXPECT_TRUE(has_graph_op);
 
-  EXPECT_EQ(compilation_status.Delta("cpu/gpu", "tfxla", "fallback_disabled",
-                                     "success"),
-            1);
+  EXPECT_EQ(
+      compilation_status.Delta("cpu/gpu", "v2", "fallback_disabled", "success"),
+      1);
 }
 
 TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFGPU) {
@@ -148,9 +148,22 @@ TEST_F(FunctionClusterTensorflowDialectTest, ClustersTFGPU) {
 
   EXPECT_TRUE(has_graph_op);
 
-  EXPECT_EQ(compilation_status.Delta("cpu/gpu", "tfxla", "fallback_disabled",
-                                     "success"),
-            1);
+  EXPECT_EQ(
+      compilation_status.Delta("cpu/gpu", "v2", "fallback_disabled", "success"),
+      1);
+}
+
+TEST_F(FunctionClusterTensorflowDialectTest, LogsFallbackMode) {
+  CellReader<int64_t> compilation_status(kCompilationStreamz);
+
+  TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
+
+  TF_EXPECT_OK(
+      RunFunctionTf2xlaClusteringBridge(*mlir_module_, DeviceType::XLA_TPU_JIT,
+                                        /*is_in_fallback_enabled_mode=*/true));
+
+  EXPECT_EQ(
+      compilation_status.Delta("tpu", "v2", "fallback_enabled", "success"), 1);
 }
 
 }  // namespace

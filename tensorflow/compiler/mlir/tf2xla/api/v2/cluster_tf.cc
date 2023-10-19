@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
 
+#include <string>
+
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
@@ -123,6 +125,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm, llvm::StringRef module_name) {
 
 tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
                                        bool fallback_enabled,
+                                       std::string device_type,
                                        absl::Status status) {
   if (status.ok()) {
     return status;
@@ -130,7 +133,7 @@ tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
 
   VLOG(2) << error_prefix << " " << status;
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      /*device_type=*/"tpu", /*bridge_version=*/"v2",
+      device_type, /*bridge_version=*/"v2",
       /*fallback_enabled=*/fallback_enabled,
       /*result=*/"failure");
 
@@ -138,7 +141,12 @@ tensorflow::Status RecordIfErrorStatus(const std::string error_prefix,
       tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_1,
       status);
 
-  tsl::error_logging::Log(kBridgeComponent, "TFXLA_PHASE_ONE_MLIR_TPU_BRIDGE",
+  std::string bridge_subcomponent = "TFXLA_PHASE_ONE_MLIR_TPU_BRIDGE";
+  if (device_type != "tpu") {
+    bridge_subcomponent = "TFXLA_PHASE_ONE_MLIR_CPU/GPU_BRIDGE";
+  }
+
+  tsl::error_logging::Log(kBridgeComponent, bridge_subcomponent,
                           status.ToString())
       .IgnoreError();
 
@@ -151,6 +159,7 @@ tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
       << "TPU Bridge called stack trace is "
       << "(NOTE: this is not an error; rather the stack trace for debugging) : "
       << tensorflow::CurrentStackTrace();
+  std::string device_type = "tpu";
   Status clustering_status = RunTFXLABridge(
       module,
       [module_name](OpPassManager &pm) {
@@ -159,23 +168,25 @@ tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
       module_name, /*dump_prefix=*/"tf_xla_bridge_v2_tpu");
 
   TF_RETURN_IF_ERROR(RecordIfErrorStatus(/*error_prefix=*/"clustering_v2",
-                                         fallback_enabled, clustering_status));
+                                         fallback_enabled, device_type,
+                                         clustering_status));
 
   Status runtime_lowering_status =
       tensorflow::tfrt_compiler::RunLowerClusterToRuntimeOpsPassPipeline(
           module, tsl::DeviceType(DEVICE_TPU_XLA_JIT), module_name);
   TF_RETURN_IF_ERROR(RecordIfErrorStatus(/*error_prefix=*/"runtime_lowering_v2",
-                                         fallback_enabled,
+                                         fallback_enabled, device_type,
                                          runtime_lowering_status));
 
   Status export_status =
       tensorflow::tf2xla::v2::ExportFromTensorflowDialectToExecutor(
           module, module_name);
   TF_RETURN_IF_ERROR(RecordIfErrorStatus(/*error_prefix=*/"export_to_executor",
-                                         fallback_enabled, export_status));
+                                         fallback_enabled, device_type,
+                                         export_status));
 
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      /*device_type=*/"tpu", /*bridge_version=*/"v2",
+      device_type, /*bridge_version=*/"v2",
       /*fallback_enabled=*/fallback_enabled,
       /*result=*/"success");
 
@@ -183,42 +194,44 @@ tensorflow::Status TPUBridge(ModuleOp module, bool fallback_enabled,
 }
 
 tensorflow::Status RunNonTPUBridge(ModuleOp module,
+                                   bool is_in_fallback_enabled_mode,
                                    llvm::StringRef module_name) {
   VLOG(2)
       << "CPU/GPU Bridge called stack trace is "
       << "(NOTE: this is not an error; rather the stack trace for debugging) : "
       << tensorflow::CurrentStackTrace();
-  Status status = RunTFXLABridge(
+
+  std::string device_type = "cpu/gpu";
+  Status clustering_status = RunTFXLABridge(
       module,
       [](OpPassManager &pm) {
         tensorflow::tf2xla::internal::AddNonTPUBridgeClusteringPipelinePasses(
             pm);
-        tensorflow::tfrt_compiler::
-            AddNonTPULowerClusterToRuntimeOpsPassPipeline(pm);
       },
       module_name, /*dump_prefix=*/"tf_xla_bridge_v2_nontpu");
-  tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      /*device type*/ "cpu/gpu", /*bridge version*/ "tfxla",
-      /*fallback_enabled*/ false,
-      /*result*/ status.ok() ? "success" : "failure");
-  if (!status.ok()) {
-    tsl::error_logging::Log(kBridgeComponent,
-                            "TFXLA_PHASE_ONE_MLIR_CPU/GPU_BRIDGE",
-                            status.ToString())
-        .IgnoreError();
-  }
+
+  TF_RETURN_IF_ERROR(RecordIfErrorStatus(/*error_prefix=*/"clustering_v2",
+                                         is_in_fallback_enabled_mode,
+                                         device_type, clustering_status));
+
+  Status runtime_lowering_status =
+      tensorflow::tfrt_compiler::RunLowerClusterToRuntimeOpsPassPipeline(
+          module, tsl::DeviceType("XLA_GPU_JIT"), module_name);
+  TF_RETURN_IF_ERROR(RecordIfErrorStatus(/*error_prefix=*/"runtime_lowering_v2",
+                                         is_in_fallback_enabled_mode,
+                                         device_type, runtime_lowering_status));
 
   Status export_status =
       tensorflow::tf2xla::v2::ExportFromTensorflowDialectToExecutor(
           module, module_name);
-  if (!export_status.ok()) {
-    tsl::error_logging::Log(kBridgeComponent,
-                            "TFXLA_PHASE_ONE_MLIR_CPU_BRIDGE_EXPORT",
-                            export_status.ToString())
-        .IgnoreError();
-  }
+  TF_RETURN_IF_ERROR(RecordIfErrorStatus(/*error_prefix=*/"export_to_executor",
+                                         is_in_fallback_enabled_mode,
+                                         device_type, export_status));
+  tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
+      device_type, /*bridge_version=*/"v2", is_in_fallback_enabled_mode,
+      /*result=*/"success");
 
-  return status;
+  return absl::OkStatus();
 }
 
 tensorflow::Status RunFunctionTf2xlaClusteringBridge(
@@ -229,7 +242,7 @@ tensorflow::Status RunFunctionTf2xlaClusteringBridge(
                      /*module_name=*/module_name);
   }
 
-  return RunNonTPUBridge(module, module_name);
+  return RunNonTPUBridge(module, is_in_fallback_enabled_mode, module_name);
 }
 
 }  // namespace v2
