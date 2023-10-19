@@ -620,6 +620,7 @@ tf_gen_op_strict_wrapper_private_py(
 tf_gen_op_strict_wrapper_private_py(
     name = "training_ops_gen",
     visibility = [
+        "//tensorflow/contrib/opt:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/training:__pkg__",
     ],
