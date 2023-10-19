@@ -210,6 +210,23 @@ function prepare_src() {
     cp -L \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
       "${TMPDIR}"
+    # Check if it is a tpu build
+    if [[ ${TPU_BUILD} == "1" ]]; then
+      # Check if libtpu.so exists
+      if [[ -f "./tensorflow/lib/libtpu.so" ]]; then
+        if [[ ! -L "${RUNFILES}/tensorflow/lib/libtpu.so" ]]; then
+          mkdir "$(real_path ${RUNFILES}/tensorflow/lib)"
+          ln -s $(real_path ./tensorflow/lib/libtpu.so) $(real_path ${RUNFILES}/tensorflow/lib/libtpu.so)
+          echo "Created symlink: $(real_path ./tensorflow/lib/libtpu.so) -> \
+            $(real_path ${RUNFILES}/tensorflow/lib/libtpu.so)"
+        else
+          echo "Symlink already exists: ${RUNFILES}/tensorflow/lib/libtpu.so"
+        fi
+      else
+        echo "Libtpu.so is not found in $(real_path ./tensorflow/lib/)"
+        exit 1
+      fi
+    fi
     cp -LR \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
       "${TMPDIR}"
@@ -351,6 +368,7 @@ function usage() {
   echo "  Options:"
   echo "    --project_name <name> set project name to name"
   echo "    --cpu                 build tensorflow_cpu"
+  echo "    --tpu                 build tensorflow_tpu"
   echo "    --gpudirect           build tensorflow_gpudirect"
   echo "    --rocm                build tensorflow_rocm"
   echo "    --nightly_flag        build tensorflow nightly"
@@ -362,6 +380,7 @@ function main() {
   PKG_NAME_FLAG=""
   PROJECT_NAME=""
   CPU_BUILD=0
+  TPU_BUILD=0
   GPUDIRECT_BUILD=0
   ROCM_BUILD=0
   NIGHTLY_BUILD=0
@@ -376,6 +395,8 @@ function main() {
       NIGHTLY_BUILD=1
     elif [[ "$1" == "--cpu" ]]; then
       CPU_BUILD=1
+    elif [[ "$1" == "--tpu" ]]; then
+      TPU_BUILD=1
     elif [[ "$1" == "--gpudirect" ]]; then
       GPUDIRECT_BUILD=1
     elif [[ "$1" == "--rocm" ]]; then
@@ -403,8 +424,8 @@ function main() {
     fi
   done
 
-  if [[ $(( CPU_BUILD + GPUDIRECT_BUILD + ROCM_BUILD )) -gt "1" ]]; then
-    echo "Only one of [--cpu, --gpudirect, --rocm] may be provided."
+  if [[ $(( TPU_BUILD + CPU_BUILD + GPUDIRECT_BUILD + ROCM_BUILD )) -gt "1" ]]; then
+    echo "Only one of [--tpu, --cpu, --gpudirect, --rocm] may be provided."
     usage
     exit 1
   fi
@@ -435,6 +456,8 @@ function main() {
     PKG_NAME_FLAG="--project_name tf_nightly_rocm"
   elif [[ ${NIGHTLY_BUILD} == "1" && ${CPU_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly_cpu"
+  elif [[ ${NIGHTLY_BUILD} == "1" && ${TPU_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tf_nightly_tpu"
   elif [[ ${NIGHTLY_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tf_nightly"
   elif [[ ${GPUDIRECT_BUILD} == "1" ]]; then
@@ -443,6 +466,8 @@ function main() {
     PKG_NAME_FLAG="--project_name tensorflow_rocm"
   elif [[ ${CPU_BUILD} == "1" ]]; then
     PKG_NAME_FLAG="--project_name tensorflow_cpu"
+  elif [[ ${TPU_BUILD} == "1" ]]; then
+    PKG_NAME_FLAG="--project_name tensorflow_tpu"
   fi
 
   build_wheel "$SRCDIR" "$DSTDIR" "$PKG_NAME_FLAG"
