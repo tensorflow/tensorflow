@@ -81,7 +81,9 @@ TEST_F(SessionClusterTensorflowDialectTest, ClustersTf) {
 
   TF_ASSERT_OK(CreateMlirModule("empty_func.mlir"));
 
-  TF_EXPECT_OK(RunSessionTf2xlaClusteringBridge(*mlir_module_));
+  TF_EXPECT_OK(
+      RunSessionTf2xlaClusteringBridge(*mlir_module_,
+                                       /*is_in_fallback_enabled_mode=*/false));
   EXPECT_EQ(
       compilation_status.Delta("tpu", "v1", "fallback_disabled", "success"), 1);
 }
@@ -92,7 +94,10 @@ TEST_F(SessionClusterTensorflowDialectTest,
        RunsTensorflowDialectToTensorflowExecutor) {
   TF_ASSERT_OK(CreateMlirModule("invalid_executor.mlir"));
 
-  EXPECT_FALSE(RunSessionTf2xlaClusteringBridge(*mlir_module_).ok());
+  EXPECT_FALSE(
+      RunSessionTf2xlaClusteringBridge(*mlir_module_,
+                                       /*is_in_fallback_enabled_mode=*/false)
+          .ok());
 }
 
 TEST_F(SessionClusterTensorflowDialectTest, FailsWithMultipleSubmodules) {
@@ -100,7 +105,10 @@ TEST_F(SessionClusterTensorflowDialectTest, FailsWithMultipleSubmodules) {
 
   TF_ASSERT_OK(CreateMlirModule("multiple_submodules.mlir"));
 
-  EXPECT_FALSE(RunSessionTf2xlaClusteringBridge(*mlir_module_).ok());
+  EXPECT_FALSE(
+      RunSessionTf2xlaClusteringBridge(*mlir_module_,
+                                       /*is_in_fallback_enabled_mode=*/false)
+          .ok());
 
   EXPECT_EQ(
       compilation_status.Delta("tpu", "v1", "fallback_disabled", "failure"), 1);

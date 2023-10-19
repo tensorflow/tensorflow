@@ -371,6 +371,7 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
     return OkStatus();
   }
 
+  bool fallback_enabled = false;
   if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
     // We set `uses_uninitialized_resource_args` to false here because the first
     // phase of the bridge is not affected by uninitialized resource args.
@@ -380,12 +381,14 @@ Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
                      options.session_options->config,
                      /*uses_uninitialized_resource_args=*/false,
                      /*is_v1_compat=*/true);
+    fallback_enabled = true;
   }
 
   VLOG(1) << "Running MLIR TPU Bridge V1 Compat";
 
   mlir_bridge_gauge_v1->GetCell()->Set(true);
-  return tensorflow::tf2xla::v1::RunSessionTf2xlaClusteringBridge(module);
+  return tensorflow::tf2xla::v1::RunSessionTf2xlaClusteringBridge(
+      module, fallback_enabled);
 }
 
 }  // namespace tensorflow

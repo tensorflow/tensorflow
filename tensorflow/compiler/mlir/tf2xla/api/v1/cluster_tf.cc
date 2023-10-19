@@ -142,6 +142,7 @@ tensorflow::Status RunTFXLABridge(
 }  // namespace
 
 tensorflow::Status RecordStatusIfError(const std::string error_prefix,
+                                       bool is_in_fallback_enabled_mode,
                                        absl::Status status) {
   if (status.ok()) {
     return status;
@@ -149,7 +150,8 @@ tensorflow::Status RecordStatusIfError(const std::string error_prefix,
 
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       /*device_type=*/"tpu", /*bridge_version=*/"v1",
-      /*fallback_enabled=*/false, /*result=*/"failure");
+      /*fallback_enabled=*/is_in_fallback_enabled_mode,
+      /*result=*/"failure");
   tsl::error_logging::Log(kBridgeComponent,
                           "TFXLA_PHASE_ONE_MLIR_TPU_V1_COMPAT_BRIDGE",
                           status.ToString())
@@ -161,7 +163,8 @@ tensorflow::Status RecordStatusIfError(const std::string error_prefix,
 // V1 Compat Bridge takes a TF Executor dialect and extracts the TF2 portion
 // and inserts it into a submodule. We just want to run the clustering
 // portion of the pipeline on just the single submodule.
-absl::Status RunClusteringPipelineOnSubmodule(ModuleOp parent_module) {
+absl::Status RunClusteringPipelineOnSubmodule(
+    ModuleOp parent_module, bool is_in_fallback_enabled_mode) {
   int num_submodules = 0;
   mlir::WalkResult submodule_status = parent_module.walk([&](ModuleOp
                                                                  submodule) {
@@ -187,7 +190,7 @@ absl::Status RunClusteringPipelineOnSubmodule(ModuleOp parent_module) {
         "V1 Compat Bridge has more than one submodule. Erroring out.");
     TF_RETURN_IF_ERROR(RecordStatusIfError(
         /*error_prefix=*/"Bridge has more than one submodule:",
-        num_submodules_error));
+        is_in_fallback_enabled_mode, num_submodules_error));
   }
 
   if (submodule_status.wasInterrupted()) {
@@ -195,14 +198,14 @@ absl::Status RunClusteringPipelineOnSubmodule(ModuleOp parent_module) {
         "V1 Compat Bridge Errored running clustering pipeline. Erroring out.");
     TF_RETURN_IF_ERROR(RecordStatusIfError(
         /*error_prefix=*/"Bridge Errored running clustering pipeline:",
-        submodule_error));
+        is_in_fallback_enabled_mode, submodule_error));
   }
 
   return absl::OkStatus();
 }
 
-// TODO(b/298390303): Pass in enable_fallback from caller to re-enable logging.
-tensorflow::Status RunSessionTf2xlaClusteringBridge(ModuleOp module) {
+tensorflow::Status RunSessionTf2xlaClusteringBridge(
+    ModuleOp module, bool is_in_fallback_enabled_mode) {
   VLOG(2) << "TPU Sessions Bridge called stack trace is "
           << "(NOTE: this is not an error; rather the stack trace for "
              "debugging) : "
@@ -212,9 +215,11 @@ tensorflow::Status RunSessionTf2xlaClusteringBridge(ModuleOp module) {
       module, [](OpPassManager &pm) { CreateTPUBridgePipelineV1(pm); },
       /*module_name=*/"", /*dump_prefix=*/"tf_xla_functional_import_bridge_v1");
   TF_RETURN_IF_ERROR(RecordStatusIfError(
-      /*error_prefix=*/"Bridge Function Import V1", functional_import_status));
+      /*error_prefix=*/"Bridge Function Import V1", is_in_fallback_enabled_mode,
+      functional_import_status));
 
-  TF_RETURN_IF_ERROR(RunClusteringPipelineOnSubmodule(module));
+  TF_RETURN_IF_ERROR(
+      RunClusteringPipelineOnSubmodule(module, is_in_fallback_enabled_mode));
 
   Status export_preparation_status = RunTFXLABridge(
       module,
@@ -234,12 +239,13 @@ tensorflow::Status RunSessionTf2xlaClusteringBridge(ModuleOp module) {
   if (!export_preparation_status.ok()) {
     TF_RETURN_IF_ERROR(RecordStatusIfError(
         /*error_prefix=*/"Bridge Export Preparation Failed:",
-        export_preparation_status));
+        is_in_fallback_enabled_mode, export_preparation_status));
   }
 
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       /*device_type=*/"tpu", /*bridge_version=*/"v1",
-      /*fallback_enabled=*/false, /*result=*/"success");
+      /*n_fallback_enabled*/ is_in_fallback_enabled_mode,
+      /*result=*/"success");
 
   return tensorflow::tf2xla::v1::ExportFromTensorflowDialectToExecutor(module);
 }
