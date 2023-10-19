@@ -22,18 +22,22 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
 #include "tensorflow/compiler/jit/pjrt_device_compiler_client.h"
 #include "tensorflow/compiler/jit/tf_graph_to_hlo_compiler.h"
 #include "tensorflow/compiler/jit/xla_compiler_options_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
@@ -46,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/path.h"
@@ -70,7 +75,7 @@ limitations under the License.
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
 namespace tensorflow::tfrt_stub {
-
+namespace {
 void UpdateCompileOptions(AotOptions& options) {
   // Disable DecomposeResourceOpsPass for now, as DecomposeResourceGather does
   // not work well with GPU (b/232819415).
@@ -115,6 +120,73 @@ Status CompileTfGraphToHlo(
   }
   return absl::OkStatus();
 }
+
+// Signature node name is "${node_name}:0". This function extracts node_name.
+std::string GetNodeName(const std::string& signature_node_name) {
+  int node_name_len = signature_node_name.size();
+  return signature_node_name.substr(0, node_name_len - 2);
+}
+
+Status UpdateGraphDefWithInputShapes(
+    MetaGraphDef& meta_graph_def,
+    const absl::flat_hash_map<std::string, tensorflow::TensorShapeProto>&
+        input_shapes,
+    const std::string& signature_name) {
+  if (!meta_graph_def.signature_def().contains(signature_name)) {
+    return absl::NotFoundError(
+        absl::StrCat("Signature not found: ", signature_name));
+  }
+  SignatureDef& signature_def =
+      (*meta_graph_def.mutable_signature_def())[signature_name];
+
+  // Maps from graph node name to its tensor shape.
+  absl::flat_hash_map<std::string, tensorflow::TensorShapeProto>
+      graph_input_shapes;
+  for (const auto& input : input_shapes) {
+    *((*signature_def.mutable_inputs())[input.first].mutable_tensor_shape()) =
+        input.second;
+    const std::string node_name = signature_def.inputs().at(input.first).name();
+    graph_input_shapes[GetNodeName(node_name)] = input.second;
+  }
+  // Update GraphDef node shapes.
+  for (NodeDef& node : *meta_graph_def.mutable_graph_def()->mutable_node()) {
+    if (graph_input_shapes.find(node.name()) != graph_input_shapes.end()) {
+      if (node.attr().contains("_output_shapes")) {
+        (*(*node.mutable_attr())["_output_shapes"]
+              .mutable_list()
+              ->mutable_shape())[0] = graph_input_shapes[node.name()];
+      }
+      if (node.attr().contains("shape")) {
+        *((*node.mutable_attr())["shape"].mutable_shape()) =
+            graph_input_shapes[node.name()];
+      }
+    }
+  }
+  return OkStatus();
+}
+
+// Constructs function and args in place using `xla_func_def`.
+void ConstructFunctionAndArgs(const std::string& name,
+                              const FunctionDef& xla_func_def,
+                              NameAttrList& function,
+                              std::vector<XlaCompiler::Argument>& args) {
+  function.set_name(name);
+  *function.mutable_attr() = xla_func_def.attr();
+  args.resize(xla_func_def.signature().input_arg_size());
+  for (const auto& attr : xla_func_def.arg_attr()) {
+    XlaCompiler::Argument arg;
+    const int index = attr.first;
+    arg.name = index;
+    TensorShapeProto shape_proto =
+        attr.second.attr().at("_output_shapes").list().shape(0);
+    arg.shape = shape_proto;
+    arg.kind = XlaCompiler::Argument::kParameter;
+    arg.type = xla_func_def.signature().input_arg(index).type();
+    arg.initialized = true;
+    args[index] = arg;
+  }
+}
+}  // namespace
 
 AotOptions::AotOptions() : graph_execution_options(nullptr) {}
 
@@ -225,6 +297,7 @@ StatusOr<AotResult> AotCompileSavedModel(absl::string_view input_model_dir,
   ASSIGN_OR_RETURN_IN_IMPORT(
       std::unique_ptr<tensorflow::tfrt_stub::FallbackState> fallback_state,
       FallbackState::CreateWithMockGpuDevice(session_options, fdef_lib));
+
   ASSIGN_OR_RETURN_IN_IMPORT(
       mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
       ImportSavedModel(&context, meta_graph_def, *fallback_state,
@@ -234,7 +307,6 @@ StatusOr<AotResult> AotCompileSavedModel(absl::string_view input_model_dir,
                            ->run_placer_grappler_on_functions));
 
   auto kernel_registry = std::make_unique<mlrt::KernelRegistry>();
-
   auto resource_context = std::make_unique<tfrt::ResourceContext>();
   ModelRuntimeContext model_context(&*aot_options.graph_execution_options,
                                     std::string(input_model_dir),
@@ -317,5 +389,71 @@ StatusOr<std::string> AotCompileToGpuPjRtLoadedExecutableWithDevice(
       auto executable,
       se_client->Compile(*((*compilation_result)->computation), pjrt_options));
   return se_client->SerializeExecutable(*executable);
+}
+
+StatusOr<AotResult::ExecutableMap> AotCompileXlaFunctionsInMetaGraphDef(
+    const MetaGraphDef& meta_graph_def, const std::string& signature_name,
+    const absl::flat_hash_map<std::string, tensorflow::TensorShapeProto>&
+        input_shapes,
+    const tensorflow::FunctionDefLibrary& fdef_lib,
+    const tensorflow::SessionOptions& session_options,
+    const mlir::DialectRegistry& registry, const AotOptions& aot_options,
+    absl::string_view input_model_dir, ModelRuntimeContext& model_context) {
+  // Make a copy since we need to modify the graph.
+  MetaGraphDef input_meta_graph_def = meta_graph_def;
+  TF_RETURN_IF_ERROR(UpdateGraphDefWithInputShapes(
+      input_meta_graph_def, input_shapes, signature_name));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<tensorflow::tfrt_stub::FallbackState> fallback_state,
+      FallbackState::CreateWithMockGpuDevice(session_options, fdef_lib));
+
+  // Import the graph corresponding to `signature_name` into MLIR module.
+  mlir::MLIRContext context(registry);
+  TF_ASSIGN_OR_RETURN(
+      mlir::OwningOpRef<mlir::ModuleOp> mlir_module,
+      ImportSavedModel(
+          &context, input_meta_graph_def, *fallback_state,
+          std::string(input_model_dir),
+          /*import_user_signatures=*/true,
+          aot_options.graph_execution_options->run_placer_grappler_on_functions,
+          {signature_name}));
+
+  // Runs bridge pass.
+  std::vector<std::string> xla_function_names;
+  RETURN_IF_ERROR_IN_COMPILE(ConvertTfMlirToRuntimeExecutable(
+      aot_options.graph_execution_options->compile_options, mlir_module.get(),
+      [](mlir::PassManager& pm, mlir::ModuleOp module,
+         const tensorflow::TfrtPipelineOptions& options) { return OkStatus(); },
+      model_context, fallback_state.get(), &xla_function_names));
+
+  AotResult::ExecutableMap result;
+  const FunctionLibraryDefinition& flib_def = fallback_state->func_lib_def();
+  // Compiles every exported XLA function.
+  for (const std::string& name : xla_function_names) {
+    const FunctionDef* xla_func_def = flib_def.Find(name);
+    if (xla_func_def == nullptr) {
+      return absl::NotFoundError(
+          absl::StrCat("XLA function ", name, " not found in library."));
+    }
+
+    NameAttrList func_attr_list = NameAttrList();
+    std::vector<XlaCompiler::Argument> args;
+    ConstructFunctionAndArgs(name, *xla_func_def, func_attr_list, args);
+
+    XlaCompiler::CompilationResult out_compilation_result;
+    XlaCompiler::CompilationResult* compilation_result =
+        &out_compilation_result;
+    TF_ASSIGN_OR_RETURN(
+        std::string serialized_executable,
+        AotCompileToGpuPjRtLoadedExecutableWithDevice(
+            &flib_def, func_attr_list,
+            input_meta_graph_def.graph_def().versions().producer(), args, false,
+            false, &compilation_result));
+    TF_ASSIGN_OR_RETURN(
+        auto signature,
+        DeviceCompilationClusterSignature::Build(func_attr_list, args));
+    result.emplace(signature, serialized_executable);
+  }
+  return result;
 }
 }  // namespace tensorflow::tfrt_stub

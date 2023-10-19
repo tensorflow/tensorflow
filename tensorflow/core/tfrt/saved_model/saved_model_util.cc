@@ -182,10 +182,15 @@ StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
     const FallbackState& fallback_state, std::string saved_model_dir,
-    bool import_user_signatures, bool run_placer_grappler_on_functions) {
+    bool import_user_signatures, bool run_placer_grappler_on_functions,
+    const std::vector<std::string>& import_signature_names) {
   std::vector<std::string> signature_names;
   if (import_user_signatures) {
-    signature_names = FindNamesForValidSignatures(meta_graph_def);
+    if (!import_signature_names.empty()) {
+      signature_names = import_signature_names;
+    } else {
+      signature_names = FindNamesForValidSignatures(meta_graph_def);
+    }
     if (signature_names.empty())
       LOG(WARNING) << "No valid signature found for model: " << saved_model_dir;
   }
