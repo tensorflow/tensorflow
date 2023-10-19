@@ -450,27 +450,6 @@ cc_library(
 )
 
 cc_library(
-    name = "stream",
-    srcs = ["stream.cc"],
-    hdrs = ["stream.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":blas",
-        ":dnn",
-        ":stream_executor_headers",
-        ":stream_executor_pimpl",
-        "//xla/stream_executor/platform",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:stacktrace",
-    ],
-)
-
-cc_library(
     name = "temporary_device_memory",
     srcs = ["temporary_device_memory.cc"],
     hdrs = ["temporary_device_memory.h"],
@@ -553,7 +532,10 @@ cc_library(
 
 cc_library(
     name = "stream_executor_pimpl",
-    srcs = ["stream_executor_pimpl.cc"],
+    srcs = [
+        "stream.cc",
+        "stream_executor_pimpl.cc",
+    ],
     hdrs = ["stream_executor_pimpl.h"],
     visibility = ["//visibility:public"],
     deps = [
@@ -653,7 +635,6 @@ cc_library(
         ":multi_platform_manager",
         ":platform",
         ":scratch_allocator",
-        ":stream",
         ":stream_executor_headers",
         ":stream_executor_pimpl",
         ":temporary_device_memory",
