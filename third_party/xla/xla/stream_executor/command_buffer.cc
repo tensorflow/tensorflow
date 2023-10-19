@@ -78,6 +78,10 @@ tsl::Status CommandBuffer::Launch(const ThreadDim& threads,
   return implementation_->Launch(threads, blocks, kernel, args);
 }
 
+tsl::Status CommandBuffer::AddNestedCommandBuffer(const CommandBuffer& nested) {
+  return implementation_->AddNestedCommandBuffer(nested);
+}
+
 tsl::Status CommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                                 const DeviceMemoryBase& src,
                                                 uint64_t size) {

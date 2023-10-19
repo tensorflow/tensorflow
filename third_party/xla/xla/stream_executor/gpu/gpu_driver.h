@@ -451,6 +451,13 @@ class GpuDriver {
                                            GpuDevicePtr gpu_dst,
                                            GpuDevicePtr gpu_src, uint64_t size);
 
+  // Creates a child graph node and adds it to a graph.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gde52afbcf91a8c79d4d7efbe0e3b6844
+  static tsl::Status GraphAddChildNode(GpuGraphNodeHandle* node,
+                                       GpuGraphHandle graph,
+                                       absl::Span<GpuGraphNodeHandle> deps,
+                                       GpuGraphHandle child);
+
   // Loads ptx_contents with the CUDA driver's PTX JIT and stores the resulting
   // handle in "module". Any error logs that are produced are logged internally.
   // (supported on CUDA only)

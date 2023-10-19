@@ -98,6 +98,9 @@ class CommandBuffer {
   tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
                      const KernelBase& kernel, const KernelArgsArrayBase& args);
 
+  // Adds a nested command buffer to the command buffer.
+  tsl::Status AddNestedCommandBuffer(const CommandBuffer& nested);
+
   // Adds a device-to-device memory copy to the command buffer.
   tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                    const DeviceMemoryBase& src, uint64_t size);

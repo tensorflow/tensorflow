@@ -814,6 +814,19 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
   return ::tsl::OkStatus();
 }
 
+/* static */ tsl::Status GpuDriver::GraphAddChildNode(
+    CUgraphNode* node, CUgraph graph, absl::Span<CUgraphNode> deps,
+    CUgraph child) {
+  VLOG(2) << "Create a new node by cloning the child graph " << child
+          << " and add it to " << graph << "; deps: " << deps.size();
+
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphAddChildGraphNode(node, graph, deps.data(), deps.size(), child),
+      "Failed to create a child graph node and add it to a CUDA graph");
+
+  return ::tsl::OkStatus();
+}
+
 /* static */ tsl::Status GpuDriver::LaunchKernel(
     GpuContext* context, absl::string_view kernel_name, CUfunction function,
     unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
