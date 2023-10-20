@@ -76,5 +76,14 @@ Status MemoryDatasetStore::Get(const std::string& key,
   return OkStatus();
 }
 
+Status SyncFileSystemStoreWithDispatcherState(const std::string& dataset_id,
+                                              const std::string& datasets_dir) {
+  std::string dataset_path = io::JoinPath(datasets_dir, dataset_id);
+  if (Env::Default()->FileExists(dataset_path).ok()) {
+    TF_RETURN_IF_ERROR(Env::Default()->DeleteFile(dataset_path));
+  }
+  return OkStatus();
+}
+
 }  // namespace data
 }  // namespace tensorflow

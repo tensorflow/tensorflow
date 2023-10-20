@@ -74,6 +74,13 @@ class MemoryDatasetStore : public DatasetStore {
   absl::flat_hash_map<std::string, std::shared_ptr<const DatasetDef>> datasets_;
 };
 
+// The dataset files and the dispatcher state can get inconsistent if the
+// dispatcher fails after creating a dataset file but before updating its state.
+// For example, b/306687933. In this case, the dispatcher state is the source of
+// truth, and the dataset file should be synced with the dispatcher state.
+Status SyncFileSystemStoreWithDispatcherState(const std::string& dataset_id,
+                                              const std::string& datasets_dir);
+
 }  // namespace data
 }  // namespace tensorflow
 
