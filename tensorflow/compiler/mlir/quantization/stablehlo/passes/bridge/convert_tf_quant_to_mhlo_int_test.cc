@@ -327,7 +327,7 @@ func.func @main(%input: tensor<1x2xf32>, %filter: tensor<2x3xf32>) -> tensor<1x3
     %filter_scale = "tf.Const"() { value = dense<0.0235> : tensor<f32> } : ()
     -> tensor<f32>
     %filter_zp = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
-    %accum_scale = "tf.Const"() { value = dense<0.0138> : tensor<f32> } : ()
+    %accum_scale = "tf.Const"() { value = dense<0.013818> : tensor<f32> } : ()
     -> tensor<f32>
     %accum_zp = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
     %quant_input = "tf.UniformQuantize"(%input, %input_scale, %input_zp) {
@@ -363,9 +363,7 @@ func.func @main(%input: tensor<1x2xf32>, %filter: tensor<2x3xf32>) -> tensor<1x3
   auto input = xla::LiteralUtil::CreateR2<float>({{50.f, -100.f}});
   auto filter =
       xla::LiteralUtil::CreateR2<float>({{1.f, 2.f, 3.f}, {-1.f, -3.f, 1.f}});
-  // TODO: b/306265272 - Figure out why there is a large difference.
-  ExecuteAndCompareResultsWithTfKernel(kProgram, {&input, &filter},
-                                       /*error_tolerance=*/1.0);
+  ExecuteAndCompareResultsWithTfKernel(kProgram, {&input, &filter});
 }
 
 TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeDotHybrid) {
