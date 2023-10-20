@@ -75,6 +75,7 @@ class CollectivePipeliner : public HloModulePass {
     bool process_different_sized_ops = false;
     PipeliningDirection pipelining_direction = PipeliningDirection::kForward;
     HloPredicate should_process;
+    HloPredicate acceptable_formatting;
   };
   static const char* const kInsertedByPreviousStep;
   static const char* const kSunkByPreviousStep;
