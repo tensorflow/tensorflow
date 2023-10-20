@@ -491,7 +491,7 @@ typedef struct TfLiteTensor {
   // responsible to set data_is_stale to true.
   // `delegate->CopyFromBufferHandle` can be called to copy the data from
   // delegate buffer.
-  // WARNING: This is an // experimental interface that is subject to change.
+  // WARNING: This is an experimental interface that is subject to change.
   bool data_is_stale;
 
   // True if the tensor is a variable.
