@@ -186,6 +186,7 @@ cc_library(
         "transforms/convert_metadata.cc",
         "transforms/convert_tfl_uint8.cc",
         "transforms/legalize_tfl.cc",
+        "transforms/legalize_tfl_stateful.cc",
         "transforms/lower_complex_types.cc",
         "transforms/lower_global_tensors.cc",
         "transforms/retain_call_once_funcs.cc",
