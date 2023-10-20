@@ -3832,7 +3832,6 @@ tf_cuda_cc_test(
 
 tf_cuda_cc_test(
     name = "matmul_op_test",
-    size = "small",
     srcs = ["matmul_op_test.cc"],
     tags = [
         "no_arm64",  # b/282068262
