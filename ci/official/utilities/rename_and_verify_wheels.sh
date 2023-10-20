@@ -38,5 +38,5 @@ find $DIR -iname "*.whl" | while read wheel; do
   fi
   rm check.txt
 
-  TF_WHEEL="$wheel" bats ./ci/official/utilities/wheel_verification.bats --timing
+  PYTHON_VERSION="$TFCI_PYTHON_VERSION" TF_WHEEL="$wheel" bats ./ci/official/utilities/wheel_verification.bats --timing
 done
