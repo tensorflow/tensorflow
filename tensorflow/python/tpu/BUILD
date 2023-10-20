@@ -37,12 +37,19 @@ bzl_library(
     srcs = ["tpu_test_wrapper.bzl"],
 )
 
+py_strict_library(
+    name = "tpu_test_wrapper",
+    srcs = ["tpu_test_wrapper.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python/platform:flags",
+        "//tensorflow/python/util:tf_decorator",
+    ],
+)
+
 py_strict_test(
     name = "tpu_test_wrapper_test",
-    srcs = [
-        "tpu_test_wrapper.py",
-        "tpu_test_wrapper_test.py",
-    ],
+    srcs = ["tpu_test_wrapper_test.py"],
     main = "tpu_test_wrapper_test.py",
     python_version = "PY3",
     srcs_version = "PY3",
@@ -51,9 +58,9 @@ py_strict_test(
         "no_pip",
     ],
     deps = [
+        ":tpu_test_wrapper",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:flags",
-        "//tensorflow/python/util:tf_decorator",
         "@absl_py//absl/testing:flagsaver",
     ],
 )
