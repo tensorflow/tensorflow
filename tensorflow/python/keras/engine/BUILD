@@ -228,7 +228,6 @@ py_library(
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/keras/utils:object_identity",
-        "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/util:nest",
     ],
 )
