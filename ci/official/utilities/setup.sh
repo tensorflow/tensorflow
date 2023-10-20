@@ -61,9 +61,6 @@ fi
 export TFCI_OUTPUT_DIR=$(realpath "$TFCI_OUTPUT_DIR")
 mkdir -p "$TFCI_OUTPUT_DIR"
 
-# Export TFCI_PYTHON_VERSION as it is needed in unsourced subscripts 
-export TFCI_PYTHON_VERSION=$TFCI_PYTHON_VERSION
-
 # In addition to dumping all script output to the terminal, place it into
 # $TFCI_OUTPUT_DIR/script.log
 exec > >(tee "$TFCI_OUTPUT_DIR/script.log") 2>&1
