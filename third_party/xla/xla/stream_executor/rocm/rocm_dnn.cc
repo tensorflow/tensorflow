@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "rocm/include/miopen/miopen.h"
+#include "rocm/rocm_config.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
@@ -252,7 +253,7 @@ namespace wrap {
 
 #endif
 
-#if (TF_ROCM_VERSION >= 50300)
+#if (TF_ROCM_VERSION >= 50000)
 // clang-format off
 #define MIOPEN_DNN_ROUTINE_EACH(__macro)                             \
   __macro(miopenBatchNormalizationBackward)                          \
@@ -625,8 +626,8 @@ std::set<uint64_t> CachedFusionPlans::unsupported_plans;
 dnn::ProfileResult GetProfileResultFromConvSolution(
     miopenConvSolution_t solution) {
   dnn::ProfileResult profile_result;
-  profile_result.set_algorithm(
-      {solution.solution_id, false, solution.workspace_size});
+  profile_result.set_algorithm({(dnn::AlgorithmDesc::Index)solution.solution_id,
+                                false, solution.workspace_size});
   profile_result.set_elapsed_time_in_ms(solution.time);
   profile_result.set_scratch_size(solution.workspace_size);
   return profile_result;
@@ -1312,7 +1313,7 @@ class ScopedFusionPlanBase {
       const int op_idx, const float* alpha, const float* beta,
       const void* scale, const void* offset, void* running_mean,
       void* running_variance, void* saved_mean, void* saved_inv_variance,
-      double epsilon, double exponential_average_factor) {
+      double exponential_average_factor, double epsilon) {
     miopenFusionOpDescriptor_t batchnorm_op;
     auto status =
         wrap::miopenFusionPlanGetOp(fusion_plan_, op_idx, &batchnorm_op);
@@ -1323,8 +1324,8 @@ class ScopedFusionPlanBase {
 
     status = wrap::miopenSetOpArgsBatchNormForward(
         fusion_args_, batchnorm_op, alpha, beta, scale, offset, saved_mean,
-        saved_inv_variance, running_mean, running_variance, epsilon,
-        exponential_average_factor);
+        saved_inv_variance, running_mean, running_variance,
+        exponential_average_factor, epsilon);
     if (status != miopenStatusSuccess) {
       LOG(FATAL) << "call to miopenSetOpArgsBatchNormForward failed: "
                  << ToString(status);
@@ -1684,7 +1685,7 @@ class ScopedFusionPlanBatchNormActivationForward : public ScopedFusionPlanBase {
     float beta = 0.0;
     return ScopedFusionPlanBase::SetBatchNormForwardArgs(
         k_batchnorm_op_idx, &alpha, &beta, scale, offset, batch_mean, batch_var,
-        saved_mean, saved_var, epsilon, /*exponential_average_factor=*/1.0);
+        saved_mean, saved_var, /*exponential_average_factor=*/1.0, epsilon);
   }
 
   miopenStatus_t SetActivationForwardArgs(
@@ -1842,6 +1843,9 @@ miopenDataType_t ToMIOpenDataType(
     case dnn::DataType::kInt8:
       if (data_layout == dnn::DataLayout::kBatchDepthYX) return miopenInt8;
     case dnn::DataType::kDouble:
+      LOG(FATAL)
+          << "Unsupported DNN data type: tf.float64 (dnn::DataType::kDouble)";
+      break;
     default:
       LOG(FATAL) << "Invalid DNN data type: " << static_cast<int>(data_type);
   }
@@ -1956,6 +1960,7 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
                       miopenRNNDirectionMode_t direction_mode,
                       miopenRNNMode_t rnn_mode, miopenDataType_t data_type,
                       float dropout, uint64_t seed,
+                      const dnn::AlgorithmConfig& algorithm_config,
                       ScratchAllocator* state_allocator)
       : rnn_desc_(nullptr),
         num_layers_(num_layers),
@@ -1964,7 +1969,8 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
         input_mode_(input_mode),
         direction_mode_(direction_mode),
         rnn_mode_(rnn_mode),
-        data_type_(data_type) {
+        data_type_(data_type),
+        algorithm_config_(algorithm_config) {
     // Create the RNN handle
     auto status = wrap::miopenCreateRNNDescriptor(&rnn_desc_);
     RETURN_IF_MIOPEN_ERROR(status, "Unable to create RNN descriptor");
@@ -2000,6 +2006,9 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
   miopenRNNDirectionMode_t direction_mode() const { return direction_mode_; }
   miopenRNNMode_t rnn_mode() const { return rnn_mode_; }
   miopenDataType_t data_type() const { return data_type_; }
+  const dnn::AlgorithmConfig& algorithm_config() const {
+    return algorithm_config_;
+  }
   int64_t ParamsSizeInBytes() const override {
     return miopen_params_desc_->params_size_in_bytes();
   }
@@ -2025,6 +2034,7 @@ class MIOpenRnnDescriptor : public MIOpenDescriptorCommon<dnn::RnnDescriptor> {
   miopenRNNDirectionMode_t direction_mode_;
   miopenRNNMode_t rnn_mode_;
   miopenDataType_t data_type_;
+  dnn::AlgorithmConfig algorithm_config_;
   tsl::Status status_;
   // no dropout in MIOpen.
   // std::unique_ptr<miopenDropoutDescriptor> miopen_dropout_desc_;
@@ -2290,7 +2300,8 @@ bool MIOpenSupport::DoRnnForwardImpl(
     const MIOpenRnnStateTensorDescriptor& output_c_desc,
     DeviceMemory<T>* output_c_data, bool is_training,
     ScratchAllocator* reserve_space_allocator,
-    ScratchAllocator* workspace_allocator) {
+    ScratchAllocator* workspace_allocator,
+    dnn::ProfileResult* output_profile_result) {
   // extract model parameters
   RnnModelDims model_dims;
   bool res = ExtractAndCheckRnnForward(
@@ -2346,6 +2357,18 @@ bool MIOpenSupport::DoRnnForwardImpl(
     }
   }
 
+  std::optional<GpuTimer> timer;
+  const bool is_profiling = output_profile_result != nullptr;
+
+  if (is_profiling) {
+    auto timer_or_status = GpuTimer::Create(AsGpuStream(stream));
+    if (!timer_or_status.ok()) {
+      LOG(ERROR) << "Failed to create timer";
+      return false;
+    }
+    timer.emplace(std::move(*timer_or_status));
+  }
+
   // make the forward call
   if (!is_training) {
     auto status = wrap::miopenRNNForwardInference(
@@ -2385,6 +2408,19 @@ bool MIOpenSupport::DoRnnForwardImpl(
       return false;
     }
   }
+
+  if (is_profiling) {
+    tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
+    if (!elapsed.ok()) {
+      LOG(ERROR) << "Failed to get elapsed duration";
+      return false;
+    }
+    auto algo_desc = *rnn_desc.algorithm_config().algorithm();
+    output_profile_result->set_algorithm(algo_desc);
+    output_profile_result->set_elapsed_time_in_ms(
+        absl::ToDoubleMilliseconds(*elapsed));
+  }
+
   return true;
 }
 
@@ -2411,7 +2447,8 @@ bool MIOpenSupport::DoRnnBackwardImpl(
     DeviceMemory<T>* input_c_backprop_data,
     DeviceMemory<T>* params_backprop_data,
     DeviceMemory<uint8>* reserve_space_data,
-    ScratchAllocator* workspace_allocator) {
+    ScratchAllocator* workspace_allocator,
+    dnn::ProfileResult* output_profile_result) {
   // extract model parameters
   RnnModelDims model_dims;
   bool res = ExtractAndCheckRnnForward(
@@ -2458,6 +2495,18 @@ bool MIOpenSupport::DoRnnBackwardImpl(
   if ((size_data > 0) && (input_c_backprop_data->opaque() != nullptr))
     stream->ThenMemZero(input_c_backprop_data, size_data * type_size);
 
+  std::optional<GpuTimer> timer;
+  const bool is_profiling = output_profile_result != nullptr;
+
+  if (is_profiling) {
+    auto timer_or_status = GpuTimer::Create(AsGpuStream(stream));
+    if (!timer_or_status.ok()) {
+      LOG(ERROR) << "Failed to create timer";
+      return false;
+    }
+    timer.emplace(std::move(*timer_or_status));
+  }
+
   // make the backward data call
   auto status = wrap::miopenRNNBackwardData(
       miopen.handle() /*handle*/, rnn_desc.handle() /*rnnDesc*/,
@@ -2502,6 +2551,18 @@ bool MIOpenSupport::DoRnnBackwardImpl(
                  << ToString(status);
       return false;
     }
+  }
+
+  if (is_profiling) {
+    tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
+    if (!elapsed.ok()) {
+      LOG(ERROR) << "Failed to get elapsed duration";
+      return false;
+    }
+    auto algo_desc = *rnn_desc.algorithm_config().algorithm();
+    output_profile_result->set_algorithm(algo_desc);
+    output_profile_result->set_elapsed_time_in_ms(
+        absl::ToDoubleMilliseconds(*elapsed));
   }
 
   return true;
@@ -2733,7 +2794,8 @@ MIOpenSupport::createRnnDescriptor(
       miopen.handle(), num_layers, hidden_size, input_size,
       ToMIOpenRnnInputMode(input_mode),
       ToMIOpenRnnDirectionMode(direction_mode), ToMIOpenRnnMode(rnn_mode),
-      ToMIOpenDataType(data_type), dropout, seed, state_allocator));
+      ToMIOpenDataType(data_type), dropout, seed, algorithm_config,
+      state_allocator));
   if (!rnn_desc->ok()) {
     return rnn_desc->Status();
   }
@@ -2788,8 +2850,6 @@ bool MIOpenSupport::DoRnnForward(
     ScratchAllocator* reserve_space_allocator,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
-  // ROCM TODO: output_profile_result is ignore for now
-
   const MIOpenRnnDescriptor& miopen_rnn_desc =
       static_cast<const MIOpenRnnDescriptor&>(rnn_desc);
   const MIOpenRnnSequenceTensorDescriptor& miopen_input_desc =
@@ -2810,7 +2870,7 @@ bool MIOpenSupport::DoRnnForward(
       miopen_input_h_desc, input_h_data, miopen_input_c_desc, input_c_data,
       params, miopen_output_desc, output_data, miopen_output_h_desc,
       output_h_data, miopen_output_c_desc, output_c_data, is_training,
-      reserve_space_allocator, workspace_allocator);
+      reserve_space_allocator, workspace_allocator, output_profile_result);
 }
 
 bool MIOpenSupport::DoRnnForward(
@@ -2831,8 +2891,6 @@ bool MIOpenSupport::DoRnnForward(
     ScratchAllocator* reserve_space_allocator,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
-  // ROCM TODO: output_profile_result is ignore for now
-
   const MIOpenRnnDescriptor& miopen_rnn_desc =
       static_cast<const MIOpenRnnDescriptor&>(rnn_desc);
   const MIOpenRnnSequenceTensorDescriptor& miopen_input_desc =
@@ -2853,7 +2911,7 @@ bool MIOpenSupport::DoRnnForward(
       miopen_input_h_desc, input_h_data, miopen_input_c_desc, input_c_data,
       params, miopen_output_desc, output_data, miopen_output_h_desc,
       output_h_data, miopen_output_c_desc, output_c_data, is_training,
-      reserve_space_allocator, workspace_allocator);
+      reserve_space_allocator, workspace_allocator, output_profile_result);
 }
 
 bool MIOpenSupport::DoRnnForward(
@@ -2905,8 +2963,6 @@ bool MIOpenSupport::DoRnnBackward(
     DeviceMemory<uint8>* reserve_space_data,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
-  // ROCM TODO: output_profile_result is ignore for now
-
   const MIOpenRnnDescriptor& miopen_rnn_desc =
       static_cast<const MIOpenRnnDescriptor&>(rnn_desc);
   const MIOpenRnnSequenceTensorDescriptor& miopen_input_desc =
@@ -2929,7 +2985,7 @@ bool MIOpenSupport::DoRnnBackward(
       output_h_data, miopen_output_c_desc, output_c_data, output_backprop_data,
       output_h_backprop_data, output_c_backprop_data, input_backprop_data,
       input_h_backprop_data, input_c_backprop_data, params_backprop_data,
-      reserve_space_data, workspace_allocator);
+      reserve_space_data, workspace_allocator, output_profile_result);
 }
 
 bool MIOpenSupport::DoRnnBackward(
@@ -2957,8 +3013,6 @@ bool MIOpenSupport::DoRnnBackward(
     DeviceMemory<uint8>* reserve_space_data,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
-  // ROCM TODO: output_profile_result is ignore for now
-
   const MIOpenRnnDescriptor& miopen_rnn_desc =
       static_cast<const MIOpenRnnDescriptor&>(rnn_desc);
   const MIOpenRnnSequenceTensorDescriptor& miopen_input_desc =
@@ -2981,7 +3035,7 @@ bool MIOpenSupport::DoRnnBackward(
       output_h_data, miopen_output_c_desc, output_c_data, output_backprop_data,
       output_h_backprop_data, output_c_backprop_data, input_backprop_data,
       input_h_backprop_data, input_c_backprop_data, params_backprop_data,
-      reserve_space_data, workspace_allocator);
+      reserve_space_data, workspace_allocator, output_profile_result);
 }
 
 bool MIOpenSupport::DoRnnBackward(
@@ -3711,8 +3765,38 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
 
 bool MIOpenSupport::GetRnnAlgorithms(
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
-  // ROCM TODO: implement this with proper MIOpen API
+  std::vector<dnn::AlgorithmDesc::Index> algo_types = {
+      // clang-format off
+    miopenRNNdefault,
+      // clang-format on
+  };
+
+  out_algorithms->clear();
+  for (auto i : algo_types) {
+    out_algorithms->push_back({i, /*use_tensor_ops=*/false});
+  }
   return true;
+}
+
+bool MIOpenSupport::DoBatchNormalizationForward(
+    Stream* stream, const DeviceMemory<Eigen::bfloat16>& x,
+    const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
+    const DeviceMemory<float>& estimated_mean,
+    const DeviceMemory<float>& estimated_variance,
+    const DeviceMemory<Eigen::bfloat16>& side_input,
+    const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
+    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::bfloat16>* y,
+    DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
+    DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
+    bool is_training, ScratchAllocator* reserve_space_allocator,
+    ScratchAllocator* workspace_allocator) {
+  return DoBatchNormalizationForwardImpl<Eigen::bfloat16, float>(
+      stream, dnn::DataType::kBF16, dnn::DataType::kFloat, x, scale, offset,
+      estimated_mean, estimated_variance, side_input, x_desc, scale_offset_desc,
+      epsilon, exponential_average_factor, activation_mode, y, batch_mean,
+      batch_var, saved_mean, saved_inv_var, is_training);
 }
 
 bool MIOpenSupport::DoBatchNormalizationForward(
@@ -3803,6 +3887,25 @@ bool MIOpenSupport::DoBatchNormalizationForwardImpl(
     return false;
   }
   return true;
+}
+
+bool MIOpenSupport::DoBatchNormalizationBackward(
+    Stream* stream, const DeviceMemory<Eigen::bfloat16>& y_backprop,
+    const DeviceMemory<Eigen::bfloat16>& x, const DeviceMemory<float>& scale,
+    const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
+    const DeviceMemory<float>& inv_var, const DeviceMemory<Eigen::bfloat16>& y,
+    const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    dnn::ActivationMode activation_mode,
+    DeviceMemory<Eigen::bfloat16>* x_backprop,
+    DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+    DeviceMemory<Eigen::bfloat16>* side_input_backprop,
+    DeviceMemory<uint8_t>* reserve_space_data,
+    ScratchAllocator* workspace_allocator) {
+  return DoBatchNormalizationBackwardImpl<Eigen::bfloat16, float>(
+      stream, miopenBFloat16, miopenFloat, y_backprop, x, scale, mean, inv_var,
+      x_desc, scale_offset_desc, epsilon, x_backprop, scale_backprop,
+      offset_backprop);
 }
 
 bool MIOpenSupport::DoBatchNormalizationBackward(
@@ -4812,6 +4915,20 @@ bool MIOpenSupport::DeriveOutputBatchDescriptor(
   }
 
   return true;
+}
+
+bool UseNhwcLayoutForRocm() {
+#if TF_ROCM_VERSION >= 50100
+  static bool is_enabled = [] {
+    bool is_enabled = false;
+    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
+                                        /*default_val=*/false, &is_enabled));
+    return is_enabled;
+  }();
+  return is_enabled;
+#else  // TF_ROCM_VERSION < 50000
+  return false;
+#endif
 }
 
 }  // namespace gpu
