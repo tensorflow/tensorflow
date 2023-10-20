@@ -61,8 +61,8 @@ class KernelThunk : public Thunk {
 
   std::string ToStringExtra(int indent) const override;
 
-  Status Initialize(const GpuExecutable& executable,
-                    se::StreamExecutor* executor) override;
+  Status Initialize(se::StreamExecutor* executor,
+                    ExecutableSource src) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
   void ClearCompileTimeInfo() override {

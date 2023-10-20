@@ -419,7 +419,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[VALID_OFFSET_H:.*]] = "tf.Mul"
   // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_H:.*]] = "tf.Sub"(%[[HALO_SIZES_H]], %[[VALID_OFFSET_H]])
   // CHECK-NEXT:      %[[VALID_SLICE_SIZE_H:.*]] = "tf.Const"() {value = dense<[8, 5, 4, 3]> : tensor<4xi64>} : () -> tensor<4xi64>
-  // CHECK-NEXT:      %[[VALID_SLICE_H_TENSOR:.*]] = "tf.Slice"(%[[CONCAT_H_TENSOR]], %[[VALID_SLICE_BEGIN_H]], %[[VALID_SLICE_SIZE_H]])
+  // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_CAST_I64_H:.*]] = "tf.Cast"(%[[VALID_SLICE_BEGIN_H]]) {Truncate = false} : (tensor<4xi32>) -> tensor<4xi64>
+  // CHECK-NEXT:      %[[VALID_SLICE_H_TENSOR:.*]] = "tf.Slice"(%[[CONCAT_H_TENSOR]], %[[VALID_SLICE_BEGIN_CAST_I64_H]], %[[VALID_SLICE_SIZE_H]])
 
   // Build left halo on width dim.
   // CHECK:           %[[SLICE_W_LEFT_BEGIN:.*]] = "tf.Const"() {value = dense<[0, 0, 3, 0]> : tensor<4xi32>} : () -> tensor<4xi32>
@@ -451,7 +452,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[VALID_OFFSET_W:.*]] = "tf.Mul"
   // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_W:.*]] = "tf.Sub"(%[[HALO_SIZES_W]], %[[VALID_OFFSET_W]])
   // CHECK-NEXT:      %[[VALID_SLICE_SIZE_W:.*]] = "tf.Const"() {value = dense<[8, 5, 5, 3]> : tensor<4xi64>} : () -> tensor<4xi64>
-  // CHECK-NEXT:      %[[VALID_SLICE_HW_TENSOR:.*]] = "tf.Slice"(%[[CONCAT_HW_TENSOR]], %[[VALID_SLICE_BEGIN_W]], %[[VALID_SLICE_SIZE_W]])
+  // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_CAST_I64_W:.*]] = "tf.Cast"(%[[VALID_SLICE_BEGIN_W]]) {Truncate = false} : (tensor<4xi32>) -> tensor<4xi64>
+  // CHECK-NEXT:      %[[VALID_SLICE_HW_TENSOR:.*]] = "tf.Slice"(%[[CONCAT_HW_TENSOR]], %[[VALID_SLICE_BEGIN_CAST_I64_W]], %[[VALID_SLICE_SIZE_W]])
 
   // CHECK-NEXT:      "tf.Conv2D"(%[[VALID_SLICE_HW_TENSOR]], %arg2)
   // CHECK-SAME:          padding = "VALID"
@@ -505,7 +507,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[VALID_OFFSET_D:.*]] = "tf.Mul"
   // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_D:.*]] = "tf.Sub"(%[[HALO_SIZES_D]], %[[VALID_OFFSET_D]])
   // CHECK-NEXT:      %[[VALID_SLICE_SIZE_D:.*]] = "tf.Const"() {value = dense<[8, 5, 4, 4, 3]> : tensor<5xi64>} : () -> tensor<5xi64>
-  // CHECK-NEXT:      %[[VALID_SLICE_D_TENSOR:.*]] = "tf.Slice"(%[[CONCAT_D_TENSOR]], %[[VALID_SLICE_BEGIN_D]], %[[VALID_SLICE_SIZE_D]])
+  // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_CAST_I64_D:.*]] = "tf.Cast"(%[[VALID_SLICE_BEGIN_D]]) {Truncate = false} : (tensor<5xi32>) -> tensor<5xi64>
+  // CHECK-NEXT:      %[[VALID_SLICE_D_TENSOR:.*]] = "tf.Slice"(%[[CONCAT_D_TENSOR]], %[[VALID_SLICE_BEGIN_CAST_I64_D]], %[[VALID_SLICE_SIZE_D]])
 
   // Build left halo on height dim.
   // CHECK:           %[[SLICE_H_LEFT_BEGIN:.*]] = "tf.Const"() {value = dense<[0, 0, 3, 0, 0]> : tensor<5xi32>} : () -> tensor<5xi32>
@@ -537,7 +540,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[VALID_OFFSET_H:.*]] = "tf.Mul"
   // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_H:.*]] = "tf.Sub"(%[[HALO_SIZES_H]], %[[VALID_OFFSET_H]])
   // CHECK-NEXT:      %[[VALID_SLICE_SIZE_H:.*]] = "tf.Const"() {value = dense<[8, 5, 5, 4, 3]> : tensor<5xi64>} : () -> tensor<5xi64>
-  // CHECK-NEXT:      %[[VALID_SLICE_DH_TENSOR:.*]] = "tf.Slice"(%[[CONCAT_DH_TENSOR]], %[[VALID_SLICE_BEGIN_H]], %[[VALID_SLICE_SIZE_H]])
+  // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_CAST_I64_H:.*]] = "tf.Cast"(%[[VALID_SLICE_BEGIN_H]]) {Truncate = false} : (tensor<5xi32>) -> tensor<5xi64>
+  // CHECK-NEXT:      %[[VALID_SLICE_DH_TENSOR:.*]] = "tf.Slice"(%[[CONCAT_DH_TENSOR]], %[[VALID_SLICE_BEGIN_CAST_I64_H]], %[[VALID_SLICE_SIZE_H]])
 
   // Build left halo on width dim.
   // CHECK:           %[[SLICE_W_LEFT_BEGIN:.*]] = "tf.Const"() {value = dense<[0, 0, 0, 3, 0]> : tensor<5xi32>} : () -> tensor<5xi32>
@@ -569,7 +573,8 @@ func.func @main(%arg0: tensor<1xi32>,
   // CHECK-NEXT:      %[[VALID_OFFSET_W:.*]] = "tf.Mul"
   // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_W:.*]] = "tf.Sub"(%[[HALO_SIZES_W]], %[[VALID_OFFSET_W]])
   // CHECK-NEXT:      %[[VALID_SLICE_SIZE_W:.*]] = "tf.Const"() {value = dense<[8, 5, 5, 5, 3]> : tensor<5xi64>} : () -> tensor<5xi64>
-  // CHECK-NEXT:      %[[VALID_SLICE_DHW_TENSOR:.*]] = "tf.Slice"(%[[CONCAT_DHW_TENSOR]], %[[VALID_SLICE_BEGIN_W]], %[[VALID_SLICE_SIZE_W]])
+  // CHECK-NEXT:      %[[VALID_SLICE_BEGIN_CAST_I64_W:.*]] = "tf.Cast"(%[[VALID_SLICE_BEGIN_W]]) {Truncate = false} : (tensor<5xi32>) -> tensor<5xi64>
+  // CHECK-NEXT:      %[[VALID_SLICE_DHW_TENSOR:.*]] = "tf.Slice"(%[[CONCAT_DHW_TENSOR]], %[[VALID_SLICE_BEGIN_CAST_I64_W]], %[[VALID_SLICE_SIZE_W]])
 
   // CHECK-NEXT:      "tf.Conv3D"(%[[VALID_SLICE_DHW_TENSOR]], %arg2)
   // CHECK-SAME:          padding = "VALID"

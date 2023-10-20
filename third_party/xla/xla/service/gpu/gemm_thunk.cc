@@ -47,8 +47,8 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams& params) {
                  params.stream);
 }
 
-Status GemmThunk::Initialize(const GpuExecutable& executable,
-                             se::StreamExecutor* executor) {
+Status GemmThunk::Initialize(se::StreamExecutor* executor,
+                             ExecutableSource src) {
   if (!executor->AsBlas()) {
     return absl::InternalError("Failed to initialize BLAS support");
   }

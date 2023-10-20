@@ -1,19 +1,19 @@
 # Description:
 #   ROCm-platform specific StreamExecutor support code.
 
-load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
 )
-load("@local_tsl//tsl:tsl.bzl", "set_external_visibility", "tsl_copts")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_hipblaslt",
     "if_rocm_is_configured",
     "rocm_copts",
 )
+load("@local_tsl//tsl:tsl.bzl", "set_external_visibility", "tsl_copts")
 load("@local_tsl//tsl/platform:build_config_root.bzl", "if_static")
+load("@local_tsl//tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -63,7 +63,6 @@ cc_library(
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:numbers",
         "@local_tsl//tsl/platform:stacktrace",
-        "@local_tsl//tsl/platform:static_threadlocal",
     ]),
 )
 
@@ -211,6 +210,7 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_helpers_header",
         "//xla/stream_executor/gpu:gpu_stream_header",
         "//xla/stream_executor/gpu:gpu_timer_header",
+        "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/stream_executor/platform",
         "//xla/stream_executor:blas",
         "//xla/stream_executor/platform:dso_loader",
@@ -460,6 +460,7 @@ cc_library(
         "//xla/stream_executor/platform:dso_loader",
         "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_helpers_header",
+        "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla:util",
     ]) + if_static([
         ":hipblaslt_if_static",

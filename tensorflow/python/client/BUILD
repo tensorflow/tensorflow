@@ -169,6 +169,7 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
+        "//third_party/mlperf/submissions/training/v0_7/models:__subpackages__",
         "//third_party/py/cleverhans:__subpackages__",
     ],
     deps = [
@@ -304,6 +305,7 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/platform:build_info",
         "//tensorflow/python/platform:tf_logging",
     ],

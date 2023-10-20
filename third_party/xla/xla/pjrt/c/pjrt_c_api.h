@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 33
+#define PJRT_API_MINOR 34
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -1957,6 +1957,7 @@ typedef PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 
 typedef enum {
   PJRT_Structure_Type_Gpu_Custom_Call = 0,
+  PJRT_Structure_Type_Profiler,
 } PJRT_Structure_Type;
 
 // PJRT_Structure_Base contains a type and a pointer to next

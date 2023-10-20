@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor
+from tensorflow.python.framework.constant_op import constant as tf_constant
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import embedding_ops
@@ -91,7 +92,8 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
       self,
       feature_config: Union[tpu_embedding_v2_utils.FeatureConfig, Iterable],  # pylint:disable=g-bare-generic
       optimizer: Optional[tpu_embedding_v2_utils._Optimizer],
-      experimental_sparsecore_restore_info: Optional[Dict[str, Any]] = None):  # pylint:disable=protected-access
+      experimental_sparsecore_restore_info: Optional[Dict[str, Any]] = None,
+  ):  # pylint:disable=protected-access
     """Creates the TPUEmbeddingForServing mid level API object.
 
     ```python
@@ -120,16 +122,15 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
     """
     super(TPUEmbeddingForServing, self).__init__(feature_config, optimizer)
     self._strategy = distribute_lib.get_strategy()
-    self._experimental_sparsecore_restore_info = (
-        experimental_sparsecore_restore_info
-    )
-    if isinstance(self._strategy,
-                  (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2)):
+    if isinstance(
+        self._strategy, (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2)
+    ):
       raise RuntimeError("Serving on TPU is not yet supported.")
 
   @property
   def embedding_tables(
-      self) -> Dict[tpu_embedding_v2_utils.TableConfig, tf_variables.Variable]:
+      self,
+  ) -> Dict[tpu_embedding_v2_utils.TableConfig, tf_variables.Variable]:
     """Returns a dict of embedding tables, keyed by `TableConfig`."""
     self._maybe_build()
     # Only return the tables and not the slot variables.
@@ -148,22 +149,21 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
       with ops.init_scope():
         self.build()
 
+  def build(self):
+    """Create variables and slots variables for TPU embeddings."""
+    super().build()
+    # Remove the training_restore_info from the checkpoint, it was only
+    # required to restore from sparsecore training.
+    if hasattr(self, "training_restore_info"):
+      delattr(self, "training_restore_info")
+
   def _unshuffle_from_sc_to_cpu(self, t: tensor.Tensor) -> tensor.Tensor:
-    if self._experimental_sparsecore_restore_info is None:
+    num_tpu_devices, num_sc_per_chip = self.training_restore_info.read_value()
+    # TODO(silkyarora): Is there a better way to confirm that there is nothing
+    # to be done?
+    if num_tpu_devices == 0 and num_sc_per_chip == 0:
       return t
-    if "num_tpu_devices" not in self._experimental_sparsecore_restore_info:
-      raise ValueError(
-          "Missing `num_tpu_devices` in `experimental_sparsecore_restore_info`"
-      )
-    if "num_sc_chips_per_tpu" not in self._experimental_sparsecore_restore_info:
-      raise ValueError(
-          "Missing `num_sc_chips_per_tpu` in"
-          " `experimental_sparsecore_restore_info`"
-      )
-    num_sc_devices = (
-        self._experimental_sparsecore_restore_info["num_tpu_devices"]
-        * self._experimental_sparsecore_restore_info["num_sc_chips_per_tpu"]
-    )
+    num_sc_devices = num_tpu_devices * num_sc_per_chip
     old_shape = t.shape
     # The width of the table must be a multiple of number of SC devices. The
     # tpu strategy does this round off at training time so we expect the
@@ -262,6 +262,18 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
     slot_vars["parameters"] = parameters
     return slot_vars
 
+  def _track_restore_info_for_cpu(self) -> None:
+    self.training_restore_info = tf_variables.Variable(
+        name="training_restore_info",
+        initial_value=tf_constant(
+            [0, 0],
+            shape=(2,),
+            dtype=dtypes.int32,
+        ),
+        shape=(2,),
+        dtype=dtypes.int32,
+    )
+
   def _create_variables_and_slots(
       self,
   ) -> Dict[str, Dict[str, tf_variables.Variable]]:
@@ -271,14 +283,15 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
       A dict of dicts. The outer dict is keyed by the table names and the inner
       dicts are keyed by 'parameters' and the slot variable names.
     """
+    self._track_restore_info_for_cpu()
     variables = {}
     for table in self._table_config:
       variables[table.name] = self._create_variables(table, trainable=True)
     return variables
 
-  def embedding_lookup(self,
-                       features: Any,
-                       weights: Optional[Any] = None) -> Any:
+  def embedding_lookup(
+      self, features: Any, weights: Optional[Any] = None
+  ) -> Any:
     """Apply standard lookup ops on CPU.
 
     Args:
@@ -296,8 +309,9 @@ class TPUEmbeddingForServing(tpu_embedding_base.TPUEmbeddingBase):
     Returns:
       A nested structure of Tensors with the same structure as input features.
     """
-    return cpu_embedding_lookup(features, weights, self.embedding_tables,
-                                self._feature_config)
+    return cpu_embedding_lookup(
+        features, weights, self.embedding_tables, self._feature_config
+    )
 
 
 def _ragged_embedding_lookup_with_reduce(
@@ -323,12 +337,14 @@ def _ragged_embedding_lookup_with_reduce(
   ragged_result = embedding_ops.embedding_lookup(table, ragged)
   ragged_result = math_ops.reduce_sum(ragged_result * weights, axis=1)
   if combiner == "mean":
-    ragged_result = math_ops.div_no_nan(ragged_result,
-                                        math_ops.reduce_sum(weights, axis=1))
+    ragged_result = math_ops.div_no_nan(
+        ragged_result, math_ops.reduce_sum(weights, axis=1)
+    )
   elif combiner == "sqrtn":
     ragged_result = math_ops.div_no_nan(
         ragged_result,
-        math_ops.sqrt(math_ops.reduce_sum(weights * weights, axis=1)))
+        math_ops.sqrt(math_ops.reduce_sum(weights * weights, axis=1)),
+    )
   return ragged_result
 
 
@@ -337,7 +353,9 @@ def cpu_embedding_lookup(
     inputs: Any,
     weights: Optional[Any],
     tables: Dict[tpu_embedding_v2_utils.TableConfig, tf_variables.Variable],
-    feature_config: Union[tpu_embedding_v2_utils.FeatureConfig, Iterable]  # pylint:disable=g-bare-generic
+    feature_config: Union[
+        tpu_embedding_v2_utils.FeatureConfig, Iterable  # pylint:disable=g-bare-generic
+    ],
 ) -> Any:
   """Apply standard lookup ops with `tf.tpu.experimental.embedding` configs.
 
@@ -414,44 +432,58 @@ def cpu_embedding_lookup(
   flat_features = nest.flatten_with_joined_string_paths(feature_config)
 
   outputs = []
-  for inp, weight, (path, feature) in zip(flat_inputs, flat_weights,
-                                          flat_features):
+  for inp, weight, (path, feature) in zip(
+      flat_inputs, flat_weights, flat_features
+  ):
     table = tables[feature.table]
 
     if weight is not None:
       if isinstance(inp, tensor.Tensor):
         raise ValueError(
-            "Weight specified for {}, but input is dense.".format(path))
+            "Weight specified for {}, but input is dense.".format(path)
+        )
       elif type(weight) is not type(inp):
         raise ValueError(
             "Weight for {} is of type {} but it does not match type of the "
-            "input which is {}.".format(path, type(weight), type(inp)))
+            "input which is {}.".format(path, type(weight), type(inp))
+        )
       elif feature.max_sequence_length > 0:
-        raise ValueError("Weight specified for {}, but this is a sequence "
-                         "feature.".format(path))
+        raise ValueError(
+            "Weight specified for {}, but this is a sequence feature.".format(
+                path
+            )
+        )
 
     if isinstance(inp, tensor.Tensor):
       if feature.max_sequence_length > 0:
-        raise ValueError("Feature {} is a sequence feature but a dense tensor "
-                         "was passed.".format(path))
+        raise ValueError(
+            "Feature {} is a sequence feature but a dense tensor "
+            "was passed.".format(path)
+        )
       outputs.append(embedding_ops.embedding_lookup_v2(table, inp))
 
     elif isinstance(inp, sparse_tensor.SparseTensor):
       outputs.append(
-          _embedding_lookup_for_sparse_tensor(inp, weight, table, feature))
+          _embedding_lookup_for_sparse_tensor(inp, weight, table, feature)
+      )
     elif isinstance(inp, ragged_tensor.RaggedTensor):
       outputs.append(
-          _embedding_lookup_for_ragged_tensor(inp, weight, table, feature))
+          _embedding_lookup_for_ragged_tensor(inp, weight, table, feature)
+      )
     else:
-      raise ValueError("Input {} is type {}. Tensor, SparseTensor or "
-                       "RaggedTensor expected.".format(path, type(inp)))
+      raise ValueError(
+          "Input {} is type {}. Tensor, SparseTensor or "
+          "RaggedTensor expected.".format(path, type(inp))
+      )
   return nest.pack_sequence_as(feature_config, outputs)
 
 
 def _embedding_lookup_for_sparse_tensor(
     inp: sparse_tensor.SparseTensor,
-    weight: Optional[sparse_tensor.SparseTensor], table: tf_variables.Variable,
-    feature: tpu_embedding_v2_utils.FeatureConfig) -> tensor.Tensor:
+    weight: Optional[sparse_tensor.SparseTensor],
+    table: tf_variables.Variable,
+    feature: tpu_embedding_v2_utils.FeatureConfig,
+) -> tensor.Tensor:
   """Embedding lookup for sparse tensor based on its feature config.
 
   Args:
@@ -478,14 +510,17 @@ def _embedding_lookup_for_sparse_tensor(
     # don't truncate, scatter_nd will error out if the index was out of
     # bounds.
     truncated_inp = sparse_ops.sparse_slice(
-        inp, start=[0, 0], size=sparse_shape)
+        inp, start=[0, 0], size=sparse_shape
+    )
 
     dense_output_shape = array_ops_stack.stack(
-        [batch_size, feature.max_sequence_length, feature.table.dim], axis=0)
+        [batch_size, feature.max_sequence_length, feature.table.dim], axis=0
+    )
     return array_ops.scatter_nd(
         truncated_inp.indices,
         array_ops.gather(table.read_value(), truncated_inp.values),
-        dense_output_shape)
+        dense_output_shape,
+    )
   else:
     if feature.max_sequence_length > 0:
       logging.warning(
@@ -495,19 +530,26 @@ def _embedding_lookup_for_sparse_tensor(
           ),
           inp_rank,
       )
-    if (not feature.validate_weights_and_indices and inp_rank is not None and
-        inp_rank <= 2):
+    if (
+        not feature.validate_weights_and_indices
+        and inp_rank is not None
+        and inp_rank <= 2
+    ):
       return embedding_ops.embedding_lookup_sparse_v2(
-          table, inp, sp_weights=weight, combiner=feature.table.combiner)
+          table, inp, sp_weights=weight, combiner=feature.table.combiner
+      )
     else:
       return embedding_ops.safe_embedding_lookup_sparse_v2(
-          table, inp, sparse_weights=weight, combiner=feature.table.combiner)
+          table, inp, sparse_weights=weight, combiner=feature.table.combiner
+      )
 
 
 def _embedding_lookup_for_ragged_tensor(
     inp: ragged_tensor.RaggedTensor,
-    weight: Optional[ragged_tensor.RaggedTensor], table: tf_variables.Variable,
-    feature: tpu_embedding_v2_utils.FeatureConfig) -> tensor.Tensor:
+    weight: Optional[ragged_tensor.RaggedTensor],
+    table: tf_variables.Variable,
+    feature: tpu_embedding_v2_utils.FeatureConfig,
+) -> tensor.Tensor:
   """Embedding lookup for ragged tensor based on its feature config.
 
   Args:
@@ -526,7 +568,9 @@ def _embedding_lookup_for_ragged_tensor(
   if inp.shape.rank != 2:
     raise ValueError(
         "Only rank 2 ragged tensor is supported, but got rank {}".format(
-            inp.shape.rank))
+            inp.shape.rank
+        )
+    )
   batch_size = inp.shape[0]
   if feature.output_shape:
     output_batch_size = math_ops.reduce_prod(feature.output_shape)
@@ -534,30 +578,36 @@ def _embedding_lookup_for_ragged_tensor(
     # normal ragged input.
     if output_batch_size == batch_size:
       ragged_output = _ragged_embedding_lookup_with_reduce(
-          table, inp, weight, feature.table.combiner)
+          table, inp, weight, feature.table.combiner
+      )
       ragged_output = array_ops.reshape(
-          ragged_output, shape=feature.output_shape + [feature.table.dim])
+          ragged_output, shape=feature.output_shape + [feature.table.dim]
+      )
     # If the data batch size is a factor of the output batch size, the
     # divide result will be the sequence length. Ignore the weights and
     # combiner.
     elif output_batch_size > batch_size and output_batch_size % batch_size == 0:
       ragged_output = embedding_ops.embedding_lookup_v2(table, inp)
       # Pad or truncate in the sequence dimension
-      ragged_output = ragged_output.to_tensor(shape=[
-          batch_size, output_batch_size // batch_size, feature.table.dim
-      ])
+      ragged_output = ragged_output.to_tensor(
+          shape=[batch_size, output_batch_size // batch_size, feature.table.dim]
+      )
       # Reshape to desire output shape.
       ragged_output = array_ops.reshape(
-          ragged_output, feature.output_shape + [feature.table.dim])
+          ragged_output, feature.output_shape + [feature.table.dim]
+      )
     else:
       raise ValueError(
           "Output shape set in the FeatureConfig should be the factor of "
           "the input data batch size. But instead got output shape {}, "
-          "input data batch size {}".format(feature.output_shape, batch_size))
+          "input data batch size {}".format(feature.output_shape, batch_size)
+      )
   else:
     if feature.max_sequence_length > 0:
       output_shape = [
-          batch_size, feature.max_sequence_length, feature.table.dim
+          batch_size,
+          feature.max_sequence_length,
+          feature.table.dim,
       ]
       ragged_lookup = embedding_ops.embedding_lookup_v2(table, inp)
       # Unlike scatter_nd, RaggedTensor.to_tensor truncates to the given
@@ -565,5 +615,6 @@ def _embedding_lookup_for_ragged_tensor(
       ragged_output = ragged_lookup.to_tensor(shape=output_shape)
     else:
       ragged_output = _ragged_embedding_lookup_with_reduce(
-          table, inp, weight, feature.table.combiner)
+          table, inp, weight, feature.table.combiner
+      )
   return ragged_output

@@ -20,9 +20,9 @@
 #include <cstdint>
 #include <memory>
 
+#include "tsl/concurrency/async_value_ref.h"
+#include "tsl/concurrency/chain.h"
 #include "tsl/platform/test.h"
-#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/concurrency/chain.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {

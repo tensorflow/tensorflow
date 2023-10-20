@@ -178,9 +178,11 @@ class SnapshotManager {
       absl::flat_hash_set<int64_t>& global_split_indices);
   absl::Status ReadOnDiskSplit(
       int64_t source_index, const std::vector<std::string>& split_files,
-      const std::string& split_file,
+      std::string split_file,
       absl::flat_hash_set<int64_t>& global_split_indices);
-  absl::Status SkipSplit(SplitProvider& split_provider);
+  absl::Status RecoverSplit(const std::string& temp_split_file,
+                            SplitProvider& split_provider);
+  absl::StatusOr<Tensor> GetNextSplit(SplitProvider& split_provider);
 
   // Helpers for `WorkerHeartbeat` above. These may update the in-memory and
   // on-disk states.

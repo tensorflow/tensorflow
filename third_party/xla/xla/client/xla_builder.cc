@@ -2883,10 +2883,24 @@ XlaOp XlaBuilder::AllGatherImpl(const XlaOp operand,
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
 
-    TF_ASSIGN_OR_RETURN(
-        Shape inferred_shape,
-        ShapeInference::InferAllGatherShape({operand_shape},
-                                            all_gather_dimension, shard_count));
+    std::vector<const Shape*> operand_shapes;
+    std::vector<XlaOp> operands;
+    if (operand_shape->IsTuple()) {
+      if (operand_shape->tuple_shapes_size() == 0) {
+        return Unimplemented("0 element tuple AllGather is not supported");
+      }
+      for (int i = 0; i < operand_shape->tuple_shapes_size(); ++i) {
+        operand_shapes.push_back(&operand_shape->tuple_shapes(i));
+        operands.push_back(GetTupleElement(operand, i));
+      }
+    } else {
+      operand_shapes.push_back(operand_shape);
+      operands.push_back(operand);
+    }
+
+    TF_ASSIGN_OR_RETURN(Shape inferred_shape,
+                        ShapeInference::InferAllGatherShape(
+                            operand_shapes, all_gather_dimension, shard_count));
     if (layout) {
       *inferred_shape.mutable_layout() = *layout;
       instr.set_constrain_layout(true);
@@ -2908,7 +2922,7 @@ XlaOp XlaBuilder::AllGatherImpl(const XlaOp operand,
                         AddInstruction(std::move(instr),
                                        async ? HloOpcode::kAllGatherStart
                                              : HloOpcode::kAllGather,
-                                       {operand}));
+                                       operands));
     return all_gather;
   });
 }
@@ -3320,8 +3334,7 @@ XlaOp XlaBuilder::ReduceScatter(
             operand_shape->tuple_shapes(0).element_type()) {
           return Unimplemented(
               "All the shapes of a tuple input of ReduceScatter must have "
-              "the same "
-              "element type");
+              "the same element type");
         }
         operand_shapes.push_back(&operand_shape->tuple_shapes(i));
         operands.push_back(GetTupleElement(operand, i));
@@ -3355,7 +3368,7 @@ XlaOp XlaBuilder::ReduceScatter(
 
     TF_ASSIGN_OR_RETURN(
         auto reduce_scatter,
-        AddInstruction(std::move(instr), HloOpcode::kReduceScatter, {operand}));
+        AddInstruction(std::move(instr), HloOpcode::kReduceScatter, operands));
     return reduce_scatter;
   });
 }

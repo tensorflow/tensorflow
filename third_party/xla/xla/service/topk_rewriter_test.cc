@@ -518,6 +518,50 @@ ENTRY cluster {
   run_topk_pass();
 }
 
+// Equivalent to RoundTripNoIota, but the comparator requires indices.
+TEST_F(TopkRewriterTest, RoundTripValueOnly) {
+  const std::string hlo_string = R"(
+HloModule module
+)" + getComparator() + R"(
+ENTRY cluster {
+  %arg_tuple.1 = f32[8,1234567] parameter(0)
+  %iota.4 = s32[8,1234567] iota(), iota_dimension=1
+  %sort.27 = (f32[8,1234567], s32[8,1234567]) sort(%arg_tuple.1, %iota.4),
+    dimensions={1}, is_stable=true, to_apply=%compare
+  %get-tuple-element.28 = f32[8,1234567] get-tuple-element(%sort.27), index=0
+  ROOT %slice.29 = f32[8,5] slice(%get-tuple-element.28), slice={[0:8], [0:5]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto run_topk_pass = [&] {
+    TopkRewriter rewriter(
+        [](const HloSortInstruction*, int64_t) { return true; });
+    TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
+    TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+    ASSERT_TRUE(changed);
+    ASSERT_THAT(
+        module->entry_computation()->root_instruction(),
+        GmockMatch(m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0)));
+    const HloInstruction* cc =
+        module->entry_computation()->root_instruction()->operand(0);
+    ASSERT_THAT(cc->custom_call_target(), "TopK");
+  };
+  // Start by producing a TopK...
+  run_topk_pass();
+  // ... ensuring it decomposes into sort+slice...
+  TF_ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
+                          TopkDecomposer().Run(module.get()));
+  EXPECT_TRUE(decomposer_changed);
+  TF_ASSERT_OK(HloDCE().Run(module.get()).status());
+  TF_ASSERT_OK(TupleSimplifier().Run(module.get()).status());
+  auto sort_matcher =
+      m::Sort(m::Parameter(0), m::Iota()).WithPredicate(IsStableSort);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Slice(m::GetTupleElement(sort_matcher, 0))));
+  // ... and that it can become a topk again.
+  run_topk_pass();
+}
+
 TEST_F(TopkRewriterTest, SanityCheckOutput) {
   const std::string hlo_string = R"(
 HloModule module

@@ -17,7 +17,7 @@
 import abc
 import math
 import typing
-from typing import Any, Dict, Callable, Iterable, List, Optional, Text, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Text, Tuple, TypeVar, Union
 
 from absl import logging
 
@@ -27,9 +27,12 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.framework import device_spec
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.tensor_shape import TensorShape
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops_v2
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.types import core
@@ -1156,6 +1159,21 @@ class TableConfig:
 
     if self.quantization_config:
       self.quantization_config._set_optimization_parameters(parameters)  # pylint: disable=protected-access
+
+
+@tf_export("tpu.experimental.embedding.RowIdInitializer")
+class RowIdInitializer:
+  """An initializer that initializes the table with vocabulary ids."""
+
+  def __init__(self, offset: int = 0):
+    self.offset = offset
+
+  def __call__(
+      self, shape: Union[Sequence[int], TensorShape], dtype: dtypes.DType
+  ) -> core.Tensor:
+    return math_ops.range(
+        start=self.offset, limit=self.offset + shape[0], delta=1, dtype=dtype
+    )[:, None] * array_ops.ones(shape, dtype=dtype)
 
 
 @tf_export("tpu.experimental.embedding.FeatureConfig")

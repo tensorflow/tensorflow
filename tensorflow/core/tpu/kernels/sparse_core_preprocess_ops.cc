@@ -318,7 +318,7 @@ GetMinibatchesInCsrWithPhysicalReplicaOp::
                   num_sc_per_chip_)));
 
   // Create default instance of stats handler. May get overwritten by subclass.
-  sprase_core_ops_stats_handler_ =
+  sparse_core_ops_stats_handler_ =
       std::make_unique<SparseCoreOpsStatsHandler>();
 }
 
@@ -340,8 +340,6 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   const Tensor* program_key_t;
   OP_REQUIRES_OK(ctx, ctx->input("program_key", &program_key_t));
   tstring program_key = program_key_t->vec<tstring>()(0);
-  OP_REQUIRES(ctx, !program_key.empty(),
-              absl::FailedPreconditionError("Expected non-empty program key"));
 
   int64_t per_sparse_core_batch_size = sample_count_ / num_sc_per_chip_;
 
@@ -383,7 +381,7 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
       ConvertBinarySplitsToBucketSplits(binary_splits, max_division_level);
 
   const int32 num_minibatch_per_sc = bucket_splits.size() + 1;
-  sprase_core_ops_stats_handler_->Record(StatsType::NUM_MINIBATCHES_PER_SC,
+  sparse_core_ops_stats_handler_->Record(StatsType::NUM_MINIBATCHES_PER_SC,
                                          num_minibatch_per_sc, device_name_,
                                          table_name_);
 
@@ -542,7 +540,7 @@ GetMinibatchSplitsWithPhysicalReplicaOp::
   device_name_ = ctx->device()->name();
 
   // Create default instance of stats handler. May get overwritten by subclass.
-  sprase_core_ops_stats_handler_ =
+  sparse_core_ops_stats_handler_ =
       std::make_unique<SparseCoreOpsStatsHandler>();
 }
 
@@ -553,8 +551,6 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   const Tensor* program_key_t;
   OP_REQUIRES_OK(ctx, ctx->input("program_key", &program_key_t));
   tstring program_key = program_key_t->vec<tstring>()(0);
-  OP_REQUIRES(ctx, !program_key.empty(),
-              absl::FailedPreconditionError("Expected non-empty program key"));
 
   int32 per_sc_sample_count = sample_count_ / num_sc_per_chip_;
 
@@ -566,10 +562,10 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
                program_key, table_name_, per_sc_sample_count, feature_width_,
                &max_ids_per_partition, &max_unique_ids_per_partition));
 
-  sprase_core_ops_stats_handler_->Record(StatsType::MAX_IDS_PER_PARTITION,
+  sparse_core_ops_stats_handler_->Record(StatsType::MAX_IDS_PER_PARTITION,
                                          max_ids_per_partition, device_name_,
                                          table_name_);
-  sprase_core_ops_stats_handler_->Record(
+  sparse_core_ops_stats_handler_->Record(
       StatsType::MAX_UNIQUE_IDS_PER_PARTITION, max_unique_ids_per_partition,
       device_name_, table_name_);
 
@@ -853,7 +849,7 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   int64_t updated_total_id_count = absl::c_accumulate(per_sc_id_count, 0);
 
   int64_t dropped_id_count = absl::c_accumulate(is_id_dropped, 0);
-  sprase_core_ops_stats_handler_->Record(
+  sparse_core_ops_stats_handler_->Record(
       StatsType::DROPPED_ID_COUNT, dropped_id_count, device_name_, table_name_);
 
   if (dropped_id_count > 0) {
@@ -920,9 +916,9 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
     }
   }
 
-  sprase_core_ops_stats_handler_->Record(
+  sparse_core_ops_stats_handler_->Record(
       StatsType::IDS_PER_PARTITION, this_max_ids, device_name_, table_name_);
-  sprase_core_ops_stats_handler_->Record(StatsType::UNIQUE_IDS_PER_PARTITION,
+  sparse_core_ops_stats_handler_->Record(StatsType::UNIQUE_IDS_PER_PARTITION,
                                          this_max_uniques, device_name_,
                                          table_name_);
 
@@ -971,8 +967,7 @@ void StoreMinibatchStatisticsInFdoOp::Compute(OpKernelContext* ctx) {
   const Tensor* program_key_t;
   OP_REQUIRES_OK(ctx, ctx->input("program_key", &program_key_t));
   tstring program_key = program_key_t->vec<tstring>()(0);
-  OP_REQUIRES(ctx, !program_key.empty(),
-              absl::FailedPreconditionError("Expected non-empty program key"));
+
   const Tensor* max_ids_t;
   OP_REQUIRES_OK(ctx, ctx->input("max_ids", &max_ids_t));
   int64_t max_ids = max_ids_t->scalar<int64>()();

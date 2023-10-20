@@ -25,7 +25,7 @@ cc_library(
         "//xla/client:local_client",
         "//xla/service:platform_util",
         "//xla/stream_executor",
-        "//xla/stream_executor:device_mem_allocator",
+        "//xla/stream_executor/integrations:device_mem_allocator",
         "@com_google_absl//absl/types:span",
         "@local_tsl//tsl/framework:bfc_allocator",
         "@local_tsl//tsl/framework:device_id_impl",
@@ -47,7 +47,9 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/client:client_library",
         "//xla/client:local_client",
+        "//xla/client:xla_computation",
         "//xla/pjrt:compile_options_proto_cc",
+        "//xla/pjrt:metrics",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
@@ -63,10 +65,10 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:platform_util",
         "//xla/service/gpu:gpu_executable_run_options",
-        "//xla/stream_executor:device_mem_allocator",
         "//xla/stream_executor:device_memory",
         "//xla/stream_executor:stream_executor_internal",
-        "//xla/stream_executor:tf_allocator_adapter",
+        "//xla/stream_executor/integrations:device_mem_allocator",
+        "//xla/stream_executor/integrations:tf_allocator_adapter",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -87,7 +89,6 @@ cc_library(
         "@local_tsl//tsl/platform:fingerprint",
         "@local_tsl//tsl/profiler/lib:connected_traceme",
         "@local_tsl//tsl/util:env_var",
-        "@tf_runtime//:hostcontext",
     ] + if_cuda_or_rocm([
         "//xla/service/gpu:gpu_compiler",
     ]) + if_cuda([
@@ -131,7 +132,6 @@ xla_cc_test(
         "@local_tsl//tsl/platform:status_matchers",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test_main",
-        "@tf_runtime//:hostcontext",
     ],
 )
 
@@ -241,17 +241,17 @@ cc_library(
         "@com_google_absl//absl/status",
         "@local_tsl//tsl/platform:casts",
         "@local_tsl//tsl/platform:errors",
-    ] + if_cuda([
+    ] + if_cuda_or_rocm([
+        "//xla/service/gpu:gpu_compiler",
+    ]) + if_cuda([
         ":nccl_id_store_cuda",
         "@local_config_cuda//cuda:cuda_headers",
         "//xla/stream_executor/cuda:cuda_activation_header",
         "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
-        "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:nvptx_compiler_impl",
     ]) + if_rocm([
         ":nccl_id_store_rocm",
         "@local_config_rocm//rocm:rocm_headers",
-        "//xla/service/gpu:gpu_compiler",
         "//xla/service/gpu:amdgpu_compiler_impl",
     ]),
     alwayslink = True,

@@ -200,8 +200,8 @@ TEST_F(HloReachabilityTest, ChannelReachability) {
   auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));
 
   auto module = CreateNewVerifiedModule();
-  module->config().set_use_spmd_partitioning(false);
-  module->config().set_static_device_assignment(DeviceAssignment(1, 2));
+  module->mutable_config().set_use_spmd_partitioning(false);
+  module->mutable_config().set_static_device_assignment(DeviceAssignment(1, 2));
   auto computation = module->AddEntryComputation(builder.Build(recv_done));
   auto reachability = HloReachabilityMap::Build(computation);
   EXPECT_FALSE(reachability->IsReachable(param, recv_done));

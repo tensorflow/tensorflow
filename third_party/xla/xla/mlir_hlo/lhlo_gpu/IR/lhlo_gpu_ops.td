@@ -369,4 +369,13 @@ def LHLOGPU_fusedMHABackwardOp : LHLOGPU_Op<"fMHABackward", [AttrSizedOperandSeg
     OptionalAttr<I64Attr>:$seed);
 }
 
+def LHLOGPU_RadixSortOp: LHLOGPU_Op<"radix_sort", [SameVariadicOperandSize]> {
+  let arguments = (ins
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$output,
+    Arg<LHLO_Buffer, "", [MemWrite]>:$scratch,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$descending
+  );
+}
+
 #endif // LHLO_GPU_OPS

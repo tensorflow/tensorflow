@@ -39,8 +39,8 @@ cc_library(
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
         "//xla/service:executable",
-        "//xla/service/gpu:cholesky_thunk",
         "//xla/service/gpu:gpu_asm_opts_util",
+        "//xla/service/gpu/runtime3:cholesky_thunk",
     ],
 )
 
@@ -188,6 +188,27 @@ cc_library(
 )
 
 cc_library(
+    name = "cub_sort",
+    srcs = ["cub_sort.cc"],
+    hdrs = ["cub_sort.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + 
+                    if_rocm_is_configured(["TENSORFLOW_USE_ROCM=1"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":support",
+        "//xla/runtime:custom_call",
+        "//xla/runtime:custom_call_registry",
+        "//xla/runtime:executable",
+        "//xla/runtime:memref_view",
+        "//xla/service:executable",
+        "//xla/stream_executor:device_memory",
+        "@com_google_absl//absl/status",
+    ] + if_gpu_is_configured([
+        "//xla/service/gpu:cub_sort_thunk",
+    ]),
+)
+
+cc_library(
     name = "custom_call",
     srcs = ["custom_call.cc"],
     hdrs = ["custom_call.h"],
@@ -214,6 +235,14 @@ cc_library(
 )
 
 cc_library(
+    name = "custom_call_registry",
+    srcs = ["custom_call_registry.cc"],
+    hdrs = ["custom_call_registry.h"],
+    visibility = ["//visibility:public"],
+    deps = ["//xla/runtime:custom_call_registry"],
+)
+
+cc_library(
     name = "executable",
     srcs = ["executable.cc"],
     hdrs = ["executable.h"],
@@ -225,8 +254,10 @@ cc_library(
         ":concurrent_region",
         ":conv",
         ":conv_reorder",
+        ":cub_sort",
         ":cublas_lt_matmul",
         ":custom_call",
+        ":custom_call_registry",
         ":fft",
         ":fused_attention",
         ":gemm",
@@ -244,7 +275,6 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/mlir/runtime/transforms:compilation_pipeline_gpu",
         "//xla/runtime:executable",
-        "//xla/runtime:ffi",
         "//xla/runtime:jit_executable",
         "//xla/runtime:module_registry",
         "//xla/service:executable",
@@ -306,7 +336,9 @@ cuda_library(
     name = "topk_kernel_cuda",
     srcs = if_cuda_is_configured(
         [
-            "topk_kernel.cu.cc",
+            "topk_kernel_bfloat16.cu.cc",
+            "topk_kernel_float.cu.cc",
+            "topk_kernel.cu.h",
         ],
     ),
     hdrs = if_cuda_is_configured(["topk_kernel_common.h"]),
@@ -388,8 +420,6 @@ cc_library(
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
         "//xla/runtime:state",
-        "//xla/runtime/ffi:ffi_api",
-        "//xla/runtime/ffi:ffi_c_api_hdrs",
         "//xla/service:executable",
         "//xla/service:hlo_pass",
         "//xla/service:tuple_util",
@@ -632,9 +662,9 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/concurrency:async_value",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
-        "@tf_runtime//:async_value",
     ],
 )
 
@@ -671,7 +701,7 @@ cc_library(
         "//xla/runtime:executable",
         "//xla/service:executable",
         "//xla/service/gpu:gpu_asm_opts_util",
-        "//xla/service/gpu:triangular_solve_thunk",
+        "//xla/service/gpu/runtime3:triangular_solve_thunk",
         "@local_tsl//tsl/platform:human_readable_json",
     ],
 )

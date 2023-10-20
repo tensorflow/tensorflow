@@ -47,7 +47,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.15.0'
+_VERSION = '2.16.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -87,10 +87,12 @@ REQUIRED_PACKAGES = [
     'flatbuffers >= 23.5.26',
     'gast >=0.2.1,!=0.5.0,!=0.5.1,!=0.5.2',
     'google_pasta >= 0.1.1',
-    'h5py >= 2.9.0',
+    'h5py >= 3.10.0',
     'libclang >= 13.0.0',
-    'ml_dtypes ~= 0.2.0',
-    'numpy >= 1.23.5',
+    'ml_dtypes ~= 0.3.1',
+    # TODO(b/304751256): Adjust the numpy pin to a single version, when ready
+    'numpy >= 1.23.5, < 2.0.0 ; python_version <= "3.11"',
+    'numpy >= 1.26.0, < 2.0.0 ; python_version >= "3.12"',
     'opt_einsum >= 2.3.2',
     'packaging',
     # pylint:disable=line-too-long
@@ -102,7 +104,8 @@ REQUIRED_PACKAGES = [
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
     'wrapt >= 1.11.0, < 1.15',
-    'tensorflow-io-gcs-filesystem >= 0.23.1',
+    # TODO(b/305196096): Remove the <3.12 condition once the pkg is updated
+    'tensorflow-io-gcs-filesystem >= 0.23.1 ; python_version < "3.12"',
     # grpcio does not build correctly on big-endian machines due to lack of
     # BoringSSL support.
     # See https://github.com/tensorflow/tensorflow/issues/17882.
@@ -118,7 +121,7 @@ REQUIRED_PACKAGES = [
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
     'tb-nightly ~= 2.15.0.a',
     'tf-estimator-nightly ~= 2.14.0.dev',
-    'keras-nightly ~= 2.15.0.dev',
+    'keras-nightly ~= 3.0.0.dev',
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 
@@ -405,7 +408,8 @@ setup(
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
         # TODO(angerson) Add IFTTT when possible
-        'Environment :: GPU :: NVIDIA CUDA :: 11.8',
+        'Environment :: GPU :: NVIDIA CUDA :: 12',
+        'Environment :: GPU :: NVIDIA CUDA :: 12 :: 12.2',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',

@@ -32,8 +32,7 @@ namespace xla {
 // be synchronized to the buffer as per
 // https://dmlc.github.io/dlpack/latest/python_spec.html#python-specification-for-dlpack.
 StatusOr<pybind11::capsule> BufferToDLPackManagedTensor(
-    pybind11::handle buffer, bool take_ownership,
-    std::optional<std::intptr_t> stream);
+    pybind11::handle buffer, std::optional<std::intptr_t> stream);
 
 StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
     const pybind11::capsule& tensor, std::shared_ptr<PyClient> cpu_client,

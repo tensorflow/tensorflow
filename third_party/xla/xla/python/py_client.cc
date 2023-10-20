@@ -369,6 +369,17 @@ MakeIfrtDeserializeExecutableOptions(
 StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::Compile(
     std::string mlir_module, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
+  // Pass allocated device memory size to compile options for pjrt compatible
+  // backends.
+  if ((ifrt_client_->platform_id() == xla::CudaId() ||
+       ifrt_client_->platform_id() == xla::RocmId()) &&
+      !pjrt_client()->devices().empty()) {
+    auto maybe_stats = pjrt_client()->devices()[0]->GetAllocatorStats();
+    if (maybe_stats.ok() && maybe_stats->bytes_limit) {
+      options.executable_build_options.set_device_memory_size(
+          *maybe_stats->bytes_limit);
+    }
+  }
   std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable;
   std::optional<std::string> fingerprint;
   auto ifrt_compile_options =

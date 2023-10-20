@@ -225,7 +225,6 @@ cc_library(
     visibility = [
         "//tensorflow/lite/core/async/c:__subpackages__",
         "//tensorflow/lite/core/c:__subpackages__",
-        "//tensorflow/lite/delegates/utils:__pkg__",
     ],
     deps = [
         ":common_internal",

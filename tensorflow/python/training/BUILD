@@ -975,7 +975,7 @@ py_strict_library(
         ":summary_io",
         ":training_util",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client",
+        "//tensorflow/python/client:timeline",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",

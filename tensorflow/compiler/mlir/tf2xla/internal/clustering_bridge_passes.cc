@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/log/log.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -159,21 +160,69 @@ void AddBridgeClusteringPipelinePasses(OpPassManager& pm,
   pm.addPass(mlir::TFTPU::CreateTPUAnnotateDynamicShapeInputsPass());
   pm.addNestedPass<FuncOp>(
       mlir::TF::CreateHoistReplicateInvariantResourceWritesPass());
+}
 
-  pm.addPass(mlir::TFTPU::CreateTPURewritePass(module_name));
-  pm.addPass(mlir::createSymbolDCEPass());
-  pm.addNestedPass<FuncOp>(mlir::TFDevice::CreateEmbeddingProgramKeyPass());
+void NoCanonicalization(OpPassManager& pm) {}
+
+void AddNonTPUBridgeClusteringPipelinePasses(OpPassManager& pm) {
+  // The following ops must be preserved regardless of reachability. Ideally,
+  // all graphs should have control dependencies to enforce this.
+  VLOG(2) << "Create TF XLA Bridge pipeline";
   pm.addNestedPass<FuncOp>(
-      mlir::TFDevice::CreateReplicateInvariantOpHoistingPass());
-  pm.addPass(mlir::TFTPU::CreateTPUMergeVariablesWithExecutePass());
+      mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
+  // This pass expectes unified compilation markers.
+  pm.addPass(mlir::TFDevice::CreateXlaValidateInputsPass());
+  const llvm::SmallVector<std::string, 4> ops_to_preserve = {};
   pm.addNestedPass<FuncOp>(
-      mlir::TFTPU::CreateExtractTPUCopyWithDynamicShapeOpPass());
+      mlir::tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));
+  // It is assumed at this stage there are no V1 control flow ops as Graph
+  // functionalization is ran before import. Ops can be lifted out of
+  // tf_executor dialect islands/graphs.
   pm.addNestedPass<FuncOp>(
-      mlir::TFTPU::CreateTPUColocateCompositeResourceOps());
+      mlir::CreateExecutorDialectToFunctionalConversionPass());
+  // Guarantee all functions have one use, which enables more exact shape
+  // inference.
+  pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  // Encapsulate PartitionedCall ops within a cluster so that the composite
+  // resource ops can be decomposed.
+  pm.addPass(mlir::TFDevice::CreateXlaClusterFormationPass());
+  // Running canonicalizer before decomposing resource ops in cluster helps the
+  // latter pass to converge faster as it does not have to spend time folding
+  // away dead ops.
+  pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
+  // Decompose resource ops.
+  pm.addPass(mlir::TFDevice::CreateDecomposeResourceOpsInClusterPass());
+  // TODO(b/267193636): Remove this flag when outside compilation
+  // for generic pipeline is landed.
   if (tensorflow::GetMlirCommonFlags()
-          ->tf_mlir_enable_tpu_variable_runtime_reformatting_pass) {
-    pm.addPass(mlir::TFTPU::CreateTPUVariableRuntimeReformattingPass());
+          ->tf_mlir_enable_generic_outside_compilation) {
+    pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
   }
+  // Run another shape inference pass because resource decomposition might have
+  // created new partial types. Also, after dropping `shape_invariant` attribute
+  // from While/WhileRegion ops within cluster would lead to more precise
+  // shapes.
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
+  // Inline all the function calls. Do not call canonicalizer to prevent it from
+  // moving the definition of any constant operand of ops within a cluster to
+  // its outside. This may cause the op to fail to verify after the cluster is
+  // outlined, as the constant operand is replaced by an argument.
+  pm.addPass(mlir::createInlinerPass({}, NoCanonicalization));
+  // Lift resource operations out of device computation. This step needs to be
+  // done after inlining.
+  pm.addPass(mlir::TFDevice::CreateResourceOpLiftingPass());
+  // TODO(b/267193636): Remove this flag when outside compilation
+  // for generic pipeline is landed.
+  if (tensorflow::GetMlirCommonFlags()
+          ->tf_mlir_enable_generic_outside_compilation) {
+    pm.addPass(mlir::TFDevice::CreateMarkOpsForOutsideCompilationPass());
+    pm.addPass(mlir::TFDevice::CreateExtractHeadTailOutsideCompilationPass());
+    pm.addPass(mlir::TFDevice::CreateExtractOutsideCompilationPass());
+  }
+  // Outline clusters into cluster functions.
+  pm.addPass(mlir::TFDevice::CreateClusterOutliningPass());
 }
 
 };  // namespace internal

@@ -1347,7 +1347,9 @@ TEST_P(OptimizeZeroRamBudgetTest, Model) {
 
   CancellationManager cancellation_manager;
   RamBudgetManager ram_budget_manager(0);
-  model.Optimize(algorithm, CpuBudgetFunc(40), RamBudgetFunc(0),
+  model.Optimize(algorithm, CpuBudgetFunc(40),
+                 /*ram_budget_share=*/1.0,
+                 /*fixed_ram_budget=*/0,
                  /*model_input_time=*/0, ram_budget_manager,
                  &cancellation_manager);
   EXPECT_EQ(node1->parameter_value("parallelism"), 1);
@@ -1396,9 +1398,11 @@ TEST(ModelTest, ModelCollectOptimizationMetrics) {
                     HasSubstr("processing_time: 100")));
   CancellationManager cancellation_manager;
   RamBudgetManager ram_budget_manager(0);
-  model.Optimize(
-      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(40), RamBudgetFunc(1000),
-      /*model_input_time=*/50, ram_budget_manager, &cancellation_manager);
+  model.Optimize(AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(40),
+                 /*ram_budget_share=*/1.0,
+                 /*fixed_ram_budget=*/1000,
+                 /*model_input_time=*/50, ram_budget_manager,
+                 &cancellation_manager);
   model.output()->record_element();
   model.output()->record_start(300);
   model.output()->record_stop(400);
@@ -1414,9 +1418,11 @@ TEST(ModelTest, ModelCollectOptimizationMetrics) {
   model.RecordIteratorGapTime(12);
   // Call optimization again. Metrics collected after the first optimization
   // and the added gap times should be returned as well.
-  model.Optimize(
-      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(20), RamBudgetFunc(1000),
-      /*model_input_time=*/50, ram_budget_manager, &cancellation_manager);
+  model.Optimize(AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(20),
+                 /*ram_budget_share=*/1.0,
+                 /*fixed_ram_budget=*/1000,
+                 /*model_input_time=*/50, ram_budget_manager,
+                 &cancellation_manager);
   EXPECT_THAT(
       cell_reader.Read(model_id),
       AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
@@ -2380,9 +2386,11 @@ TEST_F(BufferSizeTest, OptimizeBuffers_PlentyOfMemory) {
   CancellationManager cancellation_manager;
   RamBudgetManager ram_budget_manager(0);
   model_->AddExperiment("autotune_buffer_optimization");
-  model_->Optimize(
-      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(1000), RamBudgetFunc(10000),
-      /*model_input_time=*/0, ram_budget_manager, &cancellation_manager);
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(1000),
+                   /*ram_budget_share=*/1.0,
+                   /*fixed_ram_budget=*/10000,
+                   /*model_input_time=*/0, ram_budget_manager,
+                   &cancellation_manager);
 
   EXPECT_EQ(2, node_1->parameter_value(kBufferSize));
   EXPECT_EQ(4, node_3->parameter_value(kBufferSize));
@@ -2528,9 +2536,11 @@ TEST_F(BufferSizeTest, OptimizeBuffers_TightMemory) {
   CancellationManager cancellation_manager;
   RamBudgetManager ram_budget_manager(0);
   model_->AddExperiment("autotune_buffer_optimization");
-  model_->Optimize(
-      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(1000), RamBudgetFunc(3000),
-      /*model_input_time=*/0, ram_budget_manager, &cancellation_manager);
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(1000),
+                   /*ram_budget_share=*/1.0,
+                   /*fixed_ram_budget=*/3000,
+                   /*model_input_time=*/0, ram_budget_manager,
+                   &cancellation_manager);
 
   EXPECT_DOUBLE_EQ(7.0, node_1->parameter_value(kBufferSize));
   EXPECT_DOUBLE_EQ(7.0, node_2->parameter_value(kBufferSize));
@@ -2599,9 +2609,11 @@ TEST_F(ModelTimingTest, OptimizeStageBased_OneStage) {
 
   CancellationManager cancellation_manager;
   RamBudgetManager ram_budget_manager(0);
-  model_->Optimize(
-      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(20), RamBudgetFunc(1000),
-      /*model_input_time=*/50, ram_budget_manager, &cancellation_manager);
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(20),
+                   /*ram_budget_share=*/1.0,
+                   /*fixed_ram_budget=*/1000,
+                   /*model_input_time=*/50, ram_budget_manager,
+                   &cancellation_manager);
 
   EXPECT_EQ(5, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
 }
@@ -2655,9 +2667,11 @@ TEST_F(ModelTimingTest, OptimizeStageBased_CappedByParameterMax) {
       "/tensorflow/data/autotune_stopping_criteria");
   CancellationManager cancellation_manager;
   RamBudgetManager ram_budget_manager(0);
-  model_->Optimize(
-      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(20), RamBudgetFunc(1000),
-      /*model_input_time=*/50, ram_budget_manager, &cancellation_manager);
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(20),
+                   /*ram_budget_share=*/1.0,
+                   /*fixed_ram_budget=*/1000,
+                   /*model_input_time=*/50, ram_budget_manager,
+                   &cancellation_manager);
 
   // The max value is set to 3. Otherwise, the expected parallelism value is 5.
   EXPECT_EQ(3, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
@@ -2725,9 +2739,11 @@ TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages) {
 
   CancellationManager cancellation_manager;
   RamBudgetManager ram_budget_manager(0);
-  model_->Optimize(
-      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(5), RamBudgetFunc(1000),
-      /*model_input_time=*/50, ram_budget_manager, &cancellation_manager);
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(5),
+                   /*ram_budget_share=*/1.0,
+                   /*fixed_ram_budget=*/1000,
+                   /*model_input_time=*/50, ram_budget_manager,
+                   &cancellation_manager);
 
   EXPECT_EQ(5, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
   EXPECT_EQ(5, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
@@ -2882,7 +2898,8 @@ TEST_F(ModelTimingTest, OptimizeStageBased_ParallelInterleaveMaxParallelism) {
   // Not enough RAM, the original `parallelism` should not change.
   model_->AddExperiment("stage_based_autotune_v2");
   model_->Optimize(AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(10000),
-                   RamBudgetFunc(10000),
+                   /*ram_budget_share=*/1.0,
+                   /*fixed_ram_budget=*/10000,
                    /*model_input_time=*/60, ram_budget_manager,
                    &cancellation_manager);
   EXPECT_EQ(10, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
@@ -2956,18 +2973,22 @@ TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages_RamBudgetExceeded) {
   CancellationManager cancellation_manager;
   RamBudgetManager ram_budget_manager(0);
   // Not enough RAM, the original `parallelism` should not change.
-  model_->Optimize(
-      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(10), RamBudgetFunc(0),
-      /*model_input_time=*/100, ram_budget_manager, &cancellation_manager);
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(10),
+                   /*ram_budget_share=*/1.0,
+                   /*fixed_ram_budget=*/0,
+                   /*model_input_time=*/100, ram_budget_manager,
+                   &cancellation_manager);
   EXPECT_EQ(4, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
   EXPECT_EQ(4, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
   EXPECT_EQ(cell_reader.Delta(
                 "ram_budget_exceeded:ParallelMapV2[]_Arbitrary[]_Stuff(id:2)"),
             1);
   // Has enough RAM, the original `parallelism` should increase.
-  model_->Optimize(
-      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(10), RamBudgetFunc(100000),
-      /*model_input_time=*/0, ram_budget_manager, &cancellation_manager);
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(10),
+                   /*ram_budget_share=*/1.0,
+                   /*fixed_ram_budget=*/100000,
+                   /*model_input_time=*/0, ram_budget_manager,
+                   &cancellation_manager);
   EXPECT_EQ(12, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
   EXPECT_EQ(16, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
   EXPECT_EQ(
@@ -2975,9 +2996,11 @@ TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages_RamBudgetExceeded) {
           "parameter_max_exceeded:ParallelMapV2[]_Arbitrary[]_Stuff(id:2)"),
       1);
   // Not enough RAM, the original `parallelism` should not change.
-  model_->Optimize(
-      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(10), RamBudgetFunc(100),
-      /*model_input_time=*/0, ram_budget_manager, &cancellation_manager);
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(10),
+                   /*ram_budget_share=*/1.0,
+                   /*fixed_ram_budget=*/100,
+                   /*model_input_time=*/0, ram_budget_manager,
+                   &cancellation_manager);
   EXPECT_EQ(12, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
   EXPECT_EQ(16, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
   EXPECT_EQ(cell_reader.Delta(
@@ -3038,9 +3061,11 @@ TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatio) {
 
   CancellationManager cancellation_manager;
   RamBudgetManager ram_budget_manager(0);
-  model_->Optimize(
-      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(20), RamBudgetFunc(10000),
-      /*model_input_time=*/100, ram_budget_manager, &cancellation_manager);
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(20),
+                   /*ram_budget_share=*/1.0,
+                   /*fixed_ram_budget=*/10000,
+                   /*model_input_time=*/100, ram_budget_manager,
+                   &cancellation_manager);
 
   EXPECT_EQ(3, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
 }
@@ -3098,9 +3123,11 @@ TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatioLessThanOne) {
 
   CancellationManager cancellation_manager;
   RamBudgetManager ram_budget_manager(0);
-  model_->Optimize(
-      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(20), RamBudgetFunc(10000),
-      /*model_input_time=*/50, ram_budget_manager, &cancellation_manager);
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(20),
+                   /*ram_budget_share=*/1.0,
+                   /*fixed_ram_budget=*/10000,
+                   /*model_input_time=*/50, ram_budget_manager,
+                   &cancellation_manager);
 
   EXPECT_EQ(14, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
 }
@@ -3292,9 +3319,11 @@ TEST_F(ModelTimingTest, ComputeSnapshotProcessingTimeSingleStage1) {
   CancellationManager cancellation_manager;
   RamBudgetManager ram_budget_manager(0);
   // Ensure the model snapshot is populated.
-  model_->Optimize(
-      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(1), RamBudgetFunc(1),
-      /*model_input_time=*/1000000, ram_budget_manager, &cancellation_manager);
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(1),
+                   /*ram_budget_share=*/1.0,
+                   /*fixed_ram_budget=*/1,
+                   /*model_input_time=*/1000000, ram_budget_manager,
+                   &cancellation_manager);
   EXPECT_EQ(model_->ComputeSnapshotProcessingTimeNsec(), 1200.0);
 }
 
@@ -3338,9 +3367,11 @@ TEST_F(ModelTimingTest, ComputeSnapshotProcessingTimeSingleStage2) {
   CancellationManager cancellation_manager;
   // Ensure the model snapshot is populated.
   RamBudgetManager ram_budget_manager(0);
-  model_->Optimize(
-      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(1), RamBudgetFunc(1),
-      /*model_input_time=*/1000000, ram_budget_manager, &cancellation_manager);
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(1),
+                   /*ram_budget_share=*/1.0,
+                   /*fixed_ram_budget=*/1,
+                   /*model_input_time=*/1000000, ram_budget_manager,
+                   &cancellation_manager);
   EXPECT_EQ(model_->ComputeSnapshotProcessingTimeNsec(), 1500.0);
 }
 
@@ -3417,9 +3448,11 @@ TEST_F(ModelTimingTest, ComputeSnapshotProcessingTimeMultipleStages) {
   CancellationManager cancellation_manager;
   // Ensure the model snapshot is populated.
   RamBudgetManager ram_budget_manager(0);
-  model_->Optimize(
-      AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(1), RamBudgetFunc(1),
-      /*model_input_time=*/1000000, ram_budget_manager, &cancellation_manager);
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, CpuBudgetFunc(1),
+                   /*ram_budget_share=*/1.0,
+                   /*fixed_ram_budget=*/1,
+                   /*model_input_time=*/1000000, ram_budget_manager,
+                   &cancellation_manager);
   EXPECT_EQ(model_->ComputeSnapshotProcessingTimeNsec(), 1500.0);
 }
 

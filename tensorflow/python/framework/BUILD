@@ -2150,7 +2150,7 @@ py_strict_library(
         "//tensorflow/core/config:flags_py",
         "//tensorflow/python:pywrap_sanitizers",
         "//tensorflow/python:tf2",
-        "//tensorflow/python/client",
+        "//tensorflow/python/client:device_lib",
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/client:session",
         "//tensorflow/python/compat",

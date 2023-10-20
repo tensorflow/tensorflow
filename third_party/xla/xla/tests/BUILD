@@ -966,6 +966,10 @@ xla_test(
 xla_test(
     name = "scatter_test",
     srcs = ["scatter_test.cc"],
+    backend_tags = {
+        # TODO(b/305008247)
+        "ghostfish_grm": ["broken"],
+    },
     tags = ["test_hlo_pjrt_runner"],
     deps = [
         ":client_library_test_base",
@@ -1353,6 +1357,10 @@ xla_test(
 xla_test(
     name = "float8_test",
     srcs = ["float8_test.cc"],
+    backend_tags = {
+        # TODO(b/305009586)
+        "ghostfish_grm": ["broken"],
+    },
     deps = [
         ":client_library_test_base",
         ":xla_internal_test_main",
@@ -1931,6 +1939,10 @@ xla_test(
 xla_test(
     name = "convert_test",
     srcs = ["convert_test.cc"],
+    backend_tags = {
+        # TODO(b/305009066)
+        "ghostfish_grm": ["broken"],
+    },
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
@@ -2086,6 +2098,10 @@ xla_test(
 xla_test(
     name = "bitcast_convert_test",
     srcs = ["bitcast_convert_test.cc"],
+    backend_tags = {
+        # TODO(b/305008729)
+        "ghostfish_grm": ["broken"],
+    },
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
@@ -2644,6 +2660,10 @@ xla_test(
 xla_test(
     name = "iota_test",
     srcs = ["iota_test.cc"],
+    backend_tags = {
+        # TODO(b/305011394)
+        "ghostfish_grm": ["broken"],
+    },
     shard_count = 30,
     tags = [
         # Require optimized builds, iota_test_cpu is very slow in fastbuild.
@@ -2767,26 +2787,6 @@ xla_test(
         ":xla_internal_test_main",
         "//xla:test",
         "//xla:types",
-    ],
-)
-
-# TODO(ezhulenev): Move this tests to xla/tests once all XLA backends
-# support XLA runtime FFI calls.
-xla_test(
-    name = "xla_ffi_test",
-    srcs = ["xla_ffi_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":hlo_test_base",
-        ":literal_test_util",
-        ":test_macros_header",
-        "//xla/pjrt:mlir_to_hlo",
-        "//xla/runtime:ffi",  # fixdeps: keep
-        "//xla/runtime/ffi:ffi_api",
-        "//xla/service:custom_call_target_registry",  # fixdeps: keep
-        "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/lib/core:status_test_util",
-        "@local_tsl//tsl/platform:test_main",
     ],
 )
 

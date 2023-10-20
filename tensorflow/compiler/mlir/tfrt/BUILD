@@ -1,5 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary")
 
 # Note: keep the following lines separate due to the way copybara works
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
@@ -126,33 +126,6 @@ cc_library(
 )
 
 cc_library(
-    name = "lower_cluster_to_runtime_ops",
-    srcs = ["transforms/lower_cluster_to_runtime_ops.cc"],
-    hdrs = [
-        "transforms/lower_cluster_to_runtime_ops.h",
-    ],
-    deps = [
-        "//tensorflow/compiler/mlir/tensorflow/transforms:verify_no_outside_compilation_markers_pass",
-        "//tensorflow/core:lib_proto_parsing",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/platform:status",
-    ],
-)
-
-tf_cc_test(
-    name = "lower_cluster_to_runtime_ops_test",
-    srcs = ["transforms/lower_cluster_to_runtime_ops_test.cc"],
-    deps = [
-        ":lower_cluster_to_runtime_ops",
-        "//tensorflow/core:test",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
     name = "corert_converter",
     srcs = [
         "transforms/corert_converter.cc",
@@ -249,7 +222,6 @@ cc_library(
         ":corert_converter",
         ":cost_analysis",
         ":fallback_converter",
-        ":lower_cluster_to_runtime_ops",
         ":tensor_array_side_effect_analysis",
         ":tfrt_pipeline_options",
         ":tpu_passes",
@@ -265,6 +237,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_asset_sinking_pass",
+        "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:lower_cluster_to_runtime_ops",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_async_opdefs",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_opdefs",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_gpu_opdefs",
@@ -392,6 +365,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms:bridge",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tf_saved_model_asset_sinking_pass",
+        "//tensorflow/compiler/mlir/tf2xla/api/v2:cluster_tf",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime:function_body",
@@ -519,6 +493,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow/transforms:bridge_pass_test_pipeline_registration",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:lower_cluster_to_runtime_ops",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_async_opdefs",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_opdefs",
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_fallback_sync_opdefs",

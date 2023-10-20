@@ -81,7 +81,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.15.0"
+VERSION = "2.16.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "manual", "no_pip"]
 
@@ -1710,7 +1710,8 @@ def tf_gpu_only_cc_test(
         size = "medium",
         args = [],
         kernels = [],
-        linkopts = []):
+        linkopts = [],
+        features = []):
     tags = tags + tf_gpu_tests_tags()
 
     gpu_lib_name = "%s%s" % (name, "_gpu_lib")
@@ -1719,12 +1720,13 @@ def tf_gpu_only_cc_test(
         srcs = srcs + tf_binary_additional_srcs(),
         deps = deps,
         testonly = 1,
+        features = features,
     )
     cc_test(
         name = "%s%s" % (name, "_gpu"),
         size = size,
         args = args,
-        features = if_cuda(["-use_header_modules"]),
+        features = features + if_cuda(["-use_header_modules"]),
         data = data + tf_binary_dynamic_kernel_dsos(),
         deps = [":" + gpu_lib_name],
         linkopts = if_not_windows(["-lpthread", "-lm"]) + linkopts + _rpath_linkopts(name),

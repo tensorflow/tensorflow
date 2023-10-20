@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor_internal.h"
 #include "xla/util.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/protobuf/error_codes.pb.h"
@@ -119,6 +118,7 @@ Status LocalDeviceState::SynchronizeAllActivity() {
   // fixed, we could remove the BlockHostUntilDone call.
   status.Update(compute_stream_->BlockHostUntilDone());
   if (callback_stream_map_.has_value()) {
+    absl::MutexLock lock(&callback_stream_map_mu_);
     for (auto& callback_stream : callback_stream_map_.value()) {
       status.Update(callback_stream.second->BlockHostUntilDone());
     }
@@ -148,7 +148,7 @@ void LocalDeviceState::ThenExecuteCallback(se::Stream* stream,
   tsl::profiler::TraceMe traceme("ThenExecuteCallback");
   if (callback_stream_map_.has_value()) {
     // Prevent concurrent updates to the callback stream map.
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(&callback_stream_map_mu_);
     auto callback_stream = callback_stream_map_->find(stream);
     if (callback_stream == callback_stream_map_->end()) {
       auto new_stream = std::make_unique<se::Stream>(executor_);
@@ -195,7 +195,7 @@ StatusOr<se::Stream*> LocalDeviceState::GetStreamFromExternalStream(
   for (const std::unique_ptr<se::Stream>& se_stream :
        external_ready_event_streams_) {
     if (absl::bit_cast<std::intptr_t>(
-            se_stream->implementation()->GpuStreamHack()) == stream) {
+            se_stream->platform_specific_handle().stream) == stream) {
       return se_stream.get();
     }
   }

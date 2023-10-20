@@ -106,13 +106,14 @@ tensorflow::Status ExportFromTensorflowDialectToExecutor(
     ::tensorflow::DumpMlirOpToFile(
         DEBUG_DATA_DUMPER()->GetDumpFilename(
             module_name.str(), kDebugGroupMain,
-            "tfxla_bridge_tfdialect_to_executor_before"),
+            "tfxla_bridge_v2_tfdialect_to_executor_before"),
         module, llvm::StringRef(), &tf_to_executor);
 
-    if (VLOG_IS_ON(2) || DEBUG_DATA_DUMPER()->ShouldDump(
-                             module_name.str(), kDebugGroupBridgePhase1)) {
-      internal::EnablePassIRPrinting(tf_to_executor, kDebugGroupBridgePhase1,
-                                     module_name);
+    if (VLOG_IS_ON(2) ||
+        DEBUG_DATA_DUMPER()->ShouldDump(
+            module_name.str(), kDebugGroupBridgePhase1ExecutorExport)) {
+      internal::EnablePassIRPrinting(
+          tf_to_executor, kDebugGroupBridgePhase1ExecutorExport, module_name);
     }
   }
 
@@ -123,7 +124,7 @@ tensorflow::Status ExportFromTensorflowDialectToExecutor(
     ::tensorflow::DumpMlirOpToFile(
         DEBUG_DATA_DUMPER()->GetDumpFilename(
             module_name.str(), kDebugGroupMain,
-            "tfxla_bridge_tfdialect_to_executor_after"),
+            "tfxla_bridge_v2_tfdialect_to_executor_after"),
         module, llvm::StringRef(), &tf_to_executor);
   }
 

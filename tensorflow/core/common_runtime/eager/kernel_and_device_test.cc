@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -42,7 +43,7 @@ namespace {
 
 class TestEnv {
  public:
-  TestEnv() : flib_def_(OpRegistry::Global(), {}) {
+  TestEnv() : flib_def_(OpRegistry::Global(), FunctionDefLibrary()) {
     std::vector<std::unique_ptr<Device>> devices;
     devices.push_back(
         DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));

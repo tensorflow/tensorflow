@@ -60,6 +60,8 @@ const absl::string_view kCudnnConvReorderFilterCallTarget =
 const absl::string_view kCudnnConvReorderFilterAndBiasCallTarget =
     "__cudnn$convReorderFilterAndBias";
 
+const absl::string_view kCubDeviceRadixSortTarget = "__cub$DeviceRadixSort";
+
 // fMHA forward call targets.
 const absl::string_view kCudnnfMHABmmBmmCallTarget = "__cudnn$fhmaBmmBmm";
 const absl::string_view kCudnnfMHASoftmaxCallTarget = "__cudnn$fhmaSoftmax";
@@ -118,6 +120,11 @@ bool IsCudnnConvolutionReorder(const HloInstruction& hlo) {
   const auto& target = hlo.custom_call_target();
   return target == kCudnnConvReorderFilterCallTarget ||
          target == kCudnnConvReorderFilterAndBiasCallTarget;
+}
+
+bool IsCubDeviceRadixSort(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() == kCubDeviceRadixSortTarget;
 }
 
 bool IsFwdCustomCallTofMHA(const HloInstruction& hlo) {

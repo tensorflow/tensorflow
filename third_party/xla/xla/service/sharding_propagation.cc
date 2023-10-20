@@ -1687,10 +1687,6 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
   if (!IsSpatiallyPartitioned(&user)) {
     return std::nullopt;
   }
-  if (instruction.opcode() == HloOpcode::kConstant &&
-      user.sharding().IsManual()) {
-    return std::nullopt;
-  }
   const bool may_combine_partial_sharding = is_spmd && aggressiveness > 0;
 
   switch (user.opcode()) {
@@ -2136,9 +2132,7 @@ bool ShardingPropagation::InferShardingFromShardGroup(
     return false;
   }
   // Propagate manual sharding.
-  if (instruction->opcode() != HloOpcode::kConstant &&
-      (!instruction->has_sharding() ||
-       instruction->sharding().IsTileMaximal())) {
+  if (!instruction->has_sharding() || instruction->sharding().IsTileMaximal()) {
     for (const HloInstruction* member : shard_group) {
       if (!member->has_sharding() || !member->sharding().IsManual()) {
         continue;
@@ -2180,12 +2174,16 @@ bool ShardingPropagation::InferShardingFromOperands(
   // Propagate manual sharding. Avoid tuple shaped HLOs that group independent
   // together. Reduce, ReduceWindow, and Sort can be tuples but the elements
   // are correlated, so we propagate manual sharding through them.
+  // For custom-calls with manual operand, the default propagation logic will
+  // just assign manual to the whole custom-call.
   if ((!instruction->has_sharding() ||
        instruction->sharding().IsTileMaximal()) &&
       (instruction->shape().IsArray() ||
        instruction->opcode() == HloOpcode::kReduce ||
        instruction->opcode() == HloOpcode::kSort ||
-       instruction->opcode() == HloOpcode::kReduceWindow)) {
+       instruction->opcode() == HloOpcode::kReduceWindow ||
+       (instruction->opcode() == HloOpcode::kCustomCall &&
+        instruction->shape().IsTuple()))) {
     for (const HloInstruction* op : instruction->operands()) {
       if (!op->has_sharding() || !op->sharding().IsManual()) continue;
       // Do not pass through manual sharding to SPMDShardToFullShape.
@@ -2292,12 +2290,12 @@ bool ShardingPropagation::InferShardingFromOperands(
         const HloInstruction* operand = instruction->operand(i);
         if (operand->has_sharding()) {
           if (operand->shape().IsTuple()) {
-            for (int64_t i = 0, e = ShapeUtil::GetLeafCount(operand->shape());
-                 i < e; ++i) {
-              if (is_more_specific(operand->sharding().tuple_elements()[i],
-                                   sub_shardings[sub_sharding_index + i])) {
-                sub_shardings[sub_sharding_index + i] =
-                    operand->sharding().tuple_elements()[i];
+            for (int64_t j = 0, e = ShapeUtil::GetLeafCount(operand->shape());
+                 j < e; ++j) {
+              if (is_more_specific(operand->sharding().tuple_elements()[j],
+                                   sub_shardings[sub_sharding_index + j])) {
+                sub_shardings[sub_sharding_index + j] =
+                    operand->sharding().tuple_elements()[j];
               }
             }
           } else {
@@ -2747,9 +2745,8 @@ bool ShardingPropagation::InferShardingFromUsers(
     return false;
   }
   // Propagate manual sharding.
-  if (instruction->opcode() != HloOpcode::kConstant &&
-      (!instruction->has_sharding() ||
-       instruction->sharding().IsTileMaximal())) {
+  if (!instruction->has_sharding() ||
+      instruction->sharding().IsTileMaximal()) {
     for (const HloInstruction* user : instruction->users()) {
       if (!user->has_sharding() || user->IsCustomCall("SPMDFullToShardShape"))
         continue;
@@ -2781,11 +2778,6 @@ bool ShardingPropagation::InferShardingFromUsers(
     std::optional<HloSharding> user_sharding =
         ShardingPropagation::GetShardingFromUser(
             *instruction, *user, aggressiveness, is_spmd, call_graph);
-    // Do not propagate manual sharding to constant from partially manual tuple.
-    if (instruction->opcode() == HloOpcode::kConstant && user_sharding &&
-        user_sharding->IsManual()) {
-      continue;
-    }
     if (user_sharding && instruction->opcode() == HloOpcode::kCustomCall) {
       if (auto* partitioner =
               GetCustomCallPartitioner(instruction->custom_call_target())) {
@@ -2817,7 +2809,7 @@ Status ShardingPropagation::CanonicalizeLayouts(HloModule* module) {
   TF_ASSIGN_OR_RETURN(auto layouts,
                       module->layout_canonicalization_callback()(*module));
   Shape& result_shape = layouts.second;
-  TF_RETURN_IF_ERROR(module->config()
+  TF_RETURN_IF_ERROR(module->mutable_config()
                          .mutable_entry_computation_layout()
                          ->mutable_result_layout()
                          ->CopyLayoutFromShape(result_shape));

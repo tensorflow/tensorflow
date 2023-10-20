@@ -9,7 +9,6 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/core/runtime_fallback:internal"],
-    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -95,11 +94,15 @@ cc_library(
     hdrs = ["tensor_util.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":kernel_fallback_tensor",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/common_runtime:copy_tensor",
         "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
         "//tensorflow/core/runtime_fallback/util:attr_util",
         "@llvm-project//llvm:Support",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
+        "@tf_runtime//:support",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
@@ -251,8 +254,13 @@ cc_library(
         ":kernel_fallback_execute_compat",
         ":kernel_fallback_tensor",
         ":kernel_fallback_tensor_conversion_alwayslink",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
         "//tensorflow/core/runtime_fallback/runtime:kernel_utils",
+        "//tensorflow/core/runtime_fallback/util:attr_util",
+        "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "//tensorflow/core/tfrt/fallback:op_kernel_runner_cache",
+        "@llvm-project//llvm:Support",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
@@ -366,6 +374,7 @@ cc_library(
         "//tensorflow/core/tfrt/utils:tensor_util",
         "@com_google_absl//absl/base",
         "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/platform:refcount",
         "@tf_runtime//:core_runtime",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
@@ -436,6 +445,9 @@ cc_library(
         ":kernel_fallback_compat_request_state",
         "//tensorflow/core:framework",
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
+        "//tensorflow/core/tfrt/utils:fallback_tensor",
         "@com_google_absl//absl/container:inlined_vector",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:support",
     ],
 )

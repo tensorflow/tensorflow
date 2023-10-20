@@ -3060,6 +3060,7 @@ tf_cc_test(
     size = "small",
     srcs = ["inline_function_utils_test.cc"],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],

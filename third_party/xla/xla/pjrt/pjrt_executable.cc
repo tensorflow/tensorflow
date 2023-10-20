@@ -30,11 +30,14 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/layout.h"
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/execute_options.pb.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
@@ -308,6 +311,28 @@ PjRtExecutable::GetOutputDimensions() const {
     output_dimensions.push_back(std::move(dimensions));
   }
   return output_dimensions;
+}
+
+StatusOr<std::vector<Layout>> PjRtExecutable::GetParameterLayouts() const {
+  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
+                      GetHloModules());
+  if (hlo_modules.size() > 1) {
+    return Unimplemented(
+        "PjRtExecutable::GetParameterLayouts doesn't support MPMD "
+        "executables.");
+  }
+  if (hlo_modules.empty()) {
+    return InvalidArgument(
+        "PjRtExecutable::GetParameterLayouts: couldn't retrieve HLO module "
+        "from executable.");
+  }
+  ComputationLayout comp_layout = hlo_modules[0]->entry_computation_layout();
+  std::vector<Layout> result;
+  result.reserve(comp_layout.parameter_count());
+  for (const ShapeLayout& layout : comp_layout.parameter_layouts()) {
+    result.push_back(layout.layout());
+  }
+  return result;
 }
 
 StatusOr<absl::flat_hash_map<std::string, PjRtValueType>>

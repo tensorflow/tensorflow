@@ -48,7 +48,8 @@ class GpuHloScheduleTest : public HloTestBase {
         test_backend.default_stream_executor()->GetDeviceDescription();
     TF_CHECK_OK(ScheduleGpuModule(
         module, /*pointer_size=*/8,
-        /*memory_limit=*/gpu_device_info.device_memory_size() * 8 / 10));
+        /*memory_limit=*/gpu_device_info.device_memory_size() * 8 / 10,
+        gpu_device_info));
     return SequentialHloOrdering{module->schedule()};
   }
 
@@ -659,11 +660,10 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvPairs2) {
 
   EXPECT_LT(get_index("recv-1"), get_index("send-1"));
   EXPECT_LT(get_index("send-1"), get_index("recv-done-1"));
-  EXPECT_GE(get_index("send-done-1") - get_index("send-1"), 14);
-  EXPECT_LT(abs(get_index("send-done-1") - get_index("result")), 2);
+  EXPECT_GT(get_index("send-done-1"), get_index("send-1"));
 
-  EXPECT_LT(get_index("recv-done-0"), get_index("recv-1"));
-  EXPECT_LT(get_index("send-done-0"), get_index("send-1"));
+  EXPECT_LT(get_index("send-done-1"), get_index("recv-0"));
+  EXPECT_LT(abs(get_index("send-done-0") - get_index("result")), 2);
 }
 
 // Checks that asynchronous AllReduce is scheduled to interleave with the Send
@@ -753,8 +753,8 @@ TEST_F(GpuHloScheduleTest, LHSSendRecvAllReduce) {
 
   EXPECT_LT(get_index("recv"), get_index("send"));
   EXPECT_LT(get_index("send"), get_index("recv-done"));
-  EXPECT_GE(get_index("send-done") - get_index("recv-done"), 9);
-  EXPECT_GT(get_index("send-done"), get_index("all-reduce-done"));
+  EXPECT_GE(get_index("send-done") - get_index("recv-done"), 3);
+  EXPECT_LT(get_index("send-done"), get_index("all-reduce-start"));
   EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 

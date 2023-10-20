@@ -26,7 +26,6 @@ py_strict_test(
         "//tensorflow/lite/python:interpreter",
         "//tensorflow/python/ops:list_ops",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/types:core",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

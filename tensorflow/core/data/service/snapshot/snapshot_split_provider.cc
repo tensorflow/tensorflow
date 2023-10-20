@@ -23,6 +23,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/btree_map.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_client.h"
@@ -35,8 +39,6 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/mutex.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
@@ -44,8 +46,9 @@ namespace data {
 namespace {
 
 constexpr char kNextSplitIndex[] = "next_split_index";
+constexpr char kRepetitionIndex[] = "repetition_index";
 
-StatusOr<int64_t> GetRepetitionIndex(const std::string& split_file) {
+absl::StatusOr<int64_t> GetRepetitionIndex(const std::string& split_file) {
   tsl::StringPiece repetition_dir_path = tsl::io::Dirname(split_file);
   tsl::StringPiece repetition_dir_name = tsl::io::Basename(repetition_dir_path);
   return ParseRepetitionDirectoryName(repetition_dir_name);
@@ -65,18 +68,18 @@ SnapshotSplitProvider::SnapshotSplitProvider(
   dispatcher_ = std::move(dispatcher);
 }
 
-Status SnapshotSplitProvider::GetNext(Tensor* split, bool* end_of_splits)
+absl::Status SnapshotSplitProvider::GetNext(Tensor* split, bool* end_of_splits)
     TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   TF_RETURN_IF_ERROR(GetAndValidateSplit(split, end_of_splits));
   if (!*end_of_splits) {
     ++next_split_index_;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SnapshotSplitProvider::GetAndValidateSplit(Tensor* split,
-                                                  bool* end_of_splits)
+absl::Status SnapshotSplitProvider::GetAndValidateSplit(Tensor* split,
+                                                        bool* end_of_splits)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   if (split_to_file_map_.contains(next_split_index_)) {
     return GetSplitFromFile(split_to_file_map_[next_split_index_], split,
@@ -86,7 +89,7 @@ Status SnapshotSplitProvider::GetAndValidateSplit(Tensor* split,
   TF_ASSIGN_OR_RETURN(int64_t dispatcher_split_index,
                       GetSplitFromDispatcher(split, end_of_splits));
   if (dispatcher_split_index == next_split_index_) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   TF_ASSIGN_OR_RETURN(split_to_file_map_, GetSplitsFiles(next_split_index_));
@@ -97,31 +100,30 @@ Status SnapshotSplitProvider::GetAndValidateSplit(Tensor* split,
                           end_of_splits);
 }
 
-Status SnapshotSplitProvider::GetSplitFromFile(const std::string& split_file,
-                                               Tensor* split,
-                                               bool* end_of_splits)
+absl::Status SnapshotSplitProvider::GetSplitFromFile(
+    const std::string& split_file, Tensor* split, bool* end_of_splits)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   VLOG(3) << "Getting the next split from file: " << split_file;
   TF_ASSIGN_OR_RETURN(int64_t repetition_index, GetRepetitionIndex(split_file));
   if (repetition_index_ < repetition_index) {
     *end_of_splits = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
   snapshot_util::TFRecordReaderImpl reader(split_file,
                                            tsl::io::compression::kNone);
   TF_RETURN_IF_ERROR(reader.Initialize(env_));
   TF_ASSIGN_OR_RETURN(std::vector<Tensor> tensors, reader.GetTensors());
   if (tensors.size() != 1) {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "A snapshot split file is expected to contain 1 tensor. Got ",
-        tensors.size(), " tensors from ", split_file, ".");
+        tensors.size(), " tensors from ", split_file, "."));
   }
   *split = std::move(tensors[0]);
   *end_of_splits = false;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-StatusOr<int64_t> SnapshotSplitProvider::GetSplitFromDispatcher(
+absl::StatusOr<int64_t> SnapshotSplitProvider::GetSplitFromDispatcher(
     Tensor* split, bool* end_of_splits) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   int64_t local_split_index = 0;
   TF_RETURN_IF_ERROR(grpc_util::Retry(
@@ -138,7 +140,7 @@ StatusOr<int64_t> SnapshotSplitProvider::GetSplitFromDispatcher(
   return local_split_index;
 }
 
-StatusOr<absl::btree_map<int64_t, std::string>>
+absl::StatusOr<absl::btree_map<int64_t, std::string>>
 SnapshotSplitProvider::GetSplitsFiles(int64_t start_index) const
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   absl::btree_map<int64_t, std::string> split_to_file_map;
@@ -164,37 +166,38 @@ SnapshotSplitProvider::GetSplitsFiles(int64_t start_index) const
   return split_to_file_map;
 }
 
-Status SnapshotSplitProvider::ValidateSplitFiles(
+absl::Status SnapshotSplitProvider::ValidateSplitFiles(
     const absl::btree_map<int64_t, std::string>& split_files,
     int64_t start_index) const {
   if (split_files.empty()) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   if (split_files.cbegin()->first != start_index) {
-    return errors::Internal("Failed to get split ", start_index,
-                            " for snapshot ", snapshot_task_.DebugString());
+    return absl::InternalError(absl::StrCat("Failed to get split ", start_index,
+                                            " for snapshot ",
+                                            snapshot_task_.DebugString()));
   }
 
   int64_t end_index = split_files.rbegin()->first;
   if (end_index - start_index + 1 != split_files.size()) {
-    return errors::Internal("Failed to get split ", start_index,
-                            ". Some splits between [", start_index, ", ",
-                            end_index, "] are missing for snapshot ",
-                            snapshot_task_.DebugString());
+    return absl::InternalError(absl::StrCat(
+        "Failed to get split ", start_index, ". Some splits between [",
+        start_index, ", ", end_index, "] are missing for snapshot ",
+        snapshot_task_.DebugString()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SnapshotSplitProvider::ValidateSplitFiles(
+absl::Status SnapshotSplitProvider::ValidateSplitFiles(
     const absl::btree_map<int64_t, std::string>& split_files,
     int64_t start_index, int64_t end_index, bool end_of_splits) const {
   TF_RETURN_IF_ERROR(ValidateSplitFiles(split_files, start_index));
   if (end_index < start_index) {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "The tf.data service worker is expected to read split ", start_index,
         ", but the dispatcher returns split ", end_index, " for snapshot ",
-        snapshot_task_.DebugString());
+        snapshot_task_.DebugString()));
   }
 
   if (end_of_splits) {
@@ -205,44 +208,51 @@ Status SnapshotSplitProvider::ValidateSplitFiles(
 
   if (split_files.empty() || split_files.cbegin()->first != start_index ||
       split_files.rbegin()->first < end_index) {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "The tf.data service dispatcher has written split ", end_index,
         ". However, not all splits between [", start_index, ", ", end_index,
-        "] are found for snapshot ", snapshot_task_.DebugString());
+        "] are found for snapshot ", snapshot_task_.DebugString()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SnapshotSplitProvider::Reset() {
+absl::Status SnapshotSplitProvider::Reset() {
   mutex_lock l(mu_);
   ++repetition_index_;
-  return OkStatus();
+  LOG(INFO) << "Reset tf.data snapshot split provider for snapshot "
+            << snapshot_task_.ShortDebugString() << ", repetition "
+            << repetition_index_ << ".";
+  return absl::OkStatus();
 }
 
-Status SnapshotSplitProvider::Save(
+absl::Status SnapshotSplitProvider::Save(
     std::function<std::string(std::string)> full_name,
     IteratorStateWriter* writer) TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   TF_RETURN_IF_ERROR(
       writer->WriteScalar(full_name(kNextSplitIndex), next_split_index_));
-  return OkStatus();
+  TF_RETURN_IF_ERROR(
+      writer->WriteScalar(full_name(kRepetitionIndex), repetition_index_));
+  return absl::OkStatus();
 }
 
-Status SnapshotSplitProvider::Restore(
+absl::Status SnapshotSplitProvider::Restore(
     std::function<std::string(std::string)> full_name,
     IteratorStateReader* reader) TF_LOCKS_EXCLUDED(mu_) {
   int64_t next_split_index = 0;
+  int64_t repetition_index = 0;
   TF_RETURN_IF_ERROR(
       reader->ReadScalar(full_name(kNextSplitIndex), &next_split_index));
+  TF_RETURN_IF_ERROR(
+      reader->ReadScalar(full_name(kRepetitionIndex), &repetition_index));
   mutex_lock l(mu_);
   next_split_index_ = next_split_index;
+  repetition_index_ = repetition_index;
   TF_ASSIGN_OR_RETURN(split_to_file_map_, GetSplitsFiles(next_split_index_));
-  auto next_split_file = split_to_file_map_.find(next_split_index_);
-  if (next_split_file != split_to_file_map_.end()) {
-    TF_ASSIGN_OR_RETURN(repetition_index_,
-                        GetRepetitionIndex(next_split_file->second));
-  }
-  return OkStatus();
+  LOG(INFO) << "Restored snapshot split provider for snapshot "
+            << snapshot_task_.ShortDebugString() << ", next split "
+            << next_split_index_ << ", repetition " << repetition_index_ << ".";
+  return absl::OkStatus();
 }
 
 }  // namespace data

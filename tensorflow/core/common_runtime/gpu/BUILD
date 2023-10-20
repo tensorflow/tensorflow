@@ -207,7 +207,7 @@ tf_cuda_library(
                 "//tensorflow/compiler/jit:pjrt_device_context",
                 "@local_xla//xla/pjrt/gpu:gpu_helpers",
                 "@local_xla//xla/pjrt/gpu:se_gpu_pjrt_client",
-                "@local_xla//xla/stream_executor:tf_allocator_adapter",
+                "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
                 "//tensorflow/core/tfrt/common:pjrt_util",
             ],
             "//conditions:default": [],
@@ -324,7 +324,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
-        "@local_xla//xla/stream_executor:device_mem_allocator",
+        "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
     ],
 )
 
@@ -458,8 +458,8 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime:core_cpu_internal",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
-        "@local_xla//xla/stream_executor:device_mem_allocator",
         "@local_xla//xla/stream_executor:platform",
+        "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
     ],
 )
 
@@ -475,8 +475,8 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/framework:allocator",
         "//tensorflow/core/platform:stream_executor",
-        "@local_xla//xla/stream_executor:device_mem_allocator",
         "@local_xla//xla/stream_executor/gpu:gpu_init",
+        "@local_xla//xla/stream_executor/integrations:device_mem_allocator",
     ],
 )
 

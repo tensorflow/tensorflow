@@ -35,8 +35,8 @@ class ForThunk : public Thunk {
   ForThunk(const ForThunk&) = delete;
   ForThunk& operator=(const ForThunk&) = delete;
 
-  Status Initialize(const GpuExecutable& executable,
-                    se::StreamExecutor* executor) override;
+  Status Initialize(se::StreamExecutor* executor,
+                    ExecutableSource src) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
   SequentialThunk* body_thunk_sequence() { return body_thunk_sequence_.get(); }

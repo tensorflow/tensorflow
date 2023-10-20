@@ -23,7 +23,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/autotuning.pb.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
@@ -763,6 +765,43 @@ ENTRY e {
       MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Convert(m::Reduce(m::Fusion(), m::Constant()))));
+}
+
+TEST_F(SplitKTest, MakeSplitKWithTransposeAfterDot) {
+  const std::string hlo_text = R"(
+triton_gemm_dot {
+  p0 = f16[8,288,288]{2,1,0} parameter(0)
+  p1 = f16[8,288,32]{2,0,1} parameter(1)
+  d = f16[8,288,32]{2,1,0} dot(p0, p1),
+    lhs_batch_dims={0}, lhs_contracting_dims={2},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+  ROOT t = f16[288,8,32]{2,1,0} transpose(d), dimensions={1,0,2}
+}
+
+ENTRY e {
+  p0 = f16[8,288,288]{2,1,0} parameter(0)
+  p1 = f16[8,288,32]{2,0,1} parameter(1)
+  ROOT fusion = f16[288,8,32]{2,1,0} fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  AutotuneResult::TritonGemmKey key;
+  key.set_block_m(16);
+  key.set_block_n(128);
+  key.set_block_k(32);
+  key.set_split_k(8);
+  key.set_num_stages(1);
+  key.set_num_warps(4);
+  TF_EXPECT_OK(
+      MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
+  const auto* transpose =
+      Cast<HloTransposeInstruction>(module->entry_computation()
+                                        ->root_instruction()
+                                        ->operand(0)
+                                        ->fused_instructions_computation()
+                                        ->root_instruction());
+  EXPECT_THAT(transpose->dimensions(), ElementsAre(0, 2, 1, 3));
 }
 
 }  // namespace

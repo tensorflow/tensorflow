@@ -410,7 +410,7 @@ bool GpuCudaMallocAsyncAllocator::ClearStats() {
 
 void GpuCudaMallocAsyncAllocator::SetStreamAndPreallocateMemory(void* stream) {
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
-  CUstream new_cuda_stream = *(static_cast<CUstream*>(stream));
+  auto new_cuda_stream = static_cast<CUstream>(stream);
   // We don't need to re-set the CUDA stream if this is the same stream
   if (cuda_stream_ != nullptr && new_cuda_stream != cuda_stream_) {
     LOG(FATAL) <<  // Crash OK.

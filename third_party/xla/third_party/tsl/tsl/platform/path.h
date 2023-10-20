@@ -107,14 +107,24 @@ std::string CreateURI(tsl::StringPiece scheme, tsl::StringPiece host,
 // Creates a temporary file name with an extension.
 std::string GetTempFilename(const std::string& extension);
 
-// Reads the TEST_UNDECLARED_OUTPUTS_DIR environment variable, and if set
-// assigns `dir` to the value. `dir` is not modified if the environment variable
-// is unset. Returns true if the environment variable is set, otherwise false.
-// Passing `dir` as nullptr, will just probe for the environment variable.
+// Returns whether the test workspace directory is known. If it's known and dir
+// != nullptr then sets *dir to that.
 //
-// Note: This function obviates the need to deal with Bazel's odd path decisions
-// on Windows, and should be preferred over a simple `getenv`.
+// The test workspace directory is known to be TEST_SRCDIR/TEST_WORKSPACE if
+// both the TEST_SRCDIR and TEST_WORKSPACE environment variables are set.
+bool GetTestWorkspaceDir(std::string* dir);
+
+// Returns whether the TEST_UNDECLARED_OUTPUTS_DIR environment variable is set.
+// If it's set and dir != nullptr then sets *dir to that.
 bool GetTestUndeclaredOutputsDir(std::string* dir);
+
+// Resolves paths to help tests find files in their workspace or output
+// directory. Returns whether the path can be resolved. If it can be then sets
+// resolved_path to that.
+//
+// Currently the TEST_WORKSPACE and the TEST_UNDECLARED_OUTPUTS_DIR prefixes can
+// be resolved.
+bool ResolveTestPrefixes(tsl::StringPiece path, std::string& resolved_path);
 
 }  // namespace io
 }  // namespace tsl

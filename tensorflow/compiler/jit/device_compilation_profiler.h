@@ -92,7 +92,8 @@ class DeviceCompilationProfiler : public ResourceBase {
 
   int64_t num_ongoing_compilations_ TF_GUARDED_BY(mu_) = 0;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(DeviceCompilationProfiler);
+  DeviceCompilationProfiler(const DeviceCompilationProfiler&) = delete;
+  void operator=(const DeviceCompilationProfiler&) = delete;
 };
 
 }  // namespace tensorflow

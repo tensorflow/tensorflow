@@ -1202,10 +1202,6 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
     // Lazily parse XlaCallModule's embedded HLO module and cache the loader to
     // avoid repeatedly parsing the module.
 
-    std::vector<std::string> dim_args_spec;
-    for (auto attr : op.getDimArgsSpec().getAsRange<StringAttr>()) {
-      dim_args_spec.push_back(attr.getValue().str());
-    }
     std::vector<std::string> disabled_checks;
     for (auto attr : op.getDisabledChecks().getAsRange<StringAttr>()) {
       disabled_checks.push_back(attr.getValue().str());
@@ -1229,8 +1225,8 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
 
     auto l = tensorflow::XlaCallModuleLoader::Create(
         &xla_call_module_context_, op.getVersion(), op.getModule().str(),
-        std::move(dim_args_spec), std::move(disabled_checks),
-        std::move(platforms), std::move(loading_platform),
+        std::move(disabled_checks), std::move(platforms),
+        std::move(loading_platform),
         /*num_invocation_args=*/op.getArgs().size(),
         op.getHasTokenInputOutput());
     if (!l.ok()) {

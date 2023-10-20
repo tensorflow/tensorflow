@@ -1644,7 +1644,7 @@ Status ProcessFunctionLibraryRuntime::Clone(
     bool skip_flib_def) const {
   if (skip_flib_def) {
     *out_lib_def = std::make_unique<FunctionLibraryDefinition>(
-        lib_def_->default_registry(), FunctionDefLibrary{});
+        lib_def_->default_registry(), FunctionDefLibrary());
   } else {
     *out_lib_def = std::make_unique<FunctionLibraryDefinition>(*lib_def_);
   }

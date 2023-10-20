@@ -26,8 +26,10 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/dump.h"
 #include "xla/service/fusion_queue.h"
-#include "xla/service/gpu/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/fusion_process_dump.pb.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_pass_interface.h"
 #include "xla/service/instruction_fusion.h"
@@ -45,7 +47,14 @@ class GpuPriorityFusion : public InstructionFusion {
         device_info_(d),
         cost_analysis_options_(cost_analysis_options) {}
 
+  absl::string_view name() const override { return "priority-fusion"; }
+
   static bool IsExpensive(const HloInstruction& instruction);
+
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  protected:
   std::unique_ptr<FusionQueue> GetFusionQueue(
@@ -57,11 +66,6 @@ class GpuPriorityFusion : public InstructionFusion {
       const HloInstruction* producer, const HloInstruction* consumer) override;
 
  private:
-  // This method is called by ShouldFuse() to do all the computationally
-  // inexpensive checks whether we should fuse the operand into 'consumer'.
-  FusionDecision ShouldFuseInexpensiveChecks(HloInstruction* consumer,
-                                             int64_t operand_index);
-
   HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
                                   HloInstruction* producer) override;
 
@@ -69,6 +73,10 @@ class GpuPriorityFusion : public InstructionFusion {
 
   // Cost model options that defines priorities in the queue.
   GpuHloCostAnalysis::Options cost_analysis_options_;
+
+  // Proto with structured logs of fusion decisions. Used only for debugging. If
+  // null, logging is disabled.
+  std::unique_ptr<FusionProcessDumpProto> fusion_process_dump_;
 };
 
 }  // namespace gpu

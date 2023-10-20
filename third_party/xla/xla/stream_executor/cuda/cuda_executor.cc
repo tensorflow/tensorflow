@@ -711,14 +711,14 @@ Event::Status GpuExecutor::PollForEventStatus(Event* event) {
 bool GpuExecutor::AllocateStream(Stream* stream) {
   absl::MutexLock l(&alive_gpu_streams_mu_);
   bool out = AsGpuStream(stream)->Init();
-  alive_gpu_streams_[stream->implementation()->GpuStreamHack()] = stream;
+  alive_gpu_streams_[stream->platform_specific_handle().stream] = stream;
   return out;
 }
 
 void GpuExecutor::DeallocateStream(Stream* stream) {
   GpuStream* cuda_stream = AsGpuStream(stream);
   absl::MutexLock l(&alive_gpu_streams_mu_);
-  alive_gpu_streams_.erase(cuda_stream->GpuStreamHack());
+  alive_gpu_streams_.erase(cuda_stream->platform_specific_stream());
   if (!cuda_stream->IsIdle()) {
     LOG(ERROR) << "Deallocating stream with pending work";
   }
@@ -857,7 +857,7 @@ GpuExecutor::GetCommandBufferImplementation(CommandBuffer::Mode mode) {
   return std::make_unique<GpuCommandBuffer>(mode, /*parent=*/this, graph);
 }
 
-void* GpuExecutor::GpuContextHack() { return context_; }
+void* GpuExecutor::platform_specific_context() { return context_; }
 
 GpuContext* GpuExecutor::gpu_context() { return context_; }
 

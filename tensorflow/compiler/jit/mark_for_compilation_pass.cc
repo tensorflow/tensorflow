@@ -257,7 +257,8 @@ class MarkForCompilationPassImpl {
     std::optional<string> xla_scope_;
     std::vector<int> resource_var_operation_node_ids_;
 
-    TF_DISALLOW_COPY_AND_ASSIGN(Cluster);
+    Cluster(const Cluster&) = delete;
+    void operator=(const Cluster&) = delete;
   };
 
   // If `cluster` has only a single node then returns that, otherwise returns

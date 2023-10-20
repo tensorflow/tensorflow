@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/kernels/batch_kernels.h"
 #include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 #include "tensorflow/core/kernels/batching_util/warmup.h"
@@ -60,9 +61,6 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   void SetAdaptiveBatchSchedulerOptions(OpKernelConstruction* c,
                                         int32_t num_batch_threads);
 
-  static void RecordBatchParamNumBatchThreads(int64_t num_batch_threads,
-                                              absl::string_view model_name);
-  static absl::string_view GetModelName(OpKernelContext* ctx);
   static int32 NumBatchThreadsFromEnvironmentWithDefault(
       int default_num_batch_threads);
   static thread::ThreadPool* GetOrCreateBatchThreadsPool();
@@ -81,6 +79,7 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   int32 low_priority_max_enqueued_batches_;
   std::vector<int32> low_priority_allowed_batch_sizes_;
   bool enable_large_batch_splitting_;
+  bool has_attribute_enable_large_batch_splitting_;
   bool disable_padding_;
 
   // Parameters for adaptive batch scheduler only.
@@ -124,6 +123,10 @@ class BatchFunctionFallbackKernel : public BatchFunctionFallbackKernelBase {
 template <typename BatchResourceType>
 void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
     OpKernelContext* c, DoneCallback done) {
+  RecordBatchSplitUsage(has_attribute_enable_large_batch_splitting_
+                            ? std::make_optional(enable_large_batch_splitting_)
+                            : std::nullopt,
+                        GetModelName(c));
   RecordBatchParamNumBatchThreads(num_batch_threads_, GetModelName(c));
   OP_REQUIRES_VALUE(tfrt::ResourceContext * client_graph_resource_context, c,
                     BatchResourceType::GetClientGraphResourceContext(c));

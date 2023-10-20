@@ -77,7 +77,7 @@ std::unique_ptr<SubAllocator> CreateVirtualMemorySubAllocator(
       DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
           .value();
   auto* gpu_context = reinterpret_cast<stream_executor::gpu::GpuContext*>(
-      executor->implementation()->GpuContextHack());
+      executor->platform_specific_handle().context);
   return tensorflow::GpuVirtualMemAllocator::Create(
              {}, {}, *gpu_context, gpu_id, virtual_address_space_size, {})
       .value();

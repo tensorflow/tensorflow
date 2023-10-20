@@ -225,6 +225,86 @@ ENTRY main {
       FusionCanShareBufferHint(fusion, fusion->operand(0), {1}));
 }
 
+TEST_F(FusionCanShareBufferHintTest, BufferCanBeSharedScatterFusion) {
+  const char* const kModuleString = R"(
+    HloModule fusion
+
+    add {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    fused_computation {
+      p0 = s32[3,3] parameter(0)
+      p1 = s32[3] parameter(1)
+      indices = s32[3] add(p1, p1)
+      p2 = s32[3,3] parameter(2)
+      updates = s32[3,3] add(p2, p2)
+      ROOT scatter = s32[3,3] scatter(p0, indices, updates),
+          to_apply=add,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    }
+
+    ENTRY main {
+      parameter0 = s32[3,3] parameter(0)
+      parameter1 = s32[3] parameter(1)
+      parameter2 = s32[3,3] parameter(2)
+      ROOT fusion = s32[3,3] fusion(parameter0, parameter1, parameter2), kind=kInput, calls=fused_computation
+    }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalTrue(FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+  ExpectOptionalFalse(FusionCanShareBufferHint(fusion, fusion->operand(1), {}));
+  ExpectOptionalFalse(FusionCanShareBufferHint(fusion, fusion->operand(2), {}));
+}
+
+TEST_F(FusionCanShareBufferHintTest, BufferCannotBeSharedScatterFusion) {
+  // This is a fusion that we would normally not create because it cannot be
+  // emitted in-place. Still check whether buffer sharing logic would handle it
+  // correctly.
+  const char* const kModuleString = R"(
+    HloModule fusion
+
+    add {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    fused_computation {
+      p0 = s32[3,3] parameter(0)
+      p1 = s32[3] parameter(1)
+      indices = s32[3] add(p1, p1)
+      updates = s32[3,3] add(p0, p0)
+      ROOT scatter = s32[3,3] scatter(p0, indices, updates),
+          to_apply=add,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    }
+
+    ENTRY main {
+      parameter0 = s32[3,3] parameter(0)
+      parameter1 = s32[3] parameter(1)
+      ROOT fusion = s32[3,3] fusion(parameter0, parameter1), kind=kInput, calls=fused_computation
+    }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalFalse(FusionCanShareBufferHint(fusion, fusion->operand(0), {}));
+  ExpectOptionalFalse(FusionCanShareBufferHint(fusion, fusion->operand(1), {}));
+}
+
 TEST_F(FusionCanShareBufferHintTest,
        BufferCannotBeSharedConvertedShapeDifferentByteWidth) {
   const char* const kModuleString = R"(

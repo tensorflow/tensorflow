@@ -1,9 +1,9 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
-load(":gen_saved_model.bzl", "gen_saved_model")
-load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_binary")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load(":gen_saved_model.bzl", "gen_saved_model")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -674,4 +674,30 @@ bzl_library(
     srcs = ["gen_saved_model.bzl"],
     visibility = ["//visibility:private"],
     deps = ["//tensorflow:tensorflow_bzl"],
+)
+
+tf_cuda_cc_test(
+    name = "saved_model_aot_test",
+    srcs = ["saved_model_aot_test.cc"],
+    tags = [
+        "no_oss",
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:math_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/compiler/jit:test_util",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core/framework:op",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/tfrt/saved_model:saved_model_aot_compile",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@local_tsl//tsl/platform:errors",
+        "@local_tsl//tsl/platform:statusor",
+    ],
 )

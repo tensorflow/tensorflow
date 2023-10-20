@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/time/time.h"
 #include "xla/client/local_client.h"
+#include "xla/client/xla_computation.h"
 #include "xla/pjrt/distributed/topology_util.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -54,41 +55,35 @@ limitations under the License.
 #include "tsl/framework/allocator.h"
 #include "tsl/framework/bfc_allocator.h"
 #include "tsl/lib/strings/proto_serialization.h"
+#include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/threadpool.h"
 #include "tsl/profiler/lib/connected_traceme.h"
-#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
-#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
-#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
-#include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
-#include "tfrt/host_context/host_context.h"  // from @tf_runtime
 
-#ifdef GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
 #include "xla/pjrt/compile_options.pb.h"
 #include "xla/pjrt/gpu/nccl_id_store.h"
+#include "xla/pjrt/metrics.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
 #include "xla/service/gpu/gpu_compiler.h"
-#include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
 #include "xla/xla.pb.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
+#elif TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
-#include "xla/pjrt/compile_options.pb.h"  // NOLINT(build/include)
-#include "xla/pjrt/gpu/nccl_id_store.h"  // NOLINT(build/include)
-#include "xla/pjrt/stream_executor_executable.pb.h"  // NOLINT(build/include)
-#include "xla/service/gpu/gpu_compiler.h"  // NOLINT(build/include)
-#include "xla/xla.pb.h"  // NOLINT(build/include)
-#endif  // TENSORFLOW_USE_ROCM
+#endif
 
 #include "xla/client/client_library.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/platform_util.h"
 #include "xla/statusor.h"
-#include "xla/stream_executor/device_host_allocator.h"
-#include "xla/stream_executor/device_mem_allocator.h"
-#include "xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/integrations/device_host_allocator.h"
+#include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/util.h"
 #include "tsl/framework/device_id.h"
 #include "tsl/util/env_var.h"
@@ -535,6 +530,17 @@ PjRtFuture<absl::Status> StreamExecutorGpuClient::CopyRawSubBufferToHost(
       });
 }
 
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+StreamExecutorGpuClient::Compile(const XlaComputation& computation,
+                                 CompileOptions options) {
+  auto executable = PjRtStreamExecutorClient::Compile(computation, options);
+
+#if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_ROCM)
+  metrics::RecordFreeGpuSystemMemory();
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  return executable;
+}
+
 namespace {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 StatusOr<std::unique_ptr<StreamExecutorExecutable>> FromProto(
@@ -668,8 +674,8 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateCudaAsyncAllocator(
         tsl::PlatformDeviceId(device_ordinal), allocator_memory, preallocate);
     allocator->SetStreamAndPreallocateMemory(
         ordinal_and_device.second->compute_stream()
-            ->implementation()
-            ->GpuStreamMemberHack());
+            ->platform_specific_handle()
+            .stream);
     allocators.emplace_back(std::move(allocator),
                             ordinal_and_device.second->compute_stream());
   }
@@ -788,29 +794,23 @@ static StatusOr<std::vector<LocalTopologyProto>> GetAllLocalTopologies(
     int num_nodes, const PjRtClient::KeyValueGetCallback& kv_get,
     absl::Duration timeout) {
   std::vector<StatusOr<std::string>> local_topology_strs(num_nodes);
-  auto host_context = std::make_unique<tfrt::HostContext>(
-      [](const tfrt::DecodedDiagnostic& diag) {
-        LOG(ERROR) << "Encountered runtime error: " << diag.message() << "\n";
-      },
-      tfrt::CreateMallocAllocator(),
-      tfrt::CreateMultiThreadedWorkQueue(
-          /*num_threads=*/DefaultThreadPoolSize(),
-          /*num_blocking_threads=*/4));
+
+  // TODO(ezhulenev): Should a thread pool become a function argument?
+  tsl::thread::ThreadPool thread_pool(
+      tsl::Env::Default(), "GetAllLocalTopologies", DefaultThreadPoolSize());
 
   absl::BlockingCounter blocking_counter(num_nodes);
   absl::Mutex mu;
   for (int i = 0; i < num_nodes; i++) {
-    tfrt::EnqueueWork(
-        host_context.get(),
-        [&mu, &local_topology_strs, &blocking_counter, &kv_get, i, &timeout] {
-          StatusOr<std::string> local_topology_str =
-              kv_get(GetLocalTopologyKey(i), timeout);
-          {
-            absl::MutexLock lock(&mu);
-            local_topology_strs[i] = local_topology_str;
-          }
-          blocking_counter.DecrementCount();
-        });
+    thread_pool.Schedule([&, i] {
+      StatusOr<std::string> local_topology_str =
+          kv_get(GetLocalTopologyKey(i), timeout);
+      {
+        absl::MutexLock lock(&mu);
+        local_topology_strs[i] = local_topology_str;
+      }
+      blocking_counter.DecrementCount();
+    });
   }
   blocking_counter.Wait();
 

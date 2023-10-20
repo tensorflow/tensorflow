@@ -384,6 +384,11 @@ message DebugOptions {
   int64 xla_gpu_all_gather_combine_threshold_bytes = 212;
   int64 xla_gpu_reduce_scatter_combine_threshold_bytes = 213;
 
+  // Combine all-gather/scatter-reduce ops with the same dimension or
+  // irrespective of their dimension.
+  bool xla_gpu_enable_all_gather_combine_by_dim = 254;
+  bool xla_gpu_enable_reduce_scatter_combine_by_dim = 257;
+
   // Combine GPU all-reduces into a single operation over a contiguous buffer.
   bool xla_gpu_all_reduce_contiguous = 158;
 
@@ -541,6 +546,8 @@ message DebugOptions {
 
   bool xla_gpu_enable_latency_hiding_scheduler = 186;
   bool xla_gpu_enable_highest_priority_async_stream = 216;
+  bool xla_gpu_enable_analytical_latency_estimator = 255;
+
   bool xla_gpu_lhs_enable_gpu_async_tracker = 204;
   string xla_gpu_pgle_profile_file_or_directory_path = 210;
 
@@ -637,7 +644,9 @@ message DebugOptions {
   // Maximum number of buffers to print when debugging buffer assignment.
   int64 xla_debug_buffer_assignment_show_max = 251;
 
-  // Next id: 254
+  int32 xla_gpu_llvm_verification_level = 256;
+
+  // Next id: 258
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -652,6 +661,11 @@ message DebugOptions {
   // xla_gpu_enable_experimental_block_size
   reserved 5, 117, 133, 139, 176, 178, 180, 193, 214;
 }
+
+// Contains flags which affects the GPU compilation result.
+// These flags are part of Debug Options as of now, and will be migrated to
+// this proto.
+message GpuCompilationEnvironment {}
 
 message ShardableValueUpdatePairProto {
   int64 input_parameter_number = 1;

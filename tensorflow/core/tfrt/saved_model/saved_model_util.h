@@ -86,10 +86,13 @@ struct Signature {
 
 }  // namespace internal
 
+// If `import_signature_names` is non-empty, this function only imports the
+// graph that corresponds to this list.
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
     const FallbackState& fallback_state, std::string saved_model_dir,
-    bool import_user_signatures, bool run_placer_grappler_on_functions);
+    bool import_user_signatures, bool run_placer_grappler_on_functions,
+    const std::vector<std::string>& import_signature_names = {});
 
 StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
     absl::string_view saved_model_dir,
@@ -130,10 +133,6 @@ absl::Status DeserializeAoTMlirModule(
     mlir::OwningOpRef<mlir::ModuleOp>* mlir_module);
 
 void RegisterTFRTDialectsForAoT(mlir::DialectRegistry& registry);
-
-void RecordFreeGpuMemory();
-
-int64_t GetFreeGpuMemory(int gpu_id);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

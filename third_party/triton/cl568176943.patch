@@ -1,0 +1,16 @@
+diff --git a/lib/Target/LLVMIR/LLVMIRTranslation.cpp b/lib/Target/LLVMIR/LLVMIRTranslation.cpp
+index d2a3f7c74..cb668303a 100644
+--- a/lib/Target/LLVMIR/LLVMIRTranslation.cpp
++++ b/lib/Target/LLVMIR/LLVMIRTranslation.cpp
+@@ -273,8 +273,10 @@ static std::map<std::string, std::string> getExternLibs(mlir::ModuleOp module) {
+     // Search for libdevice relative to its library path if used from Python
+     // Then native code is in `triton/_C/libtriton.so` and libdevice in
+     // `triton/third_party/cuda/lib/libdevice.10.bc`
++    static const auto this_library_path = getThisLibraryPath();
+     static const auto runtime_path =
+-        fs::path(PathToLibdevice()) / "libdevice.10.bc";
++        this_library_path.parent_path().parent_path() / "third_party" / "cuda" /
++        "lib" / "libdevice.10.bc";
+     if (fs::exists(runtime_path)) {
+       externLibs.try_emplace(libdevice, runtime_path.string());
+     } else {

@@ -9737,6 +9737,20 @@ ENTRY entry {
                           op::Shape("f32[5,1,1,512]")));
 }
 
+TEST_P(SpmdPartitioningTest, PartitionConvWithBatchGroupCountReplicatedLHSRHS) {
+  // This test case is derived from b/304203416.
+  absl::string_view hlo_string = R"(
+HloModule test, entry_computation_layout={(f32[8,28,1,64]{3,2,1,0}, f32[8,28,1,2]{3,2,1,0})->f32[3,1,32,2]{3,2,1,0}}, allow_spmd_sharding_propagation_to_output={true}
+
+ENTRY main.4 {
+  lhs = f32[8,28,1,64]{3,2,1,0} parameter(0), sharding={replicated}
+  rhs = f32[8,28,1,2]{3,2,1,0} parameter(1), sharding={replicated}
+  ROOT convolution.3 = f32[3,1,32,2]{3,2,1,0} convolution(lhs, rhs), window={size=28x1 pad=1_1x0_0}, dim_labels=f01b_i01o->01bf, batch_group_count=2, sharding={replicated}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+}
+
 TEST_P(SpmdPartitioningTest,
        PartitionConvWithFeatureGroupCountAlignOuputWithRHS) {
   absl::string_view hlo_string = R"(

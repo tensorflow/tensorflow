@@ -431,6 +431,17 @@ class GpuDriver {
       unsigned int block_dim_z, unsigned int shared_mem_bytes,
       void** kernel_params, void** extra);
 
+  // Sets the parameters for a kernel node in the given graph exec.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1gd84243569e4c3d6356b9f2eea20ed48c
+  // https://docs.amd.com/projects/HIP/en/docs-5.0.0/doxygen/html/group___graph.html#ga5b1918dae65224863b7370e6d4ad3f2a
+  static tsl::Status GraphExecKernelNodeSetParams(
+      GpuGraphExecHandle exec, GpuGraphNodeHandle node,
+      absl::string_view kernel_name, GpuFunctionHandle function,
+      unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
+      unsigned int block_dim_x, unsigned int block_dim_y,
+      unsigned int block_dim_z, unsigned int shared_mem_bytes,
+      void** kernel_params, void** extra);
+
   // Creates a memcpy node and adds it to a graph.
   // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__GRAPH.html#group__CUDA__GRAPH_1g674da6ab54a677f13e0e0e8206ff5073
   static tsl::Status GraphAddMemcpyD2DNode(GpuContext* context,

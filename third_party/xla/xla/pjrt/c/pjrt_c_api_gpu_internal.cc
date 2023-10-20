@@ -24,9 +24,13 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
+#include "xla/backends/profiler/plugin/plugin_tracer_impl.h"
+#include "xla/backends/profiler/plugin/profiler_c_api.h"
+#include "xla/backends/profiler/plugin/profiler_error.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_gpu_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
@@ -41,7 +45,7 @@ namespace gpu_plugin {
 #define PJRT_GPU_PLUGIN_PLATFORM_NAME "CUDA"
 
 PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_Create_Args", PJRT_Client_Create_Args_STRUCT_SIZE,
       args->struct_size));
 
@@ -120,9 +124,28 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
       "Topology not supported for GPU compilation.")};
 }
 
+PLUGIN_Profiler_Api profiler_api{
+    /*struct_size=*/PLUGIN_Profiler_Api_STRUCT_SIZE,
+    /*priv=*/nullptr,
+    /*error_destroy=*/xla::profiler::PLUGIN_Profiler_Error_Destroy,
+    /*error_message=*/xla::profiler::PLUGIN_Profiler_Error_Message,
+    /*error_get_code=*/xla::profiler::PLUGIN_Profiler_Error_GetCode,
+    /*create=*/xla::profiler::PLUGIN_Profiler_Create,
+    /*destroy=*/xla::profiler::PLUGIN_Profiler_Destroy,
+    /*start=*/xla::profiler::PLUGIN_Profiler_Start,
+    /*stop=*/xla::profiler::PLUGIN_Profiler_Stop,
+    /*collect_data=*/xla::profiler::PLUGIN_Profiler_CollectData,
+};
+
+PJRT_Profiler_Extension profiler_extension{
+    /*type=*/PJRT_Structure_Type::PJRT_Structure_Type_Profiler,
+    /*next=*/nullptr,
+    /*profiler_api=*/&profiler_api,
+};
+
 PJRT_Error* PJRT_Gpu_Register_Custom_Call(
     PJRT_Gpu_Register_Custom_Call_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Gpu_Register_Custom_Call_Args",
       PJRT_Gpu_Register_Custom_Call_Args_STRUCT_SIZE, args->struct_size));
   std::string function_name(args->function_name, args->function_name_size);
@@ -133,7 +156,7 @@ PJRT_Error* PJRT_Gpu_Register_Custom_Call(
 
 PJRT_Gpu_Custom_Call custom_call{
     /*type=*/PJRT_Structure_Type::PJRT_Structure_Type_Gpu_Custom_Call,
-    /*next=*/nullptr,
+    /*next=*/&profiler_extension,
     /*custom_call=*/PJRT_Gpu_Register_Custom_Call,
 };
 

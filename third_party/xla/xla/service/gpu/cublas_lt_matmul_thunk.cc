@@ -21,12 +21,8 @@ limitations under the License.
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/status.h"
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_blas_lt.h"
-#else
-#include "xla/stream_executor/rocm/hip_blas_lt.h"
-#endif  // GOOGLE_CUDA
 #include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/scratch_allocator.h"
 #include "tsl/platform/logging.h"
 
 namespace xla {
@@ -58,12 +54,9 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
       d_amax_buffer_(d_amax) {}
 
 Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan * plan,
-                      GetMatmulPlan(params.stream));
+  TF_ASSIGN_OR_RETURN(auto plan, GetMatmulPlan(params.stream));
   if (!algorithm_) {
-    TF_ASSIGN_OR_RETURN(
-        std::vector<se::gpu::BlasLt::MatmulAlgorithm> algorithms,
-        plan->GetAlgorithms(params.stream));
+    TF_ASSIGN_OR_RETURN(auto algorithms, plan->GetAlgorithms());
     TF_RET_CHECK(algorithm_idx_ >= 0 && algorithm_idx_ < algorithms.size());
     algorithm_ = algorithms[algorithm_idx_];
   }
@@ -105,17 +98,14 @@ Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
       d_scale, d_amax, *algorithm_, scratch_allocator);
 }
 
-StatusOr<cublas_lt::MatmulPlan*> CublasLtMatmulThunk::GetMatmulPlan(
+StatusOr<se::gpu::BlasLt::MatmulPlan*> CublasLtMatmulThunk::GetMatmulPlan(
     const stream_executor::Stream* stream) {
   absl::MutexLock lock(&matmul_plans_cache_mutex_);
   auto it = matmul_plans_cache_.find(stream);
   if (it == matmul_plans_cache_.end()) {
-    TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,
-                        cublas_lt::MatmulPlan::From(gemm_config_, epilogue_));
-    it = matmul_plans_cache_
-             .insert({stream,
-                      std::make_unique<cublas_lt::MatmulPlan>(std::move(plan))})
-             .first;
+    TF_ASSIGN_OR_RETURN(auto plan, se::gpu::BlasLt::GetMatmulPlan(
+                                       stream, gemm_config_, epilogue_));
+    it = matmul_plans_cache_.emplace(stream, std::move(plan)).first;
   }
   return it->second.get();
 }

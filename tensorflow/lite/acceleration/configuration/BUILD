@@ -325,6 +325,7 @@ cc_test(
 cc_library(
     name = "xnnpack_plugin",
     srcs = ["xnnpack_plugin.cc"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":configuration_fbs",
         "//tensorflow/lite:minimal_logging",
