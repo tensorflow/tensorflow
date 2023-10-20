@@ -7039,6 +7039,28 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
                                                         /*index=*/0));
     }
   }
+
+  // Replace Reduce(Broadcast(x), dims, Sum()) with Broadcast(x * prod(dims)).
+  if (HloInstruction * broadcast_arg;
+      Match(arg, m::Broadcast(m::ConstantScalar(&broadcast_arg))) &&
+      Match(function->root_instruction(),
+            m::AddAnyOrder(m::Parameter(0), m::Parameter(1)))) {
+    if (auto broadcast_value = GetConstantValue(broadcast_arg);
+        broadcast_value.has_value() &&
+        // Skip float64, where product is too accurate compared to repeated-sum.
+        broadcast_arg->shape().element_type() != PrimitiveType::F64) {
+      auto result_value = broadcast_value.value() *
+                          ShapeUtil::ElementsIn(arg->shape()) /
+                          ShapeUtil::ElementsIn(reduce_result_shape);
+      return ReplaceWithNewInstruction(
+          reduce, HloInstruction::CreateBroadcast(
+                      reduce_result_shape,
+                      reduce->AddInstruction(
+                          MakeScalarInstruction(reduce, result_value)),
+                      {}));
+    }
+  }
+
   return OkStatus();
 }
 
