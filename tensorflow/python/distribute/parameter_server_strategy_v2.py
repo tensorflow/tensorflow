@@ -26,6 +26,7 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import input_util
+from tensorflow.python.distribute import load_context
 from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
@@ -46,7 +47,6 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training import server_lib
-from tensorflow.python.util import keras_deps
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
@@ -879,7 +879,7 @@ class ParameterServerStrategyV2Extended(
     # the coordinator which incurs worker-coordinator communication overhead.
 
     def lookup_creator(next_creator, *args, **kwargs):
-      if keras_deps.get_load_context_function()():
+      if load_context.in_load_context():
         return (ps_values.RestoredDistributedTable(
             self._container_strategy(), lambda: next_creator(*args, **kwargs)))  # pylint: disable=protected-access
       else:

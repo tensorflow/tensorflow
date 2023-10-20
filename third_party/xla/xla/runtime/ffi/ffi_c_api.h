@@ -266,9 +266,6 @@ typedef struct XLA_FFI_Api {
 const size_t XLA_FFI_Api_STRUCT_SIZE =
     XLA_FFI_STRUCT_SIZE(XLA_FFI_Api, XLA_FFI_Get_StridedBufferArg_TypeId);
 
-// Does not pass ownership of returned XLA_FFI_Api* to caller.
-const XLA_FFI_Api* GetXlaFfiApi();
-
 #ifdef __cplusplus
 }
 #endif

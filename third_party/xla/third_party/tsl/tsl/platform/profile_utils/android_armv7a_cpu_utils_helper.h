@@ -56,7 +56,8 @@ class AndroidArmV7ACpuUtilsHelper : public ICpuUtilsHelper {
   bool is_initialized_{false};
   int fd_{INVALID_FD};
 
-  TF_DISALLOW_COPY_AND_ASSIGN(AndroidArmV7ACpuUtilsHelper);
+  AndroidArmV7ACpuUtilsHelper(const AndroidArmV7ACpuUtilsHelper &) = delete;
+  void operator=(const AndroidArmV7ACpuUtilsHelper &) = delete;
 };
 
 }  // namespace profile_utils

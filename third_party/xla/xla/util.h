@@ -21,26 +21,38 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <limits>
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/macros.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
 #include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/math/math_util.h"
+#include "tsl/platform/bfloat16.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/errors.h"  // IWYU pragma: keep
+#include "tsl/platform/float8.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -375,21 +387,21 @@ bool HasInteriorPadding(const PaddingConfig& config);
 // Imports the templated FloorOfRatio math function from the TensorFlow
 // namespace, as it is very commonly used.
 template <typename T>
-T FloorOfRatio(T dividend, T divisor) {
+constexpr T FloorOfRatio(T dividend, T divisor) {
   return tsl::MathUtil::FloorOfRatio<T>(dividend, divisor);
 }
 
 // Imports the templated CeilOfRatio math function from the TensorFlow
 // namespace, as it is very commonly used.
 template <typename T>
-T CeilOfRatio(T dividend, T divisor) {
+constexpr T CeilOfRatio(T dividend, T divisor) {
   return tsl::MathUtil::CeilOfRatio<T>(dividend, divisor);
 }
 
 // Rounds the value up to a multiple of the divisor by first calling CeilOfRatio
 // then multiplying by the divisor. For example: RoundUpTo(13, 8) => 16
 template <typename T>
-T RoundUpTo(T value, T divisor) {
+constexpr T RoundUpTo(T value, T divisor) {
   return CeilOfRatio(value, divisor) * divisor;
 }
 
@@ -397,7 +409,7 @@ T RoundUpTo(T value, T divisor) {
 // FloorOfRatio then multiplying by the divisor. For example:
 // RoundDownTo(13, 8) => 8
 template <typename T>
-T RoundDownTo(T value, T divisor) {
+constexpr T RoundDownTo(T value, T divisor) {
   return FloorOfRatio(value, divisor) * divisor;
 }
 
@@ -410,7 +422,7 @@ struct DivMod {
 // Divide `dividend` by `divisor` such that the quotient is rounded towards
 // negative infinity. The remainder will have the same sign as `divisor`.
 template <typename T>
-DivMod<T> FloorDivMod(T dividend, T divisor) {
+constexpr DivMod<T> FloorDivMod(T dividend, T divisor) {
   DivMod<T> div_mod;
   div_mod.quotient = FloorOfRatio(dividend, divisor);
   div_mod.modulo = dividend - div_mod.quotient * divisor;
@@ -612,10 +624,10 @@ T NanWithSignAndPayload(bool sign, uint64_t nan_payload) {
   return absl::bit_cast<T>(rep);
 }
 
-// Utility for performing a static_cast<> on a std::unique_ptr<>.
+// Utility for performing a down_cast<> on a std::unique_ptr<>.
 template <typename Derived, typename Base>
-std::unique_ptr<Derived> unique_ptr_static_cast(std::unique_ptr<Base> ptr) {
-  return std::unique_ptr<Derived>(static_cast<Derived*>(ptr.release()));
+std::unique_ptr<Derived> unique_ptr_down_cast(std::unique_ptr<Base> ptr) {
+  return absl::WrapUnique(tensorflow::down_cast<Derived*>(ptr.release()));
 }
 
 int64_t Product(absl::Span<const int64_t> xs);
@@ -712,6 +724,20 @@ Status EraseElementFromVector(std::vector<T>* container, const T& value) {
 // Note: The resulting representation can still only represent 8-bit exponent
 // range that is available in F32s (out of a total of 11 exponent bits in F64s).
 std::pair<float, float> SplitF64ToF32(double x);
+
+// Takes a sequence of unpacked int4 values, such that every byte stores one
+// int4 value in the low-order four bits, and packs them so every byte stores
+// two int4 values. 'input' should have num_elements bytes; 'output' should have
+// (num_elements+1)/2 bytes. The high-order four bits of each byte in 'input'
+// are ignored.
+void PackInt4(absl::Span<const char> input, absl::Span<char> output);
+
+// Takes a sequence of packed int4 values, such that every byte stores two
+// int4 values, and unpacks them so every byte stores one int4 value in the
+// low-order four bits. 'input' should have (num_elements+1)/2 bytes; 'output'
+// should have num_elements bytes. The high-order 4-bits in each output are
+// zero.
+void UnpackInt4(absl::Span<const char> input, absl::Span<char> output);
 
 class HloInstruction;
 class HloModule;

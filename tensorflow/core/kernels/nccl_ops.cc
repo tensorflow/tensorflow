@@ -20,6 +20,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/nccl/nccl.h"
 #elif TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
 #if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/rccl/rccl.h"
 #else
@@ -63,7 +64,8 @@ class NcclAsyncOpBase : public AsyncOpKernel {
   int num_devices_;
   string collective_prefix_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(NcclAsyncOpBase);
+  NcclAsyncOpBase(const NcclAsyncOpBase&) = delete;
+  void operator=(const NcclAsyncOpBase&) = delete;
 };
 
 class NcclReduceOpBase : public NcclAsyncOpBase {

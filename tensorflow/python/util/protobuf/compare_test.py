@@ -59,98 +59,108 @@ class ProtoEqTest(googletest.TestCase):
     self.assertEqual('', '')
 
   def testPrimitiveFields(self):
-    self.assertNotEquals('string_: "a"', '')
+    self.assertNotEqual('string_: "a"', '')
     self.assertEqual('string_: "a"', 'string_: "a"')
-    self.assertNotEquals('string_: "b"', 'string_: "a"')
-    self.assertNotEquals('string_: "ab"', 'string_: "aa"')
+    self.assertNotEqual('string_: "b"', 'string_: "a"')
+    self.assertNotEqual('string_: "ab"', 'string_: "aa"')
 
-    self.assertNotEquals('int64_: 0', '')
+    self.assertNotEqual('int64_: 0', '')
     self.assertEqual('int64_: 0', 'int64_: 0')
-    self.assertNotEquals('int64_: -1', '')
-    self.assertNotEquals('int64_: 1', 'int64_: 0')
-    self.assertNotEquals('int64_: 0', 'int64_: -1')
+    self.assertNotEqual('int64_: -1', '')
+    self.assertNotEqual('int64_: 1', 'int64_: 0')
+    self.assertNotEqual('int64_: 0', 'int64_: -1')
 
-    self.assertNotEquals('float_: 0.0', '')
+    self.assertNotEqual('float_: 0.0', '')
     self.assertEqual('float_: 0.0', 'float_: 0.0')
-    self.assertNotEquals('float_: -0.1', '')
-    self.assertNotEquals('float_: 3.14', 'float_: 0')
-    self.assertNotEquals('float_: 0', 'float_: -0.1')
+    self.assertNotEqual('float_: -0.1', '')
+    self.assertNotEqual('float_: 3.14', 'float_: 0')
+    self.assertNotEqual('float_: 0', 'float_: -0.1')
     self.assertEqual('float_: -0.1', 'float_: -0.1')
 
-    self.assertNotEquals('bool_: true', '')
-    self.assertNotEquals('bool_: false', '')
-    self.assertNotEquals('bool_: true', 'bool_: false')
+    self.assertNotEqual('bool_: true', '')
+    self.assertNotEqual('bool_: false', '')
+    self.assertNotEqual('bool_: true', 'bool_: false')
     self.assertEqual('bool_: false', 'bool_: false')
     self.assertEqual('bool_: true', 'bool_: true')
 
-    self.assertNotEquals('enum_: A', '')
-    self.assertNotEquals('enum_: B', 'enum_: A')
-    self.assertNotEquals('enum_: C', 'enum_: B')
+    self.assertNotEqual('enum_: A', '')
+    self.assertNotEqual('enum_: B', 'enum_: A')
+    self.assertNotEqual('enum_: C', 'enum_: B')
     self.assertEqual('enum_: C', 'enum_: C')
 
   def testRepeatedPrimitives(self):
-    self.assertNotEquals('int64s: 0', '')
+    self.assertNotEqual('int64s: 0', '')
     self.assertEqual('int64s: 0', 'int64s: 0')
-    self.assertNotEquals('int64s: 1', 'int64s: 0')
-    self.assertNotEquals('int64s: 0 int64s: 0', '')
-    self.assertNotEquals('int64s: 0 int64s: 0', 'int64s: 0')
-    self.assertNotEquals('int64s: 1 int64s: 0', 'int64s: 0')
-    self.assertNotEquals('int64s: 0 int64s: 1', 'int64s: 0')
-    self.assertNotEquals('int64s: 1', 'int64s: 0 int64s: 2')
-    self.assertNotEquals('int64s: 2 int64s: 0', 'int64s: 1')
+    self.assertNotEqual('int64s: 1', 'int64s: 0')
+    self.assertNotEqual('int64s: 0 int64s: 0', '')
+    self.assertNotEqual('int64s: 0 int64s: 0', 'int64s: 0')
+    self.assertNotEqual('int64s: 1 int64s: 0', 'int64s: 0')
+    self.assertNotEqual('int64s: 0 int64s: 1', 'int64s: 0')
+    self.assertNotEqual('int64s: 1', 'int64s: 0 int64s: 2')
+    self.assertNotEqual('int64s: 2 int64s: 0', 'int64s: 1')
     self.assertEqual('int64s: 0 int64s: 0', 'int64s: 0 int64s: 0')
     self.assertEqual('int64s: 0 int64s: 1', 'int64s: 0 int64s: 1')
-    self.assertNotEquals('int64s: 1 int64s: 0', 'int64s: 0 int64s: 0')
-    self.assertNotEquals('int64s: 1 int64s: 0', 'int64s: 0 int64s: 1')
-    self.assertNotEquals('int64s: 1 int64s: 0', 'int64s: 0 int64s: 2')
-    self.assertNotEquals('int64s: 1 int64s: 1', 'int64s: 1 int64s: 0')
-    self.assertNotEquals('int64s: 1 int64s: 1', 'int64s: 1 int64s: 0 int64s: 2')
+    self.assertNotEqual('int64s: 1 int64s: 0', 'int64s: 0 int64s: 0')
+    self.assertNotEqual('int64s: 1 int64s: 0', 'int64s: 0 int64s: 1')
+    self.assertNotEqual('int64s: 1 int64s: 0', 'int64s: 0 int64s: 2')
+    self.assertNotEqual('int64s: 1 int64s: 1', 'int64s: 1 int64s: 0')
+    self.assertNotEqual('int64s: 1 int64s: 1', 'int64s: 1 int64s: 0 int64s: 2')
 
   def testMessage(self):
-    self.assertNotEquals('small <>', '')
+    self.assertNotEqual('small <>', '')
     self.assertEqual('small <>', 'small <>')
-    self.assertNotEquals('small < strings: "a" >', '')
-    self.assertNotEquals('small < strings: "a" >', 'small <>')
+    self.assertNotEqual('small < strings: "a" >', '')
+    self.assertNotEqual('small < strings: "a" >', 'small <>')
     self.assertEqual('small < strings: "a" >', 'small < strings: "a" >')
-    self.assertNotEquals('small < strings: "b" >', 'small < strings: "a" >')
-    self.assertNotEquals('small < strings: "a" strings: "b" >',
-                         'small < strings: "a" >')
+    self.assertNotEqual('small < strings: "b" >', 'small < strings: "a" >')
+    self.assertNotEqual(
+        'small < strings: "a" strings: "b" >', 'small < strings: "a" >'
+    )
 
-    self.assertNotEquals('string_: "a"', 'small <>')
-    self.assertNotEquals('string_: "a"', 'small < strings: "b" >')
-    self.assertNotEquals('string_: "a"', 'small < strings: "b" strings: "c" >')
-    self.assertNotEquals('string_: "a" small <>', 'small <>')
-    self.assertNotEquals('string_: "a" small <>', 'small < strings: "b" >')
+    self.assertNotEqual('string_: "a"', 'small <>')
+    self.assertNotEqual('string_: "a"', 'small < strings: "b" >')
+    self.assertNotEqual('string_: "a"', 'small < strings: "b" strings: "c" >')
+    self.assertNotEqual('string_: "a" small <>', 'small <>')
+    self.assertNotEqual('string_: "a" small <>', 'small < strings: "b" >')
     self.assertEqual('string_: "a" small <>', 'string_: "a" small <>')
-    self.assertNotEquals('string_: "a" small < strings: "a" >',
-                         'string_: "a" small <>')
+    self.assertNotEqual(
+        'string_: "a" small < strings: "a" >', 'string_: "a" small <>'
+    )
     self.assertEqual('string_: "a" small < strings: "a" >',
                      'string_: "a" small < strings: "a" >')
-    self.assertNotEquals('string_: "a" small < strings: "a" >',
-                         'int64_: 1 small < strings: "a" >')
-    self.assertNotEquals('string_: "a" small < strings: "a" >', 'int64_: 1')
-    self.assertNotEquals('string_: "a"', 'int64_: 1 small < strings: "a" >')
-    self.assertNotEquals('string_: "a" int64_: 0 small < strings: "a" >',
-                         'int64_: 1 small < strings: "a" >')
-    self.assertNotEquals('string_: "a" int64_: 1 small < strings: "a" >',
-                         'string_: "a" int64_: 0 small < strings: "a" >')
+    self.assertNotEqual(
+        'string_: "a" small < strings: "a" >',
+        'int64_: 1 small < strings: "a" >',
+    )
+    self.assertNotEqual('string_: "a" small < strings: "a" >', 'int64_: 1')
+    self.assertNotEqual('string_: "a"', 'int64_: 1 small < strings: "a" >')
+    self.assertNotEqual(
+        'string_: "a" int64_: 0 small < strings: "a" >',
+        'int64_: 1 small < strings: "a" >',
+    )
+    self.assertNotEqual(
+        'string_: "a" int64_: 1 small < strings: "a" >',
+        'string_: "a" int64_: 0 small < strings: "a" >',
+    )
     self.assertEqual('string_: "a" int64_: 0 small < strings: "a" >',
                      'string_: "a" int64_: 0 small < strings: "a" >')
 
   def testNestedMessage(self):
-    self.assertNotEquals('medium <>', '')
+    self.assertNotEqual('medium <>', '')
     self.assertEqual('medium <>', 'medium <>')
-    self.assertNotEquals('medium < smalls <> >', 'medium <>')
+    self.assertNotEqual('medium < smalls <> >', 'medium <>')
     self.assertEqual('medium < smalls <> >', 'medium < smalls <> >')
-    self.assertNotEquals('medium < smalls <> smalls <> >',
-                         'medium < smalls <> >')
+    self.assertNotEqual(
+        'medium < smalls <> smalls <> >', 'medium < smalls <> >'
+    )
     self.assertEqual('medium < smalls <> smalls <> >',
                      'medium < smalls <> smalls <> >')
 
-    self.assertNotEquals('medium < int32s: 0 >', 'medium < smalls <> >')
+    self.assertNotEqual('medium < int32s: 0 >', 'medium < smalls <> >')
 
-    self.assertNotEquals('medium < smalls < strings: "a"> >',
-                         'medium < smalls <> >')
+    self.assertNotEqual(
+        'medium < smalls < strings: "a"> >', 'medium < smalls <> >'
+    )
 
   def testTagOrder(self):
     """Tests that different fields are ordered by tag number.
@@ -163,46 +173,71 @@ class ProtoEqTest(googletest.TestCase):
       optional Medium medium = 7;
       optional Small small = 8;
     """
-    self.assertNotEquals('string_: "a"                      ',
-                         '             int64_: 1            ')
-    self.assertNotEquals('string_: "a" int64_: 2            ',
-                         '             int64_: 1            ')
-    self.assertNotEquals('string_: "b" int64_: 1            ',
-                         'string_: "a" int64_: 2            ')
+    self.assertNotEqual(
+        'string_: "a"                      ',
+        '             int64_: 1            ',
+    )
+    self.assertNotEqual(
+        'string_: "a" int64_: 2            ',
+        '             int64_: 1            ',
+    )
+    self.assertNotEqual(
+        'string_: "b" int64_: 1            ',
+        'string_: "a" int64_: 2            ',
+    )
     self.assertEqual('string_: "a" int64_: 1            ',
                      'string_: "a" int64_: 1            ')
-    self.assertNotEquals('string_: "a" int64_: 1 float_: 0.0',
-                         'string_: "a" int64_: 1            ')
+    self.assertNotEqual(
+        'string_: "a" int64_: 1 float_: 0.0',
+        'string_: "a" int64_: 1            ',
+    )
     self.assertEqual('string_: "a" int64_: 1 float_: 0.0',
                      'string_: "a" int64_: 1 float_: 0.0')
-    self.assertNotEquals('string_: "a" int64_: 1 float_: 0.1',
-                         'string_: "a" int64_: 1 float_: 0.0')
-    self.assertNotEquals('string_: "a" int64_: 2 float_: 0.0',
-                         'string_: "a" int64_: 1 float_: 0.1')
-    self.assertNotEquals('string_: "a"                      ',
-                         '             int64_: 1 float_: 0.1')
-    self.assertNotEquals('string_: "a"           float_: 0.0',
-                         '             int64_: 1            ')
-    self.assertNotEquals('string_: "b"           float_: 0.0',
-                         'string_: "a" int64_: 1            ')
+    self.assertNotEqual(
+        'string_: "a" int64_: 1 float_: 0.1',
+        'string_: "a" int64_: 1 float_: 0.0',
+    )
+    self.assertNotEqual(
+        'string_: "a" int64_: 2 float_: 0.0',
+        'string_: "a" int64_: 1 float_: 0.1',
+    )
+    self.assertNotEqual(
+        'string_: "a"                      ',
+        '             int64_: 1 float_: 0.1',
+    )
+    self.assertNotEqual(
+        'string_: "a"           float_: 0.0',
+        '             int64_: 1            ',
+    )
+    self.assertNotEqual(
+        'string_: "b"           float_: 0.0',
+        'string_: "a" int64_: 1            ',
+    )
 
-    self.assertNotEquals('string_: "a"', 'small < strings: "a" >')
-    self.assertNotEquals('string_: "a" small < strings: "a" >',
-                         'small < strings: "b" >')
-    self.assertNotEquals('string_: "a" small < strings: "b" >',
-                         'string_: "a" small < strings: "a" >')
+    self.assertNotEqual('string_: "a"', 'small < strings: "a" >')
+    self.assertNotEqual(
+        'string_: "a" small < strings: "a" >', 'small < strings: "b" >'
+    )
+    self.assertNotEqual(
+        'string_: "a" small < strings: "b" >',
+        'string_: "a" small < strings: "a" >',
+    )
     self.assertEqual('string_: "a" small < strings: "a" >',
                      'string_: "a" small < strings: "a" >')
 
-    self.assertNotEquals('string_: "a" medium <>',
-                         'string_: "a" small < strings: "a" >')
-    self.assertNotEquals('string_: "a" medium < smalls <> >',
-                         'string_: "a" small < strings: "a" >')
-    self.assertNotEquals('medium <>', 'small < strings: "a" >')
-    self.assertNotEquals('medium <> small <>', 'small < strings: "a" >')
-    self.assertNotEquals('medium < smalls <> >', 'small < strings: "a" >')
-    self.assertNotEquals('medium < smalls < strings: "a" > >',
-                         'small < strings: "b" >')
+    self.assertNotEqual(
+        'string_: "a" medium <>', 'string_: "a" small < strings: "a" >'
+    )
+    self.assertNotEqual(
+        'string_: "a" medium < smalls <> >',
+        'string_: "a" small < strings: "a" >',
+    )
+    self.assertNotEqual('medium <>', 'small < strings: "a" >')
+    self.assertNotEqual('medium <> small <>', 'small < strings: "a" >')
+    self.assertNotEqual('medium < smalls <> >', 'small < strings: "a" >')
+    self.assertNotEqual(
+        'medium < smalls < strings: "a" > >', 'small < strings: "b" >'
+    )
 
   def testIsClose(self):
     self.assertTrue(compare.isClose(1, 1, 1e-10))

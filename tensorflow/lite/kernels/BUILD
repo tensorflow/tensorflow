@@ -519,6 +519,34 @@ cc_test(
 )
 
 cc_library(
+    name = "tensor_slice_util",
+    srcs = ["tensor_slice_util.cc"],
+    hdrs = [
+        "tensor_slice_util.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels/internal:runtime_shape",
+        "//tensorflow/lite/kernels/internal:tensor_ctypes",
+    ],
+)
+
+cc_test(
+    name = "tensor_slice_util_test",
+    size = "small",
+    srcs = ["tensor_slice_util_test.cc"],
+    deps = [
+        ":tensor_slice_util",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels/internal:runtime_shape",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "kernel_util",
     srcs = [
         "kernel_util.cc",
@@ -699,6 +727,7 @@ BUILTIN_KERNEL_SRCS = [
     "range.cc",
     "rank.cc",
     "reduce.cc",
+    "reduce_window.cc",
     "reshape.cc",
     "resize_bilinear.cc",
     "resize_nearest_neighbor.cc",
@@ -752,6 +781,7 @@ BUILTIN_KERNEL_DEPS = [
     ":cpu_backend_threadpool",
     ":kernel_util",
     ":rng_util",
+    ":tensor_slice_util",
     ":lstm_eval",
     ":lstm_shared",
     ":op_macros",
@@ -818,6 +848,7 @@ cc_library(
         ":variable_op_kernels",
         "@fft2d",
         "@ruy//ruy/profiler:instrumentation",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite:array",
         "//tensorflow/lite:builtin_ops",
         "@local_tsl//tsl/lib/random:philox_random",
@@ -1246,6 +1277,23 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "reduce_window_test",
+    size = "small",
+    srcs = ["reduce_window_test.cc"],
+    tags = ["tflite_nnapi"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/types:span",
@@ -2820,11 +2868,11 @@ cc_library(
     hdrs = ["subgraph_test_util.h"],
     deps = [
         ":kernel_util",
-        ":variable_op_kernels",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:interpreter_test_util",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",

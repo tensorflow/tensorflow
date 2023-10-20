@@ -45,7 +45,10 @@ limitations under the License.
 //   (use_locking=false), we never copy even if the variable's
 //   reference count is >1.
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -709,6 +712,9 @@ class ResourceGatherOp : public OpKernel {
  public:
   explicit ResourceGatherOp(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("batch_dims", &batch_dims_));
+    OP_REQUIRES(c, batch_dims_ >= 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "batch_dims is negative (", batch_dims_, ")")));
   }
 
   void Compute(OpKernelContext* c) override {
@@ -1110,6 +1116,13 @@ class ResourceScatterUpdateOp : public OpKernel {
   void Compute(OpKernelContext* c) override {
     core::RefCountPtr<Var> v;
     OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+
+    // Check data type of update and resource to scatter.
+    const DataType update_dtype = c->input(2).dtype();
+    OP_REQUIRES(c, v->tensor()->dtype() == update_dtype,
+                errors::InvalidArgument(
+                    "DType of scatter resource and updates does not match."));
+
     OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
     const bool is_non_pod_dtype = c->input_dtype(0) == DT_RESOURCE ||
                                   c->input_dtype(0) == DT_STRING ||

@@ -123,11 +123,7 @@ tf_python_pybind_extension(
 
 py_strict_library(
     name = "client",
-    srcs = [
-        "client_lib.py",
-        "device_lib.py",
-        "timeline.py",
-    ],
+    srcs = ["client_lib.py"],
     srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
@@ -157,7 +153,7 @@ tf_py_strict_test(
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:tf_record",
         "//tensorflow/python/platform:test",
         "//tensorflow/python/util:compat",
     ],
@@ -169,6 +165,7 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = [
         "//tensorflow:internal",
+        "//third_party/mlperf/submissions/training/v0_7/models:__subpackages__",
         "//third_party/py/cleverhans:__subpackages__",
     ],
     deps = [
@@ -204,7 +201,7 @@ cuda_py_strict_test(
     ],
     python_version = "PY3",
     deps = [
-        ":client",
+        ":device_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
@@ -304,6 +301,7 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/platform:build_info",
         "//tensorflow/python/platform:tf_logging",
     ],
@@ -461,8 +459,8 @@ cuda_py_strict_test(
     ],
     xla_enable_strict_auto_jit = False,  # Graph structure is different with autojit
     deps = [
-        ":client",
         ":session",
+        ":timeline",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",

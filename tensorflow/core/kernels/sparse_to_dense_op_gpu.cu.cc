@@ -189,39 +189,45 @@ void LaunchSparseToDense<T, Index>::operator()(
                                      default_value, indices_ptr, values_ptr,
                                      num_elems, num_values, shape, num_dims,
                                      dense_ptr, done]() {
-      // Ensure that within the callback, the proper GPU settings are
-      // configured.
-      auto stream = c->op_device_context()->stream();
-      se::gpu::ScopedActivateExecutorContext scoped_activation{
-          stream->parent()};
+      {
+        // Ensure that within the callback, the proper GPU settings are
+        // configured.
+        auto stream = c->op_device_context()->stream();
+        se::gpu::ScopedActivateExecutorContext scoped_activation{
+            stream->parent()};
 
-      OP_REQUIRES_ASYNC(c, valid_status.valid == INT_MAX,
-                        errors::InvalidArgument("indices[", valid_status.valid,
-                                                "] is out of bounds."),
-                        done);
+        OP_REQUIRES_ASYNC(
+            c, valid_status.valid == INT_MAX,
+            errors::InvalidArgument("indices[", valid_status.valid,
+                                    "] is out of bounds."),
+            done);
 
-      OP_REQUIRES_ASYNC(c, valid_status.increasing == INT_MAX,
-                        errors::InvalidArgument(
-                            "indices[", valid_status.increasing,
-                            "] is out of "
-                            "order. Many sparse ops require sorted indices.\n"
-                            "  Use `tf.sparse.reorder` to create a correctly "
-                            "ordered copy.\n\n"),
-                        done);
+        OP_REQUIRES_ASYNC(c, valid_status.increasing == INT_MAX,
+                          errors::InvalidArgument(
+                              "indices[", valid_status.increasing,
+                              "] is out of "
+                              "order. Many sparse ops require sorted indices.\n"
+                              "  Use `tf.sparse.reorder` to create a correctly "
+                              "ordered copy.\n\n"),
+                          done);
 
-      OP_REQUIRES_ASYNC(
-          c, valid_status.different == INT_MAX,
-          errors::InvalidArgument("indices[", valid_status.different,
-                                  "] is "
-                                  "repeated."),
-          done);
+        OP_REQUIRES_ASYNC(
+            c, valid_status.different == INT_MAX,
+            errors::InvalidArgument("indices[", valid_status.different,
+                                    "] is "
+                                    "repeated."),
+            done);
 
-      OP_REQUIRES_OK_ASYNC(
-          c,
-          LaunchComputeKernels(c, dense_size, default_value, indices_ptr,
-                               values_ptr, num_elems, num_values,
-                               shape.flat<Index>().data(), num_dims, dense_ptr),
-          done);
+        OP_REQUIRES_OK_ASYNC(
+            c,
+            LaunchComputeKernels(c, dense_size, default_value, indices_ptr,
+                                 values_ptr, num_elems, num_values,
+                                 shape.flat<Index>().data(), num_dims,
+                                 dense_ptr),
+            done);
+      }  // Release ScopedActivateExecutorContext to prevent deadlock when done
+      // inlines another Op kernel, which may assume the original cuda Context.
+
       done();
     };
 

@@ -67,19 +67,11 @@ class GetMinibatchesInCsrWithPhysicalReplicaOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  protected:
-  virtual void GetMaxIdsAndUniques(OpKernelContext* ctx,
-                                   const std::string& program_key,
-                                   const std::string& table_name,
-                                   int64_t num_samples_per_sparse_core,
-                                   int64_t feature_width,
-                                   int64_t* max_ids_per_partition,
-                                   int64_t* max_unique_ids_per_partition) {}
-
   int sample_count_ = 1;
   int feature_width_ = 1;
   int64_t num_sc_per_chip_;
   std::string table_name_;
-  std::unique_ptr<SparseCoreOpsStatsHandler> sprase_core_ops_stats_handler_;
+  std::unique_ptr<SparseCoreOpsStatsHandler> sparse_core_ops_stats_handler_;
 
  private:
   int num_replica_ = 1;
@@ -101,13 +93,6 @@ class GetMinibatchSplitsWithPhysicalReplicaOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override;
 
  protected:
-  virtual void GetMaxIdsAndUniques(OpKernelContext* ctx,
-                                   const std::string& program_key,
-                                   const std::string& table_name,
-                                   int64_t num_samples_per_sparse_core,
-                                   int64_t feature_width,
-                                   int64_t* max_ids_per_partition,
-                                   int64_t* max_unique_ids_per_partition) {}
   virtual void CalculateHeadroom(int32 this_max_ids, int32 this_max_uniques,
                                  tstring program_key,
                                  int64_t max_ids_per_partition,
@@ -120,7 +105,7 @@ class GetMinibatchSplitsWithPhysicalReplicaOp : public OpKernel {
 
   std::string device_name_;
   std::string table_name_;
-  std::unique_ptr<SparseCoreOpsStatsHandler> sprase_core_ops_stats_handler_;
+  std::unique_ptr<SparseCoreOpsStatsHandler> sparse_core_ops_stats_handler_;
   bool allow_id_dropping_for_minibatching_ = false;
   bool allow_id_shuffling_for_minibatching_ = false;
 
@@ -128,6 +113,32 @@ class GetMinibatchSplitsWithPhysicalReplicaOp : public OpKernel {
   int num_replica_ = 1;
   int sample_count_ = 1;
   int table_vocab_size_ = 1;
+  int feature_width_ = 1;
+  int64_t num_sc_per_chip_;
+};
+
+class StoreMinibatchStatisticsInFdoOp : public OpKernel {
+ public:
+  explicit StoreMinibatchStatisticsInFdoOp(OpKernelConstruction* ctx);
+  ~StoreMinibatchStatisticsInFdoOp() override = default;
+  StoreMinibatchStatisticsInFdoOp(const StoreMinibatchStatisticsInFdoOp&) =
+      delete;
+  StoreMinibatchStatisticsInFdoOp& operator=(
+      const StoreMinibatchStatisticsInFdoOp&) = delete;
+
+  void Compute(OpKernelContext* ctx) override;
+
+ protected:
+  virtual void CalculateHeadroom(int32 this_max_ids, int32 this_max_uniques,
+                                 tstring program_key,
+                                 int64_t max_ids_per_partition,
+                                 int64_t max_unique_ids_per_partition) {}
+  std::string device_name_;
+  std::string table_name_;
+
+ private:
+  int num_replica_ = 1;
+  int sample_count_ = 1;
   int feature_width_ = 1;
   int64_t num_sc_per_chip_;
 };

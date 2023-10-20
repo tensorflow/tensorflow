@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -857,11 +858,11 @@ class ReadySetLt {
       }
     }
     // If we computed memory pressure increase of instructions when we don't
-    // have a better choice let's just choose the one that decreases or
-    // increases less memory pressure.
+    // have a better choice let's just choose the one that decreases the memory
+    // pressure.
     if (auto value = DefaultSchedulerCore::ChooseBestCandidate(
-            a_increase.first < b_increase.first, a,
-            b_increase.first < a_increase.first, b, "kDecreaseMemory")) {
+            a_increase.first < 0, a, b_increase.first < 0, b,
+            "kDecreaseMemory")) {
       return *value;
     }
     // If none of the heuristics above triggers then prefer to schedule
@@ -1608,6 +1609,7 @@ Status DefaultSchedulerCore::InitializeScheduler(const HloModule* module) {
   module_pressure_state_ = std::make_unique<ModulePressureState>(
       module, alias_analysis_.get(), shape_size_bytes_);
   module_pressure_state_->InitializePressureStates();
+  module_pressure_state_->SetMemoryPeak(0);
   return OkStatus();
 }
 
@@ -1944,15 +1946,40 @@ StatusOr<bool> LatencyHidingScheduler::Run(
   if (computations_to_schedule.empty()) {
     return false;
   }
-
+  absl::flat_hash_map<HloComputation*, std::vector<HloInstruction*>>
+      saved_schedules;
   TF_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
+  for (HloComputation* computation : computations_to_schedule) {
+    TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
+                        scheduler_core_->ScheduleComputation(computation));
+    saved_schedules[computation] = std::move(new_schedule);
+  }
+  uint64_t initial_memory_limit = scheduler_core_->GetMemoryLimit();
+  for (int64_t iter = 0;
+       iter < scheduler_core_->GetRerunTimes() &&
+       scheduler_core_->GetMemoryPeak() > initial_memory_limit;
+       iter++) {
+    LOG(INFO) << "LatencyHidingScheduler current memory usage: "
+              << scheduler_core_->GetMemoryPeak()
+              << " bytes, does not fit in limit: "
+              << scheduler_core_->GetMemoryLimit()
+              << ". Setting the new limit to "
+              << scheduler_core_->GetMemoryLimit() * 0.9;
+    TF_RETURN_IF_ERROR(scheduler_core_->InitializeScheduler(module));
+    scheduler_core_->SetMemoryLimit(scheduler_core_->GetMemoryLimit() * 0.9);
+    for (HloComputation* computation : computations_to_schedule) {
+      TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
+                          scheduler_core_->ScheduleComputation(computation));
+      saved_schedules[computation] = std::move(new_schedule);
+    }
+  }
+  LOG(INFO) << "LatencyHidingScheduler current memory usage: "
+            << scheduler_core_->GetMemoryPeak() << " bytes.";
   for (HloComputation* computation : computations_to_schedule) {
     VLOG(1) << "Statistics before scheduling:";
     LogScheduleStatistics(computation);
-    TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> new_schedule,
-                        scheduler_core_->ScheduleComputation(computation));
-    module->schedule().set_sequence(computation,
-                                    absl::MakeConstSpan(new_schedule));
+    module->schedule().set_sequence(
+        computation, absl::MakeConstSpan(saved_schedules[computation]));
     VLOG(1) << "Statistics after scheduling:";
     LogScheduleStatistics(computation);
   }

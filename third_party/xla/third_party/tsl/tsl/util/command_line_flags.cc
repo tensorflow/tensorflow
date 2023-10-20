@@ -92,11 +92,14 @@ bool ParseBoolFlag(StringPiece arg, StringPiece flag,
       *value_parsing_ok = hook(true);
       return true;
     }
-
-    if (absl::EqualsIgnoreCase(arg, "=true")) {
+    // It's probably another argument name which begins with the name of this.
+    if (!absl::ConsumePrefix(&arg, "=")) {
+      return false;
+    }
+    if (absl::EqualsIgnoreCase(arg, "true")) {
       *value_parsing_ok = hook(true);
       return true;
-    } else if (absl::EqualsIgnoreCase(arg, "=false")) {
+    } else if (absl::EqualsIgnoreCase(arg, "false")) {
       *value_parsing_ok = hook(false);
       return true;
     } else {

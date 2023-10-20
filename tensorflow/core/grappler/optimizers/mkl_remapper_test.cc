@@ -758,12 +758,18 @@ TEST_F(FusedMatMulBiasAddAndGeluTest, Float32GeluExact) {
   RunTest<DT_FLOAT, false>();
 }
 TEST_F(FusedMatMulBiasAddAndGeluTest, BFloat16GeluExact) {
+  if (!IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
+                    "FusedMatMulBiasAddAndGelu with bfloat16.";
   RunTest<DT_BFLOAT16, false>();
 }
 TEST_F(FusedMatMulBiasAddAndGeluTest, Float32GeluExact2) {
   RunTest<DT_FLOAT, true>();
 }
 TEST_F(FusedMatMulBiasAddAndGeluTest, BFloat16GeluExact2) {
+  if (!IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
+                    "FusedMatMulBiasAddAndGelu with bfloat16.";
   RunTest<DT_BFLOAT16, true>();
 }
 
@@ -771,6 +777,10 @@ class MklFusedBatchMatMul : public MklRemapperTest {
  public:
   template <typename T>
   void VerifyFused(bool adjx, bool adjy) {
+    if (DataTypeToEnum<T>::v() == DT_BFLOAT16 &&
+        !IsBF16SupportedByOneDNNOnThisCPU())
+      GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
+                      "MklFusedBatchMatMul with bfloat16.";
     using ::tensorflow::ops::Placeholder;
     using normal_generator = Eigen::internal::NormalRandomGenerator<T>;
 
@@ -862,6 +872,10 @@ class MklFusedBatchMatMul : public MklRemapperTest {
 
   template <typename T>
   void VerifyPreceedingScalarMul(bool adjx, bool adjy) {
+    if (DataTypeToEnum<T>::v() == DT_BFLOAT16 &&
+        !IsBF16SupportedByOneDNNOnThisCPU())
+      GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
+                      "MklFusedBatchMatMul with bfloat16.";
     using ::tensorflow::ops::Placeholder;
     using normal_generator = Eigen::internal::NormalRandomGenerator<T>;
 
@@ -1055,7 +1069,12 @@ class MklRemapperSwishTest : public GrapplerTest {
 };
 
 TEST_F(MklRemapperSwishTest, F32) { RunTest<DT_FLOAT>(); }
-TEST_F(MklRemapperSwishTest, BF16) { RunTest<DT_BFLOAT16>(); }
+TEST_F(MklRemapperSwishTest, BF16) {
+  if (!IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
+                    "MklRemapperSwish with bfloat16.";
+  RunTest<DT_BFLOAT16>();
+}
 
 class MklRemapperConv2dBiasAddSwishTest : public GrapplerTest {
  protected:
@@ -1135,7 +1154,12 @@ class MklRemapperConv2dBiasAddSwishTest : public GrapplerTest {
 };
 
 TEST_F(MklRemapperConv2dBiasAddSwishTest, F32) { RunTest<DT_FLOAT>(); }
-TEST_F(MklRemapperConv2dBiasAddSwishTest, BF16) { RunTest<DT_BFLOAT16>(); }
+TEST_F(MklRemapperConv2dBiasAddSwishTest, BF16) {
+  if (!IsBF16SupportedByOneDNNOnThisCPU())
+    GTEST_SKIP() << "Intel oneDNN with bfloat16 is not supported, skipping "
+                    "MklRemapperConv2dBiasAddSwish with bfloat16.";
+  RunTest<DT_BFLOAT16>();
+}
 
 class MklRemapperConv2dFusedBatchNormSwishTest : public GrapplerTest {
  protected:

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <vector>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
 #include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/util.h"
 
 using testing::HasSubstr;
 using tflite::delegates::test_utils::SimpleDelegate;
@@ -447,6 +449,118 @@ TEST(CApiExperimentalTest,
   TfLiteTensorCopyToBuffer(output_tensor, &output_value, sizeof(float));
   EXPECT_EQ(output_value, std::sinh(input_value));
 
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
+}
+
+// The following helper functions for custom allocation related tests are
+// adapted from //tensorflow/lite/interpreter_test.cc.
+
+// Returns the size of the alignment gap between `offset` and the address that
+// is aligned to a multiple of 'alignment'. The value returned will be less than
+// `alignment`.
+size_t GetAlignGap(size_t alignment, uintptr_t offset) {
+  return offset % alignment == 0 ? 0 : alignment - offset % alignment;
+}
+
+// Creates a new custom allocation. The allocation is aligned to the specified
+// `required_alignment`. Actual initialized allocation is more than num_bytes,
+// to account for required_alignment.
+// Note that `new_alloc` will be pointed to the newly allocated memory for later
+// destruction.
+TfLiteCustomAllocation NewCustomAlloc(size_t num_bytes, int required_alignment,
+                                      char** new_alloc) {
+  *new_alloc = new char[num_bytes + required_alignment - 1];
+  // Extra memory to ensure alignment.
+  char* new_underlying_buffer_aligned_ptr =
+      *new_alloc +
+      GetAlignGap(required_alignment, reinterpret_cast<uintptr_t>(*new_alloc));
+
+  return TfLiteCustomAllocation({new_underlying_buffer_aligned_ptr, num_bytes});
+}
+
+// Test using TfLiteInterpreterSetCustomAllocationForTensor.
+TEST(CApiExperimentalTest, SetCustomAllocationForInputTensorSuccess) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+  ASSERT_NE(interpreter, nullptr);
+
+  int tensor_idx = 0;
+  // Checks null allocation.
+  ASSERT_EQ(
+      TfLiteInterpreterSetCustomAllocationForTensor(
+          interpreter, tensor_idx, nullptr, kTfLiteCustomAllocationFlagsNone),
+      kTfLiteError);
+
+  int required_alignment = tflite::kDefaultTensorAlignment;
+  const TfLiteTensor* input_tensor =
+      TfLiteInterpreterGetInputTensor(interpreter, tensor_idx);
+  char* new_alloc;
+  auto input_tensor_alloc =
+      NewCustomAlloc(input_tensor->bytes, required_alignment, &new_alloc);
+  ASSERT_EQ(TfLiteInterpreterSetCustomAllocationForTensor(
+                interpreter, tensor_idx, &input_tensor_alloc,
+                kTfLiteCustomAllocationFlagsNone),
+            kTfLiteOk);
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+
+  delete[] new_alloc;
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
+}
+
+TEST(CApiExperimentalTest, SetCustomAllocationForOutputTensorSuccess) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+  ASSERT_NE(interpreter, nullptr);
+  int tensor_idx = 0;
+  std::array<int, 1> input_dims = {2};
+  ASSERT_EQ(TfLiteInterpreterResizeInputTensor(
+                interpreter, tensor_idx, input_dims.data(), input_dims.size()),
+            kTfLiteOk);
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+
+  // Sets custom allocation for output tensor.
+  const TfLiteTensor* output_tensor =
+      TfLiteInterpreterGetOutputTensor(interpreter, tensor_idx);
+  char* new_alloc;
+  int required_alignment = tflite::kDefaultTensorAlignment;
+  auto output_tensor_alloc =
+      NewCustomAlloc(output_tensor->bytes, required_alignment, &new_alloc);
+  ASSERT_EQ(TfLiteInterpreterSetCustomAllocationForTensor(
+                interpreter, tensor_idx, &output_tensor_alloc,
+                kTfLiteCustomAllocationFlagsNone),
+            kTfLiteOk);
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+
+  // Verifies output are expected.
+  std::array<float, 2> input = {1.f, 3.f};
+  ASSERT_EQ(TfLiteTensorCopyFromBuffer(
+                TfLiteInterpreterGetInputTensor(interpreter, tensor_idx),
+                input.data(), input.size() * sizeof(float)),
+            kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+  std::array<float, 2> output;
+  ASSERT_EQ(TfLiteTensorCopyToBuffer(
+                TfLiteInterpreterGetOutputTensor(interpreter, tensor_idx),
+                output.data(), output.size() * sizeof(float)),
+            kTfLiteOk);
+  EXPECT_EQ(output[0], 3.f);
+  EXPECT_EQ(output[1], 9.f);
+
+  delete[] new_alloc;
   TfLiteInterpreterDelete(interpreter);
   TfLiteInterpreterOptionsDelete(options);
   TfLiteModelDelete(model);

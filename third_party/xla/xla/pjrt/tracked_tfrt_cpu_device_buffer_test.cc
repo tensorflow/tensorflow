@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "tsl/concurrency/async_value_ref.h"
 #include "tsl/platform/threadpool.h"
 
 namespace xla {
@@ -31,7 +32,7 @@ TEST(TrackedTfrtCpuDeviceBufferTest, Basic) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer, MaybeOwningCpuMemory::AllocateShared(expected.size()));
 
-  auto definition_event = tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
+  auto definition_event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(),
                                       "tracked_buffer_test",
@@ -63,8 +64,8 @@ TEST(TrackedTfrtCpuDeviceBufferTest, Tuple) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer_1, MaybeOwningCpuMemory::AllocateShared(expected_1.size()));
 
-  auto definition_event_0 = tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
-  auto definition_event_1 = tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
+  auto definition_event_0 = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
+  auto definition_event_1 = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(),
                                       "tracked_buffer_test",
@@ -101,7 +102,7 @@ TEST(TrackedTfrtCpuDeviceBufferTest, BasicError) {
   TF_ASSERT_OK_AND_ASSIGN(auto buffer,
                           MaybeOwningCpuMemory::AllocateShared(64));
 
-  auto definition_event = tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
+  auto definition_event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(),
                                       "tracked_buffer_test",
@@ -129,8 +130,8 @@ TEST(TrackedTfrtCpuDeviceBufferTest, TupleError) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto buffer_1, MaybeOwningCpuMemory::AllocateShared(expected.size()));
 
-  auto definition_event_0 = tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
-  auto definition_event_1 = tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
+  auto definition_event_0 = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
+  auto definition_event_1 = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(),
                                       "tracked_buffer_test",

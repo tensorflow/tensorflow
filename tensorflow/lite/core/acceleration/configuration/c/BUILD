@@ -150,6 +150,7 @@ tflite_cc_library_with_c_headers_test(
     name = "xnnpack_plugin",
     srcs = ["xnnpack_plugin.cc"],
     hdrs = ["xnnpack_plugin.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ] + xnnpack_plugin_visibility_allowlist(),

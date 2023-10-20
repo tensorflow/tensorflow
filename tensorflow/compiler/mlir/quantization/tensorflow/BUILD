@@ -351,6 +351,7 @@ cc_library(
     name = "passes",
     srcs = [
         "passes/add_dump_tensor_op.cc",
+        "passes/add_quantization_unit_loc.cc",
         "passes/cast_bf16_ops_to_f32.cc",
         "passes/cast_bf16_ops_to_f32.inc",
         "passes/convert_custom_aggregation_op_to_quant_stats.cc",
@@ -426,6 +427,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:const_op_size",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:constant_fold",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:quantization_unit_loc",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/ops:tf_op_quant_spec",
         "//tensorflow/compiler/mlir/quantization/tensorflow/ops:tf_quantize_op",
@@ -462,6 +464,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_googlesource_code_re2//:re2",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
@@ -499,6 +502,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/stablehlo:rename_entrypoint_to_main",
         "//tensorflow/compiler/mlir/lite/stablehlo:tf_stablehlo",
         "//tensorflow/compiler/mlir/quantization/stablehlo:bridge_passes",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:passes",
         "//tensorflow/compiler/mlir/quantization/tensorflow/cc:run_passes",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
@@ -513,9 +517,9 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
         "@local_xla//xla/mlir_hlo:all_passes",
-        "@local_xla//xla/mlir_hlo:hlo_dialect_registration",
     ],
 )
 

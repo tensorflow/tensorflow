@@ -25,8 +25,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/gpu_fusible.h"
-#include "xla/service/gpu/gpu_hlo_cost_analysis.h"
-#include "xla/service/gpu/gpu_performance_model.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/shape_util.h"
 #include "xla/util.h"
@@ -40,7 +40,7 @@ namespace gpu {
 class FusionInstructionMerger {
  public:
   explicit FusionInstructionMerger(
-      HloComputation* computation, const GpuDeviceInfo& gpu_device_info,
+      HloComputation* computation, const se::DeviceDescription& gpu_device_info,
       HloCostAnalysis::ShapeSizeFunction shape_size_function)
       : computation_(computation),
         shape_size_function_(shape_size_function),
@@ -64,7 +64,7 @@ class FusionInstructionMerger {
   // HLO cost analysis of the computation so that it may be not needed at all.
   std::optional<GpuHloCostAnalysis> cost_analysis_;
   FusionInfoCache fusion_info_cache_;
-  const GpuDeviceInfo& gpu_device_info_;
+  const se::DeviceDescription& gpu_device_info_;
   bool changed_ = false;
   bool dump_fusion_visualization_ = false;
 

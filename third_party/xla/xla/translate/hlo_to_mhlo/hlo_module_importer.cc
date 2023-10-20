@@ -44,6 +44,9 @@ HloModuleImporter::HloModuleImporter(mlir::ModuleOp module,
 }
 
 namespace {
+
+constexpr char kFrontendAttributesAttr[] = "mhlo.frontend_attributes";
+
 mlir::ArrayAttr ConvertCrossProgramPrefetches(
     const absl::Span<const xla::HloModule::CrossProgramPrefetchInfo> prefetches,
     mlir::Builder* builder) {
@@ -71,6 +74,7 @@ Status HloModuleImporter::Import(const xla::HloModule& hlo_module) {
   module->setAttr(
       "mhlo.is_dynamic",
       mlir::BoolAttr::get(builder_.getContext(), hlo_module.is_dynamic()));
+  ImportFrontendAttributes(hlo_module, module);
   module->setAttr("mhlo.use_auto_spmd_partitioning",
                   mlir::BoolAttr::get(builder_.getContext(),
                                       hlo_module.use_auto_spmd_partitioning()));
@@ -118,6 +122,21 @@ Status HloModuleImporter::Import(const xla::HloModuleProto& module_proto) {
                                        module_proto, module_config));
 
   return Import(*module);
+}
+
+void HloModuleImporter::ImportFrontendAttributes(
+    const xla::HloModule& hlo_module, mlir::ModuleOp module) {
+  if (!hlo_module.frontend_attributes().map().empty()) {
+    llvm::SmallVector<mlir::NamedAttribute, 4> frontend_attributes;
+    for (const auto& [k, v] : hlo_module.frontend_attributes().map()) {
+      frontend_attributes.push_back(
+          builder_.getNamedAttr(k, builder_.getStringAttr(v)));
+    }
+    if (!frontend_attributes.empty()) {
+      module->setAttr(kFrontendAttributesAttr,
+                      builder_.getDictionaryAttr(frontend_attributes));
+    }
+  }
 }
 
 }  // namespace xla

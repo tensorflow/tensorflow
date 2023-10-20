@@ -1733,6 +1733,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexPower(
     llvm::Value* d) {
   PrimitiveType component_type =
       primitive_util::ComplexComponentType(op->shape().element_type());
+  llvm::Value* inf = llvm::ConstantFP::getInfinity(a->getType());
   auto aa_p_bb = FAdd(FMul(a, a), FMul(b, b));
   auto zero = llvm::ConstantFP::get(a->getType(), 0);
   auto one_half = llvm::ConstantFP::get(a->getType(), 0.5);
@@ -1753,15 +1754,36 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexPower(
   auto q = FAdd(FMul(c, arg_lhs), FMul(half_d, ln_aa_p_bb));
   TF_ASSIGN_OR_RETURN(auto cos_q, EmitCos(component_type, q));
   TF_ASSIGN_OR_RETURN(auto sin_q, EmitSin(component_type, q));
+
+  // Case 0:
   // d^c is 0 if d is 0 and c > 0. 0^0 is defined to be 1.0, see
   // Branch Cuts for Complex Elementary Functions or Much Ado About
   // Nothing's Sign Bit, W. Kahan, Section 10.
-  return Select(
-      And(FCmpOEQ(a, one), FCmpOEQ(b, zero)), EmitComposeComplex(op, one, zero),
-      Select(
-          And(And(FCmpOEQ(aa_p_bb, zero), FCmpOEQ(d, zero)), FCmpOLE(zero, c)),
-          EmitComposeComplex(op, Select(FCmpOEQ(zero, c), one, zero), zero),
-          EmitComposeComplex(op, FMul(coeff, cos_q), FMul(coeff, sin_q))));
+  auto cutoff_0 = Select(
+      And(And(FCmpOEQ(aa_p_bb, zero), FCmpOEQ(d, zero)), FCmpOLE(zero, c)),
+      EmitComposeComplex(op, Select(FCmpOEQ(zero, c), one, zero), zero),
+      EmitComposeComplex(op, FMul(coeff, cos_q), FMul(coeff, sin_q)));
+
+  // Case 1:
+  // 1^(c + d*i) = 1 + 0*i
+  auto cutoff_1 = Select(And(FCmpOEQ(a, one), FCmpOEQ(b, zero)),
+                         EmitComposeComplex(op, one, zero), cutoff_0);
+
+  // Case 2:
+  // inf^(c + 0*i) = inf + 0*i, c > 0
+  auto cutoff_2 = Select(
+      And(FCmpOEQ(a, inf),
+          And(FCmpOEQ(b, zero), And(FCmpOEQ(d, zero), FCmpOGT(c, zero)))),
+      EmitComposeComplex(op, inf, zero), cutoff_1);
+
+  // Case 3:
+  // inf^(c + 0*i) = 0 + 0*i, c < 0
+  auto cutoff_3 = Select(
+      And(FCmpOEQ(a, inf),
+          And(FCmpOEQ(b, zero), And(FCmpOEQ(d, zero), FCmpOLT(c, zero)))),
+      EmitComposeComplex(op, zero, zero), cutoff_2);
+
+  return cutoff_3;
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(

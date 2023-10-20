@@ -482,8 +482,6 @@ cc_library(
         # "//learning/brain/mobile/lite/brella_benchmark:__subpackages__",
         # copybara:uncomment_end
         "//tensorflow/lite/delegates/flex:__subpackages__",
-        "//tensorflow/lite/java/src/main/native:__subpackages__",
-        "//tensorflow/lite/testing:__subpackages__",
         "//tensorflow/lite/tools/benchmark:__subpackages__",
     ],
     deps = select({
@@ -651,7 +649,14 @@ pybind_extension(
         "string_util_wrapper.cc",
     ],
     hdrs = ["string_util.h"],
+    additional_stubgen_deps = [
+        "//third_party/py/numpy:numpy",
+    ],
+    enable_stub_generation = True,
     features = ["-use_header_modules"],
+    pytype_srcs = [
+        "_pywrap_string_util.pyi",
+    ],
     deps = [
         ":string_util_lib",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",

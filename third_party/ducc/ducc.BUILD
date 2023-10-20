@@ -51,7 +51,7 @@ cc_library(
     licenses = ["notice"],
     deps = [
         # Required for custom threadpool usage:
-        "@org_tensorflow//third_party/eigen3",
+        "@eigen_archive//:eigen3",
         "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:mutex",
         "@local_tsl//tsl/platform:platform_port",

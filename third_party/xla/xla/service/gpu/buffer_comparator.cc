@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/stream_executor/device_memory.h"
 #include "xla/stream_executor/gpu/asm_compiler.h"
 #include "xla/stream_executor/kernel.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/util.h"
 #include "tsl/platform/statusor.h"
 
@@ -743,11 +743,11 @@ $L__BB3_8:
 
 $L__BB4_3:
 	{
-	.reg .b32 %temp; 
+	.reg .b32 %temp;
 	mov.b64 	{%r7, %temp}, %fd2;
 	}
 	{
-	.reg .b32 %temp; 
+	.reg .b32 %temp;
 	mov.b64 	{%temp, %r1}, %fd2;
 	}
 	and.b32  	%r8, %r1, 2147483647;
@@ -757,11 +757,11 @@ $L__BB4_3:
 	@%p6 bra 	$L__BB4_6;
 
 	{
-	.reg .b32 %temp; 
+	.reg .b32 %temp;
 	mov.b64 	{%r9, %temp}, %fd1;
 	}
 	{
-	.reg .b32 %temp; 
+	.reg .b32 %temp;
 	mov.b64 	{%temp, %r2}, %fd1;
 	}
 	and.b32  	%r10, %r2, 2147483647;
@@ -1052,7 +1052,7 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
     static absl::once_flag ptxas_not_found_logged;
     absl::call_once(ptxas_not_found_logged, [&]() {
       LOG(WARNING)
-          << compiled_ptx_or.status().ToString()
+          << compiled_ptx_or.status()
           << "\nRelying on driver to perform ptx compilation. "
           << "\nSetting XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda "
           << " or modifying $PATH can be used to set the location of ptxas"
@@ -1067,22 +1067,8 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
                                    se::DeviceMemory<uint64_t>>(
           kernel_name, buffer_compare_ptx, compiled_ptx)));
 
-  GpuDeviceInfo gpu_device_info;
-  gpu_device_info.threads_per_block_limit =
-      executor->GetDeviceDescription().threads_per_block_limit();
-  gpu_device_info.threads_per_warp =
-      executor->GetDeviceDescription().threads_per_warp();
-  gpu_device_info.shared_memory_per_block =
-      executor->GetDeviceDescription().shared_memory_per_block();
-  gpu_device_info.threads_per_core_limit =
-      executor->GetDeviceDescription().threads_per_core_limit();
-  gpu_device_info.core_count = executor->GetDeviceDescription().core_count();
-  gpu_device_info.block_dim_limit_x =
-      executor->GetDeviceDescription().block_dim_limit().x;
-  gpu_device_info.block_dim_limit_y =
-      executor->GetDeviceDescription().block_dim_limit().y;
-  gpu_device_info.block_dim_limit_z =
-      executor->GetDeviceDescription().block_dim_limit().z;
+  const se::DeviceDescription& gpu_device_info =
+      executor->GetDeviceDescription();
 
   TF_ASSIGN_OR_RETURN(LaunchDimensions dim,
                       CalculateLaunchDimensions(buffer_shape, gpu_device_info));

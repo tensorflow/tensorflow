@@ -117,6 +117,8 @@ REGISTER_OP("GetMinibatchSplitsWithPhysicalReplica")
     .Output("sorted_gains: float32")
     .Output("splits: int64")
     .Output("id_counts: int32")
+    .Output("max_ids: int32")
+    .Output("max_uniques: int32")
     .Attr("sample_count : int >= 1")
     .Attr("num_replica: int >= 1")
     .Attr("table_vocab_size: int >= 1")
@@ -145,7 +147,23 @@ REGISTER_OP("GetMinibatchSplitsWithPhysicalReplica")
       c->set_output(
           4, c->MakeShape(
                  {num_physical_replica * kMaxDivisions * num_sc_per_chip + 1}));
+      c->set_output(5, c->Scalar());
+      c->set_output(6, c->Scalar());
       return OkStatus();
     });
 
+REGISTER_OP("StoreMinibatchStatisticsInFdo")
+    .Input("program_key: string")
+    .Input("max_ids: int32")
+    .Input("max_uniques: int32")
+    .Attr("sample_count : int >= 1")
+    .Attr("num_replica: int >= 1")
+    .Attr("feature_width: int >= 1")
+    .Attr("num_sc_per_chip: int >= 1")
+    .Attr("table_name: string")
+    .Attr("mini_batch_splits: string")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      return OkStatus();
+    });
 }  // namespace tensorflow

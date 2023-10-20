@@ -387,7 +387,8 @@ class XlaCompiler {
   // stack, and pop the mapping before returning.
   std::stack<std::map<string, xla::XlaOp>> node_token_mapping_stack_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaCompiler);
+  XlaCompiler(const XlaCompiler&) = delete;
+  void operator=(const XlaCompiler&) = delete;
 };
 
 

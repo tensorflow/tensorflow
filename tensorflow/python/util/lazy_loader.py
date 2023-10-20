@@ -173,7 +173,7 @@ class KerasLazyLoader(LazyLoader):
   def __repr__(self):
     if self._initialized:
       return (f"<KerasLazyLoader ({self._keras_version}) "
-              f"{self.__name__} as {self._local_name}")
+              f"{self.__name__} as {self._local_name} mode={self._mode}>")
     return "<KerasLazyLoader>"
 
   def __dir__(self):

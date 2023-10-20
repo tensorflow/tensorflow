@@ -19,6 +19,7 @@ import numbers
 import numpy as np
 
 from tensorflow.core.config import flags
+from tensorflow.dtensor.python import api as d_api
 from tensorflow.python.eager import context
 from tensorflow.python.eager import record
 from tensorflow.python.framework import common_shapes
@@ -49,18 +50,8 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
-
-# TODO(b/282205877): Eliminate this LazyLoader.
-# DTensor doesn't depend on array_ops.py, but it imports tensorflow.python,
-# which imports array_ops.py, creating a cyclic import without a cyclic BUILD
-# dependency. The import cycle creates errors in some unit tests, but not
-# always.
-d_api = LazyLoader(
-    "api", globals(), "tensorflow.dtensor.python.api"
-)
 
 # Used for slicing to specify a new 1 size dimension
 newaxis = None

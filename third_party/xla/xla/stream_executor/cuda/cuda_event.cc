@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_event.h"
 
-#include "xla/stream_executor/cuda/cuda_gpu_executor.h"
 #include "xla/stream_executor/cuda/cuda_stream.h"
+#include "xla/stream_executor/gpu/gpu_executor.h"
 #include "tsl/platform/statusor.h"
 
 namespace stream_executor {

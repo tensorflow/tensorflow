@@ -41,6 +41,7 @@ cc_library(
         "//xla:array",
         "//xla:shape_tree",
         "//xla:shape_util",
+        "//xla:status",
         "//xla:statusor",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -155,9 +156,10 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":auto_sharding_cost_graph",
-        ":auto_sharding_solver",
         ":auto_sharding_strategy",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -170,8 +172,9 @@ cc_library(
         ":auto_sharding_option",
         ":auto_sharding_strategy",
         ":auto_sharding_wrapper",
-        ":matrix",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -227,6 +230,8 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_sharding_util",
+        "//xla/service:call_graph",
+        "//xla/service:sharding_propagation",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",

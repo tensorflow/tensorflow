@@ -126,7 +126,8 @@ class SvdOp : public LinearAlgebraOp<Scalar> {
   bool compute_uv_;
   bool full_matrices_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SvdOp);
+  SvdOp(const SvdOp&) = delete;
+  void operator=(const SvdOp&) = delete;
 };
 
 }  // namespace tensorflow

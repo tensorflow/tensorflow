@@ -83,10 +83,15 @@ function copy_xla_aot_runtime_sources() {
     if [ ! -z "$candidate_file" ]; then
       file=$candidate_file
     fi
-    dn=$(dirname $file)
+
+    # For XLA/TSL, we need to remove the prefix "../local_{xla|tsl}/".
+    dst_file=$file
+    dst_file=${dst_file#"../local_xla/"}
+    dst_file=${dst_file#"../local_tsl/"}
+
     if test -f "$file"; then
-      mkdir -p "${dst_dir}/${dn}"
-      cp $file "${dst_dir}/${file}"
+      mkdir -p "${dst_dir}/$(dirname $dst_file)"
+      cp $file "${dst_dir}/${dst_file}"
     else
       echo "Missing xla source file: ${file}" 1>&2
     fi
@@ -295,7 +300,6 @@ function prepare_src() {
   fi
 
   mkdir -p ${TMPDIR}/third_party
-  cp -R $RUNFILES/third_party/eigen3 ${TMPDIR}/third_party
   cp -LR $RUNFILES/../local_config_cuda/cuda/_virtual_includes/cuda_headers_virtual/third_party/gpus ${TMPDIR}/third_party
   cp $RUNFILES/tensorflow/tools/pip_package/THIRD_PARTY_NOTICES.txt "${TMPDIR}/tensorflow"
 

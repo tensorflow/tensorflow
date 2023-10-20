@@ -35,7 +35,9 @@ xla::ExecutableBuildOptions GetExecutableBuildOptions(
   build_options.set_result_layout(result.xla_output_shape);
   build_options.set_device_allocator(options.device_allocator.get());
   build_options.set_alias_passthrough_params(options.alias_passthrough_params);
-  build_options.mutable_debug_options()->set_xla_detailed_logging_and_dumping(
+  build_options.mutable_debug_options()->set_xla_detailed_logging(
+      options.detailed_logging);
+  build_options.mutable_debug_options()->set_xla_enable_dumping(
       options.detailed_logging);
   if (tensorflow::OpDeterminismRequired()) {
     build_options.mutable_debug_options()->set_xla_gpu_deterministic_ops(true);

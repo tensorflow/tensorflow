@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/primitive_util.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shape_inference.h"
 #include "xla/util.h"
@@ -319,6 +320,12 @@ HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type,
     return hlo;
   }
   Shape shape = ShapeUtil::ChangeElementType(hlo->shape(), type);
+  if (primitive_util::Is4BitType(shape.element_type())) {
+    shape.mutable_layout()->set_element_size_in_bits(4);
+  } else {
+    shape.mutable_layout()->set_element_size_in_bits(0);
+  }
+
   hlo = hlo->parent()->AddInstruction(HloInstruction::CreateConvert(shape, hlo),
                                       metadata);
   CHECK_EQ(hlo->shape().element_type(), type);

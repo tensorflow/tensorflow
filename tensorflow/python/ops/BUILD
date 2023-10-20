@@ -1,7 +1,7 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
-load("//tensorflow/python:build_defs.bzl", "tf_gen_op_strict_wrapper_private_py")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_xla_deps_py")
+load("//tensorflow/python:build_defs.bzl", "tf_gen_op_strict_wrapper_private_py")
 
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
@@ -140,6 +140,7 @@ tf_gen_op_strict_wrapper_private_py(
         "//tensorflow/compiler/mlir/tfr/python/experimental:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/contrib/opt:__pkg__",
+        "//tensorflow/contrib/recurrent:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
@@ -592,6 +593,7 @@ tf_gen_op_strict_wrapper_private_py(
         "//tensorflow/python/kernel_tests/array_ops:__pkg__",
         "//tensorflow/python/kernel_tests/control_flow:__pkg__",
         "//tensorflow/python/kernel_tests/variables:__pkg__",
+        "//tensorflow/python/tpu/google/sparse_core:__pkg__",
         "//tensorflow/python/training:__pkg__",
     ],
 )
@@ -618,6 +620,7 @@ tf_gen_op_strict_wrapper_private_py(
 tf_gen_op_strict_wrapper_private_py(
     name = "training_ops_gen",
     visibility = [
+        "//tensorflow/contrib/opt:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/training:__pkg__",
     ],
@@ -798,7 +801,6 @@ py_strict_library(
         "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:lazy_loader",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
@@ -933,6 +935,7 @@ py_strict_library(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1477,7 +1480,7 @@ py_strict_library(
         ":ctc_ops_gen",
         ":custom_gradient",
         ":functional_ops",
-        # TODO(b/280454072) Remove inplace_ops and compat when foward compatibility window expires.
+        # TODO(b/280454072) Remove inplace_ops and compat when forward compatibility window expires.
         ":inplace_ops",
         ":linalg_ops",
         ":map_fn",
@@ -1544,7 +1547,7 @@ py_strict_library(
         "//tensorflow/python/framework:random_seed",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:python_io",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
@@ -1622,6 +1625,7 @@ py_strict_library(
         ":array_ops",
         ":check_ops",
         ":control_flow_grad",
+        ":cudnn_rnn_grad",
         ":gradients_util",
         ":image_grad",
         ":linalg_grad",
@@ -1630,13 +1634,19 @@ py_strict_library(
         ":manip_grad",
         ":math_grad",
         ":math_ops",
+        ":nccl_ops",
         ":optional_grad",
+        ":proto_ops",
         ":random_grad",
         ":rnn_grad",
         ":sdca_ops",
+        ":sets",
+        ":sparse_grad",
+        ":tensor_array_grad",
         ":tensor_array_ops",
         ":unconnected_gradients",
         ":while_loop",
+        "//tensorflow/compiler/jit/ops:xla_ops_grad",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops/linalg/sparse:sparse_csr_matrix_grad",
@@ -1843,7 +1853,7 @@ py_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:python_io",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
@@ -2921,6 +2931,7 @@ py_strict_library(
         ":array_ops",
         ":math_ops_gen",
         ":resource_variable_ops_gen",
+        ":state_grad",
         ":state_ops_gen",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
@@ -2979,7 +2990,6 @@ py_strict_library(
         "//tensorflow/python/trackable:resource",
         "//tensorflow/python/training:training_util",
         "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:lazy_loader",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
     ],
@@ -3562,15 +3572,18 @@ cuda_py_strict_test(
         ":gradient_checker",
         ":gradient_checker_v2",
         ":gradients",
+        ":math_grad",
         ":math_ops",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -4339,10 +4352,12 @@ py_strict_library(
         ":array_ops_stack",
         ":candidate_sampling_ops",
         ":cond",
+        ":ctc_ops",
         ":custom_gradient",
         ":embedding_ops",
         ":linalg_ops",
         ":math_ops",
+        ":nn_fused_batch_norm_grad",
         ":nn_ops",
         ":nn_ops_gen",
         ":sparse_ops_gen",

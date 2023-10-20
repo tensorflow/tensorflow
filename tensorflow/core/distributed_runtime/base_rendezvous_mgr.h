@@ -110,7 +110,8 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
 
   tsl::core::RefCountPtr<BaseRemoteRendezvous> FindOrCreate(int64_t step_id);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BaseRendezvousMgr);
+  BaseRendezvousMgr(const BaseRendezvousMgr&) = delete;
+  void operator=(const BaseRendezvousMgr&) = delete;
 };
 
 // RemoteRendezvous is a Rendezvous which can handle either
@@ -270,7 +271,8 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   // Must be called only if fully initialized.
   void RecvLocalAsyncInternal(const ParsedKey& parsed, DoneCallback done);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(BaseRemoteRendezvous);
+  BaseRemoteRendezvous(const BaseRemoteRendezvous&) = delete;
+  void operator=(const BaseRemoteRendezvous&) = delete;
 };
 
 class BaseRecvTensorCall {
@@ -285,7 +287,8 @@ class BaseRecvTensorCall {
   virtual Status status() const = 0;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(BaseRecvTensorCall);
+  BaseRecvTensorCall(const BaseRecvTensorCall&) = delete;
+  void operator=(const BaseRecvTensorCall&) = delete;
 };
 
 }  // end namespace tensorflow

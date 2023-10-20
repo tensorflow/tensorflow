@@ -53,6 +53,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
+        "//tensorflow/compiler/mlir/quantization/tensorflow/cc:quantization_unit_loc",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:xla_call_module_attrs",

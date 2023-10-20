@@ -50,6 +50,13 @@ cc_library(
   name = "nccl",
   visibility = ["//visibility:public"],
 )
+
+cc_library(
+  name = "nccl_config",
+  hdrs = ["nccl_config.h"],
+  include_prefix = "third_party/nccl",
+  visibility = ["//visibility:public"],
+)
 """
 
 _NCCL_ARCHIVE_BUILD_CONTENT = """
@@ -62,6 +69,12 @@ filegroup(
 alias(
   name = "nccl",
   actual = "@nccl_archive//:nccl",
+  visibility = ["//visibility:public"],
+)
+
+alias(
+  name = "nccl_config",
+  actual = "@nccl_archive//:nccl_config",
   visibility = ["//visibility:public"],
 )
 """
@@ -84,23 +97,23 @@ alias(
   actual = "@nccl_archive//:nccl_headers",
   visibility = ["//visibility:public"],
 )
+
+alias(
+  name = "nccl_config",
+  actual = "@nccl_archive//:nccl_config",
+  visibility = ["//visibility:public"],
+)
 """
 
 def _label(file):
     return Label("//third_party/nccl:{}".format(file))
 
 def _create_local_nccl_repository(repository_ctx):
-    # Resolve all labels before doing any real work. Resolving causes the
-    # function to be restarted with all previous state being lost. This
-    # can easily lead to a O(n^2) runtime in the number of labels.
-    # See https://github.com/tensorflow/tensorflow/commit/62bd3534525a036f07d9851b3199d68212904778
-    find_cuda_config_path = repository_ctx.path(Label("@local_xla//third_party/gpus:find_cuda_config.py.gz.base64"))
-
     nccl_version = get_host_environ(repository_ctx, _TF_NCCL_VERSION, "")
     if nccl_version:
         nccl_version = nccl_version.split(".")[0]
 
-    cuda_config = find_cuda_config(repository_ctx, find_cuda_config_path, ["cuda"])
+    cuda_config = find_cuda_config(repository_ctx, ["cuda"])
     cuda_version = cuda_config["cuda_version"].split(".")
 
     if nccl_version == "":
@@ -120,7 +133,7 @@ def _create_local_nccl_repository(repository_ctx):
         )
     else:
         # Create target for locally installed NCCL.
-        config = find_cuda_config(repository_ctx, find_cuda_config_path, ["nccl"])
+        config = find_cuda_config(repository_ctx, ["nccl"])
         config_wrap = {
             "%{nccl_version}": config["nccl_version"],
             "%{nccl_header_dir}": config["nccl_include_dir"],
@@ -148,6 +161,7 @@ def _nccl_autoconf_impl(repository_ctx):
         get_cpu_value(repository_ctx) not in ("Linux", "FreeBSD")):
         # Add a dummy build file to make bazel query happy.
         repository_ctx.file("BUILD", _NCCL_DUMMY_BUILD_CONTENT)
+        repository_ctx.file("nccl_config.h", "#define TF_NCCL_VERSION \"\"")
     elif get_host_environ(repository_ctx, "TF_NCCL_CONFIG_REPO") != None:
         _create_remote_nccl_repository(repository_ctx, get_host_environ(repository_ctx, "TF_NCCL_CONFIG_REPO"))
     else:
@@ -170,12 +184,20 @@ remote_nccl_configure = repository_rule(
     remotable = True,
     attrs = {
         "environ": attr.string_dict(),
+        "_find_cuda_config": attr.label(
+            default = Label("@local_xla//third_party/gpus:find_cuda_config.py"),
+        ),
     },
 )
 
 nccl_configure = repository_rule(
     implementation = _nccl_autoconf_impl,
     environ = _ENVIRONS,
+    attrs = {
+        "_find_cuda_config": attr.label(
+            default = Label("@local_xla//third_party/gpus:find_cuda_config.py"),
+        ),
+    },
 )
 """Detects and configures the NCCL configuration.
 

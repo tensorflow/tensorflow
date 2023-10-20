@@ -14,5 +14,5 @@ opaque to the frameworks.
 ## Resources
 
 *   [OpenXLA/IREE PJRT plugin implementation](https://github.com/openxla/openxla-pjrt-plugin)
-*   [PJRT integration guide](https://docs.google.com/document/d/1KV_p6aa-u5v_U71_SdtyBDdH-qncY-dUr47-wIUJQ_s/edit?resourcekey=0-mzaosg6Id0JLpEoT_O47LA#heading=h.xsz0btxjkdo3)
+*   [PJRT integration guide](https://github.com/openxla/xla/blob/main/xla/pjrt/c/docs/pjrt_integration_guide.md)
 *   [PJRT Plugin Mechanism design doc](https://docs.google.com/document/d/1Qdptisz1tUPGn1qFAVgCV2omnfjN01zoQPwKLdlizas/edit)

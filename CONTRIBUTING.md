@@ -89,8 +89,8 @@ Follow either of the two links above to access the appropriate CLA and instructi
 ### Contributing code
 
 If you have improvements to TensorFlow, send us your pull requests! For those
-just getting started, Github has a
-[how to](https://help.github.com/articles/using-pull-requests/).
+just getting started, GitHub has a
+[how-to](https://help.github.com/articles/using-pull-requests/).
 
 TensorFlow team members will be assigned to review your pull requests. Once the
 pull requests are approved and pass continuous integration checks, a TensorFlow
@@ -101,7 +101,7 @@ automatically on GitHub.
 
 If you want to contribute, start working through the TensorFlow codebase,
 navigate to the
-[Github "issues" tab](https://github.com/tensorflow/tensorflow/issues) and start
+[GitHub "issues" tab](https://github.com/tensorflow/tensorflow/issues) and start
 looking through interesting issues. If you are not sure of where to start, then
 start by trying one of the smaller/easier issues here i.e.
 [issues with the "good first issue" label](https://github.com/tensorflow/tensorflow/labels/good%20first%20issue)
@@ -232,12 +232,19 @@ There are two ways to run TensorFlow unit tests.
     and
     [GPU developer Dockerfile](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/dockerfiles/dockerfiles/devel-gpu.Dockerfile)
     for the required packages. Alternatively, use the said
-    [Docker images](https://hub.docker.com/r/tensorflow/tensorflow/tags/), e.g.,
-    `tensorflow/tensorflow:devel` and `tensorflow/tensorflow:devel-gpu` for
+    [tensorflow/build Docker images](https://hub.docker.com/r/tensorflow/build)
+    (`tensorflow/tensorflow:devel` and `tensorflow/tensorflow:devel-gpu` are no
+    longer supported for) development. Use TF SIG Build Dockerfiles in
     development to avoid installing the packages directly on your system (in
     which case remember to change the directory from `/root` to `/tensorflow`
     once you get into the running container so `bazel` can find the `tensorflow`
     workspace).
+
+    you can do this by using the following command. As an example-
+
+    ```bash
+    docker run -it --rm -v $PWD:/tmp -w /tmp tensorflow/build:2.15-python3.10
+    ```
 
     Once you have the packages installed, you can run a specific unit test in
     bazel by doing as follows:

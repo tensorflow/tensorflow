@@ -82,7 +82,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
-#include "xla/stream_executor/tf_allocator_adapter.h"
+#include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -550,7 +550,8 @@ class ConvOp : public BinaryOp<T> {
 
   LaunchConvOp<Device, T> launcher_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ConvOp);
+  ConvOp(const ConvOp&) = delete;
+  void operator=(const ConvOp&) = delete;
 };
 
 template <typename T>
@@ -728,7 +729,8 @@ class Conv2DOp : public BinaryOp<T> {
 
   LaunchConv2DOp<Device, T> launcher_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Conv2DOp);
+  Conv2DOp(const Conv2DOp&) = delete;
+  void operator=(const Conv2DOp&) = delete;
 };
 extern template struct Conv2DOp<CPUDevice, Eigen::bfloat16>;
 extern template struct Conv2DOp<CPUDevice, Eigen::half>;

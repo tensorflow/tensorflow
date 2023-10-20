@@ -56,8 +56,8 @@ class SparseOpToCustomCallConverter : public OpConversionPattern<OpTy> {
 void populateLegalizeSparseOpsToCustomCallPatterns(
     MLIRContext* context, TypeConverter& typeConverter,
     RewritePatternSet* patterns) {
-  patterns->add<SparseOpToCustomCallConverter<sparse_tensor::PackOp>,
-                SparseOpToCustomCallConverter<sparse_tensor::UnpackOp>,
+  patterns->add<SparseOpToCustomCallConverter<sparse_tensor::AssembleOp>,
+                SparseOpToCustomCallConverter<sparse_tensor::DisassembleOp>,
                 SparseOpToCustomCallConverter<sparse_tensor::ConvertOp>>(
       typeConverter, context);
 }

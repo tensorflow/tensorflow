@@ -302,7 +302,7 @@ py_strict_binary(
 #         "//tensorflow/python/compat:v2_compat",
 #         "//tensorflow/python/eager:def_function",
 #         "//tensorflow/python/framework:constant_op",
-#         "//tensorflow/python/lib/io:lib",
+#         "//tensorflow/python/lib/io:file_io",
 #         "//tensorflow/python/module",
 #         "//tensorflow/python/saved_model:loader",
 #         "//tensorflow/python/saved_model:save",

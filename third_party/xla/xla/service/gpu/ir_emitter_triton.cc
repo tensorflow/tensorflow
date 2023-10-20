@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
@@ -90,7 +91,6 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/dump.h"
 #include "xla/service/gpu/gemm_rewriter_triton.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/hlo_traversal.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
@@ -99,6 +99,7 @@ limitations under the License.
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/device_description.h"
@@ -109,13 +110,14 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/tensor_float_32_utils.h"
+#include "triton/Conversion/NVGPUToLLVM/NVGPUToLLVMPass.h"
 #include "triton/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
 #include "triton/Dialect/Triton/Transforms/Passes.h"
 #include "triton/Dialect/TritonGPU/Transforms/Passes.h"
+#include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 
 namespace xla {
 namespace gpu {
@@ -352,11 +354,12 @@ Value EmitElementwise(ImplicitLocOpBuilder& b, absl::string_view libdevice_path,
       mlir::getElementTypeOrSelf(inputs[0]).isF64()) {
     auto dev_fn_id = GetTargetDeviceFunctionID(hlo.opcode());
     if (dev_fn_id.ok()) {
-      return b.create<mt::PureExternElementwiseOp>(
+      return b.create<mt::ExternElementwiseOp>(
           inputs[0].getType(), inputs, "libdevice", libdevice_path,
           ObtainDeviceFunctionName(dev_fn_id.value(),
                                    hlo.shape().element_type(),
-                                   llvm::Triple("nvptx64-unknown-unknown")));
+                                   llvm::Triple("nvptx64-unknown-unknown")),
+          /*pure=*/true);
     }
   }
   const bool is_integer =
@@ -434,9 +437,11 @@ Value EmitParameterLoad(ImplicitLocOpBuilder& b, Value pointer,
                                 mt::EvictionPolicy::NORMAL,
                                 /*isVolatile=*/false);
   }
-  return b.create<mt::LoadOp>(pointer, mt::CacheModifier::NONE,
-                              mt::EvictionPolicy::NORMAL,
-                              /*isVolatile=*/false);
+  return Splat(b,
+               b.create<mt::LoadOp>(pointer, mt::CacheModifier::NONE,
+                                    mt::EvictionPolicy::NORMAL,
+                                    /*isVolatile=*/false),
+               {});
 }
 
 Value EmitConstant(ImplicitLocOpBuilder& b, const HloInstruction& constant) {
@@ -625,7 +630,8 @@ StatusOr<Value> EmitScope(
       TF_RET_CHECK(values.contains(hlo)) << hlo->ToString();
       continue;
     } else if (hlo->opcode() == HloOpcode::kConstant) {
-      result = EmitConstant(b, *hlo);
+      // Splat makes it a tensor to avoid type mismatches.
+      result = Splat(b, EmitConstant(b, *hlo), {});
     } else if (hlo->opcode() == HloOpcode::kBroadcast) {
       result = EmitBroadcast(b, analysis, scope, tiled_dimensions, *hlo,
                              values[hlo->operand(0)]);
@@ -668,8 +674,8 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mt::createRewriteTensorPointerPass());
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mt::createCombineOpsPass());
-  pm.addPass(mt::createReorderBroadcastPass());
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(mt::createReorderBroadcastPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createLoopInvariantCodeMotionPass());
   pm.addPass(mlir::createSymbolDCEPass());
@@ -679,23 +685,29 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   // Based on optimize_ttgir() in
   // @triton//:python/triton/compiler/compiler.py
   pm.addPass(mlir::createTritonGPUCoalescePass());
+  pm.addPass(mlir::createTritonNvidiaGPUPlanCTAPass());
   pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
   pm.addPass(mlir::createTritonGPUAccelerateMatmulPass(ccAsInt));
   pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
   pm.addPass(mlir::createTritonGPUOptimizeDotOperandsPass());
-  pm.addPass(mlir::createTritonGPUPipelinePass(num_stages));
+  pm.addPass(mlir::createTritonGPUPipelinePass(num_stages, num_warps));
+  pm.addPass(mlir::createTritonNvidiaGPUMaterializeLoadStorePass());
   pm.addPass(mlir::createTritonGPUPrefetchPass());
   pm.addPass(mlir::createTritonGPUOptimizeDotOperandsPass());
   pm.addPass(mlir::createTritonGPURemoveLayoutConversionsPass());
   pm.addPass(mlir::createTritonGPUDecomposeConversionsPass());
+  pm.addPass(mlir::createTritonNvidiaGPUWSFixupMissingAttrs());
   pm.addPass(mlir::createTritonGPUReorderInstructionsPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createSymbolDCEPass());
+  pm.addPass(mlir::createTritonNvidiaGPUWSFixupMissingAttrs());
   // Based on translateTritonGPUToLLVMIR() in
   // @triton//:lib/Target/LLVMIR/LLVMIRTranslation.cpp
   pm.addPass(mlir::createConvertSCFToCFPass());
   pm.addPass(mlir::createConvertIndexToLLVMPass());
-  pm.addPass(mt::createConvertTritonGPUToLLVMPass(ccAsInt));
+  pm.addPass(
+      mt::createConvertTritonGPUToLLVMPass(ccAsInt, mt::Default, nullptr));
+  pm.addPass(mt::createConvertNVGPUToLLVMPass());
   pm.addPass(mlir::createArithToLLVMConversionPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
@@ -1006,7 +1018,7 @@ struct Side {
 
 class MatMulEmitterHelper {
  public:
-  MatMulEmitterHelper(mlir::OpBuilder builder, absl::string_view libdevice_path,
+  MatMulEmitterHelper(absl::string_view libdevice_path,
                       const HloDotInstruction* dot_instr,
                       ImplicitLocOpBuilder& b, Type index_ty, MatMulDims dims,
                       const MatMulLaunchConfig& launch_config,
@@ -1262,8 +1274,8 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
   const MatMulLaunchConfig launch_config(config, *dot_instr, dims);
   VLOG(6) << analysis.ToString();
 
-  MatMulEmitterHelper emitter(builder, libdevice_path, dot_instr, b, index_ty,
-                              dims, launch_config, analysis);
+  MatMulEmitterHelper emitter(libdevice_path, dot_instr, b, index_ty, dims,
+                              launch_config, analysis);
 
   constexpr int group_m = 8;
   const int64_t width = group_m * launch_config.grid_n;
@@ -1397,10 +1409,20 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
       dot_input_rhs = apply_mask(1, dot_input_rhs);
     }
 
+    const bool allow_tf32 =
+        absl::c_none_of(dot_instr->precision_config().operand_precision(),
+                        [](const int precision) {
+                          return precision != PrecisionConfig::DEFAULT;
+                        });
+
     // Execute matrix multiplication of input tiles and pass the accumulator.
-    Value accumulator_next = b.create<mt::DotOp>(
-        dot_input_lhs, dot_input_rhs, iter_args.back(),
-        /*allowTF32=*/tsl::tensor_float_32_execution_enabled());
+    // TODO(manany): Should be looked into once we enable Hopper workloads.
+    // maxNumImpreciseAcc flag was introduced for Hopper to accumulate in a
+    // lower precision than the output type. The change was introduced here:
+    // https://github.com/openai/triton/commit/31b0c521427109a8eda609b58d756c380b21599a
+    Value accumulator_next = b.create<mt::DotOp>(dot_input_lhs, dot_input_rhs,
+                                                 iter_args.back(), allow_tf32,
+                                                 /*maxNumImpreciseAcc=*/0);
     iter_args_next.push_back(accumulator_next);
 
     b.create<mlir::scf::YieldOp>(iter_args_next);
@@ -1617,7 +1639,8 @@ std::string GetLibdevicePath(const HloComputation* hlo_computation) {
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
-    const HloComputation* hlo_computation, const GpuDeviceInfo& device_info,
+    const HloComputation* hlo_computation,
+    const se::DeviceDescription& device_info,
     const AutotuneResult::TritonGemmKey& config, TritonIrEmitter ir_emitter,
     mlir::MLIRContext& mlir_context) {
   mlir_context.loadDialect<mt::TritonDialect>();
@@ -1652,7 +1675,7 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 
   TF_RETURN_IF_ERROR(ir_emitter(b, GetLibdevicePath(hlo_computation), analysis,
                                 hlo_computation, fn, config,
-                                device_info.shared_memory_per_block_optin));
+                                device_info.shared_memory_per_block_optin()));
 
   b.create<mt::ReturnOp>(loc);
 
@@ -1669,7 +1692,8 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
 StatusOr<TritonWrapperResult> TritonWrapper(
     const TritonFusionAnalysis& analysis, absl::string_view fn_name,
     const HloComputation* hlo_computation, absl::string_view fusion_kind,
-    const se::CudaComputeCapability& cc, const GpuDeviceInfo& device_info,
+    const se::CudaComputeCapability& cc,
+    const se::DeviceDescription& device_info,
     const AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
     TritonIrEmitter ir_emitter, mlir::MLIRContext& mlir_context) {
   if (fusion_kind == kTritonGemmFusionKind) {
@@ -1718,10 +1742,19 @@ StatusOr<TritonWrapperResult> TritonWrapper(
   VLOG(2) << config.ShortDebugString();
 
   // Compile Triton kernel to LLVM.
-  mlir::PassManager pm(&mlir_context);
-
   std::optional<llvm::raw_fd_ostream> log_stream;
   const HloModule* hlo_module = hlo_computation->parent();
+
+  bool should_verify =
+      (hlo_module->config().debug_options().xla_gpu_llvm_verification_level() >=
+       1);
+#ifndef NDEBUG
+  should_verify = true;
+#endif
+
+  mlir::PassManager pm(&mlir_context);
+  pm.enableVerifier(should_verify);
+
   if (hlo_module->config().debug_options().xla_gpu_dump_llvmir()) {
     const std::string basename =
         absl::StrCat(absl::string_view(tsl::io::Basename(hlo_module->name())),
@@ -1778,7 +1811,7 @@ StatusOr<TritonWrapperResult> TritonWrapper(
           ->getAttrOfType<mlir::IntegerAttr>("triton_gpu.shared")
           .getInt();
   VLOG(2) << "Shared memory usage: " << shared_mem_bytes << " B";
-  if (shared_mem_bytes > device_info.shared_memory_per_block_optin) {
+  if (shared_mem_bytes > device_info.shared_memory_per_block_optin()) {
     return ResourceExhausted("Shared memory size limit exceeded.");
   }
 
@@ -1786,7 +1819,10 @@ StatusOr<TritonWrapperResult> TritonWrapper(
       std::unique_ptr<llvm::Module> ll_triton_module,
       TranslateLLVMToLLVMIR(&llvm_module->getContext(), *triton_module,
                             GetLibdevicePath(hlo_computation)));
-  LogAndVerify(ll_triton_module.get());
+  VLogModule(5, *ll_triton_module);
+  if (should_verify) {
+    VerifyModule(*ll_triton_module);
+  }
 
   // Integrate LLVM matmul kernel into XLA's LLVM module.
   ll_triton_module->eraseNamedMDNode(
@@ -1796,7 +1832,10 @@ StatusOr<TritonWrapperResult> TritonWrapper(
   // Use override flag because libdevice functions can be present in both.
   CHECK(!llvm::Linker::linkModules(*llvm_module, std::move(ll_triton_module),
                                    llvm::Linker::Flags::OverrideFromSrc));
-  LogAndVerify(llvm_module);
+  VLogModule(5, *llvm_module);
+  if (should_verify) {
+    VerifyModule(*llvm_module);
+  }
 
   return {{shared_mem_bytes}};
 }

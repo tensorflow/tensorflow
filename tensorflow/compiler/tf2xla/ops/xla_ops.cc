@@ -1383,17 +1383,7 @@ platforms: the list of platforms supported by `module`. The list can contain
   if the plaform is not among `platforms` and the check has been disabled.
   The list can be empty in old versions (earlier than 6) to denote that no
   platform checking must be performed at loading time.
-dim_args_spec: in presence of dynamic shapes, this is the specification for the
-  dimension arguments. In absence of dynamic shapes this list is empty. The
-  `module` takes one 0-dimensional integer tensor dimension argument for each
-  element of `dim_spec_args`. The dimension arguments come after the platform
-  index argument and before the actual arguments. Each specification is a
-  string of the form "<arg_idx>.<axis_idx>" that specifies that the value of
-  the corresponding dimension argument must be "args[arg_idx].shape[axis_idx]",
-  where "args" are the actual array arguments.
-  This attribute is not used anymore in modules serialized with version 5
-  after March 28th, 2023 and JAX OSS versions higher than 0.4.6.
-  TODO(b/283439649): remove support for dim_args_spec.
+dim_args_spec: this attribute is not supported anymore.
 function_list: This list contains the TensorFlow FunctionDefs that are used by
   the XLACallModule. If the XLACallModule contains `stablehlo.custom_call`
   operations, they can call TensorFlow graph functions outside of the

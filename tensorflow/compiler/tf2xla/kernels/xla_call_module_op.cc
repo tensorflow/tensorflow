@@ -137,6 +137,9 @@ class XlaCallModuleOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("Tout", &expected_output_dtypes));
     std::vector<string> dim_args_spec;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dim_args_spec", &dim_args_spec));
+    OP_REQUIRES(ctx, dim_args_spec.empty(),
+                absl::UnimplementedError(
+                    "dim_args_spec attribute is no longer supported"));
     OP_REQUIRES(ctx,
                 expected_output_shapes.size() == expected_output_dtypes.size(),
                 absl::InvalidArgumentError(absl::StrCat(
@@ -175,8 +178,8 @@ class XlaCallModuleOp : public XlaOpKernel {
     }
     {
       auto loader = XlaCallModuleLoader::Create(
-          &context_, version, std::move(module_str), std::move(dim_args_spec),
-          std::move(disabled_checks), std::move(platforms), loading_platform,
+          &context_, version, std::move(module_str), std::move(disabled_checks),
+          std::move(platforms), loading_platform,
           /*num_invocation_args=*/ctx->num_inputs(),
           module_has_token_input_output_);
       OP_REQUIRES_OK(ctx, loader.status());

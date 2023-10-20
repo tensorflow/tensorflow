@@ -56,9 +56,9 @@ limitations under the License.
 #include "xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/concurrency/ref_count.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
-#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace xla {
 namespace ifrt {
@@ -440,11 +440,6 @@ PjRtLoadedExecutable::CreateInternal(
       host_send_and_recv_callbacks.push_back(host_send_and_recv_callback);
     }
   }
-  if (!loaded_host_callbacks.empty() &&
-      !client->pjrt_client()->SupportsSendRecvCallbacks()) {
-    return InternalError("Host callback not supported for runtime type: %s",
-                         client->runtime_type());
-  }
 
   return std::unique_ptr<LoadedExecutable>(new PjRtLoadedExecutable(
       client, std::move(pjrt_loaded_executable), std::move(devices),
@@ -473,11 +468,7 @@ PjRtLoadedExecutable::PjRtLoadedExecutable(
       output_shapes_(std::move(output_shapes)),
       output_shardings_(std::move(output_shardings)) {}
 
-PjRtLoadedExecutable::~PjRtLoadedExecutable() {
-  // Reset the PjRt executable before host callbacks.
-  pjrt_loaded_executable_ = nullptr;
-  all_loaded_host_callbacks_->clear();
-}
+PjRtLoadedExecutable::~PjRtLoadedExecutable() = default;
 
 StatusOr<PjRtLoadedExecutable::ExecuteResult> PjRtLoadedExecutable::Execute(
     absl::Span<tsl::RCReference<Array>> args, const ExecuteOptions& options,

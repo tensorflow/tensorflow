@@ -45,6 +45,7 @@ struct HloExpandConfig {
   bool rng_bit_generator_philox_expander{false};
   bool rng_bit_generator_three_fry_expander{false};
   bool triangular_solve_expander{false};
+  bool verify_hlo{false};
 };
 
 // Adds passes to the `pipeline` for flags set in `config`.

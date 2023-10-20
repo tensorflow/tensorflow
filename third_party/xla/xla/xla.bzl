@@ -1,26 +1,23 @@
 """Wrapper around proto libraries used inside the XLA codebase."""
 
 load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+)
+load(
     "@local_tsl//tsl:tsl.bzl",
     "if_tsl_link_protobuf",
     "tsl_copts",
     _tsl_clean_dep = "clean_dep",
 )
 load(
-    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm_is_configured",
-)
-load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "tf_exec_properties",
 )
-
-def register_extension_info(**kwargs):
-    pass
+load(
+    "@local_tsl//tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 
 def clean_dep(target):
     """Returns string to 'target' in @{org_tensorflow,xla} repository.
@@ -33,14 +30,8 @@ def clean_dep(target):
     # Label() call appears, i.e. @org_tensorflow.
     return str(Label(target))
 
-def xla_py_proto_library(**kwargs):
+def xla_py_proto_library(**_kwargs):
     # Note: we don't currently define a proto library target for Python in OSS.
-    _ignore = kwargs
-    pass
-
-def xla_py_grpc_library(**kwargs):
-    # Note: we don't currently define any special targets for Python GRPC in OSS.
-    _ignore = kwargs
     pass
 
 ORC_JIT_MEMORY_MAPPER_TARGETS = []
@@ -59,19 +50,23 @@ def xla_cc_binary(deps = None, copts = tsl_copts(), **kwargs):
         "//xla:xla_proto_cc_impl",
         "//xla:xla_data_proto_cc_impl",
         "//xla/service:hlo_proto_cc_impl",
+        "//xla/service:buffer_assignment_proto_cc_impl",
         "//xla/service/memory_space_assignment:memory_space_assignment_proto_cc_impl",
         "//xla/service/gpu:backend_configs_cc_impl",
-        "//xla/service/gpu:hlo_op_profile_proto_cc_impl",
-        "//xla/stream_executor:dnn_proto_cc_impl",
+        "//xla/service/gpu/model:hlo_op_profile_proto_cc_impl",
+        "//xla/stream_executor:device_description_proto_cc_impl",
         "//xla/stream_executor:stream_executor_impl",
+        "//xla/stream_executor/gpu:gpu_init_impl",
         "@local_tsl//tsl/platform:env_impl",
         "@local_tsl//tsl/platform:tensor_float_32_utils",
         "@local_tsl//tsl/profiler/utils:time_utils_impl",
         "@local_tsl//tsl/profiler/backends/cpu:annotation_stack_impl",
         "@local_tsl//tsl/profiler/backends/cpu:traceme_recorder_impl",
+        "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc_impl",
+        "//xla:autotune_results_proto_cc_impl",
         "//xla:autotuning_proto_cc_impl",
         "@local_tsl//tsl/protobuf:protos_all_cc_impl",
-        "@local_tsl//tsl/protobuf:dnn_proto_cc_impl",
         "@local_tsl//tsl/framework:allocator",
         "@local_tsl//tsl/framework:allocator_registry_impl",
         "@local_tsl//tsl/util:determinism",
@@ -92,10 +87,11 @@ def xla_cc_test(
                        clean_dep("//xla:xla_proto_cc_impl"),
                        clean_dep("//xla:xla_data_proto_cc_impl"),
                        clean_dep("//xla/service:hlo_proto_cc_impl"),
+                       clean_dep("//xla/service:buffer_assignment_proto_cc_impl"),
                        clean_dep("//xla/service/memory_space_assignment:memory_space_assignment_proto_cc_impl"),
                        clean_dep("//xla/service/gpu:backend_configs_cc_impl"),
-                       clean_dep("//xla/service/gpu:hlo_op_profile_proto_cc_impl"),
-                       clean_dep("//xla/stream_executor:dnn_proto_cc_impl"),
+                       clean_dep("//xla/service/gpu/model:hlo_op_profile_proto_cc_impl"),
+                       clean_dep("//xla/stream_executor:device_description_proto_cc_impl"),
                        clean_dep("//xla/stream_executor:device_id_utils"),
                        clean_dep("//xla/stream_executor:stream_executor_impl"),
                        clean_dep("//xla/stream_executor/gpu:gpu_cudamallocasync_allocator"),
@@ -103,9 +99,10 @@ def xla_cc_test(
                        clean_dep("@local_tsl//tsl/profiler/utils:time_utils_impl"),
                        clean_dep("@local_tsl//tsl/profiler/backends/cpu:annotation_stack_impl"),
                        clean_dep("@local_tsl//tsl/profiler/backends/cpu:traceme_recorder_impl"),
+                       clean_dep("@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl"),
                        clean_dep("@local_tsl//tsl/profiler/protobuf:xplane_proto_cc_impl"),
+                       clean_dep("//xla:autotune_results_proto_cc_impl"),
                        clean_dep("//xla:autotuning_proto_cc_impl"),
-                       clean_dep("@local_tsl//tsl/protobuf:dnn_proto_cc_impl"),
                        clean_dep("@local_tsl//tsl/protobuf:protos_all_cc_impl"),
                        clean_dep("@local_tsl//tsl/platform:env_impl"),
                        clean_dep("@local_tsl//tsl/framework:allocator"),
@@ -133,7 +130,11 @@ def auto_sharding_deps():
 def auto_sharding_solver_deps():
     return ["//xla/hlo/experimental/auto_sharding:auto_sharding_solver_impl"]
 
-register_extension_info(
-    extension = xla_cc_test,
-    label_regex_for_dep = "{extension_name}",
-)
+def xla_export_hlo_deps():
+    return []
+
+def xla_nvml_deps():
+    return ["@local_config_cuda//cuda:nvml_headers"]
+
+def xla_cub_deps():
+    return ["@local_config_cuda//cuda:cuda_headers"]

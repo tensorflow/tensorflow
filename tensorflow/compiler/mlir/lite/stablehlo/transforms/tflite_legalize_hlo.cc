@@ -27,7 +27,10 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/custom_call.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/dot_general.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/pad.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_hlo_conversions/util.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"  // IWYU pragma: keep
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -49,24 +52,28 @@ class LegalizeHloToTfLitePass
   void runOnOperation() override;
 };
 
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/generated_tflite_legalize_hlo.inc"
 void LegalizeHloToTfLitePass::runOnOperation() {
   MLIRContext& context = getContext();
   RewritePatternSet patterns(&getContext());
   // Add new conversion patterns here.
-  patterns.add<odml::ConvertPadOp>(&context);
+  patterns.add<odml::ConvertPadOp, odml::ConvertCustomCallOp>(&context);
+  populateWithGenerated(patterns);
 
   ConversionTarget target(context);
   target.addLegalDialect<TFL::TensorFlowLiteDialect, mhlo::MhloDialect>();
   target.addLegalOp<func::CallOp, func::ConstantOp, arith::ConstantOp>();
+  target.addDynamicallyLegalOp<mhlo::CustomCallOp>(IsCustomCallLegal);
   // Converted MHLO ops should be marked illegal here.
-  target.addIllegalOp<mhlo::PadOp>();
+  // TODO: b/304003568 - Add TF_TransposeOp folding logic to tflite.
+  target.addIllegalOp<mhlo::PadOp, mhlo::DotGeneralOp, mhlo::DotOp,
+                      mhlo::TransposeOp>();
   if (failed(applyPartialConversion(getOperation(), target,
                                     std::move(patterns)))) {
     getOperation().emitError("mhlo to TFLite legalization failed.");
     signalPassFailure();
   }
 }
-
 }  // namespace
 
 // Creates an instance of the pass.

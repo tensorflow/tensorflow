@@ -602,6 +602,7 @@ class Loader(object):
     """Rewrite func names in the debug info by using the concrete func names."""
     output_debug_info = graph_debug_info_pb2.GraphDebugInfo()
     output_debug_info.files[:] = debug_info.files
+    # TODO: b/292007261 - Read name_to_trace_id as well as traces
     for key in debug_info.traces:
       node, func = key.split("@")
       new_func = ""

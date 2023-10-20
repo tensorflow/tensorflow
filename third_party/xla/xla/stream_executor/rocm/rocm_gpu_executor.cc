@@ -12,8 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/stream_executor/rocm/rocm_gpu_executor.h"
-
 #include <unistd.h>
 
 #include <memory>
@@ -42,8 +40,8 @@ limitations under the License.
 #include "xla/stream_executor/rocm/rocm_diagnostics.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -308,6 +306,19 @@ tsl::Status GpuExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
       GetGpuContext(stream), kernel.name(), hipfunc, block_dims.x, block_dims.y,
       block_dims.z, thread_dims.x, thread_dims.y, thread_dims.z,
       args.number_of_shared_bytes(), hipstream, nullptr, (void**)&config);
+}
+
+tsl::Status GpuExecutor::Submit(Stream* stream,
+                                const CommandBuffer& command_buffer) {
+  if (command_buffer.mode() != CommandBuffer::Mode::kPrimary) {
+    return absl::InvalidArgumentError(
+        "Can't submit non-primary command buffer for execution");
+  }
+
+  auto exec = GpuCommandBuffer::Cast(&command_buffer)->executable();
+  VLOG(3) << "Launch command buffer execuable graph " << exec
+          << " on a stream: " << stream->DebugStreamPointers();
+  return GpuDriver::GraphLaunch(exec, AsGpuStreamValue(stream));
 }
 
 int GpuExecutor::CalculateOccupancy(const DeviceDescription& device_description,
@@ -583,14 +594,14 @@ Event::Status GpuExecutor::PollForEventStatus(Event* event) {
 bool GpuExecutor::AllocateStream(Stream* stream) {
   absl::MutexLock l(&alive_gpu_streams_mu_);
   bool out = AsGpuStream(stream)->Init();
-  alive_gpu_streams_[stream->implementation()->GpuStreamHack()] = stream;
+  alive_gpu_streams_[stream->platform_specific_handle().stream] = stream;
   return out;
 }
 
 void GpuExecutor::DeallocateStream(Stream* stream) {
   GpuStream* rocm_stream = AsGpuStream(stream);
   absl::MutexLock l(&alive_gpu_streams_mu_);
-  alive_gpu_streams_.erase(rocm_stream->GpuStreamHack());
+  alive_gpu_streams_.erase(rocm_stream->platform_specific_stream());
   if (!rocm_stream->IsIdle()) {
     LOG(ERROR) << "Deallocating stream with pending work";
   }
@@ -726,14 +737,14 @@ GpuExecutor::GetStreamImplementation() {
 }
 
 tsl::StatusOr<std::unique_ptr<internal::CommandBufferInterface>>
-GpuExecutor::GetCommandBufferImplementation() {
+GpuExecutor::GetCommandBufferImplementation(CommandBuffer::Mode mode) {
   VLOG(2) << "Create ROCm command buffer (ROCm graph)";
   GpuGraphHandle graph = nullptr;
   TF_RETURN_IF_ERROR(GpuDriver::CreateGraph(&graph));
-  return std::make_unique<GpuCommandBuffer>(this, graph);
+  return std::make_unique<GpuCommandBuffer>(mode, /*parent=*/this, graph);
 }
 
-void* GpuExecutor::GpuContextHack() { return context_; }
+void* GpuExecutor::platform_specific_context() { return context_; }
 
 GpuContext* GpuExecutor::gpu_context() { return context_; }
 

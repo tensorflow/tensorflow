@@ -952,6 +952,10 @@ class ShapeInference {
   // mutations have identical static shape.
   bool InferShapeForTensorListInitOps(Operation* op);
 
+  // Conservatively infers shape of output tenorlist and item based on
+  // input tensorlist's element shape.
+  bool InferShapeForTensorListPopBackOp(TensorListPopBackOp op);
+
   // Infers the shape of VarHandleOp based on the uses of the VarHandleOp to
   // update the subtypes of the resource type.
   bool InferShapeForVarHandleOp(VarHandleOp op);
@@ -1198,10 +1202,6 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
     // Lazily parse XlaCallModule's embedded HLO module and cache the loader to
     // avoid repeatedly parsing the module.
 
-    std::vector<std::string> dim_args_spec;
-    for (auto attr : op.getDimArgsSpec().getAsRange<StringAttr>()) {
-      dim_args_spec.push_back(attr.getValue().str());
-    }
     std::vector<std::string> disabled_checks;
     for (auto attr : op.getDisabledChecks().getAsRange<StringAttr>()) {
       disabled_checks.push_back(attr.getValue().str());
@@ -1225,8 +1225,8 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
 
     auto l = tensorflow::XlaCallModuleLoader::Create(
         &xla_call_module_context_, op.getVersion(), op.getModule().str(),
-        std::move(dim_args_spec), std::move(disabled_checks),
-        std::move(platforms), std::move(loading_platform),
+        std::move(disabled_checks), std::move(platforms),
+        std::move(loading_platform),
         /*num_invocation_args=*/op.getArgs().size(),
         op.getHasTokenInputOutput());
     if (!l.ok()) {
@@ -1553,7 +1553,7 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
 }
 
 bool ShapeInference::InferShapeForTensorListInitOps(Operation* op) {
-  DCOMMENT_OP(op, "Inferring shape for TensorList ");
+  DCOMMENT_OP(op, "Inferring shape for TensorListInitOps.");
   Value handle = op->getResult(0);
   Value initial_element_shape = GetElementShapeOperand(op);
   RankedTensorType element_type;
@@ -1576,6 +1576,42 @@ bool ShapeInference::InferShapeForTensorListInitOps(Operation* op) {
   bool changed = RefineResultType(op, handle, tensor_type);
   if (changed) DCOMMENT_OP(op, "Modified after shape inference:");
   return changed;
+}
+
+bool ShapeInference::InferShapeForTensorListPopBackOp(TensorListPopBackOp op) {
+  // The first Operand is assumed to be a TensorType around a variant with a
+  // single subtype (e.g. tensor<!tf_type.variant<tensor<2xi32>>>). We will
+  // copy this type to the first result, and copy the singular variant subtype
+  // to the second result (tensor<2xi32>).
+  DCOMMENT_OP(op, "Inferring shape for TensorListPopBackOp.");
+
+  auto src_list_handle_t =
+      op.getOperand(0).getType().dyn_cast_or_null<TensorType>();
+  if (!src_list_handle_t) return false;
+
+  // Copy of operand tensorlist type.
+  TensorType dst_list_handle_t =
+      src_list_handle_t.clone(src_list_handle_t.getElementType());
+  auto variant_element_t =
+      dst_list_handle_t.getElementType().dyn_cast_or_null<VariantType>();
+  if (!variant_element_t || variant_element_t.getSubtypes().size() != 1)
+    return false;
+
+  // Underlying TensorType from variant that represents a shape signature
+  // compatible with all elements in the tensorlist.
+  TensorType list_handle_element_t = variant_element_t.getSubtypes()[0];
+
+  if (!RefineResultType(op, op->getResult(0), dst_list_handle_t)) {
+    DCOMMENT("InferShapeForTensorListPopBackOp could not propogate result 0"
+             << op);
+    return false;
+  }
+  if (!RefineResultType(op, op->getResult(1), list_handle_element_t)) {
+    DCOMMENT("InferShapeForTensorListPopBackOp could not propogate result 1"
+             << op);
+    return false;
+  }
+  return true;
 }
 
 bool ShapeInference::InferShapeForVarHandleOp(VarHandleOp op) {
@@ -2479,6 +2515,10 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
   // operations. If we are unable to refine element shape here, proceed to use
   // the InferenceContext below to get more precise shapes.
   if (IsTensorListInitOp(op) && InferShapeForTensorListInitOps(op)) return true;
+
+  if (auto pop_back = dyn_cast<TF::TensorListPopBackOp>(op)) {
+    return InferShapeForTensorListPopBackOp(pop_back);
+  }
 
   if (auto var_handle_op = dyn_cast<VarHandleOp>(op)) {
     return InferShapeForVarHandleOp(var_handle_op);

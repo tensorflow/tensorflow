@@ -163,7 +163,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   CancellationManager cancellation_manager_;
   std::unique_ptr<CoordinationClient> leader_client_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CoordinationServiceAgentImpl);
+  CoordinationServiceAgentImpl(const CoordinationServiceAgentImpl&) = delete;
+  void operator=(const CoordinationServiceAgentImpl&) = delete;
 };
 
 Status CoordinationServiceAgentImpl::Initialize(

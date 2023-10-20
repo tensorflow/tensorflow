@@ -21,13 +21,13 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "absl/container/node_hash_map.h"
 #include "xla/runtime/custom_call_registry.h"
 #include "xla/runtime/executable.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "xla/stream_executor/gpu/gpu_graph.h"
@@ -47,6 +47,10 @@ class StreamExecutorGraphInstances;  // Forward declare
 // gets executed. Graph capture function ordinal is the key in this container.
 class CapturedFunctionExecutionCount
     : public runtime::StateVector<std::unique_ptr<std::atomic<uint64_t>>> {};
+
+// Create the i-th value if the capture function with ordinal i causes graph
+// update failure.
+class OrdinalToFallback : public runtime::StateVector<std::monostate> {};
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -107,6 +111,7 @@ class GraphInstances {
       const ServiceExecutableRunOptions* run_options,
       const runtime::Executable& executable,
       const runtime::CustomCall::UserData& user_data, void* ptr,
+      OrdinalToFallback::Snapshot* ordinal_to_fallback,
       std::optional<uint64_t> eviction_timeout_seconds = std::nullopt);
 
   // Returns true if all Gpu graphs were already instantiated.

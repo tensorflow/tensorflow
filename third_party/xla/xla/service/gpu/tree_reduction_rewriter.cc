@@ -41,7 +41,7 @@ namespace gpu {
 
 class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit ReductionRewriterVisitor(GpuVersion gpu_version)
+  explicit ReductionRewriterVisitor(se::GpuComputeCapability gpu_version)
       : gpu_version_(gpu_version) {}
 
   Status HandleReduce(HloInstruction *hlo) override {
@@ -275,7 +275,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     return ReplaceWithNewInstruction(hlo, std::move(out));
   }
 
-  GpuVersion gpu_version_;
+  se::GpuComputeCapability gpu_version_;
 };
 
 StatusOr<bool> GpuTreeReductionRewriter::Run(

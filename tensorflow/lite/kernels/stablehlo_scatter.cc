@@ -1,16 +1,17 @@
-// Copyright 2023 Google LLC
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
 
 #include <algorithm>
 #include <cstddef>
@@ -28,6 +29,7 @@
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/kernels/tensor_slice_util.h"
 
 namespace tflite {
 namespace ops {
@@ -57,21 +59,9 @@ struct OpData {
   ComputationType computation_type;
 };
 
-// Element i contains the index of an entry in the i-th dimension.
-template <typename IndexType>
-using Index = std::vector<IndexType>;
-
 // Contains a vector with each element being a dimension index
 // example: [1, 4] means the second and fifth dimensions of another vector.
 using DimVector = std::vector<int64_t>;
-
-// Returns true if `value` is found in `array`.
-static bool ArrayContains(const int64_t* array, int size, int64_t value) {
-  if (size == 0) {
-    return false;
-  }
-  return std::find(array, array + size, value) != array + size;
-}
 
 // Returns the update scatter dimension given the update window dimensions.
 // Example:
@@ -168,56 +158,6 @@ static TfLiteStatus GetComputationType(const Subgraph* computation_subgraph,
   return kTfLiteOk;
 }
 
-// Creates a new Index based on the provided scatter_dims.
-// Example:
-// For index={s0, s1}, scatter_dims_to_operand_dims=[1, 0], returns {s2,s1,0}.
-// Result has same size as rank of input. All the result dimensions not in
-// scatter_dims_to_operand_dims get the value 0.
-template <typename IndexType>
-static TfLiteStatus ScatterIndex(const Index<IndexType>& index,
-                                 const int64_t* scatter_dims,
-                                 int num_scatter_dims, int64_t to_rank,
-                                 Index<IndexType>* result) {
-  if (result == nullptr) {
-    return kTfLiteError;
-  }
-
-  *result = Index<IndexType>(to_rank, 0);
-  for (int idx = 0; idx < num_scatter_dims; ++idx) {
-    if (scatter_dims[idx] >= result->size()) {
-      return kTfLiteError;
-    }
-    (*result)[scatter_dims[idx]] = index[idx];
-  }
-  return kTfLiteOk;
-}
-
-// A helper function that converts a tensor index into a flat array index.
-template <typename IndexType>
-static IndexType TensorIndexToFlat(const IndexType* index, const int64_t dims,
-                                   const RuntimeShape& shape) {
-  // If it's a scalar, just return the index of the first element.
-  if (dims == 0) {
-    return 0;
-  }
-  IndexType flat_index = index[0];
-  for (int64_t i = 1; i < dims; ++i) {
-    flat_index = flat_index * shape.Dims(i) + index[i];
-  }
-  return flat_index;
-}
-
-template <typename IndexType>
-static Index<IndexType> AddIndices(const Index<IndexType>& index1,
-                                   const Index<IndexType>& index2) {
-  Index<IndexType> result;
-  result.reserve(index1.size());
-  for (int64_t dim = 0; dim < index1.size(); ++dim) {
-    result.push_back(index1[dim] + index2[dim]);
-  }
-  return result;
-}
-
 // Applies the provided computation to `input_value` and `update_value` and
 // stores the result in `tensor[index]`.
 template <typename DataType, typename IndexType>
@@ -252,65 +192,8 @@ static TfLiteStatus ApplyComputation(TfLiteTensor* tensor,
   return kTfLiteOk;
 }
 
-// Creates a new Index with the number of dimensions increased with respect to
-// inserted_dims array.
-// Example: index=[i, j], inserted_window_dims=[1], the result is [i, 0, j]
-template <typename IndexType>
-static TfLiteStatus ExpandDims(const Index<IndexType>& index,
-                               const int64_t* inserted_dims,
-                               int num_inserted_dims,
-                               Index<IndexType>* result) {
-  std::vector<int64_t> scatter_dims;
-  scatter_dims.reserve(index.size());
-  int64_t ctr = 0;
-  for (int idx = 0; idx < index.size(); ++idx) {
-    while (ArrayContains(inserted_dims, num_inserted_dims, ctr)) {
-      ++ctr;
-    }
-    scatter_dims.push_back(ctr);
-    ++ctr;
-  }
-  TF_LITE_ENSURE_STATUS(ScatterIndex(index, scatter_dims.data(),
-                                     scatter_dims.size(),
-                                     index.size() + num_inserted_dims, result));
-  return kTfLiteOk;
-}
-
-// Reads one array from a given tensor.
-// Example: other_indices=[j, l, m], dim_to_read= 2
-// The resulting read array is: [j, l, :, m]
-template <typename IndexType>
-static Index<IndexType> ReadScatterIndicesAxis(
-    const TfLiteTensor* scatter_indices, const RuntimeShape& tensor_shape,
-    const Index<IndexType>& other_indices, int64_t dim_to_read) {
-  Index<IndexType> index;
-  index.reserve(tensor_shape.DimensionsCount());
-  int shift = 0;
-  for (int64_t dim = 0; dim < tensor_shape.DimensionsCount(); ++dim) {
-    if (dim == dim_to_read) {
-      index.push_back(0);
-      shift = 1;
-    } else {
-      index.push_back(other_indices[dim - shift]);
-    }
-  }
-  int64_t index_vector_size = tensor_shape.Dims(dim_to_read);
-  Index<IndexType> result;
-  result.reserve(index_vector_size);
-  for (IndexType index_vector_idx = 0; index_vector_idx < index_vector_size;
-       ++index_vector_idx) {
-    index[dim_to_read] = index_vector_idx;
-
-    IndexType flat_index = TensorIndexToFlat(
-        index.data(), tensor_shape.DimensionsCount(), tensor_shape);
-    const IndexType* tensor_data = GetTensorData<IndexType>(scatter_indices);
-    result.push_back(tensor_data[flat_index]);
-  }
-  return result;
-}
-
 // Evaluates this node given the type of the elements in the scatter_indices
-// and the type of the elements in the input/updates vector.
+// and the type of the elements in the input/updates tensors.
 template <typename IndexType, typename DataType>
 TfLiteStatus EvalWithTypes(TfLiteContext* context, TfLiteNode* node) {
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
@@ -358,10 +241,9 @@ TfLiteStatus EvalWithTypes(TfLiteContext* context, TfLiteNode* node) {
         GatherIndex(update_index, update_scatter_dims);
 
     // Read the index_vector_dim dimension with the other dimension indices set.
-    // Let's say the contents after reading are {s1, s2}
     Index<IndexType> start_index =
-        ReadScatterIndicesAxis(scatter_indices, scatter_indices_shape,
-                               update_scatter_index, data->index_vector_dim);
+        ReadIndexVector(scatter_indices, scatter_indices_shape,
+                        update_scatter_index, data->index_vector_dim);
 
     Index<IndexType> full_start_index;
     TF_LITE_ENSURE_STATUS(ScatterIndex(
@@ -460,6 +342,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
+  // Output is the same size as input. Scatter just updates some of the values.
   // Need the copy since ResizeTensor takes ownership of output_size
   TfLiteIntArray* output_size = TfLiteIntArrayCopy(input->dims);
   TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, output, output_size));

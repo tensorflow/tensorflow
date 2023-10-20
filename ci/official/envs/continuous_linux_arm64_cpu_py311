@@ -1,0 +1,7 @@
+# This envrionment is experimental and should not yet be used for production jobs
+source ci/official/envs/ci_default
+TFCI_PYTHON_VERSION=3.11
+TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX=linux_arm64
+TFCI_BAZEL_COMMON_ARGS=(--config release_arm64_linux --config tf_public_cache_push --repo_env=TF_PYTHON_VERSION=$TFCI_PYTHON_VERSION)
+TFCI_DOCKER_IMAGE=gcr.io/tensorflow-sigs/build-arm64:tf-latest-multi-python
+TFCI_DOCKER_REBUILD_ARGS=(--target=tf ci/official/containers/linux_arm64)

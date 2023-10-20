@@ -541,7 +541,7 @@ class HloInstruction {
   // instruction from each operand's user set and user's operand set.
   void DetachFromOperandsAndUsers();
 
-  // Adds a derived instruciton to the parent computation of this instruction.
+  // Adds a derived instruction to the parent computation of this instruction.
   // Also update setup the new instruction as a derived instruction.
   HloInstruction* AddInstruction(
       std::unique_ptr<HloInstruction> derived_instruction);
@@ -2528,8 +2528,6 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
 // Custom (de)stringification functions for protos that live inside
 // HloInstruction.
 std::string PaddingConfigToString(const PaddingConfig& padding);
-std::string FrontendAttributesToString(
-    const FrontendAttributes& frontend_attributes);
 std::string StatisticsVizToString(const StatisticsViz& statistics_viz);
 std::string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 std::string RandomDistributionToString(const RandomDistribution& distribution);

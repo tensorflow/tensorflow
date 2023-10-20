@@ -293,23 +293,6 @@ class TransferManager {
       se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
       const Shape& shape, se::DeviceMemoryBase* region) = 0;
 
- protected:
-  // Transfer a memory block of the given size from the device source into the
-  // 'destination' buffer.
-  //
-  // size is the size to transfer to destination in bytes.
-  virtual Status TransferBufferFromDevice(se::Stream* stream,
-                                          const se::DeviceMemoryBase& source,
-                                          int64_t size, void* destination);
-
-  // Transfer a memory block of the given size from 'source' buffer to the given
-  // destination of the device.
-  //
-  // size is the size to transfer from source in bytes.
-  virtual Status TransferBufferToDevice(se::Stream* stream, int64_t size,
-                                        const void* source,
-                                        se::DeviceMemoryBase* destination);
-
  private:
   // The mutex that guards the platform-to-transfer manager map.
   static absl::Mutex platform_transfer_manager_mutex_;

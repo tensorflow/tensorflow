@@ -78,7 +78,7 @@ std::string GetROCDLDir(const HloModuleConfig& config) {
 }  // namespace
 
 Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
-    HloModule* hlo_module, GpuVersion gpu_version,
+    HloModule* hlo_module, se::GpuComputeCapability gpu_version,
     se::dnn::VersionInfo dnn_version,
     se::DeviceMemoryAllocator* device_allocator) {
   // Convert convolutions into CustomCalls to MIOpen, then canonicalize them
@@ -160,48 +160,15 @@ Status AMDGPUCompiler::AddConvAndGemmAutotuningPasses(
   return OkStatus();
 }
 
-Status AMDGPUCompiler::LoadAutotuneResultsFromFile(
-    const DebugOptions& debug_options) {
-  // We are doing this before the timer is started.
-  if (absl::string_view file_path =
-          debug_options.xla_gpu_load_autotune_results_from();
-      !file_path.empty()) {
-    static absl::once_flag once;
-    Status status = OkStatus();
-    absl::call_once(once, [&file_path, &status] {
-      status = AutotunerUtil::LoadAutotuneResultsFromFile(file_path);
-    });
-    TF_RETURN_IF_ERROR(status);
-  }
-  return OkStatus();
-}
-
-Status AMDGPUCompiler::SerializeAutotuneResultsToFile(
-    const DebugOptions& debug_options) {
-  // We are doing this after the timer is finished.
-  if (absl::string_view file_path =
-          debug_options.xla_gpu_dump_autotune_results_to();
-      !file_path.empty()) {
-    // Warning: This writes the autotune results at every compilation, possibly
-    // multiple times per process.
-    TF_RETURN_IF_ERROR(
-        AutotunerUtil::SerializeAutotuneResultsToFile(file_path));
-  }
-  return OkStatus();
-}
-
 AMDGPUCompiler::AMDGPUCompiler()
     : GpuCompiler(stream_executor::rocm::kROCmPlatformId,
                   amdgpu::TargetTriple(), amdgpu::DataLayout()) {}
 
-GpuVersion AMDGPUCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
-  return stream_exec->GetDeviceDescription().rocm_compute_capability();
-}
-
 StatusOr<std::pair<std::string, std::vector<uint8_t>>>
 AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                     llvm::Module* llvm_module,
-                                    GpuVersion gpu_version, bool relocatable,
+                                    se::GpuComputeCapability gpu_version,
+                                    bool relocatable,
                                     const HloModule* debug_module,
                                     const CompileOptions& options) {
   if (rocdl_dir_.empty()) {

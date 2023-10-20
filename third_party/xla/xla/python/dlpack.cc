@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "xla/python/dlpack.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -25,15 +27,17 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "include/dlpack/dlpack.h"  // from @dlpack
+#include "pybind11/gil.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
-#include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/python/py_array.h"
 #include "xla/python/python_ref_manager.h"
 #include "xla/python/traceback.h"
 #include "xla/python/util.h"
 #include "xla/types.h"
 #include "xla/util.h"
+#include "tsl/platform/errors.h"
 
 namespace py = pybind11;
 
@@ -213,15 +217,10 @@ StatusOr<std::vector<int64_t>> StridesToLayout(
 StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
   if (device.client()->platform_id() == CpuId()) {
     return kDLCPU;
-  } else if (device.client()->platform_id() == GpuId()) {
-    const StreamExecutorGpuDevice& gdevice =
-        dynamic_cast<const StreamExecutorGpuDevice&>(device);
-
-    if (absl::StrContains(gdevice.device_vendor(), "Advanced Micro Devices")) {
-      return kDLROCM;
-    } else {
-      return kDLCUDA;
-    }
+  } else if (device.client()->platform_id() == CudaId()) {
+    return kDLCUDA;
+  } else if (device.client()->platform_id() == RocmId()) {
+    return kDLROCM;
   }
   return InvalidArgument("Device %s cannot be used as a DLPack device.",
                          device.DebugString());
@@ -250,14 +249,14 @@ StatusOr<PjRtDevice*> DeviceForDLDevice(const PjRtClient* cpu_client,
         return InvalidArgument(
             "DLPack tensor is on GPU, but no GPU backend was provided.");
       }
-      TF_RET_CHECK(gpu_client->platform_id() == GpuId());
+      TF_RET_CHECK(gpu_client->platform_id() == CudaId());
       return gpu_client->LookupAddressableDevice(context.device_id);
     case kDLROCM:
       if (gpu_client == nullptr) {
         return InvalidArgument(
             "DLPack tensor is on GPU, but no GPU backend was provided.");
       }
-      TF_RET_CHECK(gpu_client->platform_id() == GpuId());
+      TF_RET_CHECK(gpu_client->platform_id() == RocmId());
       return gpu_client->LookupAddressableDevice(context.device_id);
     default:
       return InvalidArgument("Unknown/unsupported DLPack device type %d",
@@ -268,8 +267,7 @@ StatusOr<PjRtDevice*> DeviceForDLDevice(const PjRtClient* cpu_client,
 }  // namespace
 
 StatusOr<py::capsule> BufferToDLPackManagedTensor(
-    py::handle py_buffer, bool take_ownership,
-    std::optional<std::intptr_t> stream) {
+    py::handle py_buffer, std::optional<std::intptr_t> stream) {
   ifrt::Array* ifrt_array = py::cast<xla::PyArray>(py_buffer).ifrt_array();
   auto pack = std::make_unique<DLPackTensor>();
   if (ifrt_array == nullptr) {
@@ -287,38 +285,21 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(
   }
 
   DLTensor& dt = pack->tensor.dl_tensor;
-  if (take_ownership) {
-    // Block on outstanding operations, so that it is safe to read or mutate the
-    // returned buffer.
-    StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>> buffer_or =
-        pjrt_buffer->ReleaseDeviceMemoryOwnership(
-            /*wait_for_operations_to_complete=*/true);
-    if (!buffer_or.ok()) {
-      return InvalidArgument(
-          "Buffer synchronization failed converting to DLPack tensor: %s",
-          buffer_or.status().ToString());
+  {
+    // AcquireExternalReference may block; there are no API guarantees.
+    GlobalPyRefManager()->CollectGarbage();
+    py::gil_scoped_release gil_release;
+    TF_ASSIGN_OR_RETURN(pack->external_reference,
+                        pjrt_buffer->AcquireExternalReference());
+    if (stream) {
+      TF_RETURN_IF_ERROR(
+          pack->external_reference->WaitUntilBufferReadyOnStream(*stream));
+    } else {
+      TF_RETURN_IF_ERROR(AwaitBuffersReady(ifrt_array));
     }
-    pack->external_reference = std::move(buffer_or).value();
-    if (!pack->external_reference) {
-      return InvalidArgument(
-          "Cannot convert deleted/invalid buffer to DLPack tensor.");
-    }
-  } else {
-    {
-      // AcquireExternalReference may block; there are no API guarantees.
-      GlobalPyRefManager()->CollectGarbage();
-      py::gil_scoped_release gil_release;
-      TF_ASSIGN_OR_RETURN(pack->external_reference,
-                          pjrt_buffer->AcquireExternalReference());
-      if (stream) {
-        TF_RETURN_IF_ERROR(
-            pack->external_reference->WaitUntilBufferReadyOnStream(*stream));
-      } else {
-        TF_RETURN_IF_ERROR(AwaitBuffersReady(ifrt_array));
-      }
-    }
-    pack->buffer_reference = py::reinterpret_borrow<py::object>(py_buffer);
   }
+  pack->buffer_reference = py::reinterpret_borrow<py::object>(py_buffer);
+
   dt.data = pack->external_reference->OpaqueDeviceMemoryDataPointer();
   pack->tensor.manager_ctx = pack.get();
   pack->tensor.deleter = DLPackTensorDeleter;
@@ -358,18 +339,8 @@ StatusOr<pybind11::object> DLPackManagedTensorToBuffer(
   // TODO(hyeontaek): This is a potential target for an IFRT client to multiplex
   // multiple PjRt clients. Devices from these PjRt clients could be expressed
   // as a unified set of IFRT devices.
-  // Backward compatibility: if only one client is passed, it may be from any
-  // platform. Drop this support after dropping support for jax <= 0.2.14.
-  if (cpu_client && cpu_client->pjrt_client()->platform_id() == GpuId()) {
-    gpu_client = std::move(cpu_client);
-    cpu_client = nullptr;
-  }
   auto* cpu_pjrt_client = cpu_client ? cpu_client->pjrt_client() : nullptr;
   auto* gpu_pjrt_client = gpu_client ? gpu_client->pjrt_client() : nullptr;
-  if (cpu_client && cpu_pjrt_client->platform_id() != CpuId()) {
-    return InvalidArgument("DLPack does not support platform %s",
-                           cpu_pjrt_client->platform_name());
-  }
 
   if (absl::string_view(tensor.name()) != kDlTensorCapsuleName) {
     return InvalidArgument(

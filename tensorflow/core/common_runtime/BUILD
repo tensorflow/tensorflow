@@ -3044,6 +3044,7 @@ tf_cc_test(
     size = "small",
     srcs = ["inline_function_utils_test.cc"],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
@@ -3374,6 +3375,13 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:optimized_function_graph_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 

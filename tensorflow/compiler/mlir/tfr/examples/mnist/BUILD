@@ -48,7 +48,7 @@ tf_py_strict_test(
         ":mnist_ops_py",
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/tfr:test_utils",
-        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:load_library",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -62,7 +62,7 @@ py_strict_library(
         ":mnist_ops",
         ":mnist_ops_py",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:load_library",
         "@absl_py//absl/flags",
     ],
 )

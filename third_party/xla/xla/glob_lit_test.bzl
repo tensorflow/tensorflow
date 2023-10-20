@@ -26,7 +26,14 @@ _ALWAYS_EXCLUDE = [
     "**/* */**",
 ]
 
-def _run_lit_test(name, data, size, tags, driver, features, exec_properties):
+def _run_lit_test(
+        name,
+        data,
+        size,
+        tags,
+        driver,  # @unused
+        features,
+        exec_properties):
     """Runs lit on all tests it can find in `data` under xla/.
 
     Note that, due to Bazel's hermetic builds, lit only sees the tests that
@@ -44,18 +51,9 @@ def _run_lit_test(name, data, size, tags, driver, features, exec_properties):
       features: [str], list of extra features to enable.
       exec_properties: may enable things like remote execution.
     """
-
-    # Disable tests on windows for now, to enable testing rest of all xla and mlir.
     xla_root_dir = "xla/"
 
-    # TODO(ddunleavy,jakeharmon) This is a hack! Once vendoring is complete we
-    # can remove this logic. This is necessary to have these tests run on builds
-    # using Python 3.11, but also to not include `@pypi_lit` in standalone xla
-    # builds where it won't be found.
-    deps = []
-    if xla_root_dir == "tensorflow/compiler/xla/":
-        deps.append("@pypi_lit//:pkg")
-
+    # Disable tests on windows for now, to enable testing rest of all xla and mlir.
     native.py_test(
         name = name,
         srcs = ["@llvm-project//llvm:lit"],
@@ -69,7 +67,6 @@ def _run_lit_test(name, data, size, tags, driver, features, exec_properties):
             "@llvm-project//llvm:count",
             "@llvm-project//llvm:not",
         ],
-        deps = deps,
         size = size,
         main = "lit.py",
         exec_properties = exec_properties,

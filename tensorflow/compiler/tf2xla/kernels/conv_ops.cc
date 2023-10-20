@@ -66,7 +66,8 @@ class ConvOp : public XlaOpKernel {
   ConvOpAttrs attrs_;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ConvOp);
+  ConvOp(const ConvOp&) = delete;
+  void operator=(const ConvOp&) = delete;
 };
 
 class ConvNDOp : public XlaOpKernel {
@@ -202,7 +203,8 @@ class ConvBackpropInputOp : public XlaOpKernel {
   ConvOpAttrs attrs_;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ConvBackpropInputOp);
+  ConvBackpropInputOp(const ConvBackpropInputOp&) = delete;
+  void operator=(const ConvBackpropInputOp&) = delete;
 };
 
 class Conv2DBackpropInputOp : public ConvBackpropInputOp {
@@ -262,7 +264,8 @@ class ConvBackpropFilterOp : public XlaOpKernel {
   ConvOpAttrs attrs_;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ConvBackpropFilterOp);
+  ConvBackpropFilterOp(const ConvBackpropFilterOp&) = delete;
+  void operator=(const ConvBackpropFilterOp&) = delete;
 };
 
 class Conv2DBackpropFilterOp : public ConvBackpropFilterOp {

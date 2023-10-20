@@ -13,9 +13,6 @@ package_group(
 
 tsl_gpu_library(
     name = "profiler_backends",
-    cuda_deps = [
-        "//xla/backends/profiler/gpu:device_tracer",
-    ],
     visibility = ["//visibility:public"],
     deps = [
         "//xla/backends/profiler/cpu:host_tracer",

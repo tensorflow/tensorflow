@@ -1053,6 +1053,10 @@ tf_module {
     argspec: "args=[\'input\', \'filter\', \'out_backprop\', \'strides\', \'padding\', \'use_cudnn_on_gpu\', \'explicit_paddings\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'[]\', \'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
+    name: "convert_to_coo_tensor"
+    argspec: "args=[\'indices_or_row_splits\', \'values\', \'weights\', \'sample_count\', \'combiner\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "convert_to_tensor"
     argspec: "args=[\'value\', \'dtype\', \'name\', \'preferred_dtype\', \'dtype_hint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
@@ -1399,6 +1403,14 @@ tf_module {
   member_method {
     name: "get_logger"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_minibatch_splits_with_physical_replica"
+    argspec: "args=[\'program_key\', \'row_ids\', \'col_ids\', \'gains\', \'sample_count\', \'num_replica\', \'table_vocab_size\', \'feature_width\', \'num_sc_per_chip\', \'table_name\', \'mini_batch_splits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "get_minibatches_in_csr_with_physical_replica"
+    argspec: "args=[\'program_key\', \'row_ids\', \'col_ids\', \'gains\', \'splits\', \'id_counts\', \'sample_count\', \'num_replica\', \'max_minibatches_per_sc\', \'max_ids_per_chip_per_sample\', \'table_vocab_size\', \'feature_width\', \'num_sc_per_chip\', \'table_name\', \'mini_batch_in_csr\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "get_seed"
@@ -2465,6 +2477,14 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToInt64\'], "
   }
   member_method {
+    name: "tpu_annotate_tensors_with_dynamic_shape"
+    argspec: "args=[\'tensors\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "tpu_copy_with_dynamic_shape"
+    argspec: "args=[\'tensors\', \'unpadded_sizes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "trace"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -2583,6 +2603,54 @@ tf_module {
   member_method {
     name: "write_file"
     argspec: "args=[\'filename\', \'contents\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "xla_sparse_core_adagrad"
+    argspec: "args=[\'indices\', \'gradient\', \'learning_rate\', \'accumulator\', \'embedding_table\', \'feature_width\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "xla_sparse_core_adagrad_momentum"
+    argspec: "args=[\'indices\', \'gradient\', \'learning_rate\', \'beta_1\', \'epsilon\', \'accumulator\', \'momentum\', \'embedding_table\', \'feature_width\', \'use_nesterov\', \'beta_2\', \'exponent\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "xla_sparse_core_adam"
+    argspec: "args=[\'embedding_table\', \'indices\', \'gradient\', \'learning_rate\', \'momentum\', \'velocity\', \'beta_1\', \'beta_2\', \'epsilon\', \'feature_width\', \'use_sum_inside_sqrt\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "xla_sparse_core_ftrl"
+    argspec: "args=[\'embedding_table\', \'accumulator\', \'linear\', \'learning_rate\', \'indices\', \'gradient\', \'beta\', \'learning_rate_power\', \'l2_regularization_strength\', \'feature_width\', \'multiply_linear_by_learning_rate\', \'l1_regularization_strength\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "xla_sparse_core_sgd"
+    argspec: "args=[\'indices\', \'gradient\', \'learning_rate\', \'embedding_table\', \'feature_width\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "xla_sparse_dense_matmul"
+    argspec: "args=[\'row_ids\', \'col_ids\', \'values\', \'offsets\', \'embedding_table\', \'max_ids_per_partition\', \'max_unique_ids_per_partition\', \'input_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "xla_sparse_dense_matmul_grad_with_adagrad_and_csr_input"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'num_minibatches_per_physical_sparse_core\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "xla_sparse_dense_matmul_grad_with_adagrad_momentum_and_csr_input"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'momenta\', \'num_minibatches_per_physical_sparse_core\', \'use_nesterov\', \'exponent\', \'beta1\', \'beta2\', \'epsilon\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "xla_sparse_dense_matmul_grad_with_adam_and_csr_input"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'momenta\', \'velocity\', \'num_minibatches_per_physical_sparse_core\', \'use_sum_inside_sqrt\', \'beta1\', \'beta2\', \'epsilon\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "xla_sparse_dense_matmul_grad_with_ftrl_and_csr_input"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'accumulator\', \'linear\', \'num_minibatches_per_physical_sparse_core\', \'multiply_linear_by_learning_rate\', \'beta\', \'learning_rate_power\', \'l1_regularization_strength\', \'l2_regularization_strength\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "xla_sparse_dense_matmul_grad_with_sgd_and_csr_input"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'activation_gradients\', \'learning_rate\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "xla_sparse_dense_matmul_with_csr_input"
+    argspec: "args=[\'row_pointers\', \'sorted_sample_ids\', \'sorted_token_ids\', \'sorted_gains\', \'embedding_table\', \'num_minibatches_per_physical_sparse_core\', \'input_size\', \'quantization_config_low\', \'quantization_config_high\', \'quantization_config_num_buckets\', \'table_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "zeros"

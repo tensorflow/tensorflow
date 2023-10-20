@@ -35,7 +35,7 @@ class GpuLayoutAssignment : public LayoutAssignment {
       ChannelLayoutConstraints* channel_constraints = nullptr)
       : LayoutAssignment(entry_computation_layout, channel_constraints),
         stream_executor_(stream_executor) {}
-  ~GpuLayoutAssignment() override {}
+  ~GpuLayoutAssignment() override = default;
 
  protected:
   Status AddBackendConstraints(LayoutConstraints* constraints) override;
@@ -44,11 +44,10 @@ class GpuLayoutAssignment : public LayoutAssignment {
   Status AddBackendConstraintsToDnnConvCustomCall(
       HloCustomCallInstruction* instr, LayoutConstraints* constraints);
 
-  Status SetOperandBatchRowsColsLayout(const HloInstruction* instruction,
-                                       int64_t operand,
-                                       absl::Span<const int64_t> batch_dims,
-                                       absl::Span<const int64_t> row_dims,
-                                       absl::Span<const int64_t> col_dims);
+  // dim_groups are ordered from major to minor dimensions.
+  Status SetOperandMajorToMinorLayout(
+      const HloInstruction* instruction, int64_t operand,
+      std::initializer_list<absl::Span<const int64_t>> dim_groups);
 
   Status SetDotOperandLayout(const HloInstruction* instruction, int64_t operand,
                              absl::Span<const int64_t> batch_dims,

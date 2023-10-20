@@ -24,18 +24,25 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/btree_map.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
+#include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_parser.h"
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/status.h"
+#include "xla/status_macros.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tools/hlo_control_flow_flattening.h"
 #include "xla/xla.pb.h"
@@ -239,6 +246,50 @@ void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
 StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient() {
   return GetStreamExecutorGpuClient(
       /*asynchronous=*/true, GpuAllocatorConfig(), /*node_id=*/0);
+}
+
+StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateMockGpuClient(
+    int num_nodes) {
+  return GetStreamExecutorGpuClient(
+      /*asynchronous=*/true, GpuAllocatorConfig(), /*node_id=*/0,
+      /*num_nodes=*/num_nodes, /*allowed_devices=*/std::nullopt,
+      /*platform_name=*/std::nullopt,
+      /*should_stage_host_to_device_transfers=*/true,
+      /*kv_get=*/nullptr, /*kv_put=*/nullptr, /*enable_mock_nccl=*/true);
+}
+
+StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient(
+    std::shared_ptr<xla::DistributedRuntimeClient> distributed_client,
+    int node_id, int num_nodes) {
+  if (node_id < 0 || node_id >= num_nodes) {
+    return absl::InvalidArgumentError(
+        "Node id is expected to be in range [0, num_nodes)");
+  }
+
+  TF_RET_CHECK(distributed_client != nullptr);
+
+  // Use the plugin name as key prefix.
+  static constexpr absl::string_view kKeyPrefix = "gpu:";
+
+  xla::PjRtClient::KeyValueGetCallback kv_get =
+      [distributed_client](
+          const std::string& k,
+          absl::Duration timeout) -> xla::StatusOr<std::string> {
+    return distributed_client->BlockingKeyValueGet(absl::StrCat(kKeyPrefix, k),
+                                                   timeout);
+  };
+
+  xla::PjRtClient::KeyValuePutCallback kv_put =
+      [distributed_client](const std::string& k,
+                           const std::string& v) -> xla::Status {
+    return distributed_client->KeyValueSet(absl::StrCat(kKeyPrefix, k), v);
+  };
+
+  return GetStreamExecutorGpuClient(
+      /*asynchronous=*/true, GpuAllocatorConfig(), node_id, num_nodes,
+      /*allowed_devices=*/std::nullopt,
+      /*platform_name=*/std::nullopt,
+      /*should_stage_host_to_device_transfers=*/true, kv_get, kv_put);
 }
 
 StatusOr<ExecutionOptions> FunctionalHloRunner::LoadExecutionOptions(
@@ -709,7 +760,7 @@ ParameterType GetParameterType(const HloModule& module) {
 Status FunctionalHloRunner::PrepareHloModuleForCompilation(
     HloModule* hlo_module, const DebugOptions& debug_options,
     const PreprocessingOptions& preproc_options) {
-  hlo_module->config().set_debug_options(debug_options);
+  hlo_module->mutable_config().set_debug_options(debug_options);
 
   if (preproc_options.is_spmd_partitioned_module()) {
     // If the module has already been partitioned by SPMD, add sharding
@@ -1039,6 +1090,8 @@ FunctionalHloRunner::RunInternal(
       execute_options.untuple_result = false;
       break;
   }
+  std::optional<std::vector<PjRtFuture<Status>>> futures;
+  futures.emplace();
   for (int repeat = 0; repeat < running_options.num_repeats; ++repeat) {
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices started (repeat = "
             << repeat << ").";
@@ -1049,8 +1102,13 @@ FunctionalHloRunner::RunInternal(
       }
     }
     execute_options.launch_id = repeat;
-    TF_ASSIGN_OR_RETURN(output_buffers,
-                        executable->Execute(argument_ptrs, execute_options));
+    futures->clear();
+    TF_ASSIGN_OR_RETURN(
+        output_buffers,
+        executable->Execute(argument_ptrs, execute_options, futures));
+    for (auto& future : *futures) {
+      TF_RETURN_IF_ERROR(future.Await());
+    }
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices succeeded (repeat = "
             << repeat << ")";
     if (repeat < running_options.num_repeats - 1) {

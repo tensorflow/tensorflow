@@ -112,6 +112,7 @@ class ConstantTest(test.TestCase):
     self._testAll(np.empty((2, 0, 5)).astype(np.int64))
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("b/183567451: XLA doesn't yet support int4")
   def testInt4(self):
     for dtype in [dtypes_lib.int4, dtypes_lib.uint4]:
       np_dtype = dtype.as_numpy_dtype
@@ -748,6 +749,7 @@ class FillTest(test.TestCase):
     np_ans = np.array([[-42] * 3] * 2).astype(np.int64)
     self._compareAll([2, 3], np_ans[0][0], np_ans)
 
+  @test_util.disable_xla("b/183567451: XLA doesn't yet support int4")
   def testFillInt4(self):
     np_ans = np.array([[-6] * 3] * 2).astype(dtypes_lib.int4.as_numpy_dtype)
     self._compareAll([2, 3], np_ans[0][0], np_ans)

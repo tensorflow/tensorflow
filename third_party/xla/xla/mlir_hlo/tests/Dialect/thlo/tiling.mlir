@@ -12,7 +12,7 @@ transform.sequence failures(propagate) {
   ^bb0(%arg1: !pdl.operation):
     %0 = transform.structured.match ops{["thlo.dynamic_broadcast_in_dim"]} in %arg1
       : (!pdl.operation) -> !pdl.operation
-    %1, %loops:2 = transform.structured.tile %0 [256, 512]
+    %1, %loops:2 = transform.structured.tile_using_for %0 [256, 512]
       : (!pdl.operation) -> (!pdl.operation, !pdl.operation, !pdl.operation)
 }
 
@@ -75,7 +75,7 @@ transform.sequence failures(propagate) {
   ^bb0(%arg1: !pdl.operation):
     %0 = transform.structured.match ops{["thlo.scatter"]} in %arg1
       : (!pdl.operation) -> !pdl.operation
-    %1, %loop = transform.structured.tile %0 [1]
+    %1, %loop = transform.structured.tile_using_for %0 [1]
       : (!pdl.operation) -> (!pdl.operation, !pdl.operation)
 }
 
@@ -125,7 +125,7 @@ transform.sequence failures(propagate) {
   ^bb0(%arg1: !pdl.operation):
     %0 = transform.structured.match ops{["thlo.gather"]} in %arg1
       : (!pdl.operation) -> !pdl.operation
-    %1, %loop = transform.structured.tile %0 [1]
+    %1, %loop = transform.structured.tile_using_for %0 [1]
       : (!pdl.operation) -> (!pdl.operation, !pdl.operation)
 }
 
@@ -167,7 +167,7 @@ transform.sequence failures(propagate) {
   ^bb0(%arg1: !pdl.operation):
     %0 = transform.structured.match ops{["thlo.concatenate"]} in %arg1
       : (!pdl.operation) -> !pdl.operation
-    %1, %loops:2 = transform.structured.tile %0 [256, 512]
+    %1, %loops:2 = transform.structured.tile_using_for %0 [256, 512]
       : (!pdl.operation) -> (!pdl.operation, !pdl.operation, !pdl.operation)
 }
 
@@ -243,7 +243,7 @@ transform.sequence failures(propagate) {
   ^bb0(%arg1: !pdl.operation):
     %0 = transform.structured.match ops{["thlo.sort"]} in %arg1
       : (!pdl.operation) -> !pdl.operation
-    %1, %loops:2 = transform.structured.tile %0 [256, 512]
+    %1, %loops:2 = transform.structured.tile_using_for %0 [256, 512]
       : (!pdl.operation) -> (!pdl.operation, !pdl.operation, !pdl.operation)
 }
 
@@ -323,7 +323,7 @@ transform.sequence failures(propagate) {
   ^bb0(%arg1: !pdl.operation):
     %0 = transform.structured.match ops{["thlo.sort"]} in %arg1
       : (!pdl.operation) -> !pdl.operation
-    %1, %loops:2 = transform.structured.tile %0 [256, 512]
+    %1, %loops:2 = transform.structured.tile_using_for %0 [256, 512]
       : (!pdl.operation) -> (!pdl.operation, !pdl.operation, !pdl.operation)
 }
 
@@ -344,7 +344,7 @@ transform.sequence failures(propagate) {
   ^bb0(%arg1: !pdl.operation):
     %0 = transform.structured.match ops{["thlo.reverse"]} in %arg1
       : (!pdl.operation) -> !pdl.operation
-    %1, %loop = transform.structured.tile %0 [10]
+    %1, %loop = transform.structured.tile_using_for %0 [10]
       : (!pdl.operation) -> (!pdl.operation, !pdl.operation)
 }
 
@@ -380,7 +380,7 @@ transform.sequence failures(propagate) {
   ^bb0(%arg1: !pdl.operation):
     %0 = transform.structured.match ops{["thlo.reverse"]} in %arg1
       : (!pdl.operation) -> !pdl.operation
-    %1, %loops:2 = transform.structured.tile %0 [256, 512]
+    %1, %loops:2 = transform.structured.tile_using_for %0 [256, 512]
       : (!pdl.operation) -> (!pdl.operation, !pdl.operation, !pdl.operation)
 }
 

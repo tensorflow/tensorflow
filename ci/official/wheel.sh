@@ -25,6 +25,11 @@ if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
   tfrun python3 tensorflow/tools/ci_build/update_version.py --nightly
 fi
 
+# Download libtpu.so for tensorflow-tpu builds only.
+if [[ "$TFCI_LIBTPU_DOWNLOAD_ENABLE" == 1 ]]; then
+  wget -P ./tensorflow/lib/ "$TFCI_LIBTPU_DOWNLOAD_URL"
+fi
+
 tfrun bazel "${TFCI_BAZEL_BAZELRC_ARGS[@]}" build "${TFCI_BAZEL_COMMON_ARGS[@]}" //tensorflow/tools/pip_package:build_pip_package
 tfrun ./bazel-bin/tensorflow/tools/pip_package/build_pip_package "$TFCI_OUTPUT_DIR" "${TFCI_BUILD_PIP_PACKAGE_ARGS[@]}"
 tfrun ./ci/official/utilities/rename_and_verify_wheels.sh "$TFCI_OUTPUT_DIR"

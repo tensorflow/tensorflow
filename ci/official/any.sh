@@ -17,17 +17,18 @@
 #
 # 1. RUN, TEST, OR BUILD BAZEL TARGET(S) WITHIN A TFCI ENVIRONMENT
 #    To use:
-#       export TFCI=$(realpath ...)
+#       export TFCI=ci/official/envs/env_goes_here
 #       export TF_ANY_TARGETS="quoted list of targets, like on the command line"
 #       export TF_ANY_MODE="test" or "build" or "run" (default: "test")
 #       ./any.sh
 #
 # 2. RUN ANY OTHER SCRIPT AND ENV WITH NO SIDE EFFECTS (NO UPLOADS)
 #    To use:
-#       export TFCI=$(realpath ...)
-#       export TF_ANY_SCRIPT=$(realpath wheel.sh)
+#       export TFCI=ci/official/envs/env_goes_here
+#       export TF_ANY_SCRIPT=ci/official/wheel.sh
 #       ./any.sh
 set -euxo pipefail
+cd "$(dirname "$0")/../../"  # tensorflow/
 if [[ -n "${TF_ANY_SCRIPT:-}" ]]; then
   cp "$TFCI" any
   echo "source ci/official/envs/disable_all_uploads" >> any

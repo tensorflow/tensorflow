@@ -9331,6 +9331,18 @@ op {
   }
 }
 op {
+  name: "ComputeDedupDataSize"
+  output_arg {
+    name: "num_elements"
+    type: DT_INT32
+  }
+  attr {
+    name: "config"
+    type: "string"
+  }
+  is_stateful: true
+}
+op {
   name: "ComputeDedupDataTupleMask"
   output_arg {
     name: "output_shape"

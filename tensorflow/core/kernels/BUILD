@@ -41,6 +41,7 @@ load(
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
+    "if_rocm_hipblaslt",
 )
 
 # Description:
@@ -556,7 +557,7 @@ tf_cuda_library(
         "@local_xla//xla/stream_executor/gpu:redzone_allocator",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
-        "@local_xla//xla/stream_executor:tf_allocator_adapter",
+        "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
     ]),
 )
 
@@ -3471,16 +3472,18 @@ tf_kernel_library(
         ":loose_headers",
         "@local_tsl//tsl/framework/contraction:eigen_contraction_kernel",
     ] + mkl_deps() + if_cuda([
-        ":matmul_util",
         "@local_xla//xla/stream_executor/cuda:cublas_plugin",
-        "@local_xla//xla/stream_executor/gpu:gpu_asm_opts",
-        "@local_xla//xla/stream_executor/gpu:redzone_allocator",
-        "@local_xla//xla/stream_executor:tf_allocator_adapter",
-        "//tensorflow/core/profiler/lib:scoped_annotation",
+    ]) + if_rocm_hipblaslt([
+        "@local_xla//xla/stream_executor/rocm:hipblas_lt_header",
     ]) + if_cuda_or_rocm([
         ":conv_ops_gpu_hdrs",
         ":gpu_utils",
         ":conv_ops",
+        ":matmul_util",
+        "@local_xla//xla/stream_executor/gpu:gpu_asm_opts",
+        "@local_xla//xla/stream_executor/gpu:redzone_allocator",
+        "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
         ":numeric_options_utils",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/util/autotune_maps:conv_parameters",
@@ -3490,9 +3493,10 @@ tf_kernel_library(
 
 cc_library(
     name = "matmul_util",
-    srcs = if_cuda(["matmul_util.cc"]),
-    hdrs = if_cuda(["matmul_util.h"]),
-    deps = if_cuda([
+    srcs = ["matmul_util.cc"],
+    hdrs = ["matmul_util.h"],
+    local_defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
+    deps = if_cuda_or_rocm([
         "@com_google_absl//absl/container:flat_hash_map",
         "@local_xla//xla:status_macros",
         "@local_xla//xla/stream_executor/cuda:cublas_plugin",
@@ -3500,7 +3504,11 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:tensor_float_32_hdr_lib",
         "//tensorflow/core/util:env_var",
+    ]) + if_cuda([
         "@local_xla//xla/stream_executor/cuda:cublas_lt_header",
+    ]) + if_rocm([
+        "@local_xla//xla/stream_executor/platform:dso_loader",
+        "@local_xla//xla/stream_executor/rocm:hipblas_lt_header",
     ]) + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
 
@@ -3847,6 +3855,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 
@@ -4077,7 +4087,7 @@ tf_kernel_library(
         "@local_xla//xla/stream_executor/cuda:cublas_plugin",
         "@local_xla//xla/stream_executor/cuda:cudnn_plugin",
         "@local_xla//xla/stream_executor/gpu:gpu_asm_opts",
-        "@local_xla//xla/stream_executor:tf_allocator_adapter",
+        "@local_xla//xla/stream_executor/integrations:tf_allocator_adapter",
         "@local_xla//xla/stream_executor",
         "//tensorflow/core/platform:stream_executor",
     ]) + if_cuda_or_rocm([

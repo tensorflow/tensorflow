@@ -29,8 +29,6 @@ and library files in a hard-coded set of subdirectories from these base paths.
 If TF_CUDA_PATHS is not specified, a OS specific default is used:
 
   Linux:   /usr/local/cuda, /usr, and paths from 'ldconfig -p'.
-  Windows: CUDA_PATH environment variable, or
-           C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\*
 
 For backwards compatibility, some libraries also use alternative base
 directories from other environment variables if they are specified. List of
@@ -53,16 +51,9 @@ tf_<library>_header_dir: ...
 tf_<library>_library_dir: ...
 """
 
-# You can use the following command to regenerate the base64 version of this
-# script:
-# cat third_party/tensorflow/third_party/gpus/find_cuda_config.oss.py |
-#   pigz -z | base64 -w0 >
-#   third_party/tensorflow/third_party/gpus/find_cuda_config.py.gz.base64.oss
-
 import io
 import os
 import glob
-import platform
 import re
 import subprocess
 import sys
@@ -77,18 +68,6 @@ except ImportError:
 
 class ConfigError(Exception):
   pass
-
-
-def _is_linux():
-  return platform.system() == "Linux"
-
-
-def _is_windows():
-  return platform.system() == "Windows"
-
-
-def _is_macos():
-  return platform.system() == "Darwin"
 
 
 def _matches_version(actual_version, required_version):
@@ -140,8 +119,6 @@ def _cartesian_product(first, second):
 
 def _get_ld_config_paths():
   """Returns all directories from 'ldconfig -p'."""
-  if not _is_linux():
-    return []
   ldconfig_path = which("ldconfig") or "/sbin/ldconfig"
   output = subprocess.check_output([ldconfig_path, "-p"])
   pattern = re.compile(".* => (.*)")
@@ -162,13 +139,6 @@ def _get_default_cuda_paths(cuda_version):
   elif not "." in cuda_version:
     cuda_version = cuda_version + ".*"
 
-  if _is_windows():
-    return [
-        os.environ.get(
-            "CUDA_PATH",
-            "C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v%s\\" %
-            cuda_version)
-    ]
   return ["/usr/local/cuda-%s" % cuda_version, "/usr/local/cuda", "/usr",
          "/usr/local/cudnn"] + _get_ld_config_paths()
 
@@ -183,6 +153,7 @@ def _header_paths():
       "extras/CUPTI/include",
       "include/cuda/CUPTI",
       "local/cuda/extras/CUPTI/include",
+      "targets/x86_64-linux/include",
   ]
 
 
@@ -217,14 +188,8 @@ def _find_file(base_paths, relative_paths, filepattern):
 
 def _find_library(base_paths, library_name, required_version):
   """Returns first valid path to the requested library."""
-  if _is_windows():
-    filepattern = library_name + ".lib"
-  elif _is_macos():
-    filepattern = "%s*.dylib" % (".".join(["lib" + library_name] +
-                                          required_version.split(".")[:1]))
-  else:
-    filepattern = ".".join(["lib" + library_name, "so"] +
-                           required_version.split(".")[:1]) + "*"
+  filepattern = ".".join(["lib" + library_name, "so"] +
+                         required_version.split(".")[:1]) + "*"
   return _find_file(base_paths, _library_paths(), filepattern)
 
 
@@ -273,7 +238,7 @@ def _find_cuda_config(base_paths, required_version):
         return match.group(1)
     return None
 
-  nvcc_name = "nvcc.exe" if _is_windows() else "nvcc"
+  nvcc_name = "nvcc"
   nvcc_path, nvcc_version = _find_versioned_file(base_paths, [
       "",
       "bin",
@@ -288,6 +253,7 @@ def _find_cuda_config(base_paths, required_version):
   ], "libdevice*.10.bc")
 
   cupti_header_path = _find_file(base_paths, _header_paths(), "cupti.h")
+  nvml_header_dir = _find_file(base_paths, _header_paths(), "nvml.h")
   cupti_library_path = _find_library(base_paths, "cupti", required_version)
 
   cuda_binary_dir = os.path.dirname(nvcc_path)
@@ -312,6 +278,7 @@ def _find_cuda_config(base_paths, required_version):
       "cupti_include_dir": os.path.dirname(cupti_header_path),
       "cupti_library_dir": os.path.dirname(cupti_library_path),
       "cuda_toolkit_path": cuda_toolkit_paths[0],
+      "nvml_header_dir": os.path.dirname(nvml_header_dir),
   }
 
 
@@ -561,14 +528,6 @@ def _get_legacy_path(env_name, default=[]):
   return _list_from_env(env_name, default)
 
 
-def _normalize_path(path):
-  """Returns normalized path, with forward slashes on Windows."""
-  path = os.path.realpath(path)
-  if _is_windows():
-    path = path.replace("\\", "/")
-  return path
-
-
 def find_cuda_config():
   """Returns a dictionary of CUDA library and header file paths."""
   libraries = [argv.lower() for argv in sys.argv[1:]]
@@ -580,7 +539,9 @@ def find_cuda_config():
   result = {}
   if "cuda" in libraries:
     cuda_paths = _list_from_env("CUDA_TOOLKIT_PATH", base_paths)
-    result.update(_find_cuda_config(cuda_paths, cuda_version))
+    res = _find_cuda_config(cuda_paths, cuda_version)
+
+    result.update(res)
 
     cuda_version = result["cuda_version"]
     cublas_paths = base_paths
@@ -635,7 +596,7 @@ def find_cuda_config():
 
   for k, v in result.items():
     if k.endswith("_dir") or k.endswith("_path"):
-      result[k] = _normalize_path(v)
+      result[k] = os.path.realpath(v)
 
   return result
 

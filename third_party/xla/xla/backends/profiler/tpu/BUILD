@@ -20,6 +20,7 @@ cc_library(
         "//xla/stream_executor/tpu:tpu_profiler_init_fns",
         "//xla/stream_executor/tpu:tsl_status_helper",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/c:tsl_status",
         "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:types",

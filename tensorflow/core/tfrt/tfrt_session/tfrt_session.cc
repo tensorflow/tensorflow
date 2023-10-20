@@ -179,7 +179,7 @@ class TfrtSession : public tensorflow::Session {
     // without applying placer or grappler, it is OK for now because it's only
     // used for captured functions in certain tf.data ops
     const auto& fdef_lib = graph.library();
-    TF_ASSIGN_OR_RETURN(fallback_state_,
+    TF_ASSIGN_OR_RETURN(auto fallback_state,
                         tensorflow::tfrt_stub::FallbackState::Create(
                             session_options, fdef_lib));
 
@@ -200,7 +200,7 @@ class TfrtSession : public tensorflow::Session {
     TF_ASSIGN_OR_RETURN(
         graph_executor_,
         tensorflow::tfrt_stub::GraphExecutor::Create(
-            options, *fallback_state_, std::move(resource_context),
+            options, std::move(fallback_state), std::move(resource_context),
             std::move(graph), std::move(kernel_registry)));
 
     session_state_ = SessionState::kCreated;
@@ -471,8 +471,6 @@ class TfrtSession : public tensorflow::Session {
   const TfrtDeviceInfraTarget device_target_;
   const bool tpu_use_tpu_runner_;
   TfrtSessionInterOpThreadPools inter_op_thread_pools_;
-
-  std::unique_ptr<tfrt_stub::FallbackState> fallback_state_;
 
   mutable absl::Mutex callables_lock_;
   CallableHandle next_callable_handle_ TF_GUARDED_BY(callables_lock_) = 0;

@@ -2637,7 +2637,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           conc_args=lambda: (1, 2),
           conc_kwargs=lambda: {'c': constant_op.constant(1.0)},
           call_args=lambda: (1, 2),
-          error=r'missing a required argument: \'c\'',
+          error=r'missing a required( keyword-only)? argument: \'c\'',
       ),
       dict(
           testcase_name='ExtraKeywordArg',

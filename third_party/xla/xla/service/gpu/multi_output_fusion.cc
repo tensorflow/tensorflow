@@ -30,13 +30,13 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_reachability.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/gpu/gpu_fusible.h"
-#include "xla/service/gpu/gpu_hlo_cost_analysis.h"
-#include "xla/service/gpu/gpu_performance_model.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/gpu_performance_model.h"
 #include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -103,7 +103,7 @@ FusionDecision ParameterSlicesAreNonOverlapping(const HloInstruction& instr1,
 
 FusionDecision LegalToFuse(const HloInstruction& instr1,
                            const HloInstruction& instr2,
-                           const GpuDeviceInfo& device_info,
+                           const se::DeviceDescription& device_info,
                            FusionInfoCache* fusion_info_cache) {
   CHECK(instr1.opcode() == HloOpcode::kFusion);
 

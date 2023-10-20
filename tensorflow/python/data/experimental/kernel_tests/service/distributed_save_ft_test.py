@@ -16,6 +16,7 @@
 import collections
 import os
 import pathlib
+import shutil
 import tempfile
 import time
 
@@ -161,6 +162,32 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
           ds, self._path, cluster.dispatcher_address()
       ))
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testRecoversTempSplits(self):
+    cluster, _ = self.setup(ds_size=1000, num_sources=3)
+    # Waits for the split files to be written.
+    source_dir = os.path.join(
+        self._path, "streams", "stream_0", "splits", "source_0", "repetition_0"
+    )
+    while not (
+        os.path.exists(source_dir)
+        and any(not f.endswith(".tmp") for f in os.listdir(source_dir))
+    ):
+      time.sleep(0.1)
+    split_files = [f for f in os.listdir(source_dir) if not f.endswith(".tmp")]
+    split_file = split_files[0]
+    temp_split_file = f"{split_files[0]}__TMP_FILE__uuid.tmp"
+    shutil.move(
+        os.path.join(source_dir, split_file),
+        os.path.join(source_dir, temp_split_file),
+    )
+
+    self.assertNotIn(split_file, os.listdir(source_dir))
+    self.assertIn(temp_split_file, os.listdir(source_dir))
+    cluster.restart_dispatcher()
+    self.assertIn(split_file, os.listdir(source_dir))
+    self.assertNotIn(temp_split_file, os.listdir(source_dir))
+
   # TODO(b/250921378): Figure out why tsan times out when there is a worker.
   @combinations.generate(
       combinations.times(
@@ -173,7 +200,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
   def testSnapshotRecoveryFailsWithBadStreamName(self, bad_stream_dir_name):
     cluster, _ = self.setup(num_workers=0)
     self._make_stream_dir(bad_stream_dir_name)
-    with self.assertRaisesRegex(ValueError, "Can't parse"):
+    with self.assertRaisesRegex(RuntimeError, "Can't parse"):
       cluster.restart_dispatcher()
 
   @combinations.generate(
@@ -187,14 +214,14 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
   def testSnapshotRecoveryFailsWithBadSourceName(self, bad_source_dir_name):
     cluster, _ = self.setup(num_workers=0)
     os.makedirs(os.path.join(self.splits_dir(), bad_source_dir_name))
-    with self.assertRaisesRegex(ValueError, "Can't parse"):
+    with self.assertRaisesRegex(RuntimeError, "Can't parse"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.default_test_combinations())
   def testSnapshotRecoveryFailsWithOutOfBoundsSourceName(self):
     cluster, _ = self.setup(num_workers=0)
     os.makedirs(os.path.join(self.splits_dir(), "source_1"))
-    with self.assertRaisesRegex(ValueError, "Found conflict"):
+    with self.assertRaisesRegex(RuntimeError, "Found conflict"):
       cluster.restart_dispatcher()
 
   @combinations.generate(
@@ -215,7 +242,8 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     cluster, _ = self.setup(num_workers=0)
     write_file(os.path.join(self.source_dir(), bad_split_filename))
     with self.assertRaisesRegex(
-        ValueError, "Expected split_<local_split_index>_<global_split_index>"):
+        ValueError,
+        "Expected split_<local_split_index>_<global_split_index>"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.default_test_combinations())
@@ -223,14 +251,15 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     cluster, _ = self.setup(num_workers=0)
     write_file(os.path.join(self.source_dir(), "split_1_0"))
     with self.assertRaisesRegex(
-        ValueError, "The local split index 1 exceeds the global split index 0"):
+        ValueError,
+        "The local split index 1 exceeds the global split index 0"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.default_test_combinations())
   def testSnapshotRecoveryFailsWithMissingGlobalIndexInSplitNames(self):
     cluster, _ = self.setup(num_workers=0)
     write_file(os.path.join(self.source_dir(), "split_0_1"))
-    with self.assertRaisesRegex(ValueError, "Found missing global"):
+    with self.assertRaisesRegex(RuntimeError, "Found missing global"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.default_test_combinations())
@@ -240,7 +269,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     write_file(
         os.path.join(self.source_dir(stream_idx=1, worker=1), "split_0_1")
     )
-    with self.assertRaisesRegex(ValueError, "Found duplicate global"):
+    with self.assertRaisesRegex(RuntimeError, "Found duplicate global"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.default_test_combinations())
@@ -248,7 +277,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     cluster, _ = self.setup(num_workers=0)
     write_file(os.path.join(self.source_dir(stream_idx=0), "split_0_1"))
     write_file(os.path.join(self.source_dir(stream_idx=1), "split_0_1"))
-    with self.assertRaisesRegex(ValueError, "worker is already assigned"):
+    with self.assertRaisesRegex(RuntimeError, "worker is already assigned"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.default_test_combinations())
@@ -349,25 +378,30 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     self.assertTrue(self._snapshot_is_done())
     # TODO(b/250921378): Verify the number of elements.
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testRepeatedDatasetRecoversAndCompletes(self):
-    cluster = data_service_test_base.TestCluster(num_workers=3)
-    ds = dataset_ops.Dataset.range(100)
-    ds = ds.repeat(10)
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_workers=[1, 3], num_repetitions=[1, 10])))
+  def testRepeatedDatasetRecoversAndCompletes(
+      self, num_workers, num_repetitions):
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
+    ds = dataset_ops.Dataset.range(1000)
+    ds = ds.repeat(num_repetitions)
     self.evaluate(distributed_save_op.distributed_save(
         ds, self._path, cluster.dispatcher_address()))
 
     # Blocks until all workers have streams.
-    get_stream_assignments(cluster, 3, [self._path])
+    get_stream_assignments(cluster, num_workers, [self._path])
     cluster.stop_worker(0)
     cluster.restart_dispatcher()
-    cluster.restart_worker(0)
+    for worker_idx in range(num_workers):
+      cluster.restart_worker(worker_idx)
     self._wait_for_snapshot()
     self.assertTrue(self._snapshot_is_done())
 
     dataset = dataset_ops.Dataset.load(self._path)
     self.assertDatasetProduces(
-        dataset, list(range(100)) * 10, assert_items_equal=True)
+        dataset, list(range(1000)) * num_repetitions, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
   def testNonrepeatedDatasetDoesntProduceSecondRepetitionDir(self):

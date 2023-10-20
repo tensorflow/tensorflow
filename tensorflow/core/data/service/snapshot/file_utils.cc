@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
@@ -38,12 +39,13 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+constexpr const char kTempFileDelimitor[] = "__TMP_FILE__";
 constexpr const char kTempFileSuffix[] = ".tmp";
 
 absl::Status AtomicallyWrite(
     absl::string_view filename, tsl::Env* env,
     absl::FunctionRef<tsl::Status(const std::string&)> nonatomically_write) {
-  std::string uncommitted_filename(filename);
+  std::string uncommitted_filename = absl::StrCat(filename, kTempFileDelimitor);
   if (!env->CreateUniqueFileName(&uncommitted_filename, kTempFileSuffix)) {
     return tsl::errors::Internal("Failed to write file ", filename,
                                  ": Unable to create temporary files.");
@@ -107,12 +109,26 @@ absl::Status AtomicallyWriteTFRecords(absl::string_view filename,
                                          std::string(compression));
     TF_RETURN_IF_ERROR(writer.Initialize(env));
     TF_RETURN_IF_ERROR(writer.WriteTensors(tensors));
-    return absl::OkStatus();
+    return writer.Close();
   };
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       AtomicallyWrite(filename, env, nonatomically_write),
       " Requested to atomically write TF record file: ", filename);
   return absl::OkStatus();
+}
+
+absl::Status AtomicallyWriteTFRecords(absl::string_view filename,
+                                      const std::vector<Tensor>& tensors,
+                                      absl::string_view compression,
+                                      absl::string_view temp_file,
+                                      tsl::Env* env) {
+  snapshot_util::TFRecordWriter writer(std::string(temp_file),
+                                       std::string(compression),
+                                       /*overwrite_existing=*/true);
+  TF_RETURN_IF_ERROR(writer.Initialize(env));
+  TF_RETURN_IF_ERROR(writer.WriteTensors(tensors));
+  TF_RETURN_IF_ERROR(writer.Close());
+  return env->RenameFile(std::string(temp_file), std::string(filename));
 }
 
 absl::StatusOr<std::vector<std::string>> GetChildren(
@@ -134,6 +150,22 @@ absl::StatusOr<std::vector<std::string>> GetChildren(
 
 bool IsTemporaryFile(absl::string_view filename) {
   return absl::EndsWith(filename, kTempFileSuffix);
+}
+
+absl::StatusOr<std::string> ParseTemporaryFile(absl::string_view filename) {
+  if (!IsTemporaryFile(filename)) {
+    return absl::InternalError(absl::StrCat(
+        "Trying to parse temporary file ", filename,
+        " but the file is not temporary. This is likely a program bug."));
+  }
+
+  std::vector<std::string> parts = absl::StrSplit(filename, kTempFileDelimitor);
+  if (parts.size() < 2) {
+    return absl::InternalError(absl::StrCat("Failed to parse temporary file ",
+                                            filename,
+                                            ". This is likely a program bug."));
+  }
+  return parts[0];
 }
 
 }  // namespace data

@@ -839,16 +839,15 @@ std::vector<std::pair<int64_t, const HloValue*>> TopKPeakBuffers(
   return topk_descending;
 }
 
-std::string BufferAssignment::ToVerboseString() const {
-  // TODO(loreno): make this tunable via flag.
-  const size_t kMaxBuffersToShow = 15;
+std::string BufferAssignment::ToVerboseString(
+    size_t max_buffers_to_show) const {
   std::string output =
       absl::StrCat("BufferAssignment OOM Debugging.\n", stats_.ToString());
 
   std::vector<std::pair<int64_t, const HloValue*>> peak_buffers =
-      TopKPeakBuffers(kMaxBuffersToShow, allocations_);
+      TopKPeakBuffers(max_buffers_to_show, allocations_);
   std::vector<std::string> buf_strs;
-  for (size_t i = 0; i < std::min(kMaxBuffersToShow, peak_buffers.size());
+  for (size_t i = 0; i < std::min(max_buffers_to_show, peak_buffers.size());
        ++i) {
     const HloValue* value = peak_buffers[i].second;
     const HloInstruction* instr = value->instruction();
@@ -1063,13 +1062,14 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     std::unique_ptr<PresetAssignments> preset_assignments,
     const PrivateStacks& private_stacks,
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
-        heap_buffer_interval_compare) {
+        heap_buffer_interval_compare,
+    std::optional<BufferAssignment::BufferIsolationOptions> isolation_options) {
   BufferAssigner assigner(allocate_buffers_for_constants, std::move(colorer),
                           must_not_live_out, std::move(preset_assignments));
   return assigner.CreateAssignment(
       module, std::move(hlo_ordering), std::move(buffer_size),
       std::move(color_alignment), std::move(can_share_buffer), private_stacks,
-      heap_buffer_interval_compare);
+      heap_buffer_interval_compare, isolation_options);
 }
 
 bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
@@ -1600,7 +1600,8 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     bool run_whole_module_heap_simulation, BufferAssignment* assignment,
     const PrivateStacks& private_stacks,
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
-        heap_buffer_interval_compare) {
+        heap_buffer_interval_compare,
+    std::optional<BufferAssignment::BufferIsolationOptions> isolation_options) {
   // Run the sequence of instructions through the heap simulator.  The
   // heuristic that seems to give the best results is lazy-best-fit, with all
   // runs of alloc / free calls sorted in decreasing size order.
@@ -1683,8 +1684,8 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
                   get_heap_algorithm(alignment), *private_stack_computation,
                   *instruction_sequence, assignment->alias_analysis(),
                   assignment->buffer_size_, &schedule, options));
-          AssignBuffersFromHeapSimulator(result, assignment,
-                                         single_colored_set.first);
+          AssignBuffersFromHeapSimulator(
+              result, assignment, single_colored_set.first, isolation_options);
         }
       } else {
         options.buffers_to_assign = &single_colored_set.second;
@@ -1694,8 +1695,8 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
                                assignment->module(), schedule,
                                assignment->alias_analysis(),
                                assignment->buffer_size_, options));
-        AssignBuffersFromHeapSimulator(result, assignment,
-                                       single_colored_set.first);
+        AssignBuffersFromHeapSimulator(
+            result, assignment, single_colored_set.first, isolation_options);
       }
     }
   } else {
@@ -1722,8 +1723,8 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
                                *instruction_sequence,
                                assignment->alias_analysis(),
                                assignment->buffer_size_, options));
-        AssignBuffersFromHeapSimulator(result, assignment,
-                                       single_colored_set.first);
+        AssignBuffersFromHeapSimulator(
+            result, assignment, single_colored_set.first, isolation_options);
       }
     }
   }
@@ -1855,9 +1856,73 @@ std::vector<const HloValue*> ComputePeakMemoryLogicalBuffers(
 
 }  // namespace
 
+void BufferAssigner::IsolateHeapBuffers(
+    std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
+    const BufferAssignment* assignment, LogicalBuffer::Color color,
+    HeapSimulator::Result<HloValue>& result) const {
+  if (!isolation_options) {
+    return;
+  }
+
+  result.heap_size = 0;
+  for (HeapSimulator::HeapResult<HloValue>& heap_result : result.heap_results) {
+    if (absl::c_find(isolation_options->config.isolation_colors(), color) !=
+        isolation_options->config.isolation_colors().end()) {
+      VLOG(1) << "Isolating color: " << color;
+      int64_t alignment = assignment->color_alignment_(color);
+      // First, sort the values by the provided comparison function.
+      std::vector<const HloValue*> sorted_values;
+      sorted_values.reserve(heap_result.chunk_map.size());
+      for (const auto& [value, chunk] : heap_result.chunk_map) {
+        sorted_values.push_back(value);
+      }
+      absl::c_sort(sorted_values, isolation_options->hlo_value_compare);
+
+      // Calculate the offset to place the next isolated buffer.
+      int64_t isolation_offset =
+          RoundUpTo(isolation_options->config.base_offset_bytes() +
+                        heap_result.heap_size +
+                        isolation_options->config.isolation_padding_bytes(),
+                    alignment);
+      int64_t value_index;
+      // Iterate on the buffers up to the size of values or the fuel, whichever
+      // is smaller.
+      for (value_index = 0;
+           value_index < std::min(static_cast<int64_t>(sorted_values.size()),
+                                  isolation_options->config.isolation_fuel());
+           ++value_index) {
+        const HloValue* value = sorted_values[value_index];
+        HeapSimulator::Chunk& chunk = heap_result.chunk_map.at(value);
+        VLOG(1) << "Isolating " << value->ToShortString() << " from "
+                << chunk.offset << " to " << isolation_offset;
+        chunk.offset = isolation_offset;
+        isolation_offset += RoundUpTo(
+            chunk.size + isolation_options->config.isolation_padding_bytes(),
+            alignment);
+      }
+      // For the values that aren't isolated, adjust the offset by the provided
+      // base offset.
+      for (; value_index < sorted_values.size(); ++value_index) {
+        const HloValue* value = sorted_values[value_index];
+        HeapSimulator::Chunk& chunk = heap_result.chunk_map.at(value);
+        int64_t new_offset = RoundUpTo(
+            chunk.offset + isolation_options->config.base_offset_bytes(),
+            alignment);
+        VLOG(1) << "Not isolating " << value->ToShortString() << ", from "
+                << chunk.offset << " to " << new_offset;
+        chunk.offset = new_offset;
+      }
+      heap_result.heap_size = isolation_offset;
+    }
+    result.heap_size += heap_result.heap_size;
+  }
+}
+
 void BufferAssigner::AssignBuffersFromHeapSimulator(
-    const HeapSimulator::Result<HloValue>& result, BufferAssignment* assignment,
-    BufferValue::Color color) {
+    HeapSimulator::Result<HloValue>& result, BufferAssignment* assignment,
+    BufferValue::Color color,
+    std::optional<BufferAssignment::BufferIsolationOptions> isolation_options) {
+  IsolateHeapBuffers(isolation_options, assignment, color, result);
   if (assignment->stats_.preallocated_temp_fragmentation_bytes == -1) {
     assignment->stats_.preallocated_temp_fragmentation_bytes =
         result.fragmentation_size;
@@ -1873,10 +1938,9 @@ void BufferAssigner::AssignBuffersFromHeapSimulator(
        result.heap_results) {
     BufferAllocation* allocation =
         assignment->NewEmptyAllocation(heap_result.heap_size, color);
-    for (const auto& buffer_chunk : heap_result.chunk_map) {
-      const HloValue& value = *buffer_chunk.first;
-      const HeapSimulator::Chunk& chunk = buffer_chunk.second;
-      assignment->AddAssignment(allocation, value, chunk.offset, chunk.size);
+
+    for (const auto& [value, chunk] : heap_result.chunk_map) {
+      assignment->AddAssignment(allocation, *value, chunk.offset, chunk.size);
     }
     allocation->peak_buffers_ =
         ComputePeakMemoryLogicalBuffers(*allocation, result.debug_trace);
@@ -1894,7 +1958,8 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
     HloDataflowAnalysis::CanShareBuffer can_share_buffer,
     const PrivateStacks& private_stacks,
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
-        heap_buffer_interval_compare) {
+        heap_buffer_interval_compare,
+    std::optional<BufferAssignment::BufferIsolationOptions> isolation_options) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, can_share_buffer));
 
@@ -1960,7 +2025,8 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
           << multiheap_size_constraint_per_heap;
   TF_RETURN_IF_ERROR(AssignBuffersWithSequentialOrdering(
       buffers_to_assign_sequentially, run_whole_module_heap_simulation,
-      assignment.get(), private_stacks, heap_buffer_interval_compare));
+      assignment.get(), private_stacks, heap_buffer_interval_compare,
+      isolation_options));
 
   std::vector<const HloComputation*> thread_local_computations_no_fusion;
   // Now assign buffers for thread-local computations. All LogicalBuffers get

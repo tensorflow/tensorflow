@@ -14,14 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/kernel_arguments.h"
 
-#include <utility>
 #include <optional>
+#include <utility>
+#include <vector>
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "xla/mlir_hlo/transforms/gpu_passes.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -53,6 +57,23 @@ StatusOr<KernelArguments> KernelArguments::Create(
     kernel_arguments.emplace_back(std::move(arg));
   }
 
+  return KernelArguments{std::move(kernel_arguments)};
+}
+
+StatusOr<KernelArguments> KernelArguments::Create(
+    const BufferAssignment& buffer_assignment,
+    const HloFusionInstruction* fusion) {
+  std::vector<KernelArgument> kernel_arguments;
+  for (const HloInstruction* operand : fusion->operands()) {
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                        buffer_assignment.GetUniqueSlice(operand, {}));
+    kernel_arguments.emplace_back(
+        KernelArgument(nullptr, operand->shape(), slice, false));
+  }
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                      buffer_assignment.GetUniqueSlice(fusion, {}));
+  kernel_arguments.emplace_back(
+      KernelArgument(nullptr, fusion->shape(), slice, true));
   return KernelArguments{std::move(kernel_arguments)};
 }
 

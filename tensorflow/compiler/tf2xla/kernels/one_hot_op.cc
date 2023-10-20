@@ -73,7 +73,8 @@ class OneHotOp : public XlaOpKernel {
  private:
   int32 axis_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(OneHotOp);
+  OneHotOp(const OneHotOp&) = delete;
+  void operator=(const OneHotOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("OneHot").CompileTimeConstantInput("depth"), OneHotOp);

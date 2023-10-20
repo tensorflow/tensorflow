@@ -65,7 +65,6 @@ def CompileAndExecuteOp : TensorflowMlrtTpu_Op<"compile_and_execute"> {
     StrAttr:$metadata,
     StrAttr:$mlir_module,
     UI32Attr:$num_operands,
-    UI32Attr:$num_operands_per_execute,
     DenseI32ArrayAttr:$operands_with_static_shape,
     StrAttr:$producer_name
   );

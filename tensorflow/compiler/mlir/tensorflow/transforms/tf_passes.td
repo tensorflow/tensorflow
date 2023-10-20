@@ -249,6 +249,10 @@ def TPUVariableRuntimeReformattingPass : Pass<"tf-tpu-variable-runtime-reformatt
       }
     ```
   }];
+  let dependentDialects = [
+    "mhlo::MhloDialect",
+    "tf_device::TensorFlowDeviceDialect"
+  ];
 }
 
 def TPUShardingIdentificationPass : Pass<"tf-tpu-sharding-identification", "ModuleOp"> {
@@ -437,6 +441,11 @@ def EmbeddingProgramKeyPass : Pass<"tf-embedding-program-key", "mlir::func::Func
      }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> ()
    ```
   }];
+
+  let dependentDialects = [
+    "mhlo::MhloDialect",
+    "tf_device::TensorFlowDeviceDialect"
+  ];
 }
 
 def EmbeddingSequencingPass : Pass<"tf-embedding-sequencing", "mlir::ModuleOp"> {
@@ -1709,6 +1718,10 @@ def TPURewritePass : Pass<"tf-tpu-rewrite", "ModuleOp"> {
            "Whether to serialize TPUCompileMetadataProto metadata in 'tf._TPUCompileMlir' op as a proto debug string">
   ];
 
+  let dependentDialects = [
+    "mhlo::MhloDialect",
+    "tf_device::TensorFlowDeviceDialect"
+  ];
   let constructor = "TFTPU::CreateTPURewritePass()";
 }
 
@@ -1849,6 +1862,11 @@ def TPUMergeVariablesWithExecutePass : Pass<"tf-tpu-merge-variables-with-execute
     as the `TPUExecute` op.
   }];
 
+  let dependentDialects = [
+    "mhlo::MhloDialect",
+    "tf_device::TensorFlowDeviceDialect"
+  ];
+
   let constructor = "TFTPU::CreateTPUMergeVariablesWithExecutePass()";
 }
 
@@ -1862,6 +1880,11 @@ def ExtractTPUCopyWithDynamicShapeOpPass : Pass<"tf-extract-tpu-copy-with-dynami
     run on TPU instead of CPU while still being compiled on host.
   }];
 
+  let dependentDialects = [
+    "mhlo::MhloDialect",
+    "tf_device::TensorFlowDeviceDialect"
+  ];
+
   let constructor = "TFTPU::CreateExtractTPUCopyWithDynamicShapeOpPass()";
 }
 
@@ -1874,6 +1897,8 @@ def TPUAnnotateDynamicShapeInputsPass : Pass<"tf-tpu-annotate-dynamic-shape-inpu
     that the generated HLO program is correctly reflecting the dynamic shape.
   }];
 
+  // Required for mhlo bounded shape extension.
+  let dependentDialects = ["mhlo::MhloDialect"];
   let constructor = "TFTPU::CreateTPUAnnotateDynamicShapeInputsPass()";
 }
 
@@ -1930,6 +1955,11 @@ def ReplicateInvariantOpHoistingPass : Pass<"tf-replicate-invariant-op-hoisting"
     }
     ```
   }];
+
+  let dependentDialects = [
+    "mhlo::MhloDialect",
+    "tf_device::TensorFlowDeviceDialect"
+  ];
 
   let constructor = "TFDevice::CreateReplicateInvariantOpHoistingPass()";
 }
@@ -2416,6 +2446,10 @@ def TPUColocateCompositeResourceOpsPass : Pass<"tf-tpu-colocate-composite-resour
       }) {...} : () -> tensor<4xf32>
     ```
   }];
+  let dependentDialects = [
+    "mhlo::MhloDialect",
+    "tf_device::TensorFlowDeviceDialect"
+  ];
 }
 
 def TPUDevicePropagationPass : Pass<"tf-tpu-device-propagation", "mlir::func::FuncOp"> {
@@ -2795,4 +2829,47 @@ def ColocateTPUCopyWithDynamicShapePass : Pass<"tf-colocate-tpu-copy-with-dynami
     op.
   }];
   let constructor = "TFTPU::CreateColocateTPUCopyWithDynamicShapePass()";
+}
+
+def PrintPass : Pass<"tf-print", "ModuleOp"> {
+  let summary = "Prints the current module.";
+  let description = [{
+    This prints the current module (by default, to stderr). The module is
+    otherwise piped through without changes.
+
+    This complements MLIRs dumping functionality, which can sometimes be hard
+    to configure. This pass is useful if you know the exact position in the
+    pipeline where you want to dump, and are able to easily modify the pipeline
+    source code.
+  }];
+  let constructor = "TF::CreatePrintPass()";
+}
+
+def MoveTpuCompileToFrontPass : Pass<"tf-move-tpu-compile-to-front", "mlir::func::FuncOp"> {
+  let summary = "Moves compile ops to the front.";
+  let description = [{
+    Moves all _TPUCompileMlir ops as far to the front as possible. For example,
+    if we have:
+
+      %0 = "tf.OpA"(...)
+      %1 = "tf._TPUCompileMlir"(...)
+      %2 = "tf.OpB"(...)
+      "SomeRegionOp"() ({
+        "tf._TPUCompileMlir"(...)
+      })
+
+   then after the pass, this will have been transformed to:
+
+      %1 = "tf._TPUCompileMlir"(...)
+      "SomeRegionOp"() ({
+        "tf._TPUCompileMlir"(...)
+      })
+      %0 = "tf.OpA"(...)
+      %2 = "tf.OpB"(...)
+
+    Note that this will only move the ops if it's possible to do so. If there's
+    a data or control dependency prevening the reordering, it will leave the ops
+    where they are.
+  }];
+  let constructor = "TF::CreateMoveTpuCompileToFrontPass()";
 }

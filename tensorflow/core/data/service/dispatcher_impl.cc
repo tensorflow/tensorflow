@@ -91,11 +91,11 @@ constexpr char kDatasetsDir[] = "datasets";
 // than two snapshots at a time across all ongoing snapshots. Allowing two
 // concurrent streams, rather than one, helps minimize a worker's inactivity
 // between completing a stream and getting assigned a new one.
-constexpr int kDefaultWorkerMaxConcurrentSnapshots = 2;
+constexpr int kDefaultWorkerMaxConcurrentSnapshots = 3;
 
 constexpr absl::Duration kDefaultIterationGcCheckInterval = absl::Minutes(10);
 constexpr absl::Duration kDefaultIterationGcTimeout = absl::Minutes(5);
-constexpr absl::Duration kDefaultClientTimeout = absl::Minutes(2);
+constexpr absl::Duration kDefaultClientTimeout = absl::Minutes(5);
 constexpr absl::Duration kDefaultWorkerTimeout = absl::Minutes(10);
 
 constexpr std::array<const char*, 8> kNodeNameSharingOps = {

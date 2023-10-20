@@ -1127,6 +1127,27 @@ TEST_F(FusionMergerTest, MergeDUSFusionWithElementwiseFusion) {
   EXPECT_TRUE(fusion_merger_.Run(module.get()).value());
 }
 
+TEST_F(FusionMergerTest, DoNotMergeTwoReduces) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    add {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add.13235 = f32[] add(p0, p1)
+    }
+
+    ENTRY main {
+      p0 = f32[8,4,128,226]{3,2,1,0} parameter(0)
+      c0 = f32[] constant(0)
+      r0 = f32[8,4,128]{2,1,0} reduce(p0, c0), dimensions={3}, to_apply=add
+      ROOT r1 = f32[8,4]{1,0} reduce(r0, c0), dimensions={2}, to_apply=add
+    }
+    )")
+                    .value();
+  EXPECT_FALSE(fusion_merger_.Run(module.get()).value());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

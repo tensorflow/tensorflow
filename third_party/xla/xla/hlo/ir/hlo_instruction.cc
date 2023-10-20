@@ -51,6 +51,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
+#include "xla/hlo/ir/hlo_frontend_attributes.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_op_metadata.h"
@@ -3054,7 +3055,8 @@ void PrintNameInternal(Printer* printer, absl::string_view name,
   printer->Append(PrintName(name, options.print_ids()));
 }
 
-void PrintCycle(const HloInstruction* child, DFSStack* dfs_stack) {
+std::string PrintCycle(const HloInstruction* child, DFSStack* dfs_stack,
+                       bool ignore_control_predecessors) {
   // This set contains HloInstructions from the top of `DFSStack` that might
   // belong to the cycle, i.e. if  DFSStack :=[back,...,child,...,top], then
   // `subgraph` := {child,...,top}.
@@ -3067,30 +3069,41 @@ void PrintCycle(const HloInstruction* child, DFSStack* dfs_stack) {
   absl::flat_hash_set<const HloInstruction*> visited;
   absl::InlinedVector<const HloInstruction*, 16> dfs;
   dfs.push_back(child);
-  while (!dfs.empty()) {
+  std::string result;
+  while (!dfs.empty() && result.empty()) {
     bool found_next_instr = false;
-    for (const auto& user : dfs.back()->users()) {
-      if (user == child) {
-        dfs.push_back(child);
-        LOG(INFO) << "\n\nDirected cycle:\n  "
-                  << absl::StrJoin(
-                         dfs, "\n  ",
-                         [](std::string* out, const HloInstruction* instr) {
-                           absl::StrAppend(out, instr->name());
-                         });
-        return;
-      }
-      if (!subgraph.contains(user) || visited.contains(user)) {
-        continue;
-      }
-      visited.insert(user);
-      dfs.push_back(user);
-      found_next_instr = true;
+    auto process_users_or_successors =
+        [&](const std::vector<HloInstruction*>& users_or_successors) {
+          for (const auto& user : users_or_successors) {
+            if (user == child) {
+              dfs.push_back(child);
+              result = "\n\nDirected cycle:\n  " +
+                       absl::StrJoin(
+                           dfs, "\n ",
+                           [](std::string* out, const HloInstruction* instr) {
+                             absl::StrAppend(out, instr->name());
+                           });
+              return;
+            }
+            if (!subgraph.contains(user) || visited.contains(user)) {
+              continue;
+            }
+            visited.insert(user);
+            dfs.push_back(user);
+            found_next_instr = true;
+          }
+        };
+    const HloInstruction* back = dfs.back();
+    process_users_or_successors(back->users());
+    if (!ignore_control_predecessors) {
+      process_users_or_successors(back->control_successors());
     }
     if (!found_next_instr) {
       dfs.pop_back();
     }
   }
+
+  return result;
 }
 
 }  // namespace
@@ -4027,20 +4040,20 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
     const size_t old_dfs_stack_size = dfs_stack.size();
     for (HloInstruction* child : current_node->operands()) {
       if (!ABSL_PREDICT_TRUE(PushDFSChild(visitor, &dfs_stack, child))) {
-        PrintCycle(child, &dfs_stack);
         return FailedPrecondition(
-            "A cycle is detected while visiting instruction %s",
-            current_node->ToString());
+            "A cycle is detected while visiting instruction %s %s",
+            current_node->ToString(),
+            PrintCycle(child, &dfs_stack, ignore_control_predecessors));
       }
     }
 
     if (!ignore_control_predecessors) {
       for (HloInstruction* child : current_node->control_predecessors()) {
         if (!ABSL_PREDICT_TRUE(PushDFSChild(visitor, &dfs_stack, child))) {
-          PrintCycle(child, &dfs_stack);
           return FailedPrecondition(
-              "A cycle is detected while visiting instruction %s",
-              current_node->ToString());
+              "A cycle is detected while visiting instruction %s %s",
+              current_node->ToString(),
+              PrintCycle(child, &dfs_stack, ignore_control_predecessors));
         }
       }
     }
@@ -4055,10 +4068,11 @@ static Status PostOrderDFS(HloInstruction* root, Visitor* visitor,
             called_computation->root_instruction();
         if (!ABSL_PREDICT_TRUE(
                 PushDFSChild(visitor, &dfs_stack, root_instruction))) {
-          PrintCycle(root_instruction, &dfs_stack);
           return FailedPrecondition(
-              "A cycle is detected while visiting instruction %s",
-              current_node->ToString());
+              "A cycle is detected while visiting instruction %s %s",
+              current_node->ToString(),
+              PrintCycle(root_instruction, &dfs_stack,
+                         ignore_control_predecessors));
         }
       }
     }
@@ -4310,21 +4324,6 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
     return HloInstruction::FusionKind::kCustom;
   }
   return InvalidArgument("Unknown fusion kind: %s", kind_name);
-}
-
-std::string FrontendAttributesToString(
-    const FrontendAttributes& frontend_attributes) {
-  std::vector<std::pair<std::string, std::string>> sorted_attributes(
-      frontend_attributes.map().begin(), frontend_attributes.map().end());
-  absl::c_sort(sorted_attributes);
-  // Frontend attribute is a comma-separated list of attribute="value" pairs,
-  // e.g., frontend_attributes={name="value_a",type="int32_t"}.
-  const auto formatter = [](std::string* out,
-                            const std::pair<std::string, std::string>& item) {
-    absl::StrAppend(out, item.first, "=\"", item.second, "\"");
-  };
-  return absl::StrFormat("{%s}",
-                         absl::StrJoin(sorted_attributes, ",", formatter));
 }
 
 std::string StatisticsVizToString(const StatisticsViz& statistics_viz) {

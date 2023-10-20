@@ -731,6 +731,11 @@ class Translator {
       mlir::stablehlo::ScatterOp shlo_op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
+  std::optional<BufferOffset<tflite::Operator>> BuildStablehloRngBitGeneratorOp(
+      mlir::stablehlo::RngBitGeneratorOp rng_op,
+      const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
+
   // create a subgraph given a unnamed mlir region, return the corresponding
   // subgraph index
   int32_t UnnamedRegionToSubgraph(mlir::Region* region,
@@ -1478,6 +1483,34 @@ Translator::BuildStablehloScatterOp(mlir::stablehlo::ScatterOp scatter_op,
       tflite::BuiltinOptions2_StablehloScatterOptions, options.Union());
 }
 
+std::optional<BufferOffset<tflite::Operator>>
+Translator::BuildStablehloRngBitGeneratorOp(
+    mlir::stablehlo::RngBitGeneratorOp rng_op,
+    const std::vector<int32_t>& operands, const std::vector<int32_t>& results) {
+  std::string op_name = rng_op.getOperation()->getName().getStringRef().str();
+  uint32_t opcode_index = GetOpcodeIndex(
+      op_name, tflite::BuiltinOperator_STABLEHLO_RNG_BIT_GENERATOR);
+  tflite::RngAlgorithm algorithm = tflite::RngAlgorithm_DEFAULT;
+  switch (rng_op.getRngAlgorithm()) {
+    case mlir::stablehlo::RngAlgorithm::THREE_FRY:
+      algorithm = tflite::RngAlgorithm_THREEFRY;
+      break;
+    case mlir::stablehlo::RngAlgorithm::PHILOX:
+      algorithm = tflite::RngAlgorithm_PHILOX;
+      break;
+    case mlir::stablehlo::RngAlgorithm::DEFAULT:
+      break;
+  }
+  auto rng_options =
+      tflite::CreateStablehloRngBitGeneratorOptions(builder_, algorithm);
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+      tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+      tflite::BuiltinOptions2_StablehloRngBitGeneratorOptions,
+      rng_options.Union());
+}
+
 std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     Operation* inst, std::vector<int32_t> operands,
     const std::vector<int32_t>& results,
@@ -1552,6 +1585,10 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     // possible
     if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::ScatterOp>(inst)) {
       return BuildStablehloScatterOp(shlo_op, operands, results);
+    }
+    if (auto shlo_op =
+            llvm::dyn_cast<mlir::stablehlo::RngBitGeneratorOp>(inst)) {
+      return BuildStablehloRngBitGeneratorOp(shlo_op, operands, results);
     }
     // for ops don't have kernels, only serialize when conversion is set to true
     if (convert_stablehlo_) {

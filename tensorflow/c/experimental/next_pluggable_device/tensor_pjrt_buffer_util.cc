@@ -16,16 +16,23 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
+#include "tensorflow/core/tfrt/common/global_state.h"
+#include "tensorflow/core/tfrt/common/pjrt_state.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
-StatusOr<PJRT_Buffer*> GetPjRtCBufferFromTensor(const Tensor* tensor) {
+absl::StatusOr<PJRT_Buffer*> GetPjRtCBufferFromTensor(const Tensor* tensor) {
   tensorflow::AsyncValueTensor* av_tensor =
       tensorflow::AsyncValueTensor::FromTensor(tensor);
   if (av_tensor == nullptr || av_tensor->GetBuffer() == nullptr) {
@@ -40,9 +47,9 @@ StatusOr<PJRT_Buffer*> GetPjRtCBufferFromTensor(const Tensor* tensor) {
   return c_api_buffer->c_buffer();
 }
 
-Status SetPjRtCBufferToTensor(PJRT_Buffer* c_buffer,
-                              xla::PjRtCApiClient* c_api_client,
-                              Tensor* tensor) {
+absl::Status SetPjRtCBufferToTensor(PJRT_Buffer* c_buffer,
+                                    xla::PjRtCApiClient* c_api_client,
+                                    Tensor* tensor) {
   tensorflow::AsyncValueTensor* av_tensor =
       tensorflow::AsyncValueTensor::FromTensor(tensor);
   if (av_tensor == nullptr) {
@@ -54,7 +61,7 @@ Status SetPjRtCBufferToTensor(PJRT_Buffer* c_buffer,
   return absl::OkStatus();
 }
 
-StatusOr<xla::PjRtCApiClient*> GetPjRtCApiClient(
+absl::StatusOr<xla::PjRtCApiClient*> GetPjRtCApiClient(
     const DeviceType& device_type) {
   TF_ASSIGN_OR_RETURN(tsl::StatusOr<xla::PjRtClient*> pjrt_client,
                       tensorflow::GetPjRtClient(device_type));
@@ -65,6 +72,15 @@ StatusOr<xla::PjRtCApiClient*> GetPjRtCApiClient(
                                             " is not type PjRtCApiClient"));
   }
   return pjrt_c_api_client;
+}
+
+absl::Status ResetPjRtClient(const DeviceType& device_type) {
+  ResourceMgr* rmgr = tfrt_global::GetTFGlobalResourceMgr();
+  PjRtState* pjrt_state;
+  TF_RETURN_IF_ERROR(rmgr->Lookup(rmgr->default_container(),
+                                  kPjRtStateResourceName, &pjrt_state));
+  TF_RETURN_IF_ERROR(pjrt_state->MovePjRtClientToUnused(device_type));
+  return absl::OkStatus();
 }
 
 }  // namespace tensorflow

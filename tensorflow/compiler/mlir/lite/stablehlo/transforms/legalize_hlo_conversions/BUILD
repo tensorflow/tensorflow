@@ -66,3 +66,37 @@ cc_library(
         "@local_xla//xla/mlir_hlo",
     ],
 )
+
+cc_library(
+    name = "dot_general",
+    srcs = [
+        "dot_general.cc",
+    ],
+    hdrs = ["dot_general.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)
+
+cc_library(
+    name = "custom_call",
+    srcs = [
+        "custom_call.cc",
+    ],
+    hdrs = [
+        "custom_call.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
+        "@local_xla//xla/mlir_hlo",
+    ],
+)

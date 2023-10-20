@@ -231,11 +231,11 @@ func.func @extensions(%arg0 : tensor<?x?xf32, #mhlo.type_extensions<bounds = [3,
 // -----
 
 #CSR = #sparse_tensor.encoding<{
-  lvlTypes = ["dense", "compressed"]
+  map = (d0, d1) -> (d0 : dense, d1 : compressed)
 }>
 
 #DCSR = #sparse_tensor.encoding<{
-  lvlTypes = ["compressed", "compressed"]
+  map = (d0, d1) -> (d0 : compressed, d1 : compressed)
 }>
 
 // CHECK-LABEL: func @encodings
@@ -245,7 +245,7 @@ func.func @encodings(%arg0: tensor<10x20xf32, #CSR>,
   // CHECK-NEXT: %1 = mhlo.add %arg1, %arg1 : tensor<10x20xf32, #sparse_tensor.encoding<{{.*}}>>
   // CHECK-NEXT: %2 = mhlo.abs %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{{.*}}>>) -> tensor<10x20xf32>
   // CHECK-NEXT: %3 = mhlo.abs %arg0 : tensor<10x20xf32, #sparse_tensor.encoding<{{.*}}>>
-  // CHECK-NEXT: %4 = mhlo.complex %arg0, %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>) -> tensor<10x20xcomplex<f32>>
+  // CHECK-NEXT: %4 = mhlo.complex %arg0, %arg0 : (tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ map = (d0, d1) -> (d0 : dense, d1 : compressed) }>>) -> tensor<10x20xcomplex<f32>>
   %0 = "mhlo.add"(%arg0, %arg1) : (tensor<10x20xf32, #CSR>,
                                    tensor<10x20xf32, #DCSR>) -> tensor<10x20xf32>
   %1 = "mhlo.add"(%arg1, %arg1) : (tensor<10x20xf32, #DCSR>,

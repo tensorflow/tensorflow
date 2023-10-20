@@ -64,7 +64,9 @@ class TpuCompilationCacheEntryUnloader : public ResourceBase {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(TpuCompilationCacheEntryUnloader);
+  TpuCompilationCacheEntryUnloader(const TpuCompilationCacheEntryUnloader&) =
+      delete;
+  void operator=(const TpuCompilationCacheEntryUnloader&) = delete;
   mutable absl::Mutex mu_;
   TpuCompilationCacheInterface* cache_;  // Not owned.
   absl::flat_hash_set<int64_t> cache_entry_uids_ ABSL_GUARDED_BY(mu_);

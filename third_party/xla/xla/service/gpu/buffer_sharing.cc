@@ -101,6 +101,15 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
       continue;
     }
     for (HloInstruction* hlo : hlo_operand->users()) {
+      if (visited.insert(hlo).second) {
+        q.push(hlo);
+      }
+      // For scatter, we can share the buffer if the path goes through the first
+      // operand.
+      if (hlo == non_bitcast_root && hlo->opcode() == HloOpcode::kScatter &&
+          hlo->operand_index(hlo_operand) == 0) {
+        continue;
+      }
       if (non_bitcast_root->opcode() == HloOpcode::kDynamicUpdateSlice &&
           hlo->opcode() == HloOpcode::kDynamicSlice &&
           non_bitcast_root->operand(0) == hlo->operand(0) &&
@@ -141,9 +150,6 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
             hlo->operand_index(hlo_operand) != 1) {
           return false;
         }
-      }
-      if (visited.insert(hlo).second) {
-        q.push(hlo);
       }
     }
   }

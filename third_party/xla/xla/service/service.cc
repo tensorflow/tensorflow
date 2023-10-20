@@ -215,7 +215,7 @@ Status Service::DeconstructTuple(const DeconstructTupleRequest* arg,
 }
 
 Status Service::ValidateResultShape(const Shape& client_shape,
-                                    const Shape& result_shape) const {
+                                    const Shape& result_shape) {
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(client_shape));
   if (!ShapeUtil::Compatible(client_shape, result_shape)) {
     return InvalidArgument(
@@ -951,8 +951,19 @@ Status Service::TransferToClient(const TransferToClientRequest* arg,
     if (!LayoutUtil::HasLayout(return_shape)) {
       return InvalidArgument("shape_with_layout must have layout if present.");
     }
+    if (return_shape.has_layout() &&
+        return_shape.layout().element_size_in_bits() != 0) {
+      return InvalidArgument(
+          "shape_with_layout cannot have layout's element_size_in_bits field "
+          "set");
+    }
   } else {
     return_shape = Shape(shaped_buffer->on_device_shape());
+    if (return_shape.has_layout() &&
+        return_shape.layout().element_size_in_bits() != 0) {
+      // Literals do not support element_size_in_bits
+      return_shape.mutable_layout()->set_element_size_in_bits(0);
+    }
   }
 
   TF_ASSIGN_OR_RETURN(auto stream, execute_backend_->BorrowStream(

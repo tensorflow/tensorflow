@@ -481,10 +481,8 @@ class TfCallbackDevice : public DeviceBase {
                                Allocator* allocator) override {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     auto concrete_device = static_cast<ConcretePerOpGpuDevice*>(device);
-    const void* gpu_stream = reinterpret_cast<const void*>(
-        stream_->implementation()->GpuStreamMemberHack());
     concrete_device->Reinitialize(
-        context, gpu_stream,
+        context, stream_->platform_specific_handle().stream,
         /*platform_device_id=*/
         tsl::PlatformDeviceId(stream_->parent()->device_ordinal()), allocator,
         // TODO(cheshire): Pass meaningful scratch buffer.

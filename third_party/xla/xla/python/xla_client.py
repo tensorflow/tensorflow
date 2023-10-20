@@ -14,6 +14,8 @@
 # ==============================================================================
 """An XLA client in Python."""
 
+from __future__ import annotations
+
 import atexit
 import contextlib
 import enum  # pylint: disable=g-bad-import-order
@@ -45,7 +47,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes. In JAX, reference this via jax._src.lib.xla_extension_version.
-_version = 199
+_version = 207
 
 # Version number for MLIR:Python components.
 mlir_api_version = 54
@@ -57,7 +59,7 @@ xla_platform_names = {
 
 logger = logging.getLogger(__name__)
 
-_NameValueMapping = Mapping[str, Union[str, int, List[int], float]]
+_NameValueMapping = Mapping[str, Union[str, int, List[int], float, bool]]
 
 
 def make_cpu_client() -> ...:
@@ -102,17 +104,6 @@ def make_gpu_client(
       'ROCM', _xla.register_custom_call_target
   )
 
-  if mock:
-    return _xla.get_mock_gpu_client(
-        asynchronous=True,
-        allocator_config=config,
-        distributed_client=distributed_client,
-        node_id=node_id,
-        num_nodes=num_nodes,
-        platform_name=platform_name,
-        allowed_devices=allowed_devices,
-    )
-
   return _xla.get_gpu_client(
       asynchronous=True,
       allocator_config=config,
@@ -120,7 +111,9 @@ def make_gpu_client(
       node_id=node_id,
       num_nodes=num_nodes,
       platform_name=platform_name,
-      allowed_devices=allowed_devices)
+      allowed_devices=allowed_devices,
+      mock=mock,
+  )
 
 
 def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None):
@@ -189,11 +182,10 @@ def make_c_api_client(
   return _xla.get_c_api_client(plugin_name, options, distributed_client)
 
 
-def make_tpu_client():
+def make_tpu_client(library_path: Optional[str] = None):
   """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
   if not pjrt_plugin_loaded('tpu'):
-    library_path = os.getenv('TPU_LIBRARY_PATH', 'libtpu.so')
-    load_pjrt_plugin_dynamically('tpu', library_path)
+    load_pjrt_plugin_dynamically('tpu', library_path or 'libtpu.so')
   return make_tfrt_tpu_c_api_client()
 
 
@@ -348,14 +340,17 @@ class ShapeIndex:
 """
 
 
-def shape_from_pyval(pyval):
+def shape_from_pyval(pyval, layout: Sequence[int] | None = None):
   """Returns a Shape that describes a tuple-tree of Numpy arrays."""
 
   def convert(pyval):
     if isinstance(pyval, tuple):
+      if layout is not None:
+        raise NotImplementedError(
+            'shape_from_pyval does not support layouts for tuple shapes')
       return Shape.tuple_shape(tuple(convert(elt) for elt in pyval))
     else:
-      return Shape.array_shape(pyval.dtype, np.shape(pyval))
+      return Shape.array_shape(pyval.dtype, np.shape(pyval), layout)
 
   return convert(pyval)
 

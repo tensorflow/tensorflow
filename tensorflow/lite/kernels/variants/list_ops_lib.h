@@ -43,6 +43,12 @@ TfLiteRegistration* Register_LIST_LENGTH();
 
 TfLiteRegistration* Register_LIST_ELEMENT_SHAPE();
 
+TfLiteRegistration* Register_LIST_POP_BACK();
+
+TfLiteRegistration* Register_LIST_PUSH_BACK();
+
+TfLiteRegistration* Register_VARIANT_ADD_N();
+
 }  // namespace ops
 }  // namespace variants
 }  // namespace tflite

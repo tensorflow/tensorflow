@@ -525,7 +525,7 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
   }
 
   local_flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(),
-                                                      FunctionDefLibrary{}));
+                                                      FunctionDefLibrary()));
   local_pflr_.reset(new ProcessFunctionLibraryRuntime(
       &device_mgr_, Env::Default(), /*config=*/nullptr,
       options.graph_def_version, local_flib_def_.get(), OptimizerOptions()));

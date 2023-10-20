@@ -66,8 +66,7 @@ transitive_hdrs(
         "//tensorflow/python/util:kernel_registry",
         "//tensorflow/python/framework:python_op_gen",
         "//tensorflow/python/client:tf_session_helper",
-        "//third_party/eigen3",
-        "@local_xla//xla/stream_executor:stream_executor_headers",
+        "@local_xla//xla/stream_executor",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
     ]),
@@ -238,7 +237,6 @@ filegroup(
         ],
         "//conditions:default": [],
     }) + if_cuda([
-        "@cub_archive//:LICENSE.TXT",
         "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
         "//third_party/mkl_dnn:LICENSE",

@@ -153,58 +153,6 @@ def initialize_rbe_configs():
     )
 
     tensorflow_rbe_config(
-        name = "ubuntu20.04-clang_manylinux2014-cuda11.1-cudnn8-tensorrt7.2",
-        compiler = "/clang_rf2b94bd7eaa83d853dc7568fac87b1f8bf4ddec6/bin/clang",
-        cuda_version = "11.1",
-        cudnn_version = "8",
-        os = "ubuntu20.04-manylinux2014-multipython",
-        python_versions = ["3.7", "3.8", "3.9", "3.10", "3.11"],
-        tensorrt_install_path = "/usr",
-        tensorrt_version = "7.2",
-        sysroot = "/dt9",
-        python_install_path = "/usr/local",
-    )
-
-    tensorflow_rbe_config(
-        name = "ubuntu20.04-gcc9_manylinux2014-cuda11.1-cudnn8-tensorrt7.2",
-        compiler = "/dt9/usr/bin/gcc",
-        compiler_prefix = "/usr/bin",
-        cuda_version = "11.1",
-        cudnn_version = "8",
-        os = "ubuntu20.04-manylinux2014-multipython",
-        python_versions = ["3.7", "3.8", "3.9", "3.10", "3.11"],
-        tensorrt_install_path = "/usr",
-        tensorrt_version = "7.2",
-        python_install_path = "/usr/local",
-    )
-
-    tensorflow_rbe_config(
-        name = "ubuntu20.04-clang_manylinux2014-cuda11.4-cudnn8.2-tensorrt7.2",
-        compiler = "/clang_rf2b94bd7eaa83d853dc7568fac87b1f8bf4ddec6/bin/clang",
-        cuda_version = "11.4",
-        cudnn_version = "8.2",
-        os = "ubuntu20.04-manylinux2014-multipython",
-        python_versions = ["3.7", "3.8", "3.9", "3.10", "3.11"],
-        tensorrt_install_path = "/usr",
-        tensorrt_version = "7.2",
-        sysroot = "/dt9",
-        python_install_path = "/usr/local",
-    )
-
-    tensorflow_rbe_config(
-        name = "ubuntu20.04-gcc9_manylinux2014-cuda11.4-cudnn8.2-tensorrt7.2",
-        compiler = "/dt9/usr/bin/gcc",
-        compiler_prefix = "/usr/bin",
-        cuda_version = "11.4",
-        cudnn_version = "8.2",
-        os = "ubuntu20.04-manylinux2014-multipython",
-        python_versions = ["3.7", "3.8", "3.9", "3.10", "3.11"],
-        tensorrt_install_path = "/usr",
-        tensorrt_version = "7.2",
-        python_install_path = "/usr/local",
-    )
-
-    tensorflow_rbe_config(
         name = "ubuntu20.04-clang_manylinux2014-cuda11.8-cudnn8.6-tensorrt8.4",
         compiler = "/clang_rf2b94bd7eaa83d853dc7568fac87b1f8bf4ddec6/bin/clang",
         cuda_version = "11.8",
@@ -227,28 +175,6 @@ def initialize_rbe_configs():
         python_versions = ["3.9", "3.10", "3.11", "3.12"],
         tensorrt_install_path = "/usr",
         tensorrt_version = "8.4",
-        python_install_path = "/usr/local",
-    )
-
-    tensorflow_rbe_config(
-        name = "ubuntu20.04-clang_manylinux2014-cuda12.0.1-cudnn8.8",
-        compiler = "/usr/lib/llvm-16/bin/clang",
-        cuda_version = "12.0.1",
-        cudnn_version = "8.8",
-        os = "ubuntu20.04-manylinux2014-multipython",
-        python_versions = ["3.9", "3.10", "3.11", "3.12"],
-        sysroot = "/dt9",
-        python_install_path = "/usr/local",
-    )
-
-    tensorflow_rbe_config(
-        name = "ubuntu20.04-gcc9_manylinux2014-cuda12.0.1-cudnn8.8",
-        compiler = "/dt9/usr/bin/gcc",
-        compiler_prefix = "/usr/bin",
-        cuda_version = "12.0.1",
-        cudnn_version = "8.8",
-        os = "ubuntu20.04-manylinux2014-multipython",
-        python_versions = ["3.9", "3.10", "3.11", "3.12"],
         python_install_path = "/usr/local",
     )
 
@@ -602,10 +528,10 @@ def initialize_rbe_configs():
 
     sigbuild_tf_configs(
         name_container_map = {
-            "sigbuild-r2.14": "docker://gcr.io/tensorflow-sigs/build@sha256:edf0324686ffbf488ed0a6b7d3a29ecc6f7b7ad9c04b2e1a527a6a47c0dc1b4b",
-            "sigbuild-r2.14-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:edf0324686ffbf488ed0a6b7d3a29ecc6f7b7ad9c04b2e1a527a6a47c0dc1b4b",
-            "sigbuild-r2.14-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:5b06acad335d5c24aa2f63d39d9de230affd04aa982dda0242eeb893b9dae363",
-            "sigbuild-r2.14-python3.11": "docker://gcr.io/tensorflow-sigs/build@sha256:80d991d5cf0ac710b568c71c7790270691749afa19de49d7c1a121ba3f92cd58",
+            "sigbuild-r2.14": "docker://gcr.io/tensorflow-sigs/build@sha256:7c8ecb6482e26c4b4efce0ddaefe3fb3667b3b958c83fe8d3cc3763c6ed7a4d1",
+            "sigbuild-r2.14-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:7c8ecb6482e26c4b4efce0ddaefe3fb3667b3b958c83fe8d3cc3763c6ed7a4d1",
+            "sigbuild-r2.14-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:76d7505715334a34a0f96159e8c81350803ebef439726e5d50b7b6f5a7edc310",
+            "sigbuild-r2.14-python3.11": "docker://gcr.io/tensorflow-sigs/build@sha256:dbeb4c33bafaf83d7afcb2077440e83eec685ab2bc3dc520624ee8af69a34170",
         },
         # Unclear why LIBC is set to 2.19 here, and yet manylinux2010 is 2.12
         # and manylinux2014 is 2.17.
@@ -641,10 +567,10 @@ def initialize_rbe_configs():
 
     sigbuild_tf_configs(
         name_container_map = {
-            "sigbuild-r2.14-clang": "docker://gcr.io/tensorflow-sigs/build@sha256:edf0324686ffbf488ed0a6b7d3a29ecc6f7b7ad9c04b2e1a527a6a47c0dc1b4b",
-            "sigbuild-r2.14-clang-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:edf0324686ffbf488ed0a6b7d3a29ecc6f7b7ad9c04b2e1a527a6a47c0dc1b4b",
-            "sigbuild-r2.14-clang-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:5b06acad335d5c24aa2f63d39d9de230affd04aa982dda0242eeb893b9dae363",
-            "sigbuild-r2.14-clang-python3.11": "docker://gcr.io/tensorflow-sigs/build@sha256:80d991d5cf0ac710b568c71c7790270691749afa19de49d7c1a121ba3f92cd58",
+            "sigbuild-r2.14-clang": "docker://gcr.io/tensorflow-sigs/build@sha256:7c8ecb6482e26c4b4efce0ddaefe3fb3667b3b958c83fe8d3cc3763c6ed7a4d1",
+            "sigbuild-r2.14-clang-python3.9": "docker://gcr.io/tensorflow-sigs/build@sha256:7c8ecb6482e26c4b4efce0ddaefe3fb3667b3b958c83fe8d3cc3763c6ed7a4d1",
+            "sigbuild-r2.14-clang-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:76d7505715334a34a0f96159e8c81350803ebef439726e5d50b7b6f5a7edc310",
+            "sigbuild-r2.14-clang-python3.11": "docker://gcr.io/tensorflow-sigs/build@sha256:dbeb4c33bafaf83d7afcb2077440e83eec685ab2bc3dc520624ee8af69a34170",
         },
         # Unclear why LIBC is set to 2.19 here, and yet manylinux2010 is 2.12
         # and manylinux2014 is 2.17.

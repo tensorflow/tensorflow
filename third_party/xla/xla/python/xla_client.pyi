@@ -13,6 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 
+from __future__ import annotations
+
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple, Type, Union
 
 import numpy
@@ -62,7 +64,7 @@ float8_e5m2: Type[numpy.generic]
 float8_e5m2fnuz: Type[numpy.generic]
 XLA_ELEMENT_TYPE_TO_DTYPE: Dict[PrimitiveType, numpy.dtype]
 
-_NameValueMapping = Mapping[str, Union[str, int, List[int], float]]
+_NameValueMapping = Mapping[str, Union[str, int, List[int], float, bool]]
 
 
 def dtype_to_etype(dtype: numpy.dtype) -> PrimitiveType:
@@ -75,7 +77,7 @@ def execute_with_python_values_replicated(
     executable: LoadedExecutable, arguments: Sequence[Sequence[Any]],
     backend: Client) -> Sequence[Sequence[numpy.ndarray]]: ...
 
-def shape_from_pyval(pyval: Any) -> Any: ...
+def shape_from_pyval(pyval: Any, layout: Sequence[int] | None = None) -> Any: ...
 
 def heap_profile(client: Client) -> bytes:
   ...
@@ -90,7 +92,8 @@ def make_gpu_client(
     node_id: int = ...,
     num_nodes: int = ...,
     platform_name: Optional[str] = ...,
-    allowed_devices: Optional[Set[int]] = ...) -> Client:
+    allowed_devices: Optional[Set[int]] = ...,
+    mock: Optional[bool]=...) -> Client:
   ...
 
 
@@ -106,7 +109,7 @@ def get_topology_for_devices(devices: List[Device]) -> DeviceTopology:
   ...
 
 
-def make_tpu_client() -> Client:
+def make_tpu_client(library_path: Optional[str]) -> Client:
   ...
 
 

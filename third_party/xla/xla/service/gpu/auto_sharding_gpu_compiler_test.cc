@@ -24,7 +24,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-namespace op = xla::testing::opcode_matchers;
 namespace m = ::xla::match;
 
 class AutoShardingTest : public HloTestBase {
