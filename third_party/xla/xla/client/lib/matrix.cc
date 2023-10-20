@@ -17,11 +17,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
-#include <limits>
+#include <cstdint>
 #include <map>
 #include <numeric>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -29,7 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/ascii.h"
-#include "absl/strings/str_join.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -39,12 +40,14 @@ limitations under the License.
 #include "xla/client/xla_builder.h"
 #include "xla/literal.h"
 #include "xla/primitive_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/errors.h"
 
 namespace xla {
 
@@ -296,8 +299,7 @@ xla::XlaOp EinsumDiagonalMask(XlaOp x, absl::Span<const int64_t> config) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
-    Shape iota_shape = x_shape;
-    iota_shape.set_element_type(S32);
+    Shape iota_shape = ShapeUtil::MakeShape(S32, x_shape.dimensions());
     XlaOp mask = ConstantR0(builder, true);
 
     for (auto label = config.begin(); label != config.end(); ++label) {

@@ -753,8 +753,15 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
   auto dynamic_padder_options = DynamicPadderOptions();
+  // TODO(pgavin): ShapeChecks were never implemented correctly by the dynamic
+  // padder.  The mode defaults to kIgnore, and it was not overridden for nested
+  // computations (such as while bodies or conditional branches), and so cases
+  // that could not be proven would still be accepted even with compile-time
+  // checks enabled.  Recent changes to the DynamicPadder correctly
+  // override the mode.  However, some models have started to rely on the check
+  // being ignored, and they would be broken if it is enforced.
   dynamic_padder_options.shape_check_mode =
-      DynamicDimensionInference::ShapeCheckMode::kCompileTime;
+      DynamicDimensionInference::ShapeCheckMode::kIgnore;
   pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
   if (!is_mlir_compile) {
     pipeline.AddPass<SelectAndScatterExpander>();

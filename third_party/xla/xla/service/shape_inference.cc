@@ -17,28 +17,39 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <iterator>
+#include <limits>
 #include <numeric>
+#include <optional>
 #include <set>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/types.h"
+#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/protobuf.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
@@ -1332,8 +1343,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   const int64_t feature_count = operand_shape.dimensions(feature_index);
-  Shape output_shape_for_mean_and_var =
-      ShapeUtil::MakeShape(operand_shape.element_type(), {feature_count});
+  bool dynamic_feature = operand_shape.is_dynamic_dimension(feature_index);
+  Shape output_shape_for_mean_and_var = ShapeUtil::MakeShape(
+      operand_shape.element_type(), {feature_count}, {dynamic_feature});
 
   if (ShapeUtil::GetDimension(offset_shape, 0) != feature_count) {
     return InvalidArgument(
@@ -2731,7 +2743,18 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     VLOG(2) << StrFormat("slice_sizes[%d] = %d", dim, slice_dim_size);
   }
 
-  return ShapeUtil::MakeShape(operand_shape.element_type(), slice_sizes);
+  Shape result =
+      ShapeUtil::MakeShape(operand_shape.element_type(), slice_sizes);
+
+  for (int64_t dimension = 0; dimension < operand_shape.rank(); ++dimension) {
+    if (operand_shape.is_dynamic_dimension(dimension) &&
+        slice_sizes[dimension] > 1 &&
+        slice_sizes[dimension] == operand_shape.dimensions(dimension)) {
+      result.set_dynamic_dimension(dimension, true);
+    }
+  }
+
+  return result;
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferDynamicUpdateSliceShape(
@@ -3336,8 +3359,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         ShapeUtil::HumanString(on_true), ShapeUtil::HumanString(pred));
   }
 
-  return ShapeUtil::ChangeElementType(
+  Shape result = ShapeUtil::ChangeElementType(
       pred, ShapeUtil::HigherPrecisionElementType(on_true, on_false));
+  for (int64_t dimension = 0; dimension < pred.rank(); ++dimension) {
+    result.set_dynamic_dimension(dimension,
+                                 pred.is_dynamic_dimension(dimension) ||
+                                     on_true.is_dynamic_dimension(dimension) ||
+                                     on_false.is_dynamic_dimension(dimension));
+  }
+  return std::move(result);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferCallShape(

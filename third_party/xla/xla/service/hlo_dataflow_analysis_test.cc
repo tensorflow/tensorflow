@@ -15,27 +15,36 @@ limitations under the License.
 
 #include "xla/service/hlo_dataflow_analysis.h"
 
+#include <cstdint>
+#include <initializer_list>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_matchers.h"
-#include "xla/literal.h"
+#include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/literal_util.h"
 #include "xla/service/async_op_canonicalizer.h"
 #include "xla/service/flatten_call_graph.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_dce.h"
-#include "xla/service/hlo_graph_dumper.h"
 #include "xla/service/hlo_ordering.h"
-#include "xla/service/instruction_fusion.h"
+#include "xla/service/hlo_value.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
+#include "xla/status.h"
 #include "xla/test.h"
-#include "xla/test_helpers.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/core/status_test_util.h"
-#include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
 namespace xla {
@@ -1239,7 +1248,7 @@ TEST_P(HloDataflowAnalysisTest, SendAndSendDone) {
               UnorderedElementsAre(&analysis.GetValueDefinedAt(param)));
 }
 
-TEST_P(HloDataflowAnalysisTest, SetDimensionSizeForwardsValue) {
+TEST_P(HloDataflowAnalysisTest, SetDimensionSizeCreatesValue) {
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, vector_shape_, "param"));
@@ -1254,11 +1263,11 @@ TEST_P(HloDataflowAnalysisTest, SetDimensionSizeForwardsValue) {
   bool ssa_form = GetParam();
   {
     const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
-    EXPECT_EQ(analysis.values().size(), 2);
+    EXPECT_EQ(analysis.values().size(), 3);
 
     EXPECT_TRUE(analysis.ValueIsDefinedAt(param));
-    EXPECT_FALSE(analysis.ValueIsDefinedAt(sds));
-    EXPECT_TRUE(analysis.GetValueDefinedAt(param).live_out_of_module());
+    EXPECT_TRUE(analysis.ValueIsDefinedAt(sds));
+    EXPECT_TRUE(analysis.GetValueDefinedAt(sds).live_out_of_module());
   }
 }
 

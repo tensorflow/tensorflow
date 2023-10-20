@@ -13,40 +13,60 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <initializer_list>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
-#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "xla/client/client_library.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/client/lib/arithmetic.h"
 #include "xla/client/lib/constants.h"
 #include "xla/client/local_client.h"
+#include "xla/client/padding.h"
 #include "xla/client/xla_builder.h"
 #include "xla/client/xla_computation.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/platform_util.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/compiler/xrt/cc/ops/xrt_compile_ops.h"
 #include "tensorflow/compiler/xrt/cc/ops/xrt_execute_op.h"
 #include "tensorflow/compiler/xrt/cc/ops/xrt_state_ops.h"
 #include "tensorflow/compiler/xrt/xrt.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/command_line_flags.h"
+#include "tsl/lib/core/status_test_util.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -112,7 +132,7 @@ xla::XlaComputation ReturnDynamicR1Tuple() {
   auto pad_sum = xla::SetDimensionSize(sum, p2, 0);
   auto pad_sub = xla::SetDimensionSize(sub, p2 + one, 0);
   auto tuple = xla::Tuple(&builder, {pad_sum, sum, pad_sub});
-  return builder.Build(tuple, /*remove_dynamic_dimensions=*/true).value();
+  return builder.Build(tuple).value();
 }
 
 xla::XlaComputation AcceptDynamicR1Tuple() {
