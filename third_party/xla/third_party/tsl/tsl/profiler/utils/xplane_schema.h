@@ -312,7 +312,8 @@ enum StatType {
   kDcnLoopIndex,
   kEdgeTpuModelInfo,
   kEdgeTpuModelProfileInfo,
-  kLastStatType = kEdgeTpuModelProfileInfo,
+  kEdgeTpuMlir,
+  kLastStatType = kEdgeTpuMlir,
 };
 
 static constexpr uint32_t kLineIdOffset = 10000;
