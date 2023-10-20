@@ -415,11 +415,10 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   if (context == nullptr) {
     return;
   }
-  CUcontext former_context = CurrentContext();
-  CUresult res = cuCtxSetCurrent(context->context());
+  CUresult res = cuCtxPushCurrent(context->context());
   CUdevice device;
   cuCtxGetDevice(&device);
-  cuCtxSetCurrent(former_context);
+  cuCtxPopCurrent(nullptr);
 
   res = cuDevicePrimaryCtxRelease(device);
 
