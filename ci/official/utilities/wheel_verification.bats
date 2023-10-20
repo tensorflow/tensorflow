@@ -23,7 +23,7 @@ setup_file() {
 
     # Setup the env for the python import testing
     if [[ $TF_WHEEL == *"aarch64.whl" ]]; then
-        python${PYTHON_VERSION} -m venv "$BATS_FILE_TMPDIR/venv"
+        python${TFCI_PYTHON_VERSION} -m venv "$BATS_FILE_TMPDIR/venv"
     else
         python3 -m venv "$BATS_FILE_TMPDIR/venv"
     fi
