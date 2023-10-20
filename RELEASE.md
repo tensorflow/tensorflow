@@ -26,6 +26,9 @@
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
 
+* `tf.lite`
+    * Added support for `stablehlo.gather`.
+
 ## Keras
 
 *  `keras.layers.experimental.DynamicEmbedding`
