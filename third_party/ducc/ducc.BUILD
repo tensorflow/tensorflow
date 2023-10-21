@@ -5,39 +5,39 @@ package(
 
 exports_files(["LICENSE"])
 
-# The DUCC FFT source files are dual-licensed as BSD 3 clause and GPLv2.
-# We choose BSD 3 clause.
-DUCC_SOURCES = [
-    "google/ducc0_custom_lowlevel_threading.h",
-    "google/threading.cc",
-    "src/ducc0/infra/aligned_array.h",
-    "src/ducc0/infra/error_handling.h",
-    "src/ducc0/infra/misc_utils.h",
-    "src/ducc0/infra/simd.h",
-    "src/ducc0/infra/threading.cc",
-    "src/ducc0/infra/useful_macros.h",
-    "src/ducc0/math/cmplx.h",
-    "src/ducc0/math/unity_roots.h",
+DUCC_COPTS = [
+    "-frtti",
+    "-fexceptions",
+    "-ffp-contract=fast",
 ]
 
-DUCC_HEADERS = [
-    "google/threading.h",
-    "src/ducc0/fft/fft.h",
-    "src/ducc0/fft/fft1d_impl.h",
-    "src/ducc0/fft/fftnd_impl.h",
-    "src/ducc0/infra/mav.h",
-    "src/ducc0/infra/threading.h",
-]
-
+# This library exposes the raw DUCC fft API.  It should be used
+# with caution, since inclusion of the headers will require any
+# dependent targets to be build with exceptions and RTTI enabled.
+# For a better-isolated target, use ":fft_wrapper".
 cc_library(
     name = "fft",
-    srcs = DUCC_SOURCES,
-    hdrs = DUCC_HEADERS,
-    copts = [
-        "-frtti",
-        "-fexceptions",
-        "-ffp-contract=fast",
+    srcs = [
+        "google/ducc0_custom_lowlevel_threading.h",
+        "google/threading.cc",
+        "src/ducc0/infra/aligned_array.h",
+        "src/ducc0/infra/error_handling.h",
+        "src/ducc0/infra/misc_utils.h",
+        "src/ducc0/infra/simd.h",
+        "src/ducc0/infra/threading.cc",
+        "src/ducc0/infra/useful_macros.h",
+        "src/ducc0/math/cmplx.h",
+        "src/ducc0/math/unity_roots.h",
     ],
+    hdrs = [
+        "google/threading.h",
+        "src/ducc0/fft/fft.h",
+        "src/ducc0/fft/fft1d_impl.h",
+        "src/ducc0/fft/fftnd_impl.h",
+        "src/ducc0/infra/mav.h",
+        "src/ducc0/infra/threading.h",
+    ],
+    copts = DUCC_COPTS,
     defines = [
         # Use custom TSL/Eigen threading.
         "DUCC0_CUSTOM_LOWLEVEL_THREADING=1",
@@ -45,21 +45,34 @@ cc_library(
     features = ["-use_header_modules"],
     include_prefix = "ducc",
     includes = [
+        ".",  # Needed for google/-relative paths.
         "google",  # Needed for finding ducc0_custom_lowlevel_threading.h.
-        "src",
+        "src",  # Needed for internal headers.
     ],
+    # The DUCC FFT source files are dual-licensed as BSD 3 clause and GPLv2.
+    # We choose BSD 3 clause.
     licenses = ["notice"],
+    visibility = ["//visibility:private"],
     deps = [
         # Required for custom threadpool usage:
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:env",
         "@local_tsl//tsl/platform:mutex",
-        "@local_tsl//tsl/platform:platform_port",
     ],
 )
 
-# Export source files needed for mobile builds, which do not use granular targets.
-filegroup(
-    name = "mobile_srcs_no_runtime",
-    srcs = DUCC_SOURCES + DUCC_HEADERS,
+cc_library(
+    name = "fft_wrapper",
+    srcs = ["google/fft.cc"],
+    hdrs = ["google/fft.h"],
+    copts = DUCC_COPTS,
+    features = ["-use_header_modules"],
+    include_prefix = "ducc",
+    # includes = [
+    #     ".",  # Needed for relative paths.
+    # ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":fft",
+        "@eigen_archive//:eigen3",
+    ],
 )

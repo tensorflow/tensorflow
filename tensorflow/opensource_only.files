@@ -202,6 +202,8 @@ tf_staging/third_party/curl.BUILD:
 tf_staging/third_party/cython.BUILD:
 tf_staging/third_party/ducc/BUILD:
 tf_staging/third_party/ducc/ducc0_custom_lowlevel_threading.h:
+tf_staging/third_party/ducc/fft.cc:
+tf_staging/third_party/ducc/fft.h:
 tf_staging/third_party/ducc/threading.cc:
 tf_staging/third_party/ducc/threading.h:
 tf_staging/third_party/eigen3/BUILD:
