@@ -37,10 +37,6 @@ FileSystemDatasetStore::FileSystemDatasetStore(const std::string& datasets_dir)
 Status FileSystemDatasetStore::Put(const std::string& key,
                                    const DatasetDef& dataset) {
   std::string path_to_write = io::JoinPath(datasets_dir_, key);
-
-  if (Env::Default()->FileExists(path_to_write).ok()) {
-    return errors::AlreadyExists("File ", path_to_write, " already exists");
-  }
   TF_RETURN_IF_ERROR(WriteDatasetDef(path_to_write, dataset));
   return OkStatus();
 }
@@ -58,10 +54,6 @@ Status FileSystemDatasetStore::Get(
 Status MemoryDatasetStore::Put(const std::string& key,
                                const DatasetDef& dataset) {
   auto& stored_dataset = datasets_[key];
-  if (stored_dataset) {
-    return errors::AlreadyExists("Dataset with key ", key,
-                                 " is already stored.");
-  }
   stored_dataset = std::make_shared<const DatasetDef>(dataset);
   return OkStatus();
 }
@@ -73,15 +65,6 @@ Status MemoryDatasetStore::Get(const std::string& key,
     return errors::NotFound("Dataset with key ", key, " not found");
   }
   dataset_def = stored_dataset;
-  return OkStatus();
-}
-
-Status SyncFileSystemStoreWithDispatcherState(const std::string& dataset_id,
-                                              const std::string& datasets_dir) {
-  std::string dataset_path = io::JoinPath(datasets_dir, dataset_id);
-  if (Env::Default()->FileExists(dataset_path).ok()) {
-    TF_RETURN_IF_ERROR(Env::Default()->DeleteFile(dataset_path));
-  }
   return OkStatus();
 }
 

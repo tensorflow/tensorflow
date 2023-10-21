@@ -603,10 +603,6 @@ Status DataServiceDispatcherImpl::RegisterDataset(
   dataset_id = requested_dataset_id;
   if (dataset_id.empty()) {
     dataset_id = state_.NextAvailableDatasetId();
-    if (!config_.work_dir().empty()) {
-      TF_RETURN_IF_ERROR(SyncFileSystemStoreWithDispatcherState(
-          dataset_id, DatasetsDir(config_.work_dir())));
-    }
   }
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();

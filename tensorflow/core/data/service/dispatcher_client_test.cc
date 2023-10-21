@@ -365,7 +365,11 @@ TEST_F(DispatcherClientTest, NamedJobsDoNotMatch) {
                      HasSubstr("Existing cross-trainer cache: <disabled>"))));
 }
 
-TEST_F(DispatcherClientTest, SyncDatasetFileWithState) {
+class DispatcherClientTest_DatasetId
+    : public DispatcherClientTest,
+      public ::testing::WithParamInterface<std::optional<std::string>> {};
+
+TEST_P(DispatcherClientTest_DatasetId, SyncDatasetStoreWithDispatcherState) {
   TestCluster::Config config;
   config.num_workers = 1;
   config.work_dir = tsl::io::JoinPath(tsl::testing::TmpDir(), "work_dir");
@@ -376,6 +380,7 @@ TEST_F(DispatcherClientTest, SyncDatasetFileWithState) {
       test_cluster_->DispatcherAddress(), kProtocol);
 
   DatasetDef dataset_def = RangeDataset(10);
+  std::optional<std::string> requested_dataset_id = GetParam();
   std::string dataset_id;
   TF_ASSERT_OK(dispatcher_client_->RegisterDataset(
       dataset_def, GetDefaultMetadata(),
@@ -387,11 +392,22 @@ TEST_F(DispatcherClientTest, SyncDatasetFileWithState) {
   std::string datasets_dir = tsl::io::JoinPath(config.work_dir, "datasets");
   FileSystemDatasetStore dataset_store(datasets_dir);
   TF_ASSERT_OK(dataset_store.Put("1001", dataset_def));
+  if (requested_dataset_id.has_value()) {
+    TF_ASSERT_OK(dataset_store.Put(*requested_dataset_id, dataset_def));
+  }
+
   TF_ASSERT_OK(dispatcher_client_->RegisterDataset(
       dataset_def, GetDefaultMetadata(),
-      /*requested_dataset_id=*/std::nullopt, dataset_id));
-  EXPECT_EQ(dataset_id, "1001");
+      /*requested_dataset_id=*/requested_dataset_id, dataset_id));
+  if (requested_dataset_id.has_value()) {
+    EXPECT_EQ(dataset_id, *requested_dataset_id);
+  } else {
+    EXPECT_EQ(dataset_id, "1001");
+  }
 }
+
+INSTANTIATE_TEST_SUITE_P(DatasetId, DispatcherClientTest_DatasetId,
+                         ::testing::Values(std::nullopt, "dataset_id"));
 
 }  // namespace
 }  // namespace data
