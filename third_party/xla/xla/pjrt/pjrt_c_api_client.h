@@ -518,6 +518,8 @@ class PjRtCApiExecutable : public PjRtExecutable {
 
   StatusOr<std::string> SerializeExecutable() const override;
 
+  StatusOr<std::string> FingerprintExecutable() const override;
+
  private:
   const PJRT_Api* c_api_;
   std::unique_ptr<PJRT_Executable, ::pjrt::PJRT_ExecutableDeleter> executable_;
