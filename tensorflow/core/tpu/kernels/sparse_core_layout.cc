@@ -185,6 +185,15 @@ absl::StatusOr<SparseCoreTableLayouts> SparseCoreLayoutStacker::GetLayouts() {
         absl::StrAppend(&stacked_table_name, incomplete_layout.table_name());
       }
 
+      // If the table name is too long, shorten it and replace it with a hash.
+      // The stacked table name turns into a variable name, and for some
+      // systems, variable names that are too long can cause problems.
+      if (stacked_table_name.size() > 100) {
+        stacked_table_name = absl::StrCat(
+            stacked_table_name.substr(0, 80),
+            absl::StrFormat("_%x", tsl::Fingerprint64(stacked_table_name)));
+      }
+
       for (const SparseCoreTableLayout &incomplete_layout :
            stack.incomplete_tables) {
         SparseCoreTableLayout *out_layout = layouts.add_tables();
