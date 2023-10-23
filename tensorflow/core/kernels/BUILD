@@ -7772,7 +7772,7 @@ tf_kernel_library(
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/util:image_resizer_state",
-        "//third_party/eigen3",
+        "@eigen_archive//:eigen3",
     ],
 )
 

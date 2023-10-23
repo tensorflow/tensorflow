@@ -4925,7 +4925,6 @@ bool UseNhwcLayoutForRocm() {
 #if TF_ROCM_VERSION >= 50100
   static bool is_enabled = [] {
     bool is_enabled = false;
-<<<<<<< HEAD
     TF_CHECK_OK(tsl::ReadBoolFromEnvVar(
         "TF_USE_ROCM_NHWC",
         /*default_val=*/false, &is_enabled));
@@ -4939,6 +4938,7 @@ bool UseNhwcLayoutForRocm() {
 }  // namespace gpu
 
 void initialize_miopen() {
+  auto miopenAlreadyRegistered = PluginRegistry::Instance()->HasFactory(
       rocm::kROCmPlatformId, PluginKind::kDnn);
 
   if (!miopenAlreadyRegistered) {
