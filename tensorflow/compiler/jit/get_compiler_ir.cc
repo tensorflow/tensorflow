@@ -148,7 +148,7 @@ static StatusOr<std::vector<XlaCompiler::Argument>>
 BuildXlaCompilerArgumentFromTensorSpec(
     const FunctionBody* fbody, absl::Span<int const> must_be_constant_idxs,
     absl::Span<const Tensor* const> inputs,
-    absl::Span<VariableInfo const> variable_args, Device* device,
+    absl::Span<VariableInfo const> variable_args,
     absl::Span<const ArgShapeAndDType> flat_arg_shape_and_dtype) {
   TF_RET_CHECK(fbody != nullptr);
   auto& input_args = fbody->fdef.signature().input_arg();
@@ -326,7 +326,7 @@ StatusOr<std::string> GetCompilerIr(
 
   if (compiler_arg_source == CompilerArgSource::TENSOR_SPEC) {
     args = BuildXlaCompilerArgumentFromTensorSpec(fbody, constant_arg_indices,
-                                                  inputs, variable_infos, dev,
+                                                  inputs, variable_infos,
                                                   input_arg_shape_and_dtype);
   } else if (compiler_arg_source == CompilerArgSource::CONCRETE_INPUT) {
     args = XlaComputationLaunchContext::BuildXlaCompilerArguments(
