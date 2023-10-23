@@ -28,7 +28,7 @@ gast == 0.4.0
 grpcio ~= 1.49.1
 portpicker ~= 1.5.2
 scipy ~= 1.7.2; python_version < '3.11'
-scipy ~= 1.9.2; python_version >= '3.11' # Earliest version for Python 3.11
+scipy ~= 1.10.0; python_version >= '3.11' # Earliest version for Python 3.11
 # Required for TFLite import from JAX tests
 jax ~= 0.3.24
 jaxlib ~= 0.3.24; platform.machine != 'aarch64'
