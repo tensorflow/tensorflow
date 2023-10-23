@@ -158,9 +158,7 @@ class ConvertTfQuantToMhloIntTest : public ::testing::Test {
     // MHLO int passes.
     PassManager pm(module_op->getContext());
     pm.addNestedPass<func::FuncOp>(CreateConvertTFQuantTypesPass());
-    pm.addNestedPass<func::FuncOp>(CreateConvertTFQuantOpsToMHLOPass());
-    pm.addNestedPass<func::FuncOp>(
-        stablehlo::createConvertMHLOQuantToIntPass(false));
+    AddQuantizationLoweringPasses(pm);
     CHECK(succeeded(pm.run(module_op.get())));
     // Compile the program.
     return pjrt_client_->Compile(*module_op, xla::CompileOptions{});
@@ -390,6 +388,88 @@ func.func @main(%input: tensor<1x2xf32>, %filter: tensor<2x3xf32>) -> tensor<1x3
   auto filter =
       xla::LiteralUtil::CreateR2<float>({{1.f, 2.f, 3.f}, {-1.f, -3.f, 1.f}});
   ExecuteAndCompareResultsWithTfKernel(kProgram, {&input, &filter});
+}
+
+TEST_F(ConvertTfQuantToMhloIntTest, UniformRequantize) {
+  constexpr absl::string_view kProgram = R"mlir(
+func.func @main(%input: tensor<4xf32>) -> tensor<4xf32> {
+    %input_scale = "tf.Const"() { value = dense<0.2235> : tensor<f32> } : ()
+    -> tensor<f32>
+    %input_zp = "tf.Const"() { value = dense<-2> : tensor<i32> } : () -> tensor<i32>
+    %output_scale = "tf.Const"() { value = dense<0.11> : tensor<f32> } : ()
+    -> tensor<f32>
+    %output_zp = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+    %0 = "tf.UniformQuantize"(%input, %input_scale, %input_zp) {
+      Tin = "tfdtype$DT_FLOAT", Tout = "tfdtype$DT_QINT8", attr_map = "",
+      quantization_axis = -1 : i64, quantization_max_val = 127 : i64,
+      quantization_min_val = -128 : i64
+    } : (tensor<4xf32>, tensor<f32>, tensor<i32>) -> tensor<4x!tf_type.qint8>
+    %1 = "tf.UniformRequantize"(
+      %0, %input_scale, %input_zp, %output_scale, %output_zp
+    ) {
+      Tin = "tfdtype$DT_QINT8", Tout = "tfdtype$DT_QINT8", attr_map = "",
+      device = "", input_quantization_axis = -1, input_quantization_max_val = 127 : i64,
+      input_quantization_min_val = -128 : i64, output_quantization_axis = -1 : i64,
+      output_quantization_max_val = 127 : i64, output_quantization_min_val = -128 : i64
+    } : (
+      tensor<4x!tf_type.qint8>, tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>
+    ) -> tensor<4x!tf_type.qint8>
+    %2 = "tf.UniformDequantize"(%1, %output_scale, %output_zp) {
+      quantization_axis = -1 : i64,
+      quantization_min_val = -128 : i64,
+      quantization_max_val = 127 : i64
+    } : (tensor<4x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<4xf32>
+    return %2 : tensor<4xf32>
+})mlir";
+  auto input = xla::LiteralUtil::CreateR1<float>({3.f, -10.f, -2.1f, 8.7f});
+  ExecuteAndCompareResultsWithTfKernel(kProgram, {&input});
+}
+
+TEST_F(ConvertTfQuantToMhloIntTest, UniformQuantizeAdd) {
+  constexpr absl::string_view kProgram = R"mlir(
+func.func @main(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
+    %lhs_scale = "tf.Const"() { value = dense<0.518> : tensor<f32> } : ()
+    -> tensor<f32>
+    %lhs_zp = "tf.Const"() { value = dense<42> : tensor<i32> } : () -> tensor<i32>
+    %rhs_scale = "tf.Const"() { value = dense<0.0239> : tensor<f32> } : ()
+    -> tensor<f32>
+    %rhs_zp = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
+    %accum_scale = "tf.Const"() { value = dense<0.013> : tensor<f32> } : ()
+    -> tensor<f32>
+    %accum_zp = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
+    %quant_lhs = "tf.UniformQuantize"(%lhs, %lhs_scale, %lhs_zp) {
+      Tin = "tfdtype$DT_FLOAT", Tout = "tfdtype$DT_QINT32", attr_map = "",
+      quantization_axis = -1 : i64, quantization_max_val = 2147483647 : i64,
+      quantization_min_val = -2147483648 : i64
+    } : (tensor<2x2xf32>, tensor<f32>, tensor<i32>) -> tensor<2x2x!tf_type.qint32>
+    %quant_rhs = "tf.UniformQuantize"(%rhs, %rhs_scale, %rhs_zp) {
+      Tin = "tfdtype$DT_FLOAT", Tout = "tfdtype$DT_QINT32", attr_map = "",
+      quantization_axis = -1 : i64, quantization_max_val = 2147483647 : i64,
+      quantization_min_val = -2147483648 : i64
+    } : (tensor<2x2xf32>, tensor<f32>, tensor<i32>) -> tensor<2x2x!tf_type.qint32>
+    %0 = "tf.UniformQuantizedAdd"(
+      %quant_lhs, %quant_rhs, %lhs_scale, %lhs_zp, %rhs_scale,
+      %rhs_zp, %accum_scale, %accum_zp
+    ) {
+      Tin = "tfdtype$DT_QINT32", Tout = "tfdtype$DT_QINT32", attr_map = "",
+      device = "", lhs_quantization_axis = -1 : i64,
+      lhs_quantization_max_val = 2147483647 : i64, lhs_quantization_min_val = -2147483648 : i64,
+      output_quantization_axis = -1 : i64, output_quantization_max_val = 2147483647 : i64,
+      output_quantization_min_val = -2147483648 : i64, rhs_quantization_axis = -1 : i64,
+      rhs_quantization_max_val = 2147483647 : i64, rhs_quantization_min_val = -2147483648 : i64
+    } : (
+      tensor<2x2x!tf_type.qint32>, tensor<2x2x!tf_type.qint32>, tensor<f32>,
+      tensor<i32>, tensor<f32>, tensor<i32>, tensor<f32>, tensor<i32>
+    ) -> tensor<2x2x!tf_type.qint32>
+    %output = "tf.UniformDequantize"(%0, %accum_scale, %accum_zp) {
+      quantization_axis = -1 : i64, quantization_min_val = -128 : i64,
+      quantization_max_val = 127 : i64
+    } : (tensor<2x2x!tf_type.qint32>, tensor<f32>, tensor<i32>) -> tensor<2x2xf32>
+    return %output : tensor<2x2xf32>
+})mlir";
+  auto lhs = xla::LiteralUtil::CreateR2<float>({{23.f, 12.f}, {-10.f, -3.f}});
+  auto rhs = xla::LiteralUtil::CreateR2<float>({{1.f, 2.f}, {-1.f, -3.f}});
+  ExecuteAndCompareResultsWithTfKernel(kProgram, {&lhs, &rhs});
 }
 
 }  // namespace
