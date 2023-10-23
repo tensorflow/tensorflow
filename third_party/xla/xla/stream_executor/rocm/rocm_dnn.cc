@@ -630,14 +630,8 @@ std::set<uint64_t> CachedFusionPlans::unsupported_plans;
 dnn::ProfileResult GetProfileResultFromConvSolution(
     miopenConvSolution_t solution) {
   dnn::ProfileResult profile_result;
-<<<<<<< HEAD
-  profile_result.set_algorithm(
-      {(dnn::AlgorithmDesc::Index)solution.solution_id, false, 
-        solution.workspace_size});
-=======
   profile_result.set_algorithm({(dnn::AlgorithmDesc::Index)solution.solution_id,
                                 false, solution.workspace_size});
->>>>>>> upstream/master
   profile_result.set_elapsed_time_in_ms(solution.time);
   profile_result.set_scratch_size(solution.workspace_size);
   return profile_result;
@@ -2420,12 +2414,7 @@ bool MIOpenSupport::DoRnnForwardImpl(
   }
 
   if (is_profiling) {
-<<<<<<< HEAD
-    tsl::StatusOr<absl::Duration> elapsed =
-                              timer->GetElapsedDuration();
-=======
     tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
->>>>>>> upstream/master
     if (!elapsed.ok()) {
       LOG(ERROR) << "Failed to get elapsed duration";
       return false;
@@ -2569,12 +2558,7 @@ bool MIOpenSupport::DoRnnBackwardImpl(
   }
 
   if (is_profiling) {
-<<<<<<< HEAD
-    tsl::StatusOr<absl::Duration> elapsed =
-                              timer->GetElapsedDuration();
-=======
     tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
->>>>>>> upstream/master
     if (!elapsed.ok()) {
       LOG(ERROR) << "Failed to get elapsed duration";
       return false;
@@ -4937,14 +4921,6 @@ bool MIOpenSupport::DeriveOutputBatchDescriptor(
   return true;
 }
 
-<<<<<<< HEAD
-// A helper function to decide whether to use
-// NHWC in Convolution/Batchnorm. This mode can be faster in
-// in FP16 workloads on gfx908 and beyond. Requires ROCm 5.0+.
-// TODO(stevenireeves): Use autotune to choose between this mode and
-// NCHW when MIOpen has more optimized kernels. 
-=======
->>>>>>> upstream/master
 bool UseNhwcLayoutForRocm() {
 #if TF_ROCM_VERSION >= 50100
   static bool is_enabled = [] {
@@ -4957,22 +4933,12 @@ bool UseNhwcLayoutForRocm() {
   }();
   return is_enabled;
 #else //TF_ROCM_VERSION < 50000
-=======
-    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
-                                        /*default_val=*/false, &is_enabled));
-    return is_enabled;
-  }();
-  return is_enabled;
-#else  // TF_ROCM_VERSION < 50000
->>>>>>> upstream/master
-  return false;
 #endif
 }
 
 }  // namespace gpu
 
 void initialize_miopen() {
-  auto miopenAlreadyRegistered = PluginRegistry::Instance()->HasFactory(
       rocm::kROCmPlatformId, PluginKind::kDnn);
 
   if (!miopenAlreadyRegistered) {

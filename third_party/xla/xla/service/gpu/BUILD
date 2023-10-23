@@ -1156,12 +1156,8 @@ build_cub_sort_kernels(
     deps = if_gpu_is_configured([
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-<<<<<<< HEAD
         ":gpu_prim_hdrs",
     ]),
-=======
-    ] + xla_cub_deps()),
->>>>>>> upstream/master
 )
 
 cc_library(

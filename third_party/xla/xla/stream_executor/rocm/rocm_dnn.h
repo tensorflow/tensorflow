@@ -702,13 +702,6 @@ class MIOpenSupport : public dnn::DnnSupport {
   void operator=(const MIOpenSupport&) = delete;
 };
 
-<<<<<<< HEAD
-// A helper function to decide whether to use
-// NHWC in Convolution/Batchnorm. This mode can be faster in
-// in FP16 workloads on gfx908 and beyond. Requires ROCm 5.0+.
-// TODO(stevenireeves): Use autotune to choose between this mode and
-// NCHW when MIOpen has more optimized kernels.
-=======
 // A helper function for the front frameworks.
 // e.g., TF(tensorflow/core/kernels/conv_ops.cc, fused_batch_norm_op.cc
 // and tensorflow/core/grappler/optimizers/generic_layout_optimizer.cc)
@@ -717,7 +710,6 @@ class MIOpenSupport : public dnn::DnnSupport {
 // Requires ROCm 5.0+.
 // TODO (ROCm): Use autotune to choose between this mode and NCHW
 // when MIOpen has more optimized kernels.
->>>>>>> upstream/master
 bool UseNhwcLayoutForRocm();
 
 }  // namespace gpu
