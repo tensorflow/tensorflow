@@ -28,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/AsmParser/Parser.h"
@@ -122,8 +123,18 @@ static Status LowerToXlaGpuRuntime(
   mlir::PassManager pm(module->getName(), mlir::PassManager::Nesting::Implicit);
   pm.enableVerifier(should_verify);
 
+  absl::flat_hash_set<DebugOptions::CommandBufferCmdType> command_types;
+  for (int command_type_num : debug_options.xla_gpu_enable_command_buffer()) {
+    if (!DebugOptions::CommandBufferCmdType_IsValid(command_type_num)) {
+      return InternalError("Invalid command buffer command type");
+    }
+    DebugOptions::CommandBufferCmdType command_type =
+        static_cast<DebugOptions::CommandBufferCmdType>(command_type_num);
+    command_types.insert(command_type);
+  }
+
   GpuPipelineOpts opts;
-  opts.gpu_graph_level = debug_options.xla_gpu_graph_level();
+  opts.command_types = command_types;
   opts.min_graph_size = debug_options.xla_gpu_graph_min_graph_size();
   opts.enable_concurrent_region =
       debug_options.xla_gpu_graph_enable_concurrent_region();
