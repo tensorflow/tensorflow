@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -150,7 +151,30 @@ class XlaCallModuleOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("disabled_checks", &disabled_checks));
     std::vector<string> platforms;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("platforms", &platforms));
+    // TODO(necula): change this to OP_REQUIRES_OK when 6 months have passed
+    // since we added the function_list and has_token_input_output
+    // attributes (May 25, 2023).
+    if (!ctx->GetAttr("has_token_input_output", &module_has_token_input_output_)
+             .ok()) {
+      module_has_token_input_output_ = false;
+    }
+    if (!ctx->GetAttr("function_list", &function_list_).ok()) {
+      function_list_.clear();
+    }
 
+    if (VLOG_IS_ON(3)) {
+      VLOG(3) << "Initializing XlaCallModuleOp (version = " << version
+              << ", platforms = [" << absl::StrJoin(platforms, ", ")
+              << "], has_token_input_output = "
+              << module_has_token_input_output_ << ", disabled_checks = ["
+              << absl::StrJoin(disabled_checks, ", ") << "], "
+              << "function_list = ["
+              << absl::StrJoin(function_list_, ",",
+                               [](std::string *out, NameAttrList x) {
+                                 absl::StrAppend(out, x.name());
+                               })
+              << "])";
+    }
     string loading_device_type = ctx->device_type().type_string();
     string loading_platform = "";
     if (loading_device_type == DEVICE_CPU_XLA_JIT) {
@@ -171,11 +195,8 @@ class XlaCallModuleOp : public XlaOpKernel {
                   absl::UnimplementedError(absl::StrCat(
                       "Unexpected device type ", loading_device_type)));
     }
-    VLOG(3) << "Initialized XlaCallModuleOp on " << loading_platform;
-    if (!ctx->GetAttr("has_token_input_output", &module_has_token_input_output_)
-             .ok()) {
-      module_has_token_input_output_ = false;
-    }
+    VLOG(3) << "Initializing XlaCallModuleOp on " << loading_platform;
+
     {
       auto loader = XlaCallModuleLoader::Create(
           &context_, version, std::move(module_str), std::move(disabled_checks),
@@ -186,10 +207,6 @@ class XlaCallModuleOp : public XlaOpKernel {
       loader_ = *std::move(loader);
     }
     OP_REQUIRES_OK(ctx, loader_->ValidateDialect());
-
-    if (!ctx->GetAttr("function_list", &function_list_).ok()) {
-      function_list_.clear();
-    }
 
     if (!ctx->GetAttr(kXlaTokenInputNodesAttrName, &token_input_nodes_).ok()) {
       token_input_nodes_.clear();
