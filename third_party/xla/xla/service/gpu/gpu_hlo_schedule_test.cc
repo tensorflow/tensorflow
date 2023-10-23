@@ -16,20 +16,34 @@ limitations under the License.
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/backend.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/hlo_ordering.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tests/filecheck.h"
 #include "xla/tests/hlo_test_base.h"
 #include "xla/tests/test_utils.h"
+#include "tsl/platform/status.h"
+#include "tsl/platform/statusor.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
 namespace xla {
@@ -889,6 +903,38 @@ while_body {
             get_index("recv.4", while_body));
   EXPECT_LT(get_index("recv-done.4", while_body),
             get_index("recv.1", while_body));
+}
+
+TEST_F(GpuHloScheduleTest, SkipAlreadyScheduled) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m, is_scheduled=true
+
+fused_computation {
+  param_0 = f32[1024,1024]{1,0} parameter(0)
+  ROOT exponential.1 = f32[1024,1024]{1,0} exponential(param_0)
+}
+
+fused_computation.1 {
+  param_0.1 = f32[1024,1024]{1,0} parameter(0)
+  ROOT negate.1 = f32[1024,1024]{1,0} negate(param_0.1)
+}
+
+ENTRY e {
+  p = f32[1024,1024]{1,0} parameter(0)
+  wrapped_negate = f32[1024,1024]{1,0} fusion(p), kind=kLoop, calls=fused_computation.1
+  wrapped_exponential = f32[1024,1024]{1,0} fusion(p), kind=kLoop, calls=fused_computation
+  ROOT t = (f32[1024,1024]{1,0}, f32[1024,1024]{1,0}) tuple(wrapped_exponential, wrapped_negate)
+})")
+                    .value();
+  TF_CHECK_OK(ScheduleGpuModule(
+      module.get(), /*pointer_size=*/8,
+      /*memory_limit=*/1024 * 1024 * 1024,
+      backend().default_stream_executor()->GetDeviceDescription()));
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+// CHECK: ENTRY
+// CHECK: wrapped_negate = f32[1024,1024]{1,0}
+// CHECK: wrapped_exponential = f32[1024,1024]{1,0}
+)"));
 }
 
 class GpuHloScheduleParameterizedTest
