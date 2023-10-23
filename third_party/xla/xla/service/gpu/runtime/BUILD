@@ -298,7 +298,7 @@ cc_library(
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
         "//xla/runtime:state",
-        "//xla/service/gpu:fft_thunk",
+        "//xla/service/gpu/runtime3:fft_thunk",
         "//xla/stream_executor:fft",
         "//xla/translate/mhlo_to_hlo:attribute_exporter",
     ],

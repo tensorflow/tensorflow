@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_GPU_FFT_THUNK_H_
-#define XLA_SERVICE_GPU_FFT_THUNK_H_
+#ifndef XLA_SERVICE_GPU_RUNTIME3_FFT_THUNK_H_
+#define XLA_SERVICE_GPU_RUNTIME3_FFT_THUNK_H_
 
 #include <optional>
 
@@ -97,4 +97,4 @@ Status RunFft(se::DeviceMemoryBase input, const Shape& input_shape,
 }  // namespace gpu
 }  // namespace xla
 
-#endif  // XLA_SERVICE_GPU_FFT_THUNK_H_
+#endif  // XLA_SERVICE_GPU_RUNTIME3_FFT_THUNK_H_

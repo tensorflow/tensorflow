@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/fft_thunk.h"
+#include "xla/service/gpu/runtime3/fft_thunk.h"
 
 #include <string>
 
