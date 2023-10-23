@@ -107,22 +107,23 @@ def _create_tpu_topology(core_locations: List[_CoreLocation], num_tasks: int,
     num_devices_per_task: The number of TPU devices local to each task.
   """
 
-  assert min([l.x for l in core_locations]) == 0
-  assert min([l.y for l in core_locations]) == 0
-  assert min([l.z for l in core_locations]) == 0
-  assert min([l.core for l in core_locations]) == 0
-  x_max = max([l.x for l in core_locations])
-  y_max = max([l.y for l in core_locations])
-  z_max = max([l.z for l in core_locations])
-  core_max = max([l.core for l in core_locations])
-  mesh_shape = [x_max + 1, y_max + 1, z_max + 1, core_max + 1]
+# Convert core_locations into a NumPy array
+core_locations_array = np.array([[l.x, l.y, l.z, l.core] for l in core_locations])
 
-  device_coordinates = [[l.x, l.y, l.z, l.core] for l in core_locations]
-  device_coordinates = np.asarray(device_coordinates).reshape(
-      num_tasks, num_devices_per_task, 4)
+# Calculate the minimum values for each column
+min_values = np.min(core_locations_array, axis=0)
 
-  return topology.Topology(
-      mesh_shape=mesh_shape, device_coordinates=device_coordinates)
+# Calculate the maximum values for each column
+max_values = np.max(core_locations_array, axis=0)
+
+# Calculate mesh_shape using max_values
+mesh_shape = max_values + 1
+
+# Reshape device_coordinates
+device_coordinates = core_locations_array.reshape(num_tasks, num_devices_per_task, 4)
+
+# Create the topology using the optimized values
+return topology.Topology(mesh_shape=mesh_shape, device_coordinates=device_coordinates)
 
 
 def shutdown_tpu_system():
