@@ -727,8 +727,13 @@ class Translator {
   BufferOffset<flatbuffers::Vector<unsigned int>> BuildStablehloPrecisionConfig(
       ::mlir::ArrayAttr precisionConfig);
 
+  std::optional<BufferOffset<tflite::Operator>> BuildStablehloGatherOp(
+      mlir::stablehlo::GatherOp gather_op, const std::vector<int32_t>& operands,
+      const std::vector<int32_t>& results);
+
   std::optional<BufferOffset<tflite::Operator>> BuildStablehloScatterOp(
-      mlir::stablehlo::ScatterOp shlo_op, const std::vector<int32_t>& operands,
+      mlir::stablehlo::ScatterOp scatter_op,
+      const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
   std::optional<BufferOffset<tflite::Operator>> BuildStablehloRngBitGeneratorOp(
@@ -1432,6 +1437,43 @@ Translator::BuildStablehloPrecisionConfig(::mlir::ArrayAttr precisionConfig) {
 }
 
 std::optional<BufferOffset<tflite::Operator>>
+Translator::BuildStablehloGatherOp(mlir::stablehlo::GatherOp gather_op,
+                                   const std::vector<int32_t>& operands,
+                                   const std::vector<int32_t>& results) {
+  std::string op_name =
+      gather_op.getOperation()->getName().getStringRef().str();
+  uint32_t opcode_index =
+      GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_GATHER);
+
+  std::vector<int64_t> offset_dims_vec(
+      gather_op.getDimensionNumbers().getOffsetDims().begin(),
+      gather_op.getDimensionNumbers().getOffsetDims().end());
+  std::vector<int64_t> collapsed_slice_dims_vec(
+      gather_op.getDimensionNumbers().getCollapsedSliceDims().begin(),
+      gather_op.getDimensionNumbers().getCollapsedSliceDims().end());
+  std::vector<int64_t> start_index_map_vec(
+      gather_op.getDimensionNumbers().getStartIndexMap().begin(),
+      gather_op.getDimensionNumbers().getStartIndexMap().end());
+
+  auto offset_dims = builder_.CreateVector(offset_dims_vec);
+  auto collapsed_slice_dims = builder_.CreateVector(collapsed_slice_dims_vec);
+  auto start_index_map = builder_.CreateVector(start_index_map_vec);
+  auto slice_sizes = builder_.CreateVector(
+      mlir::GetOptionalVector<int64_t>(gather_op.getSliceSizes()));
+
+  auto gather_option = tflite::CreateStablehloGatherOptions(
+      builder_, offset_dims, collapsed_slice_dims, start_index_map,
+      gather_op.getDimensionNumbers().getIndexVectorDim(), slice_sizes,
+      gather_op.getIndicesAreSorted());
+
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
+      tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
+      tflite::BuiltinOptions2_StablehloGatherOptions, gather_option.Union());
+}
+
+std::optional<BufferOffset<tflite::Operator>>
 Translator::BuildStablehloScatterOp(mlir::stablehlo::ScatterOp scatter_op,
                                     const std::vector<int32_t>& operands,
                                     const std::vector<int32_t>& results) {
@@ -1589,6 +1631,9 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     if (auto shlo_op =
             llvm::dyn_cast<mlir::stablehlo::RngBitGeneratorOp>(inst)) {
       return BuildStablehloRngBitGeneratorOp(shlo_op, operands, results);
+    }
+    if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::GatherOp>(inst)) {
+      return BuildStablehloGatherOp(shlo_op, operands, results);
     }
     // for ops don't have kernels, only serialize when conversion is set to true
     if (convert_stablehlo_) {
@@ -2103,40 +2148,6 @@ std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
             tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
             tflite::BuiltinOptions2_StablehloWhileOptions,
             while_option.Union());
-      }
-      if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::GatherOp>(inst)) {
-        std::string op_name = inst->getName().getStringRef().str();
-        uint32_t opcode_index =
-            GetOpcodeIndex(op_name, tflite::BuiltinOperator_STABLEHLO_GATHER);
-
-        std::vector<int64_t> offset_dims_vec(
-            shlo_op.getDimensionNumbers().getOffsetDims().begin(),
-            shlo_op.getDimensionNumbers().getOffsetDims().end());
-        std::vector<int64_t> collapsed_slice_dims_vec(
-            shlo_op.getDimensionNumbers().getCollapsedSliceDims().begin(),
-            shlo_op.getDimensionNumbers().getCollapsedSliceDims().end());
-        std::vector<int64_t> start_index_map_vec(
-            shlo_op.getDimensionNumbers().getStartIndexMap().begin(),
-            shlo_op.getDimensionNumbers().getStartIndexMap().end());
-
-        auto offset_dims = builder_.CreateVector(offset_dims_vec);
-        auto collapsed_slice_dims =
-            builder_.CreateVector(collapsed_slice_dims_vec);
-        auto start_index_map = builder_.CreateVector(start_index_map_vec);
-        auto slice_sizes = builder_.CreateVector(
-            mlir::GetOptionalVector<int64_t>(shlo_op.getSliceSizes()));
-
-        auto gather_option = tflite::CreateStablehloGatherOptions(
-            builder_, offset_dims, collapsed_slice_dims, start_index_map,
-            shlo_op.getDimensionNumbers().getIndexVectorDim(), slice_sizes,
-            shlo_op.getIndicesAreSorted());
-
-        return tflite::CreateOperator(
-            builder_, opcode_index, builder_.CreateVector(operands),
-            builder_.CreateVector(results), tflite::BuiltinOptions_NONE, 0, 0,
-            tflite::CustomOptionsFormat_FLEXBUFFERS, 0, 0, 0, 0,
-            tflite::BuiltinOptions2_StablehloGatherOptions,
-            gather_option.Union());
       }
       if (auto shlo_op = llvm::dyn_cast<mlir::stablehlo::TransposeOp>(inst)) {
         std::string op_name = inst->getName().getStringRef().str();

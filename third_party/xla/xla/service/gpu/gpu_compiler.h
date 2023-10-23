@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/service/gpu/buffer_sharing.h"
 #include "xla/service/gpu/executable.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
-#include "xla/service/gpu/gpu_target_config.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_dataflow_analysis.h"
 #include "xla/service/hlo_pass_pipeline.h"
@@ -112,20 +111,13 @@ class GpuCompiler : public LLVMCompiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
       const CompileOptions& options) override;
 
-  // Run HloPasses without an attached deivce. So GemmAlgorithmPicker and
-  // GpuConvAlgorithmPicker can not run.
-  StatusOr<std::unique_ptr<HloModule>> RunHloPassesWithoutDevice(
-      std::unique_ptr<HloModule> module, const CompileOptions& options,
-      const GpuTargetConfig& gpu_target_config,
-      const AutotuneResults& autotune_results);
-
   StatusOr<std::unique_ptr<BufferAssignment>> AssignBuffers(
       HloModule* hlo_module, se::StreamExecutor* stream_exec) override;
 
   se::GpuComputeCapability GetGpuVersion(se::StreamExecutor* stream_exec);
 
-  GpuTargetConfig GetGpuTargetConfig(se::StreamExecutor* stream_exec) {
-    return GpuTargetConfig(stream_exec);
+  TargetConfig GetGpuTargetConfig(se::StreamExecutor* stream_exec) {
+    return TargetConfig(stream_exec);
   }
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
@@ -166,8 +158,7 @@ class GpuCompiler : public LLVMCompiler {
   // thread_pool is used to speed up compilation during autotuning.
   virtual Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-      const AutotuneResults* autotune_results,
+      const CompileOptions& options, const TargetConfig& gpu_target_config,
       tsl::thread::ThreadPool* thread_pool);
 
   // CollectivesScheduleLinearizer enforces a total ordering between collectives
@@ -205,8 +196,7 @@ class GpuCompiler : public LLVMCompiler {
   Status OptimizeHloModule(HloModule* hlo_module,
                            se::StreamExecutor* stream_exec,
                            const CompileOptions& options,
-                           const GpuTargetConfig& gpu_target_config,
-                           const AutotuneResults* autotune_results);
+                           const TargetConfig& gpu_target_config);
 
   virtual Status OptimizeHloConvolutionCanonicalization(
       HloModule* hlo_module, se::GpuComputeCapability gpu_version,

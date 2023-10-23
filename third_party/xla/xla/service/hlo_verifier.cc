@@ -2761,7 +2761,12 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
             operand_shape.rank() == result_shape.rank() &&
             operand_shape.has_layout()) {
           const Layout& operand_layout = operand_shape.layout();
-          TF_RET_CHECK(LayoutUtil::Equal(result_layout, operand_layout))
+          Layout::Equal equal_predicate = Layout::Equal();
+          if (instruction->opcode() == HloOpcode::kConvert) {
+            // Convert instructions can change element_size_in_bits
+            equal_predicate.IgnoreElementSize();
+          }
+          TF_RET_CHECK(equal_predicate(result_layout, operand_layout))
               << "Instruction shouldn't change layouts "
               << instruction->ToString() << " From " << result_shape << " To "
               << operand_shape;

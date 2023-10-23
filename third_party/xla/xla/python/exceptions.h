@@ -15,12 +15,16 @@ limitations under the License.
 #ifndef XLA_PYTHON_EXCEPTIONS_H_
 #define XLA_PYTHON_EXCEPTIONS_H_
 
+#include <cstdlib>
+#include <cstring>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/status.h"
 
 namespace xla {
@@ -30,9 +34,7 @@ namespace xla {
 class XlaRuntimeError : public std::runtime_error {
  public:
   explicit XlaRuntimeError(Status status)
-      : std::runtime_error(
-            status.ToString(absl::StatusToStringMode::kWithNoExtraData)),
-        status_(std::move(status)) {
+      : std::runtime_error(StatusToString(status)), status_(status) {
     CHECK(!status_->ok());
   }
 
@@ -41,6 +43,22 @@ class XlaRuntimeError : public std::runtime_error {
   std::optional<Status> status() const { return status_; }
 
  private:
+  static std::string StatusToString(const Status& st) {
+    if (!ShowStackTraces()) {
+      return st.ToString(absl::StatusToStringMode::kWithNoExtraData);
+    }
+    std::stringstream ss;
+    ss << st;
+    return ss.str();
+  }
+
+  static bool ShowStackTraces() {
+    if (char* value = getenv("JAX_TRACEBACK_FILTERING")) {
+      return strcmp(value, "off");
+    }
+    return false;
+  }
+
   std::optional<Status> status_;
 };
 

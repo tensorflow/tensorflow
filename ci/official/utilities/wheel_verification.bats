@@ -16,10 +16,16 @@
 # directory, or whatever path is set as $TF_WHEEL.
 
 setup_file() {
-    python3 -m venv "$BATS_FILE_TMPDIR/venv"
     cd build
     if [[ -z "$TF_WHEEL" ]]; then
         export TF_WHEEL=$(find build -iname "*.whl")
+    fi
+
+    # Setup the env for the python import testing
+    if [[ $TF_WHEEL == *"aarch64.whl" ]]; then
+        python${TFCI_PYTHON_VERSION} -m venv "$BATS_FILE_TMPDIR/venv"
+    else
+        python3 -m venv "$BATS_FILE_TMPDIR/venv"
     fi
 }
 

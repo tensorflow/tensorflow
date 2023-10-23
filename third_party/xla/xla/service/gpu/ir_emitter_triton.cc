@@ -1416,8 +1416,13 @@ Status EmitMatMul(mlir::OpBuilder builder, absl::string_view libdevice_path,
                         });
 
     // Execute matrix multiplication of input tiles and pass the accumulator.
+    // TODO(manany): Should be looked into once we enable Hopper workloads.
+    // maxNumImpreciseAcc flag was introduced for Hopper to accumulate in a
+    // lower precision than the output type. The change was introduced here:
+    // https://github.com/openai/triton/commit/31b0c521427109a8eda609b58d756c380b21599a
     Value accumulator_next = b.create<mt::DotOp>(dot_input_lhs, dot_input_rhs,
-                                                 iter_args.back(), allow_tf32);
+                                                 iter_args.back(), allow_tf32,
+                                                 /*maxNumImpreciseAcc=*/0);
     iter_args_next.push_back(accumulator_next);
 
     b.create<mlir::scf::YieldOp>(iter_args_next);

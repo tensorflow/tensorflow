@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "Eigen/Core"  // from @eigen_archive
 #include "rocm/include/miopen/miopen.h"
+#include "rocm/rocm_config.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/gpu/gpu_activation.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
@@ -629,9 +630,14 @@ std::set<uint64_t> CachedFusionPlans::unsupported_plans;
 dnn::ProfileResult GetProfileResultFromConvSolution(
     miopenConvSolution_t solution) {
   dnn::ProfileResult profile_result;
+<<<<<<< HEAD
   profile_result.set_algorithm(
       {(dnn::AlgorithmDesc::Index)solution.solution_id, false, 
         solution.workspace_size});
+=======
+  profile_result.set_algorithm({(dnn::AlgorithmDesc::Index)solution.solution_id,
+                                false, solution.workspace_size});
+>>>>>>> upstream/master
   profile_result.set_elapsed_time_in_ms(solution.time);
   profile_result.set_scratch_size(solution.workspace_size);
   return profile_result;
@@ -2414,8 +2420,12 @@ bool MIOpenSupport::DoRnnForwardImpl(
   }
 
   if (is_profiling) {
+<<<<<<< HEAD
     tsl::StatusOr<absl::Duration> elapsed =
                               timer->GetElapsedDuration();
+=======
+    tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
+>>>>>>> upstream/master
     if (!elapsed.ok()) {
       LOG(ERROR) << "Failed to get elapsed duration";
       return false;
@@ -2559,8 +2569,12 @@ bool MIOpenSupport::DoRnnBackwardImpl(
   }
 
   if (is_profiling) {
+<<<<<<< HEAD
     tsl::StatusOr<absl::Duration> elapsed =
                               timer->GetElapsedDuration();
+=======
+    tsl::StatusOr<absl::Duration> elapsed = timer->GetElapsedDuration();
+>>>>>>> upstream/master
     if (!elapsed.ok()) {
       LOG(ERROR) << "Failed to get elapsed duration";
       return false;
@@ -3785,6 +3799,27 @@ bool MIOpenSupport::GetRnnAlgorithms(
 }
 
 bool MIOpenSupport::DoBatchNormalizationForward(
+    Stream* stream, const DeviceMemory<Eigen::bfloat16>& x,
+    const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
+    const DeviceMemory<float>& estimated_mean,
+    const DeviceMemory<float>& estimated_variance,
+    const DeviceMemory<Eigen::bfloat16>& side_input,
+    const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    const double exponential_average_factor,
+    dnn::ActivationMode activation_mode, DeviceMemory<Eigen::bfloat16>* y,
+    DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
+    DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
+    bool is_training, ScratchAllocator* reserve_space_allocator,
+    ScratchAllocator* workspace_allocator) {
+  return DoBatchNormalizationForwardImpl<Eigen::bfloat16, float>(
+      stream, dnn::DataType::kBF16, dnn::DataType::kFloat, x, scale, offset,
+      estimated_mean, estimated_variance, side_input, x_desc, scale_offset_desc,
+      epsilon, exponential_average_factor, activation_mode, y, batch_mean,
+      batch_var, saved_mean, saved_inv_var, is_training);
+}
+
+bool MIOpenSupport::DoBatchNormalizationForward(
     Stream* stream, const DeviceMemory<Eigen::half>& x,
     const DeviceMemory<float>& scale, const DeviceMemory<float>& offset,
     const DeviceMemory<float>& estimated_mean,
@@ -3872,6 +3907,25 @@ bool MIOpenSupport::DoBatchNormalizationForwardImpl(
     return false;
   }
   return true;
+}
+
+bool MIOpenSupport::DoBatchNormalizationBackward(
+    Stream* stream, const DeviceMemory<Eigen::bfloat16>& y_backprop,
+    const DeviceMemory<Eigen::bfloat16>& x, const DeviceMemory<float>& scale,
+    const DeviceMemory<float>& offset, const DeviceMemory<float>& mean,
+    const DeviceMemory<float>& inv_var, const DeviceMemory<Eigen::bfloat16>& y,
+    const dnn::BatchDescriptor& x_desc,
+    const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+    dnn::ActivationMode activation_mode,
+    DeviceMemory<Eigen::bfloat16>* x_backprop,
+    DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+    DeviceMemory<Eigen::bfloat16>* side_input_backprop,
+    DeviceMemory<uint8_t>* reserve_space_data,
+    ScratchAllocator* workspace_allocator) {
+  return DoBatchNormalizationBackwardImpl<Eigen::bfloat16, float>(
+      stream, miopenBFloat16, miopenFloat, y_backprop, x, scale, mean, inv_var,
+      x_desc, scale_offset_desc, epsilon, x_backprop, scale_backprop,
+      offset_backprop);
 }
 
 bool MIOpenSupport::DoBatchNormalizationBackward(
@@ -4883,15 +4937,19 @@ bool MIOpenSupport::DeriveOutputBatchDescriptor(
   return true;
 }
 
+<<<<<<< HEAD
 // A helper function to decide whether to use
 // NHWC in Convolution/Batchnorm. This mode can be faster in
 // in FP16 workloads on gfx908 and beyond. Requires ROCm 5.0+.
 // TODO(stevenireeves): Use autotune to choose between this mode and
 // NCHW when MIOpen has more optimized kernels. 
+=======
+>>>>>>> upstream/master
 bool UseNhwcLayoutForRocm() {
 #if TF_ROCM_VERSION >= 50100
   static bool is_enabled = [] {
     bool is_enabled = false;
+<<<<<<< HEAD
     TF_CHECK_OK(tsl::ReadBoolFromEnvVar(
         "TF_USE_ROCM_NHWC",
         /*default_val=*/false, &is_enabled));
@@ -4899,6 +4957,14 @@ bool UseNhwcLayoutForRocm() {
   }();
   return is_enabled;
 #else //TF_ROCM_VERSION < 50000
+=======
+    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
+                                        /*default_val=*/false, &is_enabled));
+    return is_enabled;
+  }();
+  return is_enabled;
+#else  // TF_ROCM_VERSION < 50000
+>>>>>>> upstream/master
   return false;
 #endif
 }

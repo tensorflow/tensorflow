@@ -121,8 +121,8 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   (void)reserve_memory_;
 
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
-  stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(
-                     GPUMachineManager(), platform_device_id)
+  stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
+                                                           platform_device_id)
                      .value();
   // Initialized here as it only exist if compiled with a recent
   // enough CUDA.
@@ -298,9 +298,17 @@ void* GpuCudaMallocAsyncAllocator::AllocateRaw(size_t alignment,
   }
   cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
   void* ptr = nullptr;
-  if (auto result =
-          cuMemAllocFromPoolAsync(reinterpret_cast<CUdeviceptr*>(&ptr),
-                                  num_bytes, pool_, cuda_stream_)) {
+  auto result = cuMemAllocFromPoolAsync(reinterpret_cast<CUdeviceptr*>(&ptr),
+                                        num_bytes, pool_, cuda_stream_);
+  if (result == CUDA_ERROR_OUT_OF_MEMORY) {
+    // Doing a stream synchronization give the driver more flexibility
+    // for blocks coalescing and doing memory remapping. So it can
+    // solve some OOM cases when memory is tight.
+    cuStreamSynchronize(cuda_stream_);
+    result = cuMemAllocFromPoolAsync(reinterpret_cast<CUdeviceptr*>(&ptr),
+                                     num_bytes, pool_, cuda_stream_);
+  }
+  if (result) {
     size_t free, total;
     cuMemGetInfo(&free, &total);
     LOG(ERROR) << Name() << " cuMemAllocAsync failed to allocate " << num_bytes

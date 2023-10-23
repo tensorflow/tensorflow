@@ -415,11 +415,10 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   if (context == nullptr) {
     return;
   }
-  CUcontext former_context = CurrentContext();
-  CUresult res = cuCtxSetCurrent(context->context());
+  CUresult res = cuCtxPushCurrent(context->context());
   CUdevice device;
   cuCtxGetDevice(&device);
-  cuCtxSetCurrent(former_context);
+  cuCtxPopCurrent(nullptr);
 
   res = cuDevicePrimaryCtxRelease(device);
 
@@ -810,6 +809,19 @@ GpuDriver::GraphNodeGetType(CUgraphNode node) {
       cuGraphAddMemcpyNode(node, graph, deps.data(), deps.size(), &params,
                            context->context()),
       "Failed to add memcpy d2d node to a CUDA graph");
+
+  return ::tsl::OkStatus();
+}
+
+/* static */ tsl::Status GpuDriver::GraphAddChildNode(
+    CUgraphNode* node, CUgraph graph, absl::Span<CUgraphNode> deps,
+    CUgraph child) {
+  VLOG(2) << "Create a new node by cloning the child graph " << child
+          << " and add it to " << graph << "; deps: " << deps.size();
+
+  RETURN_IF_CUDA_RES_ERROR(
+      cuGraphAddChildGraphNode(node, graph, deps.data(), deps.size(), child),
+      "Failed to create a child graph node and add it to a CUDA graph");
 
   return ::tsl::OkStatus();
 }

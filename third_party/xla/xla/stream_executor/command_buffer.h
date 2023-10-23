@@ -48,6 +48,10 @@ class CommandBufferInterface;
 // device.
 class CommandBuffer {
  public:
+  ~CommandBuffer();
+  CommandBuffer(CommandBuffer&&);
+  CommandBuffer& operator=(CommandBuffer&&);
+
   // Command buffer state:
   //
   //   (1) kCreate:    a new command buffer under construction
@@ -98,6 +102,9 @@ class CommandBuffer {
   tsl::Status Launch(const ThreadDim& threads, const BlockDim& blocks,
                      const KernelBase& kernel, const KernelArgsArrayBase& args);
 
+  // Adds a nested command buffer to the command buffer.
+  tsl::Status AddNestedCommandBuffer(const CommandBuffer& nested);
+
   // Adds a device-to-device memory copy to the command buffer.
   tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                    const DeviceMemoryBase& src, uint64_t size);
@@ -132,9 +139,6 @@ class CommandBuffer {
   const internal::CommandBufferInterface* implementation() const {
     return implementation_.get();
   }
-
-  CommandBuffer(CommandBuffer&&) = default;
-  CommandBuffer& operator=(CommandBuffer&&) = default;
 
  private:
   CommandBuffer(

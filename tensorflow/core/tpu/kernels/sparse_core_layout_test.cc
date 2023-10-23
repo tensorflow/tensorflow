@@ -40,7 +40,7 @@ TEST(SparseCoreLayoutStacker, StacksTwoTablesAndPads) {
                   unsharded_shape: [ 100, 6 ]
                   unsharded_padded_shape: [ 128, 8 ]
                   sparse_core_shard_row_offset: 0
-                  rotation_offset: 0
+                  sparse_core_shard_rotation: 0
                 }
                 tables {
                   table_name: 'table2'
@@ -51,7 +51,7 @@ TEST(SparseCoreLayoutStacker, StacksTwoTablesAndPads) {
                   unsharded_shape: [ 50, 5 ]
                   unsharded_padded_shape: [ 64, 8 ]
                   sparse_core_shard_row_offset: 16  # = 128/8
-                  rotation_offset: 4
+                  sparse_core_shard_rotation: 4
                 }
               )pb")));
 }
@@ -71,7 +71,7 @@ TEST(SparseCoreLayoutStacker, RespectsDisableStacking) {
                   unsharded_shape: [ 100, 6 ]
                   unsharded_padded_shape: [ 128, 8 ]
                   sparse_core_shard_row_offset: 0
-                  rotation_offset: 0
+                  sparse_core_shard_rotation: 0
                 }
                 tables {
                   table_name: 'table2'
@@ -82,7 +82,7 @@ TEST(SparseCoreLayoutStacker, RespectsDisableStacking) {
                   unsharded_shape: [ 50, 5 ]
                   unsharded_padded_shape: [ 64, 8 ]
                   sparse_core_shard_row_offset: 0
-                  rotation_offset: 4
+                  sparse_core_shard_rotation: 0
                 }
               )pb")));
 }

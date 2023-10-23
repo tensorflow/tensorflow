@@ -3,7 +3,7 @@
 
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("//xla:xla.bzl", "xla_cc_test", "xla_export_hlo_deps")
+load("//xla:xla.bzl", "xla_cc_test", "xla_cub_deps", "xla_export_hlo_deps")
 load(
     "//xla/service/gpu:build_defs.bzl",
     "build_cub_sort_kernels", 
@@ -1156,8 +1156,12 @@ build_cub_sort_kernels(
     deps = if_gpu_is_configured([
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+<<<<<<< HEAD
         ":gpu_prim_hdrs",
     ]),
+=======
+    ] + xla_cub_deps()),
+>>>>>>> upstream/master
 )
 
 cc_library(
@@ -2618,20 +2622,6 @@ cc_library(
 )
 
 cc_library(
-    name = "gpu_target_config",
-    srcs = ["gpu_target_config.cc"],
-    hdrs = ["gpu_target_config.h"],
-    compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//xla/stream_executor",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:device_description_proto_cc",
-        "//xla/stream_executor:dnn",
-    ],
-)
-
-cc_library(
     name = "gpu_compiler",
     srcs = if_gpu_is_configured([
         "gpu_compiler.cc",
@@ -2670,7 +2660,6 @@ cc_library(
         ":gpu_reduce_scatter_creator",
         ":gpu_sanitize_constant_names",
         ":gpu_scatter_expander",
-        ":gpu_target_config",
         ":hlo_fusion_stats",
         ":horizontal_input_fusion",
         ":horizontal_loop_fusion",
@@ -2807,6 +2796,7 @@ cc_library(
         "//xla/service:zero_sized_hlo_elimination",
         "//xla/service/gpu/model:gpu_cost_model_stats_collection",
         "//xla/service/gpu/model:gpu_hlo_cost_analysis",
+        "//xla/service:sub_byte_normalization",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/service/spmd:collective_permute_motion",
         "//xla/service/spmd:stateful_rng_spmd_partitioner",
@@ -3333,6 +3323,7 @@ cc_library(
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:ir_headers",
         "@local_tsl//tsl/platform:macros",
@@ -4391,11 +4382,10 @@ cc_library(
         ":ir_emission_utils",
         "//xla:shape_util",
         "//xla:statusor",
+        "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo:lhlo",
-        "//xla/mlir_hlo:transforms_gpu_passes",
         "//xla/service:buffer_assignment",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
     ],
 )

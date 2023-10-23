@@ -371,12 +371,22 @@ Status IrEmitterUnnested::EmitConstant(mlir::Operation* op) {
       module.lookupSymbol(get_global.getName()));
   auto literal = global.getInitialValue()->dyn_cast<mlir::DenseElementsAttr>();
   TF_RET_CHECK(literal);
-  TF_ASSIGN_OR_RETURN(int element_bytes,
-                      GetElementTypeBytes(literal.getType().getElementType()));
   std::vector<uint8_t> content;
   TF_RETURN_IF_ERROR(CopyDenseElementsDataToXlaFormat(literal, &content));
+  int num_elements, element_bytes;
+  if (literal.getType().getElementType().isInteger(4)) {
+    // Treat int4 constant as int8 constant with half the number of elements
+    TF_RET_CHECK(content.size() ==
+                 (literal.getType().getNumElements() + 1) / 2);
+    num_elements = content.size();
+    element_bytes = 1;
+  } else {
+    num_elements = literal.getType().getNumElements();
+    TF_ASSIGN_OR_RETURN(
+        element_bytes, GetElementTypeBytes(literal.getType().getElementType()));
+  }
   ir_emitter_context_->emit_constant(
-      literal.getType().getNumElements(), element_bytes, global.getSymName(),
+      num_elements, element_bytes, global.getSymName(),
       global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt(), content,
       &b_);
   return OkStatus();

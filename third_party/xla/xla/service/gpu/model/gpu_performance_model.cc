@@ -345,6 +345,12 @@ GpuPerformanceModel::EstimateRunTimeForInstruction(
                       fusion_analysis->GetEmitterFusionKind() ==
                           HloFusionAnalysis::EmitterFusionKind::kTranspose) ||
                      (!producer_transposes && !consumer_transposes);
+    // Fusing two row reductions breaks coalescing.
+    coalesced &= ((fusion_analysis &&
+                   fusion_analysis->GetEmitterFusionKind() !=
+                       HloFusionAnalysis::EmitterFusionKind::kReduction) ||
+                  !fused_consumer || !IsInputFusibleReduction(*producer) ||
+                  !IsInputFusibleReduction(*fused_consumer));
     const auto& operand_shape = producer->operand(i)->shape();
 
     CHECK_LE(common_utilization, producer_output_utilization);

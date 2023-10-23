@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/gpu/kernel_thunk.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -45,7 +46,7 @@ mlir::Value RemoveTransformingOperations(mlir::Value value) {
 KernelThunk::KernelThunk(mlir::Operation* op, std::string kernel_name,
                          absl::Span<const KernelArgument> kernel_arguments,
                          LaunchDimensions launch_dimensions,
-                         int64_t shmem_bytes)
+                         int64_t shmem_bytes, bool emit_ir_from_hlo)
     : Thunk(Kind::kKernel, Thunk::ThunkInfo::WithProfileAnnotation(op)),
       kernel_name_(std::move(kernel_name)),
       launch_dimensions_(std::move(launch_dimensions)),
@@ -57,6 +58,11 @@ KernelThunk::KernelThunk(mlir::Operation* op, std::string kernel_name,
       args_.push_back(kernel_argument.slice());
       written_.push_back(kernel_argument.written());
     }
+  }
+
+  if (emit_ir_from_hlo) {
+    // Skip populating MLIR values_ if emitting from HLO.
+    return;
   }
 
   values_.reserve(kernel_arguments.size());

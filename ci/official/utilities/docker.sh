@@ -30,6 +30,7 @@ fi
 if ! docker container inspect tf >/dev/null 2>&1 ; then
   docker run "${TFCI_DOCKER_ARGS[@]}" --name tf -w "$TFCI_GIT_DIR" -itd --rm \
       -v "$TFCI_GIT_DIR:$TFCI_GIT_DIR" \
+      --env TFCI_PYTHON_VERSION \
       "$TFCI_DOCKER_IMAGE" \
     bash
 fi

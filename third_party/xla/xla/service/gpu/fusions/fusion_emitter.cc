@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -182,9 +183,13 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
     KernelReuseCache& kernel_cache, llvm::IRBuilder<>* builder) const {
   std::string suggested_kernel_name = GetIrNameFromLoc(fusion_op->getLoc());
 
-  TF_ASSIGN_OR_RETURN(
-      auto kernel_arguments,
-      KernelArguments::Create(ir_emitter_context.allocations(), fusion_op));
+  TF_ASSIGN_OR_RETURN(KernelArguments kernel_arguments,
+                      ir_emitter_context.emit_ir_from_hlo()
+                          ? KernelArguments::Create(
+                                ir_emitter_context.buffer_assignment(), &fusion)
+                          : KernelArguments::Create(
+                                ir_emitter_context.allocations(), fusion_op));
+
   auto* fused_computation = fusion.fused_instructions_computation();
 
   FusionEmissionResult result;
@@ -217,7 +222,7 @@ StatusOr<FusionEmissionResult> KernelFusionEmitterBase::Emit(
 
     result.thunks.emplace_back(std::make_unique<KernelThunk>(
         fusion_op, entry->kernel_name, kernel_arguments.args(), launch_dims,
-        entry->shmem_bytes));
+        entry->shmem_bytes, ir_emitter_context.emit_ir_from_hlo()));
   }
 
   return result;
