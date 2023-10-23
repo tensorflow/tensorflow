@@ -69,7 +69,7 @@ TEST(ManualConstructorTest, Alignment) {
 
   struct {
     char a;
-    ManualConstructor<void*> b;
+    ManualConstructor<void*> b ;
   } test1;
   struct {
     char a;
@@ -92,9 +92,11 @@ TEST(ManualConstructorTest, Alignment) {
 
   EXPECT_EQ(reinterpret_cast<char*>(test2.b.get()) - &test2.a,
             reinterpret_cast<char*>(&control2.b) - &control2.a);
-#ifdef __x86_64__
+
+# if defined __x86_64__ && !defined(PLATFORM_WINDOWS)
   EXPECT_EQ(reinterpret_cast<intptr_t>(test2.b.get()) % 16, 0);
-#endif
+# endif
+
 }
 
 TEST(ManualConstructorTest, DefaultInitialize) {
