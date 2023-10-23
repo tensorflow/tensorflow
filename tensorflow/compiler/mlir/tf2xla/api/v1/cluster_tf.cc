@@ -227,13 +227,6 @@ absl::Status RunLowerToRuntimeOpsOnSubmodule(ModuleOp parent_module,
         is_in_fallback_enabled_mode, num_submodules_error));
   }
 
-  if (!runtime_lowering_status.ok()) {
-    TF_RETURN_IF_ERROR(RecordStatusIfError(
-        /*error_prefix=*/
-        "Errored running lowering cluster ops to runtime ops pipeline:",
-        is_in_fallback_enabled_mode, runtime_lowering_status));
-  }
-
   return absl::OkStatus();
 }
 
