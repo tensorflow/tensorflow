@@ -186,7 +186,6 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/tpu/kernels:sparse_core_ops_utils",
         "@local_xla//xla:util",
     ],
     alwayslink = 1,
