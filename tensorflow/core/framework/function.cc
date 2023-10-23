@@ -1405,6 +1405,17 @@ Status FunctionLibraryDefinition::AddFunctionDef(
   return status;
 }
 
+Status FunctionLibraryDefinition::AddFunctionDef(
+    FunctionDef&& fdef, StackTracesMap&& stack_traces) {
+  mutex_lock l(mu_);
+  bool added;
+  FunctionRecord* record =
+      new FunctionRecord(std::move(fdef), std::move(stack_traces), true);
+  core::ScopedUnref scoped_unref(record);
+  Status status = AddHelper(record, &added);
+  return status;
+}
+
 Status FunctionLibraryDefinition::AddFunctionDefHelper(
     FunctionDef&& fdef, StackTracesMap&& stack_traces, bool* added) {
   FunctionRecord* record =

@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
@@ -703,7 +704,14 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
         counter.DecrementCount();
         return;
       }
-      status->Update(data_lib_def->AddFunctionDef(shard));
+
+      // NOTE(mrry): Currently, `shard.attr()` is never set by
+      // `GraphToFunctionDef()` but we previously used it directly in the
+      // call to `Instantiate()`. To avoid subtle bugs, we retain a copy here
+      // before the move in case `GraphToFunctionDef()` changes in future.
+      AttrValueMap attrs(shard.attr());
+
+      status->Update(data_lib_def->AddFunctionDef(std::move(shard)));
       if (!status->ok()) {
         counter.DecrementCount();
         return;
@@ -719,9 +727,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
           options.allow_control_flow_sync_execution;
       AttrValue ints_on_device_attr;
       ints_on_device_attr.set_b(options.int_args_and_retvals_on_device);
-      shard.mutable_attr()->insert(
+      attrs.insert(
           {FunctionLibraryDefinition::kIntsOnDeviceAttr, ints_on_device_attr});
-      auto attrs = AttrSlice(&shard.attr());
       VLOG(1) << "Start instantiating component function " << unique_name
               << " on device " << target;
       VLOG(4) << DebugString(shard);
@@ -749,12 +756,14 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       FunctionLibraryRuntime* flr = GetFLR(opts.target);
       if (flr != nullptr) {
         // Initialize local function synchronously.
-        Status s = flr->Instantiate(unique_name, attrs, opts, component_handle);
+        Status s = flr->Instantiate(unique_name, AttrSlice(&attrs), opts,
+                                    component_handle);
         done(s);
       } else {
         opts.ret_indices = comp_data->ret_indices;
         // Initialize remote function asynchronously.
-        InstantiateRemote(unique_name, attrs, opts, component_handle, done);
+        InstantiateRemote(unique_name, AttrSlice(&attrs), opts,
+                          component_handle, done);
       }
     });
     i += 1;
