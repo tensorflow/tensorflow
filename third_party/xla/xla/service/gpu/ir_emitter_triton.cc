@@ -316,13 +316,43 @@ Value Compare(ImplicitLocOpBuilder& b, ValueRange values,
 }
 
 Value Maximum(ImplicitLocOpBuilder& b, ValueRange values) {
-  auto cmp = Compare(b, values, mlir::mhlo::ComparisonDirection::GT);
-  return b.create<ma::SelectOp>(cmp, values[0], values[1]);
+  // ma::MaximumFOp seems to think that max(NaN, x) = x, so we don't use that.
+  //
+  // logic: isNaN(lhs) || (!isNan(rhs) && lhs > rhs) ? lhs : rhs
+  // See also: IEEE Std 754-2008 5.11.
+  //
+  // This also works, but we wanted to make it similar to minimum.
+  // logic: isNaN(lhs) || lhs > rhs ? lhs : rhs
+  Value lhs_is_nan =
+      Compare(b, {values[0], values[0]}, mlir::mhlo::ComparisonDirection::NE);
+  Value rhs_is_not_nan =
+      Compare(b, {values[1], values[1]}, mlir::mhlo::ComparisonDirection::EQ);
+  Value lhs_is_greater =
+      Compare(b, values, mlir::mhlo::ComparisonDirection::GT);
+  return b.create<ma::SelectOp>(
+      b.create<ma::OrIOp>(lhs_is_nan,
+                          b.create<ma::AndIOp>(rhs_is_not_nan, lhs_is_greater)),
+      values[0], values[1]);
 }
 
 Value Minimum(ImplicitLocOpBuilder& b, ValueRange values) {
-  auto cmp = Compare(b, values, mlir::mhlo::ComparisonDirection::LT);
-  return b.create<ma::SelectOp>(cmp, values[0], values[1]);
+  // ma::MinimumFOp seems to think that min(NaN, x) = x, so we don't use that.
+  //
+  // logic: isNaN(lhs) || (!isNan(rhs) && lhs < rhs) ? lhs : rhs
+  // See also: IEEE Std 754-2008 5.11.
+  //
+  // This should also work, but the tests show that it doesn't work for
+  // minimum(x, NaN):
+  // logic: isNaN(lhs) || lhs < rhs ? lhs : rhs
+  Value lhs_is_nan =
+      Compare(b, {values[0], values[0]}, mlir::mhlo::ComparisonDirection::NE);
+  Value rhs_is_not_nan =
+      Compare(b, {values[1], values[1]}, mlir::mhlo::ComparisonDirection::EQ);
+  Value lhs_is_less = Compare(b, values, mlir::mhlo::ComparisonDirection::LT);
+  return b.create<ma::SelectOp>(
+      b.create<ma::OrIOp>(lhs_is_nan,
+                          b.create<ma::AndIOp>(rhs_is_not_nan, lhs_is_less)),
+      values[0], values[1]);
 }
 
 // TODO(b/269489810): Contribute nicer builders to Triton, so we don't need to

@@ -143,10 +143,19 @@ llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
     auto cmp = b->CreateFCmpUGE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
   } else {
-    auto cmp_ge = b->CreateFCmpOGE(lhs_value, rhs_value);
+    // logic: isNaN(lhs) || (!isNan(rhs) && lhs > rhs) ? lhs : rhs
+    // See also: IEEE Std 754-2008 5.11.
+    //
+    // This also works, but we wanted to make it similar to minimum.
+    // logic: isNaN(lhs) || lhs > rhs ? lhs : rhs
+    //
+    // b->CreateMaximum() doesn't work on GPU before SM80.
     auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
-    auto sel_lhs = b->CreateOr(cmp_ge, lhs_is_nan);
-    return b->CreateSelect(sel_lhs, lhs_value, rhs_value, name.data());
+    auto rhs_is_not_nan = b->CreateFCmpOEQ(rhs_value, rhs_value);
+    auto lhs_is_greater = b->CreateFCmpOGT(lhs_value, rhs_value);
+    return b->CreateSelect(
+        b->CreateOr(lhs_is_nan, b->CreateAnd(rhs_is_not_nan, lhs_is_greater)),
+        lhs_value, rhs_value, name.data());
   }
 }
 
@@ -157,10 +166,20 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
     auto cmp = b->CreateFCmpULE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
   } else {
-    auto cmp_le = b->CreateFCmpOLE(lhs_value, rhs_value);
+    // logic: isNaN(lhs) || (!isNan(rhs) && lhs < rhs) ? lhs : rhs
+    // See also: IEEE Std 754-2008 5.11.
+    //
+    // This should also work, but the tests show that it doesn't work for
+    // minimum(x, NaN) on GPU:
+    // logic: isNaN(lhs) || lhs < rhs ? lhs : rhs
+    //
+    // b->CreateMaximum() doesn't work on GPU before SM80.
     auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
-    auto sel_lhs = b->CreateOr(cmp_le, lhs_is_nan);
-    return b->CreateSelect(sel_lhs, lhs_value, rhs_value, name.data());
+    auto rhs_is_not_nan = b->CreateFCmpOEQ(rhs_value, rhs_value);
+    auto lhs_is_less = b->CreateFCmpOLT(lhs_value, rhs_value);
+    return b->CreateSelect(
+        b->CreateOr(lhs_is_nan, b->CreateAnd(rhs_is_not_nan, lhs_is_less)),
+        lhs_value, rhs_value, name.data());
   }
 }
 
