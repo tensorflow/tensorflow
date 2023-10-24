@@ -1929,7 +1929,7 @@ pytype_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "@pypi_packaging//:pkg",
@@ -1963,7 +1963,7 @@ pytype_strict_library(
     deps = [
         ":byte_swap_tensor",
         ":ops",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/util:tf_export",
     ],
 )
