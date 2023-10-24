@@ -250,26 +250,6 @@ tensorflow::Status RunSessionTf2xlaClusteringBridge(
   TF_RETURN_IF_ERROR(
       RunLowerToRuntimeOpsOnSubmodule(module, is_in_fallback_enabled_mode));
 
-  Status export_preparation_status = RunTFXLABridge(
-      module,
-      [](OpPassManager &pm) {
-        pm.addPass(
-            mlir::tf_executor::CreateTFExecutorTPUV1IslandInliningPass());
-        // There are cases where we don't consume all compilation and
-        // replication attributes like we do for the V2 pipeline, so we need to
-        // convert them from unified to legacy attributes before they get
-        // exposed to outside of the bridge.
-        pm.addNestedPass<FuncOp>(
-            mlir::TFTPU::
-                CreateConvertToLegacyCompileAndReplicateAttributesPass());
-      },
-      /*module_name=*/"",
-      /*dump_prefix=*/"tf_xla_bridge_v1_export_preparation");
-
-  TF_RETURN_IF_ERROR(RecordStatusIfError(
-      /*error_prefix=*/"Bridge Export Preparation Failed:",
-      is_in_fallback_enabled_mode, export_preparation_status));
-
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       /*device_type=*/"tpu", /*bridge_version=*/"v1",
       /*n_fallback_enabled*/ is_in_fallback_enabled_mode,

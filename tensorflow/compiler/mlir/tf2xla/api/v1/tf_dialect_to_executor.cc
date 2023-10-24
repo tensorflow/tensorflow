@@ -69,6 +69,14 @@ void AddTfDialectToExecutorPasses(OpPassManager &pm) {
     pm.addPass(mlir::CreateBreakUpIslandsPass());
   };
 
+  pm.addPass(mlir::tf_executor::CreateTFExecutorTPUV1IslandInliningPass());
+  // There are cases where we don't consume all compilation and
+  // replication attributes like we do for the V2 pipeline, so we need to
+  // convert them from unified to legacy attributes before they get
+  // exposed to outside of the bridge.
+  pm.addNestedPass<FuncOp>(
+      mlir::TFTPU::CreateConvertToLegacyCompileAndReplicateAttributesPass());
+
   pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
   add_pass(mlir::CreateFunctionalToExecutorDialectConversionPass());
   add_pass(mlir::TFDevice::CreateReplicateToIslandPass(
