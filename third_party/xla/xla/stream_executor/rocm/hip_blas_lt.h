@@ -42,14 +42,17 @@ class BlasLt : public gpu::BlasLt {
   struct MatrixLayout {
     static tsl::StatusOr<MatrixLayout> Create(const gpu::MatrixLayout& m);
 
-    hipblasltDatatype_t type() const { return HIPBLASLT_R_32F; }
+    hipblasltDatatype_t type() const { return hipblas_lt_datatype_; }
     hipblasLtMatrixLayout_t get() const { return handle_.get(); }
 
    private:
-    explicit MatrixLayout(hipblasLtMatrixLayout_t handle)
-        : handle_(handle, wrap::hipblasLtMatrixLayoutDestroy) {}
+    explicit MatrixLayout(hipblasLtMatrixLayout_t handle,
+                 hipblasltDatatype_t hipblas_lt_datatype)
+        : handle_(handle, wrap::hipblasLtMatrixLayoutDestroy),
+          hipblas_lt_datatype_(hipblas_lt_datatype) {}
 
     Owned<hipblasLtMatrixLayout_t> handle_;
+    hipblasltDatatype_t hipblas_lt_datatype_;
   };
 
   class MatmulDesc {
@@ -64,17 +67,20 @@ class BlasLt : public gpu::BlasLt {
     hipblasLtComputeType_t compute_type() const {
       return HIPBLASLT_COMPUTE_F32;
     }
-    hipblasltDatatype_t scale_type() const { return HIPBLASLT_R_32F; }
+    hipblasltDatatype_t scale_type() const { return hipblas_lt_datatype_; }
     hipblasPointerMode_t pointer_mode() const {
       return HIPBLAS_POINTER_MODE_HOST;
     }
     hipblasLtMatmulDesc_t get() const { return handle_.get(); }
 
    private:
-    explicit MatmulDesc(hipblasLtMatmulDesc_t handle)
-        : handle_(handle, wrap::hipblasLtMatmulDescDestroy) {}
+    explicit MatmulDesc(hipblasLtMatmulDesc_t handle, 
+                        hipblasltDatatype_t hipblas_lt_datatype)
+        : handle_(handle, wrap::hipblasLtMatmulDescDestroy),
+        hipblas_lt_datatype_(hipblas_lt_datatype) {}
 
     Owned<hipblasLtMatmulDesc_t> handle_;
+    hipblasltDatatype_t hipblas_lt_datatype_;
   };
 
   struct MatmulPlan : public gpu::BlasLt::MatmulPlan {
