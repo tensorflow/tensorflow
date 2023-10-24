@@ -165,6 +165,67 @@ class PjRtCApiDevice : public PjRtDevice {
   std::vector<PjRtMemorySpace*> memory_spaces_;
 };
 
+class PjRtCApiCompiler : public PjRtCompiler {
+ public:
+  explicit PjRtCApiCompiler(const PJRT_Api* c_api) : c_api_(c_api) {}
+
+  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      CompileOptions options, const XlaComputation& computation,
+      const PjRtTopologyDescription& topology, PjRtClient* client) override;
+
+  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      CompileOptions options, mlir::ModuleOp module,
+      const PjRtTopologyDescription& topology, PjRtClient* client) override;
+
+ private:
+  const PJRT_Api* c_api_;
+};
+
+class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
+ public:
+  PjRtCApiTopologyDescription(const PJRT_Api* c_api,
+                              PJRT_TopologyDescription* c_topology);
+
+  PjRtPlatformId platform_id() const override {
+    CHECK(false) << "PJRT C API does not support platform_id.";
+  }
+
+  absl::string_view platform_name() const override;
+
+  absl::string_view platform_version() const override;
+
+  std::optional<PjRtCompiler*> compiler() const override {
+    return compiler_.get();
+  }
+
+  const PJRT_TopologyDescription* c_topology() const {
+    return c_topology_.get();
+  }
+
+  std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
+      const override;
+
+  absl::StatusOr<std::string> Serialize() const override;
+
+  // Returns vendor specific attributes about the topology.
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
+  }
+
+ private:
+  std::unique_ptr<PjRtCApiCompiler> compiler_;
+  const PJRT_Api* c_api_;
+  std::unique_ptr<PJRT_TopologyDescription,
+                  ::pjrt::PJRT_TopologyDescriptionDeleter>
+      c_topology_;
+  // Device specific attributes with corresponding values.
+  absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
+
+  // Initializes device specific attributes.
+  void InitAttributes();
+};
+
 class PjRtCApiClient : public PjRtClient {
  public:
   PjRtCApiClient(
@@ -663,67 +724,6 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   std::vector<PjRtDevice*> addressable_devices_;
 
   void InitDevices();
-};
-
-class PjRtCApiCompiler : public PjRtCompiler {
- public:
-  explicit PjRtCApiCompiler(const PJRT_Api* c_api) : c_api_(c_api) {}
-
-  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      CompileOptions options, const XlaComputation& computation,
-      const PjRtTopologyDescription& topology, PjRtClient* client) override;
-
-  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      CompileOptions options, mlir::ModuleOp module,
-      const PjRtTopologyDescription& topology, PjRtClient* client) override;
-
- private:
-  const PJRT_Api* c_api_;
-};
-
-class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
- public:
-  PjRtCApiTopologyDescription(const PJRT_Api* c_api,
-                              PJRT_TopologyDescription* c_topology);
-
-  PjRtPlatformId platform_id() const override {
-    CHECK(false) << "PJRT C API does not support platform_id.";
-  }
-
-  absl::string_view platform_name() const override;
-
-  absl::string_view platform_version() const override;
-
-  std::optional<PjRtCompiler*> compiler() const override {
-    return compiler_.get();
-  }
-
-  const PJRT_TopologyDescription* c_topology() const {
-    return c_topology_.get();
-  }
-
-  std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
-      const override;
-
-  absl::StatusOr<std::string> Serialize() const override;
-
-  // Returns vendor specific attributes about the topology.
-  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override {
-    return attributes_;
-  }
-
- private:
-  std::unique_ptr<PjRtCApiCompiler> compiler_;
-  const PJRT_Api* c_api_;
-  std::unique_ptr<PJRT_TopologyDescription,
-                  ::pjrt::PJRT_TopologyDescriptionDeleter>
-      c_topology_;
-  // Device specific attributes with corresponding values.
-  absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute> attributes_;
-
-  // Initializes device specific attributes.
-  void InitAttributes();
 };
 
 class CApiCopyToDeviceStream : public CopyToDeviceStream {

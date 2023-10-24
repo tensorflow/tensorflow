@@ -41,6 +41,15 @@ struct PJRT_Error {
   xla::Status status;
 };
 
+struct PJRT_TopologyDescription {
+  std::unique_ptr<xla::PjRtTopologyDescription> topology;
+  std::vector<std::unique_ptr<const xla::PjRtDeviceDescription>>
+      cpp_descriptions;
+  std::vector<PJRT_DeviceDescription> descriptions;
+  std::vector<PJRT_DeviceDescription*> description_pointers;
+  std::vector<PJRT_NamedValue> attributes;
+};
+
 struct PJRT_Client {
   std::unique_ptr<xla::PjRtClient> client;
   std::vector<PJRT_Device> owned_devices;
@@ -171,15 +180,6 @@ struct PJRT_SerializedExecutable {
 
 struct PJRT_SerializedTopology {
   std::string serialized;
-};
-
-struct PJRT_TopologyDescription {
-  std::unique_ptr<xla::PjRtTopologyDescription> topology;
-  std::vector<std::unique_ptr<const xla::PjRtDeviceDescription>>
-      cpp_descriptions;
-  std::vector<PJRT_DeviceDescription> descriptions;
-  std::vector<PJRT_DeviceDescription*> description_pointers;
-  std::vector<PJRT_NamedValue> attributes;
 };
 
 struct PJRT_TransferMetadata {
