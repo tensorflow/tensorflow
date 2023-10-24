@@ -43,31 +43,36 @@ char PjRtArray::ID = 0;
 
 StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
   switch (dtype.kind()) {
-    case DType::kInvalid:
-    case DType::kPred:
-    case DType::kS4:
-    case DType::kS8:
-    case DType::kS16:
-    case DType::kS32:
-    case DType::kS64:
-    case DType::kU4:
-    case DType::kU8:
-    case DType::kU16:
-    case DType::kU32:
-    case DType::kU64:
-    case DType::kF8E4M3FN:
-    case DType::kF8E4M3B11FNUZ:
-    case DType::kF8E4M3FNUZ:
-    case DType::kF8E5M2:
-    case DType::kF8E5M2FNUZ:
-    case DType::kF16:
-    case DType::kF32:
-    case DType::kBF16:
-    case DType::kF64:
-    case DType::kC64:
-    case DType::kC128:
-    case DType::kToken:
-      return static_cast<xla::PrimitiveType>(static_cast<int>(dtype.kind()));
+#define CASE(DT, PT)                                                      \
+  case DT:                                                                \
+    static_assert(PT ==                                                   \
+                  static_cast<xla::PrimitiveType>(static_cast<int>(DT))); \
+    return PT
+    CASE(DType::kInvalid, xla::PrimitiveType::PRIMITIVE_TYPE_INVALID);
+    CASE(DType::kPred, xla::PrimitiveType::PRED);
+    CASE(DType::kS4, xla::PrimitiveType::S4);
+    CASE(DType::kS8, xla::PrimitiveType::S8);
+    CASE(DType::kS16, xla::PrimitiveType::S16);
+    CASE(DType::kS32, xla::PrimitiveType::S32);
+    CASE(DType::kS64, xla::PrimitiveType::S64);
+    CASE(DType::kU4, xla::PrimitiveType::U4);
+    CASE(DType::kU8, xla::PrimitiveType::U8);
+    CASE(DType::kU16, xla::PrimitiveType::U16);
+    CASE(DType::kU32, xla::PrimitiveType::U32);
+    CASE(DType::kU64, xla::PrimitiveType::U64);
+    CASE(DType::kF8E4M3FN, xla::PrimitiveType::F8E4M3FN);
+    CASE(DType::kF8E4M3B11FNUZ, xla::PrimitiveType::F8E4M3B11FNUZ);
+    CASE(DType::kF8E4M3FNUZ, xla::PrimitiveType::F8E4M3FNUZ);
+    CASE(DType::kF8E5M2, xla::PrimitiveType::F8E5M2);
+    CASE(DType::kF8E5M2FNUZ, xla::PrimitiveType::F8E5M2FNUZ);
+    CASE(DType::kF16, xla::PrimitiveType::F16);
+    CASE(DType::kF32, xla::PrimitiveType::F32);
+    CASE(DType::kBF16, xla::PrimitiveType::BF16);
+    CASE(DType::kF64, xla::PrimitiveType::F64);
+    CASE(DType::kC64, xla::PrimitiveType::C64);
+    CASE(DType::kC128, xla::PrimitiveType::C128);
+    CASE(DType::kToken, xla::PrimitiveType::TOKEN);
+#undef CASE
     case DType::kString:
       return InvalidArgument("Not supported as XLA PrimitiveType: %d",
                              static_cast<int>(dtype.kind()));
