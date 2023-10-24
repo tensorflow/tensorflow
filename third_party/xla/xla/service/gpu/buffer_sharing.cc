@@ -21,13 +21,18 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -35,7 +40,8 @@ namespace gpu {
 std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
                                              const HloInstruction* operand,
                                              const ShapeIndex& user_index) {
-  if (user->opcode() != HloOpcode::kFusion) {
+  const HloFusionInstruction* fusion = DynCast<HloFusionInstruction>(user);
+  if (fusion == nullptr) {
     return std::nullopt;
   }
 
@@ -65,10 +71,21 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
     }
   }
 
+  // Allow multiple output users, if they end in reductions.
+  // This only works for the reduction emitter, as it calculates the reduction
+  // first, i.e. before processing other outputs (that may overwrite the input).
+  stream_executor::GpuDeviceInfoProto device_info;
+  stream_executor::DeviceDescription device_description(device_info);
+  auto analysis = HloFusionAnalysis::Create(fusion, &device_description);
+  bool is_reduction_emitter = analysis->GetEmitterFusionKind() ==
+                              HloFusionAnalysis::EmitterFusionKind::kReduction;
+  const HloInstruction* reduction_hero =
+      is_reduction_emitter ? reduction_hero = analysis->FindHeroReduction()
+                           : nullptr;
+
   // We need to make sure that the fusion parameter is accessed in the same
-  // iteration order as the fusion output. Also, there should not be two fusion
-  // outputs that consume the fusion parameter, because we do not want to share
-  // the same fusion operand with two different fusion outputs. To make sure
+  // iteration order as the fusion output. Also, there should not be any other
+  // fusion output that accesses it in a different iteration order. To make sure
   // that the iteration order is the same, we only allow ops on the path from
   // fusion parameter to fusion output which are elementwise (no copy) or
   // bitcast or an elementwise dynamic update slice (i.e. with the first operand
@@ -88,16 +105,21 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
   q.push(fusion_param);
   visited.insert(fusion_param);
   bool found_path_to_output = false;
+  int reached_root = 0;
   while (!q.empty()) {
     HloInstruction* hlo_operand = q.front();
     q.pop();
     if (hlo_operand == output) {
       found_path_to_output = true;
-      // The output should have at most 1 user: the tuple op (in case of a
-      // multi-output fusion)
-      if (hlo_operand->user_count() > 1) {
+      // We still need to process the users of 'hlo_operand'. There can be other
+      // reduction users in addition to the tuple user.
+      if (hlo_operand->user_count() > 1 && !is_reduction_emitter) {
         return false;
       }
+    }
+    // Reduction emitter processes the reduction first, so the values below it
+    // will not interfere with buffer sharing.
+    if (hlo_operand == reduction_hero) {
       continue;
     }
     for (HloInstruction* hlo : hlo_operand->users()) {
@@ -134,7 +156,8 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
       } else if ((!hlo->IsElementwiseOnOperand(
                       hlo->operand_index(hlo_operand)) ||
                   hlo->opcode() == HloOpcode::kCopy) &&
-                 hlo->opcode() != HloOpcode::kBitcast) {
+                 hlo->opcode() != HloOpcode::kBitcast &&
+                 hlo->opcode() != HloOpcode::kTuple && hlo != reduction_hero) {
         // This check also catches the case that we reach a different fusion
         // output, as that fusion output would have a tuple op as user, which we
         // do not allow here.
@@ -151,9 +174,12 @@ std::optional<bool> FusionCanShareBufferHint(const HloInstruction* user,
           return false;
         }
       }
+      if (hlo->IsRoot()) {
+        ++reached_root;
+      }
     }
   }
-  return found_path_to_output;
+  return found_path_to_output && (user_index.empty() || reached_root == 1);
 }
 
 std::optional<bool> CanShareBufferHint(const HloInstruction* user,

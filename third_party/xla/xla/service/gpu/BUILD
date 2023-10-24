@@ -3361,9 +3361,12 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
+        ":hlo_fusion_analysis",
         ":ir_emission_utils",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
