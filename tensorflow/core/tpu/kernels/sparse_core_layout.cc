@@ -113,6 +113,11 @@ absl::Status SparseCoreLayoutStacker::AddTable(tsl::StringPiece table_name,
         continue;
       }
 
+      if (row_limit_ != 0 &&
+          ts.unsharded_height + padded_height >= row_limit_) {
+        continue;
+      }
+
       // We found a stack we can put it in.
       stack = &ts;
       break;
@@ -158,7 +163,6 @@ absl::Status SparseCoreLayoutStacker::AddTable(tsl::StringPiece table_name,
   stack->total_variable_shard_bytes += variable_shard_bytes;
   stack->total_activation_mem_bytes += activation_mem_bytes;
 
-  ++num_tables_;
   return absl::OkStatus();
 }
 
