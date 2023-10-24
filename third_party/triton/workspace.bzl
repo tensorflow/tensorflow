@@ -5,8 +5,8 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 def repo():
     """Imports Triton."""
 
-    TRITON_COMMIT = "cl574102539"
-    TRITON_SHA256 = "6c967d80f3044991b09ed309e668858cfc5d772899e410e918cf5cb463524744"
+    TRITON_COMMIT = "cl575842988"
+    TRITON_SHA256 = "caa815ec863182eb3745fdc0884f521d622aa2b37be521b850f7ea330cadc923"
 
     tf_http_archive(
         name = "triton",
