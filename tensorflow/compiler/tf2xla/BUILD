@@ -1151,6 +1151,7 @@ cc_library(
     visibility = [":internal"],
     deps = [
         ":tf2xla_defs",
+        ":xla_op_registry",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow",

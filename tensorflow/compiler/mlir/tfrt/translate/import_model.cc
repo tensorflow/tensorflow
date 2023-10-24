@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/platform/env.h"
@@ -233,7 +234,17 @@ Status ConvertTfMlirToRuntimeExecutable(
           "Failed to process TPUPartitionedCallOp for fallback execution"));
     }
   } else if (options.device_target == TfrtDeviceInfraTarget::kGpu) {
-    TF_RETURN_IF_ERROR(mlir::TF::RunTFXLABridge(module));
+    TF_RETURN_IF_ERROR(
+        tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
+            module, tf2xla::v2::DeviceType::XLA_GPU_JIT,
+            /*is_in_fallback_enabled_mode=*/false));
+
+    TF_RETURN_IF_ERROR(
+        tensorflow::tfrt_compiler::RunLowerClusterToRuntimeOpsPassPipeline(
+            module, tsl::DeviceType(DEVICE_GPU_XLA_JIT)));
+
+    TF_RETURN_IF_ERROR(
+        tensorflow::tf2xla::v2::ExportFromTensorflowDialectToExecutor(module));
 
     if (options.serialize_mlir_module_to_aot_packages) {
       const std::string mlir_string = SerializeMlirModule(module);

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_dialect_to_executor.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
@@ -270,8 +271,8 @@ Status MlirBridgePass::Run(const std::string& function_name,
     return OkStatus();
   }
 
+  bool fallback_enabled = false;
   if (run_tpu_bridge) {
-    bool fallback_enabled = false;
     if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
       // We set `uses_uninitialized_resource_args` to false here because the
       // first phase of the bridge is not affected by uninitialized resource
@@ -293,14 +294,18 @@ Status MlirBridgePass::Run(const std::string& function_name,
     TF_RETURN_IF_ERROR(
         tensorflow::tfrt_compiler::RunLowerClusterToRuntimeOpsPassPipeline(
             module, tsl::DeviceType(DEVICE_TPU_XLA_JIT)));
+  } else {
+    VLOG(1) << "Running GPU/CPU Bridge";
+    TF_RETURN_IF_ERROR(
+        tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
+            module, tf2xla::v2::DeviceType::XLA_GPU_JIT, fallback_enabled));
 
     TF_RETURN_IF_ERROR(
-        tensorflow::tf2xla::v2::ExportFromTensorflowDialectToExecutor(module));
-
-    return absl::OkStatus();
+        tensorflow::tfrt_compiler::RunLowerClusterToRuntimeOpsPassPipeline(
+            module, tsl::DeviceType(DEVICE_GPU_XLA_JIT)));
   }
-  VLOG(1) << "Running MLIR CPU/GPU Bridge";
-  return mlir::TF::RunTFXLABridge(module, function_name);
+
+  return tensorflow::tf2xla::v2::ExportFromTensorflowDialectToExecutor(module);
 }
 
 MlirOptimizationPassState MlirBridgeV1CompatPass::GetPassState(

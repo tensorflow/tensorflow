@@ -368,6 +368,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/transforms/host_runtime:lower_cluster_to_runtime_ops",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:cluster_tf",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:tf_dialect_to_executor",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/common_runtime:function_body",

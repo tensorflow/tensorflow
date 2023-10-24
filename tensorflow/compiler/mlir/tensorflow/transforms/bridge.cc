@@ -31,10 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v1/tf_dialect_to_executor.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v2/cluster_tf.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v2/device_type.pb.h"
-#include "tensorflow/compiler/mlir/tf2xla/api/v2/tf_dialect_to_executor.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/clustering_bridge_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/inference/inference_passes.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/logging_hooks.h"
@@ -48,67 +44,8 @@ limitations under the License.
 
 namespace mlir {
 namespace TFTPU {
-namespace {
 
 constexpr char kBridgeComponent[] = "TFXLABridge";
-
-// Run the TF XLA Bridge based on the input pipeline, which can be either TPU
-// bridge pipeline or non TPU bridge pipeline.
-tensorflow::Status RunTFXLABridge(
-    ModuleOp module,
-    llvm::function_ref<void(OpPassManager &pm)> pipeline_builder,
-    llvm::StringRef module_name = llvm::StringRef()) {
-  // Explicitly check that the TensorFlow dialect can constant fold ops.
-  // Constant folding is essential for the bridge. Without this check, the
-  // bridge may fail with an error that is difficult to understand and not
-  // actionable.
-  if (!TF::TensorFlowDialect::HasConstantFoldHook()) {
-    return tensorflow::errors::Internal(
-        "TensorFlow dialect missing constant fold hook in TFXLA bridge phase "
-        "1; this could happen if the binary doesn't link the constant fold "
-        "hook registration library.");
-  }
-
-  PassManager bridge(module.getContext());
-  ::tensorflow::applyTensorflowAndCLOptions(bridge);
-
-  // Populate a passmanager with the list of passes that implement the bridge.
-  pipeline_builder(bridge);
-
-  mlir::StatusScopedDiagnosticHandler diag_handler(
-      module.getContext(), /*propagate=*/false,
-      /*filter_stack=*/!VLOG_IS_ON(1));
-
-  if (VLOG_IS_ON(1) ||
-      DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain)) {
-    ::tensorflow::DumpMlirOpToFile(
-        DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
-                                             "tf_xla_bridge_before"),
-        module, llvm::StringRef(), &bridge);
-  }
-
-  if (VLOG_IS_ON(2) ||
-      DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(),
-                                      kDebugGroupBridgePhase1Clustering)) {
-    ::tensorflow::tf2xla::internal::EnablePassIRPrinting(
-        bridge, kDebugGroupBridgePhase1Clustering, module_name);
-  }
-
-  LogicalResult result = bridge.run(module);
-  (void)result;
-
-  if (VLOG_IS_ON(1) ||
-      DEBUG_DATA_DUMPER()->ShouldDump(module_name.str(), kDebugGroupMain)) {
-    ::tensorflow::DumpMlirOpToFile(
-        DEBUG_DATA_DUMPER()->GetDumpFilename(module_name.str(), kDebugGroupMain,
-                                             "tf_xla_bridge_after"),
-        module, llvm::StringRef(), &bridge);
-  }
-
-  return diag_handler.ConsumeStatus();
-}
-
-}  // namespace
 
 void CreateTPUBridgePipeline(OpPassManager &pm, llvm::StringRef module_name) {
   pm.addPass(CreateTPUValidateInputsPass());
@@ -153,14 +90,6 @@ tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
 
 void CreateTFXLABridgePipeline(OpPassManager &pm) {
   tensorflow::tf2xla::internal::AddNonTPUBridgeClusteringPipelinePasses(pm);
-}
-
-tensorflow::Status RunTFXLABridge(ModuleOp module,
-                                  llvm::StringRef module_name) {
-  // CPU == GPU here, so both are equivalent.
-  return tensorflow::tf2xla::v2::RunFunctionTf2xlaClusteringBridge(
-      module, tensorflow::tf2xla::v2::XLA_GPU_JIT,
-      /*is_in_fallback_enabled_mode=*/false, module_name);
 }
 
 }  // namespace TF
