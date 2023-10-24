@@ -32,7 +32,7 @@ fi
 if [[ "$TFCI_LIBTPU_DOWNLOAD_NIGHTLY_ENABLE" == 1 ]]; then
   # For nightly jobs, libtpu.so comes from the latest nightly libtpu build.
   # Note: expects a working wheel for today
-  DATE=(TZ='America/Los_Angeles' date '+%Y%m%d')
+  DATE=$(TZ='America/Los_Angeles' date '+%Y%m%d')
   tfrun wget "https://storage.googleapis.com/cloud-tpu-tpuvm-artifacts/wheels/libtpu-nightly/libtpu_nightly-0.1.dev${DATE}-py3-none-any.whl" -O libtpu.whl
   # -j to discard intermediate directories; -o to overwrite if exists; -d to set output dir
   tfrun unzip libtpu.whl libtpu/libtpu.so -j -o -d ./tensorflow/lib
