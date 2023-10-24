@@ -146,6 +146,10 @@ void MemrefInfo::Print() {
   std::cout << "]\n";
 }
 
+int64_t MemrefInfo::GetChannels() const { return pod_->dims[pod_->rank - 1]; }
+
+int64_t MemrefInfo::GetRank() const { return pod_->rank; }
+
 }  // namespace cpu
 }  // namespace xla
 

@@ -13,6 +13,9 @@ message BackendConfig {
 }
 
 message OneDnnMatMulConfig {
+  bool transpose_a = 1;
+  bool transpose_b = 2;
+  bool bias_broadcast = 3;
   // These enum needs to be mapped to oneDNN enum for post_op algorithm.
   // TODO(intel-tf): Add kinds supported by oneDNN.
   enum FusionKind {
@@ -23,5 +26,5 @@ message OneDnnMatMulConfig {
     GELU_ERF = 4;
     GELU_TANH = 5;
   }
-  repeated FusionKind fused_ops = 3;
+  repeated FusionKind fused_ops = 4;
 }

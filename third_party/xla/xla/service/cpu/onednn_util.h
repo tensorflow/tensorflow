@@ -13,33 +13,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_CPU_ONEDNN_REWRITER_H_
-#define XLA_SERVICE_CPU_ONEDNN_REWRITER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_ONEDNN_UTIL_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_ONEDNN_UTIL_H_
 #if defined(INTEL_MKL) && defined(ENABLE_ONEDNN_V3)
 
-#include <optional>
-
-#include "absl/algorithm/container.h"
-#include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/hlo_pass_interface.h"
+#include "tsl/platform/cpu_info.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {
 
-// This pass pattern-matches hlo instructions and rewrites into custom calls.
-class OneDnnRewriter : public HloModulePass {
- public:
-  absl::string_view name() const override { return "onednn-rewriter"; }
-
-  using HloPassInterface::Run;
-  StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-};
+inline bool IsSupportedType(xla::PrimitiveType dtype) {
+  using namespace tsl::port;
+  static bool is_bf16_supported = TestCPUFeature(CPUFeature::AVX512_BF16) ||
+                                  TestCPUFeature(CPUFeature::AMX_BF16);
+  switch (dtype) {
+    case F32:
+      return true;
+    case BF16:
+      return is_bf16_supported;
+    default:
+      break;
+  }
+  return false;
+}
 
 }  // namespace cpu
 }  // namespace xla
 
 #endif  // INTEL_MKL && ENABLE_ONEDNN_V3
-#endif  // XLA_SERVICE_CPU_ONEDNN_REWRITER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_ONEDNN_UTIL_H_

@@ -21,19 +21,7 @@ namespace xla {
 namespace cpu {
 
 extern "C" {
-// TODO(intel-tf): Change the function signature as
-//    void onednn_matmul(void* result, void** args)
-// where
-//        args[0]: num_args (>=3, including itself)
-//        args[1]: ExecutableRunOption
-//        args[2]: OneDnnMatMulConfig
-//        args[3...]: Actual Operands
-// so that it can take variable number of arguments.
-//
-// For now, we are using a fixed number of arguments.
-extern void __xla_cpu_runtime_OneDnnMatMul(const void* run_options_ptr,
-                                           void* lhs, void* rhs, void* result,
-                                           void* config);
+extern void __xla_cpu_runtime_OneDnnMatMul(void* result, void** args);
 }  // extern "C"
 
 }  // namespace cpu

@@ -217,7 +217,7 @@ cc_library(
         ":hlo_xla_runtime_pipeline",
         ":ir_emission_utils",
         ":ir_emitter",
-        ":onednn_rewriter",
+        ":onednn_matmul_rewriter",
         ":parallel_task_assignment",
         ":simple_orc_jit",
         ":target_machine_features",
@@ -1685,9 +1685,12 @@ cc_library(
 )
 
 cc_library(
-    name = "onednn_rewriter",
-    srcs = ["onednn_rewriter.cc"],
-    hdrs = ["onednn_rewriter.h"],
+    name = "onednn_matmul_rewriter",
+    srcs = ["onednn_matmul_rewriter.cc"],
+    hdrs = [
+        "onednn_matmul_rewriter.h",
+        "onednn_util.h",
+    ],
     copts = tsl_copts(),
     visibility = ["//visibility:public"],
     deps = [
