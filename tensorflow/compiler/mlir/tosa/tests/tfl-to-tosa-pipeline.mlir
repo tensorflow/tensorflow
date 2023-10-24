@@ -52,6 +52,19 @@ func.func @test_transpose_conv2d(%arg0: tensor<1x32x32x8xf32>, %cst_0: tensor<16
   func.return %0 : tensor<1x32x32x16xf32>
 }
 
+
+// -----
+
+// CHECK-LABEL: test_transpose_conv2d_assymetric
+// CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<0.000000e+00> : tensor<2xf32>}>
+// CHECK: %[[VAR1:.*]] = tosa.transpose_conv2d %arg0, %arg1, %[[VAR0]] {out_pad = array<i64: -1, -1, -1, -1>, out_shape = array<i64: 1, 13, 10, 2>, stride = array<i64: 1, 1>}
+func.func @test_transpose_conv2d_assymetric(%arg0: tensor<1x13x10x3xf32>, %cst_0:tensor<2x3x3x3xf32>) -> tensor<1x13x10x2xf32> {
+    %0 = "tfl.pseudo_const"() {value = dense<[1, 13, 10, 2]> : tensor<4xi32>} : () -> tensor<4xi32>
+    %2 = "tfl.no_value"() {value} : () -> none
+    %3 = "tfl.transpose_conv"(%0, %cst_0, %arg0, %2) {fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<4xi32>, tensor<2x3x3x3xf32>, tensor<1x13x10x3xf32>, none) -> tensor<1x13x10x2xf32>
+    func.return %3 : tensor<1x13x10x2xf32>
+}
+
 // -----
 
 // CHECK-LABEL: test_transpose_conv2d_relu
