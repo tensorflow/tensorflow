@@ -1312,13 +1312,10 @@ class TPUEmbeddingV2(tpu_embedding_base.TPUEmbeddingBase):
           flat_weights=flat_weights,
       )
     elif device is None:
-      # This is used by keras function tracing.
+      # This is used by keras function tracing. Use any of the TPU devices
+      # and trace once for a single device.
       tpu_devices = self._strategy.extended._tpu_devices  # pylint:disable=protected-access
-      num_replicas, num_cores_per_replica = tpu_devices.shape
-      if num_replicas > 1 or num_cores_per_replica > 1:
-        raise NotImplementedError(
-            "SPMD is not implemented, use strategy.run instead."
-        )
+
       with ops.device(device_util.get_host_for_device(tpu_devices[0][0])):
         return TPUEmbeddingV2.preprocess_features(
             num_replicas_in_sync=self._strategy.num_replicas_in_sync,
