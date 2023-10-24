@@ -52,6 +52,7 @@ tf_gen_op_wrapper_py(
         "ConvertToCooTensor",
         "GetMinibatchesInCsrWithPhysicalReplica",
         "GetMinibatchSplitsWithPhysicalReplica",
+        "StoreMinibatchStatisticsInFdo",
         "GlobalIterId",
         "TPUCopyWithDynamicShape",
         "TPUAnnotateTensorsWithDynamicShape",
