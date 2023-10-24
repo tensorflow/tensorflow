@@ -24,11 +24,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_layout.pb.h"
-#include "tsl/platform/fingerprint.h"
 #include "tsl/platform/stringpiece.h"
 
 namespace tensorflow {
@@ -103,12 +101,12 @@ absl::Status SparseCoreLayoutStacker::AddTable(tsl::StringPiece table_name,
     for (TableStack &ts : candidate_stacks) {
       // Make sure we haven't exceeded the maximum stack memory.
       if (activation_mem_bytes_limit_ != 0 &&
-          ts.total_activation_mem_bytes + activation_mem_bytes >
+          ts.total_activation_mem_bytes + activation_mem_bytes >=
               activation_mem_bytes_limit_) {
         continue;
       }
       if (variable_shard_bytes_limit_ != 0 &&
-          ts.total_variable_shard_bytes + variable_shard_bytes >
+          ts.total_variable_shard_bytes + variable_shard_bytes >=
               variable_shard_bytes_limit_) {
         continue;
       }
@@ -187,15 +185,6 @@ absl::StatusOr<SparseCoreTableLayouts> SparseCoreLayoutStacker::GetLayouts() {
            stack.incomplete_tables) {
         if (!stacked_table_name.empty()) stacked_table_name += "_";
         absl::StrAppend(&stacked_table_name, incomplete_layout.table_name());
-      }
-
-      // If the table name is too long, shorten it and replace it with a hash.
-      // The stacked table name turns into a variable name, and for some
-      // systems, variable names that are too long can cause problems.
-      if (stacked_table_name.size() > 100) {
-        stacked_table_name = absl::StrCat(
-            stacked_table_name.substr(0, 80),
-            absl::StrFormat("_%x", tsl::Fingerprint64(stacked_table_name)));
       }
 
       for (const SparseCoreTableLayout &incomplete_layout :

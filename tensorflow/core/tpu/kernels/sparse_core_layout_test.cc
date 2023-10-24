@@ -89,7 +89,7 @@ TEST(SparseCoreLayoutStacker, RespectsDisableStacking) {
 
 TEST(SparseCoreLayoutStacker, RespectsActivationMemLimit) {
   SparseCoreLayoutStacker stacker(2);
-  stacker.SetActivationMemoryBytesLimit(16384);
+  stacker.SetActivationMemoryBytesLimit(16384 + 1);
 
   // Here there are several identical tables with an activation memory limit of
   //    sizeof (float) * 8 * 1024 = 8192 per table.
@@ -111,7 +111,7 @@ TEST(SparseCoreLayoutStacker, RespectsActivationMemLimit) {
 
 TEST(SparseCoreLayoutStacker, RespectsVariableShardLimit) {
   SparseCoreLayoutStacker stacker(2);
-  stacker.SetVariableShardBytesLimit(4096);
+  stacker.SetVariableShardBytesLimit(4096 + 1);
 
   // Here there are several identical tables that contribute
   //    sizeof (float) * 8 * 128 / 2 = 2048 bytes to each shard.
