@@ -522,6 +522,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":constant_value",
+        ":hlo_dce",
         ":hlo_pass",
         ":value_range",
         "//xla:comparison_util",

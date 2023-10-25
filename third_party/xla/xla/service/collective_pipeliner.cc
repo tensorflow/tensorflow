@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/map_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/constant_value.h"
+#include "xla/service/hlo_dce.h"
 #include "xla/service/value_range.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -2347,6 +2348,11 @@ StatusOr<bool> CollectivePipeliner::Run(
           << " and transformed instructions: " << transformed_instructions
           << " for pipelining direction: "
           << GetPipelineDirectionString(config_.pipelining_direction);
+  // Run necessary cleanup to make sure unused code doesn't trigger HloVerifier.
+  if (changed) {
+    TF_RETURN_IF_ERROR(HloDCE().Run(module, execution_threads).status());
+  }
+
   return changed;
 }
 
