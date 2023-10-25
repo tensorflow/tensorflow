@@ -846,32 +846,6 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-template <typename T>
-inline void FastConvertToFloat(const T* src, float* dst, int64_t size) {
-  Eigen::Map<const Eigen::Array<T, Eigen::Dynamic, 1>> src_eigen(src, size);
-  Eigen::Map<Eigen::ArrayXf> dst_eigen(dst, size);
-  dst_eigen = src_eigen.template cast<float>();
-}
-
-template <typename T>
-inline void FastConvertFromFloat(const float* src, T* dst, int64_t size) {
-  Eigen::Map<const Eigen::ArrayXf> src_eigen(src, size);
-  Eigen::Map<Eigen::Array<T, Eigen::Dynamic, 1>> dst_eigen(dst, size);
-  dst_eigen = src_eigen.template cast<T>();
-}
-
-template <>
-inline void FastConvertToFloat<bfloat16>(const bfloat16* src, float* dst,
-                                         int64_t size) {
-  BFloat16ToFloat(src, dst, size);
-}
-
-template <>
-inline void FastConvertFromFloat<bfloat16>(const float* src, bfloat16* dst,
-                                           int64_t size) {
-  FloatToBFloat16(src, dst, size);
-}
-
 template <typename Device, typename Ta, typename Tb, typename Tout>
 class BaseBatchMatMulOp : public OpKernel {
  public:
@@ -953,9 +927,8 @@ class BaseBatchMatMulOp : public OpKernel {
                 out_reshaped.CopyFrom(*out, TensorShape({batch_size, d0, d3})),
                 errors::Internal("Failed to reshape output from ",
                                  out->shape().DebugString()));
-    if constexpr (std::is_same_v<Device, CPUDevice> && std::is_same_v<Ta, Tb> &&
-                  (std::is_same_v<Ta, bfloat16> ||
-                   std::is_same_v<Ta, Eigen::half>)) {
+    if (std::is_same_v<Device, CPUDevice> && std::is_same_v<Ta, bfloat16> &&
+        std::is_same_v<Tb, bfloat16>) {
       Tensor in0_reshaped_float, in1_reshaped_float, out_reshaped_float;
       OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, in0_reshaped.shape(),
                                              &in0_reshaped_float));
@@ -965,19 +938,18 @@ class BaseBatchMatMulOp : public OpKernel {
                                              &out_reshaped_float));
 
       // TODO: Avoid extra copy to make bfloat16 matmul efficient on CPU.
-      FastConvertToFloat(in0_reshaped.flat<Ta>().data(),
-                         in0_reshaped_float.flat<float>().data(),
-                         in0_reshaped.NumElements());
-      FastConvertToFloat(in1_reshaped.flat<Tb>().data(),
-                         in1_reshaped_float.flat<float>().data(),
-                         in1_reshaped.NumElements());
+      BFloat16ToFloat(in0_reshaped.flat<bfloat16>().data(),
+                      in0_reshaped_float.flat<float>().data(),
+                      in0_reshaped.NumElements());
+      BFloat16ToFloat(in1_reshaped.flat<bfloat16>().data(),
+                      in1_reshaped_float.flat<float>().data(),
+                      in1_reshaped.NumElements());
 
       LaunchBatchMatMul<Device, float>::Launch(
           ctx, in0_reshaped_float, in1_reshaped_float, adj_x_, adj_y_, trans_x_,
           trans_y_, bcast, &out_reshaped_float);
-      FastConvertFromFloat<Tout>(out_reshaped_float.flat<float>().data(),
-                                 out_reshaped.flat<Tout>().data(),
-                                 out->NumElements());
+      FloatToBFloat16(out_reshaped_float.flat<float>().data(),
+                      out_reshaped.flat<bfloat16>().data(), out->NumElements());
     } else {
       // Cast tensor to desired type to reuse Eigen.
       // TODO(b/178749687): remove this cast if Eigen supports this natively.
