@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/cuda_config.h"
+#include "third_party/nccl/nccl_config.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
@@ -59,11 +60,6 @@ StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
 
   auto message = absl::StrCat("Could not load dynamic library '", filename,
                               "'; dlerror: ", status.message());
-#if !defined(PLATFORM_WINDOWS)
-  if (const char* ld_library_path = getenv("LD_LIBRARY_PATH")) {
-    message += absl::StrCat("; LD_LIBRARY_PATH: ", ld_library_path);
-  }
-#endif
   VLOG(1) << message;
   return Status(absl::StatusCode::kFailedPrecondition, message);
 }
@@ -71,16 +67,6 @@ StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
 
 namespace DsoLoader {
 StatusOr<void*> GetCudaDriverDsoHandle() {
-#if defined(PLATFORM_WINDOWS)
-  return GetDsoHandle("nvcuda", "");
-#elif defined(__APPLE__)
-  // On Mac OS X, CUDA sometimes installs libcuda.dylib instead of
-  // libcuda.1.dylib.
-  auto handle_or = GetDsoHandle("cuda", "");
-  if (handle_or.ok()) {
-    return handle_or;
-  }
-#endif
   return GetDsoHandle("cuda", "1");
 }
 
@@ -125,19 +111,11 @@ StatusOr<void*> GetNcclDsoHandle() {
 }
 
 StatusOr<void*> GetNvInferDsoHandle() {
-#if defined(PLATFORM_WINDOWS)
-  return GetDsoHandle("nvinfer", "");
-#else
   return GetDsoHandle("nvinfer", GetTensorRTVersion());
-#endif
 }
 
 StatusOr<void*> GetNvInferPluginDsoHandle() {
-#if defined(PLATFORM_WINDOWS)
-  return GetDsoHandle("nvinfer_plugin", "");
-#else
   return GetDsoHandle("nvinfer_plugin", GetTensorRTVersion());
-#endif
 }
 
 StatusOr<void*> GetRocblasDsoHandle() { return GetDsoHandle("rocblas", ""); }

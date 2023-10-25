@@ -29,6 +29,7 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/numeric_options.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream_executor_pimpl.h"
 #include "xla/stream_executor/temporary_memory_manager.h"
@@ -99,6 +101,12 @@ struct Quantization;
 // Thread-safe post-initialization.
 class Stream {
  public:
+  // Platform specific handle to the underlying resources behind a stream
+  // implementation (e.g. it gives access to CUstream for CUDA platform).
+  struct PlatformSpecificHandle {
+    void *stream = nullptr;  // will be nullptr if not supported
+  };
+
   // Instantiate a stream tied to parent as a platform executor. Work
   // entrained onto this stream will be launched/managed on that
   // StreamExecutor's platform.
@@ -108,6 +116,11 @@ class Stream {
   // bestowed
   // upon this object.
   ~Stream();
+
+  // TODO(ezhulenev): Consider removing this platform-specific accessor and
+  // forward all users to platform-specific headers, however it requires careful
+  // build rules set up to avoid leaking even more implementation details.
+  PlatformSpecificHandle platform_specific_handle() const;
 
   // Returns whether any errors have occurred while entraining work for this
   // stream.
@@ -1363,6 +1376,11 @@ class Stream {
 
   // Returns a debugging string "[stream=0x...,impl=0x...]".
   std::string DebugStreamPointers() const;
+
+  void SetPriority(StreamPriority priority);
+  void SetPriority(int priority);
+
+  std::variant<StreamPriority, int> priority() const;
 
  private:
   template <typename... Args>

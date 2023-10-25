@@ -53,8 +53,8 @@ class ConditionalThunk : public Thunk {
   ConditionalThunk(const ConditionalThunk&) = delete;
   ConditionalThunk& operator=(const ConditionalThunk&) = delete;
 
-  Status Initialize(const GpuExecutable& executable,
-                    se::StreamExecutor* executor) override;
+  Status Initialize(se::StreamExecutor* executor,
+                    ExecutableSource src) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
   absl::Span<const std::unique_ptr<SequentialThunk>> branch_thunks() {

@@ -29,9 +29,6 @@ limitations under the License.
 
 namespace xla {
 
-// For details about the syntax accepted by this parser, see
-// g3doc/hlo_parser.md.
-
 // Given a string in the HloModule::ToString() format, parses the string and
 // creates a HloModule with the given config.
 // Note: Tests derived from HloTestBase should use

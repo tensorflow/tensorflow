@@ -18,8 +18,9 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/test.h"
+#include "tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 

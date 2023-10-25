@@ -931,7 +931,12 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     void CurrentWorkerThread(std::shared_ptr<IteratorContext> ctx)
         TF_LOCKS_EXCLUDED(mu_) {
       RecordStart(ctx.get());
+      std::shared_ptr<Element> element;
       auto done = [&]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        // Release the shared ownership so that
+        // the iterator managed by `element` is guaranteed destroyed
+        // before this class instance members.
+        element.reset();
         RecordStop(ctx.get());
         DecrementActiveWorkers();
         DecrementCurrentActiveWorkers();
@@ -940,7 +945,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       };
       while (true) {
         int element_index;
-        std::shared_ptr<Element> element;
+        element.reset();
         // Find an element to process.
         {
           mutex_lock l(*mu_);
@@ -1000,12 +1005,16 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     void FutureWorkerThread(std::shared_ptr<IteratorContext> ctx)
         TF_LOCKS_EXCLUDED(mu_) {
       RecordStart(ctx.get());
+      std::shared_ptr<Element> element;
       auto done = [&]() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        // Release the shared ownership so that
+        // the iterator managed by `element` is guaranteed destroyed
+        // before this class instance members.
+        element.reset();
         RecordStop(ctx.get());
         DecrementActiveWorkers();
         DecrementOutstandingThreads();
       };
-      std::shared_ptr<Element> element;
       while (true) {
         {
           mutex_lock l(*mu_);

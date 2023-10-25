@@ -252,7 +252,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SQRT, Register_SQRT());
   AddBuiltin(BuiltinOperator_RSQRT, Register_RSQRT(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_SHAPE, Register_SHAPE());
   AddBuiltin(BuiltinOperator_RANK, Register_RANK());
   AddBuiltin(BuiltinOperator_POW, Register_POW());
@@ -373,6 +373,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_STABLEHLO_RNG_BIT_GENERATOR,
              Register_STABLEHLO_RNG_BIT_GENERATOR());
   AddBuiltin(BuiltinOperator_REDUCE_WINDOW, Register_REDUCE_WINDOW());
+  AddBuiltin(BuiltinOperator_STABLEHLO_GATHER, Register_STABLEHLO_GATHER());
   AddCustom("NumericVerify", tflite::ops::custom::Register_NUMERIC_VERIFY());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

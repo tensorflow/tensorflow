@@ -93,9 +93,14 @@ class ROCMBlas : public blas::BlasSupport {
   ~ROCMBlas() override;
 
   TENSORFLOW_STREAM_EXECUTOR_GPU_BLAS_SUPPORT_OVERRIDES
+
+  gpu::BlasLt *GetBlasLt() override {
 #if TF_HIPBLASLT
-  rocm::BlasLt &blas_lt() { return blas_lt_; }
+    return &blas_lt_;
+#else
+    return nullptr;
 #endif
+  }
 
  private:
   // Tells rocBLAS to enqueue the BLAS operation onto a particular Stream.

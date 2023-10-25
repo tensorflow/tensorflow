@@ -127,8 +127,7 @@ double ClusterEnvironment::AllToAllCost(double num_bytes, int mesh_dim) const {
 }
 
 double ClusterEnvironment::DotCost(const Shape& lhs_shape,
-                                   const Shape& rhs_shape,
-                                   const DotDimensionNumbers& dot_dnums) const {
+                                   const Shape& rhs_shape) const {
   if (!solver_option_.allow_recompute_heavy_op) {
     return kInfinityCost;
   }

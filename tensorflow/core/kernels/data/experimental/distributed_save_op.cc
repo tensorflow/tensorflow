@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/py_utils.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
 #include "tsl/lib/io/compression.h"
 
@@ -101,6 +102,7 @@ void DistributedSaveOp::Compute(OpKernelContext* ctx) {
           /*description=*/
           strings::StrCat("save with tf.data service dispatcher at ", address),
           deadline_micros));
+  metrics::RecordTFDataServiceSnapshotOp(directory, kDistributedSave);
 }
 
 REGISTER_KERNEL_BUILDER(Name(kDistributedSave).Device(DEVICE_CPU),

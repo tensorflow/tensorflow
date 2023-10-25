@@ -91,14 +91,17 @@ class HloFusionAnalysis {
                     std::vector<const HloInstruction*> fusion_arguments,
                     std::vector<const HloInstruction*> fusion_heroes,
                     const se::DeviceDescription* device_info,
-                    std::optional<TransposeDescription> tiled_transpose)
+                    std::optional<TransposeDescription> tiled_transpose,
+                    bool has_4_bit_input, bool has_4_bit_output)
       : fusion_backend_config_(std::move(fusion_backend_config)),
         fusion_roots_(std::move(fusion_roots)),
         fusion_boundary_fn_(std::move(fusion_boundary_fn)),
         fusion_arguments_(std::move(fusion_arguments)),
         fusion_heroes_(std::move(fusion_heroes)),
         device_info_(device_info),
-        tiled_transpose_(tiled_transpose) {}
+        tiled_transpose_(tiled_transpose),
+        has_4_bit_input_(has_4_bit_input),
+        has_4_bit_output_(has_4_bit_output) {}
 
   const Shape& GetElementShape() const;
   int SmallestInputDtypeBits() const;
@@ -127,6 +130,8 @@ class HloFusionAnalysis {
   std::vector<const HloInstruction*> fusion_heroes_;
   const se::DeviceDescription* device_info_;
   std::optional<TransposeDescription> tiled_transpose_;
+  const bool has_4_bit_input_ = false;
+  const bool has_4_bit_output_ = false;
 
   std::optional<ReductionCodegenInfo> reduction_codegen_info_;
   std::optional<TilingScheme> transpose_tiling_scheme_;

@@ -226,7 +226,8 @@ class ExecutorImpl : public Executor {
   ImmutableExecutorState immutable_state_;
   KernelStats kernel_stats_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExecutorImpl);
+  ExecutorImpl(const ExecutorImpl&) = delete;
+  void operator=(const ExecutorImpl&) = delete;
 };
 
 // The state associated with one invocation of ExecutorImpl::Run.

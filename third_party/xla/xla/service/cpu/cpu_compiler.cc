@@ -112,7 +112,6 @@ limitations under the License.
 #include "xla/mlir_hlo/transforms/passes.h"
 #include "xla/runtime/custom_call_registry.h"
 #include "xla/runtime/executable.h"
-#include "xla/runtime/ffi.h"
 #include "xla/runtime/jit_executable.h"
 #include "xla/service/algebraic_simplifier.h"
 #include "xla/service/all_gather_decomposer.h"
@@ -206,6 +205,7 @@ limitations under the License.
 #include "xla/service/sort_simplifier.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "xla/service/stochastic_convert_decomposer.h"
+#include "xla/service/sub_byte_normalization.h"
 #include "xla/service/topk_rewriter.h"
 #include "xla/service/transpose_folding.h"
 #include "xla/service/tree_reduction_rewriter.h"
@@ -411,22 +411,21 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
         PopulateXlaCpuRngCall(registry);
         PopulateXlaXfeedCall(registry);
       });
-  opts.compiler
-      .create_compilation_pipeline = [&module, copts](
-                                         xla::runtime::PassManager& passes) {
-    HloXlaRuntimePipelineOptions options = GetHloXlaRuntimePipelineOptions(
-        llvm::Triple(llvm::sys::getProcessTriple()),
-        llvm::sys::getHostCPUName());
-    options.xla_cpu_sparse_cuda_threads =
-        GetDebugOptionsFromFlags().xla_cpu_sparse_cuda_threads();
+  opts.compiler.create_compilation_pipeline =
+      [copts](xla::runtime::PassManager& passes) {
+        HloXlaRuntimePipelineOptions options = GetHloXlaRuntimePipelineOptions(
+            llvm::Triple(llvm::sys::getProcessTriple()),
+            llvm::sys::getHostCPUName());
+        options.xla_cpu_sparse_cuda_threads =
+            GetDebugOptionsFromFlags().xla_cpu_sparse_cuda_threads();
 
-    Status status = CreateHloXlaRuntimePipeline(passes, options);
-    if (!status.ok()) {
-      LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
-                 << status.message();
-    }
-    runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(passes, copts);
-  };
+        Status status = CreateHloXlaRuntimePipeline(passes, options);
+        if (!status.ok()) {
+          LOG(FATAL) << "HLO-XLA Runtime pipeline failed with: "
+                     << status.message();
+        }
+        runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(passes, copts);
+      };
   opts.compiler.calling_convention = runtime::ResultsToOutsCallingConvention(
       FlattenTuplesAndBufferizeTypeConverter());
   return opts;
@@ -650,6 +649,16 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     TF_RETURN_IF_ERROR(sharding_removal_pipeline.Run(module).status());
   }
 
+  {
+    // Int4Packer must be run before the rest of the pipeline since it modifies
+    // the layout of the entry computation inputs/outputs, which is passed to
+    // LayoutAssignment.
+    HloPassPipeline int4_packer_pipeline("Int4Packer pipeline");
+    int4_packer_pipeline.AddPass<SubByteNormalization>(
+        SubByteNormalization::SET_ELEMENT_SIZE);
+    TF_RETURN_IF_ERROR(int4_packer_pipeline.Run(module).status());
+  }
+
   HloPassPipeline pipeline("HLO passes through layout assignment");
   AddHloVerifier(&pipeline, allow_sparse_shapes_);
 
@@ -744,8 +753,15 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
   auto dynamic_padder_options = DynamicPadderOptions();
+  // TODO(pgavin): ShapeChecks were never implemented correctly by the dynamic
+  // padder.  The mode defaults to kIgnore, and it was not overridden for nested
+  // computations (such as while bodies or conditional branches), and so cases
+  // that could not be proven would still be accepted even with compile-time
+  // checks enabled.  Recent changes to the DynamicPadder correctly
+  // override the mode.  However, some models have started to rely on the check
+  // being ignored, and they would be broken if it is enforced.
   dynamic_padder_options.shape_check_mode =
-      DynamicDimensionInference::ShapeCheckMode::kCompileTime;
+      DynamicDimensionInference::ShapeCheckMode::kIgnore;
   pipeline.AddPass<DynamicPadder>(dynamic_padder_options);
   if (!is_mlir_compile) {
     pipeline.AddPass<SelectAndScatterExpander>();
@@ -1483,15 +1499,9 @@ StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
                          jit_executable.status().message());
   }
 
-  // Instantiate state for all registered FFI modules.
-  auto ffi_modules_state = runtime::ffi::FfiModulesState::Instantiate();
-  if (!ffi_modules_state.ok())
-    return InternalError("Failed to instantiate FFI modules state: %s",
-                         ffi_modules_state.status().message());
-
   return std::make_unique<XlaRuntimeCpuExecutable>(
       std::make_unique<runtime::JitExecutable>(std::move(*jit_executable)),
-      xla_framework_mapping, std::move(*ffi_modules_state));
+      xla_framework_mapping);
 }
 }  // namespace
 

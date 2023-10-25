@@ -41,13 +41,15 @@ class IrEmitterContext {
                    const BufferAssignment* buffer_assignment,
                    std::string platform_name,
                    const se::DeviceDescription& gpu_device_info,
-                   mlir::MLIRContext* mlir_context, llvm::Module* llvm_module)
+                   mlir::MLIRContext* mlir_context, llvm::Module* llvm_module,
+                   bool emit_ir_from_hlo)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
         platform_name_(std::move(platform_name)),
         gpu_device_info_(gpu_device_info),
         mlir_context_(mlir_context),
-        llvm_module_(llvm_module) {}
+        llvm_module_(llvm_module),
+        emit_ir_from_hlo_(emit_ir_from_hlo) {}
   // Disallow copy and assign.
   IrEmitterContext(const IrEmitterContext&) = delete;
   IrEmitterContext& operator=(const IrEmitterContext&) = delete;
@@ -99,6 +101,8 @@ class IrEmitterContext {
     return hlo_module_->config().debug_options();
   }
 
+  bool emit_ir_from_hlo() const { return emit_ir_from_hlo_; }
+
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
@@ -109,6 +113,7 @@ class IrEmitterContext {
   llvm::Module* llvm_module_;
   NameUniquer name_uniquer_;
   std::vector<GpuExecutable::ConstantInfo> constants_;
+  const bool emit_ir_from_hlo_;
 };
 
 }  // namespace gpu

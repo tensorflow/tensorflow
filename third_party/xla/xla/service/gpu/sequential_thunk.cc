@@ -32,10 +32,10 @@ std::string SequentialThunk::ToStringExtra(int indent) const {
   return result;
 }
 
-Status SequentialThunk::Initialize(const GpuExecutable& executable,
-                                   se::StreamExecutor* executor) {
+Status SequentialThunk::Initialize(se::StreamExecutor* executor,
+                                   ExecutableSource src) {
   for (auto& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->Initialize(executable, executor));
+    TF_RETURN_IF_ERROR(thunk->Initialize(executor, src));
   }
   return OkStatus();
 }

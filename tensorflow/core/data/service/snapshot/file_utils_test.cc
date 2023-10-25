@@ -14,12 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/data/snapshot_utils.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/lib/io/compression.h"
@@ -109,6 +112,32 @@ TEST(FileUtilsTest, AtomicallyWriteTFRecord) {
   EXPECT_EQ(out.DebugString(), in.front().DebugString());
 }
 
+TEST(FileUtilsTest, AtomicallyWriteTFRecordUsesSpecifiedTempFile) {
+  TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
+  std::string test_file = tsl::io::JoinPath(directory, "test_file");
+  std::string tmp_file = tsl::io::JoinPath(directory, "test_file.tmp");
+
+  // Writes a dummy temp file.
+  TF_ASSERT_OK(AtomicallyWriteStringToFile(tmp_file, "Dummy contents",
+                                           tsl::Env::Default()));
+
+  TF_EXPECT_OK(tsl::Env::Default()->FileExists(tmp_file));
+  Tensor out = CreateTensor<int64_t>(TensorShape({2}), {1, 2});
+  TF_ASSERT_OK(AtomicallyWriteTFRecords(test_file, {out},
+                                        tsl::io::compression::kSnappy, tmp_file,
+                                        tsl::Env::Default()));
+
+  TF_EXPECT_OK(tsl::Env::Default()->FileExists(test_file));
+  // The temp file should be renamed.
+  EXPECT_THAT(tsl::Env::Default()->FileExists(tmp_file),
+              StatusIs(tsl::error::NOT_FOUND));
+  snapshot_util::TFRecordReaderImpl reader(test_file,
+                                           tsl::io::compression::kSnappy);
+  TF_ASSERT_OK(reader.Initialize(tsl::Env::Default()));
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Tensor> in, reader.GetTensors());
+  EXPECT_EQ(out.DebugString(), in.front().DebugString());
+}
+
 TEST(FileUtilsTest, GetChildren) {
   TF_ASSERT_OK_AND_ASSIGN(std::string directory, CreateTestDirectory());
   std::string test_file = tsl::io::JoinPath(directory, "test_file");
@@ -134,6 +163,17 @@ TEST(FileUtilsTest, IsTemporaryFile) {
   EXPECT_TRUE(IsTemporaryFile("file.tmp"));
   EXPECT_FALSE(IsTemporaryFile("file"));
   EXPECT_FALSE(IsTemporaryFile(""));
+}
+
+TEST(FileUtilsTest, ParseTemporaryFile) {
+  EXPECT_THAT(ParseTemporaryFile("file____TMP_FILE__unique___string___.tmp"),
+              IsOkAndHolds("file__"));
+}
+
+TEST(FileUtilsTest, ParseTemporaryFileError) {
+  EXPECT_THAT(ParseTemporaryFile("file_invalid_filename.tmp"),
+              StatusIs(tsl::error::INTERNAL));
+  EXPECT_THAT(ParseTemporaryFile(""), StatusIs(tsl::error::INTERNAL));
 }
 
 }  // namespace

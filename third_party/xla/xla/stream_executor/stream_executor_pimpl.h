@@ -28,22 +28,31 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "xla/stream_executor/allocator_stats.h"
+#include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/dnn.h"
+#include "xla/stream_executor/event.h"
+#include "xla/stream_executor/fft.h"
+#include "xla/stream_executor/kernel_spec.h"
+#include "xla/stream_executor/module_spec.h"
+#include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
-#include "xla/stream_executor/stream_executor_internal.h"
 #include "xla/stream_executor/trace_listener.h"
 #include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 #include "tsl/platform/threadpool.h"
 #include "tsl/protobuf/dnn.pb.h"
 
 namespace stream_executor {
 
 class Stream;
+
+namespace internal {
+class StreamExecutorInterface;
+}  // namespace internal
 
 // Forward declaration of private friend class.
 template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
@@ -64,12 +73,23 @@ class ScopedTracer;
 // StreamExecutor interface should not be invoked from a signal handler.
 class StreamExecutor {
  public:
+  // Platform specific handle to the underlying resources behind an executor
+  // implementation (e.g. it gives access to CUcontext for CUDA platform).
+  struct PlatformSpecificHandle {
+    void* context = nullptr;  // will be nullptr if not supported
+  };
+
   StreamExecutor(
       const Platform* platform,
       std::unique_ptr<internal::StreamExecutorInterface> implementation,
       int device_ordinal);
 
   ~StreamExecutor();
+
+  // TODO(ezhulenev): Consider removing this platform-specific accessor and
+  // forward all users to platform-specific headers, however it requires careful
+  // build rules set up to avoid leaking even more implementation details.
+  PlatformSpecificHandle platform_specific_handle() const;
 
   tsl::Status Init();
   tsl::Status Init(DeviceOptions device_options);
@@ -451,9 +471,7 @@ class StreamExecutor {
 
   // Returns a stream allocated by this executor, or nullptr if not found.
   // Performs linear search over alive GPU streams.
-  Stream* FindAllocatedStream(void* gpu_stream) {
-    return implementation()->FindAllocatedStream(gpu_stream);
-  }
+  Stream* FindAllocatedStream(void* gpu_stream);
 
  private:
   template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
@@ -471,8 +489,11 @@ class StreamExecutor {
   // nullptr is returned.
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space);
 
-  // Causes the host code to synchronously wait for operations entrained onto
-  // stream to complete. Effectively a join on the asynchronous device
+  void* GetUntypedSubBuffer(DeviceMemoryBase* parent, uint64_t offset,
+                            uint64_t size);
+
+  // Causes the host code to synchronously wait for operations entrained
+  // onto stream to complete. Effectively a join on the asynchronous device
   // operations enqueued on the stream before this program point.
   tsl::Status BlockHostUntilDone(Stream* stream);
 
@@ -725,8 +746,8 @@ DeviceMemory<T> StreamExecutor::GetSubBuffer(DeviceMemory<T>* parent,
     return DeviceMemory<T>{};
   }
 
-  void* opaque = implementation_->GetSubBuffer(
-      parent, sizeof(T) * element_offset, sizeof(T) * element_count);
+  void* opaque = GetUntypedSubBuffer(parent, sizeof(T) * element_offset,
+                                     sizeof(T) * element_count);
   if (opaque == nullptr) {
     return DeviceMemory<T>{};
   }

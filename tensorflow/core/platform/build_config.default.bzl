@@ -54,6 +54,7 @@ def tf_protos_all():
         extra_deps = [
             str(Label("//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl")),
             str(Label("//tensorflow/core:protos_all_cc_impl")),
+            _xla_clean_dep("@local_xla//xla:autotune_results_proto_cc_impl"),
             _xla_clean_dep("@local_xla//xla:autotuning_proto_cc_impl"),
             _tsl_clean_dep("@local_tsl//tsl/protobuf:protos_all_cc_impl"),
         ],

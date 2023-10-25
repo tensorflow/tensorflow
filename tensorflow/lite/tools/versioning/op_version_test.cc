@@ -1302,21 +1302,16 @@ TEST(OpVersionTest, VersioningSquaredDifferenceTest) {
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
 TEST(OpVersionTest, VersioningRsqrtTest) {
-  // Default.
-  OpSignature fake_op_sig = {
-      .op = BuiltinOperator_RSQRT,
-      .inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
-      .outputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32),
-  };
+  OpSignature fake_op_sig = {};
+  fake_op_sig.op = BuiltinOperator_RSQRT;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 
-  // int8 input is version 2.
-  fake_op_sig = {
-      .op = BuiltinOperator_RSQRT,
-      .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
-      .outputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
-  };
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt8);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 TEST(OpVersionTest, VersioningBroadcastToTest) {
   OpSignature fake_op_sig = {

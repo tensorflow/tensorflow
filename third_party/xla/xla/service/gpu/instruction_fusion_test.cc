@@ -522,6 +522,42 @@ TEST_F(InstructionFusionTest, FuseIntoScatter) {
 
     ENTRY FuseIntoScatter {
       p0 = s32[3,3] parameter(0)
+      p1 = s32[2] parameter(1)
+      indices = s32[2] add(p1, p1)
+      p2 = s32[2,3] parameter(2)
+      updates = s32[2,3] add(p2, p2)
+      scatter = s32[3,3] scatter(p0, indices, updates),
+          to_apply=add,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+      ROOT add = s32[3,3] add(scatter, scatter)
+    })")
+                    .value();
+
+  EXPECT_TRUE(duplicating_instruction_fusion_.Run(module.get()).value());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* fusion = nullptr;
+  ASSERT_THAT(root, GmockMatch(m::Add(m::Fusion(&fusion), m::Fusion())));
+  EXPECT_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kInput);
+  EXPECT_THAT(fusion->fused_expression_root(),
+              GmockMatch(m::Scatter(m::Parameter(), m::Add(), m::Add())));
+}
+
+TEST_F(InstructionFusionTest, DontFuseIntoFirstOperandOfScatter) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+
+    add {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT add = s32[] add(lhs, rhs)
+    }
+
+    ENTRY FuseIntoScatter {
+      p0 = s32[3,3] parameter(0)
       operand = s32[3,3] add(p0, p0)
       p1 = s32[2] parameter(1)
       indices = s32[2] add(p1, p1)
@@ -544,7 +580,39 @@ TEST_F(InstructionFusionTest, FuseIntoScatter) {
   ASSERT_THAT(root, GmockMatch(m::Add(m::Fusion(&fusion), m::Fusion())));
   EXPECT_EQ(fusion->fusion_kind(), HloInstruction::FusionKind::kInput);
   EXPECT_THAT(fusion->fused_expression_root(),
-              GmockMatch(m::Scatter(m::Add(), m::Add(), m::Add())));
+              GmockMatch(m::Scatter(m::Parameter(), m::Add(), m::Add())));
+}
+
+TEST_F(InstructionFusionTest, ScatterOpShouldNotFuseWithSharedOperand) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY Test {
+    parameter.0 = f32[8,8] parameter(0)
+    parameter.1 = s32[7] parameter(1)
+    indices = s32[7] add(parameter.1, parameter.1)
+    slice = f32[7,8] slice(parameter.0), slice={[0:7],[0:8]}
+    ROOT scatter = f32[8,8] scatter(parameter.0, indices, slice),
+        to_apply=add,
+        update_window_dims={1},
+        inserted_window_dims={0},
+        scatter_dims_to_operand_dims={0},
+        index_vector_dim=1
+  })")
+                    .value();
+  EXPECT_TRUE(duplicating_instruction_fusion_.Run(module.get()).value());
+  // Verify that we don't fuse scatter and slice together since
+  // scatter modifies the input buffer in-place, which is also used
+  // as slice's input, and we don't know where the scatter indices point to.
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root, GmockMatch(m::Fusion(m::Parameter(), m::Slice(), m::Parameter())));
 }
 
 TEST_F(InstructionFusionTest, NonscalarConstantsNotFused) {

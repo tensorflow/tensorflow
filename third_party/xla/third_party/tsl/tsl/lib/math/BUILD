@@ -15,10 +15,7 @@ cc_library(
     hdrs = ["math_util.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
-    deps = [
-        "//tsl/platform:logging",
-        "//tsl/platform:types",
-    ],
+    deps = ["@com_google_absl//absl/base:core_headers"],
 )
 
 tsl_cc_test(

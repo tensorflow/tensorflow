@@ -1202,10 +1202,6 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
     // Lazily parse XlaCallModule's embedded HLO module and cache the loader to
     // avoid repeatedly parsing the module.
 
-    std::vector<std::string> dim_args_spec;
-    for (auto attr : op.getDimArgsSpec().getAsRange<StringAttr>()) {
-      dim_args_spec.push_back(attr.getValue().str());
-    }
     std::vector<std::string> disabled_checks;
     for (auto attr : op.getDisabledChecks().getAsRange<StringAttr>()) {
       disabled_checks.push_back(attr.getValue().str());
@@ -1229,8 +1225,8 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
 
     auto l = tensorflow::XlaCallModuleLoader::Create(
         &xla_call_module_context_, op.getVersion(), op.getModule().str(),
-        std::move(dim_args_spec), std::move(disabled_checks),
-        std::move(platforms), std::move(loading_platform),
+        std::move(disabled_checks), std::move(platforms),
+        std::move(loading_platform),
         /*num_invocation_args=*/op.getArgs().size(),
         op.getHasTokenInputOutput());
     if (!l.ok()) {
@@ -2631,29 +2627,11 @@ FailureOr<bool> ShapeInference::PropagateShapeToFunctions(
       continue;
     }
     FunctionType func_type = func.getFunctionType();
-    ArrayRef<Type> func_inputs = func_type.getInputs();
-    llvm::SmallVector<Type> infer_types;
-    for (auto it : llvm::zip(input_types, func_inputs)) {
-      auto input_type = std::get<0>(it);
-      auto func_input = std::get<1>(it);
-      Type infer_type = TypeMeet(input_type, func_input);
-      auto input_type_shape = input_type.dyn_cast<ShapedType>();
-      // TODO: Always use infer_type even the shape of input_type is unranked.
-      // We cannot do this currently because it will expose some bugs in
-      // multiple tests, either due to incorrect function signatures or
-      // unsupported type.
-      if (input_type_shape && input_type_shape.hasRank()) {
-        infer_types.push_back(infer_type);
-      } else {
-        infer_types.push_back(input_type);
-      }
-    }
-
-    func.setType(FunctionType::get(func.getContext(), infer_types,
+    func.setType(FunctionType::get(func.getContext(), input_types,
                                    func_type.getResults()));
 
     FailureOr<bool> failure_or_converged =
-        PropagateShapeToRegions(infer_types, {&func.getBody()}, max_iterations);
+        PropagateShapeToRegions(input_types, {&func.getBody()}, max_iterations);
     if (failed(failure_or_converged)) {
       any_failure = true;
       continue;

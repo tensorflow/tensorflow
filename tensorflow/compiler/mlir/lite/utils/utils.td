@@ -49,3 +49,7 @@ def AreLastTwoDimsTransposed : Constraint<CPred<
 
 // Checks if the param passed is of NoneType.
 def IsNoneType : Constraint<CPred<"$0.getType().isa<NoneType>()">>;
+
+def ConstantLikePred : CPred<"::mlir::matchPattern($0, ::mlir::m_Constant())">;
+def IsConstantLike : Constraint<ConstantLikePred>;
+def NotConstantLike : Constraint<Neg<ConstantLikePred>>;

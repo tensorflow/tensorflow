@@ -461,7 +461,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
                                CallFrameInterface* frame,
                                Executor::Args* exec_args);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(FunctionLibraryRuntimeImpl);
+  FunctionLibraryRuntimeImpl(const FunctionLibraryRuntimeImpl&) = delete;
+  void operator=(const FunctionLibraryRuntimeImpl&) = delete;
 };
 
 FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
@@ -570,7 +571,8 @@ class CallOp : public AsyncOpKernel {
  private:
   FunctionLibraryRuntime::Handle handle_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CallOp);
+  CallOp(const CallOp&) = delete;
+  void operator=(const CallOp&) = delete;
 };
 
 const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
@@ -1433,7 +1435,8 @@ class SymbolicGradientHelper {
   // Makes a copy of fbody_ in gbody.
   void Copy(FunctionBody* gbody);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientHelper);
+  SymbolicGradientHelper(const SymbolicGradientHelper&) = delete;
+  void operator=(const SymbolicGradientHelper&) = delete;
 };
 
 void SymbolicGradientHelper::Copy(FunctionBody* gbody) {

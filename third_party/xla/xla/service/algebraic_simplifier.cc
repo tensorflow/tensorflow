@@ -18,14 +18,13 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <functional>
+#include <cstdint>
 #include <iterator>
 #include <memory>
 #include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -33,17 +32,19 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
-#include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/utils/hlo_query.h"
+#include "xla/layout.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_comparison.h"
@@ -53,11 +54,14 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
+#include "xla/service/shape_inference.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/status_macros.h"
-#include "xla/types.h"
+#include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/window_util.h"
 #include "xla/xla_data.pb.h"
@@ -4491,8 +4495,9 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
           OutputIsSubsetOfOperandElements(user, broadcast)) {
         VLOG(10) << "transform permuting/subset of a scalar broadcast into "
                  << "a single broadcast";
-        HloInstruction* new_broadcast = user->AddInstruction(
-            HloInstruction::CreateBroadcast(user->shape(), operand, {}));
+        HloInstruction* new_broadcast =
+            user->AddInstruction(HloInstruction::CreateBroadcast(
+                ShapeUtil::MakeStaticShape(user->shape()), operand, {}));
         // Use HloInstruction::ReplaceAllUsesWith instead of
         // HloComputation::ReplaceWithNewInstruction because we are replacing an
         // instruction other than the visited instruction.
@@ -7039,6 +7044,28 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
                                                         /*index=*/0));
     }
   }
+
+  // Replace Reduce(Broadcast(x), dims, Sum()) with Broadcast(x * prod(dims)).
+  if (HloInstruction * broadcast_arg;
+      Match(arg, m::Broadcast(m::ConstantScalar(&broadcast_arg))) &&
+      Match(function->root_instruction(),
+            m::AddAnyOrder(m::Parameter(0), m::Parameter(1)))) {
+    if (auto broadcast_value = GetConstantValue(broadcast_arg);
+        broadcast_value.has_value() &&
+        // Skip float64, where product is too accurate compared to repeated-sum.
+        broadcast_arg->shape().element_type() != PrimitiveType::F64) {
+      auto result_value = broadcast_value.value() *
+                          ShapeUtil::ElementsIn(arg->shape()) /
+                          ShapeUtil::ElementsIn(reduce_result_shape);
+      return ReplaceWithNewInstruction(
+          reduce, HloInstruction::CreateBroadcast(
+                      reduce_result_shape,
+                      reduce->AddInstruction(
+                          MakeScalarInstruction(reduce, result_value)),
+                      {}));
+    }
+  }
+
   return OkStatus();
 }
 

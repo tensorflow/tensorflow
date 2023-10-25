@@ -68,7 +68,9 @@ class RefCountedIntraProcessRendezvous : public Rendezvous {
 
   ~RefCountedIntraProcessRendezvous() override;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RefCountedIntraProcessRendezvous);
+  RefCountedIntraProcessRendezvous(const RefCountedIntraProcessRendezvous&) =
+      delete;
+  void operator=(const RefCountedIntraProcessRendezvous&) = delete;
 };
 
 // RefCountedIntraProcessRendezvous is aliased to IntraProcessRendezvous for
@@ -95,7 +97,8 @@ class PrivateIntraProcessRendezvous : public RendezvousInterface {
   const DeviceMgr* device_mgr_;
   LocalRendezvous local_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PrivateIntraProcessRendezvous);
+  PrivateIntraProcessRendezvous(const PrivateIntraProcessRendezvous&) = delete;
+  void operator=(const PrivateIntraProcessRendezvous&) = delete;
 };
 
 }  // end namespace tensorflow

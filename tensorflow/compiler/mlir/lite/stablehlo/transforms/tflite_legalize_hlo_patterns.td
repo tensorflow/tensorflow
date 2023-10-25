@@ -20,6 +20,14 @@ include "mlir/Dialect/Func/IR/FuncOps.td"
 include "mhlo/IR/hlo_ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 
+def CreateTFLCastToInt32Op : NativeCodeCall<
+  "CreateCastToInt32($0, $_loc, $_builder)">;
+// TODO: b/304003568 - Add TF_TransposeOp folding logic to tflite.
+def LegalizeTranspose : Pat<(MHLO_TransposeOp $arg, $perm),
+                            (TFL_TransposeOp $arg,
+                            (CreateTFLCastToInt32Op (TFL_ConstOp $perm)))>;
+
+
 def ConvertDotGeneralOp : NativeCodeCall<"ConvertDotGeneralOp($_builder, "
                                                "$0.getDefiningOp())">;
 def LegalizeDotGeneral: Pat<(MHLO_DotGeneralOp:$old_value

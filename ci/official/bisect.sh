@@ -19,20 +19,21 @@
 #
 #   TF_BISECT_GOOD: Last known good commit (e.g. commit from the last passing job)
 #   TF_BISECT_BAD: First bad commit (e.g. commit from the first failing job)
-#   TF_BISECT_SCRIPT: The build script path, e.g. ci/official/wheel.sh if you
-#     are in the Git root directory, or github/tensorflow/ci/official/wheel.sh if
-#     you are running one of TensorFlow's Kokoro GitHub CI jobs.
-#   TFCI: The env config path, absolute.
+#   TF_BISECT_SCRIPT: The build script path relative to the TF root dir, e.g.
+#     ci/official/wheel.sh
+#   TFCI: The env config path, relative to the TF root dir, e.g.
+#     ci/official/envs/an_env_config
 #
 # Note that you can combine bisect.sh with any.sh to bisect a single test:
 #
 #   export TFCI=...
-#   export TF_BISECT_SCRIPT=$(realpath any.sh)
+#   export TF_BISECT_SCRIPT=ci/official/any.sh
 #   export TF_BISECT_GOOD=a_good_commit_sha
 #   export TF_BISECT_BAD=a_failing_commit_sha
 #   export TF_ANY_TARGETS="quoted list of targets, like on the command line"
 #   export TF_ANY_MODE=test
 set -euxo pipefail
+cd "$(dirname "$0")/../../"  # tensorflow/
 cp "$TFCI" bisect
 echo "source ci/official/envs/disable_all_uploads" >> bisect
 export TFCI=$(realpath bisect)

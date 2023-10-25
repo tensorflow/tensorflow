@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "xla/layout.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/device.h"
@@ -359,6 +360,10 @@ PyLoadedExecutable::HloModules() const {
 StatusOr<std::vector<std::vector<absl::string_view>>>
 PyLoadedExecutable::GetOutputMemoryKinds() const {
   return ifrt_loaded_executable_->GetOutputMemoryKinds();
+}
+
+StatusOr<std::vector<Layout>> PyLoadedExecutable::GetParameterLayouts() const {
+  return ifrt_loaded_executable_->GetParameterLayouts();
 }
 
 std::optional<std::vector<OpSharding>>

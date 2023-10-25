@@ -23,7 +23,6 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:__subpackages__"],
-    features = ["-layering_check"],
     licenses = ["notice"],
 )
 
@@ -85,6 +84,9 @@ tf_cuda_library(
     hdrs = [
         "conv_parameters.h",
     ],
+    cuda_deps = [
+        "@local_tsl//tsl/lib/strings:proto_serialization",
+    ],
     deps = [
         ":conv_parameters_proto_cc",
         "//tensorflow/core/platform:hash",
@@ -134,7 +136,9 @@ tf_cuda_library(
         ":conv_parameters_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stream_executor",
+        "@local_tsl//tsl/lib/strings:proto_serialization",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
         "@local_xla//xla:status_macros",
         "@local_xla//xla/stream_executor",
@@ -147,6 +151,7 @@ tf_cuda_only_cc_test(
     name = "autotune_serialize_test",
     size = "small",
     srcs = ["autotune_serialize_test.cc"],
+    features = ["-layering_check"],
     tags = ["no_rocm"],
     deps = [
         ":autotune_serialize",

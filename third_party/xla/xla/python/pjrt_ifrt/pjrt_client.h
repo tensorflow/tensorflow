@@ -27,7 +27,7 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/pjrt_ifrt/pjrt_compiler.h"
 #include "xla/xla_data.pb.h"
-#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
+#include "tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {

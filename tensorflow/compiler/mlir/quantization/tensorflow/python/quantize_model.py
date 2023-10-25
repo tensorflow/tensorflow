@@ -740,6 +740,38 @@ def _get_saver_def_or_none(
   return None
 
 
+class CustomAggregatorIdAssigner(
+    pywrap_quantize_model.CustomAggregatorIdAssigner
+):
+  """Python impl. of `pywrap_quantize_model.CustomAggregatorIdAssigner`.
+
+  The interface is defined in the C++ layer, exposing a pure virtual function
+  `assign_ids`.
+  """
+
+  def assign_ids(self, exported_model_serialized: bytes) -> bytes:
+    """Assigns UUIDs to each CustomAggregator op find in the graph def.
+
+    Args:
+      exported_model_serialized: Serialized `ExportedModel` instance.
+
+    Returns:
+      Serialized `ExportedModel` whose CustomAggregator ops are assigned UUIDs
+      to their `id` attributes.
+    """
+    exported_model = exported_model_pb2.ExportedModel.FromString(
+        exported_model_serialized
+    )
+
+    graph_def = exported_model.graph_def
+    for function_def in graph_def.library.function:
+      for node_def in function_def.node_def:
+        if node_def.op == 'CustomAggregator':
+          node_def.attr['id'].s = uuid.uuid4().hex.encode('ascii')
+
+    return exported_model.SerializeToString()
+
+
 def _run_static_range_ptq(
     src_saved_model_path: str,
     dst_saved_model_path: str,
@@ -780,6 +812,7 @@ def _run_static_range_ptq(
           set(quant_opts.tags),
           quant_opts.SerializeToString(),
           dict(function_aliases),
+          CustomAggregatorIdAssigner(),
       )
   )
 
@@ -788,11 +821,6 @@ def _run_static_range_ptq(
   )
 
   graph_def = exported_model.graph_def
-  for function_def in graph_def.library.function:
-    for node_def in function_def.node_def:
-      if node_def.op == 'CustomAggregator':
-        node_def.attr['id'].s = uuid.uuid4().hex.encode('ascii')
-
   pre_calib_output_model_path = tempfile.mkdtemp()
   save_model.save_model_v1(
       graph_def,

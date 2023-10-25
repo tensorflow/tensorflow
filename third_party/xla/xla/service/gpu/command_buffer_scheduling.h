@@ -15,10 +15,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_COMMAND_BUFFER_SCHEDULING_H_
 #define XLA_SERVICE_GPU_COMMAND_BUFFER_SCHEDULING_H_
 
+#include <cstdint>
+#include <memory>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/hlo_pass_interface.h"
@@ -74,6 +80,29 @@ class CommandBufferScheduling : public HloModulePass {
 
   static std::vector<HloInstructionSequence> CollectCommandBufferSequences(
       HloInstructionSequence inst_sequence);
+  static void MoveParametersToFront(HloComputation* computation);
+
+  struct BuildCommandBufferResult {
+    std::unique_ptr<HloComputation> computation;
+
+    // Maps external instructions used by the command buffer to a parameter
+    // of the command buffer computation. The command buffer uses parameters
+    // to access the results of external instructions.
+    absl::flat_hash_map<HloInstruction*, HloParameterInstruction*>
+        parameters_map;
+
+    // We move some instructions to the command buffer computation and return
+    // the results back to the original computation by tuple. This field maps
+    // the original instruction to the tuple index of the result that replaces
+    // the original instruction.
+    absl::flat_hash_map<HloInstruction*, int64_t> inst_to_tuple_index_map;
+  };
+
+  // Builds a computation from the instruction sequence. Used values constructed
+  // by instructions outside of the sequence are passed in as parameters.
+  // Results of instructions in the sequence are returned in a tuple.
+  static StatusOr<BuildCommandBufferResult> BuildCommandBuffer(
+      HloInstructionSequence seq);
 };
 
 }  // namespace xla::gpu

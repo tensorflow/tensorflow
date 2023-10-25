@@ -51,6 +51,12 @@ class GemmRewriterTritonTest : public HloTestBase {
       : HloTestBase(/*verifier_layout_sensitive=*/true,
                     /*allow_mixed_precision_in_hlo_verifier=*/false) {}
 
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_triton_gemm_any(false);
+    return debug_options;
+  }
+
   se::GpuComputeCapability gpu_version_{
       se::CudaComputeCapability{se::CudaComputeCapability::AMPERE, 0}};
 };
@@ -144,6 +150,32 @@ ENTRY e {
   r = f16[128,512] dot(p0, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
   ROOT c = u8[128,512] convert(r)
+})"));
+  EXPECT_FALSE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+}
+
+TEST_F(GemmRewriterTritonTest, DoNotTriggerWhenTheLhsNoncontractingDimIs1) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = s8[1,256] parameter(0)
+  p0c = f16[1,256] convert(p0)
+  p1 = f16[256,512] parameter(1)
+  ROOT r = f16[1,512] dot(p0c, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  EXPECT_FALSE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
+}
+
+TEST_F(GemmRewriterTritonTest, DoNotTriggerWhenTheRhsNoncontractingDimIs1) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p0 = s8[128,256] parameter(0)
+  p0c = f16[128,256] convert(p0)
+  p1 = f16[256,1] parameter(1)
+  ROOT r = f16[128,1] dot(p0c, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   EXPECT_FALSE(GemmRewriterTriton(gpu_version_).Run(module.get()).value());
 }
@@ -627,13 +659,12 @@ TEST_F(TritonDotAnalysisTest, OutputBroadcastIsNotAccepted) {
 HloModule t
 
 ENTRY e {
-  p0 = f16[1,35] parameter(0)
-  p0c = bf16[1,35] convert(p0)
-  p1 = bf16[35,1] parameter(1)
-  dot = bf16[1,1] dot(p0c, p1),
+  p0 = f16[2,35] parameter(0)
+  p0c = bf16[2,35] convert(p0)
+  p1 = bf16[35,2] parameter(1)
+  dot = bf16[2,2] dot(p0c, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  b = bf16[] bitcast(dot)
-  ROOT bc = bf16[100] broadcast(b)
+  ROOT bc = bf16[2,2,100] broadcast(dot), dimensions={0,1}
 })"));
   EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
                                      se::CudaComputeCapability::AMPERE, 0})
@@ -833,10 +864,50 @@ ENTRY e {
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
 }
 
+TEST_F(GemmRewriterTritonTest, BinaryElementwiseOfBroadcastIsFused) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p2 = f32[3072] parameter(2)
+  b = f32[8192,3072] broadcast(p2), dimensions={1}
+  p0 = f16[8192,3072] parameter(0)
+  p0c = f32[8192,3072] convert(p0)
+  a = f32[8192,3072] add(p0c, b)
+  p1 = f32[3072,768] parameter(1)
+  ROOT r = f32[8192,768] dot(a, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  EXPECT_TRUE(GemmRewriterTriton(cc).Run(module.get()).value());
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())));
+}
+
+TEST_F(GemmRewriterTritonTest,
+       BinaryElementwiseOfUnsupportedBroadcastIsNotFused) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+  p2 = f32[768] parameter(2)
+  b = f32[8192,768,4] broadcast(p2), dimensions={1}
+  s = f32[8192,3072] bitcast(b)
+  p0 = f16[8192,3072] parameter(0)
+  p0c = f32[8192,3072] convert(p0)
+  a = f32[8192,3072] add(p0c, s)
+  p1 = f32[3072,768] parameter(1)
+  ROOT r = f32[8192,768] dot(a, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})"));
+  const se::CudaComputeCapability cc{se::CudaComputeCapability::AMPERE, 0};
+  EXPECT_FALSE(GemmRewriterTriton(cc).Run(module.get()).value());
+}
+
 class GemmRewriterTritonLevel2Test : public GemmRewriterTritonTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options =
+        GemmRewriterTritonTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_fusion_level(2);
     return debug_options;
   }
@@ -1039,11 +1110,11 @@ TEST_F(GemmRewriterTritonLevel2Test, FusionLevelIsLimitedOnVolta) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 ENTRY e {
-  p0 = f32[1,53] parameter(0)
-  p0e = f32[1,53] exponential(p0)
-  p1 = s16[53,1] parameter(1)
-  p1c = f32[53,1] convert(p1)
-  ROOT dot = f32[1,1] dot(p0e, p1c),
+  p0 = f32[2,53] parameter(0)
+  p0e = f32[2,53] exponential(p0)
+  p1 = s16[53,2] parameter(1)
+  p1c = f32[53,2] convert(p1)
+  ROOT dot = f32[2,2] dot(p0e, p1c),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{
@@ -1060,13 +1131,13 @@ TEST_F(GemmRewriterTritonLevel2Test, ParameterUsedElementwiseTwiceIsFused) {
 HloModule t
 
 ENTRY e {
-  p0 = f32[1,35] parameter(0)
-  p0n = f32[1,35] negate(p0)
-  p0e = f32[1,35] exponential(p0)
-  a = f32[1,35] add(p0e, p0n)
-  p1 = f16[35,1] parameter(1)
-  p1c = f32[35,1] convert(p1)
-  ROOT dot = f32[1,1] dot(a, p1c),
+  p0 = f32[2,35] parameter(0)
+  p0n = f32[2,35] negate(p0)
+  p0e = f32[2,35] exponential(p0)
+  a = f32[2,35] add(p0e, p0n)
+  p1 = f16[35,2] parameter(1)
+  p1c = f32[35,2] convert(p1)
+  ROOT dot = f32[2,2] dot(a, p1c),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   EXPECT_TRUE(GemmRewriterTriton(se::CudaComputeCapability{

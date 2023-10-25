@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/snapshot/snapshot_manager.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/split_provider.h"
+#include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/platform/status.h"
 #include "tsl/lib/io/compression.h"
 #include "tsl/platform/env.h"
@@ -51,6 +53,7 @@ namespace tensorflow {
 namespace data {
 
 const absl::Duration kProgressLoggingInterval = absl::Minutes(1);
+const absl::string_view kSplitFileCompression = tsl::io::compression::kNone;
 
 absl::StatusOr<bool> SnapshotAssignmentManager::TryAddAssignment(
     absl::string_view snapshot_path, absl::string_view worker_address,
@@ -163,7 +166,7 @@ absl::StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Resume(
 absl::Status SnapshotManager::Resume() TF_LOCKS_EXCLUDED(mu_) {
   tsl::mutex_lock l(mu_);
   if (!env_->FileExists(path_).ok()) {
-    return absl::InvalidArgumentError(
+    return absl::InternalError(
         absl::StrCat("Failed to recover snapshot at ", path_,
                      ": the snapshot path doesn't exist"));
   }
@@ -190,7 +193,7 @@ absl::Status SnapshotManager::Resume() TF_LOCKS_EXCLUDED(mu_) {
 absl::Status SnapshotManager::ReadOnDiskMetadata()
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   if (!env_->FileExists(SnapshotMetadataFilePath(path_)).ok()) {
-    return absl::InvalidArgumentError(
+    return absl::InternalError(
         absl::StrCat("Failed to recover snapshot at ", path_,
                      ": snapshot has no snapshot.metadata"));
   }
@@ -198,7 +201,7 @@ absl::Status SnapshotManager::ReadOnDiskMetadata()
       ReadTextProto(env_, SnapshotMetadataFilePath(path_), &metadata_));
 
   if (!env_->FileExists(DatasetDefFilePath(path_)).ok()) {
-    return absl::InvalidArgumentError(
+    return absl::InternalError(
         absl::StrCat("Failed to recovery snapshot at ", path_,
                      ": snapshot has no dataset_def.proto"));
   }
@@ -227,7 +230,7 @@ absl::Status SnapshotManager::ReadOnDiskStreams()
     int64_t stream_index;
     if (tokens.size() != 2 || !absl::SimpleAtoi(tokens[1], &stream_index) ||
         stream_index < 0) {
-      return absl::InvalidArgumentError(absl::StrCat(
+      return absl::InternalError(absl::StrCat(
           "Can't parse the name of ", stream_path,
           ": filename must have the format stream_<stream_index>."));
     }
@@ -249,7 +252,7 @@ absl::Status SnapshotManager::ReadOnDiskStreams()
 
   for (int64_t i = 0; i < global_split_indices.size(); ++i) {
     if (!global_split_indices.contains(i)) {
-      return absl::InvalidArgumentError(absl::StrCat(
+      return absl::InternalError(absl::StrCat(
           "Found missing global split index, ", i, ", in ", path_));
     }
   }
@@ -281,7 +284,7 @@ absl::Status SnapshotManager::ReadOnDiskStream(
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   auto [it, success] = assignments_.insert({worker_address, stream_index});
   if (!success) {
-    return absl::InvalidArgumentError(absl::StrCat(
+    return absl::InternalError(absl::StrCat(
         "tf.data dispatcher failed to assign stream ", stream_index,
         " to snapshot worker ", worker_address,
         ": The  worker is already assigned stream ", it->second, "."));
@@ -299,12 +302,12 @@ absl::Status SnapshotManager::ReadOnDiskStream(
     int64_t source_index;
     if (tokens.size() != 2 || !absl::SimpleAtoi(tokens[1], &source_index) ||
         source_index < 0) {
-      return absl::InvalidArgumentError(absl::StrCat(
+      return absl::InternalError(absl::StrCat(
           "Can't parse the name of ", source_path,
           ": filename must have the format source_<source_index>"));
     }
     if (source_index >= num_sources()) {
-      return absl::InvalidArgumentError(
+      return absl::InternalError(
           absl::StrCat("Found conflict between the number of sources, ",
                        num_sources(), ", and the filename of ", source_path));
     }
@@ -329,6 +332,45 @@ absl::Status SnapshotManager::ReadOnDiskStream(
   return OkStatus();
 }
 
+namespace {
+
+// Used for sorting repetition directories, based on the repetition index.
+bool IsPriorRepetition(std::string repetition_dir1,
+                       std::string repetition_dir2) {
+  if (IsTemporaryFile(repetition_dir1)) {
+    repetition_dir1 = *ParseTemporaryFile(repetition_dir1);
+  }
+  if (IsTemporaryFile(repetition_dir2)) {
+    repetition_dir2 = *ParseTemporaryFile(repetition_dir2);
+  }
+  absl::StatusOr<int64_t> repetition_index1 =
+      ParseRepetitionDirectoryName(repetition_dir1);
+  absl::StatusOr<int64_t> repetition_index2 =
+      ParseRepetitionDirectoryName(repetition_dir2);
+  if (!repetition_index1.ok() || !repetition_index2.ok()) {
+    return false;
+  }
+  return *repetition_index1 < *repetition_index2;
+}
+
+// Used for sorting split files, based on the local split index.
+bool IsPriorSplit(std::string split1, std::string split2) {
+  if (IsTemporaryFile(split1)) {
+    split1 = *ParseTemporaryFile(split1);
+  }
+  if (IsTemporaryFile(split2)) {
+    split2 = *ParseTemporaryFile(split2);
+  }
+  auto split_index1 = ParseSplitFilename(split1);
+  auto split_index2 = ParseSplitFilename(split2);
+  if (!split_index1.ok() || !split_index2.ok()) {
+    return false;
+  }
+  return split_index1->first < split_index2->first;
+}
+
+}  // namespace
+
 absl::Status SnapshotManager::ReadOnDiskSource(
     int64_t stream_index, int64_t source_index,
     absl::flat_hash_set<int64_t>& global_split_indices)
@@ -337,14 +379,17 @@ absl::Status SnapshotManager::ReadOnDiskSource(
       SourceDirectory(path_, stream_index, source_index);
   TF_ASSIGN_OR_RETURN(std::vector<std::string> repetition_directories,
                       GetChildren(source_directory, env_));
+  std::sort(repetition_directories.begin(), repetition_directories.end(),
+            IsPriorRepetition);
   sources_[source_index].repetition_index =
       repetition_directories.empty() ? 0 : repetition_directories.size() - 1;
 
   for (const std::string& repetition : repetition_directories) {
     std::string repetition_dir =
         tsl::io::JoinPath(source_directory, repetition);
-    TF_ASSIGN_OR_RETURN(std::vector<std::string> split_files,
-                        GetChildren(repetition_dir, env_));
+    std::vector<std::string> split_files;
+    TF_RETURN_IF_ERROR(env_->GetChildren(repetition_dir, &split_files));
+    std::sort(split_files.begin(), split_files.end(), IsPriorSplit);
     for (const std::string& split_file : split_files) {
       std::string split_path = io::JoinPath(repetition_dir, split_file);
       TF_RETURN_IF_ERROR(ReadOnDiskSplit(source_index, split_files, split_path,
@@ -358,34 +403,52 @@ absl::Status SnapshotManager::ReadOnDiskSource(
 
 absl::Status SnapshotManager::ReadOnDiskSplit(
     int64_t source_index, const std::vector<std::string>& split_files,
-    const std::string& split_file,
-    absl::flat_hash_set<int64_t>& global_split_indices)
+    std::string split_file, absl::flat_hash_set<int64_t>& global_split_indices)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  if (IsTemporaryFile(split_file)) {
+    TF_RETURN_IF_ERROR(
+        RecoverSplit(split_file, *sources_[source_index].split_provider));
+    TF_ASSIGN_OR_RETURN(split_file, ParseTemporaryFile(split_file));
+  } else {
+    // To account for this split having been assigned, skip a split in the
+    // respective split provider.
+    TF_RETURN_IF_ERROR(
+        GetNextSplit(*sources_[source_index].split_provider).status());
+  }
+
   // `split_file` must have this format:
   // "split_<local_split_index>_<global_split_index>".
   TF_ASSIGN_OR_RETURN(auto split_indices, ParseSplitFilename(split_file));
   auto [local_split_index, global_split_index] = split_indices;
   if (global_split_indices.contains(global_split_index)) {
-    return absl::InvalidArgumentError(absl::StrCat(
+    return absl::InternalError(absl::StrCat(
         "Found duplicate global split index in name of ", split_file));
   }
   global_split_indices.insert(global_split_index);
-
-  // To account for this split having been assigned, skip a split in the
-  // respective split provider.
-  return SkipSplit(*sources_[source_index].split_provider);
+  return absl::OkStatus();
 }
 
-absl::Status SnapshotManager::SkipSplit(SplitProvider& split_provider)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  Tensor tensor;
+absl::Status SnapshotManager::RecoverSplit(const std::string& temp_split_file,
+                                           SplitProvider& split_provider) {
+  TF_ASSIGN_OR_RETURN(std::string recovered_split_file,
+                      ParseTemporaryFile(temp_split_file));
+  TF_ASSIGN_OR_RETURN(Tensor split, GetNextSplit(split_provider));
+  // Uses the same temp file for split recovery. If the dispatcher fails during
+  // recovery, there will be at most one temporary files for the same split.
+  return AtomicallyWriteTFRecords(recovered_split_file, {split},
+                                  kSplitFileCompression, temp_split_file, env_);
+}
+
+absl::StatusOr<Tensor> SnapshotManager::GetNextSplit(
+    SplitProvider& split_provider) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  Tensor split;
   bool end_of_splits = false;
-  TF_RETURN_IF_ERROR(split_provider.GetNext(&tensor, &end_of_splits));
+  TF_RETURN_IF_ERROR(split_provider.GetNext(&split, &end_of_splits));
   while (end_of_splits) {
     TF_RETURN_IF_ERROR(split_provider.Reset());
-    TF_RETURN_IF_ERROR(split_provider.GetNext(&tensor, &end_of_splits));
+    TF_RETURN_IF_ERROR(split_provider.GetNext(&split, &end_of_splits));
   }
-  return absl::OkStatus();
+  return split;
 }
 
 absl::Status SnapshotManager::HandleStreamCompletion(
@@ -592,8 +655,8 @@ absl::Status SnapshotManager::GetSnapshotSplit(
   std::string split_path = SplitPath(
       path_, request.stream_index(), request.source_index(),
       request.repetition_index(), local_split_index, global_split_index);
-  TF_RETURN_IF_ERROR(AtomicallyWriteTFRecords(
-      split_path, {split}, tsl::io::compression::kNone, env_));
+  TF_RETURN_IF_ERROR(AtomicallyWriteTFRecords(split_path, {split},
+                                              kSplitFileCompression, env_));
   split.AsProtoTensorContent(response.mutable_split());
   return absl::OkStatus();
 }
@@ -602,7 +665,7 @@ absl::Status SnapshotManager::ResetSource(Source& source, int64_t source_index)
     TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   TF_RETURN_IF_ERROR(source.split_provider->Reset());
   ++source.repetition_index;
-  LOG(INFO) << "Starting the " << source.repetition_index << "th repetition "
+  LOG(INFO) << "Starting repetition_" << source.repetition_index << " "
             << "for snapshot " << path_ << ", source " << source_index;
   for (int64_t i = 0; i < streams_.size(); ++i) {
     TF_RETURN_IF_ERROR(env_->RecursivelyCreateDir(RepetitionDirectory(

@@ -19,10 +19,12 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "absl/container/flat_hash_set.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "xla/stream_executor/device_description.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -44,7 +46,7 @@ struct GpuPipelineOpts {
   // Enable experimental pass that outlines parts of the XLA computation into
   // CUDA Graphs, which allows us to amortize the cost of launching multiple
   // device kernels.
-  int32_t gpu_graph_level = 0;
+  absl::flat_hash_set<DebugOptions::CommandBufferCmdType> command_types;
   int32_t min_graph_size = 0;
   bool enable_concurrent_region = false;
   stream_executor::GpuComputeCapability compute_capability;
@@ -106,7 +108,8 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createOutlineGpuGraphsPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createOutlineGpuGraphsPass(
-    int32_t gpu_graph_level, int32_t min_graph_size);
+    absl::flat_hash_set<DebugOptions::CommandBufferCmdType> command_types,
+    int32_t min_graph_size);
 
 //===----------------------------------------------------------------------===//
 // Passes for marking concurrent region in CUDA graph capture function.

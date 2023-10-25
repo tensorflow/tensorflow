@@ -31,15 +31,15 @@ ConditionalThunk::ConditionalThunk(
       config_(std::move(config)),
       branch_index_buffer_index_(branch_index_buffer_index) {}
 
-Status ConditionalThunk::Initialize(const GpuExecutable& executable,
-                                    se::StreamExecutor* executor) {
+Status ConditionalThunk::Initialize(se::StreamExecutor* executor,
+                                    ExecutableSource src) {
   if (config_.branch_index_is_bool) {
     TF_RET_CHECK(config_.branch_thunks.size() == 2);
   } else {
     TF_RET_CHECK(!config_.branch_thunks.empty());
   }
   for (auto& branch_thunk : config_.branch_thunks) {
-    TF_RETURN_IF_ERROR(branch_thunk->Initialize(executable, executor));
+    TF_RETURN_IF_ERROR(branch_thunk->Initialize(executor, src));
   }
   return OkStatus();
 }

@@ -170,6 +170,8 @@ class PyLoadedExecutable
   StatusOr<std::vector<std::vector<absl::string_view>>> GetOutputMemoryKinds()
       const;
 
+  StatusOr<std::vector<Layout>> GetParameterLayouts() const;
+
   std::optional<std::vector<OpSharding>> GetParameterShardings() const;
 
   std::optional<std::vector<OpSharding>> GetOutputShardings() const;

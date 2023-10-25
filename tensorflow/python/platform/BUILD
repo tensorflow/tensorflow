@@ -53,7 +53,7 @@ py_strict_library(
         ":gfile",
         ":tf_logging",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client",
+        "//tensorflow/python/client:timeline",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_inspect",
@@ -91,7 +91,6 @@ py_strict_library(
         "@absl_py//absl:app",
         "@absl_py//absl/testing:absltest",
         "//tensorflow/python/framework:errors",
-        "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_inspect",
     ]),
@@ -303,7 +302,7 @@ py_strict_library(
     srcs = ["gfile.py"],
     visibility = visibility + ["//third_party/py/tf_slim/training:__pkg__"],
     deps = [
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
@@ -312,7 +311,11 @@ py_strict_library(
 py_strict_library(
     name = "tf_logging",
     srcs = ["tf_logging.py"],
-    visibility = visibility + ["//third_party/py/tf_slim/training:__pkg__"],
+    visibility = visibility + [
+        "//learning/brain/contrib/learn:__pkg__",
+        "//learning/brain/mobile/lite/lstm:__pkg__",
+        "//third_party/py/tf_slim/training:__pkg__",
+    ],
     deps = [
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
@@ -378,6 +381,7 @@ tf_py_strict_test(
         ":tf_logging",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client",
+        "//tensorflow/python/client:timeline",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_inspect",

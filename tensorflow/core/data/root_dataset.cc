@@ -100,9 +100,7 @@ void SetRootDatasetParams(const Options& options, RootDataset::Params* params) {
   } else {
     ram_budget_share = model::kRamBudgetShare;
   }
-  params->autotune_free_memory_func = [ram_budget_share]() {
-    return ram_budget_share * port::AvailableRam();
-  };
+  params->ram_budget_share = ram_budget_share;
 }
 
 void AddTraceMetadata(const RootDataset::Params& params, const Options& options,
@@ -314,30 +312,17 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
       model_thread_ = ctx->StartThread("tf_data_model", [this, run_mode]() {
         RootDataset::Params params = dataset()->params_;
         std::function<int64_t(int64_t)> ram_budget_func;
-        int64_t ram_budget_from_options =
-            params.autotune_ram_budget_from_options;
-        if (ram_budget_from_options > 0) {
-          ram_budget_func = [ram_budget_from_options](int64_t) {
-            return ram_budget_from_options;
-          };
-        } else {
-          if (run_mode == RunMode::STANDALONE) {
-            // Dynamic RAM budget should only apply to tf.data service.
-            auto free_memory_func = params.autotune_free_memory_func;
-            ram_budget_func = [free_memory_func](int64_t total_buffered_bytes) {
-              return free_memory_func() + total_buffered_bytes;
-            };
-          } else {
-            int64_t constant_ram_budget =
-                params.ComputeInitialAutotuneRamBudget();
-            ram_budget_func = [constant_ram_budget](int64_t) {
-              return constant_ram_budget;
-            };
-          }
+        std::optional<int64_t> raw_ram_budget;
+        if (params.autotune_ram_budget_from_options > 0) {
+          raw_ram_budget = params.autotune_ram_budget_from_options;
+        } else if (run_mode != RunMode::STANDALONE) {
+          // Dynamic RAM budget should only apply to tf.data service.
+          raw_ram_budget = params.ComputeInitialAutotuneRamBudget();
         }
         Status status = model_->OptimizeLoop(
             params.autotune_algorithm, params.autotune_cpu_budget_func,
-            ram_budget_func, *ram_budget_manager_, cancellation_manager_.get());
+            params.ram_budget_share, raw_ram_budget, *ram_budget_manager_,
+            cancellation_manager_.get());
         if (!status.ok()) {
           LOG(WARNING) << "Optimization loop failed: " << status;
         }

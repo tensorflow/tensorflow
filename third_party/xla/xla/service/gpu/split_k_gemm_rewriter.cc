@@ -30,8 +30,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_query.h"
@@ -291,6 +293,18 @@ Status MakeDotComputationSplitKBatch(
       expanded = computation->AddInstruction(
           current->CloneWithNewShape(ShapeUtil::PrependMajorDimension(
               tiling.split_k(), current->shape())));
+      if (expanded->opcode() == HloOpcode::kTranspose) {
+        const auto* old_transpose = Cast<HloTransposeInstruction>(current);
+        auto* new_transpose = Cast<HloTransposeInstruction>(expanded);
+        new_transpose->mutable_dimensions()->clear();
+        new_transpose->mutable_dimensions()->reserve(
+            new_transpose->shape().rank());
+        // The split-K batch dimension is always major.
+        new_transpose->mutable_dimensions()->push_back(0);
+        for (const int64_t dim : old_transpose->dimensions()) {
+          new_transpose->mutable_dimensions()->push_back(dim + 1);
+        }
+      }
     }
     TF_RETURN_IF_ERROR(current->ReplaceAllUsesWithDifferentShape(expanded));
     TF_RETURN_IF_ERROR(computation->RemoveInstruction(current));

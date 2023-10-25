@@ -1301,13 +1301,13 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     //     return %0 : tensor<f32>
     //   }
     // }
-    %0 = "tf.XlaCallModule"(%arg0) {Sout = [#tf_type.shape<*>], device = "", dim_args_spec = [], module = "ML\EFR\03MLIRxxx-trunk\00\01\17\05\01\05\01\03\05\03\07\07\t\0B\03K5\07\01\1B\07\0B\13\0B3\0B\0B\0B\0B\0F\0B\13\0B\03\1B\0F\1B\0B\0B\0B\0B\0B\0F\13\0B\0B\0B\0B\03\07\0F\17\07\02\A7\1F\05\0D\03\03\03\07\05\0F\03\0B\0B\1B\0D'\0F)\031\113\05\11\05\13\05\15\05\17\1D\15\17\05\19\17\19\EF\01\05\1B\03\03\1D\0D\05\1F!#%\1D\1D\1D\1F\1D!\1D##\03\03\03+\0D\03-/\1D%\1D'\1D)\1D+)\01\05\11\03\01\03\01\t\04A\05\01\11\01\05\07\03\01\05\03\11\01\t\05\03\05\0B\03\01\01\05\06\13\03\01\03\01\07\04\01\03\03\06\03\01\05\01\00\9A\04-\0F\0B\03!\1B\1D\05\1B\83/\1F\15\1D\15\11\13\15\11\11\0F\0B\11builtin\00vhlo\00module\00func_v1\00sine_v1\00return_v1\00sym_name\00jit_sin\00arg_attrs\00function_type\00res_attrs\00sym_visibility\00jit(sin)/jit(main)/sin\00third_party/py/jax/experimental/jax2tf/tests/back_compat_test.py\00jax.arg_info\00x\00mhlo.sharding\00{replicated}\00jax.result_info\00\00main\00public\00", platforms = [], version = 4 : i64} : (tensor<f32>) -> tensor<*xf32>
+    %0 = "tf.XlaCallModule"(%arg0) {Sout = [#tf_type.shape<*>], device = "", dim_args_spec = [], module = "ML\EFR\03MLIRxxx-trunk\00\01\17\05\01\05\01\03\05\03\07\07\t\0B\03K5\07\01\1B\07\0B\13\0B3\0B\0B\0B\0B\0F\0B\13\0B\03\1B\0F\1B\0B\0B\0B\0B\0B\0F\13\0B\0B\0B\0B\03\07\0F\17\07\02\A7\1F\05\0D\03\03\03\07\05\0F\03\0B\0B\1B\0D'\0F)\031\113\05\11\05\13\05\15\05\17\1D\15\17\05\19\17\19\EF\01\05\1B\03\03\1D\0D\05\1F!#%\1D\1D\1D\1F\1D!\1D##\03\03\03+\0D\03-/\1D%\1D'\1D)\1D+)\01\05\11\03\01\03\01\t\04A\05\01\11\01\05\07\03\01\05\03\11\01\t\05\03\05\0B\03\01\01\05\06\13\03\01\03\01\07\04\01\03\03\06\03\01\05\01\00\9A\04-\0F\0B\03!\1B\1D\05\1B\83/\1F\15\1D\15\11\13\15\11\11\0F\0B\11builtin\00vhlo\00module\00func_v1\00sine_v1\00return_v1\00sym_name\00jit_sin\00arg_attrs\00function_type\00res_attrs\00sym_visibility\00jit(sin)/jit(main)/sin\00third_party/py/jax/experimental/jax2tf/tests/back_compat_test.py\00jax.arg_info\00x\00mhlo.sharding\00{replicated}\00jax.result_info\00\00main\00public\00", platforms = ["cpu"], version = 6 : i64} : (tensor<f32>) -> tensor<*xf32>
     func.return %0 : tensor<*xf32>
   }
 
   func.func @xla_call_module_parsing_error(%arg0: tensor<f32>) -> tensor<*xf32> {
     %0 = "tf.Identity"(%arg0) : (tensor<f32>) -> tensor<*xf32>
-    %1 = "tf.XlaCallModule"(%arg0, %0) {Sout = [#tf_type.shape<*>], device = "", dim_args_spec = [], module = "invalid-stablehlo-module", platforms = [], version = 4 : i64} : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
+    %1 = "tf.XlaCallModule"(%arg0, %0) {Sout = [#tf_type.shape<*>], device = "", dim_args_spec = [], module = "invalid-stablehlo-module", platforms = [], version = 6 : i64} : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
     func.return %1 : tensor<*xf32>
   }
 
@@ -2172,19 +2172,5 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %5 = "tf.Const"() {device = "", value = dense<[[1.000000e+00, 2.000000e+00], [3.000000e+00, 4.000000e+00]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
     %6 = "tf.TensorListSetItem"(%if49, %4, %5) {device = ""} : (!tf_variant, tensor<i32>, tensor<2x2xf32>)-> tensor<*x!tf_type.variant>
     func.return
-  }
-
-  // Test shape are propagated to function by inferred type.
-  // CHECK-LABEL: func @pcall_fnc
-  func.func @pcall_fnc(%arg0: tensor<?x?x8xf32>) {
-    // CHECK: "tf.StatefulPartitionedCall"
-    // CHECK-SAME: (tensor<?x?x8xf32>) -> tensor<4x4x8xf32>
-    %0 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @pcall_callee_result_func} : (tensor<?x?x8xf32>) -> tensor<?x?x8xf32>
-    func.return
-  }
-  // CHECK-LABEL: func @pcall_callee_result_func
-  // CHECK-SAME: tensor<4x4x8xf32>
-  func.func @pcall_callee_result_func(%arg0: tensor<4x4x?xf32>) -> (tensor<4x4x?xf32>) {
-    func.return %arg0: tensor<4x4x?xf32>
   }
 }

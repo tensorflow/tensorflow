@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -1582,13 +1583,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // supports. Figure out the computeType and scaleType.
     if (!absl::c_linear_search(supported_type, output_type)) return false;
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
-                        AsBlasDataType(output_type));
+                        se::gpu::AsBlasDataType(output_type));
     TF_ASSIGN_OR_RETURN(const se::blas::ComputationType compute_type,
-                        GetBlasComputationType(
+                        se::gpu::GetBlasComputationType(
                             a_dtype, output_type,
                             stream_executor::blas::kDefaultComputePrecision));
     se::blas::DataType scale_type =
-        cublas_lt::GetScaleType(output_dtype, compute_type);
+        se::gpu::GetScaleType(output_dtype, compute_type);
 
     using se::blas::ComputationType;
     using se::blas::DataType;
@@ -1670,15 +1671,15 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // cublasLt has a defined set of combinations of types that it supports.
     // Figure out the computeType and scaleType.
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
-                        AsBlasDataType(output_type));
+                        se::gpu::AsBlasDataType(output_type));
     int max_precision = *absl::c_max_element(
         backend_config.precision_config().operand_precision());
     TF_ASSIGN_OR_RETURN(
         const se::blas::ComputationType compute_type,
-        GetBlasComputationType(a_dtype, instr.shape().element_type(),
-                               max_precision));
+        se::gpu::GetBlasComputationType(a_dtype, instr.shape().element_type(),
+                                        max_precision));
     se::blas::DataType scale_type =
-        cublas_lt::GetScaleType(output_dtype, compute_type);
+        se::gpu::GetScaleType(output_dtype, compute_type);
 
     using se::blas::ComputationType;
     using se::blas::DataType;

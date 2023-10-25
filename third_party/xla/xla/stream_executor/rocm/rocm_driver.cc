@@ -38,12 +38,11 @@ limitations under the License.
 #include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/stacktrace.h"
-#include "tsl/platform/static_threadlocal.h"
 #include "tsl/platform/threadpool.h"
 
-bool FLAGS_gpuexec_rocm_driver_inject_init_error = false;
-bool FLAGS_gpuexec_rocm_sync_around_driver_calls = false;
-bool FLAGS_gpuexec_rocm_device_0_only = false;
+static constexpr bool FLAGS_gpuexec_rocm_driver_inject_init_error = false;
+static constexpr bool FLAGS_gpuexec_rocm_sync_around_driver_calls = false;
+static constexpr bool FLAGS_gpuexec_rocm_device_0_only = false;
 
 #define RETURN_IF_ROCM_ERROR(expr, ...)                                       \
   do {                                                                        \
@@ -128,20 +127,18 @@ void SynchronizeOrDie() {
   }
 }
 
-struct ThreadLocalData {
+thread_local struct ThreadLocalData {
   int current_device_ordinal;
   GpuContext* context;  // Only valid if id == a known good context.
   int depth;
-};
-
-TSL_STATIC_THREAD_LOCAL_POD(ThreadLocalData, tls_data);
+} tls_data = {};
 
 }  // namespace
 
 ScopedActivateContext::ScopedActivateContext(GpuContext* hip_context) {
   if (FLAGS_gpuexec_rocm_sync_around_driver_calls) SynchronizeOrDie();
 
-  auto* tls = &tls_data.get();
+  auto* tls = &tls_data;
   if (tls->depth == 0) {
     VLOG(3) << "ScopedActivateContext switching to "
             << hip_context->device_ordinal();
@@ -177,7 +174,7 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* hip_context) {
 ScopedActivateContext::~ScopedActivateContext() {
   if (FLAGS_gpuexec_rocm_sync_around_driver_calls) SynchronizeOrDie();
 
-  auto* tls = &tls_data.get();
+  auto* tls = &tls_data;
 
   if (kVerifyGpuContext) {
     CHECK_EQ(CurrentContext(),
@@ -698,6 +695,47 @@ GpuDriver::GraphNodeGetType(hipGraphNode_t node) {
   RETURN_IF_ROCM_ERROR(
       hipGraphAddKernelNode(node, graph, deps.data(), deps.size(), &params),
       "Failed to add kernel node to a HIP graph");
+
+  return ::tsl::OkStatus();
+}
+
+/*static*/ tsl::Status GpuDriver::GraphExecKernelNodeSetParams(
+    GpuGraphExecHandle exec, GpuGraphNodeHandle node,
+    absl::string_view kernel_name, GpuFunctionHandle function,
+    unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
+    unsigned int block_dim_x, unsigned int block_dim_y,
+    unsigned int block_dim_z, unsigned int shared_mem_bytes,
+    void** kernel_params, void** extra) {
+  VLOG(2) << "Set kernel node params " << node << " in graph executabe " << exec
+          << "; kernel: " << kernel_name << "; gdx: " << grid_dim_x
+          << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
+          << " bdx: " << block_dim_x << " bdy: " << block_dim_y
+          << " bdz: " << block_dim_z << "; shmem: " << shared_mem_bytes;
+
+  hipKernelNodeParams params;
+  memset(&params, 0, sizeof(params));
+
+  params.func = function;
+  params.gridDim.x = grid_dim_x;
+  params.gridDim.y = grid_dim_y;
+  params.gridDim.z = grid_dim_z;
+  params.blockDim.x = block_dim_x;
+  params.blockDim.y = block_dim_y;
+  params.blockDim.z = block_dim_z;
+  params.sharedMemBytes = shared_mem_bytes;
+  params.kernelParams = kernel_params;
+  params.extra = extra;
+
+  if (shared_mem_bytes != 0) {
+    RETURN_IF_ROCM_ERROR(
+        hipFuncSetAttribute(function,
+                            hipFuncAttributeMaxDynamicSharedMemorySize,
+                            shared_mem_bytes),
+        "Failed to set shared memory size");
+  }
+
+  RETURN_IF_ROCM_ERROR(hipGraphExecKernelNodeSetParams(exec, node, &params),
+                       "Failed to set HIP graph kernel node params");
 
   return ::tsl::OkStatus();
 }

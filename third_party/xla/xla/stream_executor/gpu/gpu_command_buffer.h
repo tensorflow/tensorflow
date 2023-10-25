@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <type_traits>
+#include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -45,15 +46,20 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
                      const KernelBase& kernel,
                      const KernelArgsArrayBase& args) override;
 
+  tsl::Status AddNestedCommandBuffer(const CommandBuffer& nested) override;
+
   tsl::Status MemcpyDeviceToDevice(DeviceMemoryBase* dst,
                                    const DeviceMemoryBase& src,
                                    uint64_t size) override;
 
-  CommandBuffer::Mode mode() const override { return mode_; }
-
   tsl::Status Finalize() override;
+  tsl::Status Update() override;
 
   GpuGraphExecHandle executable() const { return exec_; }
+  GpuGraphHandle graph() const { return graph_; }
+
+  CommandBuffer::Mode mode() const override { return mode_; }
+  CommandBuffer::State state() const override { return state_; }
 
   // We track the total number of allocated and alive executable graphs in the
   // process to track the command buffers resource usage. Executable graph
@@ -78,17 +84,34 @@ class GpuCommandBuffer : public internal::CommandBufferInterface {
   // possible to add new commands to it, otherwise returns internal error.
   tsl::Status CheckNotFinalized();
 
+  // Returns OK status if command buffer is primary, otherwise returns internal
+  // error.
+  tsl::Status CheckPrimary();
+
   static_assert(std::is_pointer_v<GpuGraphHandle>,
                 "GpuGraphHandle must be a pointer");
   static_assert(std::is_pointer_v<GpuGraphExecHandle>,
                 "GpuGraphExecHandle must be a pointer");
+  static_assert(std::is_pointer_v<GpuGraphNodeHandle>,
+                "GpuGraphNodeHandle must be a pointer");
 
   CommandBuffer::Mode mode_;
-  bool finalized_ = false;
+  CommandBuffer::State state_ = CommandBuffer::State::kCreate;
 
   GpuExecutor* parent_;                // not owned, must outlive *this
   GpuGraphHandle graph_ = nullptr;     // owned handle
   GpuGraphExecHandle exec_ = nullptr;  // owned handle
+
+  // Handles to graph nodes corresponding to command buffer commands. Owned by
+  // the `graph_` instance.
+  std::vector<GpuGraphNodeHandle> nodes_;
+
+  // When command buffer is in update state this index will point to the graph
+  // node inside `nodes_` that will be updated next.
+  int64_t node_update_idx_ = 0;
+
+  // Track the number of command buffer updates for debugging.
+  int64_t num_updates_ = 0;
 };
 
 }  // namespace stream_executor::gpu

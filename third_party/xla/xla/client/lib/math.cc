@@ -1929,12 +1929,19 @@ XlaOp Polygamma(XlaOp n, XlaOp x) {
   });
 }
 
+// Reference: Johansson, Fredrik.
+// "Rigorous high-precision computation of the Hurwitz zeta function and its
+// derivatives." Numerical Algorithms 69.2 (2015): 253-270.
+// https://arxiv.org/abs/1309.2877 - formula (5)
+// Notation is more or less kept as a reference to the whitepaper.
 XlaOp Zeta(XlaOp x, XlaOp q) {
   auto& builder = *x.builder();
   auto doit = [&builder](XlaOp x, XlaOp q, PrimitiveType type) -> XlaOp {
     // (2k) ! / B_{2k}, where B_{2k} are the Bernoulli numbers.
-    // These are ordered in reverse.
-    static const std::array<double, 12> kZetaCoeffs{
+    // These are ordered in reverse, for convenience in evaluating the formula
+    // by Horner's rule.
+    static constexpr int M = 12, N = 9;
+    static const std::array<double, M> kZetaCoeffs{
         -7.1661652561756670113e18,
         1.8152105401943546773e17,
         -4.5979787224074726105e15,
@@ -1949,44 +1956,51 @@ XlaOp Zeta(XlaOp x, XlaOp q) {
         12.0,
     };
 
-    // For speed we'll always use 9 iterations for the initial series estimate,
-    // and a 12 term expansion for the Euler-Maclaurin formula.
-
-    XlaOp a = q;
-    XlaOp neg_power = ScalarLike(a, 0.);
-    XlaOp initial_sum = Pow(q, Neg(x));
-    for (int i = 0; i < 9; ++i) {
-      a = a + ScalarLike(a, 1.);
-      neg_power = Pow(a, Neg(x));
-      initial_sum = initial_sum + neg_power;
+    // For speed we'll always use `N` iterations for the initial series
+    // estimate, and a `M` term expansion for the Euler-Maclaurin formula.
+    // Calculating `S` part.
+    XlaOp acc = q, neg_power = ScalarLike(q, 0.);
+    XlaOp S = Pow(q, Neg(x));
+    for (int i = 0; i < N; ++i) {
+      acc = acc + ScalarLike(acc, 1.);
+      neg_power = Pow(acc, Neg(x));
+      S = S + neg_power;
     }
-    a = a + ScalarLike(a, 1.);
-    neg_power = Pow(a, Neg(x));
-    XlaOp s = initial_sum + neg_power * a / (x - ScalarLike(a, 1.));
-    XlaOp a_inverse_square = Reciprocal(Square(a));
-    XlaOp horner_sum = ScalarLike(a, 0.);
-    XlaOp factor = ScalarLike(a, 1.);
+    acc = acc + ScalarLike(acc, 1.);
+    neg_power = Pow(acc, Neg(x));
+
+    // Calculating `I`.
+    XlaOp I = neg_power * acc / (x - ScalarLike(acc, 1.));
+
+    // Calculating the rest of the formula – `T`.
     // Use Horner's rule for this.
     // Note this differs from Cephes which does a 'naive' polynomial evaluation.
     // Using Horner's rule allows to avoid some NaN's and Infs from happening,
     // resulting in more numerically stable code.
-    for (int i = 0; i < 11; ++i) {
-      factor =
-          (x - ScalarLike(x, 22 - 2 * i)) * (x - ScalarLike(x, 21 - 2 * i));
+    XlaOp a_inverse_square = Reciprocal(Square(acc));
+    XlaOp horner_sum = ScalarLike(acc, 0.);
+    XlaOp factor = ScalarLike(acc, 1.);
+
+    // Model 2k - 1 for readability. It's a part of `T` term from the formula.
+    static constexpr int kTwoKMinusOne = 2 * M - 1;
+    for (int i = 0; i < M - 1; ++i) {
+      factor = (x + ScalarLike(x, kTwoKMinusOne - 1 - 2 * i)) *
+               (x + ScalarLike(x, kTwoKMinusOne - 2 - 2 * i));
       horner_sum = factor * a_inverse_square *
-                   (horner_sum + ScalarLike(a, 1. / kZetaCoeffs[i]));
+                   (horner_sum + ScalarLike(acc, 1. / kZetaCoeffs[i]));
     }
-    s = s + neg_power *
-                (ScalarLike(neg_power, 0.5) +
-                 x / a * (ScalarLike(a, 1. / kZetaCoeffs[11]) + horner_sum));
+    XlaOp T =
+        neg_power *
+        (ScalarLike(neg_power, 0.5) +
+         x / acc * (ScalarLike(acc, 1. / kZetaCoeffs[M - 1]) + horner_sum));
+    XlaOp accurate_result = S + I + T;
 
     const double nan = std::numeric_limits<double>::quiet_NaN();
     const double inf = std::numeric_limits<double>::infinity();
     // Use the initial zeta sum without the correction term coming
     // from Euler-Maclaurin if it is accurate enough.
-    XlaOp output =
-        Select(Lt(Abs(neg_power), Abs(initial_sum) * Epsilon(&builder, type)),
-               initial_sum, s);
+    XlaOp output = Select(Lt(Abs(neg_power), Abs(S) * Epsilon(&builder, type)),
+                          S, accurate_result);
 
     // This is the harmonic series.
     output = Select(Eq(x, ScalarLike(x, 1.)), ScalarLike(x, inf), output);

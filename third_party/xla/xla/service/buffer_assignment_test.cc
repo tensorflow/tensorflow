@@ -117,7 +117,9 @@ class BufferAssignmentTest : public HloTestBase {
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithSequentialOrdering(
       HloModule* module, int64_t alignment = 1,
       BufferAssigner::Colorer colorer = BufferAssigner::DefaultColorer(),
-      const BufferAssigner::PrivateStacks& private_stacks = {}) {
+      const BufferAssigner::PrivateStacks& private_stacks = {},
+      std::optional<BufferAssignment::BufferIsolationOptions>
+          isolation_options = std::nullopt) {
     return BufferAssigner::Run(
                module,
                std::make_unique<SequentialHloOrdering>(module->schedule()),
@@ -125,7 +127,8 @@ class BufferAssignmentTest : public HloTestBase {
                [alignment](LogicalBuffer::Color) { return alignment; },
                /*allocate_buffers_for_constants=*/true, colorer,
                /*must_not_live_out=*/std::nullopt, /*can_share_buffer=*/nullptr,
-               /*preset_assignments=*/{}, private_stacks)
+               /*preset_assignments=*/{}, private_stacks,
+               /*heap_buffer_interval_compare=*/nullptr, isolation_options)
         .value();
   }
 
@@ -191,6 +194,22 @@ class BufferAssignmentTest : public HloTestBase {
                BufferAssigner::DefaultColorer(),
                /*must_not_live_out=*/std::nullopt,
                /*can_share_buffer=*/nullptr, std::move(preset_assignments))
+        .value();
+  }
+
+  std::unique_ptr<BufferAssignment> RunBufferAssignmentWithIsolationOptions(
+      HloModule* module, std::optional<BufferAssignment::BufferIsolationOptions>
+                             isolation_options = std::nullopt) {
+    return BufferAssigner::Run(
+               module,
+               std::make_unique<SequentialHloOrdering>(module->schedule()),
+               backend().compiler()->BufferSizeBytesFunction(),
+               [](LogicalBuffer::Color) { return 1; },
+               /*allocate_buffers_for_constants=*/true,
+               BufferAssigner::DefaultColorer(),
+               /*must_not_live_out=*/std::nullopt, /*can_share_buffer=*/nullptr,
+               /*preset_assignments=*/{}, /*private_stacks=*/{},
+               /*heap_buffer_interval_compare=*/nullptr, isolation_options)
         .value();
   }
 
@@ -3036,6 +3055,113 @@ TEST_F(BufferAssignmentTest, AsyncCallImplicitSharding) {
 
   EXPECT_EQ(get_slice("p0", {}).size(), 32);
   EXPECT_EQ(get_slice("dynamic-update-slice", {}).size(), 32);
+}
+
+TEST_F(BufferAssignmentTest, BufferIsolation) {
+  absl::string_view module_str = R"(
+HloModule test_module, is_scheduled=true
+
+ENTRY %test_module {
+  param.0 = s32[1024]{0} parameter(0)
+  param.1 = s32[1024]{0} parameter(1)
+  mul1 = s32[1024]{0} multiply(param.0, param.1)
+  bcast1 = s32[4,1024]{1,0} broadcast(mul1), dimensions={1}
+  bcast2 = s32[4,1024]{1,0} broadcast(param.0), dimensions={1}
+  mul2 = s32[1024]{0} multiply(mul1, param.0)
+  add1 = s32[1024]{0} add(mul1, mul2)
+  sub2 = s32[1024]{0} subtract(mul1, mul2)
+  mul3 = s32[1024]{0} multiply(mul2, add1)
+  mul4 = s32[1024]{0} multiply(mul3, sub2)
+  bcast3 = s32[4,1024]{1,0} broadcast(mul4), dimensions={1}
+  add2 = s32[4,1024]{1,0} add(bcast3, bcast2)
+  ROOT add3 = s32[4,1024]{1,0} add(add2, bcast1)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+
+  // First run buffer assignment as usual.
+  std::unique_ptr<BufferAssignment> nonisolation_assignment =
+      RunBufferAssignmentWithIsolationOptions(m.get());
+  auto nonisolation_allocation =
+      absl::c_find_if(nonisolation_assignment->Allocations(),
+                      [](const BufferAllocation& allocation) {
+                        return allocation.IsPreallocatedTempBuffer();
+                      });
+  ASSERT_NE(nonisolation_allocation,
+            nonisolation_assignment->Allocations().end());
+  LOG(INFO) << "Non-isolation buffers";
+  for (const auto& [value, offset_size] :
+       nonisolation_allocation->assigned_buffers()) {
+    LOG(INFO) << value->ToShortString() << ": off: " << offset_size.offset
+              << ", size: " << offset_size.size;
+  }
+
+  // Then re-run buffer assignment with isolation options.
+  BufferAssignment::BufferIsolationOptions isolation_options;
+  isolation_options.hlo_value_compare =
+      [](const HloValue* a, const HloValue* b) { return a->id() < b->id(); };
+  isolation_options.config.add_isolation_colors(0);
+  isolation_options.config.set_isolation_order_salt(10);
+  isolation_options.config.set_isolation_fuel(5);
+  isolation_options.config.set_isolation_padding_bytes(1024);
+  isolation_options.config.set_base_offset_bytes(12288);
+  std::unique_ptr<BufferAssignment> isolation_assignment =
+      RunBufferAssignmentWithIsolationOptions(m.get(), isolation_options);
+  auto isolation_allocation =
+      absl::c_find_if(isolation_assignment->Allocations(),
+                      [](const BufferAllocation& allocation) {
+                        return allocation.IsPreallocatedTempBuffer();
+                      });
+  ASSERT_NE(isolation_allocation, isolation_assignment->Allocations().end());
+  // The buffer isolation uses the provided comparison function to sort the
+  // values. Create these values in this order.
+  std::vector<const HloValue*> ordered_values;
+  for (const auto& [value, _] : isolation_allocation->assigned_buffers()) {
+    ordered_values.push_back(value);
+  }
+  absl::c_sort(ordered_values, isolation_options.hlo_value_compare);
+
+  int i;
+  // The initial expected offset would consist of the isolation base offset, the
+  // size of the old heap, and the isolation padding.
+  int64_t expected_offset = nonisolation_allocation->size() +
+                            isolation_options.config.base_offset_bytes() +
+                            isolation_options.config.isolation_padding_bytes();
+  ASSERT_GT(ordered_values.size(), isolation_options.config.isolation_fuel());
+  LOG(INFO) << "Isolation buffers";
+  // Iterate over the values in the sorted order. The number of buffers that are
+  // isolated are determined by the fuel.
+  for (i = 0; i < isolation_options.config.isolation_fuel(); ++i) {
+    const HloValue* value = ordered_values[i];
+    auto offset_size = isolation_allocation->assigned_buffers().at(value);
+    LOG(INFO) << value->ToShortString() << ": off: " << offset_size.offset
+              << ", size: " << offset_size.size;
+    EXPECT_EQ(offset_size.offset, expected_offset);
+    // Create the expected offset for the next buffer. This will be the padded
+    // size of this buffer.
+    expected_offset +=
+        offset_size.size + isolation_options.config.isolation_padding_bytes();
+  }
+
+  // Iterate from the fuel size to the total size of buffers. These buffers will
+  // use the old heap-packed offsets plus the isolation base offset.
+  for (; i < ordered_values.size(); ++i) {
+    const HloValue* value = ordered_values[i];
+    auto offset_size = isolation_allocation->assigned_buffers().at(value);
+    // We can't simply look up the HloValue in the nonisolation buffers because
+    // those are different HloValue objects.
+    auto nonisolation_offset_size = absl::c_find_if(
+        nonisolation_allocation->assigned_buffers(), [&](const auto& pair) {
+          return pair.first->defining_position() == value->defining_position();
+        });
+    ASSERT_NE(nonisolation_offset_size,
+              nonisolation_allocation->assigned_buffers().end());
+    LOG(INFO) << value->ToShortString() << ": off: " << offset_size.offset
+              << ", size: " << offset_size.size;
+    EXPECT_EQ(offset_size.offset,
+              nonisolation_offset_size->second.offset +
+                  isolation_options.config.base_offset_bytes());
+  }
 }
 
 TEST_F(BufferAssignmentTest, BufferInfoStringTest) {

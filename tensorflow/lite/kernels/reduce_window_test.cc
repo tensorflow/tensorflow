@@ -249,5 +249,17 @@ TYPED_TEST(ReduceWindowTest, WithDilationAndStrides) {
   EXPECT_THAT(this->model_.GetOutputData(), ElementsAre(30, 38, 70, 78));
 }
 
+TYPED_TEST(ReduceWindowTest, OutputShapeRoundingIsCorrect) {
+  auto& model = this->model_;
+  model.SetInput(/*shape=*/{1, 64, 114, 114});
+  model.SetWindowShape({1, 1, 3, 3});
+  model.SetWindowStrides({1, 1, 2, 2});
+  model.SetWindowDilations({1, 1, 1, 1});
+  model.SetInitValue(2);
+
+  EXPECT_EQ(this->model_.BuildAndInvoke(), kTfLiteOk);
+  EXPECT_THAT(this->model_.GetOutputShape(), ElementsAre(1, 64, 56, 56));
+}
+
 }  // namespace
 }  // namespace tflite

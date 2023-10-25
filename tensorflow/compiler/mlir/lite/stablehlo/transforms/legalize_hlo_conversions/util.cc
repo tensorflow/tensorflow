@@ -29,13 +29,14 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"  // IWYU pragma: keep
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
@@ -432,6 +433,17 @@ void AddStridedSliceOpIfRequired(ConversionState& state,
   StridedSliceData strided_slice_data =
       GetStridedSliceData(edge_padding_low, edge_padding_high, strides);
   AddStridedSliceOpIfRequiredImpl(state, strided_slice_data);
+}
+
+Value CreateCastToInt32(Value val, Location loc, PatternRewriter& rewriter) {
+  IntegerType new_ele_type = rewriter.getIntegerType(32);
+  if (auto shaped_type = val.getType().dyn_cast<RankedTensorType>()) {
+    ShapedType new_type =
+        RankedTensorType::get(shaped_type.getShape(), new_ele_type);
+    return rewriter.create<TFL::CastOp>(loc, new_type, val);
+  }
+  return rewriter.create<TFL::CastOp>(
+      loc, UnrankedTensorType::get(new_ele_type), val);
 }
 
 }  // namespace odml

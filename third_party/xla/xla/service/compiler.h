@@ -230,6 +230,27 @@ class AotCompilationMetadata {
 // platform.
 class Compiler {
  public:
+  // Description of a target device for compilation.
+  struct TargetConfig {
+    TargetConfig() = default;
+    explicit TargetConfig(const se::GpuTargetConfigProto& proto);
+    explicit TargetConfig(se::StreamExecutor* s);
+
+    se::GpuTargetConfigProto ToProto() const;
+
+    bool operator==(const TargetConfig& other) const {
+      // TODO(cheshire): More efficient comparator, this is currently just for
+      // tests.
+      return ToProto().SerializeAsString() ==
+             other.ToProto().SerializeAsString();
+    }
+
+    se::DeviceDescription device_description;
+    std::string platform_name;
+    se::dnn::VersionInfo dnn_version_info;
+    std::string device_description_str;
+  };
+
   struct CompileOptions {
     // If device_allocator is not null, the compiler may use it to allocate temp
     // space on the device for use during compilation.  For example, the
@@ -246,6 +267,10 @@ class Compiler {
         layout_canonicalization_callback = {};
 
     bool is_autotuning_compilation = false;
+
+    // AOT device description. If provided, used instead of querying the device
+    // on which compilation is performed.
+    std::optional<TargetConfig> target_config;
   };
 
   virtual ~Compiler() = default;

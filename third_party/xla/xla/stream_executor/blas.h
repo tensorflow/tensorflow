@@ -59,6 +59,10 @@ struct half;
 
 namespace stream_executor {
 
+namespace gpu {
+struct BlasLt;
+}
+
 class Stream;
 class ScratchAllocator;
 
@@ -201,6 +205,8 @@ constexpr ComputePrecision kDefaultComputePrecision = 0;
 class BlasSupport {
  public:
   virtual ~BlasSupport() {}
+
+  virtual gpu::BlasLt *GetBlasLt() = 0;
 
   // Performs a BLAS y <- ax+y operation.
   virtual bool DoBlasAxpy(Stream *stream, uint64_t elem_count, float alpha,

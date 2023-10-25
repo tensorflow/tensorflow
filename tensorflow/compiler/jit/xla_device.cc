@@ -102,7 +102,8 @@ class XlaDeviceAllocatorState {
                      hash<std::pair<const xla::Backend*, int>>>
       allocators_ TF_GUARDED_BY(allocator_mutex_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaDeviceAllocatorState);
+  XlaDeviceAllocatorState(const XlaDeviceAllocatorState&) = delete;
+  void operator=(const XlaDeviceAllocatorState&) = delete;
 };
 
 /* static */ XlaDeviceAllocatorState& XlaDeviceAllocatorState::Singleton() {

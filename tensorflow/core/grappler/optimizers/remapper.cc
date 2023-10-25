@@ -518,7 +518,7 @@ bool IsGpuCompatible(const RemapperContext& ctx,
                      const ContractionWithBiasAddAndActivation& matched,
                      const Cluster* cluster) {
 #if TENSORFLOW_USE_ROCM
-  // ROCm does not support _FusedConv2D
+  // TODO: add a hipblaslt pathway
   return false;
 #endif
   // The TF->XLA bridge does not support `_Fused[Conv2D|MatMul]` so we avoid
@@ -591,7 +591,7 @@ bool IsGpuCompatible(const RemapperContext& ctx,
 bool IsGpuCompatible(const RemapperContext& ctx,
                      const ContractionWithBiasAdd& matched,
                      const Cluster* cluster) {
-#if TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM && !TF_HIPBLASLT
   // ROCm does not support _FusedMatMul
   return false;
 #endif

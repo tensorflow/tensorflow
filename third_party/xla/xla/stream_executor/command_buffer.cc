@@ -31,13 +31,17 @@ limitations under the License.
 
 namespace stream_executor {
 
+CommandBuffer::~CommandBuffer() = default;
+CommandBuffer::CommandBuffer(CommandBuffer&&) = default;
+CommandBuffer& CommandBuffer::operator=(CommandBuffer&&) = default;
+
 /*static*/ tsl::StatusOr<CommandBuffer> CommandBuffer::Create(
     StreamExecutor* executor, Mode mode) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<internal::CommandBufferInterface> command_buffer,
       executor->implementation()->GetCommandBufferImplementation(mode));
 
-  CommandBuffer cmd(std::move(command_buffer));
+  CommandBuffer cmd(executor, std::move(command_buffer));
   return cmd;
 }
 
@@ -67,14 +71,19 @@ namespace stream_executor {
 }
 
 CommandBuffer::CommandBuffer(
+    StreamExecutor* executor,
     std::unique_ptr<internal::CommandBufferInterface> implementation)
-    : implementation_(std::move(implementation)) {}
+    : executor_(executor), implementation_(std::move(implementation)) {}
 
 tsl::Status CommandBuffer::Launch(const ThreadDim& threads,
                                   const BlockDim& blocks,
                                   const KernelBase& kernel,
                                   const KernelArgsArrayBase& args) {
   return implementation_->Launch(threads, blocks, kernel, args);
+}
+
+tsl::Status CommandBuffer::AddNestedCommandBuffer(const CommandBuffer& nested) {
+  return implementation_->AddNestedCommandBuffer(nested);
 }
 
 tsl::Status CommandBuffer::MemcpyDeviceToDevice(DeviceMemoryBase* dst,
@@ -87,6 +96,12 @@ CommandBuffer::Mode CommandBuffer::mode() const {
   return implementation_->mode();
 }
 
+CommandBuffer::State CommandBuffer::state() const {
+  return implementation_->state();
+}
+
 tsl::Status CommandBuffer::Finalize() { return implementation_->Finalize(); }
+
+tsl::Status CommandBuffer::Update() { return implementation_->Update(); }
 
 }  // namespace stream_executor

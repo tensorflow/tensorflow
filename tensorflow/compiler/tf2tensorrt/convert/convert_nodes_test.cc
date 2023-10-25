@@ -1612,7 +1612,7 @@ class VariableOpConverterTest : public OpConverterTest {
         std::make_unique<checkpoint::TensorSliceReaderCacheWrapper>();
 
     flib_def_ = std::make_unique<FunctionLibraryDefinition>(
-        OpRegistry::Global(), FunctionDefLibrary{});
+        OpRegistry::Global(), FunctionDefLibrary());
 
     thread_pool_ =
         std::make_unique<thread::ThreadPool>(Env::Default(), "default",

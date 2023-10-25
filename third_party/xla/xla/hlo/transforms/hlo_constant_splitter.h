@@ -22,11 +22,14 @@ namespace xla {
 // Splits the constant instructions such that they have a single user.
 // This is typically used before domain placement, to make sure a shared
 // constant does not short-circuit domains. It is also used before sharding
-// propagation to prevent un-intended propagation of sharding due to shared used
+// propagation to prevent unintended propagation of sharding due to shared used
 // of constants.
 //
 // CSE passes after domain placements will ensure that all the sharable
 // constants within the same domain, will be rejoined back.
+//
+// This pass may generate dead instructions. Thus, HloDCE is recommended after
+// this pass.
 class HloConstantSplitter : public HloModulePass {
  public:
   explicit HloConstantSplitter(bool split_expressions = false)

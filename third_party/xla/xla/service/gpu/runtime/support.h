@@ -72,6 +72,9 @@ inline se::DeviceMemoryBase GetDeviceAddress(
     const runtime::StridedMemrefView& memref) {
   uint64_t size = primitive_util::ByteWidth(memref.dtype);
   for (auto dim : memref.sizes) size *= dim;
+  if (primitive_util::Is4BitType(memref.dtype)) {
+    size = (size + 1) / 2;
+  }
   return se::DeviceMemoryBase(memref.data, size);
 }
 

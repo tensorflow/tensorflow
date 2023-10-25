@@ -699,6 +699,8 @@ static void Init(py::module_& m) {
       .def("get_output_memory_kinds",
            xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetOutputMemoryKinds))
       .def("get_output_shardings", &PyLoadedExecutable::GetOutputShardings)
+      .def("get_parameter_layouts",
+           xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetParameterLayouts))
       .def("get_parameter_shardings",
            &PyLoadedExecutable::GetParameterShardings)
       .def("keep_alive", &PyLoadedExecutable::KeepAlive)
@@ -728,8 +730,7 @@ static void Init(py::module_& m) {
 
   m.def("buffer_to_dlpack_managed_tensor",
         xla::ValueOrThrowWrapper(BufferToDLPackManagedTensor),
-        py::arg("buffer"), py::arg("take_ownership") = true,
-        py::arg("stream") = py::none());
+        py::arg("buffer"), py::arg("stream") = py::none());
   m.def("dlpack_managed_tensor_to_buffer",
         [](const pybind11::capsule& tensor, ClientAndPtr<PjRtDevice> device,
            std::optional<std::intptr_t> stream) {
@@ -1009,6 +1010,8 @@ static void Init(py::module_& m) {
       .def("get_output_memory_kinds",
            xla::ValueOrThrowWrapper(&PjRtExecutable::GetOutputMemoryKinds))
       .def("get_output_shardings", &PjRtExecutable::GetOutputShardings)
+      .def("get_parameter_layouts",
+           xla::ValueOrThrowWrapper(&PjRtExecutable::GetParameterLayouts))
       .def("get_parameter_shardings", &PjRtExecutable::GetParameterShardings)
       .def("get_compiled_memory_stats",
            xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompiledMemoryStats))

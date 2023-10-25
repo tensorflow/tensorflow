@@ -700,9 +700,9 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
   @test_util.assert_no_new_pyobjects_executing_eagerly
   @test_util.assert_no_garbage_created
   def testVariableSliceEagerMemory(self):
-    if sys.version_info.major == 3 and sys.version_info.minor == 11:
+    if sys.version_info.major == 3 and sys.version_info.minor in (11, 12):
       # TODO(b/265082239)
-      self.skipTest("Not working in Python 3.11")
+      self.skipTest("Not working in Python 3.11+")
     with context.eager_mode():
       v = variables.Variable([1., 2.])
       v[0]  # pylint: disable=pointless-statement

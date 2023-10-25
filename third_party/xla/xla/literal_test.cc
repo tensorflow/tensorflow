@@ -2402,6 +2402,17 @@ TEST_F(LiteralUtilTest, DynamicBroadcast) {
   EXPECT_EQ(broadcasted_literal.GetDynamicSize(1), 1);
 }
 
+TEST_F(LiteralUtilTest, GetAsScalarInt64) {
+  auto scalar1 = LiteralUtil::CreateR0<int32_t>(12);
+  EXPECT_EQ(LiteralUtil::LiteralAsScalarInt64(scalar1).value(), (int64_t)12);
+  auto scalar2 = LiteralUtil::CreateR0<int8_t>(12);
+  EXPECT_EQ(LiteralUtil::LiteralAsScalarInt64(scalar2).value(), (int64_t)12);
+  auto non_scalar1 = LiteralUtil::CreateR2<int32_t>({{1, 2}, {3, 4}});
+  EXPECT_FALSE(LiteralUtil::LiteralAsScalarInt64(non_scalar1).has_value());
+  auto non_scalar2 = LiteralUtil::CreateR1<int32_t>({{1, 2}});
+  EXPECT_FALSE(LiteralUtil::LiteralAsScalarInt64(non_scalar2).has_value());
+}
+
 TEST_F(LiteralUtilTest, GetAsDouble) {
   auto m = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   EXPECT_EQ(*m.GetAsDouble({0, 0}), 1.0);

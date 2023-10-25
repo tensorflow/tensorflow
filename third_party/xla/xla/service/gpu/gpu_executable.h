@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
 #include "xla/service/gpu/runtime/executable.h"
-#include "xla/service/gpu/runtime2/executable.h"
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/hlo_execution_profile.h"
 #include "xla/service/shaped_buffer.h"
@@ -53,9 +52,6 @@ namespace gpu {
 // Returns whether GpuExecutable runs with Xla Runtime.
 bool IsXlaRuntimeExecutableEnabled(const HloModuleConfig& config);
 
-// Returns whether GpuExecutable runs with experimental XLA:GPU Runtime.
-bool IsXlaGpu2RuntimeEnabled(const HloModuleConfig& config);
-
 // GPU-targeting implementation of the XLA Executable interface.
 //
 // Launches the given GPU kernel via the StreamExecutor.
@@ -65,7 +61,6 @@ class GpuExecutable : public Executable {
  public:
   using OwnedThunkSequence = std::unique_ptr<const ThunkSequence>;
   using OwnedGpuRuntimeProgram = std::unique_ptr<GpuRuntimeProgram>;
-  using OwnedGpu2RuntimeProgram = std::unique_ptr<Gpu2RuntimeProgram>;
 
   struct ConstantInfo {
     std::string symbol_name;
@@ -92,9 +87,7 @@ class GpuExecutable : public Executable {
     // The GpuExecutable will either execute Thunks, XLA runtime executable
     // (native function) or experimental XLA runtime executable (IREE VM
     // function) depending on which is supplied.
-    std::variant<OwnedThunkSequence, OwnedGpuRuntimeProgram,
-                 OwnedGpu2RuntimeProgram>
-        executable;
+    std::variant<OwnedThunkSequence, OwnedGpuRuntimeProgram> executable;
     xla::EntryFunctionAttributes entry_func_attrs;
     std::vector<ConstantInfo> constants;
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
@@ -294,11 +287,6 @@ class GpuExecutable : public Executable {
   // runtime custom calls implementing gpu abstraction layer (available only if
   // Xla runtime is enabled).
   std::unique_ptr<GpuRuntimeExecutable> gpu_runtime_executable_;
-
-  // XLA:GPU runtime executable that encapsulates all the state for running
-  // XLA:GPU executables compiled to IREE VM modules, including VM module
-  // itself. Available only if experimental XLA:GPU runtime is enabled.
-  std::unique_ptr<Gpu2RuntimeExecutable> gpu2_runtime_executable_;
 
   xla::EntryFunctionAttributes entry_func_attrs_;
 

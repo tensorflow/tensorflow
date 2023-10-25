@@ -78,7 +78,7 @@ pytype_strict_library(
         ":util",
         ":version",
         ":versions_proto_py",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "@absl_py//absl/logging",
         "@riegeli_py//python/riegeli",
     ],

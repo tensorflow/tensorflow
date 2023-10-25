@@ -1,0 +1,48 @@
+path: "tensorflow.tpu.experimental.embedding.TPUEmbeddingV2"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_v3.TPUEmbeddingV2\'>"
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding_base.TPUEmbeddingBase\'>"
+  is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "embedding_table_shards"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "embedding_tables"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "variables"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'feature_config\', \'optimizer\', \'pipeline_execution_with_tensor_core\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+  }
+  member_method {
+    name: "apply_gradients"
+    argspec: "args=[\'self\', \'gradients\', \'preserved_outputs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "build"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "dequeue"
+    argspec: "args=[\'self\', \'partitioned_tensors\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "embedding_lookup"
+    argspec: "args=[\'self\', \'features\', \'weights\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "enqueue"
+    argspec: "args=[\'self\', \'features\', \'weights\', \'device\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "preprocess_features"
+    argspec: "args=[\'num_replicas_in_sync\', \'max_ids_per_chip_per_sample\', \'max_minibatches_per_sc\', \'num_sc_per_chip\', \'num_sc_shards\', \'stacked_table_to_tables\', \'table_to_stacked_table_offset\', \'table_to_sample_count\', \'feature_to_sample_offset\', \'flat_features\', \'flat_inputs\', \'flat_weights\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

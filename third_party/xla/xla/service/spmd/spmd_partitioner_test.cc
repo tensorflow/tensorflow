@@ -9737,6 +9737,20 @@ ENTRY entry {
                           op::Shape("f32[5,1,1,512]")));
 }
 
+TEST_P(SpmdPartitioningTest, PartitionConvWithBatchGroupCountReplicatedLHSRHS) {
+  // This test case is derived from b/304203416.
+  absl::string_view hlo_string = R"(
+HloModule test, entry_computation_layout={(f32[8,28,1,64]{3,2,1,0}, f32[8,28,1,2]{3,2,1,0})->f32[3,1,32,2]{3,2,1,0}}, allow_spmd_sharding_propagation_to_output={true}
+
+ENTRY main.4 {
+  lhs = f32[8,28,1,64]{3,2,1,0} parameter(0), sharding={replicated}
+  rhs = f32[8,28,1,2]{3,2,1,0} parameter(1), sharding={replicated}
+  ROOT convolution.3 = f32[3,1,32,2]{3,2,1,0} convolution(lhs, rhs), window={size=28x1 pad=1_1x0_0}, dim_labels=f01b_i01o->01bf, batch_group_count=2, sharding={replicated}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+}
+
 TEST_P(SpmdPartitioningTest,
        PartitionConvWithFeatureGroupCountAlignOuputWithRHS) {
   absl::string_view hlo_string = R"(
@@ -10541,6 +10555,28 @@ ENTRY %module {
       root, op::AllReduce(op::DynamicUpdateSlice(
                 _, op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)),
                 _, _, _, _)));
+}
+
+TEST_P(SpmdPartitioningTest, Gather_b303520921) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY %module {
+  %convert.303 = bf16[1000,16]{1,0} parameter(0), sharding={devices=[4,1,2]<=[2,4]T(1,0) last_tile_dim_replicate}
+  %reshape.830 = s32[16,8,1]{2,1,0} parameter(1), sharding={devices=[2,1,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT %gather.831 = bf16[16,8,16]{2,1,0} gather(convert.303, reshape.830),
+    offset_dims={2}, collapsed_slice_dims={0}, start_index_map={0},
+    index_vector_dim=2, slice_sizes={1,16}, sharding={devices=[2,1,4]<=[8]}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  LOG(INFO) << module->ToString();
+  auto operand = AllOf(op::Shape("bf16[250,16]"), op::Parameter());
+  auto indices = AllOf(op::Shape("s32[8,8,1]"), op::Subtract());
+  auto gather = AllOf(op::Shape("bf16[8,8,16]"), op::Gather(operand, indices));
+  const HloInstruction* gather_inst = FindInstruction(module.get(), "gather");
+  EXPECT_NE(gather_inst, nullptr);
+  EXPECT_THAT(gather_inst, gather);
 }
 
 TEST_P(SpmdPartitioningTest, GatherMergedIndexParallelAndOperandPassthrough) {

@@ -46,8 +46,7 @@ class NVPTXCompiler : public GpuCompiler {
 
   Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
-      const AutotuneResults* autotune_results,
+      const CompileOptions& options, const TargetConfig& gpu_target_config,
       tsl::thread::ThreadPool* thread_pool) override;
 
   bool RequiresCollectiveScheduleLinearizer(
@@ -62,12 +61,6 @@ class NVPTXCompiler : public GpuCompiler {
       HloPassPipeline* pipeline, HloModule* hlo_module,
       AutotuneConfig& autotune_config,
       tsl::thread::ThreadPool* thread_pool) override;
-
-  Status LoadAutotuneResultsFromFile(
-      const DebugOptions& debug_options) override;
-
-  Status SerializeAutotuneResultsToFile(
-      const DebugOptions& debug_options) override;
 
   HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() const override;
 

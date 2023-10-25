@@ -58,10 +58,6 @@ constexpr llvm::StringRef kCalledFuncAttrName = "called_func";
 // attribute.
 tsl::StatusOr<OwningOpRef<ModuleOp>> DeserializeStablehlo(MLIRContext *context,
                                                           XlaCallModuleOp op) {
-  std::vector<std::string> dim_args_spec;
-  for (auto attr : op.getDimArgsSpec().getAsRange<StringAttr>()) {
-    dim_args_spec.push_back(attr.getValue().str());
-  }
   std::vector<std::string> disabled_checks;
   for (auto attr : op.getDisabledChecks().getAsRange<StringAttr>()) {
     disabled_checks.push_back(attr.getValue().str());
@@ -75,14 +71,13 @@ tsl::StatusOr<OwningOpRef<ModuleOp>> DeserializeStablehlo(MLIRContext *context,
   // we set loading_platform to the first platform.
   std::string loading_platform =
       (platforms.empty() ? "CPU" : platforms.front());
-  TF_ASSIGN_OR_RETURN(
-      auto loader,
-      tensorflow::XlaCallModuleLoader::Create(
-          context, static_cast<int>(op.getVersion()), op.getModule().str(),
-          std::move(dim_args_spec), std::move(disabled_checks),
-          std::move(platforms), std::move(loading_platform),
-          /*num_invocation_args=*/op.getArgs().size(),
-          op.getHasTokenInputOutput()));
+  TF_ASSIGN_OR_RETURN(auto loader,
+                      tensorflow::XlaCallModuleLoader::Create(
+                          context, static_cast<int>(op.getVersion()),
+                          op.getModule().str(), std::move(disabled_checks),
+                          std::move(platforms), std::move(loading_platform),
+                          /*num_invocation_args=*/op.getArgs().size(),
+                          op.getHasTokenInputOutput()));
   return std::move(*loader).module();
 }
 
