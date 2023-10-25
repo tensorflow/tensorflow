@@ -55,15 +55,11 @@ StatusOr<bool> ReduceScatterDecomposer::Run(
       }
 
       // Create an all-reduce
-      HloComputation *apply_clone = module->AddComputationAndUnifyNamesAndIds(
-          rs->to_apply()->Clone(), /*is_entry=*/false);
       HloInstruction *ar =
           computation->AddInstruction(HloInstruction::CreateAllReduce(
-              rs->operand(0)->shape(), rs->operands(), apply_clone,
+              rs->operand(0)->shape(), rs->operands(), rs->to_apply(),
               rs->replica_groups(), rs->constrain_layout(), channel_id,
               rs->use_global_device_ids()));
-      apply_clone->SetCollectiveCallInstruction(ar);
-
       // Create start indices for a dynamic slice to decompose the all-reduce
       // results.
       TF_ASSIGN_OR_RETURN(

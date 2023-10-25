@@ -335,9 +335,6 @@ Status FloatNormalizationVisitor::HandleMultipleOutputs(HloInstruction* hlo) {
 
   std::vector<HloComputation*> low_precision_called_comps;
   for (auto* comp : hlo->called_computations()) {
-    if (comp->IsCollectiveCalledComputation()) {
-      continue;
-    }
     bool comp_has_low_precision = false;
     if (comp->root_instruction()->shape().element_type() ==
         HighPrecisionType()) {
@@ -414,9 +411,6 @@ Status FloatNormalizationVisitor::HandleInstruction(HloInstruction* hlo) {
 
   std::vector<HloComputation*> low_precision_called_comps;
   for (auto* comp : hlo->called_computations()) {
-    if (comp->IsCollectiveCalledComputation()) {
-      continue;
-    }
     bool comp_has_low_precision = false;
     high_prec_count += CountSubshapesWithMatchingType(
         comp->root_instruction()->shape(), HighPrecisionType());
@@ -555,11 +549,6 @@ StatusOr<bool> FloatNormalization::Run(
                         ", before:\n" + module->ToString());
   FloatNormalizationVisitor visitor(float_support_, this);
   for (auto* comp : module->MakeComputationPostOrder(execution_threads)) {
-    if (comp->IsCollectiveCalledComputation()) {
-      XLA_VLOG_LINES(2, "Skip processing collective called computation: " +
-                            comp->ToString());
-      continue;
-    }
     TF_RETURN_IF_ERROR(comp->Accept(&visitor));
   }
   XLA_VLOG_LINES(2, "FloatNormalization::Run() for " +
