@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_set>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 
@@ -49,7 +51,7 @@ struct AotResult {
   using ExecutableMap =
       absl::flat_hash_map<DeviceCompilationClusterSignature, std::string,
                           DeviceCompilationClusterSignature::Hash>;
-  tfrt::BefBuffer bef;
+  std::variant<tfrt::BefBuffer, mlrt::bc::Buffer> buffer;
   // TODO(b/296466237): Investigate whether the whole FunctionDefLibrary should
   // be put here.
   // XLA cluster functions corresponding to `XlaLaunch` op, generated during

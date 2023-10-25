@@ -28,6 +28,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/compiler/jit/device_compilation_cluster_signature.h"
@@ -37,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -58,9 +62,10 @@ limitations under the License.
 #include "tensorflow/core/tfrt/graph_executor/export_mlir.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_util.h"
-#include "tensorflow/core/tfrt/saved_model/utils/serialize_bef_utils.h"
+#include "tensorflow/core/tfrt/saved_model/utils/serialize_utils.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/core/tpu/virtual_device.h"
 #include "tsl/platform/casts.h"
@@ -225,7 +230,7 @@ Status AotCompileSavedModelAndSaveResult(absl::string_view input_model_dir,
         .serialize_mlir_module_to_aot_packages = true;
     graph_execution_options.compile_options.aot_mlir_module_file =
         io::JoinPath(aot_directory, kMLIRModuleFilename);
-
+    graph_execution_options.enable_mlrt = false;
     aot_options.graph_execution_options =
         std::make_shared<GraphExecutionOptions>(graph_execution_options);
   }
@@ -252,10 +257,18 @@ Status AotCompileSavedModelAndSaveResult(absl::string_view input_model_dir,
         "saved_model not found in input directory: ", input_model_dir));
   }
 
-  // Serialize BEF buffer to a file under aot_packages
-  const std::string serialized_bef_path =
-      io::JoinPath(aot_directory, kBefBufferFilenameMLIRBEF);
-  TF_RETURN_IF_ERROR(SerializeBEF(result.bef, serialized_bef_path));
+  // Serialize BEF/MLRT buffer to file.
+  if (aot_options.graph_execution_options->enable_mlrt) {
+    const std::string serialized_mlrt_path =
+        io::JoinPath(aot_directory, kMlrtBufferFileName);
+    TF_RETURN_IF_ERROR(SerializeMLRTBytecode(
+        std::get<mlrt::bc::Buffer>(result.buffer), serialized_mlrt_path));
+  } else {
+    const std::string serialized_bef_path =
+        io::JoinPath(aot_directory, kBefBufferFileName);
+    TF_RETURN_IF_ERROR(SerializeBEF(std::get<tfrt::BefBuffer>(result.buffer),
+                                    serialized_bef_path));
+  }
 
   if (pb_found) {
     const std::string output_file_directory =
@@ -322,11 +335,30 @@ StatusOr<AotResult> AotCompileSavedModel(absl::string_view input_model_dir,
 
   tfrt::BefBuffer bef;
   std::vector<std::string> xla_function_names;
-  RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
-      aot_options.graph_execution_options->compile_options, mlir_module.get(),
-      &bef, model_context, fallback_state.get(), &xla_function_names));
-  if (bef.empty()) {
-    return absl::InternalError("BefBuffer is empty.");
+
+  mlrt::bc::Buffer bytecode_buffer;
+  if (aot_options.graph_execution_options->enable_mlrt) {
+    mlir::OwningOpRef<mlir::ModuleOp> module_with_op_keys;
+
+    ASSIGN_OR_RETURN_IN_COMPILE(
+        bytecode_buffer,
+        tensorflow::mlrt_compiler::ConvertTfMlirToBytecode(
+            aot_options.graph_execution_options->compile_options,
+            *fallback_state, mlir_module.get(), model_context,
+            &module_with_op_keys, &xla_function_names));
+
+    if (bytecode_buffer.empty()) {
+      LOG(ERROR) << "MLRT byte buffer is empty.";
+      return absl::InternalError("bytecode_buffer is empty.");
+    }
+  } else {
+    RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
+        aot_options.graph_execution_options->compile_options, mlir_module.get(),
+        &bef, model_context, fallback_state.get(), &xla_function_names));
+    if (bef.empty()) {
+      LOG(ERROR) << "BEF byte buffer is empty.";
+      return absl::InternalError("BefBuffer is empty.");
+    }
   }
 
   const FunctionLibraryDefinition& flib_def = fallback_state->func_lib_def();
@@ -340,7 +372,9 @@ StatusOr<AotResult> AotCompileSavedModel(absl::string_view input_model_dir,
     }
     xla_functions.push_back(*xla_func_def);
   }
-
+  if (aot_options.graph_execution_options->enable_mlrt) {
+    return AotResult{std::move(bytecode_buffer), std::move(xla_functions)};
+  }
   return AotResult{std::move(bef), std::move(xla_functions)};
 }
 

@@ -76,7 +76,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_util.h"
-#include "tensorflow/core/tfrt/saved_model/utils/serialize_bef_utils.h"
 #include "tensorflow/core/tfrt/stubs/model_config_stub.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
@@ -557,11 +556,16 @@ SavedModelImpl::LoadSavedModel(Options options,
   tfrt::BefBuffer bef;
   if (AotPackageExists(saved_model_dir)) {
     LOG(INFO) << "Found AoT package. Load and deserialize BEF.";
+    if (options.graph_execution_options.enable_mlrt) {
+      // TODO(b/303504882): Add deserialization for mlrt path
+      return absl::InternalError("AOT is not supported in MLRT");
+    } else {
+      ASSIGN_OR_RETURN_IN_COMPILE(
+          bef, LoadBefAndMlir(options.graph_execution_options.compile_options,
+                              mlir_module.get(), saved_model_dir_string,
+                              fallback_state.get()));
+    }
 
-    ASSIGN_OR_RETURN_IN_COMPILE(
-        bef, LoadAotPackages(options.graph_execution_options.compile_options,
-                             mlir_module.get(), saved_model_dir_string,
-                             fallback_state.get()));
   } else {
     tensorflow::tf_mlrt::RegisterTfMlrtKernels(*kernel_registry);
     tensorflow::tf_mlrt::RegisterTfMlrtBatchKernels(*kernel_registry);

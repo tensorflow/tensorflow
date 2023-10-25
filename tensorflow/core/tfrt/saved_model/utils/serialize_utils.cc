@@ -13,32 +13,54 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_TFRT_SAVED_MODEL_UTILS_SERIALIZE_BEF_UTILS_H_
-#define TENSORFLOW_CORE_TFRT_SAVED_MODEL_UTILS_SERIALIZE_BEF_UTILS_H_
+#include "tensorflow/core/tfrt/saved_model/utils/serialize_utils.h"
 
 #include <memory>
 #include <string>
 
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 #include "tsl/platform/env.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_stub {
 
-// Serializes the BefBuffer into a file
 absl::Status SerializeBEF(const tfrt::BefBuffer &bef,
-                          const std::string &filepath);
+                          const std::string &filepath) {
+  std::string errorMessage;
+  auto output = mlir::openOutputFile(filepath, &errorMessage);
+  (output->os()).write(reinterpret_cast<const char *>(bef.data()), bef.size());
+  output->keep();
+  LOG(INFO) << "Completed serializing BEF to: " << filepath;
 
-// Deserializes BEF file from filepath into a BEFBuffer
+  return absl::OkStatus();
+}
+
 absl::StatusOr<tfrt::BefBuffer> DeserializeBEFBuffer(
-    const std::string &filepath);
+    const std::string &filepath) {
+  std::string data;
+  TF_CHECK_OK(ReadFileToString(tsl::Env::Default(), filepath, &data));
+  tfrt::BefBuffer bef(data.begin(), data.end());
+  LOG(INFO) << "Successfully loaded serialized BEF from: " << filepath;
+  return bef;
+}
+
+absl::Status SerializeMLRTBytecode(const mlrt::bc::Buffer &bytecode,
+                                   const std::string &filepath) {
+  std::string errorMessage;
+  auto output = mlir::openOutputFile(filepath, &errorMessage);
+  (output->os())
+      .write(reinterpret_cast<const char *>(bytecode.data()), bytecode.size());
+  output->keep();
+  LOG(INFO) << "Completed serializing MLRTBytecode to: " << filepath;
+
+  return absl::OkStatus();
+}
+
 }  // namespace tfrt_stub
 }  // namespace tensorflow
-
-#endif  // TENSORFLOW_CORE_TFRT_SAVED_MODEL_UTILS_SERIALIZE_BEF_UTILS_H_
