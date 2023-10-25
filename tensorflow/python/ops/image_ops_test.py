@@ -6066,7 +6066,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     img2 = constant_op.constant(img2, dtypes.uint8)
     with self.cached_session():
       with self.assertRaisesRegexp(
-        (errors.InvalidArgumentError, RuntimeError),
+        (errors_impl.InvalidArgumentError, RuntimeError),
         'You defined 5 "power_factors"'):
         ssim_uint8 = image_ops.ssim_multiscale(
           img1, img2, 255, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03
