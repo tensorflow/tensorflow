@@ -14,6 +14,7 @@ libcusparse-dev-12-2
 libcublas-12-2
 libcublas-dev-12-2
 libnccl-dev=2.18.5-1+cuda12.2
+libnccl2=2.18.5-1+cuda12.2
 # CuDNN: https://docs.nvidia.com/deeplearning/sdk/cudnn-install/index.html#ubuntu-network-installation
 libcudnn8-dev=8.9.4.25-1+cuda12.2
 libcudnn8=8.9.4.25-1+cuda12.2
