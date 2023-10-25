@@ -33,8 +33,8 @@ limitations under the License.
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
-#include "tensorflow/tsl/platform/casts.h"
-#include "tensorflow/tsl/platform/refcount.h"
+#include "tsl/platform/casts.h"
+#include "tsl/platform/refcount.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow::tfrt_stub {
@@ -86,6 +86,11 @@ std::vector<tensorflow::Tensor> RunConvertor(PyObject* args) {
   tensorflow::Safe_PyObjectPtr py_eager_tensor = nullptr;
   PyObject* lst = PyTuple_GetItem(args, 0);
   std::vector<PyObject*> input = MakeTensorList(lst);
+  for (PyObject* tensor : input) {
+    // Creating a C++ Tensor object on a python buffer will eat a reference to
+    // the buffer, so we need to increase their reference count.
+    Py_INCREF(tensor);
+  }
   std::vector<tensorflow::Tensor> input_run;
   for (int i = 0; i < input.size(); ++i) {
     py_eager_tensor.reset(input[i]);

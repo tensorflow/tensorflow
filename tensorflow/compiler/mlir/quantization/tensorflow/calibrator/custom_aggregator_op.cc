@@ -29,7 +29,10 @@ REGISTER_OP("CustomAggregator")
     .Input("input: float")
     .Output("output: float")
     .Attr("id: string")
-    .Attr("serialized_calibration_options: string = ''")
+    .Attr("calibration_method: int = 0")
+    .Attr("initial_num_bins: int = 0")
+    .Attr("min_percentile: float = 0.0")
+    .Attr("max_percentile: float = 0.0")
     .SetIsStateful()
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
@@ -41,11 +44,26 @@ class CustomAggregatorOp : public OpKernel {
   explicit CustomAggregatorOp(OpKernelConstruction* context)
       : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("id", &id_));
-
-    std::string serialized_calibration_options;
-    OP_REQUIRES_OK(context, context->GetAttr("serialized_calibration_options",
-                                             &serialized_calibration_options));
-    calib_opts_.ParseFromString(serialized_calibration_options);
+    int initial_num_bins;
+    int calibration_method;
+    float min_percentile;
+    float max_percentile;
+    OP_REQUIRES_OK(
+        context, context->GetAttr("calibration_method", (&calibration_method)));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("initial_num_bins", &initial_num_bins));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("min_percentile", &min_percentile));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("max_percentile", &max_percentile));
+    calib_opts_.set_calibration_method(
+        static_cast<CalibrationOptions::CalibrationMethod>(calibration_method));
+    calib_opts_.mutable_calibration_parameters()->set_initial_num_bins(
+        initial_num_bins);
+    calib_opts_.mutable_calibration_parameters()->set_min_percentile(
+        min_percentile);
+    calib_opts_.mutable_calibration_parameters()->set_max_percentile(
+        max_percentile);
   }
 
   void Compute(OpKernelContext* context) override {

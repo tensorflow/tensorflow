@@ -32,11 +32,11 @@ tf_proto_library(
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
-        "//tensorflow/tsl/profiler/protobuf:xplane_proto",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto",
     ],
     visibility = [":friends"],
     exports = [
-        "//tensorflow/tsl/profiler/protobuf:xplane_proto",
+        "@local_tsl//tsl/profiler/protobuf:xplane_proto",
     ],
 )
 
@@ -119,6 +119,7 @@ tf_proto_library(
     protodeps = [
         ":diagnostics_proto",
         ":pod_stats_proto",
+        ":topology_proto",
     ],
     visibility = [":friends"],
 )

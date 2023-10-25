@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef THIRD_PARTY_DUCC_GOOGLE_DUCC0_CUSTOM_LOWLEVEL_THREADING_H_
 #define THIRD_PARTY_DUCC_GOOGLE_DUCC0_CUSTOM_LOWLEVEL_THREADING_H_
 
-#include "tensorflow/tsl/platform/mutex.h"
+#include "tsl/platform/mutex.h"
 
 namespace ducc0 {
 namespace detail_threading {

@@ -32,12 +32,10 @@ StatusOr<DataServiceMetadata> GetDataServiceMetadata(
     const std::string& protocol);
 
 // Gets the `DisableCompressAtRuntimeResponse.compression_disabled_at_runtime`
-// for the given dataset and trainer information. Blocks -- polling the
-// dispatcher with a fixed backoff -- until the field is set.
+// for the given dataset.
 StatusOr<bool> CompressionDisabledAtRuntime(
     const std::string& dataset_id, const std::string& address,
-    const std::string& protocol,
-    const std::optional<std::string>& trainer_compression_info);
+    const std::string& protocol, bool disable_compression_at_runtime);
 
 // Gets the `DataServiceConfig` for the data service running at `address`.
 StatusOr<DataServiceConfig> GetDataServiceConfig(const std::string& address,

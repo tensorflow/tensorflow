@@ -36,10 +36,24 @@ void AddQuantizePtqDynamicRangePasses(
     std::optional<const absl::string_view> mlir_dump_file_prefix =
         std::nullopt);
 
+void AddQuantizeWeightOnlyPasses(
+    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    std::optional<const absl::string_view> mlir_dump_file_prefix =
+        std::nullopt);
+
 void AddQuantizePtqPreCalibrationPasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options);
 
 void AddQuantizePtqPostCalibrationPasses(
+    mlir::PassManager &pm, const QuantizationOptions &quantization_options,
+    std::optional<const absl::string_view> mlir_dump_file_prefix =
+        std::nullopt);
+
+// StableHLO Quantization passes that are ran if StableHLO opset is selected.
+void AddQuantizePtqPreCalibrationStablehloPasses(
+    mlir::PassManager &pm, const QuantizationOptions &quantization_options);
+
+void AddQuantizePtqPostCalibrationStablehloPasses(
     mlir::PassManager &pm, const QuantizationOptions &quantization_options,
     std::optional<const absl::string_view> mlir_dump_file_prefix =
         std::nullopt);

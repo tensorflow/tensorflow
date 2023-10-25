@@ -37,9 +37,9 @@ limitations under the License.
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/python/framework/op_reg_offset.pb.h"
 #include "tensorflow/python/framework/python_op_gen.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/str_util.h"
-#include "tensorflow/tsl/util/command_line_flags.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/str_util.h"
+#include "tsl/util/command_line_flags.h"
 
 namespace tensorflow {
 namespace {

@@ -244,7 +244,8 @@ class StatelessRandomGammaOp : public StatelessRandomOpBase {
                  /*key=*/nullptr, /*counter=*/nullptr, random, samples_flat));
   }
 
-  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomGammaOp);
+  StatelessRandomGammaOp(const StatelessRandomGammaOp&) = delete;
+  void operator=(const StatelessRandomGammaOp&) = delete;
 };
 
 // A stateless-random-gamma kernel that takes shape, key, counter and algorithm

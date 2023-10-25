@@ -7,6 +7,10 @@ tf_class {
     name: "function_type"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "inference_fn"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
   }

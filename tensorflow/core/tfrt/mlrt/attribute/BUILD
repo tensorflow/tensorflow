@@ -10,7 +10,6 @@ package(
         # copybara:uncomment "//smartass/brain/ops/tfrt_kernels:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt/transforms/mlrt:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt/translate/mlrt:__subpackages__",
-        "//tensorflow/core/tfrt:__subpackages__",
     ],
 )
 
@@ -25,9 +24,9 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/mlrt/bytecode",
-        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:statusor",
     ],
 )
 
@@ -41,8 +40,8 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tfrt/translate/mlrt:mlir_to_bytecode",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/platform:status_matchers",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
+        "@local_tsl//tsl/platform:status_matchers",
     ],
 )

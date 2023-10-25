@@ -15,8 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/linalg_ops.cc.
 
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/MatrixFunctions"
+#include "Eigen/Core"  // from @eigen_archive
+#include "unsupported/Eigen/MatrixFunctions"  // from @eigen_archive
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -46,7 +46,8 @@ class MatrixSquareRootOp : public LinearAlgebraOp<Scalar> {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixSquareRootOp);
+  MatrixSquareRootOp(const MatrixSquareRootOp&) = delete;
+  void operator=(const MatrixSquareRootOp&) = delete;
 };
 
 REGISTER_LINALG_OP("MatrixSquareRoot", (MatrixSquareRootOp<float>), float);

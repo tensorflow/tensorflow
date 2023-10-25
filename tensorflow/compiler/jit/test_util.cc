@@ -21,7 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/jit/shape_inference.h"
-#include "tensorflow/compiler/xla/status_macros.h"
+#include "xla/status_macros.h"
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/public/version.h"
 

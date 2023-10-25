@@ -12,8 +12,10 @@ cc_library(
     srcs = ["calibration_wrapper.cc"],
     hdrs = ["calibration_wrapper.h"],
     deps = [
+        "//tensorflow/compiler/mlir/lite:offset_buffer",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:shared_library",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
@@ -39,7 +41,14 @@ pybind_extension(
         "calibration_wrapper_pybind11.cc",
     ],
     hdrs = ["calibration_wrapper.h"],
+    additional_stubgen_deps = [
+        "//third_party/py/numpy:numpy",
+    ],
+    enable_stub_generation = True,
     link_in_framework = True,
+    pytype_srcs = [
+        "_pywrap_tensorflow_lite_calibration_wrapper.pyi",
+    ],
     deps = [
         ":calibration_wrapper_lib",
         "//tensorflow/lite:framework",

@@ -30,7 +30,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/synchronization/barrier.h"
 #include "absl/synchronization/notification.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/logging.h"

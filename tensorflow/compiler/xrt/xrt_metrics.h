@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XRT_XRT_METRICS_H_
 #define TENSORFLOW_COMPILER_XRT_XRT_METRICS_H_
 
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/statusor.h"
 #include "tensorflow/compiler/xrt/xrt.pb.h"
 #include "tensorflow/core/lib/monitoring/percentile_sampler.h"
 

@@ -2,8 +2,8 @@
 # TensorFlow SavedModel.
 
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "if_google")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -77,7 +77,7 @@ py_strict_library(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training:saver",
@@ -102,7 +102,7 @@ py_strict_library(
         ":utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/framework:ops",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training:saver",
@@ -191,7 +191,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/framework:test_ops",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:state_ops",
@@ -212,7 +212,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":constants",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/util:compat",
     ],
 )
@@ -398,7 +398,7 @@ py_strict_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:versions",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:resource_variable_ops",
@@ -460,7 +460,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/framework:versions",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/module",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_switch_case",
@@ -509,7 +509,7 @@ py_strict_library(
     srcs = ["load.py"],
     srcs_version = "PY3",
     tags = [
-        "ignore_for_dep=third_party.py.keras.optimizers.optimizer_v2",
+        "ignore_for_dep=third_party.py.tf_keras.optimizers.optimizer_v2",
     ],
     deps = [
         ":fingerprinting",
@@ -625,7 +625,8 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/framework:versions",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
+        "//tensorflow/python/lib/io:tf_record",
         "//tensorflow/python/module",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:cond_v2",
@@ -676,7 +677,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/framework:versions",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:init_ops",
@@ -835,7 +836,7 @@ py_strict_library(
     deps = [
         ":constants",
         ":loader",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:tf_export",
@@ -852,7 +853,7 @@ tf_py_strict_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:compat",
     ],
@@ -928,6 +929,8 @@ tf_python_pybind_extension(
     ],
     deps = [
         ":pywrap_saved_model_headers",
+        # placeholder for index annotation deps
+        "@com_google_absl//absl/log",
         "//tensorflow/cc/experimental/libexport:save",
         "//tensorflow/cc/saved_model:reader",
         "//tensorflow/core:protos_all_cc",
@@ -961,7 +964,7 @@ tf_py_strict_test(
 #         ":pywrap_saved_model",
 #         "//tensorflow/core:protos_all_py",
 #         "//tensorflow/python/eager:test",
-#         "//tensorflow/python/lib/io:lib",
+#         "//tensorflow/python/lib/io:file_io",
 #         "//tensorflow/python/platform:client_testlib",
 #     ],
 # )
@@ -972,9 +975,12 @@ tf_py_strict_test(
     name = "keras_injection_test",
     size = "small",
     srcs = ["keras_injection_test.py"],
+    data = ["//tensorflow/cc/saved_model:saved_model_test_files"],
     python_version = "PY3",
+    tags = ["no_oss"],  # Due to the usage of keras component.
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -987,7 +993,6 @@ tf_py_strict_test(
         ":pywrap_saved_model",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -1010,7 +1015,7 @@ py_strict_library(
         ":pywrap_saved_model",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/config:flags_py",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/util:compat",
         "@absl_py//absl/logging",
     ],
@@ -1033,7 +1038,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/trackable:autotrackable",
     ],
 )

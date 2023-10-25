@@ -85,7 +85,8 @@ class PriorityQueue
                                              OpKernelContext* ctx,
                                              Tensor* out_element);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PriorityQueue);
+  PriorityQueue(const PriorityQueue&) = delete;
+  void operator=(const PriorityQueue&) = delete;
 };
 
 }  // namespace tensorflow

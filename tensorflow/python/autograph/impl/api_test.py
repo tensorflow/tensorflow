@@ -19,7 +19,6 @@ import collections
 import contextlib
 import functools
 import gc
-import imp
 import inspect
 import io
 import os
@@ -689,7 +688,7 @@ class ApiTest(test.TestCase):
 
   def test_converted_call_exec_generated_code(self):
 
-    temp_mod = imp.new_module('test_module')
+    temp_mod = types.ModuleType('test_module')
     dynamic_code = """
       def foo(x):
         return x + 1

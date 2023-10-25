@@ -21,7 +21,11 @@ set -euxo pipefail
 
 for wheel in /tf/pkg/*.whl; do
   echo "Checking and renaming $wheel..."
-  time python3 -m auditwheel repair --plat manylinux2014_x86_64 "$wheel" --wheel-dir /tf/pkg 2>&1 | tee check.txt
+  if [[ "$wheel" =~ .*_tpu.* ]]; then
+    time python3 -m auditwheel repair --plat manylinux_2_27_x86_64 "$wheel" --wheel-dir /tf/pkg 2>&1 | tee check.txt
+  else
+    time python3 -m auditwheel repair --plat manylinux2014_x86_64 "$wheel" --wheel-dir /tf/pkg 2>&1 | tee check.txt
+  fi
 
   # We don't need the original wheel if it was renamed
   new_wheel=$(grep --extended-regexp --only-matching '/tf/pkg/\S+.whl' check.txt)

@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/types.h"
+
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -130,6 +132,10 @@ string DataTypeStringInternal(DataType dtype) {
       return "float8_e5m2";
     case DT_FLOAT8_E4M3FN:
       return "float8_e4m3fn";
+    case DT_INT4:
+      return "int4";
+    case DT_UINT4:
+      return "uint4";
     case DT_RESOURCE:
       return "resource";
     case DT_VARIANT:
@@ -230,6 +236,12 @@ bool DataTypeFromString(StringPiece sp, DataType* dt) {
   } else if (sp == "float8_e4m3fn") {
     *dt = DT_FLOAT8_E4M3FN;
     return true;
+  } else if (sp == "int4") {
+    *dt = DT_INT4;
+    return true;
+  } else if (sp == "uint4") {
+    *dt = DT_UINT4;
+    return true;
   } else if (sp == "resource") {
     *dt = DT_RESOURCE;
     return true;
@@ -277,8 +289,10 @@ int DataTypeSize(DataType dt) {
     // bitcast.
     TF_CALL_qint16(CASE);
     TF_CALL_quint16(CASE);
-    CASE(tsl::float8_e5m2);
-    CASE(tsl::float8_e4m3fn);
+    TF_CALL_float8_e5m2(CASE);
+    TF_CALL_float8_e4m3fn(CASE);
+    TF_CALL_int4(CASE);
+    TF_CALL_uint4(CASE);
 
     default:
       return 0;
@@ -313,6 +327,8 @@ DEFINE_DATATYPETOENUM_VALUE(bfloat16);
 DEFINE_DATATYPETOENUM_VALUE(Eigen::half);
 DEFINE_DATATYPETOENUM_VALUE(float8_e5m2);
 DEFINE_DATATYPETOENUM_VALUE(float8_e4m3fn);
+DEFINE_DATATYPETOENUM_VALUE(int4);
+DEFINE_DATATYPETOENUM_VALUE(uint4);
 DEFINE_DATATYPETOENUM_VALUE(ResourceHandle);
 DEFINE_DATATYPETOENUM_VALUE(Variant);
 #undef DEFINE_DATATYPETOENUM_VALUE

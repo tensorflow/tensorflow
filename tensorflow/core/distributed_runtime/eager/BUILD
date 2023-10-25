@@ -118,11 +118,11 @@ cc_library(
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/tsl/distributed_runtime/preemption:preemption_notifier",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@local_tsl//tsl/distributed_runtime/preemption:preemption_notifier",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -136,6 +136,7 @@ tf_cc_test(
         ":remote_mgr",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",

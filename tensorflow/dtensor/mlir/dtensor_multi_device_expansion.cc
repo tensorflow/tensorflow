@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstddef>
 #include <iterator>
 #include <memory>
 #include <optional>
@@ -25,10 +26,10 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -37,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -51,6 +53,7 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
+#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -108,20 +111,23 @@ mlir::BlockArgument InsertArgumentForDevice(mlir::OpBuilder& builder,
 
 // Returns the user of all the ops in the span iff it is a single return op.
 // Otherwise, returns nullptr; for example, if there are multiple return ops.
-template <typename Operations>
-mlir::LogicalResult GetReturnOpFromUsers(Operations&& ops,
-                                         mlir::func::ReturnOp* return_op) {
+template <typename UserType, typename Operations>
+mlir::LogicalResult GetUniqueUserFromOps(const Operations& ops,
+                                         UserType* result) {
   for (mlir::Operation* op : ops) {
     for (mlir::Operation* user : op->getUsers()) {
       // TODO(twelve): Determine whether we should follow identity ops.
-      if (mlir::func::ReturnOp op =
-              llvm::dyn_cast_or_null<mlir::func::ReturnOp>(user)) {
-        if (*return_op) {
-          if (*return_op != op) {
-            return mlir::failure();
-          }
-        } else {
-          *return_op = op;
+      UserType typed;
+      if constexpr (std::is_same_v<UserType, mlir::Operation*>) {
+        typed = user;
+      } else {
+        typed = llvm::dyn_cast_or_null<UserType>(user);
+      }
+      if (typed) {
+        if (*result == nullptr) {
+          *result = typed;
+        } else if (*result != typed) {
+          return mlir::failure();
         }
       } else {
         return mlir::failure();
@@ -145,7 +151,7 @@ absl::Span<const std::string> GetDevices(const Mesh& mesh) {
 StatusOr<absl::Span<mlir::Value>> GetExpandedArguments(
     mlir::OpBuilder& builder, mlir::func::FuncOp target_func,
     ExpandedArgumentMap& expanded_arguments, mlir::BlockArgument argument,
-    const Mesh* target_mesh = nullptr);
+    const Mesh* target_mesh = nullptr, bool has_device_id = true);
 
 StatusOr<std::optional<std::vector<Layout>>> GetResourceLayouts(
     mlir::Operation* op) {
@@ -203,47 +209,211 @@ StatusOr<std::optional<Layout>> FindResourceLayout(mlir::BlockArgument arg) {
   return std::nullopt;
 }
 
-mlir::tf_device::ClusterFuncOp ExtractDeviceClusterFromFunctionCall(
-    mlir::TF::StatefulPartitionedCallOp op) {
-  mlir::tf_device::ClusterFuncOp result;
-  mlir::ModuleOp module = op->getParentOfType<mlir::ModuleOp>();
-  mlir::func::FuncOp func = module.lookupSymbol<mlir::func::FuncOp>(op.getF());
-  func->walk(
-      [&](mlir::tf_device::ClusterFuncOp cluster_op) { result = cluster_op; });
-  return result;
+template <typename Results>
+mlir::FunctionType GetFunctionType(mlir::OpBuilder& builder,
+                                   mlir::func::FuncOp func, Results results) {
+  std::vector<mlir::Type> input_types, result_types;
+  for (mlir::BlockArgument input : func.getArguments()) {
+    input_types.emplace_back(input.getType());
+  }
+  for (const auto result : results) {
+    result_types.emplace_back(result.getType());
+  }
+  return builder.getFunctionType(input_types, result_types);
 }
 
-// Adds metadata used in TPU Compilation to `cluster` as attributes.
-void AddMetadataToTPUCluster(const Mesh& mesh_config, int64_t num_devices,
-                             mlir::tf_device::ClusterFuncOp cluster,
-                             mlir::OpBuilder* builder) {
-  cluster->setAttr("_tpu_replicate",
-                   builder->getStringAttr(mesh_config.ToString()));
-  cluster->setAttr("step_marker_location", builder->getStringAttr(""));
-  cluster->setAttr("padding_map", builder->getArrayAttr({}));
-  cluster->setAttr("use_spmd_for_xla_partitioning",
-                   builder->getBoolAttr(false));
-  cluster->setAttr("topology", builder->getStringAttr(""));
-  cluster->setAttr("device_assignment", builder->getArrayAttr({}));
-  cluster->setAttr("num_replicas", builder->getI64IntegerAttr(num_devices));
-  cluster->setAttr("num_cores_per_replica", builder->getI64IntegerAttr(1LL));
+mlir::LogicalResult MakeParallelExecute(
+    mlir::OpBuilder& builder, mlir::tf_device::LaunchOp launch_op,
+    absl::Span<const std::string> devices,
+    std::vector<mlir::IRMapping>& mappings) {
+  const unsigned num_devices = devices.size();
+  const unsigned num_results = launch_op->getNumResults();
+
+  std::vector<mlir::Type> result_types;
+  result_types.reserve(num_results * num_devices);
+
+  // Expand the result types across all the devices.
+  for (int i = 0; i < num_devices; ++i) {
+    for (mlir::Type result_type : launch_op.getResultTypes()) {
+      result_types.emplace_back(result_type);
+    }
+  }
+
+  // Build the ParallelExecuteOp.
+  mlir::Location loc = launch_op.getLoc();
+  mlir::tf_device::ParallelExecuteOp parallel_execute_op =
+      builder.create<mlir::tf_device::ParallelExecuteOp>(loc, num_devices,
+                                                         result_types);
+
+  // Clone the LaunchOp for each of the devices.
+  for (unsigned dev_idx = 0; dev_idx < num_devices; ++dev_idx) {
+    mlir::IRMapping& mapping = mappings[dev_idx];
+    mlir::Block& block = parallel_execute_op.GetRegionBlockWithIndex(dev_idx);
+    builder.setInsertionPointToStart(&block);
+    mlir::Operation* clone =
+        builder.clone(*((mlir::Operation*)launch_op), mapping);
+    clone->setAttr(kDeviceAttr, builder.getStringAttr(devices[dev_idx]));
+    builder.create<mlir::tf_device::ReturnOp>(loc, clone->getResults());
+  }
+
+  // Map the results of the LaunchOp to the ParallelExecuteOp.
+  for (unsigned dev_idx = 0; dev_idx < num_devices; ++dev_idx) {
+    mlir::IRMapping& mapping = mappings[dev_idx];
+    for (unsigned res_idx = 0; res_idx < num_results; ++res_idx) {
+      unsigned expanded_idx = res_idx + dev_idx * num_results;
+      mapping.map(launch_op->getResult(res_idx),
+                  parallel_execute_op->getResult(expanded_idx));
+    }
+  }
+
+  return mlir::success();
 }
 
-// Rewrites a call-like op targeting a TF device cluster func
-// into a cluster func that has partitioned inputs and outputs ops;
-// it will be rewritten by TPURewritePass into per-device TPUExecute ops.
-template <typename Operation>
+// Rewrites a launch to a ParallelExecuteOp with per-device launches.
+mlir::LogicalResult RewriteTPUFunction(mlir::func::FuncOp func,
+                                       mlir::tf_device::LaunchOp launch_op,
+                                       const Mesh& target_mesh,
+                                       mlir::FunctionType& func_type) {
+  mlir::OpBuilder builder = mlir::OpBuilder::atBlockBegin(func->getBlock());
+  builder.setInsertionPointAfter(launch_op);
+
+  const absl::Span<const std::string> devices = GetDevices(target_mesh);
+  const size_t num_devices = devices.size();
+
+  // Maps values from original to per-device representations.
+  std::vector<mlir::IRMapping> mappings(num_devices);
+
+  // Expand each of the function's inputs across all the devices.
+  // TODO(twelve): This logic assumes all the function's inputs should be
+  //               expanded; however, when might that not be true?
+  ExpandedArgumentMap expanded_arguments_map;
+  const unsigned num_arguments = func.getNumArguments();
+  for (unsigned arg_idx = 0; arg_idx < num_arguments; ++arg_idx) {
+    mlir::BlockArgument argument = func.getArgument(arg_idx);
+    StatusOr<absl::Span<mlir::Value>> expanded_arguments = GetExpandedArguments(
+        builder, func, expanded_arguments_map, argument, &target_mesh, false);
+    if (expanded_arguments.ok()) {
+      // Map the original arguments to their per-device counterparts.
+      for (unsigned dev_idx = 0; dev_idx < num_devices; ++dev_idx) {
+        mappings[dev_idx].map(argument, expanded_arguments->at(dev_idx));
+      }
+    } else {
+      func->emitOpError(
+          tsl::NullTerminatedMessage(expanded_arguments.status()));
+      return mlir::failure();
+    }
+  }
+
+  // Collect all the original ops.
+  llvm::iterator_range<mlir::Region::OpIterator> op_range =
+      func.getFunctionBody().getOps();
+  std::vector<mlir::Operation*> ops;
+  ops.reserve(std::distance(op_range.begin(), op_range.end()));
+  for (mlir::Operation& op : op_range) {
+    ops.emplace_back(&op);
+  }
+
+  // Clone all the original ops.
+  std::vector<mlir::Value> results;
+  for (mlir::Operation* op : ops) {
+    builder.setInsertionPointAfter(op);
+
+    if (llvm::isa<mlir::tf_device::LaunchOp>(op)) {
+      if (op == (mlir::Operation*)launch_op) {
+        // Build the parallel execute operation.
+        mlir::LogicalResult result =
+            MakeParallelExecute(builder, launch_op, devices, mappings);
+        if (mlir::failed(result)) {
+          return result;
+        }
+      }
+    } else if (llvm::isa<mlir::func::ReturnOp>(op)) {
+      // Collect the per-device results.
+      results.reserve(op->getNumOperands() * num_devices);
+
+      for (mlir::Value operand : op->getOperands()) {
+        for (unsigned dev_idx = 0; dev_idx < num_devices; ++dev_idx) {
+          results.emplace_back(mappings[dev_idx].lookup(operand));
+        }
+      }
+
+      builder.create<mlir::func::ReturnOp>(op->getLoc(), results);
+    } else {
+      // Clone the operation across all the devices.
+      for (unsigned dev_idx = 0; dev_idx < num_devices; ++dev_idx) {
+        mlir::Operation* clone = builder.clone(*op, mappings[dev_idx]);
+        clone->setAttr(kDeviceAttr, builder.getStringAttr(devices[dev_idx]));
+      }
+    }
+  }
+
+  // Erase the original non-launch ops (go backwards to remove users first).
+  for (int op_idx = (int)ops.size() - 1; op_idx >= 0; --op_idx) {
+    mlir::Operation* op = ops[op_idx];
+    if (!llvm::isa<mlir::tf_device::LaunchOp>(op) ||
+        (op == (mlir::Operation*)launch_op)) {
+      op->erase();
+    }
+  }
+
+  // Erase the function's original arguments.
+  for (unsigned arg_idx = 0; arg_idx < num_arguments; ++arg_idx) {
+    func.eraseArgument(0);
+  }
+
+  // Update the function's type.
+  func_type = GetFunctionType(builder, func, results);
+  func.setFunctionType(func_type);
+
+  return mlir::success();
+}
+
+// Rewrites a call-like op into an equivalent op for each device;
+// de/multiplexes the per-device inputs/outputs for each "expanded" op.
+// Usable when there are not any device launch ops (typically on CPU/GPU).
+template <typename OperationType>
+mlir::LogicalResult ExpandOperation(
+    mlir::func::FuncOp target_func, mlir::func::ReturnOp return_op,
+    ExpandedArgumentMap& expanded_arguments,
+    std::vector<ExpandedResults>& expanded_results, const Mesh& target_mesh,
+    OperationType op);
+
+// Rewrites a call-like op targeting a single device launch op into
+// a parallel execute.
+template <typename OperationType>
 mlir::LogicalResult ExpandTPUOperation(
     mlir::func::FuncOp target_func, mlir::func::ReturnOp return_op,
     ExpandedArgumentMap& expanded_arguments,
     std::vector<ExpandedResults>& expanded_results, const Mesh& target_mesh,
-    Operation op) {
-  const absl::Span<const std::string> devices = GetDevices(target_mesh);
-  const std::size_t num_devices = devices.size();
-
+    OperationType op) {
+  mlir::FunctionType func_type;
   mlir::OpBuilder builder(target_func.getBody());
-  mlir::ArrayAttr partition_dims =
-      builder.getArrayAttr(llvm::ArrayRef<mlir::Attribute>());
+  mlir::ModuleOp module = op->template getParentOfType<mlir::ModuleOp>();
+  mlir::func::FuncOp func = module.lookupSymbol<mlir::func::FuncOp>(op.getF());
+
+  mlir::tf_device::LaunchOp launch_op;
+  func.walk([&](mlir::tf_device::LaunchOp op) {
+    (op.getBody()).walk([&](mlir::Operation* child) {
+      if (llvm::isa<mlir::TF::TPUExecuteOp>(child) ||
+          llvm::isa<mlir::TF::TPUExecuteAndUpdateVariablesOp>(child)) {
+        launch_op = op;
+        return mlir::WalkResult::interrupt();
+      } else {
+        return mlir::WalkResult::advance();
+      }
+    });
+  });
+  if (launch_op) {
+    // Found a device launch with TPUExecute, try expanding it.
+    if (mlir::failed(
+            RewriteTPUFunction(func, launch_op, target_mesh, func_type))) {
+      return mlir::failure();
+    }
+  } else {
+    // There were not any TPUExecute ops, fallback to the conventional path.
+    return ExpandOperation(target_func, return_op, expanded_arguments,
+                           expanded_results, target_mesh, op);
+  }
 
   llvm::SmallVector<mlir::Value, 8> operands;
   for (const mlir::Value& operand : op->getOperands()) {
@@ -256,54 +426,40 @@ mlir::LogicalResult ExpandTPUOperation(
       } else if (new_args->empty()) {
         operands.push_back(operand);
       } else {
-        llvm::ArrayRef<mlir::Value> values(new_args.value().begin(),
-                                           new_args.value().end());
-        auto input_op = builder.create<mlir::TF::TPUPartitionedInputV2Op>(
-            op->getLoc(), operand.getType(), values,
-            /*partition_dims=*/partition_dims,
-            /*is_packed=*/builder.getBoolAttr(false),
-            /*_XlaSharding=*/builder.getStringAttr(""));
-        operands.push_back(input_op);
+        operands.insert(operands.end(), new_args->begin(), new_args->end());
       }
     } else {
       operands.push_back(operand);
     }
   }
 
-  auto cluster_op = ExtractDeviceClusterFromFunctionCall(op);
-  if (!cluster_op) {
-    op->emitOpError("Could not find device cluster func!");
-    return mlir::failure();
-  }
-
-  auto new_cluster_op = builder.create<mlir::tf_device::ClusterFuncOp>(
-      op->getLoc(), cluster_op->getResultTypes(), cluster_op.getFuncAttr(),
-      operands);
-  AddMetadataToTPUCluster(target_mesh, num_devices, new_cluster_op, &builder);
+  auto call_op = builder.create<OperationType>(
+      op->getLoc(), func_type.getResults(), operands, op.getFAttr(),
+      /*config=*/builder.getStringAttr(""),
+      /*config_proto=*/builder.getStringAttr(""),
+      /*executor_type=*/builder.getStringAttr(""));
+  const absl::Span<const std::string> devices = GetDevices(target_mesh);
+  const size_t num_devices = devices.size();
 
   if (return_op) {
-    llvm::SmallDenseMap<size_t, mlir::Operation::result_range> replications;
-    for (const auto [result_number, result] :
-         llvm::enumerate(new_cluster_op->getResults())) {
-      llvm::SmallVector<mlir::Type, 8> result_types(num_devices,
-                                                    result.getType());
-      auto output_op = builder.create<mlir::TF::TPUPartitionedOutputV2Op>(
-          op->getLoc(), result_types, result,
-          /*partition_dims=*/partition_dims,
-          /*_XlaSharding=*/builder.getStringAttr(""));
-      replications.try_emplace(result_number, output_op->getResults());
-    }
-
     mlir::Operation::operand_range operands = return_op->getOperands();
-    for (const auto [i, operand] : llvm::enumerate(operands)) {
+    // Expand each operand of the return operation.
+    for (const auto [result_index, operand] : llvm::enumerate(operands)) {
+      // (All the operands should originate from the original call op.)
       if (op == operand.getDefiningOp()) {
         const mlir::Operation::result_range results = op->getResults();
         const mlir::Operation::result_range::iterator search =
             llvm::find(results, operand);
-        const std::size_t result_number = search - results.begin();
-        const mlir::Operation::result_range replicated_results =
-            replications.at(result_number);
-        expanded_results[i].insert(replicated_results);
+        const size_t i = search - results.begin();
+        // For each device--
+        for (int j = 0; j < num_devices; j++) {
+          // Find the corresponding expanded output within the new op.
+          mlir::Value result = call_op->getResult(i * num_devices + j);
+          auto identity_op = builder.create<mlir::TF::IdentityOp>(
+              result.getLoc(), result.getType(), result);
+          expanded_results[result_index].insert(
+              (mlir::Value)identity_op.getResult());
+        }
       }
     }
   }
@@ -311,9 +467,6 @@ mlir::LogicalResult ExpandTPUOperation(
   return mlir::success();
 }
 
-// Rewrites a call-like op into an equivalent op for each device;
-// de/multiplexes the per-device inputs/outputs for each "expanded" op.
-// Only usable on CPU/GPU devices, which do not require additional rewriting.
 template <typename Operation>
 mlir::LogicalResult ExpandOperation(
     mlir::func::FuncOp target_func, mlir::func::ReturnOp return_op,
@@ -322,10 +475,10 @@ mlir::LogicalResult ExpandOperation(
     Operation op) {
   mlir::OpBuilder builder(target_func.getBody());
   const absl::Span<const std::string> devices = GetDevices(target_mesh);
-  const std::size_t num_devices = devices.size();
+  const size_t num_devices = devices.size();
 
   llvm::SmallVector<Operation> replications;
-  for (std::size_t i = 0; i < num_devices; ++i) {
+  for (size_t i = 0; i < num_devices; ++i) {
     llvm::SmallVector<mlir::Value, 8> operands;
     for (const mlir::Value& operand : op->getOperands()) {
       if (const auto arg = operand.dyn_cast_or_null<mlir::BlockArgument>()) {
@@ -366,7 +519,7 @@ mlir::LogicalResult ExpandOperation(
         const mlir::Operation::result_range results = op->getResults();
         const mlir::Operation::result_range::iterator search =
             llvm::find(results, operand);
-        const std::size_t result_number = search - results.begin();
+        const size_t result_number = search - results.begin();
         for (const Operation& replication : replications) {
           expanded_results[i].insert(
               (mlir::Value)replication->getResult(result_number));
@@ -411,10 +564,10 @@ void UpdateEntryFuncAttr(mlir::OpBuilder& builder, mlir::func::FuncOp func) {
 StatusOr<absl::Span<mlir::Value>> GetExpandedArguments(
     mlir::OpBuilder& builder, mlir::func::FuncOp target_func,
     ExpandedArgumentMap& expanded_arguments, mlir::BlockArgument arg,
-    const Mesh* target_mesh) {
+    const Mesh* target_mesh, bool has_device_id) {
   std::optional<Mesh> mesh;
   unsigned int argument_number = arg.getArgNumber();
-  if (argument_number == kDeviceIDArgumentNumber) {
+  if (!has_device_id || (argument_number == kDeviceIDArgumentNumber)) {
     if (target_mesh) {
       mesh = *target_mesh;
     }
@@ -445,9 +598,9 @@ StatusOr<absl::Span<mlir::Value>> GetExpandedArguments(
         expanded_arguments[argument_number][*mesh];
     if (replications.empty()) {
       const absl::Span<const std::string> devices = GetDevices(*mesh);
-      const std::size_t num_devices = devices.size();
+      const size_t num_devices = devices.size();
       replications.reserve(num_devices);
-      if (argument_number == kDeviceIDArgumentNumber) {
+      if (has_device_id && argument_number == kDeviceIDArgumentNumber) {
         for (int i = 0; i < num_devices; ++i) {
           const auto value_attr = mlir::DenseIntElementsAttr::get<int>(
               mlir::RankedTensorType::get({}, builder.getI32Type()), {i});
@@ -470,19 +623,6 @@ StatusOr<absl::Span<mlir::Value>> GetExpandedArguments(
   } else {
     return absl::Span<mlir::Value>();  // no per-device arguments necessary
   }
-}
-
-template <typename Results>
-mlir::FunctionType GetFunctionType(mlir::OpBuilder& builder,
-                                   mlir::func::FuncOp func, Results results) {
-  std::vector<mlir::Type> input_types, result_types;
-  for (mlir::BlockArgument input : func.getArguments()) {
-    input_types.emplace_back(input.getType());
-  }
-  for (const auto result : results) {
-    result_types.emplace_back(result.getType());
-  }
-  return builder.getFunctionType(input_types, result_types);
 }
 
 struct InferredResourceAttributes {
@@ -617,7 +757,7 @@ Status ExtractResultLayouts(mlir::Operation* op, mlir::func::ReturnOp return_op,
     if (search == operands.end()) {
       continue;
     }
-    std::size_t result_index = std::distance(operands.begin(), search);
+    size_t result_index = std::distance(operands.begin(), search);
     expanded_results[result_index].layout = layouts[layout_index];
   }
   return OkStatus();
@@ -687,7 +827,7 @@ struct DTensorMultiDeviceExpansion
 
     // Ensure that all the call ops return results via the same op.
     mlir::func::ReturnOp return_op;
-    if (GetReturnOpFromUsers(stateful_call_ops, &return_op).failed()) {
+    if (GetUniqueUserFromOps(stateful_call_ops, &return_op).failed()) {
       stateful_call_ops[0]->emitOpError(
           "Calls must be used by exactly one return op.");
       return;

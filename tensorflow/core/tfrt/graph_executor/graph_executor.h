@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/stream.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/thread_annotations.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
@@ -232,13 +232,13 @@ class GraphExecutor {
 
   // Creates a `GraphExecutor` given the args.
   static StatusOr<std::unique_ptr<GraphExecutor>> Create(
-      Options options, const FallbackState& fallback_state,
+      Options options, std::unique_ptr<FallbackState> fallback_state,
       std::unique_ptr<tfrt::ResourceContext> resource_context,
       tensorflow::GraphDef graph_def,
       std::unique_ptr<mlrt::KernelRegistry> kernel_registry);
 
   // Ctor. Public for `Create()`. Do not use directly.
-  GraphExecutor(Options options, const FallbackState& fallback_state,
+  GraphExecutor(Options options, std::unique_ptr<FallbackState> fallback_state,
                 std::unique_ptr<tfrt::ResourceContext> resource_context,
                 std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
                     graph_execution_state,
@@ -282,7 +282,8 @@ class GraphExecutor {
   tfrt::ResourceContext& resource_context() { return *resource_context_; }
 
   const Options& options() const { return options_; }
-  const FallbackState& fallback_state() const { return fallback_state_; }
+  const FallbackState& fallback_state() const { return *fallback_state_; }
+  FallbackState& fallback_state() { return *fallback_state_; }
 
   // Compiles graph for `graph_name` and runs any initializers.
   tensorflow::Status CompileGraph(
@@ -329,7 +330,7 @@ class GraphExecutor {
       TF_LOCKS_EXCLUDED(loaded_client_graphs_mu_);
 
   Options options_;
-  std::reference_wrapper<const FallbackState> fallback_state_;
+  std::unique_ptr<FallbackState> fallback_state_;
 
   std::unique_ptr<tensorflow::tfrt_stub::TfrtGraphExecutionState>
       graph_execution_state_;

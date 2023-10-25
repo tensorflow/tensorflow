@@ -24,9 +24,9 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/tools/proto_splitter/cc/max_size.h"
 #include "tensorflow/tools/proto_splitter/cc/util.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/protobuf.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/protobuf.h"
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace tools::proto_splitter {

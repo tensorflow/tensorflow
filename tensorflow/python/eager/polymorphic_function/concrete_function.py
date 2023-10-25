@@ -16,7 +16,6 @@
 """Implementation for ConcreteFunction."""
 
 import collections
-import pprint
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
@@ -546,7 +545,7 @@ class _TapeGradientFunctions(object):
         with ops.get_default_graph()._override_gradient_function(  # pylint: disable=protected-access
             {"PartitionedCall": gradient_function,
              "StatefulPartitionedCall": gradient_function}):
-          forward_outputs = forward_function(*forward_inputs)
+          forward_outputs = forward_function.call_flat(*forward_inputs)
           if isinstance(forward_outputs, ops.Operation):
             # _wrapped_backward_function expects a list, but if the function has
             # no outputs its call() returns an Operation. We need to undo that
@@ -1084,6 +1083,11 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     """Return the FunctionType associated with this ConcreteFunction."""
     return self._function_type
 
+  @property
+  def inference_fn(self):
+    """Return the inference function associated with this ConcreteFunction."""
+    return self._inference_function
+
   # TODO(fmuham): Remove this property.
   @property
   def _function_spec(self):
@@ -1316,19 +1320,19 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     if (possible_gradient_type == gradients_util.POSSIBLE_GRADIENT_TYPES_NONE
         and executing_eagerly):
       # No tape is watching; skip to running the function.
-      return self._inference_function.flat_call(args)
+      return self._inference_function.call_preflattened(args)
     forward_backward = self._select_forward_and_backward_functions(
         args,
         possible_gradient_type,
         executing_eagerly)
     forward_function, args_with_tangents = forward_backward.forward()
     if executing_eagerly:
-      flat_outputs = forward_function(*args_with_tangents)
+      flat_outputs = forward_function.call_flat(*args_with_tangents)
     else:
       with default_graph._override_gradient_function(  # pylint: disable=protected-access
           {"PartitionedCall": self._get_gradient_function(),
            "StatefulPartitionedCall": self._get_gradient_function()}):
-        flat_outputs = forward_function(*args_with_tangents)
+        flat_outputs = forward_function.call_flat(*args_with_tangents)
     forward_backward.record(flat_outputs)
     return self.function_type.pack_output(flat_outputs)
 
@@ -1652,42 +1656,6 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       ret.attr[name].CopyFrom(value)
     return ret
 
-  def _structured_signature_summary(self, default_values=False):
-    """Returns a string summarizing this function's structured signature.
-
-    Args:
-      default_values: If true, then include default values in the signature.
-
-    Returns:
-      A `string`.
-    """
-    # Note: we can't just use str(self.function_type), because
-    # that would show "BOUND_VALUE" as the default value for all arguments.
-    assert self.function_type is not None
-    arg_specs, kwarg_specs = self.structured_input_signature
-    arg_names = function_type_utils.to_arg_names(self.function_type)
-
-    # If an explicit input_signature is provided to @tf.function, then any
-    # arguments with defaults that are not covered by that explicit signature
-    # are simply dropped from the signature.
-    # TODO(b/159639913) Look into whether dropping arguments with default values
-    # from the signature is the right thing to do.
-    arg_names = arg_names[:len(arg_specs)]
-
-    if default_values:
-      for i in range(len(arg_names)):
-        if not _contains_type_spec(arg_specs[i]):
-          arg_names[i] += "={}".format(arg_specs[i])
-    if kwarg_specs:
-      arg_names.append("*")
-      for name, spec in kwarg_specs.items():
-        arg_names.append(name)
-        if default_values and not _contains_type_spec(spec):
-          arg_names[-1] += "={}".format(spec)
-    signature = f"{self._func_graph.name}({', '.join(arg_names)})"
-
-    return signature
-
   def _flat_signature_summary(self):
     """Returns a string summarizing this function's flat signature."""
     assert self._arg_keywords is not None
@@ -1701,79 +1669,29 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
 
   def pretty_printed_signature(self, verbose=True):
     """Returns a string summarizing the signature of this concrete function."""
-    if not verbose:
-      return self._structured_signature_summary(default_values=True)
-
-    def pretty_print_spec(spec):
-      """Returns a string describing the spec for a single argument."""
-      if isinstance(spec, tensor_lib.TensorSpec):
-        return "{} Tensor, shape={}".format(spec.dtype.name, spec.shape)
-      elif nest.is_nested(spec):
-        pieces = nest.flatten(spec, expand_composites=False)
-        markers = [_Marker("<{}>".format(i + 1)) for i in range(len(pieces))]
-        structure = nest.pack_sequence_as(spec, markers)
-        # Ensure dictionaries are sorted by key (for determinism)
-        result = pprint.pformat(structure, width=10000)
-        for (marker, piece) in zip(markers, pieces):
-          result += "\n      {}: {}".format(marker, pretty_print_spec(piece))
-        return result
-      else:
-        return repr(spec)
-
-    lines = [self._structured_signature_summary(default_values=True)]
-    arg_specs, kwarg_specs = self.structured_input_signature
-    names = function_type_utils.to_arg_names(self.function_type)
-
-    # If an explicit input_signature is provided to @tf.function, then any
-    # arguments with defaults that are not covered by that explicit signature
-    # are simply dropped from the signature.
-    # TODO(b/159639913) Look into whether dropping arguments with default values
-    # from the signature is the right thing to do.
-
-    # Note: we can skip bound args, since we already displayed their bound
-    # value in the signature summary.
-    arg_details = []
-    for (name, spec) in zip(names[:len(arg_specs)], list(arg_specs)):
-      if _contains_type_spec(spec):
-        arg_details.append("    {}: {}".format(name, pretty_print_spec(spec)))
-
-    if kwarg_specs:
-      for kwarg in sorted(kwarg_specs):
-        spec = kwarg_specs[kwarg]
-        if _contains_type_spec(spec):
-          arg_details.append("    {}: {}".format(
-              kwarg, pretty_print_spec(spec)))
-
-    if arg_details:
-      lines.append("  Args:")
-      lines.extend(arg_details)
-    lines.append("  Returns:")
-
-    def spec_from_value(value):
-      # For loaded function, structured_outputs are already specs.
-      if isinstance(value, type_spec.TypeSpec):
-        return value
-      return type_spec.type_spec_from_value(value)
-
-    lines.append("    {}".format(
-        pretty_print_spec(
-            nest.map_structure(spec_from_value, self.structured_outputs))))
-
-    return "\n".join(lines)
+    assert self.function_type is not None
+    if verbose:
+      return repr(self.function_type)
+    else:
+      return str(self.function_type)
 
   def __repr__(self):
     if self.function_type is not None:
       return "<ConcreteFunction {} at 0x{:X}>".format(
-          self.pretty_printed_signature(verbose=False), id(self))
+          self.pretty_printed_signature(verbose=False), id(self)
+      )
     elif not (self._num_positional_args is None or self._arg_keywords is None):
       return "<ConcreteFunction {} at 0x{:X}>".format(
-          self._flat_signature_summary(), id(self))
+          self._flat_signature_summary(), id(self)
+      )
     else:
       return object.__repr__(self)
 
   def __str__(self):
     if self.function_type is not None:
-      return "ConcreteFunction {}".format(self.pretty_printed_signature())
+      return "ConcreteFunction {}".format(
+          self.pretty_printed_signature(verbose=True)
+      )
     else:
       return self.__repr__()
 

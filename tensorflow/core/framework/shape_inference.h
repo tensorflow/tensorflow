@@ -123,7 +123,8 @@ class Dimension {
 
   friend class InferenceContext;
   friend class ShapeManager;
-  TF_DISALLOW_COPY_AND_ASSIGN(Dimension);
+  Dimension(const Dimension&) = delete;
+  void operator=(const Dimension&) = delete;
 };
 
 class DimensionHandle {
@@ -163,7 +164,8 @@ class Shape {
   friend class InferenceContext;
   friend class ::tensorflow::grappler::SymbolicShapeManager;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Shape);
+  Shape(const Shape&) = delete;
+  void operator=(const Shape&) = delete;
 };
 
 class ShapeHandle {
@@ -861,7 +863,8 @@ class InferenceContext {
   std::vector<std::pair<ShapeHandle, ShapeHandle>> merged_shapes_;
   std::vector<std::pair<DimensionHandle, DimensionHandle>> merged_dims_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(InferenceContext);
+  InferenceContext(const InferenceContext&) = delete;
+  void operator=(const InferenceContext&) = delete;
 };
 
 // -----------------------------------------------------------------------------

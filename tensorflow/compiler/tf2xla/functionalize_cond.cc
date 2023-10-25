@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/frontend_attributes_util.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
-#include "tensorflow/compiler/xla/union_find.h"
+#include "xla/union_find.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"

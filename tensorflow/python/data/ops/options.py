@@ -600,7 +600,7 @@ class Options(options_lib.OptionsBase):
           "the expense of requiring more memory to hold prefetched elements "
           "between the time of iterator construction and usage."
       ),
-      default_factory=lambda: True if test_mode.TEST_MODE else False,
+      default_factory=lambda: True if test_mode.TEST_MODE else None,
   )
 
   threading = options_lib.create_option(

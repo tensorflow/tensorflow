@@ -32,7 +32,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
-from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
@@ -365,12 +364,6 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(t, dtypes.string)
     self.assertEqual(r[0].dtype, dtypes.string)
 
-  def testFlattenLayer(self):
-    flatten_layer = core.Flatten()
-    x = constant_op.constant([[[-10, -20], [-30, -40]], [[10, 20], [30, 40]]])
-    y = flatten_layer(x)
-    self.assertAllEqual([[-10, -20, -30, -40], [10, 20, 30, 40]], y)
-
   def testIdentity(self):
     self.assertAllEqual(2, array_ops.identity(2))
 
@@ -437,9 +430,9 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     t1.join()
 
   def testWeakrefEagerTensor(self):
-    if sys.version_info.major == 3 and sys.version_info.minor == 11:
+    if sys.version_info.major == 3 and sys.version_info.minor in (11, 12):
       # TODO(b/264947738)
-      self.skipTest('Not working in Python 3.11')
+      self.skipTest('Not working in Python 3.11+')
     x = constant_op.constant([[1.]])
     x.at1 = constant_op.constant([[2.]])
     x.at2 = 3.

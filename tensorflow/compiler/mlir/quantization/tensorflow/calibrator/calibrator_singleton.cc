@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -24,6 +25,9 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_average_min_max.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_histogram.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibration_statistics_collector_min_max.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
@@ -49,7 +53,7 @@ void CalibratorSingleton::ClearData(absl::string_view id) {
   CalibratorSingleton& instance = GetInstance();
 
   const std::string id_str{id};
-  instance.id_to_collector_[id_str].ClearData();
+  instance.id_to_collector_[id_str].reset(nullptr);
 }
 
 void CalibratorSingleton::Report(absl::string_view id,
@@ -60,7 +64,8 @@ void CalibratorSingleton::Report(absl::string_view id,
   CalibratorSingleton& instance = GetInstance();
 
   const std::string id_str{id};
-  instance.id_to_collector_[id_str].Collect(data_span, calib_opts);
+  AssignIfNotExists(id_str, calib_opts);
+  instance.id_to_collector_[id_str]->Collect(data_span);
 }
 
 void CalibratorSingleton::Report(absl::string_view id,
@@ -71,7 +76,8 @@ void CalibratorSingleton::Report(absl::string_view id,
   CalibratorSingleton& instance = GetInstance();
 
   const std::string id_str{id};
-  instance.id_to_collector_[id_str].Collect(data_vec, calib_opts);
+  AssignIfNotExists(id_str, calib_opts);
+  instance.id_to_collector_[id_str]->Collect(data_vec);
 }
 
 void CalibratorSingleton::Report(absl::string_view id,
@@ -82,7 +88,8 @@ void CalibratorSingleton::Report(absl::string_view id,
   CalibratorSingleton& instance = GetInstance();
 
   const std::string id_str{id};
-  instance.id_to_collector_[id_str].Collect(data_tensor, calib_opts);
+  AssignIfNotExists(id_str, calib_opts);
+  instance.id_to_collector_[id_str]->Collect(data_tensor);
 }
 
 std::optional<CalibrationStatistics> CalibratorSingleton::GetStatistics(
@@ -92,7 +99,41 @@ std::optional<CalibrationStatistics> CalibratorSingleton::GetStatistics(
   CalibratorSingleton& instance = GetInstance();
 
   const std::string id_str{id};
-  return instance.id_to_collector_[id_str].GetStatistics();
+
+  if (!instance.id_to_collector_[id_str]) {
+    return std::nullopt;
+  }
+
+  return instance.id_to_collector_[id_str]->GetStatistics();
+}
+
+void CalibratorSingleton::AssignIfNotExists(
+    std::string id_str, const CalibrationOptions& calib_opts) {
+  CalibratorSingleton& instance = GetInstance();
+
+  if (!instance.id_to_collector_[id_str]) {
+    CalibrationOptions::CalibrationMethod calib_method =
+        calib_opts.calibration_method();
+
+    switch (calib_method) {
+      case CalibrationOptions::CALIBRATION_METHOD_AVERAGE_MIN_MAX:
+        instance.id_to_collector_[id_str] =
+            std::make_unique<CalibrationStatisticsCollectorAverageMinMax>();
+        break;
+      case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_PERCENTILE:
+      case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_BRUTEFORCE:
+      case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_SYMMETRIC:
+      case CalibrationOptions::CALIBRATION_METHOD_HISTOGRAM_MSE_MAX_FREQUENCY:
+        instance.id_to_collector_[id_str] =
+            std::make_unique<CalibrationStatisticsCollectorHistogram>(
+                calib_opts);
+        break;
+      case CalibrationOptions::CALIBRATION_METHOD_MIN_MAX:
+      default:
+        instance.id_to_collector_[id_str] =
+            std::make_unique<CalibrationStatisticsCollectorMinMax>();
+    }
+  }
 }
 
 }  // namespace calibrator

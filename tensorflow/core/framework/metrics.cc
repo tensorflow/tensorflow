@@ -22,10 +22,10 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
-#include "tensorflow/tsl/lib/monitoring/counter.h"
-#include "tensorflow/tsl/lib/monitoring/gauge.h"
-#include "tensorflow/tsl/lib/monitoring/sampler.h"
-#include "tensorflow/tsl/platform/types.h"
+#include "tsl/lib/monitoring/counter.h"
+#include "tsl/lib/monitoring/gauge.h"
+#include "tsl/lib/monitoring/sampler.h"
+#include "tsl/platform/types.h"
 
 namespace tensorflow {
 namespace metrics {
@@ -98,7 +98,27 @@ auto* tf_data_elements_counter = tsl::monitoring::Counter<1>::New(
 
 auto* tf_data_experiment_counter = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/experiment",
-    "The number of times tf.data experiment is applied to input pipelines.",
+    "The number of times a tf.data experiment was applied.", "name");
+
+auto* tf_data_experiment_live_counter = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/experiment_live",
+    "The number of times a tf.data experiment could have been applied.",
+    "name");
+
+auto* tf_data_experiment_opt_in_counter = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/experiment_opt_in",
+    "The number of times a tf.data experiment was opted into. Values are "
+    "either (1) the name of the experiment or (2) `\"all\"` (for all "
+    "experiments in `/tensorflow/data/experiment_live`).",
+    "name");
+
+auto* tf_data_experiment_opt_out_counter = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/data/experiment_opt_out",
+    "The number of times a tf.data experiment was opted out of. Values are (1) "
+    "the name of the experiment, (2) `\"all\"` (for all experiments in "
+    "`/tensorflow/data/experiment_live`), or (3) `\"all_except_opt_in\"` (for "
+    "all experiments in `/tensorflow/data/experiment_live` and not in "
+    "`/tensor/data/experiment_opt_out`).",
     "name");
 
 auto* tf_data_fingerprint_counter = tsl::monitoring::Counter<1>::New(
@@ -198,6 +218,10 @@ auto* tf_data_service_snapshot_bytes_committed =
     tsl::monitoring::Counter<0>::New(
         "/tensorflow/data/service/snapshot_bytes_committed",
         "tf.data service distributed snapshot committed bytes.");
+
+auto* tf_data_service_snapshot_ops_counter = tsl::monitoring::Counter<2>::New(
+    "/tensorflow/data/service/snapshot_ops",
+    "Number times a tf.data snapshot is saved/loaded.", "path", "op");
 
 auto* tf_data_service_data_transfer_protocol_used =
     tsl::monitoring::Counter<1>::New(
@@ -378,7 +402,7 @@ auto* mlir_bridge_first_phase_counter = tsl::monitoring::Counter<4>::New(
     "version", "fallback", "result");
 
 auto* mlir_second_phase_count = tensorflow::monitoring::Counter<1>::New(
-    "/tensorflow/core/tf2xla/api/v1/phase2_compilation_status" /*metric_name*/,
+    "/tensorflow/core/tf2xla/api/v2/phase2_compilation_status" /*metric_name*/,
     "Counts the number of graphs that were analyzed prior deciding whether "
     "the MLIR or the old bridge will be used" /* metric description */,
     "status" /* metric label */);
@@ -449,6 +473,18 @@ void RecordTFDataBytesFetched(int64_t num_bytes) {
 
 void RecordTFDataExperiment(const string& name) {
   tf_data_experiment_counter->GetCell(name)->IncrementBy(1);
+}
+
+void RecordTFDataExperimentLive(const string& name) {
+  tf_data_experiment_live_counter->GetCell(name)->IncrementBy(1);
+}
+
+void RecordTFDataExperimentOptIn(const string& name) {
+  tf_data_experiment_opt_in_counter->GetCell(name)->IncrementBy(1);
+}
+
+void RecordTFDataExperimentOptOut(const string& name) {
+  tf_data_experiment_opt_out_counter->GetCell(name)->IncrementBy(1);
 }
 
 void RecordTFDataFingerprint(const string& name) {
@@ -582,6 +618,11 @@ void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes) {
 
 void RecordTFDataServiceSnapshotBytesCommitted(int64_t bytes) {
   tf_data_service_snapshot_bytes_committed->GetCell()->IncrementBy(bytes);
+}
+
+void RecordTFDataServiceSnapshotOp(const std::string& path,
+                                   const std::string& op) {
+  tf_data_service_snapshot_ops_counter->GetCell(path, op)->IncrementBy(1);
 }
 
 void RecordTFDataServiceOptimalNumberOfWorkers(int64_t number_of_workers) {

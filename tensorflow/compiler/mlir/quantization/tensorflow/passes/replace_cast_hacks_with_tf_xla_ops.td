@@ -85,13 +85,13 @@ def ConvertTFConv2DToXLAConvOpDynamicRange : Pat<
 def ConvertTFConv2DToXLAConvOpWeightOnly : Pat<
   (TF_Conv2DOp:$conv
     $input,
-    (TF_CastOp (TF_IdentityOp $filter), $truncate1),
+    (TF_MulOp (TF_CastOp (TF_IdentityOp $filter), $truncate1), $scale),
     $strides, $use_cudnn, $padding, $explicit_padding,
     IsDataFormatNHWC:$data_format, $dilations),
-  (CreateXLAConvOpFromTFConv2DOp
+  (TF_MulOp (CreateXLAConvOpFromTFConv2DOp
     $input, $filter, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     $conv, $strides,
-    $dilations, $padding, $explicit_padding),
+    $dilations, $padding, $explicit_padding), $scale),
   [(IsF32ElementType $input),
    (IsInt8ElementType $filter),
    (IsConstTensor $filter),
@@ -170,13 +170,13 @@ def ConvertTFDepthwiseConv2DToXLAConvOpDynamicRange : Pat<
 // XlaConv
 def ConvertTFDepthwiseConv2DToXLAConvOpWeightOnly : Pat<
     (TF_DepthwiseConv2dNativeOp:$conv $input,
-      (TF_CastOp (TF_IdentityOp $filter), $truncate2),
+      (TF_MulOp (TF_CastOp (TF_IdentityOp $filter), $truncate2), $scale),
       $strides, $padding, $explicit_padding,
       IsDataFormatNHWC:$data_format, $dilations),
-  (CreateXLAConvOpFromTFDepthwiseConv2DOp
+  (TF_MulOp (CreateXLAConvOpFromTFDepthwiseConv2DOp
     $input, $filter, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     $conv, $strides,
-    $dilations, $padding, $explicit_padding),
+    $dilations, $padding, $explicit_padding), $scale),
   [(IsF32ElementType $input),
    (IsInt8ElementType $filter),
    (IsConstTensor $filter),
@@ -251,12 +251,12 @@ def ConvertTFMatMulToXLADotV2OpDynamicRange : Pat<
 def ConvertTFMatMulToXLADotV2OpWeightOnly : Pat<
   (TF_MatMulOp:$matmul
     $input,
-    (TF_CastOp (TF_IdentityOp $weight), $truncate1),
+    (TF_MulOp (TF_CastOp (TF_IdentityOp $weight), $truncate1), $scale),
     $transpose_a, $transpose_b),
-  (CreateXlaDotV2OpFromTfMatMulOp
+  (TF_MulOp (CreateXlaDotV2OpFromTfMatMulOp
     $input, $weight, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
     /*weight_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
-    $matmul, $transpose_a, $transpose_b),
+    $matmul, $transpose_a, $transpose_b), $scale),
   [(IsF32ElementType $input),
    (IsInt8ElementType $weight),
    (IsConstTensor $weight),

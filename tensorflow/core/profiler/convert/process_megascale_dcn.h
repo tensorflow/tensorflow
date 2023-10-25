@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_PROCESS_MEGASCALE_DCN_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_PROCESS_MEGASCALE_DCN_H_
 
-#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {

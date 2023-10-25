@@ -28,11 +28,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
-#include "tensorflow/compiler/xla/stream_executor/device_mem_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
-#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/device_id_utils.h"
+#include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/integrations/device_mem_allocator.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
@@ -43,15 +43,15 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
-#include "tensorflow/tsl/framework/allocator.h"
-#include "tensorflow/tsl/framework/bfc_allocator.h"
-#include "tensorflow/tsl/framework/device_id.h"
-#include "tensorflow/tsl/framework/device_id_utils.h"
-#include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/mutex.h"
-#include "tensorflow/tsl/platform/strcat.h"
-#include "tensorflow/tsl/platform/types.h"
-#include "tensorflow/tsl/util/env_var.h"
+#include "tsl/framework/allocator.h"
+#include "tsl/framework/bfc_allocator.h"
+#include "tsl/framework/device_id.h"
+#include "tsl/framework/device_id_utils.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/mutex.h"
+#include "tsl/platform/strcat.h"
+#include "tsl/platform/types.h"
+#include "tsl/util/env_var.h"
 
 namespace tensorflow {
 
@@ -128,7 +128,7 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
                                   {});
   } else {
     auto* gpu_context = reinterpret_cast<stream_executor::gpu::GpuContext*>(
-        executor->implementation()->GpuContextHack());
+        executor->platform_specific_handle().context);
 
     absl::flat_hash_set<tsl::PlatformDeviceId> platform_peer_gpu_ids;
     platform_peer_gpu_ids.reserve(peer_gpu_ids.size());

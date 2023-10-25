@@ -1,0 +1,1062 @@
+/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto3";
+
+package xla;
+
+import "google/protobuf/any.proto";
+import "xla/service/hlo.proto";
+import "xla/xla_data.proto";
+
+// Proto version of `xla::CompilationEnvironments`.
+message CompilationEnvironmentsProto {
+  repeated google.protobuf.Any environments = 1;
+}
+
+// Debugging options for XLA. These options may change at any time - there are
+// no guarantees about backward or forward compatibility for these fields.
+message DebugOptions {
+  // Show addresses of HLO ops in graph dump.
+  bool xla_hlo_graph_addresses = 2;
+
+  // Instrument the computation to collect per-HLO cycle counts.
+  bool xla_hlo_profile = 9;
+
+  // List of HLO passes to disable/enable. These names must exactly match the
+  // pass names as specified by the HloPassInterface::name() method.
+  //
+  // At least one of xla_disable_hlo_passes and xla_enable_hlo_passes_only must
+  // be empty.
+  repeated string xla_disable_hlo_passes = 30;
+  repeated string xla_enable_hlo_passes_only = 124;
+
+  // Disables all HLO passes.  Notes that some passes are necessary for
+  // correctness and the invariants that must be satisfied by "fully optimized"
+  // HLO are different for different devices and may change over time.  The only
+  // "guarantee", such as it is, is that if you compile XLA and dump the
+  // optimized HLO for some graph, you should be able to run it again on the
+  // same device with the same build of XLA.
+  bool xla_disable_all_hlo_passes = 104;
+
+  // Numerical optimization level for the XLA compiler backend; the specific
+  // interpretation of this value is left to the backends.
+  int32 xla_backend_optimization_level = 31;
+
+  // Embed the compiler IR as a string in the executable.
+  bool xla_embed_ir_in_executable = 33;
+
+  // Eliminate implicit broadcasts when lowering user computations to HLO
+  // instructions; use explicit broadcast instead.
+  bool xla_eliminate_hlo_implicit_broadcast = 35;
+
+  // When generating calls to Eigen in the CPU backend, use multi-threaded Eigen
+  // mode.
+  bool xla_cpu_multi_thread_eigen = 60;
+
+  // Path to directory with cuda/ptx tools and libraries.
+  string xla_gpu_cuda_data_dir = 61;
+
+  // Enable flush-to-zero semantics in the GPU backend.
+  bool xla_gpu_ftz = 62;
+
+  reserved 63;   // Was xla_gpu_disable_multi_streaming
+  reserved 134;  // Was xla_gpu_use_random_streams
+
+  // If true, in LLVM-based backends, emit !alias.scope metadata in
+  // generated IR.
+  bool xla_llvm_enable_alias_scope_metadata = 70;
+
+  // If true, in LLVM-based backends, emit !noalias metadata in the
+  // generated IR.
+  bool xla_llvm_enable_noalias_metadata = 71;
+
+  // If true, in LLVM-based backends, emit !invariant.load metadata in
+  // the generated IR.
+  bool xla_llvm_enable_invariant_load_metadata = 72;
+
+  // If true, a set of expensive LLVM optimization passes will not be run.
+  bool xla_llvm_disable_expensive_passes = 73;
+
+  reserved 80;  // Was hlo_reduce_precision_options
+
+  // This is used by ClientLibraryTestBase::ComputeAndCompare*. If true, the
+  // computation will run n! times with all permunations of layouts for the
+  // output shape in rank n. For example, with a 3D shape, all permutations of
+  // the set {0, 1, 2} are tried.
+  bool xla_test_all_output_layouts = 90;
+
+  // This is used by ClientLibraryTestBase::ComputeAndCompare*. If true, the
+  // computation will run for all permunations of layouts of all input
+  // arguments. For example, with 2 input arguments in 2D and 4D shapes, the
+  // computation will run 2! * 4! times.
+  bool xla_test_all_input_layouts = 91;
+
+  // Assign colors based on sharding information when generating the Graphviz
+  // HLO graph.
+  bool xla_hlo_graph_sharding_color = 92;
+
+  reserved 93;  // Was xla_hlo_tfgraph_device_scopes
+  reserved 94;  // Was xla_gpu_use_cudnn_batchnorm
+
+  // Generate calls to MKL-DNN in the CPU backend.
+  bool xla_cpu_use_mkl_dnn = 97;
+
+  // Enable XLA Runtime in the CPU backend.
+  bool xla_cpu_use_xla_runtime = 177;
+
+  reserved 98;  // Was xla_gpu_max_kernel_unroll_factor
+
+  // When true, "unsafe" mathematical optimizations are enabled. These
+  // transformations include but are not limited to:
+  //
+  //  - Reducing the precision of operations (e.g. using an approximate sin
+  //    function, or transforming x/y into x * (1/y)).
+  //  - Assuming that operations never produce or consume NaN or +/- Inf (this
+  //    behavior can be adjusted using xla_cpu_fast_math_allow_{nans|infs}).
+  //  - Assuming that +0 and -0 are indistinguishable.
+  bool xla_cpu_enable_fast_math = 99;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we allow
+  // operations to produce NaNs.  Ignored when xla_cpu_enable_fast_math is
+  // false.
+  bool xla_cpu_fast_math_honor_nans = 120;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we allow
+  // operations to produce infinites. Ignored when xla_cpu_enable_fast_math is
+  // false.
+  bool xla_cpu_fast_math_honor_infs = 121;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we forbid
+  // to use the reciprocal of an argument instead of division. Ignored when
+  // xla_cpu_enable_fast_math is false.
+  bool xla_cpu_fast_math_honor_division = 126;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we forbid
+  // to approximate calculations for functions. Ignored when
+  // xla_cpu_enable_fast_math is false.
+  bool xla_cpu_fast_math_honor_functions = 129;
+
+  // When false we lower the Minimum and Maximum hlos in the CPU backend such
+  // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NaN.  In other words, if flag
+  // this is false we always propagate NaNs through Min and Max.
+  //
+  // Note, this does not correspond to the exact same behavior as the gpu flag
+  // below!
+  bool xla_cpu_enable_fast_min_max = 140;
+
+  // When true we lower the Minimum and Maximum hlos in the GPU backend such
+  // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NotNaN.  In other words, if flag
+  // this is true we don't propagate NaNs through Min and Max.
+  //
+  // Note, this does not correspond to the exact same behavior as the cpu flag
+  // above!
+  bool xla_gpu_enable_fast_min_max = 100;
+
+  // Defines the number of CUDA threads that can be used to accelerate
+  // a sparse computation compiled for the XLA Runtime and CPU backend.
+  // By default (value 0), no acceleration is used. Otherwise, this
+  // many threads may be used to accelerate sparse operations, typically
+  // useful when accelerating structured sparsity.
+  int32 xla_cpu_sparse_cuda_threads = 207;
+
+  // Allows xla to increase the output precision of floating point operations.
+  bool xla_allow_excess_precision = 122;
+
+  // Crashes the program when any kind of verification fails, instead of just
+  // logging the failures. One example is cross checking of convolution results
+  // among different algorithms.
+  bool xla_gpu_crash_on_verification_failures = 101;
+
+  // 0:   Disable gemm and convolution autotuning.
+  // 1:   Enable autotuning, but disable correctness checking.
+  // 2:   Also set output buffers to random numbers during autotuning.
+  // 3:   Also reset output buffers to random numbers after autotuning each
+  //      algorithm.
+  // 4+:  Also check for correct outputs and for out-of-bounds reads/writes.
+  //
+  // Default: 4.
+  int32 xla_gpu_autotune_level = 123;
+
+  // Force the host platform to pretend that there are these many host
+  // "devices".  All these devices are backed by the same threadpool.  Defaults
+  // to 1.
+  //
+  // Setting this to anything other than 1 can increase overhead from context
+  // switching but we let the user override this behavior to help run tests on
+  // the host that run models in parallel across multiple devices.
+  int32 xla_force_host_platform_device_count = 102;
+
+  // If set to true XLA:GPU invokes `ptxas` with -O0 (default is -O3).
+  bool xla_gpu_disable_gpuasm_optimizations = 103;
+
+  enum ShapeChecks {
+    // Do not insert any shape checks for dynamically shaped operations; output
+    // buffers might contain garbage data if shapes don't match.
+    IGNORE = 0;
+
+    // Check shapes at runtime, will insert an extra synchronization if shapes
+    // cannot be proven correct at compile time.
+    RUNTIME = 1;
+
+    // Will refuse to compile any program where shape correctness can not be
+    // established at compile time.
+    COMPILE_TIME = 2;
+  }
+
+  ShapeChecks xla_gpu_shape_checks = 170;
+
+  reserved 171;  // Was xla_cpu_enable_mlir_lowering
+
+  reserved 173;  // Was xla_gpu_enable_mlir_lowering
+
+  reserved 179;  // Was xla_gpu_enable_softmax_fusion
+
+  // Enable fast math with eigen in the HLO evaluator.
+  bool xla_hlo_evaluator_use_fast_path = 106;
+
+  // Temporary option to allow support for both the R1 and the scalar index
+  // versions of DynamicSlice and DynamicUpdateSlice. Only used for testing.
+  bool xla_allow_scalar_index_dynamic_ops = 107;
+
+  enum StepMarkerLocation {
+    // Generate a step marker at the program entry. This handles the case where
+    // each step is done by one or multiple program execution(s). Only the first
+    // program will be tagged for generating a step marker at the program entry.
+    // This is the default.
+    STEP_MARK_AT_ENTRY = 0;
+    // Generate a step marker at each iteration of the top level while loop,
+    // which is assumed to be a training loop.
+    STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP = 1;
+    // Generate a step marker at each iteration of the second level while loops,
+    // which is assumed to be a training or eval loop.
+    STEP_MARK_AT_SECOND_LEVEL_WHILE_LOOP = 3;
+    // No step marker generated.
+    STEP_MARK_NONE = 2;
+  }
+  // Option to emit a target-specific marker to indicate the start of a training
+  // step. The location of the marker (if any) is determined by the option
+  // value.
+  StepMarkerLocation xla_step_marker_location = 108;
+
+  //
+  // BEGIN flags controlling dumping HLO modules for debugging.
+  //
+  // When dumping is enabled, HLO modules dumped at the very beginning and end
+  // of compilation, and optionally also during the pass pipeline.
+  //
+  // In general, if you set one of these flags, we will try to infer reasonable
+  // defaults for the others.  For example:
+  //
+  //  * Setting --xla_dump_to=/tmp/foo without specifying a format
+  //    with --xla_dump_hlo_as_* will turn on --xla_dump_hlo_as_text.
+  //
+  //  * Setting --xla_dump_hlo_as_text without specifying --xla_dump_to will
+  //    dump to stdout.
+  //
+
+  // Directory to dump into.
+  string xla_dump_to = 109;
+
+  // If specified, will only dump modules which match this regexp.
+  string xla_dump_hlo_module_re = 110;
+
+  // If this flag is specified, will also dump HLO before and after passes that
+  // match this regular expression.  Set to .* to dump before/after all passes.
+  string xla_dump_hlo_pass_re = 111;
+
+  // Specifies the format that HLO is dumped in.  Multiple of these may be
+  // specified.
+  bool xla_dump_hlo_as_text = 112;
+  bool xla_dump_hlo_as_proto = 113;
+  bool xla_dump_hlo_as_dot = 114;
+  bool xla_dump_hlo_as_url = 115;
+
+  // Dump HLO graphs as an HTML (DOT -> SVG inlined in HTML)
+  bool xla_dump_hlo_as_html = 116;
+
+  // Dump the visualization of the fusion progress.
+  bool xla_dump_fusion_visualization = 149;
+
+  // If true, every time an HLO module is run, we will dump an HloSnapshot
+  // (essentially, a serialized module plus its inputs) to the --xla_dump_to
+  // directory.
+  bool xla_dump_hlo_snapshots = 118;
+
+  // Include a timestamp in the dumped filenames.
+  bool xla_dump_include_timestamp = 131;
+
+  // Max number of hlo module dumps in a directory. Set to < 0 for unbounded.
+  int32 xla_dump_max_hlo_modules = 132;
+
+  // Dump HloModuleMetadata as a text proto for each HLO module.
+  bool xla_dump_module_metadata = 144;
+
+  // GZip-compress protos dumped via --xla_dump_hlo_as_proto.
+  bool xla_dump_compress_protos = 151;
+
+  // Dump HLO in long text format. Ignored unless xla_dump_hlo_as_text is true.
+  bool xla_dump_hlo_as_long_text = 164;
+
+  //
+  // END flags controlling dumping HLO modules.
+  //
+
+  // Overrides for XLA GPU's convolution layout heuristic.
+  bool xla_gpu_force_conv_nchw = 125;
+  bool xla_gpu_force_conv_nhwc = 146;
+
+  // Paths to files with ptx code.
+  repeated string xla_gpu_ptx_file = 127;
+
+  // Whether to dump llvm ir when compiling to ptx.
+  bool xla_gpu_dump_llvmir = 155;
+
+  // Whether to dump mlir using pretty print form.
+  bool xla_dump_enable_mlir_pretty_form = 185;
+
+  // Denylist for cuDNN convolutions.
+  string xla_gpu_algorithm_denylist_path = 128;
+
+  reserved 130;  // Was xla_gpu_deterministic_reductions
+
+  // Debug options that trigger execution errors when NaN or Inf are detected.
+  bool xla_tpu_detect_nan = 135;
+  bool xla_tpu_detect_inf = 136;
+
+  // True if TraceMe annotations are enabled for XLA:CPU.
+  bool xla_cpu_enable_xprof_traceme = 137;
+
+  // It is usually preferable to not fallback to the driver; it can consume more
+  // memory, or have bugs.
+  bool xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found = 138;
+
+  // Extra parameters to pass the GPU assembler.
+  string xla_gpu_asm_extra_flags = 141;
+
+  // Per-heap size constraint. New heaps will be created if per-heap max size is
+  // reached.
+  int32 xla_multiheap_size_constraint_per_heap = 142;
+
+  reserved 143;  // Was xla_detailed_logging_and_dumping
+
+  // Enable detailed logging into vlog. If this is disabled, no
+  // compilation summary will be printed in the end of computation.
+  bool xla_detailed_logging = 252;
+
+  // Enable HLO dumping. If this is disabled, no HLO modules will be dumped.
+  bool xla_enable_dumping = 253;
+
+  // Overrides normal multi-threaded compilation setting to use this many
+  // threads. Setting to 0 (the default value) means no enforcement.
+  int32 xla_gpu_force_compilation_parallelism = 147;
+
+  // Guarantees run-to-run determinism. At present, the HLO ops Scatter and
+  // SelectAndScatter do not have deterministic XLA:GPU implementations.
+  // Compilation errors out if these ops are encountered.
+  bool xla_gpu_deterministic_ops = 148;
+
+  // Paths to files with LLVM code.
+  repeated string xla_gpu_llvm_ir_file = 150;
+
+  // Convert synchronous collective ops into asynchronous.
+  bool xla_gpu_enable_async_collectives = 238;
+  bool xla_gpu_enable_async_all_reduce = 152;
+  bool xla_gpu_enable_async_collective_permute = 183;
+  bool xla_gpu_enable_async_all_gather = 199;
+  bool xla_gpu_enable_async_reduce_scatter = 200;
+  bool xla_gpu_enable_async_all_to_all = 201;
+
+  // Size threshold (in bytes) for the GPU collective combiners.
+  int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;
+  int64 xla_gpu_all_gather_combine_threshold_bytes = 212;
+  int64 xla_gpu_reduce_scatter_combine_threshold_bytes = 213;
+
+  // Combine all-gather/scatter-reduce ops with the same dimension or
+  // irrespective of their dimension.
+  bool xla_gpu_enable_all_gather_combine_by_dim = 254;
+  bool xla_gpu_enable_reduce_scatter_combine_by_dim = 257;
+
+  // Combine GPU all-reduces into a single operation over a contiguous buffer.
+  bool xla_gpu_all_reduce_contiguous = 158;
+
+  // Enable allreduce reassociation on allreduces that are converted to a wider
+  // type. The resulting allreduce will be promoted to a wider-typed allreduce.
+  bool xla_gpu_enable_reassociation_for_converted_ar = 209;
+
+  // Number of devices per host for first stage of BlueConnect decomposition
+  // pass. The pass will attempt to decompose all-reduces ops into a
+  // ReduceScatter-AllReduce-AllGather sequence, with the initial ReduceScatter
+  // being performed over all of the devices in the same host. Set to < 1 to
+  // disable all-reduce decomposition.
+  int32 xla_gpu_all_reduce_blueconnect_num_devices_per_host = 159;
+
+  // Enable hoisting of reduce-scatter out of while loops.
+  bool xla_gpu_enable_while_loop_reduce_scatter_code_motion = 203;
+
+  // Inflate collective cost by running each collective multiple times.
+  int32 xla_gpu_collective_inflation_factor = 205;
+
+  // Whether to use the cuDNN frontend API for convolutions when possible.
+  bool xla_gpu_enable_cudnn_frontend = 160;
+
+  bool xla_gpu_enable_cudnn_fmha = 218;
+  bool xla_gpu_fused_attention_use_cudnn_rng = 235;
+
+  // Disable dumping metadata in HLO dumps.
+  bool xla_dump_disable_metadata = 153;
+
+  // If this flag is specified, will only dump HLO before and after passes in
+  // the pass pipeline that matches this regular expression. Default empty value
+  // enables dumping in all pipelines.
+  string xla_dump_hlo_pipeline_re = 154;
+
+  // If true, abort immediately when conv algorithm picker fails, rather than
+  // logging a warning and proceeding with fallback.
+  bool xla_gpu_strict_conv_algorithm_picker = 156;
+
+  reserved 161;  // Was xla_gpu_bef_executable
+  reserved 162;  // Was xla_gpu_bef_thunk
+
+  // If true, use XLA runtime for XLA:GPU backend.
+  bool xla_gpu_enable_xla_runtime_executable = 169;
+
+  // If true, use OpenXLA runtime for XLA:GPU backend. That is, use IREE VM
+  // as a host executable, optional CUDA HAL for dispatching device kernels and
+  // custom modules for integration with libraries required for running
+  // XLA:GPU programs.
+  //
+  // Note: this mode disables thunks and the "classic" gpu runtime, which
+  // is defined above.
+  bool xla_gpu_enable_gpu2_runtime = 233;
+
+  // If true, use OpenXLA hardware abstraction layer (aka CUDA HAL) to dispatch
+  // device kernels, otherwise use StreamExecutor kernel launch APIs. Has any
+  // effect only if `xla_gpu_enable_gpu2_runtime` is set to true.
+  bool xla_gpu_enable_gpu2_hal = 234;
+
+  // Timeout in seconds before terminating jobs that are stuck in a NCCL
+  // Rendezvous. Negative value disables the timeout and will not terminate.
+  int64 xla_gpu_nccl_termination_timeout_seconds = 163;
+
+  // Enables shared constants for XLA/GPU. This allows large constants to be
+  // shared among multiple GPU executables.
+  bool xla_gpu_enable_shared_constants = 165;
+
+  // Whether to use cuBLASLt for GEMMs on GPUs.
+  bool xla_gpu_enable_cublaslt = 166;
+
+  // Commands are categorized into four types: FUSION represents regular fusion
+  // kernels. CUBLAS, CUDNN, and NCCL represent library calls.
+  enum CommandBufferCmdType {
+    INVALID = 0;
+    FUSION = 1;
+    CUBLAS = 2;
+    CUDNN = 3;
+    NCCL = 4;
+  }
+
+  // Determine the types of commands that are recorded into command buffers.
+  repeated CommandBufferCmdType xla_gpu_enable_command_buffer = 258;
+
+  // Only instantiates a GPU graph after the captured function execution count
+  // reaches the threshold. This constant is a heuristic to avoid creating a
+  // large number of CUDA graph instances in memory.
+  int32 xla_gpu_graph_num_runs_to_instantiate = 202;
+
+  // This number determines how many moved instructions like fusion kernels are
+  // required for a region to be captured as a function to be launched as a GPU
+  // graph.
+  int32 xla_gpu_graph_min_graph_size = 208;
+
+  // Identify concurrent regions in GPU graphs and execute them concurrently.
+  bool xla_gpu_graph_enable_concurrent_region = 215;
+
+  // Timeout in seconds to evict instantiated Gpu graphs from device. When XLA
+  // instantiates new Gpu graphs, it evicts graphs that were not recently
+  // executed to free space on device.
+  int32 xla_gpu_graph_eviction_timeout_seconds = 230;
+
+  // Allocate temp buffers once during the first execution of an executable.
+  // Reuse the allocated buffers in subsequent executions. Executables cannot
+  // run concurrently if this is enabled.
+  bool xla_gpu_enable_persistent_temp_buffers = 206;
+
+  // Size threshold (in megabytes) for the GPU redzone scratch allocator.
+  int64 xla_gpu_redzone_scratch_max_megabytes = 167;
+
+  // Amount of padding the redzone allocator will put on one side of each buffer
+  // it allocates.  (So the buffer's total size will be increased by 2x this
+  // value.)
+  //
+  // Higher values make it more likely that we'll catch an out-of-bounds read or
+  // write.  Smaller values consume less memory during autotuning.  Note that a
+  // fused cudnn conv has up to 6 total buffers (4 inputs, 1 output, and 1
+  // scratch), so this can be multiplied by quite a lot.
+  int64 xla_gpu_redzone_padding_bytes = 228;
+
+  // Allows all floating-point conversions to be simplified, including those
+  // that affect the numerics. The `FloatNormalization` pass inserts many
+  // `f32 -> bf16 -> f32` conversion pairs. These are not removed by the
+  // `AlgebraicSimplifier`, as that will only simplify conversions that are
+  // no-ops, e.g. `bf16 -> f32 -> bf16`. Removing these improves accuracy.
+  bool xla_gpu_simplify_all_fp_conversions = 168;
+
+  // An experimental option to force all layouts present in the
+  // after-optimizations HLO to be descending, e.g.
+  // ShapeUtil::MakeShapeWithDescendingLayout is an identity on all
+  // instructions.
+  bool xla_gpu_normalize_layouts = 172;
+
+  // Generate calls to Arm Compute Library in the CPU backend.
+  bool xla_cpu_use_acl = 174;
+
+  // By default, XLA:CPU will run fp16 dot/conv as fp32, as this is generally
+  // (much) faster on our hardware.  Set this flag to disable this behavior.
+  bool xla_cpu_strict_dot_conv_math = 175;
+
+  // An option to enable using cuDNN runtime compiled fusion kernels which is
+  // available and recommended for Ampere+ GPUs.
+  bool xla_gpu_use_runtime_fusion = 181;
+
+  bool xla_dump_latency_hiding_schedule = 182;
+
+  // By default, MLIR lowering will use Linalg elementwise fusion. If this flag
+  // is enabled, the pipeline will use tiling, fusion, peeling, vectorization
+  // instead.
+  bool xla_cpu_enable_mlir_tiling_and_fusion = 184;
+
+  // XLA:CPU-Next tiling parameters for matmul.
+  bool xla_cpu_enable_custom_matmul_tiling = 195;
+  int64 xla_cpu_matmul_tiling_m_dim = 196;
+  int64 xla_cpu_matmul_tiling_n_dim = 197;
+  int64 xla_cpu_matmul_tiling_k_dim = 198;
+
+  bool xla_cpu_enable_mlir_fusion_outlining = 192;
+
+  // If set, use the experimental deallocation pass from mlir-hlo.
+  bool xla_cpu_enable_experimental_deallocation = 191;
+
+  bool xla_gpu_enable_latency_hiding_scheduler = 186;
+  bool xla_gpu_enable_highest_priority_async_stream = 216;
+  bool xla_gpu_enable_analytical_latency_estimator = 255;
+
+  bool xla_gpu_lhs_enable_gpu_async_tracker = 204;
+  string xla_gpu_pgle_profile_file_or_directory_path = 210;
+
+  bool xla_gpu_enable_pipelined_collectives = 239;
+  bool xla_gpu_enable_pipelined_all_reduce = 217;
+  bool xla_gpu_enable_pipelined_all_gather = 227;
+  bool xla_gpu_enable_pipelined_reduce_scatter = 231;
+  bool xla_gpu_enable_pipelined_p2p = 246;
+
+  // The minimum data size in bytes to trigger collective-permute-decomposer
+  // transformation.
+  int64 xla_gpu_collective_permute_decomposer_threshold = 237;
+
+  enum PartitioningAlgorithm {
+    PARTITIONING_ALGORITHM_NOOP = 0;
+    PARTITIONING_ALGORITHM_EXP0 = 1;
+    PARTITIONING_ALGORITHM_EXP1 = 2;
+    PARTITIONING_ALGORITHM_EXP2 = 3;
+  }
+  // The partitioning algorithm to be used in the PartitionAssignment pass.
+  PartitioningAlgorithm xla_partitioning_algorithm = 187;
+
+  bool xla_gpu_enable_triton_gemm = 188;
+
+  bool xla_gpu_enable_cudnn_int8x32_convolution_reordering = 189;
+
+  bool xla_gpu_triton_gemm_any = 190;
+
+  reserved 211;  // Was xla_gpu_enable_dot_strength_reduction
+
+  bool xla_gpu_exhaustive_tiling_search = 219;
+
+  bool xla_gpu_enable_triton_softmax_fusion = 220;
+
+  bool xla_gpu_enable_priority_fusion = 221;
+
+  // File to write autotune results to. It will be a binary file unless the name
+  // ends with .txt or .textproto. Warning: The results are written at every
+  // compilation, possibly multiple times per process. This only works on CUDA.
+  string xla_gpu_dump_autotune_results_to = 222;
+
+  // File to load autotune results from. It will be considered a binary file
+  // unless the name ends with .txt or .textproto. At most one loading will
+  // happen during the lifetime of one process, even if the first one is
+  // unsuccessful or different file paths are passed here. This only works on
+  // CUDA.
+  string xla_gpu_load_autotune_results_from = 223;
+
+  // Memory budget in GB per device for AutoSharding.
+  int32 xla_gpu_auto_spmd_partitioning_memory_budget_gb = 224;
+
+  // See the definition of the
+  // xla_gpu_auto_spmd_partitioning_memory_budget_ratio flag for the meaning of
+  // this field.
+  float xla_gpu_auto_spmd_partitioning_memory_budget_ratio = 225;
+
+  bool xla_gpu_triton_gemm_disable_reduced_precision_reduction = 226;
+
+  int32 xla_gpu_triton_fusion_level = 229;
+
+  bool xla_gpu_dump_autotuned_triton_fusions = 232;
+
+  bool xla_gpu_copy_insertion_use_region_analysis = 236;
+
+  // If true, each fusion instruction will have a cost model runtime estimate in
+  // backend config after compilation.
+  bool xla_gpu_collect_cost_model_stats = 240;
+
+  bool xla_gpu_enable_split_k_autotuning = 241;
+
+  bool xla_gpu_single_wave_autotuning = 242;
+  // Whether reduction epilogue fusion is enabled in fusion passes.
+  bool xla_gpu_enable_reduction_epilogue_fusion = 243;
+  // Allow early return when acquiring NCCL cliques.
+  bool xla_gpu_enable_nccl_clique_optimization = 244;
+
+  // Replace custom calls with noop operations.
+  bool xla_gpu_mock_custom_calls = 245;
+
+  // Allow Triton GEMM autotuning to fall back to cuBLAS when that is
+  // faster.
+  bool xla_gpu_cublas_fallback = 247;
+
+  // Enable double buffering for loops.
+  bool xla_gpu_enable_while_loop_double_buffering = 248;
+
+  // Change the layout of the second triton dot operand to be column major.
+  // Only works for (bf16 x bf16) -> bf16.
+  bool xla_gpu_ensure_minor_dot_contraction_dims = 249;
+
+  // Filter out kernels that spill registers during autotuning.
+  bool xla_gpu_filter_kernels_spilling_registers_on_autotuning = 250;
+
+  // Maximum number of buffers to print when debugging buffer assignment.
+  int64 xla_debug_buffer_assignment_show_max = 251;
+
+  int32 xla_gpu_llvm_verification_level = 256;
+
+  // Next id: 259
+
+  // Extra options to pass to the compilation backend (e.g. LLVM); specific
+  // interpretation of these values is left to the backend.
+  map<string, string> xla_backend_extra_options = 500;
+
+  // Reserved tags were xla_hlo_dump_as_graphdef, xla_dump_to,
+  // xla_gpu_use_horizontal_fusion,
+  // xla_gpu_unsafe_fallback_to_driver_on_ptxas_error,
+  // xla_gpu_simplify_scatters, xla_gpu_simplify_gathers
+  // xla_gpu_enable_cuda_graphs
+  // xla_gpu_allow_all_reduce_kernel
+  // xla_gpu_enable_experimental_block_size
+  // xla_gpu_graph_level
+  reserved 5, 117, 133, 139, 176, 178, 180, 193, 214, 194;
+}
+
+// Contains flags which affects the GPU compilation result.
+// These flags are part of Debug Options as of now, and will be migrated to
+// this proto.
+message GpuCompilationEnvironment {}
+
+message ShardableValueUpdatePairProto {
+  int64 input_parameter_number = 1;
+  repeated int64 parameter_shape_index = 2;
+  repeated int64 output_shape_index = 3;
+}
+
+// These settings control how XLA compiles and/or runs code.  Not all settings
+// will have an effect on every platform.
+//
+// When adding new fields, keep in mind that boolean fields default to false.
+// Next id: 23.
+message ExecutionOptions {
+  // This optional field's layout is used as a hint when storing the output of
+  // this computation.  Subsequent transfers of this output array to the client
+  // may be faster when using this layout.
+  //
+  // We use a Shape here to accommodate computations that return a tuple.
+  ShapeProto shape_with_output_layout = 2;
+
+  // Used to seed random-number generators used in this computation.  If this is
+  // 0, we generate a seed ourselves.
+  //
+  // TODO(b/32083678): Changing the seed unnecessarily forces a recompilation.
+  uint64 seed = 3;
+
+  DebugOptions debug_options = 4;
+
+  // This optional field specifies a particular set of devices to run the
+  // computation on. The computation will be partitioned across these devices.
+  // If not provided, the default device will be chosen.
+  repeated DeviceHandle device_handles = 5;
+
+  // Number of replicas of the computation to run. If zero, uses the default
+  // number of replicas for the XLA service.
+  int32 num_replicas = 6;
+
+  // This optional field specifies the device assignment if known at compile
+  // time.
+  DeviceAssignmentProto device_assignment = 7;
+
+  // Alias input and output buffers for parameters that are passed-through XLA
+  // modules without being changed.
+  bool alias_passthrough_params = 8;
+
+  // Number of partitions of the computation to run (model parallelism).
+  // If zero, uses the default number of partitions for the XLA service.
+  int32 num_partitions = 9;
+
+  // Used to identify a set of programs that should be launch together.
+  int32 launch_id = 10;
+
+  // Indicates whether to use SPMD (true) or MPMD (false) partitioning when
+  // num_partitions > 1 and XLA is requested to partition the input program.
+  bool use_spmd_partitioning = 11;
+
+  // Whether to automatically generate XLA shardings for SPMD partitioner.
+  bool use_auto_spmd_partitioning = 15;
+
+  // Device mesh shape used to create the sharding search space when
+  // use_auto_spmd_partitioning=true.
+  repeated int64 auto_spmd_partitioning_mesh_shape = 16;
+
+  // Device mesh ids compatible with the above mesh_shape used when
+  // use_auto_spmd_partitioning=true.
+  repeated int64 auto_spmd_partitioning_mesh_ids = 17;
+
+  // If set, deduplicate hlo into function calls to reduce binary size. Only
+  // works on TPU.
+  bool deduplicate_hlo = 12;
+
+  reserved 13;  // Was broadcast_replicated_parameters_via_collectives
+
+  // Allows sharding propagation to propagate to the outputs. This changes the
+  // output shape of the computation (which is undesirable), but it can be used
+  // to allow to run partial compilation to determine what would be the output
+  // sharding of a computation if XLA would be allowed to propagate the sharding
+  // which can be used by higher level framework as a way to query intermediate
+  // sharding of operations when multiple computation would be chained and
+  // merged together.
+  // This is a vector of bool, because the user can control (if the output of
+  // the computation is a tuple) which elements of the tuple can have the
+  // sharding substituted and which don't. If only one boolean value is passed
+  // in the vector that's interpreted as the value to be applied for every
+  // single element of the output tuple. One value per element of the tuple
+  // means that each value is attached to one of the output elements.
+  repeated bool allow_spmd_sharding_propagation_to_output = 14;
+
+  // Whether to broadcast args across all replicas. One entry per arg.
+  repeated bool param_requires_broadcast_via_collectives = 18;
+
+  // If enabled, the compiler may generate sharding and unsharding programs as
+  // separate HLO modules, and modify the main program's input and output to
+  // be sharded.
+  bool allow_separate_sharding_programs = 19;
+
+  // The list of input/output pairs in the main program that could be sharded.
+  repeated ShardableValueUpdatePairProto shardable_value_update_pairs = 20;
+
+  // Profiling data for feedback directed optimizations. Note that this is not
+  // the only way to feed FDO data into the compiler and individual backends
+  // may choose to get FDO data by other means.
+  bytes fdo_profile = 21;
+
+  // Amount of device memory available for the executable to use.
+  int64 device_memory_size = 22;
+}
+
+// Serialization of HloModuleConfig. See the C++ class definition for
+// descriptions of each field.
+// There are no guarantees of backwards or forwards compatibility.
+// Next id: 33.
+message HloModuleConfigProto {
+  enum FusionConfigCollection {
+    OFF = 0;       // Do not collect configuration.
+    PER_EDGE = 1;  // Collect per-edge configuration.
+    PER_NODE = 2;  // Collect per-node configuration.
+  }
+
+  message BoolList {
+    repeated bool vals = 1;
+  }
+  message Int64List {
+    repeated int64 vals = 1;
+  }
+  message Int64ListList {
+    repeated Int64List lists = 1;
+  }
+
+  xla.ProgramShapeProto entry_computation_layout = 1;
+  uint64 seed = 2;
+  int32 launch_id = 3;
+  int64 replica_count = 4;
+  int64 num_partitions = 5;
+  repeated bool param_requires_broadcast_via_collectives = 6;
+  bool use_spmd_partitioning = 7;
+  bool use_auto_spmd_partitioning = 8;
+  repeated int64 auto_spmd_partitioning_mesh_shape = 9;
+  repeated int64 auto_spmd_partitioning_mesh_ids = 10;
+  bool deduplicate_hlo = 11;
+  int64 intra_op_parallelism_threads = 12;
+  string device_type = 13;
+
+  DebugOptions debug_options = 14;
+  DeviceAssignmentProto static_device_assignment = 15;
+  bool allow_separate_sharding_programs = 30;
+  repeated ShardableValueUpdatePairProto shardable_value_update_pairs = 16;
+  bool alias_passthrough_params = 17;
+  bool content_aware_computation_sorting = 18;
+  FusionConfigCollection fusion_config_collection = 19;
+
+  repeated BoolList fusion_config = 20;
+  map<string, Int64List> dot_config = 21;
+  repeated Int64ListList layout_config = 22;
+
+  repeated uint64 memory_space_assignment_config = 23;
+  repeated BoolList phase_ordering_config = 24;
+  int32 phase_index = 25;
+  reserved 26;  // Was flag_config
+  repeated bool allow_spmd_sharding_propagation_to_output = 27;
+  map<string, int64> analysis_allowance_map = 28;
+  xla.PrecisionConfig.Precision matrix_unit_operand_precision = 29;
+  bytes fdo_profile = 31;
+  int64 device_memory_size = 32;
+}
+
+message HloModuleProtoWithConfig {
+  HloModuleProto hlo_module = 1;
+  HloModuleConfigProto config = 2;
+}
+
+message GetDeviceHandlesRequest {
+  int64 device_count = 1;
+}
+
+message GetDeviceHandlesResponse {
+  repeated DeviceHandle device_handles = 1;
+}
+
+message TransferToClientRequest {
+  GlobalDataHandle data = 1;
+
+  // This optional field directs the service to return the literal in this
+  // layout. A shape is used to hold the layout to accommodate tuples.
+  ShapeProto shape_with_layout = 2;
+}
+
+message TransferToClientResponse {
+  LiteralProto literal = 1;
+}
+
+message TransferToServerRequest {
+  LiteralProto literal = 1;
+  DeviceHandle device_handle = 2;
+}
+
+message TransferToServerResponse {
+  GlobalDataHandle data = 1;
+}
+
+message TransferToInfeedRequest {
+  LiteralProto literal = 1;
+  int64 replica_id = 2;
+  DeviceHandle device_handle = 3;
+}
+
+message TransferToInfeedResponse {}
+
+message TransferFromOutfeedRequest {
+  // This optional field directs the service to return the literal in this
+  // layout. A shape is used to hold the layout to accommodate tuples.
+  ShapeProto shape_with_layout = 1;
+
+  int64 replica_id = 2;
+  DeviceHandle device_handle = 3;
+}
+
+message TransferFromOutfeedResponse {
+  LiteralProto literal = 1;
+}
+
+message ResetDeviceRequest {
+  DeviceHandle device_handle = 1;
+}
+
+message ResetDeviceResponse {}
+
+message ComputationGraphStatsRequest {
+  HloModuleProto computation = 1;
+  DebugOptions debug_options = 2;
+}
+
+message ComputationStatsResponse {
+  ComputationStats stats = 1;
+}
+
+message CreateChannelHandleRequest {
+  ChannelHandle.ChannelType channel_type = 1;
+}
+
+message CreateChannelHandleResponse {
+  ChannelHandle channel = 1;
+}
+
+message UnregisterRequest {
+  repeated GlobalDataHandle data = 1;
+}
+
+message UnregisterResponse {}
+
+message CompileRequest {
+  // The graph to be compiled.
+  HloModuleProto computation = 1;
+
+  // Options that affect how XLA compiles code to service this request.
+  ExecutionOptions execution_options = 2;
+
+  // The layouts of the input arguments. If not set, the default layout will be
+  // used. Although the real arguments are not needed in compilation, the
+  // layouts of the arguments can affect the compilation.
+  repeated ShapeProto input_shape_with_layout = 3;
+}
+
+message CompileResponse {
+  // The handle to the executable.
+  ExecutionHandle handle = 1;
+}
+
+message ExecuteRequest {
+  ExecutionHandle handle = 1;
+
+  // The shape and layout of the arguments must be the same as the those of the
+  // executable's parameters.
+  repeated GlobalDataHandle arguments = 2;
+}
+
+// TODO(b/118493728): Remove this and ExecuteGraphParallelRequest and replace
+// the uses with calls to Compile and Execute.
+message ExecuteGraphRequest {
+  HloModuleProto computation = 1;
+  repeated GlobalDataHandle arguments = 2;
+
+  // Options that affect how XLA compiles and runs code to service this request.
+  ExecutionOptions execution_options = 3;
+}
+
+message ExecuteGraphParallelRequest {
+  repeated ExecuteGraphRequest requests = 1;
+}
+
+message ExecuteResponse {
+  GlobalDataHandle output = 1;
+  ExecutionProfile profile = 2;
+}
+
+message ExecuteParallelResponse {
+  repeated ExecuteResponse responses = 1;
+}
+
+message WaitForExecutionRequest {
+  ExecutionHandle execution = 1;
+}
+
+message WaitForExecutionResponse {
+  GlobalDataHandle output = 1;
+  ExecutionProfile profile = 2;
+}
+
+message ComputeConstantGraphRequest {
+  HloModuleProto computation = 1;
+  LayoutProto output_layout = 2;
+}
+
+message ComputeConstantResponse {
+  // A LiteralProto is returned directly for this request.
+  LiteralProto literal = 1;
+}
+
+message DeconstructTupleRequest {
+  GlobalDataHandle tuple_handle = 2;
+}
+
+message DeconstructTupleResponse {
+  repeated GlobalDataHandle element_handles = 1;
+}
+
+message LoadDataRequest {
+  // Describes the path of the ColumnIO tablet to load.
+  string columnio_tablet_path = 1;
+
+  // Describes the field to load within the ColumnIO tablet.
+  string columnio_field = 2;
+
+  // Individual element shape, excluding rows.
+  ShapeProto element_shape = 3;
+
+  // Warning: ColumnIO does not support random-access, so use offset with
+  // caution in performance-critical scenarios.
+  int64 offset = 4;
+
+  // Maximum number of elements (with shape element_shape) to load.
+  int64 limit = 5;
+
+  // If more than one item is requested (via limit > 1), then this request
+  // attribute zips together the produced vectors.
+  bool zip = 6;
+}
+
+message LoadDataResponse {
+  GlobalDataHandle data = 1;
+  ShapeProto data_shape = 2;
+  int64 available_rows = 3;
+  int64 rows_loaded = 4;
+  int64 nanoseconds = 5;
+}
+
+message GetShapeRequest {
+  GlobalDataHandle data = 1;
+}
+
+message GetShapeResponse {
+  ShapeProto shape = 1;
+}
+
+message UnpackRequest {
+  GlobalDataHandle data = 1;
+}
+
+message UnpackResponse {
+  repeated GlobalDataHandle tied_data = 1;
+}
+
+// A trace estimated by the Latency Hiding Scheduler.
+message ScheduleProto {
+  message Instruction {
+    // Instruction id (matches the id in HloInstructionProto).
+    int64 id = 1;
+
+    // Start and end timestamps in cycles.
+    double start_timestamp_cycles = 2;
+    double end_timestamp_cycles = 3;
+  }
+  repeated Instruction instructions = 1;
+  // Computation id (matches the id in HloComputationProto).
+  int64 computation_id = 2;
+  HloModuleProto hlo_module = 3;
+  int64 cycles_per_microsecond = 4;
+}

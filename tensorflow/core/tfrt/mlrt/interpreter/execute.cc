@@ -17,7 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/log.h"
-#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace mlrt {
 namespace {

@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/profiler/backends/cpu/annotation_stack.h"
+#include "tsl/profiler/backends/cpu/annotation_stack.h"
 
 namespace tensorflow {
 namespace profiler {

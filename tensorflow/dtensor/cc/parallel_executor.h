@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/c/eager/c_api_experimental.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
+#include "xla/pjrt/pjrt_future.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/cc/tensor_with_layout.h"
 

@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_SCATTER_ND_UTIL_H_
 
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/tsl/util/env_var.h"
+#include "tsl/util/env_var.h"
 
 namespace tensorflow {
 

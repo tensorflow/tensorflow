@@ -223,7 +223,7 @@ struct NoneSuch {};
 // True if the Feature map in a tf.Example supports heterogenous lookup.
 // See https://abseil.io/tips/144.
 inline constexpr bool kFeatureMapHasHeterogeneousLookup =
-    Requires<const decltype(Features::default_instance().feature())>(
+    Requires<decltype(Features::default_instance().feature())>(
         [](auto&& c) -> decltype(c.find(NoneSuch{})) {});
 
 // Converts an `absl::string_view` into a string-type compatible for use in the

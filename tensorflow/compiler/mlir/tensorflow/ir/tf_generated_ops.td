@@ -4451,7 +4451,7 @@ and the rest of `data[i].shape` must be constant w.r.t. `i`.  That is, we
 must have `data[i].shape = indices[i].shape + constant`.  In terms of this
 `constant`, the output shape is
 
-    merged.shape = [max(indices)] + constant
+    merged.shape = [max(indices) + 1] + constant
 
 Values are merged in order, so if an index appears in both `indices[m][i]` and
 `indices[n][j]` for `(m,i) < (n,j)` the slice `data[n][j]` will appear in the
@@ -16993,7 +16993,9 @@ dimension, selecting a subset of dimension 0, specified by `indices`.
   let arguments = (ins
     TF_FloatTensor:$data,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Has same rank as `segment_ids`.}]>:$indices,
-    Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Values should be sorted and can be repeated.}]>:$segment_ids
+    Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Values should be sorted and can be repeated.}]>:$segment_ids,
+
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$sparse_gradient
   );
 
   let results = (outs
@@ -17046,7 +17048,9 @@ for an explanation of segments.
     TF_FloatTensor:$data,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Has same rank as `segment_ids`.}]>:$indices,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Values should be sorted and can be repeated.}]>:$segment_ids,
-    Arg<TF_I32OrI64Tensor, [{Should equal the number of distinct segment IDs.}]>:$num_segments
+    Arg<TF_I32OrI64Tensor, [{Should equal the number of distinct segment IDs.}]>:$num_segments,
+
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$sparse_gradient
   );
 
   let results = (outs
@@ -17074,7 +17078,9 @@ See `tf.sparse.segment_sum` for usage examples.
   let arguments = (ins
     TF_FloatTensor:$data,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Has same rank as `segment_ids`.}]>:$indices,
-    Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Values should be sorted and can be repeated.}]>:$segment_ids
+    Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Values should be sorted and can be repeated.}]>:$segment_ids,
+
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$sparse_gradient
   );
 
   let results = (outs
@@ -17131,7 +17137,9 @@ for an explanation of segments.
     TF_FloatTensor:$data,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Has same rank as `segment_ids`.}]>:$indices,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Values should be sorted and can be repeated.}]>:$segment_ids,
-    Arg<TF_I32OrI64Tensor, [{Should equal the number of distinct segment IDs.}]>:$num_segments
+    Arg<TF_I32OrI64Tensor, [{Should equal the number of distinct segment IDs.}]>:$num_segments,
+
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$sparse_gradient
   );
 
   let results = (outs
@@ -17183,7 +17191,9 @@ tf.segment_sum(c, tf.constant([0, 0, 1]))
   let arguments = (ins
     TF_IntOrFpTensor:$data,
     Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Has same rank as `segment_ids`.}]>:$indices,
-    Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Values should be sorted and can be repeated.}]>:$segment_ids
+    Arg<TF_I32OrI64Tensor, [{A 1-D tensor. Values should be sorted and can be repeated.}]>:$segment_ids,
+
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$sparse_gradient
   );
 
   let results = (outs
@@ -19920,7 +19930,7 @@ array([[1, 2, 3, 1, 2, 3],
   }];
 
   let arguments = (ins
-    Arg<TF_Tensor, [{1-D or higher.}]>:$input,
+    Arg<TF_Tensor, [{Can be of any rank.}]>:$input,
     Arg<TF_I32OrI64Tensor, [{1-D. Length must be the same as the number of dimensions in `input`}]>:$multiples
   );
 
@@ -20697,6 +20707,72 @@ idx ==> [0, 1, 2, 3, 4, 4, 0, 1]
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr out_idx = TF_DerivedResultTypeAttr<1>;
+}
+
+def TF_UniqueV2Op : TF_Op<"UniqueV2", [Pure]> {
+  let summary = "Finds unique elements along an axis of a tensor.";
+
+  let description = [{
+This operation either returns a tensor `y` containing unique elements
+along the `axis` of a tensor. The returned unique elements is sorted
+in the same order as they occur along `axis` in `x`.
+This operation also returns a tensor `idx` that is the same size as
+the number of the elements in `x` along the `axis` dimension. It
+contains the index in the unique output `y`.
+In other words, for an `1-D` tensor `x` with `axis = None:
+
+`y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`
+
+For example:
+
+```
+# tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
+y, idx = unique(x)
+y ==> [1, 2, 4, 7, 8]
+idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
+```
+
+For an `2-D` tensor `x` with `axis = 0`:
+
+```
+# tensor 'x' is [[1, 0, 0],
+#                [1, 0, 0],
+#                [2, 0, 0]]
+y, idx = unique(x, axis=0)
+y ==> [[1, 0, 0],
+       [2, 0, 0]]
+idx ==> [0, 0, 1]
+```
+
+For an `2-D` tensor `x` with `axis = 1`:
+
+```
+# tensor 'x' is [[1, 0, 0],
+#                [1, 0, 0],
+#                [2, 0, 0]]
+y, idx = unique(x, axis=1)
+y ==> [[1, 0],
+       [1, 0],
+       [2, 0]]
+idx ==> [0, 1, 1]
+```
+  }];
+
+  let arguments = (ins
+    Arg<TF_Tensor, [{A `Tensor`.}]>:$x,
+    Arg<TF_I32OrI64Tensor, [{A `Tensor` of type `int32` (default: None). The axis of the Tensor to
+find the unique elements.}]>:$axis
+  );
+
+  let results = (outs
+    Res<TF_Tensor, [{A `Tensor`. Unique elements along the `axis` of `Tensor` x.}]>:$y,
+    Res<TF_I32OrI64Tensor, [{A 1-D Tensor. Has the same type as x that contains the index of each
+value of x in the output y.}]>:$idx
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Taxis = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedResultTypeAttr out_idx = TF_DerivedResultTypeAttr<1>;
 }
 

@@ -17,14 +17,14 @@ limitations under the License.
 pipeline {
     agent none
     environment {
-        RELEASE_BRANCH = 'r2.14'
+        RELEASE_BRANCH = 'r2.15'
     }
     stages {
         stage("Build Tensorflow") {
             parallel {
                 stage("Python 3.9") {
                     agent {
-                        label "silicon-ci"
+                        label "silicon-ci-release"
                     }
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
@@ -57,7 +57,7 @@ pipeline {
                 }
                 stage("Python 3.10") {
                     agent {
-                        label "silicon-ci"
+                        label "silicon-ci-release"
                     }
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"
@@ -90,7 +90,7 @@ pipeline {
                 }
                 stage("Python 3.11") {
                     agent {
-                        label "silicon-ci"
+                        label "silicon-ci-release"
                     }
                     environment {
                         PYENV_ROOT="$HOME/.pyenv"

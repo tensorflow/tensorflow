@@ -18,11 +18,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cassert>
+#include <climits>
+#include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <iterator>
 #include <limits>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -34,16 +35,15 @@ limitations under the License.
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -53,26 +53,28 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_arith_ops_folder.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_canonicalization_helper.h"
@@ -80,14 +82,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_layout_helper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_tensor_helper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/util/tensor_format.h"
 
 namespace mlir {
 namespace TF {
@@ -2490,9 +2490,9 @@ class ConvertTensorListGetItemOpOfTensorListFromTensorOpToGather
       return failure();
     }
 
-    rewriter.replaceOpWithNewOp<GatherOp>(
-        op, op.getType(), tensor_list_from_tensor_op.getTensor(),
-        op.getIndex());
+    ReplaceTfOpWithNewOp<GatherOp>(rewriter, op, op.getType(),
+                                   tensor_list_from_tensor_op.getTensor(),
+                                   op.getIndex());
     return success();
   }
 };
@@ -2718,8 +2718,8 @@ class ToBoolOfRankedTensor : public OpRewritePattern<ToBoolOp> {
       if (!zero_attr) return failure();
 
       auto zero_const = rewriter.create<TF::ConstOp>(op.getLoc(), zero_attr);
-      rewriter.replaceOpWithNewOp<TF::NotEqualOp>(
-          op, result_type, op.getOperand(), zero_const, false);
+      ReplaceTfOpWithNewOp<TF::NotEqualOp>(rewriter, op, result_type,
+                                           op.getOperand(), zero_const, false);
     } else {
       // If the input is a non-scalar ranked tensor, ToBool can be expanded
       // to numElements != 0. numElements will be 0 iff one of the dimensions is
@@ -2970,8 +2970,8 @@ class NMSV3ToNMSV4Op : public OpRewritePattern<NonMaxSuppressionV3Op> {
         tensorflow::GetTypeFromTFTensorShape({}, input_ty.getElementType());
     new_result_types.push_back(valid_output_type);
 
-    auto nmsv4 = rewriter.create<TF::NonMaxSuppressionV4Op>(
-        nms_op.getLoc(), new_result_types, nms_op.getBoxes(),
+    auto nmsv4 = CreateTfOp<TF::NonMaxSuppressionV4Op>(
+        rewriter, nms_op, new_result_types, nms_op.getBoxes(),
         nms_op.getScores(), nms_op.getMaxOutputSize(), nms_op.getIouThreshold(),
         nms_op.getScoreThreshold());
     // Cannot replace the NMSv3 Op with NMSv4 since the outputs between the
@@ -3002,13 +3002,10 @@ class ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
     // reserve_space_3
     new_result_types.push_back(
         UnrankedTensorType::get(FloatType::getF32(rewriter.getContext())));
-
-    OperationState new_state(tf_fused_batch_norm_op.getLoc(),
-                             TF::FusedBatchNormV3Op::getOperationName(),
-                             tf_fused_batch_norm_op.getOperands(),
-                             new_result_types,
-                             tf_fused_batch_norm_op->getAttrs());
-    Operation *tf_fused_batch_norm_op_v3 = rewriter.create(new_state);
+    auto tf_fused_batch_norm_op_v3 = CreateTfOp<TF::FusedBatchNormV3Op>(
+        rewriter, tf_fused_batch_norm_op, new_result_types,
+        tf_fused_batch_norm_op.getOperands(),
+        tf_fused_batch_norm_op->getAttrs());
 
     rewriter.replaceOp(tf_fused_batch_norm_op,
                        tf_fused_batch_norm_op_v3->getResults().drop_back());
@@ -3159,10 +3156,12 @@ LogicalResult HoistCwiseUnaryOutOfUnpack::matchAndRewrite(
                                     op.getOperand(), op.getOperand().getType(),
                                     ArrayRef<NamedAttribute>());
   Operation *new_unary_op = rewriter.create(new_unary_op_state);
+  CopyDeviceAndUnderscoredAttributes(op, new_unary_op);
 
   // Unpack results after applying unary operation.
-  auto unpack_unary_op = rewriter.create<UnpackOp>(
-      loc, op.getResultTypes(), new_unary_op->getResult(0), op.getAxis());
+  auto unpack_unary_op =
+      CreateTfOp<UnpackOp>(rewriter, op, op.getResultTypes(),
+                           new_unary_op->getResult(0), op.getAxis());
 
   // Bypass all users of the original unpack operation and use `unpack_unary_op`
   // results instead.
@@ -3474,15 +3473,15 @@ LogicalResult WhileRegionOp::verify() {
 // WhileRegionOp LoopLikeOpInterface
 //===----------------------------------------------------------------------===//
 
-Region &WhileRegionOp::getLoopBody() { return getBody(); }
+SmallVector<Region *> WhileRegionOp::getLoopRegions() { return {&getBody()}; }
 
 //===----------------------------------------------------------------------===//
 // WhileRegionOp RegionBranchOpInterface
 //===----------------------------------------------------------------------===//
 
 OperandRange WhileRegionOp::getEntrySuccessorOperands(
-    std::optional<unsigned> index) {
-  if (!index) {
+    RegionBranchPoint point) {
+  if (point.isParent()) {
     // WhileRegionOp branches to the condition, which branches to the body. But
     // the op itself doesn't branch back to itself. So this range is empty.
     auto end = this->getOperation()->operand_end();
@@ -3497,8 +3496,8 @@ OperandRange WhileRegionOp::getEntrySuccessorOperands(
 }
 
 void WhileRegionOp::getSuccessorRegions(
-    std::optional<unsigned> index, SmallVectorImpl<RegionSuccessor> &regions) {
-  if (index && *index == 0) {
+    RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions) {
+  if (!point.isParent() && point == (*this)->getRegion(0)) {
     // 'cond' branches to the body or returns.
     Operation *yield = getCond().front().getTerminator();
     if (yield->getOperands().size() ==
@@ -3512,11 +3511,11 @@ void WhileRegionOp::getSuccessorRegions(
       regions.push_back(RegionSuccessor(&getBody()));
       regions.push_back(RegionSuccessor());  // branch back to parent, no args
     }
-  } else if (index && *index == 1) {
+  } else if (!point.isParent() && point == (*this)->getRegion(1)) {
     // 'body' branches back to 'cond'.
     regions.push_back(
         RegionSuccessor(&getCond(), getCond().front().getArguments()));
-  } else if (!index) {
+  } else if (point.isParent()) {
     // The parent branches to 'cond'. It is also considered to branch to `body`
     // in case the terminator of `cond` doesn't forward the arguments of `cond`.
     regions.push_back(
@@ -3797,8 +3796,8 @@ class XlaConvToV2 : public OpRewritePattern<TF::XlaConvOp> {
   LogicalResult matchAndRewrite(TF::XlaConvOp op,
                                 PatternRewriter &rewriter) const override {
     SmallVector<Type> result_types{op.getResult().getType()};
-    rewriter.replaceOpWithNewOp<TF::XlaConvV2Op>(
-        op, op.getResult().getType(), op.getLhs(), op.getRhs(),
+    ReplaceTfOpWithNewOp<TF::XlaConvV2Op>(
+        rewriter, op, op.getResult().getType(), op.getLhs(), op.getRhs(),
         op.getWindowStrides(), op.getPadding(), op.getLhsDilation(),
         op.getRhsDilation(), op.getFeatureGroupCount(),
         op.getDimensionNumbers(), op.getPrecisionConfig(), 1);
@@ -3901,9 +3900,9 @@ class XlaReduceToXlaVariadicReduceV2
     SmallVector<Value> inputs{op.getInput()};
     SmallVector<Value> init_values{op.getInitValue()};
     SmallVector<Type> result_types{op.getResult().getType()};
-    rewriter.replaceOpWithNewOp<TF::XlaVariadicReduceV2Op>(
-        op, result_types, inputs, init_values, op.getDimensionsToReduce(),
-        op.getReducer());
+    ReplaceTfOpWithNewOp<TF::XlaVariadicReduceV2Op>(
+        rewriter, op, result_types, inputs, init_values,
+        op.getDimensionsToReduce(), op.getReducer());
     return ::mlir::success();
   };
 };
@@ -4077,12 +4076,10 @@ class XlaVariadicReduceToV2 : public OpRewritePattern<TF::XlaVariadicReduceOp> {
 
   LogicalResult matchAndRewrite(TF::XlaVariadicReduceOp op,
                                 PatternRewriter &rewriter) const override {
-    mlir::TF::XlaVariadicReduceV2Op xla_variadic_reduce_v2_op =
-        rewriter.create<::mlir::TF::XlaVariadicReduceV2Op>(
-            op.getLoc(), op.getResults().getTypes(), op.getInput(),
-            op.getInitValue(), op.getDimensionsToReduce(), op.getReducer());
+    ReplaceTfOpWithNewOp<::mlir::TF::XlaVariadicReduceV2Op>(
+        rewriter, op, op.getResults().getTypes(), op.getInput(),
+        op.getInitValue(), op.getDimensionsToReduce(), op.getReducer());
 
-    rewriter.replaceOp(op, xla_variadic_reduce_v2_op.getResults());
     return ::mlir::success();
   };
 };
@@ -4383,7 +4380,7 @@ LogicalResult UniformQuantizedClipByValueOp::verify() {
 //===----------------------------------------------------------------------===//
 
 MutableOperandRange YieldOp::getMutableSuccessorOperands(
-    std::optional<unsigned> index) {
+    RegionBranchPoint point) {
   if (auto whileOp =
           llvm::dyn_cast<WhileRegionOp>(this->getOperation()->getParentOp())) {
     if (&whileOp.getCond() == this->getOperation()->getParentRegion()) {
@@ -4391,6 +4388,12 @@ MutableOperandRange YieldOp::getMutableSuccessorOperands(
       return MutableOperandRange(
           this->getOperation(), 1,
           this->getOperation()->getOperands().size() - 1);
+    }
+  } else if (auto regionOp = llvm::dyn_cast<GeneratorDatasetRegionOp>(
+                 this->getOperation()->getParentOp())) {
+    if (&regionOp.getFinalize() == this->getOperation()->getParentRegion()) {
+      // `finalize`'s returns get discarded.
+      return MutableOperandRange(this->getOperation(), 0, 0);
     }
   }
   return MutableOperandRange(this->getOperation());

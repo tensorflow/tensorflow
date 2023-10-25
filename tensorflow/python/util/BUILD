@@ -23,7 +23,6 @@ visibility = [
     "//third_party/py/tf_agents:__subpackages__",  # For benchmarks.
     "//third_party/py/tf_slim:__subpackages__",
     "//third_party/py/tensorflow_docs:__subpackages__",
-    "//third_party/py/keras:__subpackages__",
     "//third_party/py/tf_keras:__subpackages__",
 ]
 
@@ -74,9 +73,9 @@ tf_python_pybind_extension(
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core/profiler/internal:print_model_analysis_hdr",
-        "//third_party/eigen3",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
         "@pybind11",
     ],
 )
@@ -149,10 +148,10 @@ tf_python_pybind_extension(
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util:stat_summarizer",
-        "//tensorflow/tsl/util:stats_calculator_portable",
-        "//third_party/eigen3",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/memory",
+        "@eigen_archive//:eigen3",
+        "@local_tsl//tsl/util:stats_calculator_portable",
         "@pybind11",
     ],
 )
@@ -167,6 +166,7 @@ tf_python_pybind_extension(
         "_pywrap_tensor_float_32_execution.pyi",
     ],
     deps = [
+        "//tensorflow/core/platform:tensor_float_32_hdr_lib",
         "@pybind11",
     ],
 )
@@ -181,6 +181,7 @@ tf_python_pybind_extension(
         "_pywrap_determinism.pyi",
     ],
     deps = [
+        "//tensorflow/core/util:determinism_hdr_lib",
         "@pybind11",
     ],
 )
@@ -276,13 +277,10 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "deprecation_test",
-    srcs = [
-        "deprecated_module.py",
-        "deprecated_module_new.py",
-        "deprecation_test.py",
-    ],
+    srcs = ["deprecation_test.py"],
     python_version = "PY3",
     deps = [
+        ":deprecated_module",
         ":deprecation",
         ":tf_inspect",
         "//tensorflow/python/eager:context",
@@ -463,11 +461,11 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:status",
         "//tensorflow/core/util:managed_stack_trace",
-        "//tensorflow/tsl/platform:fingerprint",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
+        "@local_tsl//tsl/platform:fingerprint",
     ],
 )
 
@@ -731,7 +729,7 @@ py_strict_library(
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         "@six_archive//:six",
-        "@wrapt",
+        "@pypi_wrapt//:pkg",
         "//tensorflow/python:pywrap_tensorflow",
         ":_pywrap_utils",
     ],
@@ -892,7 +890,7 @@ py_strict_library(
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         "//third_party/py/numpy",
-        "@wrapt",
+        "@pypi_wrapt//:pkg",
     ],
 )
 
@@ -1028,7 +1026,7 @@ py_strict_library(
         # py_test because not all tensorflow tests use tensorflow.bzl's py_test.
         "//tensorflow/python:global_test_configuration",
         ":tf_export",
-        "@wrapt",
+        "@pypi_wrapt//:pkg",
         ":_pywrap_utils",
         ":_pywrap_nest",
     ],

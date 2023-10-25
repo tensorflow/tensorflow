@@ -803,8 +803,6 @@ TEST(OperatorKeyTest, TestFlexWithUnsupportedOp) {
 TEST(OperatorKeyTest, TestFlexWithPartiallySupportedOps) {
   // Test Toco-supported/TFLite-unsupported operators.
   Model model;
-  // TODO(ycling): The test will be broken if TensorFlowAssert is implemented in
-  // TFLite. Find a more robust way to test the fallback logic.
   auto op = std::make_unique<TensorFlowAssertOperator>();
 
   const auto ops_by_type = BuildOperatorByTypeMap();

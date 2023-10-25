@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #endif  // TFLITE_KERNEL_USE_XNNPACK
 

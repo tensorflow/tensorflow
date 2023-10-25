@@ -61,7 +61,9 @@ TEST(DataDumperLoggerConfig, TestPassFilter) {
 
   const string kTestFilename = "test.txt";
   int print_callback_count = 0;
-  auto get_filename_fn = [](const string &filename) { return filename; };
+  auto get_filename_fn = [](const string &filename, mlir::Operation *op) {
+    return filename;
+  };
   auto print_callback = [&](llvm::raw_ostream &out) {
     print_callback_count++;
     return;

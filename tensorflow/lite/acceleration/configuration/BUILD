@@ -18,10 +18,12 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
+
+# copybara:uncomment load("//tools/build_defs/proto/cpp:cc_proto_library.bzl", "cc_proto_library")
 load(":build_defs.bzl", "flatbuffer_schema_compat_test")
 
 # copybara:comment_begin(oss-only)
-load("//tensorflow/tsl/platform/default:build_config.bzl", "tf_proto_library_py")
+load("@local_tsl//tsl/platform/default:build_config.bzl", "tf_proto_library_py")
 # copybara:comment_end
 
 package(
@@ -325,6 +327,7 @@ cc_test(
 cc_library(
     name = "xnnpack_plugin",
     srcs = ["xnnpack_plugin.cc"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":configuration_fbs",
         "//tensorflow/lite:minimal_logging",

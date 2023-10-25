@@ -16,6 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_JPEG_H_
 #define TENSORFLOW_CORE_PLATFORM_JPEG_H_
 
-#include "tensorflow/tsl/platform/jpeg.h"
+#include "tsl/platform/jpeg.h"
 
 #endif  // TENSORFLOW_CORE_PLATFORM_JPEG_H_

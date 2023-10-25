@@ -27,7 +27,7 @@ include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
 def LiftConv : Pat<
   (TF_Conv2DOp:$res $input, $filter, $strides, $use_cudnn_on_gpu, $padding,
     $explicit_paddings, IsDataFormatNHWC:$data_format, $dilations),
-  (LiftAsFunctionCall<"composite_conv2d_fn">
+  (LiftAsTFPartitionedCall<"composite_conv2d_fn">
     (ArgumentList $input, $filter),
     (ResultList $res),
     (NamedAttributeList
@@ -41,7 +41,7 @@ def LiftConv : Pat<
 def LiftDepthwiseConv : Pat<
   (TF_DepthwiseConv2dNativeOp:$res $input, $filter, $strides, $padding,
     $explicit_paddings, IsDataFormatNHWC:$data_format, $dilations),
-  (LiftAsFunctionCall<"composite_depthwise_conv2d_fn">
+  (LiftAsTFPartitionedCall<"composite_depthwise_conv2d_fn">
     (ArgumentList $input, $filter),
     (ResultList $res),
     (NamedAttributeList
@@ -53,7 +53,7 @@ def LiftDepthwiseConv : Pat<
 
 def LiftMatMul : Pat<
   (TF_MatMulOp:$res $a, $b, $transpose_a, $transpose_b),
-  (LiftAsFunctionCall<"composite_matmul_fn">
+  (LiftAsTFPartitionedCall<"composite_matmul_fn">
     (ArgumentList $a, $b),
     (ResultList $res),
     (NamedAttributeList
@@ -63,7 +63,7 @@ def LiftMatMul : Pat<
 
 def LiftGather : Pat<
   (TF_GatherV2Op:$res $params, $indices, $axis, $batch_dims),
-  (LiftAsFunctionCall<"composite_gather_fn">
+  (LiftAsTFPartitionedCall<"composite_gather_fn">
     (ArgumentList $params, $indices, $axis),
     (ResultList $res),
     (NamedAttributeList
@@ -73,7 +73,7 @@ def LiftGather : Pat<
 def LiftConv3D : Pat<
   (TF_Conv3DOp:$res $input, $filter, $strides, $padding,
     IsDataFormatNDHWC:$data_format, $dilations),
-  (LiftAsFunctionCall<"composite_conv3d_fn">
+  (LiftAsTFPartitionedCall<"composite_conv3d_fn">
     (ArgumentList $input, $filter),
     (ResultList $res),
     (NamedAttributeList
@@ -84,7 +84,7 @@ def LiftConv3D : Pat<
 
 def LiftBatchMatMul : Pat<
   (TF_BatchMatMulV2Op:$res $x, $y, $adj_x, $adj_y),
-  (LiftAsFunctionCall<"composite_batch_matmul_fn">
+  (LiftAsTFPartitionedCall<"composite_batch_matmul_fn">
     (ArgumentList $x, $y),
     (ResultList $res),
     (NamedAttributeList

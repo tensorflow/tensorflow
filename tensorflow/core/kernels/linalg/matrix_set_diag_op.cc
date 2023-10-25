@@ -23,7 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/linalg/matrix_set_diag_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -175,7 +175,8 @@ class MatrixSetDiagOp : public OpKernel {
   bool left_align_superdiagonal_ = true;
   bool left_align_subdiagonal_ = true;
   static constexpr int kNumV1Inputs = 2;
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixSetDiagOp);
+  MatrixSetDiagOp(const MatrixSetDiagOp&) = delete;
+  void operator=(const MatrixSetDiagOp&) = delete;
 };
 
 #define REGISTER_MATRIX_SET_DIAG(type)                                      \

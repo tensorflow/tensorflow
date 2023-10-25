@@ -17,12 +17,20 @@ if [[ "$TFCI_DOCKER_PULL_ENABLE" == 1 ]]; then
   docker pull "$TFCI_DOCKER_IMAGE"
 fi
 
+if [[ "$TFCI_DOCKER_REBUILD_ENABLE" == 1 ]]; then
+  DOCKER_BUILDKIT=1 docker build --cache-from "$TFCI_DOCKER_IMAGE" -t "$TFCI_DOCKER_IMAGE" "${TFCI_DOCKER_REBUILD_ARGS[@]}"
+  if [[ "$TFCI_DOCKER_REBUILD_UPLOAD_ENABLE" == 1 ]]; then
+    docker push "$TFCI_DOCKER_IMAGE"
+  fi
+fi
+
 # Keep the existing "tf" container if it's already present.
 # The container is not cleaned up automatically! Remove it with:
 # docker rm tf
 if ! docker container inspect tf >/dev/null 2>&1 ; then
   docker run "${TFCI_DOCKER_ARGS[@]}" --name tf -w "$TFCI_GIT_DIR" -itd --rm \
       -v "$TFCI_GIT_DIR:$TFCI_GIT_DIR" \
+      --env TFCI_PYTHON_VERSION \
       "$TFCI_DOCKER_IMAGE" \
     bash
 fi

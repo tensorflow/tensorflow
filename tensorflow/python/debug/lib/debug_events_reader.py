@@ -324,7 +324,7 @@ class BaseDigest:
           for the case of all digests of the same kind coming from the same
           file.
        2. A tuple of a file index and a byte offset. This applies to case
-          in which the same type of debugger data may come from multple files,
+          in which the same type of debugger data may come from multiple files,
           e.g., graph execution traces.
   """
 
@@ -1306,7 +1306,7 @@ class DebugDataReader:
     """Read the full tensor values from an Execution or ExecutionDigest.
 
     Args:
-      execution: An `ExecutionDigest` or `ExeuctionDigest` object.
+      execution: An `ExecutionDigest` or `ExecutionDigest` object.
 
     Returns:
       A list of numpy arrays representing the output tensor values of the

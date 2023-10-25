@@ -1,4 +1,4 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_translate --tflite-flatbuffer-to-mlir - -o - | FileCheck %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer --emit-stablehlo-ops=true %s -o - | flatbuffer_translate --tflite-flatbuffer-to-mlir - -o - | FileCheck %s
 // test stablehlo roundtrip
 
 // Identity function to make the exporter happy
@@ -503,3 +503,63 @@ func.func @scatter_multiple_ops(%input_tensor: tensor<200x100x300xf32>,
 // CHECK-NEXT:   }) {scatter_dimension_numbers = #stablehlo.scatter<update_window_dims = [1], inserted_window_dims = [0, 1], scatter_dims_to_operand_dims = [0, 1], index_vector_dim = 1>} : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<10x300xf32>) -> tensor<200x100x300xf32>
 // CHECK-NEXT:   return %1 : tensor<200x100x300xf32>
 // CHECK-NEXT: }
+
+func.func @gather(%operand: tensor<3x4x2xi32>, %start_indices: tensor<2x3x2xi64>) -> tensor<2x3x2x2xi32>{
+  %result = "stablehlo.gather"(%operand, %start_indices) {
+  dimension_numbers = #stablehlo.gather<
+    offset_dims = [2, 3],
+    collapsed_slice_dims = [0],
+    start_index_map = [1, 0],
+    index_vector_dim = 2>,
+  slice_sizes = dense<[1, 2, 2]> : tensor<3xi64>,
+  indices_are_sorted = false
+  } : (tensor<3x4x2xi32>, tensor<2x3x2xi64>) -> tensor<2x3x2x2xi32>
+  return %result : tensor<2x3x2x2xi32>
+}
+
+
+// CHECK: func.func private @gather(%arg0: tensor<3x4x2xi32>, %arg1: tensor<2x3x2xi64>) -> tensor<2x3x2x2xi32> {
+// CHECK-NEXT: %0 = "stablehlo.gather"(%arg0, %arg1) {dimension_numbers = #stablehlo.gather<offset_dims = [2, 3], collapsed_slice_dims = [0], start_index_map = [1, 0], index_vector_dim = 2>, indices_are_sorted = false, slice_sizes = dense<[1, 2, 2]> : tensor<3xi64>} : (tensor<3x4x2xi32>, tensor<2x3x2xi64>) -> tensor<2x3x2x2xi32>
+// CHECK-NEXT: return %0 : tensor<2x3x2x2xi32>
+// CHECK-NEXT:}
+
+func.func @transpose(%arg0: tensor<2x3x2xi32>) -> tensor<2x3x2xi32> {
+  %0 = "stablehlo.transpose"(%arg0) {permutation = dense<[2, 1, 0]> : tensor<3xi64>} : (tensor<2x3x2xi32>) -> tensor<2x3x2xi32>
+  return %0 : tensor<2x3x2xi32>
+}
+
+// CHECK:func.func private @transpose(%arg0: tensor<2x3x2xi32>) -> tensor<2x3x2xi32> {
+// CHECK-NEXT:  %0 = stablehlo.transpose %arg0, dims = [2, 1, 0] : (tensor<2x3x2xi32>) -> tensor<2x3x2xi32>
+// CHECK-NEXT:  return %0 : tensor<2x3x2xi32>
+// CHECK-NEXT:}
+
+func.func @rng_bit_generator(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>) {
+  %output_state, %output = "stablehlo.rng_bit_generator"(%arg0) {rng_algorithm = #stablehlo<rng_algorithm DEFAULT>} : (tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>)
+  func.return %output_state, %output : tensor<2xui64>, tensor<10x12xui32>
+}
+
+// CHECK:func.func private @rng_bit_generator(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>) {
+// CHECK-NEXT:  %output_state, %output = stablehlo.rng_bit_generator %arg0, algorithm = DEFAULT : (tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui32>)
+// CHECK-NEXT:  return %output_state, %output : tensor<2xui64>, tensor<10x12xui32>
+// CHECK-NEXT:}
+
+func.func @rng_bit_generator_threefry(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui64>) {
+  %output_state, %output = "stablehlo.rng_bit_generator"(%arg0) {rng_algorithm = #stablehlo<rng_algorithm THREE_FRY>} : (tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui64>)
+  func.return %output_state, %output : tensor<2xui64>, tensor<10x12xui64>
+}
+
+// CHECK:func.func private @rng_bit_generator_threefry(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui64>) {
+// CHECK-NEXT:  %output_state, %output = stablehlo.rng_bit_generator %arg0, algorithm = THREE_FRY : (tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xui64>)
+// CHECK-NEXT:  return %output_state, %output : tensor<2xui64>, tensor<10x12xui64>
+// CHECK-NEXT:}
+
+
+func.func @rng_bit_generator_philox(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xi32>) {
+  %output_state, %output = "stablehlo.rng_bit_generator"(%arg0) {rng_algorithm = #stablehlo<rng_algorithm PHILOX>} : (tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xi32>)
+  func.return %output_state, %output : tensor<2xui64>, tensor<10x12xi32>
+}
+
+// CHECK:func.func private @rng_bit_generator_philox(%arg0: tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xi32>) {
+// CHECK-NEXT:  %output_state, %output = stablehlo.rng_bit_generator %arg0, algorithm = PHILOX : (tensor<2xui64>) -> (tensor<2xui64>, tensor<10x12xi32>)
+// CHECK-NEXT:  return %output_state, %output : tensor<2xui64>, tensor<10x12xi32>
+// CHECK-NEXT:}

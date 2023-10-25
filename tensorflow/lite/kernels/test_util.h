@@ -55,7 +55,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 #include "tensorflow/lite/util.h"
-#include "tensorflow/tsl/platform/logging.h"
+#include "tsl/platform/logging.h"
 
 namespace tflite {
 
@@ -647,6 +647,12 @@ class SingleOpModel {
     PopulateTensorImpl<T>(index, /*offset=*/0, data);
   }
 
+  // Populates the tensor given its index.
+  template <typename T>
+  void PopulateTensor(int index, absl::Span<const T> data) {
+    PopulateTensorImpl<T>(index, /*offset=*/0, data);
+  }
+
   // Partially populates the tensor, starting at the given offset.
   template <typename T>
   void PopulateTensor(int index, int offset, T* begin, T* end) {
@@ -1107,6 +1113,7 @@ TensorType GetTensorType() {
   if (std::is_same<T, int32_t>::value) return TensorType_INT32;
   if (std::is_same<T, uint32_t>::value) return TensorType_UINT32;
   if (std::is_same<T, int64_t>::value) return TensorType_INT64;
+  if (std::is_same<T, uint64_t>::value) return TensorType_UINT64;
   if (std::is_same<T, uint8_t>::value) return TensorType_UINT8;
   if (std::is_same<T, string>::value) return TensorType_STRING;
   if (std::is_same<T, bool>::value) return TensorType_BOOL;

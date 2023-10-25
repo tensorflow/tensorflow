@@ -63,7 +63,8 @@ TEST(TfQuantOpTest, applyUniformQuantization) {
   std::optional<TF::PartitionedCallOp> dequantize_op = ApplyUniformQuantization(
       pattern_rewriter, cast<TF::ConstOp>(value.getDefiningOp()), quant_spec);
   EXPECT_TRUE(dequantize_op.has_value());
-  EXPECT_EQ(dequantize_op.value().func().getName().str(), "dequantize_uniform");
+  EXPECT_EQ(dequantize_op.value().func().getName().str(),
+            "composite_dequantize_uniform");
 }
 
 }  // namespace

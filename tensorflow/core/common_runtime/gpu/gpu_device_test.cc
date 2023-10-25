@@ -21,20 +21,20 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 
-#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/device_id_utils.h"
+#include "xla/stream_executor/gpu/gpu_cudamallocasync_allocator.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/tsl/framework/device_id.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tsl/framework/device_id.h"
+#include "tsl/lib/core/status_test_util.h"
 
 #ifdef TF_GPU_USE_PJRT
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 #endif  // TF_GPU_USE_PJRT
 

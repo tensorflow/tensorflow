@@ -24,12 +24,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/service/backend.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/xla.pb.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/service/backend.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/statusor.h"
+#include "xla/xla.pb.h"
 #include "tensorflow/compiler/xrt/xrt.pb.h"
 #include "tensorflow/compiler/xrt/xrt_memory_manager.h"
 #include "tensorflow/compiler/xrt/xrt_refptr.h"

@@ -228,6 +228,11 @@ typedef enum {
   kTfLiteBuiltinStablehloReduceWindow = 198,
   kTfLiteBuiltinStablehloSort = 199,
   kTfLiteBuiltinStablehloWhile = 200,
+  kTfLiteBuiltinStablehloGather = 201,
+  kTfLiteBuiltinStablehloTranspose = 202,
+  kTfLiteBuiltinDilate = 203,
+  kTfLiteBuiltinStablehloRngBitGenerator = 204,
+  kTfLiteBuiltinReduceWindow = 205,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus

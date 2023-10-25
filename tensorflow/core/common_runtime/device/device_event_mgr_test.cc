@@ -19,14 +19,13 @@ limitations under the License.
 
 #include <atomic>
 
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
+#include "xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/stream_executor.h"
@@ -34,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
-#include "tensorflow/tsl/framework/device_id.h"
+#include "tsl/framework/device_id.h"
 
 namespace tensorflow {
 

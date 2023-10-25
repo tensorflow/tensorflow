@@ -1503,8 +1503,29 @@ struct ConvertWhileRegion : public OpConversionPattern<TF::WhileRegionOp> {
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_lower_static_tensor_list.inc"
 
+bool ModuleContainsTensorListOp(ModuleOp mod) {
+  auto res = mod->walk([&](mlir::Operation *op) -> WalkResult {
+    if (op->getName().getStringRef().contains("TensorList")) {
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  return res.wasInterrupted();
+}
+
 void LowerStaticTensorListPass::runOnOperation() {
   auto *context = &getContext();
+  ModuleOp module = getOperation();
+
+  // When allow_tensorlist_pass_through_ == false the target dynamic legal
+  // checks will cause this pass to fail if there are any variant type tensors
+  // in the graph. The graph should still be treated as valid as long as those
+  // variant tensors are not from tf-dialect tensorlist ops. Rather than change
+  // the dynamic legalization predicates
+  // (`is_legal` in `runOnOperation`) it is equivalent and more easily
+  // implemented to simply skip applying this pass if there are no tensorlist
+  // operations.
+  if (!ModuleContainsTensorListOp(module)) return;
 
   // TensorFlow operations that doesn't have operands and results of type
   // variant are legal. Here, we don't distinguish between variants encoding
@@ -1559,7 +1580,6 @@ void LowerStaticTensorListPass::runOnOperation() {
                ConvertTensorListReserve>(context,
                                          this->allow_tensorlist_pass_through_,
                                          this->default_to_single_batch_);
-  ModuleOp module = getOperation();
   if (!this->allow_tensorlist_pass_through_) {
     if (failed(applyPartialConversion(module, target, std::move(patterns)))) {
       module.emitError(

@@ -20,9 +20,9 @@ limitations under the License.
 namespace tensorflow {
 namespace tfrt_stub {
 
-// Step id and batch id are packed together to a 32 bit integer in the stream
-// callback. Step id takes the MSB 16 bit.
-inline constexpr size_t kStepIdBitSize = 16;
+// Step id and batch id are packed together to a 64 bit integer in the stream
+// callback. Step id takes the MSB 32 bit.
+inline constexpr size_t kStepIdBitSize = 32;
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

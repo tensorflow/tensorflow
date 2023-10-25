@@ -55,7 +55,8 @@ class RemoteDevice : public Device {
  private:
   const string local_dev_name_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(RemoteDevice);
+  RemoteDevice(const RemoteDevice&) = delete;
+  void operator=(const RemoteDevice&) = delete;
 };
 
 void AsRemoteDevices(

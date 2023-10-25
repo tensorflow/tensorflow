@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"

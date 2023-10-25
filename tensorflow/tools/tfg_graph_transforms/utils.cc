@@ -20,7 +20,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/cc/saved_model/image_format/internal_api.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/platform/stringpiece.h"
+#include "tsl/platform/stringpiece.h"
 
 namespace mlir {
 namespace tfg {

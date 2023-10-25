@@ -24,8 +24,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "xla/client/local_client.h"
+#include "xla/statusor.h"
 #include "tensorflow/compiler/xrt/xrt_refptr.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/refcount.h"

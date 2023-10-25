@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -271,12 +272,18 @@ StatusOr<mlir::Operation*> HandleConv(ConvOp conv_op) {
                                                input_shape.end());
       slice_size[curr_input_dim] += halo_size;
       mlir::Value slice_size_const = Int64Const(builder, location, slice_size);
+      // slice_size_const and slize_begin_int64 has to be same type.
+      mlir::Value slice_begin_int64 = builder.create<mlir::TF::CastOp>(
+          location,
+          mlir::RankedTensorType::get({input_layout.rank()},
+                                      builder.getI64Type()),
+          slice_begin);
 
       mlir::RankedTensorType sliced_input_type =
           mlir::RankedTensorType::get(slice_size, input_type.getElementType());
       mlir::Value sliced_input = builder.create<mlir::TF::SliceOp>(
           location, sliced_input_type, /*input=*/halo_exchanged_input,
-          /*begin=*/slice_begin, /*size=*/slice_size_const);
+          /*begin=*/slice_begin_int64, /*size=*/slice_size_const);
       conv_op->setOperand(0, sliced_input);
     }
 

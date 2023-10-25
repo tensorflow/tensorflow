@@ -17,6 +17,7 @@ limitations under the License.
 #include <functional>
 #include <optional>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -35,14 +36,14 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
-#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/tf_quantize_op_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
 namespace quant {
 namespace {
-constexpr StringRef kDequantizeFunctionName = "dequantize";
+constexpr StringRef kDequantizeFunctionName = "composite_dequantize";
 constexpr StringRef kUniformQuantizationFunctionName = "uniform";
 
 // Pre-actions before adding quantization logics. It creates a function with the
@@ -57,8 +58,14 @@ func::FuncOp PrepareFunctionRegister(PatternRewriter& rewriter, Value input_val,
   if (!insertion_point) insertion_point = input_op->getParentOfType<ModuleOp>();
   rewriter.setInsertionPointAfter(insertion_point);
 
-  FunctionType func_type = FunctionType::get(
-      rewriter.getContext(), {input_val.getType()}, {result_type});
+  UnrankedTensorType create_unknown_input_shape =
+      CreateUnknownShapeFromElementType(input_val.getType());
+  UnrankedTensorType create_unknown_output_shape =
+      CreateUnknownShapeFromElementType(result_type);
+
+  FunctionType func_type =
+      FunctionType::get(rewriter.getContext(), {create_unknown_input_shape},
+                        {create_unknown_output_shape});
 
   func::FuncOp quantization_func =
       rewriter.create<func::FuncOp>(input_op->getLoc(), func_name, func_type);
@@ -110,10 +117,17 @@ std::optional<TF::PartitionedCallOp> RegisterOperationsInFuncOp(
         quantization_operations_func) {
   Operation* input_op = input_val.getDefiningOp();
   auto original_point = rewriter.saveInsertionPoint();
+
+  auto unique_func_name = func_name.str();
+  SymbolTable symbol_table(input_op->getParentOfType<ModuleOp>());
+  while (symbol_table.lookup(unique_func_name)) {
+    absl::StrAppend(&unique_func_name, "_");
+  }
+
   Value func_input_arg;
   // Creates a function.
   func::FuncOp func_op = PrepareFunctionRegister(
-      rewriter, input_val, result_type, func_name, func_input_arg);
+      rewriter, input_val, result_type, unique_func_name, func_input_arg);
 
   // Fills the body.
   Operation* last_op_in_func =
@@ -123,7 +137,7 @@ std::optional<TF::PartitionedCallOp> RegisterOperationsInFuncOp(
   // Connect the function in the existing graph.
   auto end_call_op = FinalizeFunctionRegister(
       rewriter, input_val, last_op_in_func->getResult(0), func_op, input_op,
-      func_name, original_point, result_type);
+      unique_func_name, original_point, result_type);
   return end_call_op;
 }
 
@@ -180,12 +194,16 @@ std::optional<Value> AddUniformQuantizeOps(PatternRewriter& rewriter,
 
 Operation* LogicsForUniformDequanization(PatternRewriter& rewriter,
                                          Operation* func_op, Value input_val,
-                                         ShapedType result_type,
+                                         ShapedType original_input_tensor_type,
                                          QuantizedType quant_type) {
   auto loc = input_val.getLoc();
   rewriter.setInsertionPointToStart(
       &(cast<func::FuncOp>(func_op)).getBody().front());
-  auto new_cast_op = rewriter.create<TF::CastOp>(loc, result_type, input_val);
+
+  UnrankedTensorType create_unknown_input_shape =
+      CreateUnknownShapeFromElementType(original_input_tensor_type);
+  auto new_cast_op =
+      rewriter.create<TF::CastOp>(loc, create_unknown_input_shape, input_val);
   // TODO - b/278949920: Enable Per-Channel Quantization for XLA Opset
   auto qtype = quant_type.dyn_cast<UniformQuantizedType>();
   TensorType scale_type = RankedTensorType::get({}, rewriter.getF32Type());
@@ -194,13 +212,11 @@ Operation* LogicsForUniformDequanization(PatternRewriter& rewriter,
       DenseFPElementsAttr::get(scale_type,
                                {static_cast<float>(qtype.getScale())}));
 
-  if (result_type.getElementType().isBF16()) {
+  if (original_input_tensor_type.getElementType().isBF16()) {
     // Add bf16 cast op after scale to match with the next op's data
     // type.
     scale_op = rewriter.create<TF::CastOp>(
-        loc,
-        CloneTypeWithNewElementType(scale_op.getType(), rewriter.getBF16Type()),
-        scale_op);
+        loc, UnrankedTensorType::get(rewriter.getBF16Type()), scale_op);
   }
 
   auto mul_op = rewriter.create<TF::MulOp>(loc, new_cast_op.getType(), scale_op,

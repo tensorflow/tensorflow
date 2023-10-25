@@ -14,7 +14,7 @@
 # ==============================================================================
 """Tests for templates module."""
 
-import imp
+import types
 
 from absl.testing import parameterized
 import gast
@@ -140,7 +140,7 @@ class TemplatesTest(test.TestCase, parameterized.TestCase):
 
     node = templates.replace(template, foo='b')[0]
     result, _, _ = loader.load_ast(node)
-    mod = imp.new_module('test')
+    mod = types.ModuleType('test')
     mod.b = 3
     self.assertEqual(3, result.test_fn(mod))
 

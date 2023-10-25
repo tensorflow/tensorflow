@@ -28,13 +28,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/client/lib/comparators.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/dynamic_shaped_ops.h"
-#include "tensorflow/compiler/xla/client/lib/loops.h"
-#include "tensorflow/compiler/xla/client/value_inference.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "xla/client/lib/arithmetic.h"
+#include "xla/client/lib/comparators.h"
+#include "xla/client/lib/constants.h"
+#include "xla/client/lib/dynamic_shaped_ops.h"
+#include "xla/client/lib/loops.h"
+#include "xla/client/value_inference.h"
+#include "xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -71,7 +71,8 @@ class RandomUniformOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RandomUniformOp);
+  RandomUniformOp(const RandomUniformOp&) = delete;
+  void operator=(const RandomUniformOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("RandomUniform").CompileTimeConstantInput("shape"),
@@ -110,7 +111,8 @@ class RandomUniformIntOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RandomUniformIntOp);
+  RandomUniformIntOp(const RandomUniformIntOp&) = delete;
+  void operator=(const RandomUniformIntOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("RandomUniformInt").CompileTimeConstantInput("shape"),
@@ -143,7 +145,8 @@ class RandomStandardNormalOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(RandomStandardNormalOp);
+  RandomStandardNormalOp(const RandomStandardNormalOp&) = delete;
+  void operator=(const RandomStandardNormalOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("RandomStandardNormal").CompileTimeConstantInput("shape"),

@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/util/einsum_op_util.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "tensorflow/tsl/platform/errors.h"
+#include "tsl/platform/errors.h"
 
 namespace tensorflow {
 

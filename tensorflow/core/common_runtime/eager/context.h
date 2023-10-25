@@ -68,7 +68,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/tsl/platform/refcount.h"
+#include "tsl/platform/refcount.h"
 
 // "tensorflow/core/platform/platform.h" must be included first before using
 // IS_MOBILE_PLATFORM.
@@ -727,7 +727,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   absl::flat_hash_map<uint64, std::unique_ptr<CompositeDevice>>
       composite_devices_ ABSL_GUARDED_BY(composite_devices_mu_);
 
-  FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
+  FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(),
+                                          FunctionDefLibrary()};
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 

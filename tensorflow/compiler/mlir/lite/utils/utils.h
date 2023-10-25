@@ -90,6 +90,23 @@ inline Type TransposeLastTwoDims(Type type) {
   return shaped_type.clone(new_shape);
 }
 
+// Returns a ShapedType for a permutation and the shape of input after
+// applying the permutation to the given shape through a transpose.
+inline ShapedType GetTransposedType(Value input,
+                                    llvm::ArrayRef<int64_t> permutation_array) {
+  auto input_type = input.getType().cast<ShapedType>();
+  if (permutation_array.size() != input_type.getRank()) {
+    return nullptr;
+  }
+  llvm::SmallVector<int64_t> transposed_shape(permutation_array.size());
+  for (int64_t i = 0; i < permutation_array.size(); ++i) {
+    transposed_shape[i] = input_type.getDimSize(permutation_array[i]);
+  }
+  auto transposed_type =
+      RankedTensorType::get(transposed_shape, input_type.getElementType());
+  return transposed_type;
+}
+
 }  // namespace TFL
 }  // namespace mlir
 

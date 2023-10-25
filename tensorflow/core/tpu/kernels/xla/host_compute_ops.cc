@@ -24,13 +24,13 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/sharding_builder.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/side_effect_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/client/sharding_builder.h"
+#include "xla/client/xla_builder.h"
+#include "xla/primitive_util.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/side_effect_util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -54,9 +54,9 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tensorflow/tsl/platform/macros.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/macros.h"
 
 namespace tensorflow {
 
@@ -419,7 +419,8 @@ class HostComputeOp : public XlaOpKernel {
   int64_t tpu_core_;
   std::vector<string> token_input_nodes_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(HostComputeOp);
+  HostComputeOp(const HostComputeOp&) = delete;
+  void operator=(const HostComputeOp&) = delete;
 };
 
 class SendToHostOp : public XlaOpKernel {
@@ -472,7 +473,8 @@ class SendToHostOp : public XlaOpKernel {
   string key_;
   std::vector<string> token_input_nodes_;
   string original_node_name_;
-  TF_DISALLOW_COPY_AND_ASSIGN(SendToHostOp);
+  SendToHostOp(const SendToHostOp&) = delete;
+  void operator=(const SendToHostOp&) = delete;
 };
 
 class RecvFromHostOp : public XlaOpKernel {
@@ -529,7 +531,8 @@ class RecvFromHostOp : public XlaOpKernel {
   string key_;
   std::vector<string> token_input_nodes_;
   string original_node_name_;
-  TF_DISALLOW_COPY_AND_ASSIGN(RecvFromHostOp);
+  RecvFromHostOp(const RecvFromHostOp&) = delete;
+  void operator=(const RecvFromHostOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaHostCompute"), HostComputeOp);

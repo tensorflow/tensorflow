@@ -35,7 +35,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import input as input_ops
 from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import server_lib
-from tensorflow.tsl.protobuf import rpc_options_pb2
+from tsl.protobuf import rpc_options_pb2
 
 
 class GrpcServerTest(test.TestCase):
@@ -621,32 +621,22 @@ class ClusterSpecTest(test.TestCase):
         }}), server_lib.ClusterSpec({"job": ["host:2222"]}))
 
   def testNe(self):
-    self.assertNotEquals(
+    self.assertNotEqual(
         server_lib.ClusterSpec({}),
-        server_lib.ClusterSpec({
-            "job": ["host:2223"]
-        }),)
-    self.assertNotEquals(
-        server_lib.ClusterSpec({
-            "job1": ["host:2222"]
-        }),
-        server_lib.ClusterSpec({
-            "job2": ["host:2222"]
-        }),)
-    self.assertNotEquals(
-        server_lib.ClusterSpec({
-            "job": ["host:2222"]
-        }),
-        server_lib.ClusterSpec({
-            "job": ["host:2223"]
-        }),)
-    self.assertNotEquals(
-        server_lib.ClusterSpec({
-            "job": ["host:2222", "host:2223"]
-        }),
-        server_lib.ClusterSpec({
-            "job": ["host:2223", "host:2222"]
-        }),)
+        server_lib.ClusterSpec({"job": ["host:2223"]}),
+    )
+    self.assertNotEqual(
+        server_lib.ClusterSpec({"job1": ["host:2222"]}),
+        server_lib.ClusterSpec({"job2": ["host:2222"]}),
+    )
+    self.assertNotEqual(
+        server_lib.ClusterSpec({"job": ["host:2222"]}),
+        server_lib.ClusterSpec({"job": ["host:2223"]}),
+    )
+    self.assertNotEqual(
+        server_lib.ClusterSpec({"job": ["host:2222", "host:2223"]}),
+        server_lib.ClusterSpec({"job": ["host:2223", "host:2222"]}),
+    )
 
 
 if __name__ == "__main__":

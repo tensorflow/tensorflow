@@ -29,10 +29,10 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/tsl/platform/env.h"
-#include "tensorflow/tsl/platform/statusor.h"
-#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/tsl/profiler/utils/file_system_utils.h"
+#include "tsl/platform/env.h"
+#include "tsl/platform/statusor.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
+#include "tsl/profiler/utils/file_system_utils.h"
 
 namespace tensorflow {
 namespace profiler {

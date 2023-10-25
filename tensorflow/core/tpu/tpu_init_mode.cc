@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 

@@ -31,47 +31,47 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
-#include "tensorflow/compiler/xla/service/backend.h"
-#include "tensorflow/compiler/xla/service/computation_layout.h"
-#include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
-#include "tensorflow/compiler/xla/service/service_executable_run_options.h"
-#include "tensorflow/compiler/xla/service/transfer_manager.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/shape_layout.h"
-#include "tensorflow/compiler/xla/shape_tree.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_defn.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_node_context.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_op_executable.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
-#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/backend.h"
+#include "xla/service/computation_layout.h"
+#include "xla/service/executable.h"
+#include "xla/service/hlo.pb.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/service_executable_run_options.h"
+#include "xla/service/transfer_manager.h"
+#include "xla/shape.h"
+#include "xla/shape_layout.h"
+#include "xla/shape_tree.h"
+#include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/status_macros.h"
+#include "xla/statusor.h"
+#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/tpu/c_api_conversions.h"
+#include "xla/stream_executor/tpu/c_api_decl.h"
+#include "xla/stream_executor/tpu/c_api_defn.h"
+#include "xla/stream_executor/tpu/proto_helper.h"
+#include "xla/stream_executor/tpu/status_helper.h"
+#include "xla/stream_executor/tpu/tpu_api.h"
+#include "xla/stream_executor/tpu/tpu_node_context.h"
+#include "xla/stream_executor/tpu/tpu_op_executable.h"
+#include "xla/stream_executor/tpu/tpu_ops_c_api.h"
+#include "xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "xla/util.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c/outside_compilation_params.h"
-#include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api_conversions.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/c/tf_rendezvous_c_api_internal.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"  // IWYU pragma: keep
+#include "tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -332,8 +332,7 @@ typedef std::unique_ptr<SE_OutsideCompilationParams, DestroyOCParams>
 void UnregisterCancellation(OpKernelContext* ctx,
                             CancellationManager* cancellation_manager,
                             se::Stream* stream, int device_ordinal,
-                            CancellationToken token,
-                            OpaqueTransferManagerImpl* transfer_manager) {
+                            CancellationToken token) {
   // If execution reaches this point, the host callback enqueued below will get
   // called regardless of stream status. Call inc_num_deferred_ops_function here
   // and dec_num_deferred_ops_function in the host callback.
@@ -375,9 +374,6 @@ void UnregisterCancellation(OpKernelContext* ctx,
     // dec_num_deferred_ops_function are called, ExecutorState::Finish will be
     // allowed to proceed.
     dec_num_deferred_ops_function();
-
-    stream_executor::tpu::OpsApiFn()->TpuExecutable_FreeOpaqueTransferManagerFn(
-        transfer_manager);
   });
   stream->ReturnSubStream(deregister_stream);
 }
@@ -542,7 +538,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
     }
   }
   UnregisterCancellation(ctx, cancellation_manager, stream, device_ordinal,
-                         token, oc_params->opaque_host_device_transfer_mgr);
+                         token);
 
   VLOG(1) << "Cloud TPU: TPUExecute done";
   return output;

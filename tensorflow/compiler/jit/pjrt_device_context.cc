@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer.h"
 #include "tensorflow/compiler/jit/pjrt_tensor_buffer_util.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
 #include "tensorflow/core/framework/device.h"
@@ -32,8 +32,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tfrt/common/async_value_tensor.h"
 #include "tensorflow/core/tfrt/common/create_pjrt_client_util.h"
-#include "tensorflow/tsl/c/tsl_status_internal.h"
-#include "tensorflow/tsl/framework/device_id_utils.h"
+#include "tsl/c/tsl_status_internal.h"
+#include "tsl/framework/device_id_utils.h"
 
 namespace tensorflow {
 namespace {
@@ -130,6 +130,12 @@ void PjRtDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
     device_buffer = device_tensor_av->GetBuffer().get();
   }
 
+  if (device_buffer == nullptr) {
+    done(absl::InvalidArgumentError(
+        "The device tensor has no associated device buffer."));
+    return;
+  }
+
   xla::PjRtFuture<Status> future = device_buffer->ToLiteral(literal.get());
   future.OnReady([literal = std::move(literal), done = std::move(done)](
                      const tensorflow::Status& status) { done(status); });
@@ -165,10 +171,13 @@ void PjRtDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
   if (use_pjrt_tensor_buffer_) {
     // Copy the newly created tensor with PjRtTensorBuffer to output device
     // tensor.
-    //
-    // We currently assume the PjRtBuffer is a PjRtStreamExecutorBuffer.
-    *device_tensor = MakeTensorFromPjRtStreamExecutorBuffer(
+    StatusOr<Tensor> t = MakeTensorFromPjRtBuffer(
         device_tensor->dtype(), device_tensor->shape(), std::move(*buffer_or));
+    if (!t.ok()) {
+      done(t.status());
+      return;
+    }
+    *device_tensor = *t;
   } else {
     AsyncValueTensor* result_tensor =
         tensorflow::AsyncValueTensor::FromTensor(device_tensor);
@@ -271,10 +280,13 @@ void PjRtDeviceToDeviceCopy(DeviceContext* send_dev_context,
           ->use_pjrt_tensor_buffer()) {
     // Copy the newly created tensor with PjRtTensorBuffer to output device
     // tensor.
-    //
-    // We currently assume the PjRtBuffer is a PjRtStreamExecutorBuffer.
-    *output = MakeTensorFromPjRtStreamExecutorBuffer(
+    StatusOr<Tensor> t = MakeTensorFromPjRtBuffer(
         output->dtype(), output->shape(), std::move(*buffer_or));
+    if (!t.ok()) {
+      done(t.status());
+      return;
+    }
+    *output = *t;
   } else {
     AsyncValueTensor* output_tensor =
         tensorflow::AsyncValueTensor::FromTensor(output);

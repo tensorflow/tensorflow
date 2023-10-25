@@ -22,8 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
-namespace mlir {
-namespace stablehlo {
+namespace mlir::quant::stablehlo {
 
 // Legalizes from MHLO quantized ops with MHLO quant types to MHLO primitive ops
 // like int ops.
@@ -59,7 +58,6 @@ void AddQuantizationLoweringPasses(mlir::OpPassManager &pm);
 #define GEN_PASS_DECL_CONVERTTFQUANTTYPES
 #define GEN_PASS_DECL_VERIFYQUANTLEGALIZATION
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/bridge/passes.h.inc"
-}  // namespace stablehlo
-}  // namespace mlir
+}  // namespace mlir::quant::stablehlo
 
 #endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_STABLEHLO_PASSES_BRIDGE_PASSES_H_

@@ -253,7 +253,7 @@ cc_library(
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/tsl/platform:path",
+        "@local_tsl//tsl/platform:path",
     ],
 )
 

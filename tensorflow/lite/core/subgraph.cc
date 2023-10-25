@@ -2246,7 +2246,7 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegateImpl(TfLiteDelegate* delegate) {
         0, execution_plan_, &last_execution_plan_index_prepared));
     if (has_dynamic_tensors_) {
       TF_LITE_ENSURE_STATUS(EnsureMemoryAllocations());
-      TFLITE_LOG(
+      TFLITE_LOG_PROD_ONCE(
           tflite::TFLITE_LOG_WARNING,
           "Attempting to use a delegate that only supports static-sized "
           "tensors with a graph that has dynamic-sized tensors (tensor#%d is a "

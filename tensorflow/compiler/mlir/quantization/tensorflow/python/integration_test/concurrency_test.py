@@ -78,7 +78,7 @@ class MultiThreadedTest(test.TestCase):
 
     quantization_options = quant_opts_pb2.QuantizationOptions(
         quantization_method=quant_opts_pb2.QuantizationMethod(
-            experimental_method=quant_opts_pb2.QuantizationMethod.ExperimentalMethod.STATIC_RANGE
+            preset_method=quant_opts_pb2.QuantizationMethod.PresetMethod.METHOD_STATIC_RANGE_INT8
         ),
         tags={tag_constants.SERVING},
         signature_keys=['serving_default'],

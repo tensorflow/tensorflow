@@ -27,7 +27,7 @@ limitations under the License.
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
 #include "riegeli/records/record_reader.h"  // from @riegeli
 #include "tensorflow/tools/proto_splitter/chunk.pb.h"
-#include "tensorflow/tsl/platform/protobuf.h"
+#include "tsl/platform/protobuf.h"
 
 namespace tensorflow {
 namespace tools::proto_splitter {

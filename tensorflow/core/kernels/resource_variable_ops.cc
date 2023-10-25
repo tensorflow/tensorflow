@@ -45,7 +45,10 @@ limitations under the License.
 //   (use_locking=false), we never copy even if the variable's
 //   reference count is >1.
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_requires.h"
+#include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -126,6 +129,10 @@ Status CopyVariable(int output_idx, OpKernelContext* ctx, const Tensor* t) {
     output->flat<type>() = t->flat<type>(); \
     break;
       TF_CALL_ALL_TYPES(HANDLER);
+      TF_CALL_float8_e5m2(HANDLER);
+      TF_CALL_float8_e4m3fn(HANDLER);
+      TF_CALL_int4(HANDLER);
+      TF_CALL_uint4(HANDLER);
 #undef HANDLER
       default:
         return errors::Internal("Unsupported dtype", t->dtype());
@@ -293,6 +300,8 @@ REGISTER_KERNEL_BUILDER(Name("VarHandleOp").Device(DEVICE_CPU), VarHandleOp);
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
 TF_CALL_variant(REGISTER_GPU_KERNELS);
+TF_CALL_int4(REGISTER_GPU_KERNELS);
+TF_CALL_uint4(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -306,6 +315,8 @@ TF_CALL_variant(REGISTER_GPU_KERNELS);
 TF_CALL_GPU_ALL_TYPES(REGISTER_DEFAULT_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_DEFAULT_KERNELS);
 TF_CALL_variant(REGISTER_DEFAULT_KERNELS);
+TF_CALL_int4(REGISTER_DEFAULT_KERNELS);
+TF_CALL_uint4(REGISTER_DEFAULT_KERNELS);
 #undef REGISTER_DEFAULT_KERNELS
 
 REGISTER_KERNEL_BUILDER(Name("_VarHandlesOp")
@@ -553,6 +564,10 @@ class AssignVariableOp<Device, Variant> : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
+TF_CALL_float8_e5m2(REGISTER_KERNELS);
+TF_CALL_float8_e4m3fn(REGISTER_KERNELS);
+TF_CALL_int4(REGISTER_KERNELS);
+TF_CALL_uint4(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -565,6 +580,10 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
+TF_CALL_float8_e5m2(REGISTER_GPU_KERNELS);
+TF_CALL_float8_e4m3fn(REGISTER_GPU_KERNELS);
+TF_CALL_int4(REGISTER_GPU_KERNELS);
+TF_CALL_uint4(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -577,6 +596,8 @@ TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_GPU_KERNELS);
 
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
+TF_CALL_int4(REGISTER_KERNELS);
+TF_CALL_uint4(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 template <typename Device, typename T, DenseUpdateType Op>
@@ -691,6 +712,9 @@ class ResourceGatherOp : public OpKernel {
  public:
   explicit ResourceGatherOp(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("batch_dims", &batch_dims_));
+    OP_REQUIRES(c, batch_dims_ >= 0,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "batch_dims is negative (", batch_dims_, ")")));
   }
 
   void Compute(OpKernelContext* c) override {
@@ -1092,6 +1116,13 @@ class ResourceScatterUpdateOp : public OpKernel {
   void Compute(OpKernelContext* c) override {
     core::RefCountPtr<Var> v;
     OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+
+    // Check data type of update and resource to scatter.
+    const DataType update_dtype = c->input(2).dtype();
+    OP_REQUIRES(c, v->tensor()->dtype() == update_dtype,
+                errors::InvalidArgument(
+                    "DType of scatter resource and updates does not match."));
+
     OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
     const bool is_non_pod_dtype = c->input_dtype(0) == DT_RESOURCE ||
                                   c->input_dtype(0) == DT_STRING ||

@@ -136,12 +136,6 @@ struct TfrtCompileOptions {
   // expensive.
   uint64_t cost_threshold = 1;
 
-  // The threshold to decie whether an inline execution sequence is too large
-  // even if the operations forms a sequential data dependency as it may occupy
-  // the CPU core for too long. In that case, they are broken into multiple
-  // sequences. The default is -1 which means no limit.
-  int64_t upper_cost_threshold = -1;
-
   // If true, streams with inter data depenedencies will be preferred to be
   // merged for inline execution.
   bool merge_inter_dependent_streams = true;

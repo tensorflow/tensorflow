@@ -50,14 +50,17 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/mlir/lite/offset_buffer.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/model_builder.h"
+#include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/lite/shared_library.h"
+#include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibrator.h"
 #include "tensorflow/lite/tools/optimize/quantization_wrapper_utils.h"
@@ -78,7 +81,18 @@ namespace tflite {
 namespace calibration_wrapper {
 namespace {
 
-using python_utils::PyDecrefDeleter;
+using ::tflite::interpreter_wrapper::PythonErrorReporter;
+using ::tflite::ops::builtin::BuiltinOpResolver;
+using ::tflite::optimize::AddIntermediateTensorsToFusedOp;
+using ::tflite::optimize::QuantizeModelAllOperators;
+using ::tflite::optimize::calibration::BuildLoggingInterpreter;
+using ::tflite::optimize::calibration::CalibrationReader;
+using ::tflite::python::ImportNumpy;
+using ::tflite::python_utils::ConvertFromPyString;
+using ::tflite::python_utils::ConvertToPyString;
+using ::tflite::python_utils::PyDecrefDeleter;
+using ::tflite::python_utils::TfLiteTypeFromPyArray;
+using ::tflite::python_utils::TfLiteTypeFromPyType;
 
 std::unique_ptr<ModelT> CreateMutableModel(const Model& model) {
   auto copied_model = std::make_unique<ModelT>();
@@ -137,12 +151,12 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
 }
 
 bool RegisterCustomOpByName(const char* registerer_name,
-                            tflite::MutableOpResolver* resolver) {
+                            MutableOpResolver* resolver) {
   // Registerer functions take a pointer to a BuiltinOpResolver as an input
   // parameter and return void.
   // TODO(b/137576229): We should implement this functionality in a more
   // principled way.
-  typedef void (*RegistererFunctionType)(tflite::MutableOpResolver*);
+  typedef void (*RegistererFunctionType)(MutableOpResolver*);
 
   // Look for the Registerer function by name.
   RegistererFunctionType registerer = reinterpret_cast<RegistererFunctionType>(
@@ -180,13 +194,6 @@ std::optional<std::vector<int>> ConvertInputShapeToVector(
   }
   return dims;
 }
-
-// A buffer offset of 0 means the buffer data is stored along with
-// `tflite::Tensor`, not in the offset buffer. The flatbuffer exporter always
-// sets the offset value to 1 to avoid the confusion btw. unset value and
-// default value, but it is also not a valid offset value, so the valid value
-// should always be greater than 1.
-bool IsValidBufferOffset(const int64_t val) { return val > 1; }
 
 // Finds the starting position of the offset buffer within `model_buffer` if the
 // `model_buffer` can be split into base buffer and offset buffer. Returns
@@ -261,19 +268,17 @@ std::string UpdateBufferOffsets(const absl::string_view base_buffer,
 }  // namespace
 
 PyObject* AddIntermediateTensors(PyObject* data) {
-  using tflite::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
-  ::tflite::python::ImportNumpy();
+  ImportNumpy();
 
-  if (python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
+  if (ConvertFromPyString(data, &buf, &length) == -1) {
     return nullptr;
   }
 
-  std::unique_ptr<tflite::FlatBufferModel> model =
-      tflite::FlatBufferModel::BuildFromBuffer(buf, length,
-                                               error_reporter.get());
+  std::unique_ptr<FlatBufferModel> model =
+      FlatBufferModel::BuildFromBuffer(buf, length, error_reporter.get());
   if (!model) {
     PyErr_Format(PyExc_ValueError, "Invalid model");
     return nullptr;
@@ -284,7 +289,7 @@ PyObject* AddIntermediateTensors(PyObject* data) {
 
   flatbuffers::FlatBufferBuilder builder;
   auto tflite_model = CreateMutableModel(*model->GetModel());
-  if (optimize::AddIntermediateTensorsToFusedOp(&builder, tflite_model.get()) !=
+  if (AddIntermediateTensorsToFusedOp(&builder, tflite_model.get()) !=
       kTfLiteOk) {
     error_reporter->exception();
     return nullptr;
@@ -294,7 +299,7 @@ PyObject* AddIntermediateTensors(PyObject* data) {
   if (result_base_buffer_size == 0) {
     // When AddIntermediateTensorsToFusedOp early returns, return the model as
     // it is.
-    return python_utils::ConvertToPyString(buf, length);
+    return ConvertToPyString(buf, length);
   }
 
   const int64_t offset_diff =
@@ -308,17 +313,15 @@ PyObject* AddIntermediateTensors(PyObject* data) {
   const std::string result_buffer =
       MergeOffsetBuffer(updated_result_base_buffer, offset_buffer);
 
-  return python_utils::ConvertToPyString(result_buffer.data(),
-                                         result_buffer.size());
+  return ConvertToPyString(result_buffer.data(), result_buffer.size());
 }
 
 CalibrationWrapper::CalibrationWrapper(
-    std::unique_ptr<tflite::Interpreter> interpreter,
-    std::unique_ptr<tflite::ops::builtin::BuiltinOpResolver> resolver,
-    std::unique_ptr<tflite::interpreter_wrapper::PythonErrorReporter>
-        error_reporter,
-    std::unique_ptr<tflite::FlatBufferModel> model,
-    std::unique_ptr<tflite::optimize::calibration::CalibrationReader> reader,
+    std::unique_ptr<Interpreter> interpreter,
+    std::unique_ptr<BuiltinOpResolver> resolver,
+    std::unique_ptr<PythonErrorReporter> error_reporter,
+    std::unique_ptr<FlatBufferModel> model,
+    std::unique_ptr<CalibrationReader> reader,
     std::unique_ptr<std::string> model_str)
     : interpreter_(std::move(interpreter)),
       error_reporter_(std::move(error_reporter)),
@@ -518,12 +521,12 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value,
   auto* subgraph = interpreter_->subgraph(subgraph_index);
   const TfLiteTensor* tensor = subgraph->tensor(index);
 
-  if (python_utils::TfLiteTypeFromPyArray(array) != tensor->type) {
+  if (TfLiteTypeFromPyArray(array) != tensor->type) {
     PyErr_Format(PyExc_ValueError,
                  "Cannot set tensor: "
                  "Got value of type %s "
                  "but expected type %s for input %d, name: %s ",
-                 TfLiteTypeGetName(python_utils::TfLiteTypeFromPyArray(array)),
+                 TfLiteTypeGetName(TfLiteTypeFromPyArray(array)),
                  TfLiteTypeGetName(tensor->type), index, tensor->name);
     return nullptr;
   }
@@ -568,7 +571,7 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value,
   size_t size = PyArray_NBYTES(array);
 
   if (tensor->type == kTfLiteString) {
-    tflite::DynamicBuffer buffer;
+    DynamicBuffer buffer;
     buffer.AddString(reinterpret_cast<const char*>(PyArray_BYTES(array)), size);
     buffer.WriteToTensor(subgraph->tensor(index), /*new_shape=*/nullptr);
     Py_RETURN_NONE;
@@ -598,12 +601,12 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
   PyArrayObject* array = reinterpret_cast<PyArrayObject*>(array_safe.get());
   const TfLiteTensor* tensor = interpreter_->tensor(index);
 
-  if (python_utils::TfLiteTypeFromPyArray(array) != tensor->type) {
+  if (TfLiteTypeFromPyArray(array) != tensor->type) {
     PyErr_Format(PyExc_ValueError,
                  "Cannot set tensor: "
                  "Got value of type %s "
                  "but expected type %s for input %d, name: %s ",
-                 TfLiteTypeGetName(python_utils::TfLiteTypeFromPyArray(array)),
+                 TfLiteTypeGetName(TfLiteTypeFromPyArray(array)),
                  TfLiteTypeGetName(tensor->type), index, tensor->name);
     return nullptr;
   }
@@ -648,7 +651,7 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
   size_t size = PyArray_NBYTES(array);
 
   if (tensor->type == kTfLiteString) {
-    tflite::DynamicBuffer buffer;
+    DynamicBuffer buffer;
     buffer.AddString(reinterpret_cast<const char*>(PyArray_BYTES(array)), size);
     buffer.WriteToTensor(interpreter_->tensor(index), /*new_shape=*/nullptr);
     Py_RETURN_NONE;
@@ -687,8 +690,7 @@ PyObject* CalibrationWrapper::Calibrate() {
   const std::string result_buffer =
       MergeOffsetBuffer(updated_result_base_buffer, offset_buffer);
 
-  return python_utils::ConvertToPyString(result_buffer.data(),
-                                         result_buffer.size());
+  return ConvertToPyString(result_buffer.data(), result_buffer.size());
 }
 
 PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
@@ -705,15 +707,13 @@ PyObject* CalibrationWrapper::QuantizeModel(
     int input_py_type, int output_py_type, bool allow_float,
     int activations_py_type, int bias_py_type, bool disable_per_channel) {
   if (NoOpModel(*model_)) {
-    return python_utils::ConvertToPyString(model_str_->data(),
-                                           model_str_->size());
+    return ConvertToPyString(model_str_->data(), model_str_->size());
   }
 
-  TfLiteType input_type = python_utils::TfLiteTypeFromPyType(input_py_type);
-  TfLiteType output_type = python_utils::TfLiteTypeFromPyType(output_py_type);
-  TfLiteType activations_type =
-      python_utils::TfLiteTypeFromPyType(activations_py_type);
-  TfLiteType bias_type = python_utils::TfLiteTypeFromPyType(bias_py_type);
+  TfLiteType input_type = TfLiteTypeFromPyType(input_py_type);
+  TfLiteType output_type = TfLiteTypeFromPyType(output_py_type);
+  TfLiteType activations_type = TfLiteTypeFromPyType(activations_py_type);
+  TfLiteType bias_type = TfLiteTypeFromPyType(bias_py_type);
 
   if (input_type == kTfLiteNoType || output_type == kTfLiteNoType) {
     PyErr_SetString(PyExc_ValueError,
@@ -725,7 +725,7 @@ PyObject* CalibrationWrapper::QuantizeModel(
   flatbuffers::FlatBufferBuilder builder;
   auto status = kTfLiteOk;
 
-  status = tflite::optimize::QuantizeModelAllOperators(
+  status = QuantizeModelAllOperators(
       &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
       TfLiteTypeToSchemaType(output_type), allow_float,
       TfLiteTypeToSchemaType(activations_type),
@@ -737,7 +737,7 @@ PyObject* CalibrationWrapper::QuantizeModel(
     return nullptr;
   }
 
-  return python_utils::ConvertToPyString(
+  return ConvertToPyString(
       reinterpret_cast<const char*>(builder.GetCurrentBufferPointer()),
       builder.GetSize());
 }
@@ -748,8 +748,8 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
                                             const char* operator_output_name) {
   string op_name = std::string(operator_output_name);
 
-  TfLiteType input_type = python_utils::TfLiteTypeFromPyType(input_py_type);
-  TfLiteType output_type = python_utils::TfLiteTypeFromPyType(output_py_type);
+  TfLiteType input_type = TfLiteTypeFromPyType(input_py_type);
+  TfLiteType output_type = TfLiteTypeFromPyType(output_py_type);
   if (input_type == kTfLiteNoType || output_type == kTfLiteNoType) {
     PyErr_SetString(PyExc_ValueError,
                     "Input/output type cannot be kTfLiteNoType");
@@ -758,7 +758,7 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
   auto tflite_model = CreateMutableModel(*model_->GetModel());
   reader_->AddCalibrationToModel(tflite_model.get(), /*update=*/false);
   flatbuffers::FlatBufferBuilder builder;
-  auto status = tflite::optimize::QuantizeModel(
+  auto status = optimize::QuantizeModel(
       &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
       TfLiteTypeToSchemaType(output_type), allow_float, {op_name},
       /*activations_type=*/TensorType_INT8, /*bias_type=*/TensorType_INT32,
@@ -768,7 +768,7 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
     return nullptr;
   }
 
-  return python_utils::ConvertToPyString(
+  return ConvertToPyString(
       reinterpret_cast<const char*>(builder.GetCurrentBufferPointer()),
       builder.GetSize());
 }
@@ -777,25 +777,23 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
     PyObject* data, const std::vector<std::string>& registerers_by_name,
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg) {
-  using tflite::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
-  ::tflite::python::ImportNumpy();
+  ImportNumpy();
 
-  if (python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
+  if (ConvertFromPyString(data, &buf, &length) == -1) {
     *error_msg = "Failed to convert from python string";
     return nullptr;
   }
-  std::unique_ptr<tflite::FlatBufferModel> model =
-      tflite::FlatBufferModel::BuildFromBuffer(buf, length,
-                                               error_reporter.get());
+  std::unique_ptr<FlatBufferModel> model =
+      FlatBufferModel::BuildFromBuffer(buf, length, error_reporter.get());
   if (!model) {
     *error_msg = "Invalid model";
     return nullptr;
   }
 
-  auto resolver = std::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
+  auto resolver = std::make_unique<BuiltinOpResolver>();
   for (const auto& registerer : registerers_by_name) {
     if (!RegisterCustomOpByName(registerer.c_str(), resolver.get())) {
       *error_msg =
@@ -807,10 +805,10 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
   for (const auto& registerer : registerers_by_func) {
     registerer(reinterpret_cast<uintptr_t>(resolver.get()));
   }
-  std::unique_ptr<tflite::Interpreter> interpreter;
-  std::unique_ptr<tflite::optimize::calibration::CalibrationReader> reader;
-  auto status = tflite::optimize::calibration::BuildLoggingInterpreter(
-      *model, *resolver, &interpreter, &reader);
+  std::unique_ptr<Interpreter> interpreter;
+  std::unique_ptr<CalibrationReader> reader;
+  auto status =
+      BuildLoggingInterpreter(*model, *resolver, &interpreter, &reader);
   if (status != kTfLiteOk) {
     *error_msg = error_reporter->message();
     return nullptr;

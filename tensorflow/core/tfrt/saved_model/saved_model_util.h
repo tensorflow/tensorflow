@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
-#include "tensorflow/tsl/platform/protobuf.h"
+#include "tsl/platform/protobuf.h"
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
@@ -47,7 +47,10 @@ namespace tensorflow {
 namespace tfrt_stub {
 
 // Filename for serialized BEF Buffer.
-inline constexpr char kBefBufferFilenameMLIRBEF[] = "serialized_bef.mlir.bef";
+inline constexpr char kBefBufferFileName[] = "serialized_bef.mlir.bef";
+
+// Filename for serialized MLRT bytecode Buffer.
+inline constexpr char kMlrtBufferFileName[] = "serialized_mlrt.mlir.mlrt";
 
 // Filename for serialized MLIR_MODULE.
 inline constexpr char kMLIRModuleFilename[] = "serialized_mlir.mlir";
@@ -86,10 +89,13 @@ struct Signature {
 
 }  // namespace internal
 
+// If `import_signature_names` is non-empty, this function only imports the
+// graph that corresponds to this list.
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
     mlir::MLIRContext* context, const tensorflow::MetaGraphDef& meta_graph_def,
     const FallbackState& fallback_state, std::string saved_model_dir,
-    bool import_user_signatures, bool run_placer_grappler_on_functions);
+    bool import_user_signatures, bool run_placer_grappler_on_functions,
+    const std::vector<std::string>& import_signature_names = {});
 
 StatusOr<tensorflow::MetaGraphDef> ReadSavedModel(
     absl::string_view saved_model_dir,
@@ -120,7 +126,7 @@ std::string GetMlirFilePath(const std::string& aot_package_directory);
 
 // TODO(b/295241000): Implement MLIR deserialization to skip it AoT and remove
 // redundant steps
-absl::StatusOr<tfrt::BefBuffer> LoadAotPackages(
+absl::StatusOr<tfrt::BefBuffer> LoadBefAndMlir(
     const TfrtCompileOptions& options, mlir::ModuleOp mlir_module,
     const std::string& saved_model_dir,
     tfrt_stub::FallbackState* fallback_state);

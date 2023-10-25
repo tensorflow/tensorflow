@@ -72,6 +72,8 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt/ir/mlrt:mlrt_ops",
         "//tensorflow/compiler/mlir/tfrt/ir/mlrt:tf_mlrt_ops",
         "//tensorflow/compiler/mlir/tfrt/ir/mlrt:tf_mlrt_tpu_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/fallback:op_kernel_runner_cache",
         "@com_google_protobuf//:protobuf_headers",
@@ -169,7 +171,6 @@ cc_library(
         "//tensorflow/core/tfrt/mlrt/attribute",
         "//tensorflow/core/tfrt/mlrt/bytecode",
         "//tensorflow/core/tfrt/runtime",
-        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@llvm-project//mlir:FuncDialect",
@@ -177,6 +178,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
+        "@local_tsl//tsl/platform:errors",
     ],
 )
 
