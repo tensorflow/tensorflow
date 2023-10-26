@@ -41,6 +41,15 @@ struct PJRT_Error {
   xla::Status status;
 };
 
+struct PJRT_TopologyDescription {
+  std::unique_ptr<xla::PjRtTopologyDescription> topology;
+  std::vector<std::unique_ptr<const xla::PjRtDeviceDescription>>
+      cpp_descriptions;
+  std::vector<PJRT_DeviceDescription> descriptions;
+  std::vector<PJRT_DeviceDescription*> description_pointers;
+  std::vector<PJRT_NamedValue> attributes;
+};
+
 struct PJRT_Client {
   std::unique_ptr<xla::PjRtClient> client;
   std::vector<PJRT_Device> owned_devices;
@@ -92,6 +101,8 @@ struct PJRT_Memory {
 struct PJRT_Executable {
   // Must be shared_ptr so that we can share with PJRT_LoadedExecutable.
   std::shared_ptr<xla::PjRtExecutable> executable;
+
+  xla::StatusOr<std::string> fingerprint;
 
   // Used to synchronize concurrent setting of cached values.
   mutable absl::Mutex mutex;
@@ -171,15 +182,6 @@ struct PJRT_SerializedTopology {
   std::string serialized;
 };
 
-struct PJRT_TopologyDescription {
-  std::unique_ptr<xla::PjRtTopologyDescription> topology;
-  std::vector<std::unique_ptr<const xla::PjRtDeviceDescription>>
-      cpp_descriptions;
-  std::vector<PJRT_DeviceDescription> descriptions;
-  std::vector<PJRT_DeviceDescription*> description_pointers;
-  std::vector<PJRT_NamedValue> attributes;
-};
-
 struct PJRT_TransferMetadata {
   // Decompose xla::Shape into C API type fields, without any Tuple information.
   // TODO(b/238999986) support other `xla::Shape` fields when they are fully
@@ -223,6 +225,8 @@ PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
     PJRT_Client_DefaultDeviceAssignment_Args* args);
 PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     PJRT_Client_BufferFromHostBuffer_Args* args);
+PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(
+    PJRT_Client_CreateViewOfDeviceBuffer_Args* args);
 
 PJRT_Error* PJRT_DeviceDescription_Id(PJRT_DeviceDescription_Id_Args* args);
 PJRT_Error* PJRT_DeviceDescription_ProcessIndex(
@@ -260,6 +264,7 @@ PJRT_Error* PJRT_LoadedExecutable_AddressableDevices(
 PJRT_Error* PJRT_Executable_NumOutputs(PJRT_Executable_NumOutputs_Args* args);
 PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
     PJRT_Executable_SizeOfGeneratedCodeInBytes_Args* args);
+PJRT_Error* PJRT_Executable_Fingerprint(PJRT_Executable_Fingerprint_Args* args);
 PJRT_Error* PJRT_Executable_GetCostAnalysis(
     PJRT_Executable_GetCostAnalysis_Args* args);
 PJRT_Error* PJRT_Executable_OutputElementTypes(
@@ -284,6 +289,8 @@ PJRT_Error* PJRT_Executable_DeserializeAndLoad(
     PJRT_Executable_DeserializeAndLoad_Args* args);
 PJRT_Error* PJRT_LoadedExecutable_GetExecutable(
     PJRT_LoadedExecutable_GetExecutable_Args* args);
+// TODO: b/306669267 - this method is deprecated. When can we return
+// unimplemented?
 PJRT_Error* PJRT_LoadedExecutable_Fingerprint(
     PJRT_LoadedExecutable_Fingerprint_Args* args);
 
@@ -302,6 +309,7 @@ PJRT_Error* PJRT_Buffer_Memory(PJRT_Buffer_Memory_Args* args);
 PJRT_Error* PJRT_Buffer_Delete(PJRT_Buffer_Delete_Args* args);
 PJRT_Error* PJRT_Buffer_IsDeleted(PJRT_Buffer_IsDeleted_Args* args);
 PJRT_Error* PJRT_Buffer_CopyToDevice(PJRT_Buffer_CopyToDevice_Args* args);
+PJRT_Error* PJRT_Buffer_CopyToMemory(PJRT_Buffer_CopyToMemory_Args* args);
 PJRT_Error* PJRT_Buffer_ToHostBuffer(PJRT_Buffer_ToHostBuffer_Args* args);
 PJRT_Error* PJRT_Buffer_IsOnCpu(PJRT_Buffer_IsOnCpu_Args* args);
 PJRT_Error* PJRT_Buffer_ReadyEvent(PJRT_Buffer_ReadyEvent_Args* args);
@@ -399,10 +407,11 @@ PJRT_Error* PJRT_Plugin_Initialize_NoOp(PJRT_Plugin_Initialize_Args* args);
 constexpr PJRT_Api CreatePjrtApi(
     PJRT_Client_Create* create_fn,
     PJRT_TopologyDescription_Create* topology_create_fn,
-    PJRT_Plugin_Initialize* plugin_initialize_fn) {
+    PJRT_Plugin_Initialize* plugin_initialize_fn,
+    void* extension_start = nullptr) {
   return PJRT_Api{
       /*struct_size=*/PJRT_Api_STRUCT_SIZE,
-      /*priv=*/nullptr,
+      /*extension_start=*/extension_start,
 
       /*pjrt_api_version=*/
       PJRT_Api_Version{/*struct_size=*/PJRT_Api_Version_STRUCT_SIZE,
@@ -555,6 +564,11 @@ constexpr PJRT_Api CreatePjrtApi(
       pjrt::PJRT_Executable_OutputElementTypes,
       /*PJRT_Executable_OutputDimensions=*/
       pjrt::PJRT_Executable_OutputDimensions,
+      /*PJRT_Buffer_CopyToMemory=*/
+      pjrt::PJRT_Buffer_CopyToMemory,
+      /*PJRT_Client_CreateViewOfDeviceBuffer=*/
+      pjrt::PJRT_Client_CreateViewOfDeviceBuffer,
+      /*PJRT_Executable_Fingerprint=*/pjrt::PJRT_Executable_Fingerprint,
   };
 }
 

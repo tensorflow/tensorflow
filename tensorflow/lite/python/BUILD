@@ -109,7 +109,6 @@ py_strict_library(
         ":schema_py",
         ":schema_util",
         "//tensorflow/lite/tools:visualize_lib",
-        "//tensorflow/python/framework",
     ],
 )
 
@@ -299,7 +298,7 @@ py_strict_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/framework:versions",
-        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/lib/io:file_io",
         "//tensorflow/python/ops:map_ops",
         "//tensorflow/python/ops:rnn",
         "//tensorflow/python/platform:client_testlib",

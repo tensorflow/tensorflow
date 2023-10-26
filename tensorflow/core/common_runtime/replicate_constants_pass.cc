@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/btree_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/config/flag_defs.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
@@ -44,10 +46,12 @@ namespace {
 // Maximum size constant to replicate.
 constexpr int64_t kMaxSize = 16;
 
+// Set `node`'s name to <original-name>/replicate/_<unique-index>
 void SetUniqueName(Graph* graph, Node* node) {
   node->set_name(graph->NewName(absl::StrCat(node->name(), "/replicate")));
 }
 
+// `node` has an output control edge.
 bool HasControlOut(Node* node) {
   auto control_out_it =
       std::find_if(node->out_edges().begin(), node->out_edges().end(),
@@ -55,21 +59,36 @@ bool HasControlOut(Node* node) {
   return control_out_it != node->out_edges().end();
 }
 
+// `node`'s device is a CPU.
+bool HasCpuDevice(const Node* node) {
+  DeviceNameUtils::ParsedName device;
+  if (!DeviceNameUtils::ParseFullName(node->assigned_device_name(), &device))
+    return false;
+  return device.type == "CPU";
+}
+
+// Get the CPU device on the same host as dst.
+Status GetDestinationCpuDevice(const Node* dst, std::string* device) {
+  if (!dst->has_assigned_device_name())
+    return absl::AbortedError(
+        absl::StrCat("Node name: ", dst->name(), " has no assigned device."));
+  return DeviceNameUtils::DeviceNameToCpuDeviceName(dst->assigned_device_name(),
+                                                    device);
+}
+
 // Collect the successor edges of the constant. Group them by the device of the
 // successor.
-void GetSuccessorEdges(
+Status GetSuccessorEdges(
     Node* node,
     absl::btree_map<std::string, std::vector<const Edge*>>& device_to_edges) {
   for (const auto& edge : node->out_edges()) {
     const Node* dst = edge->dst();
     std::string device;
-    if (!dst->has_assigned_device_name())
-      device = "";
-    else
-      device = dst->assigned_device_name();
+    TF_RETURN_IF_ERROR(GetDestinationCpuDevice(dst, &device));
     if (!device_to_edges.count(device)) device_to_edges.insert({device, {}});
     device_to_edges[device].push_back(edge);
   }
+  return OkStatus();
 }
 
 // Replicate the constant to each successor device.
@@ -105,6 +124,10 @@ Status ReplicateConstantsPass::Run(
              "number-of-elements <= "
           << kMaxSize;
 
+  if (options.graph == nullptr) {
+    VLOG(1) << "No graph in replicate_constants_pass.";
+    return OkStatus();
+  }
   Graph* graph = options.graph->get();
   if (VLOG_IS_ON(1)) {
     VLOG(1) << DumpGraphToFile("before_replicate_constants_pass", *graph,
@@ -134,9 +157,16 @@ Status ReplicateConstantsPass::Run(
       continue;
     }
 
+    // Skip if there is no assigned device.
+    if (!node->has_assigned_device_name()) continue;
+
+    // Skip when the original constant is not on a CPU, because is not clear
+    // whether replicating from non-CPU to CPU is valid.
+    if (!HasCpuDevice(node)) continue;
+
     // Collect successor edges, per device.
     absl::btree_map<std::string, std::vector<const Edge*>> device_to_edges;
-    GetSuccessorEdges(node, device_to_edges);
+    TF_RETURN_IF_ERROR(GetSuccessorEdges(node, device_to_edges));
 
     // Skip if all successors are on the same device.
     if (device_to_edges.size() <= 1) continue;
@@ -157,7 +187,7 @@ Status ReplicateConstantsPass::Run(
   return OkStatus();
 }
 
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_PLACEMENT, 3,
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 3,
                       ReplicateConstantsPass);
 
 }  // namespace tensorflow

@@ -38,9 +38,6 @@ class GpuExecutor;
 
 namespace cuda {
 
-// Opaque and unique identifier for the cuBLAS plugin.
-extern const PluginId kCuBlasPlugin;
-
 // BLAS plugin for CUDA platform via cuBLAS library.
 //
 // This satisfies the platform-agnostic BlasSupport interface.
@@ -63,7 +60,7 @@ class CUDABlas : public blas::BlasSupport {
 
   TENSORFLOW_STREAM_EXECUTOR_GPU_BLAS_SUPPORT_OVERRIDES
 
-  BlasLt &blas_lt() { return blas_lt_; }
+  BlasLt *GetBlasLt() override { return &blas_lt_; }
 
  private:
   // Tells cuBLAS to enqueue the BLAS operation onto a particular Stream.
@@ -122,9 +119,10 @@ class CUDABlas : public blas::BlasSupport {
   // cuBLAS library handle on the device.
   cublasHandle_t blas_ ABSL_GUARDED_BY(mu_);
 
-  BlasLt blas_lt_;
+  cuda::BlasLt blas_lt_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(CUDABlas);
+  CUDABlas(const CUDABlas &) = delete;
+  void operator=(const CUDABlas &) = delete;
 };
 
 }  // namespace cuda

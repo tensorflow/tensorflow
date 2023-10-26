@@ -45,8 +45,8 @@ limitations under the License.
 #include "xla/runtime/custom_call.h"
 #include "xla/runtime/tracing.h"
 #include "xla/runtime/type_id.h"
-#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/concurrency/chain.h"  // from @tf_runtime
+#include "tsl/concurrency/async_value_ref.h"
+#include "tsl/concurrency/chain.h"
 
 namespace Eigen {
 struct half;
@@ -391,7 +391,7 @@ static LLVM::GlobalOp EncodeEmptyArrayAttribute(Globals &g,
   auto init = [&](ImplicitLocOpBuilder &ib, Attribute) {
     // Array size and the pointer to data.
     Value num_elements = ib.create<ConstantOp>(b.getI64IntegerAttr(0));
-    Value data = ib.create<LLVM::NullOp>(ptr);
+    Value data = ib.create<LLVM::ZeroOp>(ptr);
 
     // Store size and values into the struct.
     Value encoded = ib.create<LLVM::UndefOp>(type);
@@ -999,7 +999,7 @@ FailureOr<LLVM::GlobalOp> EncodeAttributes(
       if (encoded.value) {
         insert_value(Globals::AddrOf(b, encoded.value), offset + 2);
       } else {
-        insert_value(b.create<LLVM::NullOp>(ptr), offset + 2);
+        insert_value(b.create<LLVM::ZeroOp>(ptr), offset + 2);
       }
     }
 

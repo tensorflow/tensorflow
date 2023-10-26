@@ -19,10 +19,35 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/types/span.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/platform/port.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
+
+//===----------------------------------------------------------------------===//
+// ModuleHandle
+//===----------------------------------------------------------------------===//
+
+// An opaque handle to a loaded module.
+//
+// An instance of this is returned from StreamExecutor::GetModule.
+class ModuleHandle {
+ public:
+  explicit ModuleHandle(void* id = nullptr) : id_(id) {}
+
+  // A ModuleHandle with id() == nullptr is an invalid module handle, akin to a
+  // null pointer.
+  void* id() const { return id_; }
+
+  explicit operator bool() const { return id() != nullptr; }
+
+ private:
+  void* id_;
+};
+
+//===----------------------------------------------------------------------===//
+// MultiModuleLoaderSpec
+//===----------------------------------------------------------------------===//
 
 // Describes how to load a module on a target platform.
 //

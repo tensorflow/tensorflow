@@ -58,6 +58,21 @@ TEST(CApiSimple, Version) {
   EXPECT_STREQ(TfLiteVersion(), version);
 }
 
+TEST(CApiSimple, ExtensionApisVersion) {
+  const char* version = TfLiteExtensionApisVersion();
+  ASSERT_NE(version, nullptr);
+  EXPECT_STRNE(version, "");
+  int major = -1, minor = -1, patch = -1;
+  int ret = sscanf(version, "%d.%d.%d", &major, &minor, &patch);
+  // The version number should contain all three components.
+  EXPECT_GE(ret, 3);
+  EXPECT_GE(major, 0);
+  EXPECT_GE(minor, 0);
+  EXPECT_GE(patch, 0);
+  // Calling the function again should give the same result.
+  EXPECT_STREQ(TfLiteExtensionApisVersion(), version);
+}
+
 TEST(CApiSimple, SchemaVersion) {
   // The following checks will need updating if we change the schema version.
   EXPECT_EQ(TfLiteSchemaVersion(), 3);

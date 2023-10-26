@@ -28,6 +28,25 @@ namespace xla {
 
 /* static */ absl::Mutex Compiler::platform_compiler_mutex_(absl::kConstInit);
 
+Compiler::TargetConfig::TargetConfig(se::StreamExecutor* s)
+    : device_description(s->GetDeviceDescription().ToGpuProto()),
+      platform_name(s->platform()->Name()) {}
+
+Compiler::TargetConfig::TargetConfig(const se::GpuTargetConfigProto& proto)
+    : device_description({proto.gpu_device_info()}),
+      platform_name(proto.platform_name()),
+      dnn_version_info(proto.dnn_version_info()),
+      device_description_str(proto.device_description_str()) {}
+
+se::GpuTargetConfigProto Compiler::TargetConfig::ToProto() const {
+  stream_executor::GpuTargetConfigProto proto;
+  *proto.mutable_gpu_device_info() = device_description.ToGpuProto();
+  proto.set_platform_name(platform_name);
+  *proto.mutable_dnn_version_info() = dnn_version_info.ToProto();
+  proto.set_device_description_str(device_description_str);
+  return proto;
+}
+
 std::vector<std::unique_ptr<tsl::protobuf::Message>>
 Compiler::ComputeBackendConfigs(const HloInstruction& hlo,
                                 se::StreamExecutor* executor) const {

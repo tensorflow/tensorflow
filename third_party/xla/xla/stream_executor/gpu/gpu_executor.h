@@ -34,12 +34,13 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/strings/string_view.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/gpu/gpu_kernel.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/port.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_internal.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
@@ -116,6 +117,9 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
                      const BlockDim& block_dims, const KernelBase& k,
                      const KernelArgsArrayBase& args) override;
+
+  tsl::Status Submit(Stream* stream,
+                     const CommandBuffer& command_buffer) override;
 
   // (supported on CUDA only)
   int CalculateOccupancy(const DeviceDescription& device_description,
@@ -254,7 +258,10 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
 
-  void* GpuContextHack() override;
+  tsl::StatusOr<std::unique_ptr<internal::CommandBufferInterface>>
+  GetCommandBufferImplementation(CommandBuffer::Mode mode) override;
+
+  void* platform_specific_context() override;
 
   GpuContext* gpu_context();
 
@@ -380,7 +387,8 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   absl::flat_hash_map<void*, Stream*> alive_gpu_streams_
       ABSL_GUARDED_BY(alive_gpu_streams_mu_);
 
-  SE_DISALLOW_COPY_AND_ASSIGN(GpuExecutor);
+  GpuExecutor(const GpuExecutor&) = delete;
+  void operator=(const GpuExecutor&) = delete;
 };
 
 inline GpuExecutor* ExtractGpuExecutor(StreamExecutor* stream_exec) {

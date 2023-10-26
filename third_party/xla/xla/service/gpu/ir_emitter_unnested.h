@@ -29,7 +29,9 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/elemental_ir_emitter.h"
 #include "xla/service/gpu/fusions/tiling_util.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -40,6 +42,8 @@ limitations under the License.
 #include "xla/service/gpu/thunk.h"
 #include "xla/service/llvm_ir/ir_array.h"
 #include "xla/service/llvm_ir/llvm_util.h"
+#include "xla/shape_util.h"
+#include "xla/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -142,9 +146,11 @@ class IrEmitterUnnested : public IrEmitter {
           hlo_for_lmhlo);
   Status EmitFusedMHAThunk(mlir::Operation* op);
   Status EmitFusedMHABackwardThunk(mlir::Operation* op);
+  Status EmitCubDeviceRadixSort(mlir::Operation* op);
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCholeskyThunk(mlir::Operation* op);
+  Status EmitCholeskyThunk(const HloInstruction* instr);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCustomCallThunk(mlir::Operation* op);
   Status EmitFftThunk(mlir::Operation* op);
@@ -152,7 +158,6 @@ class IrEmitterUnnested : public IrEmitter {
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
           hlo_for_lmhlo);
-  Status EmitReduce(mlir::Operation* op);
   Status EmitSelectAndScatter(
       mlir::Operation* op,
       const absl::flat_hash_map<const mlir::Operation*, const HloInstruction*>&
@@ -320,6 +325,8 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitSliceToDynamic(mlir::Operation* op);
 
   StatusOr<BufferAllocation::Slice> GetAllocationSlice(mlir::Value v);
+  StatusOr<std::vector<BufferAllocation::Slice>> GetAllocationSlices(
+      mlir::OperandRange operands);
 
   int64_t ByteSizeOf(const Shape& shape) const {
     return llvm_ir::ByteSizeOf(
@@ -414,6 +421,9 @@ class IrEmitterUnnested : public IrEmitter {
       const HloInstruction* conditional);
 
   Status AssertNonDeterminismIsOkay(const std::string& op_name);
+
+  StatusOr<BufferAllocation::Slice> GetAllocationSliceForHlo(
+      const HloInstruction* instr, const ShapeIndex& index) const;
 
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;

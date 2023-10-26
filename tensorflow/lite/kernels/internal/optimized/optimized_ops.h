@@ -7957,15 +7957,13 @@ inline void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
   ArgMax(input1_shape, input1_data, input2_data, output_shape, output_data);
 }
 
-inline void Conv3D(const Conv3DParams& params, const RuntimeShape& input_shape,
-                   const float* input_data, const RuntimeShape& filter_shape,
-                   const float* filter_data, const RuntimeShape& bias_shape,
-                   const float* bias_data, const RuntimeShape& output_shape,
-                   float* output_data, const RuntimeShape& im2col_shape,
-                   float* im2col_data,
-                   const RuntimeShape& transposed_filter_shape,
-                   float* transposed_filter_data,
-                   CpuBackendContext* cpu_backend_context) {
+inline TfLiteStatus Conv3D(
+    const Conv3DParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& filter_shape,
+    const float* filter_data, const RuntimeShape& bias_shape,
+    const float* bias_data, const RuntimeShape& output_shape,
+    float* output_data, const RuntimeShape& im2col_shape, float* im2col_data,
+    CpuBackendContext* cpu_backend_context) {
   const int stride_depth = params.stride_depth;
   const int stride_height = params.stride_height;
   const int stride_width = params.stride_width;
@@ -8012,24 +8010,13 @@ inline void Conv3D(const Conv3DParams& params, const RuntimeShape& input_shape,
     gemm_input_shape = &input_shape;
   }
 
-  // Transpose the filter tensor.
-  TransposeParams transpose_params;
-  transpose_params.perm_count = 5;
-  transpose_params.perm[0] = 4;
-  transpose_params.perm[1] = 0;
-  transpose_params.perm[2] = 1;
-  transpose_params.perm[3] = 2;
-  transpose_params.perm[4] = 3;
-  Transpose<float, 5>(transpose_params, filter_shape, filter_data,
-                      transposed_filter_shape, transposed_filter_data);
-
   const int gemm_input_dims = gemm_input_shape->DimensionsCount();
   int m = FlatSizeSkipDim(*gemm_input_shape, gemm_input_dims - 1);
   int n = output_shape.Dims(4);
   int k = gemm_input_shape->Dims(gemm_input_dims - 1);
 
   cpu_backend_gemm::MatrixParams<float> lhs_params;
-  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.order = cpu_backend_gemm::Order::kColMajor;
   lhs_params.rows = n;
   lhs_params.cols = k;
   cpu_backend_gemm::MatrixParams<float> rhs_params;
@@ -8044,9 +8031,10 @@ inline void Conv3D(const Conv3DParams& params, const RuntimeShape& input_shape,
   gemm_params.bias = bias_data;
   gemm_params.clamp_min = output_activation_min;
   gemm_params.clamp_max = output_activation_max;
-  cpu_backend_gemm::Gemm(lhs_params, transposed_filter_data, rhs_params,
-                         gemm_input_data, dst_params, output_data, gemm_params,
+  cpu_backend_gemm::Gemm(lhs_params, filter_data, rhs_params, gemm_input_data,
+                         dst_params, output_data, gemm_params,
                          cpu_backend_context);
+  return kTfLiteOk;
 }
 
 // Returns in 'im_data' (assumed to be zero-initialized) image patch in storage

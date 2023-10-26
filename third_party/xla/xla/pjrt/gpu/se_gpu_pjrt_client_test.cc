@@ -44,11 +44,6 @@ limitations under the License.
 #include "tsl/platform/status.h"
 #include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
-#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
-#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
-#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
-#include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
-#include "tfrt/host_context/host_context.h"  // from @tf_runtime
 
 namespace xla {
 namespace {
@@ -573,17 +568,12 @@ TEST(StreamExecutorGpuClientTest, DistributeInit) {
     }
     return tsl::OkStatus();
   };
-  auto host_context = std::make_unique<tfrt::HostContext>(
-      [](const tfrt::DecodedDiagnostic& diag) {
-        LOG(ERROR) << "Encountered runtime error: " << diag.message() << "\n";
-      },
-      tfrt::CreateMallocAllocator(),
-      tfrt::CreateMultiThreadedWorkQueue(
-          /*num_threads=*/DefaultThreadPoolSize(),
-          /*num_blocking_threads=*/4));
+
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "DistributeInit", 4);
+
   int num_nodes = 2;
   for (int i = 0; i < num_nodes; i++) {
-    tfrt::EnqueueWork(host_context.get(), [&kv_get, &kv_put, i, num_nodes] {
+    thread_pool.Schedule([&, i] {
       TF_ASSERT_OK_AND_ASSIGN(
           auto client,
           GetStreamExecutorGpuClient(
@@ -591,7 +581,8 @@ TEST(StreamExecutorGpuClientTest, DistributeInit) {
               /*node_id=*/i, num_nodes, /*allowed_devices=*/std::nullopt,
               /*platform_name=*/std::nullopt,
               /*should_stage_host_to_device_transfers=*/true, kv_get, kv_put));
-      EXPECT_EQ(client->platform_name(), "gpu");
+      EXPECT_TRUE(client->platform_name() == "cuda" ||
+                  client->platform_name() == "rocm");
       EXPECT_EQ(client->addressable_device_count(), 2);
       EXPECT_EQ(client->device_count(), 4);
     });

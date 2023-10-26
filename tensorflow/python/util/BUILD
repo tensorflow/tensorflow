@@ -23,7 +23,6 @@ visibility = [
     "//third_party/py/tf_agents:__subpackages__",  # For benchmarks.
     "//third_party/py/tf_slim:__subpackages__",
     "//third_party/py/tensorflow_docs:__subpackages__",
-    "//third_party/py/keras:__subpackages__",
     "//third_party/py/tf_keras:__subpackages__",
 ]
 
@@ -278,13 +277,10 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "deprecation_test",
-    srcs = [
-        "deprecated_module.py",
-        "deprecated_module_new.py",
-        "deprecation_test.py",
-    ],
+    srcs = ["deprecation_test.py"],
     python_version = "PY3",
     deps = [
+        ":deprecated_module",
         ":deprecation",
         ":tf_inspect",
         "//tensorflow/python/eager:context",

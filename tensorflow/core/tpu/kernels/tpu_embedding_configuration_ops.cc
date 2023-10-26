@@ -96,7 +96,9 @@ class ExecuteTPUEmbeddingPartitionerOp : public OpKernel {
   // The embedding layer configuration for the TPUEmbedding host software.
   std::string config_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExecuteTPUEmbeddingPartitionerOp);
+  ExecuteTPUEmbeddingPartitionerOp(const ExecuteTPUEmbeddingPartitionerOp&) =
+      delete;
+  void operator=(const ExecuteTPUEmbeddingPartitionerOp&) = delete;
 };
 
 // Initializes the HBM memory addresses and segments on each host.
@@ -147,7 +149,8 @@ class ConfigureTPUEmbeddingMemoryOp : public OpKernel {
   ~ConfigureTPUEmbeddingMemoryOp() override {}
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ConfigureTPUEmbeddingMemoryOp);
+  ConfigureTPUEmbeddingMemoryOp(const ConfigureTPUEmbeddingMemoryOp&) = delete;
+  void operator=(const ConfigureTPUEmbeddingMemoryOp&) = delete;
 };
 
 // Merges the memory configurations of all hosts into one
@@ -208,7 +211,8 @@ class CollateTPUEmbeddingMemoryOp : public OpKernel {
   ~CollateTPUEmbeddingMemoryOp() override {}
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(CollateTPUEmbeddingMemoryOp);
+  CollateTPUEmbeddingMemoryOp(const CollateTPUEmbeddingMemoryOp&) = delete;
+  void operator=(const CollateTPUEmbeddingMemoryOp&) = delete;
 };
 
 // The ConfigureTpuEmbeddingHost op is used to set up the TPUEmbedding host
@@ -283,7 +287,8 @@ class ConfigureTPUEmbeddingHostOp : public OpKernel {
   // The embedding layer configuration for the TPUEmbedding host software.
   std::string config_string_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ConfigureTPUEmbeddingHostOp);
+  ConfigureTPUEmbeddingHostOp(const ConfigureTPUEmbeddingHostOp&) = delete;
+  void operator=(const ConfigureTPUEmbeddingHostOp&) = delete;
 };
 
 // The ConnectTpuEmbeddingHosts op is used to set up gRPC connections
@@ -329,7 +334,8 @@ class ConnectTPUEmbeddingHostsOp : public OpKernel {
   ~ConnectTPUEmbeddingHostsOp() override {}
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ConnectTPUEmbeddingHostsOp);
+  ConnectTPUEmbeddingHostsOp(const ConnectTPUEmbeddingHostsOp&) = delete;
+  void operator=(const ConnectTPUEmbeddingHostsOp&) = delete;
 };
 
 // The FinalizeTpuEmbeddingOp op is used to update TpuMeshCommonState and
@@ -378,7 +384,8 @@ class FinalizeTPUEmbeddingOp : public OpKernel {
   ~FinalizeTPUEmbeddingOp() override {}
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(FinalizeTPUEmbeddingOp);
+  FinalizeTPUEmbeddingOp(const FinalizeTPUEmbeddingOp&) = delete;
+  void operator=(const FinalizeTPUEmbeddingOp&) = delete;
 };
 
 // The IsTPUEmbeddingInitializedOp is used to check whether the TPU
@@ -419,7 +426,8 @@ class IsTPUEmbeddingInitializedOp : public OpKernel {
 
  private:
   std::string config_string_;
-  TF_DISALLOW_COPY_AND_ASSIGN(IsTPUEmbeddingInitializedOp);
+  IsTPUEmbeddingInitializedOp(const IsTPUEmbeddingInitializedOp&) = delete;
+  void operator=(const IsTPUEmbeddingInitializedOp&) = delete;
 };
 
 // These ops execute on the CPU devices of TPU worker tasks.

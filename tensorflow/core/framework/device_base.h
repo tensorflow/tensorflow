@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -236,6 +237,7 @@ class DeviceBase {
   virtual int NumaNode() const { return attributes().locality().numa_node(); }
   virtual const std::string& name() const;
   virtual const DeviceNameUtils::ParsedName& parsed_name() const;
+  virtual const std::string& device_type() const;
 
   // Updates `attributes()`, indicating the XLA global ID associated with this
   // device. This ID is unique across clients in a multi-client setup. For TPUs

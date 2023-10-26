@@ -20,8 +20,10 @@ limitations under the License.
 #include <limits>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/strings/str_cat.h"
@@ -49,11 +51,15 @@ limitations under the License.
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "xla/layout_util.h"
 #include "xla/literal.h"
+#include "xla/primitive_util.h"
 #include "xla/service/cpu/cpu_options.h"
 #include "xla/service/dump.h"
 #include "xla/service/hlo_module_config.h"
@@ -137,10 +143,19 @@ llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
     auto cmp = b->CreateFCmpUGE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
   } else {
-    auto cmp_ge = b->CreateFCmpOGE(lhs_value, rhs_value);
+    // logic: isNaN(lhs) || (!isNan(rhs) && lhs > rhs) ? lhs : rhs
+    // See also: IEEE Std 754-2008 5.11.
+    //
+    // This also works, but we wanted to make it similar to minimum.
+    // logic: isNaN(lhs) || lhs > rhs ? lhs : rhs
+    //
+    // b->CreateMaximum() doesn't work on GPU before SM80.
     auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
-    auto sel_lhs = b->CreateOr(cmp_ge, lhs_is_nan);
-    return b->CreateSelect(sel_lhs, lhs_value, rhs_value, name.data());
+    auto rhs_is_not_nan = b->CreateFCmpOEQ(rhs_value, rhs_value);
+    auto lhs_is_greater = b->CreateFCmpOGT(lhs_value, rhs_value);
+    return b->CreateSelect(
+        b->CreateOr(lhs_is_nan, b->CreateAnd(rhs_is_not_nan, lhs_is_greater)),
+        lhs_value, rhs_value, name.data());
   }
 }
 
@@ -151,10 +166,20 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
     auto cmp = b->CreateFCmpULE(lhs_value, rhs_value);
     return b->CreateSelect(cmp, lhs_value, rhs_value, name.data());
   } else {
-    auto cmp_le = b->CreateFCmpOLE(lhs_value, rhs_value);
+    // logic: isNaN(lhs) || (!isNan(rhs) && lhs < rhs) ? lhs : rhs
+    // See also: IEEE Std 754-2008 5.11.
+    //
+    // This should also work, but the tests show that it doesn't work for
+    // minimum(x, NaN) on GPU:
+    // logic: isNaN(lhs) || lhs < rhs ? lhs : rhs
+    //
+    // b->CreateMaximum() doesn't work on GPU before SM80.
     auto lhs_is_nan = b->CreateFCmpUNE(lhs_value, lhs_value);
-    auto sel_lhs = b->CreateOr(cmp_le, lhs_is_nan);
-    return b->CreateSelect(sel_lhs, lhs_value, rhs_value, name.data());
+    auto rhs_is_not_nan = b->CreateFCmpOEQ(rhs_value, rhs_value);
+    auto lhs_is_less = b->CreateFCmpOLT(lhs_value, rhs_value);
+    return b->CreateSelect(
+        b->CreateOr(lhs_is_nan, b->CreateAnd(rhs_is_not_nan, lhs_is_less)),
+        lhs_value, rhs_value, name.data());
   }
 }
 
@@ -186,7 +211,7 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::Module* module) {
   switch (element_type) {
     case PRED:
-    // Int8 is used as there is no LLVM S4/U4 dtype
+    // i8 is used for S4/U4 as arrays of i4 values are not packed
     case S4:
     case U4:
     case S8:
@@ -307,10 +332,18 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
                                            llvm::Module* module) {
   const char* data = static_cast<const char*>(literal.untyped_data());
+  int64_t size_bytes = literal.size_bytes();
   CHECK_EQ(module->getDataLayout().isLittleEndian(), tsl::port::kLittleEndian);
-  return llvm::ConstantDataArray::getString(
-      module->getContext(), llvm::StringRef(data, literal.size_bytes()),
-      /*AddNull=*/false);
+  std::vector<char> packed_data;
+  if (primitive_util::Is4BitType(literal.shape().element_type())) {
+    packed_data.resize((size_bytes + 1) / 2);
+    PackInt4(absl::MakeSpan(data, size_bytes), absl::MakeSpan(packed_data));
+    data = packed_data.data();
+    size_bytes = packed_data.size();
+  }
+  return llvm::ConstantDataArray::getString(module->getContext(),
+                                            llvm::StringRef(data, size_bytes),
+                                            /*AddNull=*/false);
 }
 
 llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
@@ -487,6 +520,13 @@ std::string IrName(absl::string_view a, absl::string_view b) {
 
 std::string IrName(const HloInstruction* a, absl::string_view b) {
   return IrName(a->name(), b);
+}
+
+mlir::OwningOpRef<mlir::ModuleOp> CreateMlirModuleOp(
+    mlir::Location loc, std::optional<llvm::StringRef> name) {
+  return mlir::OwningOpRef<mlir::ModuleOp>(
+      /*ALLOW_MLIR_MODULE_OP_CREATE*/ mlir::ModuleOp::create(std::move(loc),
+                                                             std::move(name)));
 }
 
 std::string SanitizeFunctionName(std::string function_name) {

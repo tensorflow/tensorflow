@@ -1,10 +1,10 @@
 load(
-    "//tensorflow:tensorflow.default.bzl",
-    "get_compatible_with_portable",
-)
-load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+)
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "get_compatible_with_portable",
 )
 
 package(
@@ -12,6 +12,7 @@ package(
     # By default, these targets should only be used within the quantization library.
     default_visibility = [
         "//learning/brain/mlir/quantization:__subpackages__",
+        "//tensorflow/compiler/mlir/quantization/stablehlo:__subpackages__",
         "//tensorflow/compiler/mlir/quantization/tensorflow:__subpackages__",
     ],
     licenses = ["notice"],
@@ -196,5 +197,19 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
+    name = "quantization_unit_loc",
+    srcs = ["quantization_unit_loc.cc"],
+    hdrs = ["quantization_unit_loc.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )

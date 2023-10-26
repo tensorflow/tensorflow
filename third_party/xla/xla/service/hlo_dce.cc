@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "xla/service/hlo_dce.h"
 
-#include <memory>
-#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -27,12 +28,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/status.h"
-#include "xla/status_macros.h"
 #include "xla/statusor.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
+#include "tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -127,9 +127,7 @@ Status HloDCE::RecursivelyRemoveDeadComputation(
   return module->RemoveEmbeddedComputation(computation);
 }
 
-StatusOr<bool> HloDCE::RecursivelyRemoveDeadComputations(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+StatusOr<bool> HloDCE::RecursivelyRemoveDeadComputations(HloModule* module) {
   // Tracks whether any dead code is eliminated by this pass.
   bool module_contains_dead_code = false;
 
@@ -153,8 +151,7 @@ StatusOr<bool> HloDCE::RecursivelyRemoveDeadComputations(
 
   // Find dead computations.
   absl::flat_hash_set<HloComputation*> dead_computations;
-  for (auto* computation :
-       module->MakeComputationPostOrder(execution_threads)) {
+  for (auto* computation : module->MakeComputationPostOrder()) {
     // Finds all "top-level" dead computations not called by any instructions.
     // contains(comp) = true and live_computation_call_count[comp] = 0 also
     // implies that the computation is dead, but is nested in other dead
@@ -189,9 +186,8 @@ StatusOr<bool> HloDCE::Run(
   // Now DCE HloComputations.  Keep doing passes through the module until no
   // more computations can be eliminated. The function removes all
   // subcomputations that can be proved to have no remaining live callers.
-  TF_ASSIGN_OR_RETURN(
-      bool module_contains_dead_code,
-      RecursivelyRemoveDeadComputations(module, execution_threads));
+  TF_ASSIGN_OR_RETURN(bool module_contains_dead_code,
+                      RecursivelyRemoveDeadComputations(module));
   changed |= module_contains_dead_code;
 
   VLOG(2) << "After dce:";

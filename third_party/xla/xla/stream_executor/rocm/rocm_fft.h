@@ -45,9 +45,6 @@ namespace gpu {
 
 class GpuExecutor;
 
-// Opaque and unique indentifier for the rocFFT plugin.
-extern const PluginId kRocFftPlugin;
-
 // ROCMFftPlan uses deferred initialization. Only a single call of
 // Initialize() is allowed to properly create hipfft plan and set member
 // variable is_initialized_ to true. Newly added interface that uses member
@@ -142,7 +139,8 @@ class ROCMFft : public fft::FftSupport {
                      const DeviceMemory<InputT> &input,
                      DeviceMemory<OutputT> *output);
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ROCMFft);
+  ROCMFft(const ROCMFft &) = delete;
+  void operator=(const ROCMFft &) = delete;
 };
 
 }  // namespace gpu

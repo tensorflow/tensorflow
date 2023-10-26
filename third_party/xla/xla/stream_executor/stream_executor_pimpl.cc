@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/notification.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/stream.h"
@@ -154,6 +155,13 @@ StreamExecutor::~StreamExecutor() {
                  << "time. This may lead to unexpected/bad behavior - "
                  << "especially if any stream is still active!";
   }
+}
+
+StreamExecutor::PlatformSpecificHandle
+StreamExecutor::platform_specific_handle() const {
+  PlatformSpecificHandle handle;
+  handle.context = implementation_->platform_specific_context();
+  return handle;
 }
 
 tsl::Status StreamExecutor::Init(DeviceOptions device_options) {
@@ -439,6 +447,11 @@ tsl::Status StreamExecutor::Launch(Stream* stream, const ThreadDim& thread_dims,
   return implementation_->Launch(stream, thread_dims, block_dims, kernel, args);
 }
 
+tsl::Status StreamExecutor::Submit(Stream* stream,
+                                   const CommandBuffer& command_buffer) {
+  return implementation_->Submit(stream, command_buffer);
+}
+
 tsl::Status StreamExecutor::BlockHostUntilDone(Stream* stream) {
   tsl::Status result;
   SCOPED_TRACE(TraceListener::BlockHostUntilDone, &result, stream);
@@ -466,6 +479,11 @@ DeviceMemoryBase StreamExecutor::Allocate(uint64_t size, int64_t memory_space) {
           << StackTraceIfVLOG10();
 
   return buf;
+}
+
+void* StreamExecutor::GetUntypedSubBuffer(DeviceMemoryBase* parent,
+                                          uint64_t offset, uint64_t size) {
+  return implementation_->GetSubBuffer(parent, offset, size);
 }
 
 tsl::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
@@ -738,6 +756,10 @@ std::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
 
 bool StreamExecutor::ClearAllocatorStats() {
   return implementation_->ClearAllocatorStats();
+}
+
+Stream* StreamExecutor::FindAllocatedStream(void* gpu_stream) {
+  return implementation_->FindAllocatedStream(gpu_stream);
 }
 
 template <typename TraceCallT, typename... ArgsT>

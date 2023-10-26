@@ -54,10 +54,10 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/concurrency/async_value_ref.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/platform/threadpool.h"
-#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 
 namespace xla {
 
@@ -196,6 +196,9 @@ class TfrtCpuClient final : public PjRtClient {
       absl::string_view serialized,
       std::optional<CompileOptions> options) override;
 
+  StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
+      Status error, const Shape& shape, PjRtDevice* device) override;
+
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) override;
 
@@ -266,13 +269,13 @@ class TfrtCpuClient final : public PjRtClient {
     return eigen_intraop_device_.get();
   }
 
-  tfrt::AsyncValueRef<runtime::CpuEvent> GetLastCollectiveLaunchEvent() {
+  tsl::AsyncValueRef<runtime::CpuEvent> GetLastCollectiveLaunchEvent() {
     absl::MutexLock lock(&mu_);
     return last_collective_launch_event_.CopyRef();
   }
 
   void SetLastCollectiveLaunchEvent(
-      tfrt::AsyncValueRef<runtime::CpuEvent> event) {
+      tsl::AsyncValueRef<runtime::CpuEvent> event) {
     absl::MutexLock lock(&mu_);
     last_collective_launch_event_ = std::move(event);
   }
@@ -293,7 +296,7 @@ class TfrtCpuClient final : public PjRtClient {
   std::unique_ptr<tsl::thread::ThreadPool> pjrt_client_thread_pool_;
   std::unique_ptr<AsyncWorkRunner> async_work_runner_;
 
-  // TODO(zhangqiaorjc): Use tfrt::compat::EigenHostContextThreadPool.
+  // TODO(zhangqiaorjc): Use tsl::compat::EigenHostContextThreadPool.
   std::unique_ptr<tsl::thread::ThreadPool> eigen_intraop_pool_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_intraop_device_;
 
@@ -308,7 +311,7 @@ class TfrtCpuClient final : public PjRtClient {
   // TODO(zhangqiaorjc): Explore alternatives that allow multiple concurrent
   // collectives.
   mutable absl::Mutex mu_;
-  tfrt::AsyncValueRef<runtime::CpuEvent> last_collective_launch_event_
+  tsl::AsyncValueRef<runtime::CpuEvent> last_collective_launch_event_
       ABSL_GUARDED_BY(mu_);
 
   // A cache for transpose plans. We use transposes to convert
@@ -458,7 +461,7 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,
-      tfrt::AsyncValueRef<runtime::CpuEvent> last_collective_launch_event,
+      tsl::AsyncValueRef<runtime::CpuEvent> last_collective_launch_event,
       bool fill_future, TfrtCpuDevice* device = nullptr);
 
   TfrtCpuClient* client_;

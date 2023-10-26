@@ -34,15 +34,20 @@ class TensorFloat32GlobalVarTest : public HloTestBase {
   }
 };
 
+// `dot` doesn't support the flag directly, just by checking the operand
+// precisions. tf2xla/transforms/legalize_tf.cc sets them to highest if the
+// TensorFloat-32 global variable is false. So now we also do that in this test.
+// TODO(b/280130359): Remove these tests and write tests for operand_precision
+// instead.
 TEST_F(TensorFloat32GlobalVarTest, Dot) {
-  tsl::enable_tensor_float_32_execution(false);
+  // We don't set the global variable, because it's ignored anyway.
   const char* hlo_text = R"(
 HloModule TestModule
 
 ENTRY %dot_computation (x: f32[1024,1024], source: f32[1024,1024]) -> f32[1024,1024] {
   %x = f32[1024,1024] parameter(0)
   %y = f32[1024,1024] parameter(1)
-  ROOT %result = f32[1024,1024] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={default, default}
+  ROOT %result = f32[1024,1024] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest, highest}
 }
 )";
   EXPECT_TRUE(RunAndCompare(hlo_text, error_spec_));

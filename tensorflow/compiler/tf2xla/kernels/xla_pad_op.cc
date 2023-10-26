@@ -86,7 +86,8 @@ class XlaPadOp : public XlaOpKernel {
   }
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(XlaPadOp);
+  XlaPadOp(const XlaPadOp&) = delete;
+  void operator=(const XlaPadOp&) = delete;
 };
 
 REGISTER_XLA_OP(Name("XlaPad")

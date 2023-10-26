@@ -17,12 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstdint>
 #include <iterator>
 #include <list>
 #include <queue>
-#include <stack>
 #include <string>
 #include <utility>
 #include <variant>
@@ -33,8 +31,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/status/status.h"
-#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -49,14 +45,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout.h"
-#include "xla/literal_util.h"
 #include "xla/permutation_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
-#include "xla/service/gpu/gpu_types.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/hlo_creation_utils.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -67,28 +60,10 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
-
-bool HasDivisibleSuffixAllowingSplit(const absl::Span<int64_t const> span,
-                                     const int64_t divisor) {
-  CHECK_GE(divisor, 1);
-  int64_t product = 1;
-  // Note: Using reverse iterator.
-  for (auto it = span.crbegin(); it != span.crend(); ++it) {
-    product *= *it;
-    if (product % divisor == 0) {
-      return true;
-    }
-    if (divisor % product != 0) {
-      return false;
-    }
-  }
-  return false;
-}
 
 bool TensorIterationSpec::operator==(const TensorIterationSpec& other) const {
   VLOG(9) << this->ToString();
@@ -112,44 +87,6 @@ bool TensorIterationSpec::operator==(const TensorIterationSpec& other) const {
   return true;
 }
 
-namespace {
-
-// Batch dimensions of an operand of a dot instruction.
-// Just an unified accessor to lhs_batch_dimensions and rhs_batch_dimensions.
-const tsl::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
-    const HloInstruction& dot, const int operand_number) {
-  const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
-  if (operand_number == 0) {
-    return dimension_numbers.lhs_batch_dimensions();
-  }
-  return dimension_numbers.rhs_batch_dimensions();
-}
-
-// Index of the only contracting dimension of dot instruction operand.
-int64_t ContractingDimensionIndex(const HloInstruction& dot,
-                                  const int operand_number) {
-  const DotDimensionNumbers& dimension_numbers = dot.dot_dimension_numbers();
-  if (operand_number == 0) {
-    CHECK_EQ(dimension_numbers.lhs_contracting_dimensions().size(), 1);
-    return dimension_numbers.lhs_contracting_dimensions(0);
-  }
-  CHECK_EQ(dimension_numbers.rhs_contracting_dimensions().size(), 1);
-  return dimension_numbers.rhs_contracting_dimensions(0);
-}
-
-// Index of the only non-contracting dimension of dot instruction operand.
-int64_t NonContractingDimensionIndex(const HloInstruction& dot,
-                                     const int operand_number) {
-  StatusOr<std::vector<int64_t>> non_contracting_dims =
-      GetNonContractingDims(dot.operand(operand_number)->shape(),
-                            BatchDimensionsForOperand(dot, operand_number),
-                            {ContractingDimensionIndex(dot, operand_number)});
-  TF_CHECK_OK(non_contracting_dims.status());
-  CHECK_EQ(non_contracting_dims->size(), 1);
-  return non_contracting_dims->front();
-}
-
-// Tells if f(a+b) == f(a) + f(b).
 bool IsDistributiveOverAddition(const HloInstruction& hlo) {
   // The list is most likely incomplete.
   // For example division can be added too but only for operand #0.
@@ -166,8 +103,10 @@ bool IsDistributiveOverAddition(const HloInstruction& hlo) {
   return false;
 }
 
-FusionDecision RequireTritonFusibleConvert(const HloInstruction* input,
-                                           GpuVersion gpu_version) {
+namespace {
+
+FusionDecision RequireTritonFusibleConvert(
+    const HloInstruction* input, se::GpuComputeCapability gpu_version) {
   // TODO(b/266862494): Can pick up almost any
   // convert, but if it's reducing the data volume it should rather be fused
   // to the output of the producer kernel. However not all operations support
@@ -234,20 +173,36 @@ class DimensionOrder {
   class Fragment {
    public:
     explicit Fragment(int dst_dim_number, int64_t size)
-        : dst_dim_number_(dst_dim_number), size_(size) {}
+        : dst_dim_number_(dst_dim_number),
+          size_(size),
+          slice_start_(0),
+          slice_limit_(size) {}
 
     std::string ToString() const {
-      return absl::StrCat(dst_dim_number_, ":", size_);
+      return absl::StrCat(dst_dim_number_, ":", size_, ":", slice_start_, "-",
+                          slice_limit_);
     }
     // Label carrying the dimension number of an defining operation.
     int dst_dim_number() const { return dst_dim_number_; }
     // Total number of elements in the fragment ignoring slicing.
-    int64_t size() const { return size_; }
+    int64_t full_size() const { return size_; }
+    // First used element.
+    int64_t slice_start() const { return slice_start_; }
+    // Last used element.
+    int64_t slice_limit() const { return slice_limit_; }
+    int64_t sliced_size() const { return slice_limit_ - slice_start_; }
+    bool is_sliced() const { return full_size() != sliced_size(); }
+    void set_slice(int64_t start, int64_t limit) {
+      slice_start_ = start;
+      slice_limit_ = limit;
+    }
     void set_size(int64_t size) { size_ = size; }
 
    private:
     const int dst_dim_number_;
     int64_t size_;
+    int64_t slice_start_;
+    int64_t slice_limit_;
   };
   using Fragments = std::vector<Fragment>;
   using FragmentOrders = absl::flat_hash_map<int, std::vector<int>>;
@@ -313,7 +268,7 @@ TensorIterationSpec DimensionOrderToTensorIterationSpec(
   for (int dim_order_index = 0; dim_order_index < dim_fragments.size();
        ++dim_order_index) {
     const DimensionOrder::Fragment& fragment = dim_fragments[dim_order_index];
-    VLOG(6) << fragment.dst_dim_number() << "\t" << fragment.size();
+    VLOG(6) << fragment.ToString();
 
     DimIterationSpec& dim_spec = tensor_spec[fragment.dst_dim_number()];
     if (last_dim == fragment.dst_dim_number()) {
@@ -323,19 +278,29 @@ TensorIterationSpec DimensionOrderToTensorIterationSpec(
         dim_spec.back().subfragments.pop_back();
       }
       // Contiguous dimension, split only logically. Merge it back.
-      if (fragment.size() > 1) {
+      if (fragment.full_size() > 1) {
         CHECK(!dim_spec.empty());
-        dim_spec.back().count *= fragment.size();
-        dim_spec.back().subfragments.push_back(fragment.size());
+        CHECK(!dim_spec.back().is_sliced())
+            << "Only the major-most fragment can have an offset.";
+        dim_spec.back().slice_start =
+            fragment.slice_start() * dim_spec.back().count;
+        dim_spec.back().slice_limit =
+            fragment.slice_limit() * dim_spec.back().count;
+        dim_spec.back().count *= fragment.full_size();
+        dim_spec.back().subfragments.push_back(fragment.sliced_size());
       }
     } else {
       remove_last_fragment_if_degenerate(last_dim);
       // Add part of the dimension.
-      dim_spec.push_back(TensorIterationSpec::IterationSpecFragment{
-          accumulated_stride, fragment.size(), {fragment.size()}});
+      dim_spec.push_back(
+          TensorIterationSpec::IterationSpecFragment{accumulated_stride,
+                                                     fragment.full_size(),
+                                                     fragment.slice_start(),
+                                                     fragment.slice_limit(),
+                                                     {fragment.sliced_size()}});
     }
 
-    accumulated_stride *= fragment.size();
+    accumulated_stride *= fragment.full_size();
     last_dim = fragment.dst_dim_number();
   }
   remove_last_fragment_if_degenerate(last_dim);
@@ -405,14 +370,19 @@ class FusionContext {
   // around `hlo`.
   FusionDecision RequireSupportedDimOrders(const HloInstruction& hlo,
                                            DimOrderUpdates& updates) const;
+  // Try to calculate transformations of dimensions defined by the
+  // instruction, then check that the resulting dimension orders are supported.
+  DimOrderUpdatesOrError RequireSupportedInstruction(
+      const HloInstruction& hlo, const DimOrderMap& dim_orders,
+      TransformDirection direction) const;
   // Checks if the instruction is possible and profitable to fuse.
   // If so tries to transform dim_order describing one side of `hlo` into
   // description(s) of its other side if it is supported.
   DimOrderUpdatesOrError AnalyzeForFusion(
-      const HloInstruction& hlo, bool as_input,
+      const HloInstruction& hlo, TransformDirection transform_direction,
       absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
           old_to_new_mapping,
-      GpuVersion gpu_version) const;
+      se::GpuComputeCapability gpu_version) const;
   // Add dimension orders from `updates` to `dim_orders_` and update the
   // splittable dimension ratio if all of them are compatible.
   bool MergeUpdates(const DimOrderUpdates& updates);
@@ -420,7 +390,7 @@ class FusionContext {
   // If an input is not fusible stop there and make a parameter of the new
   // fusion, otherwise put it onto stack and check its own inputs first.
   void TryToFuseWithInputsRecursively(
-      HloInstruction& root, GpuVersion gpu_version,
+      HloInstruction& root, se::GpuComputeCapability gpu_version,
       absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
           old_to_new_mapping,
       std::vector<HloInstruction*>& fusion_inputs,
@@ -456,6 +426,12 @@ class FusionContext {
   const DimOrderMap& DimOrders() const { return dim_orders_; }
 
  private:
+  DimOrderUpdatesOrError AnalyzeForFusionImpl(
+      const HloInstruction& hlo, TransformDirection transform_direction,
+      absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
+          old_to_new_mapping,
+      const DimOrderMap& dim_orders,
+      se::GpuComputeCapability gpu_version) const;
   bool SetSplittableDimensionMajorPartSize(const int64_t size) {
     if (IsSupportedSplittableDimensionMajorPartSize(size)) {
       std::get<DotProperties>(properties_)
@@ -529,41 +505,47 @@ FusionDecision FusionContext::RequireSupportedDimOrder(
   VLOG(8) << order.ToString();
   const Fragments& tensor_dim_fragments = order.TensorFragmentsOrder();
   for (const auto& [dim_index, dim_fragments] : order.DimFragmentsOrders()) {
-    int split_counter = -1;
+    CHECK(!dim_fragments.empty());
+    for (int i = 0; i < dim_fragments.size() - 1; ++i) {
+      if (tensor_dim_fragments[dim_fragments[i]].is_sliced()) {
+        return "Sliced non-major-most fragment.";
+      }
+    }
+    int group_counter = 0;
+    int last_seen_group_last_fragment_index = -1;
     auto fragment_it = dim_fragments.cbegin();
     while (true) {
       if (fragment_it == dim_fragments.cend()) {
         break;
       }
-      int64_t grouped_size = tensor_dim_fragments[*fragment_it].size();
-      // Gather contiguous fragments.
+      int64_t grouped_size = tensor_dim_fragments[*fragment_it].full_size();
+      // Gather contiguous fragments: they have consecutive indices.
       while ((fragment_it + 1) != dim_fragments.cend() &&
              *(fragment_it + 1) == *fragment_it + 1) {
         ++fragment_it;
-        grouped_size *= tensor_dim_fragments[*fragment_it].size();
+        grouped_size *= tensor_dim_fragments[*fragment_it].full_size();
       }
-
+      // Ignore 1-sized groups of fragments.
       if (grouped_size == 1) {
         ++fragment_it;
         continue;
       }
 
-      if (fragment_it != dim_fragments.cbegin() &&
-          *fragment_it < *(fragment_it - 1)) {
+      if (last_seen_group_last_fragment_index > *fragment_it) {
         return "Transpose within a dimension.";
       }
 
-      ++split_counter;
-      if (split_counter > 0) {
+      ++group_counter;
+      if (group_counter > 1) {
         if (dim_index == SplittableDimensionIndex() &&
             IsSupportedSplittableDimensionMajorPartSize(grouped_size)) {
-          if (split_counter == 1) {
+          if (group_counter == 2) {
             if (split_dim_major_part != 0 &&
                 split_dim_major_part != grouped_size) {
               return "Conflicting splits of splittable dimension";
             }
             split_dim_major_part = grouped_size;
-          } else if (split_counter > 1) {
+          } else if (group_counter > 2) {
             return "2nd split of a splittable dimension.";
           }
         } else {
@@ -571,6 +553,7 @@ FusionDecision FusionContext::RequireSupportedDimOrder(
         }
       }
 
+      last_seen_group_last_fragment_index = *fragment_it;
       ++fragment_it;
     }
   }
@@ -661,11 +644,11 @@ DimOrderUpdatesOrError FusionContext::HandleBitcast(
       // Find a continuous group of fragments corresponding to this dimension in
       // the source and assign the corresponding size in fragments of the
       // destination ignoring the source ones.
-      dst_remaining_size = src_dim->size();
+      dst_remaining_size = src_dim->full_size();
       while (src_dim + 1 != src_fragments_order.cend() &&
              (src_dim + 1)->dst_dim_number() == src_dim->dst_dim_number()) {
         ++src_dim;
-        dst_remaining_size *= src_dim->size();
+        dst_remaining_size *= src_dim->full_size();
       }
       while (dst_remaining_size > 1) {
         CHECK(dst_dim_it != dst_dim_end);
@@ -676,8 +659,8 @@ DimOrderUpdatesOrError FusionContext::HandleBitcast(
       }
       continue;
     }
-    if (dst_remaining_size >= src_dim->size()) {
-      if (dst_remaining_size % src_dim->size()) {
+    if (dst_remaining_size >= src_dim->full_size()) {
+      if (dst_remaining_size % src_dim->full_size()) {
         return "Unsupported bitcast";
       }
       // Source dimension fragment completely fits into the destination one:
@@ -685,17 +668,17 @@ DimOrderUpdatesOrError FusionContext::HandleBitcast(
       add_new_fragment(*src_dim);
       // Update the size of the remaining part of the destination that is
       // carried over to next source dimensions.
-      dst_remaining_size /= src_dim->size();
+      dst_remaining_size /= src_dim->full_size();
     } else {
       // Source is larger than destination.
       // Assign further destination dimensions.
       // Size of the not yet assigned part of the source dimension.
-      int64_t src_remaining_size = src_dim->size();
+      int64_t src_remaining_size = src_dim->full_size();
       // Handle dimension splits.
       if (dst_remaining_size > 1) {
         // If there is a remaining fragment of a previous destination dimension
         // assign it first.
-        if (src_remaining_size % dst_remaining_size) {
+        if (src_remaining_size % dst_remaining_size || (src_dim->is_sliced())) {
           return "Unsupported bitcast";
         }
         add_new_fragment(
@@ -718,6 +701,9 @@ DimOrderUpdatesOrError FusionContext::HandleBitcast(
           }
           dst_remaining_size = dst_dim_size / src_remaining_size;
           new_fragment_size = src_remaining_size;
+        }
+        if (src_dim->is_sliced()) {
+          return "Unsupported bitcast";
         }
         add_new_fragment(
             Fragment{src_dim->dst_dim_number(), new_fragment_size});
@@ -776,8 +762,13 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
       (direction == TransformDirection::kOutputToInput) ? hlo : hlo->operand(0);
   const HloInstruction* dst =
       (direction == TransformDirection::kOutputToInput) ? hlo->operand(0) : hlo;
-  const Fragments& src_fragments_order =
-      dim_orders.at(src).TensorFragmentsOrder();
+  // Note: copying instead of using a const reference because
+  // some operations (slice) will modify fragment properties in-place.
+  Fragments src_fragments_order = dim_orders.at(src).TensorFragmentsOrder();
+  if (hlo->opcode() == HloOpcode::kSlice &&
+      ShapeUtil::IsEffectiveScalar(hlo->shape())) {
+    return FusionDecision("Slice to scalar is not implemented yet.");
+  }
   DimOrderUpdates result;
   if (hlo->opcode() == HloOpcode::kReduce || hlo->opcode() == HloOpcode::kPad) {
     // Operand 1 (the neutral value or padding value) has to be a scalar.
@@ -791,17 +782,16 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
   // dimension, apply permutations, then finally remove the grouping.
   // Group subdimensions by iterating over them in the same order as over
   // full dimensions and matching by total size.
-  std::vector<std::vector<const Fragment*>> src_physical;
+  std::vector<std::vector<Fragment*>> src_physical;
   src_physical.reserve(src->shape().rank());
-  auto src_fragment_it = src_fragments_order.cbegin();
-  const auto src_fragment_end = src_fragments_order.cend();
+  auto src_fragment_it = src_fragments_order.begin();
   for (int64_t dim_index : src->shape().layout().minor_to_major()) {
     const int64_t dim_size = src->shape().dimensions(dim_index);
     int64_t subdim_size_accumulator = 1;
-    std::vector<const Fragment*> subdim_group;
+    std::vector<Fragment*> subdim_group;
     do {
-      CHECK(src_fragment_it != src_fragment_end);
-      subdim_size_accumulator *= src_fragment_it->size();
+      CHECK(src_fragment_it != src_fragments_order.end());
+      subdim_size_accumulator *= src_fragment_it->full_size();
       subdim_group.push_back(&*src_fragment_it);
       ++src_fragment_it;
     } while (subdim_size_accumulator < dim_size);
@@ -809,13 +799,13 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
     src_physical.push_back(subdim_group);
   }
   // Source physical -> source logical.
-  std::vector<std::vector<const Fragment*>> src_logical;
+  std::vector<std::vector<Fragment*>> src_logical;
   src_logical.resize(src_physical.size());
   for (int i = 0; i < src_physical.size(); ++i) {
     src_logical[src->shape().layout().minor_to_major(i)] = src_physical[i];
   }
   // Source logical -> destination logical.
-  std::vector<std::vector<const Fragment*>> dst_logical;
+  std::vector<std::vector<Fragment*>> dst_logical;
   if (hlo->opcode() == HloOpcode::kTranspose) {
     const auto* transpose = Cast<HloTransposeInstruction>(hlo);
     std::vector<int64_t> permutation(transpose->dimensions().cbegin(),
@@ -872,7 +862,7 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
         // This case is executed for the contracting dimension when we run the
         // TritonFusionAnalysis after the padding and the split-k transform are
         // applied.
-        const std::vector<const Fragment*>& fragments = src_logical[i];
+        const std::vector<Fragment*>& fragments = src_logical[i];
         // We must have 2 fragments at this point.
         CHECK_EQ(fragments.size(), 2);
         // The dst_dim_numbers must be the same for the 2 fragments of the
@@ -882,8 +872,23 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
 
         new_fragments.emplace_back(
             fragments[0]->dst_dim_number(),
-            fragments[0]->size() * fragments[1]->size() - padding);
+            fragments[0]->full_size() * fragments[1]->full_size() - padding);
         dst_logical[i] = {&new_fragments.back()};
+      }
+    }
+  } else if (hlo->opcode() == HloOpcode::kSlice) {
+    const auto slice = Cast<HloSliceInstruction>(hlo);
+    dst_logical.resize(src_logical.size());
+    for (int dim = 0; dim < src_logical.size(); ++dim) {
+      dst_logical[dim] = src_logical[dim];
+      if (slice->slice_limits(dim) - slice->slice_starts(dim) !=
+          dst->shape().dimensions(dim)) {
+        if (dst_logical[dim].size() > 1) {
+          return FusionDecision("Slicing of fragmented dimension.");
+        }
+        dst_logical[dim].front()->set_size(dst->shape().dimensions(dim));
+        dst_logical[dim].front()->set_slice(slice->slice_starts(dim),
+                                            slice->slice_limits(dim));
       }
     }
   } else {
@@ -916,7 +921,7 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
       const auto it = src_to_dst.find(&src_fragments_order[fragment_number]);
       if (it == src_to_dst.cend()) {
         if (hlo->opcode() == HloOpcode::kBroadcast &&
-            src_fragments_order[fragment_number].size() > 1 &&
+            src_fragments_order[fragment_number].full_size() > 1 &&
             dim_numbers_present_in_dst.contains(dim_index)) {
           return FusionDecision("Unsupported broadcast");
         }
@@ -933,7 +938,7 @@ DimOrderUpdatesOrError FusionContext::HandleDimensionAlteringOp(
 DimOrderUpdatesOrError FusionContext::HandleInstruction(
     const HloInstruction* hlo, const DimOrderMap& dim_orders,
     const TransformDirection direction) const {
-  VLOG(7) << hlo->ToString();
+  VLOG(7) << "Analyzing " << hlo->ToString();
   if (hlo->opcode() == HloOpcode::kParameter ||
       hlo_query::IsScalarConstant(hlo)) {
     return DimOrderUpdates{};
@@ -946,6 +951,9 @@ DimOrderUpdatesOrError FusionContext::HandleInstruction(
     }
     return HandleDimensionAlteringOp(hlo, dim_orders, direction);
   } else if (hlo->opcode() == HloOpcode::kReduce) {
+    if (!std::holds_alternative<SoftmaxProperties>(properties_)) {
+      return "Reductions are not supported in GEMM fusions yet.";
+    }
     if (direction != TransformDirection::kOutputToInput) {
       return "Unsupported direction of reduction.";
     }
@@ -961,6 +969,11 @@ DimOrderUpdatesOrError FusionContext::HandleInstruction(
     return HandleElementwise(hlo, dim_orders);
   } else if (hlo->opcode() == HloOpcode::kBitcast) {
     return HandleBitcast(hlo, dim_orders, direction);
+  } else if (hlo->opcode() == HloOpcode::kSlice) {
+    if (direction != TransformDirection::kOutputToInput) {
+      return "Unsupported slice direction.";
+    }
+    return HandleDimensionAlteringOp(hlo, dim_orders, direction);
   } else if (hlo->opcode() == HloOpcode::kReshape) {
     if (!ShapeUtil::ReshapeIsBitcast(hlo->operand(0)->shape(), hlo->shape())) {
       return "Non-bitcast reshape.";
@@ -996,8 +1009,14 @@ bool IsInputWorthFusing(const HloInstruction& hlo) {
   if (InputMinusOutputBytes(hlo) <= kIoToleranceBytes) {
     return true;
   }
-  return hlo.user_count() == 1 &&
-         hlo_query::AllOperandsAreParametersOrConstantsWithSingleUser(hlo);
+  if (hlo.user_count() > 1) {
+    return false;
+  }
+  if (hlo.opcode() == HloOpcode::kSlice &&
+      hlo_query::AllOperandsAreParametersOrConstants(hlo)) {
+    return true;
+  }
+  return hlo_query::AllOperandsAreParametersOrConstantsWithSingleUser(hlo);
 }
 
 // Tells that fusing an instruction as an output is efficient.
@@ -1006,17 +1025,37 @@ bool IsOutputWorthFusing(const HloInstruction& hlo) {
          InputMinusOutputBytes(hlo) >= -kIoToleranceBytes;
 }
 
+DimOrderUpdatesOrError FusionContext::RequireSupportedInstruction(
+    const HloInstruction& hlo, const DimOrderMap& dim_orders,
+    const TransformDirection transform_direction) const {
+  auto result = HandleInstruction(&hlo, dim_orders, transform_direction);
+  if (!std::holds_alternative<DimOrderUpdates>(result)) {
+    return std::get<FusionDecision>(result);
+  }
+
+  if (FusionDecision supported =
+          RequireSupportedDimOrders(hlo, std::get<DimOrderUpdates>(result));
+      !supported) {
+    return supported;
+  }
+  return std::get<DimOrderUpdates>(result);
+}
+
 DimOrderUpdatesOrError FusionContext::AnalyzeForFusion(
-    const HloInstruction& hlo, bool as_input,
+    const HloInstruction& hlo, const TransformDirection transform_direction,
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
         old_to_new_mapping,
-    const GpuVersion gpu_version) const {
-  int fusion_level =
-      hlo.GetModule()->config().debug_options().xla_gpu_triton_fusion_level();
-  if (!std::get<se::CudaComputeCapability>(gpu_version)
-           .IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-    fusion_level = std::min(fusion_level, 1);
-  }
+    const se::GpuComputeCapability gpu_version) const {
+  return AnalyzeForFusionImpl(hlo, transform_direction, old_to_new_mapping,
+                              dim_orders_, gpu_version);
+}
+
+DimOrderUpdatesOrError FusionContext::AnalyzeForFusionImpl(
+    const HloInstruction& hlo, const TransformDirection transform_direction,
+    absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
+        old_to_new_mapping,
+    const DimOrderMap& dim_orders,
+    const se::GpuComputeCapability gpu_version) const {
   if (hlo.opcode() == HloOpcode::kTuple ||
       hlo.opcode() == HloOpcode::kGetTupleElement) {
     return "Unsupported instruction.";
@@ -1036,7 +1075,18 @@ DimOrderUpdatesOrError FusionContext::AnalyzeForFusion(
   if (!IsTritonSupportedDataType(hlo.shape().element_type(), gpu_version)) {
     return "Unsupported output data type.";
   }
-  if (as_input) {
+  DimOrderUpdatesOrError result =
+      RequireSupportedInstruction(hlo, dim_orders, transform_direction);
+  if (!std::holds_alternative<DimOrderUpdates>(result)) {
+    return result;
+  }
+  int fusion_level =
+      hlo.GetModule()->config().debug_options().xla_gpu_triton_fusion_level();
+  if (!std::get<se::CudaComputeCapability>(gpu_version)
+           .IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    fusion_level = std::min(fusion_level, 1);
+  }
+  if (transform_direction == TransformDirection::kOutputToInput) {
     if (fusion_level < 2) {
       if (hlo.opcode() == HloOpcode::kConvert) {
         if (FusionDecision decision =
@@ -1048,7 +1098,25 @@ DimOrderUpdatesOrError FusionContext::AnalyzeForFusion(
         return "Ignored elementwise operation";
       }
     } else {
-      if (!IsInputWorthFusing(hlo)) {
+      // Exception for binary elementwise operations: in most cases these are
+      // not trivial to fuse because they increase DRAM traffic but if one
+      // of the inputs is for example a broadcast that can be fused too it
+      // becomes worth fusing. Look ahead and analyze operands here.
+      bool accepted = false;
+      if (hlo.IsElementwise() && hlo.operand_count() == 2) {
+        for (const HloInstruction* operand : hlo.operands()) {
+          if (operand->opcode() == HloOpcode::kBroadcast &&
+              (operand->operand(0)->opcode() == HloOpcode::kParameter ||
+               operand->operand(0)->opcode() == HloOpcode::kConstant) &&
+              std::holds_alternative<DimOrderUpdates>(AnalyzeForFusionImpl(
+                  *operand, transform_direction, old_to_new_mapping,
+                  std::get<DimOrderUpdates>(result).map, gpu_version))) {
+            accepted = true;
+            break;
+          }
+        }
+      }
+      if (!accepted && !IsInputWorthFusing(hlo)) {
         return "Not obviously profitable to fuse as input.";
       }
     }
@@ -1073,20 +1141,6 @@ DimOrderUpdatesOrError FusionContext::AnalyzeForFusion(
     if (!IsOutputWorthFusing(hlo)) {
       return "Not obviously profitable to fuse as output.";
     }
-  }
-
-  auto result =
-      HandleInstruction(&hlo, dim_orders_,
-                        as_input ? TransformDirection::kOutputToInput
-                                 : TransformDirection::kInputToOutput);
-  if (!std::holds_alternative<DimOrderUpdates>(result)) {
-    return std::get<FusionDecision>(result);
-  }
-
-  if (FusionDecision supported =
-          RequireSupportedDimOrders(hlo, std::get<DimOrderUpdates>(result));
-      !supported) {
-    return supported;
   }
   return std::get<DimOrderUpdates>(result);
 }
@@ -1158,54 +1212,74 @@ bool FusionContext::MergeUpdates(const DimOrderUpdates& updates) {
 }
 
 void FusionContext::TryToFuseWithInputsRecursively(
-    HloInstruction& root, const GpuVersion gpu_version,
+    HloInstruction& root, const se::GpuComputeCapability gpu_version,
     absl::flat_hash_map<const HloInstruction*, HloInstruction*>&
         old_to_new_mapping,
     std::vector<HloInstruction*>& fusion_inputs,
     HloComputation::Builder& builder) {
-  absl::flat_hash_set<const HloInstruction*> visited;
-  std::stack<HloInstruction*> to_fuse;
-  // Instructions at the edge of 'to_fuse' that can either get fused too or
-  // become parameters of the fusion. Used to track the number of parameters
-  // of the fusion.
+  // Instructions at the fusion edge that can either get fused too or
+  // become parameters of the fusion. Used to track the number of parameters.
   absl::flat_hash_set<const HloInstruction*> inputs;
-  auto try_fuse_one = [&](HloInstruction& hlo) {
-    const DimOrderUpdatesOrError result = AnalyzeForFusion(
-        hlo, /*as_input=*/true, old_to_new_mapping, gpu_version);
-    if (!std::holds_alternative<DimOrderUpdates>(result)) {
-      return false;
+  // Traverse all connected instructions that could be fused, analyze them and
+  // collect ones that will be fused.
+  absl::flat_hash_set<const HloInstruction*> to_fuse_set;
+  std::list<HloInstruction*> to_fuse_list;
+  absl::flat_hash_set<const HloInstruction*> enqueued;
+  std::queue<HloInstruction*> to_visit;
+  to_visit.push(&root);
+  int num_requeued = 0;
+  while (to_visit.size() > num_requeued) {
+    HloInstruction* hlo = to_visit.front();
+    to_visit.pop();
+    // Watch the total number of fusion parameters.
+    if (inputs.size() >= TritonFusionAnalysis::kMaxParameterPerScope &&
+        NumAddedParameters(*hlo) > 0) {
+      // Re-queue: the number of parameters may go down when other instructions
+      // are processed.
+      to_visit.push(hlo);
+      // Prevent infinite loops.
+      ++num_requeued;
+      continue;
     }
-
-    if (!MergeUpdates(std::get<DimOrderUpdates>(result))) {
-      return false;
+    num_requeued = 0;
+    const DimOrderUpdatesOrError result =
+        AnalyzeForFusion(*hlo, TransformDirection::kOutputToInput,
+                         old_to_new_mapping, gpu_version);
+    if (!std::holds_alternative<DimOrderUpdates>(result) ||
+        !MergeUpdates(std::get<DimOrderUpdates>(result))) {
+      continue;
     }
-    to_fuse.push(&hlo);
-    if (hlo.opcode() != HloOpcode::kParameter) {
-      inputs.erase(&hlo);
+    if (hlo->opcode() != HloOpcode::kParameter) {
+      inputs.erase(hlo);
     }
-    inputs.insert(hlo.operands().cbegin(), hlo.operands().cend());
-    return true;
-  };
-  try_fuse_one(root);
-  visited.insert(&root);
-  while (!to_fuse.empty()) {
-    bool top_is_ready_to_fuse = true;
-    HloInstruction* hlo = to_fuse.top();
-    for (HloInstruction* operand : hlo->mutable_operands()) {
-      if (visited.insert(operand).second) {
-        // Stop adding new parameters.
-        if (inputs.size() >= TritonFusionAnalysis::kMaxParameterPerScope &&
-            NumAddedParameters(*operand) > 0) {
-          continue;
-        }
-        if (try_fuse_one(*operand)) {
-          top_is_ready_to_fuse = false;
-        }
+    inputs.insert(hlo->operands().cbegin(), hlo->operands().cend());
+    to_fuse_set.insert(hlo);
+    to_fuse_list.push_back(hlo);
+    for (HloInstruction* operand : hlo->operands()) {
+      if (enqueued.insert(operand).second) {
+        VLOG(6) << "Enqueueing " << operand->ToString();
+        to_visit.push(operand);
       }
     }
-    if (top_is_ready_to_fuse) {
-      Fuse(*hlo, old_to_new_mapping, fusion_inputs, builder);
-      to_fuse.pop();
+  }
+  // Find one by one instructions that have no operands queued to be fused and
+  // fuse them.
+  while (!to_fuse_list.empty()) {
+    for (auto it = to_fuse_list.begin(); it != to_fuse_list.end();) {
+      bool ready_to_fuse = true;
+      for (const HloInstruction* operand : (*it)->operands()) {
+        if (to_fuse_set.contains(operand)) {
+          ready_to_fuse = false;
+          break;
+        }
+      }
+      if (ready_to_fuse) {
+        Fuse(**it, old_to_new_mapping, fusion_inputs, builder);
+        to_fuse_set.erase(*it);
+        it = to_fuse_list.erase(it);
+      } else {
+        ++it;
+      }
     }
   }
 }
@@ -1216,7 +1290,7 @@ void FusionContext::TryToFuseWithInputsRecursively(
 // call to this fusion. fusion_output_ptr (if not nullptr) gets assigned the
 // original instruction that has to be replaced by the call to the fusion.
 StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
-                                 const GpuVersion gpu_version,
+                                 const se::GpuComputeCapability gpu_version,
                                  HloComputation::Builder& builder,
                                  std::vector<HloInstruction*>& fusion_inputs,
                                  HloInstruction** fusion_output_ptr) {
@@ -1270,8 +1344,9 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
     if (!IsDistributiveOverAddition(*user)) {
       break;
     }
-    auto result = context.AnalyzeForFusion(*user, /*as_input=*/false,
-                                           old_to_new_mapping, gpu_version);
+    auto result =
+        context.AnalyzeForFusion(*user, TransformDirection::kInputToOutput,
+                                 old_to_new_mapping, gpu_version);
     if (!std::holds_alternative<DimOrderUpdates>(result)) {
       continue;
     }
@@ -1294,6 +1369,7 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
   }
   for (const auto& iter : old_to_new_mapping) {
     if (iter.second->opcode() == HloOpcode::kConvert ||
+        iter.second->opcode() == HloOpcode::kSlice ||
         iter.second->opcode() == HloOpcode::kTranspose) {
       return FusionDecision{};
     }
@@ -1305,7 +1381,7 @@ StatusOr<FusionDecision> FuseDot(HloInstruction& dot,
 // operations that can target the triton GEMM emitter.
 class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit GemmRewriterTritonVisitor(const GpuVersion gpu_version)
+  explicit GemmRewriterTritonVisitor(const se::GpuComputeCapability gpu_version)
       : gpu_version_(gpu_version) {}
   // Checks that a dot() should be targeting the triton GEMM emitter;
   // if so - fuses all its compatible inputs and outputs as a new computation
@@ -1359,270 +1435,14 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  GpuVersion gpu_version_;
+  se::GpuComputeCapability gpu_version_;
 };
 
 StatusOr<bool> RunOnComputation(HloComputation* computation,
-                                GpuVersion gpu_version) {
+                                se::GpuComputeCapability gpu_version) {
   GemmRewriterTritonVisitor visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
-}
-
-// Copy source values into destination incrementing those >= threshold by 1.
-void CopyIncrementingAboveThreshold(
-    const tsl::protobuf::RepeatedField<int64_t>& source,
-    tsl::protobuf::RepeatedField<int64_t>& destination, const int threshold) {
-  destination.Reserve(source.size());
-  for (int64_t x : source) {
-    if (x >= threshold) {
-      ++x;
-    }
-    destination.Add(x);
-  }
-}
-
-// Copy source values into destination incrementing those >= threshold by 1.
-void CopyIncrementingAboveThreshold(absl::Span<const int64_t> source,
-                                    DimensionVector& destination,
-                                    const int threshold) {
-  destination.reserve(source.size());
-  for (int64_t x : source) {
-    if (x >= threshold) {
-      ++x;
-    }
-    destination.push_back(x);
-  }
-}
-
-Status UncompilableMatmul(absl::string_view explanation) {
-  Status s = absl::CancelledError(explanation);
-  s.SetPayload(kUncompilableFusion, absl::Cord(explanation));
-  return s;
-}
-
-StatusOr<HloInstruction*> MakeSplitKOperand(
-    HloInstruction& dot, const TritonFusionAnalysis& analysis,
-    const AutotuneResult::TritonGemmKey& tiling,
-    const int64_t contracting_dim_idx, const int operand_number) {
-  HloInstruction* operand = dot.mutable_operand(operand_number);
-  const int64_t k = operand->shape().dimensions(contracting_dim_idx);
-  const bool need_padding = k % tiling.split_k() != 0;
-
-  TritonFusionAnalysis::Scope scope = (operand_number == 0)
-                                          ? TritonFusionAnalysis::Scope::LHS
-                                          : TritonFusionAnalysis::Scope::RHS;
-  auto check_if_supported = [&](const HloInstruction& hlo,
-                                bool check_divisibility) {
-    const DimIterationSpec* spec =
-        analysis.IterSpec(scope, &hlo, contracting_dim_idx);
-    if (spec == nullptr) {
-      // No contracting dimension - no checks needed.
-      return OkStatus();
-    }
-    if (spec->size() != 1) {
-      return UncompilableMatmul("Unsupported case.");
-    }
-    const TensorIterationSpec::IterationSpecFragment& fragment = spec->at(0);
-    if (check_divisibility && !HasDivisibleSuffixAllowingSplit(
-                                  fragment.subfragments, tiling.split_k())) {
-      return UncompilableMatmul("Contracting dimension is too fragmented.");
-    }
-    if (tiling.split_k() > ceil(1.0 * fragment.count / tiling.block_k())) {
-      return UncompilableMatmul(
-          "Too small divisible part of the contracting dimension.");
-    }
-    return OkStatus();
-  };
-
-  // The divisibility check is only used to ensure that the TritonFusionAnalysis
-  // in IrEmitterTriton can propagate the fragments correctly after the split-k
-  // transform. The contracting dimension is always contiguous so far.
-  //
-  // If padding is needed on the operand then the divisibility may not hold
-  // up for the scope parameters. We just check some basics here, and we check
-  // the full analysis after the split-k transform at the end of
-  // MakeDotComputationSplitKBatch.
-  TF_RETURN_IF_ERROR(
-      check_if_supported(*operand, /*check_divisibility=*/!need_padding));
-  for (const HloInstruction* param : analysis.ScopeParameters(scope)) {
-    TF_RETURN_IF_ERROR(
-        check_if_supported(*param, /*check_divisibility=*/!need_padding));
-  }
-
-  // Add padding if needed.
-  if (need_padding) {
-    HloInstruction* const zero =
-        dot.parent()->AddInstruction(HloInstruction::CreateConstant(
-            LiteralUtil::Zero(operand->shape().element_type())));
-
-    PaddingConfig padding_config = MakeNoPaddingConfig(operand->shape().rank());
-    padding_config.mutable_dimensions(contracting_dim_idx)
-        ->set_edge_padding_high(tiling.split_k() - k % tiling.split_k());
-
-    TF_ASSIGN_OR_RETURN(operand, MakePadHlo(operand, zero, padding_config));
-  }
-  CHECK_GE(operand->shape().dimensions(contracting_dim_idx), tiling.split_k());
-
-  // Add bitcast.
-  const Shape& shape = operand->shape();
-  Shape new_shape(shape.element_type(), {}, {}, {});
-
-  for (int i = 0; i < shape.rank(); ++i) {
-    const int64_t dimension_size = shape.dimensions(i);
-    if (i == contracting_dim_idx) {
-      new_shape.add_dimensions(tiling.split_k());
-      new_shape.add_dimensions(dimension_size / tiling.split_k());
-    } else {
-      new_shape.add_dimensions(dimension_size);
-    }
-  }
-
-  Layout* new_layout = new_shape.mutable_layout();
-  // Iterate through the logical dimension numbers in their physical order;
-  // copy them into the new layout incrementing by one those that get shifted
-  // by the insertion of the new batch dimension.
-  for (int64_t logical_dim_idx : shape.layout().minor_to_major()) {
-    // When 'logical_dim_idx' == 'contracting_dim_idx' add both
-    // 'logical_dim_idx'+1 and 'logical_dim_idx' because it gets split into two.
-    if (logical_dim_idx >= contracting_dim_idx) {
-      new_layout->add_minor_to_major(logical_dim_idx + 1);
-    }
-    if (logical_dim_idx <= contracting_dim_idx) {
-      new_layout->add_minor_to_major(logical_dim_idx);
-    }
-  }
-  return MakeBitcastHlo(operand, new_shape);
-}
-
-// Apply split K configuration from the tiling to the fused dot() computation:
-// bitcast the operands, change the output shape and the dot dimensions.
-Status MakeDotComputationSplitKBatch(
-    HloComputation* computation, const AutotuneResult::TritonGemmKey& tiling,
-    bool disable_reduced_precision_reduction) {
-  HloInstruction* dot =
-      hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot);
-  TF_ASSIGN_OR_RETURN(const auto analysis,
-                      TritonFusionAnalysis::Execute(*computation));
-  const DotDimensionNumbers& old_dim_numbers = dot->dot_dimension_numbers();
-  DotDimensionNumbers new_dim_numbers;
-
-  const int64_t lhs_contracting_idx = ContractingDimensionIndex(*dot, 0);
-  CopyIncrementingAboveThreshold(
-      old_dim_numbers.lhs_contracting_dimensions(),
-      *new_dim_numbers.mutable_lhs_contracting_dimensions(),
-      lhs_contracting_idx);
-  new_dim_numbers.mutable_lhs_batch_dimensions()->Add(lhs_contracting_idx);
-  CopyIncrementingAboveThreshold(
-      old_dim_numbers.lhs_batch_dimensions(),
-      *new_dim_numbers.mutable_lhs_batch_dimensions(), lhs_contracting_idx);
-
-  const int64_t rhs_contracting_idx = ContractingDimensionIndex(*dot, 1);
-  CopyIncrementingAboveThreshold(
-      old_dim_numbers.rhs_contracting_dimensions(),
-      *new_dim_numbers.mutable_rhs_contracting_dimensions(),
-      rhs_contracting_idx);
-  new_dim_numbers.mutable_rhs_batch_dimensions()->Add(rhs_contracting_idx);
-  CopyIncrementingAboveThreshold(
-      old_dim_numbers.rhs_batch_dimensions(),
-      *new_dim_numbers.mutable_rhs_batch_dimensions(), rhs_contracting_idx);
-
-  // Collect HLOs to transform between dot output and root. These will
-  // get a new major most batch dimension sized as split K factor. Other inputs
-  // of these HLOs will get broadcasted.
-  std::stack<HloInstruction*> to_process;
-  // Store the same HLOs also in a hash set for quick lookups.
-  absl::flat_hash_set<HloInstruction*> to_process_set;
-  HloInstruction* current = dot;
-  do {
-    to_process.push(current);
-    CHECK(to_process_set.insert(current).second);
-    if (current->users().empty()) {
-      break;
-    }
-    CHECK_EQ(current->user_count(), 1);
-    current = current->users()[0];
-    if (!IsDistributiveOverAddition(*current)) {
-      return Cancelled("Operation non-distributive over addition after dot.");
-    }
-  } while (true);
-
-  // Process the collected HLOs from computation root to dot.
-  bool did_pad = false;
-  while (!to_process.empty()) {
-    HloInstruction* current = to_process.top();
-    to_process.pop();
-    // Add split-K dimension to `current`.
-    HloInstruction* expanded;
-    if (current == dot) {
-      TF_ASSIGN_OR_RETURN(
-          HloInstruction * lhs,
-          MakeSplitKOperand(*dot, analysis, tiling, lhs_contracting_idx, 0));
-      TF_ASSIGN_OR_RETURN(
-          HloInstruction * rhs,
-          MakeSplitKOperand(*dot, analysis, tiling, rhs_contracting_idx, 1));
-      if (lhs->operand(0)->opcode() == HloOpcode::kPad) {
-        CHECK_EQ(rhs->operand(0)->opcode(), HloOpcode::kPad);
-        did_pad = true;
-      }
-      expanded = MakeDotHlo(lhs, rhs, new_dim_numbers, dot->precision_config(),
-                            dot->shape().element_type())
-                     .value();
-      // Make the added batch dimension the major-most, keep the order of the
-      // original dimensions.
-      expanded->mutable_shape()->mutable_layout()->clear_minor_to_major();
-      CopyIncrementingAboveThreshold(dot->shape().layout().minor_to_major(),
-                                     *expanded->mutable_shape()
-                                          ->mutable_layout()
-                                          ->mutable_minor_to_major(),
-                                     0);
-      expanded->mutable_shape()->mutable_layout()->add_minor_to_major(0);
-      dot->SetupDerivedInstruction(expanded);
-    } else {
-      expanded = computation->AddInstruction(
-          current->CloneWithNewShape(ShapeUtil::PrependMajorDimension(
-              tiling.split_k(), current->shape())));
-    }
-    TF_RETURN_IF_ERROR(current->ReplaceAllUsesWithDifferentShape(expanded));
-    TF_RETURN_IF_ERROR(computation->RemoveInstruction(current));
-    // Broadcast operands.
-    if (current == dot) {
-      continue;
-    }
-    for (int i = 0; i < expanded->operands().size(); ++i) {
-      HloInstruction* operand = expanded->mutable_operand(i);
-      if (!to_process_set.contains(operand)) {
-        std::vector<int64_t> broadcast_dimensions(operand->shape().rank());
-        absl::c_iota(broadcast_dimensions, 1);
-        TF_RETURN_IF_ERROR(expanded->ReplaceOperandWithDifferentShape(
-            i, MakeBroadcastHlo(operand, broadcast_dimensions,
-                                ShapeUtil::PrependMajorDimension(
-                                    tiling.split_k(), operand->shape()))));
-      }
-    }
-  }
-
-  if (disable_reduced_precision_reduction) {
-    PrimitiveType output_type =
-        computation->root_instruction()->shape().element_type();
-    PrimitiveType accumulator_type = output_type == PrimitiveType::F64
-                                         ? PrimitiveType::F64
-                                         : PrimitiveType::F32;
-
-    computation->root_instruction()->mutable_shape()->set_element_type(
-        accumulator_type);
-  }
-
-  if (did_pad) {
-    // Check if the analysis can work on the transformed HLO.
-    // We can fail gracefully here, but not in IrEmitterTriton.
-    // For the case without padding, we already checked this in
-    // MakeSplitKOperand with the divisibility check.
-    TF_RETURN_IF_ERROR(
-        TritonFusionAnalysis::Execute(*computation, tiling.split_k()).status());
-  }
-
-  return OkStatus();
 }
 
 Status FusionContext::PropagateDimensionOrdersToParameters(
@@ -1670,7 +1490,8 @@ Status FusionContext::PropagateDimensionOrdersToParameters(
 }  // anonymous namespace
 
 // Data types that are supported by the Triton emitters.
-bool IsTritonSupportedDataType(PrimitiveType type, GpuVersion gpu_version) {
+bool IsTritonSupportedDataType(PrimitiveType type,
+                               se::GpuComputeCapability gpu_version) {
   auto cuda_compute_capability =
       std::get<se::CudaComputeCapability>(gpu_version);
   switch (type) {
@@ -1748,59 +1569,6 @@ bool IsTritonSupportedElementwise(HloOpcode opcode,
                                opcode) ||
          absl::c_linear_search(TritonSupportedTernaryElementwise(element_type),
                                opcode);
-}
-
-Status MakeDotSplitKBatch(HloInstruction* dot_fusion,
-                          const AutotuneResult::TritonGemmKey& tiling) {
-  CHECK_EQ(dot_fusion->opcode(), HloOpcode::kFusion);
-
-  if (dot_fusion->shape().IsTuple()) {
-    return Unimplemented("Tuple output is not supported with split-K yet.");
-  }
-
-  const bool disable_reduced_precision_reduction =
-      dot_fusion->GetModule()
-          ->config()
-          .debug_options()
-          .xla_gpu_triton_gemm_disable_reduced_precision_reduction();
-  const PrimitiveType output_type = dot_fusion->shape().element_type();
-  const Layout output_layout = dot_fusion->shape().layout();
-
-  TF_RETURN_IF_ERROR(MakeDotComputationSplitKBatch(
-      dot_fusion->fused_instructions_computation(), tiling,
-      disable_reduced_precision_reduction));
-  const HloInstruction* root = dot_fusion->fused_expression_root();
-
-  *dot_fusion->mutable_shape() = root->shape();
-  HloInstruction* zero =
-      dot_fusion->parent()->AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::Zero(root->shape().element_type())));
-  // The batch dimension to reduce is the first one by construction.
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * reduce,
-      MakeReduceHlo(dot_fusion, zero, /*dimensions=*/{0}, HloOpcode::kAdd));
-
-  // The output of the reduce has to have the layout of the original dot.
-  *reduce->mutable_shape()->mutable_layout() = output_layout;
-
-  if (dot_fusion->IsRoot()) {
-    dot_fusion->parent()->set_root_instruction(reduce,
-                                               /*accept_different_shape=*/true);
-  } else {
-    TF_RETURN_IF_ERROR(dot_fusion->ReplaceAllUsesWithDifferentShape(reduce));
-  }
-
-  if (disable_reduced_precision_reduction) {
-    HloInstruction* convert = MakeConvertToHlo(reduce, output_type);
-    if (reduce->IsRoot()) {
-      reduce->parent()->set_root_instruction(convert,
-                                             /*accept_different_shape=*/true);
-    } else {
-      TF_RETURN_IF_ERROR(reduce->ReplaceAllUsesWithDifferentShape(convert));
-    }
-  }
-
-  return OkStatus();
 }
 
 StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
@@ -1883,7 +1651,7 @@ const DimIterationSpec* TritonFusionAnalysis::IterSpec(
 }
 
 FusionDecision CanTritonHandleGEMM(const HloInstruction& dot,
-                                   const GpuVersion gpu_version) {
+                                   const se::GpuComputeCapability gpu_version) {
   if (dot.opcode() != HloOpcode::kDot ||
       absl::c_any_of(dot.precision_config().operand_precision(),
                      [](int x) { return x != PrecisionConfig::DEFAULT; })) {
@@ -1934,10 +1702,24 @@ FusionDecision CanTritonHandleGEMM(const HloInstruction& dot,
     return "No non-contracting dimensions.";
   }
 
+  for (int operand_number = 0; operand_number <= 1; ++operand_number) {
+    // This pass relies on dot decomposer which ensures that all non-contracting
+    // dimensions are merged into one. Using NonContractingDimensionIndex is
+    // sufficient.
+    const int64_t nc_size =
+        dot.operand(operand_number)
+            ->shape()
+            .dimensions(NonContractingDimensionIndex(dot, operand_number));
+    if (nc_size <= 1) {
+      return "Trivial non-contracting dimensions.";
+    }
+  }
+
   return FusionDecision{};
 }
 
-bool ShouldTritonHandleGEMM(HloInstruction& dot, const GpuVersion gpu_version) {
+bool ShouldTritonHandleGEMM(HloInstruction& dot,
+                            const se::GpuComputeCapability gpu_version) {
   std::vector<HloInstruction*> fusion_inputs;
   HloComputation::Builder builder("disposable");
   return FuseDot(dot, gpu_version, builder, fusion_inputs,
@@ -1981,13 +1763,15 @@ static std::string ScopeToString(TritonFusionAnalysis::Scope s) {  // NOLINT
 }
 
 std::string TensorIterationSpec::IterationSpecFragment::ToString() const {
-  return absl::StrCat("{stride=", stride, ", count=", count, ", subfragments=[",
+  return absl::StrCat("{stride=", stride, ", count=", count,
+                      ", slice_start=", slice_start, ", subfragments=[",
                       absl::StrJoin(subfragments, ", "), "]}");
 }
 
 bool TensorIterationSpec::IterationSpecFragment::operator!=(
     const IterationSpecFragment& other) const {
-  return stride != other.stride || count != other.count;
+  return stride != other.stride || count != other.count ||
+         slice_start != other.slice_start || slice_limit != other.slice_limit;
 }
 
 std::string TensorIterationSpec::ToString() const {

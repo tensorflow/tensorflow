@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/global_state.h"
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
+#include "tsl/framework/device_type.h"
 
 namespace tensorflow {
 namespace {
@@ -321,20 +322,21 @@ Status GetOrCreatePjRtDeviceCompilerAndProfiler(
 }
 
 XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
-  auto device = static_cast<Device*>(device_base);
   se::Platform::Id platform_id = nullptr;
   const XlaDevice::Metadata* xla_device_metadata = nullptr;
   const PjRtBaseDevice::Metadata* pjrt_device_metadata = nullptr;
   std::shared_ptr<se::DeviceMemoryAllocator> custom_allocator;
 
-  if (device->device_type() == DEVICE_CPU) {
+  const std::string& device_type = device_base->device_type();
+  if (device_type == DEVICE_CPU) {
     platform_id = se::host::kHostPlatformId;
-  } else if (device->device_type() == DEVICE_GPU) {
+  } else if (device_type == DEVICE_GPU) {
+    auto device = static_cast<Device*>(device_base);
     platform_id = device->tensorflow_accelerator_device_info()
                       ->stream->parent()
                       ->platform()
                       ->id();
-  } else if (XlaDevice::GetMetadataFromDevice(device, &xla_device_metadata)
+  } else if (XlaDevice::GetMetadataFromDevice(device_base, &xla_device_metadata)
                  .ok()) {
     // If we are on an XlaDevice, use the underlying XLA platform's allocator
     // directly. We could use the StreamExecutor's allocator which may
@@ -348,12 +350,12 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
     platform_id = xla_device_metadata->platform()->id();
     custom_allocator =
         xla_device_metadata->client()->backend().shared_memory_allocator();
-  } else if (auto metadata = PjRtBaseDevice::GetMetadataFromDevice(device);
+  } else if (auto metadata = PjRtBaseDevice::GetMetadataFromDevice(device_base);
              metadata.ok()) {
     pjrt_device_metadata = *metadata;
   }
 
-  return XlaPlatformInfo(DeviceType(device->device_type()), platform_id,
+  return XlaPlatformInfo(DeviceType(device_type), platform_id,
                          xla_device_metadata, pjrt_device_metadata,
                          custom_allocator);
 }

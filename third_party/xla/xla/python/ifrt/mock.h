@@ -28,16 +28,19 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/index_domain.h"
+#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/test.h"
-#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
+#include "tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -196,6 +199,18 @@ class MockDevice final : public Device {
   Device* const delegated_ = nullptr;
 };
 
+// memory.h
+
+class MockMemory final : public Memory {
+ public:
+  MOCK_METHOD(xla::PjRtClient*, client, (), (const, final));
+  MOCK_METHOD(absl::Span<Device* const>, devices, (), (const, final));
+  MOCK_METHOD(int, id, (), (const, final));
+  MOCK_METHOD(absl::string_view, memory_space_kind, (), (const, final));
+  MOCK_METHOD(absl::string_view, DebugString, (), (const, final));
+  MOCK_METHOD(absl::string_view, ToString, (), (const, final));
+};
+
 // executable.h
 
 class MockExecutable final
@@ -212,6 +227,8 @@ class MockExecutable final
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetParameterShardings, (),
               (const, final));
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetOutputShardings, (),
+              (const, final));
+  MOCK_METHOD(StatusOr<std::vector<Layout>>, GetParameterLayouts, (),
               (const, final));
   MOCK_METHOD(StatusOr<std::vector<std::shared_ptr<HloModule>>>, GetHloModules,
               (), (const, final));
@@ -236,6 +253,8 @@ class MockLoadedExecutable final
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetParameterShardings, (),
               (const, final));
   MOCK_METHOD(std::optional<std::vector<OpSharding>>, GetOutputShardings, (),
+              (const, final));
+  MOCK_METHOD(StatusOr<std::vector<Layout>>, GetParameterLayouts, (),
               (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<std::vector<absl::string_view>>>,
               GetOutputMemoryKinds, (), (const, final));

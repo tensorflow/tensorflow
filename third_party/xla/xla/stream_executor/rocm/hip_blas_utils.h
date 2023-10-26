@@ -23,6 +23,8 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
 
+#if TF_HIPBLASLT
+
 namespace stream_executor {
 namespace rocm {
 
@@ -36,5 +38,7 @@ hipblasOperation_t AsHipblasOperation(blas::Transpose trans);
 
 }  // namespace rocm
 }  // namespace stream_executor
+
+#endif  // TF_HIPBLASLT
 
 #endif  // XLA_STREAM_EXECUTOR_ROCM_HIP_BLAS_UTILS_H_

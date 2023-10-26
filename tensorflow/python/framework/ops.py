@@ -2052,10 +2052,6 @@ class Graph(pywrap_tf_session.PyGraph):
 
     # Cache for OpDef protobufs retrieved via the C API.
     self._op_def_cache = {}
-    # Cache for constant results of `broadcast_gradient_args()`. The keys are
-    # tuples of fully-defined shapes: (x_shape_tuple, y_shape_tuple), and the
-    # values are tuples of reduction indices: (rx, ry).
-    self._bcast_grad_args_cache = {}
     # Cache for constant results of `reduced_shape()`. The keys are pairs of
     # tuples: (input_shape_tuple, reduction_indices_tuple), and the values
     # are pairs of tuples: (output_shape_kept_dims, tile_scaling).

@@ -112,9 +112,9 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
             dlts.push_back(*mlir::sparse_tensor::buildLevelType(
                 mlir::sparse_tensor::LevelFormat::Singleton, ordered, unique));
             break;
-          case DimLevelType::DIM_COMPRESSED_WITH_HI:
+          case DimLevelType::DIM_LOOSE_COMPRESSED:
             dlts.push_back(*mlir::sparse_tensor::buildLevelType(
-                mlir::sparse_tensor::LevelFormat::CompressedWithHi, ordered,
+                mlir::sparse_tensor::LevelFormat::LooseCompressed, ordered,
                 unique));
             break;
           default:
@@ -127,8 +127,8 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
       auto id_map = mlir::AffineMap::getPermutationMap(major_to_minor,
                                                        builder.getContext());
       // TODO(atondwal): support sizes other than 32 when XLA does
-      encoding = SparseTensorEncodingAttr::get(builder.getContext(), dlts,
-                                               id_map, 32, 32);
+      encoding = SparseTensorEncodingAttr::get(
+          builder.getContext(), dlts, id_map, mlir::AffineMap(), 32, 32);
     }
   }
   return TypeT::get(shape, element_type_or.value(), encoding);

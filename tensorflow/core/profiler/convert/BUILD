@@ -80,6 +80,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/utils:math_utils",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
     ],
 )
 
@@ -578,6 +579,22 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "op_stats_combiner_test",
+    srcs = ["op_stats_combiner_test.cc"],
+    deps = [
+        ":op_stats_combiner",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
+        "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
+        "//tensorflow/core/profiler/utils:step_intersection",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
 cc_library(
     name = "preprocess_single_host_xplane",
     srcs = ["preprocess_single_host_xplane.cc"],
@@ -996,16 +1013,21 @@ cc_library(
     hdrs = ["xspace_to_dcn_slack_analysis.h"],
     deps = [
         "//tensorflow/core/profiler/protobuf:dcn_slack_analysis_proto_cc",
+        "//tensorflow/core/profiler/protobuf:topology_proto_cc",
         "//tensorflow/core/profiler/utils:hlo_module_utils",
         "//tensorflow/core/profiler/utils:hlo_proto_map",
         "//tensorflow/core/profiler/utils:hlo_proto_to_module",
+        "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:regexp",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
         "@local_tsl//tsl/profiler/utils:math_utils",
         "@local_tsl//tsl/profiler/utils:tf_xplane_visitor",
+        "@local_tsl//tsl/profiler/utils:timespan",
+        "@local_tsl//tsl/profiler/utils:tpu_xplane_utils",
         "@local_tsl//tsl/profiler/utils:xplane_schema",
         "@local_tsl//tsl/profiler/utils:xplane_utils",
         "@local_tsl//tsl/profiler/utils:xplane_visitor",

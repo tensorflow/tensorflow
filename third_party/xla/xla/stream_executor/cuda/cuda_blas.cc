@@ -25,7 +25,6 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_activation.h"
 #include "xla/stream_executor/cuda/cuda_blas_utils.h"
-#include "xla/stream_executor/cuda/cuda_gpu_executor.h"
 #include "xla/stream_executor/cuda/cuda_helpers.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/cuda/cuda_stream.h"
@@ -37,11 +36,11 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_types.h"
 #include "xla/stream_executor/numeric_options.h"
 #include "xla/stream_executor/platform/initialize.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/status.h"
 #include "tsl/platform/tensor_float_32_utils.h"
 
@@ -58,8 +57,6 @@ using gpu::GpuDoubleComplexType;
 using gpu::GpuMemory;
 using gpu::GpuMemoryMutable;
 using gpu::GpuTimer;
-
-PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kCuBlasPlugin);
 
 // cuBLAS has interfaces that permit pointers to be passed from either the host
 // memory space or the device memory space; however, you must instruct it as to
@@ -1493,7 +1490,7 @@ tsl::Status CUDABlas::GetVersion(std::string *version) {
 void initialize_cublas() {
   tsl::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::BlasFactory>(
-          kCudaPlatformId, kCuBlasPlugin, "cuBLAS",
+          kCudaPlatformId, "cuBLAS",
           [](::stream_executor::internal::StreamExecutorInterface *parent)
               -> blas::BlasSupport * {
             gpu::GpuExecutor *cuda_executor =
@@ -1517,9 +1514,6 @@ void initialize_cublas() {
   if (!status.ok()) {
     LOG(ERROR) << "Unable to register cuBLAS factory: " << status.message();
   }
-
-  PluginRegistry::Instance()->SetDefaultFactory(
-      cuda::kCudaPlatformId, PluginKind::kBlas, kCuBlasPlugin);
 }
 
 }  // namespace cuda

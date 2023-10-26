@@ -65,7 +65,9 @@ Operation *findRootElementwiseOp(Operation *op, FusionFilterFn fusionFilterFn) {
       if (hasLabel(owner, kTransformedLabel)) continue;
       if (hasLabel(owner, kFusionPlanningLabel)) continue;
       if (auto dpsOp = dyn_cast<DestinationStyleOpInterface>(owner)) {
-        if (llvm::is_contained(dpsOp.getDpsInitOperands(), &use)) continue;
+        SmallVector<OpOperand *> opOperands = llvm::to_vector(llvm::map_range(
+            dpsOp.getDpsInitsMutable(), [](OpOperand &o) { return &o; }));
+        if (llvm::is_contained(opOperands, &use)) continue;
       }
       curOp = owner;
       rootOp = curOp;
@@ -205,9 +207,9 @@ FusionCluster findElementwiseCluster(Operation *rootOp,
   // Add tensor.empty ops to the cluster.
   for (auto *op : resultOps) {
     if (auto dpsOp = dyn_cast<DestinationStyleOpInterface>(op)) {
-      for (auto &operand : dpsOp.getDpsInitOperands()) {
-        if (auto emptyOp = dyn_cast_or_null<tensor::EmptyOp>(
-                operand->get().getDefiningOp()))
+      for (auto operand : dpsOp.getDpsInits()) {
+        if (auto emptyOp =
+                dyn_cast_or_null<tensor::EmptyOp>(operand.getDefiningOp()))
           fusionCluster.operations.insert(emptyOp);
       }
     }
@@ -318,7 +320,8 @@ LogicalResult tileAndFuse(FusionOp fusionOp, PatternRewriter &rewriter) {
 
   // Tile and fuse.
   auto tiledLoop = tileUsingSCFForallOpAndFuseGreedily(
-      rewriter, tilingRootOp, getSCFTilingOptions(tileSizes));
+      rewriter, tilingRootOp,
+      getSCFTilingOptions(rewriter.getContext(), tileSizes));
   if (failed(tiledLoop)) return failure();
 
   // Peel.

@@ -1,5 +1,5 @@
-load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla:xla.bzl", "xla_cc_test")
+load("@local_tsl//tsl/platform:build_config.bzl", "tf_proto_library")
 
 package_group(
     name = "friends",
@@ -85,8 +85,8 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/platform:logging",
-        "@tf_runtime//:ref_count",
     ],
 )
 
@@ -183,10 +183,10 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@tf_runtime//:ref_count",
     ],
 )
 
@@ -271,10 +271,10 @@ cc_library(
         ":ifrt",
         ":test_util",
         "@com_google_absl//absl/types:span",
+        "@local_tsl//tsl/concurrency:ref_count",
         "@local_tsl//tsl/lib/core:status_test_util",
         "@local_tsl//tsl/platform:statusor",
         "@local_tsl//tsl/platform:test",
-        "@tf_runtime//:ref_count",
     ],
     alwayslink = True,
 )
@@ -297,13 +297,14 @@ cc_library(
     deps = [
         ":ifrt",
         "//xla:test",
+        "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_device_description",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-        "@tf_runtime//:ref_count",
+        "@local_tsl//tsl/concurrency:ref_count",
     ],
 )
 

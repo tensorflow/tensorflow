@@ -24,6 +24,7 @@ from tensorflow.dtensor.python import mesh_util
 from tensorflow.dtensor.python.tests import test_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.platform import test
 
 
@@ -65,7 +66,7 @@ class MeshUtilTest(test_util.DTensorBaseTest):
                            reason='Test requires exactly 2 cores',
                            unless_device_count_equals_to=2)
     devices = test_util.list_local_logical_devices('TPU')
-    self.assertEqual(len(devices), 2)
+    self.assertLen(devices, 2)
     mesh = mesh_util.create_mesh([('x', 2), ('y', 1)],
                                  device_type='TPU',
                                  use_xla_spmd=use_xla_spmd)
@@ -80,9 +81,27 @@ class MeshUtilTest(test_util.DTensorBaseTest):
                            reason='Test requires at least 2 cores',
                            unless_device_count_equals_to=2)
     devices = test_util.list_local_logical_devices('TPU')
-    self.assertEqual(len(devices), 2)
+    self.assertLen(devices, 2)
     mesh = mesh_util.create_mesh([('x', 2), ('y', 1)],
                                  devices=['/device:tpu:0', '/device:tpu:1'])
+    self.assertEqual(mesh.num_local_devices(), 2)
+    self.assertEqual(mesh.size, 2)
+    self.assertAllEqual(mesh.dim_names, ['x', 'y'])
+
+  def test_tpu_2d_mesh_creation_with_device_specs(self):
+    self.skipForDeviceType(['CPU', 'GPU'], reason='Test is intended for TPUs.')
+    self.skipForDeviceType(['TPU'],
+                           reason='Test requires at least 2 cores',
+                           unless_device_count_equals_to=2)
+    devices = test_util.list_local_logical_devices('TPU')
+    self.assertLen(devices, 2)
+    mesh = mesh_util.create_mesh(
+        [('x', 2), ('y', 1)],
+        devices=[
+            tf_device.DeviceSpec.from_string('/tpu:0'),
+            tf_device.DeviceSpec.from_string('/tpu:1'),
+        ],
+    )
     self.assertEqual(mesh.num_local_devices(), 2)
     self.assertEqual(mesh.size, 2)
     self.assertAllEqual(mesh.dim_names, ['x', 'y'])

@@ -140,6 +140,8 @@ enum HostEventType {
   kASBSQueueSchedule,
   // TFRT related.
   kTfrtModelRun,
+  // Serving related.
+  kServingModelRun,
   // GPU related.
   kKernelLaunch,
   kKernelExecute,
@@ -212,6 +214,7 @@ enum StatType {
   kKpiValue,
   kElementId,
   kParentId,
+  kCoreType,
   // XPlane semantics related.
   kProducerType,
   kConsumerType,
@@ -309,7 +312,8 @@ enum StatType {
   kDcnLoopIndex,
   kEdgeTpuModelInfo,
   kEdgeTpuModelProfileInfo,
-  kLastStatType = kEdgeTpuModelProfileInfo,
+  kEdgeTpuMlir,
+  kLastStatType = kEdgeTpuMlir,
 };
 
 static constexpr uint32_t kLineIdOffset = 10000;

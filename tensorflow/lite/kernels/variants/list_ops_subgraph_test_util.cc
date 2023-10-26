@@ -35,6 +35,7 @@ limitations under the License.
 
 using ::tflite::subgraph_test_util::SetupTensor;
 using ::tflite::variants::detail::ListReserveOptions;
+using ::tflite::variants::ops::Register_LIST_LENGTH;
 using ::tflite::variants::ops::Register_LIST_RESERVE;
 using ::tflite::variants::ops::Register_LIST_SET_ITEM;
 using ::tflite::variants::ops::Register_LIST_STACK;
@@ -342,6 +343,63 @@ void ListOpsSubgraphBuilder::BuildSetItemAndIncrementSubgraph(
       /*init_data_size=*/0, params, add_reg, &node_index_add);
 
   TF_LITE_ASSERT_EQ(add_stat, kTfLiteOk);
+}
+
+void ListOpsSubgraphBuilder::BuildReserveLengthSubgraph(Subgraph* subgraph) {
+  constexpr int kElementShape = 0;
+  constexpr int kNumElements = 1;
+  constexpr int kReserveOut = 2;
+  constexpr int kLengthOut = 3;
+  constexpr int kTensorCount = 4;
+  // kElementShape(0) --> +-------------+
+  //                      | ListReserve |
+  // kNumElements(1)  --> +-------------+ --> kReserveOut(2)
+  //                                                |
+  //                                          +------------+
+  //                                          | ListLength |
+  //                                          +------------+ --> kLengthOut(3)
+
+  int first_new_tensor_index;
+  TF_LITE_ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+                    kTfLiteOk);
+  TF_LITE_ASSERT_EQ(first_new_tensor_index, 0);
+
+  TF_LITE_ASSERT_EQ(subgraph->SetOutputs({kLengthOut}), kTfLiteOk);
+  SetupTensor(subgraph, kLengthOut, kTfLiteInt32);
+
+  TF_LITE_ASSERT_EQ(subgraph->SetInputs({kElementShape, kNumElements}),
+                    kTfLiteOk);
+  SetupTensor(subgraph, kElementShape, kTfLiteInt32);
+  SetupTensor(subgraph, kNumElements, kTfLiteInt32);
+  SetupTensor(subgraph, kReserveOut, kTfLiteVariant);
+
+  TfLiteRegistration* reserve_reg = Register_LIST_RESERVE();
+  reserve_reg->builtin_code = BuiltinOperator_CUSTOM;
+  reserve_reg->custom_name = "ListReserve";
+
+  ListReserveOptions* options = RequestReserveOptions(TensorType_INT32);
+
+  int reserve_node_index;
+  TfLiteStatus stat = subgraph->AddNodeWithParameters(
+      {kElementShape, kNumElements}, {kReserveOut},
+      /*intermediates=*/{}, reinterpret_cast<const char*>(options),
+      sizeof(ListReserveOptions),
+      /*builtin_data=*/nullptr, reserve_reg, &reserve_node_index);
+
+  TF_LITE_ASSERT_EQ(stat, kTfLiteOk);
+
+  TfLiteRegistration* length_reg = Register_LIST_LENGTH();
+  length_reg->builtin_code = BuiltinOperator_CUSTOM;
+  length_reg->custom_name = "ListLength";
+
+  int length_node_index;
+  stat = subgraph->AddNodeWithParameters(
+      {kReserveOut}, {kLengthOut},
+      /*intermediates=*/{}, /*init_data=*/nullptr,
+      /*init_data_size=*/0,
+      /*builtin_data=*/nullptr, length_reg, &length_node_index);
+
+  TF_LITE_ASSERT_EQ(stat, kTfLiteOk);
 }
 
 }  // namespace tflite

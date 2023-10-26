@@ -102,9 +102,14 @@ tf_cc_test(
 tf_python_pybind_extension(
     name = "runtime_client_pybind",
     srcs = ["runtime_client_pybind.cc"],
+    data = [
+        "runtime_client_pybind.pyi",
+    ],
+    enable_stub_generation = True,
     deps = [
         ":runtime_client_headers",
         "//tensorflow/python/lib/core:pybind11_status",
+        "@com_google_absl//absl/status",
         "@pybind11",
     ] + if_static(
         extra_deps = [

@@ -88,7 +88,8 @@ class XlaDevice : public LocalDevice {
     PaddedShapeFn padded_shape_fn_;
     const bool use_multiple_streams_;
 
-    TF_DISALLOW_COPY_AND_ASSIGN(Metadata);
+    Metadata(const Metadata&) = delete;
+    void operator=(const Metadata&) = delete;
   };
 
   // Sets `*metadata` to the XlaDevice Metadata in the XLA device used by `ctx`.

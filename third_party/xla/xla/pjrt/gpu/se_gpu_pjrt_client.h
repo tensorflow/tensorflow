@@ -24,11 +24,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/gpu/gpu_helpers.h"
 #include "xla/pjrt/gpu/gpu_topology.h"
+#include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_stream_executor_client.h"
 #include "xla/statusor.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace stream_executor {
 
@@ -166,7 +170,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
             std::move(allocator), std::move(host_memory_allocator),
             should_stage_host_to_device_transfers, std::move(gpu_run_options)),
         topology_(xla::StreamExecutorGpuTopologyDescription::Create(
-            xla::GpuId(), std::move(platform_name),
+            tsl::Fingerprint64(platform_name), platform_name,
             devices_.back()->device_kind(), devices_)) {}
 
   xla::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
@@ -195,6 +199,20 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
         tensorflow::down_cast<PjRtLoadedExecutable*>(executable.release()));
   }
 
+  // TODO(b/296466237): Unify `Load` method after (de)serialization and tests on
+  // existing use cases are done.
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
+      std::unique_ptr<PjRtExecutable> executable);
+
+  // TODO(b/296466237): Unify `LoadSerializedExecutable` after fixing existing
+  // tests.
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerialized(
+      absl::string_view serialized, std::optional<CompileOptions> options,
+      const LoadOptions& load_options);
+
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
+      const XlaComputation& computation, CompileOptions options) override;
+
  private:
   xla::StreamExecutorGpuTopologyDescription topology_;
 };
@@ -213,7 +231,8 @@ StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
     std::optional<std::string> platform_name = std::nullopt,
     bool should_stage_host_to_device_transfers = true,
     PjRtClient::KeyValueGetCallback kv_get = nullptr,
-    PjRtClient::KeyValuePutCallback kv_put = nullptr);
+    PjRtClient::KeyValuePutCallback kv_put = nullptr,
+    bool enable_mock_nccl = false);
 
 }  // namespace xla
 

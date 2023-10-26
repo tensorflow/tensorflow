@@ -50,6 +50,8 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
+#include "xla/service/call_graph.h"
+#include "xla/service/sharding_propagation.h"
 #include "xla/shape.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
@@ -64,84 +66,25 @@ inline const HloInstruction* PassThroughCustomCallMarkerGetSource(
 inline HloInstruction* PassThroughCustomCallMarkerUser(
     HloInstruction* raw_user, const HloInstruction* inst);
 
-// Return whether a reshape instruction is a special reshape that switches
-// the batch dim of a dot.
-bool IsBatchDimSwitchReshape(const HloInstruction* inst) {
-  if (inst->opcode() != HloOpcode::kReshape) {
-    return false;
+std::optional<HloSharding> GetInputSharding(const HloInstruction* ins,
+                                            const HloInstruction* operand,
+                                            int64_t op_index,
+                                            const HloSharding& output_sharding,
+                                            const CallGraph& call_graph,
+                                            int64_t num_devices) {
+  auto ins_clone = ins->Clone();
+  ins_clone->set_sharding(output_sharding);
+  auto operand_clone = operand->Clone();
+  if (operand_clone->has_sharding() &&
+      !operand_clone->sharding()
+           .Validate(operand_clone->shape(), num_devices)
+           .ok()) {
+    operand_clone->clear_sharding();
   }
-  if (inst->users().size() != 1) {
-    return false;
-  }
-  const HloInstruction* operand = inst->operand(0);
-  const HloInstruction* user = inst->users().front();
-
-  if (operand->opcode() != HloOpcode::kDot) {
-    return false;
-  }
-
-  int batch_dims = operand->dot_dimension_numbers().lhs_batch_dimensions_size();
-  if (batch_dims <= 0) {
-    return false;
-  }
-
-  if (user->opcode() != HloOpcode::kTranspose) {
-    return false;
-  }
-
-  return true;
-}
-
-// Return whether the instruction is followed by a broadcast.
-bool IsFollowedByBroadcast(const HloInstruction* ins) {
-  const int max_depth = 6;
-  for (int i = 0; i < max_depth; ++i) {
-    if (ins->users().empty()) {
-      return false;
-    }
-    ins = PassThroughCustomCallMarkerUser(ins->users().front(), ins);
-    if (ins->opcode() == HloOpcode::kBroadcast) {
-      return true;
-    }
-    if (ins->opcode() == HloOpcode::kReshape) {
-      i--;
-    }
-  }
-
-  return false;
-}
-
-// Return whether the instruction is followed by a reduce.
-bool IsFollowedByReduce(const HloInstruction* ins) {
-  int max_depth = 1;
-  bool found = false;
-
-  std::function<void(const HloInstruction*, int)> dfs;
-
-  dfs = [&](const HloInstruction* cur, int depth) {
-    if (found) {
-      return;
-    }
-
-    if (cur->opcode() == HloOpcode::kReduce) {
-      found = true;
-      return;
-    }
-
-    if (cur->opcode() == HloOpcode::kGetTupleElement) {
-      depth -= 1;
-    }
-
-    if (depth < max_depth) {
-      for (auto user : cur->users()) {
-        dfs(PassThroughCustomCallMarkerUser(user, cur), depth + 1);
-      }
-    }
-  };
-
-  dfs(ins, 0);
-
-  return found;
+  auto s = ins_clone->ReplaceOperandWith(op_index, operand_clone.get());
+  CHECK_OK(s);
+  return ShardingPropagation::GetShardingFromUser(*operand_clone, *ins_clone,
+                                                  10, true, call_graph);
 }
 
 // Return whether the instruction is an activation from another pipeline stage.
@@ -498,7 +441,7 @@ void BatchDimMapForward(const std::vector<HloInstruction*>& instructions,
             ins->dot_dimension_numbers().lhs_batch_dimensions();
         const auto& rhs_batch_dims =
             ins->dot_dimension_numbers().rhs_batch_dimensions();
-        std::vector<int64_t> lhs_space_dims, rhs_space_dims;
+        tsl::protobuf::RepeatedField<int64_t> lhs_space_dims, rhs_space_dims;
         std::tie(lhs_space_dims, rhs_space_dims) =
             GetSpaceDims(lhs->shape(), rhs->shape(), dot_dnums);
         // This part assumes that the dot has been through the dot decomposer,
@@ -759,7 +702,7 @@ void BatchDimMapBackward(const std::vector<HloInstruction*>& instructions,
             ins->dot_dimension_numbers().lhs_batch_dimensions();
         const auto& rhs_batch_dims =
             ins->dot_dimension_numbers().rhs_batch_dimensions();
-        std::vector<int64_t> lhs_space_dims, rhs_space_dims;
+        tsl::protobuf::RepeatedField<int64_t> lhs_space_dims, rhs_space_dims;
         std::tie(lhs_space_dims, rhs_space_dims) =
             GetSpaceDims(lhs->shape(), rhs->shape(), dot_dnums);
 
@@ -1250,7 +1193,11 @@ absl::StatusOr<std::vector<int64_t>> GetTensorDimToMeshDimNoCrash(
     return std::vector<int64_t>(tensor_shape_rank, -1);
   }
   // Check the compatibility of tensor_shape_rank and spec
-  CHECK_EQ(tensor_shape_rank, spec.TiledDataRank());
+  if (tensor_shape_rank != spec.TiledDataRank()) {
+    return absl::InvalidArgumentError(
+        "Tensor shape rank should be equal to the tiled data rank of the input "
+        "spec.");
+  }
 
   auto check_mesh =
       [&](const Array<int64_t>& mesh) -> std::optional<std::vector<int64_t>> {
@@ -1621,8 +1568,8 @@ std::vector<int64_t> GetDimensionMapping(
   return mapping;
 }
 
-bool IsDivisible(int64_t denominator, int64_t numerator) {
-  return (denominator % numerator == 0);
+bool IsDivisible(int64_t numerator, int64_t denominator) {
+  return (numerator % denominator == 0);
 }
 
 std::vector<std::vector<int64_t>> GetReplicaGroupsAlongOneDimension(

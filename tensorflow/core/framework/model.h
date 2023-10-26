@@ -24,6 +24,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 // TODO(b/114492873): Move this include into core/platform.
+#include <optional>
 #include <thread>  // NOLINT
 #include <utility>
 #include <vector>
@@ -65,7 +66,7 @@ constexpr char kMaxBufferedElements[] = "max_buffered_elements";
 constexpr char kModelInputTimeKey[] = "model_input_time";
 
 // Default share of available RAM that can be used by model's internal buffers.
-constexpr double kRamBudgetShare = 0.9;
+constexpr double kRamBudgetShare = 0.5;
 
 // Weight of the latest processing time used in computing the exponential moving
 // average of processing time per element.
@@ -178,6 +179,31 @@ class RamBudgetManager {
     }
     model_allocated_ = total_bytes;
     return true;
+  }
+
+  // Requests `delta_elements` allocated to the model where each element is of
+  // size `element_size` bytes. `delta_elements` can be negative.
+  // Returns the actual allocated delta elements.
+  int64_t RequestModelBytes(int64_t delta_elements, double element_size) {
+    if (delta_elements == 0) {
+      return 0;
+    }
+    int64_t allocated_delta_elements = delta_elements;
+    mutex_lock l(mu_);
+    // If `delta_elements` is positive, allocate only up to the available
+    // memory.
+    if (delta_elements > 0) {
+      int64_t max_delta_elements = static_cast<int64_t>(
+          (budget_ - legacy_prefetch_allocated_ - model_allocated_) /
+          element_size);
+      if (max_delta_elements < 0) {
+        return 0;
+      }
+      allocated_delta_elements = std::min(max_delta_elements, delta_elements);
+    }
+    model_allocated_ +=
+        static_cast<int64_t>(allocated_delta_elements * element_size);
+    return allocated_delta_elements;
   }
 
   // Requests `bytes` additional bytes for the purpose of legacy prefetch
@@ -383,7 +409,7 @@ class Node {
 
   // Returns the node output.
   Node* output() const { return output_; }
-  bool output_deleted() { return output_weak_ptr_.expired(); }
+  std::shared_ptr<Node> output_shared() { return output_weak_ptr_.lock(); }
 
   // Returns the parameter value.
   double parameter_value(const string& name) const TF_LOCKS_EXCLUDED(mu_) {
@@ -499,7 +525,7 @@ class Node {
   // Given the average time between events when the elements in the buffer are
   // produced (`producer_time`), the average time between events when elements
   // in the buffer are consumed (`consumer_time`) and the buffer size, the
-  // method computes the expected time an consumer event will have to wait.
+  // method computes the expected time a consumer event will have to wait.
   //
   // The wait time is approximated as the product of the probability the buffer
   // will be empty and the time it takes to produce an element into the buffer.
@@ -586,6 +612,12 @@ class Node {
   void CollectBufferParametersToUpsize(
       absl::flat_hash_map<Node*, Parameter*>& node_parameters);
 
+  // Returns the average size of an element buffered in this node.
+  double AverageBufferedElementSize() const {
+    tf_shared_lock l(mu_);
+    return AverageBufferedElementSizeLocked();
+  }
+
  protected:
   // Used for (incrementally) recording metrics. The class is thread-safe.
   class Metrics {
@@ -667,7 +699,7 @@ class Node {
       TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
 
   // Returns the average size of an element buffered in this node.
-  double AverageBufferedElementSize() const TF_SHARED_LOCKS_REQUIRED(mu_);
+  double AverageBufferedElementSizeLocked() const TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Returns the sum of per-element output time for the tunable inputs of this
   // node.
@@ -880,7 +912,7 @@ class Model {
   ~Model();
 
   // Returns a pointer to the model's output node.
-  const std::shared_ptr<Node> output() const {
+  std::shared_ptr<Node> output() const {
     mutex_lock l(mu_);
     return output_;
   }
@@ -915,7 +947,8 @@ class Model {
   // invoke `cancellation_mgr->StartCancel()`.
   Status OptimizeLoop(AutotuneAlgorithm algorithm,
                       std::function<int64_t()> cpu_budget_func,
-                      std::function<int64_t(int64_t)> ram_budget_func,
+                      double ram_budget_share,
+                      std::optional<int64_t> fixed_ram_budget,
                       RamBudgetManager& ram_budget_manager,
                       CancellationManager* cancellation_manager);
 
@@ -923,7 +956,8 @@ class Model {
   // optimization.
   void Optimize(AutotuneAlgorithm algorithm,
                 std::function<int64_t()> cpu_budget_func,
-                std::function<int64_t(int64_t)> ram_budget_func,
+                double ram_budget_share,
+                std::optional<int64_t> fixed_ram_budget,
                 double model_input_time, RamBudgetManager& ram_budget_manager,
                 CancellationManager* cancellation_manager);
 
@@ -991,6 +1025,12 @@ class Model {
   // Collects tunable parameters in the tree rooted in the given node, returning
   // a vector which contains pairs of node names and tunable parameters.
   ModelParameters CollectTunableParameters(std::shared_ptr<Node> node);
+
+  // Copy parameter state values to parameter values if necessary.For some
+  // nodes, the parameter state values are not tuned by Autotune and hence the
+  // parameter values can be stale. We do not sync all parameters because it may
+  // increase mutex contention with `GetNext()`.
+  void MaybeSyncStateValuesToValues(ModelParameters* parameters);
 
   // Downsizes buffers that are too large for all nodes rooted at `snapshot`.
   // Returns true if any buffer is downsized.

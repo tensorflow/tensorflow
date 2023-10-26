@@ -92,6 +92,8 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
       const xla::HloCustomCallInstruction* custom_call);
   xla::StatusOr<Operation*> EmitDnnfMHABackward(
       const xla::HloCustomCallInstruction* custom_call);
+  xla::StatusOr<Operation*> EmitCubDeviceRadixSort(
+      const xla::HloCustomCallInstruction* custom_call);
   tsl::StatusOr<memref::GetGlobalOp> EmitConstant(
       const xla::HloInstruction* instr);
 
@@ -144,6 +146,9 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
 
   tsl::StatusOr<lmhlo::RecvOp> EmitRecvOp(const xla::HloInstruction* instr);
   tsl::StatusOr<lmhlo::RecvDoneOp> EmitRecvDoneOp(
+      const xla::HloInstruction* instr);
+
+  tsl::StatusOr<lmhlo::CommandBufferOp> EmitCommandBufferOp(
       const xla::HloInstruction* instr);
 
   tsl::Status ImportAsLmhloRegion(xla::HloComputation* computation,

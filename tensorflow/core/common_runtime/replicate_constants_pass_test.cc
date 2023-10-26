@@ -35,8 +35,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-const char kCpu0[] = "/job:localhost/replica:0/task:0/CPU:0";
-const char kCpu1[] = "/job:localhost/replica:0/task:0/CPU:1";
+const char kCpu0[] = "/job:tpu_host_worker/replica:0/task:0/device:CPU:0";
+const char kCpu1[] = "/job:tpu_host_worker/replica:0/task:1/device:CPU:0";
+const char kTpu00[] = "/job:tpu_host_worker/replica:0/task:0/device:TPU:0";
+const char kTpu01[] = "/job:tpu_host_worker/replica:0/task:0/device:TPU:1";
+const char kTpu10[] = "/job:tpu_host_worker/replica:0/task:1/device:TPU:0";
+const char kTpu11[] = "/job:tpu_host_worker/replica:0/task:1/device:TPU:1";
 
 // Return the node with name `name`.
 Node* GetNode(const Graph& graph, const std::string& name) {
@@ -189,6 +193,46 @@ TEST(ReplicateConstantsPassTest, TestControlOut) {
             GetPredecessor(dst2)->assigned_device_name());
 }
 
+// Test that a constant on a TPU is ignored.
+TEST(ReplicateConstantsPassTest, TestTpuConst) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    Output const0 =
+        ops::Const(scope.WithOpName("const0"), 1.0f, TensorShape({}));
+    ops::Negate dst0(scope.WithOpName("dst0"), const0);
+    ops::Negate dst1(scope.WithOpName("dst1"), const0);
+    ops::Negate dst2(scope.WithOpName("dst2"), const0);
+    TF_CHECK_OK(scope.ToGraph(graph.get()));
+  }
+  GetNode(*graph, "const0")->set_assigned_device_name(kTpu00);
+  GetNode(*graph, "dst0")->set_assigned_device_name(kTpu00);
+  GetNode(*graph, "dst1")->set_assigned_device_name(kTpu10);
+  GetNode(*graph, "dst2")->set_assigned_device_name(kTpu10);
+
+  // Enable the pass.
+  flags::Global().replicate_small_constants.reset(true);
+
+  GraphDef before;
+  graph->ToGraphDef(&before);
+  GraphOptimizationPassOptions options;
+  options.graph = &graph;
+  ReplicateConstantsPass pass;
+  TF_ASSERT_OK(pass.Run(options));
+  GraphDef actual;
+  graph->ToGraphDef(&actual);
+
+  Node* dst0 = GetNode(*graph, "dst0");
+  Node* dst1 = GetNode(*graph, "dst1");
+  Node* dst2 = GetNode(*graph, "dst2");
+  EXPECT_EQ(dst0->assigned_device_name(),
+            GetPredecessor(dst0)->assigned_device_name());
+  EXPECT_NE(dst1->assigned_device_name(),
+            GetPredecessor(dst1)->assigned_device_name());
+  EXPECT_NE(dst2->assigned_device_name(),
+            GetPredecessor(dst2)->assigned_device_name());
+}
+
 TEST(ReplicateConstantsPassTest, TestSmallAndLargeConstants) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   {
@@ -239,6 +283,52 @@ TEST(ReplicateConstantsPassTest, TestSmallAndLargeConstants) {
   EXPECT_TRUE(IsEdge(large, dst1));
   EXPECT_TRUE(IsEdge(small1, dst2));
   EXPECT_TRUE(IsEdge(large, dst2));
+}
+
+// Test that a constant at a CPU with TPU successors is replicated to the
+// TPUs' host CPUs.
+TEST(ReplicateConstantsPassTest, TestTpuDestinations) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    Output const0 =
+        ops::Const(scope.WithOpName("const"), 1.0f, TensorShape({}));
+    ops::Negate dst00(scope.WithOpName("dst00"), const0);
+    ops::Negate dst01(scope.WithOpName("dst01"), const0);
+    ops::Negate dst10(scope.WithOpName("dst10"), const0);
+    ops::Negate dst11(scope.WithOpName("dst11"), const0);
+    TF_CHECK_OK(scope.ToGraph(graph.get()));
+  }
+  GetNode(*graph, "const")->set_assigned_device_name(kCpu0);
+  GetNode(*graph, "dst00")->set_assigned_device_name(kTpu00);
+  GetNode(*graph, "dst01")->set_assigned_device_name(kTpu01);
+  GetNode(*graph, "dst10")->set_assigned_device_name(kTpu10);
+  GetNode(*graph, "dst11")->set_assigned_device_name(kTpu11);
+
+  // Enable the pass.
+  flags::Global().replicate_small_constants.reset(true);
+
+  GraphDef before;
+  graph->ToGraphDef(&before);
+  GraphOptimizationPassOptions options;
+  options.graph = &graph;
+  ReplicateConstantsPass pass;
+  TF_ASSERT_OK(pass.Run(options));
+  GraphDef actual;
+  graph->ToGraphDef(&actual);
+
+  Node* const0 = GetNode(*graph, "const/replicate/_0");
+  Node* const1 = GetNode(*graph, "const/replicate/_1");
+  Node* dst00 = GetNode(*graph, "dst00");
+  Node* dst01 = GetNode(*graph, "dst01");
+  Node* dst10 = GetNode(*graph, "dst10");
+  Node* dst11 = GetNode(*graph, "dst11");
+  EXPECT_EQ(const0->assigned_device_name(), kCpu0);
+  EXPECT_EQ(const1->assigned_device_name(), kCpu1);
+  EXPECT_TRUE(IsEdge(const0, dst00));
+  EXPECT_TRUE(IsEdge(const0, dst01));
+  EXPECT_TRUE(IsEdge(const1, dst10));
+  EXPECT_TRUE(IsEdge(const1, dst11));
 }
 
 }  // namespace tensorflow

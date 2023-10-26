@@ -33,14 +33,9 @@ limitations under the License.1
 #include "xla/xla.pb.h"
 #include "tsl/platform/status.h"
 
-#if GOOGLE_CUDA || TF_HIPBLASLT
-#if GOOGLE_CUDA
-#include "xla/stream_executor/cuda/cuda_blas_lt.h"
-#else
+#if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
-#include "xla/stream_executor/rocm/hip_blas_lt.h"
 #endif
-#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 
 namespace xla {
 #if GOOGLE_CUDA || TF_HIPBLASLT
@@ -72,7 +67,7 @@ void PopulateCublasLtMatmulAttrEncoding(CustomCallAttrEncodingSet& encoding) {
                                 lmhlo_gpu::CublasLtMatmulEpilogue,
                                 se::gpu::BlasLt::Epilogue>>(
       [](lmhlo_gpu::CublasLtMatmulEpilogue value) -> se::gpu::BlasLt::Epilogue {
-        return cublas_lt::AsBlasLtEpilogue(value).value();
+        return gpublas_lt::AsBlasLtEpilogue(value).value();
       });
 }
 
@@ -85,7 +80,7 @@ namespace {
 absl::Status DoMatmul(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, State<GemmConfig> gemm_config,
-    State<cublas_lt::MatmulPlan> matmul_plan, StridedMemrefView a,
+    State<se::gpu::BlasLt::MatmulPlanPtr> matmul_plan, StridedMemrefView a,
     StridedMemrefView b, StridedMemrefView c, StridedMemrefView d,
     std::optional<StridedMemrefView> bias, std::optional<StridedMemrefView> aux,
     std::optional<StridedMemrefView> a_scale,
@@ -109,12 +104,11 @@ absl::Status DoMatmul(
   }));
 
   // Get the matmul plan for this instance of matmul.
-  TF_ASSIGN_OR_RETURN(
-      cublas_lt::MatmulPlan * plan, matmul_plan.GetOrCreate([&] {
-        return ToAbsl(cublas_lt::MatmulPlan::From(*config, epilogue));
-      }));
+  TF_ASSIGN_OR_RETURN(auto plan, matmul_plan.GetOrCreate([&] {
+    return ToAbsl(se::gpu::BlasLt::GetMatmulPlan(stream, *config, epilogue));
+  }));
 
-  TF_ASSIGN_OR_RETURN(auto algos, plan->GetAlgorithms(stream));
+  TF_ASSIGN_OR_RETURN(auto algos, (*plan)->GetAlgorithms());
 
   se::DeviceMemoryBase a_data = GetDeviceAddress(a);
   se::DeviceMemoryBase b_data = GetDeviceAddress(b);
@@ -139,10 +133,10 @@ absl::Status DoMatmul(
   se::OwningScratchAllocator<> scratch_allocator(
       stream->parent()->device_ordinal(), stream->parent()->GetAllocator());
 
-  return plan->ExecuteOnStream(stream, a_data, b_data, c_data, d_data,
-                               bias_data, aux_data, a_scale_data, b_scale_data,
-                               c_scale_data, d_scale_data, d_amax_data,
-                               algos[algorithm], scratch_allocator);
+  return (*plan)->ExecuteOnStream(
+      stream, a_data, b_data, c_data, d_data, bias_data, aux_data, a_scale_data,
+      b_scale_data, c_scale_data, d_scale_data, d_amax_data, algos[algorithm],
+      scratch_allocator);
 }
 
 }  // namespace
@@ -150,7 +144,7 @@ absl::Status DoMatmul(
 static absl::Status CublasLtMatmulImpl(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, State<GemmConfig> gemm_config,
-    State<cublas_lt::MatmulPlan> matmul_plan, StridedMemrefView a,
+    State<se::gpu::BlasLt::MatmulPlanPtr> matmul_plan, StridedMemrefView a,
     StridedMemrefView b, StridedMemrefView c, StridedMemrefView d,
     std::optional<StridedMemrefView> bias, std::optional<StridedMemrefView> aux,
     int64_t algorithm, double alpha_real, double alpha_imag, double beta,
@@ -167,7 +161,7 @@ static absl::Status CublasLtMatmulImpl(
 static absl::Status CublasLtMatmulF8Impl(
     const ServiceExecutableRunOptions* run_options,
     const DebugOptions* debug_options, State<GemmConfig> gemm_config,
-    State<cublas_lt::MatmulPlan> matmul_plan, StridedMemrefView a,
+    State<se::gpu::BlasLt::MatmulPlanPtr> matmul_plan, StridedMemrefView a,
     StridedMemrefView b, StridedMemrefView c, StridedMemrefView a_scale,
     StridedMemrefView b_scale, StridedMemrefView c_scale,
     StridedMemrefView d_scale, StridedMemrefView d,
@@ -232,7 +226,7 @@ auto CublasLtMatmulCall(const char* name) {
       .UserData<const ServiceExecutableRunOptions*>()
       .UserData<const DebugOptions*>()
       .State<GemmConfig>("uid")
-      .State<cublas_lt::MatmulPlan>("uid")
+      .State<se::gpu::BlasLt::MatmulPlanPtr>("uid")
       .Arg<StridedMemrefView>()   // a
       .Arg<StridedMemrefView>()   // b
       .Arg<StridedMemrefView>()   // c
@@ -272,7 +266,7 @@ auto CublasLtMatmulF8Call(const char* name) {
       .UserData<const ServiceExecutableRunOptions*>()
       .UserData<const DebugOptions*>()
       .State<GemmConfig>("uid")
-      .State<cublas_lt::MatmulPlan>("uid")
+      .State<se::gpu::BlasLt::MatmulPlanPtr>("uid")
       .Arg<StridedMemrefView>()   // a
       .Arg<StridedMemrefView>()   // b
       .Arg<StridedMemrefView>()   // c
@@ -297,5 +291,5 @@ void RegisterMatmulCustomCalls(runtime::DirectCustomCallRegistry& registry) {
 }
 
 }  // namespace gpu
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TF_HIPBLASLT
 }  // namespace xla

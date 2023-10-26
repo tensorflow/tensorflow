@@ -269,7 +269,9 @@ class HloPrintOptions {
   }
 
   // If true, uses the async operation syntax sugar to print async-start,
-  // async-update, and async-done HLOs. If the syntax sugar is enabled, the
+  // async-update, and async-done HLOs. If the syntax sugar is enabled and the
+  // async computation is trivial (i.e. only a single instruction taking
+  // computation parameters as operands, and otherwise is illegal), the
   // computations called by these instructions will not be printed and instead
   // the root of the called computation will be printed instead of these
   // instructions and -start, -update, and -done suffixes will be appended to
@@ -539,7 +541,7 @@ class HloInstruction {
   // instruction from each operand's user set and user's operand set.
   void DetachFromOperandsAndUsers();
 
-  // Adds a derived instruciton to the parent computation of this instruction.
+  // Adds a derived instruction to the parent computation of this instruction.
   // Also update setup the new instruction as a derived instruction.
   HloInstruction* AddInstruction(
       std::unique_ptr<HloInstruction> derived_instruction);
@@ -2526,8 +2528,6 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
 // Custom (de)stringification functions for protos that live inside
 // HloInstruction.
 std::string PaddingConfigToString(const PaddingConfig& padding);
-std::string FrontendAttributesToString(
-    const FrontendAttributes& frontend_attributes);
 std::string StatisticsVizToString(const StatisticsViz& statistics_viz);
 std::string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 std::string RandomDistributionToString(const RandomDistribution& distribution);

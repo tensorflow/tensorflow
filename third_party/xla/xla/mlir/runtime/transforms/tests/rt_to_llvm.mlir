@@ -133,7 +133,7 @@ func.func @custom_call(%arg0: !rt.execution_context) {
 // CHECK: global internal constant @__rt_attr_value()
 // CHECK-SAME: !llvm.struct<(i64, ptr)> {
 // CHECK:    arith.constant 0 : i64
-// CHECK:    llvm.mlir.null : !llvm.ptr
+// CHECK:    llvm.mlir.zero : !llvm.ptr
 // CHECK:    llvm.mlir.undef : !llvm.struct<(i64, ptr)>
 // CHECK:    llvm.insertvalue
 // CHECK:    llvm.insertvalue

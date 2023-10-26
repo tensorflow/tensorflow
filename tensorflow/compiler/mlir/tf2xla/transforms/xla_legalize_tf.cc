@@ -55,11 +55,11 @@ namespace {
 #include "tensorflow/compiler/mlir/tf2xla/transforms/xla_legalize_tf_passes.h.inc"
 
 auto *mlir_legalization_count = tensorflow::monitoring::Counter<1>::New(
-    "/tensorflow/core/tf2xla/v0/mlir_failed_xla_legalize_tf_count",
+    "/tensorflow/core/tf2xla/v1/mlir_failed_xla_legalize_tf_count",
     "Counts the attempts of legalization of ops", "op_name");
 
 auto *mlir_failed_legalization_count = tensorflow::monitoring::Counter<2>::New(
-    "/tensorflow/core/tf2xla/v0/mlir_failed_xla_legalize_tf_pass_count",
+    "/tensorflow/core/tf2xla/v1/mlir_failed_xla_legalize_tf_pass_count",
     "Counts the failure of legalization of ops", "op_name", "legality");
 
 class LegalizeTF : public impl::LegalizeTFBase<LegalizeTF> {

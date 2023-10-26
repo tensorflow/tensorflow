@@ -53,7 +53,7 @@ extern "C" {
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 30
+#define PJRT_API_MINOR 35
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -718,6 +718,43 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_BufferFromHostBuffer_Args, buffer);
 typedef PJRT_Error* PJRT_Client_BufferFromHostBuffer(
     PJRT_Client_BufferFromHostBuffer_Args* args);
 
+struct PJRT_Client_CreateViewOfDeviceBuffer_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Client* client;
+  // A pointer to a non-owned device buffer. A PJRT_Buffer that is a non-owned
+  // view of this device buffer will be created.
+  void* device_buffer_ptr;
+  const int64_t* dims;
+  size_t num_dims;
+  PJRT_Buffer_Type element_type;
+  PJRT_Buffer_MemoryLayout* layout;
+  // The device that `device_buffer_ptr` is on.
+  PJRT_Device* device;
+  // A callback to be performed when the PJRT_Buffer is done with the on-device
+  // buffer. This callback is optional and can be a nullptr.
+  void (*on_delete_callback)(void* device_buffer_ptr, void* user_arg);
+  // `on_delete_callback_arg` will be passed to `on_delete_callback` as
+  // `user_arg` argument.
+  void* on_delete_callback_arg;
+  // A platform-specific stream handle that should contain the work or events
+  // needed to materialize the on-device buffer. It is optional and can be
+  // casted from a nullptr. PJRT_Client_CreateViewOfDeviceBuffer_Args will
+  // append an event to `stream` that indicates when the returned buffer is
+  // ready to use. This is intended to support dlpack on GPU and is not expected
+  // to be supported on all hardware platforms.
+  intptr_t stream;
+  PJRT_Buffer* buffer;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_CreateViewOfDeviceBuffer_Args, buffer);
+
+// Creates a PJRT buffer that is a non-owned view of an on-device buffer
+// (typically allocated by another library). The buffer may be mutated,
+// for example, if the buffer is donated to an Execute operation. This method is
+// not required on all hardware platforms.
+typedef PJRT_Error* PJRT_Client_CreateViewOfDeviceBuffer(
+    PJRT_Client_CreateViewOfDeviceBuffer_Args* args);
+
 // -------------------------- Device Descriptions ------------------------------
 
 // Device descriptions may be associated with an actual device
@@ -1278,6 +1315,24 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_SizeOfGeneratedCodeInBytes_Args,
 typedef PJRT_Error* PJRT_Executable_SizeOfGeneratedCodeInBytes(
     PJRT_Executable_SizeOfGeneratedCodeInBytes_Args* args);
 
+struct PJRT_Executable_Fingerprint_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Executable* executable;
+  // Has the lifetime of `executable`
+  const char* executable_fingerprint;  // out
+  size_t executable_fingerprint_size;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_Fingerprint_Args,
+                          executable_fingerprint_size);
+
+// A unique fingerprint for `executable`. Two executables that were produced by
+// compiling with identical inputs (same program, compile options, compiler
+// version, etc.) should have the same fingerprint. May not be implemented by
+// all platforms.
+typedef PJRT_Error* PJRT_Executable_Fingerprint(
+    PJRT_Executable_Fingerprint_Args* args);
+
 struct PJRT_Executable_GetCostAnalysis_Args {
   size_t struct_size;
   void* priv;
@@ -1397,10 +1452,11 @@ struct PJRT_LoadedExecutable_Fingerprint_Args {
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_LoadedExecutable_Fingerprint_Args,
                           executable_fingerprint_size);
-// A unique fingerprint for `executable`. Two executables that were produced by
-// compiling with identical inputs (same program, compile options, compiler
-// version, etc.) should have the same fingerprint. May not be implemented by
-// all platforms.
+// DEPRECATED. Will be removed in PJRT version 2.0. Please use
+// PJRT_Executable_Fingerprint instead. A unique fingerprint for `executable`.
+// Two executables that were produced by compiling with identical inputs (same
+// program, compile options, compiler version, etc.) should have the same
+// fingerprint. May not be implemented by all platforms.
 typedef PJRT_Error* PJRT_LoadedExecutable_Fingerprint(
     PJRT_LoadedExecutable_Fingerprint_Args* args);
 
@@ -1565,11 +1621,26 @@ struct PJRT_Buffer_CopyToDevice_Args {
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_CopyToDevice_Args, dst_buffer);
 
-// Copies the buffer to device `dst_device`. Caller is responsible for freeing
-// returned `dst_buffer` with PJRT_Buffer_Destroy. Returns an error if the
-// buffer is already on `dst_device`.
+// Copies the buffer to device `dst_device` within the same client. Caller is
+// responsible for freeing returned `dst_buffer` with PJRT_Buffer_Destroy.
+// Returns an error if the buffer is already on `dst_device`.
 typedef PJRT_Error* PJRT_Buffer_CopyToDevice(
     PJRT_Buffer_CopyToDevice_Args* args);
+
+struct PJRT_Buffer_CopyToMemory_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Buffer* buffer;
+  PJRT_Memory* dst_memory;
+  PJRT_Buffer* dst_buffer;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_CopyToMemory_Args, dst_buffer);
+
+// Copies the buffer to memory `dst_memory` within the same client. Caller is
+// responsible for freeing returned `dst_buffer` with PJRT_Buffer_Destroy.
+// Returns an error if the buffer is already on `dst_memory`.
+typedef PJRT_Error* PJRT_Buffer_CopyToMemory(
+    PJRT_Buffer_CopyToMemory_Args* args);
 
 struct PJRT_Buffer_IsOnCpu_Args {
   size_t struct_size;
@@ -1901,6 +1972,21 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Compile_Args, executable);
 // PJRT_Client before execution.
 typedef PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 
+// -------------------------------- Extension ----------------------------------
+
+typedef enum {
+  PJRT_Structure_Type_Gpu_Custom_Call = 0,
+  PJRT_Structure_Type_Profiler,
+} PJRT_Structure_Type;
+
+// PJRT_Structure_Base contains a type and a pointer to next
+// PJRT_Structure_Base. The framework can go through this chain to find
+// structure and identify it with the type.
+typedef struct PJRT_Structure_Base {
+  PJRT_Structure_Type type;
+  const struct PJRT_Structure_Base* next;
+} PJRT_Structure_Base;
+
 // -------------------------------- API access ---------------------------------
 
 #define _PJRT_API_STRUCT_FIELD(fn_type) fn_type* fn_type
@@ -1908,7 +1994,7 @@ typedef PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 // Please modify PJRT_Api_STRUCT_SIZE if the last field of PJRT_Api is changed.
 typedef struct {
   size_t struct_size;
-  void* priv;
+  void* extension_start;
 
   PJRT_Api_Version pjrt_api_version;
 
@@ -2019,13 +2105,18 @@ typedef struct {
   // corresponding places after each major version bump.
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_OutputElementTypes);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_OutputDimensions);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_CopyToMemory);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_CreateViewOfDeviceBuffer);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Executable_Fingerprint);
 } PJRT_Api;
 
 const size_t PJRT_Api_STRUCT_SIZE =
-    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Executable_OutputDimensions);
+    PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Client_CreateViewOfDeviceBuffer);
 
 #undef _PJRT_API_STRUCT_FIELD
-#undef PJRT_DEFINE_STRUCT_TRAITS
 
 #ifdef __cplusplus
 }

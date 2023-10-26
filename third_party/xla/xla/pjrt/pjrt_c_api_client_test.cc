@@ -18,17 +18,21 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/client/xla_builder.h"
+#include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api_cpu_internal.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tests/literal_test_util.h"
 #include "tsl/lib/core/status_test_util.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
@@ -36,16 +40,19 @@ limitations under the License.
 namespace xla {
 namespace {
 
-TEST(PjRtCApiClientTest, IsDynamicDimension) {
-  // Set up PjRtCApiClient
+static void SetUpCpuPjRtApi() {
   std::string device_type = "cpu";
   auto status = ::pjrt::PjrtApi(device_type);
   if (!status.ok()) {
     TF_ASSERT_OK(
         pjrt::SetPjrtApi(device_type, ::pjrt::cpu_plugin::GetCpuPjrtApi()));
   }
+}
+
+TEST(PjRtCApiClientTest, IsDynamicDimension) {
+  SetUpCpuPjRtApi();
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
-                          GetCApiClient(device_type));
+                          GetCApiClient("cpu"));
   // Prepare input buffer and executable.
   std::vector<int32_t> data0{1, 2, 3, 4, 5, 6};
   Shape shape0 = ShapeUtil::MakeShape(S32, {2, 3});
@@ -84,6 +91,62 @@ TEST(PjRtCApiClientTest, IsDynamicDimension) {
 
   EXPECT_THAT(is_dynamic_dimension,
               ::testing::ElementsAreArray(dims_are_dynamic));
+}
+
+TEST(PjRtCApiClientTest, PlatformId) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+
+  EXPECT_EQ(client->platform_name(), xla::CpuName());
+  EXPECT_EQ(client->platform_id(), xla::CpuId());
+}
+
+TEST(PjRtCApiClientTest, EmptyExecutableFingerprint) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  Shape shape = ShapeUtil::MakeShapeWithType<float>({4});
+  XlaBuilder builder("sum");
+  auto inp_0 = Parameter(&builder, 0, shape, "input0");
+  auto inp_1 = Parameter(&builder, 1, shape, "input1");
+  auto sum = Add(inp_0, inp_1);
+  builder.SetUpAlias({}, 0, {});
+  auto computation = builder.Build(sum).value();
+  std::unique_ptr<PjRtLoadedExecutable> executable =
+      client->Compile(computation, CompileOptions()).value();
+
+  TF_ASSERT_OK_AND_ASSIGN(std::optional<std::string> fingerprint,
+                          client->ExecutableFingerprint(*executable));
+
+  EXPECT_FALSE(fingerprint.has_value());
+}
+
+TEST(PjRtClientTest, CreateViewAndCopyToDeviceAsyncExternalCpuOnly) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  ASSERT_GT(client->addressable_devices().size(), 1);
+  std::vector<int32_t> data(4, 0);
+  auto* data_ptr = data.data();
+  Shape shape = ShapeUtil::MakeShape(S32, {4});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->CreateViewOfDeviceBuffer(
+          data_ptr, shape, client->addressable_devices()[0],
+          /*on_delete_callback=*/[data = std::move(data)]() mutable {}));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> result,
+      buffer->CopyToDevice(client->addressable_devices()[1]));
+  buffer.reset();
+  ASSERT_TRUE(result);
+  TF_ASSERT_OK_AND_ASSIGN(auto literal, result->ToLiteralSync());
+
+  std::vector<int32_t> expected(4, 0);
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<int32_t>(expected),
+                                     *literal));
 }
 
 }  // namespace

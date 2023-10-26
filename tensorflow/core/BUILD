@@ -1164,7 +1164,7 @@ alias(
 
 alias(
     name = "cuda",
-    actual = "@local_tsl//tsl/platform:cuda",
+    actual = "@local_tsl//tsl/cuda:cudart",
     visibility = ["//visibility:public"],
 )
 
@@ -1242,7 +1242,7 @@ filegroup(
         "//tensorflow/core/util:lib_internal_public_hdrs",
         "@local_tsl//tsl/lib/io:legacy_lib_internal_public_headers",
         "@local_tsl//tsl/platform:lib_internal_public_hdrs",
-        "@local_xla//xla/stream_executor:device_mem_allocator_headers",
+        "@local_xla//xla/stream_executor/integrations:device_mem_allocator_headers",
     ],
     visibility = ["//visibility:private"],
 )
@@ -1338,7 +1338,6 @@ cc_library(
         "//tensorflow/core/lib/gtl:iterator_range",
         "//tensorflow/core/lib/gtl:manual_constructor",
         "//tensorflow/core/lib/gtl:map_util",
-        "//tensorflow/core/lib/gtl:optional",
         "//tensorflow/core/lib/gtl:priority_queue_util",
         "//tensorflow/core/lib/gtl:top_n",
         "//tensorflow/core/lib/hash",
@@ -1464,15 +1463,18 @@ cc_library(
         "//tensorflow/core/protobuf:autotuning_proto_cc_impl",
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl",
         "//tensorflow/core:protos_all_cc_impl",
+        "@local_xla//xla:autotune_results_proto_cc_impl",
         "@local_xla//xla:autotuning_proto_cc_impl",
         "@local_tsl//tsl/profiler/protobuf:profiler_options_proto_cc_impl",
         "@local_tsl//tsl/protobuf:protos_all_cc_impl",
         "@local_xla//xla:xla_proto_cc_impl",
         "@local_xla//xla:xla_data_proto_cc_impl",
         "@local_xla//xla/service:hlo_proto_cc_impl",
-        "@local_xla//xla/service:memory_space_assignment_proto_cc_impl",
+        "@local_xla//xla/service:buffer_assignment_proto_cc_impl",
+        "@local_xla//xla/service/memory_space_assignment:memory_space_assignment_proto_cc_impl",
         "@local_xla//xla/service/gpu:backend_configs_cc_impl",
-        "@local_xla//xla/service/gpu:hlo_op_profile_proto_cc_impl",
+        "@local_xla//xla/service/gpu/model:hlo_op_profile_proto_cc_impl",
+        "@local_xla//xla/stream_executor:device_description_proto_cc_impl",
     ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps(),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:

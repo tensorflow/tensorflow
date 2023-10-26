@@ -77,6 +77,8 @@ namespace internal {
 
 namespace ops_util = ::mlir::TF::collection_ops_util;
 constexpr int32 kUninitializedGroupKey = 0;
+constexpr char kCpuDevice[] = "/device:CPU:0";
+constexpr char kDeviceAttr[] = "device";
 
 std::atomic<int32> tf_collective_instance_key_base{0};
 
@@ -1143,6 +1145,13 @@ mlir::LogicalResult LowerAllScatterOp(
       mlir::RankedTensorType::get({1, original_layout.rank()},
                                   builder.getIntegerType(32)),
       mesh_coordinates, matrix_value);
+
+  // We need to softly place the DT_INT32 MatMulOp for GPUs.
+  if (original_layout.mesh().is_gpu_mesh() ||
+      desired_layout.mesh().is_gpu_mesh()) {
+    // TODO(b/303662238): See whether we can replicate soft placement here.
+    offset->setAttr(kDeviceAttr, builder.getStringAttr(kCpuDevice));
+  }
 
   // Input to slice needs to be rank 1, so we need to squeeze it.
   mlir::TF::SqueezeOp offset_squeezed = builder.create<mlir::TF::SqueezeOp>(

@@ -322,31 +322,12 @@ def LHLOGPU_AllToAllDoneOp: LHLOGPU_Op<"all_to_all_done"> {
   let arguments = (ins MHLO_Token:$token);
 }
 
-def LHLOGPU_fusedMHAOp : LHLOGPU_Op<"fMHA"> {
+def LHLOGPU_fusedMHAOp : LHLOGPU_Op<"fMHA", [AttrSizedOperandSegments]> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$lhs_bmm1,
     Arg<LHLO_Buffer, "", [MemRead]>:$rhs_bmm1,
     Arg<LHLO_Buffer, "", [MemRead]>:$rhs_bmm2,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$scratch,
-    Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$activation,
-    MHLO_DotDimensionNumbers:$bmm1_dot_dimension_numbers,
-    MHLO_DotDimensionNumbers:$bmm2_dot_dimension_numbers,
-    I64ArrayAttr:$intermediate_tensor_dimensions,
-    I64ArrayAttr:$intermediate_tensor_layout,
-    F64Attr:$fmha_scale,
-    OptionalAttr<F64Attr>:$dropout_rate,
-    FusedMhaDagSignatureAttr:$fused_mha_dag,
-    FusedMHAAlgorithmConfigAttr:$algorithm_config,
-    OptionalAttr<I64Attr>:$seed);
-}
-
-def LHLOGPU_fusedMHAWithScaledMaskOp : LHLOGPU_Op<"fMHAWithScaledMask", [AttrSizedOperandSegments]> {
-  let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$lhs_bmm1,
-    Arg<LHLO_Buffer, "", [MemRead]>:$rhs_bmm1,
-    Arg<LHLO_Buffer, "", [MemRead]>:$rhs_bmm2,
-    Arg<LHLO_Buffer, "", [MemRead]>:$mask,
+    Arg<Optional<LHLO_Buffer>, "", [MemRead]>:$mask,
     Arg<Optional<LHLO_Buffer>, "", [MemRead]>:$bias,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output,
     Arg<LHLO_Buffer, "", [MemWrite]>:$scratch,
@@ -356,41 +337,21 @@ def LHLOGPU_fusedMHAWithScaledMaskOp : LHLOGPU_Op<"fMHAWithScaledMask", [AttrSiz
     I64ArrayAttr:$intermediate_tensor_dimensions,
     I64ArrayAttr:$intermediate_tensor_layout,
     F64Attr:$fmha_scale,
-    OptionalAttr<F64Attr>:$dropout_rate,
     FusedMhaDagSignatureAttr:$fused_mha_dag,
     FusedMHAAlgorithmConfigAttr:$algorithm_config,
+    OptionalAttr<F64Attr>:$dropout_rate,
     OptionalAttr<I64Attr>:$seed
     );
 }
 
-def LHLOGPU_fusedMHAWithScaledBiasOp : LHLOGPU_Op<"fMHAWithScaledBias"> {
-  let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$lhs_bmm1,
-    Arg<LHLO_Buffer, "", [MemRead]>:$rhs_bmm1,
-    Arg<LHLO_Buffer, "", [MemRead]>:$rhs_bmm2,
-    Arg<LHLO_Buffer, "", [MemRead]>:$bias,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$scratch,
-    Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$activation,
-    MHLO_DotDimensionNumbers:$bmm1_dot_dimension_numbers,
-    MHLO_DotDimensionNumbers:$bmm2_dot_dimension_numbers,
-    I64ArrayAttr:$intermediate_tensor_dimensions,
-    I64ArrayAttr:$intermediate_tensor_layout,
-    F64Attr:$fmha_scale,
-    OptionalAttr<F64Attr>:$dropout_rate,
-    FusedMhaDagSignatureAttr:$fused_mha_dag,
-    FusedMHAAlgorithmConfigAttr:$algorithm_config,
-    OptionalAttr<I64Attr>:$seed
-    );
-}
-
-def LHLOGPU_fusedMHABackwardOp : LHLOGPU_Op<"fMHABackward"> {
+def LHLOGPU_fusedMHABackwardOp : LHLOGPU_Op<"fMHABackward", [AttrSizedOperandSegments]> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$bmm1_grad_gemm1_rhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$bmm1_grad_gemm2_rhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$bmm2_grad_gemm2_rhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$bmm2_grad_gemm1_lhs,
     Arg<LHLO_Buffer, "", [MemRead]>:$d_output,
+    Arg<Optional<LHLO_Buffer>, "", [MemRead]>:$mask,
     Arg<LHLO_Buffer, "", [MemWrite]>:$d_bmm1_lhs,
     Arg<LHLO_Buffer, "", [MemWrite]>:$d_bmm1_rhs,
     Arg<LHLO_Buffer, "", [MemWrite]>:$d_bmm2_rhs,
@@ -402,36 +363,19 @@ def LHLOGPU_fusedMHABackwardOp : LHLOGPU_Op<"fMHABackward"> {
     MHLO_DotDimensionNumbers:$bmm2_grad_gemm1_dot_dimension_numbers,
     MHLO_DotDimensionNumbers:$bmm2_grad_gemm2_dot_dimension_numbers,
     F64Attr:$fmha_scale,
-    OptionalAttr<F64Attr>:$dropout_rate,
     FusedMhaBackwardDagSignatureAttr:$fused_mha_dag,
     FusedMHAAlgorithmConfigAttr:$algorithm_config,
+    OptionalAttr<F64Attr>:$dropout_rate,
     OptionalAttr<I64Attr>:$seed);
 }
 
-def LHLOGPU_fusedMHAWithMaskBackwardOp : LHLOGPU_Op<"fMHAWithMaskBackward"> {
+def LHLOGPU_RadixSortOp: LHLOGPU_Op<"radix_sort", [SameVariadicOperandSize]> {
   let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemRead]>:$bmm1_grad_gemm1_rhs,
-    Arg<LHLO_Buffer, "", [MemRead]>:$bmm1_grad_gemm2_rhs,
-    Arg<LHLO_Buffer, "", [MemRead]>:$bmm2_grad_gemm2_rhs,
-    Arg<LHLO_Buffer, "", [MemRead]>:$bmm2_grad_gemm1_lhs,
-    Arg<LHLO_Buffer, "", [MemRead]>:$d_output,
-    Arg<LHLO_Buffer, "", [MemRead]>:$mask,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$d_bmm1_lhs,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$d_bmm1_rhs,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$d_bmm2_rhs,
-    Arg<LHLO_Buffer, "", [MemWrite]>:$d_S,
+    Arg<Variadic<LHLO_Buffer>, "", [MemRead]>:$inputs,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$output,
     Arg<LHLO_Buffer, "", [MemWrite]>:$scratch,
-    Arg<Optional<LHLO_Buffer>, "", [MemWrite]>:$d_bias,
-    MHLO_DotDimensionNumbers:$bmm1_grad_gemm1_dot_dimension_numbers,
-    MHLO_DotDimensionNumbers:$bmm1_grad_gemm2_dot_dimension_numbers,
-    MHLO_DotDimensionNumbers:$bmm2_grad_gemm1_dot_dimension_numbers,
-    MHLO_DotDimensionNumbers:$bmm2_grad_gemm2_dot_dimension_numbers,
-    F64Attr:$fmha_scale,
-    OptionalAttr<F64Attr>:$dropout_rate,
-    FusedMhaBackwardDagSignatureAttr:$fused_mha_dag,
-    FusedMHAAlgorithmConfigAttr:$algorithm_config,
-    OptionalAttr<I64Attr>:$seed
-    );
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$descending
+  );
 }
 
 #endif // LHLO_GPU_OPS

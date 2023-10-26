@@ -31,9 +31,10 @@ xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api);
 // Loads a PJRT plugin. The library provided by library_path must export a
 // symbol called `GetPjrtApi` with function signature `const PJRT_Api*
 // GetPjrtApi()`. This method dlopen the plugin library, dlsym `GetPjrtApi`,
-// calls `GetPjrtApi` and `SetPjrtApi`.
-xla::Status LoadPjrtPlugin(absl::string_view device_type,
-                           absl::string_view library_path);
+// calls `GetPjrtApi` and `SetPjrtApi`. Returns the loaded PJRT_Api* if
+// successful.
+xla::StatusOr<const PJRT_Api*> LoadPjrtPlugin(absl::string_view device_type,
+                                              absl::string_view library_path);
 
 // Requires that SetPjrtApi has been successfully called on `device_type` before
 // calling this method.

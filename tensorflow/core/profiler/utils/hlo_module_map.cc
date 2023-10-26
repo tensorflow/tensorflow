@@ -22,7 +22,7 @@ limitations under the License.
 #include <vector>
 
 #if GOOGLE_CUDA
-#include "xla/service/gpu/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #endif
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/core/platform/path.h"

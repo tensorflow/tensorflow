@@ -19,6 +19,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <queue>
 
 #include "absl/time/clock.h"
@@ -61,6 +62,7 @@ constexpr double kBufferDownsizeMultipliter = 0.9;
 // upsizing.
 constexpr int64_t kBufferLowWatermarkThreshold = 2;
 
+constexpr char kDataService[] = "DataService";
 constexpr char kFlatMap[] = "FlatMap";
 constexpr char kInterleave[] = "Interleave";
 constexpr char kParallelInterleave[] = "ParallelInterleave";
@@ -767,7 +769,7 @@ class AsyncInterleaveMany : public Node {
         return 0.0;
       }
     }
-    return (*parameter)->value * AverageBufferedElementSize();
+    return (*parameter)->value * AverageBufferedElementSizeLocked();
   }
 
   Status ToProto(ModelProto::Node* node_proto) const {
@@ -1098,13 +1100,13 @@ class AsyncRatio : public Node {
 
     if (parameter) {
       if (memory_ratio_ == 0) {
-        result += (*parameter)->value * AverageBufferedElementSize();
+        result += (*parameter)->value * AverageBufferedElementSizeLocked();
       } else {
         // The estimation is currently not accurate for MapAndBatchDataset for
         // the maximum buffer size does not match `num_parallel_calls`
         // parameter.
-        result +=
-            (*parameter)->value * AverageBufferedElementSize() / memory_ratio_;
+        result += (*parameter)->value * AverageBufferedElementSizeLocked() /
+                  memory_ratio_;
       }
     }
     return result;
@@ -1745,7 +1747,7 @@ double Node::TotalProcessingTime(Node::NodeValues* processing_times) {
   return total_processing_times[long_name()];
 }
 
-double Node::AverageBufferedElementSize() const {
+double Node::AverageBufferedElementSizeLocked() const {
   DCHECK_GE(num_elements_, 0);
   DCHECK_GE(buffered_elements_, 0);
   if (num_elements_ <= 0) {
@@ -2279,7 +2281,8 @@ void Model::FlushMetrics() {
 
 void Model::Optimize(AutotuneAlgorithm algorithm,
                      std::function<int64_t()> cpu_budget_func,
-                     std::function<int64_t(int64_t)> ram_budget_func,
+                     double ram_budget_share,
+                     std::optional<int64_t> fixed_ram_budget,
                      double model_input_time,
                      RamBudgetManager& ram_budget_manager,
                      CancellationManager* cancellation_manager) {
@@ -2288,7 +2291,23 @@ void Model::Optimize(AutotuneAlgorithm algorithm,
     tf_shared_lock l(mu_);
     snapshot = output_->Snapshot();
   }
-  int64_t total_ram_budget = ram_budget_func(TotalBufferedBytes(snapshot));
+  int64_t total_ram_budget;
+  if (fixed_ram_budget.has_value()) {
+    total_ram_budget = fixed_ram_budget.value();
+  } else {
+    // Because the snapshot will take up some memory as time goes,
+    // we need to add the total buffered bytes back
+    // In other words, if we assume the system overall memory does not change:
+    // Assume the port::AvailableRam() returns 1000 before the model starts
+    // to tune the parameters of the dataset ops.
+    // After some time, the dataset ops has buffered some bytes, say `x` bytes
+    // In this case, when we call AvailableRam(), it will return 1000 - `x`.
+    // But we want the `total_ram_budget` to be fixed.
+    // So we need to add `x` bytes back, i.e. AvailableRam() + x == 1000 - x + x
+    total_ram_budget = ram_budget_share *
+                       (port::AvailableRam() + TotalBufferedBytes(snapshot));
+  }
+
   ram_budget_manager.UpdateBudget(total_ram_budget);
   int64_t model_ram_budget = ram_budget_manager.AvailableModelRam();
   int64_t original_model_bytes = TotalMaximumBufferedBytes(snapshot);
@@ -2342,8 +2361,11 @@ void Model::Optimize(AutotuneAlgorithm algorithm,
 
 void Model::RemoveNode(std::shared_ptr<Node> node) {
   if (node) {
-    if (node->output() && !node->output_deleted()) {
-      node->output()->remove_input(node);
+    if (node->output()) {
+      std::shared_ptr<Node> output_shared = node->output_shared();
+      if (output_shared) {
+        output_shared->remove_input(node);
+      }
     }
     VLOG(3) << "Removing " << node->long_name();
   }
@@ -2352,6 +2374,21 @@ void Model::RemoveNode(std::shared_ptr<Node> node) {
 Model::ModelParameters Model::CollectTunableParameters(
     std::shared_ptr<Node> node) {
   return node->CollectTunableParameters();
+}
+
+void Model::MaybeSyncStateValuesToValues(Model::ModelParameters* parameters) {
+  for (auto& [node_name, parameter] : *parameters) {
+    // We only sync state values to values for `DataService` nodes because the
+    // `buffer_size` parameter is set by the `DataServiceClient` directly.
+    if (!absl::StartsWith(node_name, kDataService)) {
+      continue;
+    }
+    if (parameter->name != kBufferSize) {
+      continue;
+    }
+    mutex_lock l(*parameter->state->mu);
+    parameter->value = parameter->state->value;
+  }
 }
 
 bool Model::DownsizeBuffers(std::shared_ptr<Node> snapshot) {
@@ -2414,7 +2451,8 @@ bool Model::ShouldStop(int64_t cpu_budget, int64_t ram_budget,
 // TODO(jsimsa): Add support for tracking and using the model input time.
 Status Model::OptimizeLoop(AutotuneAlgorithm algorithm,
                            std::function<int64_t()> cpu_budget_func,
-                           std::function<int64_t(int64_t)> ram_budget_func,
+                           double ram_budget_share,
+                           std::optional<int64_t> fixed_ram_budget,
                            RamBudgetManager& ram_budget_manager,
                            CancellationManager* cancellation_manager) {
   std::function<void()> unused;
@@ -2453,8 +2491,8 @@ Status Model::OptimizeLoop(AutotuneAlgorithm algorithm,
     if (algorithm == AutotuneAlgorithm::STAGE_BASED) {
       model_input_time = ComputeTargetTimeNsec();
     }
-    Optimize(algorithm, cpu_budget_func, ram_budget_func, model_input_time,
-             ram_budget_manager, cancellation_manager);
+    Optimize(algorithm, cpu_budget_func, ram_budget_share, fixed_ram_budget,
+             model_input_time, ram_budget_manager, cancellation_manager);
     int64_t end_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
     VLOG(2) << "Optimized for " << end_ms - start_ms << " ms.";
 
@@ -2546,6 +2584,7 @@ void Model::OptimizeHillClimbHelper(
   VLOG(2) << "Starting optimization of tunable parameters with Hill Climb.";
   const double processing_time = TotalProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
+  MaybeSyncStateValuesToValues(&parameters);
   if (parameters.empty()) {
     VLOG(2) << "There are no tunable parameters.";
     return;

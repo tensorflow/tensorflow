@@ -88,7 +88,7 @@ AutotunerCompileUtil::AutotunerCompileUtil(const AutotuneConfig& config,
   // Avoid using another thread pool.
   opts_.set_xla_gpu_force_compilation_parallelism(1);
   // Avoid using GPU graphs as we don't want to measure graph construction time.
-  opts_.set_xla_gpu_graph_level(0);
+  opts_.clear_xla_gpu_enable_command_buffer();
   // Disable experimental XLA:GPU runtime.
   opts_.set_xla_gpu_enable_gpu2_runtime(false);
   opts_.set_xla_embed_ir_in_executable(false);
@@ -136,8 +136,10 @@ StatusOr<std::unique_ptr<Executable>> AutotunerCompileUtil::Compile(
       Compiler::CompileOptions{&allocator_, /*thread_pool=*/nullptr,
                                /*layout_canonicalization_callback=*/{},
                                /*is_autotuning_compilation=*/true});
-  if (out.status().code() == absl::StatusCode::kResourceExhausted) {
+  if (out.status().code() == absl::StatusCode::kResourceExhausted ||
+      out.status().code() == absl::StatusCode::kCancelled) {
     // Being out of shared memory budget is an expected failure.
+    // Cancelling upon register spilling is also an expected failure.
     return std::unique_ptr<Executable>();
   }
   return out;

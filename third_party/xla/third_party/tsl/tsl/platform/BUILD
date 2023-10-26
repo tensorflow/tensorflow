@@ -236,6 +236,7 @@ cc_library(
         ":logging",
         ":mutex",
         ":scanner",
+        ":str_util",
         ":strcat",
         ":stringpiece",
         ":types",
@@ -674,12 +675,10 @@ filegroup(
 
 exports_files(
     [
-        "context.h",
-        "host_info.h",
-        "human_readable_json.h",
         "bfloat16.h",
-        "cpu_info.h",
+        "context.h",
         "cpu_info.cc",
+        "cpu_info.h",
         "crash_analysis.h",
         "criticality.h",
         "cuda_libdevice_path.h",
@@ -692,26 +691,25 @@ exports_files(
         "file_system.h",
         "file_system_helper.cc",
         "file_system_helper.h",
+        "host_info.h",
+        "human_readable_json.h",
         "init_main.h",
         "logging.h",
         "mem.h",
         "net.h",
         "numa.h",
         "ram_file_system.h",
-        "resource_loader.h",
         "resource.h",
+        "resource_loader.h",
+        "rocm_rocdl_path.h",
         "snappy.h",
         "stacktrace_handler.h",
-        "cuda_libdevice_path.h",
-        "test.h",
-        "bfloat16.h",
-        "logging.h",
-        "rocm_rocdl_path.h",
         "subprocess.h",
+        "test.h",
         "threadpool.cc",
         "threadpool.h",
-        "tracing.h",
         "tracing.cc",
+        "tracing.h",
     ],
     visibility = ["//visibility:public"],
 )
@@ -1103,14 +1101,6 @@ cc_library(
 )
 
 cc_library(
-    name = "cuda",
-    visibility = ["//visibility:public"],
-    deps = [
-        "@local_config_cuda//cuda:cudart_static",
-    ],
-)
-
-cc_library(
     name = "dso_loader",
     hdrs = ["dso_loader.h"],
     visibility = ["//visibility:public"],
@@ -1361,7 +1351,10 @@ tsl_cc_test(
     srcs = ["path_test.cc"],
     visibility = ["//visibility:public"],
     deps = [
+        ":env",
+        ":env_impl",
         ":path",
+        ":stringpiece",
         ":test",
         ":test_main",
     ],
@@ -1915,12 +1908,4 @@ tsl_cc_test(
         ":test_main",
         "//tsl/lib/core:status_test_util",
     ],
-)
-
-cc_library(
-    name = "static_threadlocal",
-    hdrs = [
-        "static_threadlocal.h",
-    ],
-    visibility = ["//visibility:public"],
 )

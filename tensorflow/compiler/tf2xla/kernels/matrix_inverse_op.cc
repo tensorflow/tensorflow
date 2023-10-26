@@ -57,7 +57,8 @@ class MatrixInverseOp : public XlaOpKernel {
  private:
   bool adjoint_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(MatrixInverseOp);
+  MatrixInverseOp(const MatrixInverseOp&) = delete;
+  void operator=(const MatrixInverseOp&) = delete;
 };
 
 // TODO(b/135640736): Allow this for integer and complex types.

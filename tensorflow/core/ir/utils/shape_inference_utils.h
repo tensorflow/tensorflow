@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
-class OpRegistrationData;
+struct OpRegistrationData;
 }  // namespace tensorflow
 
 namespace mlir {

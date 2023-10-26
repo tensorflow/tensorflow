@@ -69,6 +69,9 @@ pytype_strict_library(
     ],
 )
 
+# TODO(b/301286466): Investigate why python annotation type mismatch is not catptured by the type
+# strict BUILD rules.
+
 dtensor_test(
     name = "array_ops_test",
     srcs = ["array_ops_test.py"],
@@ -301,6 +304,7 @@ dtensor_test(
         "//tensorflow/dtensor/python:tpu_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:device",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -385,7 +389,6 @@ dtensor_test(
     env = {
         "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
         "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
-        "NCCL_PROTO": "Simple",  # FIXME(b/272050398): Delete this after the migration to LLVM-17.
     },
     tags = [
         "no_windows",
@@ -431,7 +434,6 @@ dtensor_test(
     env = {
         "DTENSOR_GPU_USE_NCCL_COMMUNICATION": "1",
         "NCCL_P2P_DISABLE": "1",  # FIXME(b/251183104): p2p detection in cuda 10.1+ is broken.
-        "NCCL_PROTO": "Simple",  # FIXME(b/272050398): Delete this after the migration to LLVM-17.
     },
     tags = [
         "no_windows",
@@ -523,6 +525,62 @@ dtensor_test(
     },
     main = "spmd_test.py",
     shard_count = {
+        TPU_V3_DONUT_BACKEND: 32,
+    },
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:numpy_util",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_gen",
+        "//tensorflow/python/ops:array_ops_stack",
+        "//tensorflow/python/ops:bitwise_ops_gen",
+        "//tensorflow/python/ops:io_ops_gen",
+        "//tensorflow/python/ops:linalg_ops_gen",
+        "//tensorflow/python/ops:list_ops_gen",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:math_ops_gen",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:nn_ops_gen",
+        "//tensorflow/python/ops:random_ops",
+        "//tensorflow/python/ops:resource_variable_ops_gen",
+        "//tensorflow/python/ops:special_math_ops",
+        "//tensorflow/python/ops:spectral_ops_gen",
+        "//tensorflow/python/ops:stateless_random_ops",
+        "//tensorflow/python/ops:stateless_random_ops_gen",
+        "//tensorflow/python/ops:string_ops_gen",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/util:nest",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+dtensor_test(
+    name = "multi_device_spmd_test",
+    srcs = ["spmd_test.py"],
+    additional_backends = [
+        TPU_V3_DONUT_BACKEND,
+    ],
+    env = {
+        "DTENSOR_ENABLE_MULTI_DEVICE_EXPANSION": "1",
+    },
+    main = "spmd_test.py",
+    shard_count = {
+        "cpu": 25,
+        "gpu": 10,
+        "tpu": 10,
         TPU_V3_DONUT_BACKEND: 32,
     },
     deps = [

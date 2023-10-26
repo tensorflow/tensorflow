@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// The full pipline of converting jax random include 2 steps.
+// The full pipeline of converting jax random include 2 steps.
 // 1. Rename the jax random functions to tflite wrapped functions with the aid
 //    of "jax.named_call". For example, in the dumped hlo, the
 //    jax.random.uniform will have name "tfl_wrapped_jax_random_uniform".

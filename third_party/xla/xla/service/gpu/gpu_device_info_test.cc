@@ -13,13 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/gpu_device_info.h"
-
 #include <string>
 
 #include "absl/strings/string_view.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
-#include "xla/service/gpu/gpu_types.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "tsl/platform/test.h"
@@ -60,12 +57,12 @@ TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
             test_info.l2_cache_size,
             // Clock rate can vary between base and boost values.
             ::testing::Ge(test_info.clock_rate_ghz),
-            dev_info.device_memory_size));
+            test_info.device_memory_size));
   } else if (name == "Quadro P1000") {
     EXPECT_THAT(
         dev_info,
         ::testing::FieldsAre(
-            GpuVersion(se::CudaComputeCapability(6, 1)),
+            se::GpuComputeCapability(se::CudaComputeCapability(6, 1)),
             /*threads_per_block_limit=*/1024,
             /*threads_per_warp=*/32, /*shared_memory_per_block=*/48 * 1024,
             /*shared_memory_per_block_optin=*/48 * 1024,
@@ -79,23 +76,23 @@ TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
             /*clock_rate_ghz=*/::testing::Ge(1.4),
             /*device_memory_size=*/4'234'346'496));
   } else if (name == "Tesla P100-SXM2-16GB") {
-    EXPECT_THAT(
-        dev_info,
-        ::testing::FieldsAre(GpuVersion(se::CudaComputeCapability(6, 0)),
-                             /*threads_per_block_limit=*/1024,
-                             /*threads_per_warp=*/32,
-                             /*shared_memory_per_block=*/48 * 1024,
-                             /*shared_memory_per_block_optin=*/48 * 1024,
-                             /*shared_memory_per_core=*/64 * 1024,
-                             /*threads_per_core_limit=*/2048, /*core_count=*/56,
-                             /*fpus_per_core=*/64,
-                             /*block_dim_limit_x=*/2'147'483'647,
-                             /*block_dim_limit_y=*/65535,
-                             /*block_dim_limit_z=*/65535,
-                             /*memory_bandwidth=*/732'160'000'000,
-                             /*l2_cache_size=*/4 * 1024 * 1024,
-                             /*clock_rate_ghz=*/::testing::Ge(1.4),
-                             /*device_memory_size=*/17'066'622'976));
+    EXPECT_THAT(dev_info,
+                ::testing::FieldsAre(
+                    se::GpuComputeCapability(se::CudaComputeCapability(6, 0)),
+                    /*threads_per_block_limit=*/1024,
+                    /*threads_per_warp=*/32,
+                    /*shared_memory_per_block=*/48 * 1024,
+                    /*shared_memory_per_block_optin=*/48 * 1024,
+                    /*shared_memory_per_core=*/64 * 1024,
+                    /*threads_per_core_limit=*/2048, /*core_count=*/56,
+                    /*fpus_per_core=*/64,
+                    /*block_dim_limit_x=*/2'147'483'647,
+                    /*block_dim_limit_y=*/65535,
+                    /*block_dim_limit_z=*/65535,
+                    /*memory_bandwidth=*/732'160'000'000,
+                    /*l2_cache_size=*/4 * 1024 * 1024,
+                    /*clock_rate_ghz=*/::testing::Ge(1.4),
+                    /*device_memory_size=*/17'066'622'976));
   }
 #if TF_ROCM_VERSION >= 50500
   else if (name == "AMD Instinct MI210") {  // NOLINT
@@ -116,7 +113,7 @@ TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
     EXPECT_THAT(
         dev_info,
         ::testing::FieldsAre(
-            GpuVersion(se::RocmComputeCapability("gfx908")),
+            se::GpuComputeCapability(se::RocmComputeCapability("gfx908")),
             /*threads_per_block_limit=*/1024,
             /*threads_per_warp=*/64, /*shared_memory_per_block=*/64 * 1024,
             /*shared_memory_per_block_optin=*/0,
@@ -133,7 +130,7 @@ TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
     EXPECT_THAT(
         dev_info,
         ::testing::FieldsAre(
-            GpuVersion(se::RocmComputeCapability("gfx906")),
+            se::GpuComputeCapability(se::RocmComputeCapability("gfx906")),
             /*threads_per_block_limit=*/1024,
             /*threads_per_warp=*/64, /*shared_memory_per_block=*/64 * 1024,
             /*shared_memory_per_block_optin=*/0,

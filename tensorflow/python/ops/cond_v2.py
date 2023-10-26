@@ -192,6 +192,28 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
   return [None] + outputs
 
 
+def _is_op_stateful(op):
+  """Check whether an op is stateful.
+
+  This helper function handles two special cases to make the stateful analysis
+  consistent with the mlir side effect analysis.
+  1. GlobalIterIdOp should be stateless.
+  2. CollectiveGatherV2 with attribute is_stateless to be True should be
+     stateless.
+
+  Args:
+   op: Operation
+
+  Returns:
+    Boolean indicates whether the operation is stateless or not.
+  """
+  if op.type == "GlobalIterId":
+    return False
+  if op.type == "CollectiveGatherV2" and op.get_attr("is_stateless"):
+    return False
+  return op._is_stateful
+
+
 def _build_cond(pred,
                 true_graph,
                 false_graph,
@@ -259,10 +281,14 @@ def _build_cond(pred,
       list(true_graph.function_captures.control) + list(
           false_graph.function_captures.control)):
     true_stateful_ops = [
-        op for op in true_graph.get_operations() if op._is_stateful
+        op
+        for op in true_graph.get_operations()
+        if _is_op_stateful(op)
     ]
     false_stateful_ops = [
-        op for op in false_graph.get_operations() if op._is_stateful
+        op
+        for op in false_graph.get_operations()
+        if _is_op_stateful(op)
     ]
     if (true_stateful_ops or false_stateful_ops):
       op_fn = gen_functional_ops._if

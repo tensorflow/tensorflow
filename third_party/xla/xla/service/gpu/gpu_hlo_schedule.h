@@ -17,7 +17,7 @@ limitations under the License.
 #define XLA_SERVICE_GPU_GPU_HLO_SCHEDULE_H_
 
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/gpu_device_info.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -26,11 +26,12 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size);
 
 // Determines the schedule of HLO instructions for a module run on the GPU.
 Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
-                         int64_t memory_size);
+                         int64_t memory_limit,
+                         const se::DeviceDescription& gpu_device_info);
 HloInstructionSequence PostProcessSchedule(const HloInstructionSequence& input);
 
 int64_t GetSchedulerMemoryLimit(const HloModule* module,
-                                const GpuDeviceInfo& gpu_device_info,
+                                const se::DeviceDescription& gpu_device_info,
                                 int pointer_size);
 
 constexpr absl::string_view kFingerprintBeforeLHS = "fingerprint_before_lhs";

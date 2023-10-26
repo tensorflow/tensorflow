@@ -1,14 +1,16 @@
-load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
-load("//xla:xla.bzl", "xla_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
+load("//xla:xla.bzl", "xla_cc_test")
+load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm_is_configured",
+    "rocm_default_copts",
+)
 load(
     "@local_tsl//tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-load(
-    "@local_config_rocm//rocm:build_defs.bzl",
-    "if_rocm_is_configured",
-)
+load("@local_tsl//tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -35,15 +37,49 @@ cc_library(
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
         "//xla/service:executable",
-        "//xla/service/gpu:cholesky_thunk",
         "//xla/service/gpu:gpu_asm_opts_util",
+        "//xla/service/gpu/runtime3:cholesky_thunk",
     ],
+)
+
+cuda_library(
+    name = "sleep_kernel_cuda",
+    srcs = if_cuda_is_configured(
+        [
+            "sleep_kernel.cu.cc",
+        ],
+    ),
+    hdrs = if_cuda_is_configured(["sleep_kernel.h"]),
+    compatible_with = [],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    visibility = ["//visibility:public"],
+    deps = if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
+)
+
+cc_library(
+    name = "sleep_kernel_rocm",
+    srcs = if_rocm_is_configured(
+        [
+            "sleep_kernel.cu.cc",
+        ],
+    ),
+    hdrs = if_rocm_is_configured(["sleep_kernel.h"]),
+    compatible_with = [],
+    copts = rocm_default_copts(),
+    local_defines = if_rocm_is_configured(["TENSORFLOW_USE_ROCM"]),
+    visibility = ["//visibility:public"],
+    deps = if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 cc_library(
     name = "collectives",
     srcs = ["collectives.cc"],
     hdrs = ["collectives.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]) + if_rocm_is_configured(["TENSORFLOW_USE_ROCM"]),
     visibility = ["//visibility:public"],
     deps = [
         ":support",
@@ -56,11 +92,23 @@ cc_library(
         "//xla/service/gpu:gpu_executable_run_options",
         "//xla/service/gpu:nccl_collective_thunks",
         "//xla/service/gpu:thunk",
-        "//xla/stream_executor:event",
-        "//xla/stream_executor:executor_cache",
+        "//xla/stream_executor",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-    ],
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ] + if_gpu_is_configured([
+        "//xla/stream_executor/gpu:gpu_types_header",
+        "//xla/stream_executor/gpu:gpu_stream_header",
+    ]) + if_cuda_is_configured([
+        ":sleep_kernel_cuda",
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm_is_configured([
+        ":sleep_kernel_rocm",
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 cc_library(
@@ -138,6 +186,26 @@ cc_library(
 )
 
 cc_library(
+    name = "cub_sort",
+    srcs = ["cub_sort.cc"],
+    hdrs = ["cub_sort.h"],
+    local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":support",
+        "//xla/runtime:custom_call",
+        "//xla/runtime:custom_call_registry",
+        "//xla/runtime:executable",
+        "//xla/runtime:memref_view",
+        "//xla/service:executable",
+        "//xla/stream_executor:device_memory",
+        "@com_google_absl//absl/status",
+    ] + if_cuda_is_configured([
+        "//xla/service/gpu:cub_sort_thunk",
+    ]),
+)
+
+cc_library(
     name = "custom_call",
     srcs = ["custom_call.cc"],
     hdrs = ["custom_call.h"],
@@ -164,6 +232,14 @@ cc_library(
 )
 
 cc_library(
+    name = "custom_call_registry",
+    srcs = ["custom_call_registry.cc"],
+    hdrs = ["custom_call_registry.h"],
+    visibility = ["//visibility:public"],
+    deps = ["//xla/runtime:custom_call_registry"],
+)
+
+cc_library(
     name = "executable",
     srcs = ["executable.cc"],
     hdrs = ["executable.h"],
@@ -175,8 +251,10 @@ cc_library(
         ":concurrent_region",
         ":conv",
         ":conv_reorder",
+        ":cub_sort",
         ":cublas_lt_matmul",
         ":custom_call",
+        ":custom_call_registry",
         ":fft",
         ":fused_attention",
         ":gemm",
@@ -194,7 +272,6 @@ cc_library(
         "//xla:xla_proto_cc",
         "//xla/mlir/runtime/transforms:compilation_pipeline_gpu",
         "//xla/runtime:executable",
-        "//xla/runtime:ffi",
         "//xla/runtime:jit_executable",
         "//xla/runtime:module_registry",
         "//xla/service:executable",
@@ -202,7 +279,7 @@ cc_library(
         "//xla/service/gpu:buffer_allocations",
         "//xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//xla/service/gpu:thunk",
-        "//xla/stream_executor:stream_executor_headers",
+        "//xla/stream_executor",
         "//xla/stream_executor/gpu:gpu_stream",
         "@com_google_absl//absl/container:inlined_vector",
         "@local_tsl//tsl/protobuf:dnn_proto_cc",
@@ -221,7 +298,7 @@ cc_library(
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
         "//xla/runtime:state",
-        "//xla/service/gpu:fft_thunk",
+        "//xla/service/gpu/runtime3:fft_thunk",
         "//xla/stream_executor:fft",
         "//xla/translate/mhlo_to_hlo:attribute_exporter",
     ],
@@ -241,8 +318,8 @@ cc_library(
         ":topk_kernel_cuda",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
+        "//xla/stream_executor",  # build_cleaner: keep
         "//xla/stream_executor:platform",
-        "//xla/stream_executor:stream_executor_headers",  # build_cleaner: keep
         "//xla/stream_executor/gpu:gpu_stream_header",
         "//xla/stream_executor/gpu:gpu_types_header",
         "@com_google_absl//absl/numeric:bits",
@@ -340,8 +417,6 @@ cc_library(
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
         "//xla/runtime:state",
-        "//xla/runtime/ffi:ffi_api",
-        "//xla/runtime/ffi:ffi_c_api_hdrs",
         "//xla/service:executable",
         "//xla/service:hlo_pass",
         "//xla/service:tuple_util",
@@ -397,6 +472,7 @@ cc_library(
         ":gemm",
         ":kernel_launch",
         ":support",
+        "//xla:statusor",
         "//xla/runtime:custom_call",
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
@@ -406,6 +482,7 @@ cc_library(
         "//xla/stream_executor/gpu:gpu_graph",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@local_tsl//tsl/profiler/lib:profiler_lock",
@@ -505,7 +582,7 @@ cc_library(
         "//xla/runtime:state",
         "//xla/service:executable",
         "//xla/service/gpu:matmul_utils",
-        "//xla/stream_executor:scratch_allocator",
+        "//xla/stream_executor",
         "//xla/stream_executor/cuda:cublas_lt_header",
         "@local_tsl//tsl/platform:status",
     ] + if_rocm_is_configured([
@@ -576,15 +653,15 @@ cc_library(
         "//xla/runtime:custom_call_registry",
         "//xla/runtime:executable",
         "//xla/service:executable",
-        "//xla/stream_executor:event",
+        "//xla/stream_executor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "@local_tsl//tsl/concurrency:async_value",
         "@local_tsl//tsl/profiler/lib:traceme",
         "@local_tsl//tsl/profiler/lib:traceme_encode",
-        "@tf_runtime//:async_value",
     ],
 )
 
@@ -621,7 +698,7 @@ cc_library(
         "//xla/runtime:executable",
         "//xla/service:executable",
         "//xla/service/gpu:gpu_asm_opts_util",
-        "//xla/service/gpu:triangular_solve_thunk",
+        "//xla/service/gpu/runtime3:triangular_solve_thunk",
         "@local_tsl//tsl/platform:human_readable_json",
     ],
 )

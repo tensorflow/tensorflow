@@ -28,7 +28,7 @@ namespace pjrt {
 namespace cpu_plugin {
 
 PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
-  PJRT_RETURN_IF_ERROR(CheckMatchingStructSizes(
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_Create_Args", PJRT_Client_Create_Args_STRUCT_SIZE,
       args->struct_size));
 

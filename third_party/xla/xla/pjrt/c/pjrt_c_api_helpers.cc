@@ -38,11 +38,14 @@ limitations under the License.
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
+#include "xla/shape_util.h"
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
+#include "tsl/platform/status.h"
 #include "tsl/platform/statusor.h"
 
 namespace pjrt {
@@ -573,11 +576,15 @@ static std::string StructSizeErrorMsg(absl::string_view struct_name,
   return error_msg;
 }
 
-xla::Status CheckMatchingStructSizes(absl::string_view struct_name,
-                                     size_t expected_size, size_t actual_size) {
-  if (expected_size != actual_size) {
+xla::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
+                                             size_t expected_size,
+                                             size_t actual_size) {
+  if (actual_size < expected_size) {
     return tsl::errors::InvalidArgument(
         StructSizeErrorMsg(struct_name, expected_size, actual_size));
+  }
+  if (actual_size > expected_size) {
+    VLOG(2) << StructSizeErrorMsg(struct_name, expected_size, actual_size);
   }
   return tsl::OkStatus();
 }
@@ -592,6 +599,17 @@ absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api) {
   absl::string_view platform_version(args.platform_version,
                                      args.platform_version_size);
   return platform_version;
+}
+
+absl::string_view GetPlatformName(PJRT_Client* client, const PJRT_Api* api) {
+  PJRT_Client_PlatformName_Args args;
+  args.client = client;
+  args.struct_size = PJRT_Client_PlatformName_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  pjrt::LogFatalIfPjrtError(api->PJRT_Client_PlatformName(&args), api);
+
+  absl::string_view platform_name(args.platform_name, args.platform_name_size);
+  return platform_name;
 }
 
 PJRT_Chunk ConvertFromCppChunk(xla::PjRtChunk chunk) {
@@ -807,6 +825,37 @@ PJRT_Buffer_MemoryLayout GetMemoryLayout(const PJRT_Api* api,
   args.buffer = buffer;
   LogFatalIfPjrtError(api->PJRT_Buffer_GetMemoryLayout(&args), api);
   return args.layout;
+}
+
+xla::StatusOr<xla::Shape> BuildXlaShapeFromC(PJRT_Buffer_Type element_type,
+                                             const int64_t* dims,
+                                             size_t num_dims,
+                                             PJRT_Buffer_MemoryLayout* layout) {
+  xla::Shape shape =
+      xla::ShapeUtil::MakeShape(ConvertFromPjRtBufferType(element_type),
+                                absl::Span<const int64_t>(dims, num_dims));
+  xla::Layout cpp_layout;
+  if (layout != nullptr) {
+    switch (layout->type) {
+      case PJRT_Buffer_MemoryLayout_Type::PJRT_Buffer_MemoryLayout_Type_Tiled: {
+        TF_ASSIGN_OR_RETURN(cpp_layout, ConvertToLayout(layout->tiled));
+        break;
+      }
+      case PJRT_Buffer_MemoryLayout_Type::
+          PJRT_Buffer_MemoryLayout_Type_Strides: {
+        TF_RETURN_IF_ERROR(absl::InvalidArgumentError(
+            "PJRT_Buffer_MemoryLayout_Type_Strides is not supported to be "
+            "converted to a xla::Shape"));
+        break;
+      }
+      default: {
+        TF_RETURN_IF_ERROR(absl::InvalidArgumentError(absl::StrCat(
+            "Unexpected PJRT_Buffer_MemoryLayout_Type type: ", layout->type)));
+      }
+    }
+    *shape.mutable_layout() = cpp_layout;
+  }
+  return shape;
 }
 
 }  // namespace pjrt

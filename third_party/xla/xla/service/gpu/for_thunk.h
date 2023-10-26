@@ -30,13 +30,13 @@ namespace gpu {
 // ForThunk executes 'loop_limit' invocations of 'body_thunk_sequence'.
 class ForThunk : public Thunk {
  public:
-  ForThunk(ThunkInfo thunk_info, const int64_t loop_limit,
+  ForThunk(ThunkInfo thunk_info, int64_t loop_limit,
            std::unique_ptr<ThunkSequence> body_thunk_sequence);
   ForThunk(const ForThunk&) = delete;
   ForThunk& operator=(const ForThunk&) = delete;
 
-  Status Initialize(const GpuExecutable& executable,
-                    se::StreamExecutor* executor) override;
+  Status Initialize(se::StreamExecutor* executor,
+                    ExecutableSource src) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
   SequentialThunk* body_thunk_sequence() { return body_thunk_sequence_.get(); }

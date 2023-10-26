@@ -87,15 +87,13 @@ bool_flag(
 
 config_setting(
     name = "fuchsia_mmap_disabled",
-    flag_values = if_google(
-        {
-            ":enable_fuchsia_mmap": "False",
-            "//tools/cpp:cc_target_os": "fuchsia",
-        },
-        {
-            ":enable_fuchsia_mmap": "False",
-        },
+    constraint_values = if_google(
+        ["//third_party/bazel_platforms/os:fuchsia"],
+        [],
     ),
+    flag_values = {
+        ":enable_fuchsia_mmap": "False",
+    },
     values = if_oss(
         # TODO(b/149248802) When we have a Fuchsia Bazel SDK update to use the values it sets.
         {"cpu": "fuchsia"},
@@ -448,9 +446,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     deps = [
-        ":string",
         "//tensorflow/lite/core/api:error_reporter",
-        "//tensorflow/lite/core/c:common",
     ],
 )
 
@@ -1380,6 +1376,7 @@ bzl_library(
 cc_library_with_tflite(
     name = "namespace",
     hdrs = ["namespace.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = [
         "//visibility:public",
     ],

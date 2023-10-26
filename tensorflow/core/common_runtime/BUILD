@@ -3,6 +3,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_google",
     "if_libtpu",
+    "if_macos",
     "if_oss",
     "if_zendnn",
     "tf_cc_test",
@@ -1140,10 +1141,18 @@ cc_library(
     copts = tf_copts(),
     deps = [
         ":optimization_registry",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/config:flag_defs",
-        "//tensorflow/core/platform:statusor",
-        "@com_google_absl//absl/base",
+        "//tensorflow/core/config:flags",
+        "//tensorflow/core/framework:node_def_util",
+        "//tensorflow/core/framework:tensor_proto_cc",
+        "//tensorflow/core/framework:tensor_shape_proto_cc",
         "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@local_tsl//tsl/platform:errors",
         "@local_tsl//tsl/platform:status",
         "@local_tsl//tsl/platform:statusor",
     ],
@@ -1953,7 +1962,6 @@ tf_cuda_library(
         ":renamed_device",
         ":rendezvous_mgr",
         ":rendezvous_util",
-        ":replicate_constants_pass",
         ":replicate_per_replica_nodes",
         ":ring_alg",
         ":ring_gatherer",
@@ -1967,7 +1975,10 @@ tf_cuda_library(
         ":step_stats_collector",
         ":threadpool_device",
         ":threadpool_device_factory",
-    ] + if_zendnn([":zen_layout_pass"]),
+    ] + if_zendnn([":zen_layout_pass"]) + if_macos(
+        [],
+        [":replicate_constants_pass"],  # TODO(b/301469885): Remove.
+    ),
 )
 
 tf_cuda_library(
@@ -2230,10 +2241,7 @@ cc_library(
         "gpu_device_context.h",
         "mkl_cpu_allocator.h",
     ],
-    visibility = [
-        ":__pkg__",
-        "//tensorflow/core/nccl:__pkg__",
-    ],
+    visibility = [":__pkg__"],
 )
 
 # -----------------------------------------------------------------------------
@@ -2334,7 +2342,6 @@ tf_cc_tests(
         "optimization_registry_test.cc",
         "pending_counts_test.cc",
         "placer_inspection_required_ops_utils_test.cc",
-        "replicate_constants_pass_test.cc",
         "session_test.cc",
         "threadpool_device_test.cc",
     ],
@@ -2375,6 +2382,48 @@ tf_cc_tests(
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ],
+)
+
+tf_cc_tests(
+    name = "replicate_constants_pass_test",
+    size = "small",
+    srcs = [
+        "replicate_constants_pass_test.cc",
+    ],
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":pending_counts",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/cc:while_loop",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/nccl:collective_communicator",
+        "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/util:protos_test_cc",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@eigen_archive//:eigen3",
+    ] + if_macos([
+        ":replicate_constants_pass",  # TODO(b/301469885): Remove.
+    ]),
 )
 
 tf_cc_tests(
@@ -2764,7 +2813,7 @@ tf_cuda_cc_test(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
-    ] + if_cuda(["@local_tsl//tsl/platform:cuda"]),
+    ] + if_cuda(["@local_tsl//tsl/cuda:cudart"]),
 )
 
 # This is identical to :common_runtime_direct_session_test with the addition of
@@ -2995,6 +3044,7 @@ tf_cc_test(
     size = "small",
     srcs = ["inline_function_utils_test.cc"],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
@@ -3325,6 +3375,13 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:optimized_function_graph_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@local_tsl//tsl/platform:logging",
+        "@local_tsl//tsl/platform:platform_port",
+        "@local_tsl//tsl/platform:status",
     ],
 )
 

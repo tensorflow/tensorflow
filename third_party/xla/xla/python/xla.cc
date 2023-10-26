@@ -26,11 +26,13 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/base/casts.h"
 // clang-format off
 // Must be included first
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/python/py_client.h"
 #include "tsl/python/lib/core/numpy.h"  //NOLINT
@@ -38,6 +40,7 @@ limitations under the License.
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "pybind11/attr.h"  // from @pybind11
 #include "pybind11/cast.h"  // from @pybind11
@@ -55,18 +58,19 @@ limitations under the License.
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #endif  // XLA_PYTHON_ENABLE_GPU
+#include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/tfrt_cpu_pjrt_client.h"
-#include "xla/python/pjrt_ifrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_api.h"
 #include "xla/python/custom_call_sharding.h"
 #include "xla/python/dlpack.h"
 #include "xla/python/jax_jit.h"
+#include "xla/python/logging.h"
 #include "xla/python/mlir.h"
 #include "xla/python/ops.h"
 #include "xla/python/outfeed_receiver_py.h"
 #include "xla/python/pjit.h"
+#include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pmap_lib.h"
 #include "xla/python/pprof_profile_builder.h"
 #include "xla/python/profiler.h"
@@ -90,6 +94,7 @@ limitations under the License.
 #include "xla/statusor.h"
 #include "xla/util.h"
 #include "tsl/distributed_runtime/preemption/preemption_sync_manager.h"
+#include "tsl/platform/platform.h"
 
 // TODO(phawkins): remove host_id properties after JAX is update to avoid them.
 
@@ -137,6 +142,11 @@ bool IsSanitized() { return IsAsan() || IsMsan() || IsTsan(); }
 }  // namespace
 
 static void Init(py::module_& m) {
+  // Initialize ABSL logging because code within XLA uses it.
+#ifndef PLATFORM_GOOGLE
+  InitializeAbslLogging();
+#endif  // PLATFORM_GOOGLE
+
   tsl::ImportNumpy();
 
   // Exceptions
@@ -193,7 +203,18 @@ static void Init(py::module_& m) {
                              "Deprecated; please use process_index")
       .def_property_readonly("platform",
                              [](const ClientAndPtr<PjRtDevice>& device) {
-                               return device.client()->platform_name();
+                               // TODO(phawkins): this is a temporary backwards
+                               // compatibility shim. We changed the name PJRT
+                               // reports for GPU platforms to "cuda" or "rocm",
+                               // but we haven't yet updated JAX clients that
+                               // expect "gpu". Migrate users and remove this
+                               // code.
+                               if (device.client()->platform_name() == "cuda" ||
+                                   device.client()->platform_name() == "rocm") {
+                                 return absl::string_view("gpu");
+                               } else {
+                                 return device.client()->platform_name();
+                               }
                              })
       .def_property_readonly("device_kind", &PjRtDevice::device_kind)
       .def_property_readonly("client",
@@ -362,7 +383,18 @@ static void Init(py::module_& m) {
       .def_property_readonly(
           "platform",
           [](const ClientAndPtr<PjRtMemorySpace>& memory_space) {
-            return memory_space.client()->platform_name();
+            // TODO(phawkins): this is a temporary backwards
+            // compatibility shim. We changed the name PJRT
+            // reports for GPU platforms to "cuda" or "rocm",
+            // but we haven't yet updated JAX clients that
+            // expect "gpu". Migrate users and remove this
+            // code.
+            if (memory_space.client()->platform_name() == "cuda" ||
+                memory_space.client()->platform_name() == "rocm") {
+              return absl::string_view("gpu");
+            } else {
+              return memory_space.client()->platform_name();
+            }
           })
       .def_property_readonly("kind", &PjRtMemorySpace::memory_space_kind)
       .def("__str__", &PjRtMemorySpace::DebugString)
@@ -465,8 +497,10 @@ static void Init(py::module_& m) {
     return pjrt_api.ok();
   });
   m.def("load_pjrt_plugin",
-        [](std::string platform_name, std::string library_path) {
-          xla::ThrowIfError(pjrt::LoadPjrtPlugin(platform_name, library_path));
+        [](std::string platform_name, std::string library_path) -> py::capsule {
+          const PJRT_Api* api = xla::ValueOrThrow(
+              pjrt::LoadPjrtPlugin(platform_name, library_path));
+          return py::capsule(absl::bit_cast<void*>(api), "pjrt_c_api");
         });
   m.def("pjrt_plugin_initialized", [](std::string platform_name) -> bool {
     return xla::ValueOrThrow(pjrt::IsPjrtPluginInitialized(platform_name));
@@ -493,8 +527,8 @@ static void Init(py::module_& m) {
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
          int node_id, int num_nodes,
          std::optional<std::set<int>> allowed_devices,
-         std::optional<std::string> platform_name)
-          -> std::shared_ptr<PyClient> {
+         std::optional<std::string> platform_name,
+         std::optional<bool> mock = false) -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
         PjRtClient::KeyValueGetCallback kv_get = nullptr;
         PjRtClient::KeyValuePutCallback kv_put = nullptr;
@@ -518,8 +552,8 @@ static void Init(py::module_& m) {
             xla::ValueOrThrow(GetStreamExecutorGpuClient(
                 asynchronous, allocator_config, node_id, num_nodes,
                 allowed_devices, platform_name,
-                /*should_stage_host_to_device_transfers=*/true, kv_get,
-                kv_put));
+                /*should_stage_host_to_device_transfers=*/true, kv_get, kv_put,
+                /*enable_mock_nccl=*/mock.value_or(false)));
         return std::make_shared<PyClient>(
             ifrt::PjRtClient::Create(std::move(client)));
       },
@@ -527,75 +561,7 @@ static void Init(py::module_& m) {
       py::arg("allocator_config") = GpuAllocatorConfig(),
       py::arg("distributed_client") = nullptr, py::arg("node_id") = 0,
       py::arg("num_nodes") = 1, py::arg("allowed_devices") = std::nullopt,
-      py::arg("platform_name") = std::nullopt);
-  m.def(
-      "get_mock_gpu_client",
-      [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
-         std::shared_ptr<DistributedRuntimeClient> distributed_client,
-         int node_id, int num_nodes,
-         std::optional<std::set<int>> allowed_devices,
-         std::optional<std::string> platform_name)
-          -> std::shared_ptr<PyClient> {
-        py::gil_scoped_release gil_release;
-        PjRtClient::KeyValueGetCallback kv_get = nullptr;
-        PjRtClient::KeyValuePutCallback kv_put = nullptr;
-        absl::flat_hash_map<std::string, std::string> device_maps;
-        absl::Mutex mu;
-        if (num_nodes > 1) {
-          kv_get = [&device_maps, &mu, &num_nodes](
-                       const std::string& k,
-                       absl::Duration timeout) -> xla::StatusOr<std::string> {
-            std::string result;
-            {
-              absl::MutexLock lock(&mu);
-              if (device_maps.find(k) != device_maps.end()) {
-                result = device_maps[k];
-              } else {
-                // TODO(wangtao): Move fake topology logic down to
-                // GetStreamExecutorGpuClient.
-                // Get device_id from key.
-                int device_id;
-                std::vector<std::string> tokens = absl::StrSplit(k, ':');
-                if (tokens.size() != 2 ||
-                    !absl::SimpleAtoi(tokens[1], &device_id)) {
-                  device_id = num_nodes - 1;
-                }
-                // Return fake local topology with device_id info back.
-                LocalTopologyProto local;
-                local.set_boot_id("fake_boot_id");
-                local.set_node_id(device_id);
-                DeviceProto* device = local.add_devices();
-                device->set_global_device_id(device_id);
-                device->set_name("fake_device");
-                device->set_vendor("fake_vendor");
-                result = local.SerializeAsString();
-              }
-            }
-            return result;
-          };
-          kv_put = [&device_maps, &mu](const std::string& k,
-                                       const std::string& v) -> xla::Status {
-            {
-              absl::MutexLock lock(&mu);
-              device_maps[k] = v;
-            }
-            return xla::OkStatus();
-          };
-        }
-        std::unique_ptr<PjRtClient> client =
-            xla::ValueOrThrow(GetStreamExecutorGpuClient(
-                asynchronous, allocator_config, node_id, num_nodes,
-                allowed_devices, platform_name,
-                /*should_stage_host_to_device_transfers=*/true, kv_get,
-                kv_put));
-        return std::make_shared<PyClient>(
-            ifrt::PjRtClient::Create(std::move(client)));
-      },
-      py::arg("asynchronous") = true,
-      py::arg("allocator_config") = GpuAllocatorConfig(),
-      py::arg("distributed_client") = nullptr, py::arg("node_id") = 0,
-      py::arg("num_nodes") = 1, py::arg("allowed_devices") = std::nullopt,
-      py::arg("platform_name") = std::nullopt);
+      py::arg("platform_name") = std::nullopt, py::arg("mock") = std::nullopt);
 #endif  // XLA_PYTHON_ENABLE_GPU
 
   m.def(
@@ -733,6 +699,8 @@ static void Init(py::module_& m) {
       .def("get_output_memory_kinds",
            xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetOutputMemoryKinds))
       .def("get_output_shardings", &PyLoadedExecutable::GetOutputShardings)
+      .def("get_parameter_layouts",
+           xla::ValueOrThrowWrapper(&PyLoadedExecutable::GetParameterLayouts))
       .def("get_parameter_shardings",
            &PyLoadedExecutable::GetParameterShardings)
       .def("keep_alive", &PyLoadedExecutable::KeepAlive)
@@ -762,8 +730,7 @@ static void Init(py::module_& m) {
 
   m.def("buffer_to_dlpack_managed_tensor",
         xla::ValueOrThrowWrapper(BufferToDLPackManagedTensor),
-        py::arg("buffer"), py::arg("take_ownership") = true,
-        py::arg("stream") = py::none());
+        py::arg("buffer"), py::arg("stream") = py::none());
   m.def("dlpack_managed_tensor_to_buffer",
         [](const pybind11::capsule& tensor, ClientAndPtr<PjRtDevice> device,
            std::optional<std::intptr_t> stream) {
@@ -1043,6 +1010,8 @@ static void Init(py::module_& m) {
       .def("get_output_memory_kinds",
            xla::ValueOrThrowWrapper(&PjRtExecutable::GetOutputMemoryKinds))
       .def("get_output_shardings", &PjRtExecutable::GetOutputShardings)
+      .def("get_parameter_layouts",
+           xla::ValueOrThrowWrapper(&PjRtExecutable::GetParameterLayouts))
       .def("get_parameter_shardings", &PjRtExecutable::GetParameterShardings)
       .def("get_compiled_memory_stats",
            xla::ValueOrThrowWrapper(&PjRtExecutable::GetCompiledMemoryStats))

@@ -20,8 +20,9 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/service/gpu/gpu_device_info.h"
+#include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/instruction_fusion.h"
+#include "xla/stream_executor/device_description.h"
 
 // TODO(b/112957171): Extract logic to determine fusibility of HLO ops from
 // GpuInstructionFusion, FusionMerger, and GpuMultiOutputFusion.
@@ -62,6 +63,11 @@ struct FusionInfoCache {
 int64_t SharedMemoryUsage(const HloInstruction& instr,
                           FusionInfoCache* cache = nullptr);
 
+// Returns projected shared memory usage of a reduction fusion.
+int64_t ReductionProjectedShmemUsageBytes(
+    const ReductionDimensions& reduction_dimensions,
+    const std::vector<std::vector<const HloInstruction*>>& instr_index_groups);
+
 inline constexpr int64_t MaxOperandsAndOutputsPerFusion() { return 64; }
 
 // Whether the op tranposes the physical data layout. Fusing such ops may lead
@@ -96,7 +102,7 @@ bool IsInputFusibleScatter(const HloInstruction& instr);
 // the producer, set consumer_producer_fusion to true to enable more fusion.
 FusionDecision FusionFitsInBudget(const HloInstruction& instr1,
                                   const HloInstruction& instr2,
-                                  const GpuDeviceInfo& device_info,
+                                  const se::DeviceDescription& device_info,
                                   bool is_consumer_producer_fusion = false,
                                   FusionInfoCache* cache = nullptr);
 
@@ -126,6 +132,11 @@ FusionDecision FusionHeroesAreCompatible(const HloInstruction* hero1,
 // themselves are fusible!
 FusionDecision ShapesCompatibleForMultiOutputFusion(
     const HloInstruction& instr1, const HloInstruction& instr2);
+
+// Whether fusing producer into consumer creates a scatter fusion that cannot be
+// handled by the scatter emitter.
+FusionDecision CanEmitInputFusedScatter(const HloInstruction& producer,
+                                        const HloInstruction& consumer);
 
 // Whether the instructions are compatible for producer-consumer fusion
 // i.e. whether the producer and consumer are loop/input fusible and

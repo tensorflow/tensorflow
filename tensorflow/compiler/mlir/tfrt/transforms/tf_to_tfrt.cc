@@ -1597,7 +1597,6 @@ class TfToTfrtConversionPass
         options.use_tpu_host_allocator_for_inputs;
     tpu_allow_unpadded_batch_ = options.tpu_allow_unpadded_batch;
     cost_threshold_ = options.cost_threshold;
-    upper_cost_threshold_ = options.upper_cost_threshold;
     merge_inter_dependent_streams_ = options.merge_inter_dependent_streams;
     func_use_fallback_tensor_ = options.func_use_fallback_tensor;
     enable_while_parallel_iterations_ =
@@ -1687,8 +1686,6 @@ class TfToTfrtConversionPass
     mlir::Builder builder(module);
     module->setAttr("tfrt.cost_threshold",
                     builder.getI64IntegerAttr(cost_threshold_));
-    module->setAttr("tfrt.upper_cost_threshold",
-                    builder.getI64IntegerAttr(upper_cost_threshold_));
     module->setAttr("tfrt.merge_inter_dependent_streams",
                     builder.getBoolAttr(merge_inter_dependent_streams_));
   }
@@ -1853,12 +1850,6 @@ class TfToTfrtConversionPass
           "The cost threshold to decide whether a sequence of operations is "
           "cheap, and then whether it can be executed inline."),
       llvm::cl::init(1)};
-
-  Option<int64_t> upper_cost_threshold_{
-      *this, "tfrt-upper-cost-threshold",
-      llvm::cl::desc(
-          "The threshold to limit the merging of dependent sequence."),
-      llvm::cl::init(-1)};
 
   Option<bool> merge_inter_dependent_streams_{
       *this, "tfrt-merge-inter-dependent-streams",

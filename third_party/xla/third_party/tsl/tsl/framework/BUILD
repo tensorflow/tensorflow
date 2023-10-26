@@ -230,7 +230,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//tsl/platform:types",
+        "//tsl/lib/gtl:int_type",
     ] + if_static([
         ":device_id_impl",
     ]),

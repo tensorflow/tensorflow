@@ -39,7 +39,11 @@ StatusOr<bool> RunOptimizer(
     HloPredicate should_process = HloPredicateIsOp<HloOpcode::kNegate>,
     CollectivePipeliner::PipeliningDirection pipelining_direction =
         CollectivePipeliner::PipeliningDirection::kForward,
-    bool pipeline_use_tree = false) {
+    bool pipeline_use_tree = false,
+    HloPredicate acceptable_formatting =
+        [](const HloInstruction*) { return true; },
+    HloPredicate reuse_pipelined_op_buffer =
+        [](const HloInstruction*) { return true; }) {
   CollectivePipeliner::Config config = {
       /*level_to_operate_on=*/level_to_operate_on,
       /*max_pipelining_per_loop=*/INT64_MAX,
@@ -49,6 +53,8 @@ StatusOr<bool> RunOptimizer(
       /*direction=*/
       pipelining_direction,
       /*should_process=*/should_process,
+      /*acceptable_formatting=*/acceptable_formatting,
+      /*reuse_pipelined_op_buffer=*/reuse_pipelined_op_buffer,
   };
 
   HloPassPipeline pass("optimizer");

@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/runtime/executable.h"
-#include "xla/runtime/ffi.h"
 #include "xla/runtime/jit_executable.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/buffer_desc.h"
@@ -48,28 +47,18 @@ namespace xla {
 namespace cpu {
 
 class XlaRuntimeCpuExecutable {
-  using FfiModulesState = ::xla::runtime::ffi::FfiModulesState;
-
  public:
   explicit XlaRuntimeCpuExecutable(
       std::unique_ptr<runtime::JitExecutable> jit_executable,
-      const XlaFrameworkMapping& xla_framework_mapping,
-      FfiModulesState ffi_modules_state)
+      const XlaFrameworkMapping& xla_framework_mapping)
       : executable_(std::move(jit_executable)),
-        xla_framework_mapping_(xla_framework_mapping),
-        ffi_modules_state_(std::move(ffi_modules_state)) {
-    runtime::ffi::ExportFfiModules(dynamic_custom_calls_);
-  }
+        xla_framework_mapping_(xla_framework_mapping) {}
 
   explicit XlaRuntimeCpuExecutable(
       std::unique_ptr<runtime::Executable> executable,
-      const XlaFrameworkMapping& xla_framework_mapping,
-      FfiModulesState ffi_modules_state)
+      const XlaFrameworkMapping& xla_framework_mapping)
       : executable_(std::move(executable)),
-        xla_framework_mapping_(xla_framework_mapping),
-        ffi_modules_state_(std::move(ffi_modules_state)) {
-    runtime::ffi::ExportFfiModules(dynamic_custom_calls_);
-  }
+        xla_framework_mapping_(xla_framework_mapping) {}
 
   Status Execute(const std::vector<BufferDesc>& descriptor_table,
                  const ExecutableRunOptions* run_options);
@@ -124,9 +113,6 @@ class XlaRuntimeCpuExecutable {
       executable_;
 
   XlaFrameworkMapping xla_framework_mapping_;
-
-  // Keeps an executable state for all registered FFI modules.
-  FfiModulesState ffi_modules_state_;
 
   // Dynamic custom calls exported from XLA runtime modules (and FFI modules).
   runtime::DynamicCustomCallRegistry dynamic_custom_calls_;

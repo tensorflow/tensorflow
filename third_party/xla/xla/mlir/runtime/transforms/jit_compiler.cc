@@ -112,14 +112,22 @@ static void PrintPassPipeline(const mlir::PassManager& pm) {
 }
 
 static LogicalResult RunPipeline(
-    ModuleOp module, const std::function<void(PassManager&)>& create_pipeline) {
+    ModuleOp module, const std::function<void(PassManager&)>& create_pipeline,
+    int verification_level) {
   if (!create_pipeline) return success();
 
   // Instrument the pass manager to capture timing information.
   DefaultTimingManager tm;
   TimingScope timing;
 
+  bool should_verify = verification_level >= 1;
+#ifndef NDEBUG
+  should_verify = true;
+#endif
+
   mlir::PassManager pm(module.getContext());
+  pm.enableVerifier(should_verify);
+
   SetupPassDebugging(module.getContext(), pm);
 
   if (EnablePassTiming()) {
@@ -140,13 +148,15 @@ static LogicalResult RunPipeline(
 // Runs the user-provided compilation pipeline to compile the module to LLVM.
 static LogicalResult RunCompilationPipeline(ModuleOp module,
                                             const JitCompiler::Options& opts) {
-  return RunPipeline(module, opts.create_compilation_pipeline);
+  return RunPipeline(module, opts.create_compilation_pipeline,
+                     opts.verification_level);
 }
 
 // Runs the user-provided specialization pipeline.
 static LogicalResult RunSpecializationPipeline(
     ModuleOp module, const JitCompiler::Options& opts) {
-  return RunPipeline(module, opts.create_specialization_pipeline);
+  return RunPipeline(module, opts.create_specialization_pipeline,
+                     opts.verification_level);
 }
 
 //===----------------------------------------------------------------------===//
@@ -374,7 +384,10 @@ MakeOptimizingTransformerForJit(llvm::TargetMachine* targetMachine) {
   auto builder = llvm::orc::JITTargetMachineBuilder::detectHost();
   if (!builder) return InternalError(toString(builder.takeError()));
 
-  auto target_machine = builder->createTargetMachine();
+  builder->setCodeGenOptLevel(compiler->options().jit_code_opt_level);
+
+  llvm::Expected<std::unique_ptr<llvm::TargetMachine>> target_machine =
+      builder->createTargetMachine();
   if (!target_machine)
     return InternalError(toString(target_machine.takeError()));
 
@@ -398,7 +411,7 @@ MakeOptimizingTransformerForJit(llvm::TargetMachine* targetMachine) {
   // Construct options for the XLA runtime execution engine.
   ExecutionEngine::JitOptions engine_options;
   engine_options.opt_level = compiler->options().jit_code_opt_level;
-  engine_options.target_machine = target_machine->get();
+  engine_options.target_machine = std::move(target_machine.get());
   engine_options.make_optimizing_transformer = MakeOptimizingTransformerForJit;
   engine_options.section_memory_mapper = memory_mapper.get();
   engine_options.symbols_binding = std::move(symbols);

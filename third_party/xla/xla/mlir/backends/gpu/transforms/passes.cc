@@ -39,7 +39,7 @@ void populateXlaGpuRuntimePasses(mlir::OpPassManager& pm,
 
   // Outline CUDA-Graph-compatible operations into graph capture functions.
   pm.addPass(
-      createOutlineGpuGraphsPass(opts.gpu_graph_level, opts.min_graph_size));
+      createOutlineGpuGraphsPass(opts.command_types, opts.min_graph_size));
   if (opts.enable_concurrent_region) {
     // Concurrent regions create repeated-fork-join topology inside CUDA graphs,
     // which is not optimized by architectures prior to Ampere and may cause

@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/gpu_device_info.h"
 #include "xla/service/hlo_pass_interface.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -38,7 +38,8 @@ namespace gpu {
 // ROOT tuple of the entry computation.
 class GpuHorizontalInputFusion : public HloModulePass {
  public:
-  explicit GpuHorizontalInputFusion(const GpuDeviceInfo& d) : device_info_(d) {}
+  explicit GpuHorizontalInputFusion(const se::DeviceDescription& d)
+      : device_info_(d) {}
 
   absl::string_view name() const override {
     return "gpu_horizontal_input_fusion";
@@ -52,7 +53,7 @@ class GpuHorizontalInputFusion : public HloModulePass {
  private:
   StatusOr<bool> RunOnComputation(HloComputation*);
 
-  const GpuDeviceInfo device_info_;
+  const se::DeviceDescription& device_info_;
 };
 
 }  // namespace gpu

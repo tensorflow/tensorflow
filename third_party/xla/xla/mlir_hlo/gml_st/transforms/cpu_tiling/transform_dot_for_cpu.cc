@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/TensorTilingInterfaceImpl.h"
 #include "mlir/IR/Dominance.h"
 #include "mlir/Pass/Pass.h"  // IWYU pragma: keep
+#include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "thlo/IR/thlo_ops.h"
 
@@ -287,11 +288,12 @@ LogicalResult tileAndPeelReductionDim(PatternRewriter &rewriter,
                                       ArrayRef<int64_t> reductionDimTileSizes) {
   FailureOr<scf::SCFTilingResult> reductionDimTilingResult =
       tileUsingSCFForOpAndFuseGreedily(
-          rewriter, reduceOp, getSCFTilingOptions(reductionDimTileSizes));
+          rewriter, reduceOp,
+          getSCFTilingOptions(rewriter.getContext(), reductionDimTileSizes));
   if (failed(reductionDimTilingResult)) return failure();
 
-  SCFForPeelingResult reductionDimPeelingResult =
-      peelSCFForOp(rewriter, reductionDimTilingResult->loops.front());
+  SCFForPeelingResult reductionDimPeelingResult = peelSCFForOp(
+      rewriter, cast<scf::ForOp>(reductionDimTilingResult->loops.front()));
   if (reductionDimPeelingResult.mainLoop) {
     setLabel(reductionDimPeelingResult.mainLoop, kPerfectlyTiledLoopLabel);
   }
@@ -334,7 +336,8 @@ LogicalResult tileAndPeelMatmulOp(PatternRewriter &rewriter, DotOpTy dotOp,
     parallelDimsTileSizes = dropZeros(parallelDimsTileSizes);
 
   auto tilingParallelDimsResult = tileUsingSCFForallOpAndFuseGreedily(
-      rewriter, tilingRoot, getSCFTilingOptions(parallelDimsTileSizes));
+      rewriter, tilingRoot,
+      getSCFTilingOptions(rewriter.getContext(), parallelDimsTileSizes));
   if (failed(tilingParallelDimsResult)) return failure();
 
   if (!tilingParallelDimsResult->loop) {
@@ -358,7 +361,8 @@ LogicalResult tileAndPeelMatmulOp(PatternRewriter &rewriter, DotOpTy dotOp,
     for (auto tiledDotOp : llvm::to_vector(
              tailParallelLoop.getBody()->template getOps<DotOpTy>())) {
       auto reductionDimTilingResult = tileUsingSCFForOpAndFuseGreedily(
-          rewriter, tiledDotOp, getSCFTilingOptions(reductionDimsTileSizes));
+          rewriter, tiledDotOp,
+          getSCFTilingOptions(rewriter.getContext(), reductionDimsTileSizes));
       if (failed(reductionDimTilingResult)) return failure();
     }
   }
@@ -375,7 +379,7 @@ struct Conv2DNhwcHwcfOpPattern
     if (!isTransformableIntoMatmul(convOp)) return failure();
     FailureOr<scf::SCFTilingResult> tilingResult = scf::tileUsingSCFForOp(
         rewriter, cast<TilingInterface>(convOp.getOperation()),
-        getSCFTilingOptions({0, 0, 0, 0, 1, 0, 0}));
+        getSCFTilingOptions(rewriter.getContext(), {0, 0, 0, 0, 1, 0, 0}));
     if (failed(tilingResult)) return failure();
     rewriter.replaceOp(convOp, tilingResult->replacements);
 
@@ -395,7 +399,7 @@ struct BatchMatmulOpPattern : public OpRewritePattern<linalg::BatchMatmulOp> {
     // Tile and fuse fillOp into the loop nest.
     auto tilingResult = tileUsingSCFForallOpAndFuseGreedily(
         rewriter, batchMatmulOp.getOperation(),
-        getSCFTilingOptions({1, 0, 0, 0}));
+        getSCFTilingOptions(rewriter.getContext(), {1, 0, 0, 0}));
     if (failed(tilingResult)) return failure();
 
     auto tiledBatchMatmulOp =
@@ -447,7 +451,8 @@ struct MatvecPattern : public OpRewritePattern<linalg::MatvecOp> {
     if (!ShapedType::isDynamic(matmulSizes.k) &&
         matmulSizes.k > kReductionDimSizeThreshold) {
       auto tilingParallelDim = tileUsingSCFForallOpAndFuseGreedily(
-          rewriter, matvecOp, getSCFTilingOptions({1, 0}), nullptr);
+          rewriter, matvecOp,
+          getSCFTilingOptions(rewriter.getContext(), {1, 0}), nullptr);
       if (failed(tilingParallelDim)) return failure();
 
       auto tiledMatvecOp =

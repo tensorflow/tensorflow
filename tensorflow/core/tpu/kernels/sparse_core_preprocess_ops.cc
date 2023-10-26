@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
@@ -122,8 +121,15 @@ Status ComputeRowIdsBeforePadding(const Tensor& indices_or_row_splits,
     // The row ids are just the sample ids which is the first dim of the
     // indices.
     auto indices_matrix = indices_or_row_splits.matrix<int32>();
+    int32 previous_row_id = -1;
     for (int32 i = 0; i < total_id_count; ++i) {
-      *(row_ids_before_padding + i) = indices_matrix(i, 0);
+      int32 current_row_id = indices_matrix(i, 0);
+      if (current_row_id < previous_row_id) {
+        return absl::InvalidArgumentError(
+            "Invalid indices_or_row_splits input, indices of SparseTensor need "
+            "to be sorted in ascending order.");
+      }
+      *(row_ids_before_padding + i) = current_row_id;
     }
   } else if (indices_or_row_splits.dims() == 1 &&
              indices_or_row_splits.NumElements() > 0) {
@@ -161,8 +167,6 @@ class ConvertToCooTensorOp : public OpKernel {
   ConvertToCooTensorOp& operator=(const ConvertToCooTensorOp&) = delete;
 
   void Compute(OpKernelContext* ctx) override {
-    VLOG(1) << "Compute ConvertToCooTensorOp";
-
     const Tensor* indices_or_row_splits;
     OP_REQUIRES_OK(ctx,
                    ctx->input("indices_or_row_splits", &indices_or_row_splits));
@@ -281,7 +285,6 @@ class ConvertToCooTensorOp : public OpKernel {
       std::copy(col_ids.begin(), col_ids.end(), col_ids_tensor_ptr);
       std::copy(gains.begin(), gains.end(), gains_tensor_ptr);
     }
-    VLOG(1) << "Compute ConvertToCooTensorOp done";
   }
 
  private:
@@ -315,13 +318,11 @@ GetMinibatchesInCsrWithPhysicalReplicaOp::
                   num_sc_per_chip_)));
 
   // Create default instance of stats handler. May get overwritten by subclass.
-  sprase_core_ops_stats_handler_ =
+  sparse_core_ops_stats_handler_ =
       std::make_unique<SparseCoreOpsStatsHandler>();
 }
 
 void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
-  VLOG(1) << "Compute GetMinibatchesInCsrWithPhysicalReplicaOp";
-
   const Tensor* row_ids;
   OP_REQUIRES_OK(ctx, ctx->input("row_ids", &row_ids));
   const Tensor* col_ids;
@@ -339,14 +340,16 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   const Tensor* program_key_t;
   OP_REQUIRES_OK(ctx, ctx->input("program_key", &program_key_t));
   tstring program_key = program_key_t->vec<tstring>()(0);
+
   int64_t per_sparse_core_batch_size = sample_count_ / num_sc_per_chip_;
 
   int64_t max_ids_per_partition = -1;
   int64_t max_unique_ids_per_partition = -1;
 
-  GetMaxIdsAndUniques(ctx, program_key, table_name_, per_sparse_core_batch_size,
-                      feature_width_, &max_ids_per_partition,
-                      &max_unique_ids_per_partition);
+  OP_REQUIRES_OK(ctx, GetMaxIdsAndUniquesExternal(
+                          program_key, table_name_, per_sparse_core_batch_size,
+                          feature_width_, &max_ids_per_partition,
+                          &max_unique_ids_per_partition));
 
   const int32* row_ids_tensor_ptr = row_ids->flat<int32>().data();
   const int32* col_ids_tensor_ptr = col_ids->flat<int32>().data();
@@ -378,7 +381,7 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
       ConvertBinarySplitsToBucketSplits(binary_splits, max_division_level);
 
   const int32 num_minibatch_per_sc = bucket_splits.size() + 1;
-  sprase_core_ops_stats_handler_->Record(StatsType::NUM_MINIBATCHES_PER_SC,
+  sparse_core_ops_stats_handler_->Record(StatsType::NUM_MINIBATCHES_PER_SC,
                                          num_minibatch_per_sc, device_name_,
                                          table_name_);
 
@@ -389,8 +392,8 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
           ". But the max minibatches per sparse core is set to be ",
           max_minibatches_per_sc_, " which is smaller.")));
   VLOG(2) << "GetMinibatchesInCsrWithPhysicalReplicaOp: "
-          << "program_key ='" << program_key << "'"
-          << ", table_name = " << table_name_
+          << "program_key = '" << program_key << "'"
+          << ", table_name = '" << table_name_ << "'"
           << ", max_ids = " << max_ids_per_partition
           << ", max_uniques = " << max_unique_ids_per_partition
           << ", num_minibatch_per_sc = " << num_minibatch_per_sc;
@@ -512,8 +515,6 @@ void GetMinibatchesInCsrWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   row_pointers_unpadded_size_tensor->flat<int32>()(0) =
       row_pointers_unpadded_size;
   ids_unpadded_size_tensor->flat<int32>()(0) = ids_unpadded_size;
-
-  VLOG(1) << "Compute GetMinibatchesInCsrWithPhysicalReplicaOp done";
 }
 
 #ifdef LIBTPU_ON_GCE
@@ -539,7 +540,7 @@ GetMinibatchSplitsWithPhysicalReplicaOp::
   device_name_ = ctx->device()->name();
 
   // Create default instance of stats handler. May get overwritten by subclass.
-  sprase_core_ops_stats_handler_ =
+  sparse_core_ops_stats_handler_ =
       std::make_unique<SparseCoreOpsStatsHandler>();
 }
 
@@ -556,14 +557,15 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   int64_t max_ids_per_partition = -1;
   int64_t max_unique_ids_per_partition = -1;
 
-  GetMaxIdsAndUniques(ctx, program_key, table_name_, per_sc_sample_count,
-                      feature_width_, &max_ids_per_partition,
-                      &max_unique_ids_per_partition);
+  OP_REQUIRES_OK(
+      ctx, GetMaxIdsAndUniquesExternal(
+               program_key, table_name_, per_sc_sample_count, feature_width_,
+               &max_ids_per_partition, &max_unique_ids_per_partition));
 
-  sprase_core_ops_stats_handler_->Record(StatsType::MAX_IDS_PER_PARTITION,
+  sparse_core_ops_stats_handler_->Record(StatsType::MAX_IDS_PER_PARTITION,
                                          max_ids_per_partition, device_name_,
                                          table_name_);
-  sprase_core_ops_stats_handler_->Record(
+  sparse_core_ops_stats_handler_->Record(
       StatsType::MAX_UNIQUE_IDS_PER_PARTITION, max_unique_ids_per_partition,
       device_name_, table_name_);
 
@@ -579,6 +581,17 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   const int32* row_ids_ptr = row_ids->flat<int32>().data();
   const int32* col_ids_ptr = col_ids->flat<int32>().data();
   const float* gains_ptr = gains->flat<float>().data();
+
+#ifndef NDEBUG
+  // row_ids are typically computed by ConvertToCooTensorOp, so we
+  // expect them to be sorted. (It doesn't really matter whether they're
+  // ascending or descending, but here, we check for the former.)
+  for (int i = 1; i < total_id_count; i++) {
+    OP_REQUIRES(ctx, row_ids_ptr[i - 1] <= row_ids_ptr[i],
+                absl::InvalidArgumentError(
+                    "row ids need to be sorted in ascending order."));
+  }
+#endif
 
   const int num_physical_replica = num_replica_ * num_sc_per_chip_;
 
@@ -630,22 +643,27 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   //   second id.
   std::vector<uint32_t> dedup_ids_index_mapping(total_id_count);
 
+  std::vector<bool> is_id_dropped(total_id_count, false);
+
   // The gains after the deduplication. If the same ids are in the same
   // sample, we will remove that id and add the gains.
   std::vector<float> gains_after_dedup(total_id_count);
 
   // Array which stores the id counts and unique id counts for each minibatch
   // bucket on all physical replicas.
-  std::vector<int32> total_id_counter(num_physical_replica *
-                                      (kMaxDivisions + 1));
-  std::vector<int32> total_unique_id_counter(num_physical_replica *
-                                             (kMaxDivisions + 1));
-  // Array which keeps track of the index of each physical replica.
-  std::vector<int32> per_physical_replica_index(num_physical_replica);
+  std::vector<int32_t> total_id_counter(num_physical_replica *
+                                        (kMaxDivisions + 1));
+  std::vector<int32_t> total_unique_id_counter(num_physical_replica *
+                                               (kMaxDivisions + 1));
+  std::vector<int32_t> record_total_id_counter(num_physical_replica *
+                                               (kMaxDivisions + 1));
+  std::vector<int32_t> record_total_unique_id_counter(num_physical_replica *
+                                                      (kMaxDivisions + 1));
 
-  // Accumulated sum of the id count for each physical replica.
-  std::vector<int32> physical_replica_id_count((num_physical_replica + 1) *
-                                               num_sc_per_chip_);
+  // Array which keeps track of the index of each physical replica and each
+  // bucket.
+  std::vector<int32_t> per_physical_replica_bucket_index(num_physical_replica *
+                                                         kMaxDivisions);
 
   // Id counts for each sc input.
   std::vector<int32_t> per_sc_id_count(num_sc_per_chip_, 0);
@@ -653,8 +671,8 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   // Keep track of the maximum number of (unique) ids we see fo this current
   // batch. If it gets too close to the configured max, we can increase
   // the value in the FDO configs.
-  int32 this_max_ids = 0;
-  int32 this_max_uniques = 0;
+  int32_t this_max_ids = 0;
+  int32_t this_max_uniques = 0;
   // Row ids(sample ids) are already sorted.
   for (int sc_id = 0; sc_id < num_sc_per_chip_; ++sc_id) {
     col_ids_index_list[sc_id].reserve(total_id_count);
@@ -669,9 +687,13 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
                 col_ids_index_list[sc_id].size(), hwy::SortAscending());
 
     memset(total_id_counter.data(), 0,
-           num_physical_replica * (kMaxDivisions + 1) * sizeof(int32));
+           num_physical_replica * (kMaxDivisions + 1) * sizeof(int32_t));
     memset(total_unique_id_counter.data(), 0,
-           num_physical_replica * (kMaxDivisions + 1) * sizeof(int32));
+           num_physical_replica * (kMaxDivisions + 1) * sizeof(int32_t));
+    memset(record_total_id_counter.data(), 0,
+           num_physical_replica * (kMaxDivisions + 1) * sizeof(int32_t));
+    memset(record_total_unique_id_counter.data(), 0,
+           num_physical_replica * (kMaxDivisions + 1) * sizeof(int32_t));
 
     // Loop through the col ids to count the ids and unique ids.
     int32_t previous_col_id = -1;
@@ -686,13 +708,30 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
       if (row_id != previous_row_id || col_id != previous_col_id) {
         dedup_ids_index_mapping[id_array_index] = id_array_index;
         gains_after_dedup[id_array_index] = *(gains_ptr + id_array_index);
-        int32 replica_id = col_id % num_physical_replica;
-        int32 bucket_id = col_id / division_size + 1;
+        int32_t replica_id = col_id % num_physical_replica;
+        int32_t bucket_id;
+        if (allow_id_shuffling_for_minibatching_) {
+          bucket_id = CalculateBucketIdWithHashing(col_id, kMaxDivisions);
+        } else {
+          bucket_id = std::min(col_id / division_size, kMaxDivisions - 1);
+        }
         uint32_t id_counter_index =
-            replica_id * (kMaxDivisions + 1) + bucket_id;
-        total_id_counter[id_counter_index]++;
+            replica_id * (kMaxDivisions + 1) + bucket_id + 1;
+        record_total_id_counter[id_counter_index]++;
         if (col_id != previous_col_id)
-          total_unique_id_counter[id_counter_index]++;
+          record_total_unique_id_counter[id_counter_index]++;
+
+        if (allow_id_dropping_for_minibatching_ &&
+            (total_id_counter[id_counter_index] == max_ids_per_partition ||
+             total_unique_id_counter[id_counter_index] ==
+                 max_unique_ids_per_partition)) {
+          // Marking this id as not used.
+          is_id_dropped[id_array_index] = true;
+        } else {
+          total_id_counter[id_counter_index]++;
+          if (col_id != previous_col_id)
+            total_unique_id_counter[id_counter_index]++;
+        }
       } else {
         // Dedup the id if both row id and col id is the same.
         uint32_t parent_idx = dedup_ids_index_mapping[previous_id_array_index];
@@ -705,12 +744,19 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
     }
 
     for (int replica_id = 0; replica_id < num_physical_replica; ++replica_id) {
-      absl::Span<int32> id_counter = absl::MakeSpan(
+      absl::Span<int32_t> id_counter = absl::MakeSpan(
           total_id_counter.data() + replica_id * (kMaxDivisions + 1),
           kMaxDivisions + 1);
-      absl::Span<int32> unique_id_counter = absl::MakeSpan(
+      absl::Span<int32_t> unique_id_counter = absl::MakeSpan(
           total_unique_id_counter.data() + replica_id * (kMaxDivisions + 1),
           kMaxDivisions + 1);
+      absl::Span<int32_t> record_id_counter = absl::MakeSpan(
+          record_total_id_counter.data() + replica_id * (kMaxDivisions + 1),
+          kMaxDivisions + 1);
+      absl::Span<int32_t> record_unique_id_counter =
+          absl::MakeSpan(record_total_unique_id_counter.data() +
+                             replica_id * (kMaxDivisions + 1),
+                         kMaxDivisions + 1);
       for (int i = 1; i < kMaxDivisions + 1; ++i) {
         // Check if the smallest division is larger than the max_ids and
         // max_unique_ids.
@@ -735,15 +781,12 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
             id_counter[i];
         id_counter[i] += id_counter[i - 1];
         unique_id_counter[i] += unique_id_counter[i - 1];
+        record_id_counter[i] += record_id_counter[i - 1];
+        record_unique_id_counter[i] += record_unique_id_counter[i - 1];
       }
-      this_max_ids = std::max(this_max_ids, id_counter[kMaxDivisions]);
+      this_max_ids = std::max(this_max_ids, record_id_counter[kMaxDivisions]);
       this_max_uniques =
-          std::max(this_max_uniques, unique_id_counter[kMaxDivisions]);
-      physical_replica_id_count[sc_id * (num_physical_replica + 1) +
-                                replica_id + 1] =
-          physical_replica_id_count[sc_id * (num_physical_replica + 1) +
-                                    replica_id] +
-          id_counter[kMaxDivisions];
+          std::max(this_max_uniques, record_unique_id_counter[kMaxDivisions]);
       per_sc_id_count[sc_id] += id_counter[kMaxDivisions];
 
       for (int level = 0; level < max_division_level; ++level) {
@@ -805,6 +848,17 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
 
   int64_t updated_total_id_count = absl::c_accumulate(per_sc_id_count, 0);
 
+  int64_t dropped_id_count = absl::c_accumulate(is_id_dropped, 0);
+  sparse_core_ops_stats_handler_->Record(
+      StatsType::DROPPED_ID_COUNT, dropped_id_count, device_name_, table_name_);
+
+  if (dropped_id_count > 0) {
+    LOG(WARNING)
+        << "Table " << table_name_ << " is dropping "
+        << total_id_count - updated_total_id_count
+        << " ids from the input batch so that the minibatching can happen.";
+  }
+
   Tensor* sorted_row_ids_tensor;
   OP_REQUIRES_OK(ctx,
                  ctx->allocate_output("sorted_row_ids",
@@ -826,37 +880,45 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
       sorted_col_ids_tensor->flat<int32_t>().data();
   float* sorted_gains_tensor_ptr = sorted_gains_tensor->flat<float>().data();
 
-  int32_t previous_index = 0;
-
   for (int sc_id = 0; sc_id < num_sc_per_chip_; ++sc_id) {
-    memset(per_physical_replica_index.data(), 0,
-           num_physical_replica * sizeof(int32));
+    memset(per_physical_replica_bucket_index.data(), 0,
+           num_physical_replica * kMaxDivisions * sizeof(int32_t));
     for (uint64_t item : col_ids_index_list[sc_id]) {
       uint32_t id_array_index = item & 0xffffffff;
       // Skip deduped ids.
-      if (id_array_index != dedup_ids_index_mapping[id_array_index]) {
+      if (is_id_dropped[id_array_index] ||
+          id_array_index != dedup_ids_index_mapping[id_array_index]) {
         continue;
       }
       int32_t col_id = item >> 32;
       int32_t replica_id = col_id % num_physical_replica;
-      int32_t main_index =
-          per_physical_replica_index[replica_id] + previous_index +
-          physical_replica_id_count[sc_id * (num_physical_replica + 1) +
-                                    replica_id];
+      int32_t bucket_id;
+      int32_t main_index;
+      if (allow_id_shuffling_for_minibatching_) {
+        bucket_id = CalculateBucketIdWithHashing(col_id, kMaxDivisions);
+      } else {
+        bucket_id = std::min(col_id / division_size, kMaxDivisions - 1);
+      }
+      main_index =
+          per_physical_replica_bucket_index[replica_id * kMaxDivisions +
+                                            bucket_id] +
+          *(id_counts_tensor_ptr +
+            (sc_id * num_physical_replica + replica_id) * kMaxDivisions +
+            bucket_id);
+      ++per_physical_replica_bucket_index[replica_id * kMaxDivisions +
+                                          bucket_id];
       *(sorted_row_ids_tensor_ptr + main_index) =
           *(row_ids_ptr + id_array_index) % per_sc_sample_count;
       *(sorted_col_ids_tensor_ptr + main_index) = col_id / num_physical_replica;
       // Use the updated gains instead.
       *(sorted_gains_tensor_ptr + main_index) =
           gains_after_dedup[id_array_index];
-      per_physical_replica_index[replica_id]++;
     }
-    previous_index += per_sc_id_count[sc_id];
   }
 
-  sprase_core_ops_stats_handler_->Record(
+  sparse_core_ops_stats_handler_->Record(
       StatsType::IDS_PER_PARTITION, this_max_ids, device_name_, table_name_);
-  sprase_core_ops_stats_handler_->Record(StatsType::UNIQUE_IDS_PER_PARTITION,
+  sparse_core_ops_stats_handler_->Record(StatsType::UNIQUE_IDS_PER_PARTITION,
                                          this_max_uniques, device_name_,
                                          table_name_);
 
@@ -867,12 +929,70 @@ void GetMinibatchSplitsWithPhysicalReplicaOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(
       ctx, ctx->allocate_output("splits", TensorShape({}), &splits_tensor));
   splits_tensor->flat<int64>()(0) = after_merge_splits;
+
+  Tensor* max_ids_tensor;
+  OP_REQUIRES_OK(
+      ctx, ctx->allocate_output("max_ids", TensorShape({}), &max_ids_tensor));
+  max_ids_tensor->flat<int32>()(0) = this_max_ids;
+
+  Tensor* max_uniques_tensor;
+  OP_REQUIRES_OK(ctx, ctx->allocate_output("max_uniques", TensorShape({}),
+                                           &max_uniques_tensor));
+  max_uniques_tensor->flat<int32>()(0) = this_max_uniques;
 }
 
 #ifdef LIBTPU_ON_GCE
 REGISTER_KERNEL_BUILDER(
     Name("GetMinibatchSplitsWithPhysicalReplica").Device(DEVICE_CPU),
     GetMinibatchSplitsWithPhysicalReplicaOp)
+#endif
+
+StoreMinibatchStatisticsInFdoOp::StoreMinibatchStatisticsInFdoOp(
+    OpKernelConstruction* ctx)
+    : OpKernel(ctx) {
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("table_name", &table_name_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("num_replica", &num_replica_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("sample_count", &sample_count_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("feature_width", &feature_width_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("num_sc_per_chip", &num_sc_per_chip_));
+  OP_REQUIRES(ctx, sample_count_ % num_sc_per_chip_ == 0,
+              absl::InvalidArgumentError(absl::StrCat(
+                  "sample_count ", sample_count_,
+                  " is not divisible by the number of sparsecores per chip ",
+                  num_sc_per_chip_)));
+  device_name_ = ctx->device()->name();
+}
+
+void StoreMinibatchStatisticsInFdoOp::Compute(OpKernelContext* ctx) {
+  const Tensor* program_key_t;
+  OP_REQUIRES_OK(ctx, ctx->input("program_key", &program_key_t));
+  tstring program_key = program_key_t->vec<tstring>()(0);
+
+  const Tensor* max_ids_t;
+  OP_REQUIRES_OK(ctx, ctx->input("max_ids", &max_ids_t));
+  int64_t max_ids = max_ids_t->scalar<int64>()();
+  const Tensor* max_uniques_t;
+  OP_REQUIRES_OK(ctx, ctx->input("max_uniques", &max_uniques_t));
+  int64_t max_uniques = max_uniques_t->scalar<int64>()();
+
+  int32 per_sc_sample_count = sample_count_ / num_sc_per_chip_;
+
+  int64_t max_ids_per_partition = -1;
+  int64_t max_unique_ids_per_partition = -1;
+
+  OP_REQUIRES_OK(
+      ctx, GetMaxIdsAndUniquesExternal(
+               program_key, table_name_, per_sc_sample_count, feature_width_,
+               &max_ids_per_partition, &max_unique_ids_per_partition));
+
+  CalculateHeadroom(max_ids, max_uniques, program_key, max_ids_per_partition,
+                    max_unique_ids_per_partition);
+}
+
+#ifdef LIBTPU_ON_GCE
+REGISTER_KERNEL_BUILDER(
+    Name("StoreMinibatchStatisticsInFdo").Device(DEVICE_CPU),
+    StoreMinibatchStatisticsInFdoOp)
 #endif
 
 }  // namespace tensorflow

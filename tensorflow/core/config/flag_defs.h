@@ -49,7 +49,7 @@ class Flags {
   TF_DECLARE_FLAG(more_stack_traces, false,
                   "Enable experimental code that preserves and propagates "
                   "graph node stack traces in C++.");
-  TF_DECLARE_FLAG(replicate_small_constants, false,
+  TF_DECLARE_FLAG(replicate_small_constants, true,
                   "Enable a graph optimization pass that replicate each small "
                   "constant to its successors' devices. This can decrease "
                   "message passing.");

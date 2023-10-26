@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "xla/pjrt/pjrt_api.h"
 
+#include <cstdlib>
 #include <utility>
 
-#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 
@@ -34,8 +36,18 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/statusor.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 
 namespace pjrt {
+
+// This is the minimum supported PJRT API minor version to ensure a forward
+// compatibility window of at least 12 weeks. Please see the changelog of PJRT C
+// API https://github.com/openxla/xla/blob/main/xla/pjrt/c/CHANGELOG.md for the
+// date of each version and PJRT C API compatibility policy
+// (https://docs.google.com/document/d/1TKB5NyGtdzrpgw5mpyFjVAhJjpSNdF31T6pjPl_UT2o/edit).
+// The forward compatibility is controlled by the ENABLE_PJRT_COMPATIBILITY env
+// variable.
+constexpr int kMinPjRtMinor = 29;
 
 // The bool indicates whether this plugin has been initialized.
 static auto* pjrt_apis =
@@ -65,22 +77,12 @@ xla::Status SetPjrtApi(absl::string_view device_type, const PJRT_Api* api) {
   (*pjrt_apis)[canonicalize_device_type] =
       std::make_pair(api, /*is_initialized=*/false);
   LOG(INFO) << "PJRT_Api is set for device type " << canonicalize_device_type;
-  // TODO(jieying): 592 is the size of PJRT_Api right after PJRT_Api_Version is
-  // added. Remove this check after PJRT C API is stable and we assume all
-  // plugins uses PJRT C API with PJRT_Api_Version.
-  if (api->struct_size >= 592) {
-    LOG(INFO) << "PJRT plugin for " << device_type << " has PJRT API version "
-              << api->pjrt_api_version.major_version << "."
-              << api->pjrt_api_version.minor_version
-              << ". The framework PJRT API version is " << PJRT_API_MAJOR << "."
-              << PJRT_API_MINOR << ".";
-  }
   return tsl::OkStatus();
 }
 
 typedef const PJRT_Api* (*PjrtApiInitFn)();
-xla::Status LoadPjrtPlugin(absl::string_view device_type,
-                           absl::string_view library_path) {
+xla::StatusOr<const PJRT_Api*> LoadPjrtPlugin(absl::string_view device_type,
+                                              absl::string_view library_path) {
 #ifdef PLATFORM_WINDOWS
   return tsl::errors::Unimplemented(
       "LoadPjrtPlugin is not implemented on windows yet.");
@@ -97,7 +99,9 @@ xla::Status LoadPjrtPlugin(absl::string_view device_type,
   }
   LOG(INFO) << "GetPjrtApi was found for " << device_type << " at "
             << library_path;
-  return SetPjrtApi(device_type, init_fn());
+  const PJRT_Api* api = init_fn();
+  TF_RETURN_IF_ERROR(SetPjrtApi(device_type, api));
+  return api;
 #endif
 }
 
@@ -110,6 +114,18 @@ xla::StatusOr<bool> IsPjrtPluginInitialized(absl::string_view device_type) {
         ". Call SetPjrtApi before calling IsPjrtPluginInitialized."));
   }
   return iter->second.second;
+}
+
+static bool IsPjRtCompatibilityEnabled() {
+  const char* val = getenv("ENABLE_PJRT_COMPATIBILITY");
+  if (val == nullptr) {
+    return false;
+  }
+  bool enabled = false;
+  if (!absl::SimpleAtob(val, &enabled)) {
+    return false;
+  }
+  return enabled;
 }
 
 xla::Status InitializePjrtPlugin(absl::string_view device_type) {
@@ -127,17 +143,43 @@ xla::Status InitializePjrtPlugin(absl::string_view device_type) {
                      canonicalize_device_type));
   }
   const PJRT_Api* pjrt_api = iter->second.first;
-  TF_RETURN_IF_ERROR(pjrt::CheckMatchingStructSizes(
-      "PJRT_Api", PJRT_Api_STRUCT_SIZE, pjrt_api->struct_size));
-  if (pjrt_api->struct_size >= 592 &&
-      (pjrt_api->pjrt_api_version.major_version > 0 ||
-       pjrt_api->pjrt_api_version.minor_version >= 13)) {
-    PJRT_Plugin_Initialize_Args args;
-    args.struct_size = PJRT_Plugin_Initialize_Args_STRUCT_SIZE;
-    args.priv = nullptr;
-    RETURN_STATUS_IF_PJRT_ERROR(pjrt_api->PJRT_Plugin_Initialize(&args),
-                                pjrt_api);
+  LOG(INFO) << "The PJRT plugin has PJRT API version "
+            << pjrt_api->pjrt_api_version.major_version << "."
+            << pjrt_api->pjrt_api_version.minor_version
+            << ". The framework PJRT API version is " << PJRT_API_MAJOR << "."
+            << PJRT_API_MINOR << ".";
+  // TODO(b/305096260): improve the error message to something that the user can
+  // act upon.
+  if (IsPjRtCompatibilityEnabled()) {
+    if (pjrt_api->pjrt_api_version.major_version != PJRT_API_MAJOR) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Mismatched PJRT plugin PJRT API major version (",
+          pjrt_api->pjrt_api_version.major_version,
+          ") and framework PJRT API major version ", PJRT_API_MAJOR, ")."));
+    }
+    if (pjrt_api->pjrt_api_version.minor_version < kMinPjRtMinor) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Plugin PJRT API version ", pjrt_api->pjrt_api_version.major_version,
+          ".", pjrt_api->pjrt_api_version.minor_version,
+          " is older than the minimum supported version ", PJRT_API_MAJOR, ".",
+          kMinPjRtMinor));
+    }
+  } else {
+    if (pjrt_api->pjrt_api_version.major_version != PJRT_API_MAJOR ||
+        pjrt_api->pjrt_api_version.minor_version != PJRT_API_MINOR) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Mismatched PJRT plugin PJRT API version (",
+                       pjrt_api->pjrt_api_version.major_version, ".",
+                       pjrt_api->pjrt_api_version.minor_version,
+                       ") and framework PJRT API version ", PJRT_API_MAJOR, ".",
+                       PJRT_API_MINOR, ")."));
+    }
   }
+  PJRT_Plugin_Initialize_Args args;
+  args.struct_size = PJRT_Plugin_Initialize_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  RETURN_STATUS_IF_PJRT_ERROR(pjrt_api->PJRT_Plugin_Initialize(&args),
+                              pjrt_api);
   iter->second.second = true;
   return absl::OkStatus();
 }

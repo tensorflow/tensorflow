@@ -839,7 +839,8 @@ class SparseMatMul {
                                        int* KR, int* NR, int* KL, int* JB,
                                        int* IB);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SparseMatMul);
+  SparseMatMul(const SparseMatMul&) = delete;
+  void operator=(const SparseMatMul&) = delete;
 };
 
 template <typename TL, typename TR,
@@ -979,7 +980,8 @@ class SparseMatMulOp : public OpKernel {
   bool a_is_sparse_;
   bool b_is_sparse_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(SparseMatMulOp);
+  SparseMatMulOp(const SparseMatMulOp&) = delete;
+  void operator=(const SparseMatMulOp&) = delete;
 };
 
 template <typename TL, typename TR>

@@ -291,10 +291,12 @@ int DefaultThreadPoolSize() {
   // a CPU reservation for tests.
   // TODO(phawkins): expose a better thought-out set of knobs to control
   // parallelism.
-  const char* nproc_str = std::getenv("NPROC");
-  int nproc = 0;
-  if (nproc_str && absl::SimpleAtoi(nproc_str, &nproc)) {
-    return std::max(0, nproc);
+  for (const char* nproc_env : {"PJRT_NPROC", "NPROC"}) {
+    const char* nproc_str = std::getenv(nproc_env);
+    int nproc = 0;
+    if (nproc_str && absl::SimpleAtoi(nproc_str, &nproc)) {
+      return std::max(0, nproc);
+    }
   }
   return tsl::port::MaxParallelism();
 }

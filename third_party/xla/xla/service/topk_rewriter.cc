@@ -467,7 +467,8 @@ class TopkDecomposerVisitor : public DfsHloRewriteVisitor {
     };
     CHECK_NE(variadic_comparator, nullptr);
     // If only the topk values are necessary, skip the iota.
-    if (call->user_count() == 1 && call->users().front()->tuple_index() == 0) {
+    if (call->user_count() == 1 && call->users().front()->tuple_index() == 0 &&
+        call->to_apply()->num_parameters() == 2) {
       HloInstruction* sort = comp->AddInstruction(HloInstruction::CreateSort(
           {input->shape()}, sort_dimension, {input}, call->to_apply(),
           /*is_stable=*/true));

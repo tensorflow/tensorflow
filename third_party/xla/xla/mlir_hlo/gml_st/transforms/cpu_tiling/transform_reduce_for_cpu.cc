@@ -74,7 +74,7 @@ LogicalResult validateOp(linalg::ReduceOp reduceOp, PatternRewriter &rewriter,
     return rewriter.notifyMatchFailure(
         reduceOp, "expects 1 reduction dimension element. 0 or > 1 received.");
   }
-  OpOperandVector operands = reduceOp.getDpsInputOperands();
+  SmallVector<OpOperand *> operands = reduceOp.getDpsInputOperands();
   if (operands.size() != 1) {
     return rewriter.notifyMatchFailure(reduceOp,
                                        "expects 1 operand. 0 or > 1 received.");
@@ -182,9 +182,9 @@ struct Reduce1DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
     if (tailLoop) {
       for (auto reduOp :
            llvm::to_vector(tailLoop.getBody()->getOps<linalg::ReduceOp>())) {
-        if (failed(tileUsingSCFForOpAndFuseGreedily(rewriter, reduOp,
-                                                    getSCFTilingOptions({1}),
-                                                    reduce1DFusionFilter))) {
+        if (failed(tileUsingSCFForOpAndFuseGreedily(
+                rewriter, reduOp, getSCFTilingOptions(rewriter.getContext(), 1),
+                reduce1DFusionFilter))) {
           return failure();
         }
       }
@@ -423,7 +423,8 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
                                       parallelDimTileSize)
             : SmallVector<int64_t>{parallelDimTileSize};
     auto tilingParallelDimsResult = tileUsingSCFForallOpAndFuseGreedily(
-        rewriter, tilingRoot, getSCFTilingOptions(parallelDimsTileSizes));
+        rewriter, tilingRoot,
+        getSCFTilingOptions(rewriter.getContext(), parallelDimsTileSizes));
     if (failed(tilingParallelDimsResult)) return failure();
 
     auto peeledParallelLoop =
@@ -454,13 +455,18 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
       auto *definingOp = yieldedTensor.getDefiningOp();
       if (!definingOp) return failure();
 
-      auto opts = getSCFTilingOptions(SmallVector<int64_t>(
-          definingOp->getResult(0).getType().cast<RankedTensorType>().getRank(),
-          1));
+      auto opts =
+          getSCFTilingOptions(rewriter.getContext(),
+                              SmallVector<int64_t>(definingOp->getResult(0)
+                                                       .getType()
+                                                       .cast<RankedTensorType>()
+                                                       .getRank(),
+                                                   1));
       auto parallelDimTilingOpts =
           isa<linalg::ReduceOp>(definingOp)
-              ? getSCFTilingOptions(getParallelDimTileSizes(reductionDim, 1))
-              : getSCFTilingOptions({1});
+              ? getSCFTilingOptions(rewriter.getContext(),
+                                    getParallelDimTileSizes(reductionDim, 1))
+              : getSCFTilingOptions(rewriter.getContext(), 1);
       auto parallelDimTilingResult = tileUsingSCFForallOpAndFuseGreedily(
           rewriter, definingOp, parallelDimTilingOpts, filterFn);
       if (failed(parallelDimTilingResult)) return failure();
@@ -470,7 +476,8 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
                                ->getOps<linalg::ReduceOp>())) {
         auto reductionDimTilingResult = tileUsingSCFForOpAndFuseGreedily(
             rewriter, tiledReduceOp,
-            getSCFTilingOptions(getReductionDimTileSizes(reductionDim, 1)),
+            getSCFTilingOptions(rewriter.getContext(),
+                                getReductionDimTileSizes(reductionDim, 1)),
             reduce2DProducerFusionFilter);
         if (failed(reductionDimTilingResult)) return failure();
       }
@@ -488,12 +495,13 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
         tileUsingSCFForOpAndFuseGreedily(
             rewriter, reduceOp,
             getSCFTilingOptions(
+                rewriter.getContext(),
                 getReductionDimTileSizes(reductionDim, reductionDimTileSize)),
             producerFilterFn);
     if (failed(reductionDimTilingResult)) return failure();
 
-    SCFForPeelingResult reductionDimPeelingResult =
-        peelSCFForOp(rewriter, reductionDimTilingResult->loops.front());
+    SCFForPeelingResult reductionDimPeelingResult = peelSCFForOp(
+        rewriter, cast<scf::ForOp>(reductionDimTilingResult->loops.front()));
     if (reductionDimPeelingResult.mainLoop) {
       setLabel(reductionDimPeelingResult.mainLoop, kPerfectlyTiledLoopLabel);
     }
@@ -508,7 +516,8 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
           auto parallelDimSizeOneTilingResult =
               tileUsingSCFForOpAndFuseGreedily(
                   rewriter, reduOp,
-                  getSCFTilingOptions(getParallelDimTileSizes(reductionDim, 1)),
+                  getSCFTilingOptions(rewriter.getContext(),
+                                      getParallelDimTileSizes(reductionDim, 1)),
                   producerFilterFn);
           if (failed(parallelDimSizeOneTilingResult)) return failure();
 
@@ -517,7 +526,8 @@ struct Reduce2DTransformPattern : public OpRewritePattern<linalg::ReduceOp> {
         }
         if (failed(tileUsingSCFForOpAndFuseGreedily(
                 rewriter, reduOp,
-                getSCFTilingOptions(getReductionDimTileSizes(reductionDim, 1)),
+                getSCFTilingOptions(rewriter.getContext(),
+                                    getReductionDimTileSizes(reductionDim, 1)),
                 producerFilterFn))) {
           return failure();
         }

@@ -27,7 +27,6 @@ struct SE_OutsideCompilationParams {
   char* device_name;
   char* rendezvous_key;
   TF_RendezvousThunk* rendezvous;
-  OpaqueTransferManagerImpl* opaque_host_device_transfer_mgr;
   TpuSerializedProto host_transfers;
 };
 

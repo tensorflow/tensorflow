@@ -20,10 +20,11 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_
 #define XLA_STREAM_EXECUTOR_DEVICE_DESCRIPTION_H_
 
-#include <map>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -195,6 +196,9 @@ class RocmComputeCapability {
   };
 };
 
+using GpuComputeCapability =
+    std::variant<CudaComputeCapability, RocmComputeCapability>;
+
 // Data that describes the execution target of the StreamExecutor, in terms of
 // important logical parameters. These include dimensionality limits and
 // physical parameters of interest, such as number of cores present on the
@@ -319,6 +323,8 @@ class DeviceDescription {
   // be "gfx000" (which is an invalid gfx arch).
   RocmComputeCapability rocm_compute_capability() const;
 
+  const GpuComputeCapability &gpu_compute_capability() const;
+
   // Returns the maximum amount of shared memory present on a single core
   // (i.e. Streaming Multiprocessor on NVIDIA GPUs; Compute Unit for OpenCL
   // devices). Note that some devices, such as NVIDIA's have a configurable
@@ -334,6 +340,9 @@ class DeviceDescription {
   int64_t shared_memory_per_block_optin() const {
     return shared_memory_per_block_optin_;
   }
+
+  GpuDeviceInfoProto ToGpuProto() const;
+  explicit DeviceDescription(const GpuDeviceInfoProto &proto);
 
   // For string values that are not available via the underlying platform, this
   // value will be provided.
@@ -378,18 +387,12 @@ class DeviceDescription {
 
   float clock_rate_ghz_;
 
-  // CUDA "CC" major value, -1 if not available.
-  CudaComputeCapability cuda_compute_capability_{-1, -1};
-
-  // ROCm gfx arch,  "gfx000" if not available.
-  RocmComputeCapability rocm_compute_capability_;
+  GpuComputeCapability gpu_compute_capability_;
 
   int numa_node_;
   int core_count_;
   int fpus_per_core_;
   bool ecc_enabled_;
-
-  SE_DISALLOW_COPY_AND_ASSIGN(DeviceDescription);
 };
 
 namespace internal {
@@ -398,102 +401,114 @@ namespace internal {
 // number of fields that would be easily confused in constructor form.
 class DeviceDescriptionBuilder {
  public:
-  DeviceDescriptionBuilder();
+  DeviceDescriptionBuilder() = default;
 
   // For descriptions of the following fields, see comments on the corresponding
   // DeviceDescription::* accessors above.
 
+  void set_gpu_compute_capability(GpuComputeCapability c) {
+    device_description_.gpu_compute_capability_ = c;
+  }
+
+  void set_block_dim_limit_x(int64_t limit) {
+    device_description_.block_dim_limit_.x = limit;
+  }
+
+  void set_block_dim_limit_y(int64_t limit) {
+    device_description_.block_dim_limit_.y = limit;
+  }
+
+  void set_block_dim_limit_z(int64_t limit) {
+    device_description_.block_dim_limit_.z = limit;
+  }
+
   void set_device_vendor(const std::string &value) {
-    device_description_->device_vendor_ = value;
+    device_description_.device_vendor_ = value;
   }
   void set_platform_version(const std::string &value) {
-    device_description_->platform_version_ = value;
+    device_description_.platform_version_ = value;
   }
   void set_driver_version(const std::string &value) {
-    device_description_->driver_version_ = value;
+    device_description_.driver_version_ = value;
   }
   void set_runtime_version(const std::string &value) {
-    device_description_->runtime_version_ = value;
+    device_description_.runtime_version_ = value;
   }
   void set_pci_bus_id(const std::string &value) {
-    device_description_->pci_bus_id_ = value;
+    device_description_.pci_bus_id_ = value;
   }
-  void set_name(const std::string &value) {
-    device_description_->name_ = value;
-  }
+  void set_name(const std::string &value) { device_description_.name_ = value; }
   void set_model_str(const std::string &value) {
-    device_description_->model_str_ = value;
+    device_description_.model_str_ = value;
   }
 
   void set_thread_dim_limit(const ThreadDim &value) {
-    device_description_->thread_dim_limit_ = value;
+    device_description_.thread_dim_limit_ = value;
   }
   void set_block_dim_limit(const BlockDim &value) {
-    device_description_->block_dim_limit_ = value;
+    device_description_.block_dim_limit_ = value;
   }
 
   void set_threads_per_core_limit(int64_t value) {
-    device_description_->threads_per_core_limit_ = value;
+    device_description_.threads_per_core_limit_ = value;
   }
   void set_threads_per_block_limit(int64_t value) {
-    device_description_->threads_per_block_limit_ = value;
+    device_description_.threads_per_block_limit_ = value;
   }
   void set_threads_per_warp(int64_t value) {
-    device_description_->threads_per_warp_ = value;
+    device_description_.threads_per_warp_ = value;
   }
 
   void set_registers_per_core_limit(int64_t value) {
-    device_description_->registers_per_core_limit_ = value;
+    device_description_.registers_per_core_limit_ = value;
   }
   void set_registers_per_block_limit(int64_t value) {
-    device_description_->registers_per_block_limit_ = value;
+    device_description_.registers_per_block_limit_ = value;
   }
 
   void set_device_address_bits(int64_t value) {
-    device_description_->device_address_bits_ = value;
+    device_description_.device_address_bits_ = value;
   }
   void set_device_memory_size(int64_t value) {
-    device_description_->device_memory_size_ = value;
+    device_description_.device_memory_size_ = value;
   }
   void set_l2_cache_size(int64_t value) {
-    device_description_->l2_cache_size_ = value;
+    device_description_.l2_cache_size_ = value;
   }
   void set_memory_bandwidth(int64_t value) {
-    device_description_->memory_bandwidth_ = value;
+    device_description_.memory_bandwidth_ = value;
   }
 
   void set_shared_memory_per_core(int64_t value) {
-    device_description_->shared_memory_per_core_ = value;
+    device_description_.shared_memory_per_core_ = value;
   }
   void set_shared_memory_per_block(int64_t value) {
-    device_description_->shared_memory_per_block_ = value;
+    device_description_.shared_memory_per_block_ = value;
   }
   void set_shared_memory_per_block_optin(int64_t value) {
-    device_description_->shared_memory_per_block_optin_ = value;
+    device_description_.shared_memory_per_block_optin_ = value;
   }
 
   void set_clock_rate_ghz(float value) {
-    device_description_->clock_rate_ghz_ = value;
+    device_description_.clock_rate_ghz_ = value;
   }
 
   void set_cuda_compute_capability(int major, int minor) {
-    device_description_->cuda_compute_capability_ =
+    device_description_.gpu_compute_capability_ =
         CudaComputeCapability{major, minor};
   }
 
   void set_rocm_compute_capability(std::string gcn_arch_name) {
-    device_description_->rocm_compute_capability_ =
+    device_description_.gpu_compute_capability_ =
         RocmComputeCapability(gcn_arch_name);
   }
 
-  void set_numa_node(int value) { device_description_->numa_node_ = value; }
-  void set_core_count(int value) { device_description_->core_count_ = value; }
+  void set_numa_node(int value) { device_description_.numa_node_ = value; }
+  void set_core_count(int value) { device_description_.core_count_ = value; }
   void set_fpus_per_core(int value) {
-    device_description_->fpus_per_core_ = value;
+    device_description_.fpus_per_core_ = value;
   }
-  void set_ecc_enabled(bool value) {
-    device_description_->ecc_enabled_ = value;
-  }
+  void set_ecc_enabled(bool value) { device_description_.ecc_enabled_ = value; }
 
   // Returns a built DeviceDescription with ownership transferred to the
   // caller. There are currently no restrictions on which fields must be set in
@@ -501,13 +516,16 @@ class DeviceDescriptionBuilder {
   //
   // Once the description is built, this builder object should be discarded.
   std::unique_ptr<DeviceDescription> Build() {
-    return std::move(device_description_);
+    return std::make_unique<DeviceDescription>(device_description_);
   }
 
- private:
-  std::unique_ptr<DeviceDescription> device_description_;
+  DeviceDescription BuildObject() { return device_description_; }
 
-  SE_DISALLOW_COPY_AND_ASSIGN(DeviceDescriptionBuilder);
+ private:
+  DeviceDescription device_description_;
+
+  DeviceDescriptionBuilder(const DeviceDescriptionBuilder &) = delete;
+  void operator=(const DeviceDescriptionBuilder &) = delete;
 };
 
 }  // namespace internal

@@ -313,15 +313,15 @@ Register_STABLEHLO_WHILE();  // WARNING: not implemented, using this
 
 TfLiteRegistration* Register_STABLEHLO_SCATTER();
 
-TfLiteRegistration*
-Register_STABLEHLO_GATHER();  // WARNING: not implemented, using this
-                              // op will crash the runtime
+TfLiteRegistration* Register_STABLEHLO_GATHER();
+
 TfLiteRegistration*
 Register_STABLEHLO_TRANSPOSE();  // WARNING: not implemented, using this
                                  // op will crash the runtime
 
 TfLiteRegistration* Register_DILATE();
 
+TfLiteRegistration* Register_REDUCE_WINDOW();
 }  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

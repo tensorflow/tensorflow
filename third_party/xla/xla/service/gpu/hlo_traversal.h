@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 
@@ -46,6 +47,12 @@ bool DefaultFusionBoundaryFn(const HloInstruction& producer,
 FusionBoundaryFn MakeProducerConsumerFusion(
     const HloInstruction& fused_producer, const HloInstruction& fused_consumer);
 
+// Creates a fusion boundary function for a fusion consisting only of `root`. If
+// `root` is a fusion, the result is the same as `DefaultFusionBuondaryFn`. If
+// `root` is the root of a fusion, the result is just that root, not the entire
+// computation.
+FusionBoundaryFn MakeSingleInstructionFusion(const HloInstruction& root);
+
 // Visit the HLO nodes starting from `roots` in BFS order (consumers before
 // producers). Each node will be visited exactly once. The graph is not
 // traversed along edges for which `boundary` returns true.
@@ -70,11 +77,14 @@ const HloInstruction* HloFindIf(
     const std::function<bool(const HloInstruction& node)>& visit);
 
 // Visit the producers of all parameters that are needed by the fusion.
-// TODO(jreiffers): Rename this to FindFusionArguments.
-void FindFusionParameters(
+void FindFusionArguments(
     absl::Span<const HloInstruction* const> roots,
     const FusionBoundaryFn& boundary,
     const std::function<void(const HloInstruction& producer)>& visit);
+
+// Returns all predecessors of node that lie within the boundary.
+absl::InlinedVector<const HloInstruction*, 2> FindPredecessors(
+    const HloInstruction& node, const FusionBoundaryFn& boundary);
 
 }  // namespace gpu
 }  // namespace xla

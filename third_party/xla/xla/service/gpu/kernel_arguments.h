@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
@@ -69,6 +70,10 @@ class KernelArguments {
   static StatusOr<KernelArguments> Create(
       absl::Span<const BufferAllocation> allocations,
       mlir::lmhlo::FusionOp fusion);
+
+  static StatusOr<KernelArguments> Create(
+      const BufferAssignment& buffer_assignment,
+      const HloFusionInstruction* fusion);
 
   static StatusOr<KernelArguments> Create(
       absl::Span<const BufferAllocation> allocations,

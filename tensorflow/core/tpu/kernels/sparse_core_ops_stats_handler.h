@@ -24,6 +24,7 @@ enum class StatsType {
   MAX_UNIQUE_IDS_PER_PARTITION,
   IDS_PER_PARTITION,
   UNIQUE_IDS_PER_PARTITION,
+  DROPPED_ID_COUNT,
 };
 
 class SparseCoreOpsStatsHandler {

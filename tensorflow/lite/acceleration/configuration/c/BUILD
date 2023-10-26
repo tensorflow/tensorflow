@@ -85,6 +85,7 @@ test_suite(
 cc_library_with_tflite_with_c_headers_test(
     name = "xnnpack_plugin",
     hdrs = ["xnnpack_plugin.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tflite_copts_warnings(),
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/lite/core/acceleration/configuration/c:xnnpack_plugin"],

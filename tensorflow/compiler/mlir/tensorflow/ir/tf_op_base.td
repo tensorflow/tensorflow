@@ -501,6 +501,7 @@ def TF_FpOrI32OrI64Tensor : TensorOf<[TF_Float, TF_I32OrI64]>;
 def TF_IntOrFpTensor : TensorOf<[TF_Int, TF_Float]>;
 def TF_SintOrFpTensor : TensorOf<[TF_SInt, TF_Float]>;
 def TF_FpOrComplexTensor : TensorOf<[TF_Float, TF_Complex]>;
+def TF_BoolOrFpTensor: TensorOf<[TF_Bool, TF_Float]>;
 
 def TF_Number : AnyTypeOf<
   [TF_Int, TF_Float, TF_Quantized, TF_Complex], "number">;

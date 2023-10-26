@@ -64,6 +64,18 @@ foreach fromToBinPair = [[MHLO_AddOp, CHLO_BroadcastAddOp, TF_AddV2Op],
   def : Pat<(fromToBinPair[1] $l, $r, $broadcast_dimensions),
             (fromToBinPair[2] $l, $r),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
+  def : Pat<(fromToBinPair[0] $l,
+                              (MHLO_BroadcastInDimOp:$output
+                                $bcast_operand,
+                                $broadcast_dimensions)),
+            (fromToBinPair[2] $l, $bcast_operand),
+            [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
+  def : Pat<(fromToBinPair[0] (MHLO_BroadcastInDimOp:$output
+                                $bcast_operand,
+                                $broadcast_dimensions),
+                              $r),
+            (fromToBinPair[2] $bcast_operand, $r),
+            [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
 }
 
 foreach pair  = [[MHLO_AndOp, CHLO_BroadcastAndOp, TF_BitwiseAndOp],
@@ -73,6 +85,18 @@ foreach pair  = [[MHLO_AndOp, CHLO_BroadcastAndOp, TF_BitwiseAndOp],
   def : Pat<(pair[1] TF_IntTensor:$l, TF_IntTensor:$r, $broadcast_dimensions),
             (pair[2] $l, $r),
             [(IsLegalNumpyRankedBroadcast $l, $r, $broadcast_dimensions)]>;
+  def : Pat<(pair[0] (MHLO_BroadcastInDimOp:$output
+                                            TF_IntTensor:$bcast_operand,
+                                            $broadcast_dimensions),
+                      TF_IntTensor:$r),
+            (pair[2] $bcast_operand, $r),
+            [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
+  def : Pat<(pair[0] TF_IntTensor:$l,
+                     (MHLO_BroadcastInDimOp:$output
+                                            TF_IntTensor:$bcast_operand,
+                                            $broadcast_dimensions)),
+            (pair[2] $l, $bcast_operand),
+            [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
 }
 
 foreach pair  = [[MHLO_AndOp, CHLO_BroadcastAndOp, TF_LogicalAndOp],
@@ -213,6 +237,24 @@ def : Pat<(MHLO_RoundNearestEvenOp $input), (TF_RoundOp $input)>;
 def : Pat<(MHLO_ClampOp $min, $arg, $max),
           (TF_MaximumOp (TF_MinimumOp $arg, $max), $min)>;
 def : Pat<(MHLO_SelectOp $cond, $t, $e), (TF_SelectOp $cond, $t, $e)>;
+def : Pat<(MHLO_SelectOp (MHLO_BroadcastInDimOp:$output
+                           $bcast_cond,
+                           $broadcast_dimensions),
+                          $t, $e),
+          (TF_SelectV2Op $bcast_cond, $t, $e),
+          [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
+def : Pat<(MHLO_SelectOp $cond, $t,
+                                (MHLO_BroadcastInDimOp:$output
+                                  $bcast_operand,
+                                  $broadcast_dimensions)),
+          (TF_SelectV2Op $cond, $t, $bcast_operand),
+          [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
+def : Pat<(MHLO_SelectOp $cond, (MHLO_BroadcastInDimOp:$output
+                                  $bcast_operand,
+                                  $broadcast_dimensions),
+                                $e),
+          (TF_SelectV2Op $cond, $bcast_operand, $e),
+          [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
 
 //===----------------------------------------------------------------------===//
 // Variadic op patterns.
@@ -270,6 +312,22 @@ foreach p = [[TF_EqualOp, MHLO_ComparisonDirectionValue<"EQ">],
              [TF_NotEqualOp, MHLO_ComparisonDirectionValue<"NE">]] in {
   def : Pat<(MHLO_CompareOp $l, $r, p[1], IsMhloTFCompareType:$type),
             (p[0] $l, $r, ConstBoolAttrTrue)>;
+  def : Pat<(MHLO_CompareOp (MHLO_BroadcastInDimOp:$output
+                              $bcast_operand,
+                              $broadcast_dimensions),
+                            $r,
+                            p[1],
+                            IsMhloTFCompareType:$type),
+            (p[0] $bcast_operand, $r, ConstBoolAttrTrue),
+            [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
+  def : Pat<(MHLO_CompareOp $l,
+                            (MHLO_BroadcastInDimOp:$output
+                              $bcast_operand,
+                              $broadcast_dimensions),
+                            p[1],
+                            IsMhloTFCompareType:$type),
+            (p[0] $l, $bcast_operand, ConstBoolAttrTrue),
+            [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
 }
 
 foreach p = [[TF_GreaterEqualOp, CHLO_ComparisonDirectionValue<"GE">],
@@ -288,6 +346,22 @@ foreach p = [[TF_GreaterEqualOp, MHLO_ComparisonDirectionValue<"GE">],
              [TF_LessOp, MHLO_ComparisonDirectionValue<"LT">]] in {
   def : Pat<(MHLO_CompareOp $l, $r, p[1], IsMhloTFCompareType:$type),
             (p[0] $l, $r)>;
+  def : Pat<(MHLO_CompareOp (MHLO_BroadcastInDimOp:$output
+                              $bcast_operand,
+                              $broadcast_dimensions),
+                            $r,
+                            p[1],
+                            IsMhloTFCompareType:$type),
+            (p[0] $bcast_operand, $r),
+            [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
+  def : Pat<(MHLO_CompareOp $l,
+                            (MHLO_BroadcastInDimOp:$output
+                              $bcast_operand,
+                              $broadcast_dimensions),
+                            p[1],
+                            IsMhloTFCompareType:$type),
+            (p[0] $l, $bcast_operand),
+            [(IsTFStyleBroadcast $broadcast_dimensions, $output)]>;
 }
 
 def ConvertDotOp : NativeCodeCall<"ConvertDotOp($_builder, "
@@ -304,12 +378,14 @@ def : Pat<(MHLO_DotGeneralOp:$old_value
                $dot_dimension_numbers, $precision_config),
           (ConvertDotGeneralOp $old_value)>;
 
+
 def IsZero : Constraint<CPred<
   "$0.isSplat() && $0.getSplatValue<APInt>() == 0">>;
 def ConvertPadOp : NativeCodeCall<
   "ConvertPadOp($_builder, $0.getDefiningOp())">;
-def : Pat<(MHLO_PadOp:$old_value $input, $pad_value, $pad_low, $pad_high,
-               $pad_interior),
+def : Pat<(MHLO_PadOp:$old_value
+               StaticShapeTensorOf<[TF_ElementType]>:$input,
+               $pad_value, $pad_low, $pad_high, $pad_interior),
           (ConvertPadOp $old_value),
           [(IsZero $pad_interior)]>;
 

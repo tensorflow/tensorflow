@@ -18,6 +18,8 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace mlir {
@@ -51,12 +53,19 @@ bool IsOnGpuDevice(mlir::Operation *op) {
   return *device == kDeviceGpu;
 }
 
-mlir::Value CopyAttributes(mlir::Operation *src, mlir::Operation *dest) {
-  // This is not expected to happen in practice.
-  if (dest->getNumResults() != 1)
-    llvm_unreachable("expected single result in `dest`");
-  dest->setAttrs(src->getAttrs());
-  return dest->getResult(0);
+void CopyDeviceAndUnderscoredAttributesAdaptor(mlir::OpResult src,
+                                               mlir::OpResult dest) {
+  CopyDeviceAndUnderscoredAttributesAdaptor(src.getOwner(), dest.getOwner());
+}
+
+void CopyDeviceAndUnderscoredAttributesAdaptor(mlir::Operation *src,
+                                               mlir::OpResult dest) {
+  CopyDeviceAndUnderscoredAttributesAdaptor(src, dest.getOwner());
+}
+
+void CopyDeviceAndUnderscoredAttributesAdaptor(mlir::Operation *src,
+                                               mlir::Operation *dest) {
+  CopyDeviceAndUnderscoredAttributes(src, dest);
 }
 }  // namespace TF
 }  // namespace mlir

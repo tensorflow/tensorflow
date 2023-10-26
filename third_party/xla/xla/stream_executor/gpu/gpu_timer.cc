@@ -16,8 +16,13 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_timer.h"
 
 #include <optional>
+#include <random>
 #include <utility>
 
+#include "absl/base/const_init.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
 #include "xla/stream_executor/gpu/gpu_executor.h"
 #include "xla/stream_executor/gpu/gpu_stream.h"
@@ -25,6 +30,20 @@ limitations under the License.
 
 namespace stream_executor {
 namespace gpu {
+
+namespace {
+
+bool return_random_durations = false;
+
+absl::Duration RandomDuration() {
+  static absl::Mutex mu(absl::kConstInit);
+  static std::mt19937 rng ABSL_GUARDED_BY(mu);
+  std::uniform_real_distribution<float> distribution(10, 1000);
+  absl::MutexLock l(&mu);
+  return absl::Microseconds(distribution(rng));
+}
+
+}  // namespace
 
 /*static*/ tsl::StatusOr<GpuTimer> GpuTimer::Create(GpuStream* stream) {
   GpuExecutor* parent = stream->parent();
@@ -49,6 +68,10 @@ namespace gpu {
     return {std::make_optional(std::move(t))};
   }
   return std::nullopt;
+}
+
+/*static*/ void GpuTimer::ReturnRandomDurationsForTesting() {
+  return_random_durations = true;
 }
 
 GpuTimer::~GpuTimer() {
@@ -80,6 +103,9 @@ tsl::StatusOr<absl::Duration> GpuTimer::GetElapsedDuration() {
     return absl::InternalError("Error stopping the timer");
   }
   is_stopped_ = true;
+  if (return_random_durations) {
+    return RandomDuration();
+  }
   return absl::Milliseconds(elapsed_milliseconds);
 }
 

@@ -26,6 +26,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
@@ -1096,15 +1097,21 @@ void BatchResourceBase::SplitBatchCostsAndRecordMetrics(
 
   // 2. Records the batch metrics in each task.
   const int64_t padding_size = processed_size - batch.size();
+  absl::flat_hash_map<std::string, absl::Duration> batch_costs;
+  for (const auto& batch_cost_measurement : batch_cost_measurements) {
+    if (batch_cost_measurement->GetTotalCost() > absl::ZeroDuration()) {
+      batch_costs[batch_cost_measurement->GetCostType()] =
+          batch_cost_measurement->GetTotalCost();
+    }
+  }
   for (int i = 0; i < batch.num_tasks(); i++) {
     RequestCost* request_cost = batch.task(i).request_cost;
     // Skip recording the metrics if the request_cost is null.
     if (!request_cost) continue;
 
     request_cost->RecordBatchMetrics(RequestCost::BatchMetrics{
-        /*processed_size=*/processed_size,
-        /*input_size=*/static_cast<int64_t>(batch.task(i).size()),
-        /*padding_size=*/padding_size});
+        processed_size, static_cast<int64_t>(batch.task(i).size()),
+        padding_size, batch_costs});
   }
 }
 

@@ -45,6 +45,8 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
 #include "xla/stream_executor/blas.h"
+#include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/statusor.h"
@@ -387,7 +389,7 @@ auto BcastConstScalarNear(double value) {
         // Not a very robust floating-point comparison, but good enough for our
         // purposes.
         std::optional<double> actual =
-            static_cast<const HloConstantInstruction *>(instr)
+            tensorflow::down_cast<const HloConstantInstruction *>(instr)
                 ->literal()
                 .GetAsDouble({});
         if (!actual.has_value()) return false;
@@ -464,7 +466,7 @@ auto OptionalBitcast(HloInstruction **optional_bitcast, Pattern pattern) {
 // when the output of the GEMM is requested in FP8 format.
 class GemmRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit GemmRewriterVisitor(GpuVersion gpu_version)
+  explicit GemmRewriterVisitor(se::GpuComputeCapability gpu_version)
       : gpu_version_(gpu_version) {}
 
   Status HandleDot(HloInstruction *instr) override {
@@ -1528,7 +1530,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
  private:
-  GpuVersion gpu_version_;
+  se::GpuComputeCapability gpu_version_;
 
   // Choose cublas or cublasLt for the target of the custom call that instr will
   // be rewritten into.
@@ -1581,13 +1583,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // supports. Figure out the computeType and scaleType.
     if (!absl::c_linear_search(supported_type, output_type)) return false;
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
-                        AsBlasDataType(output_type));
+                        se::gpu::AsBlasDataType(output_type));
     TF_ASSIGN_OR_RETURN(const se::blas::ComputationType compute_type,
-                        GetBlasComputationType(
+                        se::gpu::GetBlasComputationType(
                             a_dtype, output_type,
                             stream_executor::blas::kDefaultComputePrecision));
     se::blas::DataType scale_type =
-        cublas_lt::GetScaleType(output_dtype, compute_type);
+        se::gpu::GetScaleType(output_dtype, compute_type);
 
     using se::blas::ComputationType;
     using se::blas::DataType;
@@ -1669,15 +1671,15 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // cublasLt has a defined set of combinations of types that it supports.
     // Figure out the computeType and scaleType.
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
-                        AsBlasDataType(output_type));
+                        se::gpu::AsBlasDataType(output_type));
     int max_precision = *absl::c_max_element(
         backend_config.precision_config().operand_precision());
     TF_ASSIGN_OR_RETURN(
         const se::blas::ComputationType compute_type,
-        GetBlasComputationType(a_dtype, instr.shape().element_type(),
-                               max_precision));
+        se::gpu::GetBlasComputationType(a_dtype, instr.shape().element_type(),
+                                        max_precision));
     se::blas::DataType scale_type =
-        cublas_lt::GetScaleType(output_dtype, compute_type);
+        se::gpu::GetScaleType(output_dtype, compute_type);
 
     using se::blas::ComputationType;
     using se::blas::DataType;
@@ -1846,8 +1848,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                         MatrixIsColumnMajor(instr, gemm_backend_config));
 
     if (std::holds_alternative<se::RocmComputeCapability>(gpu_version_)) {
-      if (!output_is_column_major) return false;
-
       auto rocm_compute_capability_ =
           std::get<se::RocmComputeCapability>(gpu_version_);
 
@@ -1939,7 +1939,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 };
 
 StatusOr<bool> RunOnComputation(HloComputation *computation,
-                                GpuVersion gpu_version) {
+                                se::GpuComputeCapability gpu_version) {
   GemmRewriterVisitor visitor(gpu_version);
   TF_RETURN_IF_ERROR(computation->Accept(&visitor));
   return visitor.changed();
@@ -1947,7 +1947,7 @@ StatusOr<bool> RunOnComputation(HloComputation *computation,
 
 }  // anonymous namespace
 
-GemmRewriter::GemmRewriter(GpuVersion gpu_version)
+GemmRewriter::GemmRewriter(se::GpuComputeCapability gpu_version)
     : gpu_version_(gpu_version) {}
 
 StatusOr<bool> GemmRewriter::Run(

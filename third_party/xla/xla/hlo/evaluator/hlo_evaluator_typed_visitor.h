@@ -508,13 +508,40 @@ class HloEvaluatorTypedVisitor : public ConstDfsHloVisitorWithDefault {
   Status HandlePower(const HloInstruction* power) override {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[power],
-        ElementWiseBinaryOp(
-            power, [](ElementwiseT lhs_el, ElementwiseT rhs_el) {
-              return lhs_el == ElementwiseT(1) ? static_cast<ElementwiseT>(1)
-                     : lhs_el == ElementwiseT(0) && rhs_el == ElementwiseT(0)
-                         ? static_cast<ElementwiseT>(1)
-                         : std::pow(lhs_el, rhs_el);
-            }));
+        ElementWiseBinaryOp(power, [](ElementwiseT lhs_el,
+                                      ElementwiseT rhs_el) {
+          // Case 0: 1^x = 1
+          if (lhs_el == ElementwiseT(1)) {
+            return static_cast<ElementwiseT>(1);
+          }
+          // Case 1: 0^0 = 1
+          if (lhs_el == ElementwiseT(0) && rhs_el == ElementwiseT(0)) {
+            return static_cast<ElementwiseT>(1);
+          }
+          // Case 2:
+          // 1. inf^(a + 0i) = inf, if a > 0.
+          // 2. inf^(a + 0i) = 0, if a < 0.
+          if constexpr (is_complex_v<ElementwiseT>) {
+            auto is_positive_infinity = [](auto c) {
+              return c.imag() == 0 && c.real() > 0 && std::isinf(c.real());
+            };
+            auto is_positive_real = [](ElementwiseT c) {
+              return c.real() > 0 && c.imag() == 0;
+            };
+            auto is_negative_real = [](ElementwiseT c) {
+              return c.real() < 0 && c.imag() == 0;
+            };
+            if (is_positive_infinity(lhs_el) && is_positive_real(rhs_el) > 0) {
+              return static_cast<ElementwiseT>(lhs_el);
+            }
+            if (is_positive_infinity(lhs_el) && is_negative_real(rhs_el)) {
+              return static_cast<ElementwiseT>(0);
+            }
+          }
+          // Case 3:
+          // Fallback to std::pow.
+          return static_cast<ElementwiseT>(std::pow(lhs_el, rhs_el));
+        }));
     return OkStatus();
   }
 

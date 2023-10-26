@@ -1428,5 +1428,30 @@ TEST_F(PatternMatcherTest, TestWithReplicaGroups) {
       "replica_groups={{0,1},{2,3}}, to_apply=add");
 }
 
+TEST_F(PatternMatcherTest, TestWithSharding) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      p0 = f32[5,7,11,13]{3,2,1,0} parameter(0),
+        sharding={devices=[1,2,2,1]0,1,2,3},
+        metadata={op_name="test"}
+      ROOT copy = f32[5,7,11,13]{3,2,1,0} copy(p0)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* instruction = FindInstruction(hlo_module.get(), "p0");
+  EXPECT_TRUE(
+      Match(instruction, m::Op().WithSharding("{devices=[1,2,2,1]0,1,2,3}")));
+  EXPECT_FALSE(
+      Match(instruction, m::Op().WithSharding("{devices=[2,2,1,1]0,1,2,3}")));
+  EXPECT_DESC_AND_EXPLANATION(
+      instruction, m::Op().WithSharding("{devices=[2,2,1,1]0,1,2,3}"),
+      "an HloInstruction with sharding {devices=[2,2,1,1]0,1,2,3}",
+      "sharding {devices=[1,2,2,1]0,1,2,3} don't match expected "
+      "{devices=[2,2,1,1]0,1,2,3}\n"
+      "in p0 = f32[5,7,11,13]{3,2,1,0} parameter(0), "
+      "sharding={devices=[1,2,2,1]0,1,2,3}");
+}
+
 }  // namespace
 }  // namespace xla

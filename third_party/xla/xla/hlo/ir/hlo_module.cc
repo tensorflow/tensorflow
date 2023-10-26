@@ -22,18 +22,18 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_frontend_attributes.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -57,9 +57,18 @@ limitations under the License.
 namespace xla {
 
 HloModule::HloModule(const std::string& name, HloModuleConfig config)
-    : HloModule(name, config, std::make_unique<CompilationEnvironments>()) {}
+    : HloModule(name, std::move(config),
+                std::make_unique<CompilationEnvironments>()) {}
 
 HloModule::HloModule(const std::string& name, HloModuleConfig config,
+                     std::unique_ptr<CompilationEnvironments> comp_envs)
+    : HloModule(name, std::make_unique<HloModuleConfig>(std::move(config)),
+                std::move(comp_envs)) {}
+
+HloModule::HloModule(const std::string& name,
+                     std::variant<std::unique_ptr<HloModuleConfig>,
+                                  std::shared_ptr<const HloModuleConfig>>
+                         config,
                      std::unique_ptr<CompilationEnvironments> comp_envs)
     : name_(NameUniquer::GetSanitizedName(name)),
       config_(std::move(config)),
@@ -78,7 +87,7 @@ Status HloModule::set_schedule(HloSchedule schedule) {
 
 void HloModule::ReplaceEntryComputation(HloComputation* entry_computation) {
   entry_computation_ = entry_computation;
-  config_.SetDefaultComputationLayout(
+  config_.get_mutable().SetDefaultComputationLayout(
       entry_computation_->ComputeProgramShape());
   input_output_alias_config_ = HloInputOutputAliasConfig(
       entry_computation_->root_instruction()->shape());
@@ -115,12 +124,12 @@ HloComputation* HloModule::AddComputationInternal(
     entry_computation_ = computation.get();
 
     if (preserve_entry_layouts) {
-      config_.SetComputationLayoutIfExists(
+      config_.get_mutable().SetComputationLayoutIfExists(
           entry_computation_->ComputeProgramShape());
-    } else if (!config_.has_entry_computation_layout()) {
+    } else if (!config_.get().has_entry_computation_layout()) {
       // If the module configuration has no entry layout computation set, create
       // a default one based on the program shape.
-      config_.SetDefaultComputationLayout(
+      config_.get_mutable().SetDefaultComputationLayout(
           entry_computation_->ComputeProgramShape());
     }
     input_output_alias_config_ = HloInputOutputAliasConfig(
@@ -351,22 +360,27 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
     printer->Append(std::move(serialized_buffer_donor));
     printer->Append(" }");
   }
-  if (config_.alias_passthrough_params()) {
+  const auto& config = config_.get();
+  if (config.alias_passthrough_params()) {
     printer->Append(", alias_passthrough_params=true");
   }
-  if (config_.has_entry_computation_layout()) {
+  if (config.has_entry_computation_layout()) {
     printer->Append(", entry_computation_layout={");
     entry_computation_layout().Print(printer);
     printer->Append("}");
   }
-  if (config_.allow_spmd_sharding_propagation_to_output().size() != 1 ||
-      config_.allow_spmd_sharding_propagation_to_output().back()) {
+  if (config.allow_spmd_sharding_propagation_to_output().size() != 1 ||
+      config.allow_spmd_sharding_propagation_to_output().back()) {
     printer->Append(", allow_spmd_sharding_propagation_to_output={");
-    AppendJoin(printer, config_.allow_spmd_sharding_propagation_to_output(),
-               ",", [](Printer* printer, bool i) {
+    AppendJoin(printer, config.allow_spmd_sharding_propagation_to_output(), ",",
+               [](Printer* printer, bool i) {
                  printer->Append(i ? "true" : "false");
                });
     printer->Append("}");
+  }
+  if (!frontend_attributes_.map().empty()) {
+    AppendCat(printer, ", frontend_attributes=",
+              FrontendAttributesToString(frontend_attributes_));
   }
   printer->Append("\n\n");
   const auto& computations = options.canonicalize_computations()
@@ -375,7 +389,8 @@ void HloModule::Print(Printer* printer, const HloPrintOptions& options) const {
   for (const HloComputation* computation : computations) {
     // Don't print async computations when the sytax sugar is enabled since that
     // is redundant information.
-    if (options.syntax_sugar_async_ops() && computation->IsAsyncComputation()) {
+    if (options.syntax_sugar_async_ops() && computation->IsAsyncComputation() &&
+        computation->CanExpandIntoSingleInstruction()) {
       continue;
     }
     if (computation == entry_computation()) {
@@ -439,6 +454,8 @@ HloModuleProto HloModule::ToProto() const {
     *proto.mutable_spmd_output_sharding() = spmd_output_sharding().ToProto();
   }
 
+  *proto.mutable_frontend_attributes() = frontend_attributes_;
+
   if (has_spmd_parameters_shardings()) {
     for (const auto& parameter_sharding : spmd_parameters_shardings()) {
       *proto.add_spmd_parameters_shardings() = parameter_sharding.ToProto();
@@ -455,10 +472,10 @@ HloModuleProto HloModule::ToProto() const {
     profile_info_proto.set_profile_source(profile_info.profile_source());
     profile_info_proto.set_compilation_event(profile_info.compilation_event());
   }
-  if (this->config_.has_static_device_assignment()) {
+  if (config_.get().has_static_device_assignment()) {
     DeviceAssignmentProto device_assignment;
     TF_CHECK_OK(
-        this->config_.static_device_assignment().Serialize(&device_assignment));
+        config_.get().static_device_assignment().Serialize(&device_assignment));
     (*proto.mutable_device_assignment()) = device_assignment;
   }
 
@@ -470,7 +487,7 @@ HloModuleProto HloModule::ToProto() const {
 
 StatusOr<HloModuleProtoWithConfig> HloModule::ToProtoWithConfig() const {
   HloModuleProtoWithConfig result;
-  TF_ASSIGN_OR_RETURN(*result.mutable_config(), config_.ToProto());
+  TF_ASSIGN_OR_RETURN(*result.mutable_config(), config_.get().ToProto());
   *result.mutable_hlo_module() = ToProto();
   return result;
 }
@@ -604,6 +621,10 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 
   module->set_is_dynamic(proto.is_dynamic());
 
+  if (proto.has_frontend_attributes()) {
+    module->set_frontend_attributes(proto.frontend_attributes());
+  }
+
   if (proto.has_spmd_output_sharding()) {
     TF_ASSIGN_OR_RETURN(HloSharding hlo_sharding,
                         HloSharding::FromProto(proto.spmd_output_sharding()));
@@ -626,11 +647,12 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     module->add_profile_info(profile_info);
   }
   if (proto.has_device_assignment()) {
-    if (!module->config_.has_static_device_assignment()) {
+    if (!module->config_.get().has_static_device_assignment()) {
       TF_ASSIGN_OR_RETURN(
           std::unique_ptr<DeviceAssignment> device_assignment,
           DeviceAssignment::Deserialize(proto.device_assignment()));
-      module->config_.set_static_device_assignment(*device_assignment);
+      module->config_.get_mutable().set_static_device_assignment(
+          *device_assignment);
     }
   }
 
@@ -1009,22 +1031,31 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputationsSorted(
 }
 
 std::unique_ptr<HloModule> HloModule::Clone(const std::string& suffix) const {
-  return Clone(config(), suffix);
+  return Clone(config_.FreezeAndShare(), suffix);
 }
 
 std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
                                             const std::string& suffix) const {
+  return Clone(std::make_shared<const HloModuleConfig>(config), suffix);
+}
+
+std::unique_ptr<HloModule> HloModule::Clone(
+    std::shared_ptr<const HloModuleConfig> config,
+    const std::string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
   auto module = std::make_unique<HloModule>(
-      absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config,
+      absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), std::move(config),
       std::make_unique<CompilationEnvironments>(*comp_envs_));
 
   HloCloneContext context(module.get(), suffix);
-  auto cloned_computation = entry_computation_->Clone(suffix, &context);
-  module->AddEntryComputation(std::move(cloned_computation));
+  if (entry_computation_) {
+    auto cloned_computation = entry_computation_->Clone(suffix, &context);
+    module->AddEntryComputation(std::move(cloned_computation));
+  }
   module->input_output_alias_config() = input_output_alias_config();
   module->buffer_donor_config() = buffer_donor_config();
   module->set_is_dynamic(is_dynamic());
+  module->set_frontend_attributes(frontend_attributes());
   if (has_schedule() && schedule().Verify().ok()) {
     HloSchedule clone_schedule(module.get());
     for (HloComputation* computation : computations()) {

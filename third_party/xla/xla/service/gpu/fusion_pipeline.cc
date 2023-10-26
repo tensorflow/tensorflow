@@ -18,13 +18,12 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/gpu/fusion_merger.h"
-#include "xla/service/gpu/gpu_device_info.h"
-#include "xla/service/gpu/gpu_hlo_cost_analysis.h"
-#include "xla/service/gpu/gpu_shape_verifier.h"
 #include "xla/service/gpu/horizontal_input_fusion.h"
 #include "xla/service/gpu/horizontal_loop_fusion.h"
 #include "xla/service/gpu/instruction_fusion.h"
+#include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/multi_output_fusion.h"
 #include "xla/service/gpu/priority_fusion.h"
 #include "xla/service/gpu/variadic_op_splitter.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "xla/service/hlo_pass_pipeline.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/layout_assignment.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -43,13 +43,13 @@ namespace gpu {
 HloPassPipeline FusionPipeline(
     const DebugOptions& debug_options,
     HloCostAnalysis::ShapeSizeFunction shape_size_bytes_function,
-    const GpuDeviceInfo& gpu_device_info) {
+    const se::DeviceDescription& gpu_device_info) {
   HloPassFix<HloPassPipeline> fusion("fusion");
   // We try to split variadic ops with many parameters into several such ops
   // to avoid exceeding the parameter space.
   fusion.AddPass<VariadicOpSplitter>();
   fusion.AddInvariantCheckerDebug<HloVerifier>(
-      std::make_unique<GpuVerifierMetadata>(
+      std::make_unique<CpuGpuVerifierMetadata>(
           HloVerifierOpts()
               .MakeLayoutSensitive()
               .WithInstructionCanChangeLayout(
@@ -81,7 +81,8 @@ HloPassPipeline FusionPipeline(
   return std::move(fusion);
 }
 
-HloPassPipeline HorizontalFusionPipeline(const GpuDeviceInfo& gpu_device_info) {
+HloPassPipeline HorizontalFusionPipeline(
+    const se::DeviceDescription& gpu_device_info) {
   HloPassFix<HloPassPipeline> horizontal_fusion("horizontal fusion");
   horizontal_fusion.AddPass<GpuHorizontalLoopFusion>();
   horizontal_fusion.AddPass<GpuHorizontalInputFusion>(gpu_device_info);

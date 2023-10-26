@@ -48,8 +48,8 @@ enum class TargetIntrinsicID {
 // Enumeration to get target specific device math function.
 enum class TargetDeviceFunctionID {
   kAtan2 = 0,
+  kCbrt,
   kCos,
-  kErfcinv,
   kExp,
   kExpm1,
   kFmod,
@@ -57,13 +57,11 @@ enum class TargetDeviceFunctionID {
   kLog,
   kLog1p,
   kPow,
-  kRound,
   kRsqrt,
   kSin,
   kSqrt,
   kTan,
   kTanh,
-  kCbrt,
 };
 
 // HLO opcode -> TargetDeviceFunctionID mapping.

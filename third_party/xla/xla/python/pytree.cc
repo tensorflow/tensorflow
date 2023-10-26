@@ -637,6 +637,9 @@ std::unique_ptr<PyTreeDef> PyTreeDef::Compose(const PyTreeDef& inner) const {
         "PyTree registries of PyTreeDefs passed to Compose() must match.");
   }
   auto out = std::make_unique<PyTreeDef>(registry_->shared_from_this());
+  out->traversal_.reserve(static_cast<size_t>(num_leaves()) *
+                              inner.num_nodes() +
+                          num_nodes() - num_leaves());
   for (const Node& n : traversal_) {
     if (n.kind == PyTreeKind::kLeaf) {
       absl::c_copy(inner.traversal_, std::back_inserter(out->traversal_));
@@ -644,13 +647,7 @@ std::unique_ptr<PyTreeDef> PyTreeDef::Compose(const PyTreeDef& inner) const {
       out->traversal_.push_back(n);
     }
   }
-  const auto& root = traversal_.back();
-  const auto& inner_root = inner.traversal_.back();
-  // TODO(tomhennigan): This should update all nodes in the traversal.
-  auto& out_root = out->traversal_.back();
-  out_root.num_nodes = (root.num_nodes - root.num_leaves) +
-                       (inner_root.num_nodes * root.num_leaves);
-  out_root.num_leaves *= inner_root.num_leaves;
+  out->SetNumLeavesAndNumNodes();
   return out;
 }
 

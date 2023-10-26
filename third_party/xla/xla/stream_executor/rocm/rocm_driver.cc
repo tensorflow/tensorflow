@@ -31,19 +31,18 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "xla/stream_executor/gpu/gpu_diagnostics.h"
 #include "xla/stream_executor/gpu/gpu_driver.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/platform/port.h"
 #include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "tsl/platform/env.h"
 #include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/stacktrace.h"
-#include "tsl/platform/static_threadlocal.h"
 #include "tsl/platform/threadpool.h"
 
-bool FLAGS_gpuexec_rocm_driver_inject_init_error = false;
-bool FLAGS_gpuexec_rocm_sync_around_driver_calls = false;
-bool FLAGS_gpuexec_rocm_device_0_only = false;
+static constexpr bool FLAGS_gpuexec_rocm_driver_inject_init_error = false;
+static constexpr bool FLAGS_gpuexec_rocm_sync_around_driver_calls = false;
+static constexpr bool FLAGS_gpuexec_rocm_device_0_only = false;
 
 #define RETURN_IF_ROCM_ERROR(expr, ...)                                       \
   do {                                                                        \
@@ -128,20 +127,18 @@ void SynchronizeOrDie() {
   }
 }
 
-struct ThreadLocalData {
+thread_local struct ThreadLocalData {
   int current_device_ordinal;
   GpuContext* context;  // Only valid if id == a known good context.
   int depth;
-};
-
-TSL_STATIC_THREAD_LOCAL_POD(ThreadLocalData, tls_data);
+} tls_data = {};
 
 }  // namespace
 
 ScopedActivateContext::ScopedActivateContext(GpuContext* hip_context) {
   if (FLAGS_gpuexec_rocm_sync_around_driver_calls) SynchronizeOrDie();
 
-  auto* tls = &tls_data.get();
+  auto* tls = &tls_data;
   if (tls->depth == 0) {
     VLOG(3) << "ScopedActivateContext switching to "
             << hip_context->device_ordinal();
@@ -177,7 +174,7 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* hip_context) {
 ScopedActivateContext::~ScopedActivateContext() {
   if (FLAGS_gpuexec_rocm_sync_around_driver_calls) SynchronizeOrDie();
 
-  auto* tls = &tls_data.get();
+  auto* tls = &tls_data;
 
   if (kVerifyGpuContext) {
     CHECK_EQ(CurrentContext(),
@@ -425,11 +422,11 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
   return context->context();
 }
 
-/* static */ tsl::Status GpuDriver::FuncGetAttribute(hipFuncAttribute attribute,
-                                                     hipFunction_t func,
-                                                     int* attribute_value) {
-  RETURN_IF_ROCM_ERROR(hipFuncSetAttribute(func, attribute, *attribute_value),
-                       "Failed to query kernel attribute: ", attribute);
+/* static */ tsl::Status GpuDriver::FuncGetAttribute(
+    hipFunction_attribute attribute, hipFunction_t func, int* attribute_value) {
+  RETURN_IF_ROCM_ERROR(
+      wrap::hipFuncGetAttribute(attribute_value, attribute, func),
+      "Failed to query kernel attribute: ", attribute);
   return tsl::OkStatus();
 }
 
@@ -702,6 +699,47 @@ GpuDriver::GraphNodeGetType(hipGraphNode_t node) {
   return ::tsl::OkStatus();
 }
 
+/*static*/ tsl::Status GpuDriver::GraphExecKernelNodeSetParams(
+    GpuGraphExecHandle exec, GpuGraphNodeHandle node,
+    absl::string_view kernel_name, GpuFunctionHandle function,
+    unsigned int grid_dim_x, unsigned int grid_dim_y, unsigned int grid_dim_z,
+    unsigned int block_dim_x, unsigned int block_dim_y,
+    unsigned int block_dim_z, unsigned int shared_mem_bytes,
+    void** kernel_params, void** extra) {
+  VLOG(2) << "Set kernel node params " << node << " in graph executabe " << exec
+          << "; kernel: " << kernel_name << "; gdx: " << grid_dim_x
+          << " gdy: " << grid_dim_y << " gdz: " << grid_dim_z
+          << " bdx: " << block_dim_x << " bdy: " << block_dim_y
+          << " bdz: " << block_dim_z << "; shmem: " << shared_mem_bytes;
+
+  hipKernelNodeParams params;
+  memset(&params, 0, sizeof(params));
+
+  params.func = function;
+  params.gridDim.x = grid_dim_x;
+  params.gridDim.y = grid_dim_y;
+  params.gridDim.z = grid_dim_z;
+  params.blockDim.x = block_dim_x;
+  params.blockDim.y = block_dim_y;
+  params.blockDim.z = block_dim_z;
+  params.sharedMemBytes = shared_mem_bytes;
+  params.kernelParams = kernel_params;
+  params.extra = extra;
+
+  if (shared_mem_bytes != 0) {
+    RETURN_IF_ROCM_ERROR(
+        hipFuncSetAttribute(function,
+                            hipFuncAttributeMaxDynamicSharedMemorySize,
+                            shared_mem_bytes),
+        "Failed to set shared memory size");
+  }
+
+  RETURN_IF_ROCM_ERROR(hipGraphExecKernelNodeSetParams(exec, node, &params),
+                       "Failed to set HIP graph kernel node params");
+
+  return ::tsl::OkStatus();
+}
+
 /* static */ tsl::Status GpuDriver::GraphAddMemcpyD2DNode(
     GpuContext* context, hipGraphNode_t* node, hipGraph_t graph,
     absl::Span<hipGraphNode_t> deps, hipDeviceptr_t gpu_dst,
@@ -863,6 +901,18 @@ GpuDriver::GraphNodeGetType(hipGraphNode_t node) {
     LOG(ERROR) << "failed to unload module " << module
                << "; leaking: " << ToString(res);
   }
+}
+
+/* static */ tsl::StatusOr<hipDevice_t> GpuDriver::DeviceFromContext(
+    GpuContext* context) {
+  ScopedActivateContext activated{context};
+  hipDevice_t device = -1;
+  hipError_t result = hipCtxGetDevice(&device);
+  if (result == hipSuccess) return device;
+
+  return tsl::Status(
+      absl::StatusCode::kInternal,
+      absl::StrCat("failed to get device for context: ", ToString(result)));
 }
 
 /* static */ bool GpuDriver::CreateStream(GpuContext* context,
@@ -1676,30 +1726,46 @@ static tsl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
 
 /* static */ bool GpuDriver::CanEnablePeerAccess(GpuContext* from,
                                                  GpuContext* to) {
-  if (from->device_ordinal() == to->device_ordinal()) {
-    return true;  // A device can always access its own memory.
-  }
+  // A context can always access its own memory.
+  if (from == to) return true;
 
-  int can_access_peer = -1;
-  hipError_t res = wrap::hipDeviceCanAccessPeer(
-      &can_access_peer, from->device_ordinal(), to->device_ordinal());
-  if (res != hipSuccess) {
-    LOG(ERROR) << "failed to detect peer access capability: " << ToString(res);
+  auto from_device = DeviceFromContext(from);
+  if (!from_device.ok()) {
+    LOG(ERROR) << "failed to resolve 'from' peer access context to a device: "
+               << from_device.status();
     return false;
   }
 
+  auto to_device = DeviceFromContext(to);
+  if (!to_device.ok()) {
+    LOG(ERROR) << "failed to resolve 'to' peer access context to a device: "
+               << to_device.status();
+    return false;
+  }
+  return CanEnablePeerAccess(from_device.value(), to_device.value());
+}
+
+/* static */ bool GpuDriver::CanEnablePeerAccess(GpuDeviceHandle from,
+                                                 GpuDeviceHandle to) {
+  int can_access_peer = -1;
+  hipError_t result = hipDeviceCanAccessPeer(&can_access_peer, from, to);
+  if (result != hipSuccess) {
+    LOG(ERROR) << "failed to detect peer access capability: "
+               << ToString(result);
+    return false;
+  }
   return can_access_peer;
 }
 
 /* static */ tsl::Status GpuDriver::EnablePeerAccess(GpuContext* from,
                                                      GpuContext* to) {
-  if (from->device_ordinal() == to->device_ordinal()) {
+  if (from == to) {
     return tsl::OkStatus();  // A device can always access its own memory.
   }
 
   ScopedActivateContext activated{from};
   hipError_t result =
-      wrap::hipDeviceEnablePeerAccess(to->device_ordinal(), 0 /* = flags */);
+      wrap::hipCtxEnablePeerAccess(to->context(), 0 /* = flags */);
   if (result != hipSuccess && result != hipErrorPeerAccessAlreadyEnabled) {
     return tsl::Status{
         absl::StatusCode::kInternal,

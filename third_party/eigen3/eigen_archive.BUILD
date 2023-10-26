@@ -4,8 +4,6 @@
 # This is the BUILD file used for the @eigen_archive external repository.
 
 licenses([
-    # Note: Although Eigen also includes GPL V3 and LGPL v2.1+ code, TensorFlow
-    #       has taken special care to not reference any restricted code.
     "reciprocal",  # MPL2
     "notice",  # Portions BSD
 ])
@@ -26,38 +24,29 @@ EIGEN_HEADERS = glob(
     ] + ALL_FILES_WITH_EXTENSIONS,
 )
 
-# Internal eigen headers, known to be under an MPL2 license.
-EIGEN_MPL2_SOURCES = glob(
+# Internal eigen headers.
+EIGEN_SOURCES = glob(
     [
         "Eigen/**/src/**/*.h",
         "Eigen/**/src/**/*.inc",
         "unsupported/Eigen/**/src/**/*.h",
         "unsupported/Eigen/**/src/**/*.inc",
     ],
-    exclude = [
-        # This guarantees that any file depending on non MPL2 licensed code
-        # will not compile.
-        "Eigen/src/Core/util/NonMPL2.h",
-    ],
-)
-
-alias(
-    name = "eigen3",
-    actual = "@org_tensorflow//third_party/eigen3",
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
-    name = "eigen3_internal",
-    srcs = EIGEN_MPL2_SOURCES,
+    name = "eigen3",
+    srcs = EIGEN_SOURCES,
     hdrs = EIGEN_HEADERS,
     defines = [
-        # This define (mostly) guarantees we don't link any problematic
-        # code. We use it, but we do not rely on it, as evidenced above.
-        "EIGEN_MPL2_ONLY",
         "EIGEN_MAX_ALIGN_BYTES=64",
+        "EIGEN_ALLOW_UNALIGNED_SCALARS",  # TODO(b/296071640): Remove when underlying bugs are fixed.
+        "EIGEN_USE_AVX512_GEMM_KERNELS=0",  # TODO(b/238649163): Remove this once no longer necessary.
     ],
-    includes = ["."],
+    includes = [
+        ".",  # Third-party libraries include eigen relative to its root.
+        "./mkl_include",  # For using MKL backend for Eigen when available.
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -69,6 +58,6 @@ filegroup(
 
 filegroup(
     name = "eigen_source_files",
-    srcs = EIGEN_MPL2_SOURCES,
+    srcs = EIGEN_SOURCES,
     visibility = ["//visibility:public"],
 )

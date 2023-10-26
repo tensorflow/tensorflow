@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <initializer_list>
 #include <map>
 #include <memory>
 #include <optional>
@@ -31,20 +32,31 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
+#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/array.h"
+#include "xla/array2d.h"
+#include "xla/array3d.h"
+#include "xla/array4d.h"
 #include "xla/client/padding.h"
 #include "xla/client/xla_computation.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/dynamic_parameter_binding.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
 #include "xla/statusor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/lib/core/bitmap.h"
+#include "tsl/platform/errors.h"
 #include "tsl/platform/stacktrace.h"
 
 namespace xla {
@@ -1050,6 +1062,9 @@ class XlaBuilder {
 
   // Internal helper method that creates a sequence of instructions that
   // performs an explicit broadcast of the operand to the target shape.
+  // All dimensions of the operand must either be equal to the corresponding
+  // output shape dimension, or be exactly 1.  (Such dimensions are the
+  // degenerate dimensions.)
   StatusOr<XlaOp> AddBroadcastSequence(const Shape& output_shape,
                                        XlaOp operand);
 

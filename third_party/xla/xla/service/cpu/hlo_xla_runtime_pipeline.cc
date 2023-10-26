@@ -73,9 +73,8 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions(
 
   OneShotBufferizationOptions options;
   options.bufferizeFunctionBoundaries = true;
-  options.allowReturnAllocs = true;
+  options.allowReturnAllocsFromLoops = true;
   options.setFunctionBoundaryTypeConversion(LayoutMapOption::IdentityLayoutMap);
-  options.createDeallocs = !new_deallocator;
   options.unknownTypeConverterFn = [](mlir::Value value,
                                       mlir::Attribute memorySpace,
                                       const BufferizationOptions& options) {
@@ -109,13 +108,13 @@ void AddSparsificationPasses(mlir::OpPassManager& pm, bool new_deallocator,
   pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
   pm.addPass(mlir::createSparsificationAndBufferizationPass(
       GetBufferizationOptions(new_deallocator), sparsification_options,
-      mlir::SparseTensorConversionOptions(),
       /*createSparseDeallocs=*/false,
       /*enableRuntimeLibrary=*/false,
       /*enableBufferInitialization=*/false,
       /*vectorLength=*/0,
       /*enableVLAVectorization=*/false,
       /*enableSIMDIndex32*/ false));
+  pm.addPass(mlir::createStorageSpecifierToLLVMPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createFinalizingBufferizePass());

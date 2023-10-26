@@ -97,7 +97,7 @@ static void RegisterPasses() {
     // passes.
     mlir::mhlo::registerTfXlaPasses();
     mlir::mhlo::registerLegalizeTFPass();
-    mlir::stablehlo::registerBridgePasses();
+    mlir::quant::stablehlo::registerBridgePasses();
     mlir::tosa::registerLegalizeTosaPasses();
     mlir::tosa::registerTFtoTOSALegalizationPipeline();
     mlir::tosa::registerTFLtoTOSALegalizationPipeline();

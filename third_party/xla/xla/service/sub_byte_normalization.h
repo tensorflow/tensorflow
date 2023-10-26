@@ -24,21 +24,41 @@ limitations under the License.
 
 namespace xla {
 
-// A pass that unconditionally removes the sub-byte element_size_in_bits
-// annotation for platforms that doesn't support nibble-packed types. After this
-// pass, a sub-byte type is treated as int8 for space occupation and arithmetic
-// operations. This pass is used in HloEvaluation and testing only.
+// A pass that can modify the sub-byte element_size_in_bits annotation on
+// layouts. Depending on the constructor argument, it either removes the
+// element_size_in_bits annotation for platforms that doesn't support
+// nibble-packed types, or it sets element_size_in_bits to 4 for 4-bit values.
 class SubByteNormalization : public HloModulePass {
  public:
-  SubByteNormalization() = default;
+  enum Mode {
+    // Remove element_size_in_bits on all layouts. Useful for platforms which
+    // do not support nibble-packed types.
+    REMOVE_ELEMENT_SIZE,
+    // Set element_size_in_bits to 4 for layouts of int4 types (S4, U4), and to
+    // 0 for all other layouts. Useful for platforms which support nibble-packed
+    // types.
+    SET_ELEMENT_SIZE,
+  };
+
+  explicit SubByteNormalization(Mode mode) : mode_(mode) {}
 
   ~SubByteNormalization() override = default;
 
-  absl::string_view name() const override { return "int4-size-removal"; }
+  absl::string_view name() const override {
+    switch (mode_) {
+      case REMOVE_ELEMENT_SIZE:
+        return "int4-size-removal";
+      case SET_ELEMENT_SIZE:
+        return "int4-size-setter";
+    }
+  }
   using HloPassInterface::Run;
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  Mode mode_;
 };
 
 }  // namespace xla

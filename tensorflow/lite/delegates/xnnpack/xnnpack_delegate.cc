@@ -530,6 +530,11 @@ class Delegate {
 #endif
   }
 
+  bool enable_latest_operators() const {
+    return (options_.flags &
+            TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS) != 0;
+  }
+
   bool support_variable_ops() const {
     if (options_.flags & TFLITE_XNNPACK_DELEGATE_FLAG_VARIABLE_OPERATORS) {
       return true;
@@ -2332,6 +2337,14 @@ class Subgraph {
                                       node_index, node, context->tensors,
                                       pool_params, input_output_tensors);
       }
+      case kTfLiteBuiltinBatchMatmul: {
+        const TfLiteBatchMatMulParams* batchmatmul_params =
+            static_cast<const TfLiteBatchMatMulParams*>(node->builtin_data);
+
+        return VisitBatchMatMulNode(subgraph, delegate, logging_context,
+                                    node_index, node, context->tensors,
+                                    batchmatmul_params, input_output_tensors);
+      }
       case kTfLiteBuiltinCeil:
         return VisitCeilNode(subgraph, delegate, logging_context, node_index,
                              node, context->tensors, input_output_tensors);
@@ -2817,6 +2830,163 @@ class Subgraph {
       }
     }
 
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitBatchMatMulNode(
+      xnn_subgraph_t subgraph, const Delegate& delegate,
+      TfLiteContext* logging_context, int node_index, TfLiteNode* node,
+      const TfLiteTensor* tensors, const TfLiteBatchMatMulParams* params,
+      const std::unordered_map<int, uint32_t>& input_output_tensors) {
+    if (!delegate.enable_latest_operators()) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "failed to delegate %s node #%d. Delegation of latest "
+          "operators must be enabled",
+          EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index);
+      return kTfLiteError;
+    }
+    const TfLiteTensor& input1_tensor = tensors[node->inputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+        logging_context, input1_tensor, node->inputs->data[0], node_index));
+    const TfLiteTensor& input2_tensor = tensors[node->inputs->data[1]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+        logging_context, input2_tensor, node->inputs->data[1], node_index));
+    const TfLiteTensor& output_tensor = tensors[node->outputs->data[0]];
+    TF_LITE_ENSURE_STATUS(CheckTensorFloat32Type(
+        logging_context, output_tensor, node->outputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input1_tensor, node->inputs->data[0], node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input1_tensor, node->inputs->data[1], node_index));
+    const int input1_dimensions = NumDimensions(&input1_tensor);
+    if (input1_dimensions < 3) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "failed to delegate %s node #%d. Unsupported number "
+          "of dimensions %d for tensor #%d, must be at least 3",
+          EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
+          node->inputs->data[0], input1_dimensions);
+      return kTfLiteError;
+    }
+    const int input2_dimensions = NumDimensions(&input2_tensor);
+    if (input2_dimensions < 3) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "failed to delegate %s node #%d. Unsupported number "
+          "of dimensions %d for tensor #%d, must be at least 3",
+          EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
+          node->inputs->data[1], input2_dimensions);
+      return kTfLiteError;
+    }
+    if (input1_dimensions != input2_dimensions) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "failed to delegate %s node #%d with input tensor #%d and input "
+          "tensor #%d.  Mismatching number of dimensions for %d != %d",
+          EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
+          node->inputs->data[0], node->inputs->data[1], input1_dimensions,
+          input2_dimensions);
+      return kTfLiteError;
+    }
+    const int output_dimensions = NumDimensions(&output_tensor);
+    if (output_dimensions != input1_dimensions) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "failed to delegate %s node #%d input tensor #%d and output tensor "
+          "#%d.  Mismatching number of dimensions for %d != %d",
+          EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
+          node->inputs->data[0], node->outputs->data[0], input1_dimensions,
+          output_dimensions);
+      return kTfLiteError;
+    }
+    // Check that all batch dimensions match.
+    for (size_t i = 0; i < input1_dimensions - 2; i++) {
+      if (input1_tensor.dims->data[i] != input2_tensor.dims->data[i]) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "failed to delegate %s node #%d input tensor #%d and input tensor "
+            "#%d.  Mismatch at dimensions %zu (%d != %d)",
+            EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
+            node->inputs->data[0], node->inputs->data[1],
+            input1_tensor.dims->data[i], input2_tensor.dims->data[i]);
+        return kTfLiteError;
+      }
+      if (input1_tensor.dims->data[i] != output_tensor.dims->data[i]) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "failed to delegate %s node #%d input tensor #%d and output tensor "
+            "#%d.  Mismatch at dimensions %zu (%d != %d)",
+            EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
+            node->inputs->data[0], node->outputs->data[0],
+            input1_tensor.dims->data[i], output_tensor.dims->data[i]);
+        return kTfLiteError;
+      }
+    }
+    if (params->adj_x) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "failed to delegate %s node #%d. adj_x is not supported",
+          EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index);
+      return kTfLiteError;
+    }
+    // Check that channel dimension matches.
+    const size_t input1_k = input1_dimensions - 1;
+    const size_t input2_k =
+        params->adj_y ? input2_dimensions - 1 : input2_dimensions - 2;
+    if (input1_tensor.dims->data[input1_k] !=
+        input2_tensor.dims->data[input2_k]) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "failed to delegate %s node #%d input tensor #%d and input tensor "
+          "#%d.  Mismatching number of channels (%d != %d)",
+          EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
+          node->inputs->data[0], node->inputs->data[1],
+          input1_tensor.dims->data[input1_k],
+          input2_tensor.dims->data[input2_k]);
+      return kTfLiteError;
+    }
+    const int last_dimension = input1_dimensions - 1;
+    const int input2_n =
+        params->adj_y ? input2_dimensions - 2 : input2_dimensions - 1;
+    // Check that output is [M x N].
+    if (output_tensor.dims->data[last_dimension - 1] !=
+        input1_tensor.dims->data[last_dimension - 1]) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "failed to delegate %s node #%d input tensor #%d and output tensor "
+          "#%d.  Mismatch at second last dimension of output (%d != %d)",
+          EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
+          node->inputs->data[0], node->outputs->data[0],
+          input1_tensor.dims->data[last_dimension - 1],
+          output_tensor.dims->data[last_dimension - 1]);
+      return kTfLiteError;
+    }
+    if (output_tensor.dims->data[last_dimension] !=
+        input2_tensor.dims->data[input2_n]) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "failed to delegate %s node #%d input tensor #%d and output tensor "
+          "#%d.  Mismatch at last dimension of output (%d != %d)",
+          EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index,
+          node->inputs->data[1], node->outputs->data[0],
+          input2_tensor.dims->data[last_dimension - 1],
+          output_tensor.dims->data[last_dimension]);
+      return kTfLiteError;
+    }
+    if (subgraph != nullptr) {
+      uint32_t flags = params->adj_y;
+      xnn_status status = xnn_define_batch_matrix_multiply(
+          subgraph, input_output_tensors.at(node->inputs->data[0]),
+          input_output_tensors.at(node->inputs->data[1]),
+          input_output_tensors.at(node->outputs->data[0]), flags);
+      if (status != xnn_status_success) {
+        TF_LITE_KERNEL_LOG(
+            logging_context, "failed to delegate %s node #%d",
+            EnumNameBuiltinOperator(BuiltinOperator_BATCH_MATMUL), node_index);
+        return kTfLiteError;
+      }
+    }
     return kTfLiteOk;
   }
 
@@ -3399,7 +3569,7 @@ class Subgraph {
   static TfLiteStatus VisitFullyConnectedNode(
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
-      const TfLiteTensor* tensors, const TfLiteFullyConnectedParams* fc_params,
+      TfLiteTensor* tensors, const TfLiteFullyConnectedParams* fc_params,
       const std::unordered_set<int>& quasi_static_tensors,
       const std::unordered_map<int, uint32_t>& input_output_tensors) {
     TF_LITE_ENSURE_STATUS(
@@ -3472,8 +3642,11 @@ class Subgraph {
     const int32_t output_channels = SizeOfDimension(&filter_tensor, 0);
     const int32_t input_channels = SizeOfDimension(&filter_tensor, 1);
 
+    bool dynamically_quantized = (delegate.enable_latest_operators() &&
+                                  (input_tensor.type == kTfLiteFloat32 &&
+                                   filter_tensor.type == kTfLiteInt8));
     if (input_tensor.type != output_tensor.type ||
-        input_tensor.type != filter_tensor.type) {
+        ((input_tensor.type != filter_tensor.type) && !dynamically_quantized)) {
       TF_LITE_MAYBE_KERNEL_LOG(
           logging_context,
           "unsupported mixed types in FULLY_CONNECTED operator #%d",
@@ -3561,22 +3734,109 @@ class Subgraph {
         &output_max));
 
     if (subgraph != nullptr) {
-      const xnn_status status = xnn_define_fully_connected(
-          subgraph, output_min, output_max,
-          /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
-          /*filter_id=*/input_output_tensors.at(node->inputs->data[1]),
-          /*bias_id=*/bias_tensor_id >= 0
-              ? input_output_tensors.at(bias_tensor_id)
-              : XNN_INVALID_VALUE_ID,
-          /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
-          /*flags=*/fc_params->keep_num_dims ? 0
-                                             : XNN_FLAG_TENSORFLOW_RESHAPE_2D);
-      if (status != xnn_status_success) {
-        TF_LITE_KERNEL_LOG(
-            logging_context, "failed to delegate %s node #%d",
-            EnumNameBuiltinOperator(BuiltinOperator_FULLY_CONNECTED),
-            node_index);
-        return kTfLiteError;
+      if (dynamically_quantized) {
+        TfLiteAffineQuantization* filter_params =
+            reinterpret_cast<TfLiteAffineQuantization*>(
+                filter_tensor.quantization.params);
+        if (filter_params->scale->size != output_channels) {
+          TfLiteFloatArrayFree(filter_params->scale);
+          filter_params->scale = TfLiteFloatArrayCreate(output_channels);
+          std::fill_n(filter_params->scale->data, output_channels,
+                      filter_tensor.params.scale);
+        }
+        uint32_t dq_quantized_id = XNN_INVALID_VALUE_ID;
+        size_t num_nonbatch_dims = 0;
+        int ic = 1;
+        int input_dims_remaining = NumDimensions(&input_tensor) - 1;
+        // Which input dimensions are part of input_channels.
+        while (ic != input_channels && input_dims_remaining >= 0) {
+          ic *= input_tensor.dims->data[input_dims_remaining];
+          --input_dims_remaining;
+          ++num_nonbatch_dims;
+        }
+        if (ic != input_channels) {
+          TF_LITE_KERNEL_LOG(
+              logging_context,
+              "Could not determine how many input dimensions to use for "
+              "input_channels: %s node #%d",
+              EnumNameBuiltinOperator(BuiltinOperator_FULLY_CONNECTED),
+              node_index);
+        }
+        std::vector<size_t> input_dims(
+            &input_tensor.dims->data[0],
+            &input_tensor.dims->data[NumDimensions(&input_tensor)]);
+        xnn_status status = xnn_define_dynamically_quantized_tensor_value(
+            subgraph, xnn_datatype_qdint8, input_dims.size(), num_nonbatch_dims,
+            input_dims.data(), XNN_INVALID_VALUE_ID,
+            /*flags=*/0, &dq_quantized_id);
+        if (status != xnn_status_success) {
+          TF_LITE_KERNEL_LOG(logging_context,
+                             "failed to create XNNPACK Value for tensor %d",
+                             -1);
+          return kTfLiteError;
+        }
+        status = xnn_define_convert(
+            subgraph,
+            /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
+            dq_quantized_id, /*flags=*/0);
+        if (status != xnn_status_success) {
+          TF_LITE_KERNEL_LOG(
+              logging_context, "failed to delegate %s node #%d",
+              EnumNameBuiltinOperator(BuiltinOperator_FULLY_CONNECTED),
+              node_index);
+          return kTfLiteError;
+        }
+        std::vector<size_t> filter_dims(
+            &filter_tensor.dims->data[0],
+            &filter_tensor.dims->data[NumDimensions(&filter_tensor)]);
+        uint32_t kernel_id = XNN_INVALID_VALUE_ID;
+        status = xnn_define_channelwise_quantized_tensor_value(
+            subgraph, xnn_datatype_qcint8, filter_params->scale->data,
+            filter_dims.size(), /*channel_dim=*/0, filter_dims.data(),
+            GetTensorData<int8_t>(&filter_tensor), XNN_INVALID_VALUE_ID,
+            /*flags=*/0, &kernel_id);
+        if (status != xnn_status_success) {
+          TF_LITE_KERNEL_LOG(
+              logging_context, "failed to update filter tensor %s node #%d",
+              EnumNameBuiltinOperator(BuiltinOperator_FULLY_CONNECTED),
+              node_index);
+          return kTfLiteError;
+        }
+        status = xnn_define_fully_connected(
+            subgraph, output_min, output_max, dq_quantized_id, kernel_id,
+            /*bias_id=*/bias_tensor_id >= 0
+                ? input_output_tensors.at(bias_tensor_id)
+                : XNN_INVALID_VALUE_ID,
+            /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
+            /*flags=*/fc_params->keep_num_dims
+                ? 0
+                : XNN_FLAG_TENSORFLOW_RESHAPE_2D);
+        if (status != xnn_status_success) {
+          TF_LITE_KERNEL_LOG(
+              logging_context, "failed to delegate %s node #%d",
+              EnumNameBuiltinOperator(BuiltinOperator_FULLY_CONNECTED),
+              node_index);
+          return kTfLiteError;
+        }
+      } else {
+        const xnn_status status = xnn_define_fully_connected(
+            subgraph, output_min, output_max,
+            /*input_id=*/input_output_tensors.at(node->inputs->data[0]),
+            /*filter_id=*/input_output_tensors.at(node->inputs->data[1]),
+            /*bias_id=*/bias_tensor_id >= 0
+                ? input_output_tensors.at(bias_tensor_id)
+                : XNN_INVALID_VALUE_ID,
+            /*output_id=*/input_output_tensors.at(node->outputs->data[0]),
+            /*flags=*/fc_params->keep_num_dims
+                ? 0
+                : XNN_FLAG_TENSORFLOW_RESHAPE_2D);
+        if (status != xnn_status_success) {
+          TF_LITE_KERNEL_LOG(
+              logging_context, "failed to delegate %s node #%d",
+              EnumNameBuiltinOperator(BuiltinOperator_FULLY_CONNECTED),
+              node_index);
+          return kTfLiteError;
+        }
       }
     }
 

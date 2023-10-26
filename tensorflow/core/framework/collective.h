@@ -389,7 +389,8 @@ class CollectiveExecutor : public core::RefCounted {
   static OpKernelContext::Params* CtxParams(OpKernelContext* ctx);
   CollectiveExecutorMgrInterface* cem_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CollectiveExecutor);
+  CollectiveExecutor(const CollectiveExecutor&) = delete;
+  void operator=(const CollectiveExecutor&) = delete;
 };
 
 struct CollectiveContext {

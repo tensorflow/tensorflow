@@ -76,6 +76,16 @@ def LHLO_IotaOp : LHLO_Op<"iota", []> {
                    Arg<LHLO_Buffer, "", [MemWrite]>:$output);
 }
 
+def LHLO_CommandBufferOp: LHLO_Op<"command_buffer", []> {
+  let summary = "Command buffer operator";
+  let description = [{
+    A dummy operation that represents the submission of a command buffer. The
+    payload of this operation is not lowered from the HLO instruction, because
+    we will emit thunk from HLO.
+  }];
+  let arguments = (ins);
+}
+
 //===----------------------------------------------------------------------===//
 // LMHLO unary elementwise op definitions.
 //===----------------------------------------------------------------------===//

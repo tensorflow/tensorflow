@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 
 #include <algorithm>
+#include <array>
 #include <climits>
 #include <cstddef>
 #include <cstdint>
@@ -49,7 +50,6 @@ limitations under the License.
 #include "xla/status.h"
 #include "xla/status_macros.h"
 #include "xla/statusor.h"
-#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
@@ -66,37 +66,7 @@ namespace xla {
 using absl::StrCat;
 
 namespace {
-// An array that is indexed by PrimitiveType, and returns
-// the size of each element of that primitive type, or 0
-// if the PrimitiveType is not a primitive type
-constexpr uint8_t primitive_byte_size[PrimitiveType_ARRAYSIZE] = {
-    0,                   // PRIMITIVE_TYPE_INVALID = 0,
-    sizeof(int8_t),      // PRED = 1
-    sizeof(int8_t),      // S8 = 2
-    sizeof(int16_t),     // S16 = 3
-    sizeof(int32_t),     // S32 = 4
-    sizeof(int64_t),     // S64 = 5
-    sizeof(uint8_t),     // U8 = 6
-    sizeof(uint16_t),    // U16 = 7
-    sizeof(uint32_t),    // U32 = 8
-    sizeof(uint64_t),    // U64 = 9
-    sizeof(float) / 2,   // F16 = 10
-    sizeof(float),       // F32 = 11
-    sizeof(double),      // F64 = 12
-    0,                   // TUPLE = 13
-    0,                   // OPAQUE_TYPE = 14
-    sizeof(complex64),   // C64 = 15
-    sizeof(float) / 2,   // BF16 = 16
-    0,                   // TOKEN = 17
-    sizeof(complex128),  // C128 = 18
-    sizeof(float) / 4,   // F8E5M2 = 19
-    sizeof(float) / 4,   // F8E4M3FN = 20
-    sizeof(int8_t),      // S4 = 21
-    sizeof(int8_t),      // U4 = 22
-    sizeof(float) / 4,   // F8E4M3B11FNUZ = 23
-    sizeof(float) / 4,   // F8E4M3FNUZ = 24
-    sizeof(float) / 4,   // F8E5M2FNUZ = 25
-};
+
 constexpr int64_t kAnnotationPrintInterval = 5;
 
 template <bool kPrintLayout>
@@ -252,7 +222,7 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
 /* static */ int64_t ShapeUtil::TrueRank(const Shape& shape) {
   int64_t accum = 0;
   for (int64_t dimension : shape.dimensions()) {
-    // We do not count zero dimensions.
+    // We do not count unit dimensions.
     if (dimension != 1) {
       accum += 1;
     }
@@ -263,10 +233,9 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
 /* static */ bool ShapeUtil::FillNewShape(PrimitiveType element_type,
                                           absl::Span<const int64_t> dimensions,
                                           Shape* shape) {
-  const int eint = static_cast<int>(element_type);
-  int64_t dense_shape_size = ((eint >= 0 && eint < PrimitiveType_ARRAYSIZE)
-                                  ? primitive_byte_size[eint]
-                                  : 0);  // Out of range: force a failure
+  int64_t dense_shape_size = primitive_util::IsArrayType(element_type)
+                                 ? primitive_util::ByteWidth(element_type)
+                                 : 0;
   if (dense_shape_size <= 0) {
     return false;
   }
@@ -513,7 +482,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ void ShapeUtil::UpdateTupleShape(const Shape& shape, int64_t index,
                                               Shape* tuple_shape) {
-  CHECK(index < tuple_shape->tuple_shapes_size());
+  CHECK_LT(index, tuple_shape->tuple_shapes_size());
   *tuple_shape->mutable_tuple_shapes(index) = shape;
 }
 
@@ -876,7 +845,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 
 /* static */ int64_t ShapeUtil::ByteSizeOf(const Shape& shape,
                                            int64_t pointer_size) {
-  TF_DCHECK_OK(ValidateShape(shape));
+  TF_DCHECK_OK(ValidateShapeWithOptionalLayout(shape));
   if (shape.element_type() == TUPLE) {
     return ByteSizeOfTupleIndexTable(shape, pointer_size);
   } else if (shape.IsArray()) {
@@ -900,7 +869,7 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 }
 
 /* static */ int64_t ShapeUtil::ByteSizeOfElements(const Shape& shape) {
-  TF_DCHECK_OK(ValidateShape(shape));
+  TF_DCHECK_OK(ValidateShapeWithOptionalLayout(shape));
   int64_t allocated_element_count;
 
   CHECK(LayoutUtil::IsDenseArray(shape)) << shape.ShortDebugString();

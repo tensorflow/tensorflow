@@ -76,6 +76,7 @@ ENTRY AddDotsFunc {
   }
 }
 
+#if GOOGLE_CUDA
 TEST_F(GemmRewriteTest, TestBatchedAutotuning) {
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::AMPERE)) {
     GTEST_SKIP()
@@ -97,6 +98,7 @@ ENTRY %test {
 ; CHECK: selected_algorithm
       )");
 }
+#endif
 
 TEST_F(GemmRewriteTest, SimpleRewriteDeterministic) {
   const char* hlo_text = R"(
@@ -184,6 +186,7 @@ ENTRY broadcast {
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
+#if GOOGLE_CUDA
 // A test fixture class for tests which should have similar results with legacy
 // cublas and cublasLt
 class ParameterizedGemmRewriteTest
@@ -898,6 +901,30 @@ ENTRY int8gemm {
   }
 }
 
+TEST_F(GemmRewriteTest, Int8GemmRankGreaterThanTwo) {
+  const char* hlo_text = R"(
+HloModule int8gemm
+
+ENTRY main.4 {
+  Arg_0.1 = s8[1,8,2]{2,1,0} parameter(0)
+  Arg_1.2 = s8[2,4]{1,0} parameter(1)
+  ROOT dot.3 = s32[1,8,4]{2,1,0} dot(Arg_0.1, Arg_1.2),
+  lhs_contracting_dims={2}, rhs_contracting_dims={0}
+}
+  )";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+
+  if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+    MatchOptimizedHlo(hlo_text,
+                      R"(
+; CHECK %custom-call = s32[8,4]{1,0} custom-call(s8[8,4]{1,0} %fusion.1, s8[4,4]{0,1} %bitcast.13), custom_call_target="__cublas$gemm", backend_config={"selected_algorithm":"0","alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
+; CHECK: ROOT %bitcast.1 = s32[1,8,4]{2,1,0} bitcast(s32[8,4]{1,0} %custom-call)
+  )",
+                      /*print_operand_shape=*/true);
+  }
+}
+
 TEST_P(ParameterizedGemmRewriteTest, Int8GemmNoAlphaRewrite) {
   const char* hlo_text = R"(
 HloModule int8gemm
@@ -1262,6 +1289,7 @@ ENTRY main {
 
 INSTANTIATE_TEST_SUITE_P(CublasTestsBothLegacyAndLt,
                          ParameterizedGemmRewriteTest, ::testing::Bool());
+#endif
 
 // A test fixture class for tests which are specific to legacy cublas
 class LegacyCublasGemmRewriteTest : public GemmRewriteTest {
@@ -1693,6 +1721,7 @@ ENTRY test {
 )");
 }
 
+#if GOOGLE_CUDA
 // Test gemm matrix bias add fusion with mix type
 TEST_F(LegacyCublasGemmRewriteTest, MatrixBiasMixType) {
   std::vector<std::tuple<absl::string_view, absl::string_view>>
@@ -1763,6 +1792,7 @@ ENTRY test {
                                          m::Negate(m::Parameter(2)))));
   }
 }
+#endif
 
 // Test batch gemm matrix bias add fusion with mix type that is not supported
 TEST_F(LegacyCublasGemmRewriteTest, MatrixBiasMixTypeNotSupported) {
@@ -1896,6 +1926,7 @@ ENTRY test {
           m::CustomCall(m::Parameter(0), m::Parameter(1), m::Constant()))));
 }
 
+#if GOOGLE_CUDA
 // A test fixture class for tests which are specific to cublasLt
 class CublasLtGemmRewriteTest : public GemmRewriteTest {
  public:
@@ -7062,6 +7093,7 @@ TEST_P(ParameterizedFp8GemmRewriteTest, FnuzTypeF8) {
 
 INSTANTIATE_TEST_SUITE_P(Fp8CublasTestsBothLegacyAndLt,
                          ParameterizedFp8GemmRewriteTest, ::testing::Bool());
+#endif
 
 TEST_F(GemmRewriteTest, NoFuseBiasBroadcast) {
   const char* hlo = R"(

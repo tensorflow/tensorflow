@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cmath>
 #include <complex>
+#include <cstdint>
 #include <functional>
 #include <iterator>
 #include <limits>
@@ -40,7 +41,10 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "absl/types/span.h"
+#include "Eigen/Core"  // from @eigen_archive
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_domain_metadata.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
@@ -48,18 +52,30 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/hlo_sharding_metadata.h"
+#include "xla/layout.h"
+#include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/computation_layout.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_lexer.h"
+#include "xla/service/hlo_module_config.h"
+#include "xla/service/name_uniquer.h"
 #include "xla/service/shape_inference.h"
+#include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/shape_util.h"
+#include "xla/status.h"
+#include "xla/statusor.h"
+#include "xla/types.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/lib/gtl/map_util.h"
-#include "tsl/platform/float8.h"
+#include "tsl/platform/errors.h"
+#include "tsl/platform/logging.h"
 
 namespace xla {
 
@@ -378,7 +394,7 @@ class HloParserImpl : public HloParser {
   // Fills parsed operands into 'operands' and expects a certain number of
   // operands.
   bool ParseOperands(std::vector<HloInstruction*>* operands,
-                     HloComputation::Builder* builder, const int expected_size);
+                     HloComputation::Builder* builder, int expected_size);
 
   // Describes the start, limit, and stride on every dimension of the operand
   // being sliced.
@@ -489,14 +505,13 @@ class HloParserImpl : public HloParser {
   bool ParseHloComputation(HloComputation** result);
   bool ParseHloComputationList(std::vector<HloComputation*>* result);
   bool ParseShapeList(std::vector<Shape>* result);
-  bool ParseInt64List(const TokKind start, const TokKind end,
-                      const TokKind delim, std::vector<int64_t>* result);
-  bool ParseInt64ListList(const TokKind start, const TokKind end,
-                          const TokKind delim,
+  bool ParseInt64List(TokKind start, TokKind end, TokKind delim,
+                      std::vector<int64_t>* result);
+  bool ParseInt64ListList(TokKind start, TokKind end, TokKind delim,
                           std::vector<std::vector<int64_t>>* result);
   // 'parse_and_add_item' is an lambda to parse an element in the list and add
   // the parsed element to the result. It's supposed to capture the result.
-  bool ParseList(const TokKind start, const TokKind end, const TokKind delim,
+  bool ParseList(TokKind start, TokKind end, TokKind delim,
                  absl::FunctionRef<bool()> parse_and_add_item);
 
   bool ParseParamListToShape(Shape* shape, LocTy* shape_loc);
@@ -995,6 +1010,7 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   std::optional<bool> alias_passthrough_params;
   absl::flat_hash_map<std::string, AttrConfig> attrs;
   std::optional<ComputationLayout> entry_computation_layout;
+  std::optional<FrontendAttributes> frontend_attributes;
   BoolList allow_spmd_sharding_propagation_to_output;
 
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
@@ -1007,6 +1023,8 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   attrs["entry_computation_layout"] = {/*required=*/false,
                                        AttrTy::kComputationLayout,
                                        &entry_computation_layout};
+  attrs["frontend_attributes"] = {
+      /*required=*/false, AttrTy::kFrontendAttributes, &frontend_attributes};
   attrs["allow_spmd_sharding_propagation_to_output"] = {
       /*required=*/false, AttrTy::kBracedBoolListOrBool,
       &allow_spmd_sharding_propagation_to_output};
@@ -1052,6 +1070,9 @@ bool HloParserImpl::ParseHloModule(HloModule* module,
   if (entry_computation_layout.has_value()) {
     *config.mutable_entry_computation_layout() = *entry_computation_layout;
     default_config = false;
+  }
+  if (frontend_attributes) {
+    module->set_frontend_attributes(frontend_attributes.value());
   }
   if (!allow_spmd_sharding_propagation_to_output.empty()) {
     config.set_allow_spmd_sharding_propagation_to_output(
@@ -3632,111 +3653,39 @@ bool HloParserImpl::ParseInstructionNames(
                     "expects '}' at the end of instruction name list");
 }
 
-bool HloParserImpl::SetValueInLiteral(LocTy loc, int64_t value, int64_t index,
-                                      Literal* literal) {
-  const Shape& shape = literal->shape();
-  return primitive_util::PrimitiveTypeSwitch<bool>(
-      [&](auto primitive_type_constant) -> bool {
-        if constexpr (primitive_type_constant == PRED) {
-          return SetValueInLiteralHelper<bool>(loc, static_cast<bool>(value),
-                                               index, literal);
-        }
-        if constexpr (primitive_util::IsIntegralType(primitive_type_constant)) {
-          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
-          return SetValueInLiteralHelper<NativeT>(loc, value, index, literal);
-        }
-        LOG(FATAL) << "unknown integral primitive type "
-                   << PrimitiveType_Name(shape.element_type());
-      },
-      shape.element_type());
-}
-
-bool HloParserImpl::SetValueInLiteral(LocTy loc, double value, int64_t index,
-                                      Literal* literal) {
-  const Shape& shape = literal->shape();
-  return primitive_util::PrimitiveTypeSwitch<bool>(
-      [&](auto primitive_type_constant) -> bool {
-        if constexpr (primitive_util::IsFloatingPointType(
-                          primitive_type_constant)) {
-          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
-          return SetValueInLiteralHelper<NativeT>(loc, value, index, literal);
-        }
-        LOG(FATAL) << "unknown floating point primitive type "
-                   << PrimitiveType_Name(shape.element_type());
-      },
-      shape.element_type());
-}
-
-bool HloParserImpl::SetValueInLiteral(LocTy loc, bool value, int64_t index,
-                                      Literal* literal) {
-  const Shape& shape = literal->shape();
-  switch (shape.element_type()) {
-    case PRED:
-      return SetValueInLiteralHelper<bool>(loc, value, index, literal);
-    default:
-      LOG(FATAL) << PrimitiveType_Name(shape.element_type())
-                 << " is not PRED type";
-  }
-}
-
-bool HloParserImpl::SetValueInLiteral(LocTy loc, std::complex<double> value,
-                                      int64_t index, Literal* literal) {
-  const Shape& shape = literal->shape();
-  return primitive_util::PrimitiveTypeSwitch<bool>(
-      [&](auto primitive_type_constant) -> bool {
-        if constexpr (primitive_util::IsComplexType(primitive_type_constant)) {
-          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
-          return SetValueInLiteralHelper<NativeT>(loc, value, index, literal);
-        }
-        LOG(FATAL) << PrimitiveType_Name(shape.element_type())
-                   << " is not a complex type";
-      },
-      shape.element_type());
-}
-
 template <typename T>
 std::string StringifyValue(T val) {
-  return StrCat(val);
-}
-template <>
-std::string StringifyValue(std::complex<double> val) {
-  return StrFormat("(%f, %f)", std::real(val), std::imag(val));
-}
-
-// Evaluates to V when T == U.
-template <typename T, typename U, typename V>
-using EnableIfSameWithType = std::enable_if_t<std::is_same_v<T, U>, V>;
-
-template <class T, EnableIfSameWithType<T, bool, bool> = false>
-uint64_t GetNanPayload(T val) {
-  return 0;
-}
-
-template <class T, EnableIfSameWithType<T, int64_t, bool> = false>
-uint64_t GetNanPayload(T val) {
-  return 0;
-}
-
-template <class T, EnableIfSameWithType<T, double, bool> = false>
-uint64_t GetNanPayload(T val) {
-  auto rep = absl::bit_cast<uint64_t>(val);
-  if (auto payload = rep & NanPayloadBitMask<double>()) {
-    return payload;
+  if constexpr (is_complex_v<T>) {
+    return StrFormat("(%f, %f)", val.real(), val.imag());
+  } else {
+    return StrCat(val);
   }
-  return QuietNanWithoutPayload<double>();
+}
+
+template <class T>
+uint64_t GetNanPayload(T val) {
+  if constexpr (std::is_same_v<T, double>) {
+    auto rep = absl::bit_cast<uint64_t>(val);
+    if (auto payload = rep & NanPayloadBitMask<double>()) {
+      return payload;
+    }
+    return QuietNanWithoutPayload<double>();
+  } else {
+    static_assert(!std::numeric_limits<T>::has_quiet_NaN);
+    static_assert(!std::numeric_limits<T>::has_signaling_NaN);
+    return 0;
+  }
 }
 
 template <typename LiteralNativeT, typename LiteralComponentT>
-EnableIfSameWithType<LiteralNativeT, LiteralComponentT, LiteralNativeT>
-LiteralNativeFromRealImag(LiteralComponentT real, LiteralComponentT imag) {
-  return real;
-}
-
-template <typename LiteralNativeT, typename LiteralComponentT>
-EnableIfSameWithType<LiteralNativeT, std::complex<LiteralComponentT>,
-                     LiteralNativeT>
-LiteralNativeFromRealImag(LiteralComponentT real, LiteralComponentT imag) {
-  return LiteralNativeT(real, imag);
+LiteralNativeT LiteralNativeFromRealImag(LiteralComponentT real,
+                                         LiteralComponentT imag) {
+  if constexpr (std::is_same_v<LiteralNativeT,
+                               std::complex<LiteralComponentT>>) {
+    return LiteralNativeT(real, imag);
+  } else {
+    return real;
+  }
 }
 
 template <typename T>
@@ -3767,6 +3716,109 @@ T GetImag(T value) {
 template <typename T>
 T GetImag(std::complex<T> value) {
   return value.imag();
+}
+
+// MaxFiniteValue is a type-traits helper used by
+// HloParserImpl::CheckParsedValueIsInRange.
+template <typename T>
+struct MinMaxFiniteValue {
+  static constexpr T max() { return std::numeric_limits<T>::max(); }
+  static constexpr T min() { return std::numeric_limits<T>::lowest(); }
+};
+
+template <typename T>
+bool IsFinite(T val) {
+  if constexpr (std::numeric_limits<T>::has_infinity ||
+                std::numeric_limits<T>::has_quiet_NaN ||
+                std::numeric_limits<T>::has_signaling_NaN) {
+    return Eigen::numext::isfinite(val);
+  } else {
+    return true;
+  }
+}
+
+template <typename LiteralNativeT, typename ParsedElemT>
+bool HloParserImpl::CheckParsedValueIsInRange(LocTy loc, ParsedElemT value) {
+  if constexpr (std::is_floating_point_v<ParsedElemT>) {
+    auto value_as_native_t = static_cast<LiteralNativeT>(value);
+    auto value_double_converted = static_cast<ParsedElemT>(value_as_native_t);
+    if (!IsFinite(value) || IsFinite(value_double_converted)) {
+      value = value_double_converted;
+    }
+  }
+  PrimitiveType literal_ty =
+      primitive_util::NativeToPrimitiveType<LiteralNativeT>();
+  if (!IsFinite(value)) {
+    // Skip range checking for non-finite value.
+  } else if constexpr (std::is_unsigned<LiteralNativeT>::value) {
+    static_assert(std::is_same_v<ParsedElemT, int64_t> ||
+                      std::is_same_v<ParsedElemT, bool>,
+                  "Unimplemented checking for ParsedElemT");
+
+    const uint64_t unsigned_value = value;
+    const uint64_t upper_bound =
+        static_cast<uint64_t>(std::numeric_limits<LiteralNativeT>::max());
+    if (unsigned_value > upper_bound) {
+      // Value is out of range for LiteralNativeT.
+      return Error(loc, StrCat("value ", value,
+                               " is out of range for literal's primitive type ",
+                               PrimitiveType_Name(literal_ty), " namely [0, ",
+                               upper_bound, "]."));
+    }
+  } else if (value > static_cast<ParsedElemT>(
+                         MinMaxFiniteValue<LiteralNativeT>::max()) ||
+             value < static_cast<ParsedElemT>(
+                         MinMaxFiniteValue<LiteralNativeT>::min())) {
+    // Value is out of range for LiteralNativeT.
+    return Error(
+        loc,
+        StrCat(
+            "value ", value, " is out of range for literal's primitive type ",
+            PrimitiveType_Name(literal_ty), " namely [",
+            static_cast<ParsedElemT>(MinMaxFiniteValue<LiteralNativeT>::min()),
+            ", ",
+            static_cast<ParsedElemT>(MinMaxFiniteValue<LiteralNativeT>::max()),
+            "]."));
+  }
+  return true;
+}
+
+template <typename LiteralNativeT>
+bool HloParserImpl::CheckParsedValueIsInRange(LocTy loc,
+                                              std::complex<double> value) {
+  // e.g. `float` for std::complex<float>
+  using LiteralComplexComponentT =
+      decltype(std::real(std::declval<LiteralNativeT>()));
+
+  // We could do simply
+  //
+  //   return CheckParsedValueIsInRange<LiteralNativeT>(std::real(value)) &&
+  //          CheckParsedValueIsInRange<LiteralNativeT>(std::imag(value));
+  //
+  // but this would give bad error messages on failure.
+
+  auto check_component = [&](absl::string_view name, double v) {
+    if (!std::isfinite(v)) {
+      // Skip range-checking for non-finite values.
+      return true;
+    }
+
+    double min = MinMaxFiniteValue<LiteralComplexComponentT>::min();
+    double max = MinMaxFiniteValue<LiteralComplexComponentT>::max();
+    if (v < min || v > max) {
+      // Value is out of range for LitearlComplexComponentT.
+      return Error(
+          loc,
+          StrCat(name, " part ", v,
+                 " is out of range for literal's primitive type ",
+                 PrimitiveType_Name(
+                     primitive_util::NativeToPrimitiveType<LiteralNativeT>()),
+                 ", namely [", min, ", ", max, "]."));
+    }
+    return true;
+  };
+  return check_component("real", std::real(value)) &&
+         check_component("imaginary", std::imag(value));
 }
 
 template <typename LiteralNativeT, typename ParsedElemT>
@@ -3849,6 +3901,68 @@ bool HloParserImpl::SetValueInLiteralHelper(LocTy loc, ParsedElemT value,
       LiteralNativeFromRealImag<LiteralNativeT>(literal_real_value,
                                                 literal_imag_value);
   return true;
+}
+
+bool HloParserImpl::SetValueInLiteral(LocTy loc, int64_t value, int64_t index,
+                                      Literal* literal) {
+  const Shape& shape = literal->shape();
+  return primitive_util::PrimitiveTypeSwitch<bool>(
+      [&](auto primitive_type_constant) -> bool {
+        if constexpr (primitive_type_constant == PRED) {
+          return SetValueInLiteralHelper<bool>(loc, static_cast<bool>(value),
+                                               index, literal);
+        }
+        if constexpr (primitive_util::IsIntegralType(primitive_type_constant)) {
+          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+          return SetValueInLiteralHelper<NativeT>(loc, value, index, literal);
+        }
+        LOG(FATAL) << "unknown integral primitive type "
+                   << PrimitiveType_Name(shape.element_type());
+      },
+      shape.element_type());
+}
+
+bool HloParserImpl::SetValueInLiteral(LocTy loc, double value, int64_t index,
+                                      Literal* literal) {
+  const Shape& shape = literal->shape();
+  return primitive_util::PrimitiveTypeSwitch<bool>(
+      [&](auto primitive_type_constant) -> bool {
+        if constexpr (primitive_util::IsFloatingPointType(
+                          primitive_type_constant)) {
+          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+          return SetValueInLiteralHelper<NativeT>(loc, value, index, literal);
+        }
+        LOG(FATAL) << "unknown floating point primitive type "
+                   << PrimitiveType_Name(shape.element_type());
+      },
+      shape.element_type());
+}
+
+bool HloParserImpl::SetValueInLiteral(LocTy loc, bool value, int64_t index,
+                                      Literal* literal) {
+  const Shape& shape = literal->shape();
+  switch (shape.element_type()) {
+    case PRED:
+      return SetValueInLiteralHelper<bool>(loc, value, index, literal);
+    default:
+      LOG(FATAL) << PrimitiveType_Name(shape.element_type())
+                 << " is not PRED type";
+  }
+}
+
+bool HloParserImpl::SetValueInLiteral(LocTy loc, std::complex<double> value,
+                                      int64_t index, Literal* literal) {
+  const Shape& shape = literal->shape();
+  return primitive_util::PrimitiveTypeSwitch<bool>(
+      [&](auto primitive_type_constant) -> bool {
+        if constexpr (primitive_util::IsComplexType(primitive_type_constant)) {
+          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+          return SetValueInLiteralHelper<NativeT>(loc, value, index, literal);
+        }
+        LOG(FATAL) << PrimitiveType_Name(shape.element_type())
+                   << " is not a complex type";
+      },
+      shape.element_type());
 }
 
 // Similar to ParseLiteral(Literal* literal, const Shape& shape), but parse the
@@ -4104,157 +4218,6 @@ bool HloParserImpl::ParseDenseLiteral(Literal* literal, const Shape& shape) {
 
   *literal = literal->Relayout(shape.layout());
   return true;
-}
-
-// MaxFiniteValue is a type-traits helper used by
-// HloParserImpl::CheckParsedValueIsInRange.
-template <typename T>
-struct MinMaxFiniteValue {
-  static T max() { return std::numeric_limits<T>::max(); }
-  static T min() { return std::numeric_limits<T>::lowest(); }
-};
-
-template <typename T>
-struct MinMaxFiniteValueCustomFloat {
-  static double max() {
-    // Sadly this is not constexpr, so this forces `value` to be a method.
-    return static_cast<double>(Eigen::NumTraits<T>::highest());
-  }
-  static double min() { return -max(); }
-};
-
-template <>
-struct MinMaxFiniteValue<Eigen::half>
-    : MinMaxFiniteValueCustomFloat<Eigen::half> {};
-
-template <>
-struct MinMaxFiniteValue<bfloat16> : MinMaxFiniteValueCustomFloat<bfloat16> {};
-
-template <>
-struct MinMaxFiniteValue<tsl::float8_e5m2>
-    : MinMaxFiniteValueCustomFloat<tsl::float8_e5m2> {};
-
-template <>
-struct MinMaxFiniteValue<tsl::float8_e4m3fn>
-    : MinMaxFiniteValueCustomFloat<tsl::float8_e4m3fn> {};
-
-template <>
-struct MinMaxFiniteValue<tsl::float8_e4m3b11>
-    : MinMaxFiniteValueCustomFloat<tsl::float8_e4m3b11> {};
-
-template <>
-struct MinMaxFiniteValue<tsl::float8_e5m2fnuz>
-    : MinMaxFiniteValueCustomFloat<tsl::float8_e5m2fnuz> {};
-
-template <>
-struct MinMaxFiniteValue<tsl::float8_e4m3fnuz>
-    : MinMaxFiniteValueCustomFloat<tsl::float8_e4m3fnuz> {};
-
-// MSVC's standard C++ library does not define isnan/isfinite for integer types.
-// To work around that we will need to provide our own.
-template <typename T>
-std::enable_if_t<std::is_floating_point<T>::value, bool> IsFinite(T val) {
-  return std::isfinite(val);
-}
-template <typename T>
-std::enable_if_t<std::is_floating_point<T>::value, bool> IsNaN(T val) {
-  return std::isnan(val);
-}
-template <typename T>
-std::enable_if_t<std::is_integral<T>::value, bool> IsFinite(T val) {
-  return std::isfinite(static_cast<double>(val));
-}
-template <typename T>
-std::enable_if_t<std::is_integral<T>::value, bool> IsNaN(T val) {
-  return std::isnan(static_cast<double>(val));
-}
-
-template <typename LiteralNativeT, typename ParsedElemT>
-bool HloParserImpl::CheckParsedValueIsInRange(LocTy loc, ParsedElemT value) {
-  if constexpr (std::is_floating_point_v<ParsedElemT>) {
-    auto value_as_native_t = static_cast<LiteralNativeT>(value);
-    auto value_double_converted = static_cast<ParsedElemT>(value_as_native_t);
-    if (!IsFinite(value) || IsFinite(value_double_converted)) {
-      value = value_double_converted;
-    }
-  }
-  PrimitiveType literal_ty =
-      primitive_util::NativeToPrimitiveType<LiteralNativeT>();
-  if (IsNaN(value) ||
-      (std::numeric_limits<ParsedElemT>::has_infinity &&
-       (std::numeric_limits<ParsedElemT>::infinity() == value ||
-        -std::numeric_limits<ParsedElemT>::infinity() == value))) {
-    // Skip range checking for non-finite value.
-  } else if constexpr (std::is_unsigned<LiteralNativeT>::value) {
-    static_assert(std::is_same_v<ParsedElemT, int64_t> ||
-                      std::is_same_v<ParsedElemT, bool>,
-                  "Unimplemented checking for ParsedElemT");
-
-    const uint64_t unsigned_value = value;
-    const uint64_t upper_bound =
-        static_cast<uint64_t>(std::numeric_limits<LiteralNativeT>::max());
-    if (unsigned_value > upper_bound) {
-      // Value is out of range for LiteralNativeT.
-      return Error(loc, StrCat("value ", value,
-                               " is out of range for literal's primitive type ",
-                               PrimitiveType_Name(literal_ty), " namely [0, ",
-                               upper_bound, "]."));
-    }
-  } else if (value > static_cast<ParsedElemT>(
-                         MinMaxFiniteValue<LiteralNativeT>::max()) ||
-             value < static_cast<ParsedElemT>(
-                         MinMaxFiniteValue<LiteralNativeT>::min())) {
-    // Value is out of range for LiteralNativeT.
-    return Error(
-        loc,
-        StrCat(
-            "value ", value, " is out of range for literal's primitive type ",
-            PrimitiveType_Name(literal_ty), " namely [",
-            static_cast<ParsedElemT>(MinMaxFiniteValue<LiteralNativeT>::min()),
-            ", ",
-            static_cast<ParsedElemT>(MinMaxFiniteValue<LiteralNativeT>::max()),
-            "]."));
-  }
-  return true;
-}
-
-template <typename LiteralNativeT>
-bool HloParserImpl::CheckParsedValueIsInRange(LocTy loc,
-                                              std::complex<double> value) {
-  // e.g. `float` for std::complex<float>
-  using LiteralComplexComponentT =
-      decltype(std::real(std::declval<LiteralNativeT>()));
-
-  // We could do simply
-  //
-  //   return CheckParsedValueIsInRange<LiteralNativeT>(std::real(value)) &&
-  //          CheckParsedValueIsInRange<LiteralNativeT>(std::imag(value));
-  //
-  // but this would give bad error messages on failure.
-
-  auto check_component = [&](absl::string_view name, double v) {
-    if (std::isnan(v) || v == std::numeric_limits<double>::infinity() ||
-        v == -std::numeric_limits<double>::infinity()) {
-      // Skip range-checking for non-finite values.
-      return true;
-    }
-
-    double min = MinMaxFiniteValue<LiteralComplexComponentT>::min();
-    double max = MinMaxFiniteValue<LiteralComplexComponentT>::max();
-    if (v < min || v > max) {
-      // Value is out of range for LitearlComplexComponentT.
-      return Error(
-          loc,
-          StrCat(name, " part ", v,
-                 " is out of range for literal's primitive type ",
-                 PrimitiveType_Name(
-                     primitive_util::NativeToPrimitiveType<LiteralNativeT>()),
-                 ", namely [", min, ", ", max, "]."));
-    }
-    return true;
-  };
-  return check_component("real", std::real(value)) &&
-         check_component("imaginary", std::imag(value));
 }
 
 // operands ::= '(' operands1 ')'
@@ -5469,7 +5432,7 @@ bool HloParserImpl::ParseDimLevelTypes(
         dim_level_type_valid = true;
       } else if (lexer_.GetStrVal() == "H") {
         lexer_.Lex();
-        dim_level_type = DIM_COMPRESSED_WITH_HI;
+        dim_level_type = DIM_LOOSE_COMPRESSED;
         dim_level_type_valid = true;
       }
       if (dim_level_type_valid) {

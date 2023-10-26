@@ -19,9 +19,9 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "xla/stream_executor/platform/logging.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor_pimpl.h"
+#include "xla/stream_executor/stream_executor.h"
+#include "tsl/platform/logging.h"
 
 namespace stream_executor {
 namespace internal {
