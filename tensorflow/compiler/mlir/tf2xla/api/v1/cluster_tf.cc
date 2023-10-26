@@ -202,34 +202,6 @@ absl::Status RunClusteringPipelineOnSubmodule(
   return absl::OkStatus();
 }
 
-absl::Status RunLowerToRuntimeOpsOnSubmodule(ModuleOp parent_module,
-                                             bool is_in_fallback_enabled_mode) {
-  int num_submodules = 0;
-  absl::Status runtime_lowering_status;
-  parent_module.walk([&](ModuleOp submodule) {
-    if (submodule == parent_module) return mlir::WalkResult::advance();
-    num_submodules++;
-    runtime_lowering_status =
-        tensorflow::tfrt_compiler::RunLowerClusterToRuntimeOpsPassPipeline(
-            submodule, tsl::DeviceType(DEVICE_TPU_XLA_JIT));
-    if (num_submodules > 1) {
-      return mlir::WalkResult::interrupt();
-    }
-
-    return mlir::WalkResult::advance();
-  });
-
-  if (num_submodules > 1) {
-    auto num_submodules_error = absl::InternalError(
-        "Lower to runtime has more than one submodule. Erroring out.");
-    TF_RETURN_IF_ERROR(RecordStatusIfError(
-        /*error_prefix=*/"V1 Lowering to runtime has more than one submodule:",
-        is_in_fallback_enabled_mode, num_submodules_error));
-  }
-
-  return absl::OkStatus();
-}
-
 tensorflow::Status RunSessionTf2xlaClusteringBridge(
     ModuleOp module, bool is_in_fallback_enabled_mode) {
   VLOG(2) << "TPU Sessions Bridge called stack trace is "
@@ -247,15 +219,12 @@ tensorflow::Status RunSessionTf2xlaClusteringBridge(
   TF_RETURN_IF_ERROR(
       RunClusteringPipelineOnSubmodule(module, is_in_fallback_enabled_mode));
 
-  TF_RETURN_IF_ERROR(
-      RunLowerToRuntimeOpsOnSubmodule(module, is_in_fallback_enabled_mode));
-
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       /*device_type=*/"tpu", /*bridge_version=*/"v1",
       /*n_fallback_enabled*/ is_in_fallback_enabled_mode,
       /*result=*/"success");
 
-  return tensorflow::tf2xla::v1::ExportFromTensorflowDialectToExecutor(module);
+  return absl::OkStatus();
 }
 
 // Registers a pipeline builder function for TF TPU V1 bridge.
