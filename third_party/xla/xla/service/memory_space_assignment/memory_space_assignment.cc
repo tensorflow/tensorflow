@@ -5704,16 +5704,15 @@ void AlternateMemoryBestFitHeap::ClearPendingChunks() {
 void AlternateMemoryBestFitHeap::AddToPendingChunks(
     const BufferInterval& buffer_interval, const Chunk& chunk_candidate) {
   VLOG(3) << "Committing chunk: " << buffer_interval.start << "-"
-          << buffer_interval.end << " : [" << chunk_candidate.offset << ", "
-          << chunk_candidate.size << "]";
+          << buffer_interval.end << " : " << chunk_candidate.ToString();
   pending_chunks_.emplace_back(buffer_interval, chunk_candidate);
   for (int i = buffer_interval.start; i <= buffer_interval.end; ++i) {
     peak_memory_usage_[i] += chunk_candidate.size;
     CHECK_LE(peak_memory_usage_[i], options_.max_size_in_bytes)
         << "Peak memory usage at " << i
         << " exceeds the max size of alternate memory. "
-        << buffer_interval.start << "-" << buffer_interval.end << " : ["
-        << chunk_candidate.offset << ", " << chunk_candidate.size << "]";
+        << buffer_interval.start << "-" << buffer_interval.end << " : "
+        << chunk_candidate.ToString();
   }
   CommitChunk(buffer_interval, chunk_candidate);
 }
