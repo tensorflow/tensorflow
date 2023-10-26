@@ -78,7 +78,43 @@ std::string CreateStablehloFunctionName(const int id) {
   return Twine("_stablehlo_main_").concat(std::to_string(id)).str();
 }
 
-// Follows the structure of Live-variable analysis.
+// Follows the structure of Live-variable analysis. It is a form of
+// CFG (Control Flow Graph) analysis, often used in compilers.
+//
+// A variable is live if it holds a value that may be used in the future.
+// It is live-in at node n if it is live on any of the node's in-edges.
+// It is live-out at node n if it is live on any of the node's out-edges.
+// def[n] refers to values that are defined at node n.
+// use[n] refers to values that are used at node n.
+//
+// Given a node n, variables' liveliness is defined like the following:
+// live_in[n] = use[n] U (live_out[n] - def[n])
+// live_out[n] = U {live_in[s] | s ε succ[n]}
+//
+// Consider a sequence of op:
+//
+// ```
+// node 1: %0 = stablehlo.constant
+// node 2: %1 = stablehlo.constant
+// node 3: %2 = stablehlo.add %0, %1
+// node 4: %3 = stablehlo.multiply %2, %1
+// node 5: return %3
+// ```
+//
+// In Backward Liveliness analysis, the liveliness for each node above becomes:
+// live_in[5] = use[5]   U (live_out[5] - def[5])
+//            = {%3}     U {∅ - ∅}                = {%3}
+// live_in[4] = use[4]   U (live_out[4] - def[4])
+//            = {%1, %2} U ({%3} - {%3})          = {%1, %2}
+// live_in[3] = use[3]   U (live_out[3] - def[3])
+//            = {%0, %1} U ({%1, %2} - {%2})      = {%0, %1}
+// live_in[2] = use[2]   U (live_out[2] - def[2])
+//            = {∅}      U ({%0, %1} - {%1})      = {%0}
+// live_in[1] = use[1]   U (live_out[1] - def[1])
+//            = {∅}      U ({%0} - {%0})          = {∅}
+//
+// This analogy is used throughout this pass to ensure only live edges form
+// proper subgraphs.
 class LiveOuts {
  public:
   LiveOuts() = default;
@@ -100,10 +136,10 @@ class LiveOuts {
   void snapshot_previous_state() { prev_liveouts_ = liveouts_; }
 
   // Return the current live values.
-  DenseSet<Value>& get() { return liveouts_; }
+  const DenseSet<Value>& get() const { return liveouts_; }
 
   // Return the previous live values.
-  DenseSet<Value>& get_previous() { return prev_liveouts_; }
+  const DenseSet<Value>& get_previous() const { return prev_liveouts_; }
 
  private:
   DenseSet<Value> liveouts_;
@@ -212,6 +248,38 @@ void ReplaceStablehloOpsWithXlaCallModuleOp(
   }
 }
 
+// Contains the actual logic for updating states and replacing StableHLO ops
+// with tf.XlaCallModuleOps.
+void UpdateStatesAndReplaceStablehloOps(
+    const DenseSet<Value>& operands, const DenseSet<Value>& defined_values,
+    const LiveOuts& liveouts, ModuleOp module_op,
+    ArrayRef<Operation*> reverse_subgraph, const int stablehlo_func_id,
+    func::FuncOp main_func, const bool is_last_subgraph = false) {
+  DenseSet<Value> inputs = operands;
+  for (Value defined_value : defined_values) {
+    inputs.erase(defined_value);
+  }
+
+  DenseSet<Value> outputs = liveouts.get_previous();
+  for (Value live_value : liveouts.get()) {
+    outputs.erase(live_value);
+  }
+
+  if (is_last_subgraph) {
+    // Additionally remove arguments from the outputs, as it provides liveness
+    // throughout (functions as an invisible op above the very first op that
+    // returns the arguments).
+    for (const BlockArgument arg : main_func.getArguments()) {
+      outputs.erase(arg);
+    }
+  }
+
+  ReplaceStablehloOpsWithXlaCallModuleOp(
+      SmallVector<Value>(inputs.begin(), inputs.end()),
+      SmallVector<Value>(outputs.begin(), outputs.end()), reverse_subgraph,
+      stablehlo_func_id, module_op);
+}
+
 // Replaces the StableHLO ops in the main function block with
 // tf.XlaCallModuleOps as separate subgraphs. Wires them back to the main
 // function block to be compatible with SavedModel structure.
@@ -241,20 +309,14 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(
   DenseSet<Value> operands;
   DenseSet<Value> defined_values;
 
-  int stablehlo_func_id = 0;
+  int stablehlo_func_id = -1;
   for (Operation* op : reverse_main_func_block_ops) {
     if (!IsStablehloOp(op)) {
       // Create an XlaCallModuleOp if reverse_subgraph isn't empty.
       if (!reverse_subgraph.empty()) {
-        DenseSet<Value> outputs = liveouts.get_previous();
-        for (Value live_value : liveouts.get()) {
-          outputs.erase(live_value);
-        }
-
-        ReplaceStablehloOpsWithXlaCallModuleOp(
-            SmallVector<Value>(operands.begin(), operands.end()),
-            SmallVector<Value>(outputs.begin(), outputs.end()),
-            reverse_subgraph, stablehlo_func_id++, module_op);
+        UpdateStatesAndReplaceStablehloOps(operands, defined_values, liveouts,
+                                           module_op, reverse_subgraph,
+                                           ++stablehlo_func_id, main_func);
 
         // Reset states and start a new subgraph.
         reverse_subgraph.clear();
@@ -273,25 +335,16 @@ void ReplaceStablehloOpsInMainFunctionWithXlaCallModuleOps(
     }
 
     reverse_subgraph.push_back(op);
+
+    defined_values.insert(op->getResults().begin(), op->getResults().end());
+    operands.insert(op->getOperands().begin(), op->getOperands().end());
   }
 
   // Create the last subgraph if it isn't empty.
   if (!reverse_subgraph.empty()) {
-    DenseSet<Value> outputs = liveouts.get_previous();
-    for (Value live_value : liveouts.get()) {
-      outputs.erase(live_value);
-    }
-    // Additionally remove arguments from the outputs, as it provides liveness
-    // throughout (functions as an invisible op above the very first op that
-    // returns the arguments).
-    for (const BlockArgument arg : main_func.getArguments()) {
-      outputs.erase(arg);
-    }
-
-    ReplaceStablehloOpsWithXlaCallModuleOp(
-        SmallVector<Value>(operands.begin(), operands.end()),
-        SmallVector<Value>(outputs.begin(), outputs.end()), reverse_subgraph,
-        stablehlo_func_id++, module_op);
+    UpdateStatesAndReplaceStablehloOps(
+        operands, defined_values, liveouts, module_op, reverse_subgraph,
+        ++stablehlo_func_id, main_func, /*is_last_subgraph=*/true);
   }
 }
 

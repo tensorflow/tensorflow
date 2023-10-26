@@ -60,6 +60,38 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
   }
 }
 
+
+// -----
+
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1654 : i32}, tf_saved_model.semantics} {
+
+  // CHECK: func private @_stablehlo_main_0
+  // CHECK: %[[CONSTANT_0:.*]] = stablehlo.constant dense<0.134728625> : tensor<1x3xf32>
+  // CHECK: %[[CONSTANT_1:.*]] = stablehlo.constant dense<-1.280000e+02> : tensor<1x1024xf32>
+  // CHECK: %[[CONSTANT_2:.*]] = stablehlo.constant dense<0.003921567> : tensor<1x1024xf32>
+  // CHECK: %[[DIVIDE:.*]] = stablehlo.divide %arg0, %[[CONSTANT_2]]
+  // CHECK: %[[ADD:.*]] = stablehlo.add %[[DIVIDE]], %[[CONSTANT_1]]
+  // CHECK return %[[ADD]]
+  // CHECK: }
+
+  // CHECK: @serving_default
+  func.func @serving_default(%arg0: tensor<1x1024xf32> {tf_saved_model.index_path = ["input_tensor"]}) -> (tensor<1x1024xf32> {tf_saved_model.index_path = ["output"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "serving_default_input_tensor:0", outputs = "PartitionedCall:0"}, tf_saved_model.exported_names = ["serving_default"]} {
+    %0 = stablehlo.constant dense<0.134728625> : tensor<1x3xf32>
+    %1 = stablehlo.constant dense<-1.280000e+02> : tensor<1x1024xf32>
+    %2 = stablehlo.constant dense<0.003921567> : tensor<1x1024xf32>
+    %3 = stablehlo.divide %arg0, %2 : tensor<1x1024xf32>
+    %4 = stablehlo.add %3, %1 : tensor<1x1024xf32>
+    %5 = "tf.Identity"(%4) {device = ""} : (tensor<1x1024xf32>) -> tensor<1x1024xf32>
+    return %5 : tensor<1x1024xf32>
+  }
+
+ // CHECK: %[[STABLEHLO_SUBGRAPH_TO_XLA_CALL_MODULE_OP:.*]] = "tf.XlaCallModule"(%arg0) {Sout = [#tf_type.shape<1x1024>], _entry_function = @_stablehlo_main_0
+ // CHECK: %[[IDENTITY:.*]] = "tf.Identity"(%[[STABLEHLO_SUBGRAPH_TO_XLA_CALL_MODULE_OP]])
+ // CHECK: return %[[IDENTITY]]
+ // CHECK }
+
+}
+
 // -----
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1629 : i32}, tf_saved_model.semantics} {
